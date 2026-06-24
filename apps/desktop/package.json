@@ -1,6 +1,6 @@
 {
   "name": "hermes",
-  "productName": "Hermes",
+  "productName": "ApexNodes",
   "private": true,
   "version": "0.15.1",
   "description": "Native desktop shell for Hermes Agent.",
@@ -135,18 +135,18 @@
   },
   "build": {
     "electronVersion": "40.10.2",
-    "appId": "com.nousresearch.hermes",
-    "productName": "Hermes",
-    "executableName": "Hermes",
+    "appId": "com.apexnodes.desktop",
+    "productName": "ApexNodes",
+    "executableName": "ApexNodes",
     "protocols": [
       {
-        "name": "Hermes Protocol",
+        "name": "ApexNodes Protocol",
         "schemes": [
-          "hermes"
+          "apexnodes"
         ]
       }
     ],
-    "artifactName": "Hermes-${version}-${os}-${arch}.${ext}",
+    "artifactName": "ApexNodes-${version}-${os}-${arch}.${ext}",
     "icon": "assets/icon",
     "directories": {
       "output": "release"
@@ -187,9 +187,9 @@
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
       "extendInfo": {
-        "CFBundleDisplayName": "Hermes",
-        "CFBundleExecutable": "Hermes",
-        "CFBundleName": "Hermes",
+        "CFBundleDisplayName": "ApexNodes",
+        "CFBundleExecutable": "ApexNodes",
+        "CFBundleName": "ApexNodes",
         "NSAudioCaptureUsageDescription": "Hermes uses audio capture for voice conversations.",
         "NSMicrophoneUsageDescription": "Hermes uses the microphone for voice input and voice conversations."
       },
@@ -201,7 +201,7 @@
       ]
     },
     "dmg": {
-      "title": "Install Hermes",
+      "title": "Install ApexNodes",
       "backgroundColor": "#f5f5f7",
       "iconSize": 96,
       "window": {

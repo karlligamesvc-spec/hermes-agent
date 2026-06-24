@@ -257,17 +257,25 @@ function resolveHermesHome() {
     if (fromRegistry) return normalizeHermesHomeRoot(fromRegistry)
   }
   if (IS_WINDOWS && process.env.LOCALAPPDATA) {
-    const localappdata = path.join(process.env.LOCALAPPDATA, 'hermes')
-    const legacy = path.join(app.getPath('home'), '.hermes')
+    const localappdata = path.join(process.env.LOCALAPPDATA, 'apexnodes')
+    const legacy = path.join(app.getPath('home'), '.apexnodes')
     // Migrate transparently to LOCALAPPDATA, but honour an existing legacy
-    // ~/.hermes setup (no LOCALAPPDATA install yet) so users don't lose state.
+    // ~/.apexnodes setup (no LOCALAPPDATA install yet) so users don't lose state.
     if (!directoryExists(localappdata) && directoryExists(legacy)) return legacy
     return localappdata
   }
-  return path.join(app.getPath('home'), '.hermes')
+  // ApexNodes Desktop runs an independent runtime home (~/.apexnodes) so it
+  // never collides with a stock Hermes install (~/.hermes) sharing the machine.
+  return path.join(app.getPath('home'), '.apexnodes')
 }
 
 const HERMES_HOME = resolveHermesHome()
+// Force the resolved root into the environment so every child process —
+// install.sh's first-launch clone, the dashboard backend, the hermes CLI —
+// inherits the SAME independent home instead of re-deriving its own ~/.hermes
+// default. Idempotent: when HERMES_HOME came from an explicit override this is a
+// no-op; on a default install it pins clone/config/data under ~/.apexnodes.
+process.env.HERMES_HOME = HERMES_HOME
 // ACTIVE_HERMES_ROOT — the canonical mutable Hermes install. Same path
 // install.ps1 / install.sh use, so a desktop-only user and a CLI-only user end
 // up with identical layouts and can share one install.
@@ -287,6 +295,37 @@ const VENV_ROOT = path.join(ACTIVE_HERMES_ROOT, 'venv')
 // avoids the confusing "marker exists but checkout is gone" state.
 const BOOTSTRAP_COMPLETE_MARKER = path.join(ACTIVE_HERMES_ROOT, '.hermes-bootstrap-complete')
 const BOOTSTRAP_MARKER_SCHEMA_VERSION = 1
+
+// ── ApexNodes V0.1: default-provider preset (DeepSeek) ─────────────────────
+// Ship DeepSeek as the out-of-box text model so a fresh install only needs the
+// user's own DeepSeek API key, entered via the native Settings → Providers
+// "DeepSeek" card (which writes DEEPSEEK_API_KEY — exactly the env var the
+// runtime's first-class `deepseek` provider reads). We pre-seed config.yaml
+// BEFORE the first-launch installer runs: install.sh only creates config.yaml
+// from its template when absent, so this seed wins WITHOUT forking the runtime.
+//
+// Idempotent + non-destructive: an existing config.yaml (returning user, or one
+// they edited) is left untouched. We intentionally do NOT set model.base_url —
+// the `deepseek` provider already pins inference_base_url=https://api.deepseek
+// .com/v1, and a bare api.deepseek.com (missing /v1) would 404.
+function seedDefaultModelConfig() {
+  try {
+    const configPath = path.join(HERMES_HOME, 'config.yaml')
+    if (fs.existsSync(configPath)) return
+    fs.mkdirSync(HERMES_HOME, { recursive: true })
+    const seed =
+      '# Seeded by ApexNodes Desktop (V0.1).\n' +
+      '# DeepSeek is the default provider. Add your key in Settings › Providers\n' +
+      '# (the DeepSeek card), which writes DEEPSEEK_API_KEY.\n' +
+      'model:\n' +
+      '  default: deepseek-v4-pro\n' +
+      '  provider: deepseek\n'
+    fs.writeFileSync(configPath, seed, { encoding: 'utf8' })
+    rememberLog(`[apexnodes] seeded default DeepSeek config at ${configPath}`)
+  } catch (err) {
+    rememberLog(`[apexnodes] could not seed default config: ${err && err.message ? err.message : err}`)
+  }
+}
 
 const DESKTOP_CONNECTION_CONFIG_PATH = path.join(app.getPath('userData'), 'connection.json')
 const DESKTOP_UPDATE_CONFIG_PATH = path.join(app.getPath('userData'), 'updates.json')
@@ -2029,8 +2068,8 @@ async function applyUpdatesPosixInApp() {
   }
 
   const rebuiltApp = [
-    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'Hermes.app'),
-    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'Hermes.app')
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'ApexNodes.app'),
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'ApexNodes.app')
   ].find(directoryExists)
   const targetApp = runningAppBundle()
 
@@ -2487,6 +2526,11 @@ async function ensureRuntime(backend) {
   // to a renderer-side install overlay.
   if (backend.kind === 'bootstrap-needed') {
     rememberLog('[bootstrap] no Hermes install found; starting first-launch bootstrap')
+
+    // ApexNodes: seed the DeepSeek default into config.yaml before install.sh
+    // runs (it keeps an existing config.yaml), so a fresh install boots with
+    // DeepSeek preselected and only needs the user's API key.
+    seedDefaultModelConfig()
 
     if (await handOffWindowsBootstrapRecovery('bootstrap-needed')) {
       const handoffError = new Error('Hermes recovery was handed off to Hermes Setup. The desktop will restart when recovery completes.')
@@ -6387,7 +6431,7 @@ ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMark
 // running app's chat composer. Three delivery paths: macOS 'open-url',
 // Win/Linux running-app 'second-instance' (argv), Win/Linux cold-start argv.
 // ---------------------------------------------------------------------------
-const HERMES_PROTOCOL = 'hermes'
+const HERMES_PROTOCOL = 'apexnodes'
 let _pendingDeepLink = null
 let _rendererReadyForDeepLink = false
 
