@@ -71,11 +71,12 @@ test('relay base_url + /chat/completions reaches the relay route after nginx str
 
 // --- isManagedEnabled ---
 
-test('isManagedEnabled is OFF by default and accepts common truthy spellings', () => {
-  assert.equal(isManagedEnabled({}), false)
-  assert.equal(isManagedEnabled({ APEXNODES_MANAGED: '0' }), false)
-  assert.equal(isManagedEnabled({ APEXNODES_MANAGED: 'false' }), false)
-  assert.equal(isManagedEnabled({ APEXNODES_MANAGED: '' }), false)
+test('isManagedEnabled is ON by default and accepts common falsy spellings to disable', () => {
+  assert.equal(isManagedEnabled({}), true)
+  assert.equal(isManagedEnabled({ APEXNODES_MANAGED: '' }), true)
+  for (const v of ['0', 'false', 'no', 'off', 'OFF']) {
+    assert.equal(isManagedEnabled({ APEXNODES_MANAGED: v }), false, v)
+  }
   for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
     assert.equal(isManagedEnabled({ APEXNODES_MANAGED: v }), true, v)
   }

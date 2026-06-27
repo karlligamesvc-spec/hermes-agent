@@ -122,19 +122,17 @@ function resolveApexEndpoints(env = {}) {
  * gate the rest of the app (boot seed, onboarding, IPC) consults so the flag
  * check isn't scattered.
  *
- * Shipped OFF by default as a safety gate while the backend provision-key
- * endpoint rolls out to prod: with it off, the desktop behaves exactly like the
- * current BYOK build (zero regression). Flip ON — set `APEXNODES_MANAGED=1`, or
- * change this default to `raw !== '0'` — the moment the endpoint is live, and
- * managed becomes the zero-key default. Even when ON, every path auto-degrades
- * to BYOK if provision-key is unreachable, so flipping it early only changes the
- * first-run UI (managed sign-in panel first), never breaks chat.
+ * Shipped ON by default now that the backend provision-key endpoint is live on
+ * prod (2026-06-27): managed is the zero-key default. Every path still
+ * auto-degrades to BYOK if provision-key is ever unreachable, so this never
+ * breaks chat. Set `APEXNODES_MANAGED=0` (or false/no/off) to force the legacy
+ * BYOK-first build.
  *
  * @param {Record<string, string | undefined>} [env]
  */
 function isManagedEnabled(env = {}) {
   const raw = String(env.APEXNODES_MANAGED ?? '').trim().toLowerCase()
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+  return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
 
 /**
