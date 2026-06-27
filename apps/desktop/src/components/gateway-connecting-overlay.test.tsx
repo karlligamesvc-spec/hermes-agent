@@ -43,7 +43,10 @@ function resetStores() {
     requested: false,
     firstRunSkipped: false,
     manual: false,
-    localEndpoint: false
+    localEndpoint: false,
+    managedAvailable: null,
+    managedError: null,
+    managedSubmitting: false
   })
 }
 
