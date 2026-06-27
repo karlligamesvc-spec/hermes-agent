@@ -1330,18 +1330,52 @@ export const ja = defineLocale({
     }
   },
 
+  home: {
+    wordmark: 'ApexNodes Desktop',
+    engineBacking: 'Hermes エンジン搭載',
+    title: 'まず AI に第一版を作らせる',
+    subtitle: '要望・チャット履歴・リンク・資料を送れば、ApexNodes がまず使える第一版を作成します。',
+    quickTasksLabel: 'こちらをお試しください',
+    quickTasks: [
+      {
+        id: 'analyze-chat',
+        icon: 'comment-discussion',
+        label: 'チャット履歴を分析',
+        prompt: 'このチャット履歴を分析して、要点・決定事項・未解決の課題を抽出してください。'
+      },
+      {
+        id: 'organize-doc',
+        icon: 'files',
+        label: '資料を整理',
+        prompt: 'この資料を、わかりやすく構造化した要約にまとめてください。'
+      },
+      {
+        id: 'break-down-request',
+        icon: 'list-tree',
+        label: '要望を分解',
+        prompt: 'この要望を、具体的で実行可能なステップに分解してください。'
+      },
+      {
+        id: 'follow-up-plan',
+        icon: 'checklist',
+        label: 'フォロー計画を作成',
+        prompt: '担当者と次のアクションを明確にしたフォローアップ計画を作成してください。'
+      }
+    ]
+  },
+
   composer: {
     message: 'メッセージ',
     wakingProfile: profile => `${profile} を起動中…`,
-    placeholderStarting: 'Hermes を起動中...',
-    placeholderReconnecting: 'Hermes に再接続中…',
+    placeholderStarting: 'ApexNodes を起動中...',
+    placeholderReconnecting: 'ApexNodes に再接続中…',
     placeholderFollowUp: 'フォローアップを送信',
     newSessionPlaceholders: [
-      '何を作りますか？',
-      'Hermes にタスクを与える',
+      '要望・リンク・資料・チャット履歴を送ってください',
+      'AI にまず何を作らせますか？',
       '何か考えていることはありますか？',
       '必要なことを説明してください',
-      '何に取り組みますか？',
+      'まず何に取り組みますか？',
       '何でも聞いてください',
       '目標から始める'
     ],
@@ -1437,7 +1471,7 @@ export const ja = defineLocale({
     tipPost: ' と入力してファイルをインラインで参照。',
     snippetsTitle: 'プロンプトスニペット',
     snippetsDesc: 'スターターのプロンプトをコンポーザーに挿入します。',
-    dropFiles: 'ファイルをドロップして添付',
+    dropFiles: '資料・リンク・チャット履歴をドロップ',
     dropSession: 'ドロップしてこのチャットをリンク',
     snippets: {
       codeReview: {

@@ -1388,18 +1388,52 @@ export const zh: Translations = {
     }
   },
 
+  home: {
+    wordmark: 'ApexNodes Desktop',
+    engineBacking: 'Hermes 引擎驱动',
+    title: '先让 AI 帮你做一版',
+    subtitle: '发一个需求、聊天记录、链接或资料,ApexNodes 会先产出一版可用结果。',
+    quickTasksLabel: '试试这些',
+    quickTasks: [
+      {
+        id: 'analyze-chat',
+        icon: 'comment-discussion',
+        label: '分析一段聊天记录',
+        prompt: '帮我分析这段聊天记录:提炼出重点、结论和待办的问题。'
+      },
+      {
+        id: 'organize-doc',
+        icon: 'files',
+        label: '整理一份资料',
+        prompt: '帮我把这份资料整理成一份条理清晰的结构化摘要。'
+      },
+      {
+        id: 'break-down-request',
+        icon: 'list-tree',
+        label: '拆解一个需求',
+        prompt: '帮我把这个需求拆解成具体、可执行的步骤。'
+      },
+      {
+        id: 'follow-up-plan',
+        icon: 'checklist',
+        label: '生成跟进计划',
+        prompt: '帮我生成一份跟进计划,明确每一步的负责人和下一步动作。'
+      }
+    ]
+  },
+
   composer: {
     message: '消息',
     wakingProfile: profile => `正在唤醒 ${profile}…`,
-    placeholderStarting: '正在启动 Hermes…',
-    placeholderReconnecting: '正在重新连接 Hermes…',
+    placeholderStarting: '正在启动 ApexNodes…',
+    placeholderReconnecting: '正在重新连接 ApexNodes…',
     placeholderFollowUp: '发送后续消息',
     newSessionPlaceholders: [
-      '我们要构建什么？',
-      '给 Hermes 一个任务',
-      '你在想什么？',
+      '发一个需求、链接、资料或聊天记录',
+      'AI 可以先帮你做点什么?',
+      '你在想什么?',
       '描述你需要什么',
-      '我们该处理什么？',
+      '我们先做哪件事?',
       '随便问点什么',
       '从一个目标开始'
     ],
@@ -1407,7 +1441,7 @@ export const zh: Translations = {
       '发送后续消息',
       '补充更多上下文',
       '细化这个请求',
-      '下一步是什么？',
+      '下一步是什么?',
       '继续推进',
       '再深入一点',
       '调整或继续'
@@ -1496,7 +1530,7 @@ export const zh: Translations = {
     tipPost: ' 以内联引用文件。',
     snippetsTitle: '提示词片段',
     snippetsDesc: '选择一个起始提示词放入输入框。',
-    dropFiles: '拖放文件以附加',
+    dropFiles: '拖入资料、链接或聊天记录',
     dropSession: '拖放以链接此对话',
     snippets: {
       codeReview: {
