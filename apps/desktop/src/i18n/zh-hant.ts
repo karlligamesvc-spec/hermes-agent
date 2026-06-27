@@ -1284,18 +1284,52 @@ export const zhHant = defineLocale({
     }
   },
 
+  home: {
+    wordmark: 'ApexNodes Desktop',
+    engineBacking: 'Hermes 引擎驅動',
+    title: '先讓 AI 幫你做一版',
+    subtitle: '發一個需求、聊天記錄、連結或資料,ApexNodes 會先產出一版可用結果。',
+    quickTasksLabel: '試試這些',
+    quickTasks: [
+      {
+        id: 'analyze-chat',
+        icon: 'comment-discussion',
+        label: '分析一段聊天記錄',
+        prompt: '幫我分析這段聊天記錄:提煉出重點、結論和待辦的問題。'
+      },
+      {
+        id: 'organize-doc',
+        icon: 'files',
+        label: '整理一份資料',
+        prompt: '幫我把這份資料整理成一份條理清晰的結構化摘要。'
+      },
+      {
+        id: 'break-down-request',
+        icon: 'list-tree',
+        label: '拆解一個需求',
+        prompt: '幫我把這個需求拆解成具體、可執行的步驟。'
+      },
+      {
+        id: 'follow-up-plan',
+        icon: 'checklist',
+        label: '生成跟進計畫',
+        prompt: '幫我生成一份跟進計畫,明確每一步的負責人和下一步動作。'
+      }
+    ]
+  },
+
   composer: {
     message: '訊息',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
-    placeholderStarting: '正在啟動 Hermes...',
-    placeholderReconnecting: '正在重新連線至 Hermes…',
+    placeholderStarting: '正在啟動 ApexNodes...',
+    placeholderReconnecting: '正在重新連線至 ApexNodes…',
     placeholderFollowUp: '傳送後續訊息',
     newSessionPlaceholders: [
-      '我們要建立什麼？',
-      '給 Hermes 一個任務',
-      '您在想什麼？',
+      '發一個需求、連結、資料或聊天記錄',
+      'AI 可以先幫你做點什麼?',
+      '您在想什麼?',
       '描述您需要什麼',
-      '我們該處理什麼？',
+      '我們先做哪件事?',
       '盡管問',
       '從一個目標開始'
     ],
@@ -1391,7 +1425,7 @@ export const zhHant = defineLocale({
     tipPost: ' 以行內參照檔案。',
     snippetsTitle: '提示詞片段',
     snippetsDesc: '選擇一個起始提示詞放入輸入框。',
-    dropFiles: '拖曳檔案以附加',
+    dropFiles: '拖入資料、連結或聊天記錄',
     dropSession: '拖曳以連結此聊天',
     snippets: {
       codeReview: {

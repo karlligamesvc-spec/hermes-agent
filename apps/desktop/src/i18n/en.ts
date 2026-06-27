@@ -1201,18 +1201,52 @@ export const en: Translations = {
     }
   },
 
+  home: {
+    wordmark: 'ApexNodes Desktop',
+    engineBacking: 'Powered by Hermes',
+    title: 'Let AI draft the first version',
+    subtitle: 'Send a request, chat log, link, or document — ApexNodes drafts a usable first version for you.',
+    quickTasksLabel: 'Try one of these',
+    quickTasks: [
+      {
+        id: 'analyze-chat',
+        icon: 'comment-discussion',
+        label: 'Analyze a chat log',
+        prompt: 'Help me analyze this chat log: pull out the key points, decisions, and open questions.'
+      },
+      {
+        id: 'organize-doc',
+        icon: 'files',
+        label: 'Organize some material',
+        prompt: 'Help me organize this material into a clear, structured summary.'
+      },
+      {
+        id: 'break-down-request',
+        icon: 'list-tree',
+        label: 'Break down a request',
+        prompt: 'Help me break this request down into concrete, actionable steps.'
+      },
+      {
+        id: 'follow-up-plan',
+        icon: 'checklist',
+        label: 'Draft a follow-up plan',
+        prompt: 'Help me draft a follow-up plan with clear owners and next steps.'
+      }
+    ]
+  },
+
   composer: {
     message: 'Message',
     wakingProfile: profile => `Waking up ${profile}…`,
-    placeholderStarting: 'Starting Hermes...',
-    placeholderReconnecting: 'Reconnecting to Hermes…',
+    placeholderStarting: 'Starting ApexNodes...',
+    placeholderReconnecting: 'Reconnecting to ApexNodes…',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
-      'What are we building?',
-      'Give Hermes a task',
+      'Send a request, link, document, or chat log',
+      'What can AI draft for you?',
       "What's on your mind?",
       'Describe what you need',
-      'What should we tackle?',
+      'What should we work on?',
       'Ask anything',
       'Start with a goal'
     ],
@@ -1222,7 +1256,7 @@ export const en: Translations = {
       'Refine the request',
       "What's next?",
       'Keep it going',
-      'Push it further',
+      'Take it further',
       'Adjust or continue'
     ],
     startVoice: 'Start voice conversation',
@@ -1309,7 +1343,7 @@ export const en: Translations = {
     tipPost: ' to reference files inline.',
     snippetsTitle: 'Prompt snippets',
     snippetsDesc: 'Pick a starter prompt to drop into the composer.',
-    dropFiles: 'Drop files to attach',
+    dropFiles: 'Drop a document, link, or chat log',
     dropSession: 'Drop to link this chat',
     snippets: {
       codeReview: {
