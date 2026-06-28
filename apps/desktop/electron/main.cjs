@@ -79,6 +79,9 @@ const {
   googleStartUrl,
   isManagedEnabled,
   managedModelConfigYaml,
+  modelDisabledProvidersYaml,
+  seedSkillsBlockYaml,
+  MODEL_DISABLED_PROVIDERS,
   parseProvisionResponse,
   resolveApexEndpoints
 } = require('./apex-managed.cjs')
@@ -356,10 +359,19 @@ function seedDefaultModelConfig() {
     fs.mkdirSync(HERMES_HOME, { recursive: true })
 
     const managed = resolveManagedConfig()
+    // hc-392 China profile: the same skills.disabled (49) + model.disabled_providers
+    // ([copilot]) that cli-config.yaml.example carries must be folded into the
+    // desktop seed, because this seed pre-empts install.sh's example-copy (both
+    // are absent-gated and this one runs first) — otherwise skill-cut +
+    // Copilot-disable would be a no-op on a fresh desktop install. The
+    // denylist sits INSIDE the model: block (a 2nd top-level model: key would
+    // be invalid YAML); the skills block is its own top-level key.
+    const skillsBlock = seedSkillsBlockYaml()
     let seed
     if (defaultModelPath({ enabled: isManagedEnabled(process.env), key: managed.key }) === 'managed') {
       const block = managedModelConfigYaml(
-        buildManagedModelConfig(managed.key, process.env, { baseUrl: managed.baseUrl, model: managed.model })
+        buildManagedModelConfig(managed.key, process.env, { baseUrl: managed.baseUrl, model: managed.model }),
+        { disabledProviders: MODEL_DISABLED_PROVIDERS }
       )
       seed =
         '# Seeded by ApexNodes Desktop (V0.2 — managed).\n' +
@@ -367,7 +379,8 @@ function seedDefaultModelConfig() {
         '# cloud account. Switch to your own provider any time in\n' +
         '# Settings › Providers.\n' +
         block +
-        SEED_DISPLAY_BLOCK
+        SEED_DISPLAY_BLOCK +
+        skillsBlock
       rememberLog(`[apexnodes] seeded managed relay config at ${configPath}`)
     } else {
       seed =
@@ -377,7 +390,9 @@ function seedDefaultModelConfig() {
         'model:\n' +
         '  default: deepseek-v4-pro\n' +
         '  provider: deepseek\n' +
-        SEED_DISPLAY_BLOCK
+        modelDisabledProvidersYaml() +
+        SEED_DISPLAY_BLOCK +
+        skillsBlock
       rememberLog(`[apexnodes] seeded default DeepSeek (BYOK) config at ${configPath}`)
     }
     fs.writeFileSync(configPath, seed, { encoding: 'utf8' })

@@ -40,7 +40,21 @@ model:
   #
   # Can also be overridden for a single invocation with the --provider flag.
   provider: "auto"
-  
+
+  # Provider denylist (hc-392). Providers named here are NEVER probed for
+  # credentials, never live-fetched, and never shown in the `/model` picker —
+  # even if a matching token happens to be present in the environment (e.g. a
+  # stray GH_TOKEN / `gh auth` token enabling GitHub Copilot). This stops the
+  # background picker-cache prewarm from making that provider's startup
+  # /v1/models call and from writing its entry into provider_models_cache.json.
+  # Matched case-insensitively against the Hermes slug and its models.dev id.
+  #
+  # ApexNodes ships with GitHub Copilot disabled: it's a foreign-model gateway
+  # (gpt / claude / gemini) that we don't surface, and the boot fetch hits
+  # api.githubcopilot.com. Remove from this list to re-enable.
+  disabled_providers:
+    - copilot
+
   # API configuration (falls back to OPENROUTER_API_KEY env var)
   # api_key: "your-key-here"  # Uncomment to set here instead of .env
   base_url: "https://openrouter.ai/api/v1"
@@ -580,6 +594,83 @@ skills:
   # Every N tool-calling iterations, remind the model to consider saving a skill.
   # Set to 0 to disable.
   creation_nudge_interval: 15
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ApexNodes China default profile (hc-392)
+  # ──────────────────────────────────────────────────────────────────────────
+  # Skills listed here are physically present in ~/.hermes/skills/ but kept
+  # INACTIVE by default. They never load into the agent's skill index until a
+  # name is removed from this list (do that in the UI: `hermes skills`, or the
+  # desktop Settings → Skills panel). We disable rather than delete the skill
+  # files so upstream merges stay painless.
+  #
+  # Two intents are folded into one mechanism (both = "off by default"):
+  #
+  #   GROUP A — off for China + product focus (墙外必超时 / 国内不稳 / 竞品 dev).
+  #     These should usually stay off on mainland deployments. Re-enabling a
+  #     wall-blocked one (e.g. google-workspace) will time out without a proxy.
+  #
+  #   GROUP B — capable but niche (dev / research / heavy / internal). Hidden to
+  #     keep the default surface tight; flip on per-need from settings.
+  disabled:
+    # ── GROUP A: China / product focus ──
+    # 墙外 + 竞品 coding agents
+    - google-workspace
+    - xurl                       # X / Twitter
+    - youtube-content
+    - polymarket
+    - teams-meeting-pipeline
+    - claude-code
+    - codex
+    - opencode
+    # 借界转关:墙外协作 / Google 系 / GitHub 全家
+    - notion
+    - airtable
+    - gif-search                 # Tenor = Google 系
+    - arxiv
+    - github-auth
+    - github-code-review
+    - github-issues
+    - github-pr-workflow
+    - github-repo-management
+    # ── GROUP B: capable but niche (toggle on per-need) ──
+    # dev
+    - codebase-inspection
+    - simplify-code
+    - test-driven-development
+    - systematic-debugging
+    - requesting-code-review
+    - node-inspect-debugger
+    - python-debugpy
+    - jupyter-live-kernel
+    - himalaya
+    - design-md
+    - hermes-agent
+    - hermes-agent-skill-authoring
+    # ML / research  (names below are the SKILL.md frontmatter `name:`,
+    # which differ from their folder names — that is what the toggle matches)
+    - serving-llms-vllm          # folder: mlops/inference/vllm
+    - llama-cpp
+    - weights-and-biases
+    - evaluating-llms-harness    # folder: mlops/evaluation/lm-evaluation-harness
+    - research-paper-writing
+    - pretext
+    - segment-anything-model     # folder: mlops/models/segment-anything
+    - comfyui
+    - audiocraft-audio-generation  # folder: mlops/models/audiocraft
+    # creative / 小众
+    - heartmula
+    - songwriting-and-ai-music
+    - songsee
+    - manim-video
+    - p5js
+    - touchdesigner-mcp
+    - openhue
+    # internal / QA
+    - kanban-orchestrator
+    - kanban-worker
+    - dogfood
+    - spike
 
   # Gate the background self-improvement review's skill writes.
   # The review forks the agent in a daemon thread with no user present; by

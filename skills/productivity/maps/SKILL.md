@@ -20,6 +20,14 @@ categories, zero dependencies (Python stdlib only), no API key required.
 
 Data sources: OpenStreetMap/Nominatim, Overpass API, OSRM, TimeAPI.io.
 
+> **China coverage note (hc-392):** the open data sources above are reachable
+> from mainland China but slow, and OSRM routing / Overpass POI density are
+> weakest inside China. For production-grade Chinese geocoding, POIs, and
+> driving routes, the planned domestic backend is **高德 / AMap** (requires
+> `AMAP_API_KEY`). Swapping `scripts/maps_client.py` over to AMap is a full
+> client rewrite + key dependency, so it is tracked under the runtime
+> localization epic rather than this profile change.
+
 This skill supersedes the old `find-nearby` skill — all of find-nearby's
 functionality is covered by the `nearby` command below, with the same
 `--near "<place>"` shortcut and multi-category support.

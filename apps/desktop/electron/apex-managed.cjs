@@ -122,6 +122,89 @@ const MANAGED_PROVIDER = 'custom'
 // the native-format hardening that goes with it.
 const MANAGED_PROVIDER_NAME = 'Apex-nodes.com'
 
+// ── ApexNodes China default profile (hc-392) ───────────────────────────────
+// The desktop pre-seeds config.yaml BEFORE install.sh can copy
+// cli-config.yaml.example (seedDefaultModelConfig in main.cjs only writes when
+// config.yaml is absent, and install.sh's example-copy is likewise
+// absent-gated — so the seed wins). The China profile therefore CANNOT rely on
+// cli-config.yaml.example reaching the desktop; we fold the same two policy
+// lists into the seed here so skill-cut + Copilot-disable actually take effect
+// on a fresh desktop install. The runtime reads these from config.yaml via
+// agent.skill_utils.get_disabled_skill_names() and
+// hermes_cli.model_switch.list_authenticated_providers (model.disabled_providers).
+//
+// Providers never probed / live-fetched / shown. Matched case-insensitively
+// against the Hermes slug + its models.dev id.
+const MODEL_DISABLED_PROVIDERS = ['copilot']
+
+// Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default
+// (never loaded until removed from this list in Settings → Skills). We disable
+// rather than delete so upstream merges stay painless. Names below are the
+// SKILL.md frontmatter `name:` (which the toggle matches) — note the four that
+// differ from their folder names (serving-llms-vllm, evaluating-llms-harness,
+// segment-anything-model, audiocraft-audio-generation). MUST stay in sync with
+// the `skills.disabled` list in cli-config.yaml.example (the pure-CLI path).
+const SEED_DISABLED_SKILLS = [
+  // GROUP A — China / product focus (墙外 / 国内不稳 / 竞品 dev)
+  'google-workspace', 'xurl', 'youtube-content', 'polymarket',
+  'teams-meeting-pipeline', 'claude-code', 'codex', 'opencode',
+  'notion', 'airtable', 'gif-search', 'arxiv',
+  'github-auth', 'github-code-review', 'github-issues',
+  'github-pr-workflow', 'github-repo-management',
+  // GROUP B — capable but niche (toggle on per-need): dev
+  'codebase-inspection', 'simplify-code', 'test-driven-development',
+  'systematic-debugging', 'requesting-code-review', 'node-inspect-debugger',
+  'python-debugpy', 'jupyter-live-kernel', 'himalaya', 'design-md',
+  'hermes-agent', 'hermes-agent-skill-authoring',
+  // ML / research
+  'serving-llms-vllm', 'llama-cpp', 'weights-and-biases',
+  'evaluating-llms-harness', 'research-paper-writing', 'pretext',
+  'segment-anything-model', 'comfyui', 'audiocraft-audio-generation',
+  // creative / 小众
+  'heartmula', 'songwriting-and-ai-music', 'songsee', 'manim-video',
+  'p5js', 'touchdesigner-mcp', 'openhue',
+  // internal / QA
+  'kanban-orchestrator', 'kanban-worker', 'dogfood', 'spike'
+]
+
+/**
+ * Render the `model.disabled_providers` YAML lines (indented to sit INSIDE the
+ * `model:` block). Returns '' when the list is empty. Kept as a helper so the
+ * managed (apex-managed) and BYOK (main.cjs raw string) seed paths emit the
+ * identical block.
+ *
+ * @param {string[]} [providers]
+ * @returns {string}
+ */
+function modelDisabledProvidersYaml(providers = MODEL_DISABLED_PROVIDERS) {
+  const list = Array.isArray(providers) ? providers.filter(p => String(p || '').trim()) : []
+  if (!list.length) return ''
+  let yaml = '  disabled_providers:\n'
+  for (const p of list) yaml += `    - ${String(p).trim()}\n`
+  return yaml
+}
+
+/**
+ * Render the top-level `skills.disabled` YAML block. Returns '' when empty.
+ * Top-level `skills:` key — no collision with the `model:` / `display:` blocks
+ * the seed already emits.
+ *
+ * @param {string[]} [skills]
+ * @returns {string}
+ */
+function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
+  const list = Array.isArray(skills) ? skills.filter(s => String(s || '').trim()) : []
+  if (!list.length) return ''
+  let yaml =
+    '# ApexNodes China default profile (hc-392): skills shipped but OFF by\n' +
+    '# default. Toggle any on in Settings → Skills. Files are kept (not\n' +
+    '# deleted) so upstream merges stay clean.\n' +
+    'skills:\n' +
+    '  disabled:\n'
+  for (const s of list) yaml += `    - ${String(s).trim()}\n`
+  return yaml
+}
+
 // Endpoint paths. LOGIN_PATH / REGISTER_PATH are on AUTH_BASE; PROVISION_KEY_PATH
 // is on API_BASE. GOOGLE_START_PATH is the backend's browser OAuth entry (on
 // API_BASE — see the shared login-rework contract).
@@ -411,9 +494,13 @@ function parseProvisionResponse(body, env = {}) {
  *   default: string, provider: string, base_url: string, api_key: string,
  *   custom_providers?: Array<{ name: string, base_url: string, api_key: string, model: string }>
  * }} block
+ * @param {{ disabledProviders?: string[] }} [opts]  hc-392: when
+ *   `disabledProviders` is given, its `disabled_providers:` lines are emitted
+ *   INSIDE this `model:` block (a second top-level `model:` block would be a
+ *   duplicate YAML key).
  * @returns {string}
  */
-function managedModelConfigYaml(block) {
+function managedModelConfigYaml(block, opts = {}) {
   const q = v => JSON.stringify(String(v)) // JSON string == valid YAML double-quoted scalar
   let yaml =
     'model:\n' +
@@ -421,6 +508,9 @@ function managedModelConfigYaml(block) {
     `  provider: ${block.provider}\n` +
     `  base_url: ${q(block.base_url)}\n` +
     `  api_key: ${q(block.api_key)}\n`
+  if (opts && opts.disabledProviders) {
+    yaml += modelDisabledProvidersYaml(opts.disabledProviders)
+  }
   const entries = Array.isArray(block.custom_providers) ? block.custom_providers : []
   if (entries.length) {
     yaml += 'custom_providers:\n'
@@ -484,6 +574,10 @@ module.exports = {
   MANAGED_MODEL_DISPLAY,
   MANAGED_PROVIDER,
   MANAGED_PROVIDER_NAME,
+  MODEL_DISABLED_PROVIDERS,
+  SEED_DISABLED_SKILLS,
+  modelDisabledProvidersYaml,
+  seedSkillsBlockYaml,
   LOGIN_PATH,
   REGISTER_PATH,
   PROVISION_KEY_PATH,

@@ -28,6 +28,10 @@ const {
   isLoopbackUrl,
   isManagedEnabled,
   managedModelConfigYaml,
+  modelDisabledProvidersYaml,
+  seedSkillsBlockYaml,
+  MODEL_DISABLED_PROVIDERS,
+  SEED_DISABLED_SKILLS,
   parseLoopbackCallback,
   parseProvisionResponse,
   relayKeyFromResponse,
@@ -265,6 +269,56 @@ test('managedModelConfigYaml omits custom_providers when the block has none', ()
   })
   assert.match(yaml, /^model:\n/)
   assert.doesNotMatch(yaml, /custom_providers:/)
+})
+
+// --- hc-392 China default profile seed helpers ---
+
+test('managedModelConfigYaml nests disabled_providers INSIDE the model block when given', () => {
+  const yaml = managedModelConfigYaml(
+    buildManagedModelConfig('sk-x', {}),
+    { disabledProviders: ['copilot'] }
+  )
+  // disabled_providers is indented 2 spaces (under model:) and appears before
+  // the top-level custom_providers: key — never as a second top-level model:.
+  assert.match(yaml, /\n {2}disabled_providers:\n {4}- copilot\n/)
+  assert.equal((yaml.match(/^model:\n/gm) || []).length, 1)
+  const dpIdx = yaml.indexOf('disabled_providers:')
+  const cpIdx = yaml.indexOf('custom_providers:')
+  assert.ok(dpIdx !== -1 && cpIdx !== -1 && dpIdx < cpIdx)
+})
+
+test('managedModelConfigYaml omits disabled_providers when not requested (back-compat)', () => {
+  const yaml = managedModelConfigYaml(buildManagedModelConfig('sk-x', {}))
+  assert.doesNotMatch(yaml, /disabled_providers/)
+})
+
+test('modelDisabledProvidersYaml defaults to [copilot], indented under model:', () => {
+  assert.equal(modelDisabledProvidersYaml(), '  disabled_providers:\n    - copilot\n')
+  assert.deepEqual(MODEL_DISABLED_PROVIDERS, ['copilot'])
+  // Empty/whitespace lists render nothing (so the seed stays clean).
+  assert.equal(modelDisabledProvidersYaml([]), '')
+  assert.equal(modelDisabledProvidersYaml(['  ']), '')
+})
+
+test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 49 names', () => {
+  const yaml = seedSkillsBlockYaml()
+  assert.match(yaml, /^skills:\n {2}disabled:\n/m)
+  assert.equal(SEED_DISABLED_SKILLS.length, 49)
+  assert.equal(new Set(SEED_DISABLED_SKILLS).size, 49) // no dupes
+  // Every name is rendered as a 4-space-indented list item.
+  for (const name of SEED_DISABLED_SKILLS) {
+    assert.ok(yaml.includes(`\n    - ${name}\n`), `missing seeded skill: ${name}`)
+  }
+  // The four frontmatter-name (≠ folder) skills must be present by their
+  // frontmatter name, or the runtime toggle won't match them.
+  for (const n of ['serving-llms-vllm', 'evaluating-llms-harness', 'segment-anything-model', 'audiocraft-audio-generation']) {
+    assert.ok(SEED_DISABLED_SKILLS.includes(n), `name-mismatch skill not seeded: ${n}`)
+  }
+  // The 17 hard-cut skills are all in the disabled set.
+  for (const n of ['google-workspace', 'xurl', 'youtube-content', 'polymarket', 'teams-meeting-pipeline', 'claude-code', 'codex', 'opencode', 'notion', 'airtable', 'gif-search', 'arxiv', 'github-auth', 'github-code-review', 'github-issues', 'github-pr-workflow', 'github-repo-management']) {
+    assert.ok(SEED_DISABLED_SKILLS.includes(n), `cut skill not seeded: ${n}`)
+  }
+  assert.equal(seedSkillsBlockYaml([]), '')
 })
 
 // --- defaultModelPath ---
