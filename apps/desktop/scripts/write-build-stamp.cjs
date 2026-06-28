@@ -77,22 +77,32 @@ function fromLocalGit() {
   }
 }
 
-// ── ApexNodes V0.1 runtime pin ─────────────────────────────────────────────
-// Path ②: the desktop ships our fork's Electron SHELL but installs the UPSTREAM
-// Hermes Agent runtime at first launch (we deliberately do NOT fork the
-// runtime). Our fork's build HEAD is not on NousResearch, so we cannot pin the
-// first-launch runtime clone to it: bootstrap-runner fetches install.sh from
-// raw.githubusercontent.com/NousResearch/hermes-agent/<commit> and install.sh
-// then `git clone --branch <branch>` from NousResearch + checks out <commit>.
-// We therefore pin to the upstream v0.17 release TAG — `git clone --depth 1
-// --branch v2026.6.19` lands exactly on that commit, so no by-SHA fetch is
-// needed (which the parent repo may reject). Bump both values when the bundle
-// adopts a newer upstream runtime; set APEXNODES_RUNTIME_PIN=0 to fall back to
-// the git HEAD (only correct when building from a ref pushed to NousResearch).
+// ── ApexNodes runtime pin ──────────────────────────────────────────────────
+// The desktop ships our fork's Electron SHELL and installs the Hermes Agent
+// runtime at first launch. Two values pin that install:
+//
+//   commit — the runtime SHA. install.sh's PRIMARY path (cos_fetch_runtime,
+//     run for ALL users, CN and non-CN) pulls our public-read COS tarball
+//     `hermes-agent-<commit>.tar.gz`, so this MUST be our FORK HEAD to deliver
+//     the cloud overlay (hc-392 copilot guard, China skill profile, gateway
+//     patches, etc.) — NOT a plain upstream commit. Publish the matching
+//     tarball with scripts/publish-runtime-tarball.sh --commit <sha> --upload
+//     BEFORE shipping a build, or COS fetch 404s for that SHA.
+//   branch — used ONLY by the upstream-clone FALLBACK (when COS is
+//     unreachable): install.sh `git clone --depth 1 --branch <branch>` from
+//     NousResearch. Kept at the closest upstream release tag (v2026.6.19).
+//     NOTE: this fallback checks out the upstream tag, so on the fallback path
+//     the fork overlay is NOT present and the by-SHA checkout of a fork commit
+//     would fail — acceptable because COS is public-read and effectively always
+//     up; the fallback is a degraded last resort.
+//
+// Bump `commit` (and re-publish the COS tarball) whenever the bundle adopts a
+// newer runtime; bump `branch` only when moving to a newer upstream base.
+// Set APEXNODES_RUNTIME_PIN=0 to fall back to the local git HEAD instead.
 function fromApexNodesPin() {
   if (process.env.APEXNODES_RUNTIME_PIN === "0") return null
   return {
-    commit: process.env.APEXNODES_RUNTIME_COMMIT || "2bd1977d8fad185c9b4be47884f7e87f1add0ce3",
+    commit: process.env.APEXNODES_RUNTIME_COMMIT || "9c6d001b6b49bb915025ea42dee591741243f221",
     branch: process.env.APEXNODES_RUNTIME_REF || "v2026.6.19",
     dirty: false,
     source: "apexnodes-pin"
