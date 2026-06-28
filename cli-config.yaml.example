@@ -203,29 +203,34 @@ model:
 # provider `custom:apex-nodes.com`, which resolves (via resolve_runtime_provider)
 # to the signed-in user's relay endpoint + key — the SAME relay normal chat uses.
 # Reference and aggregator calls therefore bill the user's cloud account and
-# route to a domestic model; no foreign endpoint is contacted. Model ids carry
-# the `-APEX` brand suffix so they don't collide with a built-in catalog.
+# route to a domestic model; no foreign endpoint is contacted.
+#
+# The `model:` values are RELAY CATALOG ROUTE NAMES (no `-APEX` display suffix):
+# per-request routing (api-relay/main.py:_select_requested_model, hc-184/#448)
+# honours a slot's model only when it matches a catalog entry that is `enabled`
+# AND is in the plan's allowed_models — so these names MUST stay in sync with the
+# `api-relay` catalog + plan allowed_models, otherwise the slot silently falls
+# back to the agent's default model (deepseek-v4-pro) and the slot can't diverge.
 #
 # To re-tune after benchmarking, change ONLY the `model:` values here (the
 # in-code defaults in hermes_cli/moa_config.py mirror this block, so a config
 # that omits `moa:` entirely still gets this exact preset).
 #
-# ⚠️ Relay routing caveat: for the managed path the relay routes by the agent's
-# DB entitlement and ignores the request model field. Today only deepseek-v4-pro
-# is enabled (glm-5.2 / kimi-k2.6 are disabled relay-side), so until per-request
-# model routing + those models are enabled, all slots physically hit the same
-# backend model — MoA runs end-to-end but without true model diversity yet.
+# ⚠️ Relay enablement: today only deepseek-v4-pro is `enabled` in the catalog;
+# glm-5.2 / kimi-k2.6 are disabled and qwen3.7-max is not in the managed catalog
+# yet (BYOK preset only). So glm-5.2 + qwen3.7-max currently fall back to
+# deepseek-v4-pro — MoA runs end-to-end, but true model diversity only switches
+# on once those rows are enabled (and qwen3.7-max added + allow-listed).
 moa:
   default_preset: default
   presets:
     default:
       enabled: true
       reference_models:
-        - { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
-        # TBD Kael benchmark — second domestic reference (needs relay to enable
-        # glm-5.2 + honour per-request model routing to actually differ).
-        - { provider: "custom:apex-nodes.com", model: "glm-5.2-APEX" }
-      aggregator: { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+        - { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro" }
+        - { provider: "custom:apex-nodes.com", model: "glm-5.2" }
+        - { provider: "custom:apex-nodes.com", model: "qwen3.7-max" }
+      aggregator: { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro" }
       reference_temperature: 0.6
       aggregator_temperature: 0.4
 
