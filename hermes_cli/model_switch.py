@@ -725,6 +725,7 @@ def switch_model(
     resolved_alias = ""
     new_model = raw_input.strip()
     target_provider = current_provider
+    resolved_moa_preset = False
 
     # =================================================================
     # PATH A: Explicit --provider given
@@ -761,6 +762,14 @@ def switch_model(
             )
 
         target_provider = pdef.id
+        if target_provider == "moa" and not new_model:
+            try:
+                from hermes_cli.config import load_config
+                from hermes_cli.moa_config import normalize_moa_config
+
+                new_model = normalize_moa_config(load_config().get("moa") or {})["default_preset"]
+            except Exception:
+                new_model = "default"
 
         # Guard against silent aggregator hops. A vendor name like bare
         # "openai" is an alias that resolves to an aggregator ("openrouter").
@@ -843,10 +852,28 @@ def switch_model(
     # PATH B: No explicit provider — resolve from model input
     # =================================================================
     else:
-        # --- Step a: Try alias resolution on current provider ---
-        alias_result = resolve_alias(raw_input, current_provider)
+        try:
+            from hermes_cli.config import load_config
+            from hermes_cli.moa_config import exact_moa_preset_name, normalize_moa_config
 
-        if alias_result is not None:
+            _moa_cfg = normalize_moa_config(load_config().get("moa") or {})
+            _moa_match = exact_moa_preset_name(_moa_cfg, raw_input)
+            if _moa_match:
+                target_provider = "moa"
+                new_model = _moa_match
+                resolved_alias = ""
+                resolved_moa_preset = True
+                alias_result = None
+            else:
+                alias_result = resolve_alias(raw_input, current_provider)
+        except Exception:
+            alias_result = resolve_alias(raw_input, current_provider)
+
+        # --- Step a: Try alias resolution on current provider ---
+
+        if resolved_moa_preset:
+            pass
+        elif alias_result is not None:
             target_provider, new_model, resolved_alias = alias_result
             logger.debug(
                 "Alias '%s' resolved to %s on %s",
@@ -879,7 +906,7 @@ def switch_model(
                             f"Try specifying the full model name."
                         ),
                     )
-            else:
+            elif not resolved_moa_preset:
                 # --- Step c: On aggregator, convert vendor:model to vendor/model ---
                 # Only convert when there's no slash — a slash means the name
                 # is already in vendor/model format and the colon is a variant
@@ -1302,29 +1329,6 @@ def list_authenticated_providers(
             pass
 
 
-    # hc-392: config-driven provider denylist. Providers named here are never
-    # probed for credentials, never live-fetched, and never emitted as picker
-    # rows — so a disabled provider (e.g. GitHub Copilot) makes NO startup
-    # network call and never lands in provider_models_cache.json, even when a
-    # stray GH_TOKEN / gh-auth token is present on the box. Set via
-    # `model.disabled_providers` in config.yaml. Matched case-insensitively
-    # against both the Hermes slug and its models.dev id.
-    disabled_providers: set = set()
-    try:
-        from hermes_cli.config import load_config_readonly
-        _mcfg = (load_config_readonly() or {}).get("model") or {}
-        _dp = _mcfg.get("disabled_providers")
-        if isinstance(_dp, str):
-            _dp = [_dp]
-        if _dp:
-            disabled_providers = {str(p).strip().lower() for p in _dp if str(p).strip()}
-    except Exception:
-        disabled_providers = set()
-
-    def _is_disabled_provider(*slugs: str) -> bool:
-        """True if any of the given slug spellings is in the denylist."""
-        return any(s and s.lower() in disabled_providers for s in slugs)
-
     results: List[dict] = []
     seen_slugs: set = set()  # lowercase-normalized to catch case variants (#9545)
     seen_mdev_ids: set = set()  # prevent duplicate entries for aliases (e.g. kimi-coding + kimi-coding-cn)
@@ -1467,9 +1471,6 @@ def list_authenticated_providers(
         # The first one with valid credentials wins (#10526).
         if mdev_id in seen_mdev_ids:
             continue
-        # hc-392: honor the provider denylist here too.
-        if _is_disabled_provider(hermes_id, mdev_id):
-            continue
         pdata = data.get(mdev_id)
         if not isinstance(pdata, dict):
             continue
@@ -1547,11 +1548,6 @@ def list_authenticated_providers(
         # Resolve Hermes slug — e.g. "github-copilot" → "copilot"
         hermes_slug = _mdev_to_hermes.get(pid, pid)
         if hermes_slug.lower() in seen_slugs:
-            continue
-
-        # hc-392: skip denylisted providers BEFORE any credential probe or
-        # live model fetch (e.g. copilot's GitHub catalog call).
-        if _is_disabled_provider(pid, hermes_slug):
             continue
 
         # Check if credentials exist
@@ -1706,9 +1702,6 @@ def list_authenticated_providers(
 
     for _cp in _canon_provs:
         if _cp.slug.lower() in seen_slugs:
-            continue
-        # hc-392: honor the provider denylist here too.
-        if _is_disabled_provider(_cp.slug):
             continue
 
         # Check credentials via PROVIDER_REGISTRY (auth.py)

@@ -3,6 +3,21 @@
 # This file configures the CLI behavior. Environment variables in .env take precedence.
 
 # =============================================================================
+# Plugins
+# =============================================================================
+# Plugins are opt-in: only names listed under `enabled` load (bundled
+# backend/platform plugins auto-load regardless).
+plugins:
+  enabled:
+    # ApexNodes cloud overlay boot hook. Applies our `apex_overlay` seams onto
+    # upstream Hermes at load time (monkey-patch, zero in-place edits to hot
+    # files). Pilot seam: the hc-392 provider denylist below — it is enforced
+    # by THIS plugin, so disabling apex-overlay re-enables every provider in
+    # `model.disabled_providers`. Plugin discovery runs before the /model
+    # picker cache prewarm, so the denylist applies before any startup fetch.
+    - apex-overlay
+
+# =============================================================================
 # Model Configuration
 # =============================================================================
 model:
@@ -48,6 +63,10 @@ model:
   # background picker-cache prewarm from making that provider's startup
   # /v1/models call and from writing its entry into provider_models_cache.json.
   # Matched case-insensitively against the Hermes slug and its models.dev id.
+  #
+  # Enforced by the `apex-overlay` plugin (see `plugins.enabled` above), which
+  # applies the `apex_overlay.provider_filter` seam at startup. This list is
+  # inert unless that plugin is enabled.
   #
   # ApexNodes ships with GitHub Copilot disabled: it's a foreign-model gateway
   # (gpt / claude / gemini) that we don't surface, and the boot fetch hits
@@ -168,6 +187,47 @@ model:
 # openrouter:
 #   response_cache: true         # Enable response caching (default: true)
 #   response_cache_ttl: 300      # Cache TTL in seconds, 1-86400 (default: 300)
+
+# =============================================================================
+# Mixture of Agents (MoA)
+# =============================================================================
+# MoA marks a turn so that, before the acting model runs, a set of "reference"
+# models each give private advice on the current state; an "aggregator" model
+# synthesizes that advice and is the model that actually answers + calls tools.
+# Each named preset is also selectable as a virtual model under the "Mixture of
+# Agents" provider in the /model picker; `/moa <prompt>` runs one prompt through
+# the default preset and then restores your model.
+#
+# ── ApexNodes default (domestic + managed relay) ─────────────────────────────
+# ApexNodes is a managed-relay product: every slot below uses the custom
+# provider `custom:apex-nodes.com`, which resolves (via resolve_runtime_provider)
+# to the signed-in user's relay endpoint + key — the SAME relay normal chat uses.
+# Reference and aggregator calls therefore bill the user's cloud account and
+# route to a domestic model; no foreign endpoint is contacted. Model ids carry
+# the `-APEX` brand suffix so they don't collide with a built-in catalog.
+#
+# To re-tune after benchmarking, change ONLY the `model:` values here (the
+# in-code defaults in hermes_cli/moa_config.py mirror this block, so a config
+# that omits `moa:` entirely still gets this exact preset).
+#
+# ⚠️ Relay routing caveat: for the managed path the relay routes by the agent's
+# DB entitlement and ignores the request model field. Today only deepseek-v4-pro
+# is enabled (glm-5.2 / kimi-k2.6 are disabled relay-side), so until per-request
+# model routing + those models are enabled, all slots physically hit the same
+# backend model — MoA runs end-to-end but without true model diversity yet.
+moa:
+  default_preset: default
+  presets:
+    default:
+      enabled: true
+      reference_models:
+        - { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+        # TBD Kael benchmark — second domestic reference (needs relay to enable
+        # glm-5.2 + honour per-request model routing to actually differ).
+        - { provider: "custom:apex-nodes.com", model: "glm-5.2-APEX" }
+      aggregator: { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+      reference_temperature: 0.6
+      aggregator_temperature: 0.4
 
 # =============================================================================
 # Git Worktree Isolation
@@ -855,7 +915,6 @@ platform_toolsets:
 #   image_gen    - image_generate  (requires FAL_KEY)
 #   skills       - skills_list, skill_view
 #   skills_hub   - skill_hub (search/install/manage from online registries — user-driven only)
-#   moa          - mixture_of_agents  (requires OPENROUTER_API_KEY)
 #   todo         - todo (in-memory task planning, no deps)
 #   tts          - text_to_speech  (Edge TTS free, or ELEVENLABS/OPENAI/MINIMAX/MISTRAL key)
 #   cronjob      - cronjob (create/list/update/pause/resume/run/remove scheduled tasks)
@@ -870,7 +929,7 @@ platform_toolsets:
 #
 # COMPOSITE:
 #   debugging    - terminal + web + file
-#   safe         - web + vision + moa (no terminal access)
+#   safe         - web + vision (no terminal access)
 #   all          - Everything available
 #
 #   web          - Web search and content extraction (web_search, web_extract)
@@ -881,7 +940,6 @@ platform_toolsets:
 #   vision       - Image analysis (vision_analyze)
 #   image_gen    - Image generation with FLUX (image_generate)
 #   skills       - Load skill documents (skills_list, skill_view)
-#   moa          - Mixture of Agents reasoning (mixture_of_agents)
 #   todo         - Task planning and tracking for multi-step work
 #   memory       - Persistent memory across sessions (personal notes + user profile)
 #   session_search - Search and recall past conversations (FTS5 + Gemini Flash summarization)
@@ -890,7 +948,7 @@ platform_toolsets:
 #
 # Composite toolsets:
 #   debugging    - terminal + web + file (for troubleshooting)
-#   safe         - web + vision + moa (no terminal access)
+#   safe         - web + vision (no terminal access)
 
 # NOTE: The top-level "toolsets" key is deprecated and ignored.
 # Tool configuration is managed per-platform via platform_toolsets above.

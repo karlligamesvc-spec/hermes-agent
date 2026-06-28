@@ -7878,6 +7878,42 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 _cprint(f"  No agent running; queued as next turn: {payload[:80]}{'...' if len(payload) > 80 else ''}")
         elif canonical == "goal":
             self._handle_goal_command(cmd_original)
+        elif canonical == "moa":
+            # /moa is one-shot sugar only: run a single prompt through the
+            # default MoA preset, then restore the prior model. To *switch* to a
+            # MoA preset for the session, pick it from the model picker (MoA
+            # presets surface as a virtual "Mixture of Agents" provider).
+            from hermes_cli.moa_config import (
+                moa_usage,
+                normalize_moa_config,
+            )
+
+            parts = cmd_original.split(None, 1)
+            payload = parts[1].strip() if len(parts) > 1 else ""
+            if not payload:
+                _cprint(f"  {moa_usage()}")
+                return True
+            moa_cfg = self.config.get("moa") if isinstance(self.config, dict) else {}
+            normalized = normalize_moa_config(moa_cfg)
+            preset = normalized["default_preset"]
+            self._pending_moa_restore_model = {
+                "requested_provider": getattr(self, "requested_provider", None),
+                "provider": getattr(self, "provider", None),
+                "model": getattr(self, "model", None),
+                "api_key": getattr(self, "api_key", None),
+                "base_url": getattr(self, "base_url", None),
+                "api_mode": getattr(self, "api_mode", None),
+            }
+            self.requested_provider = "moa"
+            self.provider = "moa"
+            self.model = preset
+            self.api_key = "moa-virtual-provider"
+            self.base_url = "moa://local"
+            self.api_mode = "chat_completions"
+            self.agent = None
+            self._pending_moa_disable_after_turn = True
+            self._pending_agent_seed = payload
+            _cprint(f"  MoA one-shot queued with preset {preset}; previous model will be restored after this turn.")
         elif canonical == "subgoal":
             self._handle_subgoal_command(cmd_original)
         elif canonical == "skin":
@@ -11109,6 +11145,10 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                 if _srn:
                     agent_message = _prepend_note_to_message(agent_message, _srn)
                     self._pending_skills_reload_note = None
+                _moa_cfg = getattr(self, "_pending_moa_config", None)
+                self._pending_moa_config = None
+                if _moa_cfg is None:
+                    _moa_cfg = None
                 try:
                     result = self.agent.run_conversation(
                         user_message=agent_message,
@@ -11116,7 +11156,16 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
                         stream_callback=stream_callback,
                         task_id=self.session_id,
                         persist_user_message=message if _voice_prefix else None,
+                        moa_config=_moa_cfg,
                     )
+                    if getattr(self, "_pending_moa_disable_after_turn", False):
+                        _restore = getattr(self, "_pending_moa_restore_model", None) or {}
+                        for _key, _value in _restore.items():
+                            if _value is not None:
+                                setattr(self, _key, _value)
+                        self.agent = None
+                        self._pending_moa_restore_model = None
+                        self._pending_moa_disable_after_turn = False
                 except Exception as exc:
                     logging.error("run_conversation raised: %s", exc, exc_info=True)
                     _summary = getattr(self.agent, '_summarize_api_error', lambda e: str(e)[:300])(exc)
