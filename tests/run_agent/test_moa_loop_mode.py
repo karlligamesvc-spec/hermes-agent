@@ -625,10 +625,20 @@ def test_apex_moa_turn_routes_every_slot_through_relay(monkeypatch, tmp_path):
     _apex_relay_config(home)
     monkeypatch.setenv("HERMES_HOME", str(home))
 
+    # References fan out across a ThreadPoolExecutor, so call_llm fires from
+    # worker threads. Guard the shared list with a lock and DON'T assert on the
+    # append order of the two references (thread completion order is
+    # nondeterministic by design) — assert the SET of reference calls instead,
+    # and that the aggregator (which runs sequentially after the fan-out) is the
+    # final call.
+    import threading
+
     calls = []
+    calls_lock = threading.Lock()
 
     def fake_call_llm(**kwargs):
-        calls.append(kwargs)
+        with calls_lock:
+            calls.append(kwargs)
         if kwargs["task"] == "moa_reference":
             return _response(f"advice from {kwargs['model']}")
         return _response("aggregator acted")
@@ -641,13 +651,16 @@ def test_apex_moa_turn_routes_every_slot_through_relay(monkeypatch, tmp_path):
         tools=[{"type": "function"}],
     )
 
-    # Two references + one aggregator, in order.
-    tasks = [(c["task"], c["model"]) for c in calls]
-    assert tasks == [
-        ("moa_reference", "deepseek-v4-pro-APEX"),
-        ("moa_reference", "glm-5.2-APEX"),
-        ("moa_aggregator", "deepseek-v4-pro-APEX"),
-    ]
+    ref_calls = [c for c in calls if c["task"] == "moa_reference"]
+    agg_calls = [c for c in calls if c["task"] == "moa_aggregator"]
+
+    # Both domestic references were called (order-independent), plus one aggregator.
+    assert {c["model"] for c in ref_calls} == {"deepseek-v4-pro-APEX", "glm-5.2-APEX"}
+    assert len(ref_calls) == 2
+    assert [c["model"] for c in agg_calls] == ["deepseek-v4-pro-APEX"]
+    # The aggregator acts only after every reference has been gathered.
+    assert calls[-1]["task"] == "moa_aggregator"
+
     # EVERY call physically targets the relay with the user's key — no foreign
     # provider is contacted, and the per-slot model name rides the request.
     for c in calls:
