@@ -188,27 +188,27 @@ model:
 # the `-APEX` brand suffix so they don't collide with a built-in catalog.
 #
 # To re-tune after benchmarking, change ONLY the `model:` values here (the
-# in-code defaults in hermes_cli/moa_config.py mirror this block).
+# in-code defaults in hermes_cli/moa_config.py mirror this block, so a config
+# that omits `moa:` entirely still gets this exact preset).
 #
 # ⚠️ Relay routing caveat: for the managed path the relay routes by the agent's
 # DB entitlement and ignores the request model field. Today only deepseek-v4-pro
 # is enabled (glm-5.2 / kimi-k2.6 are disabled relay-side), so until per-request
 # model routing + those models are enabled, all slots physically hit the same
 # backend model — MoA runs end-to-end but without true model diversity yet.
-#
-# moa:
-#   default_preset: default
-#   presets:
-#     default:
-#       enabled: true
-#       reference_models:
-#         - { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
-#         # TBD Kael benchmark — second domestic reference (needs relay to enable
-#         # glm-5.2 + honour per-request model routing to actually differ).
-#         - { provider: "custom:apex-nodes.com", model: "glm-5.2-APEX" }
-#       aggregator: { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
-#       reference_temperature: 0.6
-#       aggregator_temperature: 0.4
+moa:
+  default_preset: default
+  presets:
+    default:
+      enabled: true
+      reference_models:
+        - { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+        # TBD Kael benchmark — second domestic reference (needs relay to enable
+        # glm-5.2 + honour per-request model routing to actually differ).
+        - { provider: "custom:apex-nodes.com", model: "glm-5.2-APEX" }
+      aggregator: { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+      reference_temperature: 0.6
+      aggregator_temperature: 0.4
 
 # =============================================================================
 # Git Worktree Isolation
