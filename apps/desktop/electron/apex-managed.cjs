@@ -81,6 +81,26 @@ const MANAGED_MODEL_DISPLAY = 'deepseek-v4-pro-APEX'
 // `custom` means zero new runtime provider plumbing.
 const MANAGED_PROVIDER = 'custom'
 
+// Display name of the relay's `custom_providers:` entry. The runtime groups
+// custom endpoints by this name in its model picker (users see an
+// "APEX-NODES.COM" group), and Hermes' own writer
+// (`hermes_cli/main.py::_save_custom_provider`) uses the exact same
+// `{name, base_url, api_key, model}` entry shape. We register this entry so the
+// relay is a *named* custom provider — the format Hermes produces after a
+// `hermes model` custom-endpoint selection — not just a bare `model.base_url`.
+//
+// Why this matters: with only the bare-`custom` model block, the relay endpoint
+// is anchored solely by `model.base_url`, and a `model.default` whose id
+// collides with a built-in provider's static catalog (e.g. `deepseek-v4-pro`
+// lives in the built-in DeepSeek catalog) can be re-inferred to that built-in
+// provider by the runtime's model→provider detection, producing
+// "Provider 'deepseek' is set in config.yaml but no API key was found". Emitting
+// the registered entry pins the relay endpoint exactly as Hermes would, so
+// resolution routes the default model to the relay instead of the built-in
+// DeepSeek API. (See also: this is the same on-disk shape returned by the
+// runtime's `get_compatible_custom_providers`.)
+const MANAGED_PROVIDER_NAME = 'Apex-nodes.com'
+
 // Endpoint paths. LOGIN_PATH / REGISTER_PATH are on AUTH_BASE; PROVISION_KEY_PATH
 // is on API_BASE. GOOGLE_START_PATH is the backend's browser OAuth entry (on
 // API_BASE — see the shared login-rework contract).
@@ -267,10 +287,22 @@ function isManagedEnabled(env = {}) {
  * without a credential would 401 every request, which is worse than falling back
  * to BYOK; callers gate on `resolveManagedRelayCredential` first.
  *
+ * Also returns a `custom_providers` entry registering the relay as a named
+ * custom provider (`{name, base_url, api_key, model}` — Hermes' native shape).
+ * The `model:` block keeps `provider: custom` + the relay `base_url`/`api_key`
+ * (so the resolved provider class matches and there is no per-turn re-switch),
+ * while the registered entry pins the relay endpoint by name. This is the format
+ * Hermes itself writes for a selected custom endpoint, and it prevents the
+ * runtime from re-inferring the catalog-colliding default model id
+ * (`deepseek-v4-pro`) onto the built-in DeepSeek provider.
+ *
  * @param {string} relayKey  the user's relay-valid cloud key
  * @param {Record<string, string | undefined>} [env]
  * @param {{ baseUrl?: string, model?: string }} [overrides] from provision-key
- * @returns {{ default: string, provider: string, base_url: string, api_key: string }}
+ * @returns {{
+ *   default: string, provider: string, base_url: string, api_key: string,
+ *   custom_providers: Array<{ name: string, base_url: string, api_key: string, model: string }>
+ * }}
  */
 function buildManagedModelConfig(relayKey, env = {}, overrides = {}) {
   const key = String(relayKey || '').trim()
@@ -278,11 +310,24 @@ function buildManagedModelConfig(relayKey, env = {}, overrides = {}) {
     throw new Error('buildManagedModelConfig: a relay key is required.')
   }
   const endpoints = resolveApexEndpoints(env)
+  const model = String(overrides.model || '').trim() || endpoints.model
+  const baseUrl = trimTrailingSlash(overrides.baseUrl || '') || endpoints.relayBaseUrl
   return {
-    default: String(overrides.model || '').trim() || endpoints.model,
+    default: model,
     provider: MANAGED_PROVIDER,
-    base_url: trimTrailingSlash(overrides.baseUrl || '') || endpoints.relayBaseUrl,
-    api_key: key
+    base_url: baseUrl,
+    api_key: key,
+    // Register the relay as a named custom provider (Hermes-native shape) so the
+    // default model resolves to the relay endpoint, not the built-in provider
+    // whose static catalog happens to contain the same model id.
+    custom_providers: [
+      {
+        name: MANAGED_PROVIDER_NAME,
+        base_url: baseUrl,
+        api_key: key,
+        model
+      }
+    ]
   }
 }
 
@@ -311,23 +356,38 @@ function parseProvisionResponse(body, env = {}) {
 }
 
 /**
- * Serialize the managed `model:` block to a YAML snippet for seedDefaultModelConfig.
- * Hand-rolled (no yaml dep — this module is dependency-free like its siblings);
- * values are simple scalars (URL, slug, opaque key) with no YAML-special chars,
- * but we still quote the key defensively since it is opaque input.
+ * Serialize the managed `model:` block (and the `custom_providers:` entry that
+ * registers the relay) to a YAML snippet for seedDefaultModelConfig. Hand-rolled
+ * (no yaml dep — this module is dependency-free like its siblings); values are
+ * simple scalars (URL, slug, opaque key), but we double-quote the URL/key/name
+ * defensively since they are opaque/external input.
  *
- * @param {{ default: string, provider: string, base_url: string, api_key: string }} block
+ * @param {{
+ *   default: string, provider: string, base_url: string, api_key: string,
+ *   custom_providers?: Array<{ name: string, base_url: string, api_key: string, model: string }>
+ * }} block
  * @returns {string}
  */
 function managedModelConfigYaml(block) {
   const q = v => JSON.stringify(String(v)) // JSON string == valid YAML double-quoted scalar
-  return (
+  let yaml =
     'model:\n' +
     `  default: ${block.default}\n` +
     `  provider: ${block.provider}\n` +
     `  base_url: ${q(block.base_url)}\n` +
     `  api_key: ${q(block.api_key)}\n`
-  )
+  const entries = Array.isArray(block.custom_providers) ? block.custom_providers : []
+  if (entries.length) {
+    yaml += 'custom_providers:\n'
+    for (const entry of entries) {
+      yaml +=
+        `  - name: ${q(entry.name)}\n` +
+        `    base_url: ${q(entry.base_url)}\n` +
+        `    api_key: ${q(entry.api_key)}\n` +
+        `    model: ${entry.model}\n`
+    }
+  }
+  return yaml
 }
 
 /**
@@ -378,6 +438,7 @@ module.exports = {
   DEFAULT_MANAGED_MODEL,
   MANAGED_MODEL_DISPLAY,
   MANAGED_PROVIDER,
+  MANAGED_PROVIDER_NAME,
   LOGIN_PATH,
   REGISTER_PATH,
   PROVISION_KEY_PATH,

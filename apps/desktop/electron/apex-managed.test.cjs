@@ -19,6 +19,7 @@ const {
   DEFAULT_MANAGED_MODEL,
   MANAGED_MODEL_DISPLAY,
   MANAGED_PROVIDER,
+  MANAGED_PROVIDER_NAME,
   accessTokenFromLogin,
   apexWebLoginUrl,
   buildManagedModelConfig,
@@ -90,14 +91,46 @@ test('isManagedEnabled is ON by default and accepts common falsy spellings to di
 
 // --- buildManagedModelConfig + managedModelConfigYaml ---
 
-test('buildManagedModelConfig wires provider/base_url/api_key/default', () => {
+test('buildManagedModelConfig wires provider/base_url/api_key/default + registers the relay as a named custom provider', () => {
   const block = buildManagedModelConfig('sk-relaykey123', {})
   assert.deepEqual(block, {
     default: 'deepseek-v4-pro',
     provider: 'custom',
     base_url: 'https://apex-nodes.com/relay/v1',
-    api_key: 'sk-relaykey123'
+    api_key: 'sk-relaykey123',
+    // The relay is registered as a named custom_providers entry (Hermes-native
+    // shape) so the default model resolves to the relay endpoint, not the
+    // built-in provider whose catalog contains the same model id.
+    custom_providers: [
+      {
+        name: MANAGED_PROVIDER_NAME,
+        base_url: 'https://apex-nodes.com/relay/v1',
+        api_key: 'sk-relaykey123',
+        model: 'deepseek-v4-pro'
+      }
+    ]
   })
+})
+
+test('buildManagedModelConfig custom_providers entry mirrors model.default/base_url/api_key and overrides', () => {
+  const block = buildManagedModelConfig(
+    'sk-x',
+    {},
+    { baseUrl: 'https://relay.example.com/v1/', model: 'deepseek-v4-special' }
+  )
+  // The entry must use the SAME resolved endpoint/model/key as the model block,
+  // with the trailing slash stripped, so both anchors point at one place.
+  assert.deepEqual(block.custom_providers, [
+    {
+      name: MANAGED_PROVIDER_NAME,
+      base_url: 'https://relay.example.com/v1',
+      api_key: 'sk-x',
+      model: 'deepseek-v4-special'
+    }
+  ])
+  assert.equal(block.base_url, block.custom_providers[0].base_url)
+  assert.equal(block.default, block.custom_providers[0].model)
+  assert.equal(block.api_key, block.custom_providers[0].api_key)
 })
 
 test('buildManagedModelConfig throws on a missing key (never seed an empty cred)', () => {
@@ -153,7 +186,7 @@ test('parseProvisionResponse returns null without a key (fall back to BYOK)', ()
   assert.equal(parseProvisionResponse(null, {}), null)
 })
 
-test('managedModelConfigYaml emits a valid, quoted model block', () => {
+test('managedModelConfigYaml emits a valid, quoted model block + custom_providers entry', () => {
   const yaml = managedModelConfigYaml(buildManagedModelConfig('sk-relaykey123', {}))
   assert.match(yaml, /^model:\n/)
   assert.match(yaml, /\n {2}default: deepseek-v4-pro\n/)
@@ -161,6 +194,26 @@ test('managedModelConfigYaml emits a valid, quoted model block', () => {
   // base_url + api_key are double-quoted scalars.
   assert.match(yaml, /\n {2}base_url: "https:\/\/apex-nodes\.com\/relay\/v1"\n/)
   assert.match(yaml, /\n {2}api_key: "sk-relaykey123"\n/)
+  // The relay is also registered as a named custom_providers list entry, with
+  // the name/base_url/api_key double-quoted and the model id as a bare scalar.
+  assert.match(yaml, /\ncustom_providers:\n/)
+  assert.match(yaml, /\n {2}- name: "Apex-nodes\.com"\n/)
+  assert.match(yaml, /\n {4}base_url: "https:\/\/apex-nodes\.com\/relay\/v1"\n/)
+  assert.match(yaml, /\n {4}api_key: "sk-relaykey123"\n/)
+  assert.match(yaml, /\n {4}model: deepseek-v4-pro\n/)
+})
+
+test('managedModelConfigYaml omits custom_providers when the block has none', () => {
+  // Defensive: a block without custom_providers (older shape) still serializes
+  // a clean model-only snippet.
+  const yaml = managedModelConfigYaml({
+    default: 'deepseek-v4-pro',
+    provider: 'custom',
+    base_url: 'https://apex-nodes.com/relay/v1',
+    api_key: 'sk-x'
+  })
+  assert.match(yaml, /^model:\n/)
+  assert.doesNotMatch(yaml, /custom_providers:/)
 })
 
 // --- defaultModelPath ---
