@@ -3,6 +3,21 @@
 # This file configures the CLI behavior. Environment variables in .env take precedence.
 
 # =============================================================================
+# Plugins
+# =============================================================================
+# Plugins are opt-in: only names listed under `enabled` load (bundled
+# backend/platform plugins auto-load regardless).
+plugins:
+  enabled:
+    # ApexNodes cloud overlay boot hook. Applies our `apex_overlay` seams onto
+    # upstream Hermes at load time (monkey-patch, zero in-place edits to hot
+    # files). Pilot seam: the hc-392 provider denylist below — it is enforced
+    # by THIS plugin, so disabling apex-overlay re-enables every provider in
+    # `model.disabled_providers`. Plugin discovery runs before the /model
+    # picker cache prewarm, so the denylist applies before any startup fetch.
+    - apex-overlay
+
+# =============================================================================
 # Model Configuration
 # =============================================================================
 model:
@@ -48,6 +63,10 @@ model:
   # background picker-cache prewarm from making that provider's startup
   # /v1/models call and from writing its entry into provider_models_cache.json.
   # Matched case-insensitively against the Hermes slug and its models.dev id.
+  #
+  # Enforced by the `apex-overlay` plugin (see `plugins.enabled` above), which
+  # applies the `apex_overlay.provider_filter` seam at startup. This list is
+  # inert unless that plugin is enabled.
   #
   # ApexNodes ships with GitHub Copilot disabled: it's a foreign-model gateway
   # (gpt / claude / gemini) that we don't surface, and the boot fetch hits

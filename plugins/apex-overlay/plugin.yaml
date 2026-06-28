@@ -1,0 +1,5 @@
+name: apex-overlay
+version: "0.1.0"
+description: "ApexNodes cloud overlay boot hook. Applies apex_overlay seams onto upstream Hermes at load time (monkey-patch, zero in-place edits to hot files). Pilot seam: hc-392 provider denylist (skips disabled providers — e.g. GitHub Copilot — BEFORE any startup credential probe or live model fetch). Loads during plugin discovery, which runs before the /model picker cache prewarm."
+author: "ApexNodes / NousResearch (Hermes plugin host)"
+kind: standalone
