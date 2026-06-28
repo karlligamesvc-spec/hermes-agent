@@ -15,9 +15,39 @@ The `hf` command is the modern command-line interface for interacting with the H
 > **IMPORTANT:** The `hf` command replaces the now deprecated `huggingface-cli` command.
 
 ## Quick Start
-*   **Installation:** `curl -LsSf https://hf.co/cli/install.sh | bash -s`
+*   **Installation:** `pip install -U "huggingface_hub[cli]"` (provides `hf`). On a
+    China network use the mirror in the next section so the wheel and any
+    model/dataset downloads resolve through a domestic CDN.
 *   **Help:** Use `hf --help` to view all available functions and real-world examples.
 *   **Authentication:** Recommended via `HF_TOKEN` environment variable or the `--token` flag.
+
+---
+
+## China network (ApexNodes default — hc-392)
+
+`huggingface.co` is slow/blocked from mainland China. **Always** route the
+`hf` CLI through the official `hf-mirror.com` endpoint — it is a transparent
+mirror, so every command below works unchanged, just faster:
+
+```bash
+export HF_ENDPOINT=https://hf-mirror.com
+hf download <REPO_ID>          # downloads via the mirror
+```
+
+Set `HF_ENDPOINT` once in the shell/`.env` and it applies to all `hf` calls.
+
+For models that originate in the Chinese ecosystem (Qwen, GLM, DeepSeek,
+Yi, InternLM, …), prefer **ModelScope** (魔搭) — it hosts them natively and
+is fully domestic:
+
+```bash
+pip install -U modelscope
+modelscope download --model <ORG/MODEL> --local_dir ./<MODEL>
+# Python: from modelscope import snapshot_download; snapshot_download('<ORG/MODEL>')
+```
+
+Rule of thumb: ModelScope first for Chinese-origin models; `hf` via
+`HF_ENDPOINT=https://hf-mirror.com` for everything else.
 
 ---
 
