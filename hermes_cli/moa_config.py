@@ -26,32 +26,36 @@ DEFAULT_MOA_PRESET_NAME = "default"
 # aggregator calls go through the same relay as normal chat (verified). No
 # foreign endpoint is ever contacted.
 #
-# Model ids carry the `-APEX` brand suffix so they never collide with a built-in
-# provider catalog (same rule as MANAGED_MODEL_DISPLAY in apex-managed.cjs).
+# ⚠️ Model ids below are RELAY CATALOG ROUTE NAMES (no `-APEX` display suffix).
+# Per-request routing landed in the relay (api-relay/main.py:_select_requested_
+# model, hc-184/#448): for the MANAGED path the relay honours the request's
+# `model` field only when it clears BOTH DB gates — the plan's
+# `entitlements.allowed_models` AND a catalog entry that is present + `enabled`
+# (matched case-insensitively, fail-closed on disabled). A name that misses
+# either gate returns None and silently falls back to the agent's default model
+# (deepseek-v4-pro), so a `-APEX` display name would NOT match the catalog
+# (`glm-5.2`, etc.) and could never diverge. These names MUST therefore stay in
+# sync with the `api-relay` catalog (_default_platform_model_catalog) + each
+# plan's allowed_models.
 #
-# ⚠️ Relay-side enablement caveat (see api-relay/main.py:_select_system_model +
-# the platform-model handler ~L1314-1321): for the MANAGED path the relay routes
-# by the agent's DB entitlement / catalog default and IGNORES the request's
-# `model` field. Today only `deepseek-v4-pro` (+ `deepseek-v4-flash`) are
-# `enabled` in the catalog; `glm-5.2` / `kimi-k2.6` are `enabled: False`. Until
-# the relay honours per-request model routing (or GLM/Kimi are enabled), ALL
-# slots below physically route to the SAME backend model — MoA plumbing runs
-# end-to-end but without true model diversity. The second reference is a
-# placeholder; once Kael's benchmark + relay enablement land, change only the
-# model name here (and the `moa:` block in cli-config.yaml.example).
+# Today only `deepseek-v4-pro` (+ `deepseek-v4-flash`) are `enabled` in the
+# catalog; `glm-5.2` / `kimi-k2.6` are `enabled: False` and `qwen3.7-max` is not
+# in the managed catalog yet (it exists as a BYOK preset). So glm-5.2 + qwen3.7-
+# max currently fall back to deepseek-v4-pro — MoA plumbing runs end-to-end but
+# true model diversity only switches on once those catalog rows are enabled (and
+# qwen3.7-max added + allow-listed). After Kael's benchmark, adjust the model
+# names here (mirror the `moa:` block in cli-config.yaml.example).
 APEX_MOA_PROVIDER = "custom:apex-nodes.com"
 
 DEFAULT_MOA_REFERENCE_MODELS: list[dict[str, str]] = [
-    {"provider": APEX_MOA_PROVIDER, "model": "deepseek-v4-pro-APEX"},
-    # TBD Kael benchmark — second domestic reference model. Placeholder points at
-    # the relay's GLM slot; the relay must enable glm-5.2 (currently disabled)
-    # AND honour per-request model routing for this to differ from deepseek.
-    {"provider": APEX_MOA_PROVIDER, "model": "glm-5.2-APEX"},
+    {"provider": APEX_MOA_PROVIDER, "model": "deepseek-v4-pro"},
+    {"provider": APEX_MOA_PROVIDER, "model": "glm-5.2"},
+    {"provider": APEX_MOA_PROVIDER, "model": "qwen3.7-max"},
 ]
 
 DEFAULT_MOA_AGGREGATOR: dict[str, str] = {
     "provider": APEX_MOA_PROVIDER,
-    "model": "deepseek-v4-pro-APEX",
+    "model": "deepseek-v4-pro",
 }
 
 
