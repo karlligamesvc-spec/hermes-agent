@@ -170,6 +170,47 @@ model:
 #   response_cache_ttl: 300      # Cache TTL in seconds, 1-86400 (default: 300)
 
 # =============================================================================
+# Mixture of Agents (MoA)
+# =============================================================================
+# MoA marks a turn so that, before the acting model runs, a set of "reference"
+# models each give private advice on the current state; an "aggregator" model
+# synthesizes that advice and is the model that actually answers + calls tools.
+# Each named preset is also selectable as a virtual model under the "Mixture of
+# Agents" provider in the /model picker; `/moa <prompt>` runs one prompt through
+# the default preset and then restores your model.
+#
+# ── ApexNodes default (domestic + managed relay) ─────────────────────────────
+# ApexNodes is a managed-relay product: every slot below uses the custom
+# provider `custom:apex-nodes.com`, which resolves (via resolve_runtime_provider)
+# to the signed-in user's relay endpoint + key — the SAME relay normal chat uses.
+# Reference and aggregator calls therefore bill the user's cloud account and
+# route to a domestic model; no foreign endpoint is contacted. Model ids carry
+# the `-APEX` brand suffix so they don't collide with a built-in catalog.
+#
+# To re-tune after benchmarking, change ONLY the `model:` values here (the
+# in-code defaults in hermes_cli/moa_config.py mirror this block).
+#
+# ⚠️ Relay routing caveat: for the managed path the relay routes by the agent's
+# DB entitlement and ignores the request model field. Today only deepseek-v4-pro
+# is enabled (glm-5.2 / kimi-k2.6 are disabled relay-side), so until per-request
+# model routing + those models are enabled, all slots physically hit the same
+# backend model — MoA runs end-to-end but without true model diversity yet.
+#
+# moa:
+#   default_preset: default
+#   presets:
+#     default:
+#       enabled: true
+#       reference_models:
+#         - { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+#         # TBD Kael benchmark — second domestic reference (needs relay to enable
+#         # glm-5.2 + honour per-request model routing to actually differ).
+#         - { provider: "custom:apex-nodes.com", model: "glm-5.2-APEX" }
+#       aggregator: { provider: "custom:apex-nodes.com", model: "deepseek-v4-pro-APEX" }
+#       reference_temperature: 0.6
+#       aggregator_temperature: 0.4
+
+# =============================================================================
 # Git Worktree Isolation
 # =============================================================================
 # When enabled, each CLI session creates an isolated git worktree so multiple

@@ -10,14 +10,48 @@ from typing import Any
 MOA_MARKER_PREFIX = "__HERMES_MOA_TURN_V1__"
 DEFAULT_MOA_PRESET_NAME = "default"
 
+# ── ApexNodes default MoA preset (domestic + managed relay) ──────────────────
+# Upstream defaults point reference/aggregator slots at foreign providers
+# (openai-codex, openrouter→anthropic). ApexNodes is a China-first MANAGED RELAY
+# product: the local runtime sends every inference call to the OpenAI-compatible
+# relay (custom provider `Apex-nodes.com`, slug `custom:apex-nodes.com`) using
+# the signed-in user's relay key, and the relay bills the user's cloud account
+# and routes to a domestic model (apps/desktop/electron/apex-managed.cjs +
+# api-relay/main.py).
+#
+# So every MoA slot here uses provider `custom:apex-nodes.com`. At runtime
+# agent/moa_loop.py:_slot_runtime() calls resolve_runtime_provider(requested=
+# "custom:apex-nodes.com"), which matches the desktop-seeded `custom_providers`
+# entry and returns the relay base_url + the user's key — i.e. reference AND
+# aggregator calls go through the same relay as normal chat (verified). No
+# foreign endpoint is ever contacted.
+#
+# Model ids carry the `-APEX` brand suffix so they never collide with a built-in
+# provider catalog (same rule as MANAGED_MODEL_DISPLAY in apex-managed.cjs).
+#
+# ⚠️ Relay-side enablement caveat (see api-relay/main.py:_select_system_model +
+# the platform-model handler ~L1314-1321): for the MANAGED path the relay routes
+# by the agent's DB entitlement / catalog default and IGNORES the request's
+# `model` field. Today only `deepseek-v4-pro` (+ `deepseek-v4-flash`) are
+# `enabled` in the catalog; `glm-5.2` / `kimi-k2.6` are `enabled: False`. Until
+# the relay honours per-request model routing (or GLM/Kimi are enabled), ALL
+# slots below physically route to the SAME backend model — MoA plumbing runs
+# end-to-end but without true model diversity. The second reference is a
+# placeholder; once Kael's benchmark + relay enablement land, change only the
+# model name here (and the `moa:` block in cli-config.yaml.example).
+APEX_MOA_PROVIDER = "custom:apex-nodes.com"
+
 DEFAULT_MOA_REFERENCE_MODELS: list[dict[str, str]] = [
-    {"provider": "openai-codex", "model": "gpt-5.5"},
-    {"provider": "openrouter", "model": "deepseek/deepseek-v4-pro"},
+    {"provider": APEX_MOA_PROVIDER, "model": "deepseek-v4-pro-APEX"},
+    # TBD Kael benchmark — second domestic reference model. Placeholder points at
+    # the relay's GLM slot; the relay must enable glm-5.2 (currently disabled)
+    # AND honour per-request model routing for this to differ from deepseek.
+    {"provider": APEX_MOA_PROVIDER, "model": "glm-5.2-APEX"},
 ]
 
 DEFAULT_MOA_AGGREGATOR: dict[str, str] = {
-    "provider": "openrouter",
-    "model": "anthropic/claude-opus-4.8",
+    "provider": APEX_MOA_PROVIDER,
+    "model": "deepseek-v4-pro-APEX",
 }
 
 
