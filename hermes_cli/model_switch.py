@@ -1329,29 +1329,6 @@ def list_authenticated_providers(
             pass
 
 
-    # hc-392: config-driven provider denylist. Providers named here are never
-    # probed for credentials, never live-fetched, and never emitted as picker
-    # rows — so a disabled provider (e.g. GitHub Copilot) makes NO startup
-    # network call and never lands in provider_models_cache.json, even when a
-    # stray GH_TOKEN / gh-auth token is present on the box. Set via
-    # `model.disabled_providers` in config.yaml. Matched case-insensitively
-    # against both the Hermes slug and its models.dev id.
-    disabled_providers: set = set()
-    try:
-        from hermes_cli.config import load_config_readonly
-        _mcfg = (load_config_readonly() or {}).get("model") or {}
-        _dp = _mcfg.get("disabled_providers")
-        if isinstance(_dp, str):
-            _dp = [_dp]
-        if _dp:
-            disabled_providers = {str(p).strip().lower() for p in _dp if str(p).strip()}
-    except Exception:
-        disabled_providers = set()
-
-    def _is_disabled_provider(*slugs: str) -> bool:
-        """True if any of the given slug spellings is in the denylist."""
-        return any(s and s.lower() in disabled_providers for s in slugs)
-
     results: List[dict] = []
     seen_slugs: set = set()  # lowercase-normalized to catch case variants (#9545)
     seen_mdev_ids: set = set()  # prevent duplicate entries for aliases (e.g. kimi-coding + kimi-coding-cn)
@@ -1494,9 +1471,6 @@ def list_authenticated_providers(
         # The first one with valid credentials wins (#10526).
         if mdev_id in seen_mdev_ids:
             continue
-        # hc-392: honor the provider denylist here too.
-        if _is_disabled_provider(hermes_id, mdev_id):
-            continue
         pdata = data.get(mdev_id)
         if not isinstance(pdata, dict):
             continue
@@ -1574,11 +1548,6 @@ def list_authenticated_providers(
         # Resolve Hermes slug — e.g. "github-copilot" → "copilot"
         hermes_slug = _mdev_to_hermes.get(pid, pid)
         if hermes_slug.lower() in seen_slugs:
-            continue
-
-        # hc-392: skip denylisted providers BEFORE any credential probe or
-        # live model fetch (e.g. copilot's GitHub catalog call).
-        if _is_disabled_provider(pid, hermes_slug):
             continue
 
         # Check if credentials exist
@@ -1733,9 +1702,6 @@ def list_authenticated_providers(
 
     for _cp in _canon_provs:
         if _cp.slug.lower() in seen_slugs:
-            continue
-        # hc-392: honor the provider denylist here too.
-        if _is_disabled_provider(_cp.slug):
             continue
 
         # Check credentials via PROVIDER_REGISTRY (auth.py)
