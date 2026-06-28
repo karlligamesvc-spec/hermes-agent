@@ -532,6 +532,129 @@ moa:
     )
 
 
+# ── ApexNodes domestic relay routing (managed default preset) ───────────────
+# The default MoA preset (hermes_cli/moa_config.py) points every reference +
+# aggregator slot at provider `custom:apex-nodes.com`. The desktop seeds that
+# endpoint as a named custom provider (apps/desktop/electron/apex-managed.cjs).
+# These tests prove the slot → relay resolution chain end-to-end: a MoA slot
+# named `custom:apex-nodes.com` resolves (through the REAL resolve_runtime_provider,
+# not a stub) to the seeded relay base_url + the user's key, and a full /moa turn
+# routes EVERY reference and the aggregator through that relay — each with its own
+# model name on the wire (per-request routing; the relay then maps by hc-184).
+
+_RELAY_BASE_URL = "https://apex-nodes.com/relay/v1"
+_RELAY_USER_KEY = "ak-user-relay-key"
+
+
+def _apex_relay_config(home):
+    """Seed config.yaml exactly as the desktop managed-LLM seed does: the relay
+    registered as a named custom provider `Apex-nodes.com`, plus the default MoA
+    preset whose slots all reference `custom:apex-nodes.com`."""
+    home.mkdir()
+    (home / "config.yaml").write_text(
+        f"""
+model:
+  default: deepseek-v4-pro-APEX
+  provider: custom
+  base_url: "{_RELAY_BASE_URL}"
+  api_key: "{_RELAY_USER_KEY}"
+custom_providers:
+  - name: "Apex-nodes.com"
+    base_url: "{_RELAY_BASE_URL}"
+    api_key: "{_RELAY_USER_KEY}"
+    model: deepseek-v4-pro-APEX
+moa:
+  default_preset: default
+  presets:
+    default:
+      reference_models:
+        - provider: custom:apex-nodes.com
+          model: deepseek-v4-pro-APEX
+        - provider: custom:apex-nodes.com
+          model: glm-5.2-APEX
+      aggregator:
+        provider: custom:apex-nodes.com
+        model: deepseek-v4-pro-APEX
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def test_apex_moa_slot_resolves_to_relay(monkeypatch, tmp_path):
+    """A `custom:apex-nodes.com` MoA slot resolves to the seeded relay endpoint.
+
+    This runs the REAL resolve_runtime_provider against a desktop-seeded config
+    (no stub), proving _slot_runtime hands call_llm the relay base_url + the
+    user's key — i.e. the slot is physically routed through the ApexNodes relay,
+    never a foreign provider. Without this, the China-first managed default would
+    silently fall through to OpenRouter (the bare-custom default).
+    """
+    from agent import moa_loop
+
+    home = tmp_path / ".hermes"
+    _apex_relay_config(home)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+
+    rt = moa_loop._slot_runtime(
+        {"provider": "custom:apex-nodes.com", "model": "glm-5.2-APEX"}
+    )
+
+    # The model name is preserved (sent on the wire), and base_url/api_key are
+    # the relay's — resolved from the seeded custom_providers entry.
+    assert rt["model"] == "glm-5.2-APEX"
+    assert rt["base_url"] == _RELAY_BASE_URL
+    assert rt["api_key"] == _RELAY_USER_KEY
+    # provider stays "custom:apex-nodes.com" on the slot dict; resolution to the
+    # concrete relay happens via base_url/api_key (call_llm forces provider=custom
+    # whenever a base_url is present).
+    assert rt["provider"] == "custom:apex-nodes.com"
+
+
+def test_apex_moa_turn_routes_every_slot_through_relay(monkeypatch, tmp_path):
+    """A full /moa turn on the ApexNodes default preset sends BOTH references and
+    the aggregator through the relay — each carrying its own model name.
+
+    call_llm is stubbed (we assert what reaches it), but _slot_runtime runs the
+    real resolution against the seeded config, so the base_url/api_key on each
+    call are proof the relay was selected per request. This is the end-to-end
+    "verify a /moa turn really hits the relay for each reference + aggregator".
+    """
+    from agent.moa_loop import MoAChatCompletions
+
+    home = tmp_path / ".hermes"
+    _apex_relay_config(home)
+    monkeypatch.setenv("HERMES_HOME", str(home))
+
+    calls = []
+
+    def fake_call_llm(**kwargs):
+        calls.append(kwargs)
+        if kwargs["task"] == "moa_reference":
+            return _response(f"advice from {kwargs['model']}")
+        return _response("aggregator acted")
+
+    monkeypatch.setattr("agent.moa_loop.call_llm", fake_call_llm)
+
+    facade = MoAChatCompletions("default")
+    facade.create(
+        messages=[{"role": "user", "content": "ship it"}],
+        tools=[{"type": "function"}],
+    )
+
+    # Two references + one aggregator, in order.
+    tasks = [(c["task"], c["model"]) for c in calls]
+    assert tasks == [
+        ("moa_reference", "deepseek-v4-pro-APEX"),
+        ("moa_reference", "glm-5.2-APEX"),
+        ("moa_aggregator", "deepseek-v4-pro-APEX"),
+    ]
+    # EVERY call physically targets the relay with the user's key — no foreign
+    # provider is contacted, and the per-slot model name rides the request.
+    for c in calls:
+        assert c["base_url"] == _RELAY_BASE_URL, c
+        assert c["api_key"] == _RELAY_USER_KEY, c
+
+
 def test_moa_facade_emits_reference_then_aggregating(monkeypatch, tmp_path):
     """The facade reports each reference's output, then an aggregating signal,
     so frontends can render reference blocks before the aggregator acts."""
