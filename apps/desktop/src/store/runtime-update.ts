@@ -3,24 +3,54 @@
  * consistency epic.
  *
  * This is a thin renderer-side wrapper over the existing IPC bridge
- * (window.hermesDesktop.runtime.{checkUpdate, applyUpdate}); the actual
- * mechanism lives in electron/apex-runtime-latest.cjs and the main.cjs
+ * (window.hermesDesktop.runtime.{getVersion, checkUpdate, applyUpdate}); the
+ * actual mechanism lives in electron/apex-runtime-latest.cjs and the main.cjs
  * handlers. We only own UI state here:
- *   - the last check result (installed engine version + admin-latest), so the
- *     About panel can show the current version (R6) and offer an update (R5),
+ *   - the installed engine version (R6), read locally on About-panel open,
+ *   - the last opt-in check result (installed + admin-latest) for R5,
  *   - in-flight flags for the check / apply buttons.
  *
- * Opt-in: nothing here runs on its own. The user must click to check and click
- * (then confirm) to apply.
+ * Opt-in distinction: getVersion is a local, no-network marker read, safe to
+ * call on panel open. checkUpdate/applyUpdate hit the network / change state and
+ * only run when the user clicks (apply additionally requires a confirm).
  */
 
 import { atom } from 'nanostores'
 
-import type { DesktopRuntimeUpdateApply, DesktopRuntimeUpdateCheck } from '@/global'
+import type { DesktopRuntimeUpdateApply, DesktopRuntimeUpdateCheck, DesktopRuntimeVersion } from '@/global'
 
+export const $runtimeVersion = atom<DesktopRuntimeVersion | null>(null)
 export const $runtimeUpdateCheck = atom<DesktopRuntimeUpdateCheck | null>(null)
 export const $runtimeUpdateChecking = atom<boolean>(false)
 export const $runtimeUpdateApplying = atom<boolean>(false)
+
+/**
+ * Load the installed engine version (R6). Local marker read — no network, no
+ * state change — so it's safe to call on About-panel open. Never throws; on a
+ * missing bridge or read error it stores/returns an ok:false result with null
+ * fields and the panel falls back to "version unavailable".
+ */
+export async function loadRuntimeVersion(): Promise<DesktopRuntimeVersion> {
+  const bridge = window.hermesDesktop?.runtime
+  const empty: DesktopRuntimeVersion = { ok: false, version: null, commit: null, branch: null, key: null }
+
+  if (!bridge?.getVersion) {
+    $runtimeVersion.set(empty)
+
+    return empty
+  }
+
+  try {
+    const result = await bridge.getVersion()
+    $runtimeVersion.set(result)
+
+    return result
+  } catch {
+    $runtimeVersion.set(empty)
+
+    return empty
+  }
+}
 
 /**
  * Run an opt-in engine update check. Stores and returns the result. Never

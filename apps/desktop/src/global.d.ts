@@ -61,6 +61,10 @@ declare global {
       // mechanism here — this is the IPC surface only). See main.cjs handlers
       // hermes:runtime:check-update / hermes:runtime:apply-update.
       runtime: {
+        // R6: installed engine version, read locally from the bootstrap marker
+        // (no network, no state change). Used to show the engine version on
+        // About-panel open without triggering an opt-in update check.
+        getVersion: () => Promise<DesktopRuntimeVersion>
         checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
         applyUpdate: () => Promise<DesktopRuntimeUpdateApply>
       }
@@ -366,6 +370,17 @@ export interface DesktopManagedSignInResult {
 // latest. Both can be null on an older marker that didn't record them.
 export interface DesktopRuntimeVersionRef {
   version: string | null
+  key: string | null
+}
+
+// Result of hermesDesktop.runtime.getVersion() (R6) — the installed engine
+// version read locally from the bootstrap marker. `ok:false` only on an
+// unexpected read error (all fields null). No network is involved.
+export interface DesktopRuntimeVersion {
+  ok: boolean
+  version: string | null
+  commit: string | null
+  branch: string | null
   key: string | null
 }
 

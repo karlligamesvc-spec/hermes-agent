@@ -6000,7 +6000,24 @@ ipcMain.handle('hermes:bootstrap:cancel', async () => {
   return { ok: false, cancelled: false }
 })
 
-// ── R5: desktop opt-in runtime update ───────────────────────────────────────
+// ── R5/R6: desktop opt-in runtime update ────────────────────────────────────
+// version (R6): the installed engine version, read purely from the local
+// bootstrap marker. No network, no state change — so the About panel can show
+// the current engine version on open without an opt-in update check. Mirrors
+// how checkForRuntimeUpdate derives `current` (commit||branch is the key).
+ipcMain.handle('hermes:runtime:version', async () => {
+  try {
+    const marker = readBootstrapMarker()
+    const commit = (marker && marker.pinnedCommit) || null
+    const branch = (marker && marker.pinnedBranch) || null
+    const version = (marker && marker.version) || null
+    return { ok: true, version, commit, branch, key: commit || branch || null }
+  } catch (error) {
+    rememberLog(`[runtime-update] version read errored: ${error && error.message}`)
+    return { ok: false, version: null, commit: null, branch: null, key: null }
+  }
+})
+
 // check-update: compare the installed runtime (bootstrap marker) against the
 // admin-set default (GET /api/v1/runtime/latest). Read-only; never mutates.
 ipcMain.handle('hermes:runtime:check-update', async () => {

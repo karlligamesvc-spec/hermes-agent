@@ -11,8 +11,10 @@ import {
   $runtimeUpdateApplying,
   $runtimeUpdateCheck,
   $runtimeUpdateChecking,
+  $runtimeVersion,
   applyRuntimeUpdate,
-  checkRuntimeUpdate
+  checkRuntimeUpdate,
+  loadRuntimeVersion
 } from '@/store/runtime-update'
 import {
   $desktopVersion,
@@ -59,12 +61,21 @@ function relativeTime(ms: number | undefined, a: Translations['settings']['about
 function EngineUpdateSection() {
   const { t } = useI18n()
   const a = t.settings.about
+  const installed = useStore($runtimeVersion)
   const check = useStore($runtimeUpdateCheck)
   const checking = useStore($runtimeUpdateChecking)
   const applying = useStore($runtimeUpdateApplying)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  const currentVersion = check?.current?.version ?? null
+  // R6: read the installed engine version on open. Local marker read only —
+  // no network, no opt-in violation (the update *check* still waits for a click).
+  useEffect(() => {
+    void loadRuntimeVersion()
+  }, [])
+
+  // Prefer the version from a fresh opt-in check when present; otherwise the
+  // locally-loaded marker version shown on open.
+  const currentVersion = check?.current?.version ?? installed?.version ?? null
   const latest = check?.updateAvailable ? check.latest : null
   const compatNotes = latest?.compatibilityNotes?.trim() || ''
   // ok:false from a check means we couldn't reach the admin/latest endpoint.
