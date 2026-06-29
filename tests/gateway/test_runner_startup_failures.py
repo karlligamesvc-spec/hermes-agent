@@ -4,10 +4,25 @@ import threading
 import pytest
 from unittest.mock import AsyncMock
 
+from apex_overlay import gateway_bootstrap
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter
 from gateway.run import GatewayRunner
 from gateway.status import read_runtime_status
+
+
+def _install_bg_startup_seam():
+    """Install the apex_overlay hc-384/385 background-startup seam.
+
+    The non-blocking Feishu startup behavior lives in
+    ``apex_overlay.gateway_bootstrap`` (a monkey-patch seam), applied in
+    production by the apex-overlay plugin during ``discover_plugins()``. The
+    background-path tests below don't stand up a plugin-enabled config, so they
+    install the seam directly — mirroring how the provider_filter seam-test
+    applies its patch. Idempotent; re-applying is a safe no-op.
+    """
+    gateway_bootstrap._APPLIED = False
+    assert gateway_bootstrap.apply() is True
 
 
 class _RetryableFailureAdapter(BasePlatformAdapter):
@@ -200,6 +215,7 @@ async def test_background_platform_connect_does_not_block_api_ready(monkeypatch,
         sessions_dir=tmp_path / "sessions",
     )
     runner = GatewayRunner(config)
+    _install_bg_startup_seam()
 
     def _create_adapter(platform, platform_config):
         return {
@@ -246,6 +262,7 @@ async def test_background_platform_adapter_creation_does_not_block_api_ready(mon
         sessions_dir=tmp_path / "sessions",
     )
     runner = GatewayRunner(config)
+    _install_bg_startup_seam()
 
     class _DeferredFeishuAdapter(_BackgroundFeishuAdapter):
         async def connect(self) -> bool:

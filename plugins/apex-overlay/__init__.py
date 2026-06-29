@@ -45,3 +45,15 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
             )
     except Exception:
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
+
+    try:
+        from apex_overlay import gateway_bootstrap
+
+        if not gateway_bootstrap.apply():
+            logger.warning(
+                "apex-overlay: hc-384/385 gateway background-startup seam did "
+                "not fully apply (see prior error). Slow adapters (Feishu) may "
+                "block the gateway's conversation-ready signal at startup."
+            )
+    except Exception:
+        logger.warning("apex-overlay: gateway_bootstrap seam failed to load", exc_info=True)
