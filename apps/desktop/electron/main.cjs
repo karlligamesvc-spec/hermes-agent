@@ -27,6 +27,11 @@ const { execFileSync, spawn } = require('node:child_process')
 const { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } = require('./bootstrap-platform.cjs')
 const { runBootstrap } = require('./bootstrap-runner.cjs')
 const {
+  resolveLatestRuntimePin,
+  checkForRuntimeUpdate,
+  overlayStampWithPin
+} = require('./apex-runtime-latest.cjs')
+const {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
   createSessionWindowRegistry,
@@ -321,6 +326,206 @@ const VENV_ROOT = path.join(ACTIVE_HERMES_ROOT, 'venv')
 // avoids the confusing "marker exists but checkout is gone" state.
 const BOOTSTRAP_COMPLETE_MARKER = path.join(ACTIVE_HERMES_ROOT, '.hermes-bootstrap-complete')
 const BOOTSTRAP_MARKER_SCHEMA_VERSION = 1
+
+// ── Runtime opt-in update — durable pin override (R4/R5) ────────────────────
+// The build-time install-stamp pins the runtime commit the .app was shipped
+// against. R5's opt-in update re-points that pin to the admin-set default
+// (GET /api/v1/runtime/latest) WITHOUT re-shipping the app. The chosen pin must
+// survive a restart (an update the user triggered should still take after they
+// quit before bootstrap finished), so we persist it here.
+//
+// Lives under HERMES_HOME (NOT inside ACTIVE_HERMES_ROOT): the re-bootstrap that
+// applies an update can wipe/replace the checkout, and the override — plus the
+// snapshot of the marker we are replacing, for rollback — must outlive that.
+//
+// Schema:
+//   {
+//     schemaVersion: 1,
+//     commit: "<sha>" | null,
+//     branch: "<tag/branch>" | null,
+//     version: "<label>" | null,
+//     requestedAt: "<ISO>",
+//     // rollback snapshot of the bootstrap marker this update is replacing:
+//     previousMarker: { ...marker } | null
+//   }
+const RUNTIME_PIN_OVERRIDE_PATH = path.join(HERMES_HOME, '.apexnodes-runtime-override.json')
+const RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION = 1
+
+function readRuntimePinOverride() {
+  const parsed = readJson(RUNTIME_PIN_OVERRIDE_PATH)
+  if (!parsed || typeof parsed !== 'object') return null
+  if (parsed.schemaVersion !== RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION) return null
+  // Must carry at least one usable pin field, else it's meaningless.
+  if (!parsed.commit && !parsed.branch) return null
+  return parsed
+}
+
+function writeRuntimePinOverride(payload) {
+  fs.mkdirSync(path.dirname(RUNTIME_PIN_OVERRIDE_PATH), { recursive: true })
+  const merged = {
+    schemaVersion: RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION,
+    commit: payload.commit || null,
+    branch: payload.branch || null,
+    version: payload.version || null,
+    requestedAt: new Date().toISOString(),
+    previousMarker: payload.previousMarker || null
+  }
+  writeFileAtomic(RUNTIME_PIN_OVERRIDE_PATH, JSON.stringify(merged, null, 2) + '\n', 'utf8')
+  return merged
+}
+
+function clearRuntimePinOverride() {
+  try {
+    if (fileExists(RUNTIME_PIN_OVERRIDE_PATH)) {
+      fs.rmSync(RUNTIME_PIN_OVERRIDE_PATH, { force: true })
+    }
+  } catch (error) {
+    rememberLog(`[runtime-update] failed to clear pin override: ${error && error.message}`)
+  }
+}
+
+// The ApexNodes API base the desktop talks to for managed endpoints (login,
+// provision-key) and the public runtime /latest discovery. resolveApexEndpoints
+// applies the same APEXNODES_API_BASE override the V0.2 managed flow uses, so a
+// staging build retargets both with one env var.
+function apexApiBase() {
+  try {
+    return resolveApexEndpoints(process.env).apiBase
+  } catch {
+    return ''
+  }
+}
+
+// Resolve the install pin for a bootstrap run (R4 first install + R5 applied
+// override). NEVER throws — every failure path degrades to the build-time stamp.
+//
+//   1. A persisted opt-in override (R5) wins: the user explicitly chose a
+//      version; honor it across restarts until it installs (or is rolled back).
+//   2. No override -> R4: fetch the admin-set default (GET /api/v1/runtime/latest)
+//      and overlay it onto the baked stamp for THIS install only (not persisted —
+//      a fresh machine just tracks the current admin default at install time).
+//   3. Cloud unreachable / no default / parse error -> the baked stamp verbatim.
+async function resolveBootstrapStamp(bakedStamp) {
+  // (1) Persisted override takes precedence and short-circuits the network.
+  const override = readRuntimePinOverride()
+  if (override) {
+    const merged = overlayStampWithPin(
+      bakedStamp || INSTALL_STAMP,
+      { commit: override.commit, branch: override.branch, version: override.version },
+      'opt-in-update'
+    )
+    rememberLog(
+      `[runtime-update] using persisted opt-in pin override: version=${override.version || '?'} ` +
+        `commit=${override.commit ? String(override.commit).slice(0, 12) : '-'} branch=${override.branch || '-'}`
+    )
+    return merged
+  }
+
+  // (2) R4: live admin-latest overlay. Bounded, best-effort, never fatal.
+  const apiBase = apexApiBase()
+  let pin = null
+  try {
+    pin = await resolveLatestRuntimePin({
+      apiBase,
+      fetchJson: fetchPublicJson,
+      timeoutMs: 10_000,
+      log: msg => rememberLog(msg)
+    })
+  } catch (error) {
+    // resolveLatestRuntimePin already swallows; this is belt-and-suspenders so a
+    // surprise throw can never abort a first install.
+    rememberLog(`[runtime-update] latest-pin resolution errored (ignored): ${error && error.message}`)
+    pin = null
+  }
+
+  if (!pin) {
+    rememberLog('[runtime-update] no admin latest available; installing the build-time pin')
+    return bakedStamp || INSTALL_STAMP
+  }
+
+  // (3) Overlay the admin latest onto the baked stamp for this install.
+  const merged = overlayStampWithPin(bakedStamp || INSTALL_STAMP, pin, 'api-latest')
+  rememberLog(
+    `[runtime-update] first-install pinning to admin latest: version=${pin.version || '?'} ` +
+      `commit=${pin.commit ? pin.commit.slice(0, 12) : '-'} branch=${pin.branch || '-'}`
+  )
+  return merged
+}
+
+// Best-effort reachability probe for an update artifact (the COS source tarball)
+// BEFORE we retarget the install pin and re-run bootstrap. This is the
+// don't-brick guard: install.sh's CN path deletes INSTALL_DIR if the new tarball
+// extract fails, so confirming the object actually exists first keeps a working
+// install from being torn down for a 404. Resolves true on a 2xx/3xx HEAD,
+// false on 4xx/5xx or a network error. Never throws. A missing URL resolves
+// true (the non-CN git-clone path doesn't use COS and verifies via git itself).
+function isUpdateArtifactReachable(url, { timeoutMs = 8000 } = {}) {
+  return new Promise(resolve => {
+    const clean = String(url || '').trim()
+    if (!clean) {
+      resolve(true)
+      return
+    }
+    let parsed
+    try {
+      parsed = new URL(clean)
+    } catch {
+      resolve(false)
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      resolve(false)
+      return
+    }
+    const client = parsed.protocol === 'https:' ? https : http
+    let settled = false
+    const done = value => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    const req = client.request(parsed, { method: 'HEAD' }, res => {
+      const code = res.statusCode || 0
+      res.resume() // drain
+      done(code >= 200 && code < 400)
+    })
+    req.on('error', () => done(false))
+    req.setTimeout(timeoutMs, () => {
+      try {
+        req.destroy()
+      } catch {
+        void 0
+      }
+      done(false)
+    })
+    req.end()
+  })
+}
+
+// Roll an opt-in update back after a failed re-bootstrap: restore the marker the
+// update was replacing (so the next launch boots the OLD, known-good runtime
+// that is still on disk) and drop the override so we don't re-attempt the broken
+// pin. Called from the bootstrap-failure path. Idempotent / best-effort.
+function rollbackRuntimePinOverride(reason) {
+  const override = readRuntimePinOverride()
+  if (!override) return false
+  rememberLog(`[runtime-update] rolling back opt-in update (${reason || 'failed'})`)
+  try {
+    if (override.previousMarker && typeof override.previousMarker === 'object') {
+      fs.mkdirSync(path.dirname(BOOTSTRAP_COMPLETE_MARKER), { recursive: true })
+      writeFileAtomic(
+        BOOTSTRAP_COMPLETE_MARKER,
+        JSON.stringify(override.previousMarker, null, 2) + '\n',
+        'utf8'
+      )
+      rememberLog('[runtime-update] restored previous bootstrap marker (old runtime remains active)')
+    }
+  } catch (error) {
+    rememberLog(`[runtime-update] failed to restore previous marker on rollback: ${error && error.message}`)
+  }
+  clearRuntimePinOverride()
+  return true
+}
 
 // Shell UI locale block, appended to every seed. The runtime writes
 // display.language: en by default, which beats the China-first zh fallback (it
@@ -2257,6 +2462,11 @@ function writeBootstrapMarker(payload) {
     schemaVersion: BOOTSTRAP_MARKER_SCHEMA_VERSION,
     pinnedCommit: payload.pinnedCommit || null,
     pinnedBranch: payload.pinnedBranch || null,
+    // The admin runtime version label this install landed on, when known (R4/R5
+    // thread it through the stamp). Lets the opt-in update check compare the
+    // installed version against /latest even when the commit key is unchanged
+    // (a re-publish under the same key with a bumped label).
+    version: payload.version || null,
     completedAt: new Date().toISOString(),
     desktopVersion: app.getVersion()
   }
@@ -2482,12 +2692,24 @@ function resolveHermesBackend(dashboardArgs) {
     return createActiveBackend(dashboardArgs)
   }
 
+  // R5: a pending opt-in update (override file present, marker just dropped by
+  // hermes:runtime:apply-update) MUST drive the bootstrap re-run so install.sh
+  // re-fetches the new pin. Skip the "use an existing install" steps 4-5 — the
+  // prior install's `hermes` is still on PATH (and its venv on disk), and trusting
+  // it here would silently spawn the OLD runtime and no-op the update. Only the
+  // bootstrap path (step 6) honors resolveBootstrapStamp()'s override. When the
+  // override is absent this is a no-op and resolution behaves exactly as before.
+  const runtimeUpdatePending = readRuntimePinOverride() !== null
+  if (runtimeUpdatePending) {
+    rememberLog('[runtime-update] pin override pending; forcing bootstrap re-run (skipping existing-install reuse)')
+  }
+
   // 4. Existing `hermes` on PATH -- installed via install.ps1 / install.sh from
   //    a previous tool-only setup, or pip-installed system-wide. Use it but
   //    do NOT write a bootstrap marker; the user did this themselves and we
   //    don't want to take ownership of an install we didn't perform.
   //    HERMES_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
-  if (process.env.HERMES_DESKTOP_IGNORE_EXISTING !== '1') {
+  if (!runtimeUpdatePending && process.env.HERMES_DESKTOP_IGNORE_EXISTING !== '1') {
     let hermesCommand = null
     const hermesOverride = process.env.HERMES_DESKTOP_HERMES
 
@@ -2539,8 +2761,8 @@ function resolveHermesBackend(dashboardArgs) {
 
   // 5. Last-ditch: pip-installed hermes_cli module via system Python.
   //    Same rationale as #4 -- the user installed this; we use it but don't
-  //    take ownership.
-  const python = findSystemPython()
+  //    take ownership. Also skipped while a runtime update is pending (step 4).
+  const python = runtimeUpdatePending ? null : findSystemPython()
   if (python) {
     // Same smoke-test rationale as step 4: a system Python in the
     // SUPPORTED_VERSIONS range can be registered (PEP 514) without
@@ -2639,8 +2861,15 @@ async function ensureRuntime(backend) {
 
     bootstrapAbortController = new AbortController()
 
+    // ── R4/R5: resolve the pin the installer should use ──────────────────────
+    // Precedence: a persisted opt-in override (R5) > a live admin-latest overlay
+    // fetched now (R4 first install) > the build-time stamp (offline fallback).
+    // resolveBootstrapStamp NEVER throws — on any failure it returns the baked
+    // stamp, so a fresh install proceeds even when the cloud is unreachable.
+    const bootstrapStamp = await resolveBootstrapStamp(backend.installStamp)
+
     const bootstrapResult = await runBootstrap({
-      installStamp: backend.installStamp,
+      installStamp: bootstrapStamp,
       activeRoot: backend.activeRoot,
       sourceRepoRoot: SOURCE_REPO_ROOT,
       resourcesPath: process.resourcesPath,
@@ -2681,6 +2910,9 @@ async function ensureRuntime(backend) {
     bootstrapAbortController = null
 
     if (bootstrapResult.cancelled) {
+      // A cancelled opt-in update must not leave the install half-retargeted:
+      // restore the previous marker so the old runtime stays active.
+      rollbackRuntimePinOverride('install cancelled')
       const cancelledError = new Error('Hermes install was cancelled.')
       cancelledError.isBootstrapFailure = true
       cancelledError.bootstrapCancelled = true
@@ -2689,6 +2921,10 @@ async function ensureRuntime(backend) {
     }
 
     if (!bootstrapResult.ok) {
+      // R5 don't-brick guard: a failed re-bootstrap of an opt-in update rolls
+      // back to the previous marker so the next launch boots the OLD runtime
+      // (still on disk) instead of bricking on the new pin.
+      rollbackRuntimePinOverride(bootstrapResult.failedStage || 'bootstrap failed')
       const bootstrapError = new Error(
         `Hermes bootstrap failed${bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''}: ` +
           `${bootstrapResult.error || 'unknown error'}. ` +
@@ -2704,6 +2940,13 @@ async function ensureRuntime(backend) {
     }
 
     rememberLog('[bootstrap] bootstrap complete; marker written. Re-resolving backend.')
+    // An opt-in update (R5) succeeded — the freshly written marker is now the
+    // source of truth for what's installed, so retire the pending override.
+    // (No-op for a normal first install, where no override exists.)
+    if (readRuntimePinOverride()) {
+      rememberLog('[runtime-update] opt-in update installed successfully; clearing pin override')
+      clearRuntimePinOverride()
+    }
     // Re-resolve now that the install exists. The new resolution lands in
     // step 3 (bootstrap-complete marker) and we recurse to wire venvPython.
     return ensureRuntime(resolveHermesBackend(backend.args))
@@ -5755,6 +5998,107 @@ ipcMain.handle('hermes:bootstrap:cancel', async () => {
     return { ok: true, cancelled: true }
   }
   return { ok: false, cancelled: false }
+})
+
+// ── R5: desktop opt-in runtime update ───────────────────────────────────────
+// check-update: compare the installed runtime (bootstrap marker) against the
+// admin-set default (GET /api/v1/runtime/latest). Read-only; never mutates.
+ipcMain.handle('hermes:runtime:check-update', async () => {
+  try {
+    const result = await checkForRuntimeUpdate({
+      apiBase: apexApiBase(),
+      fetchJson: fetchPublicJson,
+      marker: readBootstrapMarker(),
+      log: msg => rememberLog(msg)
+    })
+    return { ok: true, ...result }
+  } catch (error) {
+    // checkForRuntimeUpdate already swallows; defensive only.
+    rememberLog(`[runtime-update] check-update errored: ${error && error.message}`)
+    return { ok: false, updateAvailable: false, error: (error && error.message) || String(error) }
+  }
+})
+
+// apply-update: opt-in (user-triggered) update to the admin default. Rollback-
+// safe — we verify the new artifact is reachable, snapshot the current marker,
+// persist a durable pin override, then drop the marker so the next boot re-runs
+// our own bootstrap against the new pin. A failed/cancelled re-bootstrap rolls
+// back to the snapshot (see rollbackRuntimePinOverride), so a working install is
+// never bricked. The renderer reloads to drive the boot flow.
+ipcMain.handle('hermes:runtime:apply-update', async () => {
+  // 1. Resolve the target pin. No managed latest / offline -> nothing to do.
+  let pin = null
+  try {
+    pin = await resolveLatestRuntimePin({
+      apiBase: apexApiBase(),
+      fetchJson: fetchPublicJson,
+      log: msg => rememberLog(msg)
+    })
+  } catch (error) {
+    return { ok: false, error: (error && error.message) || String(error) }
+  }
+  if (!pin) {
+    return { ok: false, error: 'no_admin_latest_available' }
+  }
+
+  // 2. Skip if already on this pin (compare against the installed marker key).
+  const marker = readBootstrapMarker()
+  const installedKey = (marker && (marker.pinnedCommit || marker.pinnedBranch)) || null
+  if (installedKey && String(installedKey) === String(pin.key)) {
+    const versionMoved = Boolean(marker && marker.version && pin.version && marker.version !== pin.version)
+    if (!versionMoved) {
+      return { ok: true, applied: false, alreadyCurrent: true, latest: { version: pin.version, key: pin.key } }
+    }
+  }
+
+  // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
+  //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
+  const reachable = await isUpdateArtifactReachable(pin.cosTarballUrl)
+  if (!reachable) {
+    rememberLog(
+      `[runtime-update] aborting apply: update artifact not reachable (${pin.cosTarballUrl || 'n/a'}); ` +
+        'keeping current runtime'
+    )
+    return { ok: false, error: 'update_artifact_unreachable', latest: { version: pin.version, key: pin.key } }
+  }
+
+  // 4. Persist the durable override WITH a rollback snapshot of the current
+  //    marker, then drop the marker + reset the connection. The renderer
+  //    reloads -> startHermes() re-runs bootstrap with resolveBootstrapStamp(),
+  //    which reads the persisted override first.
+  try {
+    writeRuntimePinOverride({
+      commit: pin.commit,
+      branch: pin.branch,
+      version: pin.version,
+      previousMarker: marker || null
+    })
+  } catch (error) {
+    return { ok: false, error: `failed_to_persist_override: ${(error && error.message) || error}` }
+  }
+
+  rememberLog(
+    `[runtime-update] opt-in update armed: version=${pin.version || '?'} key=${pin.key}; ` +
+      'dropping marker and re-running bootstrap'
+  )
+  try {
+    if (fileExists(BOOTSTRAP_COMPLETE_MARKER)) {
+      fs.rmSync(BOOTSTRAP_COMPLETE_MARKER, { force: true })
+    }
+  } catch (error) {
+    // If we can't drop the marker the update won't trigger; roll back so we
+    // don't leave a dangling override that fights the installed runtime.
+    rollbackRuntimePinOverride('failed to drop marker')
+    return { ok: false, error: `failed_to_clear_marker: ${(error && error.message) || error}` }
+  }
+  bootstrapFailure = null
+  resetHermesConnection()
+  return {
+    ok: true,
+    applied: true,
+    reloadRequired: true,
+    latest: { version: pin.version, key: pin.key, compatibilityNotes: pin.compatibilityNotes }
+  }
 })
 ipcMain.handle('hermes:boot-progress:get', async () => bootProgressState)
 ipcMain.handle('hermes:bootstrap:get', async () => getBootstrapState())
