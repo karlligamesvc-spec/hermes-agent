@@ -2692,12 +2692,24 @@ function resolveHermesBackend(dashboardArgs) {
     return createActiveBackend(dashboardArgs)
   }
 
+  // R5: a pending opt-in update (override file present, marker just dropped by
+  // hermes:runtime:apply-update) MUST drive the bootstrap re-run so install.sh
+  // re-fetches the new pin. Skip the "use an existing install" steps 4-5 — the
+  // prior install's `hermes` is still on PATH (and its venv on disk), and trusting
+  // it here would silently spawn the OLD runtime and no-op the update. Only the
+  // bootstrap path (step 6) honors resolveBootstrapStamp()'s override. When the
+  // override is absent this is a no-op and resolution behaves exactly as before.
+  const runtimeUpdatePending = readRuntimePinOverride() !== null
+  if (runtimeUpdatePending) {
+    rememberLog('[runtime-update] pin override pending; forcing bootstrap re-run (skipping existing-install reuse)')
+  }
+
   // 4. Existing `hermes` on PATH -- installed via install.ps1 / install.sh from
   //    a previous tool-only setup, or pip-installed system-wide. Use it but
   //    do NOT write a bootstrap marker; the user did this themselves and we
   //    don't want to take ownership of an install we didn't perform.
   //    HERMES_DESKTOP_IGNORE_EXISTING=1 forces the bootstrap path for testing.
-  if (process.env.HERMES_DESKTOP_IGNORE_EXISTING !== '1') {
+  if (!runtimeUpdatePending && process.env.HERMES_DESKTOP_IGNORE_EXISTING !== '1') {
     let hermesCommand = null
     const hermesOverride = process.env.HERMES_DESKTOP_HERMES
 
@@ -2749,8 +2761,8 @@ function resolveHermesBackend(dashboardArgs) {
 
   // 5. Last-ditch: pip-installed hermes_cli module via system Python.
   //    Same rationale as #4 -- the user installed this; we use it but don't
-  //    take ownership.
-  const python = findSystemPython()
+  //    take ownership. Also skipped while a runtime update is pending (step 4).
+  const python = runtimeUpdatePending ? null : findSystemPython()
   if (python) {
     // Same smoke-test rationale as step 4: a system Python in the
     // SUPPORTED_VERSIONS range can be registered (PEP 514) without

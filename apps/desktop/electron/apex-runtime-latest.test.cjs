@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict')
 const test = require('node:test')
+const fs = require('node:fs')
+const path = require('node:path')
 
 const {
   parseCosTarballKey,
@@ -297,4 +299,57 @@ test('overlayStampWithPin: null baked + real pin -> pin-derived stamp', () => {
   const out = overlayStampWithPin(null, pin)
   assert.ok(out)
   assert.equal(out.commit, SHA)
+})
+
+// ---------------------------------------------------------------------------
+// main.cjs glue source-contract (electron-bound; can't be required directly).
+// These guard the brick-safety wiring against a future refactor silently
+// dropping it. Same source-assertion pattern as windows-child-process.test.cjs.
+// ---------------------------------------------------------------------------
+
+function mainSource() {
+  return fs.readFileSync(path.join(__dirname, 'main.cjs'), 'utf8').replace(/\r\n/g, '\n')
+}
+
+test('main.cjs: a pending pin override forces the bootstrap re-run (steps 4-5 gated)', () => {
+  const src = mainSource()
+  assert.match(src, /const runtimeUpdatePending = readRuntimePinOverride\(\) !== null/)
+  // Step 4 (existing `hermes` on PATH) must be skipped while an update is pending.
+  assert.match(src, /if \(!runtimeUpdatePending && process\.env\.HERMES_DESKTOP_IGNORE_EXISTING !== '1'\)/)
+  // Step 5 (system python) must be skipped too.
+  assert.match(src, /const python = runtimeUpdatePending \? null : findSystemPython\(\)/)
+})
+
+test('main.cjs: failed AND cancelled bootstrap roll the opt-in update back', () => {
+  const src = mainSource()
+  // Both terminal paths must restore the previous marker.
+  assert.match(src, /rollbackRuntimePinOverride\('install cancelled'\)/)
+  assert.match(src, /rollbackRuntimePinOverride\(bootstrapResult\.failedStage \|\| 'bootstrap failed'\)/)
+})
+
+test('main.cjs: apply-update verifies artifact reachability BEFORE retargeting', () => {
+  const src = mainSource()
+  // The HEAD pre-flight must appear, and the override must only be written after.
+  const reachIdx = src.indexOf('isUpdateArtifactReachable(pin.cosTarballUrl)')
+  const writeIdx = src.indexOf('writeRuntimePinOverride({')
+  assert.notEqual(reachIdx, -1, 'reachability probe missing')
+  assert.notEqual(writeIdx, -1, 'override write missing')
+  assert.ok(reachIdx < writeIdx, 'artifact must be probed before the override is persisted')
+})
+
+test('main.cjs: a successful re-bootstrap retires the pin override', () => {
+  const src = mainSource()
+  assert.match(src, /clearRuntimePinOverride\(\)/)
+  // The override is persisted under HERMES_HOME (survives a checkout wipe), not
+  // inside ACTIVE_HERMES_ROOT.
+  assert.match(src, /RUNTIME_PIN_OVERRIDE_PATH = path\.join\(HERMES_HOME, '\.apexnodes-runtime-override\.json'\)/)
+})
+
+test('main.cjs: R5 IPC channels + the runtime preload bridge are registered', () => {
+  const src = mainSource()
+  assert.match(src, /ipcMain\.handle\('hermes:runtime:check-update'/)
+  assert.match(src, /ipcMain\.handle\('hermes:runtime:apply-update'/)
+  const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8')
+  assert.match(preload, /checkUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:check-update'\)/)
+  assert.match(preload, /applyUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:apply-update'\)/)
 })
