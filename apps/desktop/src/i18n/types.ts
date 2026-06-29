@@ -302,6 +302,24 @@ export interface Translations {
       minAgo: (count: number) => string
       hoursAgo: (count: number) => string
       daysAgo: (count: number) => string
+      // Engine (runtime) opt-in update — R5/R6 of runtime 3-end consistency.
+      engineSection: string
+      engineVersion: (value: string) => string
+      engineVersionUnavailable: string
+      engineCheck: string
+      engineChecking: string
+      engineUpToDate: string
+      engineTapCheck: string
+      engineFound: (value: string) => string
+      engineFoundGeneric: string
+      engineCompatNotes: string
+      engineApply: string
+      engineApplying: string
+      engineCantReach: string
+      engineConfirmTitle: string
+      engineConfirmBody: (value: string) => string
+      engineConfirmBodyGeneric: string
+      engineConfirmApply: string
     }
     config: {
       none: string

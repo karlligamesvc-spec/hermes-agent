@@ -53,6 +53,17 @@ declare global {
         browserSignIn: (payload: { provider: 'apex' | 'google' }) => Promise<DesktopManagedSignInResult>
         signOut: () => Promise<{ ok: boolean }>
       }
+      // Runtime 3-end consistency — desktop opt-in engine update (R5/R6).
+      // checkUpdate compares the installed engine (bootstrap marker) against the
+      // admin-set default; applyUpdate re-points the pin and re-runs bootstrap
+      // (renderer reloads when reloadRequired is true). Both are safe no-ops
+      // offline. Backed by electron/apex-runtime-latest.cjs (do not change the
+      // mechanism here — this is the IPC surface only). See main.cjs handlers
+      // hermes:runtime:check-update / hermes:runtime:apply-update.
+      runtime: {
+        checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
+        applyUpdate: () => Promise<DesktopRuntimeUpdateApply>
+      }
       api: <T>(request: HermesApiRequest) => Promise<T>
       notify: (payload: HermesNotification) => Promise<boolean>
       requestMicrophoneAccess: () => Promise<boolean>
@@ -347,6 +358,41 @@ export interface DesktopManagedSignInResult {
   hasRelayKey?: boolean
   message?: string
   ok: boolean
+}
+
+// One side (installed or admin-latest) of an engine version, as derived by
+// electron/apex-runtime-latest.cjs. `version` is the human label; `key` is the
+// install.sh COS/source key (commit or branch) used to compare installed vs
+// latest. Both can be null on an older marker that didn't record them.
+export interface DesktopRuntimeVersionRef {
+  version: string | null
+  key: string | null
+}
+
+// Result of hermesDesktop.runtime.checkUpdate(). ok:false only on an unexpected
+// throw; an offline / no-admin-latest check resolves ok:true with
+// updateAvailable:false and latest:null (no nagging).
+export interface DesktopRuntimeUpdateCheck {
+  ok: boolean
+  updateAvailable: boolean
+  current: DesktopRuntimeVersionRef
+  latest: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
+  // Present only when ok is false (defensive — the handler swallows errors).
+  error?: string
+}
+
+// Result of hermesDesktop.runtime.applyUpdate(). On success the pin is
+// re-armed and the renderer must reload (reloadRequired) to drive bootstrap.
+// `applied:false` with `alreadyCurrent` means the installed engine already
+// matches admin-latest. On failure, `error` is a stable code such as
+// 'no_admin_latest_available' or 'update_artifact_unreachable'.
+export interface DesktopRuntimeUpdateApply {
+  ok: boolean
+  applied?: boolean
+  alreadyCurrent?: boolean
+  reloadRequired?: boolean
+  latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
+  error?: string
 }
 
 export interface DesktopAuthProvider {
