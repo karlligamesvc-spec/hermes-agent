@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
     signOut: () => ipcRenderer.invoke('hermes:managed:signOut')
   },
+  // Runtime 3-end consistency — desktop opt-in engine update (R5). checkUpdate
+  // compares the installed runtime against the admin-set default; applyUpdate
+  // re-points the pin and re-runs bootstrap (renderer reloads when
+  // reloadRequired is true). Both are safe no-ops offline.
+  runtime: {
+    checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
+    applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update')
+  },
   api: request => ipcRenderer.invoke('hermes:api', request),
   notify: payload => ipcRenderer.invoke('hermes:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),

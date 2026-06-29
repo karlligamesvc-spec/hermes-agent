@@ -816,7 +816,9 @@ async function runBootstrap(opts) {
     // 4. Write the bootstrap-complete marker.
     const markerPayload = {
       pinnedCommit: installStamp ? installStamp.commit : null,
-      pinnedBranch: installStamp ? installStamp.branch : null
+      pinnedBranch: installStamp ? installStamp.branch : null,
+      // Runtime version label, when the caller threaded it onto the stamp (R4/R5).
+      version: installStamp ? installStamp.version || null : null
     }
     const marker = typeof writeMarker === 'function' ? writeMarker(markerPayload) : markerPayload
     emit({ type: 'complete', marker })
