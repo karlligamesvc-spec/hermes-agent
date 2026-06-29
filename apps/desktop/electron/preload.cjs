@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // re-points the pin and re-runs bootstrap (renderer reloads when
   // reloadRequired is true). Both are safe no-ops offline.
   runtime: {
+    // R6: installed engine version, read locally from the bootstrap marker.
+    // No network / no state change — the About panel calls this on open.
+    getVersion: () => ipcRenderer.invoke('hermes:runtime:version'),
     checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
     applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update')
   },

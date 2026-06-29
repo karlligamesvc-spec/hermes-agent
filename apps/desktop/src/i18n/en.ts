@@ -401,7 +401,25 @@ export const en: Translations = {
       justNow: 'just now',
       minAgo: count => `${count} min ago`,
       hoursAgo: count => `${count} hours ago`,
-      daysAgo: count => `${count} days ago`
+      daysAgo: count => `${count} days ago`,
+      engineSection: 'AI engine',
+      engineVersion: value => `Engine version ${value}`,
+      engineVersionUnavailable: 'Engine version unavailable',
+      engineCheck: 'Check for engine update',
+      engineChecking: 'Checking…',
+      engineUpToDate: 'The engine is up to date.',
+      engineTapCheck: 'Check whether a newer engine is available.',
+      engineFound: value => `New engine version ${value} found.`,
+      engineFoundGeneric: 'A new engine version is available.',
+      engineCompatNotes: 'Compatibility notes',
+      engineApply: 'Apply update',
+      engineApplying: 'Applying…',
+      engineCantReach: "Couldn't check for an engine update. Check your connection and try again.",
+      engineConfirmTitle: 'Update the AI engine?',
+      engineConfirmBody: value =>
+        `This will switch to engine version ${value} and restart the app to apply it. Your work is safe.`,
+      engineConfirmBodyGeneric: 'This will update the AI engine and restart the app to apply it. Your work is safe.',
+      engineConfirmApply: 'Update engine'
     },
     config: {
       none: 'None',
