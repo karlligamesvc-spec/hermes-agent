@@ -1067,10 +1067,17 @@ canvas {
 
 [data-slot='composer-root'] {
   --composer-fill: color-mix(in srgb, var(--dt-card) 72%, transparent);
+  /* Composer surface lift. At rest (empty / home-input hero) the card floats
+     with the full soft lift; once the thread is scrolled — i.e. the composer is
+     docked over a live conversation — it flattens to a near-flat contact shadow
+     so it doesn't read as a heavy floating slab over the messages (per the
+     Claude "docked 时别偏重" call). */
+  --composer-surface-shadow: var(--shadow-composer);
 }
 
 [data-slot='composer-root'][data-thread-scrolled-up] {
   --composer-fill: color-mix(in srgb, var(--dt-card) 48%, transparent);
+  --composer-surface-shadow: 0 0.0625rem 0.25rem color-mix(in srgb, #000 5%, transparent);
 }
 
 [data-slot='composer-root']:has([data-slot='composer-surface']:focus-within) {

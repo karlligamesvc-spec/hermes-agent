@@ -861,6 +861,7 @@ export const zh: Translations = {
 
   skills: {
     tabSkills: '技能',
+    tabSkillsSubtitle: '可为新会话启用的能力。',
     tabToolsets: '工具集',
     all: '全部',
     searchSkills: '搜索技能…',

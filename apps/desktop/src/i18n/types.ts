@@ -553,6 +553,7 @@ export interface Translations {
 
   skills: {
     tabSkills: string
+    tabSkillsSubtitle: string
     tabToolsets: string
     all: string
     searchSkills: string

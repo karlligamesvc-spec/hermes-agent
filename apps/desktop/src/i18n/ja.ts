@@ -774,6 +774,7 @@ export const ja = defineLocale({
 
   skills: {
     tabSkills: 'スキル',
+    tabSkillsSubtitle: '新しいセッションで有効にできる機能。',
     tabToolsets: 'ツールセット',
     all: 'すべて',
     searchSkills: 'スキルを検索...',

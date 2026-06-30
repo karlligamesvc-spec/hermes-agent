@@ -40,7 +40,7 @@ import { OverlayMain, OverlayNewButton, OverlaySidebar, OverlaySplitLayout } fro
 import { OverlayView } from '../overlays/overlay-view'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import { jobState, jobTitle, STATE_DOT } from './job-state'
+import { jobState, jobTitle, STATE_DOT, STATE_RING } from './job-state'
 
 const DEFAULT_DELIVER = 'local'
 
@@ -500,25 +500,35 @@ function CronJobListRow({
   onSelect: () => void
 }) {
   const state = jobState(job)
+  // Claude "已安排 / 当前" rows lead with a hollow status circle — an empty ring
+  // by default, filled only while the job is live (running/scheduled/enabled).
+  // STATE_DOT/STATE_RING share one color per state (see job-state.ts) so this
+  // row and the sidebar pip never drift.
+  const filled = state === 'running' || state === 'scheduled' || state === 'enabled'
 
   return (
     <button
       className={cn(
-        'flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors',
+        'flex w-full items-center gap-2.5 rounded-[0.625rem] px-2 py-2 text-left transition-colors',
         active ? 'bg-accent text-foreground' : 'text-foreground/85 hover:bg-accent/60'
       )}
       data-cron-row={job.id}
       onClick={onSelect}
       type="button"
     >
-      <span className="flex w-full items-center gap-2">
-        <span
-          aria-hidden="true"
-          className={cn('size-1.5 shrink-0 rounded-full', STATE_DOT[state] ?? 'bg-muted-foreground')}
-        />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{jobTitle(job)}</span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          'size-3 shrink-0 rounded-full ring-[1.25px] ring-inset',
+          filled
+            ? cn('ring-transparent', STATE_DOT[state] ?? 'bg-muted-foreground')
+            : cn('bg-transparent', STATE_RING[state] ?? 'ring-muted-foreground')
+        )}
+      />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="min-w-0 truncate text-sm font-medium leading-tight">{jobTitle(job)}</span>
+        <span className="truncate text-[0.7rem] text-muted-foreground">{jobScheduleDisplay(job)}</span>
       </span>
-      <span className="truncate pl-3.5 text-[0.66rem] text-muted-foreground">{jobScheduleDisplay(job)}</span>
     </button>
   )
 }

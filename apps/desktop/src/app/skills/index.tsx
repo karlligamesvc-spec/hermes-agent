@@ -242,61 +242,60 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
         <PageLoader label={t.skills.loading} />
       ) : mode === 'skills' ? (
         <div className={cn('h-full overflow-y-auto py-3', PAGE_INSET_X)}>
-          {visibleSkills.length === 0 ? (
-            <EmptyState description={t.skills.noSkillsDesc} title={t.skills.noSkillsTitle} />
-          ) : (
-            <div className="space-y-4">
-              {skillGroups.map(([category, list]) => (
-                <div className="space-y-1.5" key={category}>
-                  {activeCategory === null && (
-                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      {prettyName(category)}
-                    </div>
-                  )}
-                  <div>
-                    {list.map(skill => (
-                      <div
-                        className="grid gap-3 px-0 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                        key={skill.name}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{skill.name}</div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {asText(skill.description) || t.skills.noDescription}
-                          </p>
+          <div className="mx-auto w-full max-w-[47.5rem]">
+            <PageHeading subtitle={t.skills.tabSkillsSubtitle} title={t.skills.tabSkills} />
+            {visibleSkills.length === 0 ? (
+              <EmptyState description={t.skills.noSkillsDesc} title={t.skills.noSkillsTitle} />
+            ) : (
+              <div className="space-y-5">
+                {skillGroups.map(([category, list]) => (
+                  <div className="space-y-1" key={category}>
+                    {activeCategory === null && (
+                      <div className="px-1 pb-0.5 text-xs font-medium text-muted-foreground">{prettyName(category)}</div>
+                    )}
+                    <div className="grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
+                      {list.map(skill => (
+                        <div
+                          className="flex min-w-0 items-center gap-3 rounded-[0.625rem] px-2.5 py-2.5 transition-colors hover:bg-(--ui-row-hover-background)"
+                          key={skill.name}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-foreground">{skill.name}</div>
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {asText(skill.description) || t.skills.noDescription}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={skill.enabled}
+                            disabled={savingSkill === skill.name}
+                            onCheckedChange={checked => void handleToggleSkill(skill, checked)}
+                          />
                         </div>
-                        <Switch
-                          checked={skill.enabled}
-                          disabled={savingSkill === skill.name}
-                          onCheckedChange={checked => void handleToggleSkill(skill, checked)}
-                        />
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className={cn('h-full overflow-y-auto py-3', PAGE_INSET_X)}>
-          {visibleToolsets.length === 0 ? (
-            <EmptyState description={t.skills.noToolsetsDesc} title={t.skills.noToolsetsTitle} />
-          ) : (
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground">
-                {t.skills.toolsetsEnabled(enabledToolsets, toolsets.length)}
-              </div>
-              <div>
+          <div className="mx-auto w-full max-w-[47.5rem]">
+            <PageHeading subtitle={t.skills.toolsetsEnabled(enabledToolsets, toolsets.length)} title={t.skills.tabToolsets} />
+            {visibleToolsets.length === 0 ? (
+              <EmptyState description={t.skills.noToolsetsDesc} title={t.skills.noToolsetsTitle} />
+            ) : (
+              <div className="divide-y divide-(--ui-stroke-quaternary)">
                 {visibleToolsets.map(toolset => {
                   const tools = toolNames(toolset)
                   const label = toolsetDisplayLabel(toolset)
                   const expanded = expandedToolset === toolset.name
 
                   return (
-                    <div className="px-0 py-2.5" key={toolset.name}>
+                    <div className="px-1 py-3" key={toolset.name}>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-sm font-medium">{label}</div>
+                        <div className="truncate text-sm font-medium text-foreground">{label}</div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           <button
                             aria-expanded={expanded}
@@ -339,8 +338,8 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                   )
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </PageSearchShell>
@@ -366,6 +365,18 @@ function EmptyState({ title, description }: { title: string; description: string
         <div className="text-sm font-medium">{title}</div>
         <div className="mt-1 text-xs text-muted-foreground">{description}</div>
       </div>
+    </div>
+  )
+}
+
+// Big page title + muted subtitle, matching the Claude plugins / scheduled
+// heading (≈30px title, 16px gray subtitle). Sits above the body, below the
+// shared tabs/search row supplied by PageSearchShell.
+function PageHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="px-1 pb-3 pt-1">
+      <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">{title}</h1>
+      {subtitle ? <p className="mt-1 text-base text-muted-foreground">{subtitle}</p> : null}
     </div>
   )
 }

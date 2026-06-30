@@ -672,6 +672,7 @@ export const en: Translations = {
 
   skills: {
     tabSkills: 'Skills',
+    tabSkillsSubtitle: 'Capabilities you can enable for new sessions.',
     tabToolsets: 'Toolsets',
     all: 'All',
     searchSkills: 'Search skills...',

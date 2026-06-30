@@ -12,6 +12,19 @@ export const STATE_DOT: Record<string, string> = {
   scheduled: 'bg-primary'
 }
 
+// Ring (outline) color matching STATE_DOT, for the Claude "已安排" hollow status
+// circle — the empty ring shown for a job that isn't actively live. Kept as
+// full literal classes (not derived) so Tailwind's static scanner emits them.
+export const STATE_RING: Record<string, string> = {
+  completed: 'ring-(--ui-text-quaternary)',
+  disabled: 'ring-(--ui-text-quaternary)',
+  enabled: 'ring-primary',
+  error: 'ring-destructive',
+  paused: 'ring-amber-500',
+  running: 'ring-primary',
+  scheduled: 'ring-primary'
+}
+
 // Effective state: explicit state wins; otherwise infer from the enabled flag.
 export function jobState(job: CronJob): string {
   const state = typeof job.state === 'string' ? job.state.trim() : ''
