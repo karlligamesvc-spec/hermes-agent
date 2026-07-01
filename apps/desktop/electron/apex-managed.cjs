@@ -461,25 +461,32 @@ function buildManagedModelConfig(relayKey, env = {}, overrides = {}) {
 
 /**
  * Parse + validate the provision-key response into the fields the desktop
- * persists and applies: { apiKey, baseUrl, model }. Returns null when the key is
- * missing (caller falls back to BYOK). base_url/model fall back to env defaults
- * if the server omits them, but the server is expected to send both.
+ * persists and applies: { apiKey, baseUrl, model, email, name, plan }. Returns
+ * null when the key is missing (caller falls back to BYOK). base_url/model fall
+ * back to env defaults if the server omits them. email/name/plan are the
+ * display-only identity the JWT-authed endpoint knows for certain — the
+ * authoritative source for the account panel (a browser/Google sign-in JWT can
+ * omit email, so the token claims alone aren't enough).
  *
  * @param {unknown} body  response of POST /api/v1/desktop/provision-key
  * @param {Record<string, string | undefined>} [env]
- * @returns {{ apiKey: string, baseUrl: string, model: string } | null}
+ * @returns {{ apiKey: string, baseUrl: string, model: string, email: string, name: string, plan: string } | null}
  */
 function parseProvisionResponse(body, env = {}) {
   const key = relayKeyFromResponse(body)
   if (!key) return null
   const endpoints = resolveApexEndpoints(env)
-  const baseUrl =
-    body && typeof body === 'object' && typeof body.base_url === 'string' ? trimTrailingSlash(body.base_url) : ''
-  const model = body && typeof body === 'object' && typeof body.model === 'string' ? body.model.trim() : ''
+  const obj = body && typeof body === 'object' ? body : {}
+  const str = value => (typeof value === 'string' ? value.trim() : '')
+  const baseUrl = typeof obj.base_url === 'string' ? trimTrailingSlash(obj.base_url) : ''
+  const model = typeof obj.model === 'string' ? obj.model.trim() : ''
   return {
     apiKey: key,
     baseUrl: baseUrl || endpoints.relayBaseUrl,
-    model: model || endpoints.model
+    model: model || endpoints.model,
+    email: str(obj.email),
+    name: str(obj.name),
+    plan: str(obj.plan)
   }
 }
 

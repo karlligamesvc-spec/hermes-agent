@@ -4723,7 +4723,15 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   }
 
   if (provisioned) {
-    writeManagedConfig({ ...provisioned, account: resolvedAccount })
+    // The provision endpoint is JWT-authed and returns the signed-in user's own
+    // email/name/plan — authoritative. Prefer it, falling back to the login-body
+    // / JWT-claim values (a Google/browser sign-in JWT may omit the email).
+    const account2 = {
+      email: provisioned.email || resolvedAccount.email,
+      name: provisioned.name || resolvedAccount.name,
+      plan: provisioned.plan || resolvedAccount.plan
+    }
+    writeManagedConfig({ ...provisioned, account: account2 })
     return { ok: true, hasRelayKey: true }
   }
   return { ok: true, hasRelayKey: false }

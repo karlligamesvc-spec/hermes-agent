@@ -223,8 +223,21 @@ test('parseProvisionResponse extracts key + base_url + model from the contract s
   assert.deepEqual(out, {
     apiKey: 'sk-relay',
     baseUrl: 'https://apex-nodes.com/relay/v1',
-    model: 'deepseek-v4-pro'
+    model: 'deepseek-v4-pro',
+    email: '',
+    name: '',
+    plan: ''
   })
+})
+
+test('parseProvisionResponse captures the display-only identity (email/name/plan)', () => {
+  const out = parseProvisionResponse(
+    { api_key: 'sk-relay', email: '  user@apex-nodes.com  ', name: 'Kael', plan: 'pro' },
+    {}
+  )
+  assert.equal(out.email, 'user@apex-nodes.com')
+  assert.equal(out.name, 'Kael')
+  assert.equal(out.plan, 'pro')
 })
 
 test('parseProvisionResponse falls back to env defaults when server omits base_url/model', () => {

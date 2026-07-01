@@ -37,12 +37,13 @@ function initialOf(name: string): string {
   return (match || '?').toUpperCase()
 }
 
-// Bottom-left account panel (Codex account menu, minimal). Collapsed: avatar
-// (initial) + display name + plan badge. Click → a popover menu with email,
-// 个人资料 (profile), 设置 (settings), 剩余用量 (usage — only when quota data is on
-// hand), 退出登录 (logout). Codex layout + our light-purple accent, no extra text.
-// Rendered only on managed builds when signed in (the auth gate handles the
-// signed-out case); on a managed-disabled build the panel stays hidden.
+// Bottom-left account panel (Codex account row, high-fidelity). The row is
+// avatar (initial) + a two-line stack: display name over the signed-in email —
+// no plan badge, no phone icon, no caret, matching the Codex reference. Click →
+// a popover menu with 个人资料 (profile), 设置 (settings), 剩余用量 (usage — only
+// when quota data is on hand), 退出登录 (logout). Rendered only on managed builds
+// when signed in (the auth gate handles the signed-out case); on a
+// managed-disabled build the panel stays hidden.
 export function AccountPanel() {
   const { t } = useI18n()
   const a = t.auth.account
@@ -60,7 +61,7 @@ export function AccountPanel() {
   const initial = initialOf(name)
   // Deterministic tint for the avatar, seeded off the identity (email→name).
   const tint = profileColor(account.email || name) ?? 'var(--theme-primary)'
-  const plan = account.plan.trim()
+  const email = account.email.trim()
 
   // Usage is only shown when quota is genuinely available. The managed status
   // doesn't currently expose an account quota to the desktop, so this stays
@@ -74,7 +75,7 @@ export function AccountPanel() {
         <button
           aria-label={name}
           className={cn(
-            'flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors',
+            'flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors',
             'hover:bg-(--ui-control-hover-background)',
             open && 'bg-(--ui-control-active-background)'
           )}
@@ -82,34 +83,19 @@ export function AccountPanel() {
         >
           <span
             aria-hidden
-            className="grid size-6 shrink-0 place-items-center rounded-full text-[0.6875rem] font-semibold uppercase leading-none text-white"
+            className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold uppercase leading-none text-white"
             style={{ backgroundColor: tint }}
           >
             {initial}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-(--ui-text-secondary)">
-            {name}
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate text-[0.8125rem] font-medium text-foreground">{name}</span>
+            {email ? <span className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">{email}</span> : null}
           </span>
-          {plan ? (
-            <span className="shrink-0 rounded-sm bg-[color-mix(in_srgb,var(--theme-primary)_15%,transparent)] px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-(--theme-primary)">
-              {plan}
-            </span>
-          ) : null}
-          <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="chevron-up" size="0.75rem" />
         </button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-56" side="top" sideOffset={6}>
-        {/* Email header (identity), non-interactive. Omitted when unknown. */}
-        {account.email ? (
-          <>
-            <div className="truncate px-2 py-1.5 text-xs text-(--ui-text-tertiary)" title={account.email}>
-              {account.email}
-            </div>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-
         <DropdownMenuItem onSelect={() => navigate(PROFILES_ROUTE)}>
           <Codicon name="account" size="0.875rem" />
           <span>{a.profile}</span>

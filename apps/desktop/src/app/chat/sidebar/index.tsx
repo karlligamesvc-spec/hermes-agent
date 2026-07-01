@@ -99,11 +99,10 @@ import { type AppView, ARTIFACTS_ROUTE, MESSAGING_ROUTE, SKILLS_ROUTE } from '..
 import { SidebarPanelLabel } from '../../shell/sidebar-label'
 import type { SidebarNavItem } from '../../types'
 
-import { SidebarCronJobsSection } from './cron-jobs-section'
 import { AccountPanel } from './account-panel'
+import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { resolveManualSessionOrderIds } from './order'
-import { ProfileRail } from './profile-switcher'
 import { SidebarSessionRow } from './session-row'
 import { VirtualSessionList } from './virtual-session-list'
 import { type SidebarSessionGroup, type SidebarWorkspaceTree, workspaceTreeFor } from './workspace-groups'
@@ -534,6 +533,7 @@ export function ChatSidebar({
 
     if (!next.length && agentOrderIds.length) {
       setSidebarSessionOrderIds([])
+
       return
     }
 
@@ -1081,11 +1081,11 @@ export function ChatSidebar({
 
         {contentVisible && (
           <div className="shrink-0 px-0.5 pb-1 pt-0.5">
-            {/* Bottom-left account panel (avatar + name + plan → popover menu),
-                above the profile rail. Renders only on managed builds when
-                signed in; the auth gate covers the signed-out case. */}
+            {/* Codex-style bottom-left account row (avatar + name + email →
+                popover menu). Renders only on managed builds when signed in; the
+                auth gate covers the signed-out case. Profile management lives in
+                the account menu (个人资料), so no separate profile rail. */}
             <AccountPanel />
-            <ProfileRail />
           </div>
         )}
       </SidebarContent>
