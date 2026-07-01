@@ -130,12 +130,19 @@ try {
   }
 }
 
+// Data continuity across the APEX brand rename: Electron derives the DEFAULT
+// userData dir from productName, so renaming "ApexNodes" → "APEX" would move
+// it to …/APEX and abandon every existing install's state (connection.json,
+// updates.json and apex-managed.json — the managed-LLM login). Pin userData to
+// the historical ApexNodes directory BEFORE any app.getPath('userData') use
+// below. Verified on Electron 40: this single setPath also re-points
+// sessionData (cookies/localStorage), so remote-gateway sessions survive too.
+// HERMES_DESKTOP_USER_DATA_DIR still wins when set (tests / sandboxed runs).
+const { resolveUserDataDir } = require('./user-data-dir.cjs')
 const USER_DATA_OVERRIDE = process.env.HERMES_DESKTOP_USER_DATA_DIR
-if (USER_DATA_OVERRIDE) {
-  const resolvedUserData = path.resolve(USER_DATA_OVERRIDE)
-  fs.mkdirSync(resolvedUserData, { recursive: true })
-  app.setPath('userData', resolvedUserData)
-}
+const RESOLVED_USER_DATA_DIR = resolveUserDataDir(app.getPath('appData'), USER_DATA_OVERRIDE)
+fs.mkdirSync(RESOLVED_USER_DATA_DIR, { recursive: true })
+app.setPath('userData', RESOLVED_USER_DATA_DIR)
 
 const DEV_SERVER = process.env.HERMES_DESKTOP_DEV_SERVER
 const IS_PACKAGED = app.isPackaged
@@ -661,7 +668,11 @@ const BOOT_FAKE_STEP_MS = (() => {
   if (!Number.isFinite(raw) || raw <= 0) return 650
   return Math.max(120, raw)
 })()
-const APP_NAME = 'Hermes'
+// User-visible product name: drives app.setName (macOS menu-bar app menu —
+// 关于/隐藏/退出), the native About panel, and the fallback notification title.
+// The userData pin near the top of this file deliberately does NOT follow this
+// name — see user-data-dir.cjs.
+const APP_NAME = 'APEX'
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
 const WINDOW_BUTTON_POSITION = {
@@ -2354,7 +2365,12 @@ async function applyUpdatesPosixInApp() {
     return { ok: false, backendUpdated: true, error: 'desktop rebuild failed' }
   }
 
+  // The rebuilt bundle's name comes from the SOURCE tree's productName at
+  // update time: 'APEX.app' after the brand rename, 'ApexNodes.app' for an
+  // older checkout. Accept both so an in-flight update never misses the build.
   const rebuiltApp = [
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'APEX.app'),
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'APEX.app'),
     path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'ApexNodes.app'),
     path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'ApexNodes.app')
   ].find(directoryExists)
@@ -4257,7 +4273,7 @@ function openOauthLoginWindow(baseUrl) {
       win = new BrowserWindow({
         width: 520,
         height: 720,
-        title: 'Sign in to Hermes gateway',
+        title: '登录 APEX',
         autoHideMenuBar: true,
         webPreferences: {
           contextIsolation: true,
@@ -5751,7 +5767,7 @@ function spawnSecondaryWindow({ sessionId, watch, newSession } = {}) {
     height: SESSION_WINDOW_MIN_HEIGHT,
     minWidth: SESSION_WINDOW_MIN_WIDTH,
     minHeight: SESSION_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: 'APEX',
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -5815,7 +5831,7 @@ function createWindow() {
     height: 800,
     minWidth: 400,
     minHeight: 620,
-    title: 'Hermes',
+    title: 'APEX',
     // Frameless title bar on every platform so the renderer can paint the
     // "hide sidebar" button (and other left-side titlebar tools) flush with
     // the top edge — matching the macOS layout where the traffic lights sit
@@ -6581,7 +6597,7 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
   // and the body click still works.
   const actions = Array.isArray(payload?.actions) ? payload.actions : []
   const notification = new Notification({
-    title: payload?.title || 'Hermes',
+    title: payload?.title || APP_NAME,
     body: payload?.body || '',
     silent: Boolean(payload?.silent),
     actions: actions.map(action => ({ type: 'button', text: String(action?.text || '') }))

@@ -1,6 +1,6 @@
 {
   "name": "hermes",
-  "productName": "ApexNodes",
+  "productName": "APEX",
   "private": true,
   "version": "0.15.1",
   "description": "Native desktop shell for Hermes Agent.",
@@ -37,7 +37,7 @@
     "test:desktop:nsis": "node scripts/test-desktop.mjs nsis",
     "test:desktop:existing": "node scripts/test-desktop.mjs existing",
     "test:desktop:fresh": "node scripts/test-desktop.mjs fresh",
-    "test:desktop:platforms": "node --test electron/bootstrap-platform.test.cjs electron/hardening.test.cjs electron/backend-env.test.cjs electron/backend-probes.test.cjs electron/bootstrap-runner.test.cjs electron/connection-config.test.cjs electron/apex-managed.test.cjs electron/apex-runtime-latest.test.cjs electron/apex-loopback.test.cjs electron/dashboard-token.test.cjs electron/gateway-ws-probe.test.cjs electron/oauth-net-request.test.cjs electron/desktop-uninstall.test.cjs electron/session-windows.test.cjs electron/workspace-cwd.test.cjs electron/fs-read-dir.test.cjs electron/git-root.test.cjs electron/windows-child-process.test.cjs electron/update-remote.test.cjs electron/update-rebuild.test.cjs electron/windows-user-env.test.cjs",
+    "test:desktop:platforms": "node --test electron/bootstrap-platform.test.cjs electron/hardening.test.cjs electron/backend-env.test.cjs electron/backend-probes.test.cjs electron/bootstrap-runner.test.cjs electron/connection-config.test.cjs electron/apex-managed.test.cjs electron/apex-runtime-latest.test.cjs electron/apex-loopback.test.cjs electron/dashboard-token.test.cjs electron/gateway-ws-probe.test.cjs electron/oauth-net-request.test.cjs electron/desktop-uninstall.test.cjs electron/session-windows.test.cjs electron/user-data-dir.test.cjs electron/workspace-cwd.test.cjs electron/fs-read-dir.test.cjs electron/git-root.test.cjs electron/windows-child-process.test.cjs electron/update-remote.test.cjs electron/update-rebuild.test.cjs electron/windows-user-env.test.cjs",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint src/ electron/",
     "lint:fix": "eslint src/ electron/ --fix",
@@ -136,17 +136,17 @@
   "build": {
     "electronVersion": "40.10.2",
     "appId": "com.apexnodes.desktop",
-    "productName": "ApexNodes",
-    "executableName": "ApexNodes",
+    "productName": "APEX",
+    "executableName": "APEX",
     "protocols": [
       {
-        "name": "ApexNodes Protocol",
+        "name": "APEX Protocol",
         "schemes": [
           "apexnodes"
         ]
       }
     ],
-    "artifactName": "ApexNodes-${version}-${os}-${arch}.${ext}",
+    "artifactName": "APEX-${version}-${os}-${arch}.${ext}",
     "icon": "assets/icon",
     "directories": {
       "output": "release"
@@ -195,15 +195,15 @@
       "dist/**"
     ],
     "mac": {
-      "category": "public.app-category.developer-tools",
+      "category": "public.app-category.productivity",
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
       "extendInfo": {
-        "CFBundleDisplayName": "ApexNodes",
-        "CFBundleExecutable": "ApexNodes",
-        "CFBundleName": "ApexNodes",
-        "NSAudioCaptureUsageDescription": "Hermes uses audio capture for voice conversations.",
-        "NSMicrophoneUsageDescription": "Hermes uses the microphone for voice input and voice conversations."
+        "CFBundleDisplayName": "APEX",
+        "CFBundleExecutable": "APEX",
+        "CFBundleName": "APEX",
+        "NSAudioCaptureUsageDescription": "APEX uses audio capture for voice conversations.",
+        "NSMicrophoneUsageDescription": "APEX uses the microphone for voice input and voice conversations."
       },
       "gatekeeperAssess": false,
       "hardenedRuntime": true,
@@ -213,7 +213,7 @@
       ]
     },
     "dmg": {
-      "title": "Install ApexNodes",
+      "title": "Install APEX",
       "backgroundColor": "#f5f5f7",
       "iconSize": 96,
       "window": {
@@ -235,7 +235,7 @@
       ]
     },
     "win": {
-      "legalTrademarks": "ApexNodes",
+      "legalTrademarks": "APEX",
       "target": [
         "nsis",
         "msi"
@@ -243,7 +243,7 @@
       "signAndEditExecutable": false
     },
     "linux": {
-      "category": "Development",
+      "category": "Utility",
       "maintainer": "Nous Research <support@nousresearch.com>",
       "synopsis": "Native desktop shell for Hermes Agent.",
       "target": [
@@ -256,8 +256,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "shortcutName": "ApexNodes",
-      "uninstallDisplayName": "ApexNodes",
+      "shortcutName": "APEX",
+      "uninstallDisplayName": "APEX",
       "warningsAsErrors": false
     }
   }

@@ -1151,6 +1151,13 @@ export interface Translations {
       /** "用 APEX 登录" browser (loopback) sign-in button. */
       signInApex: string
     }
+    /** Success toast once a provider is connected and onboarding completes
+     *  (store/onboarding notifyReady). `message` receives the connected
+     *  provider's label; a locale may ignore it. */
+    ready: {
+      title: string
+      message: (provider: string) => string
+    }
     /** Clean prompt shown when a provider is seeded (DeepSeek) but its key is
      *  missing — replaces the raw "no usable credentials" runtime error. */
     addKeyToStart: string
