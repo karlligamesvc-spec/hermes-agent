@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { HermesWorktreeInfo } from '@/global'
 import type { SessionInfo } from '@/types/hermes'
 
-import { uniqueCwds, workspaceGroupsFor, workspaceTreeFor, type WorktreeResolver } from './workspace-groups'
+import { isProjectCwd, uniqueCwds, workspaceGroupsFor, workspaceTreeFor, type WorktreeResolver } from './workspace-groups'
 
 let nextId = 0
 
@@ -145,5 +145,30 @@ describe('workspaceTreeFor', () => {
 describe('uniqueCwds', () => {
   it('dedupes and drops empty/whitespace cwds', () => {
     expect(uniqueCwds([makeSession('/a'), makeSession('/a'), makeSession(null), makeSession('   ')])).toEqual(['/a'])
+  })
+})
+
+describe('isProjectCwd', () => {
+  it('rejects empty / null / whitespace cwds', () => {
+    expect(isProjectCwd(null)).toBe(false)
+    expect(isProjectCwd(undefined)).toBe(false)
+    expect(isProjectCwd('')).toBe(false)
+    expect(isProjectCwd('   ')).toBe(false)
+  })
+
+  it('rejects home directories on macOS, Linux, and Windows', () => {
+    expect(isProjectCwd('/Users/karl')).toBe(false)
+    expect(isProjectCwd('/Users/karl/')).toBe(false)
+    expect(isProjectCwd('/home/ubuntu')).toBe(false)
+    expect(isProjectCwd('/root')).toBe(false)
+    expect(isProjectCwd('C:\\Users\\karl')).toBe(false)
+    expect(isProjectCwd('c:/Users/karl')).toBe(false)
+  })
+
+  it('accepts real project folders, including ones under home', () => {
+    expect(isProjectCwd('/Users/karl/projects/hermes-cloud')).toBe(true)
+    expect(isProjectCwd('/home/ubuntu/app')).toBe(true)
+    expect(isProjectCwd('/srv/data')).toBe(true)
+    expect(isProjectCwd('C:\\Users\\karl\\work')).toBe(true)
   })
 })

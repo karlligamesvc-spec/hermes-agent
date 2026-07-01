@@ -1,17 +1,19 @@
 import { IconDownload, IconRefresh, IconUpload } from '@tabler/icons-react'
 import { useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Archive, Bell, Globe, Info, KeyRound, Settings2, Sparkles, Wrench, Zap } from '@/lib/icons'
+import { Archive, Bell, Globe, Info, KeyRound, MessageCircle, Package, Settings2, Sparkles, Wrench, Zap } from '@/lib/icons'
 import { notifyError } from '@/store/notifications'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
 import { OverlayIconButton } from '../overlays/overlay-chrome'
 import { OverlayMain, OverlayNavItem, OverlaySidebar, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import { OverlayView } from '../overlays/overlay-view'
+import { ARTIFACTS_ROUTE, MESSAGING_ROUTE } from '../routes'
 
 import { AboutSettings } from './about-settings'
 import { AppearanceSettings } from './appearance-settings'
@@ -38,6 +40,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
 
 export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const { t } = useI18n()
+  const navigate = useNavigate()
   const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:model' as SettingsViewId)
   // Providers subnav (Accounts vs API keys) lives in its own param so each
   // sub-view is deep-linkable and survives a refresh.
@@ -175,6 +178,22 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             icon={Archive}
             label={t.settings.nav.archivedChats}
             onClick={() => setActiveView('sessions')}
+          />
+          <div className="my-2 h-px bg-border/30" />
+          {/* 消息平台 / 产物 moved off the sidebar's first screen (Codex-style
+              restructure): they live here now, as plain jumps to their existing
+              full-screen routes. Navigating away closes the settings overlay. */}
+          <OverlayNavItem
+            active={false}
+            icon={MessageCircle}
+            label={t.commandCenter.nav.messaging.title}
+            onClick={() => navigate(MESSAGING_ROUTE)}
+          />
+          <OverlayNavItem
+            active={false}
+            icon={Package}
+            label={t.commandCenter.nav.artifacts.title}
+            onClick={() => navigate(ARTIFACTS_ROUTE)}
           />
           <div className="my-2 h-px bg-border/30" />
           <OverlayNavItem

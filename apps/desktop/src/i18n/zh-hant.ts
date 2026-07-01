@@ -907,9 +907,9 @@ export const zhHant = defineLocale({
       usage: '一段時間內的詞元、費用和技能活動'
     },
     nav: {
-      newChat: { title: '新工作階段', detail: '開始新的工作階段' },
+      newChat: { title: '新對話', detail: '開始新的對話' },
       settings: { title: '設定', detail: '設定 APEX 桌面端' },
-      skills: { title: '技能與工具', detail: '啟用技能、工具集和提供方' },
+      skills: { title: '外掛', detail: '啟用技能、工具集和提供方' },
       messaging: { title: '訊息平台', detail: '設定 Telegram、Slack、Discord 等' },
       artifacts: { title: '成品', detail: '瀏覽產生的輸出' }
     },
@@ -1307,18 +1307,19 @@ export const zhHant = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新工作階段',
-      skills: '技能與工具',
-      messaging: '訊息平台',
-      artifacts: '成品'
+      'new-session': '新對話',
+      search: '搜尋',
+      cron: '已安排',
+      skills: '外掛'
     },
     searchAria: '搜尋工作階段',
     searchPlaceholder: '搜尋工作階段…',
     clearSearch: '清除搜尋',
     noMatch: query => `沒有工作階段符合「${query}」。`,
     results: '結果',
-    pinned: '已釘選',
-    sessions: '工作階段',
+    pinned: '置頂',
+    projects: '專案',
+    sessions: '對話',
     cronJobs: '排程任務',
     groupAriaGrouped: '以單一清單顯示工作階段',
     groupAriaUngrouped: '依工作區分組工作階段',

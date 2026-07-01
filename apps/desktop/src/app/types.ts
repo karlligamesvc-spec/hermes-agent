@@ -122,14 +122,16 @@ export type CommandDispatchResponse =
   | SendCommandDispatchResponse
   | PrefillCommandDispatchResponse
 
-export type SidebarNavId = 'artifacts' | 'command-center' | 'messaging' | 'new-session' | 'settings' | 'skills'
+export type SidebarNavId = 'command-center' | 'cron' | 'new-session' | 'search' | 'settings' | 'skills'
 
 export interface SidebarNavItem {
   id: SidebarNavId
   label: string
   icon: React.ComponentType<{ className?: string }>
   route?: string
-  action?: 'new-session'
+  // 'new-session' starts a fresh draft; 'search' is handled inside the sidebar
+  // (toggles the session search field) and never reaches onNavigate.
+  action?: 'new-session' | 'search'
 }
 
 export interface ClientSessionState {

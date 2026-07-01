@@ -1004,9 +1004,9 @@ export const zh: Translations = {
       usage: '一段时间内的词元、成本与技能活动'
     },
     nav: {
-      newChat: { title: '新建会话', detail: '开始一个新会话' },
+      newChat: { title: '新对话', detail: '开始一个新对话' },
       settings: { title: '设置', detail: '配置 APEX 桌面端' },
-      skills: { title: '技能与工具', detail: '启用技能、工具集与提供方' },
+      skills: { title: '插件', detail: '启用技能、工具集与提供方' },
       messaging: { title: '消息平台', detail: '配置 Telegram、Slack、Discord 等' },
       artifacts: { title: '产物', detail: '浏览生成的输出' }
     },
@@ -1409,18 +1409,19 @@ export const zh: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': '新建会话',
-      skills: '技能与工具',
-      messaging: '消息平台',
-      artifacts: '产物'
+      'new-session': '新对话',
+      search: '搜索',
+      cron: '已安排',
+      skills: '插件'
     },
     searchAria: '搜索会话',
     searchPlaceholder: '搜索会话…',
     clearSearch: '清除搜索',
     noMatch: query => `没有会话匹配"${query}"。`,
     results: '结果',
-    pinned: '已置顶',
-    sessions: '会话',
+    pinned: '置顶',
+    projects: '项目',
+    sessions: '对话',
     cronJobs: '定时任务',
     groupAriaGrouped: '以单一列表显示会话',
     groupAriaUngrouped: '按工作区分组会话',

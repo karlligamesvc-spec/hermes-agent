@@ -967,6 +967,7 @@ export interface Translations {
     noMatch: (query: string) => string
     results: string
     pinned: string
+    projects: string
     sessions: string
     cronJobs: string
     groupAriaGrouped: string
