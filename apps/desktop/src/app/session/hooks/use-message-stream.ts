@@ -46,7 +46,8 @@ import {
   setCurrentServiceTier,
   setCurrentUsage,
   setTurnStartedAt,
-  setYoloActive
+  setYoloActive,
+  shouldHonorRemoteReasoning
 } from '@/store/session'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { clearSessionSubagents, pruneDelegateFallbackSubagents, upsertSubagent } from '@/store/subagents'
@@ -730,6 +731,14 @@ export function useMessageStream({
         // session, OR when it's a global broadcast and we have no session.
         const apply = explicitSid ? isActiveEvent : !activeSessionIdRef.current
         const statePatch = sessionInfoStatePatch(payload)
+
+        // Drop a stale reasoning effort that contradicts a very recent local
+        // pick (the model-switch race) so it can't clobber the cache → view via
+        // updateSessionState below (see shouldHonorRemoteReasoning).
+        if (statePatch.reasoningEffort !== undefined && !shouldHonorRemoteReasoning(statePatch.reasoningEffort)) {
+          delete statePatch.reasoningEffort
+        }
+
         const hasStatePatch = hasSessionInfoStatePatch(statePatch)
         const modelChanged = typeof payload?.model === 'string'
         const providerChanged = typeof payload?.provider === 'string'
@@ -756,7 +765,7 @@ export function useMessageStream({
             setCurrentPersonality(normalizePersonalityValue(payload.personality))
           }
 
-          if (typeof payload?.reasoning_effort === 'string') {
+          if (typeof payload?.reasoning_effort === 'string' && shouldHonorRemoteReasoning(payload.reasoning_effort)) {
             setCurrentReasoningEffort(payload.reasoning_effort)
           }
 

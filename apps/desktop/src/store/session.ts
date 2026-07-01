@@ -304,6 +304,39 @@ export const setCurrentReasoningEffort = (next: Updater<string>) => {
   persistString(COMPOSER_EFFORT_KEY, $currentReasoningEffort.get() || null)
 }
 
+// Switching models makes the backend re-broadcast the session's *pre-override*
+// reasoning effort in a slightly-delayed session.info — that stale event would
+// clobber the effort we just applied for the new model (the "switching models
+// resets reasoning to 中" bug). Remember the last locally-chosen effort briefly
+// so the session.info sync can ignore a contradicting remote value in that
+// window; after it lapses (or once the backend echoes our value) remote wins
+// again, so a genuine external change still lands and nothing gets stuck.
+let localReasoningIntentValue: string | null = null
+let localReasoningIntentAt = 0
+const REASONING_INTENT_WINDOW_MS = 5000
+
+/** Record an effort the user just chose locally (radio pick or model-switch
+ *  preset), shielding it from a racing stale session.info for a short window. */
+export const markLocalReasoningIntent = (value: string) => {
+  localReasoningIntentValue = value
+  localReasoningIntentAt = Date.now()
+}
+
+/** Whether a backend-reported reasoning effort should be applied, or dropped as
+ *  a stale contradiction of a very recent local choice (see above). */
+export const shouldHonorRemoteReasoning = (remote: string): boolean =>
+  localReasoningIntentValue === null ||
+  remote === localReasoningIntentValue ||
+  Date.now() - localReasoningIntentAt >= REASONING_INTENT_WINDOW_MS
+
+/** Retire any pending reasoning intent — called on a real session switch, where
+ *  the newly focused session's own effort must sync in unconditionally (the
+ *  guard only shields against a same-session model-switch race). */
+export const clearLocalReasoningIntent = () => {
+  localReasoningIntentValue = null
+  localReasoningIntentAt = 0
+}
+
 export const setCurrentServiceTier = (next: Updater<string>) => updateAtom($currentServiceTier, next)
 
 export const setCurrentFastMode = (next: Updater<boolean>) => {

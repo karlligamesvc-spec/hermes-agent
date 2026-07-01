@@ -42,6 +42,7 @@ import {
   $currentModel,
   $currentProvider,
   $currentReasoningEffort,
+  markLocalReasoningIntent,
   setCurrentFastMode,
   setCurrentReasoningEffort
 } from '@/store/session'
@@ -246,6 +247,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
     const prev = currentReasoningEffort
     setModelPreset(optionsProvider, optionsModel, { effort: next })
+    markLocalReasoningIntent(next)
     setCurrentReasoningEffort(next)
 
     if (!activeSessionId) {
@@ -255,6 +257,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     try {
       await requestGateway('config.set', { key: 'reasoning', session_id: activeSessionId, value: next })
     } catch (err) {
+      markLocalReasoningIntent(prev)
       setCurrentReasoningEffort(prev)
       setModelPreset(optionsProvider, optionsModel, { effort: prev })
       notifyError(err, modelOptionsCopy.updateFailed)

@@ -8,6 +8,7 @@ import { setMutableRef } from '@/lib/mutable-ref'
 import {
   $busy,
   $messages,
+  clearLocalReasoningIntent,
   noteSessionActivity,
   setCurrentFastMode,
   setCurrentModel,
@@ -18,7 +19,8 @@ import {
   setSessionAttention,
   setSessionWorking,
   setTurnStartedAt,
-  setYoloActive
+  setYoloActive,
+  shouldHonorRemoteReasoning
 } from '@/store/session'
 
 import type { ClientSessionState } from '../../types'
@@ -57,7 +59,14 @@ interface SessionStateCacheOptions {
 function syncRuntimeMetadataToView(state: ClientSessionState) {
   setCurrentModel(state.model ?? '')
   setCurrentProvider(state.provider ?? '')
-  setCurrentReasoningEffort(state.reasoningEffort ?? '')
+
+  // Skip a cached effort that contradicts a very recent local pick — on a model
+  // switch the cache can still hold the prior model's effort, which would clobber
+  // the one we just applied (see shouldHonorRemoteReasoning).
+  if (shouldHonorRemoteReasoning(state.reasoningEffort ?? '')) {
+    setCurrentReasoningEffort(state.reasoningEffort ?? '')
+  }
+
   setCurrentServiceTier(state.serviceTier ?? '')
   setCurrentFastMode(state.fast ?? false)
   setYoloActive(state.yolo ?? false)
@@ -85,6 +94,10 @@ export function useSessionStateCache({
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId
+    // Retire any pending reasoning intent on a session switch so the newly
+    // focused session's own effort syncs in (the guard only shields against a
+    // same-session model-switch race, where activeSessionId doesn't change).
+    clearLocalReasoningIntent()
   }, [activeSessionId])
 
   useEffect(() => {
@@ -145,6 +158,7 @@ export function useSessionStateCache({
     // jerks the scroll position while the user is reading. Skip the publish when
     // the merged result is content-identical to what's already on screen.
     const currentMessages = $messages.get()
+
     // On a thread switch `$messages` still holds the *previous* thread, so
     // preserving its local errors would graft that thread's failed turn (e.g.
     // an out-of-funds error) onto this one — then cascade it everywhere as the
