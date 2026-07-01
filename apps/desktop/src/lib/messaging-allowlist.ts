@@ -1,37 +1,41 @@
 import type { MessagingPlatformInfo } from '@/types/hermes'
 
 // ApexNodes is a China-first managed product, so the 消息平台 (messaging) picker
-// hides platforms that aren't usable from mainland China (blocked / need a VPN).
+// shows ONLY channels usable from mainland China. This is an ALLOWLIST: the
+// domestic set is small and closed (the runtime Platform enum in
+// gateway/config.py), while the foreign + plugin set is large and open-ended
+// (Telegram / WhatsApp / Line / Google Chat / Teams / IRC / Ntfy / Simplex / …,
+// several of them not even in the core enum). A denylist can't keep up — a new
+// foreign/plugin platform silently leaks in — so we list the keepers instead:
+// anything not enumerated here (including future foreign platforms) is hidden.
 //
-// Unlike the model picker (see lib/provider-allowlist.ts, an ALLOWLIST because
-// foreign providers are open-ended — 200+ via aggregators), the messaging
-// platform set is small and closed, and the *domestic* set is what keeps growing
-// (钉钉 / 飞书 / 企业微信 / 个人微信 / QQ / 元宝 + future ones). So here we exclude
-// by an explicit FOREIGN denylist — that guarantees we never accidentally hide a
-// domestic platform we didn't enumerate. Email / webhook / API server are
-// region-neutral and stay.
+// Kept: domestic IMs (钉钉 / 飞书·Lark / 企业微信 ×2 / 个人微信 / QQ / 元宝) plus
+// the region-neutral endpoints (Email / API server / Webhook) that work anywhere.
 //
 // Display-only: the runtime platform adapters (gateway/platforms/*.py) are
 // untouched — a hidden platform is simply not offered in the desktop UI.
 //
-// To hide a newly-added foreign platform: drop its runtime id into FOREIGN_PLATFORM_IDS.
-export const FOREIGN_PLATFORM_IDS: ReadonlySet<string> = new Set([
-  'telegram',
-  'discord',
-  'slack',
-  'mattermost',
-  'matrix',
-  'signal',
-  'whatsapp',
-  'bluebubbles', // iMessage bridge — needs a Mac + Apple ID, impractical in CN
-  'homeassistant', // smart-home hub, not a CN messaging app
-  'sms' // Twilio SMS gateway — no mainland delivery
+// Ids are the runtime Platform enum values (gateway/config.py); matched
+// case-insensitively against the id the desktop receives. To surface a new
+// domestic platform, add its runtime id here.
+export const DOMESTIC_PLATFORM_IDS: ReadonlySet<string> = new Set([
+  'dingtalk', // 钉钉
+  'feishu', // 飞书 / Lark
+  'wecom', // 企业微信 (群机器人)
+  'wecom_callback', // 企业微信 (应用)
+  'weixin', // 个人微信 WeChat (Personal)
+  'qqbot', // QQ Bot
+  'yuanbao', // 元宝 (腾讯)
+  'email', // region-neutral
+  'api_server', // region-neutral programmatic endpoint
+  'webhook' // region-neutral programmatic endpoint
 ])
 
-/** True when a messaging platform should show in the China-first picker (i.e. it
- *  is not on the foreign denylist). Matched case-insensitively on the runtime id. */
+/** True when a messaging platform is usable from mainland China and should show
+ *  in the picker (i.e. it is on the domestic allowlist). Matched
+ *  case-insensitively on the runtime id. */
 export function isDomesticPlatform(id: string): boolean {
-  return !FOREIGN_PLATFORM_IDS.has(String(id || '').trim().toLowerCase())
+  return DOMESTIC_PLATFORM_IDS.has(String(id || '').trim().toLowerCase())
 }
 
 /** Keep only the messaging platforms the China-first picker should show. Order
