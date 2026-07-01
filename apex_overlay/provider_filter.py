@@ -68,19 +68,57 @@ _TARGET_LIST_FN = "list_authenticated_providers"
 _APPLIED = False
 _MARK = "_apex_overlay_provider_filter"
 
+# CN-mode implicit denylist. In a mainland-China deployment these foreign model
+# gateways are never reachable without a proxy, so probing them at startup for a
+# live ``/v1/models`` catalog only stalls the picker on a doomed trans-wall
+# request. We add them to the denylist *only when* the runtime is in CN mode
+# (``apex_overlay.region.is_cn_mode()``) — they must stay probeable on global
+# deployments, where e.g. OpenRouter is the DEFAULT ``base_url``. Because this
+# can't be expressed by the static (always-on) ``model.disabled_providers``
+# config key, it lives here and rides the exact same tested denylist machinery
+# (both spellings via ``_provider_aliases``, both patch points) — no new patch
+# point, no code path that isn't already covered by the pilot seam.
+#
+#   openrouter   -> foreign aggregator; api.openrouter.ai
+#   nous         -> Nous Portal (nousresearch.com),墙外
+#   copilot      -> GitHub Copilot; api.githubcopilot.com (also in config,
+#                   listed here so CN mode covers it even if config is edited)
+_CN_DISABLED_PROVIDERS = frozenset({"openrouter", "nous", "copilot"})
+
+
+def _cn_disabled_provider_set() -> set:
+    """CN-mode implicit denylist, or empty set outside CN mode / on error."""
+    try:
+        from apex_overlay.region import is_cn_mode
+
+        if is_cn_mode():
+            return set(_CN_DISABLED_PROVIDERS)
+    except Exception:
+        pass
+    return set()
+
 
 # ---------------------------------------------------------------------------
 # Denylist source (config) — mirrors the original hc-392 in-place logic
 # ---------------------------------------------------------------------------
 
 def disabled_provider_set() -> set:
-    """Return the lowercased ``model.disabled_providers`` denylist from config.
+    """Return the effective lowercased provider denylist.
 
-    Read fresh every call so a config edit between ``/model`` opens takes
-    effect without a restart. Defensive: a malformed config yields an empty
-    set (no providers disabled), never an exception. Mirrors the exact shape
-    the original in-place hc-392 block parsed.
+    Union of two sources, read fresh every call so a config edit or a region
+    change between ``/model`` opens takes effect without a restart:
+
+    * ``model.disabled_providers`` from config — the always-on data seam
+      (hc-392; ships with ``copilot``). Mirrors the exact shape the original
+      in-place hc-392 block parsed.
+    * The CN-mode implicit set (:data:`_CN_DISABLED_PROVIDERS`) — added only
+      when the runtime is in China mode, to keep the picker from probing
+      wall-blocked foreign gateways at startup.
+
+    Defensive: a malformed config or region lookup contributes an empty set
+    (fail-open, never an exception).
     """
+    denied: set = set()
     try:
         from hermes_cli.config import load_config_readonly
 
@@ -89,10 +127,11 @@ def disabled_provider_set() -> set:
         if isinstance(dp, str):
             dp = [dp]
         if dp:
-            return {str(p).strip().lower() for p in dp if str(p).strip()}
+            denied |= {str(p).strip().lower() for p in dp if str(p).strip()}
     except Exception:
         pass
-    return set()
+    denied |= _cn_disabled_provider_set()
+    return denied
 
 
 def is_disabled(*slugs: str) -> bool:

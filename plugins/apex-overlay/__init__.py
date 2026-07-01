@@ -47,6 +47,18 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
 
     try:
+        from apex_overlay import models_dev_fast
+
+        if not models_dev_fast.apply():
+            logger.warning(
+                "apex-overlay: non-blocking models.dev fetch seam did not fully "
+                "apply (see prior error). The /model picker may block on a live "
+                "~2.4MB models.dev catalog fetch (7-15s from mainland China)."
+            )
+    except Exception:
+        logger.warning("apex-overlay: models_dev_fast seam failed to load", exc_info=True)
+
+    try:
         from apex_overlay import gateway_bootstrap
 
         if not gateway_bootstrap.apply():
