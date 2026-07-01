@@ -764,9 +764,9 @@ export const en: Translations = {
       usage: 'Token, cost, and skill activity over time'
     },
     nav: {
-      newChat: { title: 'New session', detail: 'Start a fresh session' },
+      newChat: { title: 'New chat', detail: 'Start a fresh chat' },
       settings: { title: 'Settings', detail: 'Configure Hermes desktop' },
-      skills: { title: 'Skills & Tools', detail: 'Enable skills, toolsets, and providers' },
+      skills: { title: 'Plugins', detail: 'Enable skills, toolsets, and providers' },
       messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
       artifacts: { title: 'Artifacts', detail: 'Browse generated outputs' }
     },
@@ -1173,10 +1173,10 @@ export const en: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': 'New session',
-      skills: 'Skills & Tools',
-      messaging: 'Messaging',
-      artifacts: 'Artifacts'
+      'new-session': 'New chat',
+      search: 'Search',
+      cron: 'Scheduled',
+      skills: 'Plugins'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',
@@ -1184,7 +1184,8 @@ export const en: Translations = {
     noMatch: query => `No sessions match “${query}”.`,
     results: 'Results',
     pinned: 'Pinned',
-    sessions: 'Sessions',
+    projects: 'Projects',
+    sessions: 'Chats',
     cronJobs: 'Cron jobs',
     groupAriaGrouped: 'Show sessions as a single list',
     groupAriaUngrouped: 'Group sessions by workspace',

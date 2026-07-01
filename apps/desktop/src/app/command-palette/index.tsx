@@ -309,7 +309,7 @@ export function CommandPalette() {
             action: 'nav.skills',
             icon: Wrench,
             id: 'nav-skills',
-            keywords: ['tools', 'toolsets'],
+            keywords: ['tools', 'toolsets', 'plugins', 'skills'],
             label: cc.nav.skills.title,
             run: go(SKILLS_ROUTE)
           },
@@ -331,8 +331,8 @@ export function CommandPalette() {
             action: 'nav.cron',
             icon: Clock,
             id: 'nav-cron',
-            keywords: ['schedule', 'jobs'],
-            label: t.shell.statusbar.cron,
+            keywords: ['schedule', 'scheduled', 'jobs', 'cron'],
+            label: t.sidebar.nav.cron,
             run: go(CRON_ROUTE)
           },
           { action: 'nav.profiles', icon: Users, id: 'nav-profiles', label: t.profiles.title, run: go(PROFILES_ROUTE) },

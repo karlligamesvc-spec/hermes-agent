@@ -17,6 +17,24 @@ export interface SidebarSessionGroup {
 
 const NO_WORKSPACE_ID = '__no_workspace__'
 
+// A "home-like" cwd is where default (non-project) chats run: the OS home
+// directory itself. Sessions there are plain chats; any other folder is a
+// project (Codex-style Projects section). Matched purely on the path shape —
+// the renderer has no homedir API, and packaged builds default new sessions to
+// exactly `app.getPath('home')` (see electron/main.cjs resolveHermesCwd).
+const HOME_DIR_RE = /^(?:\/(?:Users|home)\/[^/\\]+|\/root|[A-Za-z]:[\\/]Users[\\/][^/\\]+)[/\\]?$/
+
+/** True when a session cwd points at a real project folder (non-empty, not the home dir). */
+export function isProjectCwd(cwd: null | string | undefined): boolean {
+  const path = cwd?.trim()
+
+  if (!path) {
+    return false
+  }
+
+  return !HOME_DIR_RE.test(path)
+}
+
 /** Path split into segments, ignoring trailing slashes and mixed separators. */
 const segments = (path: string): string[] => path.replace(/[/\\]+$/, '').split(/[/\\]/).filter(Boolean)
 

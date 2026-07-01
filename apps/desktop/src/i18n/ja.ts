@@ -866,9 +866,9 @@ export const ja = defineLocale({
       usage: 'トークン、コスト、スキルの活動履歴'
     },
     nav: {
-      newChat: { title: '新しいセッション', detail: '新しいセッションを開始' },
+      newChat: { title: '新しいチャット', detail: '新しいチャットを開始' },
       settings: { title: '設定', detail: 'Hermes デスクトップを設定' },
-      skills: { title: 'スキルとツール', detail: 'スキル、ツールセット、プロバイダーを有効化' },
+      skills: { title: 'プラグイン', detail: 'スキル、ツールセット、プロバイダーを有効化' },
       messaging: { title: 'メッセージング', detail: 'Telegram、Slack、Discord などを設定' },
       artifacts: { title: 'アーティファクト', detail: '生成された出力を閲覧' }
     },
@@ -1284,10 +1284,10 @@ export const ja = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新しいセッション',
-      skills: 'スキルとツール',
-      messaging: 'メッセージング',
-      artifacts: 'アーティファクト'
+      'new-session': '新しいチャット',
+      search: '検索',
+      cron: '予定済み',
+      skills: 'プラグイン'
     },
     searchAria: 'セッションを検索',
     searchPlaceholder: 'セッションを検索…',
@@ -1295,7 +1295,8 @@ export const ja = defineLocale({
     noMatch: query => `"${query}" に一致するセッションがありません。`,
     results: '結果',
     pinned: 'ピン留め',
-    sessions: 'セッション',
+    projects: 'プロジェクト',
+    sessions: 'チャット',
     cronJobs: 'Cronジョブ',
     groupAriaGrouped: 'セッションを単一リストとして表示',
     groupAriaUngrouped: 'ワークスペースごとにセッションをグループ化',
