@@ -16,10 +16,10 @@ import { setModelPreset } from '@/store/model-presets'
 import { notifyError } from '@/store/notifications'
 import { $activeSessionId, setCurrentFastMode, setCurrentReasoningEffort } from '@/store/session'
 
-// Hermes' real reasoning levels (see VALID_REASONING_EFFORTS); `none` is owned
-// by the Thinking toggle, not the radio.
+// The reasoning levels the composer radio exposes: 低/中/高/超高 (Codex-aligned).
+// `minimal` is intentionally omitted here (still a valid backend effort + kept in
+// Settings), and `none` is owned by the Thinking toggle, not the radio.
 export const EFFORT_OPTIONS = [
-  { value: 'minimal', labelKey: 'minimal' },
   { value: 'low', labelKey: 'low' },
   { value: 'medium', labelKey: 'medium' },
   { value: 'high', labelKey: 'high' },
