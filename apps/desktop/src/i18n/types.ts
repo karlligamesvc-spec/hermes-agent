@@ -258,6 +258,8 @@ export interface Translations {
       toolViewDesc: string
       translucencyTitle: string
       translucencyDesc: string
+      haptics: string
+      hapticsDesc: string
       product: string
       productDesc: string
       technical: string

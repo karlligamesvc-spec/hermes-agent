@@ -56,8 +56,8 @@ import {
   $gatewayState,
   $messages,
   $messagingSessions,
-  $resumeFailedSessionId,
   $resumeExhaustedSessionId,
+  $resumeFailedSessionId,
   $selectedStoredSessionId,
   $sessions,
   $workingSessionIds,
@@ -911,20 +911,13 @@ export function DesktopController() {
   })
 
   const { leftStatusbarItems, statusbarItems } = useStatusbarItems({
-    agentsOpen,
     chatOpen,
-    commandCenterOpen,
     extraLeftItems: statusbarItemGroups.flat.left,
     extraRightItems: statusbarItemGroups.flat.right,
-    gatewayLogLines,
     gatewayState,
-    inferenceStatus,
-    openAgents,
     freshDraftReady,
-    openCommandCenterSection,
     requestGateway,
-    statusSnapshot,
-    toggleCommandCenter
+    statusSnapshot
   })
 
   const sidebar = (
@@ -1159,7 +1152,6 @@ export function DesktopController() {
       leftStatusbarItems={leftStatusbarItems}
       leftTitlebarTools={titlebarToolGroups.flat.left}
       mainOverlays={mainOverlays}
-      onOpenSettings={openSettings}
       overlays={overlays}
       previewPaneOpen={chatOpen && Boolean(previewTarget || filePreviewTarget)}
       statusbarItems={statusbarItems}

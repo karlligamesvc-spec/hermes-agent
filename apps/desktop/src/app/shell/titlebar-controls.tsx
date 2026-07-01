@@ -7,8 +7,6 @@ import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
-import { $hapticsMuted, toggleHapticsMuted } from '@/store/haptics'
-import { toggleKeybindPanel } from '@/store/keybinds'
 import {
   $fileBrowserOpen,
   $panesFlipped,
@@ -42,29 +40,15 @@ export type SetTitlebarToolGroup = (id: string, tools: readonly TitlebarTool[], 
 interface TitlebarControlsProps extends ComponentProps<'div'> {
   leftTools?: readonly TitlebarTool[]
   tools?: readonly TitlebarTool[]
-  onOpenSettings: () => void
 }
 
-export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }: TitlebarControlsProps) {
+export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControlsProps) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
-  const hapticsMuted = useStore($hapticsMuted)
   const fileBrowserOpen = useStore($fileBrowserOpen)
   const sidebarOpen = useStore($sidebarOpen)
   const panesFlipped = useStore($panesFlipped)
-
-  const toggleHaptics = () => {
-    if (!hapticsMuted) {
-      triggerHaptic('tap')
-    }
-
-    toggleHapticsMuted()
-
-    if (hapticsMuted) {
-      window.requestAnimationFrame(() => triggerHaptic('success'))
-    }
-  }
 
   // Each titlebar button controls the pane physically on its side, so a flip
   // swaps which pane each one toggles. Default: sessions left, file browser
@@ -108,35 +92,6 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     }
   }
 
-  // Static system tools — always pinned to the screen's right edge.
-  const systemTools: TitlebarTool[] = [
-    {
-      active: hapticsMuted,
-      icon: <Codicon name={hapticsMuted ? 'mute' : 'unmute'} />,
-      id: 'haptics',
-      label: hapticsMuted ? t.titlebar.unmuteHaptics : t.titlebar.muteHaptics,
-      onSelect: toggleHaptics
-    },
-    {
-      icon: <Codicon name="keyboard" />,
-      id: 'keybinds',
-      label: t.titlebar.openKeybinds,
-      onSelect: () => {
-        triggerHaptic('open')
-        toggleKeybindPanel()
-      }
-    },
-    {
-      icon: <Codicon name="settings-gear" />,
-      id: 'settings',
-      label: t.titlebar.openSettings,
-      onSelect: () => {
-        triggerHaptic('open')
-        onOpenSettings()
-      }
-    }
-  ]
-
   // While a full-screen overlay (settings, command center, …) is open it should
   // visually own the window. These control clusters are `fixed` at a higher
   // z-index than the overlay card, so they'd otherwise bleed over it — hide them
@@ -145,9 +100,6 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     return null
   }
 
-  const visibleSystemTools = systemTools.filter(tool => !tool.hidden)
-  const settingsTool = visibleSystemTools.find(tool => tool.id === 'settings')
-  const visibleSystemToolsBeforeSettings = visibleSystemTools.filter(tool => tool.id !== 'settings')
   const visiblePaneTools = tools.filter(tool => !tool.hidden)
 
   return (
@@ -182,14 +134,13 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         </div>
       )}
 
+      {/* Codex-minimal chrome: the old system tools (haptics / keybinds /
+          settings gear) live in Settings now — only the right-sidebar toggle
+          stays pinned to the window edge. */}
       <div
         aria-label={t.shell.appControls}
         className="fixed right-(--titlebar-tools-right) top-(--titlebar-controls-top) z-70 flex flex-row items-center justify-end gap-x-1 pointer-events-auto select-none [-webkit-app-region:no-drag]"
       >
-        {visibleSystemToolsBeforeSettings.map(tool => (
-          <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
-        ))}
-        {settingsTool && <TitlebarToolButton navigate={navigate} tool={settingsTool} />}
         <TitlebarToolButton navigate={navigate} tool={rightSidebarTool} />
       </div>
     </>

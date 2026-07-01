@@ -350,6 +350,8 @@ export const zh: Translations = {
       toolViewDesc: '产品模式隐藏原始工具数据；技术模式显示完整输入/输出。',
       translucencyTitle: '窗口透明',
       translucencyDesc: '让整个窗口透出桌面。仅支持 macOS 和 Windows。',
+      haptics: '触感反馈',
+      hapticsDesc: '操作时的轻微触感与提示反馈。',
       product: '产品',
       productDesc: '易读的工具活动与简洁摘要。',
       technical: '技术',

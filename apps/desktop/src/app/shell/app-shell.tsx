@@ -34,7 +34,6 @@ interface AppShellProps {
   // hoisting it to the root `overlays` layer (sibling of <main>, z above z-3)
   // would cover every pane's drag handle.
   mainOverlays?: ReactNode
-  onOpenSettings: () => void
   overlays?: ReactNode
   // Rails that sit at the window's left edge in the flipped layout but never
   // force-collapse to hover-reveal overlays — so they cover the top-left traffic
@@ -65,7 +64,6 @@ export function AppShell({
   leftStatusbarItems,
   leftTitlebarTools,
   mainOverlays,
-  onOpenSettings,
   overlays,
   previewPaneOpen = false,
   statusbarItems,
@@ -167,7 +165,7 @@ export function AppShell({
       }
     >
       {!hideTitlebarControls && (
-        <TitlebarControls leftTools={leftTitlebarTools} onOpenSettings={onOpenSettings} tools={titlebarTools} />
+        <TitlebarControls leftTools={leftTitlebarTools} tools={titlebarTools} />
       )}
 
       <main className="relative z-3 flex min-h-0 w-full flex-1 flex-col overflow-hidden transition-none">

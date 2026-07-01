@@ -3,10 +3,12 @@ import { useState } from 'react'
 
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { Check, Download, Loader2, Palette, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $hapticsMuted, toggleHapticsMuted } from '@/store/haptics'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
 import { $toolViewMode, setToolViewMode } from '@/store/tool-view'
 import { $translucency, setTranslucency } from '@/store/translucency'
@@ -137,6 +139,7 @@ export function AppearanceSettings() {
   const { themeName, mode, availableThemes, setTheme, setMode } = useTheme()
   const toolViewMode = useStore($toolViewMode)
   const translucency = useStore($translucency)
+  const hapticsMuted = useStore($hapticsMuted)
   const profiles = useStore($profiles)
   const activeProfileKey = normalizeProfileKey(useStore($activeGatewayProfile))
   const a = t.settings.appearance
@@ -207,6 +210,25 @@ export function AppearanceSettings() {
             }
             description={a.translucencyDesc}
             title={a.translucencyTitle}
+          />
+
+          {/* Home of the removed titlebar haptics icon — chrome stays
+              Codex-minimal, the toggle lives here now. */}
+          <ListRow
+            action={
+              <Switch
+                checked={!hapticsMuted}
+                onCheckedChange={() => {
+                  toggleHapticsMuted()
+
+                  if (!$hapticsMuted.get()) {
+                    triggerHaptic('success')
+                  }
+                }}
+              />
+            }
+            description={a.hapticsDesc}
+            title={a.haptics}
           />
 
           <ListRow

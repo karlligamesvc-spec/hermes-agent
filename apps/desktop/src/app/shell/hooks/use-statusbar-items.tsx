@@ -1,29 +1,12 @@
 import { useStore } from '@nanostores/react'
 import { useCallback, useMemo } from 'react'
 
-import type { CommandCenterSection } from '@/app/command-center'
 import { $terminalTakeover, setTerminalTakeover } from '@/app/right-sidebar/store'
-import { GatewayMenuPanel } from '@/app/shell/gateway-menu-panel'
-import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { useI18n } from '@/i18n'
-import {
-  Activity,
-  AlertCircle,
-  Clock,
-  Command,
-  Hash,
-  Loader2,
-  Sparkles,
-  Terminal,
-  Zap,
-  ZapFilled
-} from '@/lib/icons'
-import type { RuntimeReadinessResult } from '@/lib/runtime-readiness'
+import { Hash, Loader2, Terminal, Zap, ZapFilled } from '@/lib/icons'
 import { contextBarLabel, LiveDuration, usageContextLabel } from '@/lib/statusbar'
 import { cn } from '@/lib/utils'
 import { setGlobalYolo, setSessionYolo } from '@/lib/yolo-session'
-import { $desktopActionTasks } from '@/store/activity'
-import { $previewServerRestartStatus } from '@/store/preview'
 import {
   $activeSessionId,
   $busy,
@@ -31,12 +14,9 @@ import {
   $currentUsage,
   $sessionStartedAt,
   $turnStartedAt,
-  $workingSessionIds,
   $yoloActive,
   setYoloActive
 } from '@/store/session'
-import { $subagentsBySession, activeSubagentCount } from '@/store/subagents'
-import { $gatewayRestarting } from '@/store/system-actions'
 import {
   $backendUpdateApply,
   $backendUpdateStatus,
@@ -47,41 +27,26 @@ import {
 } from '@/store/updates'
 import type { StatusResponse } from '@/types/hermes'
 
-import { CRON_ROUTE } from '../../routes'
 import type { StatusbarItem, StatusbarSelectModifiers } from '../statusbar-controls'
 
 interface StatusbarItemsOptions {
-  agentsOpen: boolean
   chatOpen: boolean
-  commandCenterOpen: boolean
   extraLeftItems: readonly StatusbarItem[]
   extraRightItems: readonly StatusbarItem[]
-  gatewayLogLines: readonly string[]
   gatewayState: string
-  inferenceStatus: RuntimeReadinessResult | null
-  openAgents: () => void
-  openCommandCenterSection: (section: CommandCenterSection) => void
   freshDraftReady: boolean
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
   statusSnapshot: StatusResponse | null
-  toggleCommandCenter: () => void
 }
 
 export function useStatusbarItems({
-  agentsOpen,
   chatOpen,
-  commandCenterOpen,
   extraLeftItems,
   extraRightItems,
-  gatewayLogLines,
   gatewayState,
-  inferenceStatus,
-  openAgents,
-  openCommandCenterSection,
   freshDraftReady,
   requestGateway,
-  statusSnapshot,
-  toggleCommandCenter
+  statusSnapshot
 }: StatusbarItemsOptions) {
   const { t } = useI18n()
   const copy = t.shell.statusbar
@@ -90,13 +55,8 @@ export function useStatusbarItems({
   const yoloActive = useStore($yoloActive)
   const busy = useStore($busy)
   const currentUsage = useStore($currentUsage)
-  const desktopActionTasks = useStore($desktopActionTasks)
-  const gatewayRestarting = useStore($gatewayRestarting)
-  const previewServerRestartStatus = useStore($previewServerRestartStatus)
   const sessionStartedAt = useStore($sessionStartedAt)
   const turnStartedAt = useStore($turnStartedAt)
-  const workingSessionIds = useStore($workingSessionIds)
-  const subagentsBySession = useStore($subagentsBySession)
   const updateStatus = useStore($updateStatus)
   const updateApply = useStore($updateApply)
   const backendUpdateStatus = useStore($backendUpdateStatus)
@@ -145,59 +105,6 @@ export function useStatusbarItems({
   )
 
   const showYoloToggle = gatewayState === 'open' && (!!activeSessionId || freshDraftReady)
-
-  const gatewayMenuContent = useMemo(
-    () => (
-      <GatewayMenuPanel
-        gatewayState={gatewayState}
-        inferenceStatus={inferenceStatus}
-        logLines={gatewayLogLines}
-        onOpenSystem={() => openCommandCenterSection('system')}
-        statusSnapshot={statusSnapshot}
-      />
-    ),
-    [gatewayLogLines, gatewayState, inferenceStatus, openCommandCenterSection, statusSnapshot]
-  )
-
-  const { bgFailed, bgRunning, subagentsRunning } = useMemo(() => {
-    const actions = Object.values(desktopActionTasks)
-    const running = actions.filter(t => t.status.running).length
-    const failed = actions.filter(t => !t.status.running && (t.status.exit_code ?? 0) !== 0).length
-    const previewRunning = previewServerRestartStatus === 'running' ? 1 : 0
-    const previewFailed = previewServerRestartStatus === 'error' ? 1 : 0
-
-    const subagentsRunning = Object.values(subagentsBySession).reduce(
-      (sum, items) => sum + activeSubagentCount(items),
-      0
-    )
-
-    return {
-      bgFailed: failed + previewFailed,
-      bgRunning: workingSessionIds.length + running + previewRunning,
-      subagentsRunning
-    }
-  }, [desktopActionTasks, previewServerRestartStatus, subagentsBySession, workingSessionIds])
-
-  const gatewayOpen = gatewayState === 'open'
-  const gatewayConnecting = gatewayState === 'connecting'
-  const inferenceReady = gatewayOpen && inferenceStatus?.ready === true
-  const gatewayDegraded = gatewayOpen || gatewayConnecting
-
-  const gatewayDetail = gatewayOpen
-    ? inferenceStatus?.ready
-      ? copy.gatewayReady
-      : inferenceStatus
-        ? copy.gatewayNeedsSetup
-        : copy.gatewayChecking
-    : gatewayConnecting
-      ? copy.gatewayConnecting
-      : copy.gatewayOffline
-
-  const gatewayClassName = inferenceReady
-    ? undefined
-    : gatewayDegraded
-      ? 'text-amber-600 hover:text-amber-600'
-      : 'text-destructive hover:text-destructive'
 
   const clientVersionItem = useMemo<StatusbarItem>(() => {
     const appVersion = desktopVersion?.appVersion
@@ -291,86 +198,9 @@ export function useStatusbarItems({
     copy
   ])
 
-  const coreLeftStatusbarItems = useMemo<readonly StatusbarItem[]>(
-    () => [
-      {
-        className: `w-7 justify-center px-0${commandCenterOpen ? ' bg-accent/55 text-foreground' : ''}`,
-        icon: <Command className="size-3.5" />,
-        id: 'command-center',
-        onSelect: toggleCommandCenter,
-        title: commandCenterOpen ? copy.closeCommandCenter : copy.openCommandCenter,
-        variant: 'action'
-      },
-      {
-        className: gatewayRestarting ? undefined : gatewayClassName,
-        detail: gatewayRestarting ? copy.gatewayRestarting : gatewayDetail,
-        icon: gatewayRestarting ? (
-          <GlyphSpinner ariaLabel={copy.gatewayRestarting} className="size-3" />
-        ) : inferenceReady ? (
-          <Activity className="size-3" />
-        ) : (
-          <AlertCircle className="size-3" />
-        ),
-        id: 'gateway-health',
-        label: copy.gateway,
-        menuClassName: 'w-72',
-        menuContent: gatewayMenuContent,
-        title: inferenceStatus?.reason || copy.gatewayTitle,
-        variant: 'menu'
-      },
-      {
-        className: cn(
-          agentsOpen && 'bg-accent/55 text-foreground',
-          bgFailed > 0 && 'text-destructive hover:text-destructive'
-        ),
-        detail:
-          subagentsRunning > 0
-            ? copy.subagents(subagentsRunning)
-            : bgFailed > 0
-              ? copy.failed(bgFailed)
-              : bgRunning > 0
-                ? copy.running(bgRunning)
-                : undefined,
-        icon:
-          bgFailed > 0 ? (
-            <AlertCircle className="size-3" />
-          ) : bgRunning > 0 || subagentsRunning > 0 ? (
-            <Loader2 className="size-3 animate-spin" />
-          ) : (
-            <Sparkles className="size-3" />
-          ),
-        id: 'agents',
-        label: copy.agents,
-        onSelect: openAgents,
-        title: agentsOpen ? copy.closeAgents : copy.openAgents,
-        variant: 'action'
-      },
-      {
-        icon: <Clock className="size-3" />,
-        id: 'cron',
-        label: copy.cron,
-        title: copy.openCron,
-        to: CRON_ROUTE,
-        variant: 'action'
-      }
-    ],
-    [
-      agentsOpen,
-      bgFailed,
-      bgRunning,
-      commandCenterOpen,
-      copy,
-      gatewayMenuContent,
-      gatewayClassName,
-      gatewayDetail,
-      gatewayRestarting,
-      inferenceReady,
-      inferenceStatus?.reason,
-      openAgents,
-      subagentsRunning,
-      toggleCommandCenter
-    ]
-  )
+  // Codex-minimal chrome: the old left cluster (command center / gateway pill /
+  // agents / cron) is gone from the always-visible statusbar — those live in
+  // Settings and the sidebar now. Only page-scoped extras render on the left.
 
   const coreRightStatusbarItems = useMemo<readonly StatusbarItem[]>(
     () => [
@@ -441,10 +271,7 @@ export function useStatusbarItems({
     ]
   )
 
-  const leftStatusbarItems = useMemo(
-    () => [...coreLeftStatusbarItems, ...extraLeftItems],
-    [coreLeftStatusbarItems, extraLeftItems]
-  )
+  const leftStatusbarItems = extraLeftItems
 
   const statusbarItems = useMemo(
     () => [...extraRightItems, ...coreRightStatusbarItems],

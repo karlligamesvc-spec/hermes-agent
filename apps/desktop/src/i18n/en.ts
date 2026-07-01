@@ -356,6 +356,8 @@ export const en: Translations = {
       toolViewDesc: 'Product hides raw tool payloads; Technical shows full input/output.',
       translucencyTitle: 'Window Translucency',
       translucencyDesc: 'See your desktop through the whole window. macOS and Windows only.',
+      haptics: 'Haptic feedback',
+      hapticsDesc: 'Subtle feedback when using controls.',
       product: 'Product',
       productDesc: 'Human-friendly tool activity with concise summaries.',
       technical: 'Technical',
