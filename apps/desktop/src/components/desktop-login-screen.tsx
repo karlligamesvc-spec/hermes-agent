@@ -13,7 +13,7 @@ import {
 
 const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
-// The ApexNodes app icon doubles as the brand mark on the login screen (small
+// The APEX app icon doubles as the brand mark on the login screen (small
 // product chrome, not a splash wordmark — same asset the home screen uses).
 const LOGO_ASSET = 'apple-touch-icon.png'
 
@@ -26,7 +26,7 @@ interface DesktopLoginScreenProps {
 }
 
 // Full-window, centered login gate mirroring Codex "开始使用": our logo, a primary
-// "sign in with ApexNodes" button, and a secondary Google quick-login button.
+// "sign in with APEX" button, and a secondary Google quick-login button.
 // No marketing copy, no how-to text (Codex layout + our logo + light-purple
 // --theme-primary accent only). Both buttons drive the EXISTING managed browser
 // (loopback) OAuth flow (managedBrowserSignIn) — this does not add a second auth

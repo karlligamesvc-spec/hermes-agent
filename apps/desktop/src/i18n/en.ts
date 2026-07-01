@@ -43,25 +43,25 @@ export const en: Translations = {
   },
 
   boot: {
-    ready: 'ApexNodes Desktop is ready',
+    ready: 'APEX Desktop is ready',
     desktopBootFailedWithMessage: message => `Desktop boot failed: ${message}`,
     steps: {
       connectingGateway: 'Connecting live desktop gateway',
-      loadingSettings: 'Loading ApexNodes settings',
+      loadingSettings: 'Loading APEX settings',
       loadingSessions: 'Loading recent sessions',
       startingDesktopConnection: 'Starting desktop connection',
-      startingHermesDesktop: 'Starting ApexNodes Desktop…'
+      startingHermesDesktop: 'Starting APEX Desktop…'
     },
     errors: {
-      backgroundExited: 'ApexNodes background process exited.',
-      backgroundExitedDuringStartup: 'ApexNodes background process exited during startup.',
+      backgroundExited: 'APEX background process exited.',
+      backgroundExitedDuringStartup: 'APEX background process exited during startup.',
       backendStopped: 'Backend stopped',
       desktopBootFailed: 'Desktop boot failed',
       gatewaySignInRequired: 'Gateway sign-in required',
       ipcBridgeUnavailable: 'Desktop IPC bridge is unavailable.'
     },
     failure: {
-      title: "ApexNodes couldn't start",
+      title: "APEX couldn't start",
       description:
         "The background gateway didn't come up. Try one of the recovery steps below. Nothing here deletes your chats or settings.",
       remoteTitle: 'Remote gateway sign-in required',
@@ -87,7 +87,7 @@ export const en: Translations = {
         cancelled: 'Install cancelled.',
         prerequisites: "Couldn't set up the required environment. Repair the install or check the logs below.",
         network: 'Network issue during install. Check your connection, then retry.',
-        unknown: "ApexNodes couldn't finish starting. Try the recovery steps below."
+        unknown: "APEX couldn't finish starting. Try the recovery steps below."
       }
     }
   },
@@ -1227,10 +1227,10 @@ export const en: Translations = {
   },
 
   home: {
-    wordmark: 'ApexNodes Desktop',
+    wordmark: 'APEX Desktop',
     engineBacking: 'Powered by Hermes',
     title: 'Let AI draft the first version',
-    subtitle: 'Send a request, chat log, link, or document — ApexNodes drafts a usable first version for you.',
+    subtitle: 'Send a request, chat log, link, or document — APEX drafts a usable first version for you.',
     quickTasksLabel: 'Try one of these',
     quickTasks: [
       {
@@ -1268,8 +1268,8 @@ export const en: Translations = {
       full: { label: 'Full access', desc: 'Unrestricted access to the internet and any file on your computer' }
     },
     wakingProfile: profile => `Waking up ${profile}…`,
-    placeholderStarting: 'Starting ApexNodes...',
-    placeholderReconnecting: 'Reconnecting to ApexNodes…',
+    placeholderStarting: 'Starting APEX...',
+    placeholderReconnecting: 'Reconnecting to APEX…',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
       'Send a request, link, document, or chat log',
@@ -1492,7 +1492,7 @@ export const en: Translations = {
       complete: 'Complete',
       'bootstrap-marker': 'Complete'
     },
-    oneTimeTitle: 'ApexNodes needs a one-time install',
+    oneTimeTitle: 'APEX needs a one-time install',
     unsupportedDesc: platform =>
       `Automated first-launch install isn’t available on ${platform} yet. Open Terminal and run the command below, then relaunch this app. Subsequent launches will skip this step.`,
     installCommand: 'Install command',
@@ -1501,10 +1501,10 @@ export const en: Translations = {
     installTo: 'Will install to',
     retryAfterRun: 'I’ve run it -- retry',
     failedTitle: 'Installation failed',
-    settingUpTitle: 'Setting up ApexNodes',
+    settingUpTitle: 'Setting up APEX',
     finishingTitle: 'Finishing up',
     failedDesc:
-      'One of the install steps failed. On Windows, this can happen if another ApexNodes CLI or desktop instance is running. Stop any running ApexNodes instances, then retry. Check the details below or the desktop log for the full transcript.',
+      'One of the install steps failed. On Windows, this can happen if another APEX CLI or desktop instance is running. Stop any running APEX instances, then retry. Check the details below or the desktop log for the full transcript.',
     activeDesc:
       'This is a one-time setup. The installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
     progress: (completed, total) => `${completed} of ${total} steps complete`,
@@ -1524,10 +1524,10 @@ export const en: Translations = {
   },
 
   onboarding: {
-    headerTitle: "Let's get you set up with ApexNodes",
+    headerTitle: "Let's get you set up with APEX",
     headerDesc: 'Connect a model provider to start chatting. Most options take one click.',
     managed: {
-      subtitle: 'Sign in with your ApexNodes account to start chatting right away — no API key needed.',
+      subtitle: 'Sign in with your APEX account to start chatting right away — no API key needed.',
       emailPlaceholder: 'Email',
       passwordPlaceholder: 'Password',
       signIn: 'Sign in & start',
@@ -1538,8 +1538,8 @@ export const en: Translations = {
       signInApex: 'Sign in with APEX'
     },
     addKeyToStart: 'Your provider is selected — just add its API key to start chatting.',
-    preparingInstall: 'ApexNodes is finishing install. This usually takes under a minute on first run.',
-    starting: 'Starting ApexNodes…',
+    preparingInstall: 'APEX is finishing install. This usually takes under a minute on first run.',
+    starting: 'Starting APEX…',
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
     moreProvidersVpn: 'More (needs a VPN)',
@@ -1548,12 +1548,12 @@ export const en: Translations = {
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
-    featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run ApexNodes',
+    featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run APEX',
     openRouterPitch: 'One key, hundreds of models — a solid default',
     apiKeyOptions: {
       deepseek: {
         short: 'recommended in China',
-        description: 'Direct DeepSeek API (V3.x, R1) — fast, inexpensive, and the ApexNodes default.'
+        description: 'Direct DeepSeek API (V3.x, R1) — fast, inexpensive, and the APEX default.'
       },
       dashscope: {
         short: 'Alibaba Qwen',
@@ -1570,7 +1570,7 @@ export const en: Translations = {
       xai: { short: 'Grok models', description: 'Direct access to xAI Grok models.' },
       local: {
         short: 'self-hosted',
-        description: 'Point ApexNodes at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
+        description: 'Point APEX at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
       }
     },
     backToSignIn: 'Back to sign in',
@@ -1622,7 +1622,7 @@ export const en: Translations = {
   auth: {
     login: {
       title: 'Get started',
-      signInApex: 'Sign in with ApexNodes',
+      signInApex: 'Sign in with APEX',
       signInGoogle: 'Continue with Google',
       signingIn: 'Signing in…',
       failed: 'Sign-in failed. Please try again.',

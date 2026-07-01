@@ -43,25 +43,25 @@ export const zhHant = defineLocale({
   },
 
   boot: {
-    ready: 'ApexNodes Desktop 已就緒',
+    ready: 'APEX Desktop 已就緒',
     desktopBootFailedWithMessage: message => `桌面啟動失敗：${message}`,
     steps: {
       connectingGateway: '正在連線桌面閘道',
-      loadingSettings: '正在載入 ApexNodes 設定',
+      loadingSettings: '正在載入 APEX 設定',
       loadingSessions: '正在載入最近工作階段',
       startingDesktopConnection: '正在啟動桌面連線',
-      startingHermesDesktop: '正在啟動 ApexNodes Desktop…'
+      startingHermesDesktop: '正在啟動 APEX Desktop…'
     },
     errors: {
-      backgroundExited: 'ApexNodes 背景程序已結束。',
-      backgroundExitedDuringStartup: 'ApexNodes 背景程序在啟動期間結束。',
+      backgroundExited: 'APEX 背景程序已結束。',
+      backgroundExitedDuringStartup: 'APEX 背景程序在啟動期間結束。',
       backendStopped: '後端已停止',
       desktopBootFailed: '桌面啟動失敗',
       gatewaySignInRequired: '需要閘道登入',
       ipcBridgeUnavailable: '桌面 IPC 橋接器不可用。'
     },
     failure: {
-      title: 'ApexNodes 無法啟動',
+      title: 'APEX 無法啟動',
       description: '背景閘道未啟動。請嘗試下面的復原步驟。這裡的操作不會刪除您的聊天或設定。',
       remoteTitle: '需要重新登入遠端閘道',
       remoteDescription: '您的遠端閘道工作階段已過期。請重新登入以重新連線。這裡的操作不會刪除您的聊天或設定。',
@@ -85,7 +85,7 @@ export const zhHant = defineLocale({
         cancelled: '安裝已取消',
         prerequisites: '無法準備所需環境。請嘗試修復安裝，或查看下方記錄。',
         network: '安裝過程中出現網路問題。請檢查網路連線後重試。',
-        unknown: 'ApexNodes 未能完成啟動。請嘗試下面的復原步驟。'
+        unknown: 'APEX 未能完成啟動。請嘗試下面的復原步驟。'
       }
     }
   },
@@ -1309,10 +1309,10 @@ export const zhHant = defineLocale({
   },
 
   home: {
-    wordmark: 'ApexNodes Desktop',
+    wordmark: 'APEX Desktop',
     engineBacking: 'Hermes 引擎驅動',
     title: '先讓 AI 幫你做一版',
-    subtitle: '發一個需求、聊天記錄、連結或資料,ApexNodes 會先產出一版可用結果。',
+    subtitle: '發一個需求、聊天記錄、連結或資料,APEX 會先產出一版可用結果。',
     quickTasksLabel: '試試這些',
     quickTasks: [
       {
@@ -1350,8 +1350,8 @@ export const zhHant = defineLocale({
       full: { label: '完全存取', desc: '可不受限制地存取網際網路和您電腦上的任何檔案' }
     },
     wakingProfile: profile => `正在喚醒 ${profile}…`,
-    placeholderStarting: '正在啟動 ApexNodes...',
-    placeholderReconnecting: '正在重新連線至 ApexNodes…',
+    placeholderStarting: '正在啟動 APEX...',
+    placeholderReconnecting: '正在重新連線至 APEX…',
     placeholderFollowUp: '傳送後續訊息',
     newSessionPlaceholders: [
       '發一個需求、連結、資料或聊天記錄',
@@ -1567,7 +1567,7 @@ export const zhHant = defineLocale({
       complete: '完成',
       'bootstrap-marker': '完成'
     },
-    oneTimeTitle: 'ApexNodes 需要一次性安裝',
+    oneTimeTitle: 'APEX 需要一次性安裝',
     unsupportedDesc: platform =>
       `${platform} 暫不支援自動首次啟動安裝。請開啟終端機並執行下面的指令，然後重新啟動此應用程式。之後啟動會略過此步驟。`,
     installCommand: '安裝指令',
@@ -1576,10 +1576,10 @@ export const zhHant = defineLocale({
     installTo: '將安裝至',
     retryAfterRun: '我已執行 -- 重試',
     failedTitle: '安裝失敗',
-    settingUpTitle: '正在設定 ApexNodes',
+    settingUpTitle: '正在設定 APEX',
     finishingTitle: '正在收尾',
     failedDesc:
-      '某個安裝步驟失敗。在 Windows 上，如果另一個 ApexNodes CLI 或桌面執行個體正在執行，可能會出現這種情況。請停止正在執行的 ApexNodes 執行個體後重試。可查看下方的詳細資訊或 desktop 記錄中的完整記錄。',
+      '某個安裝步驟失敗。在 Windows 上，如果另一個 APEX CLI 或桌面執行個體正在執行，可能會出現這種情況。請停止正在執行的 APEX 執行個體後重試。可查看下方的詳細資訊或 desktop 記錄中的完整記錄。',
     activeDesc: '這是一次性設定。安裝程式正在下載相依套件並設定您的電腦。之後啟動會略過此步驟。',
     progress: (completed, total) => `${completed}/${total} 個步驟已完成`,
     currentStage: stage => ` -- 目前：${stage}`,
@@ -1598,10 +1598,10 @@ export const zhHant = defineLocale({
   },
 
   onboarding: {
-    headerTitle: '開始設定 ApexNodes',
+    headerTitle: '開始設定 APEX',
     headerDesc: '連線模型提供方即可開始聊天。大多數選項只需一次點擊。',
     managed: {
-      subtitle: '登入 ApexNodes 帳號即可直接開始聊天 —— 無需填寫 API 金鑰。',
+      subtitle: '登入 APEX 帳號即可直接開始聊天 —— 無需填寫 API 金鑰。',
       emailPlaceholder: '電子郵件',
       passwordPlaceholder: '密碼',
       signIn: '登入並開始',
@@ -1612,8 +1612,8 @@ export const zhHant = defineLocale({
       signInApex: '用 APEX 登入'
     },
     addKeyToStart: '已選好提供方 — 填入它的 API 金鑰即可開始聊天。',
-    preparingInstall: 'ApexNodes 正在完成安裝。首次執行通常不到一分鐘。',
-    starting: '正在啟動 ApexNodes…',
+    preparingInstall: 'APEX 正在完成安裝。首次執行通常不到一分鐘。',
+    starting: '正在啟動 APEX…',
     lookingUpProviders: '正在查詢提供方...',
     collapse: '收合',
     moreProvidersVpn: '更多（需科學上網）',
@@ -1622,10 +1622,10 @@ export const zhHant = defineLocale({
     chooseLater: '稍後再選擇提供方',
     recommended: '建議',
     connected: '已連線',
-    featuredPitch: '一個訂閱，300+ 前沿模型 — 執行 ApexNodes 的建議方式',
+    featuredPitch: '一個訂閱，300+ 前沿模型 — 執行 APEX 的建議方式',
     openRouterPitch: '一個金鑰，數百個模型 — 穩定的預設選擇',
     apiKeyOptions: {
-      deepseek: { short: '中國推薦', description: '直連 DeepSeek API（V3.x、R1）— 快速、便宜，ApexNodes 預設。' },
+      deepseek: { short: '中國推薦', description: '直連 DeepSeek API（V3.x、R1）— 快速、便宜，APEX 預設。' },
       dashscope: { short: '阿里通義千問', description: '阿里雲百鍊 DashScope — 通義千問及多家模型。' },
       glm: { short: '智譜 GLM / Z.AI', description: '智譜 GLM-4.6 與 Z.AI 託管端點。' },
       moonshot: { short: '月之暗面 Kimi', description: '月之暗面 Kimi K2 與編碼端點。' },
@@ -1635,7 +1635,7 @@ export const zhHant = defineLocale({
       xai: { short: 'Grok 模型', description: '直接存取 xAI Grok 模型。' },
       local: {
         short: '自託管',
-        description: '將 ApexNodes 指向本機或自託管的 OpenAI 相容端點（vLLM、llama.cpp、Ollama 等）。'
+        description: '將 APEX 指向本機或自託管的 OpenAI 相容端點（vLLM、llama.cpp、Ollama 等）。'
       }
     },
     backToSignIn: '返回登入',
@@ -1684,7 +1684,7 @@ export const zhHant = defineLocale({
   auth: {
     login: {
       title: '開始使用',
-      signInApex: '登入 ApexNodes 帳戶',
+      signInApex: '登入 APEX 帳戶',
       signInGoogle: '使用 Google 登入',
       signingIn: '登入中…',
       failed: '登入失敗,請重試',

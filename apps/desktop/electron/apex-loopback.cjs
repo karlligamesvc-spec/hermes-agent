@@ -1,7 +1,7 @@
 /**
  * apex-loopback.cjs
  *
- * Minimal loopback HTTP server for the ApexNodes Desktop browser-login flows
+ * Minimal loopback HTTP server for the APEX Desktop browser-login flows
  * ("用 Google 登录" / "用 APEX 登录", Desktop V0.2). Electron-free (uses only
  * `node:http` + `node:crypto`) so it unit-tests with `node --test`, same pattern
  * as apex-managed.cjs / connection-config.cjs.
@@ -46,7 +46,7 @@ function resultPage(title, body) {
   )
 }
 
-const SUCCESS_HTML = resultPage('登录成功', '已完成登录，请返回 ApexNodes 桌面应用继续。')
+const SUCCESS_HTML = resultPage('登录成功', '已完成登录，请返回 APEX 桌面应用继续。')
 const FAILURE_HTML = resultPage('登录失败', '登录未完成，请返回桌面应用重试。')
 
 /**

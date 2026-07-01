@@ -43,25 +43,25 @@ export const ja = defineLocale({
   },
 
   boot: {
-    ready: 'ApexNodes Desktop の準備ができました',
+    ready: 'APEX Desktop の準備ができました',
     desktopBootFailedWithMessage: message => `デスクトップの起動に失敗しました: ${message}`,
     steps: {
       connectingGateway: 'ライブデスクトップゲートウェイに接続中',
-      loadingSettings: 'ApexNodes の設定を読み込み中',
+      loadingSettings: 'APEX の設定を読み込み中',
       loadingSessions: '最近のセッションを読み込み中',
       startingDesktopConnection: 'デスクトップ接続を開始中',
-      startingHermesDesktop: 'ApexNodes Desktop を起動中…'
+      startingHermesDesktop: 'APEX Desktop を起動中…'
     },
     errors: {
-      backgroundExited: 'ApexNodes バックグラウンドプロセスが終了しました。',
-      backgroundExitedDuringStartup: '起動中に ApexNodes バックグラウンドプロセスが終了しました。',
+      backgroundExited: 'APEX バックグラウンドプロセスが終了しました。',
+      backgroundExitedDuringStartup: '起動中に APEX バックグラウンドプロセスが終了しました。',
       backendStopped: 'バックエンドが停止しました',
       desktopBootFailed: 'デスクトップの起動に失敗しました',
       gatewaySignInRequired: 'ゲートウェイへのサインインが必要です',
       ipcBridgeUnavailable: 'デスクトップ IPC ブリッジが利用できません。'
     },
     failure: {
-      title: 'ApexNodes を起動できませんでした',
+      title: 'APEX を起動できませんでした',
       description:
         'バックグラウンドゲートウェイが起動しませんでした。以下の回復手順をお試しください。チャットや設定は削除されません。',
       remoteTitle: 'リモートゲートウェイへのサインインが必要です',
@@ -88,7 +88,7 @@ export const ja = defineLocale({
         cancelled: 'インストールをキャンセルしました。',
         prerequisites: '必要な環境を準備できませんでした。インストールを修復するか、下のログを確認してください。',
         network: 'インストール中にネットワークの問題が発生しました。接続を確認してから再試行してください。',
-        unknown: 'ApexNodes の起動を完了できませんでした。以下の回復手順をお試しください。'
+        unknown: 'APEX の起動を完了できませんでした。以下の回復手順をお試しください。'
       }
     }
   },
@@ -1338,10 +1338,10 @@ export const ja = defineLocale({
   },
 
   home: {
-    wordmark: 'ApexNodes Desktop',
+    wordmark: 'APEX Desktop',
     engineBacking: 'Hermes エンジン搭載',
     title: 'まず AI に第一版を作らせる',
-    subtitle: '要望・チャット履歴・リンク・資料を送れば、ApexNodes がまず使える第一版を作成します。',
+    subtitle: '要望・チャット履歴・リンク・資料を送れば、APEX がまず使える第一版を作成します。',
     quickTasksLabel: 'こちらをお試しください',
     quickTasks: [
       {
@@ -1379,8 +1379,8 @@ export const ja = defineLocale({
       full: { label: 'フルアクセス', desc: 'インターネットとPC上のあらゆるファイルに無制限にアクセス' }
     },
     wakingProfile: profile => `${profile} を起動中…`,
-    placeholderStarting: 'ApexNodes を起動中...',
-    placeholderReconnecting: 'ApexNodes に再接続中…',
+    placeholderStarting: 'APEX を起動中...',
+    placeholderReconnecting: 'APEX に再接続中…',
     placeholderFollowUp: 'フォローアップを送信',
     newSessionPlaceholders: [
       '要望・リンク・資料・チャット履歴を送ってください',
@@ -1599,7 +1599,7 @@ export const ja = defineLocale({
       complete: '完了',
       'bootstrap-marker': '完了'
     },
-    oneTimeTitle: 'ApexNodes には一度限りのインストールが必要です',
+    oneTimeTitle: 'APEX には一度限りのインストールが必要です',
     unsupportedDesc: platform =>
       `${platform} では自動の初回インストールはまだ利用できません。ターミナルを開いて以下のコマンドを実行し、このアプリを再起動してください。以降の起動ではこの手順はスキップされます。`,
     installCommand: 'インストールコマンド',
@@ -1608,10 +1608,10 @@ export const ja = defineLocale({
     installTo: 'インストール先',
     retryAfterRun: '実行しました — 再試行',
     failedTitle: 'インストールに失敗しました',
-    settingUpTitle: 'ApexNodes を設定中',
+    settingUpTitle: 'APEX を設定中',
     finishingTitle: '仕上げ中',
     failedDesc:
-      'インストール手順のいずれかが失敗しました。Windows では、別の ApexNodes CLI またはデスクトップインスタンスが実行中の場合に発生することがあります。実行中の ApexNodes インスタンスをすべて停止してから再試行してください。詳細は以下またはデスクトップログで確認できます。',
+      'インストール手順のいずれかが失敗しました。Windows では、別の APEX CLI またはデスクトップインスタンスが実行中の場合に発生することがあります。実行中の APEX インスタンスをすべて停止してから再試行してください。詳細は以下またはデスクトップログで確認できます。',
     activeDesc:
       'これは一回限りのセットアップです。インストーラーが依存関係をダウンロードしてマシンを設定しています。以降の起動ではこの手順はスキップされます。',
     progress: (completed, total) => `${total} ステップ中 ${completed} 完了`,
@@ -1631,11 +1631,11 @@ export const ja = defineLocale({
   },
 
   onboarding: {
-    headerTitle: 'ApexNodes のセットアップをしましょう',
+    headerTitle: 'APEX のセットアップをしましょう',
     headerDesc: 'チャットを始めるにはモデルプロバイダーを接続してください。ほとんどのオプションはワンクリックです。',
     addKeyToStart: 'プロバイダーは選択済みです — API キーを入力すればチャットを始められます。',
-    preparingInstall: 'ApexNodes はインストールを完了中です。初回実行では通常 1 分以内に完了します。',
-    starting: 'ApexNodes を起動中…',
+    preparingInstall: 'APEX はインストールを完了中です。初回実行では通常 1 分以内に完了します。',
+    starting: 'APEX を起動中…',
     lookingUpProviders: 'プロバイダーを検索中...',
     collapse: '折りたたむ',
     moreProvidersVpn: 'その他（VPN が必要）',
@@ -1644,12 +1644,12 @@ export const ja = defineLocale({
     chooseLater: '後でプロバイダーを選択します',
     recommended: '推奨',
     connected: '接続済み',
-    featuredPitch: '1 つのサブスクリプションで 300 以上の最先端モデル — ApexNodes を実行するための推奨方法',
+    featuredPitch: '1 つのサブスクリプションで 300 以上の最先端モデル — APEX を実行するための推奨方法',
     openRouterPitch: '1 つのキーで数百のモデル — 堅実なデフォルト',
     apiKeyOptions: {
       deepseek: {
         short: '中国で推奨',
-        description: 'DeepSeek API（V3.x、R1）へ直接アクセス — 高速・低価格で、ApexNodes のデフォルト。'
+        description: 'DeepSeek API（V3.x、R1）へ直接アクセス — 高速・低価格で、APEX のデフォルト。'
       },
       dashscope: {
         short: 'Alibaba Qwen',
@@ -1667,7 +1667,7 @@ export const ja = defineLocale({
       local: {
         short: 'セルフホスト',
         description:
-          'ローカルまたはセルフホストの OpenAI 互換エンドポイント（vLLM、llama.cpp、Ollama など）に ApexNodes を接続。'
+          'ローカルまたはセルフホストの OpenAI 互換エンドポイント（vLLM、llama.cpp、Ollama など）に APEX を接続。'
       }
     },
     backToSignIn: 'サインインに戻る',
@@ -1718,7 +1718,7 @@ export const ja = defineLocale({
   auth: {
     login: {
       title: 'はじめる',
-      signInApex: 'ApexNodes アカウントでログイン',
+      signInApex: 'APEX アカウントでログイン',
       signInGoogle: 'Google でログイン',
       signingIn: 'ログイン中…',
       failed: 'ログインに失敗しました。もう一度お試しください。',

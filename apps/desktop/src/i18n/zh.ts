@@ -43,25 +43,25 @@ export const zh: Translations = {
   },
 
   boot: {
-    ready: 'ApexNodes 桌面版已就绪',
+    ready: 'APEX 桌面版已就绪',
     desktopBootFailedWithMessage: message => `桌面启动失败：${message}`,
     steps: {
       connectingGateway: '正在连接桌面网关',
-      loadingSettings: '正在加载 ApexNodes 设置',
+      loadingSettings: '正在加载 APEX 设置',
       loadingSessions: '正在加载最近会话',
       startingDesktopConnection: '正在启动桌面连接',
-      startingHermesDesktop: '正在启动 ApexNodes 桌面版…'
+      startingHermesDesktop: '正在启动 APEX 桌面版…'
     },
     errors: {
-      backgroundExited: 'ApexNodes 后台进程已退出。',
-      backgroundExitedDuringStartup: 'ApexNodes 后台进程在启动期间退出。',
+      backgroundExited: 'APEX 后台进程已退出。',
+      backgroundExitedDuringStartup: 'APEX 后台进程在启动期间退出。',
       backendStopped: '后端已停止',
       desktopBootFailed: '桌面启动失败',
       gatewaySignInRequired: '需要登录网关',
       ipcBridgeUnavailable: '桌面 IPC 桥不可用。'
     },
     failure: {
-      title: 'ApexNodes 无法启动',
+      title: 'APEX 无法启动',
       description: '后台网关没有启动。请尝试下面的恢复步骤；这里不会删除你的对话或设置。',
       remoteTitle: '需要重新登录远程网关',
       remoteDescription: '你的远程网关会话已过期。请重新登录以恢复连接。这些操作不会删除你的对话或设置。',
@@ -85,7 +85,7 @@ export const zh: Translations = {
         cancelled: '安装已取消',
         prerequisites: '无法准备所需环境。请尝试修复安装，或查看下方日志。',
         network: '安装过程中出现网络问题。请检查网络连接后重试。',
-        unknown: 'ApexNodes 未能完成启动。请尝试下面的恢复步骤。'
+        unknown: 'APEX 未能完成启动。请尝试下面的恢复步骤。'
       }
     }
   },
@@ -1413,10 +1413,10 @@ export const zh: Translations = {
   },
 
   home: {
-    wordmark: 'ApexNodes Desktop',
+    wordmark: 'APEX Desktop',
     engineBacking: 'Hermes 引擎驱动',
     title: '先让 AI 帮你做一版',
-    subtitle: '发一个需求、聊天记录、链接或资料,ApexNodes 会先产出一版可用结果。',
+    subtitle: '发一个需求、聊天记录、链接或资料,APEX 会先产出一版可用结果。',
     quickTasksLabel: '试试这些',
     quickTasks: [
       {
@@ -1454,8 +1454,8 @@ export const zh: Translations = {
       full: { label: '完全访问', desc: '可不受限制地访问互联网和您电脑上的任何文件' }
     },
     wakingProfile: profile => `正在唤醒 ${profile}…`,
-    placeholderStarting: '正在启动 ApexNodes…',
-    placeholderReconnecting: '正在重新连接 ApexNodes…',
+    placeholderStarting: '正在启动 APEX…',
+    placeholderReconnecting: '正在重新连接 APEX…',
     placeholderFollowUp: '发送后续消息',
     newSessionPlaceholders: [
       '发一个需求、链接、资料或聊天记录',
@@ -1672,7 +1672,7 @@ export const zh: Translations = {
       complete: '完成',
       'bootstrap-marker': '完成'
     },
-    oneTimeTitle: 'ApexNodes 需要一次性安装',
+    oneTimeTitle: 'APEX 需要一次性安装',
     unsupportedDesc: platform =>
       `${platform} 暂不支持自动首次启动安装。请打开终端并运行下面的命令，然后重新启动此应用。之后启动会跳过此步骤。`,
     installCommand: '安装命令',
@@ -1681,10 +1681,10 @@ export const zh: Translations = {
     installTo: '将安装到',
     retryAfterRun: '我已运行 -- 重试',
     failedTitle: '安装失败',
-    settingUpTitle: '正在设置 ApexNodes',
+    settingUpTitle: '正在设置 APEX',
     finishingTitle: '正在收尾',
     failedDesc:
-      '某个安装步骤失败。在 Windows 上，如果另一个 ApexNodes CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的 ApexNodes 实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
+      '某个安装步骤失败。在 Windows 上，如果另一个 APEX CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的 APEX 实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
     activeDesc: '这是一次性设置。安装器正在下载依赖并配置你的机器。之后启动会跳过此步骤。',
     progress: (completed, total) => `${completed}/${total} 个步骤已完成`,
     currentStage: stage => ` -- 当前：${stage}`,
@@ -1703,10 +1703,10 @@ export const zh: Translations = {
   },
 
   onboarding: {
-    headerTitle: '开始设置 ApexNodes',
+    headerTitle: '开始设置 APEX',
     headerDesc: '连接模型提供方即可开始对话。大多数选项只需一次点击。',
     managed: {
-      subtitle: '登录 ApexNodes 账号即可直接开始对话 —— 无需填写 API Key。',
+      subtitle: '登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。',
       emailPlaceholder: '邮箱',
       passwordPlaceholder: '密码',
       signIn: '登录并开始',
@@ -1717,8 +1717,8 @@ export const zh: Translations = {
       signInApex: '用 APEX 登录'
     },
     addKeyToStart: '已选好提供方 — 填入它的 API Key 即可开始对话。',
-    preparingInstall: 'ApexNodes 正在完成安装。首次运行通常不到一分钟。',
-    starting: '正在启动 ApexNodes…',
+    preparingInstall: 'APEX 正在完成安装。首次运行通常不到一分钟。',
+    starting: '正在启动 APEX…',
     lookingUpProviders: '正在查找提供方...',
     collapse: '收起',
     moreProvidersVpn: '更多（需科学上网）',
@@ -1727,10 +1727,10 @@ export const zh: Translations = {
     chooseLater: '稍后再选择提供方',
     recommended: '推荐',
     connected: '已连接',
-    featuredPitch: '一个订阅，300+ 前沿模型 — 运行 ApexNodes 的推荐方式',
+    featuredPitch: '一个订阅，300+ 前沿模型 — 运行 APEX 的推荐方式',
     openRouterPitch: '一个密钥，数百个模型 — 稳妥的默认选择',
     apiKeyOptions: {
-      deepseek: { short: '国内推荐', description: '直连 DeepSeek API（V3.x、R1）— 快速、便宜，ApexNodes 默认。' },
+      deepseek: { short: '国内推荐', description: '直连 DeepSeek API（V3.x、R1）— 快速、便宜，APEX 默认。' },
       dashscope: { short: '阿里通义千问', description: '阿里云百炼 DashScope — 通义千问及多家模型。' },
       glm: { short: '智谱 GLM / Z.AI', description: '智谱 GLM-4.6 与 Z.AI 托管端点。' },
       moonshot: { short: '月之暗面 Kimi', description: '月之暗面 Kimi K2 与编码端点。' },
@@ -1740,7 +1740,7 @@ export const zh: Translations = {
       xai: { short: 'Grok 模型', description: '直接访问 xAI Grok 模型。' },
       local: {
         short: '自托管',
-        description: '将 ApexNodes 指向本地或自托管的 OpenAI 兼容端点 (vLLM、llama.cpp、Ollama 等)。'
+        description: '将 APEX 指向本地或自托管的 OpenAI 兼容端点 (vLLM、llama.cpp、Ollama 等)。'
       }
     },
     backToSignIn: '返回登录',
@@ -1790,7 +1790,7 @@ export const zh: Translations = {
   auth: {
     login: {
       title: '开始使用',
-      signInApex: '登录 ApexNodes 账户',
+      signInApex: '登录 APEX 账户',
       signInGoogle: '使用 Google 登录',
       signingIn: '登录中…',
       failed: '登录失败,请重试',
