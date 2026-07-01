@@ -968,6 +968,11 @@ export interface Translations {
 
   composer: {
     message: string
+    approvalMode: {
+      label: string
+      review: { label: string; desc: string }
+      full: { label: string; desc: string }
+    }
     wakingProfile: (profile: string) => string
     placeholderStarting: string
     placeholderReconnecting: string

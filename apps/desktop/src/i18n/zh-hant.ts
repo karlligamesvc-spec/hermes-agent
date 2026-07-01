@@ -1344,6 +1344,11 @@ export const zhHant = defineLocale({
 
   composer: {
     message: '訊息',
+    approvalMode: {
+      label: '審批',
+      review: { label: '替我審批', desc: '僅對偵測到的風險操作請求批准' },
+      full: { label: '完全存取', desc: '可不受限制地存取網際網路和您電腦上的任何檔案' }
+    },
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 ApexNodes...',
     placeholderReconnecting: '正在重新連線至 ApexNodes…',

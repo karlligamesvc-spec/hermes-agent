@@ -1373,6 +1373,11 @@ export const ja = defineLocale({
 
   composer: {
     message: 'メッセージ',
+    approvalMode: {
+      label: '承認',
+      review: { label: '自動承認', desc: '検出されたリスク操作のみ承認を求める' },
+      full: { label: 'フルアクセス', desc: 'インターネットとPC上のあらゆるファイルに無制限にアクセス' }
+    },
     wakingProfile: profile => `${profile} を起動中…`,
     placeholderStarting: 'ApexNodes を起動中...',
     placeholderReconnecting: 'ApexNodes に再接続中…',

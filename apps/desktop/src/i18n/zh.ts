@@ -1448,6 +1448,11 @@ export const zh: Translations = {
 
   composer: {
     message: '消息',
+    approvalMode: {
+      label: '审批',
+      review: { label: '替我审批', desc: '仅对检测到的风险操作请求批准' },
+      full: { label: '完全访问', desc: '可不受限制地访问互联网和您电脑上的任何文件' }
+    },
     wakingProfile: profile => `正在唤醒 ${profile}…`,
     placeholderStarting: '正在启动 ApexNodes…',
     placeholderReconnecting: '正在重新连接 ApexNodes…',

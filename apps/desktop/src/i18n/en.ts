@@ -1262,6 +1262,11 @@ export const en: Translations = {
 
   composer: {
     message: 'Message',
+    approvalMode: {
+      label: 'Approvals',
+      review: { label: 'Approve for me', desc: 'Only ask for detected risky operations' },
+      full: { label: 'Full access', desc: 'Unrestricted access to the internet and any file on your computer' }
+    },
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting ApexNodes...',
     placeholderReconnecting: 'Reconnecting to ApexNodes…',
