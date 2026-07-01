@@ -8,11 +8,11 @@ import {
   getAuxiliaryModels,
   getGlobalModelInfo,
   getGlobalModelOptions,
+  getHermesConfigRecord,
   getMoaModels,
   getRecommendedDefaultModel,
-  saveMoaModels,
-  getHermesConfigRecord,
   saveHermesConfig,
+  saveMoaModels,
   setEnvVar,
   setModelAssignment
 } from '@/hermes'
@@ -80,10 +80,13 @@ interface StaleAuxWarningProps {
 // $0-balance provider after switching main away from it) and offers the
 // existing one-click reset rather than auto-clearing legitimate pins.
 function StaleAuxWarning({ applying, onReset, slots, taskLabel }: StaleAuxWarningProps) {
+  const { t } = useI18n()
+
   if (!slots.length) {
     return null
   }
 
+  const m = t.settings.model
   const provider = slots[0].provider
   const allSameProvider = slots.every(slot => slot.provider === provider)
   const names = slots.map(slot => taskLabel(slot.task)).join(', ')
@@ -91,12 +94,9 @@ function StaleAuxWarning({ applying, onReset, slots, taskLabel }: StaleAuxWarnin
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
       <AlertTriangle className="size-3.5 shrink-0" />
-      <span className="grow">
-        {slots.length} auxiliary task{slots.length === 1 ? '' : 's'} ({names}) still run on{' '}
-        <span className="font-mono">{allSameProvider ? provider : 'other providers'}</span>, not your main model.
-      </span>
+      <span className="grow">{m.staleAux(slots.length, names, allSameProvider ? provider : m.staleAuxOtherProviders)}</span>
       <Button disabled={applying} onClick={onReset} size="sm" variant="textStrong">
-        Reset all to main
+        {m.resetAllToMain}
       </Button>
     </div>
   )
@@ -157,8 +157,10 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       if (moaModels) {
         setSelectedMoaPreset(prev => prev && moaModels.presets[prev] ? prev : moaModels.default_preset)
       }
+
       setConfig(cfg)
     } catch (err) {
+      console.error('[model-settings] request failed', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
@@ -244,6 +246,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       const saved = await saveMoaModels(next)
       setMoa(saved)
     } catch (err) {
+      console.error('[model-settings] request failed', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setApplying(false)
@@ -343,6 +346,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       const fallbackModel = refreshedRow?.models?.[0] ?? ''
       setSelectedModel(nextModel || fallbackModel)
     } catch (err) {
+      console.error('[model-settings] request failed', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setActivating(false)
@@ -387,6 +391,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       onMainModelChanged?.(provider, model)
       await refresh()
     } catch (err) {
+      console.error('[model-settings] request failed', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setApplying(false)
@@ -406,6 +411,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         await setModelAssignment({ model: mainModel.model, provider: mainModel.provider, scope: 'auxiliary', task })
         await refresh()
       } catch (err) {
+        console.error('[model-settings] request failed', err)
         setError(err instanceof Error ? err.message : String(err))
       } finally {
         setApplying(false)
@@ -428,6 +434,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         setEditingAuxTask(null)
         await refresh()
       } catch (err) {
+        console.error('[model-settings] request failed', err)
         setError(err instanceof Error ? err.message : String(err))
       } finally {
         setApplying(false)
@@ -468,6 +475,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setSwitchStaleAux([])
       await refresh()
     } catch (err) {
+      console.error('[model-settings] request failed', err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setApplying(false)
@@ -507,7 +515,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
                       void activateApiKeyProvider()
                     }
                   }}
-                  placeholder={`Paste ${selectedProviderRow?.key_env ?? 'API key'}`}
+                  placeholder={m.pasteKeyPlaceholder(selectedProviderRow?.key_env ?? 'API key')}
                   type="password"
                   value={apiKeyDraft}
                 />
@@ -517,12 +525,12 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
                   size="sm"
                 >
                   {activating && <Loader2 className="size-3.5 animate-spin" />}
-                  {activating ? 'Activating...' : 'Activate'}
+                  {activating ? m.activating : m.activate}
                 </Button>
               </>
             ) : (
               <Button onClick={startProviderSetup} size="sm" variant="textStrong">
-                Set up {selectedProviderRow?.name ?? 'provider'}
+                {m.setUpProvider(selectedProviderRow?.name ?? m.provider)}
               </Button>
             )
           ) : (
@@ -553,8 +561,8 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         {needsSetup && !setupIsApiKey && (
           <p className="mt-2 text-xs text-muted-foreground">
             {selectedProviderRow?.auth_type === 'api_key'
-              ? `${selectedProviderRow?.name} needs an API key — set it up to choose a model.`
-              : `${selectedProviderRow?.name} signs in through your browser — Hermes runs the flow for you.`}
+              ? m.needsApiKeyHint(selectedProviderRow?.name ?? m.provider)
+              : m.oauthHint(selectedProviderRow?.name ?? m.provider)}
           </p>
         )}
         {config && mainModel && (reasoningSupported || fastSupported) && (
@@ -589,7 +597,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
             )}
           </div>
         )}
-        {error && <div className="mt-2 text-xs text-destructive">{error}</div>}
+        {error && <div className="mt-2 text-xs text-destructive">{m.requestFailed}</div>}
         {switchStaleAux.length > 0 && (
           <div className="mt-2">
             <StaleAuxWarning
@@ -724,21 +732,19 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       {moa && currentMoaPreset && (
         <section>
           <div className="mb-2.5 flex items-center justify-between">
-            <SectionHeading icon={Cpu} title="Mixture of Agents" />
+            <SectionHeading icon={Cpu} title={m.moa.title} />
             <Button disabled={applying} onClick={() => void saveMoa(moa)} size="sm" variant="textStrong">
               {applying ? m.applying : t.common.save}
             </Button>
           </div>
-          <p className="p5-section-intro mb-3">
-            Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the acting model.
-          </p>
+          <p className="p5-section-intro mb-3">{m.moa.desc}</p>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Select onValueChange={setSelectedMoaPreset} value={selectedMoaPreset || moa.default_preset}>
-              <SelectTrigger className={cn('min-w-40', CONTROL_TEXT)}><SelectValue placeholder="Preset" /></SelectTrigger>
+              <SelectTrigger className={cn('min-w-40', CONTROL_TEXT)}><SelectValue placeholder={m.moa.presetPlaceholder} /></SelectTrigger>
               <SelectContent>{Object.keys(moa.presets).map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent>
             </Select>
             <Button disabled={applying} onClick={() => setMoa(prev => prev && ({ ...prev, default_preset: selectedMoaPreset || prev.default_preset }))} size="sm" variant="text">
-              Set default
+              {m.moa.setDefault}
             </Button>
             <Button
               disabled={Object.keys(moa.presets).length <= 1 || applying}
@@ -764,9 +770,9 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
               size="sm"
               variant="ghost"
             >
-              Delete
+              {t.common.delete}
             </Button>
-            <Input className={cn('w-40', CONTROL_TEXT)} onChange={event => setNewMoaPresetName(event.target.value)} placeholder="new preset" value={newMoaPresetName} />
+            <Input className={cn('w-40', CONTROL_TEXT)} onChange={event => setNewMoaPresetName(event.target.value)} placeholder={m.moa.newPresetPlaceholder} value={newMoaPresetName} />
             <Button
               disabled={!newMoaPresetName.trim() || !!moa.presets[newMoaPresetName.trim()] || applying}
               onClick={() => {
@@ -781,10 +787,10 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
               size="sm"
               variant="textStrong"
             >
-              Add preset
+              {m.moa.addPreset}
             </Button>
           </div>
-          <div className="mb-2 text-xs text-muted-foreground">Default: <span className="font-mono">{moa.default_preset}</span></div>
+          <div className="mb-2 text-xs text-muted-foreground">{m.moa.defaultLabel} <span className="font-mono">{moa.default_preset}</span></div>
           <div className="p5-card p5-rows">
             {currentMoaPreset.reference_models.map((slot, index) => (
               <ListRow
@@ -799,17 +805,17 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
                       <SelectContent>{modelsForProvider(slot.provider).map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}</SelectContent>
                     </Select>
                     <Button disabled={currentMoaPreset.reference_models.length <= 1 || applying} onClick={() => updateMoaPreset(prev => ({ ...prev, reference_models: prev.reference_models.filter((_, i) => i !== index) }))} size="sm" variant="ghost">
-                      Remove
+                      {t.common.remove}
                     </Button>
                   </div>
                 }
                 description={<span className="font-mono text-[0.68rem]">{slot.provider} · {slot.model}</span>}
                 key={`${selectedMoaPreset}-${slot.provider}-${slot.model}-${index}`}
-                title={`Reference ${index + 1}`}
+                title={m.moa.reference(index + 1)}
               />
             ))}
             <Button className="my-2 self-start" disabled={applying} onClick={() => updateMoaPreset(prev => ({ ...prev, reference_models: [...prev.reference_models, prev.aggregator] }))} size="sm" variant="textStrong">
-              Add reference model
+              {m.moa.addReference}
             </Button>
             <ListRow
               below={
@@ -825,7 +831,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
                 </div>
               }
               description={<span className="font-mono text-[0.68rem]">{currentMoaPreset.aggregator.provider} · {currentMoaPreset.aggregator.model}</span>}
-              title="Aggregator"
+              title={m.moa.aggregator}
             />
           </div>
         </section>

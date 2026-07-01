@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
 import {
@@ -109,11 +109,15 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   const loading = modelOptions.isPending && !modelOptions.data
 
-  const error = modelOptions.error
-    ? modelOptions.error instanceof Error
-      ? modelOptions.error.message
-      : String(modelOptions.error)
-    : null
+  // Never surface the raw error message in the menu — log it for support and
+  // show a friendly, localized line instead.
+  const loadFailed = Boolean(modelOptions.error)
+
+  useEffect(() => {
+    if (modelOptions.error) {
+      console.error('[model-menu] failed to load model options', modelOptions.error)
+    }
+  }, [modelOptions.error])
 
   // China-first: only the APEX-NODES.COM managed relay (+ custom BYOK endpoints)
   // and domestic providers are shown; foreign providers are hidden even when
@@ -335,9 +339,9 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
-          ) : error ? (
+          ) : loadFailed ? (
             <DropdownMenuItem className={dropdownMenuRow} disabled>
-              {error}
+              {copy.loadFailed}
             </DropdownMenuItem>
           ) : groups.length === 0 ? (
             <DropdownMenuItem className={dropdownMenuRow} disabled>
@@ -382,7 +386,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
           {moaOptions.data && Object.keys(moaOptions.data.presets ?? {}).length > 0 ? (
             <>
               <DropdownMenuSeparator className="mx-0" />
-              <DropdownMenuLabel className={dropdownMenuSectionLabel}>MoA presets</DropdownMenuLabel>
+              <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.moaPresets}</DropdownMenuLabel>
               {Object.keys(moaOptions.data.presets).map(preset => (
                 <DropdownMenuItem
                   className={dropdownMenuRow}
@@ -393,7 +397,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                     void toggleMoaPreset(preset)
                   }}
                 >
-                  <span className="min-w-0 flex-1 truncate">MoA: {preset}</span>
+                  <span className="min-w-0 flex-1 truncate">{copy.moaPresetItem(preset)}</span>
                   {activeMoaPreset === preset ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
                 </DropdownMenuItem>
               ))}

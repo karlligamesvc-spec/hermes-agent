@@ -767,6 +767,27 @@ export const zh: Translations = {
       change: '更改',
       autoUseMain: '自动 · 使用主模型',
       providerDefault: '(提供方默认)',
+      requestFailed: '操作失败，请重试',
+      activate: '激活',
+      activating: '正在激活…',
+      setUpProvider: name => `配置 ${name}`,
+      pasteKeyPlaceholder: env => `粘贴 ${env}`,
+      needsApiKeyHint: name => `${name} 需要 API 密钥——配置后即可选择模型。`,
+      oauthHint: name => `${name} 通过浏览器登录——APEX 会为你完成整个流程。`,
+      staleAux: (count, names, provider) => `${count} 个辅助任务（${names}）仍在使用 ${provider}，而不是你的主模型。`,
+      staleAuxOtherProviders: '其他提供方',
+      moa: {
+        title: 'MoA 多模型协作',
+        desc: '配置命名预设，它们会作为模型出现在 MoA 提供方下。聚合模型负责整合并输出最终回答。',
+        presetPlaceholder: '选择预设',
+        setDefault: '设为默认',
+        newPresetPlaceholder: '新预设名称',
+        addPreset: '新建预设',
+        defaultLabel: '默认：',
+        reference: index => `参考模型 ${index}`,
+        addReference: '添加参考模型',
+        aggregator: '聚合模型'
+      },
       tasks: {
         vision: { label: '视觉', hint: '图片分析' },
         web_extract: { label: '网页提取', hint: '页面总结' },
@@ -776,6 +797,35 @@ export const zh: Translations = {
         mcp: { label: 'MCP', hint: 'MCP 工具路由' },
         title_generation: { label: '标题生成', hint: '会话标题' },
         curator: { label: '维护器', hint: '技能使用审查' }
+      }
+    },
+    uninstall: {
+      dangerZone: '危险操作',
+      checking: '正在检查已安装的组件…',
+      title: '卸载 APEX',
+      chooseDesc: '选择要移除的内容。卸载时应用会自动关闭；之后随时可以重新安装。',
+      confirmTitle: '确认卸载',
+      confirmBody: consequence => `将移除${consequence}。此操作无法撤销。`,
+      appPath: path => `应用：${path}`,
+      uninstalling: '正在卸载…',
+      confirmYes: '确定卸载',
+      startFailed: '卸载未能启动，请重试。',
+      options: {
+        gui: {
+          title: '仅卸载聊天界面',
+          description: '只移除这个桌面应用。APEX 智能体、配置和聊天记录都会保留。',
+          consequence: '桌面聊天界面（此应用及其数据）'
+        },
+        lite: {
+          title: '卸载界面和智能体，保留我的数据',
+          description: '移除应用和 APEX 智能体，但保留配置、聊天记录和密钥，方便以后重装。',
+          consequence: '聊天界面和 APEX 智能体（配置、聊天记录和密钥会保留）'
+        },
+        full: {
+          title: '全部卸载',
+          description: '移除应用、智能体以及全部用户数据——配置、聊天记录、定时任务、密钥和日志。',
+          consequence: '所有内容——聊天界面、APEX 智能体，以及你全部的配置、聊天记录、密钥和日志'
+        }
       }
     },
     providers: {
@@ -1011,6 +1061,7 @@ export const zh: Translations = {
     search: '搜索消息平台…',
     loading: '正在加载消息平台…',
     loadFailed: '消息平台加载失败',
+    connectionError: '连接出错',
     states: {
       connected: '已连接',
       connecting: '连接中',
@@ -1803,11 +1854,15 @@ export const zh: Translations = {
     windowControls: '窗口控件',
     paneControls: '面板控件',
     appControls: '应用控件',
+    connectingOverlay: '连接中',
     modelMenu: {
       search: '搜索模型',
       noModels: '未找到模型',
       editModels: '编辑模型…',
       refreshModels: '刷新模型',
+      loadFailed: '模型列表加载失败，请稍后重试',
+      moaPresets: 'MoA 预设',
+      moaPresetItem: preset => `MoA：${preset}`,
       fast: '快速',
       medium: '中'
     },
@@ -1970,7 +2025,7 @@ export const zh: Translations = {
       lookingRestart: taskId => `Hermes 正在查找要重启的预览服务器 (${taskId})`,
       restartingTitle: '正在重启预览服务器',
       restartingMessage: 'Hermes 正在后台工作。可在预览控制台查看进度。',
-      startRestartFailed: message => `无法启动服务器重启：${message}`,
+      startRestartFailed: '无法启动服务器重启，请重试。',
       restartFailed: '服务器重启失败',
       hideConsole: '隐藏预览控制台',
       showConsole: '显示预览控制台',
@@ -1987,7 +2042,7 @@ export const zh: Translations = {
       workspaceReloading: '工作区已变更，正在重新加载预览',
       fileChanged: url => `文件已变更，正在重新加载预览：${url}`,
       filesChanged: (count, url) => `${count} 个文件变更，正在重新加载预览：${url}`,
-      watchFailed: message => `无法监听预览文件：${message}`,
+      watchFailed: '无法监听预览文件，自动刷新已停用。',
       moduleMimeDescription:
         '模块脚本使用了错误的 MIME 类型。这通常表示静态文件服务器正在服务 Vite/React 应用，而不是项目开发服务器。',
       loadFailedConsole: (code, message) => `加载失败${code ? ` (${code})` : ''}: ${message}`,
@@ -2026,7 +2081,10 @@ export const zh: Translations = {
       restoreNext: '恢复下一个检查点',
       goForward: '前进',
       sendEdited: '发送编辑后的消息',
-      attachingFile: '正在附加…'
+      attachingFile: '正在附加…',
+      compacting: '正在整理对话',
+      steered: '已引导',
+      processOutput: '输出'
     },
     approval: {
       gatewayDisconnected: 'Hermes 网关未连接',
@@ -2077,7 +2135,53 @@ export const zh: Translations = {
       statusRunning: '运行中',
       statusError: '错误',
       statusRecovered: '已恢复',
-      statusDone: '完成'
+      statusDone: '完成',
+      errorDetails: '错误详情',
+      searchResults: '搜索结果',
+      stdoutLabel: '输出',
+      stderrLabel: '错误输出',
+      detailLabels: {
+        details: '详情',
+        snapshotSummary: '快照摘要',
+        commandOutput: '命令输出'
+      },
+      titles: {
+        browser_click: { done: '已点击页面元素', pending: '正在点击页面元素' },
+        browser_fill: { done: '已填写表单', pending: '正在填写表单' },
+        browser_navigate: { done: '已打开页面', pending: '正在打开页面' },
+        browser_snapshot: { done: '已捕获页面快照', pending: '正在捕获页面快照' },
+        browser_take_screenshot: { done: '已截图', pending: '正在截图' },
+        browser_type: { done: '已在页面输入', pending: '正在页面输入' },
+        clarify: { done: '已提问', pending: '正在提问' },
+        cronjob: { done: '定时任务', pending: '正在设置定时任务' },
+        edit_file: { done: '已编辑文件', pending: '正在编辑文件' },
+        execute_code: { done: '已运行代码', pending: '正在运行代码' },
+        image_generate: { done: '已生成图片', pending: '正在生成图片' },
+        list_files: { done: '已列出文件', pending: '正在列出文件' },
+        patch: { done: '已修改文件', pending: '正在修改文件' },
+        read_file: { done: '已读取文件', pending: '正在读取文件' },
+        search_files: { done: '已搜索文件', pending: '正在搜索文件' },
+        session_search_recall: { done: '已搜索会话记录', pending: '正在搜索会话记录' },
+        terminal: { done: '已运行命令', pending: '正在运行命令' },
+        todo: { done: '已更新待办', pending: '正在更新待办' },
+        vision_analyze: { done: '已分析图片', pending: '正在分析图片' },
+        web_extract: { done: '已读取网页', pending: '正在读取网页' },
+        web_search: { done: '已搜索网页', pending: '正在搜索' },
+        write_file: { done: '已编辑文件', pending: '正在编辑文件' },
+        unknown: { done: '已执行操作', pending: '正在执行操作' }
+      },
+      dynamicTitles: {
+        readingHost: host => `正在读取 ${host}`,
+        readHost: host => `已读取 ${host}`,
+        openingHost: host => `正在打开 ${host}`,
+        openedHost: host => `已打开 ${host}`,
+        searchingQuery: query => `正在搜索“${query}”`,
+        searchedQuery: query => `已搜索“${query}”`,
+        runningCommand: command => `正在运行 · ${command}`,
+        ranCommand: command => `已运行 · ${command}`,
+        runningCode: command => `正在运行代码 · ${command}`,
+        ranCode: command => `已运行代码 · ${command}`
+      }
     }
   },
 
@@ -2144,6 +2248,7 @@ export const zh: Translations = {
     imageDownloadFailed: '图片下载失败',
     openImage: '打开图片',
     downloadImage: '下载图片',
+    generatedImageAlt: '生成的图片',
     savingImage: '正在保存图片',
     imagePreviewFailed: '图片预览失败',
     imageAttach: '附加图片',

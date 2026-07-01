@@ -680,6 +680,28 @@ export const ja = defineLocale({
       change: '変更',
       autoUseMain: '自動 · メインモデルを使用',
       providerDefault: '(プロバイダーのデフォルト)',
+      requestFailed: '操作に失敗しました。もう一度お試しください',
+      activate: '有効化',
+      activating: '有効化しています…',
+      setUpProvider: name => `${name} を設定`,
+      pasteKeyPlaceholder: env => `${env} を貼り付け`,
+      needsApiKeyHint: name => `${name} には API キーが必要です。設定するとモデルを選択できます。`,
+      oauthHint: name => `${name} はブラウザーでサインインします。APEX がフローを自動で進めます。`,
+      staleAux: (count, names, provider) =>
+        `${count} 件の補助タスク（${names}）はメインモデルではなく ${provider} で実行され続けています。`,
+      staleAuxOtherProviders: '他のプロバイダー',
+      moa: {
+        title: 'Mixture of Agents',
+        desc: '名前付きプリセットを設定すると、MoA プロバイダーのモデルとして表示されます。アグリゲーターが最終回答を担当します。',
+        presetPlaceholder: 'プリセット',
+        setDefault: 'デフォルトに設定',
+        newPresetPlaceholder: '新しいプリセット名',
+        addPreset: 'プリセットを追加',
+        defaultLabel: 'デフォルト：',
+        reference: index => `参照モデル ${index}`,
+        addReference: '参照モデルを追加',
+        aggregator: 'アグリゲーター'
+      },
       tasks: {
         vision: { label: 'ビジョン', hint: '画像分析' },
         web_extract: { label: 'ウェブ抽出', hint: 'ページの要約' },
@@ -689,6 +711,35 @@ export const ja = defineLocale({
         mcp: { label: 'MCP', hint: 'MCP ツールルーティング' },
         title_generation: { label: 'タイトル生成', hint: 'セッションタイトル' },
         curator: { label: 'キュレーター', hint: 'スキル使用レビュー' }
+      }
+    },
+    uninstall: {
+      dangerZone: '危険な操作',
+      checking: 'インストール済みの内容を確認中…',
+      title: 'APEX をアンインストール',
+      chooseDesc: '削除する範囲を選択してください。処理のためアプリは自動的に終了します。いつでも再インストールできます。',
+      confirmTitle: 'アンインストールの確認',
+      confirmBody: consequence => `${consequence}を削除します。この操作は元に戻せません。`,
+      appPath: path => `アプリ：${path}`,
+      uninstalling: 'アンインストール中…',
+      confirmYes: 'アンインストールする',
+      startFailed: 'アンインストールを開始できませんでした。もう一度お試しください。',
+      options: {
+        gui: {
+          title: 'チャット GUI のみアンインストール',
+          description: 'このデスクトップアプリだけを削除します。APEX エージェント、設定、チャット履歴はすべて残ります。',
+          consequence: 'デスクトップチャット GUI（このアプリとそのデータ）'
+        },
+        lite: {
+          title: 'GUI とエージェントを削除し、データは保持',
+          description: 'アプリと APEX エージェントを削除しますが、設定・チャット履歴・シークレットは再インストールに備えて保持します。',
+          consequence: 'チャット GUI と APEX エージェント（設定・チャット履歴・シークレットは保持されます）'
+        },
+        full: {
+          title: 'すべてアンインストール',
+          description: 'アプリ、エージェント、そしてすべてのユーザーデータ（設定・チャット履歴・定期ジョブ・シークレット・ログ）を削除します。',
+          consequence: 'すべて——チャット GUI、APEX エージェント、そして設定・チャット履歴・シークレット・ログの全データ'
+        }
       }
     },
     providers: {
@@ -924,6 +975,7 @@ export const ja = defineLocale({
     search: 'メッセージングを検索...',
     loading: 'メッセージングプラットフォームを読み込み中...',
     loadFailed: 'メッセージングプラットフォームの読み込みに失敗しました',
+    connectionError: '接続エラーが発生しました',
     states: {
       connected: '接続済み',
       connecting: '接続中',
@@ -1731,11 +1783,15 @@ export const ja = defineLocale({
     windowControls: 'ウィンドウコントロール',
     paneControls: 'ペインコントロール',
     appControls: 'アプリコントロール',
+    connectingOverlay: '接続中',
     modelMenu: {
       search: 'モデルを検索',
       noModels: 'モデルが見つかりません',
       editModels: 'モデルを編集…',
       refreshModels: 'モデルを更新',
+      loadFailed: 'モデル一覧を読み込めませんでした。しばらくしてからお試しください',
+      moaPresets: 'MoA プリセット',
+      moaPresetItem: preset => `MoA: ${preset}`,
       fast: '高速',
       medium: '中'
     },
@@ -1898,7 +1954,7 @@ export const ja = defineLocale({
       lookingRestart: taskId => `Hermes は再起動するプレビューサーバーを検索中です (${taskId})`,
       restartingTitle: 'プレビューサーバーを再起動中',
       restartingMessage: 'Hermes はバックグラウンドで作業中です。進捗はプレビューコンソールで確認してください。',
-      startRestartFailed: message => `サーバー再起動を開始できませんでした: ${message}`,
+      startRestartFailed: 'サーバー再起動を開始できませんでした。もう一度お試しください。',
       restartFailed: 'サーバーの再起動に失敗しました',
       hideConsole: 'プレビューコンソールを非表示',
       showConsole: 'プレビューコンソールを表示',
@@ -1917,7 +1973,7 @@ export const ja = defineLocale({
       workspaceReloading: 'ワークスペースが変更され、プレビューを再読み込み中',
       fileChanged: url => `ファイルが変更され、プレビューを再読み込み中: ${url}`,
       filesChanged: (count, url) => `${count} 件のファイルが変更され、プレビューを再読み込み中: ${url}`,
-      watchFailed: message => `プレビューファイルを監視できませんでした: ${message}`,
+      watchFailed: 'プレビューファイルを監視できませんでした。自動リロードは無効です。',
       moduleMimeDescription:
         'モジュールスクリプトが間違った MIME タイプで提供されています。通常、静的ファイルサーバーがプロジェクトの開発サーバーの代わりに Vite/React アプリを提供していることを意味します。',
       loadFailedConsole: (code, message) => `読み込みに失敗しました${code ? ` (${code})` : ''}: ${message}`,
@@ -1955,7 +2011,10 @@ export const ja = defineLocale({
       restoreNext: '次のチェックポイントに戻す',
       goForward: '進む',
       sendEdited: '編集済みメッセージを送信',
-      attachingFile: '添付中…'
+      attachingFile: '添付中…',
+      compacting: 'スレッドを要約中',
+      steered: '誘導済み',
+      processOutput: '出力'
     },
     approval: {
       gatewayDisconnected: 'Hermes ゲートウェイが接続されていません',
@@ -2006,7 +2065,53 @@ export const ja = defineLocale({
       statusRunning: '実行中',
       statusError: 'エラー',
       statusRecovered: '回復しました',
-      statusDone: '完了'
+      statusDone: '完了',
+      errorDetails: 'エラー詳細',
+      searchResults: '検索結果',
+      stdoutLabel: '出力',
+      stderrLabel: 'エラー出力',
+      detailLabels: {
+        details: '詳細',
+        snapshotSummary: 'スナップショット概要',
+        commandOutput: 'コマンド出力'
+      },
+      titles: {
+        browser_click: { done: 'ページ要素をクリックしました', pending: 'ページ要素をクリック中' },
+        browser_fill: { done: 'フォームに入力しました', pending: 'フォームに入力中' },
+        browser_navigate: { done: 'ページを開きました', pending: 'ページを開いています' },
+        browser_snapshot: { done: 'ページのスナップショットを取得しました', pending: 'ページのスナップショットを取得中' },
+        browser_take_screenshot: { done: 'スクリーンショットを撮影しました', pending: 'スクリーンショットを撮影中' },
+        browser_type: { done: 'ページに入力しました', pending: 'ページに入力中' },
+        clarify: { done: '質問しました', pending: '質問中' },
+        cronjob: { done: '定期ジョブ', pending: '定期ジョブを設定中' },
+        edit_file: { done: 'ファイルを編集しました', pending: 'ファイルを編集中' },
+        execute_code: { done: 'コードを実行しました', pending: 'コードを実行中' },
+        image_generate: { done: '画像を生成しました', pending: '画像を生成中' },
+        list_files: { done: 'ファイル一覧を取得しました', pending: 'ファイル一覧を取得中' },
+        patch: { done: 'ファイルを修正しました', pending: 'ファイルを修正中' },
+        read_file: { done: 'ファイルを読み取りました', pending: 'ファイルを読み取り中' },
+        search_files: { done: 'ファイルを検索しました', pending: 'ファイルを検索中' },
+        session_search_recall: { done: 'セッション履歴を検索しました', pending: 'セッション履歴を検索中' },
+        terminal: { done: 'コマンドを実行しました', pending: 'コマンドを実行中' },
+        todo: { done: 'ToDo を更新しました', pending: 'ToDo を更新中' },
+        vision_analyze: { done: '画像を分析しました', pending: '画像を分析中' },
+        web_extract: { done: 'ウェブページを読み取りました', pending: 'ウェブページを読み取り中' },
+        web_search: { done: 'ウェブを検索しました', pending: 'ウェブを検索中' },
+        write_file: { done: 'ファイルを編集しました', pending: 'ファイルを編集中' },
+        unknown: { done: '操作を実行しました', pending: '操作を実行中' }
+      },
+      dynamicTitles: {
+        readingHost: host => `${host} を読み取り中`,
+        readHost: host => `${host} を読み取りました`,
+        openingHost: host => `${host} を開いています`,
+        openedHost: host => `${host} を開きました`,
+        searchingQuery: query => `「${query}」を検索中`,
+        searchedQuery: query => `「${query}」を検索しました`,
+        runningCommand: command => `実行中 · ${command}`,
+        ranCommand: command => `実行済み · ${command}`,
+        runningCode: command => `コード実行中 · ${command}`,
+        ranCode: command => `コード実行済み · ${command}`
+      }
     }
   },
 
@@ -2076,6 +2181,7 @@ export const ja = defineLocale({
     imageDownloadFailed: '画像のダウンロードに失敗しました',
     openImage: '画像を開く',
     downloadImage: '画像をダウンロード',
+    generatedImageAlt: '生成された画像',
     savingImage: '画像を保存中',
     imagePreviewFailed: '画像のプレビューに失敗しました',
     imageAttach: '画像を添付',

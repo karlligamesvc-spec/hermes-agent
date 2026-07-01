@@ -17,6 +17,17 @@ interface AuxTaskCopy {
   hint: string
 }
 
+interface ToolTitleCopy {
+  done: string
+  pending: string
+}
+
+interface UninstallOptionCopy {
+  title: string
+  description: string
+  consequence: string
+}
+
 export interface Translations {
   common: {
     apply: string
@@ -468,7 +479,45 @@ export interface Translations {
       change: string
       autoUseMain: string
       providerDefault: string
+      requestFailed: string
+      activate: string
+      activating: string
+      setUpProvider: (name: string) => string
+      pasteKeyPlaceholder: (env: string) => string
+      needsApiKeyHint: (name: string) => string
+      oauthHint: (name: string) => string
+      staleAux: (count: number, names: string, provider: string) => string
+      staleAuxOtherProviders: string
+      moa: {
+        title: string
+        desc: string
+        presetPlaceholder: string
+        setDefault: string
+        newPresetPlaceholder: string
+        addPreset: string
+        defaultLabel: string
+        reference: (index: number) => string
+        addReference: string
+        aggregator: string
+      }
       tasks: Record<string, AuxTaskCopy>
+    }
+    uninstall: {
+      dangerZone: string
+      checking: string
+      title: string
+      chooseDesc: string
+      confirmTitle: string
+      confirmBody: (consequence: string) => string
+      appPath: (path: string) => string
+      uninstalling: string
+      confirmYes: string
+      startFailed: string
+      options: {
+        gui: UninstallOptionCopy
+        lite: UninstallOptionCopy
+        full: UninstallOptionCopy
+      }
     }
     providers: {
       connectAccount: string
@@ -689,6 +738,7 @@ export interface Translations {
     search: string
     loading: string
     loadFailed: string
+    connectionError: string
     states: Record<string, string>
     unknown: string
     hintPendingRestart: string
@@ -1269,11 +1319,15 @@ export interface Translations {
     windowControls: string
     paneControls: string
     appControls: string
+    connectingOverlay: string
     modelMenu: {
       search: string
       noModels: string
       editModels: string
       refreshModels: string
+      loadFailed: string
+      moaPresets: string
+      moaPresetItem: (preset: string) => string
       fast: string
       medium: string
     }
@@ -1436,7 +1490,7 @@ export interface Translations {
       lookingRestart: (taskId: string) => string
       restartingTitle: string
       restartingMessage: string
-      startRestartFailed: (message: string) => string
+      startRestartFailed: string
       restartFailed: string
       hideConsole: string
       showConsole: string
@@ -1453,7 +1507,7 @@ export interface Translations {
       workspaceReloading: string
       fileChanged: (url: string) => string
       filesChanged: (count: number, url: string) => string
-      watchFailed: (message: string) => string
+      watchFailed: string
       moduleMimeDescription: string
       loadFailedConsole: (code: number | undefined, message: string) => string
       unreachableDescription: string
@@ -1492,6 +1546,9 @@ export interface Translations {
       goForward: string
       sendEdited: string
       attachingFile: string
+      compacting: string
+      steered: string
+      processOutput: string
     }
     approval: {
       gatewayDisconnected: string
@@ -1542,6 +1599,52 @@ export interface Translations {
       statusError: string
       statusRecovered: string
       statusDone: string
+      errorDetails: string
+      searchResults: string
+      stdoutLabel: string
+      stderrLabel: string
+      detailLabels: {
+        details: string
+        snapshotSummary: string
+        commandOutput: string
+      }
+      titles: {
+        browser_click: ToolTitleCopy
+        browser_fill: ToolTitleCopy
+        browser_navigate: ToolTitleCopy
+        browser_snapshot: ToolTitleCopy
+        browser_take_screenshot: ToolTitleCopy
+        browser_type: ToolTitleCopy
+        clarify: ToolTitleCopy
+        cronjob: ToolTitleCopy
+        edit_file: ToolTitleCopy
+        execute_code: ToolTitleCopy
+        image_generate: ToolTitleCopy
+        list_files: ToolTitleCopy
+        patch: ToolTitleCopy
+        read_file: ToolTitleCopy
+        search_files: ToolTitleCopy
+        session_search_recall: ToolTitleCopy
+        terminal: ToolTitleCopy
+        todo: ToolTitleCopy
+        vision_analyze: ToolTitleCopy
+        web_extract: ToolTitleCopy
+        web_search: ToolTitleCopy
+        write_file: ToolTitleCopy
+        unknown: ToolTitleCopy
+      }
+      dynamicTitles: {
+        readingHost: (host: string) => string
+        readHost: (host: string) => string
+        openingHost: (host: string) => string
+        openedHost: (host: string) => string
+        searchingQuery: (query: string) => string
+        searchedQuery: (query: string) => string
+        runningCommand: (command: string) => string
+        ranCommand: (command: string) => string
+        runningCode: (command: string) => string
+        ranCode: (command: string) => string
+      }
     }
   }
 
@@ -1608,6 +1711,7 @@ export interface Translations {
     imageDownloadFailed: string
     openImage: string
     downloadImage: string
+    generatedImageAlt: string
     savingImage: string
     imagePreviewFailed: string
     imageAttach: string

@@ -1,42 +1,32 @@
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import type { DesktopUninstallMode, DesktopUninstallSummary } from '@/global'
+import { useI18n } from '@/i18n'
 import { AlertTriangle, Loader2, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import type { DesktopUninstallMode, DesktopUninstallSummary } from '@/global'
 
 import { SectionHeading } from './primitives'
 
 interface ModeOption {
   mode: DesktopUninstallMode
-  title: string
-  description: string
-  /** Shown in the confirm step so people know exactly what disappears. */
-  consequence: string
   /** True when the option removes the Python agent (hidden if no agent). */
   needsAgent: boolean
 }
 
+// Titles, descriptions, and confirm-step consequences live in the i18n
+// catalog under `settings.uninstall.options.<mode>`.
 const OPTIONS: ModeOption[] = [
   {
     mode: 'gui',
-    title: 'Uninstall Chat GUI only',
-    description: 'Remove this desktop app. The Hermes agent, your config, and chats all stay.',
-    consequence: 'the desktop Chat GUI (this app and its data)',
     needsAgent: false
   },
   {
     mode: 'lite',
-    title: 'Uninstall GUI + agent, keep my data',
-    description: 'Remove the app and the Hermes agent, but keep config, chats, and secrets for a future reinstall.',
-    consequence: 'the Chat GUI and the Hermes agent (config, chats, and secrets are kept)',
     needsAgent: true
   },
   {
     mode: 'full',
-    title: 'Uninstall everything',
-    description: 'Remove the app, the agent, and all user data — config, chats, scheduled jobs, secrets, logs.',
-    consequence: 'EVERYTHING — the Chat GUI, the Hermes agent, and all of your config, chats, secrets, and logs',
     // full removes the agent (and user data), so it's an agent-removing option:
     // hide it on a lite client with no local agent, same as lite. A lite client
     // connecting to a remote backend has no local agent OR local user data the
@@ -46,19 +36,24 @@ const OPTIONS: ModeOption[] = [
 ]
 
 export function UninstallSection() {
+  const { t } = useI18n()
+  const m = t.settings.uninstall
   const [summary, setSummary] = useState<DesktopUninstallSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState<DesktopUninstallMode | null>(null)
   const [running, setRunning] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let alive = true
     const bridge = window.hermesDesktop?.uninstall
+
     if (!bridge) {
       setLoading(false)
+
       return
     }
+
     void bridge
       .summary()
       .then(result => {
@@ -74,12 +69,14 @@ export function UninstallSection() {
           setLoading(false)
         }
       })
+
     return () => {
       alive = false
     }
   }, [])
 
   const bridge = window.hermesDesktop?.uninstall
+
   if (!bridge) {
     return null
   }
@@ -93,47 +90,51 @@ export function UninstallSection() {
     if (!pending) {
       return
     }
+
     setRunning(true)
-    setError(null)
+    setFailed(false)
+
     try {
       const result = await bridge.run(pending)
+
       if (!result.ok) {
-        setError(result.message || result.error || 'Uninstall could not start.')
+        // Log the raw backend message for support; the visible line stays friendly.
+        console.error('[uninstall] could not start', result.message || result.error || result)
+        setFailed(true)
         setRunning(false)
         setPending(null)
       }
       // On success the app quits shortly; keep the spinner up until it does.
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      console.error('[uninstall] could not start', err)
+      setFailed(true)
       setRunning(false)
       setPending(null)
     }
   }
 
-  const pendingOption = OPTIONS.find(opt => opt.mode === pending) ?? null
+  const pendingCopy = pending ? m.options[pending] : null
 
   return (
     <div className="mx-auto mt-8 w-full max-w-2xl">
-      <SectionHeading icon={AlertTriangle} title="Danger zone" />
+      <SectionHeading icon={AlertTriangle} title={m.dangerZone} />
 
       <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
         {loading ? (
           <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
-            Checking what&apos;s installed…
+            {m.checking}
           </div>
-        ) : pendingOption ? (
+        ) : pendingCopy ? (
           <div>
-            <p className="text-sm font-medium text-destructive">Confirm uninstall</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              This removes {pendingOption.consequence}. This can&apos;t be undone.
-            </p>
+            <p className="text-sm font-medium text-destructive">{m.confirmTitle}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{m.confirmBody(pendingCopy.consequence)}</p>
             {summary?.running_app_path && (
               <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground/60">
-                App: {summary.running_app_path}
+                {m.appPath(summary.running_app_path)}
               </p>
             )}
-            {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+            {failed && <p className="mt-2 text-xs text-destructive">{m.startFailed}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Button
                 disabled={running}
@@ -142,19 +143,17 @@ export function UninstallSection() {
                 variant="destructive"
               >
                 {running && <Loader2 className="size-3 animate-spin" />}
-                {running ? 'Uninstalling…' : 'Yes, uninstall'}
+                {running ? m.uninstalling : m.confirmYes}
               </Button>
               <Button disabled={running} onClick={() => setPending(null)} size="sm" variant="text">
-                Cancel
+                {t.common.cancel}
               </Button>
             </div>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Uninstall Hermes</p>
-            <p className="text-xs text-muted-foreground">
-              Choose how much to remove. The app closes to finish the job; reopen the installer any time to come back.
-            </p>
+            <p className="text-sm font-medium">{m.title}</p>
+            <p className="text-xs text-muted-foreground">{m.chooseDesc}</p>
             <div className="mt-1 flex flex-col gap-2">
               {visibleOptions.map(opt => (
                 <button
@@ -164,15 +163,17 @@ export function UninstallSection() {
                   )}
                   key={opt.mode}
                   onClick={() => {
-                    setError(null)
+                    setFailed(false)
                     setPending(opt.mode)
                   }}
                   type="button"
                 >
                   <Trash2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-foreground">{opt.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{opt.description}</span>
+                    <span className="block text-sm font-medium text-foreground">{m.options[opt.mode].title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {m.options[opt.mode].description}
+                    </span>
                   </span>
                 </button>
               ))}
