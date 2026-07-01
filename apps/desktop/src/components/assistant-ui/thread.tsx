@@ -354,11 +354,11 @@ const StatusRow: FC<{ children: ReactNode; label: string } & React.ComponentProp
 )
 
 // Fixed label while auto-compaction runs — decoupled from backend status text.
-const COMPACTION_LABEL = 'Summarizing thread'
+const CompactionHint: FC = () => {
+  const { t } = useI18n()
 
-const CompactionHint: FC = () => (
-  <span className="shimmer min-w-0 truncate text-muted-foreground/55">{COMPACTION_LABEL}</span>
-)
+  return <span className="shimmer min-w-0 truncate text-muted-foreground/55">{t.assistant.thread.compacting}</span>
+}
 
 const ResponseLoadingIndicator: FC = () => {
   const { t } = useI18n()
@@ -368,7 +368,7 @@ const ResponseLoadingIndicator: FC = () => {
   return (
     <StatusRow
       data-slot="aui_response-loading"
-      label={compacting ? COMPACTION_LABEL : t.assistant.thread.loadingResponse}
+      label={compacting ? t.assistant.thread.compacting : t.assistant.thread.loadingResponse}
     >
       <span aria-hidden="true" className="dither inline-block size-3 rounded-[2px] text-midground/80 animate-pulse" />
       {compacting && <CompactionHint />}
@@ -391,6 +391,8 @@ const STREAM_STALL_S = 2
 // so that per-token updates re-render only this leaf, not the whole
 // AssistantMessage subtree.
 const StreamStallIndicator: FC = () => {
+  const { t } = useI18n()
+
   const activity = useAuiState(s => {
     let textLength = 0
 
@@ -426,7 +428,7 @@ const StreamStallIndicator: FC = () => {
     <StatusRow
       className="mt-1.5"
       data-slot="aui_stream-stall"
-      label={compacting ? COMPACTION_LABEL : 'APEX is thinking'}
+      label={compacting ? t.assistant.thread.compacting : 'APEX is thinking'}
     >
       <span aria-hidden="true" className="dither inline-block size-3 rounded-[2px] text-midground/80 animate-pulse" />
       {compacting && <CompactionHint />}
@@ -843,6 +845,7 @@ const StopGlyph = <IconPlayerStopFilled aria-hidden className="size-3.5 -transla
 const PROCESS_NOTIFICATION_RE = /^\[IMPORTANT: Background process [\s\S]*\]$/
 
 const ProcessNotificationNote: FC<{ text: string }> = ({ text }) => {
+  const { t } = useI18n()
   const body = text.replace(/^\[IMPORTANT:\s*/, '').replace(/\]$/, '')
   const newline = body.indexOf('\n')
   const headline = (newline === -1 ? body : body.slice(0, newline)).trim()
@@ -857,7 +860,7 @@ const ProcessNotificationNote: FC<{ text: string }> = ({ text }) => {
       {detail && (
         <details className="pl-[1.3125rem]">
           <summary className="cursor-pointer select-none text-muted-foreground/45 hover:text-muted-foreground/70">
-            output
+            {t.assistant.thread.processOutput}
           </summary>
           <pre
             className="mt-0.5 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[0.625rem] leading-4 text-muted-foreground/55"
@@ -1096,6 +1099,7 @@ const SLASH_STATUS_RE = /^slash:(?<command>\/[^\n]+)\n(?<output>[\s\S]*)$/
 const STEER_NOTE_RE = /^steer:(?<text>[\s\S]+)$/
 
 const SystemMessage: FC = () => {
+  const { t } = useI18n()
   const text = useAuiState(s => messageContentText(s.message.content))
 
   if (!text) {
@@ -1112,7 +1116,7 @@ const SystemMessage: FC = () => {
         data-slot="aui_system-message-root"
       >
         <Codicon className="text-muted-foreground/55" name="compass" size="0.75rem" />
-        <span className="text-muted-foreground/55">steered</span>
+        <span className="text-muted-foreground/55">{t.assistant.thread.steered}</span>
         <span className="text-muted-foreground/35">·</span>
         <span className="whitespace-pre-wrap">{steerNote.groups.text.trim()}</span>
       </MessagePrimitive.Root>

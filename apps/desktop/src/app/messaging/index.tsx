@@ -393,9 +393,14 @@ function PlatformDetail({
           </header>
 
           {platform.error_message && (
-            <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-destructive">
+            // Friendly line only — the raw backend message rides along in the
+            // title tooltip so support can still read it on hover.
+            <div
+              className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-destructive"
+              title={platform.error_message}
+            >
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-              <span>{platform.error_message}</span>
+              <span>{m.connectionError}</span>
             </div>
           )}
 

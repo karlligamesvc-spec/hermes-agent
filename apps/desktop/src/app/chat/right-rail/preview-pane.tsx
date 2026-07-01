@@ -256,9 +256,10 @@ export function PreviewPane({
         durationMs: 4000
       })
     } catch (error) {
+      console.error('[preview] restart request failed', error)
       appendConsoleEntry({
         level: 2,
-        message: copy.startRestartFailed(error instanceof Error ? error.message : String(error))
+        message: copy.startRestartFailed
       })
       notifyError(error, copy.restartFailed)
     }
@@ -472,9 +473,10 @@ export function PreviewPane({
         watchId = watch.id
       })
       .catch(error => {
+        console.error('[preview] file watch failed', error)
         appendConsoleEntry({
           level: 2,
-          message: copy.watchFailed(error instanceof Error ? error.message : String(error))
+          message: copy.watchFailed
         })
       })
 

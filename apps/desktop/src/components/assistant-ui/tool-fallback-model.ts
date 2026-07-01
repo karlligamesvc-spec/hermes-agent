@@ -1,6 +1,6 @@
+import { translateNow } from '@/i18n'
 import { normalizeExternalUrl } from '@/lib/external-link'
 import { extractToolErrorMessage, formatToolResultSummary } from '@/lib/tool-result-summary'
-import { translateNow } from '@/i18n'
 
 export type ToolTone = 'agent' | 'browser' | 'default' | 'file' | 'image' | 'terminal' | 'web'
 export type ToolStatus = 'error' | 'running' | 'success' | 'warning'
@@ -61,6 +61,11 @@ interface ToolMeta {
   tone: ToolTone
 }
 
+interface ToolStyle {
+  icon?: string
+  tone: ToolTone
+}
+
 export interface MessageRunningStateSlice {
   message: {
     status?: {
@@ -72,44 +77,32 @@ export interface MessageRunningStateSlice {
   }
 }
 
-const TOOL_META: Record<string, ToolMeta> = {
-  browser_click: { done: 'Clicked page element', pending: 'Clicking page element', icon: 'globe', tone: 'browser' },
-  browser_fill: { done: 'Filled form field', pending: 'Filling form field', icon: 'globe', tone: 'browser' },
-  browser_navigate: { done: 'Opened page', pending: 'Opening page', icon: 'globe', tone: 'browser' },
-  browser_snapshot: {
-    done: 'Captured page snapshot',
-    pending: 'Capturing page snapshot',
-    icon: 'globe',
-    tone: 'browser'
-  },
-  browser_take_screenshot: {
-    done: 'Captured screenshot',
-    pending: 'Capturing screenshot',
-    icon: 'file-media',
-    tone: 'browser'
-  },
-  browser_type: { done: 'Typed on page', pending: 'Typing on page', icon: 'globe', tone: 'browser' },
-  clarify: { done: 'Asked a question', pending: 'Asking a question', icon: 'question', tone: 'agent' },
-  cronjob: { done: 'Cron job', pending: 'Scheduling cron job', icon: 'watch', tone: 'agent' },
-  edit_file: { done: 'Edited file', pending: 'Editing file', icon: 'edit', tone: 'file' },
-  execute_code: { done: 'Ran code', pending: 'Running code', icon: 'terminal', tone: 'terminal' },
-  image_generate: { done: 'Generated image', pending: 'Generating image', icon: 'file-media', tone: 'image' },
-  list_files: { done: 'Listed files', pending: 'Listing files', icon: 'files', tone: 'file' },
-  patch: { done: 'Patched file', pending: 'Patching file', icon: 'diff', tone: 'file' },
-  read_file: { done: 'Read file', pending: 'Reading file', icon: 'file', tone: 'file' },
-  search_files: { done: 'Searched files', pending: 'Searching files', icon: 'search', tone: 'file' },
-  session_search_recall: {
-    done: 'Searched session history',
-    pending: 'Searching session history',
-    icon: 'search',
-    tone: 'agent'
-  },
-  terminal: { done: 'Ran command', pending: 'Running command', icon: 'terminal', tone: 'terminal' },
-  todo: { done: 'Updated todos', pending: 'Updating todos', icon: 'tools', tone: 'agent' },
-  vision_analyze: { done: 'Analyzed image', pending: 'Analyzing image', icon: 'eye', tone: 'image' },
-  web_extract: { done: 'Read webpage', pending: 'Reading webpage', icon: 'globe', tone: 'web' },
-  web_search: { done: 'Searched web', pending: 'Searching web', icon: 'search', tone: 'web' },
-  write_file: { done: 'Edited file', pending: 'Editing file', icon: 'edit', tone: 'file' }
+// Icon + tone per known tool. The visible done/pending titles live in the
+// i18n catalog under `assistant.tool.titles.<toolName>` so every locale can
+// phrase them naturally; `toolMeta` below resolves them via translateNow.
+const TOOL_META: Record<string, ToolStyle> = {
+  browser_click: { icon: 'globe', tone: 'browser' },
+  browser_fill: { icon: 'globe', tone: 'browser' },
+  browser_navigate: { icon: 'globe', tone: 'browser' },
+  browser_snapshot: { icon: 'globe', tone: 'browser' },
+  browser_take_screenshot: { icon: 'file-media', tone: 'browser' },
+  browser_type: { icon: 'globe', tone: 'browser' },
+  clarify: { icon: 'question', tone: 'agent' },
+  cronjob: { icon: 'watch', tone: 'agent' },
+  edit_file: { icon: 'edit', tone: 'file' },
+  execute_code: { icon: 'terminal', tone: 'terminal' },
+  image_generate: { icon: 'file-media', tone: 'image' },
+  list_files: { icon: 'files', tone: 'file' },
+  patch: { icon: 'diff', tone: 'file' },
+  read_file: { icon: 'file', tone: 'file' },
+  search_files: { icon: 'search', tone: 'file' },
+  session_search_recall: { icon: 'search', tone: 'agent' },
+  terminal: { icon: 'terminal', tone: 'terminal' },
+  todo: { icon: 'tools', tone: 'agent' },
+  vision_analyze: { icon: 'eye', tone: 'image' },
+  web_extract: { icon: 'globe', tone: 'web' },
+  web_search: { icon: 'search', tone: 'web' },
+  write_file: { icon: 'edit', tone: 'file' }
 }
 
 const INLINE_CODE_SPLIT_RE = /(`[^`\n]+`)/g
@@ -119,39 +112,25 @@ const BACKTICK_NOISE_RE = /`{3,}/g
 export const selectMessageRunning = (state: MessageRunningStateSlice) =>
   state.thread.isRunning && state.message.status?.type === 'running'
 
-function titleForTool(name: string): string {
-  const normalized = name.replace(/^browser_/, '').replace(/^web_/, '')
-
-  return (
-    normalized
-      .split('_')
-      .filter(Boolean)
-      .map(part => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
-      .join(' ') || name
-  )
-}
-
-const PREFIX_META: { icon?: string; prefix: string; tone: ToolTone; verb: string }[] = [
-  { prefix: 'browser_', verb: 'Browser', icon: 'globe', tone: 'browser' },
-  { prefix: 'web_', verb: 'Web', icon: 'globe', tone: 'web' }
+const PREFIX_META: { icon?: string; prefix: string; tone: ToolTone }[] = [
+  { prefix: 'browser_', icon: 'globe', tone: 'browser' },
+  { prefix: 'web_', icon: 'globe', tone: 'web' }
 ]
 
 function toolMeta(name: string): ToolMeta {
-  if (TOOL_META[name]) {
-    return TOOL_META[name]
+  const style: ToolStyle = TOOL_META[name] ??
+    PREFIX_META.find(p => name.startsWith(p.prefix)) ?? { tone: 'default' }
+
+  // Unknown tools fall back to a generic localized title instead of an
+  // English label derived from the snake_case tool name.
+  const titleKey = TOOL_META[name] ? name : 'unknown'
+
+  return {
+    done: translateNow(`assistant.tool.titles.${titleKey}.done`),
+    pending: translateNow(`assistant.tool.titles.${titleKey}.pending`),
+    icon: style.icon,
+    tone: style.tone
   }
-
-  const action = titleForTool(name)
-  const prefix = PREFIX_META.find(p => name.startsWith(p.prefix))
-
-  return prefix
-    ? {
-        done: `${prefix.verb} ${action}`,
-        pending: `Running ${prefix.verb.toLowerCase()} ${action.toLowerCase()}`,
-        icon: prefix.icon,
-        tone: prefix.tone
-      }
-    : { done: action, pending: `Running ${action.toLowerCase()}`, tone: 'default' }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -901,8 +880,9 @@ function fallbackDetailText(args: unknown, result: unknown): string {
 }
 
 function cronScalar(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'string') {return value.trim()}
+
+  if (typeof value === 'number' && Number.isFinite(value)) {return String(value)}
 
   return ''
 }
@@ -910,7 +890,7 @@ function cronScalar(value: unknown): string {
 function formatCronTime(iso: string): string {
   const ts = Date.parse(iso)
 
-  if (Number.isNaN(ts)) return iso
+  if (Number.isNaN(ts)) {return iso}
 
   return new Date(ts).toLocaleString(undefined, {
     month: 'short',
@@ -932,7 +912,7 @@ function cronjobSubtitle(
 
   const message = firstStringField(resultRecord, ['message'])
 
-  if (message) return message
+  if (message) {return message}
 
   const action = firstStringField(argsRecord, ['action']) || 'manage'
   const name = firstStringField(resultRecord, ['name']) || firstStringField(argsRecord, ['name', 'job_id'])
@@ -948,7 +928,7 @@ function cronjobDetail(
   const jobs = Array.isArray(resultRecord.jobs) ? resultRecord.jobs : null
 
   if (jobs) {
-    if (!jobs.length) return 'No cron jobs scheduled'
+    if (!jobs.length) {return 'No cron jobs scheduled'}
 
     return jobs
       .slice(0, 20)
@@ -963,12 +943,14 @@ function cronjobDetail(
   }
 
   const nextRun = cronScalar(resultRecord.next_run_at)
+
   const rows: [string, string][] = [
     ['Schedule', cronScalar(resultRecord.schedule)],
     ['Repeat', cronScalar(resultRecord.repeat)],
     ['Delivery', cronScalar(resultRecord.deliver)],
     ['Next run', nextRun ? formatCronTime(nextRun) : '']
   ]
+
   const lines = rows.filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)
 
   return lines.length ? lines.join('\n') : fallbackDetailText(argsRecord, resultRecord)
@@ -1081,15 +1063,15 @@ function toolSubtitle(
 
 function toolDetailLabel(toolName: string): string {
   if (toolName === 'web_search') {
-    return 'Details'
+    return translateNow('assistant.tool.detailLabels.details')
   }
 
   if (toolName === 'browser_snapshot') {
-    return 'Snapshot summary'
+    return translateNow('assistant.tool.detailLabels.snapshotSummary')
   }
 
   if (toolName === 'terminal' || toolName === 'execute_code') {
-    return 'Command output'
+    return translateNow('assistant.tool.detailLabels.commandOutput')
   }
 
   return ''
@@ -1190,6 +1172,7 @@ export function toolCopyPayload(part: ToolPart, view: ToolView): { label: string
     url: translateNow('assistant.tool.copyUrl'),
     generic: translateNow('common.copy')
   }
+
   const args = parseMaybeObject(part.args)
   const result = parseMaybeObject(part.result)
   const detail = view.detail.trim()
@@ -1274,33 +1257,36 @@ function dynamicTitle(
   result: Record<string, unknown>,
   fallback: string
 ): string {
-  const verb = (gerund: string, past: string) => (part.result === undefined ? gerund : past)
+  const dyn = (pendingKey: string, doneKey: string, value: string) =>
+    translateNow(`assistant.tool.dynamicTitles.${part.result === undefined ? pendingKey : doneKey}`, value)
 
   if (part.toolName === 'web_extract') {
     const url = findFirstUrl(args, result)
 
-    return url ? `${verb('Reading', 'Read')} ${hostnameOf(url)}` : fallback
+    return url ? dyn('readingHost', 'readHost', hostnameOf(url)) : fallback
   }
 
   if (part.toolName === 'browser_navigate') {
     const url = findFirstUrl(args, result)
 
-    return url ? `${verb('Opening', 'Opened')} ${hostnameOf(url)}` : fallback
+    return url ? dyn('openingHost', 'openedHost', hostnameOf(url)) : fallback
   }
 
   if (part.toolName === 'web_search') {
     const query = firstStringField(args, ['search_term', 'query']) || contextValue(args)
 
-    return query ? `${verb('Searching', 'Searched')} “${compactPreview(query, 48)}”` : fallback
+    return query ? dyn('searchingQuery', 'searchedQuery', compactPreview(query, 48)) : fallback
   }
 
   if (part.toolName === 'terminal' || part.toolName === 'execute_code') {
     const command = firstStringField(args, ['command', 'code']) || contextValue(args)
 
     if (command) {
-      const verbText = part.toolName === 'execute_code' ? verb('Running code', 'Ran code') : verb('Running', 'Ran')
+      const preview = compactPreview(command, 160)
 
-      return `${verbText} · ${compactPreview(command, 160)}`
+      return part.toolName === 'execute_code'
+        ? dyn('runningCode', 'ranCode', preview)
+        : dyn('runningCommand', 'ranCommand', preview)
     }
   }
 
@@ -1348,7 +1334,7 @@ export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
   return {
     countLabel: resultCount ? formatCountLabel(resultCount) : undefined,
     detail,
-    detailLabel: error ? 'Error details' : toolDetailLabel(part.toolName),
+    detailLabel: error ? translateNow('assistant.tool.errorDetails') : toolDetailLabel(part.toolName),
     durationLabel: durationLabel(resultRecord),
     icon: meta.icon,
     imageUrl: toolImageUrl(argsRecord, resultRecord),

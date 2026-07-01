@@ -575,6 +575,28 @@ export const en: Translations = {
       change: 'Change',
       autoUseMain: 'auto · use main model',
       providerDefault: '(provider default)',
+      requestFailed: 'Something went wrong — please try again.',
+      activate: 'Activate',
+      activating: 'Activating...',
+      setUpProvider: name => `Set up ${name}`,
+      pasteKeyPlaceholder: env => `Paste ${env}`,
+      needsApiKeyHint: name => `${name} needs an API key — set it up to choose a model.`,
+      oauthHint: name => `${name} signs in through your browser — APEX runs the flow for you.`,
+      staleAux: (count, names, provider) =>
+        `${count} auxiliary task${count === 1 ? '' : 's'} (${names}) still run on ${provider}, not your main model.`,
+      staleAuxOtherProviders: 'other providers',
+      moa: {
+        title: 'Mixture of Agents',
+        desc: 'Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the acting model.',
+        presetPlaceholder: 'Preset',
+        setDefault: 'Set default',
+        newPresetPlaceholder: 'new preset',
+        addPreset: 'Add preset',
+        defaultLabel: 'Default:',
+        reference: index => `Reference ${index}`,
+        addReference: 'Add reference model',
+        aggregator: 'Aggregator'
+      },
       tasks: {
         vision: { label: 'Vision', hint: 'Image analysis' },
         web_extract: { label: 'Web extract', hint: 'Page summarization' },
@@ -584,6 +606,35 @@ export const en: Translations = {
         mcp: { label: 'MCP', hint: 'MCP tool routing' },
         title_generation: { label: 'Title gen', hint: 'Session titles' },
         curator: { label: 'Curator', hint: 'Skill-usage review' }
+      }
+    },
+    uninstall: {
+      dangerZone: 'Danger zone',
+      checking: "Checking what's installed…",
+      title: 'Uninstall APEX',
+      chooseDesc: 'Choose how much to remove. The app closes to finish the job; reopen the installer any time to come back.',
+      confirmTitle: 'Confirm uninstall',
+      confirmBody: consequence => `This removes ${consequence}. This can't be undone.`,
+      appPath: path => `App: ${path}`,
+      uninstalling: 'Uninstalling…',
+      confirmYes: 'Yes, uninstall',
+      startFailed: 'Uninstall could not start. Please try again.',
+      options: {
+        gui: {
+          title: 'Uninstall Chat GUI only',
+          description: 'Remove this desktop app. The APEX agent, your config, and chats all stay.',
+          consequence: 'the desktop Chat GUI (this app and its data)'
+        },
+        lite: {
+          title: 'Uninstall GUI + agent, keep my data',
+          description: 'Remove the app and the APEX agent, but keep config, chats, and secrets for a future reinstall.',
+          consequence: 'the Chat GUI and the APEX agent (config, chats, and secrets are kept)'
+        },
+        full: {
+          title: 'Uninstall everything',
+          description: 'Remove the app, the agent, and all user data — config, chats, scheduled jobs, secrets, logs.',
+          consequence: 'EVERYTHING — the Chat GUI, the APEX agent, and all of your config, chats, secrets, and logs'
+        }
       }
     },
     providers: {
@@ -824,6 +875,7 @@ export const en: Translations = {
     search: 'Search messaging...',
     loading: 'Loading messaging platforms...',
     loadFailed: 'Messaging platforms failed to load',
+    connectionError: 'Connection error',
     states: {
       connected: 'Connected',
       connecting: 'Connecting',
@@ -1641,11 +1693,15 @@ export const en: Translations = {
     windowControls: 'Window controls',
     paneControls: 'Pane controls',
     appControls: 'App controls',
+    connectingOverlay: 'CONNECTING',
     modelMenu: {
       search: 'Search models',
       noModels: 'No models found',
       editModels: 'Edit Models…',
       refreshModels: 'Refresh Models',
+      loadFailed: 'Could not load models — try again shortly.',
+      moaPresets: 'MoA presets',
+      moaPresetItem: preset => `MoA: ${preset}`,
       fast: 'Fast',
       medium: 'Med'
     },
@@ -1808,7 +1864,7 @@ export const en: Translations = {
       lookingRestart: taskId => `APEX is looking for a preview server to restart (${taskId})`,
       restartingTitle: 'Restarting preview server',
       restartingMessage: 'APEX is working in the background. Watch the preview console for progress.',
-      startRestartFailed: message => `Could not start server restart: ${message}`,
+      startRestartFailed: 'Could not start the server restart. Please try again.',
       restartFailed: 'Server restart failed',
       hideConsole: 'Hide preview console',
       showConsole: 'Show preview console',
@@ -1826,7 +1882,7 @@ export const en: Translations = {
       workspaceReloading: 'Workspace changed, reloading preview',
       fileChanged: url => `File changed, reloading preview: ${url}`,
       filesChanged: (count, url) => `${count} file changes, reloading preview: ${url}`,
-      watchFailed: message => `Could not watch preview file: ${message}`,
+      watchFailed: 'Could not watch the preview file — auto-reload is off.',
       moduleMimeDescription:
         'Module scripts are being served with the wrong MIME type. This usually means a static file server is serving a Vite/React app instead of the project dev server.',
       loadFailedConsole: (code, message) => `Load failed${code ? ` (${code})` : ''}: ${message}`,
@@ -1865,7 +1921,10 @@ export const en: Translations = {
       restoreNext: 'Restore next checkpoint',
       goForward: 'Go forward',
       sendEdited: 'Send edited message',
-      attachingFile: 'Attaching…'
+      attachingFile: 'Attaching…',
+      compacting: 'Summarizing thread',
+      steered: 'steered',
+      processOutput: 'output'
     },
     approval: {
       gatewayDisconnected: 'APEX gateway is not connected',
@@ -1916,7 +1975,53 @@ export const en: Translations = {
       statusRunning: 'Running',
       statusError: 'Error',
       statusRecovered: 'Recovered',
-      statusDone: 'Done'
+      statusDone: 'Done',
+      errorDetails: 'Error details',
+      searchResults: 'Search results',
+      stdoutLabel: 'stdout',
+      stderrLabel: 'stderr',
+      detailLabels: {
+        details: 'Details',
+        snapshotSummary: 'Snapshot summary',
+        commandOutput: 'Command output'
+      },
+      titles: {
+        browser_click: { done: 'Clicked page element', pending: 'Clicking page element' },
+        browser_fill: { done: 'Filled form field', pending: 'Filling form field' },
+        browser_navigate: { done: 'Opened page', pending: 'Opening page' },
+        browser_snapshot: { done: 'Captured page snapshot', pending: 'Capturing page snapshot' },
+        browser_take_screenshot: { done: 'Captured screenshot', pending: 'Capturing screenshot' },
+        browser_type: { done: 'Typed on page', pending: 'Typing on page' },
+        clarify: { done: 'Asked a question', pending: 'Asking a question' },
+        cronjob: { done: 'Cron job', pending: 'Scheduling cron job' },
+        edit_file: { done: 'Edited file', pending: 'Editing file' },
+        execute_code: { done: 'Ran code', pending: 'Running code' },
+        image_generate: { done: 'Generated image', pending: 'Generating image' },
+        list_files: { done: 'Listed files', pending: 'Listing files' },
+        patch: { done: 'Patched file', pending: 'Patching file' },
+        read_file: { done: 'Read file', pending: 'Reading file' },
+        search_files: { done: 'Searched files', pending: 'Searching files' },
+        session_search_recall: { done: 'Searched session history', pending: 'Searching session history' },
+        terminal: { done: 'Ran command', pending: 'Running command' },
+        todo: { done: 'Updated todos', pending: 'Updating todos' },
+        vision_analyze: { done: 'Analyzed image', pending: 'Analyzing image' },
+        web_extract: { done: 'Read webpage', pending: 'Reading webpage' },
+        web_search: { done: 'Searched web', pending: 'Searching web' },
+        write_file: { done: 'Edited file', pending: 'Editing file' },
+        unknown: { done: 'Ran tool', pending: 'Running tool' }
+      },
+      dynamicTitles: {
+        readingHost: host => `Reading ${host}`,
+        readHost: host => `Read ${host}`,
+        openingHost: host => `Opening ${host}`,
+        openedHost: host => `Opened ${host}`,
+        searchingQuery: query => `Searching “${query}”`,
+        searchedQuery: query => `Searched “${query}”`,
+        runningCommand: command => `Running · ${command}`,
+        ranCommand: command => `Ran · ${command}`,
+        runningCode: command => `Running code · ${command}`,
+        ranCode: command => `Ran code · ${command}`
+      }
     }
   },
 
@@ -1984,6 +2089,7 @@ export const en: Translations = {
     imageDownloadFailed: 'Image download failed',
     openImage: 'Open image',
     downloadImage: 'Download image',
+    generatedImageAlt: 'Generated image',
     savingImage: 'Saving image',
     imagePreviewFailed: 'Image preview failed',
     imageAttach: 'Image attach',

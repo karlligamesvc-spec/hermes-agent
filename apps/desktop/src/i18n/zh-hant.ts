@@ -676,6 +676,27 @@ export const zhHant = defineLocale({
       change: '變更',
       autoUseMain: '自動 · 使用主要模型',
       providerDefault: '(提供方預設)',
+      requestFailed: '操作失敗，請重試',
+      activate: '啟用',
+      activating: '正在啟用…',
+      setUpProvider: name => `設定 ${name}`,
+      pasteKeyPlaceholder: env => `貼上 ${env}`,
+      needsApiKeyHint: name => `${name} 需要 API 金鑰——設定後即可選擇模型。`,
+      oauthHint: name => `${name} 透過瀏覽器登入——APEX 會為您完成整個流程。`,
+      staleAux: (count, names, provider) => `${count} 個輔助任務（${names}）仍在使用 ${provider}，而不是您的主要模型。`,
+      staleAuxOtherProviders: '其他提供方',
+      moa: {
+        title: 'MoA 多模型協作',
+        desc: '設定命名預設集，它們會作為模型出現在 MoA 提供方下。聚合模型負責整合並輸出最終回答。',
+        presetPlaceholder: '選擇預設集',
+        setDefault: '設為預設',
+        newPresetPlaceholder: '新預設集名稱',
+        addPreset: '新增預設集',
+        defaultLabel: '預設：',
+        reference: index => `參考模型 ${index}`,
+        addReference: '新增參考模型',
+        aggregator: '聚合模型'
+      },
       tasks: {
         vision: { label: '視覺', hint: '圖片分析' },
         web_extract: { label: '網頁擷取', hint: '頁面摘要' },
@@ -685,6 +706,35 @@ export const zhHant = defineLocale({
         mcp: { label: 'MCP', hint: 'MCP 工具路由' },
         title_generation: { label: '標題生成', hint: '工作階段標題' },
         curator: { label: '策展器', hint: '技能使用審查' }
+      }
+    },
+    uninstall: {
+      dangerZone: '危險操作',
+      checking: '正在檢查已安裝的元件…',
+      title: '解除安裝 APEX',
+      chooseDesc: '選擇要移除的內容。解除安裝時應用程式會自動關閉；之後隨時可以重新安裝。',
+      confirmTitle: '確認解除安裝',
+      confirmBody: consequence => `將移除${consequence}。此操作無法復原。`,
+      appPath: path => `應用程式：${path}`,
+      uninstalling: '正在解除安裝…',
+      confirmYes: '確定解除安裝',
+      startFailed: '解除安裝未能啟動，請重試。',
+      options: {
+        gui: {
+          title: '僅解除安裝聊天介面',
+          description: '只移除這個桌面應用程式。APEX 智慧代理、設定和聊天記錄都會保留。',
+          consequence: '桌面聊天介面（此應用程式及其資料）'
+        },
+        lite: {
+          title: '解除安裝介面和代理，保留我的資料',
+          description: '移除應用程式和 APEX 智慧代理，但保留設定、聊天記錄和金鑰，方便日後重新安裝。',
+          consequence: '聊天介面和 APEX 智慧代理（設定、聊天記錄和金鑰會保留）'
+        },
+        full: {
+          title: '全部解除安裝',
+          description: '移除應用程式、代理以及全部使用者資料——設定、聊天記錄、排程任務、金鑰和記錄檔。',
+          consequence: '所有內容——聊天介面、APEX 智慧代理，以及您全部的設定、聊天記錄、金鑰和記錄檔'
+        }
       }
     },
     providers: {
@@ -915,6 +965,7 @@ export const zhHant = defineLocale({
     search: '搜尋訊息平台…',
     loading: '正在載入訊息平台…',
     loadFailed: '訊息平台載入失敗',
+    connectionError: '連線發生錯誤',
     states: {
       connected: '已連線',
       connecting: '連線中',
@@ -1702,11 +1753,15 @@ export const zhHant = defineLocale({
     windowControls: '視窗控制項',
     paneControls: '窗格控制項',
     appControls: '應用程式控制項',
+    connectingOverlay: '連接中',
     modelMenu: {
       search: '搜尋模型',
       noModels: '找不到模型',
       editModels: '編輯模型…',
       refreshModels: '重新整理模型',
+      loadFailed: '模型清單載入失敗，請稍後重試',
+      moaPresets: 'MoA 預設集',
+      moaPresetItem: preset => `MoA：${preset}`,
       fast: '快速',
       medium: '中'
     },
@@ -1869,7 +1924,7 @@ export const zhHant = defineLocale({
       lookingRestart: taskId => `APEX 正在尋找要重新啟動的預覽伺服器 (${taskId})`,
       restartingTitle: '正在重新啟動預覽伺服器',
       restartingMessage: 'APEX 正在背景執行。可在預覽主控台查看進度。',
-      startRestartFailed: message => `無法啟動伺服器重新啟動：${message}`,
+      startRestartFailed: '無法啟動伺服器重新啟動，請重試。',
       restartFailed: '伺服器重新啟動失敗',
       hideConsole: '隱藏預覽主控台',
       showConsole: '顯示預覽主控台',
@@ -1886,7 +1941,7 @@ export const zhHant = defineLocale({
       workspaceReloading: '工作區已變更，正在重新載入預覽',
       fileChanged: url => `檔案已變更，正在重新載入預覽：${url}`,
       filesChanged: (count, url) => `${count} 個檔案變更，正在重新載入預覽：${url}`,
-      watchFailed: message => `無法監看預覽檔案：${message}`,
+      watchFailed: '無法監看預覽檔案，自動重新載入已停用。',
       moduleMimeDescription:
         '模組指令碼使用了錯誤的 MIME 類型。這通常表示靜態檔案伺服器正在服務 Vite/React 應用程式，而不是專案開發伺服器。',
       loadFailedConsole: (code, message) => `載入失敗${code ? ` (${code})` : ''}：${message}`,
@@ -1924,7 +1979,10 @@ export const zhHant = defineLocale({
       restoreNext: '還原至下一個檢查點',
       goForward: '前進',
       sendEdited: '傳送編輯後的訊息',
-      attachingFile: '正在附加…'
+      attachingFile: '正在附加…',
+      compacting: '正在整理對話',
+      steered: '已引導',
+      processOutput: '輸出'
     },
     approval: {
       gatewayDisconnected: 'APEX 閘道未連線',
@@ -1975,7 +2033,53 @@ export const zhHant = defineLocale({
       statusRunning: '執行中',
       statusError: '錯誤',
       statusRecovered: '已復原',
-      statusDone: '完成'
+      statusDone: '完成',
+      errorDetails: '錯誤詳情',
+      searchResults: '搜尋結果',
+      stdoutLabel: '輸出',
+      stderrLabel: '錯誤輸出',
+      detailLabels: {
+        details: '詳情',
+        snapshotSummary: '快照摘要',
+        commandOutput: '指令輸出'
+      },
+      titles: {
+        browser_click: { done: '已點擊頁面元素', pending: '正在點擊頁面元素' },
+        browser_fill: { done: '已填寫表單', pending: '正在填寫表單' },
+        browser_navigate: { done: '已開啟頁面', pending: '正在開啟頁面' },
+        browser_snapshot: { done: '已擷取頁面快照', pending: '正在擷取頁面快照' },
+        browser_take_screenshot: { done: '已截圖', pending: '正在截圖' },
+        browser_type: { done: '已在頁面輸入', pending: '正在頁面輸入' },
+        clarify: { done: '已提問', pending: '正在提問' },
+        cronjob: { done: '排程任務', pending: '正在設定排程任務' },
+        edit_file: { done: '已編輯檔案', pending: '正在編輯檔案' },
+        execute_code: { done: '已執行程式碼', pending: '正在執行程式碼' },
+        image_generate: { done: '已生成圖片', pending: '正在生成圖片' },
+        list_files: { done: '已列出檔案', pending: '正在列出檔案' },
+        patch: { done: '已修改檔案', pending: '正在修改檔案' },
+        read_file: { done: '已讀取檔案', pending: '正在讀取檔案' },
+        search_files: { done: '已搜尋檔案', pending: '正在搜尋檔案' },
+        session_search_recall: { done: '已搜尋工作階段記錄', pending: '正在搜尋工作階段記錄' },
+        terminal: { done: '已執行指令', pending: '正在執行指令' },
+        todo: { done: '已更新待辦', pending: '正在更新待辦' },
+        vision_analyze: { done: '已分析圖片', pending: '正在分析圖片' },
+        web_extract: { done: '已讀取網頁', pending: '正在讀取網頁' },
+        web_search: { done: '已搜尋網頁', pending: '正在搜尋' },
+        write_file: { done: '已編輯檔案', pending: '正在編輯檔案' },
+        unknown: { done: '已執行操作', pending: '正在執行操作' }
+      },
+      dynamicTitles: {
+        readingHost: host => `正在讀取 ${host}`,
+        readHost: host => `已讀取 ${host}`,
+        openingHost: host => `正在開啟 ${host}`,
+        openedHost: host => `已開啟 ${host}`,
+        searchingQuery: query => `正在搜尋「${query}」`,
+        searchedQuery: query => `已搜尋「${query}」`,
+        runningCommand: command => `正在執行 · ${command}`,
+        ranCommand: command => `已執行 · ${command}`,
+        runningCode: command => `正在執行程式碼 · ${command}`,
+        ranCode: command => `已執行程式碼 · ${command}`
+      }
     }
   },
 
@@ -2042,6 +2146,7 @@ export const zhHant = defineLocale({
     imageDownloadFailed: '圖片下載失敗',
     openImage: '開啟圖片',
     downloadImage: '下載圖片',
+    generatedImageAlt: '生成的圖片',
     savingImage: '正在儲存圖片',
     imagePreviewFailed: '圖片預覽失敗',
     imageAttach: '附加圖片',

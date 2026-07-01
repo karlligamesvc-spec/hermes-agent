@@ -1,13 +1,16 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 
+import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { $desktopBoot } from '@/store/boot'
 import { $gatewayState } from '@/store/session'
 
 // Static, always-legible prefix; only TAIL ever scrambles. Splitting them at
 // the render level means no timer logic (even a stale HMR one) can ever
-// scramble "CONN".
+// scramble "CONN". The ascii decode effect only plays for the English label;
+// CJK locales render their localized label with a soft pulse instead (see
+// `scramble` below).
 const PREFIX = 'CONN'
 const TAIL = 'ECTING'
 // Even-weight mono ascii so cycling glyphs don't jump width (matches the
@@ -46,11 +49,18 @@ function scrambledTail(resolvedCount: number): string {
 }
 
 export function GatewayConnectingOverlay() {
+  const { t } = useI18n()
   const gatewayState = useStore($gatewayState)
   const boot = useStore($desktopBoot)
   const [previewing] = useState(forcedPreview)
   const [tail, setTail] = useState(TAIL)
   const [phase, setPhase] = useState<Phase>('live')
+
+  // Locale-aware label. The scramble/decode animation only reads well with the
+  // even-width ascii "CONNECTING"; any translated label (e.g. zh "连接中")
+  // renders as-is with a fade-pulse instead.
+  const label = t.shell.connectingOverlay
+  const scramble = label === `${PREFIX}${TAIL}`
 
   // The full-screen connecting overlay is for initial boot only. After a
   // healthy boot, flaky networks / sleep-wake can drop the socket and flip the
@@ -68,9 +78,10 @@ export function GatewayConnectingOverlay() {
     shownRef.current = true
   }
 
-  // Decode loop — only while live (freeze the resolved word during the exit).
+  // Decode loop — only while live (freeze the resolved word during the exit),
+  // and only for the ascii label; localized labels pulse instead of decoding.
   useEffect(() => {
-    if (phase !== 'live' || (!previewing && !connecting)) {
+    if (!scramble || phase !== 'live' || (!previewing && !connecting)) {
       return
     }
 
@@ -96,7 +107,7 @@ export function GatewayConnectingOverlay() {
     }, TICK_MS)
 
     return () => window.clearInterval(id)
-  }, [phase, previewing, connecting])
+  }, [scramble, phase, previewing, connecting])
 
   // Kick off the exit when connected: real connect, or a faked timer in preview.
   useEffect(() => {
@@ -176,8 +187,14 @@ export function GatewayConnectingOverlay() {
           leaving ? 'translate-y-2 opacity-0 saturate-0' : 'translate-y-0 opacity-100 saturate-100'
         )}
       >
-        {PREFIX}
-        {tail}
+        {scramble ? (
+          <>
+            {PREFIX}
+            {tail}
+          </>
+        ) : (
+          <span className="animate-pulse">{label}</span>
+        )}
         <span
           aria-hidden="true"
           className="dither ml-0.5 inline-block size-2 shrink-0 -translate-y-px rounded-[1px]"
