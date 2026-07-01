@@ -101,15 +101,15 @@ export const zh: Translations = {
     copyDetail: '复制详情',
     copyDetailFailed: '无法复制通知详情',
     backendOutOfDateTitle: '后端版本过旧',
-    backendOutOfDateMessage: '你的 Hermes 后端早于当前桌面构建，可能无法正常工作。请更新以保持一致。',
-    updateHermes: '更新 Hermes',
+    backendOutOfDateMessage: '你的 APEX 后端早于当前桌面构建，可能无法正常工作。请更新以保持一致。',
+    updateHermes: '更新 APEX',
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 项新更改可用。`,
     seeWhatsNew: '查看更新内容',
     errors: {
       elevenLabsNeedsKey: 'ElevenLabs STT 需要 ELEVENLABS_API_KEY。',
       elevenLabsRejectedKey: 'ElevenLabs 拒绝了该 API key (401)。',
-      methodNotAllowed: '桌面后端拒绝了该请求 (405 Method Not Allowed)。请尝试重启 Hermes Desktop。',
+      methodNotAllowed: '桌面后端拒绝了该请求 (405 Method Not Allowed)。请尝试重启 APEX 桌面版。',
       microphonePermission: '麦克风权限已被拒绝。',
       openaiRejectedApiKey: 'OpenAI 拒绝了该 API key。',
       openaiRejectedApiKeyWithStatus: status => `OpenAI 拒绝了该 API key (${status} invalid_api_key)。`,
@@ -139,8 +139,8 @@ export const zh: Translations = {
       approveAction: '批准',
       rejectAction: '拒绝',
       inputTitle: '需要输入',
-      inputBody: 'Hermes 正在等待你的回应。',
-      turnDoneTitle: 'Hermes 已完成',
+      inputBody: 'APEX 正在等待你的回应。',
+      turnDoneTitle: 'APEX 已完成',
       turnDoneBody: '回复已就绪。',
       turnErrorTitle: '本轮失败',
       backgroundDoneTitle: '后台任务已完成',
@@ -265,7 +265,7 @@ export const zh: Translations = {
     exportConfig: '导出配置',
     importConfig: '导入配置',
     resetToDefaults: '恢复默认',
-    resetConfirm: '将所有设置恢复为 Hermes 默认值？',
+    resetConfirm: '将所有设置恢复为 APEX 默认值？',
     exportFailed: '导出失败',
     resetFailed: '重置失败',
     nav: {
@@ -286,7 +286,7 @@ export const zh: Translations = {
       intro: '原生桌面通知，区别于应用内提示。设置按设备保存，每台电脑各自独立。',
       enableAll: '启用通知',
       enableAllDesc: '总开关。关闭后将静音下方所有通知。',
-      focusedHint: '完成提醒仅在 Hermes 处于后台时触发。',
+      focusedHint: '完成提醒仅在 APEX 处于后台时触发。',
       kinds: {
         approval: {
           label: '需要批准',
@@ -294,11 +294,11 @@ export const zh: Translations = {
         },
         input: {
           label: '需要输入',
-          description: 'Hermes 提出了问题，或需要密码或密钥。'
+          description: 'APEX 提出了问题，或需要密码或密钥。'
         },
         turnDone: {
           label: '回复就绪',
-          description: 'Hermes 在后台时完成了一轮对话。'
+          description: 'APEX 在后台时完成了一轮对话。'
         },
         turnError: {
           label: '本轮失败',
@@ -310,7 +310,7 @@ export const zh: Translations = {
         }
       },
       test: '发送测试通知',
-      testTitle: 'Hermes',
+      testTitle: 'APEX',
       testBody: '通知工作正常。',
       testSent: '测试已发送。如果没有出现，请检查系统通知权限和专注模式／勿扰模式。',
       testUnsupported: '此系统不支持原生通知。',
@@ -329,7 +329,7 @@ export const zh: Translations = {
       advanced: '高级'
     },
     searchPlaceholder: {
-      about: '关于 Hermes Desktop',
+      about: '关于 APEX 桌面版',
       config: '搜索设置…',
       gateway: '网关连接…',
       keys: '搜索 API 密钥…',
@@ -345,7 +345,7 @@ export const zh: Translations = {
       title: '外观',
       intro: '这些是仅桌面端的显示偏好。模式控制明暗；主题控制强调色与对话界面样式。',
       colorMode: '颜色模式',
-      colorModeDesc: '选择固定模式，或让 Hermes 跟随系统设置。',
+      colorModeDesc: '选择固定模式，或让 APEX 跟随系统设置。',
       toolViewTitle: '工具调用显示',
       toolViewDesc: '产品模式隐藏原始工具数据；技术模式显示完整输入/输出。',
       translucencyTitle: '窗口透明',
@@ -529,10 +529,10 @@ export const zh: Translations = {
         personality: '新会话的默认助手风格。',
         showReasoning: '当后端提供推理内容时予以显示。'
       },
-      timezone: '当 Hermes 需要本地时间上下文时使用。留空则使用系统时区。',
+      timezone: '当 APEX 需要本地时间上下文时使用。留空则使用系统时区。',
       agent: {
         imageInputMode: '控制图片附件如何发送给模型。',
-        maxTurns: 'Hermes 停止一次运行前工具调用轮次的上限。'
+        maxTurns: 'APEX 停止一次运行前工具调用轮次的上限。'
       },
       terminal: {
         cwd: '工具与终端操作的默认项目目录。',
@@ -542,9 +542,9 @@ export const zh: Translations = {
       codeExecution: {
         mode: '代码执行被限定到当前项目的严格程度。'
       },
-      fileReadMaxChars: 'Hermes 单次文件读取可读取的最大字符数。',
+      fileReadMaxChars: 'APEX 单次文件读取可读取的最大字符数。',
       approvals: {
-        mode: 'Hermes 如何处理需要显式审批的命令。',
+        mode: 'APEX 如何处理需要显式审批的命令。',
         timeout: '审批提示在超时前等待的时长。'
       },
       security: {
@@ -574,11 +574,11 @@ export const zh: Translations = {
       },
       updates: {
         nonInteractiveLocalChanges:
-          'Hermes 从应用内更新时（无终端提示），保留本地源码修改（暂存）或丢弃（放弃）。通过终端更新时始终会询问。'
+          'APEX 从应用内更新时（无终端提示），保留本地源码修改（暂存）或丢弃（放弃）。通过终端更新时始终会询问。'
       }
     }),
     about: {
-      heading: 'Hermes Desktop',
+      heading: 'APEX 桌面版',
       version: value => `版本 ${value}`,
       versionUnavailable: '版本不可用',
       updates: '更新',
@@ -595,7 +595,7 @@ export const zh: Translations = {
       lastChecked: age => `上次检查:${age}`,
       justNowSuffix: ' · 刚刚',
       automaticUpdates: '自动更新',
-      automaticUpdatesDesc: 'Hermes 会在后台自动检查更新，并在有可用更新时通知你。',
+      automaticUpdatesDesc: 'APEX 会在后台自动检查更新，并在有可用更新时通知你。',
       branchCommit: (branch, commit) => `分支 ${branch} · 提交 ${commit}`,
       never: '从未',
       justNow: '刚刚',
@@ -625,7 +625,7 @@ export const zh: Translations = {
       noneParen: '(无)',
       notSet: '未设置',
       commaSeparated: '逗号分隔的值',
-      loading: '正在加载 Hermes 配置...',
+      loading: '正在加载 APEX 配置...',
       emptyTitle: '无可配置项',
       emptyDesc: '此分区没有可调整的设置。',
       failedLoad: '设置加载失败',
@@ -662,7 +662,7 @@ export const zh: Translations = {
       title: '网关连接',
       envOverride: '环境变量覆盖',
       intro:
-        'Hermes Desktop 默认会启动自己的本地网关。当你希望此应用控制另一台机器上或可信代理后的现有 Hermes 后端时，可以使用远程网关。下面可按 profile 指定各自的远程主机。',
+        'APEX 桌面版 默认会启动自己的本地网关。当你希望此应用控制另一台机器上或可信代理后的现有 APEX 后端时，可以使用远程网关。下面可按 profile 指定各自的远程主机。',
       appliesTo: '应用于',
       allProfiles: '所有 profile',
       defaultConnection: '默认连接会用于所有没有自定义覆盖的 profile。',
@@ -670,10 +670,9 @@ export const zh: Translations = {
       envOverrideTitle: '环境变量正在控制此桌面会话。',
       envOverrideDesc: '取消设置 HERMES_DESKTOP_REMOTE_URL 和 HERMES_DESKTOP_REMOTE_TOKEN 后才会使用下面保存的设置。',
       localTitle: '本地网关',
-      localDesc: '在 localhost 启动私有 Hermes 后端。这是默认方式，并且可离线工作。',
+      localDesc: '在 localhost 启动私有 APEX 后端。这是默认方式，并且可离线工作。',
       remoteTitle: '远程网关',
-      remoteDesc:
-        '将此桌面外壳连接到远程 Hermes 后端。托管网关使用 OAuth 或用户名密码；自托管网关也可能使用会话 token。',
+      remoteDesc: '将此桌面外壳连接到远程 APEX 后端。托管网关使用 OAuth 或用户名密码；自托管网关也可能使用会话 token。',
       remoteUrlTitle: '远程 URL',
       remoteUrlDesc: '远程 dashboard 后端的基础 URL。支持路径前缀，例如 /hermes。',
       probing: '正在检查此网关的认证方式…',
@@ -706,9 +705,9 @@ export const zh: Translations = {
       enterUrlFirst: '请先输入远程 URL。',
       restartingTitle: '网关连接正在重启',
       savedTitle: '网关设置已保存',
-      restartingMessage: 'Hermes Desktop 将使用已保存设置重新连接。',
+      restartingMessage: 'APEX 桌面版 将使用已保存设置重新连接。',
       savedMessage: '已保存，下一次重启生效。',
-      connectedTo: (baseUrl, version) => `已连接到 ${baseUrl}${version ? ` · Hermes ${version}` : ''}`,
+      connectedTo: (baseUrl, version) => `已连接到 ${baseUrl}${version ? ` · APEX ${version}` : ''}`,
       reachableTitle: '远程网关可访问',
       signedOutTitle: '已退出登录',
       signedOutMessage: '已清除远程网关会话。',
@@ -783,7 +782,7 @@ export const zh: Translations = {
     providers: {
       connectAccount: '连接账号',
       haveApiKey: '改用 API 密钥？',
-      intro: '使用订阅登录，无需复制 API 密钥。Hermes 会在应用中为你完成浏览器登录。',
+      intro: '使用订阅登录，无需复制 API 密钥。APEX 会在应用中为你完成浏览器登录。',
       connected: '已连接',
       collapse: '收起',
       connectAnother: '连接其他提供方',
@@ -956,7 +955,7 @@ export const zh: Translations = {
     },
     nav: {
       newChat: { title: '新建会话', detail: '开始一个新会话' },
-      settings: { title: '设置', detail: '配置 Hermes 桌面端' },
+      settings: { title: '设置', detail: '配置 APEX 桌面端' },
       skills: { title: '技能与工具', detail: '启用技能、工具集与提供方' },
       messaging: { title: '消息平台', detail: '配置 Telegram、Slack、Discord 等' },
       artifacts: { title: '产物', detail: '浏览生成的输出' }
@@ -978,10 +977,10 @@ export const zh: Translations = {
     noSessions: '暂无会话。',
     gatewayRunning: '消息网关运行中',
     gatewayStopped: '消息网关已停止',
-    hermesActiveSessions: (version, count) => `Hermes ${version} · 活跃会话 ${count}`,
+    hermesActiveSessions: (version, count) => `APEX ${version} · 活跃会话 ${count}`,
     restartGateway: '重启网关',
     gatewayRestartFailed: '网关重启失败。',
-    updateHermes: '更新 Hermes',
+    updateHermes: '更新 APEX',
     actionRunning: '运行中',
     actionDone: '完成',
     actionFailed: '失败',
@@ -1120,10 +1119,9 @@ export const zh: Translations = {
       slack: '创建 Slack 应用，启用 Socket Mode，安装到你的工作区，然后复制 bot 令牌和 app 级令牌。',
       mattermost: '在你的 Mattermost 服务器上，创建机器人账户或个人访问令牌，然后在此粘贴服务器 URL 和令牌。',
       matrix: '用机器人账户登录你的 homeserver，然后复制访问令牌、用户 ID 和 homeserver URL。',
-      signal: '在可访问的位置运行 signal-cli REST 桥接，然后把 Hermes 指向该 URL 和已注册的电话号码。',
-      whatsapp: '启动 Hermes 自带的 WhatsApp 桥接，首次运行时扫描二维码，然后启用该平台。',
-      bluebubbles:
-        '在装有 iMessage 的 Mac 上运行 BlueBubbles Server，暴露其 API，然后用服务器密码把 Hermes 指向该 URL。',
+      signal: '在可访问的位置运行 signal-cli REST 桥接，然后把 APEX 指向该 URL 和已注册的电话号码。',
+      whatsapp: '启动 APEX 自带的 WhatsApp 桥接，首次运行时扫描二维码，然后启用该平台。',
+      bluebubbles: '在装有 iMessage 的 Mac 上运行 BlueBubbles Server，暴露其 API，然后用服务器密码把 APEX 指向该 URL。',
       homeassistant: '在 Home Assistant 中打开你的个人资料并创建长期访问令牌。把它连同你的 HA URL 一起粘贴到这里。',
       email: '使用专用邮箱。对于 Gmail/Workspace,创建应用专用密码并使用 imap.gmail.com / smtp.gmail.com。',
       sms: '从 Twilio 控制台获取你的 Account SID 和 Auth Token，以及一个可发送短信的电话号码。',
@@ -1132,10 +1130,9 @@ export const zh: Translations = {
       wecom: '在企业微信中添加群机器人，复制其 webhook key 作为 WECOM_BOT_ID。仅可发送——双向请用企业微信 (应用) 选项。',
       wecom_callback: '设置一个企业微信自建应用，暴露其回调 URL，并提供 corp ID、secret、agent ID 和 AES key。',
       weixin:
-        '运行 `hermes gateway setup`，选择 Weixin，然后使用个人微信账号扫描并确认二维码。Hermes 会通过腾讯 iLink Bot API 连接并保存凭据。',
+        '运行 `hermes gateway setup`，选择 Weixin，然后使用个人微信账号扫描并确认二维码。APEX 会通过腾讯 iLink Bot API 连接并保存凭据。',
       qqbot: '在 QQ 开放平台 (q.qq.com) 注册一个应用，复制 App ID 和 Client Secret。',
-      api_server:
-        '把 Hermes 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',
+      api_server: '把 APEX 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',
       webhook: '运行一个 HTTP 服务器，供其他工具 (GitHub、GitLab、自定义应用)POST。用 secret 验证签名。'
     }
   },
@@ -1185,7 +1182,7 @@ export const zh: Translations = {
     deleteDescMid: ' 并移除其 ',
     deleteDescSuffix: ' 目录。此操作无法撤销。',
     deleting: '删除中…',
-    createDesc: '配置档案是相互独立的 Hermes 环境：各自拥有独立的配置、技能和 SOUL.md。',
+    createDesc: '配置档案是相互独立的 APEX 环境：各自拥有独立的配置、技能和 SOUL.md。',
     nameLabel: '名称',
     cloneFrom: '克隆来源',
     cloneFromNone: '无（空白）',
@@ -1271,7 +1268,7 @@ export const zh: Translations = {
     topOfHour: '每个整点',
     everyHourAt: minute => `每小时的 :${minute}`,
     newCron: '新建定时任务',
-    emptyDescNew: '按 cron 表达式排程一个提示词。Hermes 会运行它，并把结果发送到你选择的目的地。',
+    emptyDescNew: '按 cron 表达式排程一个提示词。APEX 会运行它，并把结果发送到你选择的目的地。',
     emptyDescSearch: '尝试更宽泛的搜索词。',
     emptyTitleNew: '暂无排程任务',
     emptyTitleSearch: '无匹配项',
@@ -1492,7 +1489,7 @@ export const zh: Translations = {
       'composer.history': '循环弹窗 / 历史'
     },
     attachUrlTitle: '附加 URL',
-    attachUrlDesc: 'Hermes 将抓取该页面并作为本回合的上下文。',
+    attachUrlDesc: 'APEX 将抓取该页面并作为本回合的上下文。',
     urlPlaceholder: 'https://example.com/post',
     urlHintPre: '请包含完整 URL，例如 ',
     attach: '附加',
@@ -1570,7 +1567,7 @@ export const zh: Translations = {
       fetch: '下载中…',
       pull: '马上完成…',
       pydeps: '收尾中…',
-      restart: '正在重启 Hermes…',
+      restart: '正在重启 APEX…',
       manual: '从终端更新',
       error: '更新已暂停'
     },
@@ -1578,28 +1575,28 @@ export const zh: Translations = {
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',
     notAvailableTitle: '更新不可用',
-    unsupportedMessage: '此版本的 Hermes 无法在应用内自行更新。',
+    unsupportedMessage: '此版本的 APEX 无法在应用内自行更新。',
     connectionRetry: '请检查网络连接后重试。',
     latestBody: '你正在运行最新版本。',
     latestBodyBackend: '后端正在运行最新版本。',
     allSetTitle: '已是最新',
     availableTitle: '有可用更新',
-    availableBody: '新版 Hermes 已可安装。',
+    availableBody: '新版 APEX 已可安装。',
     availableTitleBackend: '后端有可用更新',
-    availableBodyBackend: '已连接的 Hermes 后端有新版本可安装。',
+    availableBodyBackend: '已连接的 APEX 后端有新版本可安装。',
     availableBodyNoChangelog: '已有新版本可用。此安装方式无法显示更新日志。',
     updateNow: '立即更新',
     maybeLater: '稍后再说',
     moreChanges: count => `另有 ${count} 项更改。`,
     manualTitle: '从终端更新',
-    manualBody: '你是从命令行安装的 Hermes，因此更新也需要在那里运行。请将此命令粘贴到终端：',
-    manualPickedUp: '下次启动 Hermes 时会使用新版本。',
+    manualBody: '你是从命令行安装的 APEX，因此更新也需要在那里运行。请将此命令粘贴到终端：',
+    manualPickedUp: '下次启动 APEX 时会使用新版本。',
     copy: '复制',
     copied: '已复制',
     done: '完成',
-    applyingBody: 'Hermes 更新器会在自己的窗口中接管，并在完成后重新打开 Hermes。',
-    applyingBodyBackend: '远程后端正在应用更新并将重启。恢复后 Hermes 会自动重新连接。',
-    applyingClose: 'Hermes 将关闭以应用更新。',
+    applyingBody: 'APEX 更新器会在自己的窗口中接管，并在完成后重新打开 APEX。',
+    applyingBodyBackend: '远程后端正在应用更新并将重启。恢复后 APEX 会自动重新连接。',
+    applyingClose: 'APEX 将关闭以应用更新。',
     errorTitle: '更新未完成',
     errorBody: '没有数据丢失。你可以现在重试。',
     notNow: '暂不',
@@ -1688,6 +1685,10 @@ export const zh: Translations = {
       signInGoogle: '用 Google 登录',
       signInApex: '用 APEX 登录'
     },
+    ready: {
+      title: 'APEX 已就绪',
+      message: () => '已连接，开始对话吧'
+    },
     addKeyToStart: '已选好提供方 — 填入它的 API Key 即可开始对话。',
     preparingInstall: 'APEX 正在完成安装。首次运行通常不到一分钟。',
     starting: '正在启动 APEX…',
@@ -1725,8 +1726,8 @@ export const zh: Translations = {
     update: '更新',
     flowSubtitles: {
       pkce: '打开浏览器登录，然后回到这里继续',
-      device_code: '在浏览器中打开验证页面 — Hermes 会自动连接',
-      loopback: '打开浏览器登录 — Hermes 会自动连接',
+      device_code: '在浏览器中打开验证页面 — APEX 会自动连接',
+      loopback: '打开浏览器登录 — APEX 会自动连接',
       external: '先在终端登录一次，然后回来继续对话'
     },
     startingSignIn: provider => `正在为 ${provider} 启动登录...`,
@@ -1737,11 +1738,11 @@ export const zh: Translations = {
     pickDifferentProvider: '选择其他提供方',
     signInWith: provider => `使用 ${provider} 登录`,
     openedBrowser: provider => `已在浏览器中打开 ${provider}。`,
-    authorizeThere: '请在那里授权 Hermes。',
+    authorizeThere: '请在那里授权 APEX。',
     copyAuthCode: '复制授权码并粘贴到下面。',
     pasteAuthCode: '粘贴授权码',
     reopenAuthPage: '重新打开授权页面',
-    autoBrowser: provider => `已在浏览器中打开 ${provider}。请在那里授权 Hermes，连接会自动完成，无需复制或粘贴。`,
+    autoBrowser: provider => `已在浏览器中打开 ${provider}。请在那里授权 APEX，连接会自动完成，无需复制或粘贴。`,
     reopenSignInPage: '重新打开登录页面',
     waitingAuthorize: '等待你授权...',
     externalPending: provider => `${provider} 通过自己的 CLI 登录。请在终端运行此命令，然后回来选择“我已登录”：`,
@@ -1848,7 +1849,7 @@ export const zh: Translations = {
       update: '更新',
       updateInProgress: '正在更新',
       commitsBehind: (count, branch) => `落后 ${branch} ${count} 个提交`,
-      desktopVersion: version => `Hermes Desktop v${version}`,
+      desktopVersion: version => `APEX 桌面版 v${version}`,
       backendVersion: version => `后端 v${version}`,
       clientLabel: version => `客户端 v${version}`,
       backendLabel: version => `后端 v${version}`,
@@ -1865,7 +1866,7 @@ export const zh: Translations = {
       gatewayConnecting: '连接中',
       gatewayOffline: '离线',
       gatewayRestarting: '重启中…',
-      gatewayTitle: 'Hermes 推理网关状态',
+      gatewayTitle: 'APEX 推理网关状态',
       agents: '代理',
       closeAgents: '关闭代理',
       openAgents: '打开代理',
@@ -1937,7 +1938,7 @@ export const zh: Translations = {
     binaryTitle: '这看起来像二进制文件',
     binaryBody: label => `预览 ${label} 可能会显示不可读文本。`,
     largeTitle: '此文件较大',
-    largeBody: (label, size) => `${label} 大小为 ${size}。Hermes 只会显示前 512 KB。`,
+    largeBody: (label, size) => `${label} 大小为 ${size}。APEX 只会显示前 512 KB。`,
     previewAnyway: '仍然预览',
     truncated: '显示前 512 KB。',
     noInlineTitle: '没有内联预览',
@@ -1967,25 +1968,25 @@ export const zh: Translations = {
       serverNotFound: '未找到服务器',
       failedToLoad: '预览加载失败',
       tryAgain: '重试',
-      restarting: 'Hermes 正在重启...',
-      askRestart: '让 Hermes 重启服务器',
-      lookingRestart: taskId => `Hermes 正在查找要重启的预览服务器 (${taskId})`,
+      restarting: 'APEX 正在重启...',
+      askRestart: '让 APEX 重启服务器',
+      lookingRestart: taskId => `APEX 正在查找要重启的预览服务器 (${taskId})`,
       restartingTitle: '正在重启预览服务器',
-      restartingMessage: 'Hermes 正在后台工作。可在预览控制台查看进度。',
+      restartingMessage: 'APEX 正在后台工作。可在预览控制台查看进度。',
       startRestartFailed: message => `无法启动服务器重启：${message}`,
       restartFailed: '服务器重启失败',
       hideConsole: '隐藏预览控制台',
       showConsole: '显示预览控制台',
       hideDevTools: '隐藏预览 DevTools',
       openDevTools: '打开预览 DevTools',
-      finishedRestarting: message => `Hermes 已完成预览服务器重启${message ? `: ${message}` : ''}`,
+      finishedRestarting: message => `APEX 已完成预览服务器重启${message ? `: ${message}` : ''}`,
       failedRestarting: message => `服务器重启失败：${message}`,
       unknownError: '未知错误',
       restartedTitle: '预览服务器已重启',
       reloadingNow: '正在重新加载预览。',
       restartFailedTitle: '预览重启失败',
-      restartFailedMessage: 'Hermes 无法重启服务器。',
-      stillWorking: 'Hermes 仍在工作，但还没有收到重启结果。服务器命令可能正在前台运行。',
+      restartFailedMessage: 'APEX 无法重启服务器。',
+      stillWorking: 'APEX 仍在工作，但还没有收到重启结果。服务器命令可能正在前台运行。',
       workspaceReloading: '工作区已变更，正在重新加载预览',
       fileChanged: url => `文件已变更，正在重新加载预览：${url}`,
       filesChanged: (count, url) => `${count} 个文件变更，正在重新加载预览：${url}`,
@@ -2003,7 +2004,7 @@ export const zh: Translations = {
     thread: {
       loadingSession: '正在加载会话',
       showEarlier: '显示更早的消息',
-      loadingResponse: 'Hermes 正在加载回复',
+      loadingResponse: 'APEX 正在加载回复',
       thinking: '思考中',
       today: time => `今天，${time}`,
       yesterday: time => `昨天，${time}`,
@@ -2031,7 +2032,7 @@ export const zh: Translations = {
       attachingFile: '正在附加…'
     },
     approval: {
-      gatewayDisconnected: 'Hermes 网关未连接',
+      gatewayDisconnected: 'APEX 网关未连接',
       sendFailed: '无法发送审批响应',
       run: '运行',
       command: '命令',
@@ -2042,12 +2043,12 @@ export const zh: Translations = {
       reject: '拒绝',
       alwaysTitle: '始终允许此命令？',
       alwaysDescription: pattern =>
-        `这会将“${pattern}”模式加入永久允许列表 (~/.hermes/config.yaml)。Hermes 对类似命令将不再询问，包括当前会话和未来会话。`,
+        `这会将“${pattern}”模式加入永久允许列表 (~/.hermes/config.yaml)。APEX 对类似命令将不再询问，包括当前会话和未来会话。`,
       alwaysAllow: '始终允许'
     },
     clarify: {
       notReady: '澄清请求尚未就绪',
-      gatewayDisconnected: 'Hermes 网关未连接',
+      gatewayDisconnected: 'APEX 网关未连接',
       sendFailed: '无法发送澄清响应',
       loadingQuestion: '正在加载问题…',
       other: '其他 (输入你的答案)',
@@ -2084,14 +2085,14 @@ export const zh: Translations = {
   },
 
   prompts: {
-    gatewayDisconnected: 'Hermes 网关未连接',
+    gatewayDisconnected: 'APEX 网关未连接',
     sudoSendFailed: '无法发送 sudo 密码',
     secretSendFailed: '无法发送密钥',
     sudoTitle: '管理员密码',
-    sudoDesc: 'Hermes 需要你的 sudo 密码来运行特权命令。它只会发送给你的本地 agent。',
+    sudoDesc: 'APEX 需要你的 sudo 密码来运行特权命令。它只会发送给你的本地 agent。',
     sudoPlaceholder: 'sudo 密码',
     secretTitle: '需要密钥',
-    secretDesc: 'Hermes 需要一个凭据才能继续。',
+    secretDesc: 'APEX 需要一个凭据才能继续。',
     secretPlaceholder: '密钥值'
   },
 
@@ -2141,8 +2142,8 @@ export const zh: Translations = {
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',
     downloadStarted: '下载已开始',
-    restartToUseSaveImage: '重启 Hermes 桌面版后可使用保存图片。',
-    restartToSaveImages: '重启 Hermes 桌面版以保存图片',
+    restartToUseSaveImage: '重启 APEX 桌面版后可使用保存图片。',
+    restartToSaveImages: '重启 APEX 桌面版以保存图片',
     imageDownloadFailed: '图片下载失败',
     openImage: '打开图片',
     downloadImage: '下载图片',

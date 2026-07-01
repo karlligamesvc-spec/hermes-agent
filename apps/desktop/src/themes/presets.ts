@@ -45,7 +45,7 @@ const apexTintTransparent = (pct: number) => `color-mix(in srgb, ${APEX_VIOLET} 
 export const nousTheme: DesktopTheme = {
   name: 'nous',
   label: 'Nous',
-  description: 'Claude-style gray-white neutrals with a faint ApexNodes violet accent',
+  description: 'Claude-style gray-white neutrals with a faint APEX violet accent',
   colors: {
     background: '#FFFFFF',
     foreground: '#222226',

@@ -16,12 +16,16 @@ const PLATFORM = process.platform
 // app shell plus extraResources (install-stamp.json + native-deps/) -- it
 // no longer bundles the Hermes Agent Python payload (that's fetched at first
 // launch via install.ps1 / install.sh, per the Phase 1 thin-installer flow).
+// Bundle/exe names come from package.json (productName / build.executableName)
+// so a brand rename can never leave this harness probing a stale name.
+const PRODUCT_NAME = PACKAGE_JSON.build?.productName || PACKAGE_JSON.productName
+const EXECUTABLE_NAME = PACKAGE_JSON.build?.executableName || PRODUCT_NAME
 const APP = (() => {
   if (PLATFORM === 'darwin') {
-    const appPath = path.join(RELEASE_ROOT, `mac-${ARCH}`, 'Hermes.app')
+    const appPath = path.join(RELEASE_ROOT, `mac-${ARCH}`, `${PRODUCT_NAME}.app`)
     return {
       appPath,
-      binary: path.join(appPath, 'Contents', 'MacOS', 'Hermes'),
+      binary: path.join(appPath, 'Contents', 'MacOS', EXECUTABLE_NAME),
       resourcesPath: path.join(appPath, 'Contents', 'Resources'),
       asarPath: path.join(appPath, 'Contents', 'Resources', 'app.asar'),
       unpackedDistIndex: path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked', 'dist', 'index.html')
@@ -31,17 +35,17 @@ const APP = (() => {
     const unpacked = path.join(RELEASE_ROOT, 'win-unpacked')
     return {
       appPath: unpacked,
-      binary: path.join(unpacked, 'Hermes.exe'),
+      binary: path.join(unpacked, `${EXECUTABLE_NAME}.exe`),
       resourcesPath: path.join(unpacked, 'resources'),
       asarPath: path.join(unpacked, 'resources', 'app.asar'),
       unpackedDistIndex: path.join(unpacked, 'resources', 'app.asar.unpacked', 'dist', 'index.html')
     }
   }
-  // linux unpacked layout matches windows but with different binary name
+  // linux unpacked layout matches windows but the binary is the executableName
   const unpacked = path.join(RELEASE_ROOT, 'linux-unpacked')
   return {
     appPath: unpacked,
-    binary: path.join(unpacked, 'hermes'),
+    binary: path.join(unpacked, EXECUTABLE_NAME),
     resourcesPath: path.join(unpacked, 'resources'),
     asarPath: path.join(unpacked, 'resources', 'app.asar'),
     unpackedDistIndex: path.join(unpacked, 'resources', 'app.asar.unpacked', 'dist', 'index.html')

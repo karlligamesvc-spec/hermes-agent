@@ -55,9 +55,15 @@ test('mode predicates classify what each mode removes', () => {
 // --- resolveRemovableAppPath ---
 
 test('resolveRemovableAppPath finds the .app bundle on macOS', () => {
+  // Current bundle name (APEX brand rename)…
   assert.equal(
-    resolveRemovableAppPath('/Applications/Hermes.app/Contents/MacOS/Hermes', 'darwin'),
-    '/Applications/Hermes.app'
+    resolveRemovableAppPath('/Applications/APEX.app/Contents/MacOS/APEX', 'darwin'),
+    '/Applications/APEX.app'
+  )
+  // …and older bundle names still resolve (the check is name-agnostic).
+  assert.equal(
+    resolveRemovableAppPath('/Applications/ApexNodes.app/Contents/MacOS/ApexNodes', 'darwin'),
+    '/Applications/ApexNodes.app'
   )
   assert.equal(
     resolveRemovableAppPath('/Users/x/Applications/Hermes.app/Contents/MacOS/Hermes', 'darwin'),
@@ -79,6 +85,16 @@ test('resolveRemovableAppPath: dev-run .app resolves (safety is shouldRemoveAppB
 })
 
 test('resolveRemovableAppPath finds the install dir on Windows', () => {
+  // Current install-dir name (APEX brand rename)…
+  assert.equal(
+    resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\Programs\\APEX\\APEX.exe', 'win32'),
+    'C:\\Users\\x\\AppData\\Local\\Programs\\APEX'
+  )
+  // …and every earlier install-dir name still resolves.
+  assert.equal(
+    resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\Programs\\ApexNodes\\ApexNodes.exe', 'win32'),
+    'C:\\Users\\x\\AppData\\Local\\Programs\\ApexNodes'
+  )
   assert.equal(
     resolveRemovableAppPath('C:\\Users\\x\\AppData\\Local\\Programs\\Hermes\\Hermes.exe', 'win32'),
     'C:\\Users\\x\\AppData\\Local\\Programs\\Hermes'

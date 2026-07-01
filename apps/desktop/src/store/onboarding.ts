@@ -12,6 +12,7 @@ import {
   submitOAuthCode,
   validateProviderCredential
 } from '@/hermes'
+import { translateNow } from '@/i18n'
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { notify, notifyError } from '@/store/notifications'
 import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/hermes'
@@ -209,7 +210,11 @@ async function checkRuntime(ctx: OnboardingContext): Promise<RuntimeReadinessRes
 }
 
 function notifyReady(provider: string) {
-  notify({ kind: 'success', title: 'Hermes is ready', message: `${provider} connected.` })
+  notify({
+    kind: 'success',
+    title: translateNow('onboarding.ready.title'),
+    message: translateNow('onboarding.ready.message', provider)
+  })
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
@@ -567,7 +572,7 @@ const MANAGED_COPY = {
   // Bridge absent (web dashboard / dev preview) — managed sign-in is desktop-only.
   desktopOnly: '托管登录仅在桌面应用中可用',
   // Signed in, but the local runtime couldn't reach the relay after applying it.
-  relayUnreachable: '登录成功,但运行时无法连接 ApexNodes 中转服务,请重试',
+  relayUnreachable: '登录成功,但运行时无法连接 APEX 中转服务,请重试',
   // Browser flow could not be started / was cancelled.
   browserFailed: '浏览器登录未完成,请重试'
 }
@@ -626,7 +631,7 @@ async function applyManagedSignInResult(
   }
 
   patch({ managedSubmitting: false })
-  notifyReady('ApexNodes')
+  notifyReady('APEX')
   completeDesktopOnboarding()
   ctx.onCompleted?.()
 }

@@ -28,7 +28,7 @@ exports.default = async function afterPack(context) {
     return
   }
 
-  const productName = context.packager?.appInfo?.productFilename || 'Hermes'
+  const productName = context.packager?.appInfo?.productFilename || 'APEX'
   const exe = path.join(context.appOutDir, `${productName}.exe`)
   const desktopRoot = path.resolve(__dirname, '..')
 
@@ -36,6 +36,6 @@ exports.default = async function afterPack(context) {
     await stampExeIdentity(exe, desktopRoot)
   } catch (err) {
     // Never fail the build over a cosmetic stamp.
-    console.warn(`[after-pack] exe identity stamp failed (${err.message}); Hermes.exe keeps the stock Electron icon`)
+    console.warn(`[after-pack] exe identity stamp failed (${err.message}); ${productName}.exe keeps the stock Electron icon`)
   }
 }
