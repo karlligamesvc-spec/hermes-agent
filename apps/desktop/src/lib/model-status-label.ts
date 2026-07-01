@@ -115,7 +115,9 @@ export function formatModelStatusLabel(
   model: string,
   options?: { fastMode?: boolean; reasoningEffort?: string }
 ): string {
-  const name = displayModelName(model)
+  // Drop the "-APEX" managed-relay brand suffix from the compact composer pill —
+  // it's routing noise, not part of the name the user needs to see at a glance.
+  const name = displayModelName(model).replace(/\s*APEX$/i, '').trim()
 
   if (!model.trim()) {
     return name

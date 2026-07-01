@@ -7,21 +7,22 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   dropdownMenuRow,
   DropdownMenuSearch,
   dropdownMenuSectionLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger
+  DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import type { HermesGateway } from '@/hermes'
 import { getGlobalModelOptions, getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { currentPickerSelection, displayModelName, modelDisplayParts, reasoningEffortLabel } from '@/lib/model-status-label'
+import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { filterPickerProviders } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
-import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
+import { $modelPresets, applyModelPreset, modelPresetKey, setModelPreset } from '@/store/model-presets'
 import {
   $visibleModels,
   collapseModelFamilies,
@@ -31,16 +32,19 @@ import {
   modelVisibilityKey,
   setModelVisibilityOpen
 } from '@/store/model-visibility'
+import { notifyError } from '@/store/notifications'
 import {
   $activeSessionId,
   $currentFastMode,
   $currentModel,
   $currentProvider,
-  $currentReasoningEffort
+  $currentReasoningEffort,
+  setCurrentFastMode,
+  setCurrentReasoningEffort
 } from '@/store/session'
 import type { MoaConfigResponse, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
-import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
+import { EFFORT_OPTIONS, resolveFastControl } from './model-edit-submenu'
 
 // Lets the host dropdown (model-pill) hand the panel a way to dismiss itself so
 // clicking a model row commits + closes, while the hover-revealed edit submenu
@@ -196,8 +200,117 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     [providers, search, optionsModel, optionsProvider, effectiveVisibleModels]
   )
 
+  const modelOptionsCopy = t.shell.modelOptions
+
+  // The current model's caps/effort/speed drive the Codex-style top-level
+  // reasoning radio + speed toggle (no more per-model hover submenus).
+  const currentEntry = useMemo(() => {
+    for (const group of groups) {
+      if (group.provider.slug !== optionsProvider) {
+        continue
+      }
+
+      const family = group.families.find(item => item.id === optionsModel || item.fastId === optionsModel)
+
+      if (family) {
+        return { family, provider: group.provider }
+      }
+    }
+
+    return null
+  }, [groups, optionsModel, optionsProvider])
+
+  const currentCaps = currentEntry ? currentEntry.provider.capabilities?.[currentEntry.family.id] : undefined
+  const currentReasoningSupported = currentCaps?.reasoning ?? true
+
+  const currentFastControl = currentEntry
+    ? resolveFastControl(optionsModel, currentEntry.provider.models ?? [], currentCaps?.fast ?? false, currentFastMode)
+    : ({ kind: 'none' } as const)
+
+  const effortValue = EFFORT_OPTIONS.some(option => option.value === currentReasoningEffort)
+    ? currentReasoningEffort
+    : 'medium'
+
+  // Mirrors ModelEditSubmenu.patchReasoning, but for the composer's active model.
+  const setCurrentEffort = async (next: string) => {
+    if (!optionsModel || !optionsProvider) {
+      return
+    }
+
+    const prev = currentReasoningEffort
+    setModelPreset(optionsProvider, optionsModel, { effort: next })
+    setCurrentReasoningEffort(next)
+
+    if (!activeSessionId) {
+      return
+    }
+
+    try {
+      await requestGateway('config.set', { key: 'reasoning', session_id: activeSessionId, value: next })
+    } catch (err) {
+      setCurrentReasoningEffort(prev)
+      setModelPreset(optionsProvider, optionsModel, { effort: prev })
+      notifyError(err, modelOptionsCopy.updateFailed)
+    }
+  }
+
+  const setCurrentFast = (enabled: boolean) => {
+    if (currentFastControl.kind === 'variant') {
+      setModelPreset(optionsProvider, currentFastControl.baseId, { fast: enabled })
+      void switchTo(enabled ? currentFastControl.fastId : currentFastControl.baseId, optionsProvider)
+
+      return
+    }
+
+    if (currentFastControl.kind === 'param') {
+      setModelPreset(optionsProvider, optionsModel, { fast: enabled })
+      setCurrentFastMode(enabled)
+
+      if (!activeSessionId) {
+        return
+      }
+      void (async () => {
+        try {
+          await requestGateway('config.set', {
+            key: 'fast',
+            session_id: activeSessionId,
+            value: enabled ? 'fast' : 'normal'
+          })
+        } catch (err) {
+          setCurrentFastMode(!enabled)
+          setModelPreset(optionsProvider, optionsModel, { fast: !enabled })
+          notifyError(err, modelOptionsCopy.fastFailed)
+        }
+      })()
+    }
+  }
+
   return (
     <>
+      {currentReasoningSupported ? (
+        <>
+          <DropdownMenuLabel className={dropdownMenuSectionLabel}>{modelOptionsCopy.effort}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup onValueChange={value => void setCurrentEffort(value)} value={effortValue}>
+            {EFFORT_OPTIONS.map(option => (
+              <DropdownMenuRadioItem
+                className={dropdownMenuRow}
+                key={option.value}
+                onSelect={event => event.preventDefault()}
+                value={option.value}
+              >
+                {modelOptionsCopy[option.labelKey]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </>
+      ) : null}
+      {currentFastControl.kind !== 'none' ? (
+        <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
+          {modelOptionsCopy.fast}
+          <Switch checked={currentFastControl.on} className="ml-auto" onCheckedChange={setCurrentFast} size="xs" />
+        </DropdownMenuItem>
+      ) : null}
+      <DropdownMenuSeparator className="mx-0" />
       <DropdownMenuSearch
         aria-label={copy.search}
         onValueChange={setSearch}
@@ -244,77 +357,24 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
                 const isCurrent = activeId !== null
                 const name = modelDisplayParts(family.id).name
-                // Capabilities are looked up against the active/base id; the
-                // -fast variant carries the same param support as its base.
-                const caps = group.provider.capabilities?.[family.id]
 
-                // Effective settings for this row: live session state when it's
-                // the active model, otherwise its remembered preset (Hermes
-                // defaults when unset). Row label AND submenu read from these so
-                // they never disagree.
-                const preset = modelPresets[modelPresetKey(group.provider.slug, family.id)] ?? {}
-                const effEffort = isCurrent ? currentReasoningEffort : preset.effort ?? ''
-                const effFast = isCurrent ? currentFastMode : preset.fast ?? false
-
-                const fastControl = resolveFastControl(
-                  activeId ?? family.id,
-                  group.provider.models ?? [],
-                  caps?.fast ?? false,
-                  effFast
-                )
-
-                const meta = [
-                  fastControl.kind !== 'none' && fastControl.on ? copy.fast : null,
-                  (caps?.reasoning ?? true) ? reasoningEffortLabel(effEffort) || copy.medium : null
-                ]
-                  .filter(Boolean)
-                  .join(' ')
-
-                // Every row is a hover-Edit submenu trigger. Activating it
-                // (pointer or keyboard) switches to the family's base model and
-                // restores its preset; the Fast toggle inside swaps to the -fast
-                // sibling (or flips the speed param). The sub-trigger has no
-                // `onSelect`, so wire both click and Enter/Space for keyboard parity.
-                // Clicking the row commits the model and closes the picker; the
-                // edit submenu (reasoning/fast) is reached by HOVER, so you can
-                // still tweak those without the click dismissing everything.
-                const activate = () => {
-                  if (!isCurrent) {
-                    void selectFamily(family, group.provider)
-                  }
-
-                  closeMenu()
-                }
-
+                // Reasoning/speed now live at the top for the active model, so a
+                // row is a plain select: commit the model + close the picker.
                 return (
-                  <DropdownMenuSub key={`${group.provider.slug}:${family.id}`}>
-                    <DropdownMenuSubTrigger
-                      className={dropdownMenuRow}
-                      hideChevron
-                      onClick={activate}
-                      onKeyDown={event => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          activate()
-                        }
-                      }}
-                    >
-                      <span className="min-w-0 flex-1 truncate">
-                        {name}
-                        {meta ? <span className="text-(--ui-text-tertiary)"> {meta}</span> : null}
-                      </span>
-                      {isCurrent ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
-                    </DropdownMenuSubTrigger>
-                    <ModelEditSubmenu
-                      effort={effEffort}
-                      fastControl={fastControl}
-                      isActive={isCurrent}
-                      model={family.id}
-                      onSelectModel={nextModel => switchTo(nextModel, group.provider.slug)}
-                      provider={group.provider.slug}
-                      reasoning={caps?.reasoning ?? true}
-                      requestGateway={requestGateway}
-                    />
-                  </DropdownMenuSub>
+                  <DropdownMenuItem
+                    className={dropdownMenuRow}
+                    key={`${group.provider.slug}:${family.id}`}
+                    onSelect={() => {
+                      if (!isCurrent) {
+                        void selectFamily(family, group.provider)
+                      }
+
+                      closeMenu()
+                    }}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                    {isCurrent ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
+                  </DropdownMenuItem>
                 )
               })}
             </DropdownMenuGroup>
