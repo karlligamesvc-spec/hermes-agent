@@ -26,6 +26,11 @@ describe('model-status-label', () => {
     expect(displayModelName('openai/gpt-5.5')).toBe('GPT-5.5')
   })
 
+  it('keeps acronym brand names uppercase instead of title-casing them', () => {
+    expect(displayModelName('glm-5.2')).toBe('GLM 5.2')
+    expect(displayModelName('custom/glm-5.2')).toBe('GLM 5.2')
+  })
+
   it('strips trailing date-pin snapshots from the display name', () => {
     expect(displayModelName('claude-opus-4-5-20251101')).toBe('Opus 4 5')
     expect(displayModelName('anthropic/claude-haiku-4-5-20251001')).toBe('Haiku 4 5')

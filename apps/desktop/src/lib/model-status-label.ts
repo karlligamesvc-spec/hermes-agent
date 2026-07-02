@@ -53,6 +53,15 @@ const VARIANT_TAGS: ReadonlyArray<readonly [RegExp, string]> = [
 
 const titleCase = (text: string): string => text.replace(/\b\w/g, char => char.toUpperCase()).trim()
 
+// Brand names that are ACRONYMS — plain title-casing renders them wrong
+// ("glm-5.2" → "Glm 5.2"). Applied word-wise after titleCase.
+const ACRONYM_WORDS: Record<string, string> = {
+  Glm: 'GLM'
+}
+
+const fixAcronyms = (text: string): string =>
+  text.replace(/\b[A-Z][a-z]+\b/g, word => ACRONYM_WORDS[word] ?? word)
+
 function prettifyBase(base: string): string {
   if (/^claude-/i.test(base)) {
     return titleCase(base.replace(/^claude-/i, '').replace(/-/g, ' '))
@@ -66,7 +75,7 @@ function prettifyBase(base: string): string {
     return base.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ')
   }
 
-  return titleCase(base.replace(/-/g, ' '))
+  return fixAcronyms(titleCase(base.replace(/-/g, ' ')))
 }
 
 /** Split a model id into a clean display name plus an optional grayed variant
