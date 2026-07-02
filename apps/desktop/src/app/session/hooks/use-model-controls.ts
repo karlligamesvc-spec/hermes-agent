@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 
 import { getGlobalModelInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { notifyError } from '@/store/notifications'
+import { notify } from '@/store/notifications'
 import {
   $activeSessionId,
   $currentModel,
@@ -112,12 +112,27 @@ export function useModelControls({ activeSessionId, queryClient, requestGateway 
         setCurrentModel(prevModel)
         setCurrentProvider(prevProvider)
         updateModelOptionsCache(prevProvider, prevModel, !activeSessionId)
-        notifyError(err, copy.modelSwitchFailed)
+
+        // Never surface the gateway's raw English error in the toast (e.g.
+        // "session busy — /interrupt the current turn before switching models").
+        // Busy is an expected, self-resolving state — say so in plain language;
+        // everything else gets a generic retry line. Raw error → console.
+        console.error('[model] switch failed', err)
+
+        const busy = /session busy|busy session|turn.*in progress/i.test(
+          err instanceof Error ? err.message : String(err)
+        )
+
+        notify({
+          kind: 'error',
+          title: copy.modelSwitchFailed,
+          message: busy ? copy.modelSwitchBusy : copy.modelSwitchRetry
+        })
 
         return false
       }
     },
-    [activeSessionId, copy.modelSwitchFailed, queryClient, requestGateway, updateModelOptionsCache]
+    [activeSessionId, copy, queryClient, requestGateway, updateModelOptionsCache]
   )
 
   return { refreshCurrentModel, selectModel, updateModelOptionsCache }

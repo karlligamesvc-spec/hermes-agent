@@ -2243,6 +2243,8 @@ export const zh: Translations = {
     cwdStagedTitle: '工作目录已暂存',
     cwdStagedMessage: '重启桌面后端后，工作目录更改才会应用到当前活跃会话。',
     modelSwitchFailed: '模型切换失败',
+    modelSwitchBusy: 'AI 正在回复中，等这轮结束后再切换模型。',
+    modelSwitchRetry: '切换未生效，请稍后重试。',
     sessionExported: '会话已导出',
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',

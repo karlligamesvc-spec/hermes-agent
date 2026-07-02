@@ -2081,6 +2081,8 @@ export const en: Translations = {
     cwdStagedTitle: 'Working directory staged',
     cwdStagedMessage: 'Restart the desktop backend to apply cwd changes to this active session.',
     modelSwitchFailed: 'Model switch failed',
+    modelSwitchBusy: 'The assistant is still responding — switch models after this turn finishes.',
+    modelSwitchRetry: 'The switch did not apply. Please try again.',
     sessionExported: 'Session exported',
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',

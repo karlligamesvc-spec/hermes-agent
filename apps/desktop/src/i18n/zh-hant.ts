@@ -2138,6 +2138,8 @@ export const zhHant = defineLocale({
     cwdStagedTitle: '工作目錄已暫存',
     cwdStagedMessage: '重新啟動桌面後端後，工作目錄變更才會套用至此作用中工作階段。',
     modelSwitchFailed: '模型切換失敗',
+    modelSwitchBusy: 'AI 正在回覆中，等這輪結束後再切換模型。',
+    modelSwitchRetry: '切換未生效，請稍後重試。',
     sessionExported: '工作階段已匯出',
     sessionExportFailed: '無法匯出工作階段',
     imageSaved: '圖片已儲存',

@@ -1712,6 +1712,8 @@ export interface Translations {
     cwdStagedTitle: string
     cwdStagedMessage: string
     modelSwitchFailed: string
+    modelSwitchBusy: string
+    modelSwitchRetry: string
     sessionExported: string
     sessionExportFailed: string
     imageSaved: string
