@@ -579,14 +579,23 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
 
 // Curated domestic MoA preset (managed seed only — every slot routes through
 // the relay via the global `custom` endpoint, so BYOK installs without a relay
-// key can't run it). Orchestration rationale: the aggregator is the ACTING
-// model (it holds the tools and takes the turn — agent/moa_loop.py), so it is
-// our flagship deepseek-v4-pro; the references maximize family diversity
-// (Qwen / Kimi / GLM, one strong model per house). deepseek-v4-flash is
-// deliberately absent: same family as the aggregator and weaker — it would add
-// cost, not diversity. Upstream's own default preset points at GPT-5.5 /
-// OpenRouter / Claude — all unreachable from mainland China, which is exactly
-// why the seed replaces it. Temperatures follow the upstream preset defaults.
+// key can't run it). Orchestration rationale — anchored on the 2026-06-29
+// five-model agentic eval + a 2026-07-04 real-world rerun:
+//   * The aggregator is the ACTING model (holds the tools, takes every turn —
+//     agent/moa_loop.py), so its execution discipline/speed/style dominate the
+//     residual quality gap. qwen3.7-max is the domestic best on exactly those
+//     (fastest run, fewest self-repair loops, best code modularity); its known
+//     weakness (self-checking) is precisely what the reference panel fixes.
+//   * GLM-5.2 as brain was measured TWICE at ~30min/run (slowest + priciest
+//     output tokens) — eliminated as aggregator, kept as the polish/design
+//     ADVISOR where its strength (presentation) arrives as cheap advice.
+//   * deepseek-v4-pro referees correctness and is the cost-tier brain
+//     alternative (cache pricing) for long agentic loops.
+//   * deepseek-v4-flash is deliberately absent: weaker sibling of a ref that
+//     is already present — adds cost, not diversity.
+// Upstream's own default preset points at GPT-5.5 / OpenRouter / Claude — all
+// unreachable from mainland China, which is exactly why the seed replaces it.
+// Temperatures follow the upstream preset defaults.
 const SEED_MOA_BLOCK =
   '# APEX 多模型协作(MoA)预设:参考模型出多样性,聚合模型执行。全部经由\n' +
   '# APEX 中转,无需额外配置。/moa apex-moa 或模型菜单里启用。\n' +
@@ -595,7 +604,7 @@ const SEED_MOA_BLOCK =
   '  presets:\n' +
   '    apex-moa:\n' +
   '      reference_models:\n' +
-  '      - model: qwen3.7-max\n' +
+  '      - model: deepseek-v4-pro\n' +
   '        provider: custom\n' +
   '      - model: kimi-k2.6\n' +
   '        provider: custom\n' +
@@ -603,7 +612,7 @@ const SEED_MOA_BLOCK =
   '        provider: custom\n' +
   '      aggregator:\n' +
   '        provider: custom\n' +
-  '        model: deepseek-v4-pro\n' +
+  '        model: qwen3.7-max\n' +
   '      reference_temperature: 0.6\n' +
   '      aggregator_temperature: 0.4\n'
 
