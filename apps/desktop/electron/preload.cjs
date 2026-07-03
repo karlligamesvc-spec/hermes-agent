@@ -26,13 +26,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
     signOut: () => ipcRenderer.invoke('hermes:managed:signOut')
   },
-  // Platform client-config sync. get returns the cached versioned config from
-  // disk (no network); markApplied records the version the renderer finished
-  // applying to the runtime's global config. See electron/apex-client-config.cjs
-  // and src/store/platform-config.ts.
+  // Platform client-config sync — informational read of the cached versioned
+  // config (no network). Application happens in the MAIN process pre-gateway
+  // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.
   clientConfig: {
-    get: () => ipcRenderer.invoke('hermes:clientConfig:get'),
-    markApplied: version => ipcRenderer.invoke('hermes:clientConfig:markApplied', { version })
+    get: () => ipcRenderer.invoke('hermes:clientConfig:get')
   },
   // Continuous auth gate: main broadcasts when a backend call returns 401
   // (login lost) or 403 account_disabled (account abnormal). The renderer

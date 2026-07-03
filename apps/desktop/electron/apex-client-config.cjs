@@ -180,7 +180,124 @@ async function fetchClientConfig({ apiBase, fetchJson, knownVersion, timeoutMs =
   return parsed
 }
 
+/**
+ * Apply `config_yaml` dotted scalar keys to a config.yaml SOURCE via line
+ * surgery — the lossless replacement for the retired dashboard round-trip.
+ *
+ * WHY NOT THE /api/config ROUND-TRIP: the dashboard GET normalizes the config
+ * for the web schema (`_normalize_config_for_web`), which silently DROPS keys
+ * outside that schema (custom_providers, skills, timezone, …). PUT then saves
+ * the projected record as the whole file — a v2 platform-config apply through
+ * that path wiped the relay registration + the skill curation on a live
+ * install. Editing the YAML lines directly touches ONLY the targeted keys.
+ *
+ * Supports scalars (string/number/boolean) at top level (`timezone`) or one
+ * level deep (`display.show_reasoning`). Deeper paths and non-scalar values
+ * are SKIPPED (reported, never fatal) — matching the payload v1 contract.
+ * Existing keys are rewritten in place; missing keys/blocks are appended.
+ *
+ * @param {string} raw     config.yaml contents ('' allowed → builds from empty)
+ * @param {Record<string, unknown>} entries dotted-key → scalar map
+ * @returns {{ changed: boolean, next: string, applied: string[], skipped: string[] }}
+ */
+function applyConfigYamlKeys(raw, entries) {
+  const source = typeof raw === 'string' ? raw : ''
+  const applied = []
+  const skipped = []
+
+  const isScalar = value =>
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+
+  const yamlScalar = value => {
+    if (typeof value === 'boolean') return value ? 'true' : 'false'
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null
+    const text = String(value)
+    // Quote anything YAML could misread; plain identifiers stay bare.
+    return /^[A-Za-z0-9_\-./]+$/.test(text) && text !== '' ? text : `'${text.replace(/'/g, "''")}'`
+  }
+
+  let lines = source.length ? source.split('\n') : ['']
+
+  // Find [start, end) of a top-level block `key:` (end = next top-level line).
+  const topLevelRange = key => {
+    const headRe = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`)
+    for (let i = 0; i < lines.length; i++) {
+      if (!headRe.test(lines[i])) continue
+      let end = i + 1
+      while (end < lines.length && !/^\S/.test(lines[end])) end += 1
+      return [i, end]
+    }
+    return null
+  }
+
+  const ensureTrailingNewline = () => {
+    if (lines.length === 0 || lines[lines.length - 1] !== '') lines.push('')
+  }
+
+  for (const [dotted, value] of Object.entries(entries || {})) {
+    const path = String(dotted).split('.')
+    if (!isScalar(value) || path.length > 2 || path.some(part => !part.trim())) {
+      skipped.push(dotted)
+      continue
+    }
+    const rendered = yamlScalar(value)
+    if (rendered === null) {
+      skipped.push(dotted)
+      continue
+    }
+
+    if (path.length === 1) {
+      const key = path[0]
+      const range = topLevelRange(key)
+      if (range && /^\S+:\s*\S/.test(lines[range[0]]) === false && range[1] - range[0] > 1) {
+        // `key:` heads a BLOCK (nested mapping) — a scalar write would clobber
+        // the structure; refuse rather than damage.
+        skipped.push(dotted)
+        continue
+      }
+      const line = `${key}: ${rendered}`
+      if (range) {
+        if (lines[range[0]] !== line) {
+          lines[range[0]] = line
+          applied.push(dotted)
+        } else {
+          applied.push(dotted)
+        }
+      } else {
+        ensureTrailingNewline()
+        lines.splice(lines.length - 1, 0, line)
+        applied.push(dotted)
+      }
+      continue
+    }
+
+    const [block, key] = path
+    const childLine = `  ${key}: ${rendered}`
+    const range = topLevelRange(block)
+    if (!range) {
+      ensureTrailingNewline()
+      lines.splice(lines.length - 1, 0, `${block}:`, childLine)
+      applied.push(dotted)
+      continue
+    }
+    const childRe = new RegExp(`^\\s{2}${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`)
+    let found = false
+    for (let i = range[0] + 1; i < range[1]; i++) {
+      if (!childRe.test(lines[i])) continue
+      if (lines[i] !== childLine) lines[i] = childLine
+      found = true
+      break
+    }
+    if (!found) lines.splice(range[0] + 1, 0, childLine)
+    applied.push(dotted)
+  }
+
+  const next = lines.join('\n')
+  return { changed: next !== source, next, applied, skipped }
+}
+
 module.exports = {
+  applyConfigYamlKeys,
   CLIENT_CONFIG_PATH,
   clientConfigUrl,
   fetchClientConfig,

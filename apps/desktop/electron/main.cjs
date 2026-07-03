@@ -32,6 +32,7 @@ const {
   overlayStampWithPin
 } = require('./apex-runtime-latest.cjs')
 const {
+  applyConfigYamlKeys,
   fetchClientConfig,
   normalizeStoredClientConfig,
   shouldApply: shouldApplyClientConfig
@@ -92,6 +93,7 @@ const {
   managedModelConfigYaml,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
+  MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
   parseProvisionResponse,
   resolveApexEndpoints,
@@ -2923,8 +2925,13 @@ function resolveHermesBackend(dashboardArgs) {
 async function ensureRuntime(backend) {
   // Every boot path (existing install or fresh bootstrap) passes through here
   // before the gateway starts — heal a rotated relay key in the registered
-  // custom provider so the model picker's live listing works this launch.
+  // custom provider so the model picker's live listing works this launch,
+  // then fold any newer platform config into config.yaml (line surgery; the
+  // gateway loads the result fresh).
   syncManagedCustomProviderKey()
+  applyClientConfigToRuntime('boot')
+  guardConfigYamlProductBlocks('boot')
+  watchConfigYamlProductBlocks()
 
   if (!backend.bootstrap) {
     await advanceBootProgress('runtime.external', `Using ${backend.label}`, 32)
@@ -4728,9 +4735,13 @@ function clearManagedRelayCredential() {
 // ── Platform client-config sync (apex-client-config.cjs) ────────────────────
 // The cloud serves a versioned client config (PUBLIC GET
 // /api/v1/desktop/client-config). We refresh the on-disk cache fail-soft at
-// boot and after every successful managed sign-in; the renderer applies
-// payload.config_yaml through the runtime's global-config API when the gateway
-// opens and records the applied version back via IPC. An offline user boots
+// boot and after every successful managed sign-in; the MAIN process then
+// applies payload.config_yaml straight into config.yaml via line surgery
+// BEFORE the gateway spawns (applyClientConfigToRuntime). The old renderer
+// path — full-record /api/config round-trip — is retired: the dashboard GET
+// normalizes the config for the web schema and silently drops keys outside it
+// (custom_providers / skills / timezone), so PUT-ing that projection back
+// wiped the relay registration on a live install. An offline user boots
 // exactly as before — every failure path keeps the cached state.
 
 function readClientConfigState() {
@@ -4782,6 +4793,108 @@ async function refreshClientConfigFromPlatform(reason) {
     rememberLog(`[client-config] stored platform config v${fetched.version} (${reason})`)
   } catch (error) {
     rememberLog(`[client-config] refresh failed (ignored): ${error && error.message ? error.message : error}`)
+  }
+}
+
+// Product-critical config.yaml blocks watchdog. The dashboard's full-record
+// config save (settings pages still use it) has at least once dropped blocks
+// it didn't round-trip (custom_providers — killing relay routing with
+// "Unknown provider 'custom:apex-nodes.com'" — plus skills/timezone). Exact
+// writer unconfirmed (candidates: PUT denormalize, profile scoping, boot-time
+// writer race) — this guard makes the whole CLASS non-fatal: whenever the file
+// loses a product-critical block, restore it. Idempotent; append-only; never
+// touches a block that exists.
+function guardConfigYamlProductBlocks(reason) {
+  try {
+    const configPath = path.join(HERMES_HOME, 'config.yaml')
+    if (!fs.existsSync(configPath)) return
+    let raw = fs.readFileSync(configPath, 'utf8')
+    const fixed = []
+
+    const managed = resolveManagedConfig()
+    if (managed.key && managed.baseUrl && !/^custom_providers:/m.test(raw)) {
+      const endpoints = resolveApexEndpoints(process.env)
+      raw =
+        raw.replace(/\n*$/, '\n') +
+        'custom_providers:\n' +
+        `- api_key: ${managed.key}\n` +
+        `  base_url: ${managed.baseUrl}\n` +
+        `  model: ${endpoints.modelDisplay}\n` +
+        `  name: ${MANAGED_PROVIDER_NAME}\n`
+      fixed.push('custom_providers')
+    }
+
+    if (!/^skills:/m.test(raw)) {
+      raw = raw.replace(/\n*$/, '\n') + seedSkillsBlockYaml()
+      fixed.push('skills')
+    }
+
+    if (!/^timezone:/m.test(raw)) {
+      raw = raw.replace(/\n*$/, '\n') + "timezone: ''\n"
+      fixed.push('timezone')
+    }
+
+    if (fixed.length) {
+      fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
+      rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
+    }
+  } catch (err) {
+    rememberLog(`[config-guard] skipped: ${err && err.message ? err.message : err}`)
+  }
+}
+
+// Keep the guard live while the app runs: any writer (dashboard save, the
+// runtime itself) that drops a product block gets healed within seconds. The
+// watcher is best-effort — boot-time invocation is the reliable baseline.
+let configGuardTimer = null
+function watchConfigYamlProductBlocks() {
+  try {
+    const configPath = path.join(HERMES_HOME, 'config.yaml')
+    if (!fs.existsSync(configPath)) return
+    fs.watch(configPath, { persistent: false }, () => {
+      clearTimeout(configGuardTimer)
+      configGuardTimer = setTimeout(() => guardConfigYamlProductBlocks('watch'), 2_000)
+    })
+  } catch (err) {
+    rememberLog(`[config-guard] watcher unavailable: ${err && err.message ? err.message : err}`)
+  }
+}
+
+// Apply the cached platform config to config.yaml — main-process line surgery,
+// run BEFORE the gateway spawns so the runtime loads the result fresh. Only
+// scalar dotted keys are written (see applyConfigYamlKeys); all-or-nothing:
+// appliedVersion advances only after a successful write, so a failure retries
+// next boot. Fail-soft — a broken payload can never block booting.
+function applyClientConfigToRuntime(reason) {
+  try {
+    const stored = readClientConfigState()
+    if (!stored.version || stored.version <= (stored.appliedVersion || 0)) return
+    const entries =
+      stored.payload && typeof stored.payload === 'object' && stored.payload.config_yaml &&
+      typeof stored.payload.config_yaml === 'object'
+        ? stored.payload.config_yaml
+        : null
+    const configPath = path.join(HERMES_HOME, 'config.yaml')
+    if (entries && Object.keys(entries).length > 0) {
+      if (!fs.existsSync(configPath)) {
+        // Seed hasn't produced a config yet (ultra-fresh install) — retry on
+        // the next boot rather than inventing a file the seed would then skip.
+        rememberLog(`[client-config] config.yaml absent; deferring v${stored.version} apply (${reason})`)
+        return
+      }
+      const raw = fs.readFileSync(configPath, 'utf8')
+      const { changed, next, applied, skipped } = applyConfigYamlKeys(raw, entries)
+      if (changed) fs.writeFileSync(configPath, next, { encoding: 'utf8' })
+      rememberLog(
+        `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
+          (skipped.length ? `; skipped: ${skipped.join(', ')}` : '')
+      )
+    } else {
+      rememberLog(`[client-config] v${stored.version} carries no config_yaml keys (${reason})`)
+    }
+    writeClientConfigState({ ...stored, appliedVersion: stored.version })
+  } catch (error) {
+    rememberLog(`[client-config] apply failed (will retry next boot): ${error && error.message ? error.message : error}`)
   }
 }
 
@@ -6515,32 +6628,12 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 })
 
 // ── Platform client-config sync (renderer surface) ──────────────────────────
-// get: the cached state from disk — no network, safe to call on every
-// gateway-open. The renderer applies payload.config_yaml when
-// version > appliedVersion (see src/store/platform-config.ts).
+// get: the cached state from disk — no network, informational only. The APPLY
+// now happens entirely in the main process pre-gateway (applyClientConfigToRuntime);
+// the renderer neither applies nor records versions anymore.
 ipcMain.handle('hermes:clientConfig:get', async () => {
   const state = readClientConfigState()
   return { version: state.version, payload: state.payload, appliedVersion: state.appliedVersion }
-})
-
-// markApplied: record the version the renderer finished applying (ALL keys
-// succeeded). Monotonic — an out-of-order call can never move appliedVersion
-// backwards, so a retry pass is only ever skipped once it truly completed.
-ipcMain.handle('hermes:clientConfig:markApplied', async (_event, payload) => {
-  const version = payload && typeof payload === 'object' ? payload.version : null
-  if (!shouldApplyClientConfig(version, 0)) {
-    return { ok: false, error: 'invalid_version' }
-  }
-  try {
-    const state = readClientConfigState()
-    const appliedVersion = Math.max(Number(version), state.appliedVersion)
-    writeClientConfigState({ ...state, appliedVersion })
-    rememberLog(`[client-config] renderer applied v${version} (appliedVersion=${appliedVersion})`)
-    return { ok: true, appliedVersion }
-  } catch (error) {
-    rememberLog(`[client-config] markApplied failed: ${error && error.message ? error.message : error}`)
-    return { ok: false, error: 'write_failed' }
-  }
 })
 
 ipcMain.handle('hermes:profile:get', async () => ({ profile: readActiveDesktopProfile() }))

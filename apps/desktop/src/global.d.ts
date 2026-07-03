@@ -54,14 +54,12 @@ declare global {
         signOut: () => Promise<{ ok: boolean }>
       }
       // Platform client-config sync — the cloud serves a versioned client
-      // config the main process caches at boot / after sign-in. `get` reads
-      // the cached state from disk (no network); `markApplied` records the
-      // version the renderer finished applying to the runtime's global config
-      // (see src/store/platform-config.ts + electron/apex-client-config.cjs).
+      // config the main process caches at boot / after sign-in and applies to
+      // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
+      // reads the cached state from disk (no network), informational only.
       // Optional: an older main process may not expose the bridge yet.
       clientConfig?: {
         get: () => Promise<DesktopClientConfigState>
-        markApplied: (version: number) => Promise<{ ok: boolean; appliedVersion?: number; error?: string }>
       }
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and

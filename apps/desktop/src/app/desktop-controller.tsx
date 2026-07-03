@@ -35,7 +35,6 @@ import {
   unpinSession
 } from '../store/layout'
 import { respondToApprovalAction } from '../store/native-notifications'
-import { applyPlatformConfig } from '../store/platform-config'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -831,10 +830,11 @@ export function DesktopController() {
       void refreshCurrentModel()
       void refreshActiveProfile()
       void refreshSessions().catch(() => undefined)
-      // Platform client-config sync: apply a pending (newer-version) platform
-      // config through the runtime's global-config API now that the backend is
-      // reachable. Self-guarded + best-effort — repeats and failures no-op.
-      void applyPlatformConfig()
+      // Platform client-config: applied by the MAIN process pre-gateway via
+      // config.yaml line surgery (main.cjs applyClientConfigToRuntime). The
+      // old renderer apply — a full /api/config round-trip — was retired: the
+      // dashboard GET drops schema-external keys (custom_providers/skills), so
+      // PUT-ing it back wiped them.
     }
   }, [gatewayState, refreshCurrentModel, refreshSessions])
 

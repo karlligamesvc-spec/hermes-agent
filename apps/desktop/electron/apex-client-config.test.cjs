@@ -13,6 +13,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  applyConfigYamlKeys,
   CLIENT_CONFIG_PATH,
   clientConfigUrl,
   fetchClientConfig,
@@ -250,4 +251,67 @@ test('fetchClientConfig surfaces the unchanged short-circuit', async () => {
 test('fetchClientConfig returns null without an apiBase or fetchJson', async () => {
   assert.equal(await fetchClientConfig({ apiBase: '', fetchJson: async () => ({}) }), null)
   assert.equal(await fetchClientConfig({ apiBase: 'https://api.apex-nodes.com' }), null)
+})
+
+// --- applyConfigYamlKeys ---
+
+const SAMPLE_CONFIG = [
+  'model:',
+  '  api_key: sk-a',
+  '  provider: custom',
+  'custom_providers:',
+  '- api_key: sk-a',
+  '  base_url: https://apex-nodes.com/relay/v1',
+  '  name: Apex-nodes.com',
+  'display:',
+  '  language: zh',
+  'skills:',
+  '  disabled:',
+  '  - foo',
+  ''
+].join('\n')
+
+test('applyConfigYamlKeys rewrites nested + top-level scalars without touching other blocks', () => {
+  const { changed, next, applied, skipped } = applyConfigYamlKeys(SAMPLE_CONFIG, {
+    'display.show_reasoning': true,
+    'agent.image_input_mode': 'auto',
+    timezone: ''
+  })
+  assert.equal(changed, true)
+  assert.deepEqual(skipped, [])
+  assert.deepEqual(applied.sort(), ['agent.image_input_mode', 'display.show_reasoning', 'timezone'])
+  // Existing display block gains the key; language untouched.
+  assert.match(next, /display:\n {2}show_reasoning: true\n {2}language: zh/)
+  // Absent agent block created; timezone appended top-level, quoted empty.
+  assert.match(next, /agent:\n {2}image_input_mode: auto/)
+  assert.match(next, /^timezone: ''$/m)
+  // The lossy-round-trip victims stay byte-identical.
+  assert.match(next, /custom_providers:\n- api_key: sk-a/)
+  assert.match(next, /skills:\n {2}disabled:\n {2}- foo/)
+})
+
+test('applyConfigYamlKeys replaces an existing child line in place', () => {
+  const first = applyConfigYamlKeys(SAMPLE_CONFIG, { 'display.language': 'en' })
+  assert.equal(first.changed, true)
+  assert.match(first.next, /display:\n {2}language: en/)
+  // Idempotent second pass — no change.
+  const second = applyConfigYamlKeys(first.next, { 'display.language': 'en' })
+  assert.equal(second.changed, false)
+})
+
+test('applyConfigYamlKeys skips non-scalars, deep paths, and block-clobbering writes', () => {
+  const { applied, skipped } = applyConfigYamlKeys(SAMPLE_CONFIG, {
+    'moa.presets.apex': { nested: true },
+    'a.b.c': 'too-deep',
+    skills: 'would-clobber-a-block',
+    'display.show_reasoning': true
+  })
+  assert.deepEqual(applied, ['display.show_reasoning'])
+  assert.deepEqual(skipped.sort(), ['a.b.c', 'moa.presets.apex', 'skills'])
+})
+
+test('applyConfigYamlKeys quotes strings YAML could misread', () => {
+  const { next } = applyConfigYamlKeys('', { greeting: '你好: 世界', plain: 'abc-1.2' })
+  assert.match(next, /greeting: '你好: 世界'/)
+  assert.match(next, /^plain: abc-1\.2$/m)
 })
