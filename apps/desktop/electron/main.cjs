@@ -4843,6 +4843,15 @@ function guardConfigYamlProductBlocks(reason) {
       fixed.push('timezone')
     }
 
+    // hc-392 China profile: losing model.disabled_providers silently re-enables
+    // the Copilot provider probe — GitHub is near-unreachable from the
+    // mainland, so its probe saturates the gateway RPC pool (slow model list,
+    // spinning @-completions). Re-pin it whenever the model block loses it.
+    if (/^model:/m.test(raw) && !/^\s{2}disabled_providers:/m.test(raw)) {
+      raw = raw.replace(/^(model:\n)/m, `$1${modelDisabledProvidersYaml()}`)
+      fixed.push('model.disabled_providers')
+    }
+
     if (fixed.length) {
       fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
       rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
