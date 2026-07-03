@@ -575,6 +575,36 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '  image_input_mode: auto\n' +
   "timezone: ''\n"
 
+// Curated domestic MoA preset (managed seed only — every slot routes through
+// the relay via the global `custom` endpoint, so BYOK installs without a relay
+// key can't run it). Orchestration rationale: the aggregator is the ACTING
+// model (it holds the tools and takes the turn — agent/moa_loop.py), so it is
+// our flagship deepseek-v4-pro; the references maximize family diversity
+// (Qwen / Kimi / GLM, one strong model per house). deepseek-v4-flash is
+// deliberately absent: same family as the aggregator and weaker — it would add
+// cost, not diversity. Upstream's own default preset points at GPT-5.5 /
+// OpenRouter / Claude — all unreachable from mainland China, which is exactly
+// why the seed replaces it. Temperatures follow the upstream preset defaults.
+const SEED_MOA_BLOCK =
+  '# APEX 多模型协作(MoA)预设:参考模型出多样性,聚合模型执行。全部经由\n' +
+  '# APEX 中转,无需额外配置。/moa apex-moa 或模型菜单里启用。\n' +
+  'moa:\n' +
+  '  default_preset: apex-moa\n' +
+  '  presets:\n' +
+  '    apex-moa:\n' +
+  '      reference_models:\n' +
+  '      - model: qwen3.7-max\n' +
+  '        provider: custom\n' +
+  '      - model: kimi-k2.6\n' +
+  '        provider: custom\n' +
+  '      - model: glm-5.2\n' +
+  '        provider: custom\n' +
+  '      aggregator:\n' +
+  '        provider: custom\n' +
+  '        model: deepseek-v4-pro\n' +
+  '      reference_temperature: 0.6\n' +
+  '      aggregator_temperature: 0.4\n'
+
 // ── ApexNodes default model preset ─────────────────────────────────────────
 // We pre-seed config.yaml BEFORE the first-launch installer runs: install.sh
 // only creates config.yaml from its template when absent, so this seed wins
@@ -623,6 +653,7 @@ function seedDefaultModelConfig() {
         block +
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
+        SEED_MOA_BLOCK +
         skillsBlock
       rememberLog(`[apexnodes] seeded managed relay config at ${configPath}`)
     } else {
