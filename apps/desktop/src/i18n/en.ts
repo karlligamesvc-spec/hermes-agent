@@ -1299,6 +1299,11 @@ export const en: Translations = {
     loading: 'Loading…',
     loadMore: 'Load more',
     loadCount: step => `Load ${step} more`,
+    engineUpdate: {
+      found: 'New engine available',
+      updating: 'Updating engine…',
+      failedRolledBack: 'Update failed, rolled back'
+    },
     row: {
       pin: 'Pin',
       unpin: 'Unpin',
