@@ -1031,6 +1031,11 @@ export interface Translations {
     loading: string
     loadMore: string
     loadCount: (step: number) => string
+    engineUpdate: {
+      found: string
+      updating: string
+      failedRolledBack: string
+    }
     row: {
       pin: string
       unpin: string

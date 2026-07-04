@@ -1482,6 +1482,11 @@ export const zh: Translations = {
     loading: '加载中…',
     loadMore: '加载更多',
     loadCount: step => `再加载 ${step} 个`,
+    engineUpdate: {
+      found: '发现新引擎',
+      updating: '正在更新引擎…',
+      failedRolledBack: '更新失败,已回滚'
+    },
     row: {
       pin: '置顶',
       unpin: '取消置顶',
