@@ -80,6 +80,16 @@ declare global {
         checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
         applyUpdate: () => Promise<DesktopRuntimeUpdateApply>
       }
+      // 壳(Electron 应用本体)自更新 — electron-updater 通道,和 runtime(引擎)
+      // 更新互不相扰。机制全在主进程(electron/shell-updater.cjs):启动延迟
+      // 静默检查 + autoDownload;renderer 只订状态、在 downloaded 时出
+      // 「重启以更新」胶囊,install 触发 quitAndInstall。Optional:旧壳的主
+      // 进程没有这个桥。
+      shellUpdate?: {
+        getState: () => Promise<DesktopShellUpdateState>
+        install: () => Promise<{ ok: boolean; error?: string }>
+        onEvent: (callback: (state: DesktopShellUpdateState) => void) => () => void
+      }
       api: <T>(request: HermesApiRequest) => Promise<T>
       notify: (payload: HermesNotification) => Promise<boolean>
       requestMicrophoneAccess: () => Promise<boolean>
@@ -447,6 +457,20 @@ export interface DesktopRuntimeUpdateApply {
   reloadRequired?: boolean
   latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
   error?: string
+}
+
+// 壳自更新状态机快照(electron/shell-updater.cjs 推送/查询的同一形状)。
+// disabled = dev/未打包停用;downloading 全程静默(UI 不渲染);downloaded =
+// 新壳就位等重启(侧栏胶囊唯一渲染的相位);error 只记日志,下轮周期检查自愈。
+export type DesktopShellUpdatePhase = 'available' | 'checking' | 'disabled' | 'downloaded' | 'downloading' | 'error' | 'idle'
+
+export interface DesktopShellUpdateState {
+  phase: DesktopShellUpdatePhase
+  // electron-updater 的裸 semver(如 0.16.1);idle/checking 阶段为 null。
+  version: string | null
+  // 下载进度 0-100;非下载阶段 null。
+  percent: number | null
+  error: string | null
 }
 
 export interface DesktopAuthProvider {

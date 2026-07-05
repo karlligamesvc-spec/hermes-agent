@@ -1031,6 +1031,15 @@ export interface Translations {
     loading: string
     loadMore: string
     loadCount: (step: number) => string
+    engineUpdate: {
+      found: string
+      updating: string
+      failedRolledBack: string
+    }
+    // 壳(应用本体)更新胶囊:downloaded 后的「重启以更新 vX.Y.Z」。
+    shellUpdate: {
+      restartToUpdate: (version: string) => string
+    }
     row: {
       pin: string
       unpin: string
@@ -1424,16 +1433,10 @@ export interface Translations {
       update: string
       updateInProgress: string
       commitsBehind: (count: number, branch: string) => string
-      desktopVersion: (version: string) => string
       backendVersion: (version: string) => string
-      clientLabel: (version: string) => string
       backendLabel: (version: string) => string
-      commit: (sha: string) => string
-      branch: (branch: string) => string
       closeCommandCenter: string
       openCommandCenter: string
-      showTerminal: string
-      hideTerminal: string
       gateway: string
       gatewayReady: string
       gatewayNeedsSetup: string
@@ -1455,8 +1458,6 @@ export interface Translations {
       contextUsage: string
       session: string
       runtimeSessionElapsed: string
-      yoloOn: string
-      yoloOff: string
       modelNone: string
       noModel: string
       switchModel: string

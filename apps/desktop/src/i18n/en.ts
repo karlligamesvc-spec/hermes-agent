@@ -1299,6 +1299,14 @@ export const en: Translations = {
     loading: 'Loading…',
     loadMore: 'Load more',
     loadCount: step => `Load ${step} more`,
+    engineUpdate: {
+      found: 'New engine available',
+      updating: 'Updating engine…',
+      failedRolledBack: 'Update failed, rolled back'
+    },
+    shellUpdate: {
+      restartToUpdate: version => (version ? `Restart to update ${version}` : 'Restart to update')
+    },
     row: {
       pin: 'Pin',
       unpin: 'Unpin',
@@ -1786,16 +1794,10 @@ export const en: Translations = {
       update: 'update',
       updateInProgress: 'Update in progress',
       commitsBehind: (count, branch) => `${count} commit${count === 1 ? '' : 's'} behind ${branch}`,
-      desktopVersion: version => `APEX Desktop v${version}`,
       backendVersion: version => `Backend v${version}`,
-      clientLabel: version => `client v${version}`,
       backendLabel: version => `backend v${version}`,
-      commit: sha => `commit ${sha}`,
-      branch: branch => `branch ${branch}`,
       closeCommandCenter: 'Close Command Center',
       openCommandCenter: 'Open Command Center',
-      showTerminal: 'Show terminal',
-      hideTerminal: 'Hide terminal',
       gateway: 'Gateway',
       gatewayReady: 'ready',
       gatewayNeedsSetup: 'needs setup',
@@ -1817,8 +1819,6 @@ export const en: Translations = {
       contextUsage: 'Context usage',
       session: 'Session',
       runtimeSessionElapsed: 'Runtime session elapsed',
-      yoloOn: 'YOLO on — auto-approving dangerous commands. Click to turn off. Shift+click toggles it globally.',
-      yoloOff: 'YOLO off — click to auto-approve dangerous commands. Shift+click toggles it globally.',
       modelNone: 'none',
       noModel: 'no model',
       switchModel: 'Switch model',

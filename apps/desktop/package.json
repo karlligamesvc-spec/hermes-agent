@@ -2,7 +2,7 @@
   "name": "hermes",
   "productName": "APEX",
   "private": true,
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Native desktop shell for Hermes Agent.",
   "author": "Nous Research",
   "type": "module",
@@ -37,7 +37,7 @@
     "test:desktop:nsis": "node scripts/test-desktop.mjs nsis",
     "test:desktop:existing": "node scripts/test-desktop.mjs existing",
     "test:desktop:fresh": "node scripts/test-desktop.mjs fresh",
-    "test:desktop:platforms": "node --test electron/bootstrap-platform.test.cjs electron/hardening.test.cjs electron/backend-env.test.cjs electron/backend-probes.test.cjs electron/bootstrap-runner.test.cjs electron/connection-config.test.cjs electron/apex-managed.test.cjs electron/apex-runtime-latest.test.cjs electron/apex-client-config.test.cjs electron/apex-loopback.test.cjs electron/dashboard-token.test.cjs electron/gateway-ws-probe.test.cjs electron/oauth-net-request.test.cjs electron/desktop-uninstall.test.cjs electron/session-windows.test.cjs electron/user-data-dir.test.cjs electron/workspace-cwd.test.cjs electron/fs-read-dir.test.cjs electron/git-root.test.cjs electron/windows-child-process.test.cjs electron/update-remote.test.cjs electron/update-rebuild.test.cjs electron/windows-user-env.test.cjs",
+    "test:desktop:platforms": "node --test electron/bootstrap-platform.test.cjs electron/hardening.test.cjs electron/backend-env.test.cjs electron/backend-probes.test.cjs electron/bootstrap-runner.test.cjs electron/connection-config.test.cjs electron/apex-managed.test.cjs electron/apex-runtime-latest.test.cjs electron/apex-client-config.test.cjs electron/apex-loopback.test.cjs electron/dashboard-token.test.cjs electron/gateway-ws-probe.test.cjs electron/oauth-net-request.test.cjs electron/desktop-uninstall.test.cjs electron/session-windows.test.cjs electron/user-data-dir.test.cjs electron/workspace-cwd.test.cjs electron/fs-read-dir.test.cjs electron/git-root.test.cjs electron/windows-child-process.test.cjs electron/update-remote.test.cjs electron/update-rebuild.test.cjs electron/windows-user-env.test.cjs electron/shell-updater.test.cjs",
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint src/ electron/",
     "lint:fix": "eslint src/ electron/ --fix",
@@ -75,6 +75,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dnd-core": "^14.0.1",
+    "electron-updater": "^6.8.9",
     "hast-util-from-html-isomorphic": "^2.0.0",
     "hast-util-to-text": "^4.0.2",
     "ignore": "^7.0.5",
@@ -148,6 +149,10 @@
     ],
     "artifactName": "APEX-${version}-${os}-${arch}.${ext}",
     "icon": "assets/icon",
+    "publish": {
+      "provider": "generic",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop"
+    },
     "directories": {
       "output": "release"
     },

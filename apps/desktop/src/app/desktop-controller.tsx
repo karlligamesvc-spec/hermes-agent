@@ -889,12 +889,8 @@ export function DesktopController() {
   })
 
   const { leftStatusbarItems, statusbarItems } = useStatusbarItems({
-    chatOpen,
     extraLeftItems: statusbarItemGroups.flat.left,
     extraRightItems: statusbarItemGroups.flat.right,
-    gatewayState,
-    freshDraftReady,
-    requestGateway,
     statusSnapshot
   })
 

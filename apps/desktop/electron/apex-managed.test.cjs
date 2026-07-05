@@ -30,10 +30,13 @@ const {
   isLoopbackUrl,
   isManagedEnabled,
   managedModelConfigYaml,
+  ensurePluginsEnabledYaml,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
+  seedPluginsBlockYaml,
   MODEL_DISABLED_PROVIDERS,
   SEED_DISABLED_SKILLS,
+  MANAGED_PLUGIN_NAMES,
   parseLoopbackCallback,
   parseProvisionResponse,
   relayKeyFromResponse,
@@ -335,6 +338,154 @@ test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 49 na
     assert.ok(SEED_DISABLED_SKILLS.includes(n), `cut skill not seeded: ${n}`)
   }
   assert.equal(seedSkillsBlockYaml([]), '')
+})
+
+// --- plugins seed + guard (desktop-plugins-seed) ---
+// The runtime's standalone plugin loader is opt-in (only `plugins.enabled`
+// names load), so the desktop seed must carry the block and the config
+// watchdog must be able to heal a config.yaml that lost (or predates) it.
+
+test('MANAGED_PLUGIN_NAMES carries apex-overlay + the three platform tool plugins', () => {
+  assert.deepEqual(MANAGED_PLUGIN_NAMES, [
+    'apex-overlay',
+    'apexnodes-douyin-tools',
+    'apexnodes-social-tools',
+    'apexnodes-video-tools'
+  ])
+})
+
+test('seedPluginsBlockYaml emits a top-level plugins.enabled block with all managed plugins', () => {
+  const yaml = seedPluginsBlockYaml()
+  assert.match(yaml, /^plugins:\n {2}enabled:\n/m)
+  // Every name rendered exactly once, as a 4-space-indented list item (the
+  // cli-config.yaml.example shape).
+  for (const name of MANAGED_PLUGIN_NAMES) {
+    assert.ok(yaml.includes(`\n    - ${name}\n`), `missing seeded plugin: ${name}`)
+  }
+  assert.equal(yaml.split('\n').filter(l => /^ {4}- /.test(l)).length, MANAGED_PLUGIN_NAMES.length)
+  assert.equal(seedPluginsBlockYaml([]), '')
+})
+
+test('a fresh desktop seed already satisfies the plugins guard (fresh install = no-op)', () => {
+  // Same composition order as seedDefaultModelConfig's BYOK path.
+  const seed =
+    'model:\n  default: deepseek-v4-pro\n  provider: deepseek\n' +
+    modelDisabledProvidersYaml() +
+    seedSkillsBlockYaml() +
+    seedPluginsBlockYaml()
+  const r = ensurePluginsEnabledYaml(seed)
+  assert.equal(r.changed, false)
+  assert.equal(r.next, seed)
+  assert.deepEqual(r.added, [])
+})
+
+test('ensurePluginsEnabledYaml appends the full block when plugins: is missing (pre-seed install)', () => {
+  const raw = 'model:\n  default: deepseek-v4-pro\nskills:\n  disabled:\n    - notion\n'
+  const r = ensurePluginsEnabledYaml(raw)
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES)
+  // Append-only: the original text is untouched, one plugins: block added.
+  assert.ok(r.next.startsWith(raw))
+  assert.equal((r.next.match(/^plugins:/gm) || []).length, 1)
+  for (const name of MANAGED_PLUGIN_NAMES) {
+    assert.ok(r.next.includes(`\n    - ${name}\n`), `missing healed plugin: ${name}`)
+  }
+})
+
+test('ensurePluginsEnabledYaml unions missing managed names and preserves user entries', () => {
+  const raw =
+    'plugins:\n' +
+    '  enabled:\n' +
+    '    - my-own-plugin\n' +
+    '    - apex-overlay\n' +
+    'model:\n' +
+    '  default: x\n'
+  const r = ensurePluginsEnabledYaml(raw)
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.added, ['apexnodes-douyin-tools', 'apexnodes-social-tools', 'apexnodes-video-tools'])
+  // User entry + order preserved; apex-overlay NOT duplicated.
+  assert.match(r.next, /enabled:\n {4}- my-own-plugin\n {4}- apex-overlay\n {4}- apexnodes-douyin-tools/)
+  assert.equal((r.next.match(/- apex-overlay/g) || []).length, 1)
+  // Inserted INSIDE the plugins block (before the next top-level key).
+  assert.ok(r.next.indexOf('- apexnodes-video-tools') < r.next.indexOf('model:'))
+})
+
+test('ensurePluginsEnabledYaml is idempotent (re-run is a no-op, no duplicates)', () => {
+  const first = ensurePluginsEnabledYaml('display:\n  language: zh\n')
+  assert.equal(first.changed, true)
+  const second = ensurePluginsEnabledYaml(first.next)
+  assert.equal(second.changed, false)
+  assert.equal(second.next, first.next)
+  for (const name of MANAGED_PLUGIN_NAMES) {
+    assert.equal((first.next.match(new RegExp(`- ${name}`, 'g')) || []).length, 1, `duplicated: ${name}`)
+  }
+})
+
+test('ensurePluginsEnabledYaml fills an empty enabled list (bare key / [] / null)', () => {
+  for (const shape of ['  enabled:\n', '  enabled: []\n', '  enabled: null\n']) {
+    const r = ensurePluginsEnabledYaml(`plugins:\n${shape}model:\n  default: x\n`)
+    assert.equal(r.changed, true, `shape: ${JSON.stringify(shape)}`)
+    assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES, `shape: ${JSON.stringify(shape)}`)
+    // All four land inside the plugins block, before model:.
+    assert.ok(r.next.indexOf('- apexnodes-video-tools') < r.next.indexOf('model:'), `shape: ${JSON.stringify(shape)}`)
+    assert.equal((r.next.match(/^plugins:/gm) || []).length, 1)
+  }
+})
+
+test('ensurePluginsEnabledYaml restores enabled: under a plugins: block that lost it', () => {
+  for (const shape of ['plugins:\n', 'plugins: {}\n']) {
+    const r = ensurePluginsEnabledYaml(`${shape}model:\n  default: x\n`)
+    assert.equal(r.changed, true, `shape: ${JSON.stringify(shape)}`)
+    assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES)
+    assert.match(r.next, /plugins:\n {2}enabled:\n {4}- apex-overlay/)
+    assert.ok(r.next.indexOf('- apexnodes-video-tools') < r.next.indexOf('model:'))
+  }
+})
+
+test('ensurePluginsEnabledYaml handles PyYAML re-dump shapes (2-space items, flow list)', () => {
+  // Block list re-dumped at the key's own indent.
+  const redump = 'plugins:\n  enabled:\n  - apex-overlay\n  - user-extra\nmodel:\n  default: x\n'
+  const r = ensurePluginsEnabledYaml(redump)
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.added, ['apexnodes-douyin-tools', 'apexnodes-social-tools', 'apexnodes-video-tools'])
+  // Missing names appended after the last item, at the SAME 2-space indent.
+  assert.match(r.next, /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\nmodel:/)
+
+  // Flow list: rewritten as a block list, existing entries + order kept.
+  const flow = 'plugins:\n  enabled: [apex-overlay, user-extra]\nmodel:\n  default: x\n'
+  const r2 = ensurePluginsEnabledYaml(flow)
+  assert.equal(r2.changed, true)
+  assert.match(r2.next, /enabled:\n {4}- apex-overlay\n {4}- user-extra\n {4}- apexnodes-douyin-tools/)
+  assert.equal((r2.next.match(/- apex-overlay/g) || []).length, 1)
+})
+
+test('ensurePluginsEnabledYaml tolerates comments/quotes in the list (example-copy shape)', () => {
+  const raw =
+    'plugins:\n' +
+    '  enabled:\n' +
+    '    # ApexNodes cloud overlay boot hook. Applies our apex_overlay seams\n' +
+    '    # onto upstream Hermes at load time.\n' +
+    "    - 'apex-overlay'  # pinned\n" +
+    '\n' +
+    'model:\n' +
+    '  default: x\n'
+  const r = ensurePluginsEnabledYaml(raw)
+  assert.equal(r.changed, true)
+  // Quoted + commented entry recognized: apex-overlay NOT re-added.
+  assert.deepEqual(r.added, ['apexnodes-douyin-tools', 'apexnodes-social-tools', 'apexnodes-video-tools'])
+  // Comments survive; insertion right after the last existing item.
+  assert.match(r.next, /# ApexNodes cloud overlay boot hook/)
+  assert.match(r.next, /- 'apex-overlay' {2}# pinned\n {4}- apexnodes-douyin-tools/)
+})
+
+test('ensurePluginsEnabledYaml never touches structurally unexpected shapes', () => {
+  // Inline non-empty flow map — too exotic for line surgery; leave alone.
+  const exotic = 'plugins: {enabled: [apex-overlay]}\nmodel:\n  default: x\n'
+  const r = ensurePluginsEnabledYaml(exotic)
+  assert.equal(r.changed, false)
+  assert.equal(r.next, exotic)
+  // Empty managed list → no-op.
+  assert.equal(ensurePluginsEnabledYaml('model: {}\n', []).changed, false)
 })
 
 // --- defaultModelPath ---

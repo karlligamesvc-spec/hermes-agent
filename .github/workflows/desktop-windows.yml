@@ -45,11 +45,14 @@ jobs:
       # electronDist override resolves to the correct binary. Unsigned: no CSC_*
       # or Azure secrets (CSC_IDENTITY_AUTO_DISCOVERY=false; the build config
       # already sets signAndEditExecutable:false so no wine/rcedit is needed).
+      # --publish never: build.publish (generic COS feed) makes electron-builder
+      # emit latest.yml + the exe blockmap for electron-updater; the COS step
+      # below uploads them (generic providers can't be published to directly).
       - name: Build Windows installer (unsigned)
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: npm run dist:win
+        run: npm run dist:win -- --publish never
 
       - name: List build output
         if: always()
@@ -65,13 +68,15 @@ jobs:
             apps/desktop/release/*.msi
           if-no-files-found: error
 
-      # Publish the installer straight to Tencent COS from the runner (fast GH ->
-      # COS link), so we never pull the ~235 MB artifact down a slow link. Gated
-      # on the COS_* repo secrets: skips cleanly when unset (the artifact above
-      # is still produced as a fallback). The object key is the lowercased exe
-      # name (e.g. apexnodes-0.15.1-win-x64.exe) -> tracks the version and keeps
-      # the brand name out of the URL literal, consistent with the Mac dmg.
-      - name: Publish installer to Tencent COS
+      # Publish the installer + electron-updater feed straight to Tencent COS
+      # from the runner (fast GH -> COS link), so we never pull the ~235 MB
+      # artifact down a slow link. Gated on the COS_* repo secrets: skips
+      # cleanly when unset (the artifact above is still produced as a
+      # fallback). 0.16.1+: original electron-builder names (no lowercasing —
+      # latest.yml references the exe by its exact name) under desktop/win-x64/,
+      # mirroring the per-arch mac prefixes (desktop/mac-<arch>/); the shell
+      # updater polls this prefix (electron/shell-updater.cjs).
+      - name: Publish installer + updater feed to Tencent COS
         if: success()
         shell: pwsh
         env:
@@ -97,10 +102,15 @@ jobs:
             "    endpoint: cos.ap-guangzhou.myqcloud.com"
           )
           Set-Content -Path (Join-Path $env:USERPROFILE ".cos.yaml") -Value $cfg -Encoding ascii
-          $exe = Get-ChildItem apps/desktop/release/*.exe | Select-Object -First 1
-          if (-not $exe) { throw "no .exe found under apps/desktop/release" }
-          $key = $exe.Name.ToLower()
-          Write-Host "Publishing $($exe.Name) -> cos://.../desktop/$key"
-          ./coscli.exe cp $exe.FullName "cos://apexnodes-runtime-202606250443-1300912302/desktop/$key"
+          $release = "apps/desktop/release"
+          $files = @(Get-ChildItem "$release/*.exe") +
+                   @(Get-ChildItem "$release/*.blockmap" -ErrorAction SilentlyContinue) +
+                   @(Get-ChildItem "$release/latest.yml" -ErrorAction SilentlyContinue)
+          if (-not ($files | Where-Object { $_.Extension -eq ".exe" })) { throw "no .exe found under $release" }
+          if (-not ($files | Where-Object { $_.Name -eq "latest.yml" })) { throw "latest.yml missing under $release (updater feed would be dead)" }
+          $prefix = "desktop/win-x64"
+          foreach ($f in $files) {
+            ./coscli.exe cp $f.FullName "cos://apexnodes-runtime-202606250443-1300912302/$prefix/$($f.Name)"
+            Write-Host "COS publish OK: $prefix/$($f.Name)"
+          }
           Remove-Item (Join-Path $env:USERPROFILE ".cos.yaml") -Force
-          Write-Host "COS publish OK: desktop/$key"

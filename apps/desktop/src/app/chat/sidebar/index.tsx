@@ -83,7 +83,9 @@ import type { SidebarNavItem } from '../../types'
 import { AccountPanel } from './account-panel'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { resolveManualSessionOrderIds } from './order'
+import { RuntimeUpdatePill } from './runtime-update-pill'
 import { SidebarSessionRow } from './session-row'
+import { ShellUpdatePill } from './shell-update-pill'
 import { VirtualSessionList } from './virtual-session-list'
 import { isProjectCwd, type SidebarSessionGroup, workspaceGroupsFor } from './workspace-groups'
 
@@ -719,6 +721,15 @@ export function ChatSidebar({
 
         {contentVisible && (
           <div className="shrink-0 px-0.5 pb-1 pt-0.5">
+            {/* Shell-update pill: invisible until electron-updater has a new
+                shell downloaded, then offers 「重启以更新 vX.Y.Z」. Takes
+                precedence over the engine pill below (shell releases usually
+                carry the engine pin bump; one restart delivers both). */}
+            <ShellUpdatePill />
+            {/* Engine-update pill (Codex reference): invisible until a silent
+                background check finds a newer runtime, then a one-click apply
+                capsule sits directly above the account row. */}
+            <RuntimeUpdatePill />
             {/* Codex-style bottom-left account row (avatar + name + email →
                 popover menu). Renders only on managed builds when signed in; the
                 auth gate covers the signed-out case. Profile management lives in

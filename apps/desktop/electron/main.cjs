@@ -31,6 +31,7 @@ const {
   checkForRuntimeUpdate,
   overlayStampWithPin
 } = require('./apex-runtime-latest.cjs')
+const { createShellUpdater } = require('./shell-updater.cjs')
 const {
   applyConfigYamlKeys,
   fetchClientConfig,
@@ -91,8 +92,10 @@ const {
   googleStartUrl,
   isManagedEnabled,
   managedModelConfigYaml,
+  ensurePluginsEnabledYaml,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
+  seedPluginsBlockYaml,
   MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
   parseProvisionResponse,
@@ -569,7 +572,8 @@ const SEED_DISPLAY_BLOCK =
 //   timezone: '' — empty means "server-local time" (config.py top-level
 //     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
 // Top-level keys here (agent:, timezone:) must not collide with the other seed
-// blocks (model:/custom_providers:/display:/skills: — see seedDefaultModelConfig).
+// blocks (model:/custom_providers:/display:/skills:/plugins: — see
+// seedDefaultModelConfig).
 const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision\n' +
   "# support; empty timezone = follow the OS (server-local) clock.\n" +
@@ -648,8 +652,12 @@ function seedDefaultModelConfig() {
     // are absent-gated and this one runs first) — otherwise skill-cut +
     // Copilot-disable would be a no-op on a fresh desktop install. The
     // denylist sits INSIDE the model: block (a 2nd top-level model: key would
-    // be invalid YAML); the skills block is its own top-level key.
+    // be invalid YAML); the skills block is its own top-level key. Same story
+    // for plugins.enabled: the runtime's standalone plugin loader is opt-in,
+    // so a seed without that block would ship apex-overlay + the apexnodes-*
+    // tool plugins disabled on every fresh install (see MANAGED_PLUGIN_NAMES).
     const skillsBlock = seedSkillsBlockYaml()
+    const pluginsBlock = seedPluginsBlockYaml()
     let seed
     if (defaultModelPath({ enabled: isManagedEnabled(process.env), key: managed.key }) === 'managed') {
       const block = managedModelConfigYaml(
@@ -665,7 +673,8 @@ function seedDefaultModelConfig() {
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
         SEED_MOA_BLOCK +
-        skillsBlock
+        skillsBlock +
+        pluginsBlock
       rememberLog(`[apexnodes] seeded managed relay config at ${configPath}`)
     } else {
       seed =
@@ -678,7 +687,8 @@ function seedDefaultModelConfig() {
         modelDisabledProvidersYaml() +
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
-        skillsBlock
+        skillsBlock +
+        pluginsBlock
       rememberLog(`[apexnodes] seeded default DeepSeek (BYOK) config at ${configPath}`)
     }
     fs.writeFileSync(configPath, seed, { encoding: 'utf8' })
@@ -4874,6 +4884,18 @@ function guardConfigYamlProductBlocks(reason) {
       fixed.push('model.disabled_providers')
     }
 
+    // Standalone plugins are opt-in: a config.yaml without (or with an
+    // emptied) plugins.enabled list silently disables apex-overlay + the
+    // apexnodes-* tool plugins on the next backend start. Union the managed
+    // names back in — add-only, so user-added plugin entries survive. This
+    // boot-time pass is also the UPGRADE path for installs seeded before the
+    // plugins block existed.
+    const pluginsHeal = ensurePluginsEnabledYaml(raw)
+    if (pluginsHeal.changed) {
+      raw = pluginsHeal.next
+      fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
+    }
+
     if (fixed.length) {
       fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
       rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
@@ -7754,6 +7776,35 @@ function registerDeepLinkProtocol() {
   }
 }
 
+// 壳自更新(electron-updater)装配 —— 和引擎(runtime)的 opt-in 更新是两条
+// 互不相扰的通道。策略全静默:60s 后首查 + 每 6h 重查,autoDownload 下载,
+// downloaded 状态推给侧栏胶囊出「重启以更新」;错误只进 desktop log。dev
+// (未打包)不 require electron-updater,整体停用(IPC 面保留,renderer 免探测)。
+function initShellUpdater() {
+  let autoUpdater = null
+  if (app.isPackaged) {
+    try {
+      autoUpdater = require('electron-updater').autoUpdater
+    } catch (error) {
+      // 依赖缺失(异常打包)降级为停用,绝不拦启动。
+      rememberLog(`[shell-update] electron-updater unavailable (disabled): ${error && error.message}`)
+    }
+  }
+  createShellUpdater({
+    autoUpdater,
+    ipcMain,
+    isPackaged: app.isPackaged,
+    log: rememberLog,
+    broadcast: (channel, payload) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, payload)
+        }
+      }
+    }
+  })
+}
+
 // Single-instance lock: deep links on a running app (Win/Linux) arrive as a
 // second-instance argv. Without the lock a second `hermes://` launch spawns a
 // whole new app instead of routing into the running one.
@@ -7796,6 +7847,9 @@ app.whenReady().then(() => {
   // + after every successful sign-in). Bounded at ~5s and strictly fail-soft —
   // an offline user boots exactly as before, on the cached state.
   void refreshClientConfigFromPlatform('boot')
+
+  // 壳自更新:首查本身就延迟 60s(shell-updater.cjs),不和启动高峰抢资源。
+  initShellUpdater()
 
   // Win/Linux cold start: the launching hermes:// URL is in our own argv.
   const _coldStartLink = _extractDeepLink(process.argv)
