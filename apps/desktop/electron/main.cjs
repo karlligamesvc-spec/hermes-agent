@@ -31,6 +31,7 @@ const {
   checkForRuntimeUpdate,
   overlayStampWithPin
 } = require('./apex-runtime-latest.cjs')
+const { createShellUpdater } = require('./shell-updater.cjs')
 const {
   applyConfigYamlKeys,
   fetchClientConfig,
@@ -7775,6 +7776,35 @@ function registerDeepLinkProtocol() {
   }
 }
 
+// 壳自更新(electron-updater)装配 —— 和引擎(runtime)的 opt-in 更新是两条
+// 互不相扰的通道。策略全静默:60s 后首查 + 每 6h 重查,autoDownload 下载,
+// downloaded 状态推给侧栏胶囊出「重启以更新」;错误只进 desktop log。dev
+// (未打包)不 require electron-updater,整体停用(IPC 面保留,renderer 免探测)。
+function initShellUpdater() {
+  let autoUpdater = null
+  if (app.isPackaged) {
+    try {
+      autoUpdater = require('electron-updater').autoUpdater
+    } catch (error) {
+      // 依赖缺失(异常打包)降级为停用,绝不拦启动。
+      rememberLog(`[shell-update] electron-updater unavailable (disabled): ${error && error.message}`)
+    }
+  }
+  createShellUpdater({
+    autoUpdater,
+    ipcMain,
+    isPackaged: app.isPackaged,
+    log: rememberLog,
+    broadcast: (channel, payload) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, payload)
+        }
+      }
+    }
+  })
+}
+
 // Single-instance lock: deep links on a running app (Win/Linux) arrive as a
 // second-instance argv. Without the lock a second `hermes://` launch spawns a
 // whole new app instead of routing into the running one.
@@ -7817,6 +7847,9 @@ app.whenReady().then(() => {
   // + after every successful sign-in). Bounded at ~5s and strictly fail-soft —
   // an offline user boots exactly as before, on the cached state.
   void refreshClientConfigFromPlatform('boot')
+
+  // 壳自更新:首查本身就延迟 60s(shell-updater.cjs),不和启动高峰抢资源。
+  initShellUpdater()
 
   // Win/Linux cold start: the launching hermes:// URL is in our own argv.
   const _coldStartLink = _extractDeepLink(process.argv)

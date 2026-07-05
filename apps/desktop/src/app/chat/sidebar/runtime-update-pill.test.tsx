@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopRuntimeUpdateApply, DesktopRuntimeUpdateCheck } from '@/global'
@@ -26,6 +26,8 @@ vi.mock('@/store/runtime-update', async () => {
 })
 
 import { $runtimeUpdateApplying, $runtimeUpdateCheck } from '@/store/runtime-update'
+// 壳更新 store 用真模块:没有 hermesDesktop 桥时它是惰性的,atom 直接可写。
+import { $shellUpdate } from '@/store/shell-update'
 
 import { RuntimeUpdatePill } from './runtime-update-pill'
 
@@ -42,6 +44,7 @@ beforeEach(() => {
   checkRuntimeUpdateMock.mockResolvedValue(UPDATE_AVAILABLE)
   $runtimeUpdateCheck.set(null)
   $runtimeUpdateApplying.set(false)
+  $shellUpdate.set(null)
 })
 
 afterEach(() => {
@@ -63,6 +66,23 @@ describe('RuntimeUpdatePill', () => {
     })
 
     expect(container.firstChild).toBeNull()
+  })
+
+  it('yields to the shell-update pill while a shell update is downloaded', () => {
+    // 壳胶囊优先:壳包就绪时引擎 offer 让位(壳更新通常带引擎 pin bump)。
+    $runtimeUpdateCheck.set(UPDATE_AVAILABLE)
+    $shellUpdate.set({ error: null, percent: 100, phase: 'downloaded', version: '0.16.1' })
+
+    const { container } = render(<RuntimeUpdatePill />)
+
+    expect(container.firstChild).toBeNull()
+
+    // 壳侧解除(装完/回落)后 offer 立刻回来,不需要新一轮检查。
+    act(() => {
+      $shellUpdate.set(null)
+    })
+
+    expect(screen.getByText('New engine available')).toBeTruthy()
   })
 
   it('shows the offer copy and the new version when an update is available', () => {
