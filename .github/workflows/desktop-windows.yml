@@ -21,7 +21,7 @@ jobs:
   build:
     name: ApexNodes Windows installer (x64, unsigned)
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
 
     steps:
       - name: Checkout

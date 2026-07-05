@@ -1451,8 +1451,11 @@ canvas {
 }
 
 /* Row stack inside a card: rows divide with a 1px hairline, never a heavy
-   line; the card's own padding insets them from the rounded corners. */
-.p5-settings .p5-card .p5-rows {
+   line; the card's own padding insets them from the rounded corners. Callers
+   write either `p5-card p5-rows` on ONE element or nest .p5-rows inside
+   .p5-card — cover both, else rows sit flush against the card border. */
+.p5-settings .p5-card .p5-rows,
+.p5-settings .p5-card.p5-rows {
   padding-inline: 1rem;
 }
 
