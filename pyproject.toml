@@ -270,6 +270,22 @@ youtube = [
 # starlette==1.0.1 pinned for CVE-2026-48710 (BadHost) — fastapi pulls Starlette
 # transitively and pre-1.0.1 is the vulnerable range. See the mcp extra above.
 web = ["fastapi==0.133.1", "uvicorn[standard]==0.41.0", "starlette==1.0.1", "python-multipart==0.0.27"]
+# 产出类文件导出(Word/Excel/PPT/PDF)——桌面/云能力一致 PD D3:这些库从
+# hermes-cloud 云镜像的单独 bake 行(build_native_agent_image.sh)收编进
+# fork 依赖链,桌面 uv 装机自带、云镜像标准安装,两端 docx/xlsx/pptx/pdf
+# 产出能力同源。云端专属的 ddgs / dingtalk-stream 不搬(仍留云镜像)。
+# 版本与原 bake 行一致;pydyf==0.10.0 是 WeasyPrint 62.3 的兼容性 pin
+# (hc-330:0.12.x 会破 write_pdf)。这些都是纯 py 轮子,uv sync 全平台
+# 可装;WeasyPrint 在 mac/Windows 缺 Pango/Cairo 系统库时仅 import 失败,
+# PDF 导出插件自带可用性探测(系统库/字体仍由云镜像 apt 层提供,桌面 PDF
+# 见 PD P2)。
+file-export = [
+  "python-docx==1.1.2",
+  "XlsxWriter==3.2.0",
+  "python-pptx==1.0.2",
+  "weasyprint==62.3",
+  "pydyf==0.10.0",
+]
 all = [
   # Policy (2026-05-12): `[all]` includes only extras that genuinely
   # CAN'T be lazy-installed via `tools/lazy_deps.py` — i.e. things every
@@ -302,6 +318,10 @@ all = [
   "hermes-agent[google]",
   "hermes-agent[web]",
   "hermes-agent[youtube]",
+  # 产出类文件导出:docx/xlsx/pptx/pdf 是货架能力面(每个会话都可能产出交付
+  # 文件),且桌面装机(install.sh 走 [all])必须自带——不能等到会话中途
+  # lazy-install(PD D3:两端能力一致由装机时依赖保证)。
+  "hermes-agent[file-export]",
 ]
 
 [project.scripts]
