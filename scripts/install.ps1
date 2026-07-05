@@ -874,7 +874,7 @@ function Install-Git {
             }
         }
         if ($changed) {
-            [Environment]::SetEnvironmentVariable("Path", ($userPathItems -join ";"), "User")
+            Set-UserEnvSafe "Path" ($userPathItems -join ";") | Out-Null
         }
 
         $version = & $gitExe --version
@@ -887,6 +887,29 @@ function Install-Git {
         Write-Info "Fallback: install Git manually from https://git-scm.com/download/win"
         Write-Info "then re-run this installer.  Hermes needs Git Bash on Windows to run"
         Write-Info "shell commands (same as Claude Code and other coding agents)."
+        return $false
+    }
+}
+
+function Set-UserEnvSafe {
+    <#
+    .SYNOPSIS
+    Best-effort persist of a User-scope environment variable.
+
+    Group-policy-managed machines can lock HKCU\Environment (seen in the
+    field 2026-07-05: "SetEnvironmentVariable ... 未经授权的操作" on a plain
+    User-scope write, which killed the whole install at the git stage).
+    Persistence is a nicety -- the gateway is launched by the desktop shell
+    with a full process environment -- so failure here must NEVER abort the
+    install. Returns $true if persisted, $false otherwise.
+    #>
+    param([string]$Name, [string]$Value)
+    try {
+        [Environment]::SetEnvironmentVariable($Name, $Value, "User")
+        return $true
+    } catch {
+        Write-Warn "Could not persist $Name to User environment (policy-locked?): $($_.Exception.Message)"
+        Write-Info "Continuing -- this only affects new shells, not the app itself."
         return $false
     }
 }
@@ -932,7 +955,7 @@ function Set-GitBashEnvVar {
 
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) {
-            [Environment]::SetEnvironmentVariable("HERMES_GIT_BASH_PATH", $candidate, "User")
+            Set-UserEnvSafe "HERMES_GIT_BASH_PATH" $candidate | Out-Null
             $env:HERMES_GIT_BASH_PATH = $candidate
             Write-Info "Set HERMES_GIT_BASH_PATH=$candidate"
             return
@@ -1031,7 +1054,7 @@ function Test-Node {
                 $userPathItems = if ($userPath) { $userPath -split ";" } else { @() }
                 if ($userPathItems -notcontains $nodeDir) {
                     $userPathItems += $nodeDir
-                    [Environment]::SetEnvironmentVariable("Path", ($userPathItems -join ";"), "User")
+                    Set-UserEnvSafe "Path" ($userPathItems -join ";") | Out-Null
                 }
 
                 $version = & "$HermesHome\node\node.exe" --version
@@ -2063,12 +2086,9 @@ function Set-PathVariable {
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     
     if ($currentPath -notlike "*$hermesBin*") {
-        [Environment]::SetEnvironmentVariable(
-            "Path",
-            "$hermesBin;$currentPath",
-            "User"
-        )
-        Write-Success "Added to user PATH: $hermesBin"
+        if (Set-UserEnvSafe "Path" "$hermesBin;$currentPath") {
+            Write-Success "Added to user PATH: $hermesBin"
+        }
     } else {
         Write-Info "PATH already configured"
     }
@@ -2078,7 +2098,7 @@ function Set-PathVariable {
     # of the Unix default ~/.hermes
     $currentHermesHome = [Environment]::GetEnvironmentVariable("HERMES_HOME", "User")
     if (-not $currentHermesHome -or $currentHermesHome -ne $HermesHome) {
-        [Environment]::SetEnvironmentVariable("HERMES_HOME", $HermesHome, "User")
+        Set-UserEnvSafe "HERMES_HOME" $HermesHome | Out-Null
         Write-Success "Set HERMES_HOME=$HermesHome"
     }
     $env:HERMES_HOME = $HermesHome
