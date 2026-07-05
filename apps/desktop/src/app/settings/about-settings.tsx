@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { type Translations, useI18n } from '@/i18n'
-import { AlertTriangle, CheckCircle2, Cpu, ExternalLink, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
+import { useI18n } from '@/i18n'
+import { AlertTriangle, Cpu, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import {
   $runtimeUpdateApplying,
@@ -16,42 +16,10 @@ import {
   checkRuntimeUpdate,
   loadRuntimeVersion
 } from '@/store/runtime-update'
-import {
-  $desktopVersion,
-  $updateApply,
-  $updateChecking,
-  $updateStatus,
-  checkUpdates,
-  openUpdatesWindow,
-  refreshDesktopVersion
-} from '@/store/updates'
+import { $desktopVersion, refreshDesktopVersion } from '@/store/updates'
 
-import { ListRow, SectionHeading, SettingsContent } from './primitives'
+import { SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
-
-const RELEASE_NOTES_URL = 'https://apex-nodes.com/zh'
-
-function relativeTime(ms: number | undefined, a: Translations['settings']['about']) {
-  if (!ms) {
-    return a.never
-  }
-
-  const diff = Date.now() - ms
-
-  if (diff < 60_000) {
-    return a.justNow
-  }
-
-  if (diff < 3_600_000) {
-    return a.minAgo(Math.round(diff / 60_000))
-  }
-
-  if (diff < 86_400_000) {
-    return a.hoursAgo(Math.round(diff / 3_600_000))
-  }
-
-  return a.daysAgo(Math.round(diff / 86_400_000))
-}
 
 // R5 / R6 — desktop opt-in engine (runtime) update. Shows the currently
 // installed engine version and, on demand (opt-in: the user must click), checks
@@ -180,10 +148,6 @@ export function AboutSettingsBody() {
   const { t } = useI18n()
   const a = t.settings.about
   const version = useStore($desktopVersion)
-  const status = useStore($updateStatus)
-  const apply = useStore($updateApply)
-  const checking = useStore($updateChecking)
-  const [justChecked, setJustChecked] = useState(false)
 
   // The version atom is loaded once at app boot, which makes About show a
   // stale number after a self-update (the running binary is current, the
@@ -193,37 +157,10 @@ export function AboutSettingsBody() {
     void refreshDesktopVersion()
   }, [])
 
-  const behind = status?.behind ?? 0
-  const supported = status?.supported !== false
-  const applying = apply.applying || apply.stage === 'restart'
-
-  const handleCheck = async () => {
-    setJustChecked(false)
-    const next = await checkUpdates()
-    setJustChecked(Boolean(next))
-  }
-
-  let statusLine: string
-  let statusTone: 'idle' | 'available' | 'error' = 'idle'
-
-  if (!supported) {
-    statusLine = status?.message ?? a.cantUpdate
-    statusTone = 'error'
-  } else if (status?.error) {
-    statusLine = a.cantReach
-    statusTone = 'error'
-  } else if (applying) {
-    statusLine = a.installing
-    statusTone = 'available'
-  } else if (behind > 0) {
-    statusLine = a.updateReady(behind)
-    statusTone = 'available'
-  } else if (status) {
-    statusLine = a.onLatest
-  } else {
-    statusLine = a.tapCheck
-  }
-
+  // Upstream's app self-update block (git-checkout based `hermes update`) is
+  // intentionally NOT rendered: ApexNodes installs are COS source tarballs
+  // with no .git, so that flow can only ever error. Shell updates ship as new
+  // installers; the ENGINE update below (R5/R6) is our supported path.
   return (
     <>
       <div className="flex flex-col items-center gap-3.5 pt-8 pb-3 text-center">
@@ -237,70 +174,6 @@ export function AboutSettingsBody() {
       </div>
 
       <div className="mx-auto mt-4 w-full max-w-2xl">
-        <SectionHeading icon={RefreshCw} title={a.updates} />
-
-        <div
-          className={cn(
-            'p5-panel px-4 py-3.5 text-sm',
-            statusTone === 'error' ? 'text-destructive' : 'text-foreground'
-          )}
-          data-tone={statusTone}
-        >
-          <div className="flex items-start gap-2">
-            {statusTone === 'available' ? (
-              <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--ui-blue)]" />
-            ) : statusTone === 'error' ? null : (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            )}
-            <div className="min-w-0">
-              <p className="font-medium">{statusLine}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {a.lastChecked(relativeTime(status?.fetchedAt, a))}
-                {justChecked && !checking ? a.justNowSuffix : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            <Button
-              disabled={checking || applying || !supported}
-              onClick={() => void handleCheck()}
-              size="sm"
-              variant="textStrong"
-            >
-              {checking ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-              {checking ? a.checking : a.checkNow}
-            </Button>
-
-            {behind > 0 && supported && !applying && (
-              <Button onClick={() => openUpdatesWindow()} size="sm">
-                {a.seeWhatsNew}
-              </Button>
-            )}
-
-            <Button asChild className="ml-auto" size="sm" variant="text">
-              <a
-                href={RELEASE_NOTES_URL}
-                onClick={event => {
-                  event.preventDefault()
-                  void window.hermesDesktop?.openExternal?.(RELEASE_NOTES_URL)
-                }}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <ExternalLink className="size-3" />
-                {a.releaseNotes}
-              </a>
-            </Button>
-          </div>
-        </div>
-
-        <ListRow
-          description={a.automaticUpdatesDesc}
-          hint={a.branchCommit(status?.branch ?? 'unknown', status?.currentSha?.slice(0, 7) ?? 'unknown')}
-          title={a.automaticUpdates}
-        />
-
         <EngineUpdateSection />
 
         <UninstallSection />

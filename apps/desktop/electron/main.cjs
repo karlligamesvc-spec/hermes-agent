@@ -7458,14 +7458,17 @@ function resolveHermesVersion() {
 function showAboutPanelFresh() {
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
-    applicationVersion: resolveHermesVersion(),
+    // Shell (installer) version — the engine (runtime) version is shown by
+    // About's engine-update section. resolveHermesVersion() reads the ENGINE
+    // source tree and confusingly surfaced e.g. "0.17.0" as the app version.
+    applicationVersion: app.getVersion(),
     copyright: 'Copyright © 2026 Nous Research'
   })
   app.showAboutPanel()
 }
 
 ipcMain.handle('hermes:version', async () => ({
-  appVersion: resolveHermesVersion(),
+  appVersion: app.getVersion(),
   electronVersion: process.versions.electron,
   nodeVersion: process.versions.node,
   platform: process.platform,
