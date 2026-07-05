@@ -16,6 +16,13 @@ plugins:
     # `model.disabled_providers`. Plugin discovery runs before the /model
     # picker cache prewarm, so the denylist applies before any startup fetch.
     - apex-overlay
+    # ApexNodes 平台工具(P1,DESKTOP-CLOUD-CAPABILITY-PARITY-PD):社媒数据/
+    # 下载转写/文生视频。默认经平台工具网关(api.apex-nodes.com /tools/v1,
+    # 云容器用 TOOLS_GATEWAY_BASE 指内网 base;TOOLS_GATEWAY_DISABLED=1 回退
+    # 旧 master 直连)。vendor key 不落本机;鉴权用登录后的 Agent API key。
+    - apexnodes-douyin-tools
+    - apexnodes-social-tools
+    - apexnodes-video-tools
 
 # =============================================================================
 # Model Configuration
