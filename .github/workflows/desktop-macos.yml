@@ -107,12 +107,13 @@ jobs:
         run: |
           set -euo pipefail
           APP="$(find release/mac* -maxdepth 1 -name '*.app' | head -1)"
-          ASAR="$APP/Contents/Resources/app.asar"
-          npx --yes @electron/asar list "$ASAR" > /tmp/asar-list.txt
-          for REQ in "/dist/index.html" "/install-stamp.json"; do
-            grep -qx "$REQ" /tmp/asar-list.txt || { echo "::error::app.asar missing $REQ — refusing to ship a white-screen build"; exit 1; }
-          done
-          echo "asar completeness OK ($(wc -l < /tmp/asar-list.txt) entries)"
+          RES="$APP/Contents/Resources"
+          npx --yes @electron/asar list "$RES/app.asar" > /tmp/asar-list.txt
+          grep -qx "/dist/index.html" /tmp/asar-list.txt || { echo "::error::app.asar missing /dist/index.html — refusing to ship a white-screen build"; exit 1; }
+          # These ship via extraResources NEXT TO the asar, not inside it.
+          [ -f "$RES/install-stamp.json" ] || { echo "::error::Resources/install-stamp.json missing — bootstrap would have no pinned ref"; exit 1; }
+          [ -d "$RES/native-deps" ] || { echo "::error::Resources/native-deps missing — node-pty would fail to load"; exit 1; }
+          echo "package completeness OK ($(wc -l < /tmp/asar-list.txt) asar entries)"
 
       - name: Gatekeeper assessment (fails if not notarized)
         working-directory: apps/desktop
