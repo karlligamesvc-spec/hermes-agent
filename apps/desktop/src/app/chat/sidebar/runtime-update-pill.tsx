@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, ChevronRight, Loader2, Sparkles } from '@/lib/icons'
 import { $runtimeUpdateApplying, $runtimeUpdateCheck, applyRuntimeUpdate, checkRuntimeUpdate } from '@/store/runtime-update'
+import { $shellUpdate } from '@/store/shell-update'
 
 // Silent background-check cadence. The first check waits 30s after mount so it
 // never competes with app-boot work (gateway boot, session hydrate); after that
@@ -54,6 +55,7 @@ export function RuntimeUpdatePill() {
   const s = t.sidebar.engineUpdate
   const check = useStore($runtimeUpdateCheck)
   const applying = useStore($runtimeUpdateApplying)
+  const shellUpdate = useStore($shellUpdate)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -82,9 +84,12 @@ export function RuntimeUpdatePill() {
     return () => clearTimeout(timer)
   }, [failed])
 
+  // 壳更新胶囊优先:壳包 downloaded 时本胶囊让位(壳更新通常携带引擎 pin
+  // bump,重启一次两者一并到位,双胶囊同促只会分流点击)。hooks 都已跑过,
+  // 静默检查计划照常滴答,壳装完/让位解除后 offer 立即回来。
   // No offer → nothing at all (the effects above still run, so the silent
   // schedule keeps ticking while the pill is invisible).
-  if (!check?.updateAvailable || !check.latest) {
+  if (shellUpdate?.phase === 'downloaded' || !check?.updateAvailable || !check.latest) {
     return null
   }
 

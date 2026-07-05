@@ -1487,6 +1487,9 @@ export const zh: Translations = {
       updating: '正在更新引擎…',
       failedRolledBack: '更新失败,已回滚'
     },
+    shellUpdate: {
+      restartToUpdate: version => (version ? `重启以更新 ${version}` : '重启以更新')
+    },
     row: {
       pin: '置顶',
       unpin: '取消置顶',

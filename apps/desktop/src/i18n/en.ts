@@ -1304,6 +1304,9 @@ export const en: Translations = {
       updating: 'Updating engine…',
       failedRolledBack: 'Update failed, rolled back'
     },
+    shellUpdate: {
+      restartToUpdate: version => (version ? `Restart to update ${version}` : 'Restart to update')
+    },
     row: {
       pin: 'Pin',
       unpin: 'Unpin',

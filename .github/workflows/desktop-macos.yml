@@ -11,8 +11,14 @@
 #   APPLE_API_ISSUER      issuer UUID (App Store Connect → Users and Access → Keys)
 #   COS_SECRET_ID/KEY     optional, already set for desktop-windows → COS publish
 #
-# Publishes desktop/<lowercased artifact name> (apex-<version>-mac-<arch>.dmg)
-# to the same public bucket the marketing download buttons point at.
+# Publishes the electron-builder artifacts UNDER THEIR ORIGINAL NAMES
+# (APEX-<version>-mac-<arch>.dmg/.zip + *.blockmap + latest-mac.yml) to
+# desktop/mac-<arch>/ on the public bucket — the electron-updater generic feed
+# the desktop shell polls (electron/shell-updater.cjs). Per-arch prefixes are
+# load-bearing: both matrix jobs emit a file literally named latest-mac.yml,
+# so a flat desktop/ prefix would let the second job clobber the first arch's
+# feed. (≤0.16.0 used lowercased custom names; website links are synced from
+# the cloud repo separately.)
 
 name: Desktop macOS build
 
@@ -80,7 +86,11 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: npm run builder -- --mac dmg zip --${{ matrix.arch }}
+        # --publish never: build.publish (generic COS feed) exists so
+        # electron-builder emits latest-mac.yml + *.blockmap; never upload from
+        # here (publishing to a generic provider isn't supported anyway — the
+        # COS step below does it with coscmd).
+        run: npm run builder -- --mac dmg zip --${{ matrix.arch }} --publish never
 
       - name: Gatekeeper assessment (fails if not notarized)
         working-directory: apps/desktop
@@ -94,7 +104,7 @@ jobs:
       - name: List build output
         if: always()
         working-directory: apps/desktop
-        run: ls -lh release/*.dmg release/*.zip 2>/dev/null || true
+        run: ls -lh release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml 2>/dev/null || true
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -104,7 +114,10 @@ jobs:
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
 
-      - name: Publish DMG to COS (skipped when secrets absent)
+      # Installer + electron-updater feed, original electron-builder names, one
+      # per-arch prefix per matrix job (see the header comment for why flat
+      # desktop/ would clobber latest-mac.yml across arches).
+      - name: Publish installer + updater feed to COS (skipped when secrets absent)
         env:
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
@@ -114,10 +127,15 @@ jobs:
             echo "COS_SECRET_ID/COS_SECRET_KEY not set; skipping COS publish (artifact still uploaded)."
             exit 0
           fi
-          DMG="$(ls apps/desktop/release/*.dmg | head -1)"
-          KEY="$(basename "$DMG" | tr '[:upper:]' '[:lower:]')"
           pip3 install --quiet --break-system-packages coscmd
           coscmd config -a "$COS_SECRET_ID" -s "$COS_SECRET_KEY" \
             -b apexnodes-runtime-202606250443-1300912302 -r ap-guangzhou
-          coscmd upload "$DMG" "desktop/$KEY"
-          echo "COS publish OK: desktop/$KEY"
+          PREFIX="desktop/mac-${{ matrix.arch }}"
+          cd apps/desktop/release
+          # latest-mac.yml must exist — without it the updater feed is dead.
+          [ -f latest-mac.yml ] || { echo "latest-mac.yml missing in release/" >&2; exit 1; }
+          for f in *.dmg *.zip *.blockmap latest-mac.yml; do
+            [ -e "$f" ] || continue
+            coscmd upload "$f" "$PREFIX/$f"
+            echo "COS publish OK: $PREFIX/$f"
+          done

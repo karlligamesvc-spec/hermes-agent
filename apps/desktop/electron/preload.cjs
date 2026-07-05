@@ -51,6 +51,18 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
     applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update')
   },
+  // 壳(Electron 应用本体)自更新 — electron-updater,和上面的引擎(runtime)
+  // 更新是两条通道。机制全在主进程(electron/shell-updater.cjs):静默检查+
+  // 下载,状态经 onEvent 推给侧栏胶囊;install = quitAndInstall(应用退出重装)。
+  shellUpdate: {
+    getState: () => ipcRenderer.invoke('hermes:shell-update:get'),
+    install: () => ipcRenderer.invoke('hermes:shell-update:install'),
+    onEvent: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:shell-update:event', listener)
+      return () => ipcRenderer.removeListener('hermes:shell-update:event', listener)
+    }
+  },
   api: request => ipcRenderer.invoke('hermes:api', request),
   notify: payload => ipcRenderer.invoke('hermes:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),

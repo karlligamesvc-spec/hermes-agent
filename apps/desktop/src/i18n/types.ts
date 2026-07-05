@@ -1036,6 +1036,10 @@ export interface Translations {
       updating: string
       failedRolledBack: string
     }
+    // 壳(应用本体)更新胶囊:downloaded 后的「重启以更新 vX.Y.Z」。
+    shellUpdate: {
+      restartToUpdate: (version: string) => string
+    }
     row: {
       pin: string
       unpin: string

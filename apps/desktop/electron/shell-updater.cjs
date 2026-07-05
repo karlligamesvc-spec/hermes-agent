@@ -1,0 +1,200 @@
+'use strict'
+
+// 壳自更新(electron-updater 接线)— 更新的是 Electron 壳本体(dmg/zip/exe),
+// 和引擎(runtime)的 opt-in 更新(apex-runtime-latest.cjs)是两条互不相扰的
+// 通道。策略:全程静默 —— 启动 60s 后首查、之后每 6h 重查;发现新版自动下载
+// (autoDownload),下载完成只把状态推给 renderer(侧栏胶囊出「重启以更新」),
+// 绝不弹窗;用户点击才 quitAndInstall,不点则退出时自动装(autoInstallOnAppQuit)。
+// 检查/下载失败一律记日志吞掉,离线用户零打扰。
+//
+// 更新源(generic provider)按 平台-架构 分目录:
+//   <COS>/desktop/mac-arm64/  <COS>/desktop/mac-x64/  <COS>/desktop/win-x64/
+// 而不是平铺在 desktop/ 下 —— mac 两个架构在 CI 里是两个独立矩阵 job,各自
+// 产出一份同名 latest-mac.yml,平铺上传会互相覆盖,后传的架构把先传的 feed
+// 冲掉(x64 更新器会在 arm64 的 files 列表里找不到 zip)。package.json 里
+// build.publish 只配到 desktop/ 基址(让 electron-builder 生成 yml/blockmap),
+// 真正生效的 feed URL 以这里 shellUpdateFeedUrl() 运行时 setFeedURL 为准。
+//
+// 依赖注入设计(同 apex-runtime-latest.cjs):模块不 require electron /
+// electron-updater,autoUpdater、ipcMain、broadcast 全部由 main.cjs 传入,
+// 这样 node --test 能用假件直接测事件流→IPC 推送,不需要 electron 环境。
+
+const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
+const SHELL_UPDATE_FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
+const SHELL_UPDATE_INITIAL_DELAY_MS = 60_000
+const SHELL_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+// 平台-架构 → feed 子目录。linux 目前没有发布通道,给个规整命名兜底(真开
+// linux 通道时 CI 侧同样按这个前缀上传即可)。
+function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.platform, arch = process.arch } = {}) {
+  const os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : 'linux'
+  return `${base}/${os}-${arch}`
+}
+
+// renderer 可见的状态机。phase 单向推进为主,error/idle 可回到 checking:
+//   disabled → (终态,dev/无 updater)
+//   idle → checking → available → downloading → downloaded(终态,等重启)
+//                   ↘ idle(update-not-available)          ↘ error → checking(下轮)
+function initialState(disabled) {
+  return { phase: disabled ? 'disabled' : 'idle', version: null, percent: null, error: null }
+}
+
+/**
+ * 装配壳自更新。返回 { getState, checkNow, dispose } —— main.cjs 只管调一次,
+ * 返回值主要给测试用(dispose 清定时器/摘监听)。
+ *
+ * @param {object} options
+ * @param {object|null} options.autoUpdater  electron-updater 的 autoUpdater;dev 传 null
+ * @param {object} options.ipcMain           electron ipcMain(或测试假件,只需 .handle)
+ * @param {boolean} options.isPackaged       app.isPackaged;false 时整体停用
+ * @param {(msg: string) => void} [options.log]        接 main.cjs rememberLog
+ * @param {(channel: string, payload: object) => void} [options.broadcast]  推给所有窗口
+ * @param {string} [options.feedBase]        缺省 COS desktop/ 基址
+ * @param {string} [options.platform]        缺省 process.platform
+ * @param {string} [options.arch]            缺省 process.arch
+ * @param {number} [options.initialDelayMs]  首查延迟,缺省 60s
+ * @param {number} [options.recheckIntervalMs] 重查周期,缺省 6h
+ */
+function createShellUpdater(options) {
+  const {
+    autoUpdater,
+    ipcMain,
+    isPackaged,
+    log = () => {},
+    broadcast = () => {},
+    feedBase = SHELL_UPDATE_FEED_BASE,
+    platform = process.platform,
+    arch = process.arch,
+    initialDelayMs = SHELL_UPDATE_INITIAL_DELAY_MS,
+    recheckIntervalMs = SHELL_UPDATE_RECHECK_INTERVAL_MS
+  } = options
+
+  const disabled = !isPackaged || !autoUpdater
+  const state = initialState(disabled)
+
+  function setState(patch) {
+    Object.assign(state, patch)
+    try {
+      broadcast(SHELL_UPDATE_EVENT_CHANNEL, { ...state })
+    } catch (error) {
+      log(`[shell-update] broadcast failed (ignored): ${error && error.message}`)
+    }
+  }
+
+  // IPC 面在 dev/packaged 两种模式下都注册,renderer 不需要探测 —— dev 里
+  // get 返回 disabled,install 拒绝,胶囊自然不出现。
+  ipcMain.handle('hermes:shell-update:get', async () => ({ ...state }))
+  ipcMain.handle('hermes:shell-update:install', async () => {
+    if (disabled || state.phase !== 'downloaded') {
+      return { ok: false, error: disabled ? 'disabled' : 'not_downloaded' }
+    }
+    log(`[shell-update] quitAndInstall requested (version=${state.version || '?'})`)
+    // setImmediate:先让 IPC 应答回到 renderer 再拆窗口,避免 renderer 在
+    // await 上挂到进程退出。win 上 (true, true) = 静默装 + 装完拉起;mac 的
+    // Squirrel.Mac 忽略参数,quit 后换包自动重启。
+    setImmediate(() => {
+      try {
+        autoUpdater.quitAndInstall(true, true)
+      } catch (error) {
+        log(`[shell-update] quitAndInstall failed: ${error && error.message}`)
+        setState({ phase: 'error', error: (error && error.message) || String(error) })
+      }
+    })
+    return { ok: true }
+  })
+
+  if (disabled) {
+    log('[shell-update] disabled (dev / unpackaged build)')
+    return { getState: () => ({ ...state }), checkNow: async () => {}, dispose: () => {} }
+  }
+
+  const feedUrl = shellUpdateFeedUrl({ base: feedBase, platform, arch })
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.allowDowngrade = false
+  // electron-updater 内部日志也进 desktop log,出问题时有迹可循;debug 太吵,丢弃。
+  autoUpdater.logger = {
+    info: msg => log(`[shell-update] ${msg}`),
+    warn: msg => log(`[shell-update] warn: ${msg}`),
+    error: msg => log(`[shell-update] error: ${msg}`),
+    debug: () => {}
+  }
+  autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+  log(`[shell-update] enabled: feed=${feedUrl}`)
+
+  // 事件 → 状态机。'error' 监听必须挂上:EventEmitter 没有 error 监听时 emit
+  // 会直接 throw,把静默失败变成主进程崩溃。
+  const listeners = [
+    ['checking-for-update', () => setState({ phase: 'checking', error: null })],
+    [
+      'update-available',
+      info => {
+        setState({ phase: 'available', version: (info && info.version) || null, error: null })
+        log(`[shell-update] update available: ${(info && info.version) || '?'} (auto-downloading)`)
+      }
+    ],
+    ['update-not-available', () => setState({ phase: 'idle', percent: null, error: null })],
+    [
+      'download-progress',
+      progress => {
+        // 静默下载:只记状态(renderer 胶囊对 downloading 不渲染),不打扰。
+        setState({ phase: 'downloading', percent: progress && typeof progress.percent === 'number' ? progress.percent : null })
+      }
+    ],
+    [
+      'update-downloaded',
+      info => {
+        setState({ phase: 'downloaded', version: (info && info.version) || state.version, percent: 100, error: null })
+        log(`[shell-update] update downloaded: ${(info && info.version) || '?'} (waiting for restart)`)
+      }
+    ],
+    [
+      'error',
+      error => {
+        // 静默失败:记日志 + 状态,绝不弹 UI。下一轮周期检查会自动重试。
+        const message = (error && error.message) || String(error)
+        setState({ phase: 'error', error: message })
+        log(`[shell-update] error (silent): ${message}`)
+      }
+    ]
+  ]
+  for (const [event, handler] of listeners) {
+    autoUpdater.on(event, handler)
+  }
+
+  async function checkNow() {
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (error) {
+      // checkForUpdates 的失败通常也会走 'error' 事件;这里兜同步 throw /
+      // rejection,保证后台定时器永远打不出 unhandled rejection。
+      log(`[shell-update] check failed (silent): ${(error && error.message) || error}`)
+    }
+  }
+
+  // 首查延迟 60s:避开 app 启动的 gateway 拉起/会话 hydrate 高峰(和引擎胶囊
+  // 的 30s 静默检查同思路)。定时器 unref,不影响进程退出,也免得测试挂住。
+  const initialTimer = setTimeout(() => void checkNow(), initialDelayMs)
+  if (typeof initialTimer.unref === 'function') initialTimer.unref()
+  const recheckTimer = setInterval(() => void checkNow(), recheckIntervalMs)
+  if (typeof recheckTimer.unref === 'function') recheckTimer.unref()
+
+  function dispose() {
+    clearTimeout(initialTimer)
+    clearInterval(recheckTimer)
+    for (const [event, handler] of listeners) {
+      autoUpdater.removeListener(event, handler)
+    }
+  }
+
+  return { getState: () => ({ ...state }), checkNow, dispose }
+}
+
+module.exports = {
+  SHELL_UPDATE_EVENT_CHANNEL,
+  SHELL_UPDATE_FEED_BASE,
+  SHELL_UPDATE_INITIAL_DELAY_MS,
+  SHELL_UPDATE_RECHECK_INTERVAL_MS,
+  createShellUpdater,
+  shellUpdateFeedUrl
+}
