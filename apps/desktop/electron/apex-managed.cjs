@@ -137,6 +137,25 @@ const MANAGED_PROVIDER_NAME = 'Apex-nodes.com'
 // against the Hermes slug + its models.dev id.
 const MODEL_DISABLED_PROVIDERS = ['copilot']
 
+// Standalone runtime plugins the product REQUIRES enabled. The runtime's
+// plugin loader is opt-in: only names listed under `plugins.enabled` in
+// config.yaml load (bundled backend/platform plugins auto-load regardless), so
+// a config.yaml WITHOUT this block ships every standalone plugin disabled —
+// including apex-overlay, whose seams enforce the hc-392 provider denylist.
+// MUST stay in sync with the `plugins.enabled` list in cli-config.yaml.example
+// (the pure-CLI path; the three apexnodes-* tool entries land there with
+// feat/plugins-gateway-p1).
+const MANAGED_PLUGIN_NAMES = [
+  // ApexNodes cloud overlay boot hook — applies the apex_overlay seams onto
+  // upstream Hermes at load time (monkey-patch, zero in-place edits).
+  'apex-overlay',
+  // ApexNodes platform tools (P1): social-media data / download+transcribe /
+  // text-to-video, routed through the platform tools gateway.
+  'apexnodes-douyin-tools',
+  'apexnodes-social-tools',
+  'apexnodes-video-tools'
+]
+
 // Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default
 // (never loaded until removed from this list in Settings → Skills). We disable
 // rather than delete so upstream merges stay painless. Names below are the
@@ -203,6 +222,152 @@ function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
     '  disabled:\n'
   for (const s of list) yaml += `    - ${String(s).trim()}\n`
   return yaml
+}
+
+/**
+ * Render the top-level `plugins.enabled` YAML block for the desktop seed.
+ * Mirrors the block cli-config.yaml.example carries: the runtime's standalone
+ * plugin loader is opt-in, so a seeded config.yaml without this block would
+ * disable apex-overlay + the apexnodes-* tool plugins on every fresh desktop
+ * install (the seed pre-empts install.sh's example-copy — both absent-gated,
+ * seed runs first). Returns '' when the list is empty.
+ *
+ * @param {string[]} [plugins]
+ * @returns {string}
+ */
+function seedPluginsBlockYaml(plugins = MANAGED_PLUGIN_NAMES) {
+  const list = Array.isArray(plugins) ? plugins.filter(p => String(p || '').trim()) : []
+  if (!list.length) return ''
+  let yaml =
+    '# Standalone runtime plugins are opt-in: only names listed here load.\n' +
+    '# apex-overlay carries the ApexNodes seams (incl. the provider denylist\n' +
+    '# above); the apexnodes-* tools ride the platform tools gateway.\n' +
+    'plugins:\n' +
+    '  enabled:\n'
+  for (const p of list) yaml += `    - ${String(p).trim()}\n`
+  return yaml
+}
+
+/**
+ * Ensure every managed plugin name is present under `plugins.enabled` in a
+ * raw config.yaml. Pure line surgery (no YAML round-trip — comments and
+ * formatting survive), tolerant of the shapes we actually meet: the desktop /
+ * example seed (4-space list indent, comments inside the list), PyYAML
+ * re-dumps (2-space list items, `enabled: []` / flow lists / `null`), and
+ * hand edits.
+ *
+ * ADD-ONLY by contract: user-added extra plugins and their order are always
+ * preserved; when every managed name is already present the input is returned
+ * unchanged (idempotent), and anything structurally unexpected → no change
+ * (same philosophy as syncCustomProviderKeyYaml — never corrupt the file).
+ *
+ * @param {string} raw config.yaml contents
+ * @param {string[]} [plugins]
+ * @returns {{ changed: boolean, next: string, added: string[] }}
+ */
+function ensurePluginsEnabledYaml(raw, plugins = MANAGED_PLUGIN_NAMES) {
+  const source = String(raw || '')
+  const wanted = (Array.isArray(plugins) ? plugins : []).map(p => String(p || '').trim()).filter(Boolean)
+  const unchanged = { changed: false, next: source, added: [] }
+  if (!wanted.length) return unchanged
+
+  const unquote = value => String(value || '').trim().replace(/^(["'])(.*)\1$/, '$2')
+  // `- name  # comment` → name (a trailing comment needs whitespace before #).
+  const itemName = text => unquote(String(text).replace(/\s+#.*$/, ''))
+
+  const lines = source.split('\n')
+  let blockLine = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/^plugins:/.test(lines[i])) { blockLine = i; break }
+  }
+
+  // ── no top-level plugins: block at all → append the full seed block ─────
+  if (blockLine < 0) {
+    const next = source.replace(/\n*$/, '\n') + seedPluginsBlockYaml(wanted)
+    return { changed: true, next, added: wanted.slice() }
+  }
+
+  const blockRest = lines[blockLine].slice('plugins:'.length).trim()
+  if (blockRest && !blockRest.startsWith('#')) {
+    // Inline value. `plugins: {}` (PyYAML's empty-map dump) is safely
+    // replaceable with the block form; any other inline shape is unexpected.
+    if (!/^\{\s*\}(\s*#.*)?$/.test(blockRest)) return unchanged
+    const replacement = ['plugins:', '  enabled:']
+    for (const name of wanted) replacement.push(`    - ${name}`)
+    lines.splice(blockLine, 1, ...replacement)
+    return { changed: true, next: lines.join('\n'), added: wanted.slice() }
+  }
+
+  // ── find the end of the plugins: block and its `enabled:` key ───────────
+  let blockEnd = lines.length
+  let enabledLine = -1
+  let enabledIndent = ''
+  let childIndent = ''
+  for (let i = blockLine + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^\S/.test(line)) { blockEnd = i; break } // next top-level key
+    const key = line.match(/^(\s+)([A-Za-z0-9_-]+):(.*)$/)
+    if (key && !childIndent) childIndent = key[1]
+    if (key && key[2] === 'enabled' && enabledLine < 0) {
+      enabledLine = i
+      enabledIndent = key[1]
+    }
+  }
+
+  if (enabledLine < 0) {
+    // plugins: exists but the enabled: list is gone — insert one at the top
+    // of the block, matching the block's child indent when it has one.
+    const indent = childIndent || '  '
+    const insert = [`${indent}enabled:`]
+    for (const name of wanted) insert.push(`${indent}  - ${name}`)
+    lines.splice(blockLine + 1, 0, ...insert)
+    return { changed: true, next: lines.join('\n'), added: wanted.slice() }
+  }
+
+  const enabledMatch = lines[enabledLine].match(/^\s+enabled:(.*)$/)
+  const enabledRest = (enabledMatch ? enabledMatch[1] : '').trim()
+  if (enabledRest && !enabledRest.startsWith('#')) {
+    // Inline value: [] / null / a flow list. Rewrite as a block list keeping
+    // existing entries + order; anything else unexpected → no change.
+    let existing
+    if (/^\[\s*\]$/.test(enabledRest) || /^(~|null)$/i.test(enabledRest)) {
+      existing = []
+    } else if (/^\[.*\]$/.test(enabledRest)) {
+      existing = enabledRest.slice(1, -1).split(',').map(itemName).filter(Boolean)
+    } else {
+      return unchanged
+    }
+    const missing = wanted.filter(name => !existing.includes(name))
+    if (!missing.length) return unchanged
+    const replacement = [`${enabledIndent}enabled:`]
+    for (const name of existing.concat(missing)) replacement.push(`${enabledIndent}  - ${name}`)
+    lines.splice(enabledLine, 1, ...replacement)
+    return { changed: true, next: lines.join('\n'), added: missing }
+  }
+
+  // ── block list: collect existing item names + the last item line ────────
+  const existing = []
+  let lastItemLine = -1
+  let itemIndent = ''
+  for (let i = enabledLine + 1; i < blockEnd; i++) {
+    const line = lines[i]
+    if (!line.trim() || /^\s*#/.test(line)) continue // blanks/comments inside the list
+    const item = line.match(/^(\s*)-\s+(.*)$/)
+    if (item && item[1].length >= enabledIndent.length) {
+      existing.push(itemName(item[2]))
+      lastItemLine = i
+      if (!itemIndent) itemIndent = item[1]
+      continue
+    }
+    break // a sibling key (or anything else) ends the list
+  }
+
+  const missing = wanted.filter(name => !existing.includes(name))
+  if (!missing.length) return unchanged
+  const indent = itemIndent || `${enabledIndent}  `
+  const insertAt = lastItemLine >= 0 ? lastItemLine + 1 : enabledLine + 1
+  lines.splice(insertAt, 0, ...missing.map(name => `${indent}- ${name}`))
+  return { changed: true, next: lines.join('\n'), added: missing }
 }
 
 // Endpoint paths. LOGIN_PATH / REGISTER_PATH are on AUTH_BASE; PROVISION_KEY_PATH
@@ -707,8 +872,11 @@ module.exports = {
   MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
   SEED_DISABLED_SKILLS,
+  MANAGED_PLUGIN_NAMES,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
+  seedPluginsBlockYaml,
+  ensurePluginsEnabledYaml,
   LOGIN_PATH,
   REGISTER_PATH,
   PROVISION_KEY_PATH,

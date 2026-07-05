@@ -91,8 +91,10 @@ const {
   googleStartUrl,
   isManagedEnabled,
   managedModelConfigYaml,
+  ensurePluginsEnabledYaml,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
+  seedPluginsBlockYaml,
   MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
   parseProvisionResponse,
@@ -569,7 +571,8 @@ const SEED_DISPLAY_BLOCK =
 //   timezone: '' — empty means "server-local time" (config.py top-level
 //     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
 // Top-level keys here (agent:, timezone:) must not collide with the other seed
-// blocks (model:/custom_providers:/display:/skills: — see seedDefaultModelConfig).
+// blocks (model:/custom_providers:/display:/skills:/plugins: — see
+// seedDefaultModelConfig).
 const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision\n' +
   "# support; empty timezone = follow the OS (server-local) clock.\n" +
@@ -648,8 +651,12 @@ function seedDefaultModelConfig() {
     // are absent-gated and this one runs first) — otherwise skill-cut +
     // Copilot-disable would be a no-op on a fresh desktop install. The
     // denylist sits INSIDE the model: block (a 2nd top-level model: key would
-    // be invalid YAML); the skills block is its own top-level key.
+    // be invalid YAML); the skills block is its own top-level key. Same story
+    // for plugins.enabled: the runtime's standalone plugin loader is opt-in,
+    // so a seed without that block would ship apex-overlay + the apexnodes-*
+    // tool plugins disabled on every fresh install (see MANAGED_PLUGIN_NAMES).
     const skillsBlock = seedSkillsBlockYaml()
+    const pluginsBlock = seedPluginsBlockYaml()
     let seed
     if (defaultModelPath({ enabled: isManagedEnabled(process.env), key: managed.key }) === 'managed') {
       const block = managedModelConfigYaml(
@@ -665,7 +672,8 @@ function seedDefaultModelConfig() {
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
         SEED_MOA_BLOCK +
-        skillsBlock
+        skillsBlock +
+        pluginsBlock
       rememberLog(`[apexnodes] seeded managed relay config at ${configPath}`)
     } else {
       seed =
@@ -678,7 +686,8 @@ function seedDefaultModelConfig() {
         modelDisabledProvidersYaml() +
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
-        skillsBlock
+        skillsBlock +
+        pluginsBlock
       rememberLog(`[apexnodes] seeded default DeepSeek (BYOK) config at ${configPath}`)
     }
     fs.writeFileSync(configPath, seed, { encoding: 'utf8' })
@@ -4872,6 +4881,18 @@ function guardConfigYamlProductBlocks(reason) {
     if (/^model:/m.test(raw) && !/^\s{2}disabled_providers:/m.test(raw)) {
       raw = raw.replace(/^(model:\n)/m, `$1${modelDisabledProvidersYaml()}`)
       fixed.push('model.disabled_providers')
+    }
+
+    // Standalone plugins are opt-in: a config.yaml without (or with an
+    // emptied) plugins.enabled list silently disables apex-overlay + the
+    // apexnodes-* tool plugins on the next backend start. Union the managed
+    // names back in — add-only, so user-added plugin entries survive. This
+    // boot-time pass is also the UPGRADE path for installs seeded before the
+    // plugins block existed.
+    const pluginsHeal = ensurePluginsEnabledYaml(raw)
+    if (pluginsHeal.changed) {
+      raw = pluginsHeal.next
+      fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
     }
 
     if (fixed.length) {
