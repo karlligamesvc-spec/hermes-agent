@@ -1429,16 +1429,10 @@ export interface Translations {
       update: string
       updateInProgress: string
       commitsBehind: (count: number, branch: string) => string
-      desktopVersion: (version: string) => string
       backendVersion: (version: string) => string
-      clientLabel: (version: string) => string
       backendLabel: (version: string) => string
-      commit: (sha: string) => string
-      branch: (branch: string) => string
       closeCommandCenter: string
       openCommandCenter: string
-      showTerminal: string
-      hideTerminal: string
       gateway: string
       gatewayReady: string
       gatewayNeedsSetup: string
@@ -1460,8 +1454,6 @@ export interface Translations {
       contextUsage: string
       session: string
       runtimeSessionElapsed: string
-      yoloOn: string
-      yoloOff: string
       modelNone: string
       noModel: string
       switchModel: string
