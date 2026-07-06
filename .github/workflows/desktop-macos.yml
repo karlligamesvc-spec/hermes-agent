@@ -19,6 +19,15 @@
 # so a flat desktop/ prefix would let the second job clobber the first arch's
 # feed. (≤0.16.0 used lowercased custom names; website links are synced from
 # the cloud repo separately.)
+#
+# hc-435 — DO NOT "fix" the 404 at the ROOT desktop/latest-mac.yml by also
+# uploading there. The root feed is INTENTIONALLY empty: the installed shell
+# reads its per-arch subdir via runtime setFeedURL (shell-updater.cjs), never
+# the root. Copying arm64 + x64 latest-mac.yml to the flat desktop/ prefix is
+# exactly the clobber this per-arch layout exists to avoid — the second arch's
+# yml would overwrite the first's, and its updater would find no matching zip.
+# The root 404 is expected and harmless; verified end-to-end that every shipped
+# arch resolves its subdir feed + installer (both HTTP 200).
 
 name: Desktop macOS build
 

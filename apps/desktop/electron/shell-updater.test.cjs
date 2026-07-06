@@ -90,6 +90,29 @@ test('shellUpdateFeedUrl keys the feed by platform-arch under the COS base', () 
   assert.equal(shellUpdateFeedUrl({ base: 'https://cdn.example/d', platform: 'win32', arch: 'arm64' }), 'https://cdn.example/d/win-arm64')
 })
 
+// hc-435 命门:feed 必须落在 <base>/<os>-<arch> 子目录,永远比 base 深一层。
+// 根 desktop/ 下故意为空(404);一旦 feed 塌回 base,updater 就去读 404 的根
+// feed → 自更新静默失效。这条守住「绝不等于 base、也绝不是 base 的直接前缀段」。
+test('shellUpdateFeedUrl never collapses to the bare (empty) root base', () => {
+  for (const arch of ['arm64', 'x64']) {
+    for (const platform of ['darwin', 'win32', 'linux']) {
+      const url = shellUpdateFeedUrl({ platform, arch })
+      assert.notEqual(url, SHELL_UPDATE_FEED_BASE, `${platform}/${arch} must not equal the root base`)
+      assert.ok(url.startsWith(`${SHELL_UPDATE_FEED_BASE}/`), `${platform}/${arch} must live under the base`)
+      assert.match(url, /\/(mac|win|linux)-(arm64|x64)$/, `${platform}/${arch} must end with an os-arch segment`)
+    }
+  }
+})
+
+// 空 arch(理论回归:某处把 arch 显式传成空串,或 process.arch 拿到空值)不能
+// 悄悄拼出 base+空段的根 feed —— 直接抛,让上层兜成 disabled 而不是去读根 404。
+// (arch 属性缺省/undefined 走默认 process.arch,真机上非空,不在此守;这里守的
+// 是「拿到了但为空」这个会塌向根目录的危险值。)
+test('shellUpdateFeedUrl throws on an empty arch instead of yielding a root-ish feed', () => {
+  assert.throws(() => shellUpdateFeedUrl({ platform: 'darwin', arch: '' }), /missing arch/)
+  assert.throws(() => shellUpdateFeedUrl({ platform: 'win32', arch: '' }), /missing arch/)
+})
+
 // ---------------------------------------------------------------------------
 // dev / 未打包:整体停用,但 IPC 面仍在(renderer 无需探测)
 // ---------------------------------------------------------------------------
@@ -132,6 +155,17 @@ test('packaged build wires silent-download config and the per-arch generic feed'
   assert.equal(autoUpdater.autoInstallOnAppQuit, true)
   assert.equal(autoUpdater.allowDowngrade, false)
   assert.deepEqual(autoUpdater.feed, { provider: 'generic', url: `${SHELL_UPDATE_FEED_BASE}/mac-arm64` })
+})
+
+// hc-435:packaged 但 arch 拿不到时,宁可整体停用也不 setFeedURL 到根 feed,
+// 更不能把 initShellUpdater 带崩(startup 契约:自更新故障绝不拦启动)。
+test('packaged build with an unresolvable arch degrades to disabled, never feeds the root', () => {
+  const { updater, autoUpdater, logs } = harness({ arch: '' })
+
+  assert.equal(updater.getState().phase, 'disabled')
+  // 从未配过 feed(没有塌向根目录),也没崩。
+  assert.equal(autoUpdater.feed, null)
+  assert.ok(logs.some(line => line.includes('cannot resolve per-arch feed URL')))
 })
 
 // ---------------------------------------------------------------------------

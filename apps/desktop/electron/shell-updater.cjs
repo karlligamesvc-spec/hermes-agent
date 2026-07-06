@@ -26,8 +26,18 @@ const SHELL_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 // 平台-架构 → feed 子目录。linux 目前没有发布通道,给个规整命名兜底(真开
 // linux 通道时 CI 侧同样按这个前缀上传即可)。
+//
+// ★ 这个 `/${os}-${arch}` 子目录是自更新能不能生效的命门(hc-435):CI 把每个
+// 架构的同名 latest-mac.yml/latest.yml 传到各自子目录,根 desktop/ 下故意为空
+// (curl 根目录必 404)。运行时这里算出的 URL 交给 setFeedURL,electron-updater
+// 的 GenericProvider 会取 `<这里的URL>/latest-mac.yml`,所以只要这里塌回根基址
+// (os/arch 缺失被拼成空段),updater 就会去读 404 的根 feed → 自更新静默失效。
+// 因此空 os/arch 直接抛,绝不让 feed 退化成根目录。
 function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.platform, arch = process.arch } = {}) {
   const os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : 'linux'
+  if (!arch) {
+    throw new Error(`shellUpdateFeedUrl: missing arch (platform=${platform}) — feed would collapse to the empty root desktop/ prefix`)
+  }
   return `${base}/${os}-${arch}`
 }
 
@@ -108,7 +118,17 @@ function createShellUpdater(options) {
     return { getState: () => ({ ...state }), checkNow: async () => {}, dispose: () => {} }
   }
 
-  const feedUrl = shellUpdateFeedUrl({ base: feedBase, platform, arch })
+  // feed URL 塌向根目录 = 自更新静默失效(hc-435)。shellUpdateFeedUrl 对空
+  // os/arch 会抛;这里兜住,宁可整体停用(状态=disabled,胶囊不出)也不去读
+  // 404 的根 feed、更不因一个异常 arch 把主进程启动带崩。
+  let feedUrl
+  try {
+    feedUrl = shellUpdateFeedUrl({ base: feedBase, platform, arch })
+  } catch (error) {
+    log(`[shell-update] disabled: cannot resolve per-arch feed URL: ${error && error.message}`)
+    setState({ phase: 'disabled' })
+    return { getState: () => ({ ...state }), checkNow: async () => {}, dispose: () => {} }
+  }
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowDowngrade = false
