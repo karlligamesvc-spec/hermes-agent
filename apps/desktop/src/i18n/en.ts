@@ -2181,5 +2181,12 @@ export const en: Translations = {
       description: 'Displays the mobile sidebar.',
       toggle: 'Toggle Sidebar'
     }
+  },
+  operationStatus: {
+    browserActive: 'Controlling browser',
+    computerActive: 'Controlling computer',
+    computerWarning: 'AI is controlling your computer',
+    running: 'Running',
+    stop: 'Stop'
   }
 }

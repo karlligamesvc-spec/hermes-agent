@@ -19,9 +19,11 @@ import {
   type StatusGroup,
   stopBackgroundProcess
 } from '@/store/composer-status'
+import { $activeOperationBySession } from '@/store/active-operation'
 import { $threadScrolledUp } from '@/store/thread-scroll'
 import { openSessionInNewWindow } from '@/store/windows'
 
+import { OperationChip } from './operation-chip'
 import { StatusItemRow } from './status-row'
 
 // Slow safety-net poll for silent exits (processes without notify_on_complete
@@ -37,6 +39,8 @@ const groupLabel = (group: StatusGroup, s: Translations['statusStack']) => {
 }
 
 interface ComposerStatusStackProps {
+  /** Interrupt the running turn — powers the operation chip's Stop control. */
+  onStopOperation?: () => void
   /** The queue, built by the composer (it owns the queue's callbacks). Rendered
    *  as the last group so it stays fused to the composer like before. */
   queue: ReactNode
@@ -48,11 +52,13 @@ interface ComposerStatusStackProps {
  * every session-scoped status — subagents, background tasks, queue — grouped by
  * type and separated by light dividers. Collapses to nothing when empty.
  */
-export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackProps) {
+export function ComposerStatusStack({ onStopOperation, queue, sessionId }: ComposerStatusStackProps) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const itemsBySession = useStore($statusItemsBySession)
+  const operationBySession = useStore($activeOperationBySession)
   const scrolledUp = useStore($threadScrolledUp)
+  const hasOperation = Boolean(sessionId && operationBySession[sessionId])
 
   const groups = useMemo(
     () => groupStatusItems(sessionId ? (itemsBySession[sessionId] ?? []) : []),
@@ -126,7 +132,7 @@ export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackPro
     sections.push({ key: 'queue', node: queue })
   }
 
-  const visible = sections.length > 0
+  const visible = sections.length > 0 || hasOperation
   const stackRef = useRef<HTMLDivElement | null>(null)
 
   // The stack is out of flow (overlays the thread), so the composer's measured
@@ -192,6 +198,7 @@ export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackPro
             scrolledUp ? 'opacity-30 group-hover/composer:opacity-100' : 'opacity-100'
           )}
         >
+          <OperationChip onStop={onStopOperation} sessionId={sessionId} />
           {sections.map(section => (
             <div key={section.key}>{section.node}</div>
           ))}

@@ -37,6 +37,7 @@ import {
   updateComposerAttachment
 } from '@/store/composer'
 import { resetSessionBackground } from '@/store/composer-status'
+import { clearActiveOperation } from '@/store/active-operation'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
@@ -1419,6 +1420,7 @@ export function usePromptActions({
 
     clearSessionTodos(sessionId)
     clearSessionSubagents(sessionId)
+    clearActiveOperation(sessionId)
     resetSessionBackground(sessionId)
 
     try {
