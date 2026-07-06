@@ -31,6 +31,11 @@ const {
   checkForRuntimeUpdate,
   overlayStampWithPin
 } = require('./apex-runtime-latest.cjs')
+const {
+  canUseOnDiskRuntime,
+  resolvePreBootstrapDecision,
+  resolveBootstrapFailureFallback
+} = require('./apex-runtime-select.cjs')
 const { createShellUpdater } = require('./shell-updater.cjs')
 const {
   applyConfigYamlKeys,
@@ -2586,6 +2591,23 @@ function isBootstrapComplete() {
   return isHermesSourceRoot(ACTIVE_HERMES_ROOT) && fileExists(getVenvPython(VENV_ROOT))
 }
 
+// Probe the on-disk canonical install for the runtime-select fail-open logic.
+// Reports the two facts canUseOnDiskRuntime() needs: is the runtime SOURCE
+// present (hermes_cli/main.py) and is a runnable interpreter present. We scope
+// "python present" to the co-located venv on purpose: ensureRuntime()'s adoption
+// path (the createActiveBackend venv-wiring branch) REQUIRES getVenvPython(
+// VENV_ROOT) and throws without it, so adopting on the strength of a mere system
+// Python would just trade a bootstrap brick for a venv-missing brick. The pair
+// here is therefore exactly the pair isBootstrapComplete() checks — the only
+// difference the fail-open path cares about is the presence/absence of the
+// attesting MARKER, not the runnability of the install.
+function probeOnDiskRuntime() {
+  return {
+    sourcePresent: isHermesSourceRoot(ACTIVE_HERMES_ROOT),
+    pythonPresent: fileExists(getVenvPython(VENV_ROOT))
+  }
+}
+
 function writeBootstrapMarker(payload) {
   fs.mkdirSync(path.dirname(BOOTSTRAP_COMPLETE_MARKER), { recursive: true })
   const merged = {
@@ -2819,6 +2841,35 @@ function resolveHermesBackend(dashboardArgs) {
   //    to spawning hermes. Updates flow through the in-app update path
   //    (applyUpdates -> git pull) or `hermes update` from the CLI.
   if (isBootstrapComplete()) {
+    return createActiveBackend(dashboardArgs)
+  }
+
+  // 3.5 FAIL-OPEN (2026-07-06 incident): a usable runtime is already extracted at
+  //     ACTIVE_HERMES_ROOT (source + venv on disk) but the bootstrap-complete
+  //     marker is absent/stale — an interrupted install, a dropped marker, a
+  //     legacy install predating the marker, or a COS-tarball extract that was
+  //     never registered on PATH. WITHOUT this, resolution falls through to the
+  //     bootstrap-needed sentinel (step 6), which fires the network runtime-latest
+  //     resolve; when the cloud advertises a version whose COS tarball is not yet
+  //     published, install.sh 404s and the WHOLE gateway refuses to start —
+  //     stranding the user on an error page despite a perfectly runnable runtime
+  //     sitting right there. Adopt the on-disk runtime directly instead (same
+  //     venv-wiring adoption path createActiveBackend feeds). We do NOT do this
+  //     while an opt-in update is pending: the user chose a new version and
+  //     adopting the old one would silently no-op their request (that case must
+  //     drive the bootstrap re-run below). The client must self-heal against a
+  //     wrong/ahead server answer rather than assume the cloud is always right.
+  const preBootstrap = resolvePreBootstrapDecision({
+    markerComplete: false, // isBootstrapComplete() already returned false above
+    onDiskUsable: canUseOnDiskRuntime(probeOnDiskRuntime()),
+    updatePending: readRuntimePinOverride() !== null
+  })
+  if (preBootstrap === 'use-installed') {
+    rememberLog(
+      '[runtime-select] bootstrap marker absent/stale but a runnable runtime is on disk at ' +
+        `${ACTIVE_HERMES_ROOT}; adopting it instead of re-bootstrapping (fail-open — avoids ` +
+        'bricking on an unpublished admin-latest / package fetch failure).'
+    )
     return createActiveBackend(dashboardArgs)
   }
 
@@ -3061,6 +3112,41 @@ async function ensureRuntime(backend) {
     }
 
     if (!bootstrapResult.ok) {
+      // Capture whether this was an opt-in update BEFORE any rollback clears the
+      // override (the fail-open decision below needs to know).
+      const wasOptInUpdate = readRuntimePinOverride() !== null
+
+      // FAIL-OPEN safety net (2026-07-06 incident): a bootstrap can fail because
+      // the cloud advertised a version whose COS tarball isn't published yet
+      // (install.sh 404) or any transient network/checksum error. For a plain
+      // first-install/marker-repair run (NOT an opt-in update), if a runnable
+      // runtime is STILL on disk after the failed attempt, start the gateway
+      // with it instead of latching a fatal failure and stranding the user.
+      // Step 3.5 in resolveHermesBackend normally prevents us from ever reaching
+      // here with a usable on-disk runtime, but this backstops any failure that
+      // slips past it (e.g. a genuine fresh install whose download 404s while a
+      // prior good extract survives). Opt-in updates deliberately fall through
+      // to the rollback path below (restores the previous marker → old runtime
+      // boots next launch); we must not silently no-op the user's chosen version.
+      if (!wasOptInUpdate && canUseOnDiskRuntime(probeOnDiskRuntime())) {
+        const fallback = resolveBootstrapFailureFallback({
+          onDiskUsable: true,
+          updatePending: false
+        })
+        if (fallback === 'fallback-to-disk') {
+          rememberLog(
+            `[runtime-select] bootstrap failed${
+              bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''
+            } (${bootstrapResult.error || 'unknown error'}); a runnable runtime remains on disk at ` +
+              `${ACTIVE_HERMES_ROOT} — degrading to it and starting the gateway (fail-open) instead of ` +
+              'bricking. This typically means the admin latest advertised an unpublished/unreachable ' +
+              'package; the existing runtime is used until a valid update is available.'
+          )
+          // Re-resolve; step 3.5 now adopts the on-disk runtime and wires venv.
+          return ensureRuntime(resolveHermesBackend(backend.args))
+        }
+      }
+
       // R5 don't-brick guard: a failed re-bootstrap of an opt-in update rolls
       // back to the previous marker so the next launch boots the OLD runtime
       // (still on disk) instead of bricking on the new pin.
