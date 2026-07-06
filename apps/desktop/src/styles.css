@@ -288,6 +288,13 @@
     --ui-inline-code-foreground: color-mix(in srgb, #141414 88%, transparent);
     --ui-selection-background: color-mix(in srgb, #ffd24a 55%, transparent);
 
+    /* Modal/overlay scrim — the dimmed page behind dialogs, sheets, the command
+       palette and pop-out pickers. One token so every scrim matches (was five
+       ad-hoc `bg-black/*` literals). Light mode keeps the restrained ~0.22 wash
+       the Claude overlays use; dark mode deepens it so the surface still reads
+       as lifted off an already-dark page. */
+    --ui-scrim: color-mix(in srgb, #000 22%, transparent);
+
     --dt-background: var(--ui-bg-chrome);
     --dt-foreground: var(--ui-text-primary);
     --dt-card: var(--ui-bg-editor);
@@ -430,6 +437,7 @@
     --ui-inline-code-border: color-mix(in srgb, #ffffff 10%, transparent);
     --ui-inline-code-foreground: color-mix(in srgb, #ffffff 88%, transparent);
     --ui-selection-background: color-mix(in srgb, #ffd24a 38%, transparent);
+    --ui-scrim: color-mix(in srgb, #000 45%, transparent);
   }
 
   * {
@@ -800,6 +808,44 @@ canvas {
   .scrollbar-dt::-webkit-scrollbar-button,
   .scrollbar-dt *::-webkit-scrollbar-button {
     display: none;
+  }
+
+  /* Windows-native scrollbar tuning (Claude UI spec §3.1). macOS hides the
+     scrollbar until scroll (overlay style), so the accent-tinted thin thumb
+     above reads fine there. Windows paints a persistent gutter, so a violet
+     tint would be the loudest "is this purple everywhere?" tell on every
+     scroll region — swap to a neutral ink thumb (rgba black 0.16, hover 0.28)
+     over a transparent track. Keyed off the root `data-platform` stamp set in
+     themes/context.tsx; dark mode flips to a light ink so the thumb stays
+     visible on dark surfaces. */
+  :root[data-platform='win'] .scrollbar-dt,
+  :root[data-platform='win'] .scrollbar-dt * {
+    scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+  }
+
+  :root[data-platform='win'] .scrollbar-dt::-webkit-scrollbar-thumb,
+  :root[data-platform='win'] .scrollbar-dt *::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.16);
+  }
+
+  :root[data-platform='win'] .scrollbar-dt::-webkit-scrollbar-thumb:hover,
+  :root[data-platform='win'] .scrollbar-dt *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.28);
+  }
+
+  :root.dark[data-platform='win'] .scrollbar-dt,
+  :root.dark[data-platform='win'] .scrollbar-dt * {
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+
+  :root.dark[data-platform='win'] .scrollbar-dt::-webkit-scrollbar-thumb,
+  :root.dark[data-platform='win'] .scrollbar-dt *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  :root.dark[data-platform='win'] .scrollbar-dt::-webkit-scrollbar-thumb:hover,
+  :root.dark[data-platform='win'] .scrollbar-dt *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
 
   /* Variant for portaled overlays (Radix DropdownMenu, Popover, etc.) that
