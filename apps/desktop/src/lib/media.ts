@@ -128,6 +128,28 @@ export async function gatewayMediaDataUrl(path: string): Promise<string> {
   return result.data_url
 }
 
+// Resolve any image reference (data:/http(s) URL, or a local/gateway file path)
+// to a src the <img> can load: inline URLs pass through; in remote mode a
+// gateway-local path is fetched as a data URL via the REST bridge; locally we
+// read the file off disk; the last resort is a file://-style external URL.
+// Mirrors the private helper in generated-image-result.tsx so screenshot
+// previews (hc-418) resolve identically.
+export async function resolveMediaImageSrc(path: string): Promise<string> {
+  if (/^(?:https?|data):/i.test(path)) {
+    return path
+  }
+
+  if (window.hermesDesktop && isRemoteGateway()) {
+    return gatewayMediaDataUrl(path)
+  }
+
+  if (!window.hermesDesktop?.readFileDataUrl) {
+    return mediaExternalUrl(path)
+  }
+
+  return window.hermesDesktop.readFileDataUrl(filePathFromMediaPath(path))
+}
+
 export function mediaDisplayLabel(path: string): string {
   const escaped = mediaName(path).replace(/[[\]\\]/g, '\\$&')
   const kind = mediaKind(path)

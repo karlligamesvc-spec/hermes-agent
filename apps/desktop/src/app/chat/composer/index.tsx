@@ -1859,6 +1859,7 @@ export function ChatBar({
               its own --status-stack-measured-height so the thread's clearance
               accounts for it. Collapses to nothing when every status is empty. */}
           <ComposerStatusStack
+            onStopOperation={() => void Promise.resolve(onCancel())}
             queue={
               activeQueueSessionKey && queuedPrompts.length > 0 ? (
                 <QueuePanel

@@ -25,6 +25,7 @@ import {
   stripGeneratedImageEchoes
 } from '@/lib/generated-images'
 import { triggerHaptic } from '@/lib/haptics'
+import { isOperationTool, operationInfo } from '@/lib/operation-tool'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { parseTodos } from '@/lib/todos'
 import { setClarifyRequest } from '@/store/clarify'
@@ -49,6 +50,7 @@ import {
   setYoloActive,
   shouldHonorRemoteReasoning
 } from '@/store/session'
+import { clearActiveOperation, setActiveOperation } from '@/store/active-operation'
 import { broadcastSessionsChanged } from '@/store/session-sync'
 import { clearSessionSubagents, pruneDelegateFallbackSubagents, upsertSubagent } from '@/store/subagents'
 import { setSessionTodos } from '@/store/todos'
@@ -846,6 +848,7 @@ export function useMessageStream({
 
         flushQueuedDeltas(sessionId)
         clearSessionSubagents(sessionId)
+        clearActiveOperation(sessionId)
         setSessionCompacting(sessionId, false)
         compactedTurnRef.current.delete(sessionId)
         nativeSubagentSessionsRef.current.delete(sessionId)
@@ -894,6 +897,7 @@ export function useMessageStream({
         // prompt, and vice versa.
         clearAllPrompts(sessionId)
         setSessionCompacting(sessionId, false)
+        clearActiveOperation(sessionId)
 
         flushQueuedDeltas(sessionId)
 
@@ -916,10 +920,37 @@ export function useMessageStream({
 
         flushQueuedDeltas(sessionId)
         upsertToolCall(sessionId, toTodoPayload(payload) ?? payload, 'running', event.type)
+        // Global "controlling browser / desktop" indicator: light up as soon as
+        // an operation tool starts (hc-418).
+        if (isOperationTool(payload?.name)) {
+          const info = operationInfo(payload!.name!, payload?.args ?? payload?.arguments, undefined, {
+            running: true,
+            error: false
+          })
+
+          if (info) {
+            setActiveOperation(sessionId, {
+              surface: info.surface,
+              toolName: payload!.name!,
+              action: info.action,
+              target: info.target,
+              toolCallId: String(payload?.tool_id || payload?.tool_call_id || payload?.id || payload!.name!)
+            })
+          }
+        }
       } else if (event.type === 'tool.complete') {
         if (sessionId) {
           flushQueuedDeltas(sessionId)
           upsertToolCall(sessionId, toTodoPayload(payload) ?? payload, 'complete', event.type)
+          // The operation instant ended — drop the global indicator. A follow-up
+          // operation re-lights it on its own tool.start, so back-to-back browser
+          // steps keep the chip visible without it ever going stale.
+          if (isOperationTool(payload?.name)) {
+            clearActiveOperation(
+              sessionId,
+              String(payload?.tool_id || payload?.tool_call_id || payload?.id || payload?.name || '')
+            )
+          }
           // A pending clarify blocks the turn, so the first tool.complete after
           // one is the clarify resolving — drop the "needs input" flag here so
           // the sidebar indicator clears as soon as it's answered, not only at

@@ -1817,4 +1817,11 @@ export interface Translations {
       toggle: string
     }
   }
+  operationStatus: {
+    browserActive: string
+    computerActive: string
+    computerWarning: string
+    running: string
+    stop: string
+  }
 }

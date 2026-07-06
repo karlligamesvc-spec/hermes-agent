@@ -2344,5 +2344,12 @@ export const zh: Translations = {
       description: '显示移动端侧边栏。',
       toggle: '切换侧边栏'
     }
+  },
+  operationStatus: {
+    browserActive: '正在操作浏览器',
+    computerActive: '正在操作电脑',
+    computerWarning: 'AI 正在操作你的电脑',
+    running: '运行中',
+    stop: '停止'
   }
 }
