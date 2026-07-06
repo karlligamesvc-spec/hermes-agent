@@ -76,6 +76,12 @@ jobs:
       # latest.yml references the exe by its exact name) under desktop/win-x64/,
       # mirroring the per-arch mac prefixes (desktop/mac-<arch>/); the shell
       # updater polls this prefix (electron/shell-updater.cjs).
+      #
+      # hc-435: the ROOT desktop/latest.yml is INTENTIONALLY empty (404). The
+      # installed shell reads desktop/win-x64/ via runtime setFeedURL, not the
+      # root — do not add a root copy to "fix" the 404 (it would just mirror the
+      # per-arch mac clobber hazard). Verified the shipped win-x64 feed + exe
+      # both resolve (HTTP 200).
       - name: Publish installer + updater feed to Tencent COS
         if: success()
         shell: pwsh
