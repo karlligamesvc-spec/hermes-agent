@@ -7794,9 +7794,37 @@ function initShellUpdater() {
   if (app.isPackaged) {
     try {
       autoUpdater = require('electron-updater').autoUpdater
-    } catch (error) {
-      // 依赖缺失(异常打包)降级为停用,绝不拦启动。
-      rememberLog(`[shell-update] electron-updater unavailable (disabled): ${error && error.message}`)
+    } catch {
+      // Packaged builds set `files:` in package.json AND `beforeBuild` returns
+      // false, so electron-builder's node_modules collector never runs and no
+      // production dependency (electron-updater included) lands in the asar.
+      // Workspace dedup also hoists electron-updater to the repo-root
+      // node_modules, out of the app matcher's reach. We ship a minimal copy of
+      // electron-updater + its full dependency closure under
+      // resources/updater-deps/vendor/node_modules/ via extraResources +
+      // scripts/stage-updater-deps.cjs; resolve from there when the normal
+      // require() fails. This is the SAME pattern as node-pty above. Dev mode
+      // never reaches this branch (hoisted resolve succeeds). Before this fix
+      // the require threw "Cannot find module 'electron-updater'" and shell
+      // self-update was silently disabled from 0.16.1 onward.
+      try {
+        const resourcesPath = process.resourcesPath
+        if (resourcesPath) {
+          const updaterPath = path.join(
+            resourcesPath,
+            'updater-deps',
+            'vendor',
+            'node_modules',
+            'electron-updater'
+          )
+          autoUpdater = require(updaterPath).autoUpdater
+        }
+      } catch (fallbackError) {
+        // 依赖缺失(异常打包)降级为停用,绝不拦启动。
+        rememberLog(
+          `[shell-update] electron-updater unavailable (disabled): ${fallbackError && fallbackError.message}`
+        )
+      }
     }
   }
   createShellUpdater({
