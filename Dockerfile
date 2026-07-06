@@ -230,8 +230,19 @@ COPY --link --chmod=a+rX,go-w . .
 # hc-180: bake the tirith binary into the immutable image so startup does not
 # kick off a GitHub release download in the cold-start window. Use the existing
 # installer so checksum verification stays centralized. Runs after the full
-# source copy (needs tools.tirith_security) and before the immutability chmod
-# below (needs /opt/hermes writable).
+# source copy (needs tools.tirith_security).
+#
+# The installer MUST run against a throwaway scratch home, never the install
+# tree: ensure_installed → load_config → ensure_hermes_home chmods the hermes
+# home (and skills/, cron/, logs/, …) to 0700 and seeds SOUL.md etc. Pointing
+# it at the install tree used to bake those root-only 0700 modes into the
+# image layer (upstream dropped the trailing `chmod -R a+rX` repair pass in
+# favor of COPY --chmod — #49113), so the hermes user lost read/exec on
+# /opt/hermes and every container aborted in cont-init with
+# `unable to exec /opt/hermes/.venv/bin/python: Permission denied`.
+# Only the verified binary is promoted into /opt/hermes/bin — first on the
+# runtime PATH (see ENV PATH below), so `which tirith` resolves it — and the
+# scratch home is deleted.
 RUN mkdir -p /opt/hermes/bin && \
     printf '%s\n' \
         'import time' \
@@ -249,8 +260,9 @@ RUN mkdir -p /opt/hermes/bin && \
         '    raise SystemExit("tirith binary was not installed during image build")' \
         'print(f"tirith baked into image: {path}")' \
         > /tmp/bake_tirith.py && \
-    HERMES_HOME=/opt/hermes PYTHONPATH=/opt/hermes /opt/hermes/.venv/bin/python /tmp/bake_tirith.py && \
-    rm /tmp/bake_tirith.py
+    HERMES_HOME=/tmp/tirith-bake PYTHONPATH=/opt/hermes /opt/hermes/.venv/bin/python /tmp/bake_tirith.py && \
+    install -m 0755 /tmp/tirith-bake/bin/tirith /opt/hermes/bin/tirith && \
+    rm -rf /tmp/tirith-bake /tmp/bake_tirith.py
 
 # ---------- Permissions ----------
 # Link hermes-agent itself (editable). Deps are already installed in the
