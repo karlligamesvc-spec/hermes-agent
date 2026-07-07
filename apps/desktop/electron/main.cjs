@@ -110,6 +110,12 @@ const {
   shouldAttemptReprovision,
   syncCustomProviderKeyYaml
 } = require('./apex-managed.cjs')
+const {
+  buildFeishuBackendEnv,
+  feishuCredentialsUrl,
+  normalizeStoredFeishu,
+  parseFeishuCredentialsResponse
+} = require('./apex-feishu.cjs')
 const { startLoopbackLogin } = require('./apex-loopback.cjs')
 const {
   DATA_URL_READ_MAX_BYTES,
@@ -750,6 +756,16 @@ const DESKTOP_MANAGED_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-man
 // runtime's global-config API once the gateway is open. No secrets inside, so
 // plain JSON (no safeStorage), unlike apex-managed.json.
 const DESKTOP_CLIENT_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-client-config.json')
+// apex-feishu.json holds the signed-in user's OWN Feishu app credential mirrored
+// from the cloud (hc-444). The app_secret is a real secret → stored ENCRYPTED
+// (safeStorage, same treatment as the managed relay key in apex-managed.json);
+// app_id / domain / agent_name / status are non-secret and kept in clear. main
+// injects the decrypted creds JUST-IN-TIME into the backend spawn env
+// (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN) so the runtime's Feishu
+// adapter + lark doc/drive tools light up — the secret never touches a plaintext
+// .env and is never logged. Own file (not apex-managed.json) because the Feishu
+// office-suite credential and the managed-LLM relay key are unrelated concerns.
+const DESKTOP_FEISHU_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-feishu.json')
 // Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
 // value its profile resolver would reject and exit on.
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -4855,6 +4871,134 @@ function clearManagedRelayCredential() {
   }
 }
 
+// ── hc-444: desktop ↔ cloud Feishu credential bridge ────────────────────────
+// The cloud Feishu line is complete (each user self-registers their own app; the
+// creds live in agent_entries). This mirrors the user's OWN credential down to the
+// desktop so the local runtime's Feishu adapter + lark tools light up. The
+// app_secret is persisted ENCRYPTED (safeStorage, same as the managed relay key);
+// app_id/domain/agent_name/status are non-secret and stored in clear. See
+// apex-feishu.cjs for the pure shaping/gating helpers.
+
+// Read + decrypt the stored Feishu credential into the normalized runtime shape
+// ({ connected, appId, appSecret, domain, agentName, credentialStatus, syncedAt }).
+// Synchronous + never throws (read at spawn time); a decrypt failure blanks the
+// secret, which normalizeStoredFeishu degrades to `connected:false`.
+function resolveFeishuConfig() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_FEISHU_CONFIG_PATH, 'utf8'))
+  } catch {
+    return normalizeStoredFeishu(null)
+  }
+  const appSecret = raw && typeof raw === 'object' ? decryptDesktopSecret(raw.appSecret) : ''
+  // Hand normalizeStoredFeishu the record with the secret already decrypted; the
+  // stored `appSecret` is ciphertext, so replace it with the plaintext (or '').
+  return normalizeStoredFeishu(raw && typeof raw === 'object' ? { ...raw, appSecret } : null)
+}
+
+// Persist a fetched Feishu credential. Pass a parsed credential
+// ({ appId, appSecret, domain, agentName, credentialStatus }) to store, or
+// null/empty to clear. The whole record is rewritten each call (each follows a
+// fresh fetch), so clearing wipes the secret too. app_secret is encrypted; the
+// rest is clear (non-secret display/routing).
+function writeFeishuConfig(credential) {
+  fs.mkdirSync(path.dirname(DESKTOP_FEISHU_CONFIG_PATH), { recursive: true })
+  const appId = credential && typeof credential.appId === 'string' ? credential.appId.trim() : ''
+  const appSecret = credential && typeof credential.appSecret === 'string' ? credential.appSecret.trim() : ''
+  const next =
+    appId && appSecret
+      ? {
+          appId,
+          appSecret: encryptDesktopSecret(appSecret),
+          domain: String(credential.domain || '').trim() || 'feishu',
+          agentName: String(credential.agentName || '').trim(),
+          credentialStatus: String(credential.credentialStatus || '').trim(),
+          syncedAt: Date.now()
+        }
+      : {}
+  writeFileAtomic(DESKTOP_FEISHU_CONFIG_PATH, JSON.stringify(next, null, 2))
+}
+
+function clearFeishuConfig() {
+  try {
+    fs.rmSync(DESKTOP_FEISHU_CONFIG_PATH, { force: true })
+  } catch {
+    // Best effort.
+  }
+}
+
+// Build the FEISHU_* spawn-env fragment for the local backend from the stored
+// (decrypted) credential — but ADD-ONLY, never clobbering a FEISHU_APP_ID the
+// parent env already set (a power-user / staging / CI that wants to test with
+// their own app credential out-of-band). Mirrors the HF_ENDPOINT add-only rule in
+// backend-env.cjs. Returns {} for a not-connected user, so a spread merge is a
+// safe no-op. Called at spawn time (not cached) so a mid-session sync/disconnect
+// takes effect on the next backend (re)start.
+function desktopFeishuSpawnEnv() {
+  // An explicit parent-env credential wins — leave it untouched.
+  if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
+    return {}
+  }
+  return buildFeishuBackendEnv(resolveFeishuConfig())
+}
+
+// Fetch the signed-in user's Feishu credential from the cloud and persist it
+// (encrypted). Authenticates with the STORED login JWT (the same encrypted JWT
+// the managed self-heal reuses) — no re-login needed for a user already signed in
+// to managed. Returns a status object the IPC layer relays to the renderer:
+//   { ok, hasEntry, agentName, domain, credentialStatus, needsSignIn?, message? }
+// NEVER throws; a fetch failure resolves ok:false with a message. The secret is
+// never logged — only counts/flags are.
+async function fetchAndStoreFeishuCredentials() {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    // No stored JWT → the user must sign in (managed) first; the renderer opens
+    // the sign-in / web flow. Not an error — an expected pre-condition.
+    return { ok: false, needsSignIn: true, hasEntry: false, message: 'NOT_SIGNED_IN' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  let body
+  try {
+    body = await apexAuthGetJson(feishuCredentialsUrl(endpoints.apiBase), { bearer: token })
+  } catch (error) {
+    // A 401 means the stored JWT expired → treat as "needs sign-in" so the
+    // renderer routes the user back through login; other errors are transient.
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, hasEntry: false, message: 'SESSION_EXPIRED' }
+    }
+    rememberLog(`[feishu-bridge] credential fetch failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, hasEntry: false, message: 'FETCH_FAILED' }
+  }
+
+  const parsed = parseFeishuCredentialsResponse(body)
+  if (!parsed) {
+    rememberLog('[feishu-bridge] credential response malformed')
+    return { ok: false, hasEntry: false, message: 'FETCH_FAILED' }
+  }
+
+  if (!parsed.hasEntry) {
+    // The user has not bound a Feishu app in the cloud yet — clear any stale
+    // local credential and tell the renderer to guide them into the web flow.
+    clearFeishuConfig()
+    rememberLog('[feishu-bridge] no cloud Feishu entry for this user; guiding to web binding')
+    return { ok: true, hasEntry: false, credentialStatus: parsed.credentialStatus }
+  }
+
+  writeFeishuConfig(parsed)
+  rememberLog(
+    `[feishu-bridge] synced Feishu credential (app ${parsed.appId}, domain ${parsed.domain}, status ${parsed.credentialStatus || 'unknown'})`
+  )
+  return {
+    ok: true,
+    hasEntry: true,
+    agentName: parsed.agentName,
+    domain: parsed.domain,
+    credentialStatus: parsed.credentialStatus
+  }
+}
+
 // ── Platform client-config sync (apex-client-config.cjs) ────────────────────
 // The cloud serves a versioned client config (PUBLIC GET
 // /api/v1/desktop/client-config). We refresh the on-disk cache fail-soft at
@@ -5140,6 +5284,77 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 } = {}) {
       reject(error)
     })
     if (payload) request.write(payload)
+    request.end()
+  })
+}
+
+// Bearer-authed GET returning parsed JSON — the read counterpart to
+// apexAuthPostJson (same electronNet transport + explicit timeout + statusCode on
+// the rejection). Used by the hc-444 Feishu bridge to fetch the signed-in user's
+// credential (GET /api/v1/desktop/feishu-credentials). A >=400 rejects with an
+// Error carrying `.statusCode` so the caller can distinguish 401 (expired JWT →
+// re-login) from a transient failure.
+function apexAuthGetJson(url, { bearer, timeoutMs = 12_000 } = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch (error) {
+      reject(new Error(`Invalid ApexNodes URL: ${error.message}`))
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      reject(new Error(`Unsupported ApexNodes URL protocol: ${parsed.protocol}`))
+      return
+    }
+
+    const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
+    request.setHeader('Accept', 'application/json')
+    if (bearer) {
+      request.setHeader('Authorization', `Bearer ${bearer}`)
+    }
+
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      try {
+        request.abort()
+      } catch {
+        // already finished
+      }
+      reject(new Error(`Timed out connecting to ApexNodes after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    request.on('response', res => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      res.on('end', () => {
+        if (timedOut) return
+        clearTimeout(timer)
+        const text = Buffer.concat(chunks).toString('utf8')
+        const statusCode = res.statusCode || 500
+        if (statusCode >= 400) {
+          const err = new Error(`${statusCode}: ${text || ''}`)
+          err.statusCode = statusCode
+          reject(err)
+          return
+        }
+        if (!text) {
+          resolve(null)
+          return
+        }
+        try {
+          resolve(JSON.parse(text))
+        } catch {
+          reject(new Error(`Invalid JSON from ${url} (status ${statusCode}): ${text.slice(0, 200)}`))
+        }
+      })
+    })
+    request.on('error', error => {
+      if (timedOut) return
+      clearTimeout(timer)
+      reject(error)
+    })
     request.end()
   })
 }
@@ -5984,6 +6199,12 @@ async function spawnPoolBackend(profile, entry) {
         ...process.env,
         HERMES_HOME,
         ...backend.env,
+        // hc-444: inject the signed-in user's mirrored Feishu credential
+        // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
+        // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
+        // {} (no keys) when not connected; add-only vs an explicit parent-env
+        // credential.
+        ...desktopFeishuSpawnEnv(),
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
@@ -6204,6 +6425,12 @@ async function startHermes() {
           // can't reliably do that, so we set it inline for every spawn.
           HERMES_HOME,
           ...backend.env,
+          // hc-444: inject the signed-in user's mirrored Feishu credential
+          // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
+          // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
+          // {} (no keys) when not connected; add-only vs an explicit parent-env
+          // credential.
+          ...desktopFeishuSpawnEnv(),
           TERMINAL_CWD: hermesCwd,
           HERMES_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -6937,6 +7164,65 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
 ipcMain.handle('hermes:managed:signOut', async () => {
   clearManagedRelayCredential()
   return { ok: true }
+})
+
+// ── hc-444: Feishu bridge (renderer surface) ────────────────────────────────
+// status: read-only view of the LOCAL stored credential for the settings card —
+// no network, no secret. `connected` reflects a stored, injectable credential;
+// `signedIn` tells the card whether a managed sign-in exists (the prerequisite
+// for sync, since sync authenticates with the stored login JWT).
+ipcMain.handle('hermes:feishu:status', async () => {
+  const stored = resolveFeishuConfig()
+  const managed = resolveManagedConfig()
+  return {
+    connected: stored.connected,
+    signedIn: Boolean(String(managed.accessToken || '').trim()),
+    agentName: stored.agentName || '',
+    domain: stored.domain || '',
+    credentialStatus: stored.credentialStatus || '',
+    syncedAt: stored.syncedAt || null
+  }
+})
+
+// sync: fetch the signed-in user's cloud Feishu credential and persist it
+// (encrypted), then re-home the backend so the runtime boots with the new
+// FEISHU_* env and the Feishu adapter + lark tools come alive. On hasEntry=false
+// the renderer opens the web binding flow (openBind). On needsSignIn the renderer
+// routes the user through managed sign-in first. The backend restart only happens
+// when a credential was actually stored (hasEntry) — a no-op sync shouldn't churn
+// the runtime.
+ipcMain.handle('hermes:feishu:sync', async () => {
+  const result = await fetchAndStoreFeishuCredentials()
+  if (result.ok && result.hasEntry) {
+    // Re-home the local backend (same teardown+reload path as a profile switch)
+    // so the freshly-injected FEISHU_* env takes effect immediately.
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  }
+  return result
+})
+
+// disconnect: forget the local Feishu credential and restart the backend so the
+// adapter goes dark on the next boot. Does NOT touch the cloud entry (the user's
+// app binding stays intact for the cloud webhook line + other devices) — this is
+// a desktop-local un-sync only.
+ipcMain.handle('hermes:feishu:disconnect', async () => {
+  clearFeishuConfig()
+  await teardownPrimaryBackendAndWait()
+  mainWindow?.reload()
+  return { ok: true }
+})
+
+// openBind: open the cloud web binding flow in the system browser for a user who
+// has no Feishu app bound yet. China-first locale (matches apexWebLoginUrl's /zh
+// pin). After the user finishes binding in the browser, they press "Sync" back on
+// the card. Returns { ok } — the actual sync stays an explicit user action so we
+// never poll a browser tab we don't control.
+ipcMain.handle('hermes:feishu:openBind', async () => {
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = `${endpoints.authBase}/zh/createbot`
+  const opened = openExternalUrl(url)
+  return { ok: opened, url }
 })
 
 // ── Platform client-config sync (renderer surface) ──────────────────────────

@@ -668,6 +668,46 @@ export const en: Translations = {
       noKeysMatch: 'No providers match your search.',
       loading: 'Loading providers...'
     },
+    // hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu app
+    // down to the desktop so the assistant can read/write Feishu docs, sheets and
+    // messages.
+    feishu: {
+      title: 'Feishu / Lark',
+      intro:
+        'Let the assistant work in your Feishu — read and write docs, sheets and messages. It uses the Feishu app you already set up in the cloud.',
+      connectedTitle: 'Connected',
+      connectedTo: agent => `Synced from “${agent}”`,
+      connectedGeneric: 'Feishu credential synced to this device.',
+      // Status badges keyed to the hc-190 probe verdict.
+      statusOk: 'Working',
+      statusExpired: 'Login expired',
+      statusInvalid: 'Credential rejected',
+      statusStale:
+        'This credential is flagged as expired in the cloud. Re-bind in the browser, then sync again.',
+      sync: 'Sync from cloud',
+      resync: 'Re-sync',
+      syncing: 'Syncing…',
+      disconnect: 'Disconnect',
+      disconnectConfirm:
+        'Disconnect Feishu on this device? Your cloud binding stays intact; the assistant just stops using Feishu here until you sync again.',
+      // Signed-out gate: sync needs a managed sign-in (its login JWT).
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect Feishu.',
+      // No cloud binding yet → guide to the web flow.
+      noEntryTitle: 'No Feishu app yet',
+      noEntry:
+        'You have not set up a Feishu app in the cloud yet. Open the web binding flow, scan the QR to create your app, then come back and sync.',
+      openBind: 'Set up in browser',
+      afterBind: 'Finished binding? Sync now.',
+      // Toasts.
+      syncedTitle: 'Feishu connected',
+      syncedMessage: 'Your assistant can now work in Feishu. Restarting to apply…',
+      disconnectedTitle: 'Feishu disconnected',
+      disconnectedMessage: 'The assistant will stop using Feishu on this device.',
+      syncFailed: 'Could not sync your Feishu credential. Please try again.',
+      sessionExpired: 'Your session expired. Sign in again, then sync.',
+      loading: 'Checking Feishu…'
+    },
     sessions: {
       loading: 'Loading archived sessions…',
       archivedTitle: 'Archived sessions',
