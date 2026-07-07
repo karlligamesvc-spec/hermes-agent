@@ -25,6 +25,7 @@ import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 import { DOMESTIC_PROVIDER_PRIORITY_MAX } from './constants'
 import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
+import { FeishuSettings } from './feishu-settings'
 import { providerGroup, providerMeta, providerPriority } from './helpers'
 import { LoadingState, SettingsContent } from './primitives'
 
@@ -468,6 +469,10 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
 
   return (
     <SettingsContent>
+      {/* hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu
+          app down so the assistant can work in Feishu docs/sheets/messages. Only
+          renders in the Electron shell (the bridge is absent on web). */}
+      <FeishuSettings />
       <OAuthPicker
         disconnecting={disconnecting}
         onDisconnect={provider => void handleDisconnect(provider)}

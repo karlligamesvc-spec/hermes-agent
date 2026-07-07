@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
     signOut: () => ipcRenderer.invoke('hermes:managed:signOut')
   },
+  // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
+  // Feishu app credential down to light up the Feishu adapter + lark tools. See
+  // electron/apex-feishu.cjs. No secret crosses to the renderer: status returns
+  // only display fields; sync/disconnect return status objects.
+  feishu: {
+    status: () => ipcRenderer.invoke('hermes:feishu:status'),
+    sync: () => ipcRenderer.invoke('hermes:feishu:sync'),
+    disconnect: () => ipcRenderer.invoke('hermes:feishu:disconnect'),
+    openBind: () => ipcRenderer.invoke('hermes:feishu:openBind')
+  },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.

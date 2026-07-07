@@ -552,6 +552,36 @@ export interface Translations {
       noKeysMatch: string
       loading: string
     }
+    // hc-444: "Connect Feishu" card copy.
+    feishu: {
+      title: string
+      intro: string
+      connectedTitle: string
+      connectedTo: (agent: string) => string
+      connectedGeneric: string
+      statusOk: string
+      statusExpired: string
+      statusInvalid: string
+      statusStale: string
+      sync: string
+      resync: string
+      syncing: string
+      disconnect: string
+      disconnectConfirm: string
+      signInFirstTitle: string
+      signInFirst: string
+      noEntryTitle: string
+      noEntry: string
+      openBind: string
+      afterBind: string
+      syncedTitle: string
+      syncedMessage: string
+      disconnectedTitle: string
+      disconnectedMessage: string
+      syncFailed: string
+      sessionExpired: string
+      loading: string
+    }
     sessions: {
       loading: string
       archivedTitle: string

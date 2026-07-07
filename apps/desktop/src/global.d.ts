@@ -53,6 +53,22 @@ declare global {
         browserSignIn: (payload: { provider: 'apex' | 'google' }) => Promise<DesktopManagedSignInResult>
         signOut: () => Promise<{ ok: boolean }>
       }
+      // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
+      // Feishu app credential (from the cloud agent_entries) down to the local
+      // runtime so the Feishu adapter + lark doc/drive tools light up. No secret
+      // ever crosses to the renderer. Optional: an older main process may not
+      // expose the bridge yet. See electron/apex-feishu.cjs.
+      feishu?: {
+        // Read-only local state for the settings card (no network, no secret).
+        status: () => Promise<DesktopFeishuStatus>
+        // Fetch the cloud credential (authed with the stored login JWT), persist
+        // it encrypted, and re-home the backend so the adapter comes alive.
+        sync: () => Promise<DesktopFeishuSyncResult>
+        // Forget the local credential (cloud entry untouched) + restart backend.
+        disconnect: () => Promise<{ ok: boolean }>
+        // Open the cloud web binding flow in the system browser (unbound users).
+        openBind: () => Promise<{ ok: boolean; url: string }>
+      }
       // Platform client-config sync — the cloud serves a versioned client
       // config the main process caches at boot / after sign-in and applies to
       // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
@@ -373,6 +389,40 @@ export interface DesktopManagedStatus {
   provider: string
   // True when a relay key is on disk (user already signed in to managed).
   signedIn: boolean
+}
+
+// hc-444: local Feishu bridge state for the settings card. No secret fields —
+// the app_secret never leaves the main process.
+export interface DesktopFeishuStatus {
+  // True when an injectable Feishu credential is stored locally (adapter will
+  // light up on the next backend boot).
+  connected: boolean
+  // True when a managed sign-in exists (the prerequisite for sync — sync auths
+  // with the stored login JWT). When false the card prompts sign-in first.
+  signedIn: boolean
+  // Display-only: the bound agent's name ('' when unknown / not connected).
+  agentName: string
+  // 'feishu' (China) or 'lark' (International); '' when not connected.
+  domain: string
+  // hc-190 probe verdict (ok / expired / invalid / '' when never probed) so the
+  // card can warn the credential the platform mirrored is already known-dead.
+  credentialStatus: string
+  // Epoch ms of the last successful sync, or null.
+  syncedAt: number | null
+}
+
+// Result of a Feishu sync/openBind action. `hasEntry:false` means the user has
+// no bound Feishu app in the cloud yet → the card opens the web binding flow.
+// `needsSignIn:true` means the stored login JWT is missing/expired → sign in
+// first. `message` is a stable marker code the renderer maps to Chinese copy.
+export interface DesktopFeishuSyncResult {
+  ok: boolean
+  hasEntry?: boolean
+  needsSignIn?: boolean
+  agentName?: string
+  domain?: string
+  credentialStatus?: string
+  message?: string
 }
 
 // Payload of the continuous auth-gate broadcast (hermes:auth-gate). `reason`
