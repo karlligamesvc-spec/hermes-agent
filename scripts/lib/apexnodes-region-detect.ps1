@@ -263,3 +263,67 @@ function Install-RuntimeFromCos {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
 }
+
+# CN mode: fetch PortableGit from our public-read COS bucket instead of the
+# git-for-windows GitHub release (github.com releases are slow / blocked in
+# mainland China -- the last GitHub dependency in the Windows install path once
+# runtime/uv/node/npm/pypi are all mirrored). The publish script stages the SAME
+# asset name git-for-windows ships (PortableGit-<ver>-64-bit.7z.exe /
+# -arm64.7z.exe) under the COS base, so the extraction path is byte-identical to
+# Install-Git's github stage. Returns $true with $HermesHome\git populated and the
+# session PATH pointing at it on success; $false on any failure so Install-Git
+# falls through to the github download. 32-bit gets no COS git (PortableGit is
+# 64-bit/arm64 only) -- Install-Git owns that MinGit fallback. The caller (Install-Git)
+# persists the User PATH + git-bash env, shared with the github path.
+function Install-GitFromCos {
+    if (-not (Test-CnEnabled)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($env:HERMES_RUNTIME_COS_BASE)) { return $false }
+
+    # Keep $gitVer in lockstep with Install-Git's $gitVer in scripts/install.ps1.
+    $gitVer = "2.54.0"
+    $arch = Get-WindowsArch
+    if ($arch -eq 'arm64') {
+        $assetName = "PortableGit-$gitVer-arm64.7z.exe"
+    } elseif ($arch -eq 'x64') {
+        $assetName = "PortableGit-$gitVer-64-bit.7z.exe"
+    } else {
+        return $false  # 32-bit: no PortableGit build -- let Install-Git fall through to MinGit.
+    }
+
+    $base = $env:HERMES_RUNTIME_COS_BASE.TrimEnd('/')
+    $url = "$base/$assetName"
+    $gitDir = Join-Path $HermesHome "git"
+    $tmpFile = Join-Path $env:TEMP $assetName
+    try {
+        Write-Info "Fetching PortableGit from COS mirror: $url"
+        Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
+
+        if (Test-Path $gitDir) { Remove-Item -Recurse -Force $gitDir -ErrorAction SilentlyContinue }
+        New-Item -ItemType Directory -Path $gitDir -Force | Out-Null
+
+        # PortableGit is a self-extracting 7z archive: `-o<target> -y` (silent).
+        $extractProc = Start-Process -FilePath $tmpFile `
+            -ArgumentList "-o`"$gitDir`"", "-y" `
+            -NoNewWindow -Wait -PassThru
+        if ($extractProc.ExitCode -ne 0) {
+            Write-Warn "COS PortableGit extraction failed (exit $($extractProc.ExitCode)) -- will try the github download"
+            return $false
+        }
+        $gitExe = Join-Path $gitDir "cmd\git.exe"
+        if (-not (Test-Path $gitExe)) {
+            Write-Warn "COS PortableGit missing git.exe -- will try the github download"
+            return $false
+        }
+        # Session PATH so the rest of this install run can use git. (User-PATH
+        # persist + Set-GitBashEnvVar are done by the caller, shared with the github path.)
+        $env:Path = "$gitDir\cmd;$env:Path"
+        $version = & $gitExe --version
+        Write-Success "PortableGit installed from COS mirror ($version)"
+        return $true
+    } catch {
+        Write-Warn "COS PortableGit install failed ($_) -- will try the github download"
+        return $false
+    } finally {
+        Remove-Item -Force $tmpFile -ErrorAction SilentlyContinue
+    }
+}
