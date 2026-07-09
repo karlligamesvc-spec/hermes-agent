@@ -138,7 +138,15 @@ function Resolve-ApexRegion {
         $cached = (Get-Content $cache -ErrorAction SilentlyContinue | Select-Object -First 1)
         $cached = ("$cached").Trim().ToLowerInvariant()
         if ($cached -eq 'cn')     { $env:HERMES_CN_MIRRORS = '1'; return }
-        if ($cached -eq 'global') { $env:HERMES_CN_MIRRORS = '0'; return }
+        # Self-heal a stale 'global': nothing clears .apexnodes-region on reinstall,
+        # so a first-run misdetection (old npmjs-only probe) would stick forever even
+        # after a fixed build ships. If github is actually unreachable now (+ domestic
+        # up), ignore the cached 'global' and re-detect below; otherwise honor it.
+        if ($cached -eq 'global') {
+            if (-not ((Test-GithubUnreachable) -and (Test-DomesticReachable))) {
+                $env:HERMES_CN_MIRRORS = '0'; return
+            }
+        }
     }
 
     # No cache: decide now. DECISIVE signal — github.com unreachable WHILE a domestic
