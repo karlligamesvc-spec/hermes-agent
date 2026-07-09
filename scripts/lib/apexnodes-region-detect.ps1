@@ -96,6 +96,19 @@ function Test-NetworkSuggestsCn {
     return ($cnOk -and -not $foreignOk)
 }
 
+# hc-463: probe github.com itself -- it hosts the runtime source (git clone) AND
+# PortableGit, and it is THE canonical GFW block. Test-NetworkSuggestsCn probed
+# npmjs.org, but a mainland machine with github blocked yet npmjs.org still
+# reachable (common: github.com blocked, other foreign hosts throttled-not-dead)
+# misdetected as global and then hit the github wall at the runtime-clone stage
+# (Recv failure: Connection was reset) -- the observed Windows first-install failure.
+function Test-GithubUnreachable {
+    try { Invoke-WebRequest -Uri "https://github.com/" -Method Head -TimeoutSec 6 -UseBasicParsing | Out-Null; return $false } catch { return $true }
+}
+function Test-DomesticReachable {
+    try { Invoke-WebRequest -Uri "https://registry.npmmirror.com/" -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null; return $true } catch { return $false }
+}
+
 function Resolve-ApexRegion {
     # Rule 1: explicit HERMES_CN_MIRRORS wins; do not touch it, do not probe.
     if (-not [string]::IsNullOrEmpty($env:HERMES_CN_MIRRORS)) { return }
@@ -128,11 +141,18 @@ function Resolve-ApexRegion {
         if ($cached -eq 'global') { $env:HERMES_CN_MIRRORS = '0'; return }
     }
 
-    # No cache: decide now. Gate the probe on the cheap timezone hint so the
-    # common (non-CN) case skips the network entirely.
+    # No cache: decide now. DECISIVE signal — github.com unreachable WHILE a domestic
+    # mirror is up = a network that blocks github but not domestic = CN, regardless of
+    # timezone or whether npmjs.org happens to be reachable. This is the fix for the
+    # observed Windows first-install failure (github blocked -> runtime clone reset ->
+    # install dies) on a machine the old npmjs-only probe misjudged as global. Requiring
+    # domestic-reachable avoids classifying a fully-offline box as CN. Falls back to the
+    # cheap timezone + npmmirror-vs-npmjs hint for the ambiguous (github-reachable) case.
     $detected = 'global'
-    if (Test-TimezoneSuggestsCn) {
-        if (Test-NetworkSuggestsCn) { $detected = 'cn' }
+    if ((Test-GithubUnreachable) -and (Test-DomesticReachable)) {
+        $detected = 'cn'
+    } elseif ((Test-TimezoneSuggestsCn) -and (Test-NetworkSuggestsCn)) {
+        $detected = 'cn'
     }
 
     # Persist for sibling stage processes (best-effort; never fail the install).
