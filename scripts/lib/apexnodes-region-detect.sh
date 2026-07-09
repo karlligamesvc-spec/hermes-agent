@@ -130,6 +130,29 @@ _an_network_suggests_cn() {
     return 1
 }
 
+# hc-463: probe github.com itself — it hosts the runtime source (git clone) and
+# is THE canonical GFW block. _an_network_suggests_cn probes npmjs.org, but a
+# mainland machine with github blocked yet npmjs.org still reachable (common:
+# github.com blocked while other foreign hosts are throttled-not-dead) gets
+# misdetected as global and then hits the github wall at the runtime-clone stage
+# (curl: Recv failure / Connection reset) — the observed first-install failure.
+# Returns 0 (true) when github is UNREACHABLE; a conservative 1 when we cannot
+# probe (no curl), so absence of proof never biases toward CN.
+_an_github_unreachable() {
+    command -v curl >/dev/null 2>&1 || return 1
+    curl -fsS -I --max-time 6 "https://github.com/" >/dev/null 2>&1 && return 1
+    return 0
+}
+
+# Domestic-reachability guard: only pair the github-unreachable signal with a
+# confirmed-up domestic mirror, so a fully-offline box is never classified as CN.
+# Returns 0 (true) when the domestic mirror is REACHABLE.
+_an_domestic_reachable() {
+    command -v curl >/dev/null 2>&1 || return 1
+    curl -fsS -I --max-time 5 "https://registry.npmmirror.com/" >/dev/null 2>&1 && return 0
+    return 1
+}
+
 # Resolve the region into HERMES_CN_MIRRORS. No-op when HERMES_CN_MIRRORS is
 # already set (precedence rule 1). Writes/reads the cache file otherwise.
 apexnodes_resolve_region() {
@@ -161,16 +184,36 @@ apexnodes_resolve_region() {
         local cached
         cached="$(_an_lower "$(cat "$cache" 2>/dev/null)")"
         case "$cached" in
-            cn)     export HERMES_CN_MIRRORS=1; return 0 ;;
-            global) export HERMES_CN_MIRRORS=0; return 0 ;;
+            cn) export HERMES_CN_MIRRORS=1; return 0 ;;
+            global)
+                # Self-heal a stale 'global': nothing clears .apexnodes-region on
+                # reinstall, so a first-run misdetection (old npmjs-only probe) would
+                # stick forever even after a fixed build ships. If github is actually
+                # unreachable now (and a domestic mirror is up), ignore the cached
+                # 'global' and fall through to re-detect below; otherwise honor it.
+                if _an_github_unreachable && _an_domestic_reachable; then
+                    : # stale global on a github-blocked network — re-detect below
+                else
+                    export HERMES_CN_MIRRORS=0
+                    return 0
+                fi
+                ;;
         esac
     fi
 
-    # No cache: decide now. Gate the network probe on the cheap timezone hint so
-    # the common (non-CN) case usually skips the probe entirely, but still probe
-    # when the timezone is unknown so headless/UTC images aren't misclassified.
+    # No cache: decide now. DECISIVE signal — github.com unreachable WHILE a domestic
+    # mirror is up = a network that blocks github but not domestic = CN, regardless of
+    # timezone or whether npmjs.org happens to be reachable. This is the fix for the
+    # observed first-install failure (github blocked → runtime clone reset → install
+    # dies) on a machine the old npmjs-only probe misjudged as global. Requiring
+    # domestic-reachable avoids classifying a fully-offline box as CN. Falls back to the
+    # cheap timezone + npmmirror-vs-npmjs hint for the ambiguous (github-reachable) case:
+    # gate that probe on the timezone hint so the common non-CN case skips it, but still
+    # probe when the timezone is unknown so headless/UTC images aren't misclassified.
     local detected="global"
-    if _an_timezone_suggests_cn; then
+    if _an_github_unreachable && _an_domestic_reachable; then
+        detected="cn"
+    elif _an_timezone_suggests_cn; then
         if _an_network_suggests_cn; then
             detected="cn"
         fi
