@@ -31,7 +31,7 @@ def load_manifest(path):
         import yaml
     except ImportError:
         sys.exit("verify-environment: 需要 PyYAML (pip install pyyaml)")
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
