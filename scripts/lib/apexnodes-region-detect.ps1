@@ -96,6 +96,19 @@ function Test-NetworkSuggestsCn {
     return ($cnOk -and -not $foreignOk)
 }
 
+# hc-463: probe github.com itself -- it hosts the runtime source (git clone) AND
+# PortableGit, and it is THE canonical GFW block. Test-NetworkSuggestsCn probed
+# npmjs.org, but a mainland machine with github blocked yet npmjs.org still
+# reachable (common: github.com blocked, other foreign hosts throttled-not-dead)
+# misdetected as global and then hit the github wall at the runtime-clone stage
+# (Recv failure: Connection was reset) -- the observed Windows first-install failure.
+function Test-GithubUnreachable {
+    try { Invoke-WebRequest -Uri "https://github.com/" -Method Head -TimeoutSec 6 -UseBasicParsing | Out-Null; return $false } catch { return $true }
+}
+function Test-DomesticReachable {
+    try { Invoke-WebRequest -Uri "https://registry.npmmirror.com/" -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null; return $true } catch { return $false }
+}
+
 function Resolve-ApexRegion {
     # Rule 1: explicit HERMES_CN_MIRRORS wins; do not touch it, do not probe.
     if (-not [string]::IsNullOrEmpty($env:HERMES_CN_MIRRORS)) { return }
@@ -125,14 +138,29 @@ function Resolve-ApexRegion {
         $cached = (Get-Content $cache -ErrorAction SilentlyContinue | Select-Object -First 1)
         $cached = ("$cached").Trim().ToLowerInvariant()
         if ($cached -eq 'cn')     { $env:HERMES_CN_MIRRORS = '1'; return }
-        if ($cached -eq 'global') { $env:HERMES_CN_MIRRORS = '0'; return }
+        # Self-heal a stale 'global': nothing clears .apexnodes-region on reinstall,
+        # so a first-run misdetection (old npmjs-only probe) would stick forever even
+        # after a fixed build ships. If github is actually unreachable now (+ domestic
+        # up), ignore the cached 'global' and re-detect below; otherwise honor it.
+        if ($cached -eq 'global') {
+            if (-not ((Test-GithubUnreachable) -and (Test-DomesticReachable))) {
+                $env:HERMES_CN_MIRRORS = '0'; return
+            }
+        }
     }
 
-    # No cache: decide now. Gate the probe on the cheap timezone hint so the
-    # common (non-CN) case skips the network entirely.
+    # No cache: decide now. DECISIVE signal — github.com unreachable WHILE a domestic
+    # mirror is up = a network that blocks github but not domestic = CN, regardless of
+    # timezone or whether npmjs.org happens to be reachable. This is the fix for the
+    # observed Windows first-install failure (github blocked -> runtime clone reset ->
+    # install dies) on a machine the old npmjs-only probe misjudged as global. Requiring
+    # domestic-reachable avoids classifying a fully-offline box as CN. Falls back to the
+    # cheap timezone + npmmirror-vs-npmjs hint for the ambiguous (github-reachable) case.
     $detected = 'global'
-    if (Test-TimezoneSuggestsCn) {
-        if (Test-NetworkSuggestsCn) { $detected = 'cn' }
+    if ((Test-GithubUnreachable) -and (Test-DomesticReachable)) {
+        $detected = 'cn'
+    } elseif ((Test-TimezoneSuggestsCn) -and (Test-NetworkSuggestsCn)) {
+        $detected = 'cn'
     }
 
     # Persist for sibling stage processes (best-effort; never fail the install).
@@ -241,8 +269,18 @@ function Install-RuntimeFromCos {
         Invoke-WebRequest -Uri $url -OutFile $tarball -UseBasicParsing
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
         # Archive built with --prefix=hermes-agent/, so strip the leading dir.
-        # Windows 10 1803+ ships bsdtar (tar.exe) which handles .tar.gz natively.
-        & tar -xzf $tarball -C $InstallDir --strip-components=1
+        # Extract with Windows' OWN bsdtar (System32\tar.exe, Win10 1803+): it treats
+        # C:\ paths natively. Bare `tar` resolves to PortableGit's GNU tar (its usr\bin
+        # is on PATH) which misreads the "C:" in the archive path as a remote host:path
+        # -> "tar (child): Cannot connect to C: resolve failed" (the observed COS-extract
+        # failure that fell back to a github clone). GNU tar needs --force-local; bsdtar
+        # does not, so prefer bsdtar by full path and only fall back to GNU tar.
+        $sysTar = Join-Path $env:SystemRoot "System32\tar.exe"
+        if (Test-Path $sysTar) {
+            & $sysTar -xzf $tarball -C $InstallDir --strip-components=1
+        } else {
+            & tar --force-local -xzf $tarball -C $InstallDir --strip-components=1
+        }
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "COS runtime tarball could not be extracted -- falling back to git clone"
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
@@ -261,5 +299,69 @@ function Install-RuntimeFromCos {
         return $false
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+}
+
+# CN mode: fetch PortableGit from our public-read COS bucket instead of the
+# git-for-windows GitHub release (github.com releases are slow / blocked in
+# mainland China -- the last GitHub dependency in the Windows install path once
+# runtime/uv/node/npm/pypi are all mirrored). The publish script stages the SAME
+# asset name git-for-windows ships (PortableGit-<ver>-64-bit.7z.exe /
+# -arm64.7z.exe) under the COS base, so the extraction path is byte-identical to
+# Install-Git's github stage. Returns $true with $HermesHome\git populated and the
+# session PATH pointing at it on success; $false on any failure so Install-Git
+# falls through to the github download. 32-bit gets no COS git (PortableGit is
+# 64-bit/arm64 only) -- Install-Git owns that MinGit fallback. The caller (Install-Git)
+# persists the User PATH + git-bash env, shared with the github path.
+function Install-GitFromCos {
+    if (-not (Test-CnEnabled)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($env:HERMES_RUNTIME_COS_BASE)) { return $false }
+
+    # Keep $gitVer in lockstep with Install-Git's $gitVer in scripts/install.ps1.
+    $gitVer = "2.54.0"
+    $arch = Get-WindowsArch
+    if ($arch -eq 'arm64') {
+        $assetName = "PortableGit-$gitVer-arm64.7z.exe"
+    } elseif ($arch -eq 'x64') {
+        $assetName = "PortableGit-$gitVer-64-bit.7z.exe"
+    } else {
+        return $false  # 32-bit: no PortableGit build -- let Install-Git fall through to MinGit.
+    }
+
+    $base = $env:HERMES_RUNTIME_COS_BASE.TrimEnd('/')
+    $url = "$base/$assetName"
+    $gitDir = Join-Path $HermesHome "git"
+    $tmpFile = Join-Path $env:TEMP $assetName
+    try {
+        Write-Info "Fetching PortableGit from COS mirror: $url"
+        Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
+
+        if (Test-Path $gitDir) { Remove-Item -Recurse -Force $gitDir -ErrorAction SilentlyContinue }
+        New-Item -ItemType Directory -Path $gitDir -Force | Out-Null
+
+        # PortableGit is a self-extracting 7z archive: `-o<target> -y` (silent).
+        $extractProc = Start-Process -FilePath $tmpFile `
+            -ArgumentList "-o`"$gitDir`"", "-y" `
+            -NoNewWindow -Wait -PassThru
+        if ($extractProc.ExitCode -ne 0) {
+            Write-Warn "COS PortableGit extraction failed (exit $($extractProc.ExitCode)) -- will try the github download"
+            return $false
+        }
+        $gitExe = Join-Path $gitDir "cmd\git.exe"
+        if (-not (Test-Path $gitExe)) {
+            Write-Warn "COS PortableGit missing git.exe -- will try the github download"
+            return $false
+        }
+        # Session PATH so the rest of this install run can use git. (User-PATH
+        # persist + Set-GitBashEnvVar are done by the caller, shared with the github path.)
+        $env:Path = "$gitDir\cmd;$env:Path"
+        $version = & $gitExe --version
+        Write-Success "PortableGit installed from COS mirror ($version)"
+        return $true
+    } catch {
+        Write-Warn "COS PortableGit install failed ($_) -- will try the github download"
+        return $false
+    } finally {
+        Remove-Item -Force $tmpFile -ErrorAction SilentlyContinue
     }
 }

@@ -792,6 +792,28 @@ function Install-Git {
         return $true
     }
 
+    # ApexNodes CN mode: fetch PortableGit from our COS mirror (github-free) before
+    # the git-for-windows GitHub download -- the last GitHub dependency in the CN
+    # Windows install path. Install-GitFromCos (overlay lib, dot-sourced up top)
+    # extracts to $HermesHome\git and sets the session PATH on success; here we
+    # persist the User PATH + git-bash env exactly as the github path does below.
+    # Returns $false (no-op) off the CN path or on any failure, so the github
+    # download stays the default everywhere else.
+    if ((Get-Command Install-GitFromCos -ErrorAction SilentlyContinue) -and (Install-GitFromCos)) {
+        $gitDir = "$HermesHome\git"
+        $gitExe = "$gitDir\cmd\git.exe"
+        $newPathEntries = @("$gitDir\cmd", "$gitDir\bin", "$gitDir\usr\bin")
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        $userPathItems = if ($userPath) { $userPath -split ";" } else { @() }
+        $changed = $false
+        foreach ($entry in $newPathEntries) {
+            if ($userPathItems -notcontains $entry) { $userPathItems += $entry; $changed = $true }
+        }
+        if ($changed) { Set-UserEnvSafe "Path" ($userPathItems -join ";") | Out-Null }
+        Set-GitBashEnvVar
+        return $true
+    }
+
     # Download PortableGit into $HermesHome\git.  Always works as long as
     # we can reach github.com -- no admin, no winget, no reliance on the
     # user's possibly-broken system Git install.
