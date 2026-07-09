@@ -269,8 +269,18 @@ function Install-RuntimeFromCos {
         Invoke-WebRequest -Uri $url -OutFile $tarball -UseBasicParsing
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
         # Archive built with --prefix=hermes-agent/, so strip the leading dir.
-        # Windows 10 1803+ ships bsdtar (tar.exe) which handles .tar.gz natively.
-        & tar -xzf $tarball -C $InstallDir --strip-components=1
+        # Extract with Windows' OWN bsdtar (System32\tar.exe, Win10 1803+): it treats
+        # C:\ paths natively. Bare `tar` resolves to PortableGit's GNU tar (its usr\bin
+        # is on PATH) which misreads the "C:" in the archive path as a remote host:path
+        # -> "tar (child): Cannot connect to C: resolve failed" (the observed COS-extract
+        # failure that fell back to a github clone). GNU tar needs --force-local; bsdtar
+        # does not, so prefer bsdtar by full path and only fall back to GNU tar.
+        $sysTar = Join-Path $env:SystemRoot "System32\tar.exe"
+        if (Test-Path $sysTar) {
+            & $sysTar -xzf $tarball -C $InstallDir --strip-components=1
+        } else {
+            & tar --force-local -xzf $tarball -C $InstallDir --strip-components=1
+        }
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "COS runtime tarball could not be extracted -- falling back to git clone"
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
