@@ -4,7 +4,7 @@
   "private": true,
   "version": "0.16.7",
   "description": "Native desktop shell for Hermes Agent.",
-  "author": "Nous Research",
+  "author": "ApexNodes",
   "type": "module",
   "main": "electron/main.cjs",
   "engines": {
@@ -244,6 +244,7 @@
       ]
     },
     "win": {
+      "publisherName": "ApexNodes",
       "legalTrademarks": "APEX",
       "target": [
         "nsis",
@@ -253,7 +254,7 @@
     },
     "linux": {
       "category": "Utility",
-      "maintainer": "Nous Research <support@nousresearch.com>",
+      "maintainer": "ApexNodes <support@apex-nodes.com>",
       "synopsis": "Native desktop shell for Hermes Agent.",
       "target": [
         "AppImage",

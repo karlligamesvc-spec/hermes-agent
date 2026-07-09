@@ -1070,7 +1070,7 @@ app.setName(APP_NAME)
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
   applicationVersion: resolveHermesVersion(),
-  copyright: 'Copyright © 2026 Nous Research'
+  copyright: 'Copyright © 2026 ApexNodes'
 })
 
 // Custom scheme for streaming local media (video/audio) into the renderer.
@@ -8057,7 +8057,7 @@ function showAboutPanelFresh() {
     // About's engine-update section. resolveHermesVersion() reads the ENGINE
     // source tree and confusingly surfaced e.g. "0.17.0" as the app version.
     applicationVersion: app.getVersion(),
-    copyright: 'Copyright © 2026 Nous Research'
+    copyright: 'Copyright © 2026 ApexNodes'
   })
   app.showAboutPanel()
 }
