@@ -1,0 +1,59 @@
+# apexnodes-environment.yaml — agent runtime environment 的外部产物 × 域内镜像(单一事实源)
+#
+# 不变量:大陆安装期 + 运行期 GitHub-free —— 这里每个产物都有域内(COS / CN-registry)源。
+# verify-environment.py 按此 HEAD-check COS 产物;CI(Phase 2)拦新的、未登记的墙外依赖。
+# 审计基准:hermes-agent scripts/install.{ps1,sh} + scripts/lib/apexnodes-region-detect.{ps1,sh}
+# 策略见 hermes-cloud docs/CHINA-LOCALIZATION-GFW-AUDIT.md。
+schema: 1
+cos_base: "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/runtime"
+
+# ── COS 自托管产物 ────────────────────────────────────────────────────────────
+# 我们 re-host 到 public-read COS 桶,按版本校验存在性。缺一个 = 大陆装机回落 github
+# (慢/封)。这就是 verify 在发版/翻默认前要兜住的(hc-448 类)。
+cos_artifacts:
+  - name: runtime-source
+    keyed_by: commit                 # 每 commit 一个 runtime tarball
+    key: "hermes-agent-{commit}.tar.gz"
+    foreign: "git clone github.com/NousResearch/hermes-agent"
+    consumer: "Install-RuntimeFromCos (ps1) / apexnodes_download_runtime_tarball (sh)"
+    ends: [cloud, win, mac, linux]
+  - name: uv
+    keyed_by: triple
+    key: "uv-{triple}.{ext}"         # windows→.zip,其余→.tar.gz
+    triples:
+      - {triple: x86_64-pc-windows-msvc, ext: zip}
+      - {triple: aarch64-pc-windows-msvc, ext: zip}
+      - {triple: x86_64-apple-darwin, ext: tar.gz}
+      - {triple: aarch64-apple-darwin, ext: tar.gz}
+      - {triple: x86_64-unknown-linux-gnu, ext: tar.gz}
+      - {triple: aarch64-unknown-linux-gnu, ext: tar.gz}
+    foreign: "github.com/astral-sh/uv"
+    consumer: "Install-UvFromCos / apexnodes_install_uv_from_cos"
+    ends: [win, mac, linux]
+  - name: portable-git
+    version: "2.54.0"                # 与 install.ps1 $gitVer 对齐
+    keyed_by: arch
+    key: "PortableGit-{version}-{arch}.7z.exe"
+    arches: ["64-bit", "arm64"]
+    foreign: "github.com/git-for-windows/git"
+    consumer: "Install-GitFromCos"
+    ends: [win]
+
+# ── CN-registry 镜像产物 ──────────────────────────────────────────────────────
+# 经域内包/二进制 registry 取(Set-ApexCnMirrorEnv 设的 env)。registry 常在;verify 视为可达。
+cn_registry:
+  - {name: pypi,     foreign: "pypi.org",              env: "PIP_INDEX_URL/UV_INDEX_URL", mirror: "https://pypi.tuna.tsinghua.edu.cn/simple"}
+  - {name: cpython,  foreign: "astral python-build-standalone (github)", env: "UV_PYTHON_INSTALL_MIRROR", mirror: "https://registry.npmmirror.com/-/binary/python-build-standalone"}
+  - {name: nodejs,   foreign: "nodejs.org",            env: "HERMES_NODE_DIST_BASE", mirror: "https://registry.npmmirror.com/-/binary/node"}
+  - {name: npm,      foreign: "registry.npmjs.org",    env: "npm_config_registry",   mirror: "https://registry.npmmirror.com"}
+  - {name: electron, foreign: "github (electron releases)", env: "ELECTRON_MIRROR",  mirror: "https://npmmirror.com/mirrors/electron/"}
+
+# ── 待审(NEEDS AUDIT)────────────────────────────────────────────────────────
+# install/runtime 引用到、但 CN 源尚未在本 manifest 确认的环境组件。下一切片。
+# 审清前当作潜在 github 洞,别假设已镜像。
+needs_audit:
+  - {name: ripgrep,   note: "工具二进制;源(pip/npm/bundled/github)未确认"}
+  - {name: ffmpeg,    note: "媒体工具;源未确认"}
+  - {name: playwright-browsers, note: "PLAYWRIGHT_DOWNLOAD_HOST 镜像? chromium 下载"}
+  - {name: chromium,  note: "agent-browser;Install-AgentBrowser 源未确认"}
+  - {name: bun,       note: "源未确认"}
