@@ -752,7 +752,14 @@ function cmdSmoke(args) {
   const bundledNode = (root) => path.join(root, ...nodeRel)
   const bundledTool = (root) => path.join(root, 'scripts', 'build-runtime-bundle.mjs')
 
-  const probeEnv = { ...process.env }
+  // Hermetic probe environment: `hermes --version` walks the full CLI import
+  // chain on mac/win (the ultrafast pre-import path is Termux-only) and may
+  // touch $HOME/.hermes state — never let probes poke the build host's real
+  // hermes home (CI determinism + local-seat safety).
+  const probeHome = path.join(work, 'home')
+  fs.mkdirSync(probeHome, { recursive: true })
+  const probeEnv = { ...process.env, HERMES_HOME: path.join(probeHome, '.hermes') }
+  if (process.platform === 'win32') { probeEnv.USERPROFILE = probeHome } else { probeEnv.HOME = probeHome }
   delete probeEnv.VIRTUAL_ENV
   delete probeEnv.PYTHONPATH
   delete probeEnv.PYTHONHOME
