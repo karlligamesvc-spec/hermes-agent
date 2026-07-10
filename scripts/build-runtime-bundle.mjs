@@ -448,8 +448,9 @@ async function cmdBuild(args) {
   fs.copyFileSync(rgBin, path.join(binDir, `rg${target.exe}`))
   fs.chmodSync(path.join(binDir, `rg${target.exe}`), 0o755)
 
-  // ── 11. prune build detritus ───────────────────────────────────────────────
+  // ── 11. prune build detritus + neutralize location-bound links ────────────
   prunePycache(stage)
+  normalizeStageLinks(stage)
 
   // ── 12. chromium lazy hook metadata (env reservation, design §2/A2) ───────
   const playwrightVersion = detectPlaywrightVersion(stage, target)
@@ -551,6 +552,50 @@ function relinkMacPython(root, pyDirRel) {
       log(`re-linked venv/bin/${name} -> ${relTarget}`)
     }
   }
+}
+
+// Absolute link targets are location-bound and dangle after relocation — the
+// exact failure the win-x64 CI verify caught on npm's workspace links
+// (node_modules/@hermes/ink, node_modules/hermes-tui): npm materializes
+// workspaces as JUNCTIONS on Windows, and junctions cannot be relative.
+//   windows: replace every in-stage-targeted link with a real copy of its
+//            target (bundle is immutable, so the copy can never drift).
+//   posix:   rewrite absolute in-stage symlinks as equivalent relative links.
+// Links pointing OUTSIDE the stage would be a build bug — fail loudly.
+// Fixpoint loop: a copied target may itself contain links.
+// Remove a symlink/junction WITHOUT following it: unlink for file symlinks,
+// rmdir for directory junctions / dir-symlinks (both delete only the reparse
+// point, never the target's contents).
+function removeLinkOnly(p) {
+  try { fs.unlinkSync(p) } catch { fs.rmdirSync(p) }
+}
+
+function normalizeStageLinks(root) {
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = 0
+    for (const f of [...walk(root)]) {
+      if (f.type !== 'link') continue
+      const target = fs.readlinkSync(f.abs)
+      if (!path.isAbsolute(target)) continue
+      const resolved = path.resolve(path.dirname(f.abs), target)
+      if (!(resolved === root || resolved.startsWith(root + path.sep))) {
+        die(`link ${f.rel} points outside the stage (${target}) — refusing to ship a machine-bound bundle`)
+      }
+      if (process.platform === 'win32') {
+        removeLinkOnly(f.abs) // NEVER recursive: rm -r through a junction deletes the TARGET's contents
+        fs.cpSync(resolved, f.abs, { recursive: true })
+        log(`dereferenced windows junction: ${f.rel} -> copy of ${path.relative(root, resolved)}`)
+      } else {
+        const rel = path.relative(path.dirname(f.abs), resolved)
+        removeLinkOnly(f.abs)
+        fs.symlinkSync(rel, f.abs)
+        log(`re-linked ${f.rel} -> ${rel}`)
+      }
+      changed++
+    }
+    if (changed === 0) return
+  }
+  die('normalizeStageLinks did not reach a fixpoint in 4 passes')
 }
 
 function prunePycache(root) {
