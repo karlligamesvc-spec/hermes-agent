@@ -171,7 +171,12 @@ _nb_install_bundled_node() {
             ;;
     esac
 
-    local index_url="https://nodejs.org/dist/latest-v${HERMES_NODE_TARGET_MAJOR}.x/"
+    # hc-476: honor HERMES_NODE_DIST_BASE (same env installNode() in
+    # scripts/install.sh reads) so CN mode's npmmirror Node mirror also covers
+    # this RUNTIME install path — not just the install-time one. Unset keeps
+    # the nodejs.org default byte-for-byte (zero change for global users).
+    local node_dist_base="${HERMES_NODE_DIST_BASE:-https://nodejs.org/dist}"
+    local index_url="${node_dist_base%/}/latest-v${HERMES_NODE_TARGET_MAJOR}.x/"
     local tarball
     tarball=$(curl -fsSL "$index_url" \
         | grep -oE "node-v${HERMES_NODE_TARGET_MAJOR}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.xz" \
