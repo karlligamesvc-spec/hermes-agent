@@ -306,7 +306,23 @@ async function cmdBuild(args) {
   run(uvHost, ['python', 'install', PYTHON_SERIES], {
     env: { ...process.env, UV_PYTHON_INSTALL_DIR: pyRoot },
   })
-  const pyName = fs.readdirSync(pyRoot).find((n) => n.startsWith('cpython-'))
+  // Canonicalize the managed-python dir. uv leaves (a) an ABSOLUTE-symlink
+  // minor-version alias (cpython-3.11 -> /abs/.../cpython-3.11.15) that would
+  // dangle on every relocation, and (b) .lock/.temp/.gitignore bookkeeping.
+  // Keep exactly one REAL fully-versioned dir; drop everything else so the
+  // bundle carries zero absolute references here.
+  let pyName = null
+  for (const name of fs.readdirSync(pyRoot)) {
+    const p = path.join(pyRoot, name)
+    const isRealVersionedDir = /^cpython-\d+\.\d+\.\d+/.test(name) && !fs.lstatSync(p).isSymbolicLink() && fs.lstatSync(p).isDirectory()
+    if (isRealVersionedDir) {
+      if (pyName) die(`multiple managed pythons under ${pyRoot}: ${pyName}, ${name}`)
+      pyName = name
+    } else {
+      rmrf(p)
+      log(`pruned managed-python artifact: .runtime/py/${name}`)
+    }
+  }
   if (!pyName) die(`no cpython-* dir under ${pyRoot} after uv python install`)
   const pyDirRel = `.runtime/py/${pyName}`
   const pythonExe = target.os === 'win'
