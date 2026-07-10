@@ -180,9 +180,9 @@ _nb_install_bundled_node() {
     # hermes_constants.heal_hermes_managed_node) spawn bash from processes that
     # never saw the installer's CN mirror env — it only lived inside the
     # install-script process. Self-derive it from the sibling ApexNodes region
-    # lib when absent: post-install this reads the cached region decision
-    # ($HERMES_HOME/.apexnodes-region), so no fresh network probe in the common
-    # case. Best-effort — any failure keeps the upstream nodejs.org default.
+    # lib when absent: explicit HERMES_CN_MIRRORS / APEXNODES_REGION win, else
+    # a fresh bounded probe (hc-474 removed cache reads) — a few seconds before
+    # a >100MB download. Best-effort — any failure keeps the nodejs.org default.
     if [ -z "${HERMES_NODE_DIST_BASE:-}" ]; then
         local _nb_region_lib
         _nb_region_lib="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)/apexnodes-region-detect.sh"

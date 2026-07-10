@@ -618,10 +618,10 @@ install_uv() {
         return 0
     fi
 
-    # CN mode: prefer our COS mirror (github-free) before the astral.sh installer.
-    # apexnodes_install_uv_from_cos comes from the overlay lib (sourced at the top
-    # of this script when present); the command -v guard keeps this a no-op on the
-    # upstream curl|bash path where the lib was not sourced.
+    # COS-first (hc-474: any region): prefer our COS mirror (github-free) before
+    # the astral.sh installer. apexnodes_install_uv_from_cos comes from the
+    # overlay lib (sourced at the top of this script when present); the command
+    # -v guard keeps this a no-op on the upstream curl|bash path.
     if command -v apexnodes_install_uv_from_cos >/dev/null 2>&1 && apexnodes_install_uv_from_cos; then
         return 0
     fi
@@ -1388,12 +1388,13 @@ clone_repo() {
                     log_info "Restore manually with: git stash apply $autostash_ref"
                 fi
             fi
-        elif command -v apexnodes_cn_enabled >/dev/null 2>&1 && apexnodes_cn_enabled && [ -f "$INSTALL_DIR/pyproject.toml" ]; then
-            # CN install: INSTALL_DIR was populated from the COS source tarball on
-            # a previous (interrupted) run — no .git, but a valid checkout. Reuse
-            # it instead of erroring out so the repository stage stays idempotent.
-            # apexnodes_cn_enabled comes from the overlay lib; the command -v guard
-            # keeps this a no-op on the upstream curl|bash path (lib not sourced).
+        elif command -v apexnodes_cos_configured >/dev/null 2>&1 && apexnodes_cos_configured && [ -f "$INSTALL_DIR/pyproject.toml" ]; then
+            # COS-first install (hc-474: any region): INSTALL_DIR was populated
+            # from the COS source tarball on a previous (interrupted) run — no
+            # .git, but a valid checkout. Reuse it instead of erroring out so the
+            # repository stage stays idempotent. apexnodes_cos_configured comes
+            # from the overlay lib; the command -v guard keeps this a no-op on
+            # the upstream curl|bash path (lib not sourced).
             log_info "Existing COS-mirror checkout found at $INSTALL_DIR, reusing"
         else
             log_error "Directory exists but is not a git repository: $INSTALL_DIR"
@@ -1401,7 +1402,8 @@ clone_repo() {
             exit 1
         fi
     elif command -v apexnodes_download_runtime_tarball >/dev/null 2>&1 && apexnodes_download_runtime_tarball; then
-        # CN mode (fresh install): source came from our COS bucket, no git needed.
+        # COS-first (fresh install, hc-474: any region): source came from our
+        # COS bucket, no git needed. Falls back to git clone below on failure.
         log_success "Repository ready (COS mirror)"
     else
         # Try SSH first (for private repo access), fall back to HTTPS

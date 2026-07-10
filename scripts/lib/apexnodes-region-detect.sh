@@ -2,36 +2,47 @@
 # ============================================================================
 # scripts/lib/apexnodes-region-detect.sh
 # ----------------------------------------------------------------------------
-# Sourceable ApexNodes overlay: region self-detection + China mirror downgrade.
+# Sourceable ApexNodes overlay: COS-first artifact sourcing + CN mirror env.
 #
-# This is the SINGLE SOURCE OF TRUTH for the "should this install use domestic
-# (mainland-China) mirrors?" decision and, when yes, the mirror/COS env it sets.
-# It is an ApexNodes overlay seam (see apex_overlay/README.md): the file lives in
-# OUR namespace under scripts/lib/, which upstream Hermes never creates, so it
-# has a zero-conflict merge surface. The upstream installer (scripts/install.sh)
-# stays byte-for-byte upstream apart from one self-locating `source` of this lib
-# plus a handful of tiny call sites — drastically shrinking the conflict surface
-# on the hot install.sh file (6 upstream churn commits) when bumping the runtime.
+# hc-474 (default-to-COS): the COS download helpers below are **region-
+# independent** — every install with HERMES_RUNTIME_COS_BASE configured tries
+# our public-read COS bucket FIRST and falls back to the official foreign
+# source (github/astral) only when COS fails. Region detection no longer sits
+# on any make-or-break install path; it only tunes which third-party package
+# mirrors (pypi/npm/node/electron/playwright) get injected, where a wrong
+# guess costs download speed, never install success. This removes the F2
+# root-cause class: a misdetected/stale region can no longer strand a mainland
+# machine on a blocked github clone.
+#
+# This file remains the SINGLE SOURCE OF TRUTH for the region decision and the
+# mirror env values. It is an ApexNodes overlay seam (see apex_overlay/README.md):
+# the file lives in OUR namespace under scripts/lib/, which upstream Hermes
+# never creates, so it has a zero-conflict merge surface. The upstream installer
+# (scripts/install.sh) stays byte-for-byte upstream apart from one self-locating
+# `source` of this lib plus a handful of tiny call sites.
 #
 # Mirrors scripts/lib/apexnodes-region-detect.ps1 for Windows. Keep the two in
-# step: the region heuristic, precedence rules, env-var names, and COS layout
-# are identical by design.
+# step: the probe, precedence rules, env-var names, and COS layout are
+# identical by design.
 #
 # Usage (from install.sh, which sources this only when the file is present):
 #   source scripts/lib/apexnodes-region-detect.sh
 #   apexnodes_resolve_region          # sets HERMES_CN_MIRRORS from region
 #   apexnodes_apply_cn_mirror_env     # exports CN mirror env iff CN
 # Then the COS download helpers (also defined here) are available:
-#   apexnodes_install_uv_from_cos     # sets UV_CMD on success (CN only)
-#   apexnodes_download_runtime_tarball# populates INSTALL_DIR (CN only)
+#   apexnodes_install_uv_from_cos     # sets UV_CMD on success (COS-first)
+#   apexnodes_download_runtime_tarball# populates INSTALL_DIR (COS-first)
 #
-# OFF by default: with HERMES_CN_MIRRORS unset/0 every function here is a no-op
-# and the installer behaves byte-for-byte like upstream (curl|bash, CI, etc).
+# Upstream parity: with HERMES_RUNTIME_COS_BASE unset AND HERMES_CN_MIRRORS
+# unset/0, every function here is a no-op and the installer behaves
+# byte-for-byte like upstream (curl|bash, CI, etc). Only our own channels
+# (desktop bundle, cloud image, ops) set the COS base.
 #
 # Inputs read from the environment (set before sourcing / before calling):
 #   HERMES_CN_MIRRORS         authoritative override (rule 1): 1=on, 0=off
 #   APEXNODES_REGION          explicit region knob (rule 2): cn|global
-#   HERMES_RUNTIME_COS_BASE   public-read COS base for the runtime tarball + uv
+#   HERMES_RUNTIME_COS_BASE   public-read COS base for runtime tarball + uv;
+#                             setting it turns on COS-first for every region
 #   HERMES_HOME               install root (default $HOME/.hermes)
 #   OS / INSTALL_COMMIT / BRANCH / INSTALL_DIR / UV_CMD / UV_VERSION
 #                             provided by install.sh; the COS helpers read/write
@@ -49,31 +60,30 @@ if ! command -v log_warn >/dev/null 2>&1;    then log_warn()    { echo "$*" >&2;
 if ! command -v log_success >/dev/null 2>&1; then log_success() { echo "$*"; }      fi
 
 # ============================================================================
-# ApexNodes region detection (decides whether CN mirror mode turns on)
+# ApexNodes region detection (decides whether CN mirror env gets injected)
 # ============================================================================
-# Goal: a fresh mainland-China machine should auto-pick domestic mirrors for any
-# MISSING dependency, while everyone else keeps the upstream defaults byte-for-
-# byte. This block only ever *decides a region* and, from it, sets
-# HERMES_CN_MIRRORS — the "ApexNodes China mirror mode" function below (and the
-# COS download helpers) remain the single source of truth for the actual mirror
-# URLs. Reuse, not a second mirror table.
+# hc-474 demoted this block from install-path gatekeeper to mirror tuner: the
+# COS download helpers below no longer consult the region at all, so the ONLY
+# thing decided here is whether the third-party CN package mirrors (pypi/npm/
+# node/electron/playwright) get exported by apexnodes_apply_cn_mirror_env. A
+# wrong answer costs download speed, never install success.
 #
 # Precedence (highest first):
 #   1. HERMES_CN_MIRRORS already set in the env  -> respect it verbatim, skip
-#      detection entirely. The packaged desktop (bootstrap-runner.cjs) and ops
-#      overrides set this directly, so this keeps current behavior unchanged and
-#      every existing test green.
-#   2. APEXNODES_REGION=cn|global                -> explicit operator/user knob
-#      (escape hatch + testability). cn => mirrors on, global => mirrors off.
-#   3. neither set                              -> auto-detect mainland China
-#      with the heuristic below; default to "global" (no mirrors) on any doubt,
-#      because picking the wrong region only ever slows a download — it must
-#      never break the first-run install path.
+#      detection entirely (ops/CI escape hatch; packaged desktop forwards it).
+#   2. APEXNODES_REGION=cn|global                -> explicit operator/user knob.
+#   3. neither set                              -> fresh decisive probe below;
+#      default to "global" (upstream sources) on any doubt.
 #
-# The detection result is cached in $HERMES_HOME/.apexnodes-region so the
-# per-stage bootstrap (each --stage runs in a fresh process) probes the network
-# at most once instead of once per stage. Delete that file (or set
-# APEXNODES_REGION) to re-decide.
+# hc-474 heuristic diet: the old timezone gate + npmmirror-vs-npmjs race and
+# the $HERMES_HOME/.apexnodes-region cache READ (plus its stale-'global'
+# self-heal) are deleted. The cache made a one-shot misdetection permanent —
+# exactly the F2 failure — and only existed to amortize probe cost across
+# stage processes back when the probe gated the fatal runtime-clone path.
+# Now every resolve probes fresh (bounded: one ≤6s HEAD when github answers,
+# +≤5s domestic HEAD when it doesn't) and the file is WRITE-ONLY telemetry:
+# the runtime side (apex_overlay/region.py rule 3, node-bootstrap belt) still
+# reads it as a region *signal*, but no install-time decision ever does.
 
 # Lowercase helper that works on bash 3.2 (macOS /bin/bash lacks ${var,,}).
 _an_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
@@ -83,61 +93,9 @@ _an_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 # the runner forwards stderr as ordinary log lines, so the user still sees this.
 _an_log() { echo "$1" >&2; }
 
-# Cheap, offline first pass: is the machine's timezone plausibly mainland China?
-# CST (UTC+8) covers all of China, but also HK / Taiwan / Singapore / Perth, so
-# this is only a *gate* for the network probe below — never decisive on its own.
-# Checked via the IANA zone name first (Asia/Shanghai, Asia/Urumqi) and then the
-# numeric UTC offset as a fallback for minimal images with no zoneinfo names.
-_an_timezone_suggests_cn() {
-    local tz="${TZ:-}"
-    if [ -z "$tz" ] && [ -r /etc/timezone ]; then
-        tz="$(cat /etc/timezone 2>/dev/null)"
-    fi
-    if [ -z "$tz" ] && [ -L /etc/localtime ]; then
-        # e.g. /usr/share/zoneinfo/Asia/Shanghai -> Asia/Shanghai
-        tz="$(readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
-    fi
-    case "$tz" in
-        Asia/Shanghai|Asia/Urumqi|Asia/Chongqing|Asia/Harbin|Asia/Kashgar|PRC)
-            return 0 ;;
-    esac
-    # Fallback: numeric offset. date %z is +0800 across CST; combined with the
-    # network probe this still isolates the mainland from non-CN +0800 regions.
-    local off
-    off="$(date +%z 2>/dev/null)"
-    [ "$off" = "+0800" ] && return 0
-    return 1
-}
-
-# Decisive pass: race a domestic endpoint against a foreign one with short
-# timeouts. In mainland China the foreign endpoint is typically blocked or very
-# slow while the domestic one answers immediately; elsewhere both answer (or the
-# foreign one answers and the domestic one may be slower). We only classify CN
-# when the domestic probe SUCCEEDS *and* the foreign probe FAILS — a deliberately
-# conservative AND so transient flakiness biases toward "global" (defaults).
-# Uses HEAD requests; no payload is downloaded. Returns 0 for CN, 1 otherwise.
-_an_network_suggests_cn() {
-    command -v curl >/dev/null 2>&1 || return 1
-    # Domestic anchor: npmmirror is one of the mirrors we'd actually use and is
-    # reachable nationwide. Foreign anchor: the npm registry we'd otherwise hit.
-    local cn_url="https://registry.npmmirror.com/"
-    local foreign_url="https://registry.npmjs.org/"
-    local cn_ok=1 foreign_ok=1
-    curl -fsS -I --max-time 4 "$cn_url" >/dev/null 2>&1 && cn_ok=0
-    curl -fsS -I --max-time 4 "$foreign_url" >/dev/null 2>&1 && foreign_ok=0
-    # CN iff domestic reachable AND foreign unreachable.
-    [ "$cn_ok" -eq 0 ] && [ "$foreign_ok" -ne 0 ] && return 0
-    return 1
-}
-
-# hc-463: probe github.com itself — it hosts the runtime source (git clone) and
-# is THE canonical GFW block. _an_network_suggests_cn probes npmjs.org, but a
-# mainland machine with github blocked yet npmjs.org still reachable (common:
-# github.com blocked while other foreign hosts are throttled-not-dead) gets
-# misdetected as global and then hits the github wall at the runtime-clone stage
-# (curl: Recv failure / Connection reset) — the observed first-install failure.
-# Returns 0 (true) when github is UNREACHABLE; a conservative 1 when we cannot
-# probe (no curl), so absence of proof never biases toward CN.
+# Probe github.com itself — it is THE canonical GFW block (hc-463). Returns 0
+# (true) when github is UNREACHABLE; a conservative 1 when we cannot probe
+# (no curl), so absence of proof never biases toward CN.
 _an_github_unreachable() {
     command -v curl >/dev/null 2>&1 || return 1
     curl -fsS -I --max-time 6 "https://github.com/" >/dev/null 2>&1 && return 1
@@ -154,7 +112,8 @@ _an_domestic_reachable() {
 }
 
 # Resolve the region into HERMES_CN_MIRRORS. No-op when HERMES_CN_MIRRORS is
-# already set (precedence rule 1). Writes/reads the cache file otherwise.
+# already set (precedence rule 1). Never reads the cache file (hc-474); writes
+# it as telemetry + runtime region signal.
 apexnodes_resolve_region() {
     # Rule 1: explicit HERMES_CN_MIRRORS wins; do not touch it, do not probe.
     if [ -n "${HERMES_CN_MIRRORS:-}" ]; then
@@ -178,56 +137,23 @@ apexnodes_resolve_region() {
             _an_log "⚠ Unknown APEXNODES_REGION='${APEXNODES_REGION}' (expected cn|global) — auto-detecting" ;;
     esac
 
-    # Rule 3: auto-detect. Reuse a cached decision from an earlier stage process.
-    local cache="${HERMES_HOME:-$HOME/.hermes}/.apexnodes-region"
-    if [ -r "$cache" ]; then
-        local cached
-        cached="$(_an_lower "$(cat "$cache" 2>/dev/null)")"
-        case "$cached" in
-            cn) export HERMES_CN_MIRRORS=1; return 0 ;;
-            global)
-                # Self-heal a stale 'global': nothing clears .apexnodes-region on
-                # reinstall, so a first-run misdetection (old npmjs-only probe) would
-                # stick forever even after a fixed build ships. If github is actually
-                # unreachable now (and a domestic mirror is up), ignore the cached
-                # 'global' and fall through to re-detect below; otherwise honor it.
-                if _an_github_unreachable && _an_domestic_reachable; then
-                    : # stale global on a github-blocked network — re-detect below
-                else
-                    export HERMES_CN_MIRRORS=0
-                    return 0
-                fi
-                ;;
-        esac
-    fi
-
-    # No cache: decide now. DECISIVE signal — github.com unreachable WHILE a domestic
-    # mirror is up = a network that blocks github but not domestic = CN, regardless of
-    # timezone or whether npmjs.org happens to be reachable. This is the fix for the
-    # observed first-install failure (github blocked → runtime clone reset → install
-    # dies) on a machine the old npmjs-only probe misjudged as global. Requiring
-    # domestic-reachable avoids classifying a fully-offline box as CN. Falls back to the
-    # cheap timezone + npmmirror-vs-npmjs hint for the ambiguous (github-reachable) case:
-    # gate that probe on the timezone hint so the common non-CN case skips it, but still
-    # probe when the timezone is unknown so headless/UTC images aren't misclassified.
+    # Rule 3: fresh decisive probe. github.com unreachable WHILE a domestic
+    # mirror is up = a network that blocks github but not domestic = CN.
+    # Requiring domestic-reachable keeps a fully-offline box on "global".
+    # Everything ambiguous (github reachable, or nothing reachable) = global:
+    # upstream sources work there, and since hc-474 the COS-first artifact
+    # path no longer depends on this answer, so we no longer need the old
+    # timezone/npmjs heuristics to rescue edge cases.
     local detected="global"
     if _an_github_unreachable && _an_domestic_reachable; then
         detected="cn"
-    elif _an_timezone_suggests_cn; then
-        if _an_network_suggests_cn; then
-            detected="cn"
-        fi
-    elif [ -z "${TZ:-}" ] && [ ! -e /etc/timezone ] && [ ! -L /etc/localtime ]; then
-        # Timezone genuinely undeterminable (bare container) — fall back to the
-        # network probe alone rather than assuming global.
-        if _an_network_suggests_cn; then
-            detected="cn"
-        fi
     fi
 
-    # Persist for sibling stage processes (best-effort; never fail the install).
+    # Telemetry write (best-effort; never fail the install). Install-time code
+    # never reads this back — the runtime region signal (apex_overlay/region.py)
+    # does. Delete the file or set APEXNODES_REGION to steer runtime behavior.
     mkdir -p "${HERMES_HOME:-$HOME/.hermes}" 2>/dev/null || true
-    printf '%s\n' "$detected" > "$cache" 2>/dev/null || true
+    printf '%s\n' "$detected" > "${HERMES_HOME:-$HOME/.hermes}/.apexnodes-region" 2>/dev/null || true
 
     if [ "$detected" = "cn" ]; then
         export HERMES_CN_MIRRORS=1
@@ -243,20 +169,28 @@ apexnodes_resolve_region() {
 # ApexNodes China mirror mode (opt-in via HERMES_CN_MIRRORS=1)
 # ============================================================================
 # OFF by default: with the flag unset apexnodes_apply_cn_mirror_env does nothing
-# and the installer behaves byte-for-byte like upstream (curl|bash one-liner,
-# CI, etc).
+# and the third-party package sources stay byte-for-byte upstream (curl|bash
+# one-liner, CI, etc). Since hc-474 this flag governs ONLY the third-party
+# mirror env below — the COS artifact helpers are region-independent and keyed
+# solely on HERMES_RUNTIME_COS_BASE (see apexnodes_cos_configured).
 #
-# The packaged ApexNodes desktop sets HERMES_CN_MIRRORS=1 (and, once provisioned,
-# HERMES_RUNTIME_COS_BASE) from electron/bootstrap-runner.cjs so a fresh mainland-
-# China machine can install without reaching github.com / pypi.org /
-# registry.npmjs.org directly. The split is deliberate:
-#   * Our runtime source + uv (no public CN mirror exists) come from our own
-#     public-read COS bucket — see apexnodes_download_runtime_tarball /
-#     apexnodes_install_uv_from_cos.
-#   * Every public third-party dependency uses an established CN mirror below.
+# The split is deliberate:
+#   * Our runtime source + uv come from our own public-read COS bucket for
+#     EVERY region (COS-first, foreign fallback) — see
+#     apexnodes_download_runtime_tarball / apexnodes_install_uv_from_cos.
+#   * Public third-party dependencies use an established CN mirror below,
+#     but only on CN deployments — TUNA (pypi) has no global CDN and pointing
+#     the world at CN mirrors would degrade non-CN installs.
 # Each value uses ${VAR:-default} so an operator can override any single mirror
 # via the real environment without editing this script.
 apexnodes_cn_enabled() { [ "${HERMES_CN_MIRRORS:-0}" = "1" ]; }
+
+# hc-474: "is COS-first configured for this install channel?" — true whenever
+# the public-read COS base is present (desktop bundle / cloud image / ops set
+# it; the upstream curl|bash path never does). This — not the region — gates
+# every COS artifact path, including install.sh's interrupted-install reuse
+# branch for a COS-populated (git-less) checkout.
+apexnodes_cos_configured() { [ -n "${HERMES_RUNTIME_COS_BASE:-}" ]; }
 
 # Export the CN mirror env (no-op unless CN mode is on). Idempotent: every value
 # uses ${VAR:-default} so a pre-set operator override is preserved.
@@ -310,14 +244,14 @@ _uv_target_triple() {
     esac
 }
 
-# CN mode: fetch a prebuilt uv from our public-read COS bucket instead of the
-# astral.sh installer, which downloads the binary from github.com (blocked in
-# mainland China). The publish script (scripts/publish-runtime-tarball.sh)
-# mirrors uv-<triple>.tar.gz next to the runtime tarball. On any failure we
-# return non-zero so install_uv falls through to the astral path. Sets UV_CMD.
+# COS-first (hc-474: every region): fetch a prebuilt uv from our public-read
+# COS bucket before the astral.sh installer, which downloads the binary from
+# github.com (blocked in mainland China, rate-limited elsewhere). The publish
+# script (scripts/publish-runtime-tarball.sh) mirrors uv-<triple>.tar.gz next
+# to the runtime tarball. On any failure we return non-zero so install_uv
+# falls through to the astral path. Sets UV_CMD.
 apexnodes_install_uv_from_cos() {
-    apexnodes_cn_enabled || return 1
-    [ -n "${HERMES_RUNTIME_COS_BASE:-}" ] || return 1
+    apexnodes_cos_configured || return 1
     command -v curl >/dev/null 2>&1 || return 1
 
     local triple
@@ -367,16 +301,16 @@ apexnodes_install_uv_from_cos() {
     return 0
 }
 
-# CN mode: download the pinned runtime source as a tarball from our public-read
-# COS bucket instead of git-cloning github.com (blocked/slow in mainland China).
-# The tarball is `git archive --prefix=hermes-agent/` of the pinned upstream
-# commit — a clean source tree with NO .git directory. Keyed by the pinned
-# commit (preferred) or branch so the COS object matches the build stamp.
-# Returns 0 with INSTALL_DIR populated on success; non-zero (and INSTALL_DIR
-# removed) on any failure so clone_repo falls back to a normal git clone.
+# COS-first (hc-474: every region): download the pinned runtime source as a
+# tarball from our public-read COS bucket before any git clone of github.com
+# (blocked/slow in mainland China). The tarball is `git archive
+# --prefix=hermes-agent/` of the pinned upstream commit — a clean source tree
+# with NO .git directory. Keyed by the pinned commit (preferred) or branch so
+# the COS object matches the build stamp. Returns 0 with INSTALL_DIR populated
+# on success; non-zero (and INSTALL_DIR removed) on any failure so clone_repo
+# falls back to a normal git clone.
 apexnodes_download_runtime_tarball() {
-    apexnodes_cn_enabled || return 1
-    [ -n "${HERMES_RUNTIME_COS_BASE:-}" ] || return 1
+    apexnodes_cos_configured || return 1
     command -v curl >/dev/null 2>&1 || return 1
 
     local key="${INSTALL_COMMIT:-$BRANCH}"
