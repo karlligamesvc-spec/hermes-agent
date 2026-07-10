@@ -132,6 +132,13 @@ function curlHeaderArgs(headers) {
 
 async function download(url, dest, { headers = {}, attempts = 3, timeoutSec = 900 } = {}) {
   fs.mkdirSync(path.dirname(dest), { recursive: true })
+  // Idempotent: a pre-seeded / previously fetched artifact is reused. CI
+  // runners start empty so this never masks staleness there; locally it lets
+  // a slow-network seat seed .tools/ from the COS re-hosts.
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
+    log(`cached ${human(fs.statSync(dest).size)} ${path.basename(dest)} (skipping fetch)`)
+    return dest
+  }
   const tmp = `${dest}.part`
   rmrf(tmp)
   log(`fetch ${url}`)
@@ -288,6 +295,10 @@ async function cmdBuild(args) {
   const uvHost = findBin(uvUnpack, `uv${target.exe}`)
   if (!uvHost) die(`uv${target.exe} not found inside ${uvArchive}`)
   fs.chmodSync(uvHost, 0o755)
+  // Truth from the artifact, not the tag lookup (a pre-seeded binary may
+  // differ from the 'latest' the API reported).
+  const uvVersionActual = run(uvHost, ['--version'], { capture: true }).stdout.trim().split(/\s+/)[1] || uvVersion
+  uvVersion = uvVersionActual
 
   // ── 3. CPython (python-build-standalone via uv, into the bundle) ──────────
   const pyRoot = path.join(stage, '.runtime', 'py')
