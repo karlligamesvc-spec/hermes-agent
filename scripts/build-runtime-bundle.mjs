@@ -269,9 +269,10 @@ async function cmdBuild(args) {
   run('git', ['-C', repoRoot, 'archive', '--format=tar', '-o', srcTar, sha])
   run(tarBin(), ['-xf', srcTar, '-C', stage])
   fs.rmSync(srcTar)
-  // dist/cos-runtime holds an accidentally-committed 52MB source tarball (a
-  // coscli-era publish artifact). Never ship it inside bundles; repo removal
-  // is a separate cleanup.
+  // dist/cos-runtime held an accidentally-committed 52MB source tarball (a
+  // coscli-era publish artifact) — git-rm'd out of HEAD + gitignored
+  // (hc-472 followup), but never ship it inside a bundle built from an
+  // older ref that still carries it in its tree (history wasn't rewritten).
   rmrf(path.join(stage, 'dist', 'cos-runtime'))
 
   // ── 2. uv (host tool + bundled binary; native build ⇒ same triple) ────────
