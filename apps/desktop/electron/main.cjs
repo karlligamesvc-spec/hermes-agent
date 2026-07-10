@@ -36,6 +36,10 @@ const {
   resolvePreBootstrapDecision,
   resolveBootstrapFailureFallback
 } = require('./apex-runtime-select.cjs')
+// hc-472 P1 · versioned runtime bundle (opt-in, behind HERMES_BUNDLE_MODE).
+const bundleLayout = require('./apex-bundle-layout.cjs')
+const { downloadWithResume } = require('./apex-bundle-download.cjs')
+const { applyBundleUpdate: applyRuntimeBundleUpdate } = require('./apex-bundle-install.cjs')
 const { createShellUpdater } = require('./shell-updater.cjs')
 const {
   applyConfigYamlKeys,
@@ -558,6 +562,112 @@ function rollbackRuntimePinOverride(reason) {
   }
   clearRuntimePinOverride()
   return true
+}
+
+// ── hc-472 P1 · versioned runtime bundle wiring (opt-in) ────────────────────
+// Everything below is gated on HERMES_BUNDLE_MODE and is a strict no-op when the
+// switch is off (the default). The three consumer pieces live in dedicated,
+// unit-tested modules: apex-bundle-layout (versioned catalog + pointer-truth
+// atomic switch + rollback + startup GC), apex-bundle-download (Range-resumable,
+// sha-gated downloader) and apex-bundle-install (never-extract-in-place staging
+// + the F1→F2→C1 orchestration). Any bundle-path failure returns cleanly so the
+// caller falls back to the existing install chain — a bundle attempt can never
+// brick a working install (the design's core回退 contract).
+
+function bundleModeEnabled() {
+  const v = String(process.env.HERMES_BUNDLE_MODE || '').trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'on' || v === 'yes'
+}
+
+// This machine's bundle (os, arch). P1 ships win-x64; mac legs arrive with P2.
+// null = unsupported platform (caller falls back to the legacy chain).
+function desktopBundleTarget() {
+  if (IS_WINDOWS) return process.arch === 'x64' ? { os: 'win', arch: 'x64' } : null
+  if (IS_MAC) return { os: 'mac', arch: process.arch === 'arm64' ? 'arm64' : 'x64' }
+  return null
+}
+
+// Extract with bsdtar exactly as the bundle build/install contract expects:
+// System32\tar.exe on Windows (immune to the GNU-tar "C: is a remote host" trap
+// — same reason build-runtime-bundle.mjs::tarBin pins it), `tar` elsewhere.
+// Async spawn so a multi-minute extract never freezes the electron main thread.
+function extractBundleArchive(archivePath, destDir) {
+  return new Promise((resolve, reject) => {
+    const tarExe = IS_WINDOWS
+      ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
+      : 'tar'
+    const child = spawn(tarExe, ['-xzf', archivePath, '-C', destDir], { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    child.stderr.on('data', d => {
+      stderr = (stderr + String(d)).slice(-2000)
+    })
+    child.on('error', reject)
+    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`tar exited ${code}: ${stderr.slice(-400)}`))))
+  })
+}
+
+// Run the BUNDLED node against the BUNDLED tool copy (fixup / verify). The
+// bundle ships scripts/build-runtime-bundle.mjs + its own node, so there is no
+// external fixup binary to keep in lockstep (manifest.fixup drives the argv).
+function runBundledTool(exe, argv, label) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exe, argv, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let tail = ''
+    const cap = d => {
+      tail = (tail + String(d)).slice(-2000)
+    }
+    child.stdout.on('data', cap)
+    child.stderr.on('data', cap)
+    child.on('error', reject)
+    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`bundle ${label} exited ${code}: ${tail.slice(-400)}`))))
+  })
+}
+
+function bundleRuntimeDownload({ url, dest, sha256, size }) {
+  return downloadWithResume({ url, dest, sha256, size, log: msg => rememberLog(msg) })
+}
+
+// Startup self-heal: rebuild the active link from the truth pointer (a switch
+// interrupted mid-repoint), then GC everything but current+previous and any
+// `.tmp` half-installs. Runs before any runtime child is spawned (nothing holds
+// a handle on an old venv), and is fully fail-soft.
+function reconcileAndGcBundleRuntime() {
+  if (!bundleModeEnabled()) return
+  try {
+    const rec = bundleLayout.reconcileActiveLink(HERMES_HOME)
+    if (rec.reconciled) rememberLog(`[bundle] healed active link -> versions/${rec.key}`)
+    const gc = bundleLayout.garbageCollect(HERMES_HOME)
+    if (gc.removed.length || gc.orphansRemoved.length || gc.skipped.length) {
+      rememberLog(
+        `[bundle] GC removed=${JSON.stringify(gc.removed)} staging=${JSON.stringify(gc.orphansRemoved)} ` +
+          `skipped=${JSON.stringify(gc.skipped)}`
+      )
+    }
+  } catch (error) {
+    rememberLog(`[bundle] reconcile/GC errored (ignored): ${error && error.message}`)
+  }
+}
+
+// R5 opt-in update via the bundle set. Resolves {ok:true,...} on a completed
+// pointer+link switch, or {ok:false, code, ...} so apply-update can fall back to
+// the legacy marker-drop re-bootstrap. Never throws.
+async function applyRuntimeBundleUpdateFlow(pin) {
+  const target = desktopBundleTarget()
+  if (!target) return { ok: false, code: 'unsupported_platform' }
+  if (!pin || !pin.key) return { ok: false, code: 'no_pin_key' }
+  return applyRuntimeBundleUpdate({
+    hermesHome: HERMES_HOME,
+    os: target.os,
+    arch: target.arch,
+    key: String(pin.key),
+    desktopVersion: app.getVersion(),
+    cosBase: process.env.HERMES_RUNTIME_COS_BASE || '',
+    fetchManifest: url => fetchPublicJson(url, { timeoutMs: 20000 }),
+    download: bundleRuntimeDownload,
+    extract: extractBundleArchive,
+    runTool: runBundledTool,
+    log: msg => rememberLog(msg)
+  })
 }
 
 // Shell UI locale block, appended to every seed. The runtime writes
@@ -6976,6 +7086,52 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
     }
   }
 
+  // 2b. hc-472 opt-in: when HERMES_BUNDLE_MODE is on, apply via the versioned
+  //     bundle set (download → sha gate → never-in-place stage/verify → atomic
+  //     pointer+link switch). Its own manifest fetch IS the reachability proof,
+  //     so this runs BEFORE the legacy tarball reachability check. A min-desktop
+  //     incompatibility is a hard stop (拒装+提示); any other failure falls
+  //     through to the legacy re-bootstrap path below (the design回退 contract).
+  if (bundleModeEnabled()) {
+    rememberLog(`[bundle] apply-update via bundle set: key=${pin.key} version=${pin.version || '?'}`)
+    const result = await applyRuntimeBundleUpdateFlow(pin)
+    if (result.ok) {
+      // Stamp the bootstrap-complete marker into the freshly-activated version
+      // (design §4 step 4) so the next boot treats the switched runtime as good
+      // and does NOT re-run install.ps1. The link already points at versions/<key>.
+      try {
+        writeBootstrapMarker({
+          pinnedCommit: result.runtimeCommit || pin.commit || pin.key,
+          pinnedBranch: pin.branch,
+          version: pin.version
+        })
+      } catch (error) {
+        rememberLog(`[bundle] switched but failed to stamp marker: ${error && error.message}`)
+      }
+      bootstrapFailure = null
+      resetHermesConnection()
+      return {
+        ok: true,
+        applied: true,
+        via: 'bundle',
+        reloadRequired: true,
+        latest: { version: pin.version, key: pin.key, compatibilityNotes: pin.compatibilityNotes }
+      }
+    }
+    if (result.code === 'min_desktop_version') {
+      rememberLog(`[bundle] refusing update: ${result.error}`)
+      return {
+        ok: false,
+        error: 'min_desktop_version',
+        required: result.required,
+        current: result.current,
+        latest: { version: pin.version, key: pin.key }
+      }
+    }
+    rememberLog(`[bundle] apply failed (${result.code}@${result.stage || '?'}); falling back to legacy install chain`)
+    // fall through to the legacy steps 3-4 below
+  }
+
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
   //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
   const reachable = await isUpdateArtifactReachable(pin.cosTarballUrl)
@@ -8431,6 +8587,10 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  // hc-472: heal the runtime bundle's active link from the truth pointer and GC
+  // stale versions/.tmp BEFORE any runtime child spawns (no handle held on an
+  // old venv yet). No-op unless HERMES_BUNDLE_MODE is on; fully fail-soft.
+  reconcileAndGcBundleRuntime()
   if (IS_MAC) {
     Menu.setApplicationMenu(buildApplicationMenu())
   } else {
