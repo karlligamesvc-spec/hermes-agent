@@ -120,28 +120,45 @@ function sha256File(file) {
 
 function sha256Text(text) { return createHash('sha256').update(text).digest('hex') }
 
-async function download(url, dest, { headers = {}, attempts = 3 } = {}) {
+// curl, not node fetch: curl exists on every GH runner (and Win10+ System32),
+// streams to disk, retries, and honors https_proxy/no_proxy env — node's
+// undici fetch ignores proxy env entirely, which hard-fails on proxied
+// networks (observed on a mainland-CN build host).
+function curlHeaderArgs(headers) {
+  const args = []
+  for (const [k, v] of Object.entries(headers)) if (v) args.push('-H', `${k}: ${v}`)
+  return args
+}
+
+async function download(url, dest, { headers = {}, attempts = 3, timeoutSec = 900 } = {}) {
   fs.mkdirSync(path.dirname(dest), { recursive: true })
-  for (let i = 1; i <= attempts; i++) {
-    try {
-      log(`fetch ${url}${i > 1 ? ` (attempt ${i})` : ''}`)
-      const res = await fetch(url, { headers, redirect: 'follow' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const buf = Buffer.from(await res.arrayBuffer())
-      fs.writeFileSync(dest, buf)
-      return dest
-    } catch (err) {
-      if (i === attempts) throw new Error(`download failed after ${attempts} attempts: ${url}: ${err.message}`)
-      warn(`download failed (${err.message}); retrying...`)
-      await new Promise((r) => setTimeout(r, 2000 * i))
-    }
+  const tmp = `${dest}.part`
+  rmrf(tmp)
+  log(`fetch ${url}`)
+  const res = spawnSync('curl', [
+    '-fL', '--silent', '--show-error',
+    '--retry', String(attempts), '--retry-delay', '2', '--retry-all-errors',
+    '--connect-timeout', '30', '--max-time', String(timeoutSec),
+    ...curlHeaderArgs(headers),
+    '-o', tmp, url,
+  ], { stdio: ['ignore', 'inherit', 'pipe'], encoding: 'utf8' })
+  if (res.status !== 0) {
+    rmrf(tmp)
+    throw new Error(`curl failed (${res.status}) for ${url}: ${(res.stderr || '').trim()}`)
   }
+  fs.renameSync(tmp, dest)
+  log(`fetched ${human(fs.statSync(dest).size)} -> ${path.basename(dest)}`)
+  return dest
 }
 
 async function fetchJson(url, { headers = {} } = {}) {
-  const res = await fetch(url, { headers, redirect: 'follow' })
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`)
-  return res.json()
+  const res = spawnSync('curl', [
+    '-fsSL', '--retry', '3', '--retry-delay', '2', '--connect-timeout', '20', '--max-time', '120',
+    ...curlHeaderArgs(headers),
+    url,
+  ], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (res.status !== 0) throw new Error(`curl failed (${res.status}) for ${url}: ${(res.stderr || '').trim()}`)
+  return JSON.parse(res.stdout)
 }
 
 function githubHeaders() {
@@ -272,7 +289,7 @@ async function cmdBuild(args) {
   const pyRoot = path.join(stage, '.runtime', 'py')
   fs.mkdirSync(pyRoot, { recursive: true })
   run(uvHost, ['python', 'install', PYTHON_SERIES], {
-    env: { ...process.env, UV_PYTHON_INSTALL_DIR: pyRoot, UV_PYTHON_INSTALL_MIRROR: process.env.UV_PYTHON_INSTALL_MIRROR || '' },
+    env: { ...process.env, UV_PYTHON_INSTALL_DIR: pyRoot },
   })
   const pyName = fs.readdirSync(pyRoot).find((n) => n.startsWith('cpython-'))
   if (!pyName) die(`no cpython-* dir under ${pyRoot} after uv python install`)
@@ -311,14 +328,17 @@ async function cmdBuild(args) {
     env: { ...buildEnv, UV_PROJECT_ENVIRONMENT: venvDir, UV_PYTHON: venvPython },
   })
 
-  // ── 6. portable Node 22 (dist layout == today's HERMES_HOME/node) ─────────
-  const nodeIndex = await fetchJson('https://nodejs.org/dist/index.json')
+  // ── 6. portable Node 22 (dist layout == today's HERMES_HOME/node).
+  //       HERMES_NODE_DIST_BASE: same override env install.ps1's Install-Node
+  //       honors (CN mirror = npmmirror binary mirror). ──────────────────────
+  const nodeDistBase = (process.env.HERMES_NODE_DIST_BASE || 'https://nodejs.org/dist').replace(/\/+$/, '')
+  const nodeIndex = await fetchJson(`${nodeDistBase}/index.json`)
   const nodeEntry = nodeIndex.find((e) => e.version.startsWith(NODE_SERIES))
-  if (!nodeEntry) die(`no ${NODE_SERIES}x release in nodejs.org index`)
+  if (!nodeEntry) die(`no ${NODE_SERIES}x release in ${nodeDistBase}/index.json`)
   const nodeVersion = nodeEntry.version
   const nodeBase = `node-${nodeVersion}-${target.nodePlat}`
   const nodeArchive = path.join(tools, `${nodeBase}.${target.nodeExt}`)
-  await download(`https://nodejs.org/dist/${nodeVersion}/${nodeBase}.${target.nodeExt}`, nodeArchive)
+  await download(`${nodeDistBase}/${nodeVersion}/${nodeBase}.${target.nodeExt}`, nodeArchive)
   const nodeUnpack = path.join(tools, 'node')
   rmrf(nodeUnpack); fs.mkdirSync(nodeUnpack, { recursive: true })
   run(tarBin(), ['-xf', nodeArchive, '-C', nodeUnpack])
@@ -628,9 +648,14 @@ function cmdFixup(args) {
   log(`rewrote ${rewrites} editable-install file(s) (${previousRoot === root ? 'already at this root' : `from ${previousRoot}`})`)
 
   // 3) mac: venv/bin/python must be a RELATIVE symlink into the bundle.
+  // lstat (not existsSync): on a user machine an absolute build-host target is
+  // a BROKEN symlink — existsSync follows it and reports false, which would
+  // skip exactly the repair this exists for.
   if (target.os === 'mac') {
     const p = path.join(root, 'venv', 'bin', 'python')
-    if (fs.existsSync(path.dirname(p)) && fs.lstatSync(p).isSymbolicLink() && path.isAbsolute(fs.readlinkSync(p))) {
+    let st = null
+    try { st = fs.lstatSync(p) } catch { st = null }
+    if (st && st.isSymbolicLink() && path.isAbsolute(fs.readlinkSync(p))) {
       const relTarget = path.join('..', '..', ...pyRel.split('/'), 'bin', `python${PYTHON_SERIES}`)
       fs.rmSync(p)
       fs.symlinkSync(relTarget, p)
