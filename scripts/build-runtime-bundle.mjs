@@ -568,9 +568,12 @@ function prunePycache(root) {
 }
 
 function detectPlaywrightVersion(stage, target) {
+  const gmods = path.join(stage, '.runtime', 'node', ...(target.os === 'win' ? ['node_modules'] : ['lib', 'node_modules']))
   const candidates = [
-    path.join(stage, '.runtime', 'node', target.os === 'win' ? 'node_modules' : 'lib/node_modules', 'agent-browser', 'node_modules', 'playwright-core', 'package.json'),
-    path.join(stage, '.runtime', 'node', target.os === 'win' ? 'node_modules' : 'lib/node_modules', 'playwright-core', 'package.json'),
+    // observed layout: playwright-core nests under the camofox global
+    path.join(gmods, '@askjo', 'camofox-browser', 'node_modules', 'playwright-core', 'package.json'),
+    path.join(gmods, 'agent-browser', 'node_modules', 'playwright-core', 'package.json'),
+    path.join(gmods, 'playwright-core', 'package.json'),
     path.join(stage, 'node_modules', 'playwright-core', 'package.json'),
     path.join(stage, 'node_modules', 'playwright', 'package.json'),
   ]
