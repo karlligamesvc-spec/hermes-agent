@@ -334,14 +334,25 @@ async function cmdBuild(args) {
   if (target.os === 'mac') relinkMacPython(stage, pyDirRel)
 
   // ── 5. python deps — EXACTLY the installer's hash-verified premium tier:
-  //       `uv sync --extra all --locked` (NOT --all-extras; see install.sh). ──
+  //       `uv sync --extra all --locked` (NOT --all-extras; see install.sh).
+  //       Index env is SANITIZED: a mirror index (UV_DEFAULT_INDEX=TUNA etc.)
+  //       re-keys package sources and makes --locked fail "lockfile needs to
+  //       be updated" (verified with uv 0.11.28) — a bundle must always be
+  //       resolved against the lock's recorded registry, host env be damned.
+  //       --dev-unlocked (local validation ONLY): keeps host index env, drops
+  //       --locked, and stamps dev_unlocked into the manifest so such a
+  //       bundle is tamper-evident and can never ship silently. ──────────────
+  const devUnlocked = Boolean(args['dev-unlocked'])
   const venvPython = target.os === 'win'
     ? path.join(venvDir, 'Scripts', 'python.exe')
     : path.join(venvDir, 'bin', 'python')
-  run(uvHost, ['sync', '--extra', 'all', '--locked'], {
-    cwd: stage,
-    env: { ...buildEnv, UV_PROJECT_ENVIRONMENT: venvDir, UV_PYTHON: venvPython },
-  })
+  const syncEnv = { ...buildEnv, UV_PROJECT_ENVIRONMENT: venvDir, UV_PYTHON: venvPython }
+  if (devUnlocked) {
+    warn('--dev-unlocked: NOT hash-verified against uv.lock; manifest will carry dev_unlocked=true')
+  } else {
+    for (const k of ['UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'UV_EXTRA_INDEX_URL', 'UV_INDEX', 'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL']) delete syncEnv[k]
+  }
+  run(uvHost, ['sync', '--extra', 'all', ...(devUnlocked ? [] : ['--locked'])], { cwd: stage, env: syncEnv })
 
   // ── 6. portable Node 22 (dist layout == today's HERMES_HOME/node).
   //       HERMES_NODE_DIST_BASE: same override env install.ps1's Install-Node
@@ -441,6 +452,7 @@ async function cmdBuild(args) {
     format: 'tar.gz',
     created_at: new Date().toISOString(),
     min_desktop_version: minDesktopVersion,
+    ...(devUnlocked ? { dev_unlocked: true } : {}),
     build_root: stage,
     components: {
       src: { path: '.', note: 'runtime source tree at bundle root (git archive, no .git)' },
@@ -496,6 +508,7 @@ async function cmdBuild(args) {
     unpacked_human: human(stageBytes),
     files: manifest.files_index.count,
     sha256: archiveSha,
+    ...(devUnlocked ? { dev_unlocked: true } : {}),
   }
   log(`BUNDLE_SUMMARY ${JSON.stringify(summary)}`)
   // machine-readable for the workflow
