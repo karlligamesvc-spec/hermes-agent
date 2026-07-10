@@ -9,8 +9,9 @@ schema: 1
 cos_base: "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/runtime"
 
 # ── COS 自托管产物 ────────────────────────────────────────────────────────────
-# 我们 re-host 到 public-read COS 桶,按版本校验存在性。缺一个 = 大陆装机回落 github
-# (慢/封)。这就是 verify 在发版/翻默认前要兜住的(hc-448 类)。
+# 我们 re-host 到 public-read COS 桶,按版本校验存在性。hc-474 起 COS-first 对
+# 全区域生效(不再看区域探测):缺任一产物 = 所有装机回落官方源,大陆=封死、
+# 海外=变慢。这就是 verify 在发版/翻默认前要兜住的(hc-448 类)。
 cos_artifacts:
   - name: runtime-source
     keyed_by: commit                 # 每 commit 一个 runtime tarball

@@ -496,10 +496,10 @@ function Install-Uv {
         return $true
     }
 
-    # CN mode: prefer our COS mirror (github-free) before the astral.sh installer.
-    # Install-UvFromCos comes from the overlay lib (dot-sourced at the top of this
-    # script when present); the command guard keeps this a no-op on a remote run
-    # where the lib was not dot-sourced.
+    # COS-first (hc-474: any region): prefer our COS mirror (github-free) before
+    # the astral.sh installer. Install-UvFromCos comes from the overlay lib
+    # (dot-sourced at the top of this script when present); the command guard
+    # keeps this a no-op on a remote run where the lib was not dot-sourced.
     if ((Get-Command Install-UvFromCos -ErrorAction SilentlyContinue) -and (Install-UvFromCos)) { return $true }
 
     Write-Info "Installing managed uv into $HermesHome\bin ..."
@@ -792,13 +792,13 @@ function Install-Git {
         return $true
     }
 
-    # ApexNodes CN mode: fetch PortableGit from our COS mirror (github-free) before
-    # the git-for-windows GitHub download -- the last GitHub dependency in the CN
-    # Windows install path. Install-GitFromCos (overlay lib, dot-sourced up top)
-    # extracts to $HermesHome\git and sets the session PATH on success; here we
-    # persist the User PATH + git-bash env exactly as the github path does below.
-    # Returns $false (no-op) off the CN path or on any failure, so the github
-    # download stays the default everywhere else.
+    # ApexNodes COS-first (hc-474: any region): fetch PortableGit from our COS
+    # mirror (github-free) before the git-for-windows GitHub download.
+    # Install-GitFromCos (overlay lib, dot-sourced up top) extracts to
+    # $HermesHome\git and sets the session PATH on success; here we persist the
+    # User PATH + git-bash env exactly as the github path does below. Returns
+    # $false (no-op) when no COS base is configured or on any failure, so the
+    # github download stays the fallback everywhere.
     if ((Get-Command Install-GitFromCos -ErrorAction SilentlyContinue) -and (Install-GitFromCos)) {
         $gitDir = "$HermesHome\git"
         $gitExe = "$gitDir\cmd\git.exe"
@@ -1547,13 +1547,14 @@ function Install-Repository {
                 Pop-Location
             }
             $didUpdate = $true
-        } elseif ((Get-Command Test-CnEnabled -ErrorAction SilentlyContinue) -and (Test-CnEnabled) -and (Test-Path (Join-Path $InstallDir "pyproject.toml"))) {
-            # CN install: $InstallDir was populated from the COS source tarball on
-            # a previous (interrupted) run -- no .git, but a valid checkout. Reuse
-            # it instead of erroring out so the repository stage stays idempotent.
-            # Test-CnEnabled comes from the overlay lib; the command guard keeps
-            # this a no-op on a remote run where the lib was not dot-sourced.
-            # Mirrors install.sh's apexnodes_cn_enabled reuse branch.
+        } elseif ((Get-Command Test-CosConfigured -ErrorAction SilentlyContinue) -and (Test-CosConfigured) -and (Test-Path (Join-Path $InstallDir "pyproject.toml"))) {
+            # COS-first install (hc-474: any region): $InstallDir was populated
+            # from the COS source tarball on a previous (interrupted) run -- no
+            # .git, but a valid checkout. Reuse it instead of erroring out so the
+            # repository stage stays idempotent. Test-CosConfigured comes from
+            # the overlay lib; the command guard keeps this a no-op on a remote
+            # run where the lib was not dot-sourced. Mirrors install.sh's
+            # apexnodes_cos_configured reuse branch.
             Write-Info "Existing COS-mirror checkout found at $InstallDir, reusing"
             $didUpdate = $true
         } else {
@@ -1580,10 +1581,11 @@ function Install-Repository {
     if (-not $didUpdate) {
         $cloneSuccess = $false
 
-        # CN mode: prefer our public-read COS source tarball (github-free) before
-        # any git clone. Install-RuntimeFromCos comes from the overlay lib; the
-        # command guard keeps this a no-op on a remote run where the lib was not
-        # dot-sourced. Mirrors install.sh's apexnodes_download_runtime_tarball.
+        # COS-first (hc-474: any region): prefer our public-read COS source
+        # tarball (github-free) before any git clone. Install-RuntimeFromCos
+        # comes from the overlay lib; the command guard keeps this a no-op on a
+        # remote run where the lib was not dot-sourced. Mirrors install.sh's
+        # apexnodes_download_runtime_tarball.
         if ((Get-Command Install-RuntimeFromCos -ErrorAction SilentlyContinue) -and (Install-RuntimeFromCos)) { $cloneSuccess = $true }
 
         # Fix Windows git "copy-fd: write returned: Invalid argument" error.
