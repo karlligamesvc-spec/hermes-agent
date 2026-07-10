@@ -262,6 +262,10 @@ async function cmdBuild(args) {
   run('git', ['-C', repoRoot, 'archive', '--format=tar', '-o', srcTar, sha])
   run(tarBin(), ['-xf', srcTar, '-C', stage])
   fs.rmSync(srcTar)
+  // dist/cos-runtime holds an accidentally-committed 52MB source tarball (a
+  // coscli-era publish artifact). Never ship it inside bundles; repo removal
+  // is a separate cleanup.
+  rmrf(path.join(stage, 'dist', 'cos-runtime'))
 
   // ── 2. uv (host tool + bundled binary; native build ⇒ same triple) ────────
   let uvVersion = args['uv-version'] || ''
