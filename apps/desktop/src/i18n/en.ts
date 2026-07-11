@@ -1435,6 +1435,26 @@ export const en: Translations = {
 
   composer: {
     message: 'Message',
+    projectPicker: {
+      label: 'Project',
+      select: 'Select project',
+      searchPlaceholder: 'Search projects…',
+      recentHeading: 'Recent projects',
+      noRecent: 'No projects yet',
+      noMatches: 'No matching projects',
+      useExisting: 'Open existing folder…',
+      newBlank: 'New blank project…',
+      newTitle: 'New project',
+      namePlaceholder: 'Project name',
+      locationLabel: 'Location',
+      chooseParent: 'Choose parent folder…',
+      create: 'Create',
+      back: 'Back',
+      useExistingTitle: 'Choose a project folder',
+      chooseParentTitle: 'Choose where to create the project',
+      pickFailed: 'Could not open the folder picker',
+      createFailed: 'Could not create the project folder'
+    },
     approvalMode: {
       label: 'Approvals',
       review: { label: 'Approve for me', desc: 'Only ask for detected risky operations' },

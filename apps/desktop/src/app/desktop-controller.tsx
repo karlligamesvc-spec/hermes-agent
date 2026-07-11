@@ -1040,6 +1040,7 @@ export function DesktopController() {
       onAttachImageBlob={composer.attachImageBlob}
       onBranchInNewChat={branchInNewChat}
       onCancel={cancelRun}
+      onChangeCwd={changeSessionCwd}
       onDeleteSelectedSession={() => {
         if (selectedStoredSessionId) {
           void removeSession(selectedStoredSessionId)
