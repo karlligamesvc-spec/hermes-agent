@@ -2772,6 +2772,46 @@ def test_session_info_reports_approval_mode(monkeypatch):
         assert info["yolo"] is True
 
 
+def test_full_access_tier_is_session_scoped_and_leaves_global_mode(tmp_path, monkeypatch):
+    """hc-514 review: the pill's 完全访问 tier arms ONLY the per-session yolo
+    override — the persistent global approvals.mode must never be written to
+    "off" by it, and once the session ends (or for any new session key) the
+    effective tier falls back to the global gating mode."""
+    import yaml
+
+    from tools.approval import clear_session, is_session_yolo_enabled
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "smart"}}))
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+
+    server._sessions["sid"] = _session()
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "config.set",
+                "params": {"session_id": "sid", "key": "yolo", "value": "1"},
+            }
+        )
+        assert resp["result"]["value"] == "1"
+        assert resp["result"]["scope"] == "session"
+        assert is_session_yolo_enabled("session-key") is True
+        # The global gating tier survives untouched — full access is temporary.
+        assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
+        # A different (new) session key is not yolo'd: fresh sessions start on
+        # the global tier, not on this session's override.
+        assert is_session_yolo_enabled("fresh-session-key") is False
+
+        # Session end clears the override — back to the global tier.
+        clear_session("session-key")
+        assert is_session_yolo_enabled("session-key") is False
+        assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
+    finally:
+        clear_session("session-key")
+        server._sessions.clear()
+
+
 def test_config_set_fast_updates_live_agent_and_config(monkeypatch):
     writes = []
     emits = []

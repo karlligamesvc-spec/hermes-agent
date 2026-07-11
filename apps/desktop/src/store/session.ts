@@ -262,10 +262,13 @@ export const $currentFastMode = atom(false)
 // Persistence lives in the backend config (approvals.mode), so this is a plain
 // reflection of the truth the gateway reports rather than its own store.
 export const $yoloActive = atom(false)
-// Global three-value approvals.mode (manual/smart/off) the composer's approval
-// pill selects between (hc-514). The runtime has no per-session form of this —
-// only the binary $yoloActive override does — so it is a single global value
-// mirrored from session.info / config.get, not per-session cached state.
+// Global three-value approvals.mode (manual/smart/off) mirrored from
+// session.info / config.get (hc-514). The composer pill WRITES only the two
+// gating values (manual/smart) here; its "full access" tier arms the
+// session-scoped yolo override instead and never persists a global "off" —
+// "off" appears only when a legacy config already carries it. The runtime has
+// no per-session form of this (only the binary $yoloActive override), so it is
+// a single global value, not per-session cached state.
 export type ApprovalRuntimeMode = 'manual' | 'off' | 'smart'
 export const $approvalMode = atom<ApprovalRuntimeMode>('manual')
 export const $currentCwd = atom(getRememberedWorkspaceCwd())

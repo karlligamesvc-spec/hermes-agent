@@ -16,19 +16,23 @@ import { cn } from '@/lib/utils'
 import { applyApprovalMode, setSessionYolo } from '@/lib/yolo-session'
 import { $activeSessionId, $approvalMode, $yoloActive, setYoloActive } from '@/store/session'
 
-// Three-tier approval selector in the composer (hc-514). The runtime's
-// approvals.mode already has three values; this pill exposes all three instead
-// of the old binary review/full toggle:
-//   manual → approvals.mode="manual": gate ONLY commands the runtime flags as
-//            dangerous (tools/approval.py detect_dangerous_command). Honest copy
-//            — this is NOT a Codex-style "ask on every external file write /
-//            internet use"; that category gate doesn't exist yet (hc-514 b).
-//   smart  → approvals.mode="smart": an assistant LLM weighs risk and asks.
-//   full   → approvals.mode="off": unrestricted (the old binary yolo=1).
-// The mapping is global + persistent because approvals.mode has no per-session
-// form (only the binary $yoloActive session override does), so all three tiers
-// necessarily write the global default. Backward compat: a legacy yolo=1
-// reads back as approvals.mode="off" → the "full" tier here.
+// Three-tier approval selector in the composer (hc-514):
+//   manual → GLOBAL approvals.mode="manual": gate ONLY commands the runtime
+//            flags as dangerous (tools/approval.py detect_dangerous_command).
+//            Honest copy — this is NOT a Codex-style "ask on every external
+//            file write / internet use"; that gate doesn't exist yet (hc-514 b).
+//   smart  → GLOBAL approvals.mode="smart": an assistant LLM weighs risk, asks.
+//   full   → SESSION-scoped yolo override (the pre-hc-514 mechanism): temporary,
+//            this chat only, gone when the session ends — the next session falls
+//            back to the global gating tier. The pill NEVER writes the
+//            persistent global approvals.mode to "off": a persistent
+//            unrestricted default (affecting CLI / TUI / cron too) would be a
+//            security regression over the old session-level toggle.
+// The asymmetry is deliberate: the gating tiers are restrictive, so persisting
+// them globally is safe (approvals.mode has no per-session form anyway); the
+// permissive tier stays session-local. A legacy config where an older build
+// left approvals.mode=off still renders as "full", and picking manual/smart
+// from there re-homes the global mode to the chosen tier.
 type ApprovalTier = 'full' | 'manual' | 'smart'
 
 const TIERS = ['manual', 'smart', 'full'] as const
@@ -62,7 +66,15 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
     }
 
     if (next === 'full') {
-      await applyApprovalMode(requestGateway, 'off')
+      // Session-scoped temporary override only — never the persistent global
+      // mode. Before the first session exists, arm the local flag so the next
+      // session inherits it (use-session-actions re-applies it at creation),
+      // matching the pre-hc-514 behavior.
+      if (sessionId) {
+        await setSessionYolo(requestGateway, sessionId, true).catch(() => setYoloActive(true))
+      } else {
+        setYoloActive(true)
+      }
 
       return
     }
@@ -72,8 +84,12 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
     // snapping straight back to "full".
     if (sessionId && yoloActive) {
       await setSessionYolo(requestGateway, sessionId, false).catch(() => setYoloActive(false))
+    } else if (yoloActive) {
+      setYoloActive(false)
     }
 
+    // Persist the picked gating tier globally. If a legacy build left
+    // approvals.mode=off, this same write re-homes the global default.
     await applyApprovalMode(requestGateway, next === 'smart' ? 'smart' : 'manual')
   }
 
