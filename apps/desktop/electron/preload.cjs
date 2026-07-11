@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
   managed: {
     status: () => ipcRenderer.invoke('hermes:managed:status'),
+    // hc-512: live relay model-catalog state for the model menu ('ok' |
+    // 'unauthorized' | 'unreachable' | 'unknown'); { refresh: true } re-probes.
+    relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),
     signIn: payload => ipcRenderer.invoke('hermes:managed:signIn', payload),
     browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
     signOut: () => ipcRenderer.invoke('hermes:managed:signOut'),

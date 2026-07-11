@@ -46,6 +46,11 @@ declare global {
       // user's cloud account. See electron/apex-managed.cjs.
       managed: {
         status: () => Promise<DesktopManagedStatus>
+        // hc-512: live relay model-catalog state for the model menu. Optional:
+        // an older main process may not expose it yet. `refresh: true`
+        // re-probes now (menu open / user retry); a 401 kicks the key
+        // self-heal chain before reporting.
+        relayCatalog?: (opts?: { refresh?: boolean }) => Promise<DesktopRelayCatalogState>
         signIn: (payload: { email: string; password: string }) => Promise<DesktopManagedSignInResult>
         // Browser (loopback) sign-in: "用 Google 登录" / "用 APEX 登录". Opens
         // the system browser, catches the loopback redirect, and resolves with
@@ -412,6 +417,16 @@ export interface DesktopManagedSelfHealResult {
   healed: boolean
   needsSignIn: boolean
   assignment: DesktopManagedSignInResult['assignment']
+}
+
+// hc-512: state of the relay's live model catalog (`GET {base_url}/v1/models`
+// with the stored relay key — the same listing the runtime's picker builds the
+// APEX group from). 'unauthorized' = the stored key is dead (re-login is the
+// fix); 'unreachable' = transient network/relay failure (retry is the fix);
+// 'unknown' = never probed / not a managed install.
+export interface DesktopRelayCatalogState {
+  checkedAt: number
+  status: 'ok' | 'unauthorized' | 'unreachable' | 'unknown'
 }
 
 // hc-444: local Feishu bridge state for the settings card. No secret fields —

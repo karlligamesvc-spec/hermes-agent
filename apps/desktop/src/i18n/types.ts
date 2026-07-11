@@ -1509,6 +1509,8 @@ export interface Translations {
       editModels: string
       refreshModels: string
       loadFailed: string
+      catalogUnauthorized: string
+      catalogUnreachable: string
       moaPresets: string
       moaPresetItem: (preset: string) => string
       fast: string
@@ -1879,6 +1881,8 @@ export interface Translations {
     modelSwitchFailed: string
     modelSwitchBusy: string
     modelSwitchRetry: string
+    modelNotInCatalogTitle: string
+    modelNotInCatalog: string
     sessionExported: string
     sessionExportFailed: string
     imageSaved: string

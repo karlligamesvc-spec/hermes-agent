@@ -24,6 +24,30 @@ interface ModelControlsOptions {
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
+/** True when the selection exists in the catalog payload: some provider row
+ *  (matching the selection's provider when one is set) lists the model id.
+ *  Fail-open on an empty/absent payload — validation must never block a pick
+ *  just because the catalog hasn't loaded yet. */
+export function selectionInCatalog(
+  payload: ModelOptionsResponse | undefined,
+  selection: ModelSelection
+): boolean {
+  const rows = payload?.providers
+
+  if (!rows?.length || !selection.model) {
+    return true
+  }
+
+  return rows.some(
+    row => (!selection.provider || row.slug === selection.provider) && (row.models ?? []).includes(selection.model)
+  )
+}
+
+// One-time gate for the "model no longer in catalog" toast (per app run, per
+// model id) — a stale sticky pick would otherwise re-toast on every catalog
+// refresh / menu open.
+const notifiedMissingModels = new Set<string>()
+
 export function useModelControls({ activeSessionId, queryClient, requestGateway }: ModelControlsOptions) {
   const { t } = useI18n()
   const copy = t.desktop
@@ -80,8 +104,45 @@ export function useModelControls({ activeSessionId, queryClient, requestGateway 
   // it's scoped to that session via config.set. It NEVER writes the profile
   // default — that lives in Settings → Model — so picking a model here can't
   // silently mutate global config.
+  // hc-512: a selection that is not in the current catalog must not be applied
+  // silently — fall back to the catalog default and say so once. Reached by
+  // stale sticky picks (reconcileModelSelection) and programmatic callers; rows
+  // clicked in the picker are by construction in the catalog.
+  const rejectMissingModel = useCallback(
+    (selection: ModelSelection, payload: ModelOptionsResponse) => {
+      if (!notifiedMissingModels.has(selection.model)) {
+        notifiedMissingModels.add(selection.model)
+        notify({
+          kind: 'warning',
+          title: copy.modelNotInCatalogTitle,
+          message: copy.modelNotInCatalog
+        })
+      }
+
+      // Pre-session the composer state is ours to fix: snap to the catalog
+      // default (the runtime guarantees the configured default is listed).
+      // With a live session the session's model is server-truth — leave it.
+      if (!activeSessionId && payload.model && selectionInCatalog(payload, { model: payload.model, provider: payload.provider ?? '' })) {
+        setCurrentModel(payload.model)
+        setCurrentProvider(payload.provider ?? '')
+        updateModelOptionsCache(payload.provider ?? '', payload.model, true)
+      }
+    },
+    [activeSessionId, copy, updateModelOptionsCache]
+  )
+
   const selectModel = useCallback(
     async (selection: ModelSelection): Promise<boolean> => {
+      // hc-512 catalog check — validate against the freshest catalog we hold
+      // for this scope (fail-open when none is cached yet).
+      const catalog = queryClient.getQueryData<ModelOptionsResponse>(['model-options', activeSessionId || 'global'])
+
+      if (catalog && !selectionInCatalog(catalog, selection)) {
+        rejectMissingModel(selection, catalog)
+
+        return false
+      }
+
       // Snapshot for rollback: the switch is applied optimistically, so a
       // failure must restore the prior model/provider (store + query cache)
       // rather than leave the UI showing a model the backend never selected.
@@ -132,8 +193,30 @@ export function useModelControls({ activeSessionId, queryClient, requestGateway 
         return false
       }
     },
-    [activeSessionId, copy, queryClient, requestGateway, updateModelOptionsCache]
+    [activeSessionId, copy, queryClient, rejectMissingModel, requestGateway, updateModelOptionsCache]
   )
 
-  return { refreshCurrentModel, selectModel, updateModelOptionsCache }
+  // hc-512: reconcile the sticky pre-session pick against a freshly loaded
+  // catalog. The runtime always injects the CONFIGURED current model into its
+  // provider's row, so a mismatch can only be client-side staleness (a pick
+  // whose model was rotated out of the live catalog since). Session-scoped
+  // models are server-truth and never reconciled here.
+  const reconcileModelSelection = useCallback(
+    (payload: ModelOptionsResponse | undefined) => {
+      if (!payload?.providers?.length || $activeSessionId.get()) {
+        return
+      }
+
+      const selection = { model: $currentModel.get(), provider: $currentProvider.get() }
+
+      if (!selection.model || selectionInCatalog(payload, selection)) {
+        return
+      }
+
+      rejectMissingModel(selection, payload)
+    },
+    [rejectMissingModel]
+  )
+
+  return { reconcileModelSelection, refreshCurrentModel, selectModel, updateModelOptionsCache }
 }

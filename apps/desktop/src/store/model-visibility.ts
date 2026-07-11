@@ -35,14 +35,28 @@ export interface ModelFamily {
 
 /** Collapse a provider's model list so a base model and its `…-fast` variant
  *  become a single family (one row, one toggle). Order is preserved by the
- *  base model's position. A `…-fast` model with no base stands on its own. */
+ *  base model's position. A `…-fast` model with no base stands on its own.
+ *
+ *  hc-512: a managed-relay sentinel id (`X-APEX`, the collision-free config
+ *  anchor — see electron/apex-managed.cjs) and its bare routed id `X` are the
+ *  SAME relay route. When both appear in one list (a runtime older than the
+ *  hc-512 assembly-layer dedupe), fold them into ONE family keyed by the
+ *  SENTINEL — selecting it keeps writing the collision-free id, never the
+ *  bare id that mis-routes agent boot to a keyless built-in provider. */
 export function collapseModelFamilies(models: readonly string[]): ModelFamily[] {
   const present = new Set(models)
+  const presentLower = new Set(models.map(model => model.toLowerCase()))
   const families: ModelFamily[] = []
   const consumed = new Set<string>()
 
   for (const model of models) {
     if (consumed.has(model)) {
+      continue
+    }
+
+    if (!/-APEX$/i.test(model) && presentLower.has(`${model.toLowerCase()}-apex`)) {
+      // Bare routed id shadowed by its managed sentinel — the sentinel entry
+      // is the pair's single brand row.
       continue
     }
 

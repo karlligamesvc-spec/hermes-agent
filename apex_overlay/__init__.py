@@ -21,6 +21,8 @@ well-tested seam (monkey-patch where clean, a one-line hook otherwise).
 Layout
 ------
 - ``provider_filter``   — hc-392 copilot/provider denylist (the pilot seam).
+- ``model_catalog_dedupe`` — hc-512 picker sentinel⇄real id pair dedupe
+  (``deepseek-v4-pro-APEX`` vs live ``deepseek-v4-pro``).
 - ``models_dev_fast``   — non-blocking models.dev catalog fetch (CN first paint).
 - ``region``            — CN-mode detection (read side of the install-time choice).
 - ``gateway_bootstrap`` — hc-384/385 non-blocking platform startup.
@@ -35,6 +37,7 @@ from __future__ import annotations
 
 __all__ = [
     "provider_filter",
+    "model_catalog_dedupe",
     "models_dev_fast",
     "region",
     "gateway_bootstrap",
