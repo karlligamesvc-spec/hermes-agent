@@ -32,6 +32,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const layout = require('./apex-bundle-layout.cjs')
+const migrate = require('./apex-bundle-migrate.cjs')
+const diskspace = require('./apex-bundle-diskspace.cjs')
 const {
   sendDesktopTelemetry,
   fireTelemetry,
@@ -288,16 +290,24 @@ async function stageAndCommitBundle(o) {
  * @param {(exe:string, argv:string[], label:string)=>void} o.runTool
  * @param {string} [o.downloadDir]     where the archive lands (default versions/.downloads)
  * @param {object} [o.platformOpts]    {platform} forwarded to layout
+ * @param {(p:string)=>number} [o.freeBytesOf]   C2 precheck free-space probe (injected in tests)
+ * @param {(dir:string)=>number} [o.dirSizeOf]   C2 versions/ usage probe (injected in tests)
+ * @param {number} [o.minFreeBytes]    C2 install free-space floor override
+ * @param {string[]} [o.migrateMarkers] D1 data-location assertion marker override
  * @param {(msg:string)=>void} [o.log]
  * @param {(event:object) => any} [o.sendTelemetry] hc-473 anonymous beacon
  *   emitter, defaults to the real apexnodes-telemetry.cjs; tests inject a
  *   fake to capture events without touching the network. Fires around the
  *   three stages the dispatch asks for: download (F1), verify (F2 — covers
  *   stageAndCommitBundle's own extract+fixup+verify sub-steps as one outer
- *   telemetry stage), switch (C1). The manifest-fetch/compat-gate step above
- *   is deliberately NOT telemetered here (out of this ticket's explicit
- *   3-stage scope; its absence from the funnel is itself visible as a low
- *   download:start count relative to check frequency).
+ *   telemetry stage), switch (C1 — since hc-472 D1 this wraps
+ *   switchToVersionOrMigrate, so a legacy-dir migration rides inside the
+ *   same switch stage and its failure reasons surface via the switch
+ *   failure beacon). The manifest-fetch/compat-gate step above and the C2
+ *   disk preflight are deliberately NOT telemetered here (out of this
+ *   ticket's explicit 3-stage scope; their absence from the funnel is
+ *   itself visible as a low download:start count relative to check
+ *   frequency).
  * @returns {Promise<{ok:true, key, versionDir, switched}|{ok:false, error, code, stage}>}
  */
 async function applyBundleUpdate(o) {
@@ -313,9 +323,14 @@ async function applyBundleUpdate(o) {
     extract,
     runTool,
     platformOpts,
+    freeBytesOf,
+    dirSizeOf,
+    minFreeBytes,
+    migrateMarkers,
     log = () => {},
     sendTelemetry = sendDesktopTelemetry
   } = o
+  const platform = platformOpts && platformOpts.platform
   const paths = layout.bundlePaths(hermesHome)
   const cos = bundleCosLayout({ cosBase, key, os, arch })
   // hc-473: one {platform, arch, app_version, runtime_key} shape reused by
@@ -346,6 +361,27 @@ async function applyBundleUpdate(o) {
         required: compat.required,
         current: compat.current
       }
+    }
+
+    // 1b. C2 disk precheck: refuse BEFORE pulling ~0.6 GB when the target volume
+    //     can't hold the archive + its extracted staging. Under pressure first
+    //     force-drop `previous` to reclaim ~1 bundle (design §8 "不足则先 GC
+    //     previous"), then re-check; only then refuse with a readable error.
+    const archiveSize = manifest.archive.size
+    const preflightArgs = { hermesHome, archiveSize, freeBytesOf, dirSizeOf, minFreeBytes, platform }
+    let disk = diskspace.preflightDiskSpace(preflightArgs)
+    if (!disk.ok) {
+      log(`[bundle-install] low disk (free=${disk.freeBytes} < need=${disk.requiredBytes}); dropping previous to reclaim`)
+      try {
+        layout.garbageCollect(hermesHome, { platform, dropPrevious: true })
+      } catch {
+        // reclamation is best-effort; the re-check below still gates.
+        void 0
+      }
+      disk = diskspace.preflightDiskSpace(preflightArgs)
+    }
+    if (!disk.ok) {
+      return { ok: false, code: 'insufficient_disk', stage: 'preflight', error: disk.message, freeBytes: disk.freeBytes, requiredBytes: disk.requiredBytes }
     }
 
     // 2. Download the archive with Range resume, gated on the manifest's sha256.
@@ -390,9 +426,15 @@ async function applyBundleUpdate(o) {
     }
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'verify', status: STATUS_SUCCESS })
 
-    // 4. Atomic switch: pointer (truth) then link (derived) (C1).
+    // 4. Atomic switch: pointer (truth) then link (derived) (C1) — upgraded to a
+    //    CONTROLLED side-by-side MIGRATION (D1) when the active path is a legacy
+    //    in-place dir (turning the add-only layer's real-dir refusal into a
+    //    migration + a `legacy-inplace` rollback fallback). hc-473: the whole
+    //    migrate-or-switch composite is telemetered as the one `switch` stage —
+    //    a D1 migration failure surfaces via this beacon's error_code (its
+    //    sw.reason, e.g. `switch:user-data-in-runtime-dir`).
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_START })
-    const sw = layout.switchToVersion(hermesHome, key, platformOpts)
+    const sw = migrate.switchToVersionOrMigrate(hermesHome, key, { platform, markers: migrateMarkers, log })
     if (!sw.ok) {
       fireTelemetry(sendTelemetry, {
         ...telemetryBase,
@@ -400,7 +442,8 @@ async function applyBundleUpdate(o) {
         status: STATUS_FAILURE,
         error_code: `switch:${(sw.reason || 'unknown').toString().slice(0, 100)}`
       })
-      return { ok: false, code: 'switch_failed', stage: 'switch', error: `could not activate versions/${key}: ${sw.reason}`, reason: sw.reason }
+      const code = sw.reason === 'user-data-in-runtime-dir' ? 'migration_refused' : 'switch_failed'
+      return { ok: false, code, stage: 'switch', error: `could not activate versions/${key}: ${sw.reason}`, reason: sw.reason, found: sw.found }
     }
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_SUCCESS })
 
