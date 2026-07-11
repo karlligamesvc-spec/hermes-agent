@@ -1610,7 +1610,8 @@ export const zh: Translations = {
     message: '消息',
     approvalMode: {
       label: '审批',
-      review: { label: '替我审批', desc: '仅对检测到的风险操作请求批准' },
+      manual: { label: '手动审批', desc: '仅在检测到危险操作时请求批准' },
+      smart: { label: '智能审批', desc: 'AI 评估风险后再请求批准' },
       full: { label: '完全访问', desc: '可不受限制地访问互联网和你电脑上的任何文件' }
     },
     wakingProfile: profile => `正在唤醒 ${profile}…`,
@@ -1996,6 +1997,19 @@ export const zh: Translations = {
     change: '更改',
     startChatting: '开始',
     docs: provider => `${provider} 文档`
+  },
+
+  managedRecovery: {
+    healed: {
+      title: 'APEX 凭证已刷新',
+      retrying: '登录凭证已过期,已自动刷新,正在重试…',
+      resend: '登录凭证已过期,已自动刷新,请重新发送。'
+    },
+    signInRequired: {
+      title: '请重新登录 APEX',
+      message: 'APEX 会话已过期或未连接平台,请重新登录后继续对话。',
+      reason: 'APEX 会话已过期,请重新登录以继续对话。'
+    }
   },
 
   auth: {

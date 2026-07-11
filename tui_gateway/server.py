@@ -1091,6 +1091,32 @@ def _status_update(sid: str, kind: str, text: str | None = None):
     _emit("status.update", sid, {"kind": out_kind, "text": body})
 
 
+def _terminal_auth_error_payload(result) -> dict | None:
+    """Return an ``error`` event payload for a turn that failed on a
+    non-retryable auth/authorization rejection, else ``None``.
+
+    The agent classifies a non-retryable abort in its result dict
+    (``error_kind`` / ``error_status`` — see agent.conversation_loop). A relay
+    or provider that rejects the key (HTTP 401/403) is a terminal, actionable
+    failure, not an assistant reply: drivers should raise a persistent error
+    (with a re-auth affordance) instead of dropping the provider's message into
+    the transcript as if the model had answered. Isolating the mapping keeps the
+    result-handling branch readable and the classification reusable.
+    """
+    if not isinstance(result, dict) or not result.get("failed"):
+        return None
+    kind = result.get("error_kind")
+    status = result.get("error_status")
+    is_auth = kind == "auth" or status in (401, 403)
+    if not is_auth:
+        return None
+    message = str(result.get("error") or "Authentication failed").strip()
+    payload: dict = {"message": message, "code": "auth", "retryable": False}
+    if isinstance(status, int):
+        payload["status_code"] = status
+    return payload
+
+
 def _estimate_image_tokens(width: int, height: int) -> int:
     """Very rough UI estimate for image prompt cost.
 
@@ -3203,6 +3229,12 @@ def _session_info(agent, session: dict | None = None) -> dict:
     # the desktop status bar (it would show YOLO "off" while approvals.mode=off
     # silently auto-approves every dangerous command).
     yolo = False
+    # Global three-value approvals.mode (manual/smart/off) surfaced alongside the
+    # effective `yolo` bool so the desktop composer's three-tier approval pill can
+    # tell "smart" apart from "manual" — the yolo bool collapses both gating modes
+    # into False. approvals.mode has no per-session form (only the binary session
+    # yolo override does), so this is always the global value.
+    approval_mode = "manual"
     try:
         from tools.approval import (
             _YOLO_MODE_FROZEN,
@@ -3213,9 +3245,11 @@ def _session_info(agent, session: dict | None = None) -> dict:
         session_yolo = (
             bool(is_session_yolo_enabled(session_key)) if session_key else False
         )
-        yolo = bool(_YOLO_MODE_FROZEN) or session_yolo or _get_approval_mode() == "off"
+        approval_mode = _get_approval_mode()
+        yolo = bool(_YOLO_MODE_FROZEN) or session_yolo or approval_mode == "off"
     except Exception:
         yolo = False
+        approval_mode = "manual"
     info: dict = {
         "model": getattr(agent, "model", ""),
         "provider": getattr(agent, "provider", ""),
@@ -3223,6 +3257,7 @@ def _session_info(agent, session: dict | None = None) -> dict:
         "service_tier": service_tier,
         "fast": service_tier == "priority",
         "yolo": yolo,
+        "approval_mode": approval_mode,
         "tools": {},
         "skills": {},
         "cwd": cwd,
@@ -8822,7 +8857,17 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 payload["rendered"] = rendered
             with session["history_lock"]:
                 _clear_inflight_turn(session)
-            _emit("message.complete", sid, payload)
+            # A non-retryable auth/authorization failure surfaces as a terminal
+            # ``error`` event (persistent, actionable) rather than a
+            # message.complete carrying the provider's rejection as assistant
+            # text. The retry/abort trace already streamed on the lifecycle
+            # status channel, which keeps its own semantics. Every other outcome
+            # (success, interrupted, generic error) stays on message.complete.
+            _auth_error_payload = _terminal_auth_error_payload(result)
+            if _auth_error_payload is not None:
+                _emit("error", sid, _auth_error_payload)
+            else:
+                _emit("message.complete", sid, payload)
 
             # ── /goal continuation (Ralph-style loop) ─────────────────
             # After every TUI turn, if a /goal is active, ask the judge
@@ -10117,6 +10162,26 @@ def _(rid, params: dict) -> dict:
         except Exception as e:
             return _err(rid, 5001, str(e))
 
+    if key == "approvals.mode":
+        # Three-tier approval selector (desktop composer, hc-514). Unlike the
+        # binary `yolo` key, this writes the full three-value approvals.mode the
+        # runtime already consumes: "manual" (gate only detected-dangerous
+        # commands), "smart" (LLM risk judge), "off" (unrestricted). Always
+        # global + persistent, like the Shift+zap path — approvals.mode has no
+        # per-session form in tools/approval.py (only the binary session yolo
+        # override does), so a three-way pick is necessarily global.
+        raw = str(value or "").strip().lower()
+        if raw not in ("manual", "smart", "off"):
+            return _err(rid, 4002, f"unknown approvals.mode: {value}")
+        _write_config_key("approvals.mode", raw)
+        # Reflect the global change in every live session's indicator, matching
+        # the scope="global" yolo path above.
+        for sid, sess in list(_sessions.items()):
+            agent = sess.get("agent")
+            if agent is not None:
+                _emit("session.info", sid, _session_info(agent, sess))
+        return _ok(rid, {"key": key, "value": raw, "scope": "global"})
+
     if key == "reasoning":
         try:
             from hermes_constants import parse_reasoning_effort
@@ -10890,6 +10955,17 @@ def _(rid, params: dict) -> dict:
             rid,
             {"value": (_load_cfg().get("display") or {}).get("personality") or "none"},
         )
+    if key == "approvals.mode":
+        # Current global approval tier for the desktop composer pill to seed from
+        # at connect (before any session.info arrives). Normalized to one of
+        # manual/smart/off so a hand-edited config reads back what the runtime
+        # actually enforces.
+        try:
+            from tools.approval import _get_approval_mode
+
+            return _ok(rid, {"value": _get_approval_mode()})
+        except Exception:
+            return _ok(rid, {"value": "manual"})
     if key == "reasoning":
         cfg = _load_cfg()
         effort = ""

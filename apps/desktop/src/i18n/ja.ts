@@ -1405,7 +1405,8 @@ export const ja = defineLocale({
     message: 'メッセージ',
     approvalMode: {
       label: '承認',
-      review: { label: '自動承認', desc: '検出されたリスク操作のみ承認を求める' },
+      manual: { label: '手動承認', desc: '危険と判定された操作のみ承認を求める' },
+      smart: { label: 'スマート承認', desc: 'AI がリスクを評価し、必要に応じて承認を求める' },
       full: { label: 'フルアクセス', desc: 'インターネットとPC上のあらゆるファイルに無制限にアクセス' }
     },
     wakingProfile: profile => `${profile} を起動中…`,
@@ -1790,6 +1791,19 @@ export const ja = defineLocale({
     change: '変更',
     startChatting: '始める',
     docs: provider => `${provider} ドキュメント`
+  },
+
+  managedRecovery: {
+    healed: {
+      title: 'APEX 認証情報を更新しました',
+      retrying: 'サインインの有効期限が切れていました。自動的に更新し、再試行しています…',
+      resend: 'サインインの有効期限が切れていました。自動的に更新しました。もう一度送信してください。'
+    },
+    signInRequired: {
+      title: 'APEX に再度サインイン',
+      message: 'APEX セッションの有効期限が切れているか、未接続です。再度サインインして会話を続けてください。',
+      reason: 'APEX セッションの有効期限が切れています。再度サインインして会話を続けてください。'
+    }
   },
 
   auth: {

@@ -1375,7 +1375,8 @@ export const zhHant = defineLocale({
     message: '訊息',
     approvalMode: {
       label: '審批',
-      review: { label: '替我審批', desc: '僅對偵測到的風險操作請求批准' },
+      manual: { label: '手動審批', desc: '僅在偵測到危險操作時請求批准' },
+      smart: { label: '智慧審批', desc: 'AI 評估風險後再請求批准' },
       full: { label: '完全存取', desc: '可不受限制地存取網際網路和您電腦上的任何檔案' }
     },
     wakingProfile: profile => `正在喚醒 ${profile}…`,
@@ -1751,6 +1752,19 @@ export const zhHant = defineLocale({
     change: '變更',
     startChatting: '開始',
     docs: provider => `${provider} 文件`
+  },
+
+  managedRecovery: {
+    healed: {
+      title: 'APEX 憑證已刷新',
+      retrying: '登入憑證已過期,已自動刷新,正在重試…',
+      resend: '登入憑證已過期,已自動刷新,請重新傳送。'
+    },
+    signInRequired: {
+      title: '請重新登入 APEX',
+      message: 'APEX 工作階段已過期或未連線平台,請重新登入後繼續對話。',
+      reason: 'APEX 工作階段已過期,請重新登入以繼續對話。'
+    }
   },
 
   auth: {
