@@ -1,4 +1,4 @@
-import { setYoloActive } from '@/store/session'
+import { type ApprovalRuntimeMode, coerceApprovalMode, setApprovalMode, setYoloActive } from '@/store/session'
 
 export type GatewayRequester = <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
 
@@ -47,4 +47,30 @@ export async function setGlobalYolo(
   setYoloActive(active)
 
   return active
+}
+
+/**
+ * Set the GLOBAL three-value approvals.mode via gateway `config.set` — the
+ * approval-tier selector the desktop composer pill offers (hc-514):
+ *   manual → gate only detected-dangerous commands
+ *   smart  → LLM risk judge decides when to ask
+ *   off    → unrestricted (the old binary `yolo=1`)
+ * Persistent and global (approvals.mode has no per-session form), so it also
+ * changes the CLI / TUI / cron default — mirrors the Shift+zap `setGlobalYolo`
+ * path, just with the full three values instead of off/manual.
+ */
+export async function applyApprovalMode(
+  requestGateway: GatewayRequester,
+  mode: ApprovalRuntimeMode
+): Promise<ApprovalRuntimeMode> {
+  const result = await requestGateway<{ value?: string }>('config.set', {
+    key: 'approvals.mode',
+    value: mode
+  })
+
+  const next = coerceApprovalMode(result?.value)
+
+  setApprovalMode(next)
+
+  return next
 }

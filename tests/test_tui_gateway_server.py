@@ -2698,6 +2698,80 @@ def test_config_set_yolo_global_scope_honors_explicit_value(tmp_path, monkeypatc
     assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "off"
 
 
+def test_config_set_approvals_mode_writes_all_three_tiers(tmp_path, monkeypatch):
+    """hc-514 desktop approval pill -> config.set approvals.mode writes the full
+    three-value mode globally (manual/smart/off), not just the binary yolo flip."""
+    import yaml
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "manual"}}))
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+
+    for mode in ("smart", "off", "manual"):
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "config.set",
+                "params": {"key": "approvals.mode", "value": mode},
+            }
+        )
+        assert resp["result"]["value"] == mode
+        assert resp["result"]["scope"] == "global"
+        assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == mode
+
+
+def test_config_set_approvals_mode_rejects_unknown(tmp_path, monkeypatch):
+    """An out-of-set value is rejected rather than silently written — the runtime
+    would normalize it to manual and the pill would then lie about the tier."""
+    import yaml
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "smart"}}))
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+
+    resp = server.handle_request(
+        {
+            "id": "1",
+            "method": "config.set",
+            "params": {"key": "approvals.mode", "value": "yolo"},
+        }
+    )
+    assert resp["error"]["code"] == 4002
+    # Config is left untouched on rejection.
+    assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
+
+
+def test_config_get_approvals_mode_returns_normalized():
+    """The pill seeds its tier from config.get at connect; the value is normalized
+    so a YAML `mode: off` (parsed as False) reads back as the string 'off'."""
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": False}}):
+        resp = server.handle_request(
+            {"id": "1", "method": "config.get", "params": {"key": "approvals.mode"}}
+        )
+        assert resp["result"]["value"] == "off"
+
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "smart"}}):
+        resp = server.handle_request(
+            {"id": "2", "method": "config.get", "params": {"key": "approvals.mode"}}
+        )
+        assert resp["result"]["value"] == "smart"
+
+
+def test_session_info_reports_approval_mode(monkeypatch):
+    """session.info carries the global three-value approval_mode alongside the
+    effective yolo bool so the desktop can tell smart apart from manual."""
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "smart"}}):
+        info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
+        assert info["approval_mode"] == "smart"
+        # smart still gates, so the effective bypass bool stays False.
+        assert info["yolo"] is False
+
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "off"}}):
+        info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
+        assert info["approval_mode"] == "off"
+        assert info["yolo"] is True
+
+
 def test_config_set_fast_updates_live_agent_and_config(monkeypatch):
     writes = []
     emits = []
