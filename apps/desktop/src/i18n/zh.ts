@@ -1449,7 +1449,6 @@ export const zh: Translations = {
   },
 
   tasks: {
-    loading: '正在加载任务…',
     newTask: '新任务',
     tabRunning: '进行中',
     tabDone: '已完成',

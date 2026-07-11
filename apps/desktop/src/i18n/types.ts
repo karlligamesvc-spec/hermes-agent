@@ -1004,7 +1004,6 @@ export interface Translations {
 
   // Goal-mode long-running tasks (one-shot cron jobs surfaced on /tasks).
   tasks: {
-    loading: string
     newTask: string
     tabRunning: string
     tabDone: string

@@ -1,8 +1,7 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import {
@@ -35,7 +34,6 @@ import { notify, notifyError } from '@/store/notifications'
 import { $tasks } from '@/store/tasks'
 
 import { jobTitle } from '../cron/job-state'
-import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { OverlayMain, OverlayNewButton, OverlaySidebar, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
@@ -88,9 +86,9 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
   const { t } = useI18n()
   const c = t.tasks
   // Projection over the shared cron atom (controller already polls it), so the
-  // list stays live without a second fetch. Only the first paint waits.
+  // list stays live without a second fetch — there is nothing to load here, so
+  // an empty projection is a real "no tasks yet" state, not a pending one.
   const tasks = useStore($tasks)
-  const [loading, setLoading] = useState(tasks.length === 0)
   const [tab, setTab] = useState<Tab>('running')
   const [selectedId, setSelectedId] = useState<null | string>(null)
   const [busyId, setBusyId] = useState<null | string>(null)
@@ -101,21 +99,8 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
   // without a data change.
   const [nowTick, setNowTick] = useState(() => Date.now())
 
-  // The tasks list is driven by the controller's cron poll; a manual refresh
-  // just re-triggers it via the same hotkey the cron page uses (best-effort).
-  const refresh = useCallback(async () => {
-    // Nothing to fetch here directly — the controller owns the cron poll. Clear
-    // the first-paint gate in case the atom was already warm.
-    setLoading(false)
-  }, [])
-
-  useRefreshHotkey(refresh)
-
-  useEffect(() => {
-    if (tasks.length > 0) {
-      setLoading(false)
-    }
-  }, [tasks.length])
+  // No manual refresh: the list is a live projection of the controller's cron
+  // poll, so there is nothing this page could re-fetch on demand.
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 60_000)
@@ -192,64 +177,60 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
       {...props}
       className="flex h-full min-w-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)"
     >
-      {loading && tasks.length === 0 ? (
-        <PageLoader label={c.loading} />
-      ) : (
-        <OverlaySplitLayout>
-          <OverlaySidebar>
-            <OverlayNewButton icon="rocket" label={c.newTask} onClick={() => setEditorOpen(true)} />
-            <div className="mb-1 flex items-center gap-3 px-2">
-              <TextTab active={tab === 'running'} onClick={() => setTab('running')}>
-                {c.tabRunning}
-                {running.length > 0 ? ` · ${running.length}` : ''}
-              </TextTab>
-              <TextTab active={tab === 'done'} onClick={() => setTab('done')}>
-                {c.tabDone}
-                {finished.length > 0 ? ` · ${finished.length}` : ''}
-              </TextTab>
-            </div>
-            {visible.map(task => (
-              <TaskListRow
-                active={selected?.id === task.id}
-                job={task}
-                key={task.id}
-                now={nowTick}
-                onSelect={() => setSelectedId(task.id)}
-              />
-            ))}
-            {visible.length === 0 && (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                {tab === 'running' ? c.emptyRunning : c.emptyDone}
-              </p>
-            )}
-          </OverlaySidebar>
+      <OverlaySplitLayout>
+        <OverlaySidebar>
+          <OverlayNewButton icon="rocket" label={c.newTask} onClick={() => setEditorOpen(true)} />
+          <div className="mb-1 flex items-center gap-3 px-2">
+            <TextTab active={tab === 'running'} onClick={() => setTab('running')}>
+              {c.tabRunning}
+              {running.length > 0 ? ` · ${running.length}` : ''}
+            </TextTab>
+            <TextTab active={tab === 'done'} onClick={() => setTab('done')}>
+              {c.tabDone}
+              {finished.length > 0 ? ` · ${finished.length}` : ''}
+            </TextTab>
+          </div>
+          {visible.map(task => (
+            <TaskListRow
+              active={selected?.id === task.id}
+              job={task}
+              key={task.id}
+              now={nowTick}
+              onSelect={() => setSelectedId(task.id)}
+            />
+          ))}
+          {visible.length === 0 && (
+            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              {tab === 'running' ? c.emptyRunning : c.emptyDone}
+            </p>
+          )}
+        </OverlaySidebar>
 
-          <OverlayMain className="px-0">
-            {selected ? (
-              <TaskDetail
-                busy={busyId === selected.id}
-                c={c}
-                job={selected}
-                now={nowTick}
-                onDelete={() => setPendingDelete(selected)}
-                onOpenSession={onOpenSession}
-                onRunNow={() => void handleRunNow(selected)}
-              />
-            ) : (
-              <div className="grid h-full place-items-center px-6 py-12 text-center text-sm text-muted-foreground">
-                <div>
-                  <Sparkles className="mx-auto size-6 text-muted-foreground/60" />
-                  <p className="mt-3 max-w-sm">{c.emptyDetail}</p>
-                  <Button className="mt-4" onClick={() => setEditorOpen(true)} size="sm" variant="outline">
-                    <Codicon name="rocket" size="0.875rem" />
-                    {c.newTask}
-                  </Button>
-                </div>
+        <OverlayMain className="px-0">
+          {selected ? (
+            <TaskDetail
+              busy={busyId === selected.id}
+              c={c}
+              job={selected}
+              now={nowTick}
+              onDelete={() => setPendingDelete(selected)}
+              onOpenSession={onOpenSession}
+              onRunNow={() => void handleRunNow(selected)}
+            />
+          ) : (
+            <div className="grid h-full place-items-center px-6 py-12 text-center text-sm text-muted-foreground">
+              <div>
+                <Sparkles className="mx-auto size-6 text-muted-foreground/60" />
+                <p className="mt-3 max-w-sm">{c.emptyDetail}</p>
+                <Button className="mt-4" onClick={() => setEditorOpen(true)} size="sm" variant="outline">
+                  <Codicon name="rocket" size="0.875rem" />
+                  {c.newTask}
+                </Button>
               </div>
-            )}
-          </OverlayMain>
-        </OverlaySplitLayout>
-      )}
+            </div>
+          )}
+        </OverlayMain>
+      </OverlaySplitLayout>
 
       <TaskEditorDialog
         c={c}
