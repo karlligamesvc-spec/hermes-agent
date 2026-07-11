@@ -22,12 +22,24 @@
  *
  * Manifest schema authored by scripts/build-runtime-bundle.mjs (sibling
  * manifest.json adds `archive:{name,sha256,size}`).
+ *
+ * hc-473: applyBundleUpdate also fires anonymous download/verify/switch
+ * telemetry beacons around its own F1/F2/C1 steps (apexnodes-telemetry.cjs);
+ * see that function's JSDoc for exactly which sub-step maps to which stage.
  */
 
 const fs = require('node:fs')
 const path = require('node:path')
 
 const layout = require('./apex-bundle-layout.cjs')
+const {
+  sendDesktopTelemetry,
+  fireTelemetry,
+  classifyErrorCategory,
+  STATUS_START,
+  STATUS_SUCCESS,
+  STATUS_FAILURE
+} = require('./apexnodes-telemetry.cjs')
 
 const MANIFEST_SCHEMA = 1
 const BUNDLE_KIND = 'apexnodes-runtime-bundle'
@@ -277,6 +289,15 @@ async function stageAndCommitBundle(o) {
  * @param {string} [o.downloadDir]     where the archive lands (default versions/.downloads)
  * @param {object} [o.platformOpts]    {platform} forwarded to layout
  * @param {(msg:string)=>void} [o.log]
+ * @param {(event:object) => any} [o.sendTelemetry] hc-473 anonymous beacon
+ *   emitter, defaults to the real apexnodes-telemetry.cjs; tests inject a
+ *   fake to capture events without touching the network. Fires around the
+ *   three stages the dispatch asks for: download (F1), verify (F2 — covers
+ *   stageAndCommitBundle's own extract+fixup+verify sub-steps as one outer
+ *   telemetry stage), switch (C1). The manifest-fetch/compat-gate step above
+ *   is deliberately NOT telemetered here (out of this ticket's explicit
+ *   3-stage scope; its absence from the funnel is itself visible as a low
+ *   download:start count relative to check frequency).
  * @returns {Promise<{ok:true, key, versionDir, switched}|{ok:false, error, code, stage}>}
  */
 async function applyBundleUpdate(o) {
@@ -292,10 +313,17 @@ async function applyBundleUpdate(o) {
     extract,
     runTool,
     platformOpts,
-    log = () => {}
+    log = () => {},
+    sendTelemetry = sendDesktopTelemetry
   } = o
   const paths = layout.bundlePaths(hermesHome)
   const cos = bundleCosLayout({ cosBase, key, os, arch })
+  // hc-473: one {platform, arch, app_version, runtime_key} shape reused by
+  // every beacon this update fires — os/key are already exactly the
+  // platform/runtime_key vocabulary the cloud endpoint expects, no
+  // normalization needed (unlike bootstrap-runner/shell-updater, which start
+  // from raw process.platform).
+  const telemetryBase = { platform: os, arch, app_version: desktopVersion || null, runtime_key: key }
 
   try {
     // 1. Manifest first (small): schema + platform match + compat gate BEFORE we
@@ -325,21 +353,56 @@ async function applyBundleUpdate(o) {
     const downloadDir = o.downloadDir || path.join(paths.versionsDir, '.downloads')
     const archivePath = path.join(downloadDir, archiveName)
     log(`[bundle-install] downloading ${archiveName}`)
-    await download({
-      url: cos.objectUrl(archiveName),
-      dest: archivePath,
-      sha256: manifest.archive.sha256,
-      size: manifest.archive.size
-    })
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'download', status: STATUS_START })
+    try {
+      await download({
+        url: cos.objectUrl(archiveName),
+        dest: archivePath,
+        sha256: manifest.archive.sha256,
+        size: manifest.archive.size
+      })
+    } catch (err) {
+      fireTelemetry(sendTelemetry, {
+        ...telemetryBase,
+        stage: 'download',
+        status: STATUS_FAILURE,
+        error_code: `download:${classifyErrorCategory(err)}`
+      })
+      throw err
+    }
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'download', status: STATUS_SUCCESS })
 
-    // 3. Stage → fixup → verify → atomic commit (F2).
-    const staged = await stageAndCommitBundle({ hermesHome, key, archivePath, manifest, extract, runTool, opts: platformOpts, log })
+    // 3. Stage → fixup → verify → atomic commit (F2). Telemetered as one
+    //    outer "verify" stage — extract/fixup/verify are its internal
+    //    sub-steps, not separately beaconed (see this function's own JSDoc).
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'verify', status: STATUS_START })
+    let staged
+    try {
+      staged = await stageAndCommitBundle({ hermesHome, key, archivePath, manifest, extract, runTool, opts: platformOpts, log })
+    } catch (err) {
+      fireTelemetry(sendTelemetry, {
+        ...telemetryBase,
+        stage: 'verify',
+        status: STATUS_FAILURE,
+        error_code: `verify:${classifyErrorCategory(err)}`
+      })
+      throw err
+    }
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'verify', status: STATUS_SUCCESS })
 
     // 4. Atomic switch: pointer (truth) then link (derived) (C1).
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_START })
     const sw = layout.switchToVersion(hermesHome, key, platformOpts)
     if (!sw.ok) {
+      fireTelemetry(sendTelemetry, {
+        ...telemetryBase,
+        stage: 'switch',
+        status: STATUS_FAILURE,
+        error_code: `switch:${(sw.reason || 'unknown').toString().slice(0, 100)}`
+      })
       return { ok: false, code: 'switch_failed', stage: 'switch', error: `could not activate versions/${key}: ${sw.reason}`, reason: sw.reason }
     }
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_SUCCESS })
 
     // 5. Best-effort cleanup of the downloaded archive + startup-style GC (keep
     //    current+previous). Never fatal.
