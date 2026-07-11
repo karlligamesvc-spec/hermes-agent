@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const setModelAssignment = vi.fn()
-const gatewayRequest = vi.fn(() => Promise.resolve())
+// Rest-typed so the lazy mock wrapper below can spread its args into it —
+// a zero-arg implementation would fail tsc's TS2556 on the spread call.
+const gatewayRequest = vi.fn((..._args: unknown[]) => Promise.resolve())
 const notify = vi.fn()
 const requestManagedReSignIn = vi.fn()
 
