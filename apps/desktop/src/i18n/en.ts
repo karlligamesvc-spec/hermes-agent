@@ -1275,7 +1275,6 @@ export const en: Translations = {
   },
 
   tasks: {
-    loading: 'Loading tasks…',
     newTask: 'New task',
     tabRunning: 'Running',
     tabDone: 'Done',
