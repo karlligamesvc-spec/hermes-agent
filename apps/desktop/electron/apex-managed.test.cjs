@@ -42,6 +42,7 @@ const {
   REPROVISION_COOLDOWN_MS,
   parseLoopbackCallback,
   parseProvisionResponse,
+  relayCatalogStatusFromProbe,
   relayKeyFromResponse,
   resolveApexEndpoints,
   shouldAttemptReprovision,
@@ -846,6 +847,22 @@ test('isRelayUnauthorized is false for success / server errors / no-response', (
   for (const transient of [429, 500, 502, 503, 504]) assert.equal(isRelayUnauthorized(transient), false)
   // 0 / undefined / NaN = timeout / offline / no response → not actionable.
   for (const none of [0, undefined, NaN, null]) assert.equal(isRelayUnauthorized(none), false)
+})
+
+// --- relayCatalogStatusFromProbe (hc-512 model-menu catalog state) ---
+
+test('relayCatalogStatusFromProbe classifies auth-dead vs transient vs ok', () => {
+  // 401/403 = the stored key is dead → re-login/re-provision is the fix.
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 401 }), 'unauthorized')
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 403 }), 'unauthorized')
+  // Healthy listing.
+  assert.equal(relayCatalogStatusFromProbe({ ok: true, statusCode: 200 }), 'ok')
+  assert.equal(relayCatalogStatusFromProbe({ ok: true, statusCode: 302 }), 'ok')
+  // Timeout / offline / 5xx = transient → retry is the fix, never re-login.
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 0 }), 'unreachable')
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 503 }), 'unreachable')
+  assert.equal(relayCatalogStatusFromProbe(null), 'unreachable')
+  assert.equal(relayCatalogStatusFromProbe(undefined), 'unreachable')
 })
 
 // --- shouldAttemptReprovision (gate + anti-storm cooldown) ---

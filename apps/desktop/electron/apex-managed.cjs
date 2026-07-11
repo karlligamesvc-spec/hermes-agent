@@ -859,6 +859,31 @@ function isRelayUnauthorized(statusCode) {
   return code === 401 || code === 403
 }
 
+/**
+ * Classify a relay `/v1/models` probe result for the renderer's model-menu
+ * catalog state (hc-512). The runtime's own live-catalog probe fails SILENTLY
+ * (its picker row just shrinks to the configured sentinel), so the shell tells
+ * the renderer explicitly why the live catalog is missing:
+ *
+ *   - 'ok'           → 2xx/3xx: the live catalog is reachable with this key.
+ *   - 'unauthorized' → 401/403: the stored relay key is dead (rotated out) —
+ *                      remediation is re-provision / re-login, not retry.
+ *   - 'unreachable'  → anything else (timeout, offline, 5xx): transient —
+ *                      remediation is retry.
+ *
+ * Pure so the mapping is unit-testable; the caller passes the
+ * apexRelayGetModels result shape ({ ok, statusCode }).
+ *
+ * @param {{ ok?: boolean, statusCode?: number } | null | undefined} probe
+ * @returns {'ok' | 'unauthorized' | 'unreachable'}
+ */
+function relayCatalogStatusFromProbe(probe) {
+  const statusCode = Number(probe && probe.statusCode) || 0
+  if (isRelayUnauthorized(statusCode)) return 'unauthorized'
+  if (probe && probe.ok) return 'ok'
+  return 'unreachable'
+}
+
 // Default minimum gap between two self-heal re-provision attempts. A 401 at boot
 // re-provisions once; if that fails (expired JWT, provision-key down) we must not
 // retry on a tight loop (a 401 storm against the auth backend). 10 min is long
@@ -1084,6 +1109,7 @@ module.exports = {
   managedModelConfigYaml,
   parseLoopbackCallback,
   parseProvisionResponse,
+  relayCatalogStatusFromProbe,
   relayKeyFromResponse,
   resolveApexEndpoints,
   shouldAttemptReprovision,

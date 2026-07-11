@@ -5,6 +5,7 @@ import {
   displayModelName,
   formatModelStatusLabel,
   managedModelDisplayName,
+  modelDisplayParts,
   reasoningEffortLabel
 } from './model-status-label'
 
@@ -22,13 +23,32 @@ describe('model-status-label', () => {
   it('formats display names consistently', () => {
     expect(displayModelName('anthropic/claude-opus-4.8-fast')).toBe('Opus 4.8')
     expect(displayModelName('openai/gpt-5.5-fast')).toBe('GPT-5.5')
-    expect(displayModelName('deepseek/deepseek-v4-pro-thinking')).toBe('Deepseek V4 Pro')
+    expect(displayModelName('deepseek/deepseek-v4-pro-thinking')).toBe('DeepSeek V4 Pro')
     expect(displayModelName('openai/gpt-5.5')).toBe('GPT-5.5')
   })
 
   it('keeps acronym brand names uppercase instead of title-casing them', () => {
     expect(displayModelName('glm-5.2')).toBe('GLM 5.2')
     expect(displayModelName('custom/glm-5.2')).toBe('GLM 5.2')
+    // Official brand casing, not plain title-case ("Deepseek").
+    expect(displayModelName('deepseek-v4-flash')).toBe('DeepSeek V4 Flash')
+  })
+
+  // hc-512: the managed `-APEX` sentinel suffix is a brand marker, split into
+  // the tag slot by the ONE shared splitter — so the composer pill and every
+  // picker row render the identical name for the same id.
+  it('splits the managed -APEX sentinel into name + APEX tag', () => {
+    expect(modelDisplayParts('deepseek-v4-pro-APEX')).toEqual({ name: 'DeepSeek V4 Pro', tag: 'APEX' })
+    expect(modelDisplayParts('custom/deepseek-v4-pro-APEX')).toEqual({ name: 'DeepSeek V4 Pro', tag: 'APEX' })
+    // Bare routed id → same NAME (no tag): one display for one route.
+    expect(modelDisplayParts('deepseek-v4-pro')).toEqual({ name: 'DeepSeek V4 Pro', tag: '' })
+  })
+
+  it('renders the sentinel and the bare routed id under the same pill label', () => {
+    expect(formatModelStatusLabel('deepseek-v4-pro-APEX', { reasoningEffort: 'high' })).toBe(
+      'DeepSeek V4 Pro · High'
+    )
+    expect(formatModelStatusLabel('deepseek-v4-pro', { reasoningEffort: 'high' })).toBe('DeepSeek V4 Pro · High')
   })
 
   it('strips trailing date-pin snapshots from the display name', () => {

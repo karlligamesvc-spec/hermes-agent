@@ -114,6 +114,7 @@ const {
   MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
   parseProvisionResponse,
+  relayCatalogStatusFromProbe,
   resolveApexEndpoints,
   shouldAttemptReprovision,
   syncCustomProviderKeyYaml
@@ -5589,6 +5590,30 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 } = {}) {
 // failing (expired JWT / provision-key down), which must not loop.
 let lastManagedReprovisionAttemptAt = 0
 
+// hc-512: last known state of the relay's live model catalog, from the same
+// `GET {base_url}/v1/models` probe the runtime's picker uses. The runtime's own
+// probe failure is SILENT (its APEX picker row just shrinks to the configured
+// sentinel), so the shell keeps this explicit answer to "why is the live list
+// missing?" for the renderer's model menu (`hermes:managed:relayCatalog`).
+// status: 'unknown' (never probed / not applicable) | 'ok' | 'unauthorized' |
+// 'unreachable'; checkedAt: ms timestamp of the last probe (0 = never).
+let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+
+// Probe the relay model listing with the CURRENT stored key and remember the
+// classified outcome. Shared by the boot self-heal and the renderer's
+// on-demand catalog-state IPC. Resolves to the remembered state. Not managed /
+// no key → 'unknown' (BYOK installs never probe).
+async function probeRelayCatalogState() {
+  const managed = resolveManagedConfig()
+  if (!isManagedEnabled(process.env) || !managed.key || !managed.baseUrl) {
+    lastRelayCatalogState = { status: 'unknown', checkedAt: Date.now() }
+    return lastRelayCatalogState
+  }
+  const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
+  lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
+  return lastRelayCatalogState
+}
+
 // Boot self-heal: if the stored relay key is dead (relay /v1/models → 401/403),
 // re-provision it in place using the stored login JWT, then re-sync the
 // custom_providers entry so the model picker's live listing recovers THIS launch
@@ -5610,9 +5635,11 @@ async function selfHealManagedKeyOn401() {
     if (!isManagedEnabled(process.env)) return
     if (!managed.key || !managed.baseUrl) return
 
-    // Cheap probe of the exact listing the picker uses. Only a hard auth
-    // rejection is actionable.
+    // Cheap probe of the exact listing the picker uses. Remember the outcome
+    // for the renderer's model-menu catalog state (hc-512); only a hard auth
+    // rejection is actionable for the self-heal itself.
     const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
+    lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
     if (!isRelayUnauthorized(probe.statusCode)) return
 
     if (
@@ -5640,6 +5667,8 @@ async function selfHealManagedKeyOn401() {
     // syncs the custom_providers entry. A stored account keeps the panel intact.
     const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
     if (result && result.hasRelayKey) {
+      // Fresh key minted + synced — the live catalog is reachable again.
+      lastRelayCatalogState = { status: 'ok', checkedAt: Date.now() }
       rememberLog('[apexnodes] relay key self-heal succeeded; model picker list restored.')
     } else {
       // provision-key returned no key: JWT expired (401) or endpoint unavailable.
@@ -7283,6 +7312,33 @@ ipcMain.handle('hermes:managed:status', async () => {
     plan: account.plan || ''
   }
 })
+
+// hc-512: live relay model-catalog state for the model menu. The runtime's own
+// live-catalog probe fails silently (its APEX picker row just shrinks to the
+// configured sentinel model), so the renderer asks the shell — which holds the
+// relay key — whether the catalog is actually reachable, and shows an explicit
+// "目录不可用" line instead of a silently-shrunk list. `refresh:true` re-probes
+// now (menu open / user retry); otherwise the remembered boot-probe state is
+// returned. A 401 kicks the existing self-heal chain (cooldown-gated inside),
+// then reports the healed state — so a menu retry can recover in one click.
+ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
+  try {
+    const refresh = Boolean(opts && opts.refresh)
+    if (refresh || !lastRelayCatalogState.checkedAt) {
+      await probeRelayCatalogState()
+      if (lastRelayCatalogState.status === 'unauthorized') {
+        // Same chain as boot: re-provision with the stored JWT when allowed
+        // (shouldAttemptReprovision gates + cools down inside), which flips
+        // the remembered state to 'ok' on success.
+        await selfHealManagedKeyOn401()
+      }
+    }
+  } catch (error) {
+    rememberLog(`[apexnodes] relay catalog probe failed: ${error && error.message ? error.message : error}`)
+  }
+  return { status: lastRelayCatalogState.status, checkedAt: lastRelayCatalogState.checkedAt }
+})
+
 // Shape a managed sign-in result into the IPC payload the renderer applies. When
 // a relay key was provisioned, build the assignment from the STORED provision
 // result (server-truth base_url + model), not env defaults. When provision-key

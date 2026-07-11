@@ -14,6 +14,7 @@ import {
 import { useModelControls } from './use-model-controls'
 
 const setGlobalModel = vi.fn()
+const notify = vi.fn()
 const notifyError = vi.fn()
 
 vi.mock('@/hermes', () => ({
@@ -25,13 +26,16 @@ vi.mock('@/i18n', () => ({
   useI18n: () => ({
     t: {
       desktop: {
-        modelSwitchFailed: 'Model switch failed'
+        modelSwitchFailed: 'Model switch failed',
+        modelNotInCatalogTitle: 'Selected model unavailable',
+        modelNotInCatalog: 'Switched back to the default model.'
       }
     }
   })
 }))
 
 vi.mock('@/store/notifications', () => ({
+  notify: (...args: Parameters<typeof notify>) => notify(...args),
   notifyError: (...args: Parameters<typeof notifyError>) => notifyError(...args)
 }))
 
@@ -59,6 +63,7 @@ function Harness({
 
 describe('useModelControls', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     $activeSessionId.set(null)
     setCurrentModel('')
     setCurrentProvider('')
@@ -194,5 +199,113 @@ describe('useModelControls', () => {
     // A profile swap forces a reseed to the new profile's default.
     await result.current.refreshCurrentModel(true)
     expect($currentModel.get()).toBe('openai/gpt-5.5')
+  })
+
+  // ── hc-512: catalog validation — a selection outside the catalog is never
+  //    applied silently; it falls back to the default with a one-time toast.
+
+  const catalogPayload = {
+    model: 'deepseek-v4-pro-APEX',
+    provider: 'custom:apex-nodes.com',
+    providers: [
+      {
+        slug: 'custom:apex-nodes.com',
+        name: 'Apex-nodes.com',
+        is_current: true,
+        models: ['deepseek-v4-pro-APEX', 'deepseek-v4-flash']
+      }
+    ]
+  }
+
+  function seededClient() {
+    const queryClient = new QueryClient()
+
+    queryClient.setQueryData(['model-options', 'global'], catalogPayload)
+
+    return queryClient
+  }
+
+  it('rejects a pre-session pick that is not in the cached catalog and falls back to the default', async () => {
+    const requestGateway = vi.fn()
+
+    const { result } = renderHook(() =>
+      useModelControls({ activeSessionId: null, queryClient: seededClient(), requestGateway })
+    )
+
+    await expect(
+      result.current.selectModel({ model: 'ghost-model-1', provider: 'custom:apex-nodes.com' })
+    ).resolves.toBe(false)
+
+    // Fallback = the catalog default, applied as plain UI state; the reject is
+    // NOT silent (one toast) and never reaches the gateway.
+    expect($currentModel.get()).toBe('deepseek-v4-pro-APEX')
+    expect($currentProvider.get()).toBe('custom:apex-nodes.com')
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'warning' }))
+    expect(requestGateway).not.toHaveBeenCalled()
+  })
+
+  it('fails open when no catalog is cached yet (pick applies as before)', async () => {
+    const requestGateway = vi.fn()
+
+    const { result } = renderHook(() =>
+      useModelControls({ activeSessionId: null, queryClient: new QueryClient(), requestGateway })
+    )
+
+    await expect(
+      result.current.selectModel({ model: 'ghost-model-2', provider: 'anywhere' })
+    ).resolves.toBe(true)
+
+    expect($currentModel.get()).toBe('ghost-model-2')
+  })
+
+  it('reconciles a stale sticky pick against a fresh catalog exactly once', () => {
+    setCurrentModel('ghost-model-3')
+    setCurrentProvider('custom:apex-nodes.com')
+
+    const { result } = renderHook(() =>
+      useModelControls({ activeSessionId: null, queryClient: seededClient(), requestGateway: vi.fn() })
+    )
+
+    result.current.reconcileModelSelection(catalogPayload)
+
+    expect($currentModel.get()).toBe('deepseek-v4-pro-APEX')
+    expect($currentProvider.get()).toBe('custom:apex-nodes.com')
+    expect(notify).toHaveBeenCalledTimes(1)
+
+    // Same stale id resurfacing must not re-toast (one-time per app run).
+    setCurrentModel('ghost-model-3')
+    result.current.reconcileModelSelection(catalogPayload)
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect($currentModel.get()).toBe('deepseek-v4-pro-APEX')
+  })
+
+  it('leaves a valid selection alone on reconcile', () => {
+    setCurrentModel('deepseek-v4-flash')
+    setCurrentProvider('custom:apex-nodes.com')
+
+    const { result } = renderHook(() =>
+      useModelControls({ activeSessionId: null, queryClient: seededClient(), requestGateway: vi.fn() })
+    )
+
+    result.current.reconcileModelSelection(catalogPayload)
+
+    expect($currentModel.get()).toBe('deepseek-v4-flash')
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('never reconciles session-scoped state (server-truth)', () => {
+    $activeSessionId.set('runtime-9')
+    setCurrentModel('ghost-model-4')
+    setCurrentProvider('custom:apex-nodes.com')
+
+    const { result } = renderHook(() =>
+      useModelControls({ activeSessionId: 'runtime-9', queryClient: seededClient(), requestGateway: vi.fn() })
+    )
+
+    result.current.reconcileModelSelection(catalogPayload)
+
+    expect($currentModel.get()).toBe('ghost-model-4')
+    expect(notify).not.toHaveBeenCalled()
   })
 })

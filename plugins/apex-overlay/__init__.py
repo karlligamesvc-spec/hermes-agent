@@ -47,6 +47,19 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
 
     try:
+        from apex_overlay import model_catalog_dedupe
+
+        if not model_catalog_dedupe.apply():
+            logger.warning(
+                "apex-overlay: hc-512 model-catalog sentinel dedupe seam did "
+                "not fully apply (see prior error). The model picker may show "
+                "the managed sentinel id (…-APEX) and the relay's live bare id "
+                "as two separate rows for the same route."
+            )
+    except Exception:
+        logger.warning("apex-overlay: model_catalog_dedupe seam failed to load", exc_info=True)
+
+    try:
         from apex_overlay import models_dev_fast
 
         if not models_dev_fast.apply():

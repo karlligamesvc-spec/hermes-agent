@@ -25,6 +25,7 @@ import { useI18n } from '@/i18n'
 import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { filterPickerProviders } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
+import { $authState, signOutAccount } from '@/store/auth'
 import { $modelPresets, applyModelPreset, modelPresetKey, setModelPreset } from '@/store/model-presets'
 import {
   $visibleModels,
@@ -47,6 +48,8 @@ import {
   setCurrentReasoningEffort
 } from '@/store/session'
 import type { MoaConfigResponse, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
+
+import { useModelControls } from '../session/hooks/use-model-controls'
 
 import { EFFORT_OPTIONS, resolveFastControl } from './model-edit-submenu'
 
@@ -100,6 +103,40 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     queryKey: ['moa-presets'],
     queryFn: (): Promise<MoaConfigResponse> => getMoaModels()
   })
+
+  // hc-512 ③: when a freshly loaded catalog no longer contains the sticky
+  // pre-session pick, snap back to the default with a one-time toast instead
+  // of silently showing a model that isn't in the list.
+  const { reconcileModelSelection } = useModelControls({
+    activeSessionId,
+    queryClient,
+    requestGateway
+  })
+
+  useEffect(() => {
+    reconcileModelSelection(modelOptions.data)
+  }, [modelOptions.data, reconcileModelSelection])
+
+  // hc-512 ④: the runtime's live-catalog probe fails silently (the APEX group
+  // just shrinks to the configured model), so ask the shell — which holds the
+  // relay key — whether the relay catalog is actually reachable, and say so
+  // explicitly. Managed signed-in installs only; the bridge is optional (an
+  // older main process / web preview simply never shows the notice).
+  const authState = useStore($authState)
+
+  const relayCatalogBridge =
+    typeof window !== 'undefined' ? window.hermesDesktop?.managed?.relayCatalog : undefined
+
+  const relayCatalog = useQuery({
+    queryKey: ['managed-relay-catalog'],
+    enabled: Boolean(relayCatalogBridge) && authState.enabled === true && authState.status === 'signed-in',
+    queryFn: () => relayCatalogBridge!({ refresh: true }),
+    staleTime: 60_000,
+    retry: false
+  })
+
+  const relayCatalogStatus = relayCatalog.data?.status
+  const catalogDegraded = relayCatalogStatus === 'unauthorized' || relayCatalogStatus === 'unreachable'
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     !!activeSessionId,
@@ -331,6 +368,35 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
           <DropdownMenuSeparator className="mx-0" />
 
+          {catalogDegraded ? (
+            <>
+              <DropdownMenuItem
+                className={cn(dropdownMenuRow, 'text-amber-600 dark:text-amber-300')}
+                onSelect={event => {
+                  if (relayCatalogStatus === 'unauthorized') {
+                    // Dead relay key that self-heal couldn't refresh — the only
+                    // fix is a re-login; hand over to the login screen.
+                    void signOutAccount()
+
+                    return
+                  }
+
+                  // Transient network/relay failure — re-probe + re-pull the
+                  // catalog in place, keeping the menu open to show the result.
+                  event.preventDefault()
+                  void relayCatalog.refetch()
+                  void refreshModels()
+                }}
+              >
+                <Codicon className="mr-1.5 shrink-0" name="warning" size="0.75rem" />
+                <span className="min-w-0 flex-1 truncate">
+                  {relayCatalogStatus === 'unauthorized' ? copy.catalogUnauthorized : copy.catalogUnreachable}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="mx-0" />
+            </>
+          ) : null}
+
           {loading ? (
             <DropdownMenuGroup className="py-1">
               {Array.from({ length: 4 }, (_, index) => (
@@ -358,7 +424,12 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                     group.provider.slug === optionsProvider &&
                     (optionsModel === family.id || optionsModel === family.fastId)
 
-                  const name = modelDisplayParts(family.id).name
+                  // Same splitter the composer pill uses (displayModelName →
+                  // modelDisplayParts), so the selected model always reads
+                  // identically in the pill and in this list (hc-512). Brand /
+                  // variant suffixes render as a grayed tag, like the
+                  // visibility dialog.
+                  const { name, tag } = modelDisplayParts(family.id)
 
                   // Reasoning/speed live at the top for the active model, so a
                   // row is a plain select: commit the model + close the picker.
@@ -374,7 +445,10 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                         closeMenu()
                       }}
                     >
-                      <span className="min-w-0 flex-1 truncate">{name}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {name}
+                        {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
+                      </span>
                       {isCurrent ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
                     </DropdownMenuItem>
                   )
