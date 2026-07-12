@@ -52,6 +52,14 @@ const {
   shouldApply: shouldApplyClientConfig
 } = require('./apex-client-config.cjs')
 const {
+  applyPlatformSkills,
+  fetchPlatformSkills,
+  isPlatformSkillsEnabled,
+  normalizeStoredManifest,
+  removePlatformSkills,
+  shouldApplyManifest
+} = require('./apex-platform-skills.cjs')
+const {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
   createSessionWindowRegistry,
@@ -881,6 +889,14 @@ const DESKTOP_MANAGED_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-man
 // runtime's global-config API once the gateway is open. No secrets inside, so
 // plain JSON (no safeStorage), unlike apex-managed.json.
 const DESKTOP_CLIENT_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-client-config.json')
+// apex-platform-skills.json caches the installed platform SKILL manifest hash
+// ({ manifestHash, installedAt, count } — see apex-platform-skills.cjs). The
+// desktop pulls the platform SKILL family (JWT-authed) after sign-in and at
+// boot, writing it under HERMES_HOME/skills/apexnodes/ so a desktop agent has
+// the same steering SKILLs a cloud agent has (hc-520 / A-10). The hash lets an
+// unchanged boot skip the ~150KB payload. No secrets inside (curated Markdown),
+// so plain JSON — like apex-client-config.json, unlike apex-managed.json.
+const DESKTOP_PLATFORM_SKILLS_PATH = path.join(app.getPath('userData'), 'apex-platform-skills.json')
 // apex-feishu.json holds the signed-in user's OWN Feishu app credential mirrored
 // from the cloud (hc-444). The app_secret is a real secret → stored ENCRYPTED
 // (safeStorage, same treatment as the managed relay key in apex-managed.json);
@@ -5225,6 +5241,85 @@ async function refreshClientConfigFromPlatform(reason) {
   }
 }
 
+// ── Platform SKILL distribution (apex-platform-skills.cjs) ──────────────────
+// The desktop bundle ships zero platform skills. We pull the platform SKILL
+// family (JWT-authed GET /api/v1/desktop/platform-skills) at boot and after
+// every successful managed sign-in, and write it under HERMES_HOME/skills/
+// apexnodes/ — the runtime's native categorized skill layout — so a desktop
+// agent gains the same steering SKILLs a cloud agent has (notably
+// douyin-video-transcript: forces social_download instead of a browser hard-
+// scrape, the A-10 fix). Fail-soft: any failure leaves the installed set intact.
+
+function readPlatformSkillsState() {
+  try {
+    const raw = fs.readFileSync(DESKTOP_PLATFORM_SKILLS_PATH, 'utf8')
+    return normalizeStoredManifest(JSON.parse(raw))
+  } catch {
+    return normalizeStoredManifest(null)
+  }
+}
+
+function writePlatformSkillsState(next) {
+  fs.mkdirSync(path.dirname(DESKTOP_PLATFORM_SKILLS_PATH), { recursive: true })
+  writeFileAtomic(DESKTOP_PLATFORM_SKILLS_PATH, JSON.stringify(next, null, 2))
+}
+
+// Pull the platform SKILL manifest and (re)install it when the hash changed.
+// Non-blocking by contract (callers `void` it), bounded (~12s), and never throws
+// — any error only logs and leaves the installed skills untouched.
+async function refreshPlatformSkillsFromPlatform(reason) {
+  try {
+    const skillsRoot = path.join(HERMES_HOME, 'skills')
+
+    // Feature switch OFF → revert to the no-platform-SKILL state (idempotent)
+    // and clear the cache so a later re-enable re-pulls from scratch.
+    if (!isPlatformSkillsEnabled(process.env)) {
+      const { removed } = removePlatformSkills({ log: msg => rememberLog(msg), skillsRoot })
+      if (removed || readPlatformSkillsState().manifestHash) {
+        writePlatformSkillsState({ count: 0, installedAt: Date.now(), manifestHash: '' })
+      }
+      rememberLog(`[platform-skills] disabled via APEXNODES_PLATFORM_SKILLS; reverted (${reason})`)
+      return
+    }
+
+    const token = String(resolveManagedConfig().accessToken || '').trim()
+    if (!token) {
+      rememberLog(`[platform-skills] no login JWT on hand; skipping (${reason})`)
+      return
+    }
+
+    const stored = readPlatformSkillsState()
+    const fetched = await fetchPlatformSkills({
+      apiBase: apexApiBase(),
+      fetchJson: apexAuthGetJson,
+      knownHash: stored.manifestHash,
+      log: msg => rememberLog(msg),
+      timeoutMs: 12_000,
+      token
+    })
+    if (!fetched) return // offline / 401 / garbage → installed set stands
+    if (fetched.unchanged) {
+      rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
+      return
+    }
+    if (!shouldApplyManifest(fetched.manifestHash, stored.manifestHash)) {
+      rememberLog(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
+      return
+    }
+
+    const result = applyPlatformSkills({ log: msg => rememberLog(msg), skills: fetched.skills, skillsRoot })
+    writePlatformSkillsState({ count: result.installed.length, installedAt: Date.now(), manifestHash: fetched.manifestHash })
+    rememberLog(
+      `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
+    )
+    if (result.skippedUnsafe.length) {
+      rememberLog(`[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`)
+    }
+  } catch (error) {
+    rememberLog(`[platform-skills] refresh failed (ignored): ${error && error.message ? error.message : error}`)
+  }
+}
+
 // Product-critical config.yaml blocks watchdog. The dashboard's full-record
 // config save (settings pages still use it) has at least once dropped blocks
 // it didn't round-trip (custom_providers — killing relay routing with
@@ -5759,11 +5854,17 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
     // (contract: check at boot AND after every successful sign-in).
     // Fire-and-forget — provisioning must not wait on it.
     void refreshClientConfigFromPlatform('sign-in')
+    // Same sync point for the platform SKILL family (pull → install under
+    // HERMES_HOME/skills/apexnodes/). Fire-and-forget; must not block sign-in.
+    void refreshPlatformSkillsFromPlatform('sign-in')
     return { ok: true, hasRelayKey: true }
   }
   // Sign-in itself succeeded (valid token) even though provisioning fell back
   // to BYOK — still a sync point for the platform client config.
   void refreshClientConfigFromPlatform('sign-in')
+  // A valid token still lets us pull the platform SKILL family even when
+  // provisioning fell back to BYOK (the SKILLs are independent of the relay key).
+  void refreshPlatformSkillsFromPlatform('sign-in')
   return { ok: true, hasRelayKey: false }
 }
 
@@ -8752,6 +8853,11 @@ app.whenReady().then(() => {
   // + after every successful sign-in). Bounded at ~5s and strictly fail-soft —
   // an offline user boots exactly as before, on the cached state.
   void refreshClientConfigFromPlatform('boot')
+
+  // Platform SKILL sync: non-blocking boot pull for an already-signed-in user
+  // (contract: every boot + after every successful sign-in). Fail-soft and
+  // gated on a stored login JWT; a signed-out or offline user is a no-op.
+  void refreshPlatformSkillsFromPlatform('boot')
 
   // Managed relay-key self-heal: non-blocking boot probe of the relay's
   // /v1/models. If the stored key was rotated out (401), auto re-provision with
