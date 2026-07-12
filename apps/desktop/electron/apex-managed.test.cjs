@@ -21,6 +21,8 @@ const {
   MANAGED_PROVIDER,
   MANAGED_PROVIDER_NAME,
   accessTokenFromLogin,
+  RENEWED_TOKEN_HEADER,
+  renewedTokenFromHeaders,
   accountFromLogin,
   apexWebLoginUrl,
   buildManagedModelConfig,
@@ -640,6 +642,30 @@ test('accessTokenFromLogin extracts the JWT or null', () => {
   assert.equal(accessTokenFromLogin({}), null)
   assert.equal(accessTokenFromLogin({ access_token: '' }), null)
   assert.equal(accessTokenFromLogin(null), null)
+})
+
+// --- renewedTokenFromHeaders (hc-529 sliding-window renewal header) ---
+
+test('renewedTokenFromHeaders reads the lowercased header Electron/Node emit', () => {
+  assert.equal(RENEWED_TOKEN_HEADER, 'x-apex-renewed-token')
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': 'jwt.new' }), 'jwt.new')
+})
+
+test('renewedTokenFromHeaders unwraps Electron array-folded header values and trims', () => {
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': ['  jwt.arr  '] }), 'jwt.arr')
+})
+
+test('renewedTokenFromHeaders matches case-insensitively (proxy/test may preserve casing)', () => {
+  assert.equal(renewedTokenFromHeaders({ 'X-Apex-Renewed-Token': 'jwt.cap' }), 'jwt.cap')
+})
+
+test('renewedTokenFromHeaders returns "" when the header is absent, empty, or headers missing', () => {
+  assert.equal(renewedTokenFromHeaders({ 'content-type': 'application/json' }), '')
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': '   ' }), '')
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': [] }), '')
+  assert.equal(renewedTokenFromHeaders(null), '')
+  assert.equal(renewedTokenFromHeaders(undefined), '')
+  assert.equal(renewedTokenFromHeaders('not-an-object'), '')
 })
 
 // --- googleStartUrl / apexWebLoginUrl (browser-login start URLs) ---

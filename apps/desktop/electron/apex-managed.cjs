@@ -1038,6 +1038,36 @@ function accessTokenFromLogin(body) {
 }
 
 /**
+ * Response header the cloud sets to hand back a freshly-minted login JWT when the
+ * presented token nears its 7-day expiry (hc-529 sliding-window renewal). Node /
+ * Electron lowercase response header keys; we still match case-insensitively so a
+ * proxy or test that preserves casing resolves too.
+ */
+const RENEWED_TOKEN_HEADER = 'x-apex-renewed-token'
+
+/**
+ * Pull a renewed login JWT out of a response's headers, or '' when none is
+ * present. Pure + defensive: tolerates a missing headers object, Electron's
+ * array-valued header folding, and stray whitespace. The caller decides whether
+ * to persist it (only when actually signed in to managed — see main.cjs
+ * persistRenewedLoginToken). Never renews on an invalid/expired token: the cloud
+ * only emits this header on an authenticated response for a still-valid token.
+ *
+ * @param {Record<string, unknown> | null | undefined} headers
+ * @returns {string}
+ */
+function renewedTokenFromHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return ''
+  let value = headers[RENEWED_TOKEN_HEADER]
+  if (value === undefined) {
+    const key = Object.keys(headers).find(k => k.toLowerCase() === RENEWED_TOKEN_HEADER)
+    value = key ? headers[key] : undefined
+  }
+  if (Array.isArray(value)) value = value[0]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
  * Decode a JWT's payload (the middle base64url segment) WITHOUT verifying its
  * signature. We only read a few display claims (email / plan) for the account
  * panel — the token is never TRUSTED for authorization here (the relay validates
@@ -1109,6 +1139,8 @@ module.exports = {
   GOOGLE_START_PATH,
   WEB_LOGIN_PATH,
   accessTokenFromLogin,
+  RENEWED_TOKEN_HEADER,
+  renewedTokenFromHeaders,
   accountFromLogin,
   apexWebLoginUrl,
   buildManagedModelConfig,
