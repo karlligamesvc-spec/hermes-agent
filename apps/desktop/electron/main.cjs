@@ -135,6 +135,16 @@ const {
   normalizeStoredFeishu,
   parseFeishuCredentialsResponse
 } = require('./apex-feishu.cjs')
+const {
+  buildImEntrySpawnEnv,
+  isKnownChannel: isKnownImEntryChannel,
+  normalizeStoredImEntry,
+  parseFeishuIssueResponse,
+  parseFeishuPollResponse,
+  resolveFeishuIssueEndpoints,
+  secretFieldsFor: imEntrySecretFieldsFor,
+  shapeBinding: shapeImEntryBinding
+} = require('./apex-im-entry.cjs')
 const { startLoopbackLogin } = require('./apex-loopback.cjs')
 const {
   DATA_URL_READ_MAX_BYTES,
@@ -908,6 +918,15 @@ const DESKTOP_PLATFORM_SKILLS_PATH = path.join(app.getPath('userData'), 'apex-pl
 // .env and is never logged. Own file (not apex-managed.json) because the Feishu
 // office-suite credential and the managed-LLM relay key are unrelated concerns.
 const DESKTOP_FEISHU_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-feishu.json')
+// apex-im-entry.json holds hc-417 "IM 入口" channel bindings — the INDEPENDENT
+// per-channel credentials the user connects on the IM 入口 page (feishu first).
+// Secret field values are stored ENCRYPTED (safeStorage, same treatment as the
+// hc-444 app_secret); non-secret ids/domain in clear. main injects the decrypted
+// values JUST-IN-TIME into the backend spawn env, ADD-ONLY and spread AFTER the
+// hc-444 bridge so an hc-417 feishu app WINS any FEISHU_* collision → only one
+// Feishu app credential ever reaches the runtime (the dual-app WS collision the
+// hc-417 spike warned about can't happen). See electron/apex-im-entry.cjs.
+const DESKTOP_IM_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-im-entry.json')
 // Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
 // value its profile resolver would reject and exit on.
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -5121,6 +5140,124 @@ function desktopFeishuSpawnEnv() {
   return buildFeishuBackendEnv(resolveFeishuConfig())
 }
 
+// ── hc-417: Desktop IM 入口 channel bindings (store + injection) ─────────────
+// The IM 入口 page connects the local agent to an IM platform by scanning a QR /
+// pasting one code. Each binding's credential is persisted here ENCRYPTED and
+// injected into the backend spawn env so the runtime's adapter lights up on the
+// next boot. Separate store from apex-feishu.json (hc-444): that bridge mirrors
+// the cloud AGENT's app; hc-417 issues an INDEPENDENT app per the spike, so the
+// two never put a second long-connection on one Feishu app.
+
+// Read + decrypt the whole IM 入口 store into the normalized runtime shape (a map
+// keyed by channel id, secret fields already decrypted). Synchronous + never
+// throws (read at spawn time); a decrypt failure blanks that secret, which
+// normalizeStoredImEntry then drops as an unusable binding.
+function resolveImEntryStore() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
+  } catch {
+    return {}
+  }
+  if (!raw || typeof raw !== 'object' || !raw.bindings || typeof raw.bindings !== 'object') {
+    return {}
+  }
+  // Decrypt every secret-valued field in place before normalization; non-secret
+  // fields (app id, domain) are stored + read in clear.
+  const decryptedBindings = {}
+  for (const [channelId, record] of Object.entries(raw.bindings)) {
+    if (!record || typeof record !== 'object' || !record.fields || typeof record.fields !== 'object') {
+      continue
+    }
+    const secretKeys = new Set(imEntrySecretFieldsFor(channelId))
+    const fields = {}
+    for (const [fieldKey, value] of Object.entries(record.fields)) {
+      fields[fieldKey] = secretKeys.has(fieldKey) ? decryptDesktopSecret(value) : String(value ?? '')
+    }
+    decryptedBindings[channelId] = { fields, boundAt: record.boundAt }
+  }
+  return normalizeStoredImEntry({ bindings: decryptedBindings })
+}
+
+// Persist (or replace) one channel's binding, encrypting its secret fields via
+// safeStorage. Pass a shaped binding ({ channelId, fields, boundAt }); merges
+// into the existing store so other channels are untouched. THROWS if secure
+// storage is unavailable (encryptDesktopSecret is strict — a secret is never
+// written in clear), so the IPC caller can fail the bind cleanly.
+function writeImEntryBinding(binding) {
+  if (!binding || !isKnownImEntryChannel(binding.channelId)) {
+    return
+  }
+  fs.mkdirSync(path.dirname(DESKTOP_IM_ENTRY_CONFIG_PATH), { recursive: true })
+  let existing
+  try {
+    existing = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
+  } catch {
+    existing = null
+  }
+  const bindings =
+    existing && typeof existing === 'object' && existing.bindings && typeof existing.bindings === 'object'
+      ? { ...existing.bindings }
+      : {}
+  const secretKeys = new Set(imEntrySecretFieldsFor(binding.channelId))
+  const storedFields = {}
+  for (const [fieldKey, value] of Object.entries(binding.fields)) {
+    storedFields[fieldKey] = secretKeys.has(fieldKey) ? encryptDesktopSecret(String(value)) : String(value)
+  }
+  bindings[binding.channelId] = { fields: storedFields, boundAt: binding.boundAt }
+  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2))
+}
+
+// Forget one channel's binding (unbind). Rewrites the file without it, or removes
+// the file entirely when nothing remains.
+function clearImEntryBinding(channelId) {
+  let existing
+  try {
+    existing = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
+  } catch {
+    return
+  }
+  if (!existing || typeof existing !== 'object' || !existing.bindings) {
+    return
+  }
+  const bindings = { ...existing.bindings }
+  delete bindings[channelId]
+  if (Object.keys(bindings).length === 0) {
+    try {
+      fs.rmSync(DESKTOP_IM_ENTRY_CONFIG_PATH, { force: true })
+    } catch {
+      // Best effort.
+    }
+    return
+  }
+  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2))
+}
+
+// Build the IM 入口 spawn-env fragment for the local backend. Add-only vs an
+// explicit parent-env credential (a power-user / CI that set FEISHU_* out of band
+// wins). Called at spawn time (not cached) so a mid-session bind/unbind applies
+// on the next backend (re)start. Spread AFTER desktopFeishuSpawnEnv() at the call
+// site so an hc-417 feishu binding wins the FEISHU_* keys over the hc-444 bridge.
+function desktopImEntrySpawnEnv() {
+  const fragment = buildImEntrySpawnEnv(resolveImEntryStore())
+  if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
+    delete fragment.FEISHU_APP_ID
+    delete fragment.FEISHU_APP_SECRET
+    delete fragment.FEISHU_DOMAIN
+  }
+  return fragment
+}
+
+// Display-only view of the IM 入口 bindings for the renderer — NO secret ever
+// crosses the bridge (only channel id, bound timestamp, non-secret domain).
+function imEntryBoundList() {
+  return Object.values(resolveImEntryStore()).map(binding => ({
+    channelId: binding.channelId,
+    boundAt: binding.boundAt || null,
+    domain: binding.fields.domain || ''
+  }))
+}
+
 // Fetch the signed-in user's Feishu credential from the cloud and persist it
 // (encrypted). Authenticates with the STORED login JWT (the same encrypted JWT
 // the managed self-heal reuses) — no re-login needed for a user already signed in
@@ -6514,6 +6651,11 @@ async function spawnPoolBackend(profile, entry) {
         // {} (no keys) when not connected; add-only vs an explicit parent-env
         // credential.
         ...desktopFeishuSpawnEnv(),
+        // hc-417: inject any IM 入口 channel binding (feishu first) — decrypted
+        // just in time. Spread AFTER the hc-444 bridge so an hc-417 feishu app
+        // wins the FEISHU_* keys → only one Feishu app credential reaches the
+        // runtime (the dual-app WS collision the spike warned about can't happen).
+        ...desktopImEntrySpawnEnv(),
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
@@ -6740,6 +6882,10 @@ async function startHermes() {
           // {} (no keys) when not connected; add-only vs an explicit parent-env
           // credential.
           ...desktopFeishuSpawnEnv(),
+          // hc-417: IM 入口 channel binding injection — see the primary spawn
+          // site above. Spread after the hc-444 bridge for the same collision
+          // guarantee.
+          ...desktopImEntrySpawnEnv(),
           TERMINAL_CWD: hermesCwd,
           HERMES_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -7660,6 +7806,126 @@ ipcMain.handle('hermes:feishu:openBind', async () => {
   const url = `${endpoints.authBase}/zh/createbot`
   const opened = openExternalUrl(url)
   return { ok: opened, url }
+})
+
+// ── hc-417: Desktop IM 入口 (renderer surface) ──────────────────────────────
+// The IM 入口 page connects the local agent to an IM platform. feishu is the
+// first channel: an INDEPENDENT app is issued via a cloud device-code endpoint
+// (createbot init→begin→poll primitives, credential pinned to a desktop anchor
+// agent) — NOT the hc-444 GET /desktop/feishu-credentials path, which reuses the
+// cloud agent's app and would collide on Feishu's WS cluster (spike finding).
+// The renderer owns the polling state machine; main exposes issue (one init) +
+// poll (one status check) + list + unbind. No secret ever crosses to the
+// renderer — list returns only display fields; the credential is persisted
+// encrypted here and injected into the backend spawn env.
+
+// list: display-only view of the local bindings (no network, no secret).
+ipcMain.handle('hermes:imEntry:list', async () => ({ channels: imEntryBoundList() }))
+
+// feishuIssue: start the device-code flow. Authenticates with the stored managed
+// login JWT (same as the hc-444 bridge). Returns the scan URL + a poll handle the
+// renderer's state machine drives. Endpoint paths are PENDING the cloud PR
+// (apex-im-entry.cjs) — a 404 surfaces as SERVICE_UNAVAILABLE (retryable), never
+// a hard crash. NEVER throws; the secret is never logged.
+ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { issueUrl } = resolveFeishuIssueEndpoints(endpoints.apiBase, process.env)
+  let body
+  try {
+    body = await apexAuthPostJson(issueUrl, { body: {}, bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      // The cloud issuance endpoint isn't deployed yet → friendly "coming soon".
+      return { ok: false, message: 'SERVICE_UNAVAILABLE' }
+    }
+    rememberLog(`[im-entry] feishu issue failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const parsed = parseFeishuIssueResponse(body)
+  if (!parsed) {
+    rememberLog('[im-entry] feishu issue response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  return { ok: true, ...parsed }
+})
+
+// feishuPoll: one device-code status check for a given deviceCode. On 'authorized'
+// it persists the issued credential ENCRYPTED and re-homes the backend so the
+// Feishu adapter comes alive, then reports authorized (the renderer keeps its
+// "connecting…" state until the reload lands). All other statuses return as-is so
+// the renderer's machine decides whether to keep polling / stop. A keychain
+// failure fails the bind cleanly (KEYCHAIN_UNAVAILABLE) — never a plaintext write.
+ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, deviceCode) => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+  const code = typeof deviceCode === 'string' ? deviceCode.trim() : ''
+  if (!code) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { pollUrl } = resolveFeishuIssueEndpoints(endpoints.apiBase, process.env)
+  let body
+  try {
+    body = await apexAuthPostJson(pollUrl, { body: { device_code: code }, bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      return { ok: false, message: 'SERVICE_UNAVAILABLE' }
+    }
+    rememberLog(`[im-entry] feishu poll failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const { status, credential } = parseFeishuPollResponse(body)
+  if (status !== 'authorized' || !credential) {
+    return { ok: true, status }
+  }
+
+  const binding = shapeImEntryBinding('feishu', credential)
+  if (!binding) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  try {
+    writeImEntryBinding(binding)
+  } catch (error) {
+    // encryptDesktopSecret is strict — no keychain → no plaintext write.
+    rememberLog(`[im-entry] feishu credential not stored: ${error && error.message ? error.message : 'keychain'}`)
+    return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
+  }
+  // Re-home the local backend so the freshly-injected FEISHU_* env takes effect.
+  await teardownPrimaryBackendAndWait()
+  mainWindow?.reload()
+  return { ok: true, status: 'authorized' }
+})
+
+// unbind: forget one channel's local binding and restart the backend so its
+// adapter goes dark on the next boot. Cloud/anchor state is untouched — this is a
+// desktop-local disconnect only.
+ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
+  const id = typeof channelId === 'string' ? channelId.trim() : ''
+  if (!isKnownImEntryChannel(id)) {
+    return { ok: false }
+  }
+  clearImEntryBinding(id)
+  await teardownPrimaryBackendAndWait()
+  mainWindow?.reload()
+  return { ok: true }
 })
 
 // ── Platform client-config sync (renderer surface) ──────────────────────────

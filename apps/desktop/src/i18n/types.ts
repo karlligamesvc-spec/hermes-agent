@@ -817,6 +817,63 @@ export interface Translations {
     platformIntro: Record<string, string>
   }
 
+  // hc-417 "IM 入口" — consumer page to connect the local agent to an IM
+  // platform by scanning a QR / pasting one code. Deliberately jargon-free.
+  imEntry: {
+    title: string
+    intro: string
+    loading: string
+    connect: string
+    manage: string
+    comingSoon: string
+    connectedBadge: string
+    availableHeading: string
+    comingSoonHeading: string
+    boundHeading: string
+    boundEmpty: string
+    connectedOn: (when: string) => string
+    unbind: string
+    unbindConfirm: (name: string) => string
+    unbindDoneTitle: string
+    unbindDoneMessage: string
+    // Live connection state merged from /api/messaging/platforms.
+    liveState: { connected: string; pending: string; error: string; connecting: string; unknown: string }
+    // Per-channel display copy. Keyed by runtime Platform id.
+    channels: Record<string, { name: string; tagline: string }>
+    dialog: {
+      connectTitle: (name: string) => string
+      signInFirstTitle: string
+      signInFirst: string
+      issuing: string
+      scanPrompt: string
+      scanHint: string
+      scanned: string
+      openLink: string
+      connecting: string
+      authorizedTitle: string
+      authorizedMessage: string
+      retry: string
+      cancel: string
+      close: string
+      comingSoonTitle: string
+      comingSoonBody: string
+      // paste-code template (framework; no available channel uses it yet).
+      pasteHeading: string
+      pasteLabel: string
+      pastePlaceholder: string
+      pasteSubmit: string
+      advanced: string
+      errors: {
+        sign_in: string
+        service_unavailable: string
+        expired: string
+        denied: string
+        request_failed: string
+        keychain: string
+      }
+    }
+  }
+
   profiles: {
     close: string
     nameHint: string

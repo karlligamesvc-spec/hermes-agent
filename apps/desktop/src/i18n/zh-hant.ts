@@ -1091,6 +1091,70 @@ export const zhHant = defineLocale({
     platformIntro: {}
   },
 
+  imEntry: {
+    title: '訊息管道',
+    intro: '讓 AI 助手在你常用的聊天軟體裡替你回訊息——掃一下碼就能連上一個管道。',
+    loading: '正在載入管道…',
+    connect: '連接',
+    manage: '管理',
+    comingSoon: '即將支援',
+    connectedBadge: '已連接',
+    availableHeading: '現在可用',
+    comingSoonHeading: '即將支援',
+    boundHeading: '已連接的管道',
+    boundEmpty: '還沒有連接任何管道。',
+    connectedOn: when => `${when} 連接`,
+    unbind: '中斷',
+    unbindConfirm: name => `中斷${name}？本裝置上的 AI 助手會停止在那裡回訊息。`,
+    unbindDoneTitle: '已中斷',
+    unbindDoneMessage: '正在重新啟動以套用…',
+    liveState: {
+      connected: '已連接',
+      pending: '重新啟動後生效',
+      error: '連接異常',
+      connecting: '連接中…',
+      unknown: '未知'
+    },
+    channels: {
+      feishu: { name: '飛書 / Lark', tagline: '在飛書的私訊和群組裡回訊息。' },
+      dingtalk: { name: '釘釘', tagline: '在釘釘的私訊和群組裡回訊息。' },
+      weixin: { name: '微信', tagline: '用你的個人微信回訊息。' },
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私訊和群組裡回訊息。' },
+      wecom: { name: '企業微信', tagline: '在企業微信裡回訊息。' }
+    },
+    dialog: {
+      connectTitle: name => `連接${name}`,
+      signInFirstTitle: '請先登入',
+      signInFirst: '登入你的 APEX 帳號後即可連接訊息管道。',
+      issuing: '正在產生 QR code…',
+      scanPrompt: '掃碼連接',
+      scanHint: '開啟飛書掃描 QR code，並在手機上確認。',
+      scanned: '已掃碼——請在手機上確認以完成連接。',
+      openLink: '改用連結開啟',
+      connecting: '連接中…',
+      authorizedTitle: '已連接',
+      authorizedMessage: '正在重新啟動以套用…',
+      retry: '重試',
+      cancel: '取消',
+      close: '關閉',
+      comingSoonTitle: '即將支援',
+      comingSoonBody: '這個管道還不能連接，我們正在開發中。',
+      pasteHeading: '貼上你的碼',
+      pasteLabel: '連接碼',
+      pastePlaceholder: '貼上平台給你的碼',
+      pasteSubmit: '連接',
+      advanced: '進階設定',
+      errors: {
+        sign_in: '登入已過期，請重新登入後再連接。',
+        service_unavailable: '此管道尚未開放，請稍後再試。',
+        expired: 'QR code 已過期，請重新開始取得新的。',
+        denied: '請求被拒絕，請重新開始再試。',
+        request_failed: '出了點問題，請重試。',
+        keychain: '安全儲存未開啟，連接未儲存。請開啟鑰匙圈存取後重試。'
+      }
+    }
+  },
+
   profiles: {
     close: '關閉設定檔',
     nameHint: '小寫字母、數字、連字號和底線。必須以字母或數字開頭。',

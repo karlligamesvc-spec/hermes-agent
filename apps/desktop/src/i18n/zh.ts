@@ -1226,6 +1226,70 @@ export const zh: Translations = {
     }
   },
 
+  imEntry: {
+    title: '消息渠道',
+    intro: '让 AI 助手在你常用的聊天软件里替你回消息——扫一下码就能连上一个渠道。',
+    loading: '正在加载渠道…',
+    connect: '连接',
+    manage: '管理',
+    comingSoon: '即将支持',
+    connectedBadge: '已连接',
+    availableHeading: '现在可用',
+    comingSoonHeading: '即将支持',
+    boundHeading: '已连接的渠道',
+    boundEmpty: '还没有连接任何渠道。',
+    connectedOn: when => `${when} 连接`,
+    unbind: '断开',
+    unbindConfirm: name => `断开${name}？本设备上的 AI 助手会停止在那里回消息。`,
+    unbindDoneTitle: '已断开',
+    unbindDoneMessage: '正在重启以生效…',
+    liveState: {
+      connected: '已连接',
+      pending: '重启后生效',
+      error: '连接异常',
+      connecting: '连接中…',
+      unknown: '未知'
+    },
+    channels: {
+      feishu: { name: '飞书', tagline: '在飞书的私聊和群里回消息。' },
+      dingtalk: { name: '钉钉', tagline: '在钉钉的私聊和群里回消息。' },
+      weixin: { name: '微信', tagline: '用你的个人微信回消息。' },
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私聊和群里回消息。' },
+      wecom: { name: '企业微信', tagline: '在企业微信里回消息。' }
+    },
+    dialog: {
+      connectTitle: name => `连接${name}`,
+      signInFirstTitle: '请先登录',
+      signInFirst: '登录你的 APEX 账号后即可连接消息渠道。',
+      issuing: '正在生成二维码…',
+      scanPrompt: '扫码连接',
+      scanHint: '打开飞书扫描二维码，并在手机上确认。',
+      scanned: '已扫码——请在手机上确认以完成连接。',
+      openLink: '改用链接打开',
+      connecting: '连接中…',
+      authorizedTitle: '已连接',
+      authorizedMessage: '正在重启以生效…',
+      retry: '重试',
+      cancel: '取消',
+      close: '关闭',
+      comingSoonTitle: '即将支持',
+      comingSoonBody: '这个渠道还不能连接，我们正在开发中。',
+      pasteHeading: '粘贴你的码',
+      pasteLabel: '连接码',
+      pastePlaceholder: '粘贴平台给你的码',
+      pasteSubmit: '连接',
+      advanced: '高级设置',
+      errors: {
+        sign_in: '登录已过期，请重新登录后再连接。',
+        service_unavailable: '该渠道尚未开放，请稍后再试。',
+        expired: '二维码已过期，请重新开始获取新的。',
+        denied: '请求被拒绝，请重新开始再试。',
+        request_failed: '出了点问题，请重试。',
+        keychain: '安全存储未开启，连接未保存。请开启钥匙串访问后重试。'
+      }
+    }
+  },
+
   profiles: {
     close: '关闭配置档案',
     nameHint: '小写字母、数字、连字符和下划线。必须以字母或数字开头。',

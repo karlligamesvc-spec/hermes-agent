@@ -4,6 +4,10 @@ export const SETTINGS_ROUTE = '/settings'
 export const COMMAND_CENTER_ROUTE = '/command-center'
 export const SKILLS_ROUTE = '/skills'
 export const MESSAGING_ROUTE = '/messaging'
+// hc-417 "IM 入口" — the consumer-facing page to connect the local agent to an
+// IM platform (飞书 first). Distinct from MESSAGING_ROUTE, which is the
+// developer-oriented per-platform env editor (consumer-hidden).
+export const IM_ENTRY_ROUTE = '/im-entry'
 export const ARTIFACTS_ROUTE = '/artifacts'
 export const CRON_ROUTE = '/cron'
 export const TASKS_ROUTE = '/tasks'
@@ -20,6 +24,7 @@ export type AppView =
   | 'chat'
   | 'command-center'
   | 'cron'
+  | 'im-entry'
   | 'messaging'
   | 'profile'
   | 'profiles'
@@ -33,6 +38,7 @@ export type AppRouteId =
   | 'artifacts'
   | 'command-center'
   | 'cron'
+  | 'im-entry'
   | 'messaging'
   | 'new'
   | 'profile'
@@ -54,6 +60,7 @@ export const APP_ROUTES = [
   { id: 'command-center', path: COMMAND_CENTER_ROUTE, view: 'command-center' },
   { id: 'skills', path: SKILLS_ROUTE, view: 'skills' },
   { id: 'messaging', path: MESSAGING_ROUTE, view: 'messaging' },
+  { id: 'im-entry', path: IM_ENTRY_ROUTE, view: 'im-entry' },
   { id: 'artifacts', path: ARTIFACTS_ROUTE, view: 'artifacts' },
   { id: 'cron', path: CRON_ROUTE, view: 'cron' },
   { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },

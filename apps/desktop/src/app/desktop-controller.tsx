@@ -133,6 +133,7 @@ const ArtifactsView = lazy(async () => ({ default: (await import('./artifacts'))
 const CommandCenterView = lazy(async () => ({ default: (await import('./command-center')).CommandCenterView }))
 const CronView = lazy(async () => ({ default: (await import('./cron')).CronView }))
 const MessagingView = lazy(async () => ({ default: (await import('./messaging')).MessagingView }))
+const ImEntryView = lazy(async () => ({ default: (await import('./im-entry')).ImEntryView }))
 const ProfilesView = lazy(async () => ({ default: (await import('./profiles')).ProfilesView }))
 const ProfileStatsView = lazy(async () => ({ default: (await import('./profile')).ProfileStatsView }))
 const SearchView = lazy(async () => ({ default: (await import('./search')).SearchView }))
@@ -1180,6 +1181,14 @@ export function DesktopController() {
               </Suspense>
             }
             path="messaging"
+          />
+          <Route
+            element={
+              <Suspense fallback={null}>
+                <ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />
+              </Suspense>
+            }
+            path="im-entry"
           />
           <Route
             element={

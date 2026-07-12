@@ -77,6 +77,22 @@ declare global {
         // Open the cloud web binding flow in the system browser (unbound users).
         openBind: () => Promise<{ ok: boolean; url: string }>
       }
+      // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
+      // scanning a QR / pasting one code. feishu issues an INDEPENDENT app via a
+      // cloud device-code flow (renderer owns the polling loop). No secret ever
+      // crosses to the renderer. Optional: an older main process may not expose
+      // the bridge yet. See electron/apex-im-entry.cjs.
+      imEntry?: {
+        // Local bound channels (display fields only, no network, no secret).
+        list: () => Promise<DesktopImEntryListResult>
+        // Start the feishu device-code flow → scan URL + poll handle.
+        feishuIssue: () => Promise<DesktopImEntryIssueResult>
+        // One device-code status check; on 'authorized' main persists the
+        // credential (encrypted) + restarts the backend (reloads the window).
+        feishuPoll: (deviceCode: string) => Promise<DesktopImEntryPollResult>
+        // Forget one channel's local binding + restart the backend.
+        unbind: (channelId: string) => Promise<{ ok: boolean }>
+      }
       // Platform client-config sync — the cloud serves a versioned client
       // config the main process caches at boot / after sign-in and applies to
       // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
@@ -470,6 +486,46 @@ export interface DesktopFeishuSyncResult {
   agentName?: string
   domain?: string
   credentialStatus?: string
+  message?: string
+}
+
+// hc-417: one locally-bound IM 入口 channel (display-only — no secret). `boundAt`
+// is epoch ms; `domain` is the non-secret feishu/lark routing value ('' if none).
+export interface DesktopImEntryBinding {
+  channelId: string
+  boundAt: number | null
+  domain: string
+}
+
+export interface DesktopImEntryListResult {
+  channels: DesktopImEntryBinding[]
+}
+
+// Result of imEntry.feishuIssue() — the device-code INIT. On ok:true it carries
+// the scan URL (open / render as QR) + a poll handle (deviceCode + cadence). On
+// ok:false, `message` is a stable marker the renderer maps to copy:
+// NOT_SIGNED_IN / SESSION_EXPIRED (→ sign in) · SERVICE_UNAVAILABLE (endpoint not
+// live yet → coming soon) · REQUEST_FAILED (transient → retry).
+export interface DesktopImEntryIssueResult {
+  ok: boolean
+  needsSignIn?: boolean
+  message?: string
+  deviceCode?: string
+  scanUrl?: string
+  qrUrl?: string
+  intervalMs?: number
+  expiresInMs?: number
+}
+
+// Result of imEntry.feishuPoll() — one status check. `status` is one of
+// pending | scanned | authorized | denied | expired. On authorized the main
+// process has already stored the credential + is restarting the backend.
+// KEYCHAIN_UNAVAILABLE means secure storage is off, so the credential was NOT
+// saved (never written in plaintext) — the user must enable OS keychain access.
+export interface DesktopImEntryPollResult {
+  ok: boolean
+  status?: 'authorized' | 'denied' | 'expired' | 'pending' | 'scanned'
+  needsSignIn?: boolean
   message?: string
 }
 
