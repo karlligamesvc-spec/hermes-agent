@@ -496,6 +496,11 @@ const LOGIN_PATH = '/api/v1/auth/login'
 const REGISTER_PATH = '/api/v1/auth/register'
 const PROVISION_KEY_PATH = '/api/v1/desktop/provision-key'
 const GOOGLE_START_PATH = '/api/v1/auth/google/start'
+// hc-530: web → desktop one-click login. The web app (already signed in) mints a
+// short-TTL single-use code delivered over the apexnodes://login deep link; the
+// desktop exchanges it here for a login JWT. On AUTH_BASE alongside login (the
+// endpoint is unauthenticated — the code IS the credential).
+const HANDOFF_EXCHANGE_PATH = '/api/v1/auth/desktop-handoff/exchange'
 
 // User-facing site path of the web login page. The desktop "用 APEX 登录" flow
 // opens `${AUTH_BASE}/zh/login?desktop_cb=<loopback>&state=<s>`; the web login
@@ -542,7 +547,8 @@ function resolveApexEndpoints(env = {}) {
     provider: MANAGED_PROVIDER,
     loginUrl: `${authBase}${LOGIN_PATH}`,
     registerUrl: `${authBase}${REGISTER_PATH}`,
-    provisionKeyUrl: `${apiBase}${PROVISION_KEY_PATH}`
+    provisionKeyUrl: `${apiBase}${PROVISION_KEY_PATH}`,
+    handoffExchangeUrl: `${authBase}${HANDOFF_EXCHANGE_PATH}`
   }
 }
 

@@ -56,6 +56,10 @@ declare global {
         // the system browser, catches the loopback redirect, and resolves with
         // the same managed assignment shape the email/password flow returns.
         browserSignIn: (payload: { provider: 'apex' | 'google' }) => Promise<DesktopManagedSignInResult>
+        // hc-530: web handoff sign-in. Exchange the one-time code delivered via the
+        // apexnodes://login deep link for the same managed assignment shape.
+        // Optional: an older main process may not expose it.
+        deepLinkSignIn?: (payload: { code: string }) => Promise<DesktopManagedSignInResult>
         signOut: () => Promise<{ ok: boolean }>
         // On-demand relay-key self-heal after a chat turn hit a relay auth error
         // (HTTP 401/403). Optional: an older main process may not expose it.

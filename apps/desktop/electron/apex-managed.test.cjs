@@ -65,6 +65,8 @@ test('resolveApexEndpoints returns prod defaults with empty env', () => {
   assert.equal(e.registerUrl, 'https://apex-nodes.com/api/v1/auth/register')
   // provision-key is on the API host per the P0 contract.
   assert.equal(e.provisionKeyUrl, 'https://api.apex-nodes.com/api/v1/desktop/provision-key')
+  // hc-530: handoff-code exchange is on the AUTH host alongside login.
+  assert.equal(e.handoffExchangeUrl, 'https://apex-nodes.com/api/v1/auth/desktop-handoff/exchange')
 })
 
 test('resolveApexEndpoints honors env overrides and strips trailing slashes', () => {
@@ -83,6 +85,7 @@ test('resolveApexEndpoints honors env overrides and strips trailing slashes', ()
   assert.equal(e.modelDisplay, 'deepseek-v4-flash-APEX')
   assert.equal(e.loginUrl, 'https://staging.apex-nodes.com/api/v1/auth/login')
   assert.equal(e.provisionKeyUrl, 'https://api.staging.apex-nodes.com/api/v1/desktop/provision-key')
+  assert.equal(e.handoffExchangeUrl, 'https://staging.apex-nodes.com/api/v1/auth/desktop-handoff/exchange')
 })
 
 test('resolveApexEndpoints modelDisplay precedence: explicit override > derived > default', () => {

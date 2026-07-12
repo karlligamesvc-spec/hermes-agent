@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),
     signIn: payload => ipcRenderer.invoke('hermes:managed:signIn', payload),
     browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
+    // hc-530: web → desktop one-click login. Exchange the one-time handoff code
+    // (from the apexnodes://login deep link) for a session — same result shape as
+    // browserSignIn.
+    deepLinkSignIn: payload => ipcRenderer.invoke('hermes:managed:deepLinkSignIn', payload),
     signOut: () => ipcRenderer.invoke('hermes:managed:signOut'),
     // On-demand relay-key self-heal after a chat turn hit a relay auth error
     // (HTTP 401/403): re-provision + report whether it healed or the user must

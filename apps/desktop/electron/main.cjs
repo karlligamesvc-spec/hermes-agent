@@ -7567,6 +7567,44 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
     return { ok: false, message: managedSignInErrorMessage(error) }
   }
 })
+
+// hc-530: exchange a web-minted one-time handoff code for a login JWT. The code
+// (never a token) arrived over the apexnodes://login deep link; this is the only
+// extra network hop the deep-link sign-in adds — everything after reuses the
+// shared provision path. Unauthenticated by design: the code IS the credential.
+async function exchangeHandoffCodeForToken(code) {
+  const trimmed = String(code || '').trim()
+  if (!trimmed) {
+    throw new Error('Desktop handoff code missing.')
+  }
+  const endpoints = resolveApexEndpoints(process.env)
+  const body = await apexAuthPostJson(endpoints.handoffExchangeUrl, { body: { code: trimmed } })
+  const token = body && typeof body.access_token === 'string' ? body.access_token.trim() : ''
+  if (!token) {
+    throw new Error('Desktop handoff exchange did not return an access token.')
+  }
+  return token
+}
+
+// deepLinkSignIn: the web "在桌面端打开" handoff. The web app (already signed in)
+// minted a one-time code delivered over apexnodes://login?code=…; exchange it for
+// a login JWT, then run the SAME provision-key → assignment path as the
+// email/password and browser flows (no separate auth system).
+ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
+  const code = String(payload?.code || '').trim()
+  if (!code) {
+    // EMPTY_FIELDS marker → renderer keeps it on the login screen silently.
+    return { ok: false, message: 'EMPTY_FIELDS' }
+  }
+  try {
+    const token = await exchangeHandoffCodeForToken(code)
+    const result = await provisionManagedFromAccessToken(token)
+    return managedSignInResultPayload(result)
+  } catch (error) {
+    return { ok: false, message: managedSignInErrorMessage(error) }
+  }
+})
+
 // signOut: forget the relay key. The renderer is responsible for re-pointing the
 // model at a BYOK provider if the user wants to keep chatting.
 ipcMain.handle('hermes:managed:signOut', async () => {

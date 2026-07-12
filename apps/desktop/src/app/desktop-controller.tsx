@@ -19,6 +19,7 @@ import { isMessagingSource, LOCAL_SESSION_SOURCE_IDS, MESSAGING_SESSION_SOURCE_I
 import { latestSessionTodos } from '../lib/todos'
 import { $authState } from '../store/auth'
 import { setCronJobs } from '../store/cron'
+import { $pendingDesktopLoginCode } from '../store/onboarding'
 import { startTaskNotifier } from '../store/tasks'
 import {
   $panesFlipped,
@@ -311,7 +312,24 @@ export function DesktopController() {
   // that arrived during boot is flushed exactly once.
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onDeepLink?.(payload => {
-      if (!payload || payload.kind !== 'blueprint' || !payload.name) {
+      if (!payload) {
+        return
+      }
+
+      // hc-530: apexnodes://login?code=… — web → desktop one-click login. Park the
+      // one-time code for the login screen to exchange (it owns the onboarding
+      // ctx). Ignore when already signed in: the web handoff is a sign-IN, not an
+      // account switch.
+      if (payload.kind === 'login') {
+        const code = typeof payload.params?.code === 'string' ? payload.params.code.trim() : ''
+        if (code && $authState.get().status !== 'signed-in') {
+          $pendingDesktopLoginCode.set(code)
+        }
+
+        return
+      }
+
+      if (payload.kind !== 'blueprint' || !payload.name) {
         return
       }
 
