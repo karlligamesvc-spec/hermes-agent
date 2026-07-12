@@ -1889,7 +1889,9 @@ export const en: Translations = {
       profile: 'Profile',
       settings: 'Settings',
       usage: 'Usage',
-      logout: 'Sign out'
+      logout: 'Sign out',
+      sessionExpiredTitle: 'Session expired',
+      sessionExpiredAction: 'Click to sign in again'
     }
   },
 

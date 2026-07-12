@@ -389,6 +389,11 @@ export interface DesktopManagedStatus {
   email: string
   // True when the managed-LLM default path is enabled for this build.
   enabled: boolean
+  // hc-519 rollback switch (default true): whether relay-auth loss drives the
+  // global login state (account-card degrade + startup/catalog self-heal).
+  // Optional so an older main process (no field) reads as undefined → treated as
+  // enabled (fail-safe to the new single-source-of-truth behavior).
+  loginStateTruth?: boolean
   // Real routed model id (e.g. deepseek-v4-pro).
   model: string
   // UI display label for the model (e.g. deepseek-v4-pro-APEX).

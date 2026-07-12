@@ -27,6 +27,17 @@ export type AuthStatus =
   // Account abnormal (403 account_disabled) — show the login screen with the
   // account-disabled message; the user must re-authenticate.
   | 'disabled'
+  // hc-519: a relay key IS on disk but the relay rejected it (401) and self-heal
+  // couldn't mint a fresh one (no reusable login token, or an expired JWT). The
+  // managed session is dead even though the key file exists — the OLD split-brain
+  // was: account card kept showing "已登录" (key present) while the model catalog
+  // said "登录已失效" (key rejected). This is the reconciled truth: identity is
+  // retained for display, the account card renders a "登录已失效" degrade, and the
+  // send path routes to re-sign-in. A softer degrade than 'signed-out': it keeps
+  // the local workspace usable and lets the sidebar card be the honest, clickable
+  // signal, rather than nuking the window to a full login screen for a
+  // managed-only failure. Escalates to 'signed-out' if the key is later cleared.
+  | 'expired'
 
 export interface DesktopAuthState {
   account: AuthAccount
@@ -38,6 +49,11 @@ export interface DesktopAuthState {
    *  right message. null on a clean first run (never signed in) — then the login
    *  screen shows just the buttons, no notice. Cleared on successful sign-in. */
   gateReason: 'account_disabled' | 'unauthorized' | null
+  /** hc-519 rollback switch (default true), mirrored from managed status. When
+   *  false, relay-auth loss does NOT drive the global state to 'expired' — the
+   *  app falls back to the hc-511 behavior (a relay 401 is only surfaced on a
+   *  chat send). Read by the recovery + startup/catalog reconcile paths. */
+  loginTruth: boolean
   status: AuthStatus
 }
 
@@ -80,6 +96,9 @@ export const $authState = atom<DesktopAuthState>({
   account: EMPTY_ACCOUNT,
   enabled: null,
   gateReason: null,
+  // Default on until the first status() reports the real switch value — a race
+  // before that resolves fails safe to the new single-source-of-truth behavior.
+  loginTruth: true,
   // A cached signed-in user starts unblocked; everyone else waits for the check.
   status: readCachedSignedIn() ? 'signed-in' : 'checking'
 })
@@ -109,7 +128,7 @@ export async function refreshAuthStatus(): Promise<void> {
     return refreshPromise
   }
 
-  refreshPromise = (async () => {
+  const run = (async () => {
     const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
     if (!bridge) {
@@ -121,25 +140,46 @@ export async function refreshAuthStatus(): Promise<void> {
     try {
       const status = await bridge.status()
 
+      // hc-519: mirror the rollback switch (default on) so the recovery + reconcile
+      // paths read one value. undefined (older main process) → on (fail-safe).
+      const loginTruth = status.loginStateTruth !== false
+
       if (!status.enabled) {
         // Managed off — the account gate doesn't apply; leave chat unblocked.
-        patch({ enabled: false, status: 'signed-in', account: EMPTY_ACCOUNT, gateReason: null })
+        patch({ enabled: false, loginTruth, status: 'signed-in', account: EMPTY_ACCOUNT, gateReason: null })
         writeCachedSignedIn(false)
 
         return
       }
 
       if (status.signedIn) {
-        patch({ enabled: true, status: 'signed-in', account: accountFromStatus(status), gateReason: null })
-        writeCachedSignedIn(true)
+        // hc-519: a status() that reports signedIn=true means only that a relay
+        // KEY is on disk — not that it is valid. If relay-auth loss already flipped
+        // us to 'expired' this session, a re-check must NOT launder that stale key
+        // back into 'signed-in' (that laundering was the A-9 split-brain). Only a
+        // real recovery (clearRelayAuthExpiry, after a heal / re-sign-in) leaves
+        // 'expired'. Account/loginTruth still refresh so the degraded card shows
+        // who was signed in.
+        const stillExpired = $authState.get().status === 'expired'
+        patch({
+          enabled: true,
+          loginTruth,
+          status: stillExpired ? 'expired' : 'signed-in',
+          account: accountFromStatus(status),
+          gateReason: stillExpired ? 'unauthorized' : null
+        })
+        writeCachedSignedIn(!stillExpired)
 
         return
       }
 
-      // Not signed in. Preserve an already-shown 'disabled' message this session.
+      // Not signed in (no key at all). Preserve an already-shown 'disabled'
+      // message this session; an 'expired' relay session with the key now gone
+      // escalates to a full 'signed-out' gate (identity-level failure).
       writeCachedSignedIn(false)
       patch({
         enabled: true,
+        loginTruth,
         account: EMPTY_ACCOUNT,
         status: $authState.get().status === 'disabled' ? 'disabled' : 'signed-out'
       })
@@ -148,12 +188,23 @@ export async function refreshAuthStatus(): Promise<void> {
       // transient IPC failure: keep a cached signed-in state, otherwise treat as
       // signed-out so the login screen can offer a retry.
       patch({ enabled: true, status: readCachedSignedIn() ? 'signed-in' : 'signed-out' })
-    } finally {
-      refreshPromise = null
     }
   })()
 
-  return refreshPromise
+  refreshPromise = run
+  // Clear the dedup slot once settled — via `.finally` on the ALREADY-ASSIGNED
+  // promise, never an inner `finally`. The bridge-absent path completes
+  // synchronously (no await), so an inner finally would run BEFORE the outer
+  // `refreshPromise = run` assignment and leave the resolved promise wedged in
+  // the slot — every later refresh would then dedup to it and no-op. (Benign in
+  // production where the Electron bridge is always present; it wedged web/dev
+  // preview and the test harness where the bridge toggles.) Scheduling here runs
+  // the clear as a microtask after the assignment, on every path.
+  void run.finally(() => {
+    refreshPromise = null
+  })
+
+  return run
 }
 
 // Called after a successful sign-in (the onboarding managed flow completes, or
@@ -186,6 +237,40 @@ export function handleAuthGate(payload: DesktopAuthGateEvent) {
     gateReason: payload.reason,
     status: payload.reason === 'account_disabled' ? 'disabled' : 'signed-out'
   })
+}
+
+// hc-519 — single source of truth for relay-key validity. The relay rejected the
+// stored key with a 401 (from the model catalog probe, a chat send, or the
+// startup probe) AND self-heal couldn't mint a fresh one. Reconcile the global
+// login state to 'expired' so the account card stops lying ("已登录") and shows
+// the "登录已失效" degrade. Unlike handleAuthGate, this KEEPS the account identity
+// so the degraded card can show who was signed in. No-op on a managed-disabled
+// build, or when the rollback switch is off (then relay 401 stays a chat-send-
+// only signal, per hc-511). Idempotent.
+export function handleRelayAuthExpired() {
+  const state = $authState.get()
+
+  if (state.enabled === false || state.loginTruth === false) {
+    return
+  }
+
+  writeCachedSignedIn(false)
+  patch({ gateReason: 'unauthorized', status: 'expired' })
+}
+
+// hc-519 — the inverse of handleRelayAuthExpired: a relay-key recovery landed (a
+// successful self-heal minted a fresh key, or the user re-signed-in), so lift the
+// 'expired' degrade back to 'signed-in'. Only acts when currently 'expired' — it
+// never manufactures a signed-in state out of thin air (a real sign-in goes
+// through markSignedIn / refreshAuthStatus), it just clears the degrade the relay
+// tripped. The account identity is retained across the round-trip.
+export function clearRelayAuthExpiry() {
+  if ($authState.get().status !== 'expired') {
+    return
+  }
+
+  writeCachedSignedIn(true)
+  patch({ gateReason: null, status: 'signed-in' })
 }
 
 // Escape hatch for the "logged in but the relay-key endpoint isn't deployed"

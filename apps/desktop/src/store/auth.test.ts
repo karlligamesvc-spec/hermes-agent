@@ -4,7 +4,9 @@ import type { DesktopManagedStatus } from '@/global'
 
 import {
   $authState,
+  clearRelayAuthExpiry,
   handleAuthGate,
+  handleRelayAuthExpired,
   markManagedUnavailable,
   markSignedIn,
   refreshAuthStatus,
@@ -37,7 +39,13 @@ function installManagedMock(managed: Record<string, unknown>) {
 // module singleton, so we set it back to the pristine (never-checked) shape.
 function resetAuth() {
   window.localStorage.clear()
-  $authState.set({ account: { email: '', name: '', plan: '' }, enabled: null, gateReason: null, status: 'checking' })
+  $authState.set({
+    account: { email: '', name: '', plan: '' },
+    enabled: null,
+    gateReason: null,
+    loginTruth: true,
+    status: 'checking'
+  })
 }
 
 beforeEach(() => {
@@ -168,5 +176,87 @@ describe('markSignedIn / markManagedUnavailable / signOutAccount', () => {
     expect(signOut).toHaveBeenCalledOnce()
     expect($authState.get().status).toBe('signed-out')
     expect($authState.get().gateReason).toBeNull()
+  })
+})
+
+// hc-519 — relay-key validity as the single source of truth.
+describe('handleRelayAuthExpired / clearRelayAuthExpiry', () => {
+  it('degrades a signed-in account to expired, keeping the identity for display', () => {
+    window.localStorage.setItem('apexnodes-desktop-signed-in-v1', '1')
+    $authState.set({
+      ...$authState.get(),
+      account: { email: 'jane@apex-nodes.com', name: 'Jane', plan: 'pro' },
+      enabled: true,
+      status: 'signed-in'
+    })
+
+    handleRelayAuthExpired()
+
+    const state = $authState.get()
+    expect(state.status).toBe('expired')
+    expect(state.gateReason).toBe('unauthorized')
+    // Identity is retained so the degraded card can show who was signed in.
+    expect(state.account).toEqual({ email: 'jane@apex-nodes.com', name: 'Jane', plan: 'pro' })
+    // The cached signed-in flag is cleared so a reload doesn't flash "signed-in".
+    expect(window.localStorage.getItem('apexnodes-desktop-signed-in-v1')).toBeNull()
+  })
+
+  it('is a no-op when the rollback switch (loginTruth) is off — hc-511 behavior', () => {
+    $authState.set({ ...$authState.get(), enabled: true, loginTruth: false, status: 'signed-in' })
+
+    handleRelayAuthExpired()
+
+    expect($authState.get().status).toBe('signed-in')
+  })
+
+  it('is a no-op on a managed-disabled build', () => {
+    $authState.set({ ...$authState.get(), enabled: false, status: 'signed-in' })
+
+    handleRelayAuthExpired()
+
+    expect($authState.get().status).toBe('signed-in')
+  })
+
+  it('clearRelayAuthExpiry lifts expired back to signed-in', () => {
+    $authState.set({ ...$authState.get(), enabled: true, gateReason: 'unauthorized', status: 'expired' })
+
+    clearRelayAuthExpiry()
+
+    const state = $authState.get()
+    expect(state.status).toBe('signed-in')
+    expect(state.gateReason).toBeNull()
+    expect(window.localStorage.getItem('apexnodes-desktop-signed-in-v1')).toBe('1')
+  })
+
+  it('clearRelayAuthExpiry never manufactures a signed-in state when not expired', () => {
+    $authState.set({ ...$authState.get(), enabled: true, status: 'signed-out' })
+
+    clearRelayAuthExpiry()
+
+    expect($authState.get().status).toBe('signed-out')
+  })
+
+  it('refreshAuthStatus does NOT launder a stale key back to signed-in while expired', async () => {
+    // Relay expiry tripped this session; the key file is still on disk, so a
+    // re-check reports signedIn=true — but that key is exactly the dead one.
+    $authState.set({ ...$authState.get(), enabled: true, gateReason: 'unauthorized', status: 'expired' })
+    installManagedMock({
+      status: vi.fn().mockResolvedValue(status({ signedIn: true, email: 'jane@apex-nodes.com' }))
+    })
+
+    await refreshAuthStatus()
+
+    const state = $authState.get()
+    expect(state.status).toBe('expired')
+    // Identity still refreshes so the degraded card stays accurate.
+    expect(state.account.email).toBe('jane@apex-nodes.com')
+  })
+
+  it('refreshAuthStatus mirrors the loginTruth rollback switch from status()', async () => {
+    installManagedMock({ status: vi.fn().mockResolvedValue(status({ signedIn: true, loginStateTruth: false })) })
+
+    await refreshAuthStatus()
+
+    expect($authState.get().loginTruth).toBe(false)
   })
 })

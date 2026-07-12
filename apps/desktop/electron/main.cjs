@@ -112,6 +112,7 @@ const {
   buildManagedModelConfig,
   defaultModelPath,
   googleStartUrl,
+  isLoginStateTruthEnabled,
   isManagedEnabled,
   isRelayUnauthorized,
   managedModelConfigYaml,
@@ -7417,6 +7418,11 @@ ipcMain.handle('hermes:managed:status', async () => {
   const account = managed.account || { email: '', name: '', plan: '' }
   return {
     enabled: isManagedEnabled(process.env),
+    // hc-519 rollback switch (default on): whether relay-auth loss drives the
+    // global login state (account-card degrade + startup/catalog self-heal). Off
+    // → hc-511 behavior (relay 401 only surfaced on a chat send). Exposed here so
+    // the renderer reads the same env the electron self-heal does.
+    loginStateTruth: isLoginStateTruthEnabled(process.env),
     signedIn: Boolean(managed.key),
     // True only when a reusable login JWT is on disk — i.e. a real cloud
     // sign-in that CAN self-heal a rotated/expired relay key. A seeded/env key

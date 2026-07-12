@@ -1,9 +1,10 @@
 import { useStore } from '@nanostores/react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { useI18n } from '@/i18n'
 import { $authState, handleAuthGate, refreshAuthStatus } from '@/store/auth'
+import { reconcileRelayAuthState } from '@/store/managed-recovery'
 import type { OnboardingContext } from '@/store/onboarding'
 
 interface DesktopAuthGateProps {
@@ -25,7 +26,8 @@ interface DesktopAuthGateProps {
 // the window.
 export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: DesktopAuthGateProps) {
   const { t } = useI18n()
-  const { gateReason, status } = useStore($authState)
+  const { enabled: managedEnabled, gateReason, loginTruth, status } = useStore($authState)
+  const startupReconcileDone = useRef(false)
 
   // Continuous auth gate: subscribe once to the main-process broadcast so a lost
   // login / disabled account anywhere in the app returns the user here. Mounted
@@ -45,10 +47,33 @@ export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: Desktop
     }
   }, [enabled])
 
-  // Env not ready yet, or already signed in (real or managed-disabled build) →
-  // don't gate: the boot/env overlays cover the pre-ready phase, and a signed-in
-  // user goes straight to chat.
-  if (!enabled || status === 'signed-in') {
+  // hc-519 startup validity probe. A cached/on-disk relay key makes status()
+  // report signedIn=true regardless of whether the relay still ACCEPTS it — the
+  // "replace-install kept a stale ~/.apexnodes key" case (A-9). Once env is ready
+  // and a managed install is signed in, probe the relay key via the self-heal
+  // bridge exactly once: a valid key is a no-op, a rotated key self-heals
+  // silently, a dead key with no reusable token degrades the account card to
+  // "登录已失效". Gated on managedEnabled===true (status() resolved + managed on)
+  // and the rollback switch; off → hc-511 (no startup probe).
+  useEffect(() => {
+    if (!enabled || managedEnabled !== true || status !== 'signed-in' || !loginTruth) {
+      return
+    }
+
+    if (startupReconcileDone.current) {
+      return
+    }
+
+    startupReconcileDone.current = true
+    void reconcileRelayAuthState()
+  }, [enabled, managedEnabled, status, loginTruth])
+
+  // Env not ready yet, already signed in, or in the hc-519 'expired' soft-degrade
+  // (the sidebar account card + model menu carry that state; a managed-only relay
+  // expiry must not nuke the whole window to a full login screen) → don't gate:
+  // the boot/env overlays cover the pre-ready phase, and a signed-in user goes
+  // straight to chat.
+  if (!enabled || status === 'signed-in' || status === 'expired') {
     return null
   }
 

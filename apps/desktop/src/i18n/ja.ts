@@ -1841,7 +1841,9 @@ export const ja = defineLocale({
       profile: 'プロフィール',
       settings: '設定',
       usage: '使用量',
-      logout: 'ログアウト'
+      logout: 'ログアウト',
+      sessionExpiredTitle: 'ログインが無効です',
+      sessionExpiredAction: 'クリックして再ログイン'
     }
   },
 
