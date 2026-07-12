@@ -1118,6 +1118,70 @@ export const ja = defineLocale({
     platformIntro: {}
   },
 
+  imEntry: {
+    title: 'メッセージ連携',
+    intro: 'いつものチャットアプリで AI アシスタントに代わりに返信してもらいましょう。コードをスキャンして連携します。',
+    loading: 'チャンネルを読み込み中…',
+    connect: '連携',
+    manage: '管理',
+    comingSoon: '近日対応',
+    connectedBadge: '連携済み',
+    availableHeading: '今すぐ利用可能',
+    comingSoonHeading: '近日対応',
+    boundHeading: '連携済みチャンネル',
+    boundEmpty: 'まだ連携したチャンネルはありません。',
+    connectedOn: when => `${when} に連携`,
+    unbind: '解除',
+    unbindConfirm: name => `${name} を解除しますか？このデバイスでは AI アシスタントがそこで返信しなくなります。`,
+    unbindDoneTitle: '解除しました',
+    unbindDoneMessage: '適用のため再起動しています…',
+    liveState: {
+      connected: '連携済み',
+      pending: '再起動後に反映',
+      error: '接続の問題',
+      connecting: '接続中…',
+      unknown: '不明'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Feishu のチャットやグループで返信します。' },
+      dingtalk: { name: 'DingTalk', tagline: 'DingTalk のチャットやグループで返信します。' },
+      weixin: { name: 'WeChat', tagline: '個人の WeChat で返信します。' },
+      qqbot: { name: 'QQ', tagline: 'QQ のチャットやグループで返信します。' },
+      wecom: { name: 'WeCom', tagline: 'WeCom（企業微信）で返信します。' }
+    },
+    dialog: {
+      connectTitle: name => `${name} を連携`,
+      signInFirstTitle: '先にサインイン',
+      signInFirst: 'APEX アカウントにサインインするとチャンネルを連携できます。',
+      issuing: 'QR コードを準備中…',
+      scanPrompt: 'スキャンして連携',
+      scanHint: 'Feishu を開いて QR コードをスキャンし、スマホで確認してください。',
+      scanned: 'スキャンしました——スマホで確認すると完了します。',
+      openLink: 'リンクで開く',
+      connecting: '接続中…',
+      authorizedTitle: '連携しました',
+      authorizedMessage: '適用のため再起動しています…',
+      retry: '再試行',
+      cancel: 'キャンセル',
+      close: '閉じる',
+      comingSoonTitle: '近日対応',
+      comingSoonBody: 'このチャンネルはまだ連携できません。準備中です。',
+      pasteHeading: 'コードを貼り付け',
+      pasteLabel: '連携コード',
+      pastePlaceholder: 'プラットフォームのコードを貼り付け',
+      pasteSubmit: '連携',
+      advanced: '詳細設定',
+      errors: {
+        sign_in: 'セッションが期限切れです。サインインし直してから連携してください。',
+        service_unavailable: 'このチャンネルはまだ開放されていません。後でお試しください。',
+        expired: 'コードの有効期限が切れました。もう一度開始してください。',
+        denied: 'リクエストが拒否されました。もう一度お試しください。',
+        request_failed: '問題が発生しました。もう一度お試しください。',
+        keychain: '安全なストレージが無効なため連携を保存できませんでした。キーチェーンアクセスを有効にしてください。'
+      }
+    }
+  },
+
   profiles: {
     close: 'プロファイルを閉じる',
     nameHint: '小文字、数字、ハイフン、アンダースコア。文字または数字で始める必要があります。',

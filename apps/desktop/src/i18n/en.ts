@@ -1051,6 +1051,70 @@ export const en: Translations = {
     platformIntro: {}
   },
 
+  imEntry: {
+    title: 'Messaging',
+    intro: 'Let your assistant reply for you in the chat apps you already use — scan a code to connect one.',
+    loading: 'Loading channels…',
+    connect: 'Connect',
+    manage: 'Manage',
+    comingSoon: 'Coming soon',
+    connectedBadge: 'Connected',
+    availableHeading: 'Available now',
+    comingSoonHeading: 'Coming soon',
+    boundHeading: 'Connected channels',
+    boundEmpty: 'No channels connected yet.',
+    connectedOn: when => `Connected ${when}`,
+    unbind: 'Disconnect',
+    unbindConfirm: name => `Disconnect ${name}? Your assistant will stop replying there on this device.`,
+    unbindDoneTitle: 'Disconnected',
+    unbindDoneMessage: 'Restarting to apply…',
+    liveState: {
+      connected: 'Connected',
+      pending: 'Restarting to apply',
+      error: 'Connection problem',
+      connecting: 'Connecting…',
+      unknown: 'Unknown'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Reply in your Feishu chats and groups.' },
+      dingtalk: { name: 'DingTalk', tagline: 'Reply in your DingTalk chats and groups.' },
+      weixin: { name: 'WeChat', tagline: 'Reply from your personal WeChat.' },
+      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' },
+      wecom: { name: 'WeCom', tagline: 'Reply in WeCom (Enterprise WeChat).' }
+    },
+    dialog: {
+      connectTitle: name => `Connect ${name}`,
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect a channel.',
+      issuing: 'Preparing your QR code…',
+      scanPrompt: 'Scan to connect',
+      scanHint: 'Open Feishu, scan the code, and confirm on your phone.',
+      scanned: 'Scanned — confirm on your phone to finish.',
+      openLink: 'Open link instead',
+      connecting: 'Connecting…',
+      authorizedTitle: 'Connected',
+      authorizedMessage: 'Restarting to apply…',
+      retry: 'Try again',
+      cancel: 'Cancel',
+      close: 'Close',
+      comingSoonTitle: 'Coming soon',
+      comingSoonBody: 'This channel isn’t available to connect yet. We’re working on it.',
+      pasteHeading: 'Paste your code',
+      pasteLabel: 'Connection code',
+      pastePlaceholder: 'Paste the code from the platform',
+      pasteSubmit: 'Connect',
+      advanced: 'Advanced',
+      errors: {
+        sign_in: 'Your session expired. Sign in again, then reconnect.',
+        service_unavailable: 'This channel isn’t open yet. Please try again later.',
+        expired: 'The code expired. Start again to get a new one.',
+        denied: 'The request was declined. Start again to retry.',
+        request_failed: 'Something went wrong. Please try again.',
+        keychain: 'Secure storage is off, so the connection wasn’t saved. Enable keychain access and try again.'
+      }
+    }
+  },
+
   profiles: {
     close: 'Close profiles',
     nameHint: 'Lowercase letters, digits, hyphens, and underscores. Must start with a letter or digit.',
