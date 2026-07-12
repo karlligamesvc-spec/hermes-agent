@@ -693,6 +693,40 @@ export async function managedSignIn(email: string, password: string, ctx: Onboar
   }
 }
 
+// hc-530: a web-handoff login code delivered via the apexnodes://login deep link,
+// parked here by the deep-link handler until the login screen is mounted and can
+// run the exchange with its onboarding ctx. Cleared on consume. null = none pending.
+export const $pendingDesktopLoginCode = atom<string | null>(null)
+
+// Deep-link (web handoff) managed sign-in: a one-time code minted by the web app
+// arrived via apexnodes://login. The electron layer exchanges it for a login JWT,
+// then runs the SAME provision-key → assignment path as the browser/email flows.
+export async function managedDeepLinkSignIn(code: string, ctx: OnboardingContext) {
+  const trimmed = code.trim()
+
+  if (!trimmed) {
+    return
+  }
+
+  const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
+
+  if (!bridge?.deepLinkSignIn) {
+    patch({ managedError: MANAGED_COPY.desktopOnly })
+
+    return
+  }
+
+  patch({ managedSubmitting: true, managedError: null })
+
+  try {
+    const res = await bridge.deepLinkSignIn({ code: trimmed })
+    await applyManagedSignInResult(res, ctx)
+  } catch (error) {
+    void error
+    patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })
+  }
+}
+
 // Browser (loopback) managed sign-in: "用 Google 登录" / "用 APEX 登录". The
 // electron layer opens the system browser, catches the loopback redirect with
 // the minted JWT, then runs the SAME provision-key → assignment path as the

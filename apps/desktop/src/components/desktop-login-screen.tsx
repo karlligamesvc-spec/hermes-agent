@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
@@ -7,7 +7,9 @@ import { Loader2 } from '@/lib/icons'
 import { markManagedUnavailable, markSignedIn } from '@/store/auth'
 import {
   $desktopOnboarding,
+  $pendingDesktopLoginCode,
   managedBrowserSignIn,
+  managedDeepLinkSignIn,
   type OnboardingContext
 } from '@/store/onboarding'
 
@@ -35,6 +37,7 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
   const { t } = useI18n()
   const a = t.auth.login
   const { managedError, managedSubmitting } = useStore($desktopOnboarding)
+  const pendingLoginCode = useStore($pendingDesktopLoginCode)
 
   // A ctx whose onCompleted flips the auth gate to signed-in (and re-reads the
   // account for the panel), then notifies the parent. Stable across renders so
@@ -71,6 +74,23 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
       }
     })
   }
+
+  // hc-530: web → desktop one-click login. A code parked by the deep-link handler
+  // runs the SAME managed flow as the buttons above, reusing this screen's ctx
+  // (its onCompleted flips the gate to signed-in). Consume once so a re-render or
+  // a stray second delivery can't double-submit.
+  useEffect(() => {
+    if (!pendingLoginCode || managedSubmitting) {
+      return
+    }
+
+    $pendingDesktopLoginCode.set(null)
+    void managedDeepLinkSignIn(pendingLoginCode, ctx).then(() => {
+      if ($desktopOnboarding.get().managedAvailable === false) {
+        markManagedUnavailable()
+      }
+    })
+  }, [pendingLoginCode, managedSubmitting, ctx])
 
   // Prefer the caller's gate notice (session-expired / account-disabled); fall
   // back to an in-flight managed error surfaced by managedBrowserSignIn.
