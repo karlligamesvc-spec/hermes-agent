@@ -107,6 +107,7 @@ const {
 } = require('./connection-config.cjs')
 const {
   accessTokenFromLogin,
+  renewedTokenFromHeaders,
   accountFromLogin,
   apexWebLoginUrl,
   buildManagedModelConfig,
@@ -5050,6 +5051,36 @@ function clearManagedRelayCredential() {
   }
 }
 
+// hc-529: slide the stored login JWT forward when the cloud hands back a renewed
+// one (X-Apex-Renewed-Token) on an authenticated response. Rewrites ONLY the
+// accessToken, preserving the encrypted relay key + baseUrl/model/account, so the
+// desktop's login token (used for provision-key / feishu-credentials /
+// platform-skills) never dies at the 7-day mark for an active user. Best-effort
+// and never throws — a persist hiccup must not fail the request the user made.
+// Skips when: managed isn't signed in (no stored key), there is no existing login
+// JWT to slide (env-key path stores none), or the token is unchanged.
+function persistRenewedLoginToken(token) {
+  try {
+    const next = String(token || '').trim()
+    if (!next) return false
+    const managed = resolveManagedConfig()
+    if (!managed.key || !managed.accessToken) return false
+    if (next === managed.accessToken) return false
+    writeManagedConfig({
+      apiKey: managed.key,
+      baseUrl: managed.baseUrl,
+      model: managed.model,
+      account: managed.account,
+      accessToken: next
+    })
+    rememberLog('[managed] login token renewed via sliding-window header (hc-529)')
+    return true
+  } catch (error) {
+    rememberLog(`[managed] renewed-token persist failed (non-fatal): ${error && error.message ? error.message : error}`)
+    return false
+  }
+}
+
 // ── hc-444: desktop ↔ cloud Feishu credential bridge ────────────────────────
 // The cloud Feishu line is complete (each user self-registers their own app; the
 // creds live in agent_entries). This mirrors the user's OWN credential down to the
@@ -5525,6 +5556,9 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 } = {}) {
           reject(err)
           return
         }
+        // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
+        // the stored token forward (best-effort; persist gates on being signed in).
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
         if (!text) {
           resolve(null)
           return
@@ -5597,6 +5631,9 @@ function apexAuthGetJson(url, { bearer, timeoutMs = 12_000 } = {}) {
           reject(err)
           return
         }
+        // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
+        // the stored token forward (best-effort; persist gates on being signed in).
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
         if (!text) {
           resolve(null)
           return
