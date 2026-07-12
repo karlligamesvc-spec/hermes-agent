@@ -77,7 +77,15 @@ function prettifyBase(base: string): string {
     return base.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ')
   }
 
-  return fixAcronyms(titleCase(base.replace(/-/g, ' ')))
+  // Ark-style ids encode semantic version segments with hyphens (id syntax
+  // forbids dots): `doubao-seed-2-1-pro` means "Seed 2.1", not "Seed 2 1".
+  // Restore a hyphen between two digits to a dot before the generic
+  // hyphen→space split, so consecutive segments chain correctly
+  // (`1-2-3` → `1.2.3`) via the lookahead re-using the un-consumed digit as
+  // the next match's start.
+  const dotted = base.replace(/(\d)-(?=\d)/g, '$1.')
+
+  return fixAcronyms(titleCase(dotted.replace(/-/g, ' ')))
 }
 
 // The ApexNodes managed-relay sentinel suffix (see electron/apex-managed.cjs
@@ -110,8 +118,12 @@ export function modelDisplayParts(model: string): { name: string; tag: string } 
     }
   }
 
-  // Drop a trailing date-pin (`…-20251101`) — snapshot noise, not a name.
-  base = base.replace(/-\d{8}$/, '')
+  // Drop a trailing date-pin — snapshot noise, not a name. Ark ids use a
+  // 6-digit YYMMDD pin (`doubao-seed-2-1-pro-260628`); other providers use
+  // an 8-digit YYYYMMDD pin (`claude-opus-4-5-20251101`). The optional
+  // trailing pair greedily extends a 6-digit match to 8 when present, so
+  // both widths are stripped by one pattern.
+  base = base.replace(/-\d{6}(\d{2})?$/, '')
 
   return { name: prettifyBase(base) || model.trim() || 'No model', tag }
 }

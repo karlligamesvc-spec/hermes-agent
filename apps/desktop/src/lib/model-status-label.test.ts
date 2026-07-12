@@ -56,6 +56,49 @@ describe('model-status-label', () => {
     expect(displayModelName('anthropic/claude-haiku-4-5-20251001')).toBe('Haiku 4 5')
   })
 
+  // hc-521 (A-11): Ark ids (Doubao) pin a 6-digit YYMMDD date and encode the
+  // semantic version with hyphens because the Ark id grammar forbids dots —
+  // `doubao-seed-2-1-pro-260628` is "Seed 2.1", not "Seed 2 1 260628". The
+  // model id itself must stay dated (Ark 404s on the bare id); only the
+  // DISPLAY name is normalized.
+  it.each([
+    ['doubao-seed-2-1-pro-260628', 'Doubao Seed 2.1 Pro'],
+    ['doubao-seed-2-1-turbo-260628', 'Doubao Seed 2.1 Turbo'],
+    ['custom/doubao-seed-2-1-pro-260628', 'Doubao Seed 2.1 Pro']
+  ])('normalizes the Doubao Ark id %s to %s', (model, expected) => {
+    expect(displayModelName(model)).toBe(expected)
+  })
+
+  it('strips a 6-digit Ark date-pin the same way as an 8-digit one', () => {
+    expect(displayModelName('doubao-seed-2-1-pro-260628')).toBe('Doubao Seed 2.1 Pro')
+    // 8-digit pins (Anthropic-style) must still strip — the widened regex
+    // must not regress the wider width it already handled.
+    expect(displayModelName('claude-opus-4-5-20251101')).toBe('Opus 4 5')
+  })
+
+  it('chains consecutive digit-hyphen version segments into dots, not just one pair', () => {
+    // No shipped id has 3+ chained numeric segments today, but the lookahead
+    // regex must not stop after the first pair (a naive `(\d)-(\d)` consumes
+    // the second digit, so it can't also start the next match) — guard the
+    // technique directly so a future `…-3-0-1-…` id renders "3.0.1".
+    expect(displayModelName('doubao-seed-3-0-1-pro-260628')).toBe('Doubao Seed 3.0.1 Pro')
+  })
+
+  // hc-521: adjacent brand-name branches in prettifyBase() must render
+  // byte-for-byte the same after the Ark fix — these ids have no digit-hyphen
+  // or 6/8-digit date-pin suffix, so neither regex change should touch them.
+  it.each([
+    ['deepseek-v4-pro', 'DeepSeek V4 Pro'],
+    ['glm-5.2', 'GLM 5.2'],
+    ['kimi-k2.6', 'Kimi K2.6'],
+    ['kimi-k2.7-code', 'Kimi K2.7 Code'],
+    ['qwen3.7-max', 'Qwen3.7 Max'],
+    ['step-3.7-flash', 'Step 3.7 Flash'],
+    ['hy3', 'Hy3']
+  ])('leaves the existing display name for %s unchanged (%s)', (model, expected) => {
+    expect(displayModelName(model)).toBe(expected)
+  })
+
   it('maps reasoning effort to compact labels', () => {
     expect(reasoningEffortLabel('high')).toBe('High')
     expect(reasoningEffortLabel('xhigh')).toBe('Max')
