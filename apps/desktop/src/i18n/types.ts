@@ -1492,6 +1492,12 @@ export interface Translations {
       usage: string
       /** Menu item — sign out. */
       logout: string
+      /** hc-519: title of the degraded card when the relay session expired and
+       *  self-heal failed (e.g. "登录已失效"). */
+      sessionExpiredTitle: string
+      /** hc-519: call-to-action subtitle on the degraded card (e.g.
+       *  "点击重新登录"). */
+      sessionExpiredAction: string
     }
   }
 

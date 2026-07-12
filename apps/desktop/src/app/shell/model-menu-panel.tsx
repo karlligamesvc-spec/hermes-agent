@@ -26,6 +26,7 @@ import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/l
 import { filterPickerProviders } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { $authState, signOutAccount } from '@/store/auth'
+import { reconcileRelayAuthState } from '@/store/managed-recovery'
 import { $modelPresets, applyModelPreset, modelPresetKey, setModelPreset } from '@/store/model-presets'
 import {
   $visibleModels,
@@ -137,6 +138,18 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   const relayCatalogStatus = relayCatalog.data?.status
   const catalogDegraded = relayCatalogStatus === 'unauthorized' || relayCatalogStatus === 'unreachable'
+
+  // hc-519: a relay catalog 401 is the SAME dead-key signal as a failed chat
+  // send — reconcile it into the global login state so the account card degrades
+  // to "登录已失效" (and self-heal runs) instead of only the model menu knowing.
+  // The reconcile self-dedupes with the send/startup paths and no-ops when the
+  // rollback switch is off. 'unreachable' is transient (network) — not an auth
+  // loss — so it's left to the menu's own retry.
+  useEffect(() => {
+    if (relayCatalogStatus === 'unauthorized' && authState.loginTruth) {
+      void reconcileRelayAuthState()
+    }
+  }, [relayCatalogStatus, authState.loginTruth])
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     !!activeSessionId,

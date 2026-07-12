@@ -27,6 +27,7 @@ const {
   decodeJwtClaims,
   defaultModelPath,
   googleStartUrl,
+  isLoginStateTruthEnabled,
   isLoopbackUrl,
   isManagedEnabled,
   isRelayUnauthorized,
@@ -117,6 +118,19 @@ test('isManagedEnabled is ON by default and accepts common falsy spellings to di
   }
   for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
     assert.equal(isManagedEnabled({ APEXNODES_MANAGED: v }), true, v)
+  }
+})
+
+// --- isLoginStateTruthEnabled (hc-519 rollback switch) ---
+
+test('isLoginStateTruthEnabled is ON by default and disables on the same falsy spellings', () => {
+  assert.equal(isLoginStateTruthEnabled({}), true)
+  assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: '' }), true)
+  for (const v of ['0', 'false', 'no', 'off', 'OFF']) {
+    assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: v }), false, v)
+  }
+  for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
+    assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: v }), true, v)
   }
 })
 

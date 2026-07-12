@@ -1802,7 +1802,9 @@ export const zhHant = defineLocale({
       profile: '個人資料',
       settings: '設定',
       usage: '剩餘用量',
-      logout: '登出'
+      logout: '登出',
+      sessionExpiredTitle: '登入已失效',
+      sessionExpiredAction: '點擊重新登入'
     }
   },
 

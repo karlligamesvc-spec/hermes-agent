@@ -672,6 +672,18 @@ function isManagedEnabled(env = {}) {
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
 
+// hc-519 rollback switch. When ON (default), relay-auth loss (401 from the relay
+// catalog / a chat send / the startup probe) drives the GLOBAL login state: the
+// account card degrades to "登录已失效" and the self-heal + re-sign-in path runs
+// for the catalog/startup surfaces too — not just a chat send. Set
+// APEXNODES_LOGIN_STATE_TRUTH=0 to fall back to the hc-511 behavior (a relay 401
+// is only surfaced on an actual chat send; the account card and startup are
+// untouched). Mirrors isManagedEnabled's parsing so the two read the same way.
+function isLoginStateTruthEnabled(env = {}) {
+  const raw = String(env.APEXNODES_LOGIN_STATE_TRUTH ?? '').trim().toLowerCase()
+  return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
+}
+
 /**
  * Build the config.yaml `model:` block for the managed relay path. The runtime
  * resolver reads `model.base_url` / `model.api_key` directly from config and
@@ -1103,6 +1115,7 @@ module.exports = {
   decodeJwtClaims,
   defaultModelPath,
   googleStartUrl,
+  isLoginStateTruthEnabled,
   isLoopbackUrl,
   isManagedEnabled,
   isRelayUnauthorized,

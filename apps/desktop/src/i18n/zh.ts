@@ -2047,7 +2047,9 @@ export const zh: Translations = {
       profile: '个人资料',
       settings: '设置',
       usage: '剩余用量',
-      logout: '退出登录'
+      logout: '退出登录',
+      sessionExpiredTitle: '登录已失效',
+      sessionExpiredAction: '点击重新登录'
     }
   },
 
