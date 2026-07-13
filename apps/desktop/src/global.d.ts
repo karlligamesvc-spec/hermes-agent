@@ -98,6 +98,26 @@ declare global {
         // binding + restart the backend.
         unbind: (channelId: string) => Promise<{ ok: boolean }>
       }
+      // hc-533 本机 Agent 调度 — the A2A daemon leg. Toggles the reverse-connect
+      // daemon (default off) that lets the user's cloud assistant dispatch a task
+      // to a local coding agent on this machine. No secret ever crosses to the
+      // renderer: status carries only display fields; the device token is stored
+      // encrypted in main. Optional: an older main process may not expose it.
+      // See electron/apex-daemon.cjs.
+      daemon?: {
+        // Read-only status for the settings block (no network, no secret).
+        status: () => Promise<DesktopDaemonStatus>
+        // The on/off toggle. Enabling registers + starts the loops; disabling
+        // goes dormant but keeps the registration for an instant re-enable.
+        setEnabled: (enabled: boolean) => Promise<DesktopDaemonMutationResult>
+        // Rename this device (re-registers to update the cloud row when live).
+        setDeviceName: (name: string) => Promise<DesktopDaemonMutationResult>
+        // Forget this device locally + go dormant (cloud row goes offline on its
+        // own once heartbeats stop).
+        unregister: () => Promise<DesktopDaemonMutationResult>
+        // Subscribe to live status pushed on connection transitions.
+        onStatus: (callback: (status: DesktopDaemonStatus) => void) => () => void
+      }
       // Platform client-config sync — the cloud serves a versioned client
       // config the main process caches at boot / after sign-in and applies to
       // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
@@ -537,6 +557,26 @@ export interface DesktopImEntryPollResult {
   restartFailed?: boolean
   needsSignIn?: boolean
   message?: string
+}
+
+// hc-533 本机 Agent 调度 daemon status (display-only; no secret). `status` is
+// the single label the settings block shows; the booleans back it.
+export interface DesktopDaemonStatus {
+  status: 'connecting' | 'dormant' | 'error' | 'offline' | 'online'
+  enabled: boolean
+  deviceName: string
+  deviceId: string
+  registered: boolean
+  connected: boolean
+  lastError: string
+}
+
+// Result of a daemon mutation (setEnabled / setDeviceName / unregister) — the
+// fresh status snapshot + an ok flag (+ an optional message, e.g. keychain).
+export interface DesktopDaemonMutationResult {
+  ok: boolean
+  message?: string
+  snapshot: DesktopDaemonStatus
 }
 
 // Payload of the continuous auth-gate broadcast (hermes:auth-gate). `reason`

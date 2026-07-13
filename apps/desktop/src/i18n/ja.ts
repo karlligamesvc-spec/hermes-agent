@@ -178,6 +178,27 @@ export const ja = defineLocale({
   },
 
   settings: {
+    localAgent: {
+      title: 'ローカルエージェントのスケジューリング',
+      intro:
+        'クラウドアシスタントがコーディングタスクをこのコンピューターのエージェント(Claude Code、Codex、Cursor)に任せられるようにします。タスクはこの端末であなた自身のツールと認証情報を使って実行され、結果がクラウドアシスタントに返ります。オンにしない限り何も実行されません。',
+      enableLabel: 'クラウドアシスタントにこのコンピューターの利用を許可',
+      enableHint:
+        'オンにすると、アプリの起動中はこのコンピューターが APEX に接続してタスクを待機します。危険な操作は必ず先にこの端末で承認を求めます。',
+      statusLabel: 'ステータス',
+      statusDormant: 'オフ',
+      statusConnecting: '接続中…',
+      statusOnline: 'オンライン — タスク待機中',
+      statusOffline: '再接続中…',
+      statusError: '接続するには APEX アカウントにサインインしてください',
+      deviceNameLabel: 'デバイス名',
+      deviceNamePlaceholder: 'このコンピューター',
+      unregister: 'このデバイスの登録を解除',
+      unregisterConfirm: 'このコンピューターの登録を解除しますか?スケジューリングを再度オンにするまでタスクを受け取りません。',
+      signInFirst: '先に APEX アカウントにサインインしてください。',
+      saved: 'デバイス名を保存しました。',
+      enableFailed: '保存できませんでした — このシステムではセキュアストレージを利用できません。'
+    },
     closeSettings: '設定を閉じる',
     exportConfig: '設定を書き出す',
     importConfig: '設定を読み込む',

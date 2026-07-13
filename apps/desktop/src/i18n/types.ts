@@ -583,6 +583,25 @@ export interface Translations {
       sessionExpired: string
       loading: string
     }
+    localAgent: {
+      title: string
+      intro: string
+      enableLabel: string
+      enableHint: string
+      statusLabel: string
+      statusDormant: string
+      statusConnecting: string
+      statusOnline: string
+      statusOffline: string
+      statusError: string
+      deviceNameLabel: string
+      deviceNamePlaceholder: string
+      unregister: string
+      unregisterConfirm: string
+      signInFirst: string
+      saved: string
+      enableFailed: string
+    }
     sessions: {
       loading: string
       archivedTitle: string

@@ -891,6 +891,27 @@ export const zh: Translations = {
       sessionExpired: '登录已过期。请重新登录后再同步。',
       loading: '正在检查飞书…'
     },
+    localAgent: {
+      title: '本机 Agent 调度',
+      intro:
+        '让你的云端助手把编码任务交给这台电脑上的 Agent(Claude Code、Codex 或 Cursor)——任务在本机用你自己的工具和凭据执行,结果回传给云端助手。不开启则什么都不会运行。',
+      enableLabel: '允许云端助手调度这台电脑',
+      enableHint:
+        '开启后,只要 App 在运行,这台电脑就会连接 APEX 并待命接单。危险操作永远会先在本机请求你确认。',
+      statusLabel: '状态',
+      statusDormant: '已关闭',
+      statusConnecting: '连接中…',
+      statusOnline: '在线——可接单',
+      statusOffline: '重连中…',
+      statusError: '请先登录 APEX 账号以连接',
+      deviceNameLabel: '设备名称',
+      deviceNamePlaceholder: '这台电脑',
+      unregister: '注销此设备',
+      unregisterConfirm: '注销这台电脑?重新开启调度前它将不再接单。',
+      signInFirst: '请先登录你的 APEX 账号。',
+      saved: '设备名称已保存。',
+      enableFailed: '保存失败——本系统的安全存储不可用。'
+    },
     sessions: {
       loading: '正在加载已归档会话…',
       archivedTitle: '已归档会话',
