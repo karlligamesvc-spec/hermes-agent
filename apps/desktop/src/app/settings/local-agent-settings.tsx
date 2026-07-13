@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -5,8 +6,9 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import type { DesktopDaemonStatus } from '@/global'
 import { useI18n } from '@/i18n'
-import { Cpu, Loader2, Trash2 } from '@/lib/icons'
+import { AlertTriangle, Cpu, Loader2, Trash2 } from '@/lib/icons'
 import { notify } from '@/store/notifications'
+import { $runtimeVersion, loadRuntimeVersion } from '@/store/runtime-update'
 
 import { SettingsCategoryHeading } from './env-credentials'
 
@@ -29,6 +31,20 @@ export function LocalAgentSettings() {
   const [status, setStatus] = useState<DesktopDaemonStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
+
+  // hc-532 (gate 1): the daemon's tool leg silently fails on an engine older
+  // than THIS shell's declared minimum (the A-10 failure mode). Read the
+  // installed engine version (local marker, no network) and surface an explicit
+  // error-tone warning here so the silent failure becomes visible — especially
+  // once the toggle is on. meetsMinEngine fails open (false only when positively
+  // behind); a missing bridge / older marker leaves it undefined = no warning.
+  const runtimeVersion = useStore($runtimeVersion)
+  const engineOutdated = runtimeVersion?.meetsMinEngine === false
+  const minEngineVersion = runtimeVersion?.minEngineVersion ?? null
+
+  useEffect(() => {
+    void loadRuntimeVersion()
+  }, [])
 
   const applyStatus = useCallback((next: DesktopDaemonStatus | null) => {
     setStatus(next)
@@ -183,6 +199,16 @@ export function LocalAgentSettings() {
           </div>
           <Switch aria-label={copy.enableLabel} checked={enabled} disabled={busy} onCheckedChange={on => void handleToggle(on)} />
         </div>
+
+        {engineOutdated && minEngineVersion && (
+          <div
+            className="flex items-start gap-2 rounded-[6px] border border-destructive/40 px-3 py-2 text-destructive"
+            data-testid="daemon-engine-outdated"
+          >
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <p className="text-[length:var(--conversation-caption-font-size)]">{copy.engineOutdated(minEngineVersion)}</p>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.statusLabel}:</span>

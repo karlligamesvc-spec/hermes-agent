@@ -52,6 +52,13 @@ function EngineUpdateSection() {
   // check reports updateAvailable:false (so `latest`/the Apply button are absent)
   // and hands us the required desktop version to prompt an app upgrade instead.
   const upgradeRequired = check?.desktopUpgradeRequired ?? null
+  // hc-532 (gate 1): the MIRROR direction — the installed engine is older than
+  // THIS shell's declared minimum (package.json apexnodes.minEngineVersion), so
+  // the daemon/tool features this build ships may silently fail. meetsMinEngine
+  // fails open (false only when positively behind); a persistent error-tone
+  // banner points the user at the opt-in engine update right below. Never blocks.
+  const engineOutdated = installed?.meetsMinEngine === false
+  const minEngineVersion = installed?.minEngineVersion ?? null
 
   let statusLine: string
   let statusTone: 'available' | 'error' | 'idle' = 'idle'
@@ -85,6 +92,22 @@ function EngineUpdateSection() {
   return (
     <div className="mt-6">
       <SectionHeading icon={Cpu} title={a.engineSection} />
+
+      {engineOutdated && (
+        <div
+          className="p5-panel mb-2 flex items-start gap-2 px-4 py-3 text-sm text-destructive"
+          data-testid="engine-outdated-banner"
+          data-tone="error"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium">{a.engineUpdateNeeded}</p>
+            {minEngineVersion && (
+              <p className="mt-1 text-xs">{a.engineUpdateNeededDetail(minEngineVersion)}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div
         className={cn(

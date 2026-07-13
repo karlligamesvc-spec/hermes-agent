@@ -342,6 +342,11 @@ export interface Translations {
       engineConfirmBody: (value: string) => string
       engineConfirmBodyGeneric: string
       engineConfirmApply: string
+      // hc-532 (gate 1): shown when the installed engine is older than the
+      // shell's declared minimum (package.json apexnodes.minEngineVersion).
+      // Non-blocking — points the user at the opt-in engine update below.
+      engineUpdateNeeded: string
+      engineUpdateNeededDetail: (value: string) => string
     }
     config: {
       none: string
@@ -601,6 +606,10 @@ export interface Translations {
       signInFirst: string
       saved: string
       enableFailed: string
+      // hc-532 (gate 1): shown in the daemon block when the installed engine is
+      // older than the shell's declared minimum — the daemon's tool leg would
+      // silently fail on a stale engine, so surface it explicitly here.
+      engineOutdated: (value: string) => string
     }
     sessions: {
       loading: string

@@ -18,8 +18,31 @@ permissions:
   contents: read
 
 jobs:
+  # hc-532 (gate 2): read-only, credential-free shell↔engine contract闸 — the
+  # Windows counterpart of the same job in desktop-macos.yml. Runs on a cheap
+  # ubuntu runner BEFORE the build; `build` needs it, so a fail aborts the
+  # release. Probes live prod (/api/v1/runtime/latest + HEAD the default engine
+  # tarball) and asserts the default engine is not behind this shell's declared
+  # minEngineVersion (A-10 guard) and its min_desktop_version is not ahead of the
+  # shell being cut (hc-475 axis). No secrets, no npm ci — pure node built-ins.
+  preflight:
+    name: Release preflight (shell↔engine contract)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: 22
+      - name: Assert shell↔engine release contract
+        working-directory: apps/desktop
+        run: node scripts/assert-release-preflight.cjs
+
   build:
     name: ApexNodes Windows installer (x64, unsigned)
+    needs: preflight
     runs-on: windows-latest
     timeout-minutes: 75
 

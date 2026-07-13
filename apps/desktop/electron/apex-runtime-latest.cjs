@@ -227,6 +227,36 @@ function desktopMeetsMinVersion(desktopVersion, minDesktopVersion) {
 }
 
 /**
+ * hc-532 (gate 1): the MIRROR of desktopMeetsMinVersion — does the locally
+ * installed ENGINE satisfy the SHELL's declared minimum? hc-475 answered "is
+ * this shell new enough for that engine?" (blocks a too-new engine on a stale
+ * shell). This answers the opposite axis: "is the installed engine new enough
+ * for the daemon/tool features THIS shell ships?" (A-10: a 0.16.10 shell taught
+ * social_download to an engine bundle that never had it). It NEVER blocks
+ * usage — the caller uses the false result only to surface an explicit
+ * "engine needs update" prompt. Same FAIL-OPEN contract so a garbage/absent
+ * version can never nag:
+ *   - no floor declared (minEngineVersion null/empty) -> true
+ *   - either version unparseable                      -> true  (never nag on garbage)
+ *   - engineVersion >= minEngineVersion               -> true
+ *   - engineVersion <  minEngineVersion               -> false (SHOW the prompt)
+ *
+ * Engine versions are calver+fork (e.g. v2026.7.13-fork.3ab3eabf); parseSemver
+ * reads only the leading v2026.7.13 triple and ignores the -fork.<sha> suffix,
+ * so the SHA never affects the comparison.
+ * @param {string|null|undefined} engineVersion installed engine (bootstrap marker version)
+ * @param {string|null|undefined} minEngineVersion the shell's declared minimum
+ * @returns {boolean}
+ */
+function engineMeetsMinVersion(engineVersion, minEngineVersion) {
+  const min = String(minEngineVersion || '').trim()
+  if (!min) return true
+  const cmp = compareSemver(engineVersion, min)
+  if (cmp === null) return true
+  return cmp >= 0
+}
+
+/**
  * Build the /latest URL for an apiBase.
  * @param {string} apiBase e.g. https://api.apex-nodes.com
  * @param {string} [frameworkId]
@@ -407,6 +437,7 @@ module.exports = {
   parseSemver,
   compareSemver,
   desktopMeetsMinVersion,
+  engineMeetsMinVersion,
   latestUrl,
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,

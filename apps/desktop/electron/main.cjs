@@ -31,7 +31,8 @@ const {
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
   overlayStampWithPin,
-  desktopMeetsMinVersion
+  desktopMeetsMinVersion,
+  engineMeetsMinVersion
 } = require('./apex-runtime-latest.cjs')
 const {
   canUseOnDiskRuntime,
@@ -2800,6 +2801,19 @@ function readJson(filePath) {
   }
 }
 
+// hc-532 (gate 1): the shell's declared minimum ENGINE version, read from the
+// packaged package.json's `apexnodes.minEngineVersion`. This is the floor the
+// daemon/tool features THIS shell ships need from the installed engine bundle
+// (mirror of the engine's own min_desktop_version, hc-475). Tolerant: any
+// read/parse miss (dev layout, malformed field) returns null, which
+// engineMeetsMinVersion treats as "no floor" -> fail open (never nag). Electron's
+// fs is asar-aware, so APP_ROOT/package.json resolves in packaged builds too.
+function readDeclaredMinEngineVersion() {
+  const pkg = readJson(path.join(APP_ROOT, 'package.json'))
+  const value = pkg && pkg.apexnodes && pkg.apexnodes.minEngineVersion
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 // Bootstrap-complete marker helpers. The marker is written ONCE by the
 // first-launch bootstrap runner (Phase 1D) after install.ps1 stages succeed
 // AND the user has finished initial configuration. On every subsequent boot
@@ -3344,6 +3358,11 @@ async function ensureRuntime(backend) {
       resourcesPath: process.resourcesPath,
       hermesHome: HERMES_HOME,
       logRoot: path.join(HERMES_HOME, 'logs'),
+      // hc-532 (gate 3): thread the shell version so the install/bootstrap
+      // beacons carry app_version (the runner defaults it to null when omitted,
+      // which is why the cloud desktop_install_events.app_version column read
+      // empty for the install funnel before this).
+      appVersion: app.getVersion(),
       abortSignal: bootstrapAbortController.signal,
       updateInfo: bootstrapUpdateInfo,
       // Region (CN mirrors vs upstream defaults) is auto-detected per machine by
@@ -7956,10 +7975,18 @@ ipcMain.handle('hermes:runtime:version', async () => {
     const commit = (marker && marker.pinnedCommit) || null
     const branch = (marker && marker.pinnedBranch) || null
     const version = (marker && marker.version) || null
-    return { ok: true, version, commit, branch, key: commit || branch || null }
+    // hc-532 (gate 1): compare the installed engine against the shell's declared
+    // minimum. engineMeetsMinVersion FAILS OPEN (unparseable/absent -> true), so
+    // meetsMinEngine is false ONLY when we can positively say the engine is
+    // behind. The renderer uses false to show an "engine needs update" prompt —
+    // it never blocks usage.
+    const minEngineVersion = readDeclaredMinEngineVersion()
+    const meetsMinEngine = engineMeetsMinVersion(version, minEngineVersion)
+    return { ok: true, version, commit, branch, key: commit || branch || null, minEngineVersion, meetsMinEngine }
   } catch (error) {
     rememberLog(`[runtime-update] version read errored: ${error && error.message}`)
-    return { ok: false, version: null, commit: null, branch: null, key: null }
+    // Fail open on the gate too: an unexpected read error must not nag.
+    return { ok: false, version: null, commit: null, branch: null, key: null, minEngineVersion: null, meetsMinEngine: true }
   }
 })
 
@@ -9929,6 +9956,9 @@ function initShellUpdater() {
     ipcMain,
     isPackaged: app.isPackaged,
     log: rememberLog,
+    // hc-532 (gate 3): thread the shell version so the shell-update beacons
+    // carry app_version (createShellUpdater defaults it to null when omitted).
+    appVersion: app.getVersion(),
     broadcast: (channel, payload) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
