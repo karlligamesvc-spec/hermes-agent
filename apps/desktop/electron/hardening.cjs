@@ -58,6 +58,36 @@ function encryptDesktopSecret(value, safeStorageApi) {
   }
 }
 
+// The read counterpart to encryptDesktopSecret: decode one stored secret record
+// ({ encoding, value }) back to the plaintext string. Deliberately LENIENT where
+// encrypt is strict — this runs on every boot/spawn over whatever is on disk, so
+// garbage, a missing keychain, or a record encrypted under another OS user all
+// degrade to '' (callers treat an empty secret as "not stored" and drop the
+// binding) instead of throwing. Pure: safeStorage is injected, matching
+// encryptDesktopSecret, so main.cjs can delegate and tests can round-trip with
+// a fake safeStorage implementation.
+function decryptDesktopSecret(secret, safeStorageApi) {
+  if (!secret || typeof secret !== 'object') {
+    return ''
+  }
+
+  const value = String(secret.value || '')
+
+  if (!value) {
+    return ''
+  }
+
+  if (secret.encoding === 'safeStorage') {
+    try {
+      return safeStorageApi.decryptString(Buffer.from(value, 'base64'))
+    } catch {
+      return ''
+    }
+  }
+
+  return value
+}
+
 function sensitiveFileBlockReason(filePath) {
   const normalized = String(filePath || '')
     .replace(/\\/g, '/')
@@ -269,6 +299,7 @@ module.exports = {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
   TEXT_PREVIEW_SOURCE_MAX_BYTES,
+  decryptDesktopSecret,
   encryptDesktopSecret,
   rejectUnsafePathSyntax,
   resolveDirectoryForIpc,

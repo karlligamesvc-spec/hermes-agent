@@ -7,6 +7,7 @@ const { pathToFileURL } = require('node:url')
 
 const {
   DEFAULT_FETCH_TIMEOUT_MS,
+  decryptDesktopSecret,
   encryptDesktopSecret,
   resolveDirectoryForIpc,
   resolveReadableFileForIpc,
@@ -51,6 +52,60 @@ test('encryptDesktopSecret stores safeStorage base64 payload', () => {
     encoding: 'safeStorage',
     value: Buffer.from('enc:token-123', 'utf8').toString('base64')
   })
+})
+
+// A reversible fake safeStorage: encrypt prefixes, decrypt strips the prefix.
+// Mirrors the shape Electron's safeStorage exposes so the round-trip below
+// exercises the exact encode/decode seams main.cjs delegates to.
+function fakeSafeStorage() {
+  return {
+    isEncryptionAvailable: () => true,
+    encryptString: value => Buffer.from(`enc:${value}`, 'utf8'),
+    decryptString: buffer => {
+      const text = buffer.toString('utf8')
+      if (!text.startsWith('enc:')) {
+        throw new Error('bad ciphertext')
+      }
+      return text.slice(4)
+    }
+  }
+}
+
+test('desktop secret round-trips through encrypt → decrypt (hc-417 P2)', () => {
+  const api = fakeSafeStorage()
+  const stored = encryptDesktopSecret('app-secret-πλ-123', api)
+  // Ciphertext at rest — never the plaintext.
+  assert.equal(stored.encoding, 'safeStorage')
+  assert.notEqual(stored.value, 'app-secret-πλ-123')
+  assert.equal(Buffer.from(stored.value, 'base64').toString('utf8').includes('app-secret-πλ-123'), true)
+
+  assert.equal(decryptDesktopSecret(stored, api), 'app-secret-πλ-123')
+})
+
+test('encrypt with secure storage OFF throws (the IPC maps it to KEYCHAIN_UNAVAILABLE)', () => {
+  // The strict throw is the whole guarantee: a missing keychain can never
+  // silently downgrade to a plaintext write — main.cjs catches this and
+  // returns { ok:false, message:'KEYCHAIN_UNAVAILABLE' } to the renderer.
+  assert.throws(
+    () =>
+      encryptDesktopSecret('secret', {
+        isEncryptionAvailable: () => false,
+        encryptString: () => Buffer.alloc(0)
+      }),
+    /Secure token storage is unavailable/
+  )
+})
+
+test('decryptDesktopSecret degrades to empty string on garbage instead of throwing', () => {
+  const api = fakeSafeStorage()
+  // Tampered/undecryptable ciphertext → '' (caller drops the binding).
+  assert.equal(decryptDesktopSecret({ encoding: 'safeStorage', value: Buffer.from('junk').toString('base64') }, api), '')
+  // Malformed records → ''.
+  assert.equal(decryptDesktopSecret(null, api), '')
+  assert.equal(decryptDesktopSecret({}, api), '')
+  assert.equal(decryptDesktopSecret({ encoding: 'safeStorage', value: '' }, api), '')
+  // Legacy clear-value record (no safeStorage encoding) passes through as-is.
+  assert.equal(decryptDesktopSecret({ encoding: 'plain', value: 'v' }, api), 'v')
 })
 
 test('sensitiveFileBlockReason blocks obvious secret file patterns', () => {

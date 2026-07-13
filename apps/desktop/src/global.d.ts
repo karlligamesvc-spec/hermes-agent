@@ -89,12 +89,13 @@ declare global {
       imEntry?: {
         // Local bound channels (display fields only, no network, no secret).
         list: () => Promise<DesktopImEntryListResult>
-        // Start the feishu device-code flow → scan URL + poll handle.
+        // Start the feishu provisioning flow → scan link + provision_id handle.
         feishuIssue: () => Promise<DesktopImEntryIssueResult>
-        // One device-code status check; on 'authorized' main persists the
-        // credential (encrypted) + restarts the backend (reloads the window).
-        feishuPoll: (deviceCode: string) => Promise<DesktopImEntryPollResult>
-        // Forget one channel's local binding + restart the backend.
+        // One provisioning status check; on 'success' main fetches + persists
+        // the credential (encrypted) + restarts the backend (reloads the window).
+        feishuPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
+        // Revoke the cloud binding (feishu, best-effort), forget the local
+        // binding + restart the backend.
         unbind: (channelId: string) => Promise<{ ok: boolean }>
       }
       // Platform client-config sync — the cloud serves a versioned client
@@ -505,30 +506,35 @@ export interface DesktopImEntryListResult {
   channels: DesktopImEntryBinding[]
 }
 
-// Result of imEntry.feishuIssue() — the device-code INIT. On ok:true it carries
-// the scan URL (open / render as QR) + a poll handle (deviceCode + cadence). On
-// ok:false, `message` is a stable marker the renderer maps to copy:
-// NOT_SIGNED_IN / SESSION_EXPIRED (→ sign in) · SERVICE_UNAVAILABLE (endpoint not
-// live yet → coming soon) · REQUEST_FAILED (transient → retry).
+// Result of imEntry.feishuIssue() — the provisioning START (cloud v2:
+// POST /api/v1/desktop/feishu/provision). On ok:true it carries the scan LINK
+// (qrUrl — render it as a QR locally) + a poll handle (provisionId + cadence).
+// On ok:false, `message` is a stable marker the renderer maps to copy:
+// NOT_SIGNED_IN / SESSION_EXPIRED (→ sign in) · SERVICE_UNAVAILABLE (endpoint
+// not deployed → coming soon) · RATE_LIMITED (another flow in flight) ·
+// REQUEST_FAILED (transient → retry).
 export interface DesktopImEntryIssueResult {
   ok: boolean
   needsSignIn?: boolean
   message?: string
-  deviceCode?: string
-  scanUrl?: string
+  provisionId?: string
   qrUrl?: string
   intervalMs?: number
   expiresInMs?: number
 }
 
-// Result of imEntry.feishuPoll() — one status check. `status` is one of
-// pending | scanned | authorized | denied | expired. On authorized the main
-// process has already stored the credential + is restarting the backend.
-// KEYCHAIN_UNAVAILABLE means secure storage is off, so the credential was NOT
-// saved (never written in plaintext) — the user must enable OS keychain access.
+// Result of imEntry.feishuPoll() — one status check (cloud v2:
+// GET /api/v1/desktop/feishu/provision/{id}). `status` is one of
+// pending | success | denied | expired. On success the main process has already
+// fetched + stored the credential and is restarting the backend; when the
+// automatic restart failed, `restartFailed` is set and the binding is still
+// saved (the user restarts manually). KEYCHAIN_UNAVAILABLE means secure storage
+// is off, so the credential was NOT saved (never written in plaintext) — the
+// user must enable OS keychain access.
 export interface DesktopImEntryPollResult {
   ok: boolean
-  status?: 'authorized' | 'denied' | 'expired' | 'pending' | 'scanned'
+  status?: 'denied' | 'expired' | 'pending' | 'success'
+  restartFailed?: boolean
   needsSignIn?: boolean
   message?: string
 }

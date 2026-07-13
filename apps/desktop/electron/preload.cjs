@@ -48,15 +48,16 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     openBind: () => ipcRenderer.invoke('hermes:feishu:openBind')
   },
   // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
-  // scanning a QR / pasting one code. feishu issues an INDEPENDENT app via a
-  // cloud device-code flow (renderer owns the polling loop: issue → poll* →
-  // authorized). No secret crosses to the renderer: list returns display fields;
-  // the credential is persisted encrypted + injected into the backend spawn env.
+  // scanning a QR / pasting one code. feishu registers an INDEPENDENT app via
+  // the cloud v2 provisioning flow (renderer owns the polling loop: issue →
+  // poll* → success; main fetches + stores the credential on success). No
+  // secret crosses to the renderer: list returns display fields; the credential
+  // is persisted encrypted + injected into the backend spawn env.
   // See electron/apex-im-entry.cjs.
   imEntry: {
     list: () => ipcRenderer.invoke('hermes:imEntry:list'),
     feishuIssue: () => ipcRenderer.invoke('hermes:imEntry:feishuIssue'),
-    feishuPoll: deviceCode => ipcRenderer.invoke('hermes:imEntry:feishuPoll', deviceCode),
+    feishuPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:feishuPoll', provisionId),
     unbind: channelId => ipcRenderer.invoke('hermes:imEntry:unbind', channelId)
   },
   // Platform client-config sync — informational read of the cached versioned

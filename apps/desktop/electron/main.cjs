@@ -138,19 +138,24 @@ const {
 } = require('./apex-feishu.cjs')
 const {
   buildImEntrySpawnEnv,
+  feishuProvisionPollUrl,
+  isAllowedFeishuProvisionUrl,
   isKnownChannel: isKnownImEntryChannel,
   normalizeStoredImEntry,
-  parseFeishuIssueResponse,
-  parseFeishuPollResponse,
-  resolveFeishuIssueEndpoints,
+  parseFeishuCredentialsV2Response,
+  parseFeishuProvisionResponse,
+  parseFeishuProvisionStatusResponse,
+  resolveFeishuProvisionEndpoints,
   secretFieldsFor: imEntrySecretFieldsFor,
-  shapeBinding: shapeImEntryBinding
+  shapeBinding: shapeImEntryBinding,
+  stripFeishuEnvOverrides
 } = require('./apex-im-entry.cjs')
 const { startLoopbackLogin } = require('./apex-loopback.cjs')
 const {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
   TEXT_PREVIEW_SOURCE_MAX_BYTES,
+  decryptDesktopSecret: decryptDesktopSecretWith,
   encryptDesktopSecret: encryptDesktopSecretStrict,
   resolveReadableFileForIpc,
   resolveRequestedPathForIpc,
@@ -2026,9 +2031,13 @@ function readDesktopUpdateConfig() {
 
 // Atomic file write: temp + rename (atomic on all platforms). Prevents
 // partial writes on crash/power loss that corrupt JSON config files.
-function writeFileAtomic(targetPath, data, encoding) {
+// `options` passes through to fs.writeFileSync — an encoding string, or an
+// options object; `{ mode: 0o600 }` lets credential-bearing stores land
+// owner-only (rename preserves the temp file's mode, replacing any looser
+// mode an existing file had).
+function writeFileAtomic(targetPath, data, options) {
   const tmp = targetPath + '.tmp'
-  fs.writeFileSync(tmp, data, encoding)
+  fs.writeFileSync(tmp, data, options)
   fs.renameSync(tmp, targetPath)
 }
 
@@ -4863,25 +4872,7 @@ function encryptDesktopSecret(value) {
 }
 
 function decryptDesktopSecret(secret) {
-  if (!secret || typeof secret !== 'object') {
-    return ''
-  }
-
-  const value = String(secret.value || '')
-
-  if (!value) {
-    return ''
-  }
-
-  if (secret.encoding === 'safeStorage') {
-    try {
-      return safeStorage.decryptString(Buffer.from(value, 'base64'))
-    } catch {
-      return ''
-    }
-  }
-
-  return value
+  return decryptDesktopSecretWith(secret, safeStorage)
 }
 
 // Validate + normalize the per-profile remote overrides map read from disk.
@@ -5236,7 +5227,8 @@ function writeImEntryBinding(binding) {
     storedFields[fieldKey] = secretKeys.has(fieldKey) ? encryptDesktopSecret(String(value)) : String(value)
   }
   bindings[binding.channelId] = { fields: storedFields, boundAt: binding.boundAt }
-  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2))
+  // 0o600: the store carries (encrypted) credentials — owner-only on disk.
+  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2), { mode: 0o600 })
 }
 
 // Forget one channel's binding (unbind). Rewrites the file without it, or removes
@@ -5261,7 +5253,53 @@ function clearImEntryBinding(channelId) {
     }
     return
   }
-  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2))
+  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2), { mode: 0o600 })
+}
+
+// hc-417 P1: strip plaintext FEISHU_* keys from the runtime home .env files.
+// The runtime loads {HERMES_HOME}/.env with override=True
+// (hermes_cli/env_loader.py::load_hermes_dotenv), so any leftover plaintext
+// FEISHU_* there silently beats the credential we inject into the spawn env —
+// the freshly-provisioned independent app would never take effect (or its
+// app_id would mix with a stale .env secret). Called on a successful hc-417
+// binding, BEFORE the backend re-home, over the default home and the active
+// named profile's home (named profiles re-home HERMES_HOME to
+// {root}/profiles/<name>, so their .env is the one the backend loads).
+// Warning is logged BEFORE the rewrite (key names only, never values).
+// Best-effort: a read/write failure must not fail the bind — the injected env
+// still wins for any key .env does not carry.
+function cleanFeishuPlaintextEnvOverrides() {
+  const homes = [HERMES_HOME]
+  const profile = readActiveDesktopProfile()
+  if (profile && profile !== 'default') {
+    homes.push(path.join(HERMES_HOME, 'profiles', profile))
+  }
+
+  for (const home of homes) {
+    const envPath = path.join(home, '.env')
+    let raw
+    try {
+      raw = fs.readFileSync(envPath, 'utf8')
+    } catch {
+      continue // no .env → nothing to clean
+    }
+    const { text, removed } = stripFeishuEnvOverrides(raw)
+    if (removed.length === 0) {
+      continue
+    }
+    rememberLog(
+      `[im-entry] WARNING: removing plaintext ${removed.join(', ')} from ${envPath} — ` +
+        'the runtime loads .env with override=True, which would shadow the Feishu app ' +
+        'provisioned for this desktop. The desktop-injected credential is now the only Feishu source.'
+    )
+    try {
+      writeFileAtomic(envPath, text, { mode: 0o600 })
+    } catch (error) {
+      rememberLog(
+        `[im-entry] failed to rewrite ${envPath}: ${error && error.message ? error.message : error}`
+      )
+    }
+  }
 }
 
 // Build the IM 入口 spawn-env fragment for the local backend. Add-only vs an
@@ -5717,13 +5755,12 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 } = {}) {
   })
 }
 
-// Bearer-authed GET returning parsed JSON — the read counterpart to
-// apexAuthPostJson (same electronNet transport + explicit timeout + statusCode on
-// the rejection). Used by the hc-444 Feishu bridge to fetch the signed-in user's
-// credential (GET /api/v1/desktop/feishu-credentials). A >=400 rejects with an
-// Error carrying `.statusCode` so the caller can distinguish 401 (expired JWT →
+// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
+// counterpart to apexAuthPostJson (same electronNet transport + explicit
+// timeout + statusCode on the rejection). A >=400 rejects with an Error
+// carrying `.statusCode` so the caller can distinguish 401 (expired JWT →
 // re-login) from a transient failure.
-function apexAuthGetJson(url, { bearer, timeoutMs = 12_000 } = {}) {
+function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 } = {}) {
   return new Promise((resolve, reject) => {
     let parsed
     try {
@@ -5737,7 +5774,7 @@ function apexAuthGetJson(url, { bearer, timeoutMs = 12_000 } = {}) {
       return
     }
 
-    const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
+    const request = electronNet.request({ method, url, redirect: 'follow' })
     request.setHeader('Accept', 'application/json')
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)
@@ -5789,6 +5826,16 @@ function apexAuthGetJson(url, { bearer, timeoutMs = 12_000 } = {}) {
     })
     request.end()
   })
+}
+
+function apexAuthGetJson(url, opts) {
+  return apexAuthBodylessJson('GET', url, opts)
+}
+
+// DELETE counterpart — used by the hc-417 IM 入口 unbind to revoke the Desktop
+// anchor's cloud-side Feishu binding (DELETE /api/v1/desktop/feishu/entry).
+function apexAuthDeleteJson(url, opts) {
+  return apexAuthBodylessJson('DELETE', url, opts)
 }
 
 // Probe the relay's OpenAI-compatible model listing with a Bearer relay key —
@@ -7885,23 +7932,40 @@ ipcMain.handle('hermes:feishu:openBind', async () => {
 
 // ── hc-417: Desktop IM 入口 (renderer surface) ──────────────────────────────
 // The IM 入口 page connects the local agent to an IM platform. feishu is the
-// first channel: an INDEPENDENT app is issued via a cloud device-code endpoint
-// (createbot init→begin→poll primitives, credential pinned to a desktop anchor
-// agent) — NOT the hc-444 GET /desktop/feishu-credentials path, which reuses the
+// first channel: an INDEPENDENT app is registered via the cloud v2 provisioning
+// endpoints (hermes-cloud app/routers/desktop.py — POST /desktop/feishu/provision,
+// GET .../provision/{id}, GET /desktop/feishu/credentials, DELETE
+// /desktop/feishu/entry; credential pinned to the user's Desktop anchor agent)
+// — NOT the hc-444 GET /desktop/feishu-credentials path, which reuses the
 // cloud agent's app and would collide on Feishu's WS cluster (spike finding).
-// The renderer owns the polling state machine; main exposes issue (one init) +
-// poll (one status check) + list + unbind. No secret ever crosses to the
-// renderer — list returns only display fields; the credential is persisted
-// encrypted here and injected into the backend spawn env.
+// The renderer owns the polling state machine; main exposes issue (one
+// provision start) + poll (one status check) + list + unbind. No secret ever
+// crosses to the renderer — list returns only display fields; the credential is
+// fetched main-side on success, persisted encrypted here and injected into the
+// backend spawn env.
 
 // list: display-only view of the local bindings (no network, no secret).
 ipcMain.handle('hermes:imEntry:list', async () => ({ channels: imEntryBoundList() }))
 
-// feishuIssue: start the device-code flow. Authenticates with the stored managed
-// login JWT (same as the hc-444 bridge). Returns the scan URL + a poll handle the
-// renderer's state machine drives. Endpoint paths are PENDING the cloud PR
-// (apex-im-entry.cjs) — a 404 surfaces as SERVICE_UNAVAILABLE (retryable), never
-// a hard crash. NEVER throws; the secret is never logged.
+// Resolve + allowlist-gate one hc-417 provisioning URL. These calls carry the
+// login JWT (and the credentials call receives an app secret), so a URL that
+// fails the apex-nodes.com/loopback allowlist is refused outright — logged as a
+// warning, surfaced to the renderer as a plain REQUEST_FAILED.
+function guardedFeishuProvisionUrl(url) {
+  if (isAllowedFeishuProvisionUrl(url)) {
+    return url
+  }
+  rememberLog(`[im-entry] refusing feishu provisioning call to non-allowlisted URL: ${url}`)
+  return null
+}
+
+// feishuIssue: start the cloud provisioning flow (hc-417 v2 contract —
+// POST /api/v1/desktop/feishu/provision). Authenticates with the stored managed
+// login JWT (same as the hc-444 bridge). Returns the scan link (qrUrl — the
+// renderer renders the QR locally) + the provision_id poll handle the renderer's
+// state machine drives. A 404 surfaces as SERVICE_UNAVAILABLE (endpoint rolled
+// back / older cloud), a 429 as RATE_LIMITED (another flow already in flight).
+// NEVER throws; the secret is never logged.
 ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
@@ -7910,66 +7974,111 @@ ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
   }
 
   const endpoints = resolveApexEndpoints(process.env)
-  const { issueUrl } = resolveFeishuIssueEndpoints(endpoints.apiBase, process.env)
+  const { provisionUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
+  const guardedUrl = guardedFeishuProvisionUrl(provisionUrl)
+  if (!guardedUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
   let body
   try {
-    body = await apexAuthPostJson(issueUrl, { body: {}, bearer: token })
+    body = await apexAuthPostJson(guardedUrl, { body: {}, bearer: token })
   } catch (error) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
     if (error && error.statusCode === 404) {
-      // The cloud issuance endpoint isn't deployed yet → friendly "coming soon".
+      // The cloud provisioning endpoint isn't deployed → friendly "coming soon".
       return { ok: false, message: 'SERVICE_UNAVAILABLE' }
     }
-    rememberLog(`[im-entry] feishu issue failed: ${error && error.message ? error.message : error}`)
+    if (error && error.statusCode === 429) {
+      // a2a audit P2-9: the cloud caps in-flight flows per user.
+      return { ok: false, message: 'RATE_LIMITED' }
+    }
+    rememberLog(`[im-entry] feishu provision failed: ${error && error.message ? error.message : error}`)
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
-  const parsed = parseFeishuIssueResponse(body)
+  const parsed = parseFeishuProvisionResponse(body)
   if (!parsed) {
-    rememberLog('[im-entry] feishu issue response malformed')
+    rememberLog('[im-entry] feishu provision response malformed')
     return { ok: false, message: 'REQUEST_FAILED' }
   }
   return { ok: true, ...parsed }
 })
 
-// feishuPoll: one device-code status check for a given deviceCode. On 'authorized'
-// it persists the issued credential ENCRYPTED and re-homes the backend so the
-// Feishu adapter comes alive, then reports authorized (the renderer keeps its
-// "connecting…" state until the reload lands). All other statuses return as-is so
-// the renderer's machine decides whether to keep polling / stop. A keychain
-// failure fails the bind cleanly (KEYCHAIN_UNAVAILABLE) — never a plaintext write.
-ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, deviceCode) => {
+// feishuPoll: one provisioning status check for a given provisionId
+// (GET /api/v1/desktop/feishu/provision/{id} — v2 contract: the poll response
+// NEVER carries the credential). On 'success' it fetches the credential from
+// GET /api/v1/desktop/feishu/credentials, persists it ENCRYPTED, strips any
+// plaintext FEISHU_* .env overrides (P1 — .env loads with override=True and
+// would shadow the injection), and re-homes the backend so the Feishu adapter
+// comes alive. All other statuses return as-is so the renderer's machine
+// decides whether to keep polling / stop. A keychain failure fails the bind
+// cleanly (KEYCHAIN_UNAVAILABLE) — never a plaintext write. A restart failure
+// after the credential is safely stored still reports success (the binding IS
+// saved) with restartFailed so the UI tells the user to restart manually.
+ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
   if (!token) {
     return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
   }
-  const code = typeof deviceCode === 'string' ? deviceCode.trim() : ''
-  if (!code) {
+  const id = typeof provisionId === 'string' ? provisionId.trim() : ''
+  if (!id) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const endpoints = resolveApexEndpoints(process.env)
-  const { pollUrl } = resolveFeishuIssueEndpoints(endpoints.apiBase, process.env)
+  const { provisionUrl, credentialsUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
+  const pollUrl = guardedFeishuProvisionUrl(feishuProvisionPollUrl(provisionUrl, id))
+  if (!pollUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
   let body
   try {
-    body = await apexAuthPostJson(pollUrl, { body: { device_code: code }, bearer: token })
+    body = await apexAuthGetJson(pollUrl, { bearer: token })
   } catch (error) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
     if (error && error.statusCode === 404) {
-      return { ok: false, message: 'SERVICE_UNAVAILABLE' }
+      // The flow is unknown/lost (scheduler restart, TTL sweep) — terminal for
+      // THIS flow; let the user start a fresh one instead of polling a ghost.
+      return { ok: true, status: 'expired' }
     }
-    rememberLog(`[im-entry] feishu poll failed: ${error && error.message ? error.message : error}`)
+    rememberLog(`[im-entry] feishu provision poll failed: ${error && error.message ? error.message : error}`)
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
-  const { status, credential } = parseFeishuPollResponse(body)
-  if (status !== 'authorized' || !credential) {
+  const { status } = parseFeishuProvisionStatusResponse(body)
+  if (status !== 'success') {
     return { ok: true, status }
+  }
+
+  // success → the credential is persisted cloud-side; fetch it (separate call —
+  // the poll response never carries it) and store it encrypted.
+  const guardedCredentialsUrl = guardedFeishuProvisionUrl(credentialsUrl)
+  if (!guardedCredentialsUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let credentialsBody
+  try {
+    credentialsBody = await apexAuthGetJson(guardedCredentialsUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    // Transient — report a failed poll; the machine re-polls, the flow is
+    // already terminal 'success' cloud-side, and the next tick retries this
+    // fetch. NEVER log the body (it would carry the secret on a partial read).
+    rememberLog(`[im-entry] feishu credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const credential = parseFeishuCredentialsV2Response(credentialsBody)
+  if (!credential) {
+    rememberLog('[im-entry] feishu credentials response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const binding = shapeImEntryBinding('feishu', credential)
@@ -7983,23 +8092,72 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, deviceCode) => {
     rememberLog(`[im-entry] feishu credential not stored: ${error && error.message ? error.message : 'keychain'}`)
     return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
   }
-  // Re-home the local backend so the freshly-injected FEISHU_* env takes effect.
-  await teardownPrimaryBackendAndWait()
-  mainWindow?.reload()
-  return { ok: true, status: 'authorized' }
+
+  // P1: make spawn injection the ONLY Feishu source — a plaintext FEISHU_* in
+  // the runtime home .env would override the injected credential on load.
+  try {
+    cleanFeishuPlaintextEnvOverrides()
+  } catch (error) {
+    rememberLog(`[im-entry] .env FEISHU_* cleanup failed: ${error && error.message ? error.message : error}`)
+  }
+
+  // Re-home the local backend so the freshly-injected FEISHU_* env takes
+  // effect. The credential is already safe on disk — a teardown/reload failure
+  // must not fail the bind, only downgrade it to "restart manually".
+  try {
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  } catch (error) {
+    rememberLog(`[im-entry] backend restart after bind failed: ${error && error.message ? error.message : error}`)
+    return { ok: true, status: 'success', restartFailed: true }
+  }
+  return { ok: true, status: 'success' }
 })
 
-// unbind: forget one channel's local binding and restart the backend so its
-// adapter goes dark on the next boot. Cloud/anchor state is untouched — this is a
-// desktop-local disconnect only.
+// unbind: revoke the cloud-side Desktop binding (DELETE /api/v1/desktop/feishu/entry
+// — v2 contract; only the feishu channel has a cloud leg), then forget the local
+// binding and restart the backend so its adapter goes dark on the next boot.
+// The cloud revoke is best-effort: a 404 means nothing was bound cloud-side
+// (already revoked / legacy local-only binding) and any other failure is logged
+// but never blocks the LOCAL disconnect — the user's machine must always be able
+// to stop replying, even offline.
 ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   const id = typeof channelId === 'string' ? channelId.trim() : ''
   if (!isKnownImEntryChannel(id)) {
     return { ok: false }
   }
+
+  if (id === 'feishu') {
+    const managed = resolveManagedConfig()
+    const token = String(managed.accessToken || '').trim()
+    if (token) {
+      const endpoints = resolveApexEndpoints(process.env)
+      const { entryUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
+      const guardedEntryUrl = guardedFeishuProvisionUrl(entryUrl)
+      if (guardedEntryUrl) {
+        try {
+          await apexAuthDeleteJson(guardedEntryUrl, { bearer: token })
+        } catch (error) {
+          if (!error || error.statusCode !== 404) {
+            rememberLog(
+              `[im-entry] cloud feishu unbind failed (local unbind proceeds): ${error && error.message ? error.message : error}`
+            )
+          }
+        }
+      }
+    } else {
+      rememberLog('[im-entry] not signed in — skipping cloud feishu unbind, clearing local binding only')
+    }
+  }
+
   clearImEntryBinding(id)
-  await teardownPrimaryBackendAndWait()
-  mainWindow?.reload()
+  try {
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  } catch (error) {
+    // The binding is already cleared; the adapter dies on the next manual restart.
+    rememberLog(`[im-entry] backend restart after unbind failed: ${error && error.message ? error.message : error}`)
+  }
   return { ok: true }
 })
 

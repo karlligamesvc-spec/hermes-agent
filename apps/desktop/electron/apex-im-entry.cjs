@@ -206,122 +206,236 @@ function secretFieldsFor(channelId) {
   return CHANNEL_ENV_DESCRIPTORS[channelId].fields.filter(field => field.secret).map(field => field.from)
 }
 
-// ── Cloud device-code endpoint contract (hc-417, PENDING cloud PR) ───────────
-// The cloud seat is building "issue an independent Feishu app for Desktop" using
-// createbot's init→begin→poll device-code primitives. The exact paths land with
-// that PR; these are the best-guess defaults and are OVERRIDABLE via env so the
-// cloud PR (or a staging build) can retarget without a code change here. Until
-// the endpoint is live the issue call surfaces a friendly "service unavailable"
-// state in the UI (a 404 is treated as retryable) — no artificial gate.
+// ── Cloud provisioning endpoint contract (hc-417 v2, LIVE) ──────────────────
+// The cloud leg landed as hermes-cloud PR #595 (+ #600 audit fixes): the
+// scheduler registers an INDEPENDENT Feishu app scoped to the user's Desktop
+// anchor agent via a device-code flow it drives server-side. The desktop is a
+// thin consumer of four JWT-authed endpoints (app/routers/desktop.py):
 //
-//   POST {API_BASE}{ISSUE_PATH}      Bearer <login JWT>  body {}
-//     → { device_code, scan_url, qr_url?, interval, expires_in }
-//   POST {API_BASE}{POLL_PATH}       Bearer <login JWT>  body { device_code }
-//     → { status: 'pending'|'scanned'|'authorized'|'denied'|'expired',
-//         credential?: { app_id, app_secret, domain } }   // present on 'authorized'
-const FEISHU_ISSUE_PATH = '/api/v1/desktop/feishu-app/issue'
-const FEISHU_POLL_PATH = '/api/v1/desktop/feishu-app/poll'
+//   POST   {API_BASE}/api/v1/desktop/feishu/provision            body {}
+//     → { provision_id, qr_url, expires_in, interval }
+//       (qr_url is the SCAN LINK string — render it as a QR locally;
+//        429 = another flow in flight, 502 = Feishu upstream failure)
+//   GET    {API_BASE}/api/v1/desktop/feishu/provision/{provision_id}
+//     → { status: 'pending'|'success'|'denied'|'expired', message?, agent_name? }
+//       (NEVER carries the credential; 404 = flow unknown/lost → expired)
+//   GET    {API_BASE}/api/v1/desktop/feishu/credentials
+//     → { app_id, app_secret, domain, agent_name?, credential_status? }
+//       (404 = not provisioned yet)
+//   DELETE {API_BASE}/api/v1/desktop/feishu/entry
+//     → { ok, app_id }   (404 = nothing bound)
+const FEISHU_PROVISION_PATH = '/api/v1/desktop/feishu/provision'
+const FEISHU_PROVISION_CREDENTIALS_PATH = '/api/v1/desktop/feishu/credentials'
+const FEISHU_PROVISION_ENTRY_PATH = '/api/v1/desktop/feishu/entry'
+
+// Hosts the provisioning endpoints are allowed to live on. These calls carry
+// the login JWT and (credentials) receive an app secret, so a poisoned env
+// override / apiBase must not be able to point them at an arbitrary host.
+// Loopback is allowed for local cloud development.
+const ALLOWED_PROVISION_APEX_DOMAIN = 'apex-nodes.com'
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
 /**
- * Resolve the device-code endpoint URLs for an apiBase, honoring env overrides
- * (HERMES_DESKTOP_IM_FEISHU_ISSUE_URL / _POLL_URL) so the cloud PR can pin exact
- * absolute URLs. Absent overrides, compose from apiBase + the placeholder paths.
+ * True when a provisioning URL is allowed to be called: https on
+ * apex-nodes.com (or a subdomain), or http(s) on loopback for development.
+ * Anything else — other hosts, other protocols, unparseable strings — is
+ * rejected so the JWT / app secret can never travel to a foreign host.
  *
- * @param {string} apiBase e.g. https://api.apex-nodes.com
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {{ issueUrl: string, pollUrl: string }}
+ * @param {unknown} url
+ * @returns {boolean}
  */
-function resolveFeishuIssueEndpoints(apiBase, env = process.env) {
+function isAllowedFeishuProvisionUrl(url) {
+  let parsed
+  try {
+    parsed = new URL(String(url))
+  } catch {
+    return false
+  }
+  const hostname = parsed.hostname.toLowerCase()
+  if (LOOPBACK_HOSTNAMES.has(hostname)) {
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  }
+  if (parsed.protocol !== 'https:') {
+    return false
+  }
+  return hostname === ALLOWED_PROVISION_APEX_DOMAIN || hostname.endsWith(`.${ALLOWED_PROVISION_APEX_DOMAIN}`)
+}
+
+/**
+ * Resolve the hc-417 provisioning endpoint URLs for an apiBase, honoring env
+ * overrides (HERMES_DESKTOP_IM_FEISHU_PROVISION_URL / _CREDENTIALS_URL /
+ * _ENTRY_URL) so a staging build can pin exact absolute URLs. Every resolved
+ * URL — override or composed — still has to pass isAllowedFeishuProvisionUrl
+ * at the call site; the override is a retargeting aid, not an allowlist escape.
+ *
+ * @param {string} apiBase e.g. https://apex-nodes.com/api → https://apex-nodes.com
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ provisionUrl: string, credentialsUrl: string, entryUrl: string }}
+ */
+function resolveFeishuProvisionEndpoints(apiBase, env = process.env) {
   const base = trimTrailingSlash(apiBase)
-  const issueOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_ISSUE_URL)
-  const pollOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_POLL_URL)
+  const provisionOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_PROVISION_URL)
+  const credentialsOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_CREDENTIALS_URL)
+  const entryOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_ENTRY_URL)
   return {
-    issueUrl: issueOverride || `${base}${FEISHU_ISSUE_PATH}`,
-    pollUrl: pollOverride || `${base}${FEISHU_POLL_PATH}`
+    provisionUrl: provisionOverride || `${base}${FEISHU_PROVISION_PATH}`,
+    credentialsUrl: credentialsOverride || `${base}${FEISHU_PROVISION_CREDENTIALS_PATH}`,
+    entryUrl: entryOverride || `${base}${FEISHU_PROVISION_ENTRY_PATH}`
   }
 }
 
 /**
- * Validate + normalize the device-code INIT response into the shape the renderer
- * shows (a scan URL + a poll handle). Returns null on garbage so the IPC layer
- * reports a clean failure instead of leaking a malformed body.
+ * Build the poll URL for one provision flow: GET {provisionUrl}/{provision_id}.
+ *
+ * @param {string} provisionUrl the resolved POST .../feishu/provision URL
+ * @param {string} provisionId
+ * @returns {string}
+ */
+function feishuProvisionPollUrl(provisionUrl, provisionId) {
+  return `${trimTrailingSlash(provisionUrl)}/${encodeURIComponent(String(provisionId || ''))}`
+}
+
+/**
+ * Validate + normalize the provision START response (POST .../feishu/provision)
+ * into the shape the renderer shows: a poll handle + the scan link to render as
+ * a QR. Returns null on garbage so the IPC layer reports a clean failure
+ * instead of leaking a malformed body.
  *
  * @param {unknown} body parsed JSON
- * @returns {null | { deviceCode: string, scanUrl: string, qrUrl: string, intervalMs: number, expiresInMs: number }}
+ * @returns {null | { provisionId: string, qrUrl: string, intervalMs: number, expiresInMs: number }}
  */
-function parseFeishuIssueResponse(body) {
+function parseFeishuProvisionResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
-  const deviceCode = trimStr(body.device_code)
-  const scanUrl = trimStr(body.scan_url) || trimStr(body.verification_uri_complete)
-  if (!deviceCode || !scanUrl) {
+  const provisionId = trimStr(body.provision_id)
+  const qrUrl = trimStr(body.qr_url)
+  if (!provisionId || !qrUrl) {
     return null
   }
   const intervalSec = Number(body.interval)
   const expiresSec = Number(body.expires_in)
   return {
-    deviceCode,
-    scanUrl,
-    qrUrl: trimStr(body.qr_url),
+    provisionId,
+    qrUrl,
     intervalMs: Number.isFinite(intervalSec) && intervalSec > 0 ? Math.round(intervalSec * 1000) : 3000,
     expiresInMs: Number.isFinite(expiresSec) && expiresSec > 0 ? Math.round(expiresSec * 1000) : 300000
   }
 }
 
-// The device-code poll states the renderer's state machine understands. Anything
-// else the server returns is coerced to 'pending' (keep polling) so a new
-// server-side status can't wedge the client into a dead end.
-const FEISHU_POLL_STATES = new Set(['pending', 'scanned', 'authorized', 'denied', 'expired'])
+// The poll statuses the cloud actually returns (desktop_feishu_provisioning.py:
+// STATUS_PENDING/SUCCESS/DENIED/EXPIRED). Anything else is coerced to 'pending'
+// (keep polling) so a new server-side status can't wedge the client.
+const FEISHU_POLL_STATES = new Set(['pending', 'success', 'denied', 'expired'])
 
 /**
- * Validate + normalize the device-code POLL response. On 'authorized' the body
- * must carry an injectable credential (both app_id + app_secret) — otherwise the
- * status degrades to 'pending' so we never report success without a credential to
- * store. Unknown statuses degrade to 'pending'.
+ * Validate + normalize one provision status poll response
+ * (GET .../feishu/provision/{id}). The v2 contract NEVER carries the credential
+ * here — on 'success' the caller fetches it from GET .../feishu/credentials.
+ * Unknown statuses degrade to 'pending'.
  *
  * @param {unknown} body parsed JSON
- * @returns {{ status: string, credential: null | { appId: string, appSecret: string, domain: string } }}
+ * @returns {{ status: string, agentName: string }}
  */
-function parseFeishuPollResponse(body) {
+function parseFeishuProvisionStatusResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return { status: 'pending', credential: null }
+    return { status: 'pending', agentName: '' }
   }
-
   const rawStatus = String(body.status || '').trim().toLowerCase()
-  const status = FEISHU_POLL_STATES.has(rawStatus) ? rawStatus : 'pending'
-
-  if (status !== 'authorized') {
-    return { status, credential: null }
-  }
-
-  const cred = body.credential && typeof body.credential === 'object' ? body.credential : {}
-  const appId = trimStr(cred.app_id)
-  const appSecret = trimStr(cred.app_secret)
-  if (!appId || !appSecret) {
-    // Authorized but no usable credential yet → keep polling, don't false-succeed.
-    return { status: 'pending', credential: null }
-  }
-
   return {
-    status: 'authorized',
-    credential: { appId, appSecret, domain: normalizeFeishuDomain(cred.domain) }
+    status: FEISHU_POLL_STATES.has(rawStatus) ? rawStatus : 'pending',
+    agentName: trimStr(body.agent_name)
   }
+}
+
+/**
+ * Validate + normalize the v2 credentials response
+ * (GET .../feishu/credentials → { app_id, app_secret, domain, ... }). Returns
+ * null when the body cannot yield an injectable credential (both app_id +
+ * app_secret) so a malformed body can never half-enable the adapter.
+ *
+ * @param {unknown} body parsed JSON
+ * @returns {null | { appId: string, appSecret: string, domain: string }}
+ */
+function parseFeishuCredentialsV2Response(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null
+  }
+  const appId = trimStr(body.app_id)
+  const appSecret = trimStr(body.app_secret)
+  if (!appId || !appSecret) {
+    return null
+  }
+  return { appId, appSecret, domain: normalizeFeishuDomain(body.domain) }
+}
+
+// ── ~/.hermes/.env plaintext FEISHU_* cleanup (hc-417 P1) ────────────────────
+// The runtime loads {HERMES_HOME}/.env with override=True
+// (hermes_cli/env_loader.py::load_hermes_dotenv), so a leftover plaintext
+// FEISHU_APP_ID/… in the user's .env silently BEATS the credential the desktop
+// injects into the spawn env — the freshly-provisioned independent app would
+// never take effect (or worse, mix .env's app_id with the injected secret).
+// On a successful hc-417 binding, main.cjs strips every FEISHU_* assignment
+// from the runtime home's .env (warning first) so spawn injection becomes the
+// single Feishu credential source.
+
+// Matches one dotenv assignment line for a FEISHU_* key, tolerating the same
+// grammar python-dotenv accepts: optional leading whitespace, optional
+// `export `, spaces around `=`. Comment lines never match (a leading `#`
+// fails the key charset).
+const FEISHU_ENV_LINE_RE = /^\s*(?:export\s+)?(FEISHU_[A-Za-z0-9_]*)\s*=/
+
+/**
+ * Remove every FEISHU_* assignment line from a .env text. Non-FEISHU lines
+ * (including comments and blanks) are preserved byte-for-byte, so the rewrite
+ * can never corrupt unrelated configuration. Pure — the caller owns file I/O
+ * and the pre-removal warning log.
+ *
+ * @param {unknown} envText raw .env file content
+ * @returns {{ text: string, removed: string[] }} the rewritten text + the
+ *   removed key names (never values — safe to log)
+ */
+function stripFeishuEnvOverrides(envText) {
+  const raw = typeof envText === 'string' ? envText : ''
+  if (!raw) {
+    return { text: raw, removed: [] }
+  }
+
+  const removed = []
+  const kept = []
+  for (const line of raw.split('\n')) {
+    const match = FEISHU_ENV_LINE_RE.exec(line)
+    if (match) {
+      removed.push(match[1])
+      continue
+    }
+    kept.push(line)
+  }
+
+  if (removed.length === 0) {
+    return { text: raw, removed: [] }
+  }
+  return { text: kept.join('\n'), removed }
 }
 
 module.exports = {
   CHANNEL_ENV_DESCRIPTORS,
   DEFAULT_FEISHU_DOMAIN,
-  FEISHU_ISSUE_PATH,
-  FEISHU_POLL_PATH,
+  FEISHU_PROVISION_CREDENTIALS_PATH,
+  FEISHU_PROVISION_ENTRY_PATH,
+  FEISHU_PROVISION_PATH,
   VALID_FEISHU_DOMAINS,
   buildImEntrySpawnEnv,
+  feishuProvisionPollUrl,
+  isAllowedFeishuProvisionUrl,
   isKnownChannel,
   normalizeFeishuDomain,
   normalizeStoredImEntry,
-  parseFeishuIssueResponse,
-  parseFeishuPollResponse,
-  resolveFeishuIssueEndpoints,
+  parseFeishuCredentialsV2Response,
+  parseFeishuProvisionResponse,
+  parseFeishuProvisionStatusResponse,
+  resolveFeishuProvisionEndpoints,
   secretFieldsFor,
-  shapeBinding
+  shapeBinding,
+  stripFeishuEnvOverrides
 }

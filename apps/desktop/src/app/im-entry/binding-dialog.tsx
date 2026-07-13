@@ -1,3 +1,4 @@
+import * as QRCode from 'qrcode'
 import { useCallback, useEffect, useReducer, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -7,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from '@/lib/icons'
 import { imEntryChannel } from '@/lib/im-entry-catalog'
-import { cn } from '@/lib/utils'
 import { notify } from '@/store/notifications'
 
 import { PlatformAvatar } from '../messaging/platform-icon'
@@ -29,10 +29,14 @@ function openExternal(url: string) {
   }
 }
 
-// Map a failed issue/poll result to a machine error reason. NOT_SIGNED_IN /
-// SESSION_EXPIRED → sign_in; SERVICE_UNAVAILABLE → service_unavailable; anything
-// else is transient.
-function failReason(result: { needsSignIn?: boolean; message?: string }): 'request_failed' | 'service_unavailable' | 'sign_in' {
+// Map a failed provision/poll result to a machine error reason. NOT_SIGNED_IN /
+// SESSION_EXPIRED → sign_in; SERVICE_UNAVAILABLE → service_unavailable;
+// RATE_LIMITED (cloud 429: a flow is already in flight) → rate_limited;
+// anything else is transient.
+function failReason(result: {
+  needsSignIn?: boolean
+  message?: string
+}): 'rate_limited' | 'request_failed' | 'service_unavailable' | 'sign_in' {
   if (result.needsSignIn || result.message === 'NOT_SIGNED_IN' || result.message === 'SESSION_EXPIRED') {
     return 'sign_in'
   }
@@ -41,14 +45,20 @@ function failReason(result: { needsSignIn?: boolean; message?: string }): 'reque
     return 'service_unavailable'
   }
 
+  if (result.message === 'RATE_LIMITED') {
+    return 'rate_limited'
+  }
+
   return 'request_failed'
 }
 
 // The device-code flow hook: wires the pure state machine (device-code-machine.ts)
-// to the main-process issue/poll IPC + the poll/expiry timers. The renderer owns
-// the polling loop (per the hc-417 spike). On 'authorized' the main process has
-// already stored the credential + is restarting the backend (which reloads this
-// window), so we just rest in the success state until the reload lands.
+// to the main-process provision/poll IPC + the poll/expiry timers. The renderer
+// owns the polling loop (per the hc-417 spike). On 'success' the main process has
+// already fetched + stored the credential and is restarting the backend (which
+// reloads this window), so we rest in the success state until the reload lands —
+// unless the restart failed (restartFailed), in which case the binding is saved
+// and the user restarts the app manually.
 function useDeviceCodeFlow(open: boolean) {
   const [state, dispatch] = useReducer(deviceCodeReduce, undefined, initialDeviceCodeState)
 
@@ -65,12 +75,11 @@ function useDeviceCodeFlow(open: boolean) {
     try {
       const result = await bridge.feishuIssue()
 
-      if (result.ok && result.deviceCode && result.scanUrl) {
+      if (result.ok && result.provisionId && result.qrUrl) {
         dispatch({
           type: 'ISSUED',
-          deviceCode: result.deviceCode,
-          scanUrl: result.scanUrl,
-          qrUrl: result.qrUrl ?? '',
+          provisionId: result.provisionId,
+          qrUrl: result.qrUrl,
           intervalMs: result.intervalMs ?? 3000,
           expiresAt: Date.now() + (result.expiresInMs ?? 300_000)
         })
@@ -116,18 +125,22 @@ function useDeviceCodeFlow(open: boolean) {
       }
 
       try {
-        const result = await bridge.feishuPoll(state.deviceCode)
+        const result = await bridge.feishuPoll(state.provisionId)
 
         if (cancelled) {
           return
         }
 
         if (result.ok) {
-          dispatch({ type: 'POLL_RESULT', status: result.status ?? 'pending' })
+          dispatch({
+            type: 'POLL_RESULT',
+            status: result.status ?? 'pending',
+            restartFailed: result.restartFailed === true
+          })
         } else if (result.message === 'KEYCHAIN_UNAVAILABLE') {
           dispatch({ type: 'FAIL', reason: 'keychain' })
         } else {
-          dispatch({ type: 'POLL_FAILED', reason: failReason(result) })
+          dispatch({ type: 'POLL_FAILED', reason: pollFailReason(result) })
         }
       } catch {
         if (!cancelled) {
@@ -140,7 +153,7 @@ function useDeviceCodeFlow(open: boolean) {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [state.phase, state.deviceCode, state.intervalMs])
+  }, [state.phase, state.provisionId, state.intervalMs])
 
   // Expiry deadline.
   useEffect(() => {
@@ -162,6 +175,53 @@ function useDeviceCodeFlow(open: boolean) {
   }, [state.phase, state.expiresAt])
 
   return { state, start, reset: () => dispatch({ type: 'RESET' }) }
+}
+
+// POLL_FAILED only accepts the transient/terminal trio — a rate_limited marker
+// can only come from the issue call (the poll of an in-flight flow is never
+// rate-limited), so it maps to request_failed defensively here.
+function pollFailReason(result: {
+  needsSignIn?: boolean
+  message?: string
+}): 'request_failed' | 'service_unavailable' | 'sign_in' {
+  const reason = failReason(result)
+
+  return reason === 'rate_limited' ? 'request_failed' : reason
+}
+
+// Render a scan LINK as a QR image locally (the cloud returns the link string,
+// not an image URL). Resolves to '' on garbage so the dialog falls back to the
+// spinner instead of a broken <img>.
+function useQrDataUrl(link: string): string {
+  const [dataUrl, setDataUrl] = useState('')
+
+  useEffect(() => {
+    if (!link) {
+      setDataUrl('')
+
+      return
+    }
+
+    let cancelled = false
+
+    QRCode.toDataURL(link, { errorCorrectionLevel: 'M', margin: 2, width: 320 })
+      .then(url => {
+        if (!cancelled) {
+          setDataUrl(url)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDataUrl('')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [link])
+
+  return dataUrl
 }
 
 interface BindingDialogProps {
@@ -225,14 +285,20 @@ function DeviceCodeTemplate({ open, onDone }: { open: boolean; onDone: () => voi
   const { t } = useI18n()
   const copy = t.imEntry.dialog
   const { state, start } = useDeviceCodeFlow(open)
+  const qrDataUrl = useQrDataUrl(state.phase === 'awaiting_scan' ? state.qrUrl : '')
 
   // On success the main process is restarting + reloading the window; surface a
-  // toast so the intent is confirmed even before the reload lands.
+  // toast so the intent is confirmed even before the reload lands. When the
+  // automatic restart failed, the binding IS saved — tell the user to restart.
   useEffect(() => {
-    if (state.phase === 'authorized') {
-      notify({ kind: 'success', title: copy.authorizedTitle, message: copy.authorizedMessage })
+    if (state.phase === 'success') {
+      notify({
+        kind: 'success',
+        title: copy.authorizedTitle,
+        message: state.restartFailed ? copy.authorizedRestartHint : copy.authorizedMessage
+      })
     }
-  }, [state.phase, copy])
+  }, [state.phase, state.restartFailed, copy])
 
   if (state.phase === 'error') {
     return (
@@ -244,12 +310,14 @@ function DeviceCodeTemplate({ open, onDone }: { open: boolean; onDone: () => voi
     )
   }
 
-  if (state.phase === 'authorized') {
+  if (state.phase === 'success') {
     return (
       <div className="grid justify-items-center gap-2 py-6 text-center">
         <CheckCircle2 className="size-8 text-primary" />
         <div className="text-sm font-medium">{copy.authorizedTitle}</div>
-        <p className="text-xs text-muted-foreground">{copy.authorizedMessage}</p>
+        <p className="text-xs text-muted-foreground">
+          {state.restartFailed ? copy.authorizedRestartHint : copy.authorizedMessage}
+        </p>
       </div>
     )
   }
@@ -268,18 +336,16 @@ function DeviceCodeTemplate({ open, onDone }: { open: boolean; onDone: () => voi
     <div className="grid justify-items-center gap-3 py-2 text-center">
       <div className="text-sm font-medium">{copy.scanPrompt}</div>
       <div className="flex size-44 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-white p-2">
-        {state.qrUrl ? (
-          // The cloud renders the device-code QR; we display it as-is.
-          <img alt="" className="size-full object-contain" src={state.qrUrl} />
+        {qrDataUrl ? (
+          // The cloud returns the scan LINK; we render the QR locally.
+          <img alt="" className="size-full object-contain" src={qrDataUrl} />
         ) : (
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         )}
       </div>
-      <p className={cn('text-xs', state.scanned ? 'font-medium text-primary' : 'text-muted-foreground')}>
-        {state.scanned ? copy.scanned : copy.scanHint}
-      </p>
-      {state.scanUrl && (
-        <Button onClick={() => openExternal(state.scanUrl)} size="sm" type="button" variant="ghost">
+      <p className="text-xs text-muted-foreground">{copy.scanHint}</p>
+      {state.qrUrl && (
+        <Button onClick={() => openExternal(state.qrUrl)} size="sm" type="button" variant="ghost">
           <ExternalLink className="size-3.5" />
           {copy.openLink}
         </Button>

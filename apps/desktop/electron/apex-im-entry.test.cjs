@@ -7,8 +7,9 @@
  * These are the pure helpers behind the pipeline: the channel env descriptors,
  * binding shaping + the required-field gate, stored-state normalization, the
  * spawn-env fragment builder (add-only, descriptor-keyed), the secret-field
- * classification the encrypt layer reads, the device-code endpoint resolution +
- * its env overrides, and the init/poll response parsers. Secret handling
+ * classification the encrypt layer reads, the cloud v2 provisioning endpoint
+ * resolution + its host allowlist, the provision/status/credentials response
+ * parsers, and the .env FEISHU_* override stripper. Secret handling
  * (safeStorage) + IPC live in main.cjs; here we prove the shaping/gating logic.
  */
 
@@ -16,17 +17,22 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
-  FEISHU_ISSUE_PATH,
-  FEISHU_POLL_PATH,
+  FEISHU_PROVISION_CREDENTIALS_PATH,
+  FEISHU_PROVISION_ENTRY_PATH,
+  FEISHU_PROVISION_PATH,
   buildImEntrySpawnEnv,
+  feishuProvisionPollUrl,
+  isAllowedFeishuProvisionUrl,
   isKnownChannel,
   normalizeFeishuDomain,
   normalizeStoredImEntry,
-  parseFeishuIssueResponse,
-  parseFeishuPollResponse,
-  resolveFeishuIssueEndpoints,
+  parseFeishuCredentialsV2Response,
+  parseFeishuProvisionResponse,
+  parseFeishuProvisionStatusResponse,
+  resolveFeishuProvisionEndpoints,
   secretFieldsFor,
-  shapeBinding
+  shapeBinding,
+  stripFeishuEnvOverrides
 } = require('./apex-im-entry.cjs')
 
 test('isKnownChannel accepts feishu and rejects unknown / non-string ids', () => {
@@ -120,73 +126,112 @@ test('buildImEntrySpawnEnv omits an absent optional domain key entirely', () => 
   assert.equal('FEISHU_DOMAIN' in env, false)
 })
 
-test('resolveFeishuIssueEndpoints composes from apiBase, honors env overrides', () => {
-  const composed = resolveFeishuIssueEndpoints('https://api.apex-nodes.com/', {})
-  assert.equal(composed.issueUrl, `https://api.apex-nodes.com${FEISHU_ISSUE_PATH}`)
-  assert.equal(composed.pollUrl, `https://api.apex-nodes.com${FEISHU_POLL_PATH}`)
+test('resolveFeishuProvisionEndpoints composes the cloud v2 paths from apiBase', () => {
+  // The paths must be EXACTLY the hermes-cloud v2 contract (app/routers/desktop.py).
+  assert.equal(FEISHU_PROVISION_PATH, '/api/v1/desktop/feishu/provision')
+  assert.equal(FEISHU_PROVISION_CREDENTIALS_PATH, '/api/v1/desktop/feishu/credentials')
+  assert.equal(FEISHU_PROVISION_ENTRY_PATH, '/api/v1/desktop/feishu/entry')
 
-  const overridden = resolveFeishuIssueEndpoints('https://api.apex-nodes.com', {
-    HERMES_DESKTOP_IM_FEISHU_ISSUE_URL: 'https://staging.example.com/issue',
-    HERMES_DESKTOP_IM_FEISHU_POLL_URL: 'https://staging.example.com/poll'
+  const composed = resolveFeishuProvisionEndpoints('https://apex-nodes.com/', {})
+  assert.equal(composed.provisionUrl, `https://apex-nodes.com${FEISHU_PROVISION_PATH}`)
+  assert.equal(composed.credentialsUrl, `https://apex-nodes.com${FEISHU_PROVISION_CREDENTIALS_PATH}`)
+  assert.equal(composed.entryUrl, `https://apex-nodes.com${FEISHU_PROVISION_ENTRY_PATH}`)
+
+  const overridden = resolveFeishuProvisionEndpoints('https://apex-nodes.com', {
+    HERMES_DESKTOP_IM_FEISHU_PROVISION_URL: 'https://staging.apex-nodes.com/provision',
+    HERMES_DESKTOP_IM_FEISHU_CREDENTIALS_URL: 'https://staging.apex-nodes.com/credentials',
+    HERMES_DESKTOP_IM_FEISHU_ENTRY_URL: 'https://staging.apex-nodes.com/entry'
   })
-  assert.equal(overridden.issueUrl, 'https://staging.example.com/issue')
-  assert.equal(overridden.pollUrl, 'https://staging.example.com/poll')
+  assert.equal(overridden.provisionUrl, 'https://staging.apex-nodes.com/provision')
+  assert.equal(overridden.credentialsUrl, 'https://staging.apex-nodes.com/credentials')
+  assert.equal(overridden.entryUrl, 'https://staging.apex-nodes.com/entry')
 })
 
-test('parseFeishuIssueResponse shapes a valid body + defaults interval/expiry', () => {
-  const parsed = parseFeishuIssueResponse({
-    device_code: 'dc_1',
-    scan_url: 'https://applink.feishu.cn/xyz',
-    qr_url: 'https://cdn/x.png',
+test('feishuProvisionPollUrl appends the provision id as one URL-safe segment', () => {
+  assert.equal(
+    feishuProvisionPollUrl('https://apex-nodes.com/api/v1/desktop/feishu/provision', 'abc123'),
+    'https://apex-nodes.com/api/v1/desktop/feishu/provision/abc123'
+  )
+  // A hostile/odd id can't smuggle path segments or a query.
+  assert.equal(
+    feishuProvisionPollUrl('https://apex-nodes.com/api/v1/desktop/feishu/provision/', '../entry?x=1'),
+    'https://apex-nodes.com/api/v1/desktop/feishu/provision/..%2Fentry%3Fx%3D1'
+  )
+})
+
+test('isAllowedFeishuProvisionUrl pins apex-nodes.com (https) + loopback (dev)', () => {
+  assert.equal(isAllowedFeishuProvisionUrl('https://apex-nodes.com/api/v1/desktop/feishu/provision'), true)
+  assert.equal(isAllowedFeishuProvisionUrl('https://api.apex-nodes.com/api/v1/desktop/feishu/provision'), true)
+  assert.equal(isAllowedFeishuProvisionUrl('http://127.0.0.1:8000/api/v1/desktop/feishu/provision'), true)
+  assert.equal(isAllowedFeishuProvisionUrl('http://localhost:8000/x'), true)
+
+  // Foreign hosts, lookalikes, downgrades and garbage are all refused.
+  assert.equal(isAllowedFeishuProvisionUrl('https://evil.example.com/steal'), false)
+  assert.equal(isAllowedFeishuProvisionUrl('https://apex-nodes.com.evil.com/x'), false)
+  assert.equal(isAllowedFeishuProvisionUrl('https://notapex-nodes.com/x'), false)
+  assert.equal(isAllowedFeishuProvisionUrl('http://apex-nodes.com/x'), false) // https only off loopback
+  assert.equal(isAllowedFeishuProvisionUrl('file:///etc/passwd'), false)
+  assert.equal(isAllowedFeishuProvisionUrl('not a url'), false)
+  assert.equal(isAllowedFeishuProvisionUrl(''), false)
+  assert.equal(isAllowedFeishuProvisionUrl(null), false)
+})
+
+test('parseFeishuProvisionResponse shapes a valid body + defaults interval/expiry', () => {
+  const parsed = parseFeishuProvisionResponse({
+    provision_id: 'p_1',
+    qr_url: 'https://applink.feishu.cn/xyz?from=sdk',
     interval: 5,
     expires_in: 600
   })
   assert.deepEqual(parsed, {
-    deviceCode: 'dc_1',
-    scanUrl: 'https://applink.feishu.cn/xyz',
-    qrUrl: 'https://cdn/x.png',
+    provisionId: 'p_1',
+    qrUrl: 'https://applink.feishu.cn/xyz?from=sdk',
     intervalMs: 5000,
     expiresInMs: 600000
   })
 
-  // Accepts the OAuth-style verification_uri_complete alias for the scan URL.
-  assert.equal(
-    parseFeishuIssueResponse({ device_code: 'd', verification_uri_complete: 'https://v/c' }).scanUrl,
-    'https://v/c'
-  )
-  // Missing device_code or scan URL → null.
-  assert.equal(parseFeishuIssueResponse({ scan_url: 'https://v/c' }), null)
-  assert.equal(parseFeishuIssueResponse({ device_code: 'd' }), null)
-  assert.equal(parseFeishuIssueResponse(null), null)
+  // Missing provision_id or qr_url → null (never a half-usable flow).
+  assert.equal(parseFeishuProvisionResponse({ qr_url: 'https://v/c' }), null)
+  assert.equal(parseFeishuProvisionResponse({ provision_id: 'p' }), null)
+  assert.equal(parseFeishuProvisionResponse(null), null)
+  assert.equal(parseFeishuProvisionResponse([]), null)
   // Bad interval/expiry fall back to sane defaults.
-  const d = parseFeishuIssueResponse({ device_code: 'd', scan_url: 'u', interval: -1, expires_in: 'x' })
+  const d = parseFeishuProvisionResponse({ provision_id: 'p', qr_url: 'u', interval: -1, expires_in: 'x' })
   assert.equal(d.intervalMs, 3000)
   assert.equal(d.expiresInMs, 300000)
 })
 
-test('parseFeishuPollResponse: non-terminal statuses carry no credential', () => {
-  assert.deepEqual(parseFeishuPollResponse({ status: 'pending' }), { status: 'pending', credential: null })
-  assert.deepEqual(parseFeishuPollResponse({ status: 'scanned' }), { status: 'scanned', credential: null })
-  assert.deepEqual(parseFeishuPollResponse({ status: 'expired' }), { status: 'expired', credential: null })
-  assert.deepEqual(parseFeishuPollResponse({ status: 'denied' }), { status: 'denied', credential: null })
-  // Unknown status → keep polling.
-  assert.deepEqual(parseFeishuPollResponse({ status: 'weird' }), { status: 'pending', credential: null })
-  assert.deepEqual(parseFeishuPollResponse(null), { status: 'pending', credential: null })
+test('parseFeishuProvisionStatusResponse accepts the v2 status set, never a credential', () => {
+  assert.deepEqual(parseFeishuProvisionStatusResponse({ status: 'pending' }), { status: 'pending', agentName: '' })
+  assert.deepEqual(parseFeishuProvisionStatusResponse({ status: 'denied' }), { status: 'denied', agentName: '' })
+  assert.deepEqual(parseFeishuProvisionStatusResponse({ status: 'expired' }), { status: 'expired', agentName: '' })
+  assert.deepEqual(parseFeishuProvisionStatusResponse({ status: 'success', agent_name: 'My Agent' }), {
+    status: 'success',
+    agentName: 'My Agent'
+  })
+
+  // v1 vocabulary ('authorized'/'scanned') and unknown statuses degrade to
+  // pending — keep polling, never wedge or false-succeed.
+  assert.equal(parseFeishuProvisionStatusResponse({ status: 'authorized' }).status, 'pending')
+  assert.equal(parseFeishuProvisionStatusResponse({ status: 'scanned' }).status, 'pending')
+  assert.equal(parseFeishuProvisionStatusResponse({ status: 'weird' }).status, 'pending')
+  assert.equal(parseFeishuProvisionStatusResponse(null).status, 'pending')
 })
 
-test('parseFeishuPollResponse: authorized yields a credential, or degrades without one', () => {
-  const ok = parseFeishuPollResponse({
-    status: 'authorized',
-    credential: { app_id: 'cli_a', app_secret: 'sec', domain: 'lark' }
-  })
-  assert.deepEqual(ok, { status: 'authorized', credential: { appId: 'cli_a', appSecret: 'sec', domain: 'lark' } })
+test('parseFeishuCredentialsV2Response requires app_id + app_secret, clamps domain', () => {
+  assert.deepEqual(
+    parseFeishuCredentialsV2Response({ app_id: ' cli_a ', app_secret: ' sec ', domain: 'lark' }),
+    { appId: 'cli_a', appSecret: 'sec', domain: 'lark' }
+  )
+  // Domain garbage/missing → runtime default, never emitted raw.
+  assert.equal(parseFeishuCredentialsV2Response({ app_id: 'a', app_secret: 's', domain: 'nope' }).domain, 'feishu')
+  assert.equal(parseFeishuCredentialsV2Response({ app_id: 'a', app_secret: 's' }).domain, 'feishu')
 
-  // Authorized but no usable credential → keep polling, never false-succeed.
-  assert.deepEqual(parseFeishuPollResponse({ status: 'authorized', credential: { app_id: 'cli_a' } }), {
-    status: 'pending',
-    credential: null
-  })
-  assert.deepEqual(parseFeishuPollResponse({ status: 'authorized' }), { status: 'pending', credential: null })
+  // Anything that can't yield an injectable credential → null.
+  assert.equal(parseFeishuCredentialsV2Response({ app_id: 'a' }), null)
+  assert.equal(parseFeishuCredentialsV2Response({ app_secret: 's' }), null)
+  assert.equal(parseFeishuCredentialsV2Response({}), null)
+  assert.equal(parseFeishuCredentialsV2Response(null), null)
 })
 
 test('normalizeFeishuDomain clamps to feishu|lark', () => {
@@ -194,4 +239,30 @@ test('normalizeFeishuDomain clamps to feishu|lark', () => {
   assert.equal(normalizeFeishuDomain('FEISHU'), 'feishu')
   assert.equal(normalizeFeishuDomain('garbage'), 'feishu')
   assert.equal(normalizeFeishuDomain(undefined), 'feishu')
+})
+
+test('stripFeishuEnvOverrides removes every FEISHU_* assignment, preserves the rest', () => {
+  const input = [
+    '# my env',
+    'OPENAI_API_KEY=sk-keep',
+    'FEISHU_APP_ID=cli_stale',
+    'export FEISHU_APP_SECRET=old-secret',
+    '  FEISHU_DOMAIN = lark',
+    'FEISHU_WEBHOOK_TOKEN="quoted"',
+    '',
+    'OTHER=1'
+  ].join('\n')
+
+  const { text, removed } = stripFeishuEnvOverrides(input)
+  assert.deepEqual(removed, ['FEISHU_APP_ID', 'FEISHU_APP_SECRET', 'FEISHU_DOMAIN', 'FEISHU_WEBHOOK_TOKEN'])
+  assert.equal(text, ['# my env', 'OPENAI_API_KEY=sk-keep', '', 'OTHER=1'].join('\n'))
+})
+
+test('stripFeishuEnvOverrides leaves non-FEISHU and commented lines untouched', () => {
+  const untouched = ['# FEISHU_APP_ID=commented-out', 'MY_FEISHU_APP_ID=not-a-feishu-prefix', 'A=1'].join('\n')
+  assert.deepEqual(stripFeishuEnvOverrides(untouched), { text: untouched, removed: [] })
+
+  // Garbage in → unchanged out, never a throw.
+  assert.deepEqual(stripFeishuEnvOverrides(''), { text: '', removed: [] })
+  assert.deepEqual(stripFeishuEnvOverrides(null), { text: '', removed: [] })
 })
