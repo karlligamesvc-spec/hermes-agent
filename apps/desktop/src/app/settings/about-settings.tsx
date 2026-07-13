@@ -48,6 +48,10 @@ function EngineUpdateSection() {
   // ok:false from a check means we couldn't reach the admin/latest endpoint.
   // updateAvailable:false with ok:true means we reached it and we're current.
   const reachable = check ? check.ok : true
+  // hc-475 (F4): a newer engine exists but this shell is too old to run it. The
+  // check reports updateAvailable:false (so `latest`/the Apply button are absent)
+  // and hands us the required desktop version to prompt an app upgrade instead.
+  const upgradeRequired = check?.desktopUpgradeRequired ?? null
 
   let statusLine: string
   let statusTone: 'available' | 'error' | 'idle' = 'idle'
@@ -56,6 +60,11 @@ function EngineUpdateSection() {
     statusLine = a.engineTapCheck
   } else if (!reachable) {
     statusLine = a.engineCantReach
+    statusTone = 'error'
+  } else if (upgradeRequired) {
+    statusLine = upgradeRequired.minDesktopVersion
+      ? a.engineDesktopUpgradeRequired(upgradeRequired.minDesktopVersion)
+      : a.engineFoundGeneric
     statusTone = 'error'
   } else if (latest) {
     statusLine = latest.version ? a.engineFound(latest.version) : a.engineFoundGeneric

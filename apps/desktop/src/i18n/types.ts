@@ -333,6 +333,7 @@ export interface Translations {
       engineTapCheck: string
       engineFound: (value: string) => string
       engineFoundGeneric: string
+      engineDesktopUpgradeRequired: (value: string) => string
       engineCompatNotes: string
       engineApply: string
       engineApplying: string

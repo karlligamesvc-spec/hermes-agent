@@ -8,6 +8,9 @@ const path = require('node:path')
 const {
   parseCosTarballKey,
   derivePinFromLatest,
+  parseSemver,
+  compareSemver,
+  desktopMeetsMinVersion,
   latestUrl,
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
@@ -255,6 +258,96 @@ test('checkForRuntimeUpdate: installed via branch key compares against branch', 
   })
   assert.equal(res.current.key, 'v2026.6.19')
   assert.equal(res.updateAvailable, true)
+})
+
+// ---------------------------------------------------------------------------
+// hc-475 (F4): min_desktop_version shell↔runtime compatibility gate
+// ---------------------------------------------------------------------------
+
+test('derivePinFromLatest: reads min_desktop_version when present', () => {
+  const pin = derivePinFromLatest({ ...publishedBody(SHA, 'v'), min_desktop_version: '0.16.10' })
+  assert.ok(pin)
+  assert.equal(pin.minDesktopVersion, '0.16.10')
+})
+
+test('derivePinFromLatest: min_desktop_version null/absent -> null (no gate)', () => {
+  assert.equal(derivePinFromLatest(publishedBody(SHA, 'v')).minDesktopVersion, null)
+  assert.equal(derivePinFromLatest({ ...publishedBody(SHA, 'v'), min_desktop_version: null }).minDesktopVersion, null)
+  assert.equal(derivePinFromLatest({ ...publishedBody(SHA, 'v'), min_desktop_version: '' }).minDesktopVersion, null)
+})
+
+test('parseSemver: tolerant parse (v-prefix, missing parts, prerelease/build)', () => {
+  assert.deepEqual(parseSemver('0.16.10'), [0, 16, 10])
+  assert.deepEqual(parseSemver('v1.2.3'), [1, 2, 3])
+  assert.deepEqual(parseSemver('2'), [2, 0, 0])
+  assert.deepEqual(parseSemver('1.4'), [1, 4, 0])
+  assert.deepEqual(parseSemver('0.16.10-beta.1+build'), [0, 16, 10])
+  assert.equal(parseSemver('not-a-version'), null)
+  assert.equal(parseSemver(''), null)
+})
+
+test('compareSemver: ordering + null on unparseable', () => {
+  assert.equal(compareSemver('0.16.9', '0.16.10'), -1) // numeric, not lexical
+  assert.equal(compareSemver('0.16.10', '0.16.9'), 1)
+  assert.equal(compareSemver('1.0.0', '1.0.0'), 0)
+  assert.equal(compareSemver('v0.17.0', '0.16.99'), 1)
+  assert.equal(compareSemver('garbage', '1.0.0'), null)
+})
+
+test('desktopMeetsMinVersion: no gate / satisfied / equal -> true', () => {
+  assert.equal(desktopMeetsMinVersion('0.16.5', null), true) // no gate
+  assert.equal(desktopMeetsMinVersion('0.16.5', ''), true) // no gate
+  assert.equal(desktopMeetsMinVersion('0.16.10', '0.16.9'), true) // newer
+  assert.equal(desktopMeetsMinVersion('0.16.10', '0.16.10'), true) // equal is OK
+})
+
+test('desktopMeetsMinVersion: shell older than required -> false (BLOCK)', () => {
+  assert.equal(desktopMeetsMinVersion('0.16.9', '0.16.10'), false)
+  assert.equal(desktopMeetsMinVersion('0.15.0', '0.16.0'), false)
+})
+
+test('desktopMeetsMinVersion: unparseable version fails OPEN (never brick)', () => {
+  assert.equal(desktopMeetsMinVersion(null, '0.16.10'), true)
+  assert.equal(desktopMeetsMinVersion('dev', '0.16.10'), true)
+  assert.equal(desktopMeetsMinVersion('0.16.9', 'garbage'), true)
+})
+
+test('checkForRuntimeUpdate: gated (shell too old) -> updateAvailable false + desktopUpgradeRequired', async () => {
+  const res = await checkForRuntimeUpdate({
+    apiBase: 'https://api.apex-nodes.com',
+    marker: { pinnedCommit: 'aaaaaaa', version: '0.16.9' },
+    desktopVersion: '0.16.9',
+    fetchJson: async () => ({ ...publishedBody(SHA, 'newer'), min_desktop_version: '0.16.10' })
+  })
+  assert.equal(res.updateAvailable, false)
+  assert.ok(res.desktopUpgradeRequired)
+  assert.equal(res.desktopUpgradeRequired.minDesktopVersion, '0.16.10')
+  assert.equal(res.desktopUpgradeRequired.currentDesktopVersion, '0.16.9')
+  // still surfaces the latest engine info + its gate on the latest ref
+  assert.equal(res.latest.minDesktopVersion, '0.16.10')
+})
+
+test('checkForRuntimeUpdate: shell satisfies gate -> normal update, no desktopUpgradeRequired', async () => {
+  const res = await checkForRuntimeUpdate({
+    apiBase: 'https://api.apex-nodes.com',
+    marker: { pinnedCommit: 'aaaaaaa', version: '0.16.9' },
+    desktopVersion: '0.16.10',
+    fetchJson: async () => ({ ...publishedBody(SHA, 'newer'), min_desktop_version: '0.16.10' })
+  })
+  assert.equal(res.updateAvailable, true)
+  assert.equal(res.desktopUpgradeRequired, undefined)
+  assert.equal(res.latest.minDesktopVersion, '0.16.10')
+})
+
+test('checkForRuntimeUpdate: no min_desktop_version -> gate is a no-op', async () => {
+  const res = await checkForRuntimeUpdate({
+    apiBase: 'https://api.apex-nodes.com',
+    marker: { pinnedCommit: 'aaaaaaa' },
+    desktopVersion: '0.1.0',
+    fetchJson: async () => publishedBody(SHA, 'newer')
+  })
+  assert.equal(res.updateAvailable, true)
+  assert.equal(res.desktopUpgradeRequired, undefined)
 })
 
 // ---------------------------------------------------------------------------
