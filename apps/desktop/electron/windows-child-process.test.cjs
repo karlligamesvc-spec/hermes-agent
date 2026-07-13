@@ -11,10 +11,24 @@ function readElectronFile(name) {
   return fs.readFileSync(path.join(ELECTRON_DIR, name), 'utf8').replace(/\r\n/g, '\n')
 }
 
+// Prettier is free to re-wrap a long call's argument list across lines any
+// time a nearby edit nudges it over the print width (this is exactly what
+// happened in d62979a6f, which reformatted 5 of these call sites from
+// single-line to multi-line in an otherwise unrelated feature commit and
+// broke every needle below that assumed single-line layout). Matching on
+// whitespace-collapsed text makes the assertion track the call site's
+// *shape* (identifier order, adjacency) instead of its incidental line
+// breaks, so a future reformat can't silently defeat this guard again.
+function collapseWhitespace(str) {
+  return str.replace(/\s+/g, '')
+}
+
 function requireHiddenChildOptions(source, needle) {
-  const index = source.indexOf(needle)
+  const collapsedSource = collapseWhitespace(source)
+  const collapsedNeedle = collapseWhitespace(needle)
+  const index = collapsedSource.indexOf(collapsedNeedle)
   assert.notEqual(index, -1, `missing call site: ${needle}`)
-  const snippet = source.slice(index, index + 700)
+  const snippet = collapsedSource.slice(index, index + 700)
   assert.match(
     snippet,
     /hiddenWindowsChildOptions\(/,
@@ -27,7 +41,7 @@ test('desktop background child processes opt into hidden Windows consoles', () =
 
   assert.match(source, /function hiddenWindowsChildOptions\(options = \{\}\)/)
 
-  requireHiddenChildOptions(source, "execFileSync(\n          'reg'")
+  requireHiddenChildOptions(source, "execFileSync('reg'")
   requireHiddenChildOptions(source, 'execFileSync(pyExe')
   requireHiddenChildOptions(source, 'spawn(resolveGitBinary()')
   requireHiddenChildOptions(source, "execFileSync('taskkill'")
