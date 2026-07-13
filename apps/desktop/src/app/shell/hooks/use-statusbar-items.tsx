@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n'
 import { Hash, Loader2 } from '@/lib/icons'
 import { contextBarLabel, LiveDuration, usageContextLabel } from '@/lib/statusbar'
 import { $busy, $connection, $currentUsage, $sessionStartedAt, $turnStartedAt } from '@/store/session'
-import { $backendUpdateApply, $backendUpdateStatus, openUpdateOverlayFor } from '@/store/updates'
+import { $backendUpdateApply, $backendUpdateStatus, openBackendUpdateOverlay } from '@/store/updates'
 import type { StatusResponse } from '@/types/hermes'
 
 import type { StatusbarItem } from '../statusbar-controls'
@@ -60,7 +60,7 @@ export function useStatusbarItems({ extraLeftItems, extraRightItems, statusSnaps
       icon: applying ? <Loader2 className="size-3 animate-spin" /> : <Hash className="size-3" />,
       id: 'version-backend',
       label,
-      onSelect: () => openUpdateOverlayFor('backend'),
+      onSelect: () => openBackendUpdateOverlay(),
       title: tooltip || undefined,
       variant: 'action'
     }

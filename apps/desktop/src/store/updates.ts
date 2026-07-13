@@ -1,14 +1,24 @@
 /**
- * Desktop self-update store. Tracks distance from the configured branch,
- * surfaces it as an ambient pill, and orchestrates the apply flow.
+ * Desktop update store. Tracks the connected (remote) backend's distance from
+ * its target branch, surfaces it as an ambient pill, and orchestrates its
+ * apply flow. Also publishes the running desktop shell's own version
+ * ($desktopVersion) for the About panel.
+ *
+ * hc-475 follow-up: the legacy client self-rebuild plane (git-pull +
+ * `hermes update` + `hermes desktop --build-only`) has been physically
+ * removed from this store and its overlay — apps/desktop/electron/main.cjs
+ * already hard-disables that plane for packaged builds (hc-475 F4: IS_PACKAGED
+ * -> applyUpdates refuses / checkUpdates reports supported:false), and this
+ * file no longer has any UI entry point that calls into it. main.cjs /
+ * preload.cjs are untouched — the underlying `hermes:updates:*` IPC channels
+ * still exist (dev/non-packaged use is intentionally left reachable at that
+ * layer), they're just no longer wired to any renderer state or component.
  */
 
 import { atom } from 'nanostores'
 
 import type {
-  DesktopUpdateApplyOptions,
   DesktopUpdateApplyResult,
-  DesktopUpdateProgress,
   DesktopUpdateStage,
   DesktopUpdateStatus,
   DesktopVersionInfo
@@ -43,27 +53,25 @@ const IDLE: UpdateApplyState = {
 }
 
 export const $desktopVersion = atom<DesktopVersionInfo | null>(null)
-export const $updateApply = atom<UpdateApplyState>(IDLE)
-export const $updateChecking = atom<boolean>(false)
 export const $updateOverlayOpen = atom<boolean>(false)
-export const $updateStatus = atom<DesktopUpdateStatus | null>(null)
 
-// Client and backend are independently updatable; each keeps its own state.
 export const $backendUpdateStatus = atom<DesktopUpdateStatus | null>(null)
 export const $backendUpdateApply = atom<UpdateApplyState>(IDLE)
 export const $backendUpdateChecking = atom<boolean>(false)
 
-export type UpdateTarget = 'client' | 'backend'
-export const $updateOverlayTarget = atom<UpdateTarget>('client')
-
 export const setUpdateOverlayOpen = (open: boolean) => $updateOverlayOpen.set(open)
-export const openUpdateOverlayFor = (target: UpdateTarget) => {
-  $updateOverlayTarget.set(target)
+
+/** Open the updates overlay for the connected backend and kick off a check.
+ *  The overlay only ever targets the backend now (see file header) — this is
+ *  the single entry point into it, called both from the "Check for Updates…"
+ *  menu path (openUpdatesWindow, gated on remote mode) and directly from the
+ *  statusbar's backend-version pill (already only rendered in remote mode). */
+export const openBackendUpdateOverlay = () => {
   $updateOverlayOpen.set(true)
-  void (target === 'backend' ? checkBackendUpdates() : checkUpdates())
+  void checkBackendUpdates()
 }
+
 export const resetUpdateApplyState = () => {
-  $updateApply.set(IDLE)
   $backendUpdateApply.set(IDLE)
 }
 
@@ -168,10 +176,11 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null) {
     return
   }
 
-  if ($updateApply.get().applying) {
-    return
-  }
-
+  // hc-475 follow-up: this used to gate on the (now-removed) client apply
+  // atom, which real packaged/backend users could never actually set — the
+  // client self-rebuild plane never reached an "applying" state for them
+  // (main.cjs refuses it before that point). So that check was always false
+  // in practice; dropping it changes nothing observable.
   const behind = status.behind ?? 0
 
   notify({
@@ -191,8 +200,16 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null) {
   })
 }
 
+/** "Check for Updates…" entry point (app menu -> onOpenUpdatesRequested, see
+ *  desktop-controller.tsx). Only meaningful when connected to a remote backend
+ *  — the legacy local self-rebuild target is gone (see file header), so this
+ *  is a no-op outside remote mode instead of opening a dead-end card. */
 export function openUpdatesWindow(): void {
-  openUpdateOverlayFor(isRemoteMode() ? 'backend' : 'client')
+  if (!isRemoteMode()) {
+    return
+  }
+
+  openBackendUpdateOverlay()
 }
 
 /** Re-read the running app's version from the Electron main process and
@@ -205,11 +222,11 @@ export async function refreshDesktopVersion(): Promise<DesktopVersionInfo | null
     return null
   }
 
-  // Best-effort UI sync: callers (checkUpdates, startUpdatePoller, window
-  // focus handler) all kick this off with `void refreshDesktopVersion()`,
-  // so any rejection from the IPC bridge (e.g. main process shutting down
-  // mid-reload, or the bridge not yet ready on first paint) would surface
-  // as an unhandled promise rejection in the renderer. Swallow it.
+  // Best-effort UI sync: callers (startUpdatePoller, window focus handler)
+  // all kick this off with `void refreshDesktopVersion()`, so any rejection
+  // from the IPC bridge (e.g. main process shutting down mid-reload, or the
+  // bridge not yet ready on first paint) would surface as an unhandled
+  // promise rejection in the renderer. Swallow it.
   try {
     const next = await window.hermesDesktop?.getVersion?.()
 
@@ -266,76 +283,6 @@ export async function checkBackendUpdates(): Promise<DesktopUpdateStatus | null>
     return fallback
   } finally {
     $backendUpdateChecking.set(false)
-  }
-}
-
-export async function checkUpdates(): Promise<DesktopUpdateStatus | null> {
-  const bridge = window.hermesDesktop?.updates
-
-  if (!bridge || $updateChecking.get()) {
-    return $updateStatus.get()
-  }
-
-  $updateChecking.set(true)
-
-  try {
-    const status = await bridge.check()
-    $updateStatus.set(status)
-    maybeNotifyUpdateAvailable(status)
-    void refreshDesktopVersion()
-
-    return status
-  } catch (error) {
-    const previous = $updateStatus.get()
-
-    const fallback: DesktopUpdateStatus = {
-      supported: previous?.supported ?? true,
-      branch: previous?.branch,
-      error: 'check-failed',
-      message: error instanceof Error ? error.message : String(error),
-      fetchedAt: Date.now()
-    }
-
-    $updateStatus.set(fallback)
-
-    return fallback
-  } finally {
-    $updateChecking.set(false)
-  }
-}
-
-export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
-  const bridge = window.hermesDesktop?.updates
-
-  if (!bridge) {
-    return { ok: false, error: 'unavailable', message: 'Desktop bridge unavailable.' }
-  }
-
-  dismissNotification(UPDATE_TOAST_ID)
-  $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: 'Starting update…' })
-
-  try {
-    const result = await bridge.apply(opts)
-
-    // CLI install with no staged updater: not an error — the user just runs
-    // `hermes update` themselves. Land on a dedicated manual state so the
-    // overlay shows the command + copy button instead of a dead retry loop.
-    if (result?.manual) {
-      $updateApply.set({
-        ...IDLE,
-        applying: false,
-        stage: 'manual',
-        message: result.command ?? 'hermes update',
-        command: result.command ?? 'hermes update'
-      })
-    }
-
-    return result
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    $updateApply.set({ ...$updateApply.get(), applying: false, stage: 'error', error: 'apply-failed', message })
-
-    return { ok: false, error: 'apply-failed', message }
   }
 }
 
@@ -440,46 +387,22 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
   }
 }
 
-function ingestProgress(payload: DesktopUpdateProgress): void {
-  const current = $updateApply.get()
-  const log = [...current.log, { stage: payload.stage, message: payload.message, at: payload.at }].slice(-50)
-  const terminal = payload.stage === 'error' || payload.stage === 'restart' || payload.stage === 'manual'
-
-  $updateApply.set({
-    applying: !terminal,
-    stage: payload.stage,
-    message: payload.message,
-    percent: payload.percent,
-    error: payload.error,
-    // 'manual' carries the command to run in its message field.
-    command: payload.stage === 'manual' ? payload.message : current.command,
-    log
-  })
-}
-
 let pollerStarted = false
 let backgroundTimer: ReturnType<typeof setInterval> | null = null
 let lastFocusAt = 0
 let connectionUnsub: (() => void) | null = null
 let lastConnectionMode: string | undefined
 
-/** Wire up background polling + progress streaming. Idempotent. */
+/** Wire up background polling for the backend update check + desktop version
+ *  refresh. Idempotent. */
 export function startUpdatePoller(): void {
-  if (pollerStarted || typeof window === 'undefined') {
-    return
-  }
-
-  const bridge = window.hermesDesktop?.updates
-
-  if (!bridge) {
+  if (pollerStarted || typeof window === 'undefined' || !window.hermesDesktop) {
     return
   }
 
   pollerStarted = true
-  void checkUpdates()
   void checkBackendUpdates()
   void refreshDesktopVersion()
-  bridge.onProgress(ingestProgress)
 
   // The poller starts at mount, before the gateway connects — so the first
   // backend check above sees mode≠remote and no-ops. Re-check once the
@@ -496,7 +419,6 @@ export function startUpdatePoller(): void {
 
   window.addEventListener('focus', onFocus)
   backgroundTimer = setInterval(() => {
-    void checkUpdates()
     void checkBackendUpdates()
   }, 30 * 60 * 1000)
 }
@@ -522,7 +444,6 @@ function onFocus() {
   }
 
   lastFocusAt = now
-  void checkUpdates()
   void checkBackendUpdates()
   void refreshDesktopVersion()
 }
