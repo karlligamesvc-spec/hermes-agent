@@ -11,21 +11,15 @@ import type { DesktopUpdateCommit, DesktopUpdateStage, DesktopUpdateStatus } fro
 import { useI18n } from '@/i18n'
 import { buildCommitChangelog, type CommitGroup } from '@/lib/commit-changelog'
 import { AlertCircle, Check, CheckCircle2, Copy, Terminal } from '@/lib/icons'
+import { resolveUpdateCopy } from '@/lib/update-copy'
 import { cn } from '@/lib/utils'
-import { resolveUpdateCopy, type UpdateTarget } from '@/lib/update-copy'
 import {
   $backendUpdateApply,
   $backendUpdateChecking,
   $backendUpdateStatus,
-  $updateApply,
-  $updateChecking,
   $updateOverlayOpen,
-  $updateOverlayTarget,
-  $updateStatus,
   applyBackendUpdate,
-  applyUpdates,
   checkBackendUpdates,
-  checkUpdates,
   resetUpdateApplyState,
   setUpdateOverlayOpen,
   type UpdateApplyState
@@ -35,29 +29,25 @@ function totalItems(groups: readonly CommitGroup[]) {
   return groups.reduce((sum, g) => sum + g.items.length, 0)
 }
 
+// hc-475 follow-up: this overlay used to render either the local desktop
+// shell's own legacy self-rebuild update ("client") or the connected remote
+// backend's update ("target:'backend'") — see fork PR #109. The client plane
+// is now hard-disabled for packaged builds at the main.cjs boundary and has
+// no UI entry point left anywhere in the renderer, so this component only
+// ever drives the backend flow. The backend branch below is unchanged from
+// before this cleanup.
 export function UpdatesOverlay() {
   const open = useStore($updateOverlayOpen)
-  const target = useStore($updateOverlayTarget)
 
-  const clientStatus = useStore($updateStatus)
-  const clientChecking = useStore($updateChecking)
-  const clientApply = useStore($updateApply)
-  const backendStatus = useStore($backendUpdateStatus)
-  const backendChecking = useStore($backendUpdateChecking)
-  const backendApply = useStore($backendUpdateApply)
-
-  const isBackend = target === 'backend'
-  const status = isBackend ? backendStatus : clientStatus
-  const checking = isBackend ? backendChecking : clientChecking
-  const apply = isBackend ? backendApply : clientApply
-  const check = isBackend ? checkBackendUpdates : checkUpdates
-  const install = isBackend ? applyBackendUpdate : applyUpdates
+  const status = useStore($backendUpdateStatus)
+  const checking = useStore($backendUpdateChecking)
+  const apply = useStore($backendUpdateApply)
 
   useEffect(() => {
     if (open && !status && !checking) {
-      void check()
+      void checkBackendUpdates()
     }
-  }, [check, checking, open, status])
+  }, [checking, open, status])
 
   const behind = status?.behind ?? 0
 
@@ -83,7 +73,7 @@ export function UpdatesOverlay() {
   }
 
   const handleInstall = () => {
-    void install()
+    void applyBackendUpdate()
   }
 
   return (
@@ -92,7 +82,7 @@ export function UpdatesOverlay() {
         className="max-w-sm overflow-hidden border-border/70 p-0 gap-0"
         showCloseButton={phase !== 'applying'}
       >
-        {phase === 'applying' && <ApplyingView apply={apply} isBackend={isBackend} />}
+        {phase === 'applying' && <ApplyingView apply={apply} />}
 
         {phase === 'manual' && (
           <ManualView command={apply.command ?? 'hermes update'} onDone={() => handleClose(false)} />
@@ -109,9 +99,8 @@ export function UpdatesOverlay() {
             commits={status?.commits ?? []}
             onInstall={handleInstall}
             onLater={() => handleClose(false)}
-            onRetryCheck={() => void check()}
+            onRetryCheck={() => void checkBackendUpdates()}
             status={status}
-            target={target}
           />
         )}
       </DialogContent>
@@ -126,8 +115,7 @@ function IdleView({
   onInstall,
   onLater,
   onRetryCheck,
-  status,
-  target
+  status
 }: {
   behind: number
   checking: boolean
@@ -136,7 +124,6 @@ function IdleView({
   onLater: () => void
   onRetryCheck: () => void
   status: DesktopUpdateStatus | null
-  target: UpdateTarget
 }) {
   const { t } = useI18n()
   const u = t.updates
@@ -189,7 +176,7 @@ function IdleView({
   if (behind === 0) {
     return (
       <CenteredStatus
-        body={target === 'backend' ? u.latestBodyBackend : u.latestBody}
+        body={u.latestBodyBackend}
         icon={<CheckCircle2 className="size-7 text-emerald-600 dark:text-emerald-400" />}
         title={u.allSetTitle}
       />
@@ -200,11 +187,10 @@ function IdleView({
   const shownItems = totalItems(groups)
   const remaining = Math.max(0, behind - shownItems)
 
-  // Name what's being updated. In remote mode the overlay acts on the connected
-  // backend, not the local client — say so. When there are no commit rows to
-  // show (e.g. pip/non-git backend), degrade to honest "no release notes" copy
-  // instead of generic filler.
-  const { title, body } = resolveUpdateCopy({ target, shownItems, copy: u })
+  // Names the connected backend — the overlay acts on it, not the local
+  // client. When there are no commit rows to show (e.g. pip/non-git backend),
+  // degrade to honest "no release notes" copy instead of generic filler.
+  const { title, body } = resolveUpdateCopy({ shownItems, copy: u })
 
   return (
     <div className="grid gap-5 px-6 pb-6 pt-7 pr-8">
@@ -309,11 +295,11 @@ function ManualView({ command, onDone }: { command: string; onDone: () => void }
   )
 }
 
-function ApplyingView({ apply, isBackend }: { apply: UpdateApplyState; isBackend: boolean }) {
+function ApplyingView({ apply }: { apply: UpdateApplyState }) {
   const { t } = useI18n()
   const u = t.updates
   const label = u.stages[apply.stage as DesktopUpdateStage] ?? u.stages.idle
-  const body = isBackend ? u.applyingBodyBackend : u.applyingBody
+  const body = u.applyingBodyBackend
 
   const percent =
     typeof apply.percent === 'number' && Number.isFinite(apply.percent)

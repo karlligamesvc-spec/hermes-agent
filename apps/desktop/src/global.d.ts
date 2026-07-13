@@ -221,13 +221,11 @@ declare global {
       cancelBootstrap: () => Promise<{ ok: boolean; cancelled: boolean }>
       onBootstrapEvent: (callback: (payload: DesktopBootstrapEvent) => void) => () => void
       getVersion: () => Promise<DesktopVersionInfo>
-      updates: {
-        check: () => Promise<DesktopUpdateStatus>
-        apply: (opts?: DesktopUpdateApplyOptions) => Promise<DesktopUpdateApplyResult>
-        getBranch: () => Promise<{ branch: string }>
-        setBranch: (name: string) => Promise<{ branch: string }>
-        onProgress: (callback: (payload: DesktopUpdateProgress) => void) => () => void
-      }
+      // hc-475 follow-up: the `updates` bridge (check/apply/getBranch/setBranch/
+      // onProgress — the legacy client self-rebuild plane's IPC surface) has no
+      // renderer caller left; its type contract was removed with them. The
+      // preload.cjs / main.cjs implementation is untouched (dev/non-packaged use
+      // stays reachable at that layer; see store/updates.ts's file header).
       uninstall: {
         summary: () => Promise<DesktopUninstallSummary>
         run: (mode: DesktopUninstallMode) => Promise<DesktopUninstallResult>
@@ -331,12 +329,6 @@ export interface DesktopUpdateStatus {
   fetchedAt?: number
 }
 
-export type DesktopUpdateDirtyStrategy = 'abort' | 'stash' | 'force'
-
-export interface DesktopUpdateApplyOptions {
-  dirtyStrategy?: DesktopUpdateDirtyStrategy
-}
-
 export interface DesktopUpdateApplyResult {
   ok: boolean
   branch?: string
@@ -350,14 +342,6 @@ export interface DesktopUpdateApplyResult {
 }
 
 export type DesktopUpdateStage = 'idle' | 'prepare' | 'fetch' | 'pull' | 'pydeps' | 'restart' | 'manual' | 'error'
-
-export interface DesktopUpdateProgress {
-  stage: DesktopUpdateStage
-  message: string
-  percent: number | null
-  error: string | null
-  at: number
-}
 
 export interface HermesConnection {
   baseUrl: string
