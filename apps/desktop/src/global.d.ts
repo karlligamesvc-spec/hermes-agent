@@ -604,7 +604,11 @@ export interface DesktopRuntimeUpdateCheck {
   ok: boolean
   updateAvailable: boolean
   current: DesktopRuntimeVersionRef
-  latest: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
+  latest: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null; minDesktopVersion?: string | null }) | null
+  // hc-475 (F4): present only when a newer engine exists but this desktop shell
+  // is too old to run it (min_desktop_version gate). updateAvailable is false in
+  // that case (no clickable offer); the UI prompts the user to upgrade the app.
+  desktopUpgradeRequired?: { minDesktopVersion: string | null; currentDesktopVersion: string | null } | null
   // Present only when ok is false (defensive — the handler swallows errors).
   error?: string
 }
@@ -619,8 +623,12 @@ export interface DesktopRuntimeUpdateApply {
   applied?: boolean
   alreadyCurrent?: boolean
   reloadRequired?: boolean
-  latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
+  latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null; minDesktopVersion?: string | null }) | null
   error?: string
+  // hc-475 (F4): on error==='min_desktop_version', the engine's required minimum
+  // desktop version and the current shell version (for the upgrade prompt).
+  required?: string | null
+  current?: string | null
 }
 
 // 壳自更新状态机快照(electron/shell-updater.cjs 推送/查询的同一形状)。

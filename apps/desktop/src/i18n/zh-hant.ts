@@ -528,6 +528,7 @@ export const zhHant = defineLocale({
       engineTapCheck: '檢查是否有更新的引擎版本。',
       engineFound: value => `發現新版本 ${value}。`,
       engineFoundGeneric: '有可用的新引擎版本。',
+      engineDesktopUpgradeRequired: value => `請先將桌面應用升級到 v${value} 或更新版本,才能安裝此引擎。`,
       engineCompatNotes: '相容性說明',
       engineApply: '套用更新',
       engineApplying: '正在套用…',

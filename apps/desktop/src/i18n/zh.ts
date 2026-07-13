@@ -618,6 +618,7 @@ export const zh: Translations = {
       engineTapCheck: '检查是否有更新的引擎版本。',
       engineFound: value => `发现新版本 ${value}。`,
       engineFoundGeneric: '有可用的新引擎版本。',
+      engineDesktopUpgradeRequired: value => `请先将桌面应用升级到 v${value} 或更高版本,才能安装此引擎。`,
       engineCompatNotes: '兼容性说明',
       engineApply: '应用更新',
       engineApplying: '正在应用…',

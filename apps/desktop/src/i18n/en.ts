@@ -419,6 +419,7 @@ export const en: Translations = {
       engineTapCheck: 'Check whether a newer engine is available.',
       engineFound: value => `New engine version ${value} found.`,
       engineFoundGeneric: 'A new engine version is available.',
+      engineDesktopUpgradeRequired: value => `Update your desktop app to v${value} or later to install this engine.`,
       engineCompatNotes: 'Compatibility notes',
       engineApply: 'Apply update',
       engineApplying: 'Applying…',

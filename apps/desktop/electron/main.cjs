@@ -29,7 +29,8 @@ const { runBootstrap } = require('./bootstrap-runner.cjs')
 const {
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
-  overlayStampWithPin
+  overlayStampWithPin,
+  desktopMeetsMinVersion
 } = require('./apex-runtime-latest.cjs')
 const {
   canUseOnDiskRuntime,
@@ -2131,6 +2132,20 @@ async function resolveHealedBranch(updateRoot, branch) {
 
 async function checkUpdates() {
   const updateRoot = resolveUpdateRoot()
+  // hc-475 (F4): the legacy "N commits behind upstream" detection is the data
+  // source for the「落后 N commit」sync card, which drives the disabled self-
+  // rebuild plane (see applyUpdates). In a packaged runtime report unsupported so
+  // that card never renders its actionable "update now" state; managed updates
+  // surface through the shell-updater and R4/R5 engine planes instead.
+  if (IS_PACKAGED) {
+    return {
+      supported: false,
+      reason: 'managed-runtime',
+      message: 'Updates are managed automatically for this build.',
+      hermesRoot: updateRoot,
+      branch: readDesktopUpdateConfig().branch
+    }
+  }
   let { branch } = readDesktopUpdateConfig()
   const gitDir = path.join(updateRoot, '.git')
   if (!directoryExists(gitDir)) {
@@ -2402,6 +2417,17 @@ async function releaseBackendLock(updateRoot, tag) {
 // Detection (checkUpdates / commit changelog / "N behind") stays in the UI;
 // only this apply action changed.
 async function applyUpdates(opts = {}) {
+  // hc-475 (F4): the legacy git-pull + `hermes update` + `hermes desktop
+  // --build-only` self-rebuild plane is DEAD for a packaged desktop. A packaged
+  // shell (COS source-tarball / NSIS / dmg install) has no source tree or .git to
+  // rebuild against, self-built packages are unsigned, and this plane fought the
+  // managed shell-updater (electron-updater) + R4/R5 engine planes — the hc-435
+  // two-plane collision. Packaged builds update ONLY via those managed planes;
+  // refuse here so a packaged build can never git-pull / rebuild / swap itself.
+  if (IS_PACKAGED) {
+    rememberLog('[updates] legacy self-rebuild plane disabled in packaged runtime (hc-475); refusing apply')
+    return { ok: false, disabled: true, error: 'legacy_update_plane_disabled' }
+  }
   if (updateInFlight) {
     throw new Error('An update is already in progress.')
   }
@@ -7436,6 +7462,9 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
       marker: readBootstrapMarker(),
+      // hc-475 (F4): pass the running shell version so the check can gate an
+      // engine that requires a newer desktop (surfaces desktopUpgradeRequired).
+      desktopVersion: app.getVersion(),
       log: msg => rememberLog(msg)
     })
     return { ok: true, ...result }
@@ -7475,6 +7504,29 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
     const versionMoved = Boolean(marker && marker.version && pin.version && marker.version !== pin.version)
     if (!versionMoved) {
       return { ok: true, applied: false, alreadyCurrent: true, latest: { version: pin.version, key: pin.key } }
+    }
+  }
+
+  // 2a. hc-475 (F4): shell↔runtime compatibility gate — the SINGLE hard refuse
+  //     covering BOTH the bundle path (2b) and the legacy re-bootstrap path (3-4),
+  //     BEFORE any apply work. If the admin-latest engine declares a
+  //     min_desktop_version this shell is too old to satisfy, refuse and tell the
+  //     user to upgrade the desktop app first. This is the version-level gate (the
+  //     whole engine version) — distinct from, and evaluated ahead of, the
+  //     per-bundle manifest gate the bundle flow also enforces. No gate /
+  //     satisfied / unparseable version -> proceed unchanged (fail open).
+  const shellVersion = app.getVersion()
+  if (!desktopMeetsMinVersion(shellVersion, pin.minDesktopVersion)) {
+    rememberLog(
+      `[runtime-update] refusing apply: engine ${pin.version || pin.key} requires desktop >= ` +
+        `${pin.minDesktopVersion}, shell is ${shellVersion}`
+    )
+    return {
+      ok: false,
+      error: 'min_desktop_version',
+      required: pin.minDesktopVersion,
+      current: shellVersion,
+      latest: { version: pin.version, key: pin.key }
     }
   }
 
