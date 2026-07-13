@@ -210,6 +210,17 @@ class AgentHarness(abc.ABC):
         from hermes_constants import apply_subprocess_home_env, get_real_home
 
         env = hermes_subprocess_env(inherit_credentials=False)
+        # hc-524 audit P2: hermes_subprocess_env's blocklist strips provider/infra
+        # keys but NOT the IM-channel app secrets (FEISHU_/WECOM_/DINGTALK_/QQBOT_/
+        # WEIXIN_*), which the desktop backend may have injected (hc-417). Those
+        # must never reach a spawned third-party CLI (cursor-agent etc.). Scrub any
+        # channel secret explicitly.
+        _CHANNEL_SECRET_PREFIXES = ("FEISHU_", "WECOM_", "DINGTALK_", "QQBOT_", "WEIXIN_")
+        _CHANNEL_SECRET_MARKERS = ("_APP_SECRET", "_SECRET", "_ENCODING_AES_KEY", "_BOT_TOKEN", "_TOKEN")
+        for key in list(env):
+            up = key.upper()
+            if up.startswith(_CHANNEL_SECRET_PREFIXES) and any(m in up for m in _CHANNEL_SECRET_MARKERS):
+                del env[key]
         real_home = get_real_home(env)
         if real_home:
             env["HOME"] = real_home

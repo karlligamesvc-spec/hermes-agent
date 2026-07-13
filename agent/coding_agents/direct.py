@@ -98,9 +98,15 @@ class ClaudeDirectHarness(AgentHarness):
             yield from self._drain_stream(channel)
         finally:
             channel.close()
-            # Print mode exits on its own; drop the (now-dead) record so the
-            # ledger reflects only live children.
-            self._ledger.forget(turn_key)
+            # hc-524 audit P2: print mode usually exits on its own, but if the
+            # caller breaks the generator early (before the result line) the child
+            # is still alive — forget() alone would drop it from the ledger while
+            # leaving an orphan that close() can no longer reap. Reap if still
+            # running; only forget a genuinely-dead child.
+            if channel.poll() is None:
+                self._ledger.reap(turn_key)
+            else:
+                self._ledger.forget(turn_key)
             self._proc_keys.discard(turn_key)
             self._current_turn_key = None
 
@@ -310,9 +316,21 @@ class CodexDirectHarness(AgentHarness):
                 continue
             # Notifications.
             if method == "turn/started":
-                self._turn_id = (msg.get("params") or {}).get("turnId") or self._turn_id
+                # hc-524 audit P1: real codex (0.130.0, see codex_app_server_
+                # session.py) nests the turn under params.turn — {"turn":{"id":…}}.
+                # Reading a flat params.turnId returned None → _turn_id never set →
+                # cancel() silently no-op'd. Prefer nested, fall back to flat for
+                # forward-compat with any wire variant.
+                params = msg.get("params") or {}
+                turn_obj = params.get("turn") or {}
+                self._turn_id = turn_obj.get("id") or params.get("turnId") or self._turn_id
             elif method == "turn/completed":
-                yield AgentEvent.turn_completed((msg.get("params") or {}).get("status"))
+                params = msg.get("params") or {}
+                turn_obj = params.get("turn") or {}
+                if turn_obj.get("id"):
+                    self._turn_id = turn_obj["id"]
+                status = turn_obj.get("status") or params.get("status")
+                yield AgentEvent.turn_completed(status)
                 return
             elif method == "thread/tokenUsage/updated":
                 yield AgentEvent.usage((msg.get("params") or {}))

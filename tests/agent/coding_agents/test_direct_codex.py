@@ -39,7 +39,8 @@ def make_codex_server(*, approval: bool = False):
         if method == "turn/start":
             out: list[dict] = [
                 _reply(msg["id"], {}),  # ack
-                _notif("turn/started", {"turnId": "turn-1"}),
+                # Real codex (0.130.0) nests the turn: params.turn.{id,status}.
+                _notif("turn/started", {"turn": {"id": "turn-1"}}),
                 _item({"type": "agentMessage", "id": "m1", "text": "Hi there"}),
             ]
             if approval:
@@ -48,7 +49,7 @@ def make_codex_server(*, approval: bool = False):
                 _item({"type": "commandExecution", "id": "c1", "command": "ls", "cwd": "/tmp", "exitCode": 0, "aggregatedOutput": "file.txt"}),
                 _item({"type": "fileChange", "id": "f1", "status": "completed", "changes": [{"kind": {"type": "add"}, "path": "new.py"}]}),
                 _notif("thread/tokenUsage/updated", {"inputTokens": 10, "outputTokens": 4}),
-                _notif("turn/completed", {"status": "completed", "turnId": "turn-1"}),
+                _notif("turn/completed", {"turn": {"id": "turn-1", "status": "completed"}}),
             ]
             return out
         return []  # turn/interrupt et al.
