@@ -619,6 +619,13 @@ export interface DesktopRuntimeVersion {
   commit: string | null
   branch: string | null
   key: string | null
+  // hc-532 (gate 1): the shell's declared minimum engine (package.json
+  // apexnodes.minEngineVersion), and whether the installed engine satisfies it.
+  // meetsMinEngine FAILS OPEN — it is false ONLY when the engine is positively
+  // behind the floor; unparseable/absent versions read true. The renderer uses
+  // false to surface a non-blocking "engine needs update" prompt.
+  minEngineVersion?: string | null
+  meetsMinEngine?: boolean
 }
 
 // Result of hermesDesktop.runtime.checkUpdate(). ok:false only on an unexpected

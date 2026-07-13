@@ -428,7 +428,10 @@ export const en: Translations = {
       engineConfirmBody: value =>
         `This will switch to engine version ${value} and restart the app to apply it. Your work is safe.`,
       engineConfirmBodyGeneric: 'This will update the AI engine and restart the app to apply it. Your work is safe.',
-      engineConfirmApply: 'Update engine'
+      engineConfirmApply: 'Update engine',
+      engineUpdateNeeded: 'Engine update needed',
+      engineUpdateNeededDetail: value =>
+        `This app needs engine ${value} or later. Use "Check for update" below to update the engine.`
     },
     config: {
       none: 'None',
@@ -729,7 +732,9 @@ export const en: Translations = {
         'Unregister this computer? It stops receiving tasks until you turn scheduling back on.',
       signInFirst: 'Sign in to your APEX account first.',
       saved: 'Device name saved.',
-      enableFailed: 'Could not save — secure storage is unavailable on this system.'
+      enableFailed: 'Could not save — secure storage is unavailable on this system.',
+      engineOutdated: value =>
+        `The installed engine is too old for local agent dispatch (needs ${value} or later). Update it in Settings › About, otherwise tool calls may silently fail.`
     },
     sessions: {
       loading: 'Loading archived sessions…',

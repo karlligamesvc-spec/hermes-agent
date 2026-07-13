@@ -191,7 +191,9 @@ export const zhHant = defineLocale({
       unregisterConfirm: '登出這台電腦?重新開啟排程前它將不再接單。',
       signInFirst: '請先登入你的 APEX 帳號。',
       saved: '裝置名稱已儲存。',
-      enableFailed: '儲存失敗——本系統的安全儲存不可用。'
+      enableFailed: '儲存失敗——本系統的安全儲存不可用。',
+      engineOutdated: value =>
+        `目前引擎版本過舊，本機 Agent 調度需要引擎 ${value} 或更新版本。請到「設定 › 關於」更新引擎，否則工具呼叫可能靜默失敗。`
     },
     closeSettings: '關閉設定',
     exportConfig: '匯出設定',
@@ -556,7 +558,9 @@ export const zhHant = defineLocale({
       engineConfirmTitle: '更新 AI 引擎？',
       engineConfirmBody: value => `將切換到引擎版本 ${value}，並重新啟動應用以生效。你的工作不會遺失。`,
       engineConfirmBodyGeneric: '將更新 AI 引擎，並重新啟動應用以生效。你的工作不會遺失。',
-      engineConfirmApply: '更新引擎'
+      engineConfirmApply: '更新引擎',
+      engineUpdateNeeded: '引擎需更新',
+      engineUpdateNeededDetail: value => `本應用需要引擎 ${value} 或更新版本。請點下方「檢查更新」更新引擎。`
     },
     config: {
       none: '無',

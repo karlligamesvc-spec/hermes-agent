@@ -197,7 +197,9 @@ export const ja = defineLocale({
       unregisterConfirm: 'このコンピューターの登録を解除しますか?スケジューリングを再度オンにするまでタスクを受け取りません。',
       signInFirst: '先に APEX アカウントにサインインしてください。',
       saved: 'デバイス名を保存しました。',
-      enableFailed: '保存できませんでした — このシステムではセキュアストレージを利用できません。'
+      enableFailed: '保存できませんでした — このシステムではセキュアストレージを利用できません。',
+      engineOutdated: value =>
+        `インストール済みエンジンが古すぎます（ローカルエージェント実行には ${value} 以降が必要）。「設定 › 情報」でエンジンを更新してください。更新しないとツール呼び出しが黙って失敗する場合があります。`
     },
     closeSettings: '設定を閉じる',
     exportConfig: '設定を書き出す',
@@ -527,6 +529,9 @@ export const ja = defineLocale({
     }),
     about: {
       heading: 'APEX デスクトップ',
+      engineUpdateNeeded: 'エンジンの更新が必要です',
+      engineUpdateNeededDetail: value =>
+        `このアプリはエンジン ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
       version: value => `バージョン ${value}`,
       versionUnavailable: 'バージョンを取得できません',
       updates: '更新',

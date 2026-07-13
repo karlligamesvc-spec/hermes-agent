@@ -626,7 +626,9 @@ export const zh: Translations = {
       engineConfirmTitle: '更新 AI 引擎？',
       engineConfirmBody: value => `将切换到引擎版本 ${value}，并重启应用以生效。你的工作不会丢失。`,
       engineConfirmBodyGeneric: '将更新 AI 引擎，并重启应用以生效。你的工作不会丢失。',
-      engineConfirmApply: '更新引擎'
+      engineConfirmApply: '更新引擎',
+      engineUpdateNeeded: '引擎需更新',
+      engineUpdateNeededDetail: value => `本应用需要引擎 ${value} 或更高版本。请点下方「检查更新」更新引擎。`
     },
     config: {
       none: '无',
@@ -910,7 +912,9 @@ export const zh: Translations = {
       unregisterConfirm: '注销这台电脑?重新开启调度前它将不再接单。',
       signInFirst: '请先登录你的 APEX 账号。',
       saved: '设备名称已保存。',
-      enableFailed: '保存失败——本系统的安全存储不可用。'
+      enableFailed: '保存失败——本系统的安全存储不可用。',
+      engineOutdated: value =>
+        `当前引擎版本过旧，本机 Agent 调度需要引擎 ${value} 或更高版本。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
     },
     sessions: {
       loading: '正在加载已归档会话…',
