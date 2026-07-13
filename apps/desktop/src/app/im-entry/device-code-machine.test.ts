@@ -18,38 +18,37 @@ function run(start: DeviceCodeState, ...events: Parameters<typeof deviceCodeRedu
 
 const ISSUED = {
   type: 'ISSUED' as const,
-  deviceCode: 'dc_1',
-  scanUrl: 'https://applink.feishu.cn/x',
-  qrUrl: 'https://cdn/x.png',
+  provisionId: 'p_1',
+  qrUrl: 'https://applink.feishu.cn/x?from=sdk',
   intervalMs: 3000,
   expiresAt: 1_000_000
 }
 
 describe('deviceCodeReduce — happy path', () => {
-  it('START → ISSUED → POLL_RESULT(authorized)', () => {
+  it('START → ISSUED → POLL_RESULT(success)', () => {
     const issuing = deviceCodeReduce(initialDeviceCodeState(), { type: 'START' })
     expect(issuing.phase).toBe('issuing')
 
     const awaiting = deviceCodeReduce(issuing, ISSUED)
     expect(awaiting.phase).toBe('awaiting_scan')
-    expect(awaiting.scanUrl).toBe('https://applink.feishu.cn/x')
-    expect(awaiting.deviceCode).toBe('dc_1')
+    expect(awaiting.qrUrl).toBe('https://applink.feishu.cn/x?from=sdk')
+    expect(awaiting.provisionId).toBe('p_1')
     expect(awaiting.expiresAt).toBe(1_000_000)
     expect(isPolling(awaiting)).toBe(true)
     expect(isTerminal(awaiting)).toBe(false)
 
-    const authorized = deviceCodeReduce(awaiting, { type: 'POLL_RESULT', status: 'authorized' })
-    expect(authorized.phase).toBe('authorized')
-    expect(isPolling(authorized)).toBe(false)
-    expect(isTerminal(authorized)).toBe(true)
+    const success = deviceCodeReduce(awaiting, { type: 'POLL_RESULT', status: 'success' })
+    expect(success.phase).toBe('success')
+    expect(success.restartFailed).toBe(false)
+    expect(isPolling(success)).toBe(false)
+    expect(isTerminal(success)).toBe(true)
   })
 
-  it('reflects a scan-before-confirm as a sub-status without leaving awaiting_scan', () => {
+  it('carries a failed automatic restart into the success state', () => {
     const awaiting = run(initialDeviceCodeState(), { type: 'START' }, ISSUED)
-    const scanned = deviceCodeReduce(awaiting, { type: 'POLL_RESULT', status: 'scanned' })
-    expect(scanned.phase).toBe('awaiting_scan')
-    expect(scanned.scanned).toBe(true)
-    expect(isPolling(scanned)).toBe(true)
+    const success = deviceCodeReduce(awaiting, { type: 'POLL_RESULT', status: 'success', restartFailed: true })
+    expect(success.phase).toBe('success')
+    expect(success.restartFailed).toBe(true)
   })
 
   it('defaults a non-positive interval to 3000ms', () => {
@@ -70,11 +69,14 @@ describe('deviceCodeReduce — stop conditions', () => {
     expect(deviceCodeReduce(awaiting, { type: 'EXPIRE' }).errorReason).toBe('expired')
   })
 
-  it('surfaces sign_in / service_unavailable from issue immediately', () => {
+  it('surfaces sign_in / service_unavailable / rate_limited from issue immediately', () => {
     const issuing = deviceCodeReduce(initialDeviceCodeState(), { type: 'START' })
     expect(deviceCodeReduce(issuing, { type: 'ISSUE_FAILED', reason: 'sign_in' }).errorReason).toBe('sign_in')
     expect(deviceCodeReduce(issuing, { type: 'ISSUE_FAILED', reason: 'service_unavailable' }).errorReason).toBe(
       'service_unavailable'
+    )
+    expect(deviceCodeReduce(issuing, { type: 'ISSUE_FAILED', reason: 'rate_limited' }).errorReason).toBe(
+      'rate_limited'
     )
   })
 
@@ -110,15 +112,18 @@ describe('deviceCodeReduce — stop conditions', () => {
 })
 
 describe('deviceCodeReduce — guards & lifecycle', () => {
-  it('ignores events that do not belong to the current phase', () => {
+  it('ignores events that do not belong to the current phase (late poll is a no-op)', () => {
     const idle = initialDeviceCodeState()
     // POLL_RESULT while idle is a no-op.
-    expect(deviceCodeReduce(idle, { type: 'POLL_RESULT', status: 'authorized' })).toEqual(idle)
+    expect(deviceCodeReduce(idle, { type: 'POLL_RESULT', status: 'success' })).toEqual(idle)
     // ISSUED while idle (not issuing) is a no-op.
     expect(deviceCodeReduce(idle, ISSUED)).toEqual(idle)
     // A double START while issuing is a no-op.
     const issuing = deviceCodeReduce(idle, { type: 'START' })
     expect(deviceCodeReduce(issuing, { type: 'START' })).toEqual(issuing)
+    // A late in-flight poll landing AFTER success cannot clobber the result.
+    const success = run(issuing, ISSUED, { type: 'POLL_RESULT', status: 'success' })
+    expect(deviceCodeReduce(success, { type: 'POLL_RESULT', status: 'expired' })).toEqual(success)
   })
 
   it('can be restarted from an error state but not mid-flight', () => {
@@ -135,9 +140,9 @@ describe('deviceCodeReduce — guards & lifecycle', () => {
   it('FAIL raises a terminal error mid-flight (keychain) but is ignored when resting', () => {
     const awaiting = run(initialDeviceCodeState(), { type: 'START' }, ISSUED)
     expect(deviceCodeReduce(awaiting, { type: 'FAIL', reason: 'keychain' }).errorReason).toBe('keychain')
-    // Ignored once already authorized/idle/error (no clobber of a resolved flow).
-    const authorized = deviceCodeReduce(awaiting, { type: 'POLL_RESULT', status: 'authorized' })
-    expect(deviceCodeReduce(authorized, { type: 'FAIL', reason: 'keychain' })).toEqual(authorized)
+    // Ignored once already success/idle/error (no clobber of a resolved flow).
+    const success = deviceCodeReduce(awaiting, { type: 'POLL_RESULT', status: 'success' })
+    expect(deviceCodeReduce(success, { type: 'FAIL', reason: 'keychain' })).toEqual(success)
     expect(deviceCodeReduce(initialDeviceCodeState(), { type: 'FAIL', reason: 'keychain' }).phase).toBe('idle')
   })
 

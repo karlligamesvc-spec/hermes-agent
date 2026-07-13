@@ -847,11 +847,13 @@ export interface Translations {
       issuing: string
       scanPrompt: string
       scanHint: string
-      scanned: string
       openLink: string
       connecting: string
       authorizedTitle: string
       authorizedMessage: string
+      // Shown instead of authorizedMessage when the binding saved but the
+      // automatic backend restart failed — restart the app manually.
+      authorizedRestartHint: string
       retry: string
       cancel: string
       close: string
@@ -866,6 +868,7 @@ export interface Translations {
       errors: {
         sign_in: string
         service_unavailable: string
+        rate_limited: string
         expired: string
         denied: string
         request_failed: string
