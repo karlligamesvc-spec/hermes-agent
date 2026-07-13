@@ -60,6 +60,22 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     feishuPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:feishuPoll', provisionId),
     unbind: channelId => ipcRenderer.invoke('hermes:imEntry:unbind', channelId)
   },
+  // hc-533 本机 Agent 调度 — the A2A daemon leg. The settings block toggles the
+  // reverse-connect daemon (default off), names the device, and unregisters. No
+  // secret crosses to the renderer: status returns only display fields; the
+  // device token is stored encrypted in main. onStatus subscribes to the live
+  // status main pushes on connection transitions. See electron/apex-daemon.cjs.
+  daemon: {
+    status: () => ipcRenderer.invoke('hermes:daemon:status'),
+    setEnabled: enabled => ipcRenderer.invoke('hermes:daemon:setEnabled', enabled),
+    setDeviceName: name => ipcRenderer.invoke('hermes:daemon:setDeviceName', name),
+    unregister: () => ipcRenderer.invoke('hermes:daemon:unregister'),
+    onStatus: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:daemon:status', listener)
+      return () => ipcRenderer.removeListener('hermes:daemon:status', listener)
+    }
+  },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.

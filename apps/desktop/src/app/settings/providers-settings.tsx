@@ -27,6 +27,7 @@ import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
 import { FeishuSettings } from './feishu-settings'
 import { providerGroup, providerMeta, providerPriority } from './helpers'
+import { LocalAgentSettings } from './local-agent-settings'
 import { LoadingState, SettingsContent } from './primitives'
 
 // The embedded terminal (and thus the "run disconnect command" path) only
@@ -473,6 +474,10 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
           app down so the assistant can work in Feishu docs/sheets/messages. Only
           renders in the Electron shell (the bridge is absent on web). */}
       <FeishuSettings />
+      {/* hc-533: "本机 Agent 调度" — let the user's cloud assistant dispatch a
+          coding task to a local agent on this machine (default off / dormant).
+          Only renders in the Electron shell (the bridge is absent on web). */}
+      <LocalAgentSettings />
       <OAuthPicker
         disconnecting={disconnecting}
         onDisconnect={provider => void handleDisconnect(provider)}

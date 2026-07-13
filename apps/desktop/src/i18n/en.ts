@@ -708,6 +708,28 @@ export const en: Translations = {
       sessionExpired: 'Your session expired. Sign in again, then sync.',
       loading: 'Checking Feishu…'
     },
+    localAgent: {
+      title: 'Local agent scheduling',
+      intro:
+        'Let your cloud assistant hand a coding task to an agent on this computer (Claude Code, Codex or Cursor) — it runs here with your own tools and credentials, and the result flows back. Nothing runs unless you turn this on.',
+      enableLabel: 'Allow my cloud assistant to use this computer',
+      enableHint:
+        'When on, this computer connects to APEX and stays ready for tasks while the app is open. Dangerous actions always ask for your approval here first.',
+      statusLabel: 'Status',
+      statusDormant: 'Off',
+      statusConnecting: 'Connecting…',
+      statusOnline: 'Online — ready for tasks',
+      statusOffline: 'Reconnecting…',
+      statusError: 'Sign in to your APEX account to connect',
+      deviceNameLabel: 'Device name',
+      deviceNamePlaceholder: 'This computer',
+      unregister: 'Unregister this device',
+      unregisterConfirm:
+        'Unregister this computer? It stops receiving tasks until you turn scheduling back on.',
+      signInFirst: 'Sign in to your APEX account first.',
+      saved: 'Device name saved.',
+      enableFailed: 'Could not save — secure storage is unavailable on this system.'
+    },
     sessions: {
       loading: 'Loading archived sessions…',
       archivedTitle: 'Archived sessions',

@@ -173,6 +173,26 @@ export const zhHant = defineLocale({
   },
 
   settings: {
+    localAgent: {
+      title: '本機 Agent 排程',
+      intro:
+        '讓你的雲端助手把編碼任務交給這台電腦上的 Agent(Claude Code、Codex 或 Cursor)——任務在本機用你自己的工具與憑證執行,結果回傳給雲端助手。未開啟則不會執行任何東西。',
+      enableLabel: '允許雲端助手排程這台電腦',
+      enableHint: '開啟後,只要 App 在執行,這台電腦就會連線 APEX 並待命接單。危險操作永遠會先在本機請求你確認。',
+      statusLabel: '狀態',
+      statusDormant: '已關閉',
+      statusConnecting: '連線中…',
+      statusOnline: '線上——可接單',
+      statusOffline: '重新連線中…',
+      statusError: '請先登入 APEX 帳號以連線',
+      deviceNameLabel: '裝置名稱',
+      deviceNamePlaceholder: '這台電腦',
+      unregister: '登出此裝置',
+      unregisterConfirm: '登出這台電腦?重新開啟排程前它將不再接單。',
+      signInFirst: '請先登入你的 APEX 帳號。',
+      saved: '裝置名稱已儲存。',
+      enableFailed: '儲存失敗——本系統的安全儲存不可用。'
+    },
     closeSettings: '關閉設定',
     exportConfig: '匯出設定',
     importConfig: '匯入設定',

@@ -21,6 +21,7 @@ const fs = require('node:fs')
 const http = require('node:http')
 const https = require('node:https')
 const net = require('node:net')
+const os = require('node:os')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { execFileSync, spawn } = require('node:child_process')
@@ -150,6 +151,25 @@ const {
   shapeBinding: shapeImEntryBinding,
   stripFeishuEnvOverrides
 } = require('./apex-im-entry.cjs')
+const {
+  DAEMON_STATUS,
+  bridgeResultUrl,
+  buildInvalidTaskResult,
+  buildRegisterBody,
+  buildResultSubmitBody,
+  defaultDeviceName: daemonDefaultDeviceName,
+  deriveDaemonStatus,
+  isAllowedDaemonUrl,
+  nextBackoffMs: daemonNextBackoffMs,
+  normalizeStoredDaemon,
+  parseHeartbeatResponse,
+  parseLocalAgentRunPayload,
+  parsePollResponse,
+  parseRegisterResponse,
+  parseTaskEnvelope,
+  resolveDaemonEndpoints,
+  sanitizeDeviceName: sanitizeDaemonDeviceName
+} = require('./apex-daemon.cjs')
 const { startLoopbackLogin } = require('./apex-loopback.cjs')
 const {
   DATA_URL_READ_MAX_BYTES,
@@ -933,6 +953,13 @@ const DESKTOP_FEISHU_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-feis
 // Feishu app credential ever reaches the runtime (the dual-app WS collision the
 // hc-417 spike warned about can't happen). See electron/apex-im-entry.cjs.
 const DESKTOP_IM_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-im-entry.json')
+// hc-533 本机 Agent 调度: the reverse-connect daemon's local state. The device
+// bridge token (abr-…) is a credential → stored ENCRYPTED (safeStorage, same
+// treatment as the managed relay key / hc-417 app secret); the non-secret
+// deviceId/deviceName/serverId + the enabled flag in clear. See
+// electron/apex-daemon.cjs. Default is DISABLED (dormant): the daemon only ever
+// connects after the user turns it on in settings.
+const DESKTOP_DAEMON_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-daemon.json')
 // Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
 // value its profile resolver would reject and exit on.
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -5327,6 +5354,488 @@ function imEntryBoundList() {
   }))
 }
 
+// ── hc-533 本机 Agent 调度 — A2A daemon leg (reverse-connect + AcpHarness) ─────
+// The desktop side of the A2A epic: a signed-in user's cloud分身 (hc-523) can
+// dispatch a task to one of the user's OWN local coding agents; this daemon
+// registers the machine, heartbeats (~30s), polls the bridge queue for tasks
+// addressed to this device, drives the agent via the hc-524 AcpHarness
+// (out-of-process, agent/coding_agents/run_once.py — the harness lives in
+// Python, so Node never re-implements a wire protocol), and posts the result
+// back. v1 runs INSIDE the desktop main process (Desktop online ⇒ schedulable);
+// a standalone always-on daemon is a later ticket (hc-535 cluster). All the
+// wire contract / parsing / backoff logic is the pure, tested apex-daemon.cjs;
+// this block is the electron-coupled glue: encrypted token store, timers,
+// runner spawn, IPC. Default DISABLED — nothing connects until the user opts in.
+const DAEMON_HEARTBEAT_INTERVAL_MS = 30_000
+const DAEMON_POLL_INTERVAL_MS = 5_000
+const DAEMON_RUNNER_TIMEOUT_MS = 900_000
+
+// In-memory runtime state (NOT persisted). The device token lives only here +
+// (encrypted) on disk, never in a log. `busy` serializes task execution: v1
+// runs one local-agent task at a time in-process.
+const daemonRuntime = {
+  started: false,
+  registered: false,
+  connected: false,
+  busy: false,
+  lastError: '',
+  connLoopTimer: null,
+  pollLoopTimer: null,
+  connAttempt: 0,
+  pollAttempt: 0
+}
+let daemonToken = '' // decrypted abr-… device token, in memory only
+
+// Read apex-daemon.json: non-secret fields normalized by the pure helper, the
+// token decrypted separately. A decrypt failure (keychain unavailable / rotated
+// OS key) drops the token so the daemon cleanly re-registers rather than sending
+// a garbage Bearer. Never throws.
+function readDaemonConfig() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_DAEMON_CONFIG_PATH, 'utf8'))
+  } catch {
+    raw = null
+  }
+  const base = normalizeStoredDaemon(raw)
+  let token = ''
+  if (raw && typeof raw === 'object' && raw.token) {
+    try {
+      token = decryptDesktopSecret(raw.token)
+    } catch {
+      token = ''
+    }
+  }
+  return { ...base, token }
+}
+
+// Merge-persist apex-daemon.json. The token (when present) is encrypted via
+// safeStorage; a keychain failure THROWS so the caller never falls back to a
+// plaintext credential on disk. 0o600 — owner-only.
+function writeDaemonConfig(patch) {
+  const current = readDaemonConfig()
+  const next = { ...current, ...patch }
+  fs.mkdirSync(path.dirname(DESKTOP_DAEMON_CONFIG_PATH), { recursive: true })
+  const onDisk = {
+    enabled: next.enabled === true,
+    deviceId: String(next.deviceId || ''),
+    deviceName: String(next.deviceName || ''),
+    serverId: String(next.serverId || '')
+  }
+  const token = String(next.token || '')
+  if (token) {
+    onDisk.token = encryptDesktopSecret(token) // strict — throws without keychain
+  }
+  writeFileAtomic(DESKTOP_DAEMON_CONFIG_PATH, JSON.stringify(onDisk, null, 2), { mode: 0o600 })
+  return next
+}
+
+// Ensure a stable machine id + a readable device name exist (minting a UUID /
+// hostname default on first use) and are persisted. Returns { deviceId, deviceName }.
+function ensureDaemonIdentity() {
+  const config = readDaemonConfig()
+  let deviceId = config.deviceId
+  let deviceName = config.deviceName
+  const patch = {}
+  if (!deviceId) {
+    deviceId = crypto.randomUUID()
+    patch.deviceId = deviceId
+  }
+  if (!deviceName) {
+    deviceName = daemonDefaultDeviceName(safeHostname())
+    patch.deviceName = deviceName
+  }
+  if (Object.keys(patch).length) {
+    writeDaemonConfig(patch)
+  }
+  return { deviceId, deviceName }
+}
+
+function safeHostname() {
+  try {
+    return os.hostname()
+  } catch {
+    return ''
+  }
+}
+
+// The status snapshot the settings block reads (IPC) + we push on transitions.
+// Derives the single label via the pure helper; never leaks the token.
+function daemonStatusSnapshot() {
+  const config = readDaemonConfig()
+  return {
+    status: deriveDaemonStatus({
+      enabled: config.enabled,
+      registered: daemonRuntime.registered,
+      connected: daemonRuntime.connected,
+      lastError: daemonRuntime.lastError
+    }),
+    enabled: config.enabled,
+    deviceName: config.deviceName || daemonDefaultDeviceName(safeHostname()),
+    deviceId: config.deviceId,
+    registered: daemonRuntime.registered,
+    connected: daemonRuntime.connected,
+    lastError: daemonRuntime.lastError
+  }
+}
+
+function pushDaemonStatus() {
+  try {
+    mainWindow?.webContents.send('hermes:daemon:status', daemonStatusSnapshot())
+  } catch {
+    // best effort — the renderer also pulls the snapshot on mount
+  }
+}
+
+// Allowlist-gate one daemon URL (login JWT / device token travel here). A URL
+// that fails apex-nodes.com/loopback is refused outright — logged, not called.
+function guardedDaemonUrl(url) {
+  if (isAllowedDaemonUrl(url)) {
+    return url
+  }
+  rememberLog(`[daemon] refusing call to non-allowlisted URL: ${url}`)
+  return null
+}
+
+// Register (or re-register → token rotation) this device with the login JWT.
+// Persists the fresh token encrypted. Returns { ok } or { ok:false, needsSignIn }.
+async function daemonRegister() {
+  const managed = resolveManagedConfig()
+  const jwt = String(managed.accessToken || '').trim()
+  if (!jwt) {
+    daemonRuntime.lastError = 'NOT_SIGNED_IN'
+    return { ok: false, needsSignIn: true }
+  }
+  const { deviceId, deviceName } = ensureDaemonIdentity()
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).registerUrl)
+  if (!url) {
+    daemonRuntime.lastError = 'REQUEST_FAILED'
+    return { ok: false }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(url, { body: buildRegisterBody({ deviceId, deviceName }), bearer: jwt })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      daemonRuntime.lastError = 'SESSION_EXPIRED'
+      return { ok: false, needsSignIn: true }
+    }
+    rememberLog(`[daemon] register failed: ${error && error.message ? error.message : error}`)
+    daemonRuntime.lastError = 'REQUEST_FAILED'
+    return { ok: false }
+  }
+  const parsed = parseRegisterResponse(body)
+  if (!parsed) {
+    rememberLog('[daemon] register response malformed')
+    daemonRuntime.lastError = 'REQUEST_FAILED'
+    return { ok: false }
+  }
+  daemonToken = parsed.token
+  try {
+    writeDaemonConfig({ token: parsed.token, serverId: parsed.serverId })
+  } catch (error) {
+    // No keychain → we won't persist a plaintext token. The in-memory token
+    // still works this session; a restart re-registers.
+    rememberLog(`[daemon] token not persisted (keychain): ${error && error.message ? error.message : 'unavailable'}`)
+  }
+  daemonRuntime.registered = true
+  daemonRuntime.lastError = ''
+  rememberLog('[daemon] device registered (token rotated)')
+  return { ok: true }
+}
+
+// One heartbeat (device token). Returns { ok, tokenDead }. A 401 means the token
+// was rotated/revoked cloud-side → the caller re-registers.
+async function daemonHeartbeatOnce() {
+  if (!daemonToken) {
+    return { ok: false, tokenDead: true }
+  }
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).heartbeatUrl)
+  if (!url) {
+    return { ok: false }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(url, { body: {}, bearer: daemonToken })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, tokenDead: true }
+    }
+    return { ok: false }
+  }
+  return { ok: parseHeartbeatResponse(body).online === true }
+}
+
+// One poll (device token). Returns the raw task object or null. A 401 signals a
+// dead token to the caller.
+async function daemonPollOnce() {
+  if (!daemonToken) {
+    return { task: null, tokenDead: true }
+  }
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).pollUrl)
+  if (!url) {
+    return { task: null }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(url, { body: {}, bearer: daemonToken })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { task: null, tokenDead: true }
+    }
+    return { task: null, error: true }
+  }
+  return { task: parsePollResponse(body) }
+}
+
+// Post a task result (device token). 409 = already submitted (idempotent — the
+// task was claimed twice or a retry raced); treated as success. Never throws.
+async function submitDaemonTaskResult(taskId, resultBody) {
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(bridgeResultUrl(endpoints.apiBase, taskId, process.env))
+  if (!url) {
+    return false
+  }
+  try {
+    await apexAuthPostJson(url, { body: resultBody, bearer: daemonToken })
+    return true
+  } catch (error) {
+    if (error && error.statusCode === 409) {
+      return true // already recorded
+    }
+    rememberLog(`[daemon] result submit failed for ${taskId}: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    return false
+  }
+}
+
+// Drive one local-agent job out-of-process via the venv python runner. Feeds the
+// job JSON on stdin, parses one result JSON from stdout. Resolves null on any
+// spawn/parse/timeout failure so the caller posts a clean runner_no_result.
+function runLocalAgentJob(job) {
+  return new Promise(resolve => {
+    const venvPython = getVenvPython(VENV_ROOT)
+    const pythonExe = fileExists(venvPython) ? venvPython : findSystemPython()
+    if (!pythonExe) {
+      rememberLog('[daemon] no python to run the local agent')
+      resolve(null)
+      return
+    }
+    let child
+    try {
+      child = spawn(pythonExe, ['-m', 'agent.coding_agents.run_once'], {
+        cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env }
+      })
+    } catch (error) {
+      rememberLog(`[daemon] runner spawn failed: ${error && error.message ? error.message : error}`)
+      resolve(null)
+      return
+    }
+    let stdout = ''
+    let settled = false
+    const finish = value => {
+      if (settled) return
+      settled = true
+      clearTimeout(killTimer)
+      resolve(value)
+    }
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        /* already gone */
+      }
+      rememberLog('[daemon] runner timed out')
+      finish(null)
+    }, DAEMON_RUNNER_TIMEOUT_MS)
+    child.stdout.on('data', chunk => {
+      stdout += chunk.toString()
+    })
+    child.on('error', () => finish(null))
+    child.on('close', () => {
+      try {
+        finish(JSON.parse(stdout.trim()))
+      } catch {
+        finish(null)
+      }
+    })
+    try {
+      child.stdin.write(JSON.stringify(job))
+      child.stdin.end()
+    } catch {
+      finish(null)
+    }
+  })
+}
+
+// Claim → execute → post-back for one polled task. A payload the daemon rejects
+// (bad kind / unsupported family / missing prompt) is failed immediately without
+// spawning. permission_required flows through untouched: the cloud turns it into
+// a Feishu notice; the daemon NEVER auto-approves.
+async function handleDaemonTask(rawTask) {
+  const envelope = parseTaskEnvelope(rawTask)
+  if (!envelope) {
+    rememberLog('[daemon] skipping malformed task envelope')
+    return
+  }
+  const { taskId, payload } = envelope
+  const parsed = parseLocalAgentRunPayload(payload)
+  if (!parsed.ok) {
+    rememberLog(`[daemon] rejecting task ${taskId}: ${parsed.reason}`)
+    await submitDaemonTaskResult(taskId, buildInvalidTaskResult(parsed.reason))
+    return
+  }
+  rememberLog(`[daemon] running task ${taskId} (family=${parsed.job.family})`)
+  const runnerResult = await runLocalAgentJob(parsed.job)
+  const resultBody = buildResultSubmitBody(runnerResult)
+  await submitDaemonTaskResult(taskId, resultBody)
+  rememberLog(`[daemon] task ${taskId} → ${resultBody.status}`)
+}
+
+// Connection loop (self-scheduling): keep a live token + heartbeat. Reschedules
+// at the heartbeat cadence on success, or with capped exponential backoff on
+// failure (断线指数退避重连). Stops itself when the daemon is disabled/stopped.
+async function daemonConnectionTick() {
+  if (!daemonRuntime.started) {
+    return
+  }
+  let delay = DAEMON_HEARTBEAT_INTERVAL_MS
+  if (!daemonToken) {
+    const reg = await daemonRegister()
+    if (!reg.ok) {
+      if (reg.needsSignIn) {
+        // No usable JWT — stop hammering; the user must sign in. Timers idle
+        // until re-enabled / signed in; status shows ERROR.
+        daemonRuntime.connected = false
+        pushDaemonStatus()
+        stopDaemonTimers()
+        return
+      }
+      daemonRuntime.connected = false
+      pushDaemonStatus()
+      delay = daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 })
+      scheduleDaemonConnection(delay)
+      return
+    }
+  }
+  const hb = await daemonHeartbeatOnce()
+  if (hb.tokenDead) {
+    daemonToken = ''
+    daemonRuntime.registered = false
+    daemonRuntime.connected = false
+    pushDaemonStatus()
+    scheduleDaemonConnection(daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 }))
+    return
+  }
+  if (hb.ok) {
+    daemonRuntime.connected = true
+    daemonRuntime.connAttempt = 0
+    daemonRuntime.lastError = ''
+  } else {
+    daemonRuntime.connected = false
+    delay = daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 })
+  }
+  pushDaemonStatus()
+  scheduleDaemonConnection(delay)
+}
+
+// Poll loop (self-scheduling): claim + run one task when connected and idle.
+async function daemonPollTick() {
+  if (!daemonRuntime.started) {
+    return
+  }
+  let delay = DAEMON_POLL_INTERVAL_MS
+  if (daemonRuntime.connected && daemonToken && !daemonRuntime.busy) {
+    const { task, tokenDead, error } = await daemonPollOnce()
+    if (tokenDead) {
+      // The connection loop re-registers; just back off polling briefly.
+      delay = DAEMON_POLL_INTERVAL_MS
+    } else if (error) {
+      delay = daemonNextBackoffMs(daemonRuntime.pollAttempt++, { baseMs: 2000, capMs: 30000 })
+    } else {
+      daemonRuntime.pollAttempt = 0
+      if (task) {
+        daemonRuntime.busy = true
+        try {
+          await handleDaemonTask(task)
+        } catch (err) {
+          rememberLog(`[daemon] task handling error: ${err && err.message ? err.message : err}`)
+        } finally {
+          daemonRuntime.busy = false
+        }
+      }
+    }
+  }
+  scheduleDaemonPoll(delay)
+}
+
+function scheduleDaemonConnection(delay) {
+  if (!daemonRuntime.started) return
+  clearTimeout(daemonRuntime.connLoopTimer)
+  daemonRuntime.connLoopTimer = setTimeout(() => {
+    void daemonConnectionTick()
+  }, delay)
+}
+
+function scheduleDaemonPoll(delay) {
+  if (!daemonRuntime.started) return
+  clearTimeout(daemonRuntime.pollLoopTimer)
+  daemonRuntime.pollLoopTimer = setTimeout(() => {
+    void daemonPollTick()
+  }, delay)
+}
+
+function stopDaemonTimers() {
+  clearTimeout(daemonRuntime.connLoopTimer)
+  clearTimeout(daemonRuntime.pollLoopTimer)
+  daemonRuntime.connLoopTimer = null
+  daemonRuntime.pollLoopTimer = null
+}
+
+// Start the daemon (idempotent). Loads the persisted token, then kicks the two
+// loops immediately. No-op unless enabled.
+function startLocalAgentDaemon() {
+  const config = readDaemonConfig()
+  if (!config.enabled) {
+    return
+  }
+  if (daemonRuntime.started) {
+    return
+  }
+  daemonRuntime.started = true
+  daemonRuntime.connAttempt = 0
+  daemonRuntime.pollAttempt = 0
+  daemonRuntime.lastError = ''
+  daemonToken = config.token || ''
+  daemonRuntime.registered = Boolean(daemonToken)
+  rememberLog('[daemon] starting local-agent scheduler (enabled)')
+  scheduleDaemonConnection(0)
+  scheduleDaemonPoll(DAEMON_POLL_INTERVAL_MS)
+  pushDaemonStatus()
+}
+
+// Stop the loops (dormant). Keeps the persisted registration/token so a re-enable
+// resumes without re-registering.
+function stopLocalAgentDaemon() {
+  stopDaemonTimers()
+  daemonRuntime.started = false
+  daemonRuntime.connected = false
+  pushDaemonStatus()
+}
+
+// Boot hook: start only if the user previously opted in. Fire-and-forget.
+function startLocalAgentDaemonOnBoot() {
+  try {
+    startLocalAgentDaemon()
+  } catch (error) {
+    rememberLog(`[daemon] boot start failed: ${error && error.message ? error.message : error}`)
+  }
+}
+
 // Fetch the signed-in user's Feishu credential from the cloud and persist it
 // (encrypted). Authenticates with the STORED login JWT (the same encrypted JWT
 // the managed self-heal reuses) — no re-login needed for a user already signed in
@@ -8161,6 +8670,72 @@ ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   return { ok: true }
 })
 
+// ── hc-533 本机 Agent 调度 IPC — the settings-block control surface ────────────
+// status: the snapshot the block renders (never carries the token).
+ipcMain.handle('hermes:daemon:status', async () => daemonStatusSnapshot())
+
+// setEnabled: the on/off toggle (default off). Enabling ensures identity, kicks
+// the loops, and registers on the first connection tick; disabling stops the
+// loops (dormant) but KEEPS the registration/token so re-enabling is instant.
+ipcMain.handle('hermes:daemon:setEnabled', async (_event, enabled) => {
+  const want = enabled === true
+  try {
+    if (want) {
+      ensureDaemonIdentity()
+    }
+    writeDaemonConfig({ enabled: want })
+  } catch (error) {
+    rememberLog(`[daemon] setEnabled persist failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'KEYCHAIN_UNAVAILABLE', snapshot: daemonStatusSnapshot() }
+  }
+  if (want) {
+    startLocalAgentDaemon()
+  } else {
+    stopLocalAgentDaemon()
+  }
+  return { ok: true, snapshot: daemonStatusSnapshot() }
+})
+
+// setDeviceName: rename this device. Persists locally; when already registered
+// we re-register so the cloud device row reflects the new name (best-effort —
+// a failed re-register does not lose the local rename).
+ipcMain.handle('hermes:daemon:setDeviceName', async (_event, name) => {
+  const cleaned = sanitizeDaemonDeviceName(name, safeHostname())
+  try {
+    writeDaemonConfig({ deviceName: cleaned })
+  } catch (error) {
+    rememberLog(`[daemon] setDeviceName persist failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, snapshot: daemonStatusSnapshot() }
+  }
+  if (daemonRuntime.started && daemonToken) {
+    void daemonRegister().then(() => pushDaemonStatus())
+  }
+  pushDaemonStatus()
+  return { ok: true, snapshot: daemonStatusSnapshot() }
+})
+
+// unregister: forget this device locally (clear token + serverId) and go dormant.
+// v1 is a LOCAL forget — the cloud device row goes offline on its own once
+// heartbeats stop (90s window); a cloud-side revoke endpoint + device manager is
+// a follow-up ticket (hc-523 TODO "设备注销/管理 UI"). Cheap, offline-safe,
+// always lets the user stop being schedulable.
+ipcMain.handle('hermes:daemon:unregister', async () => {
+  stopLocalAgentDaemon()
+  daemonToken = ''
+  daemonRuntime.registered = false
+  daemonRuntime.connected = false
+  daemonRuntime.lastError = ''
+  try {
+    writeDaemonConfig({ enabled: false, token: '', serverId: '' })
+  } catch (error) {
+    rememberLog(`[daemon] unregister persist failed: ${error && error.message ? error.message : error}`)
+  }
+  // Belt-and-suspenders: even if the merge above kept a stale token, drop the
+  // file's token by rewriting without it (writeDaemonConfig omits an empty token).
+  pushDaemonStatus()
+  return { ok: true, snapshot: daemonStatusSnapshot() }
+})
+
 // ── Platform client-config sync (renderer surface) ──────────────────────────
 // get: the cached state from disk — no network, informational only. The APPLY
 // now happens entirely in the main process pre-gateway (applyClientConfigToRuntime);
@@ -9373,6 +9948,11 @@ app.whenReady().then(() => {
   // sync above — the picker reads config.yaml fresh per open, so a heal that
   // lands after the gateway is up still takes effect on the next picker open.
   void selfHealManagedKeyOn401()
+
+  // hc-533 本机 Agent 调度: start the reverse-connect daemon ONLY if the user
+  // previously opted in (default off / dormant). Fire-and-forget, gated on the
+  // enabled flag + a stored login JWT; a signed-out / disabled user is a no-op.
+  startLocalAgentDaemonOnBoot()
 
   // 壳自更新:首查本身就延迟 60s(shell-updater.cjs),不和启动高峰抢资源。
   initShellUpdater()
