@@ -753,10 +753,19 @@ def _secure_dir(path):
     share state with the gateway service.
 
     The mode can be overridden via the HERMES_HOME_MODE environment variable
-    (e.g. HERMES_HOME_MODE=0701) for deployments where a web server (nginx,
-    caddy, etc.) needs to traverse HERMES_HOME to reach a served subdirectory.
-    The execute-only bit on a directory permits cd-through without exposing
-    directory listings.
+    for deployments that need looser-than-owner-only directory permissions:
+
+    * ``HERMES_HOME_MODE=0701`` — a web server (nginx, caddy, etc.) needs to
+      traverse HERMES_HOME to reach a served subdirectory. The execute-only
+      bit permits cd-through without exposing directory listings.
+    * ``HERMES_HOME_MODE=0770`` — a host-side maintenance account that shares
+      the runtime's GID (backups, log rotation, state resync / media cleanup
+      bind-mounting the same data dir) needs read+traverse on HERMES_HOME and
+      its ``memories/`` and ``skills/`` subdirs. The owner-only default strips
+      the group traverse bit, which fails those host-side jobs with EACCES.
+
+    The default stays 0700 so a plain single-user install keeps owner-only
+    semantics; the looser modes are strictly opt-in per deployment.
 
     Also applies ``HERMES_UID``/``HERMES_GID``-based ownership when those env
     vars are set (#34107 — Docker deployments need this so profile subdirs
