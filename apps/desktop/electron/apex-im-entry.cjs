@@ -54,6 +54,24 @@ const CHANNEL_ENV_DESCRIPTORS = Object.freeze({
       Object.freeze({ key: 'FEISHU_APP_SECRET', from: 'appSecret', secret: true, required: true }),
       Object.freeze({ key: 'FEISHU_DOMAIN', from: 'domain', secret: false, required: false })
     ])
+  }),
+  // 个人微信 (Tencent iLink bot) — hc-538. WEIXIN_TOKEN is the only secret;
+  // WEIXIN_ACCOUNT_ID is the bot account id (not a secret) and WEIXIN_BASE_URL
+  // is the optional iLink host. The runtime gates the adapter purely on
+  // WEIXIN_TOKEN+WEIXIN_ACCOUNT_ID presence (gateway/config.py). The routing
+  // trio (WEIXIN_DM_POLICY/WEIXIN_ALLOWED_USERS/WEIXIN_HOME_CHANNEL) mirrors the
+  // cloud persona container's env so a desktop bot answers its owner
+  // immediately (allowlist seeded with the QR scanner) instead of the runtime's
+  // default `pairing` mode — the cloud credentials endpoint supplies them.
+  weixin: Object.freeze({
+    fields: Object.freeze([
+      Object.freeze({ key: 'WEIXIN_ACCOUNT_ID', from: 'accountId', secret: false, required: true }),
+      Object.freeze({ key: 'WEIXIN_TOKEN', from: 'token', secret: true, required: true }),
+      Object.freeze({ key: 'WEIXIN_BASE_URL', from: 'baseUrl', secret: false, required: false }),
+      Object.freeze({ key: 'WEIXIN_DM_POLICY', from: 'dmPolicy', secret: false, required: false }),
+      Object.freeze({ key: 'WEIXIN_ALLOWED_USERS', from: 'allowedUsers', secret: false, required: false }),
+      Object.freeze({ key: 'WEIXIN_HOME_CHANNEL', from: 'homeChannel', secret: false, required: false })
+    ])
   })
 })
 
@@ -228,6 +246,14 @@ const FEISHU_PROVISION_PATH = '/api/v1/desktop/feishu/provision'
 const FEISHU_PROVISION_CREDENTIALS_PATH = '/api/v1/desktop/feishu/credentials'
 const FEISHU_PROVISION_ENTRY_PATH = '/api/v1/desktop/feishu/entry'
 
+// hc-538: the WeChat (iLink) cloud leg — same four-endpoint contract as feishu
+// (hermes-cloud app/routers/desktop.py), so the provision START + STATUS
+// responses parse with the SHARED shape parsers below; only the credentials
+// body differs (WeChat bot fields, not feishu app fields).
+const WEIXIN_PROVISION_PATH = '/api/v1/desktop/weixin/provision'
+const WEIXIN_PROVISION_CREDENTIALS_PATH = '/api/v1/desktop/weixin/credentials'
+const WEIXIN_PROVISION_ENTRY_PATH = '/api/v1/desktop/weixin/entry'
+
 // Hosts the provisioning endpoints are allowed to live on. These calls carry
 // the login JWT and (credentials) receive an app secret, so a poisoned env
 // override / apiBase must not be able to point them at an arbitrary host.
@@ -369,6 +395,81 @@ function parseFeishuCredentialsV2Response(body) {
   return { appId, appSecret, domain: normalizeFeishuDomain(body.domain) }
 }
 
+// ── WeChat (iLink) provisioning endpoint contract (hc-538, LIVE) ─────────────
+// The cloud leg (hermes-cloud) registers an iLink bot scoped to the user's
+// Desktop anchor via a QR device flow it drives server-side, and pins the bot
+// token (Fernet-encrypted) to that anchor. The desktop is a thin consumer of
+// four JWT-authed endpoints (app/routers/desktop.py), shaped identically to the
+// feishu four:
+//
+//   POST   {API_BASE}/api/v1/desktop/weixin/provision            body {}
+//     → { provision_id, qr_url, expires_in, interval }
+//       (qr_url is the iLink SCAN LINK — render it as a QR locally;
+//        429 = another flow in flight, 502 = iLink upstream failure)
+//   GET    {API_BASE}/api/v1/desktop/weixin/provision/{provision_id}
+//     → { status: 'pending'|'success'|'denied'|'expired', message?, agent_name? }
+//       (NEVER carries the credential; 404 = flow unknown/lost → expired)
+//   GET    {API_BASE}/api/v1/desktop/weixin/credentials
+//     → { account_id, token, base_url, dm_policy?, allowed_users?, home_channel? }
+//       (404 = not provisioned yet)
+//   DELETE {API_BASE}/api/v1/desktop/weixin/entry
+//     → { ok, account_id }   (404 = nothing bound)
+
+/**
+ * Resolve the hc-538 WeChat provisioning endpoint URLs for an apiBase, honoring
+ * env overrides (HERMES_DESKTOP_IM_WEIXIN_PROVISION_URL / _CREDENTIALS_URL /
+ * _ENTRY_URL). Every resolved URL still has to pass isAllowedFeishuProvisionUrl
+ * at the call site (the same apex-nodes.com/loopback allowlist — the JWT + bot
+ * token must never travel to a foreign host); the override is a retargeting aid,
+ * not an allowlist escape.
+ *
+ * @param {string} apiBase
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ provisionUrl: string, credentialsUrl: string, entryUrl: string }}
+ */
+function resolveWeixinProvisionEndpoints(apiBase, env = process.env) {
+  const base = trimTrailingSlash(apiBase)
+  const provisionOverride = trimStr(env && env.HERMES_DESKTOP_IM_WEIXIN_PROVISION_URL)
+  const credentialsOverride = trimStr(env && env.HERMES_DESKTOP_IM_WEIXIN_CREDENTIALS_URL)
+  const entryOverride = trimStr(env && env.HERMES_DESKTOP_IM_WEIXIN_ENTRY_URL)
+  return {
+    provisionUrl: provisionOverride || `${base}${WEIXIN_PROVISION_PATH}`,
+    credentialsUrl: credentialsOverride || `${base}${WEIXIN_PROVISION_CREDENTIALS_PATH}`,
+    entryUrl: entryOverride || `${base}${WEIXIN_PROVISION_ENTRY_PATH}`
+  }
+}
+
+/**
+ * Validate + normalize the WeChat credentials response
+ * (GET .../weixin/credentials → { account_id, token, base_url, ... }). Returns
+ * null when the body cannot yield an injectable credential (both account_id +
+ * token) so a malformed body can never half-enable the adapter. The routing
+ * fields (dm_policy/allowed_users/home_channel) are passed through as-is when
+ * present; they make the desktop bot answer its owner immediately, matching the
+ * cloud. Field names are the descriptor `from` keys (accountId/token/...).
+ *
+ * @param {unknown} body parsed JSON
+ * @returns {null | { accountId: string, token: string, baseUrl: string, dmPolicy: string, allowedUsers: string, homeChannel: string }}
+ */
+function parseWeixinCredentialsResponse(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null
+  }
+  const accountId = trimStr(body.account_id)
+  const token = trimStr(body.token)
+  if (!accountId || !token) {
+    return null
+  }
+  return {
+    accountId,
+    token,
+    baseUrl: trimStr(body.base_url),
+    dmPolicy: trimStr(body.dm_policy),
+    allowedUsers: trimStr(body.allowed_users),
+    homeChannel: trimStr(body.home_channel)
+  }
+}
+
 // ── ~/.hermes/.env plaintext FEISHU_* cleanup (hc-417 P1) ────────────────────
 // The runtime loads {HERMES_HOME}/.env with override=True
 // (hermes_cli/env_loader.py::load_hermes_dotenv), so a leftover plaintext
@@ -425,6 +526,9 @@ module.exports = {
   FEISHU_PROVISION_ENTRY_PATH,
   FEISHU_PROVISION_PATH,
   VALID_FEISHU_DOMAINS,
+  WEIXIN_PROVISION_CREDENTIALS_PATH,
+  WEIXIN_PROVISION_ENTRY_PATH,
+  WEIXIN_PROVISION_PATH,
   buildImEntrySpawnEnv,
   feishuProvisionPollUrl,
   isAllowedFeishuProvisionUrl,
@@ -434,7 +538,9 @@ module.exports = {
   parseFeishuCredentialsV2Response,
   parseFeishuProvisionResponse,
   parseFeishuProvisionStatusResponse,
+  parseWeixinCredentialsResponse,
   resolveFeishuProvisionEndpoints,
+  resolveWeixinProvisionEndpoints,
   secretFieldsFor,
   shapeBinding,
   stripFeishuEnvOverrides

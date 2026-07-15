@@ -1118,6 +1118,8 @@ export const en: Translations = {
       scanPrompt: 'Scan to connect',
       scanHint: 'Open Feishu, scan the code, and confirm on your phone.',
       openLink: 'Open link instead',
+      weixinBotNote:
+        "You're connecting a new bot contact (an iLink bot identity) — not taking over your own WeChat. The bot usually can't join ordinary group chats and works mainly through friend DMs.",
       connecting: 'Connecting…',
       authorizedTitle: 'Connected',
       authorizedMessage: 'Restarting to apply…',

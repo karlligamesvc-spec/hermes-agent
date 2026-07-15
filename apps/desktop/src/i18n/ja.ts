@@ -1201,6 +1201,8 @@ export const ja = defineLocale({
       scanPrompt: 'スキャンして連携',
       scanHint: 'Feishu を開いて QR コードをスキャンし、スマホで確認してください。',
       openLink: 'リンクで開く',
+      weixinBotNote:
+        '接続するのは新しいボットの連絡先（iLink ボット）で、あなた自身の WeChat が乗っ取られるわけではありません。このボットは通常グループチャットには参加できず、主に友だちとの個人チャットで使います。',
       connecting: '接続中…',
       authorizedTitle: '連携しました',
       authorizedMessage: '適用のため再起動しています…',

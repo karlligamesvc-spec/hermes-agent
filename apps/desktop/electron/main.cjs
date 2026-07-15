@@ -148,7 +148,9 @@ const {
   parseFeishuCredentialsV2Response,
   parseFeishuProvisionResponse,
   parseFeishuProvisionStatusResponse,
+  parseWeixinCredentialsResponse,
   resolveFeishuProvisionEndpoints,
+  resolveWeixinProvisionEndpoints,
   secretFieldsFor: imEntrySecretFieldsFor,
   shapeBinding: shapeImEntryBinding,
   stripFeishuEnvOverrides
@@ -8702,25 +8704,167 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
   return { ok: true, status: 'success' }
 })
 
-// unbind: revoke the cloud-side Desktop binding (DELETE /api/v1/desktop/feishu/entry
-// — v2 contract; only the feishu channel has a cloud leg), then forget the local
-// binding and restart the backend so its adapter goes dark on the next boot.
-// The cloud revoke is best-effort: a 404 means nothing was bound cloud-side
-// (already revoked / legacy local-only binding) and any other failure is logged
-// but never blocks the LOCAL disconnect — the user's machine must always be able
-// to stop replying, even offline.
+// weixinIssue / weixinPoll: the hc-538 WeChat (iLink) cloud leg — the exact
+// same request/response contract as feishuIssue/feishuPoll (only the endpoint
+// paths + the credentials body differ), so the renderer's channel-agnostic
+// device-code machine drives it unchanged. The bot token is a real secret: the
+// poll response never carries it (fetched separately on success), and it is
+// stored ENCRYPTED (safeStorage). NEVER throws; the secret is never logged.
+ipcMain.handle('hermes:imEntry:weixinIssue', async () => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { provisionUrl } = resolveWeixinProvisionEndpoints(endpoints.apiBase, process.env)
+  const guardedUrl = guardedFeishuProvisionUrl(provisionUrl)
+  if (!guardedUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(guardedUrl, { body: {}, bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      return { ok: false, message: 'SERVICE_UNAVAILABLE' }
+    }
+    if (error && error.statusCode === 429) {
+      return { ok: false, message: 'RATE_LIMITED' }
+    }
+    rememberLog(`[im-entry] weixin provision failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  // Provision START shares the feishu shape (provision_id/qr_url/interval/expires_in).
+  const parsed = parseFeishuProvisionResponse(body)
+  if (!parsed) {
+    rememberLog('[im-entry] weixin provision response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  return { ok: true, ...parsed }
+})
+
+ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+  const id = typeof provisionId === 'string' ? provisionId.trim() : ''
+  if (!id) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { provisionUrl, credentialsUrl } = resolveWeixinProvisionEndpoints(endpoints.apiBase, process.env)
+  const pollUrl = guardedFeishuProvisionUrl(feishuProvisionPollUrl(provisionUrl, id))
+  if (!pollUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let body
+  try {
+    body = await apexAuthGetJson(pollUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      // The flow is unknown/lost — terminal for THIS flow; start a fresh one.
+      return { ok: true, status: 'expired' }
+    }
+    rememberLog(`[im-entry] weixin provision poll failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  // Poll STATUS shares the feishu shape (status/agent_name).
+  const { status } = parseFeishuProvisionStatusResponse(body)
+  if (status !== 'success') {
+    return { ok: true, status }
+  }
+
+  // success → the bot credential is persisted cloud-side; fetch it (separate
+  // call — the poll response never carries it) and store it encrypted.
+  const guardedCredentialsUrl = guardedFeishuProvisionUrl(credentialsUrl)
+  if (!guardedCredentialsUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let credentialsBody
+  try {
+    credentialsBody = await apexAuthGetJson(guardedCredentialsUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    // Transient — the flow is already terminal 'success' cloud-side; the next
+    // tick retries this fetch. NEVER log the body (it carries the token).
+    rememberLog(`[im-entry] weixin credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const credential = parseWeixinCredentialsResponse(credentialsBody)
+  if (!credential) {
+    rememberLog('[im-entry] weixin credentials response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const binding = shapeImEntryBinding('weixin', credential)
+  if (!binding) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  try {
+    writeImEntryBinding(binding)
+  } catch (error) {
+    // encryptDesktopSecret is strict — no keychain → no plaintext write.
+    rememberLog(`[im-entry] weixin credential not stored: ${error && error.message ? error.message : 'keychain'}`)
+    return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
+  }
+
+  // Unlike feishu (whose hc-444 bridge historically wrote plaintext FEISHU_* to
+  // the runtime home .env), no path writes plaintext WEIXIN_* into .env, so
+  // spawn injection is already the only WEIXIN_* source — no .env strip needed.
+
+  // Re-home the local backend so the freshly-injected WEIXIN_* env takes effect.
+  // The credential is already safe on disk — a teardown/reload failure must not
+  // fail the bind, only downgrade it to "restart manually".
+  try {
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  } catch (error) {
+    rememberLog(`[im-entry] backend restart after weixin bind failed: ${error && error.message ? error.message : error}`)
+    return { ok: true, status: 'success', restartFailed: true }
+  }
+  return { ok: true, status: 'success' }
+})
+
+// unbind: revoke the cloud-side Desktop binding (DELETE /api/v1/desktop/{channel}/entry
+// — v2 contract; feishu (hc-417) and weixin (hc-538) each have a cloud leg), then
+// forget the local binding and restart the backend so its adapter goes dark on
+// the next boot. The cloud revoke is best-effort: a 404 means nothing was bound
+// cloud-side (already revoked / legacy local-only binding) and any other failure
+// is logged but never blocks the LOCAL disconnect — the user's machine must
+// always be able to stop replying, even offline.
+const CLOUD_UNBIND_ENDPOINT_RESOLVERS = {
+  feishu: resolveFeishuProvisionEndpoints,
+  weixin: resolveWeixinProvisionEndpoints
+}
 ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   const id = typeof channelId === 'string' ? channelId.trim() : ''
   if (!isKnownImEntryChannel(id)) {
     return { ok: false }
   }
 
-  if (id === 'feishu') {
+  const resolveEndpoints = CLOUD_UNBIND_ENDPOINT_RESOLVERS[id]
+  if (resolveEndpoints) {
     const managed = resolveManagedConfig()
     const token = String(managed.accessToken || '').trim()
     if (token) {
       const endpoints = resolveApexEndpoints(process.env)
-      const { entryUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
+      const { entryUrl } = resolveEndpoints(endpoints.apiBase, process.env)
       const guardedEntryUrl = guardedFeishuProvisionUrl(entryUrl)
       if (guardedEntryUrl) {
         try {
@@ -8728,13 +8872,13 @@ ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
         } catch (error) {
           if (!error || error.statusCode !== 404) {
             rememberLog(
-              `[im-entry] cloud feishu unbind failed (local unbind proceeds): ${error && error.message ? error.message : error}`
+              `[im-entry] cloud ${id} unbind failed (local unbind proceeds): ${error && error.message ? error.message : error}`
             )
           }
         }
       }
     } else {
-      rememberLog('[im-entry] not signed in — skipping cloud feishu unbind, clearing local binding only')
+      rememberLog(`[im-entry] not signed in — skipping cloud ${id} unbind, clearing local binding only`)
     }
   }
 

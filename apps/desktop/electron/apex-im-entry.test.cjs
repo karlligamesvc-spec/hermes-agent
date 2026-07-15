@@ -20,6 +20,9 @@ const {
   FEISHU_PROVISION_CREDENTIALS_PATH,
   FEISHU_PROVISION_ENTRY_PATH,
   FEISHU_PROVISION_PATH,
+  WEIXIN_PROVISION_CREDENTIALS_PATH,
+  WEIXIN_PROVISION_ENTRY_PATH,
+  WEIXIN_PROVISION_PATH,
   buildImEntrySpawnEnv,
   feishuProvisionPollUrl,
   isAllowedFeishuProvisionUrl,
@@ -29,15 +32,18 @@ const {
   parseFeishuCredentialsV2Response,
   parseFeishuProvisionResponse,
   parseFeishuProvisionStatusResponse,
+  parseWeixinCredentialsResponse,
   resolveFeishuProvisionEndpoints,
+  resolveWeixinProvisionEndpoints,
   secretFieldsFor,
   shapeBinding,
   stripFeishuEnvOverrides
 } = require('./apex-im-entry.cjs')
 
-test('isKnownChannel accepts feishu and rejects unknown / non-string ids', () => {
+test('isKnownChannel accepts feishu + weixin and rejects unknown / non-string ids', () => {
   assert.equal(isKnownChannel('feishu'), true)
-  assert.equal(isKnownChannel('weixin'), false) // coming-soon, not injectable yet
+  assert.equal(isKnownChannel('weixin'), true) // hc-538: now injectable
+  assert.equal(isKnownChannel('qqbot'), false) // coming-soon, not injectable yet
   assert.equal(isKnownChannel('__proto__'), false)
   assert.equal(isKnownChannel(null), false)
   assert.equal(isKnownChannel(42), false)
@@ -65,7 +71,7 @@ test('shapeBinding returns null for missing required fields or unknown channel',
   assert.equal(shapeBinding('feishu', { appSecret: 'only-secret' }), null)
   assert.equal(shapeBinding('feishu', {}), null)
   assert.equal(shapeBinding('feishu', null), null)
-  assert.equal(shapeBinding('weixin', { appId: 'a', appSecret: 'b' }), null)
+  assert.equal(shapeBinding('qqbot', { appId: 'a', appSecret: 'b' }), null) // unknown channel
 })
 
 test('shapeBinding preserves an existing boundAt on re-shape', () => {
@@ -75,7 +81,8 @@ test('shapeBinding preserves an existing boundAt on re-shape', () => {
 
 test('secretFieldsFor reports only the secret-valued fields', () => {
   assert.deepEqual(secretFieldsFor('feishu'), ['appSecret'])
-  assert.deepEqual(secretFieldsFor('weixin'), [])
+  assert.deepEqual(secretFieldsFor('weixin'), ['token']) // only WEIXIN_TOKEN is secret
+  assert.deepEqual(secretFieldsFor('qqbot'), []) // unknown channel
 })
 
 test('normalizeStoredImEntry drops garbage, unknown channels + partial records', () => {
@@ -86,7 +93,7 @@ test('normalizeStoredImEntry drops garbage, unknown channels + partial records',
   const store = normalizeStoredImEntry({
     bindings: {
       feishu: { fields: { appId: 'cli_x', appSecret: 'sec', domain: 'feishu' }, boundAt: 999 },
-      weixin: { fields: { WEIXIN_TOKEN: 't' } }, // unknown/coming-soon → dropped
+      weixin: { fields: { accountId: 'wx_a' } }, // partial (no token) → dropped
       dingtalk: { fields: {} } // unknown here → dropped
     }
   })
@@ -265,4 +272,136 @@ test('stripFeishuEnvOverrides leaves non-FEISHU and commented lines untouched', 
   // Garbage in → unchanged out, never a throw.
   assert.deepEqual(stripFeishuEnvOverrides(''), { text: '', removed: [] })
   assert.deepEqual(stripFeishuEnvOverrides(null), { text: '', removed: [] })
+})
+
+// ── hc-538: WeChat (iLink) channel ──────────────────────────────────────────
+
+test('shapeBinding shapes the weixin credential, gating on account id + token', () => {
+  const shaped = shapeBinding('weixin', {
+    accountId: '  wx_bot_1  ',
+    token: '  t0ken  ',
+    baseUrl: 'https://ilinkai.weixin.qq.com',
+    dmPolicy: 'allowlist',
+    allowedUsers: 'ou_owner',
+    homeChannel: 'ou_owner'
+  })
+  assert.ok(shaped)
+  assert.equal(shaped.channelId, 'weixin')
+  assert.deepEqual(shaped.fields, {
+    accountId: 'wx_bot_1',
+    token: 't0ken',
+    baseUrl: 'https://ilinkai.weixin.qq.com',
+    dmPolicy: 'allowlist',
+    allowedUsers: 'ou_owner',
+    homeChannel: 'ou_owner'
+  })
+  assert.equal(typeof shaped.boundAt, 'number')
+
+  // The optional fields are omitted entirely when absent (the 3-tuple minimum).
+  const minimal = shapeBinding('weixin', { accountId: 'wx_a', token: 't' })
+  assert.deepEqual(minimal.fields, { accountId: 'wx_a', token: 't' })
+
+  // A missing REQUIRED field (token or account id) makes the binding unusable.
+  assert.equal(shapeBinding('weixin', { accountId: 'wx_a' }), null)
+  assert.equal(shapeBinding('weixin', { token: 't' }), null)
+  assert.equal(shapeBinding('weixin', {}), null)
+})
+
+test('buildImEntrySpawnEnv emits the WEIXIN_* adapter keys from a bound weixin store', () => {
+  const store = normalizeStoredImEntry({
+    bindings: {
+      weixin: {
+        fields: {
+          accountId: 'wx_bot_1',
+          token: 't0ken',
+          baseUrl: 'https://ilinkai.weixin.qq.com',
+          dmPolicy: 'allowlist',
+          allowedUsers: 'ou_owner',
+          homeChannel: 'ou_owner'
+        }
+      }
+    }
+  })
+  // A real weixin record survives normalization (round-trips through the gate).
+  assert.deepEqual(Object.keys(store), ['weixin'])
+  assert.deepEqual(buildImEntrySpawnEnv(store), {
+    WEIXIN_ACCOUNT_ID: 'wx_bot_1',
+    WEIXIN_TOKEN: 't0ken',
+    WEIXIN_BASE_URL: 'https://ilinkai.weixin.qq.com',
+    WEIXIN_DM_POLICY: 'allowlist',
+    WEIXIN_ALLOWED_USERS: 'ou_owner',
+    WEIXIN_HOME_CHANNEL: 'ou_owner'
+  })
+
+  // The 3-tuple minimum lights up the adapter; optional keys simply absent.
+  const minimal = buildImEntrySpawnEnv(
+    normalizeStoredImEntry({ bindings: { weixin: { fields: { accountId: 'wx_a', token: 't' } } } })
+  )
+  assert.deepEqual(minimal, { WEIXIN_ACCOUNT_ID: 'wx_a', WEIXIN_TOKEN: 't' })
+})
+
+test('resolveWeixinProvisionEndpoints composes the cloud weixin paths from apiBase', () => {
+  // The paths must be EXACTLY the hermes-cloud contract (app/routers/desktop.py).
+  assert.equal(WEIXIN_PROVISION_PATH, '/api/v1/desktop/weixin/provision')
+  assert.equal(WEIXIN_PROVISION_CREDENTIALS_PATH, '/api/v1/desktop/weixin/credentials')
+  assert.equal(WEIXIN_PROVISION_ENTRY_PATH, '/api/v1/desktop/weixin/entry')
+
+  const composed = resolveWeixinProvisionEndpoints('https://apex-nodes.com/', {})
+  assert.equal(composed.provisionUrl, `https://apex-nodes.com${WEIXIN_PROVISION_PATH}`)
+  assert.equal(composed.credentialsUrl, `https://apex-nodes.com${WEIXIN_PROVISION_CREDENTIALS_PATH}`)
+  assert.equal(composed.entryUrl, `https://apex-nodes.com${WEIXIN_PROVISION_ENTRY_PATH}`)
+
+  const overridden = resolveWeixinProvisionEndpoints('https://apex-nodes.com', {
+    HERMES_DESKTOP_IM_WEIXIN_PROVISION_URL: 'https://staging.apex-nodes.com/wx/provision',
+    HERMES_DESKTOP_IM_WEIXIN_CREDENTIALS_URL: 'https://staging.apex-nodes.com/wx/credentials',
+    HERMES_DESKTOP_IM_WEIXIN_ENTRY_URL: 'https://staging.apex-nodes.com/wx/entry'
+  })
+  assert.equal(overridden.provisionUrl, 'https://staging.apex-nodes.com/wx/provision')
+  assert.equal(overridden.credentialsUrl, 'https://staging.apex-nodes.com/wx/credentials')
+  assert.equal(overridden.entryUrl, 'https://staging.apex-nodes.com/wx/entry')
+
+  // The shared poll-url + host allowlist helpers apply to weixin unchanged.
+  assert.equal(
+    feishuProvisionPollUrl(composed.provisionUrl, 'p_wx'),
+    'https://apex-nodes.com/api/v1/desktop/weixin/provision/p_wx'
+  )
+  assert.equal(isAllowedFeishuProvisionUrl(composed.credentialsUrl), true)
+})
+
+test('parseWeixinCredentialsResponse requires account_id + token, passes routing through', () => {
+  assert.deepEqual(
+    parseWeixinCredentialsResponse({
+      account_id: '  wx_bot_1  ',
+      token: '  t0ken  ',
+      base_url: 'https://ilinkai.weixin.qq.com',
+      dm_policy: 'allowlist',
+      allowed_users: 'ou_owner',
+      home_channel: 'ou_owner'
+    }),
+    {
+      accountId: 'wx_bot_1',
+      token: 't0ken',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      dmPolicy: 'allowlist',
+      allowedUsers: 'ou_owner',
+      homeChannel: 'ou_owner'
+    }
+  )
+
+  // The 3-tuple minimum (routing fields absent) → empty strings, still valid.
+  assert.deepEqual(parseWeixinCredentialsResponse({ account_id: 'wx_a', token: 't' }), {
+    accountId: 'wx_a',
+    token: 't',
+    baseUrl: '',
+    dmPolicy: '',
+    allowedUsers: '',
+    homeChannel: ''
+  })
+
+  // Anything that can't yield an injectable credential → null.
+  assert.equal(parseWeixinCredentialsResponse({ account_id: 'wx_a' }), null)
+  assert.equal(parseWeixinCredentialsResponse({ token: 't' }), null)
+  assert.equal(parseWeixinCredentialsResponse({}), null)
+  assert.equal(parseWeixinCredentialsResponse(null), null)
+  assert.equal(parseWeixinCredentialsResponse([]), null)
 })

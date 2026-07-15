@@ -8,11 +8,11 @@
 // is what the main-process pipeline (electron/apex-im-entry.cjs) binds/injects.
 //
 // ── Rollout (per the hc-417 spike / PM) ─────────────────────────────────────
-// 飞书 is the first available channel: the cloud issues an INDEPENDENT Feishu app
-// via a device-code flow, whose long-connection delivery fits a local agent with
-// no public IP. 钉钉 is the next candidate; 个人微信 / QQ / 企业微信 follow. Until
-// a channel is wired end-to-end it stays `available:false` ("即将支持", disabled)
-// so the page never offers a flow that can't complete.
+// 飞书 (hc-417) and 个人微信 (hc-538) are available: the cloud issues an
+// INDEPENDENT bot per channel via a device-code / QR flow, whose delivery fits a
+// local agent with no public IP. 钉钉 / QQ / 企业微信 follow. Until a channel is
+// wired end-to-end it stays `available:false` ("即将支持", disabled) so the page
+// never offers a flow that can't complete.
 
 // Two binding templates, chosen per channel:
 //   • 'device-code' — scan a QR (or open a link) and confirm; zero fields typed.
@@ -31,12 +31,12 @@ export interface ImEntryChannel {
   available: boolean
 }
 
-// Order = the rollout priority the cards render in (available first, then the
-// coming-soon queue in PM's stated order: 钉钉 → 个微 → QQ → 企微).
+// Order = the rollout priority the cards render in (available first: 飞书 → 个微,
+// then the coming-soon queue in PM's stated order: 钉钉 → QQ → 企微).
 export const IM_ENTRY_CHANNELS: readonly ImEntryChannel[] = [
   { id: 'feishu', brand: 'feishu', bindingKind: 'device-code', available: true },
+  { id: 'weixin', brand: 'weixin', bindingKind: 'device-code', available: true },
   { id: 'dingtalk', brand: 'dingtalk', bindingKind: 'paste-code', available: false },
-  { id: 'weixin', brand: 'weixin', bindingKind: 'device-code', available: false },
   { id: 'qqbot', brand: 'qqbot', bindingKind: 'device-code', available: false },
   { id: 'wecom', brand: 'wecom', bindingKind: 'paste-code', available: false }
 ] as const

@@ -877,6 +877,9 @@ export interface Translations {
       scanPrompt: string
       scanHint: string
       openLink: string
+      // hc-538: WeChat expectation-gap note — the bound identity is a NEW iLink
+      // bot contact, not the user's own WeChat being taken over.
+      weixinBotNote: string
       connecting: string
       authorizedTitle: string
       authorizedMessage: string

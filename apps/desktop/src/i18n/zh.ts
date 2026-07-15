@@ -1291,6 +1291,8 @@ export const zh: Translations = {
       scanPrompt: '扫码连接',
       scanHint: '打开飞书扫描二维码，并在手机上确认。',
       openLink: '改用链接打开',
+      weixinBotNote:
+        '连接的是一个新的机器人联系人（iLink 机器人身份），不是把你本人的微信接管；这个机器人一般无法加入普通群聊，主要通过好友私聊使用。',
       connecting: '连接中…',
       authorizedTitle: '已连接',
       authorizedMessage: '正在重启以生效…',
