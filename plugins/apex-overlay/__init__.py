@@ -164,3 +164,16 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
             )
     except Exception:
         logger.warning("apex-overlay: cn_mirror_env seam failed to load", exc_info=True)
+
+    try:
+        from apex_overlay import im_passthrough
+
+        if not im_passthrough.apply():
+            logger.warning(
+                "apex-overlay: hc-539 IM passthrough seam did not fully apply "
+                "(see prior error). /cc and /codex will NOT enter direct "
+                "coding-agent passthrough; those messages fall through to the "
+                "normal Hermes agent."
+            )
+    except Exception:
+        logger.warning("apex-overlay: im_passthrough seam failed to load", exc_info=True)
