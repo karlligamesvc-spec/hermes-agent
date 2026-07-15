@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     list: () => ipcRenderer.invoke('hermes:imEntry:list'),
     feishuIssue: () => ipcRenderer.invoke('hermes:imEntry:feishuIssue'),
     feishuPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:feishuPoll', provisionId),
+    weixinIssue: () => ipcRenderer.invoke('hermes:imEntry:weixinIssue'),
+    weixinPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:weixinPoll', provisionId),
     unbind: channelId => ipcRenderer.invoke('hermes:imEntry:unbind', channelId)
   },
   // hc-533 本机 Agent 调度 — the A2A daemon leg. The settings block toggles the

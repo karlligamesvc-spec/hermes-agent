@@ -94,8 +94,12 @@ declare global {
         // One provisioning status check; on 'success' main fetches + persists
         // the credential (encrypted) + restarts the backend (reloads the window).
         feishuPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
-        // Revoke the cloud binding (feishu, best-effort), forget the local
-        // binding + restart the backend.
+        // hc-538 WeChat (iLink) — same contract as feishuIssue/feishuPoll
+        // against the /desktop/weixin/* cloud leg.
+        weixinIssue: () => Promise<DesktopImEntryIssueResult>
+        weixinPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
+        // Revoke the cloud binding (feishu/weixin, best-effort), forget the
+        // local binding + restart the backend.
         unbind: (channelId: string) => Promise<{ ok: boolean }>
       }
       // hc-533 本机 Agent 调度 — the A2A daemon leg. Toggles the reverse-connect

@@ -23,6 +23,20 @@ function imEntryBridge() {
   return typeof window !== 'undefined' ? window.hermesDesktop?.imEntry : undefined
 }
 
+type ImEntryBridge = NonNullable<ReturnType<typeof imEntryBridge>>
+
+// Dispatch the device-code IPC by channel. The cloud legs (feishu hc-417,
+// weixin hc-538) expose the SAME provision/poll contract, so the state machine
+// below is channel-agnostic — only which bridge pair to call differs here.
+// feishu keeps calling feishuIssue/feishuPoll byte-for-byte.
+function issueForChannel(bridge: ImEntryBridge, channelId: string) {
+  return channelId === 'weixin' ? bridge.weixinIssue() : bridge.feishuIssue()
+}
+
+function pollForChannel(bridge: ImEntryBridge, channelId: string, provisionId: string) {
+  return channelId === 'weixin' ? bridge.weixinPoll(provisionId) : bridge.feishuPoll(provisionId)
+}
+
 function openExternal(url: string) {
   if (typeof window !== 'undefined' && window.hermesDesktop?.openExternal && url) {
     void window.hermesDesktop.openExternal(url)
@@ -59,7 +73,7 @@ function failReason(result: {
 // reloads this window), so we rest in the success state until the reload lands —
 // unless the restart failed (restartFailed), in which case the binding is saved
 // and the user restarts the app manually.
-function useDeviceCodeFlow(open: boolean) {
+function useDeviceCodeFlow(open: boolean, channelId: string) {
   const [state, dispatch] = useReducer(deviceCodeReduce, undefined, initialDeviceCodeState)
 
   const start = useCallback(async () => {
@@ -73,7 +87,7 @@ function useDeviceCodeFlow(open: boolean) {
     }
 
     try {
-      const result = await bridge.feishuIssue()
+      const result = await issueForChannel(bridge, channelId)
 
       if (result.ok && result.provisionId && result.qrUrl) {
         dispatch({
@@ -89,7 +103,7 @@ function useDeviceCodeFlow(open: boolean) {
     } catch {
       dispatch({ type: 'ISSUE_FAILED', reason: 'request_failed' })
     }
-  }, [])
+  }, [channelId])
 
   // Auto-start on open; reset when the dialog closes so a reopen is a clean run.
   useEffect(() => {
@@ -125,7 +139,7 @@ function useDeviceCodeFlow(open: boolean) {
       }
 
       try {
-        const result = await bridge.feishuPoll(state.provisionId)
+        const result = await pollForChannel(bridge, channelId, state.provisionId)
 
         if (cancelled) {
           return
@@ -153,7 +167,7 @@ function useDeviceCodeFlow(open: boolean) {
       cancelled = true
       window.clearInterval(id)
     }
-  }, [state.phase, state.provisionId, state.intervalMs])
+  }, [state.phase, state.provisionId, state.intervalMs, channelId])
 
   // Expiry deadline.
   useEffect(() => {
@@ -259,7 +273,7 @@ export function ImEntryBindingDialog({ channelId, open, onOpenChange }: BindingD
         {!channel?.available ? (
           <ComingSoonBody />
         ) : channel.bindingKind === 'device-code' ? (
-          <DeviceCodeTemplate onDone={() => onOpenChange(false)} open={open} />
+          <DeviceCodeTemplate channelId={channelId} onDone={() => onOpenChange(false)} open={open} />
         ) : (
           <PasteCodeTemplate onDone={() => onOpenChange(false)} />
         )}
@@ -281,11 +295,22 @@ function ComingSoonBody() {
 }
 
 // ── Template A: device-code (scan slot) ─────────────────────────────────────
-function DeviceCodeTemplate({ open, onDone }: { open: boolean; onDone: () => void }) {
+function DeviceCodeTemplate({
+  channelId,
+  open,
+  onDone
+}: {
+  channelId: string
+  open: boolean
+  onDone: () => void
+}) {
   const { t } = useI18n()
   const copy = t.imEntry.dialog
-  const { state, start } = useDeviceCodeFlow(open)
+  const { state, start } = useDeviceCodeFlow(open, channelId)
   const qrDataUrl = useQrDataUrl(state.phase === 'awaiting_scan' ? state.qrUrl : '')
+  // hc-538 expectation-gap note (WeChat only): what the user is connecting is a
+  // NEW iLink bot contact, not their own WeChat being taken over.
+  const channelNote = channelId === 'weixin' ? copy.weixinBotNote : ''
 
   // On success the main process is restarting + reloading the window; surface a
   // toast so the intent is confirmed even before the reload lands. When the
@@ -344,6 +369,11 @@ function DeviceCodeTemplate({ open, onDone }: { open: boolean; onDone: () => voi
         )}
       </div>
       <p className="text-xs text-muted-foreground">{copy.scanHint}</p>
+      {channelNote && (
+        <p className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground">
+          {channelNote}
+        </p>
+      )}
       {state.qrUrl && (
         <Button onClick={() => openExternal(state.qrUrl)} size="sm" type="button" variant="ghost">
           <ExternalLink className="size-3.5" />
