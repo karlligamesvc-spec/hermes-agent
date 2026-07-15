@@ -904,6 +904,13 @@ export interface Translations {
         keychain: string
       }
     }
+    // hc-417 收口: Settings → 提供方 card summary + CTA (im-entry-settings.tsx).
+    // title/intro/boundEmpty above are reused verbatim for the card; these are
+    // the two settings-card-only additions.
+    settingsCard: {
+      boundSummary: (count: number) => string
+      openCta: string
+    }
   }
 
   profiles: {
