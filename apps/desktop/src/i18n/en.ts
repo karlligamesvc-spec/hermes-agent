@@ -1141,6 +1141,10 @@ export const en: Translations = {
         request_failed: 'Something went wrong. Please try again.',
         keychain: 'Secure storage is off, so the connection wasn’t saved. Enable keychain access and try again.'
       }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} ${count === 1 ? 'channel' : 'channels'} connected`,
+      openCta: 'Go to messaging'
     }
   },
 

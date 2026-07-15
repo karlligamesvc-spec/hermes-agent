@@ -1224,6 +1224,10 @@ export const ja = defineLocale({
         request_failed: '問題が発生しました。もう一度お試しください。',
         keychain: '安全なストレージが無効なため連携を保存できませんでした。キーチェーンアクセスを有効にしてください。'
       }
+    },
+    settingsCard: {
+      boundSummary: count => `${count}件のチャンネルと連携済み`,
+      openCta: 'メッセージ連携を開く'
     }
   },
 

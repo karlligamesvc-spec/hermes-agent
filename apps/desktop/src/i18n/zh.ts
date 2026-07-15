@@ -1314,6 +1314,10 @@ export const zh: Translations = {
         request_failed: '出了点问题，请重试。',
         keychain: '安全存储未开启，连接未保存。请开启钥匙串访问后重试。'
       }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} 个渠道已连接`,
+      openCta: '前往消息渠道'
     }
   },
 

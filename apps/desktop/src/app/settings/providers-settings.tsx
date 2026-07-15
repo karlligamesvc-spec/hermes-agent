@@ -27,6 +27,7 @@ import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
 import { FeishuSettings } from './feishu-settings'
 import { providerGroup, providerMeta, providerPriority } from './helpers'
+import { ImEntrySettings } from './im-entry-settings'
 import { LocalAgentSettings } from './local-agent-settings'
 import { LoadingState, SettingsContent } from './primitives'
 
@@ -478,6 +479,10 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
           coding task to a local agent on this machine (default off / dormant).
           Only renders in the Electron shell (the bridge is absent on web). */}
       <LocalAgentSettings />
+      {/* hc-417 收口: "IM 入口" discoverability card — bound-channel summary +
+          a jump to the full /im-entry page. Only renders in the Electron shell
+          (the bridge is absent on web). */}
+      <ImEntrySettings />
       <OAuthPicker
         disconnecting={disconnecting}
         onDisconnect={provider => void handleDisconnect(provider)}

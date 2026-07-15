@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { atom } from 'nanostores'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
@@ -74,7 +75,14 @@ afterEach(() => {
 async function renderProvidersSettings() {
   const { ProvidersSettings } = await import('./providers-settings')
 
-  return render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />)
+  // The "accounts" view now also mounts ImEntrySettings (hc-417), which calls
+  // useNavigate() for its "go to /im-entry" button — needs a Router ancestor,
+  // same as the real app shell always provides.
+  return render(
+    <MemoryRouter>
+      <ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />
+    </MemoryRouter>
+  )
 }
 
 describe('ProvidersSettings', () => {

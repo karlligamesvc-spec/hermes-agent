@@ -1178,6 +1178,10 @@ export const zhHant = defineLocale({
         request_failed: '出了點問題，請重試。',
         keychain: '安全儲存未開啟，連接未儲存。請開啟鑰匙圈存取後重試。'
       }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} 個管道已連接`,
+      openCta: '前往消息管道'
     }
   },
 
