@@ -28,6 +28,8 @@ Layout
 - ``gateway_bootstrap`` — hc-384/385 non-blocking platform startup.
 - ``feishu_supervisor`` — hc-384 WS self-reconnect + hc-385 heartbeat
   (v0.18: attaches via the platform registry; Feishu is a bundled plugin now).
+- ``im_passthrough``    — hc-539 IM ↔ local coding-agent direct passthrough
+  (``/cc`` / ``/codex``; wraps ``GatewayRunner._handle_message``).
 
 See ``apex_overlay/README.md`` for the full pattern (plugin wiring +
 monkey-patch + seam-test).
@@ -42,4 +44,5 @@ __all__ = [
     "region",
     "gateway_bootstrap",
     "feishu_supervisor",
+    "im_passthrough",
 ]
