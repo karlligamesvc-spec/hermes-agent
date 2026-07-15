@@ -50,6 +50,10 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   requireHiddenChildOptions(source, 'spawn(backend.command, backend.args')
   requireHiddenChildOptions(source, 'hermesProcess = spawn(backend.command, backend.args')
   requireHiddenChildOptions(source, "spawn(py, ['-m', 'hermes_cli.main', 'uninstall', '--gui-summary']")
+  // hc-537 tail (2026-07-15): the three sites the original sweep missed.
+  requireHiddenChildOptions(source, 'spawn(tarExe')
+  requireHiddenChildOptions(source, 'spawn(exe, argv')
+  requireHiddenChildOptions(source, "spawn(pythonExe, ['-m', 'agent.coding_agents.run_once']")
 })
 
 test('intentional or interactive desktop child processes stay documented', () => {

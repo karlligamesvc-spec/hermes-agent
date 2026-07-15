@@ -651,7 +651,7 @@ function extractBundleArchive(archivePath, destDir) {
     const tarExe = IS_WINDOWS
       ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
       : 'tar'
-    const child = spawn(tarExe, ['-xzf', archivePath, '-C', destDir], { stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawn(tarExe, ['-xzf', archivePath, '-C', destDir], hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] }))
     let stderr = ''
     child.stderr.on('data', d => {
       stderr = (stderr + String(d)).slice(-2000)
@@ -666,7 +666,7 @@ function extractBundleArchive(archivePath, destDir) {
 // external fixup binary to keep in lockstep (manifest.fixup drives the argv).
 function runBundledTool(exe, argv, label) {
   return new Promise((resolve, reject) => {
-    const child = spawn(exe, argv, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(exe, argv, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
     let tail = ''
     const cap = d => {
       tail = (tail + String(d)).slice(-2000)
@@ -5672,11 +5672,11 @@ function runLocalAgentJob(job) {
     }
     let child
     try {
-      child = spawn(pythonExe, ['-m', 'agent.coding_agents.run_once'], {
+      child = spawn(pythonExe, ['-m', 'agent.coding_agents.run_once'], hiddenWindowsChildOptions({
         cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
-      })
+      }))
     } catch (error) {
       rememberLog(`[daemon] runner spawn failed: ${error && error.message ? error.message : error}`)
       resolve(null)
