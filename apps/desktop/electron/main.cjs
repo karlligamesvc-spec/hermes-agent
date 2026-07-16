@@ -155,6 +155,7 @@ const {
   shapeBinding: shapeImEntryBinding,
   stripFeishuEnvOverrides
 } = require('./apex-im-entry.cjs')
+const { buildGatewayRunArgs, imEntryStoreHasBinding } = require('./apex-gateway.cjs')
 const {
   DAEMON_STATUS,
   bridgeResultUrl,
@@ -7161,6 +7162,159 @@ async function waitForBackendExit(child, timeoutMs = 5000) {
   })
 }
 
+// ── hc-417: desktop-managed messaging gateway lifecycle ─────────────────────
+// Why this exists: the desktop spawns a `hermes dashboard` backend, which runs
+// the web server + cron ticker but NO messaging adapters (web_server.py: "no
+// live adapters"). The Feishu / WeChat inbound WS adapters live only in
+// `hermes gateway run`, so injecting the bound FEISHU_* / WEIXIN_* credential
+// into the dashboard lit up outbound + tools but never an inbound connection —
+// the channel sat on "连接中…" forever. We now run a real messaging gateway
+// alongside the dashboard (the same topology a server uses: `hermes dashboard`
+// + `hermes gateway run` share one HERMES_HOME), fed the SAME just-in-time
+// credential env fragment, so the adapter actually connects. The gateway writes
+// its per-platform WS state to the runtime status file, which
+// /api/messaging/platforms already surfaces — so the IM 入口 page flips from
+// "连接中…" to "已连接" on its own once the WS is live (no renderer change).
+//
+// Credential boundary: secrets reach the gateway ONLY through the child process
+// env (decrypted just in time by desktopFeishuSpawnEnv()/desktopImEntrySpawnEnv()),
+// never a plist, never config.yaml, never a log line — identical treatment to
+// the dashboard spawn.
+const messagingGatewayRuntime = { process: null, profile: null, starting: false }
+
+function messagingGatewayChildAlive() {
+  const child = messagingGatewayRuntime.process
+  return Boolean(child && child.exitCode === null && !child.killed)
+}
+
+// Stop the desktop-managed messaging gateway child (SIGTERM, then SIGKILL on
+// timeout via waitForBackendExit). Idempotent — a no-op when none is running.
+async function stopMessagingGateway() {
+  const child = messagingGatewayChildAlive() ? messagingGatewayRuntime.process : null
+  messagingGatewayRuntime.process = null
+  messagingGatewayRuntime.profile = null
+  if (!child) {
+    return
+  }
+  try {
+    child.kill('SIGTERM')
+  } catch {
+    // Already gone.
+  }
+  await waitForBackendExit(child)
+}
+
+// Spawn the messaging gateway for `profile`, injecting the same credential env
+// the dashboard receives. Best-effort: any failure is logged and swallowed —
+// the bind still succeeded (the credential is safe on disk) and the IM 入口
+// page's live status shows the gateway as stopped/failed rather than a fake
+// green. Callers guarantee a binding exists + a local backend is live.
+async function startMessagingGateway(profile) {
+  if (messagingGatewayRuntime.starting) {
+    return
+  }
+  messagingGatewayRuntime.starting = true
+  try {
+    const backend = await ensureRuntime(resolveHermesBackend(buildGatewayRunArgs(profile)))
+    const hermesCwd = resolveHermesCwd()
+    rememberLog(
+      `Starting Hermes messaging gateway${profile ? ` for profile "${profile}"` : ''} via ${backend.label}`
+    )
+    const child = spawn(
+      backend.command,
+      backend.args,
+      hiddenWindowsChildOptions({
+        cwd: hermesCwd,
+        env: {
+          ...process.env,
+          HERMES_HOME,
+          ...backend.env,
+          // The SAME just-in-time credential fragment the dashboard gets — this
+          // is what lights up the inbound Feishu/WeChat WS adapter here (the
+          // gateway gates each adapter on the PRESENCE of these env vars). Spread
+          // AFTER desktopFeishuSpawnEnv() for the same hc-444/hc-417 collision
+          // guarantee as the dashboard spawn.
+          ...desktopFeishuSpawnEnv(),
+          ...desktopImEntrySpawnEnv(),
+          TERMINAL_CWD: hermesCwd
+        },
+        shell: backend.shell,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+    )
+    messagingGatewayRuntime.process = child
+    messagingGatewayRuntime.profile = profile || null
+    child.stdout.on('data', rememberLog)
+    child.stderr.on('data', rememberLog)
+    child.once('exit', (code, signal) => {
+      rememberLog(`Hermes messaging gateway exited (${signal || code})`)
+      if (messagingGatewayRuntime.process === child) {
+        messagingGatewayRuntime.process = null
+        messagingGatewayRuntime.profile = null
+      }
+    })
+    child.once('error', error => {
+      rememberLog(`Hermes messaging gateway failed to start: ${error && error.message ? error.message : error}`)
+      if (messagingGatewayRuntime.process === child) {
+        messagingGatewayRuntime.process = null
+        messagingGatewayRuntime.profile = null
+      }
+    })
+  } catch (error) {
+    rememberLog(`Hermes messaging gateway start failed: ${error && error.message ? error.message : error}`)
+  } finally {
+    messagingGatewayRuntime.starting = false
+  }
+}
+
+// Force-restart the messaging gateway to pick up a fresh binding — used after a
+// bind/unbind so a NEW credential (or a removed channel) actually takes effect.
+// Stops any running child, then starts only when a binding remains AND a local
+// dashboard backend is live (remote-backend mode hosts its own gateway; a
+// not-yet-bootstrapped local runtime must not be bootstrapped just for this).
+// Never throws into callers.
+async function restartMessagingGateway() {
+  try {
+    if (!imEntryStoreHasBinding(resolveImEntryStore())) {
+      await stopMessagingGateway()
+      return
+    }
+    if (!hermesProcess || hermesProcess.killed) {
+      await stopMessagingGateway()
+      return
+    }
+    await stopMessagingGateway()
+    await startMessagingGateway(readActiveDesktopProfile())
+  } catch (error) {
+    rememberLog(`[im-entry] messaging gateway restart failed: ${error && error.message ? error.message : error}`)
+  }
+}
+
+// Converge the messaging gateway to the current binding + profile without
+// churning a healthy one — used from the boot/local-ready path (which can fire
+// on every window reload). No binding → stopped; bound + already running under
+// the active profile → left alone; profile changed or not running → (re)started.
+// Same local-backend gate as restartMessagingGateway. Never throws.
+async function reconcileMessagingGateway() {
+  try {
+    if (!imEntryStoreHasBinding(resolveImEntryStore())) {
+      await stopMessagingGateway()
+      return
+    }
+    if (!hermesProcess || hermesProcess.killed) {
+      return
+    }
+    const activeProfile = readActiveDesktopProfile() || null
+    if (messagingGatewayChildAlive() && messagingGatewayRuntime.profile === activeProfile) {
+      return
+    }
+    await stopMessagingGateway()
+    await startMessagingGateway(activeProfile)
+  } catch (error) {
+    rememberLog(`[im-entry] messaging gateway reconcile failed: ${error && error.message ? error.message : error}`)
+  }
+}
+
 // The profile the primary (window) backend runs as. readActiveDesktopProfile()
 // returns the desktop's stored preference, or null when unset (legacy launch
 // that defers to active_profile / default).
@@ -7605,6 +7759,12 @@ async function startHermes() {
       running: true,
       error: null
     })
+
+    // hc-417: the local dashboard is live — bring up the messaging gateway
+    // alongside it if any IM 入口 channel is bound, so a previously-bound Feishu
+    // / WeChat adapter reconnects on app launch. Fire-and-forget + idempotent (a
+    // healthy gateway on the right profile is left running).
+    void reconcileMessagingGateway()
 
     return {
       baseUrl,
@@ -8691,6 +8851,14 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
     rememberLog(`[im-entry] .env FEISHU_* cleanup failed: ${error && error.message ? error.message : error}`)
   }
 
+  // hc-417 core fix: (re)start the messaging gateway so the Feishu INBOUND WS
+  // adapter actually connects with the freshly-stored credential. The dashboard
+  // re-home below runs NO adapters (it only carries the credential for outbound
+  // sends + lark tools), so without this the channel would sit on "连接中…"
+  // forever. Best-effort: a gateway failure surfaces as the channel's live
+  // status on the IM 入口 page, never a failed bind.
+  await restartMessagingGateway()
+
   // Re-home the local backend so the freshly-injected FEISHU_* env takes
   // effect. The credential is already safe on disk — a teardown/reload failure
   // must not fail the bind, only downgrade it to "restart manually".
@@ -8828,6 +8996,12 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
   // the runtime home .env), no path writes plaintext WEIXIN_* into .env, so
   // spawn injection is already the only WEIXIN_* source — no .env strip needed.
 
+  // hc-417 core fix (hc-538 WeChat leg): (re)start the messaging gateway so the
+  // WeChat iLink INBOUND adapter actually connects with the freshly-stored
+  // token — same reason as feishu: the dashboard re-home below runs no adapters.
+  // Best-effort: a gateway failure surfaces as the channel's live status.
+  await restartMessagingGateway()
+
   // Re-home the local backend so the freshly-injected WEIXIN_* env takes effect.
   // The credential is already safe on disk — a teardown/reload failure must not
   // fail the bind, only downgrade it to "restart manually".
@@ -8883,11 +9057,16 @@ ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   }
 
   clearImEntryBinding(id)
+  // hc-417: converge the messaging gateway to the remaining bindings — stops it
+  // when nothing is bound (the just-unbound adapter goes dark immediately), or
+  // restarts it so a still-bound sibling channel drops the removed one's env.
+  await restartMessagingGateway()
   try {
     await teardownPrimaryBackendAndWait()
     mainWindow?.reload()
   } catch (error) {
-    // The binding is already cleared; the adapter dies on the next manual restart.
+    // The binding is already cleared and the gateway already converged; the
+    // dashboard re-home is only for its outbound-send env + the UI reload.
     rememberLog(`[im-entry] backend restart after unbind failed: ${error && error.message ? error.message : error}`)
   }
   return { ok: true }
@@ -10247,6 +10426,15 @@ app.on('before-quit', () => {
 
   if (hermesProcess && !hermesProcess.killed) {
     hermesProcess.kill('SIGTERM')
+  }
+  // hc-417: reap the desktop-managed messaging gateway with the app (SIGTERM,
+  // same as the dashboard backend) so it never outlives the shell as an orphan.
+  if (messagingGatewayRuntime.process && !messagingGatewayRuntime.process.killed) {
+    try {
+      messagingGatewayRuntime.process.kill('SIGTERM')
+    } catch {
+      // Already gone.
+    }
   }
   stopAllPoolBackends()
 })
