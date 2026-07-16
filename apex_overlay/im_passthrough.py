@@ -59,6 +59,25 @@ ACP ``session/update``). Session continuity is the harness's ``session_id``
 round-trip (Claude ``--resume`` / Codex ``threadId`` / ACP ``sessionId``), so
 the IM conversation ↔ agent session binding is persistent across messages.
 
+Session targeting (v1.1, hc-542)
+================================
+``/cc`` alone still opens a *fresh* session, but a chat can now attach to one of
+the machine's existing Claude Code sessions instead:
+
+  * ``/cc list`` — the machine's recent Claude Code sessions (newest first, ≤10:
+    number, project dir, first-message preview, relative time). Truth is Claude
+    Code's own store (``$CLAUDE_CONFIG_DIR/projects/<slug>/<id>.jsonl``), read
+    **only** — never written — and every preview is control-char-scrubbed +
+    length-capped before it can reach IM (injection red line).
+  * ``/cc <n>`` — attach to the n-th session the chat last listed.
+  * ``/cc resume <id>`` — attach to a session by its id (id is path-validated).
+  * ``/cc new [绝对目录]`` — force a fresh session (optionally in a given cwd).
+
+Attaching presets the harness ``session_id`` before the first turn, so
+continuation runs ``--resume <id>`` from the very first prompt (no new fork).
+Codex has no equivalent read-only thread store wired here, so ``/codex list`` /
+``/codex <n>`` reply "仅支持 Claude Code" rather than fabricate a mapping.
+
 Credentials (§4): the harness spawns the user's own ``claude`` / ``codex`` with
 a Hermes-secret-scrubbed env and the real HOME, so the coding agent authced from
 its own credential store; nothing is forwarded to the cloud or logged.
@@ -78,11 +97,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import logging
 import os
+import re
+import time
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +116,9 @@ _TARGET_METHOD = "_handle_message"
 
 # Per-runner state attribute: {session_key: _PassthroughSession}.
 _STATE_ATTR = "_apex_im_passthrough_sessions"
+# Per-runner cache of the last ``/cc list`` a chat saw: {session_key:
+# [SessionInfo, ...]} — so ``/cc <n>`` resolves to exactly what was shown.
+_LIST_STATE_ATTR = "_apex_im_passthrough_last_list"
 
 _APPLIED = False
 _MARK = "_apex_overlay_im_passthrough"
@@ -220,6 +246,289 @@ def chunk_text(text: str, limit: int = _CHUNK_LIMIT) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Session targeting — /cc list · /cc <n> · /cc resume <id> · /cc new (hc-542)
+# ---------------------------------------------------------------------------
+#
+# Kael's ask: "Claude Code 里有很多开启的 session,如何指定 session 发送指令".
+# v1 always spawned a fresh session; v1.1 lets an IM chat *attach* to one of the
+# machine's existing Claude Code sessions. Session truth is Claude Code's own
+# native store — ``$CLAUDE_CONFIG_DIR/projects/<cwd-slug>/<sessionId>.jsonl`` (id
+# == filename stem; ``cwd`` + the first user message live inside). We only ever
+# READ those files (never write/delete), and every user-message preview is
+# control-char-scrubbed + length-capped before it can reach IM (injection red
+# line). Continuation reuses the harness's existing ``--resume <sessionId>``
+# round-trip (ClaudeDirectHarness._build_prompt_args already appends it whenever
+# ``session_id`` is set) — we simply preset ``session_id`` before the first
+# turn, so the very first prompt attaches instead of forking a new session.
+
+
+class CcKind(str, Enum):
+    """What a ``/cc ...`` (or ``/codex ...``) argument string asks for."""
+
+    NEW = "new"        # fresh session (v1 default, or explicit ``/cc new``)
+    LIST = "list"      # enumerate existing sessions
+    SELECT = "select"  # attach to a listed session by 1-based number
+    RESUME = "resume"  # attach to a session by explicit id
+
+
+@dataclass(frozen=True, slots=True)
+class CcCommand:
+    """Parsed ``/cc`` sub-command. Pure product of :func:`parse_cc_subcommand`."""
+
+    kind: CcKind
+    rest: str = ""          # NEW: optional leading cwd + first prompt
+    index: int = 0          # SELECT: 1-based number as the user typed it
+    session_id: str = ""    # RESUME: the explicit session id (may be "")
+    bare: bool = False      # NEW: True when ``/cc`` was typed with no args
+
+
+def parse_cc_subcommand(args: str) -> CcCommand:
+    """Classify a ``/cc`` argument string. Pure, deterministic, no I/O.
+
+    ``""`` → NEW(bare)         ·  ``list`` → LIST     ·  ``3`` → SELECT(3)
+    ``resume <id>`` → RESUME   ·  ``new [dir] [msg]`` → NEW
+    anything else → NEW with the whole string as rest (v1 back-compat: an
+    optional leading directory token + first prompt, resolved later by I/O).
+    Keywords are case-insensitive; ``cwd``/dir validation stays out of the pure
+    parser (it happens in the I/O layer).
+    """
+    args = (args or "").strip()
+    if not args:
+        return CcCommand(kind=CcKind.NEW, bare=True)
+    first, _, rest = args.partition(" ")
+    rest = rest.strip()
+    low = first.lower()
+    if low == "list":
+        return CcCommand(kind=CcKind.LIST)
+    if first.isdigit():
+        return CcCommand(kind=CcKind.SELECT, index=int(first))
+    if low == "resume":
+        sid = rest.split(maxsplit=1)[0] if rest else ""
+        return CcCommand(kind=CcKind.RESUME, session_id=sid)
+    if low == "new":
+        return CcCommand(kind=CcKind.NEW, rest=rest)
+    # v1 back-compat: treat the whole thing as (optional cwd) + prompt.
+    return CcCommand(kind=CcKind.NEW, rest=args)
+
+
+def sanitize_summary(text: str, limit: int = 40) -> str:
+    """Scrub a stored user message for safe, compact display in IM.
+
+    Injection red line: every Unicode *control/format* char (Cc/Cf/Cs/Co/Cn —
+    includes ANSI ESC, NUL, and bidi/zero-width overrides that could reorder or
+    spoof text) becomes a space; runs of whitespace collapse to one; the result
+    is capped at ``limit`` characters (``…`` marks truncation). Pure.
+    """
+    if not text:
+        return ""
+    scrubbed = [
+        " " if (ch in "\t\n\r" or unicodedata.category(ch)[0] == "C") else ch
+        for ch in text
+    ]
+    collapsed = " ".join("".join(scrubbed).split())
+    if len(collapsed) > limit:
+        return collapsed[:limit].rstrip() + "…"
+    return collapsed
+
+
+def format_relative_time(now_ts: float, then_ts: float) -> str:
+    """Coarse CN relative time. Pure — both timestamps are explicit args."""
+    delta = now_ts - then_ts
+    if delta < 60:
+        return "刚刚"
+    if delta < 3600:
+        return f"{int(delta // 60)} 分钟前"
+    if delta < 86400:
+        return f"{int(delta // 3600)} 小时前"
+    return f"{int(delta // 86400)} 天前"
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedSession:
+    """Head-scan result of one session jsonl: authoritative cwd + raw preview."""
+
+    cwd: Optional[str]
+    summary_raw: Optional[str]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionInfo:
+    """One resumable Claude Code session, ready to render / attach."""
+
+    session_id: str
+    cwd: str
+    summary: str  # already sanitized; may be ""
+    mtime: float
+
+
+def _extract_user_text(obj: dict) -> Optional[str]:
+    """Pull displayable text from a ``type:"user"`` record, or None.
+
+    Skips meta records and tool-result-only turns (a user record whose content
+    is only ``tool_result`` blocks carries no typed text). Claude Code stores
+    ``message.content`` as either a plain string or a list of typed blocks.
+    """
+    if obj.get("isMeta"):
+        return None
+    msg = obj.get("message")
+    if not isinstance(msg, dict):
+        return None
+    content = msg.get("content")
+    if isinstance(content, str):
+        return content.strip() or None
+    if isinstance(content, list):
+        texts = [
+            b["text"].strip()
+            for b in content
+            if isinstance(b, dict)
+            and b.get("type") == "text"
+            and isinstance(b.get("text"), str)
+            and b["text"].strip()
+        ]
+        return " ".join(texts) if texts else None
+    return None
+
+
+def parse_session_file(lines: Iterable[str], *, max_scan: int = 2000) -> ParsedSession:
+    """Head-scan a session jsonl (iterable of raw lines) for cwd + first prompt.
+
+    Pure over its input and fault-tolerant: non-JSON / non-dict lines are
+    skipped, the first line is NOT assumed to be a user message (real stores
+    open with ``queue-operation`` / ``summary`` records), and the scan stops as
+    soon as both facts are found (so only the file head is read) or ``max_scan``
+    lines elapse. Returns ``(None, None)`` for an empty / unusable file.
+    """
+    cwd: Optional[str] = None
+    summary: Optional[str] = None
+    for n, line in enumerate(lines):
+        if cwd is not None and summary is not None:
+            break
+        if n >= max_scan:
+            break
+        line = line.strip() if isinstance(line, str) else ""
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if cwd is None:
+            c = obj.get("cwd")
+            if isinstance(c, str) and c.strip():
+                cwd = c.strip()
+        if summary is None and obj.get("type") == "user":
+            text = _extract_user_text(obj)
+            if text:
+                summary = text
+    return ParsedSession(cwd=cwd, summary_raw=summary)
+
+
+# A session id is a filename stem we join onto a directory — constrain it hard
+# so a crafted ``/cc resume ../../etc/passwd`` can never escape the store.
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$")
+
+
+def _projects_root() -> str:
+    """Claude Code's project store root. Honors ``CLAUDE_CONFIG_DIR`` (the same
+    override Claude Code itself reads), else ``~/.claude``."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    root = os.path.expanduser(base) if base else os.path.expanduser("~/.claude")
+    return os.path.join(root, "projects")
+
+
+def _read_session_info(path: str) -> Optional[SessionInfo]:
+    """Build a :class:`SessionInfo` from a session jsonl path (read-only)."""
+    session_id = os.path.splitext(os.path.basename(path))[0]
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            parsed = parse_session_file(fh)
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    slug = os.path.basename(os.path.dirname(path))
+    return SessionInfo(
+        session_id=session_id,
+        cwd=parsed.cwd or slug,
+        summary=sanitize_summary(parsed.summary_raw or ""),
+        mtime=mtime,
+    )
+
+
+def list_recent_sessions(limit: int = 10, *, root: Optional[str] = None) -> list[SessionInfo]:
+    """Newest-first Claude Code sessions across all projects (read-only FS scan).
+
+    Only the newest ``limit`` files are parsed (sorted by mtime, then head-read),
+    so a store with hundreds of sessions stays cheap. Empty files are skipped.
+    Any FS error degrades to ``[]`` — listing can never raise into the gateway.
+    """
+    root = root or _projects_root()
+    entries: list[tuple[float, str]] = []
+    try:
+        for proj in os.scandir(root):
+            if not proj.is_dir():
+                continue
+            try:
+                for f in os.scandir(proj.path):
+                    if not (f.is_file() and f.name.endswith(".jsonl")):
+                        continue
+                    try:
+                        st = f.stat()
+                    except OSError:
+                        continue
+                    if st.st_size == 0:
+                        continue
+                    entries.append((st.st_mtime, f.path))
+            except OSError:
+                continue
+    except OSError:
+        return []
+    entries.sort(key=lambda t: t[0], reverse=True)
+    out: list[SessionInfo] = []
+    for _mtime, path in entries:
+        info = _read_session_info(path)
+        if info is not None:
+            out.append(info)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def find_session(session_id: str, *, root: Optional[str] = None) -> Optional[SessionInfo]:
+    """Locate one session by id across all project dirs (read-only). None if the
+    id is malformed (path-traversal defense) or no such session file exists."""
+    session_id = (session_id or "").strip()
+    if not _SESSION_ID_RE.match(session_id):
+        return None
+    root = root or _projects_root()
+    try:
+        for proj in os.scandir(root):
+            if not proj.is_dir():
+                continue
+            candidate = os.path.join(proj.path, session_id + ".jsonl")
+            if os.path.isfile(candidate):
+                return _read_session_info(candidate)
+    except OSError:
+        return None
+    return None
+
+
+def render_session_list(sessions: list[SessionInfo], *, now_ts: float) -> str:
+    """Format the ``/cc list`` reply. Pure given ``sessions`` + ``now_ts``."""
+    if not sessions:
+        return "本机没有找到 Claude Code 历史会话。\n发送 /cc new 新开一个。"
+    out = [f"本机 Claude Code 会话(新→旧,共 {len(sessions)} 条):"]
+    for i, s in enumerate(sessions, 1):
+        project = os.path.basename(s.cwd.rstrip("/")) or s.cwd
+        out.append(f"{i}. {project} · {format_relative_time(now_ts, s.mtime)}")
+        out.append(f"   {s.summary or '(无预览)'}")
+        out.append(f"   id {s.session_id[:8]}")
+    out.append("发送 /cc <编号> 挂接会话,或 /cc resume <会话id>。")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
 # Rendering — verbatim agent output + the deny-all permission notice (red line)
 # ---------------------------------------------------------------------------
 
@@ -258,12 +567,24 @@ def render_result(result: dict[str, Any]) -> str:
 
 # --- user-facing control strings (inline CN; i18n keys are a follow-up) -------
 
+def _family_name(family: str) -> str:
+    return {"claude": "Claude Code", "codex": "Codex"}.get(family, family)
+
+
 def _t_entered(family: str, cwd: str) -> str:
-    name = "Claude Code" if family == "claude" else ("Codex" if family == "codex" else family)
     return (
-        f"已进入 {name} 直通模式(工作目录 {cwd})。\n"
+        f"已进入 {_family_name(family)} 直通模式(工作目录 {cwd})。\n"
         "· 直接发消息即与它对话,内容原样转发;\n"
         "· /cancel 打断当前任务,/stop 退出直通回到普通对话。"
+    )
+
+
+def _t_resumed(family: str, info: "SessionInfo") -> str:
+    project = os.path.basename(info.cwd.rstrip("/")) or info.cwd
+    return (
+        f"已挂接到 {_family_name(family)} 会话(目录 {project})。\n"
+        f"· 会话:{info.summary or '(无预览)'}\n"
+        "· 直接发消息即续入该会话;/stop 退出直通。"
     )
 
 
@@ -279,11 +600,32 @@ def _t_busy() -> str:
     return "上一条还在处理中,请稍候,或发送 /cancel 打断。"
 
 
+def _t_list_hint() -> str:
+    return "(提示:发送 /cc list 可挂接本机已有会话)"
+
+
+def _t_resume_usage() -> str:
+    return "用法:/cc resume <会话id>。发送 /cc list 可查看会话 id。"
+
+
+def _t_index_out_of_range(count: int) -> str:
+    if count <= 0:
+        return "当前没有可挂接的会话。发送 /cc list 查看,或 /cc new 新开。"
+    return f"编号超出范围(共 {count} 条)。发送 /cc list 重新查看。"
+
+
+def _t_session_not_found(session_id: str) -> str:
+    return f"未找到会话 {session_id}。发送 /cc list 查看可挂接的会话。"
+
+
+def _t_targeting_claude_only() -> str:
+    return "会话列表与挂接目前仅支持 Claude Code(/cc);/codex 只会新开会话。"
+
+
 def _t_unavailable(family: str, detail: str) -> str:
-    name = "Claude Code" if family == "claude" else ("Codex" if family == "codex" else family)
     detail = (detail or "").strip()
     tail = f"\n{detail}" if detail else ""
-    return f"{name} 未接入(未安装或无法启动),无法进入直通模式。{tail}"
+    return f"{_family_name(family)} 未接入(未安装或无法启动),无法进入直通模式。{tail}"
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +655,14 @@ def _sessions_for(runner) -> dict:
         sessions = {}
         setattr(runner, _STATE_ATTR, sessions)
     return sessions
+
+
+def _last_list_for(runner) -> dict:
+    cache = getattr(runner, _LIST_STATE_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(runner, _LIST_STATE_ATTR, cache)
+    return cache
 
 
 def _enabled() -> bool:
@@ -406,34 +756,29 @@ async def _forward(runner, source, session: _PassthroughSession, text: str) -> s
     return await _deliver(runner, source, reply)
 
 
-async def _enter(
-    runner,
-    source,
-    session_key: str,
-    sessions: dict,
+async def _build_and_open(
     family: str,
-    args: str,
-) -> str:
-    """Open (or re-open) a passthrough session bound to ``session_key``."""
-    # Switch: close any existing binding first.
-    old = sessions.pop(session_key, None)
-    if old is not None:
-        await asyncio.to_thread(old.close)
+    cwd: str,
+    *,
+    resume_session_id: Optional[str] = None,
+) -> tuple[Optional["_PassthroughSession"], Optional[str]]:
+    """Build a harness for ``family`` at ``cwd``, probe, and open it.
 
-    cwd_arg, first_prompt = _split_cwd_and_prompt(args)
-    cwd = _resolve_cwd(cwd_arg)
-
-    # Build the harness WITHOUT a permission_callback → it keeps the harness
-    # default (``default_deny_permission``). This is the red line: passthrough
-    # never installs an approving callback. (Asserted structurally in the test.)
+    Returns ``(session, None)`` on success or ``(None, error_text)`` otherwise.
+    The harness is built WITHOUT a permission_callback → it keeps the deny-all
+    default (red line; asserted structurally in the test). When
+    ``resume_session_id`` is given it is preset on the harness BEFORE ``open()``
+    so the first turn attaches via ``--resume`` instead of forking a new session
+    (ClaudeDirectHarness._build_prompt_args appends it off ``session_id``)."""
     harness = harness_for(family, cwd)
+    if resume_session_id:
+        harness.session_id = resume_session_id
     try:
         avail = await asyncio.to_thread(harness.availability)
     except Exception as exc:
-        return _t_unavailable(family, str(exc))
+        return None, _t_unavailable(family, str(exc))
     if not getattr(avail, "installed", False):
-        return _t_unavailable(family, getattr(avail, "detail", ""))
-
+        return None, _t_unavailable(family, getattr(avail, "detail", ""))
     try:
         await asyncio.to_thread(harness.open)
     except Exception as exc:
@@ -441,16 +786,119 @@ async def _enter(
             await asyncio.to_thread(harness.close)
         except Exception:
             pass
-        return _t_unavailable(family, str(exc))
+        return None, _t_unavailable(family, str(exc))
+    return _PassthroughSession(family=family, harness=harness, cwd=cwd), None
 
-    session = _PassthroughSession(family=family, harness=harness, cwd=cwd)
+
+async def _enter(
+    runner,
+    source,
+    session_key: str,
+    sessions: dict,
+    family: str,
+    rest: str,
+    *,
+    bare: bool = False,
+) -> str:
+    """Open (or re-open) a FRESH passthrough session bound to ``session_key``."""
+    # Switch: close any existing binding first.
+    old = sessions.pop(session_key, None)
+    if old is not None:
+        await asyncio.to_thread(old.close)
+
+    cwd_arg, first_prompt = _split_cwd_and_prompt(rest)
+    cwd = _resolve_cwd(cwd_arg)
+
+    session, error = await _build_and_open(family, cwd)
+    if session is None:
+        return error or _t_unavailable(family, "")
     sessions[session_key] = session
 
     welcome = _t_entered(family, cwd)
+    if bare and family == "claude":
+        welcome += "\n" + _t_list_hint()
     if first_prompt:
         body = await _forward(runner, source, session, first_prompt)
         return welcome if not body else f"{welcome}\n\n{body}"
     return welcome
+
+
+async def _enter_resumed(
+    runner,
+    source,
+    session_key: str,
+    sessions: dict,
+    family: str,
+    info: "SessionInfo",
+) -> str:
+    """Attach ``session_key`` to an existing Claude Code session (``info``)."""
+    old = sessions.pop(session_key, None)
+    if old is not None:
+        await asyncio.to_thread(old.close)
+
+    session, error = await _build_and_open(
+        family, info.cwd, resume_session_id=info.session_id
+    )
+    if session is None:
+        return error or _t_unavailable(family, "")
+    sessions[session_key] = session
+    return _t_resumed(family, info)
+
+
+# --- /cc list · /cc <n> · /cc resume <id> dispatch (Claude-only) -------------
+
+
+async def _handle_list(runner, session_key: str, family: str) -> str:
+    """``/cc list`` — enumerate sessions and cache the ordering for ``/cc <n>``.
+    A pure query: it never opens/closes/switches the bound session."""
+    if family != "claude":
+        return _t_targeting_claude_only()
+    sessions = await asyncio.to_thread(list_recent_sessions, 10)
+    _last_list_for(runner)[session_key] = sessions
+    return render_session_list(sessions, now_ts=time.time())
+
+
+async def _handle_select(
+    runner, source, session_key: str, sessions: dict, family: str, index: int
+) -> str:
+    """``/cc <n>`` — attach to the n-th session of the chat's last list."""
+    if family != "claude":
+        return _t_targeting_claude_only()
+    cached = _last_list_for(runner).get(session_key)
+    if cached is None:
+        cached = await asyncio.to_thread(list_recent_sessions, 10)
+        _last_list_for(runner)[session_key] = cached
+    if index < 1 or index > len(cached):
+        return _t_index_out_of_range(len(cached))
+    return await _enter_resumed(runner, source, session_key, sessions, family, cached[index - 1])
+
+
+async def _handle_resume_id(
+    runner, source, session_key: str, sessions: dict, family: str, session_id: str
+) -> str:
+    """``/cc resume <id>`` — attach to a session by explicit id."""
+    if family != "claude":
+        return _t_targeting_claude_only()
+    if not session_id:
+        return _t_resume_usage()
+    info = await asyncio.to_thread(find_session, session_id)
+    if info is None:
+        return _t_session_not_found(session_id)
+    return await _enter_resumed(runner, source, session_key, sessions, family, info)
+
+
+async def _handle_entry(
+    runner, source, session_key: str, sessions: dict, family: str, args: str
+) -> str:
+    """Route a ``/cc`` / ``/codex`` entry by its sub-command (list/n/resume/new)."""
+    sub = parse_cc_subcommand(args)
+    if sub.kind is CcKind.LIST:
+        return await _handle_list(runner, session_key, family)
+    if sub.kind is CcKind.SELECT:
+        return await _handle_select(runner, source, session_key, sessions, family, sub.index)
+    if sub.kind is CcKind.RESUME:
+        return await _handle_resume_id(runner, source, session_key, sessions, family, sub.session_id)
+    return await _enter(runner, source, session_key, sessions, family, sub.rest, bare=sub.bare)
 
 
 async def _exit(runner, source, session_key: str, sessions: dict) -> str:
@@ -529,7 +977,7 @@ async def maybe_handle_passthrough(runner, event) -> tuple[bool, Any]:
 
     if decision.action in (PtAction.ENTER, PtAction.SWITCH):
         assert decision.family is not None  # ENTER/SWITCH always carry a family
-        reply = await _enter(runner, source, session_key, sessions, decision.family, decision.args)
+        reply = await _handle_entry(runner, source, session_key, sessions, decision.family, decision.args)
         return True, reply
     if decision.action is PtAction.STOP:
         return True, await _exit(runner, source, session_key, sessions)
