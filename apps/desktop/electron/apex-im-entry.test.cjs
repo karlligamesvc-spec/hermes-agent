@@ -114,16 +114,31 @@ test('buildImEntrySpawnEnv emits descriptor keys and is empty when unbound', () 
   assert.deepEqual(buildImEntrySpawnEnv(null), {})
 
   const store = normalizeStoredImEntry({
-    bindings: { feishu: { fields: { appId: 'cli_x', appSecret: 'sec', domain: 'lark' } } }
+    bindings: {
+      feishu: {
+        fields: {
+          appId: 'cli_x',
+          appSecret: 'sec',
+          domain: 'lark',
+          // hc-417: the QR scanner's own open_id seeds the gateway DM allowlist
+          // (FEISHU_ALLOWED_USERS) + owner home channel, so the owner can DM the
+          // freshly-bound bot immediately instead of the runtime `pairing` gate.
+          allowedUsers: 'ou_owner',
+          homeChannel: 'ou_owner'
+        }
+      }
+    }
   })
   assert.deepEqual(buildImEntrySpawnEnv(store), {
     FEISHU_APP_ID: 'cli_x',
     FEISHU_APP_SECRET: 'sec',
-    FEISHU_DOMAIN: 'lark'
+    FEISHU_DOMAIN: 'lark',
+    FEISHU_ALLOWED_USERS: 'ou_owner',
+    FEISHU_HOME_CHANNEL: 'ou_owner'
   })
 })
 
-test('buildImEntrySpawnEnv omits an absent optional domain key entirely', () => {
+test('buildImEntrySpawnEnv omits absent optional feishu keys entirely', () => {
   const store = normalizeStoredImEntry({
     bindings: { feishu: { fields: { appId: 'cli_x', appSecret: 'sec' } } }
   })
@@ -131,6 +146,10 @@ test('buildImEntrySpawnEnv omits an absent optional domain key entirely', () => 
   assert.equal(env.FEISHU_APP_ID, 'cli_x')
   assert.equal(env.FEISHU_APP_SECRET, 'sec')
   assert.equal('FEISHU_DOMAIN' in env, false)
+  // The owner-allowlist routing keys are optional too: absent (an older cloud
+  // that predates them) simply omits them, leaving the runtime's prior behavior.
+  assert.equal('FEISHU_ALLOWED_USERS' in env, false)
+  assert.equal('FEISHU_HOME_CHANNEL' in env, false)
 })
 
 test('resolveFeishuProvisionEndpoints composes the cloud v2 paths from apiBase', () => {
@@ -225,10 +244,24 @@ test('parseFeishuProvisionStatusResponse accepts the v2 status set, never a cred
   assert.equal(parseFeishuProvisionStatusResponse(null).status, 'pending')
 })
 
-test('parseFeishuCredentialsV2Response requires app_id + app_secret, clamps domain', () => {
+test('parseFeishuCredentialsV2Response requires app_id + app_secret, clamps domain, passes routing through', () => {
+  // hc-417: allowed_users/home_channel (the QR scanner's own open_id) pass
+  // through so the spawn env can seed FEISHU_ALLOWED_USERS + FEISHU_HOME_CHANNEL
+  // and the owner can DM the bot immediately (no runtime `pairing` gate).
   assert.deepEqual(
-    parseFeishuCredentialsV2Response({ app_id: ' cli_a ', app_secret: ' sec ', domain: 'lark' }),
-    { appId: 'cli_a', appSecret: 'sec', domain: 'lark' }
+    parseFeishuCredentialsV2Response({
+      app_id: ' cli_a ',
+      app_secret: ' sec ',
+      domain: 'lark',
+      allowed_users: ' ou_owner ',
+      home_channel: ' ou_owner '
+    }),
+    { appId: 'cli_a', appSecret: 'sec', domain: 'lark', allowedUsers: 'ou_owner', homeChannel: 'ou_owner' }
+  )
+  // Older cloud without the routing fields → '' (omitted downstream), never undefined.
+  assert.deepEqual(
+    parseFeishuCredentialsV2Response({ app_id: 'cli_a', app_secret: 'sec', domain: 'lark' }),
+    { appId: 'cli_a', appSecret: 'sec', domain: 'lark', allowedUsers: '', homeChannel: '' }
   )
   // Domain garbage/missing → runtime default, never emitted raw.
   assert.equal(parseFeishuCredentialsV2Response({ app_id: 'a', app_secret: 's', domain: 'nope' }).domain, 'feishu')

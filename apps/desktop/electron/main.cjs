@@ -5385,9 +5385,14 @@ function cleanFeishuPlaintextEnvOverrides() {
 function desktopImEntrySpawnEnv() {
   const fragment = buildImEntrySpawnEnv(resolveImEntryStore())
   if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
+    // A parent-env Feishu app wins ENTIRELY — drop every hc-417 FEISHU_* key so
+    // the injected binding never partially overlays a different out-of-band app
+    // (e.g. seeding an owner allowlist/home-channel for an app_id we didn't set).
     delete fragment.FEISHU_APP_ID
     delete fragment.FEISHU_APP_SECRET
     delete fragment.FEISHU_DOMAIN
+    delete fragment.FEISHU_ALLOWED_USERS
+    delete fragment.FEISHU_HOME_CHANNEL
   }
   return fragment
 }
