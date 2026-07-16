@@ -49,10 +49,20 @@ const CHANNEL_ENV_DESCRIPTORS = Object.freeze({
   feishu: Object.freeze({
     // FEISHU_APP_ID is an app identifier (not a secret); FEISHU_APP_SECRET is.
     // FEISHU_DOMAIN selects feishu (China) vs lark (International).
+    // FEISHU_ALLOWED_USERS is the QR scanner's own Feishu open_id (not a secret):
+    // it seeds the gateway-level DM allowlist (gateway/authz_mixin, keyed on the
+    // FEISHU_ALLOWED_USERS env) so the owner can message the freshly-bound bot
+    // immediately instead of hitting the runtime's default `pairing` gate.
+    // FEISHU_HOME_CHANNEL is that same open_id — the owner-DM target for
+    // proactive/cron sends. Feishu has NO adapter dm_policy (contrast the weixin
+    // trio below): the gateway allowlist IS the mechanism, so these two non-secret
+    // routing keys are all it needs — the cloud credentials endpoint supplies them.
     fields: Object.freeze([
       Object.freeze({ key: 'FEISHU_APP_ID', from: 'appId', secret: false, required: true }),
       Object.freeze({ key: 'FEISHU_APP_SECRET', from: 'appSecret', secret: true, required: true }),
-      Object.freeze({ key: 'FEISHU_DOMAIN', from: 'domain', secret: false, required: false })
+      Object.freeze({ key: 'FEISHU_DOMAIN', from: 'domain', secret: false, required: false }),
+      Object.freeze({ key: 'FEISHU_ALLOWED_USERS', from: 'allowedUsers', secret: false, required: false }),
+      Object.freeze({ key: 'FEISHU_HOME_CHANNEL', from: 'homeChannel', secret: false, required: false })
     ])
   }),
   // 个人微信 (Tencent iLink bot) — hc-538. WEIXIN_TOKEN is the only secret;
@@ -378,10 +388,15 @@ function parseFeishuProvisionStatusResponse(body) {
  * Validate + normalize the v2 credentials response
  * (GET .../feishu/credentials → { app_id, app_secret, domain, ... }). Returns
  * null when the body cannot yield an injectable credential (both app_id +
- * app_secret) so a malformed body can never half-enable the adapter.
+ * app_secret) so a malformed body can never half-enable the adapter. The
+ * routing fields (allowed_users/home_channel) are passed through as-is when
+ * present; they make the desktop bot answer its owner immediately (the QR
+ * scanner's open_id seeds the gateway DM allowlist), matching the cloud. Field
+ * names are the descriptor `from` keys (appId/allowedUsers/...); an older cloud
+ * that predates them yields '' → simply not emitted into the spawn env.
  *
  * @param {unknown} body parsed JSON
- * @returns {null | { appId: string, appSecret: string, domain: string }}
+ * @returns {null | { appId: string, appSecret: string, domain: string, allowedUsers: string, homeChannel: string }}
  */
 function parseFeishuCredentialsV2Response(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -392,7 +407,13 @@ function parseFeishuCredentialsV2Response(body) {
   if (!appId || !appSecret) {
     return null
   }
-  return { appId, appSecret, domain: normalizeFeishuDomain(body.domain) }
+  return {
+    appId,
+    appSecret,
+    domain: normalizeFeishuDomain(body.domain),
+    allowedUsers: trimStr(body.allowed_users),
+    homeChannel: trimStr(body.home_channel)
+  }
 }
 
 // ── WeChat (iLink) provisioning endpoint contract (hc-538, LIVE) ─────────────
