@@ -248,6 +248,30 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
   }
 }
 
+// Stamp the host platform onto the root as `data-platform` (mac | win | other)
+// so styles.css can key native-only chrome off it — Windows-tuned scrollbars,
+// win/mac window-control affordances — without every rule re-sniffing the UA.
+// Platform never changes for a running window, so this is a one-time write
+// (unlike applyTheme, which re-runs on every skin/mode switch). Derived from
+// navigator.platform, the same synchronous signal `IS_MAC` (lib/keybinds) uses.
+function rootPlatform(): 'mac' | 'other' | 'win' {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent || ''
+  if (/mac/i.test(ua)) {
+    return 'mac'
+  }
+  if (/win/i.test(ua)) {
+    return 'win'
+  }
+  return 'other'
+}
+
+function applyPlatform() {
+  if (typeof document === 'undefined') {
+    return
+  }
+  document.documentElement.dataset.platform = rootPlatform()
+}
+
 // Pin Electron's nativeTheme to the app's mode so the NATIVE window chrome
 // (macOS vibrancy material, titlebar, pre-paint background) matches the app
 // theme instead of the OS appearance. An explicit light/dark pick is forced;
@@ -259,6 +283,7 @@ const syncNativeTheme = (pref: ThemeMode, rendered: 'light' | 'dark') =>
 // active profile's appearance so a non-default profile relaunch paints its own
 // skin + light/dark mode.
 if (typeof window !== 'undefined') {
+  applyPlatform()
   const profile = readBootProfileKey()
   const pref = modePref.resolve(profile)
   const resolved = resolveMode(pref)
