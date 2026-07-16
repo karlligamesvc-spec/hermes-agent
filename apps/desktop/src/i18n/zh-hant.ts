@@ -173,6 +173,28 @@ export const zhHant = defineLocale({
   },
 
   settings: {
+    localAgent: {
+      title: '本機 Agent 排程',
+      intro:
+        '讓你的雲端助手把編碼任務交給這台電腦上的 Agent(Claude Code、Codex 或 Cursor)——任務在本機用你自己的工具與憑證執行,結果回傳給雲端助手。未開啟則不會執行任何東西。',
+      enableLabel: '允許雲端助手排程這台電腦',
+      enableHint: '開啟後,只要 App 在執行,這台電腦就會連線 APEX 並待命接單。危險操作永遠會先在本機請求你確認。',
+      statusLabel: '狀態',
+      statusDormant: '已關閉',
+      statusConnecting: '連線中…',
+      statusOnline: '線上——可接單',
+      statusOffline: '重新連線中…',
+      statusError: '請先登入 APEX 帳號以連線',
+      deviceNameLabel: '裝置名稱',
+      deviceNamePlaceholder: '這台電腦',
+      unregister: '登出此裝置',
+      unregisterConfirm: '登出這台電腦?重新開啟排程前它將不再接單。',
+      signInFirst: '請先登入你的 APEX 帳號。',
+      saved: '裝置名稱已儲存。',
+      enableFailed: '儲存失敗——本系統的安全儲存不可用。',
+      engineOutdated: value =>
+        `目前引擎版本過舊，本機 Agent 調度需要引擎 ${value} 或更新版本。請到「設定 › 關於」更新引擎，否則工具呼叫可能靜默失敗。`
+    },
     closeSettings: '關閉設定',
     exportConfig: '匯出設定',
     importConfig: '匯入設定',
@@ -528,6 +550,7 @@ export const zhHant = defineLocale({
       engineTapCheck: '檢查是否有更新的引擎版本。',
       engineFound: value => `發現新版本 ${value}。`,
       engineFoundGeneric: '有可用的新引擎版本。',
+      engineDesktopUpgradeRequired: value => `請先將桌面應用升級到 v${value} 或更新版本,才能安裝此引擎。`,
       engineCompatNotes: '相容性說明',
       engineApply: '套用更新',
       engineApplying: '正在套用…',
@@ -535,7 +558,9 @@ export const zhHant = defineLocale({
       engineConfirmTitle: '更新 AI 引擎？',
       engineConfirmBody: value => `將切換到引擎版本 ${value}，並重新啟動應用以生效。你的工作不會遺失。`,
       engineConfirmBodyGeneric: '將更新 AI 引擎，並重新啟動應用以生效。你的工作不會遺失。',
-      engineConfirmApply: '更新引擎'
+      engineConfirmApply: '更新引擎',
+      engineUpdateNeeded: '引擎需更新',
+      engineUpdateNeededDetail: value => `本應用需要引擎 ${value} 或更新版本。請點下方「檢查更新」更新引擎。`
     },
     config: {
       none: '無',
@@ -1091,6 +1116,77 @@ export const zhHant = defineLocale({
     platformIntro: {}
   },
 
+  imEntry: {
+    title: '訊息管道',
+    intro: '讓 AI 助手在你常用的聊天軟體裡替你回訊息——掃一下碼就能連上一個管道。',
+    loading: '正在載入管道…',
+    connect: '連接',
+    manage: '管理',
+    comingSoon: '即將支援',
+    connectedBadge: '已連接',
+    availableHeading: '現在可用',
+    comingSoonHeading: '即將支援',
+    boundHeading: '已連接的管道',
+    boundEmpty: '還沒有連接任何管道。',
+    connectedOn: when => `${when} 連接`,
+    unbind: '中斷',
+    unbindConfirm: name => `中斷${name}？本裝置上的 AI 助手會停止在那裡回訊息。`,
+    unbindDoneTitle: '已中斷',
+    unbindDoneMessage: '正在重新啟動以套用…',
+    liveState: {
+      connected: '已連接',
+      pending: '重新啟動後生效',
+      error: '連接異常',
+      connecting: '連接中…',
+      unknown: '未知'
+    },
+    channels: {
+      feishu: { name: '飛書 / Lark', tagline: '在飛書的私訊和群組裡回訊息。' },
+      dingtalk: { name: '釘釘', tagline: '在釘釘的私訊和群組裡回訊息。' },
+      weixin: { name: '微信', tagline: '用你的個人微信回訊息。' },
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私訊和群組裡回訊息。' },
+      wecom: { name: '企業微信', tagline: '在企業微信裡回訊息。' }
+    },
+    dialog: {
+      connectTitle: name => `連接${name}`,
+      signInFirstTitle: '請先登入',
+      signInFirst: '登入你的 APEX 帳號後即可連接訊息管道。',
+      issuing: '正在產生 QR code…',
+      scanPrompt: '掃碼連接',
+      scanHint: '開啟飛書掃描 QR code，並在手機上確認。',
+      openLink: '改用連結開啟',
+      weixinBotNote:
+        '連接的是一個新的機器人聯絡人（iLink 機器人身分），不是把你本人的微信接管；這個機器人一般無法加入普通群組，主要透過好友私訊使用。',
+      connecting: '連接中…',
+      authorizedTitle: '已連接',
+      authorizedMessage: '正在重新啟動以套用…',
+      authorizedRestartHint: '已連接並儲存——請重新啟動應用程式以完成套用。',
+      retry: '重試',
+      cancel: '取消',
+      close: '關閉',
+      comingSoonTitle: '即將支援',
+      comingSoonBody: '這個管道還不能連接，我們正在開發中。',
+      pasteHeading: '貼上你的碼',
+      pasteLabel: '連接碼',
+      pastePlaceholder: '貼上平台給你的碼',
+      pasteSubmit: '連接',
+      advanced: '進階設定',
+      errors: {
+        sign_in: '登入已過期，請重新登入後再連接。',
+        service_unavailable: '此管道尚未開放，請稍後再試。',
+        rate_limited: '已有一個連接請求進行中，請先完成或等它過期後再試。',
+        expired: 'QR code 已過期，請重新開始取得新的。',
+        denied: '請求被拒絕，請重新開始再試。',
+        request_failed: '出了點問題，請重試。',
+        keychain: '安全儲存未開啟，連接未儲存。請開啟鑰匙圈存取後重試。'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} 個管道已連接`,
+      openCta: '前往消息管道'
+    }
+  },
+
   profiles: {
     close: '關閉設定檔',
     nameHint: '小寫字母、數字、連字號和底線。必須以字母或數字開頭。',
@@ -1373,9 +1469,30 @@ export const zhHant = defineLocale({
 
   composer: {
     message: '訊息',
+    projectPicker: {
+      label: '專案',
+      select: '選擇專案',
+      searchPlaceholder: '搜尋專案…',
+      recentHeading: '最近專案',
+      noRecent: '尚無專案',
+      noMatches: '沒有相符的專案',
+      useExisting: '使用現有資料夾…',
+      newBlank: '新增空白專案…',
+      newTitle: '新增專案',
+      namePlaceholder: '專案名稱',
+      locationLabel: '位置',
+      chooseParent: '選擇上層資料夾…',
+      create: '建立',
+      back: '返回',
+      useExistingTitle: '選擇專案資料夾',
+      chooseParentTitle: '選擇專案建立位置',
+      pickFailed: '無法開啟資料夾選擇器',
+      createFailed: '無法建立專案資料夾'
+    },
     approvalMode: {
       label: '審批',
-      review: { label: '替我審批', desc: '僅對偵測到的風險操作請求批准' },
+      manual: { label: '手動審批', desc: '僅在偵測到危險操作時請求批准' },
+      smart: { label: '智慧審批', desc: 'AI 評估風險後再請求批准' },
       full: { label: '完全存取', desc: '可不受限制地存取網際網路和您電腦上的任何檔案' }
     },
     wakingProfile: profile => `正在喚醒 ${profile}…`,
@@ -1596,6 +1713,33 @@ export const zhHant = defineLocale({
       complete: '完成',
       'bootstrap-marker': '完成'
     },
+    // hc-452: 各步驟粗略預估時長，顯示在尚未開始（pending）的步驟列右側（此時
+    // 該欄位原本是空白）。數字取自 Kael 2026-07-08 真機實測（前置環境 8.6 秒／
+    // venv+python 相依套件合計 6.3 秒／node 相依套件 43 秒以上，皆為從零全新
+    // 安裝的量級）——這些是首次安裝的粗估值；增量更新（deps 未變）多數步驟會在
+    // 一秒內完成並顯示「已略過」，該狀態本身已足夠說明。找不到對應 id 時不顯示
+    // 提示。
+    stageDurationHints: {
+      prerequisites: '約 10 秒',
+      uv: '約 3 秒',
+      python: '約 3 秒',
+      git: '約 2 秒',
+      node: '約 3 秒',
+      'system-packages': '約 2 秒',
+      repository: '約 5 秒',
+      venv: '約 3 秒',
+      'python-deps': '約 5 秒',
+      dependencies: '約 5 秒',
+      'node-deps': '約 45 秒',
+      desktop: '約 2 分鐘',
+      path: '約 1 秒',
+      config: '約 1 秒',
+      'config-templates': '約 1 秒',
+      'platform-sdks': '約 2 秒',
+      setup: '約 1 秒',
+      configure: '約 1 秒',
+      gateway: '約 3 秒'
+    },
     oneTimeTitle: 'APEX 需要一次性安裝',
     unsupportedDesc: platform =>
       `${platform} 暫不支援自動首次啟動安裝。請開啟終端機並執行下面的指令，然後重新啟動此應用程式。之後啟動會略過此步驟。`,
@@ -1606,10 +1750,22 @@ export const zhHant = defineLocale({
     retryAfterRun: '我已執行 -- 重試',
     failedTitle: '安裝失敗',
     settingUpTitle: '正在設定 APEX',
+    // hc-452: 當本次 bootstrap 是「選用的 runtime 版本更新」而非真正的首次
+    // 安裝時，取代 settingUpTitle 顯示。version 可能為 null（例如網路請求尚未
+    // 解析出目標版本前，先送出的合成 manifest 事件）。
+    settingUpTitleUpdate: version => (version ? `正在更新至 ${version}` : '正在更新 APEX'),
     finishingTitle: '正在收尾',
     failedDesc:
       '某個安裝步驟失敗。在 Windows 上，如果另一個 APEX CLI 或桌面執行個體正在執行，可能會出現這種情況。請停止正在執行的 APEX 執行個體後重試。可查看下方的詳細資訊或 desktop 記錄中的完整記錄。',
     activeDesc: '這是一次性設定。安裝程式正在下載相依套件並設定您的電腦。之後啟動會略過此步驟。',
+    // hc-452: 更新流程對應 activeDesc 的文案。刻意不再重複「一次性」／「之後
+    // 啟動會略過此步驟」——Kael 真機報告指出這正是誤導使用者的措辭（更新每次
+    // 都會重演，並非一次性）。deps 未變的部分會自動略過，多數更新在幾秒到數十
+    // 秒內即可完成。
+    activeDescUpdate: version =>
+      version
+        ? `正在更新至 ${version}。未變化的相依套件會自動略過，通常幾秒到數十秒內即可完成。`
+        : '正在更新 APEX。未變化的相依套件會自動略過，通常幾秒到數十秒內即可完成。',
     progress: (completed, total) => `${completed}/${total} 個步驟已完成`,
     currentStage: stage => ` -- 目前：${stage}`,
     fetchingManifest: '正在取得安裝程式 manifest...',
@@ -1714,6 +1870,19 @@ export const zhHant = defineLocale({
     docs: provider => `${provider} 文件`
   },
 
+  managedRecovery: {
+    healed: {
+      title: 'APEX 憑證已刷新',
+      retrying: '登入憑證已過期,已自動刷新,正在重試…',
+      resend: '登入憑證已過期,已自動刷新,請重新傳送。'
+    },
+    signInRequired: {
+      title: '請重新登入 APEX',
+      message: 'APEX 工作階段已過期或未連線平台,請重新登入後繼續對話。',
+      reason: 'APEX 工作階段已過期,請重新登入以繼續對話。'
+    }
+  },
+
   auth: {
     login: {
       title: '開始使用',
@@ -1729,7 +1898,9 @@ export const zhHant = defineLocale({
       profile: '個人資料',
       settings: '設定',
       usage: '剩餘用量',
-      logout: '登出'
+      logout: '登出',
+      sessionExpiredTitle: '登入已失效',
+      sessionExpiredAction: '點擊重新登入'
     }
   },
 
@@ -1767,6 +1938,8 @@ export const zhHant = defineLocale({
       editModels: '編輯模型…',
       refreshModels: '重新整理模型',
       loadFailed: '模型清單載入失敗，請稍後重試',
+      catalogUnauthorized: '模型目錄不可用：登入已失效，點按重新登入',
+      catalogUnreachable: '模型目錄不可用：網路異常，點按重試',
       moaPresets: 'MoA 預設集',
       moaPresetItem: preset => `MoA：${preset}`,
       fast: '快速',
@@ -2138,6 +2311,8 @@ export const zhHant = defineLocale({
     modelSwitchFailed: '模型切換失敗',
     modelSwitchBusy: 'AI 正在回覆中，等這輪結束後再切換模型。',
     modelSwitchRetry: '切換未生效，請稍後重試。',
+    modelNotInCatalogTitle: '所選模型不可用',
+    modelNotInCatalog: '該模型已不在目前模型目錄中，已切回預設模型。',
     sessionExported: '工作階段已匯出',
     sessionExportFailed: '無法匯出工作階段',
     imageSaved: '圖片已儲存',

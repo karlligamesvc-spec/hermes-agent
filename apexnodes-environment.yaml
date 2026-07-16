@@ -1,0 +1,113 @@
+# apexnodes-environment.yaml — agent runtime environment 的外部产物 × 域内镜像(单一事实源)
+#
+# 不变量:大陆安装期 + 运行期 GitHub-free —— 这里每个产物都有域内(COS / CN-registry)源。
+# verify-environment.py 按此 HEAD-check COS 产物;CI(Phase 2)拦新的、未登记的墙外依赖。
+# 审计基准:hermes-agent scripts/install.{ps1,sh} + scripts/lib/apexnodes-region-detect.{ps1,sh}
+#         + scripts/lib/node-bootstrap.sh(运行期拉取点,hc-476 起并入基准)
+# 策略见 hermes-cloud docs/CHINA-LOCALIZATION-GFW-AUDIT.md。
+schema: 1
+cos_base: "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/runtime"
+
+# ── COS 自托管产物 ────────────────────────────────────────────────────────────
+# 我们 re-host 到 public-read COS 桶,按版本校验存在性。hc-474 起 COS-first 对
+# 全区域生效(不再看区域探测):缺任一产物 = 所有装机回落官方源,大陆=封死、
+# 海外=变慢。这就是 verify 在发版/翻默认前要兜住的(hc-448 类)。
+cos_artifacts:
+  - name: runtime-source
+    keyed_by: commit                 # 每 commit 一个 runtime tarball
+    key: "hermes-agent-{commit}.tar.gz"
+    foreign: "git clone github.com/NousResearch/hermes-agent"
+    consumer: "Install-RuntimeFromCos (ps1) / apexnodes_download_runtime_tarball (sh)"
+    ends: [cloud, win, mac, linux]
+  - name: uv
+    keyed_by: triple
+    key: "uv-{triple}.{ext}"         # windows→.zip,其余→.tar.gz
+    triples:
+      - {triple: x86_64-pc-windows-msvc, ext: zip}
+      - {triple: aarch64-pc-windows-msvc, ext: zip}
+      - {triple: x86_64-apple-darwin, ext: tar.gz}
+      - {triple: aarch64-apple-darwin, ext: tar.gz}
+      - {triple: x86_64-unknown-linux-gnu, ext: tar.gz}
+      - {triple: aarch64-unknown-linux-gnu, ext: tar.gz}
+    foreign: "github.com/astral-sh/uv"
+    consumer: "Install-UvFromCos / apexnodes_install_uv_from_cos"
+    ends: [win, mac, linux]
+  - name: portable-git
+    version: "2.54.0"                # 与 install.ps1 $gitVer 对齐
+    keyed_by: arch
+    key: "PortableGit-{version}-{arch}.7z.exe"
+    arches: ["64-bit", "arm64"]
+    foreign: "github.com/git-for-windows/git"
+    consumer: "Install-GitFromCos"
+    ends: [win]
+
+# ── 预构建 runtime bundle(hc-472 P1)─────────────────────────────────────────
+# desktop-bundle.yml 按 (os,arch) 原生构建、传 COS `bundle/` 前缀(与 `runtime/`
+# 并列、在 host 根,不含 cos_base 的 /runtime 后缀)。对象名由
+# scripts/build-runtime-bundle.mjs 固定:archive=runtime-bundle-<key>-<os>-<arch>.tar.gz、
+# 边车 .sha256、以及固定名 manifest.json(sibling,带 archive{name,sha256,size})。
+# verify-environment.py --check-bundles --bundle-key <sha12> 对给定 key 断言三平台
+# 三对象全 HEAD-200,且 sha 自洽(manifest.json 的 archive.sha256 == .sha256 边车首字段)。
+# 这是 is_default 翻转前的硬闸(hc-471「先 publish 后翻」的 publish 完成判据),
+# 从结构上堵死 hc-448 类「某腿缺包就翻默认」。
+bundles:
+  framework: hermes-agent
+  # 前缀在 COS host 根(cos_base 去掉尾部 /runtime);verify 同样这样推导 host。
+  prefix: "bundle/{framework}/{key}/{os}-{arch}"
+  # 每平台必存在、纳入闸的对象(名字由 build-runtime-bundle.mjs 固定):
+  objects:
+    - "manifest.json"
+    - "runtime-bundle-{key}-{os}-{arch}.tar.gz"
+    - "runtime-bundle-{key}-{os}-{arch}.tar.gz.sha256"
+  # sha 自洽:manifest.json 的 archive.sha256 必须等于 .sha256 边车文件首字段。
+  sha_self_consistency:
+    manifest: "manifest.json"
+    manifest_field: "archive.sha256"
+    sha_sidecar: "runtime-bundle-{key}-{os}-{arch}.tar.gz.sha256"
+  platforms:
+    - {os: win, arch: x64}     # P1 验收腿
+    - {os: mac, arch: arm64}   # P2(desktop-bundle.yml experimental)
+    - {os: mac, arch: x64}     # P2(desktop-bundle.yml experimental)
+  # 懒加载附件与 latest 指针:P1 workflow 尚未产出,仅登记(设计 §2/§6),不纳闸。
+  lazy_optional:
+    - {name: chromium, key: "chromium-{pwver}.tar.gz", note: "playwright Chromium,按 pwver 版本键;首次用浏览器工具才拉;P1 未上传,仅参考"}
+    - {name: latest,   key: "bundle/{framework}/{key}/latest.json", note: "per-os-arch 指针(hc-478 web + 桌面更新发现共读);P1 未产出,占位"}
+
+# ── CN-registry 镜像产物 ──────────────────────────────────────────────────────
+# 经域内包/二进制 registry 取(Set-ApexCnMirrorEnv 设的 env)。registry 常在;verify 视为可达。
+cn_registry:
+  - {name: pypi,     foreign: "pypi.org",              env: "PIP_INDEX_URL/UV_INDEX_URL", mirror: "https://pypi.tuna.tsinghua.edu.cn/simple"}
+  - {name: cpython,  foreign: "astral python-build-standalone (github)", env: "UV_PYTHON_INSTALL_MIRROR", mirror: "https://registry.npmmirror.com/-/binary/python-build-standalone"}
+  # nodejs mirror covers TWO consumers: the install-time Node install
+  # (installNode() in install.sh / Install-Node in install.ps1) and, since
+  # hc-476, the RUNTIME reinstall path (_nb_install_bundled_node() in
+  # scripts/lib/node-bootstrap.sh, invoked lazily by the TUI / WhatsApp bridge
+  # bootstrap when Node is missing/broken post-install).
+  - {name: nodejs,   foreign: "nodejs.org",            env: "HERMES_NODE_DIST_BASE", mirror: "https://registry.npmmirror.com/-/binary/node", consumer: "install.sh installNode / install.ps1 Install-Node / node-bootstrap.sh _nb_install_bundled_node (runtime)"}
+  - {name: npm,      foreign: "registry.npmjs.org",    env: "npm_config_registry",   mirror: "https://registry.npmmirror.com"}
+  - {name: electron, foreign: "github (electron releases)", env: "ELECTRON_MIRROR",  mirror: "https://npmmirror.com/mirrors/electron/"}
+  # hc-476: Playwright's Chromium download (~170MB) had no CN mirror wired —
+  # the #1 "install worked, day-N feature broke" complaint (browser tool /
+  # agent-browser). mirror = npmmirror's own official binary-mirror-config
+  # value (cnpm/binary-mirror-config, "china" ENVS block); env is read
+  # natively by `playwright install` itself (playwright.dev/docs/browsers),
+  # so every call site (install.sh/.ps1 AND the runtime autoinstall in
+  # tools/browser_tool.py::_maybe_autoinstall_chromium) picks it up once set.
+  # NOTE: unlike the other rows, this mirror is a download-HOST prefix that
+  # playwright's installer appends a versioned build path to — it has no
+  # directory index of its own, so verify's bare-HEAD reachability probe
+  # below shows 404 by design. Not a broken-mirror signal (still "仅参考").
+  - {name: playwright, foreign: "playwright.dev CDN (chromium, ~170MB)", env: "PLAYWRIGHT_DOWNLOAD_HOST", mirror: "https://cdn.npmmirror.com/binaries/playwright"}
+
+# ── 待审(NEEDS AUDIT)────────────────────────────────────────────────────────
+# install/runtime 引用到、但 CN 源尚未在本 manifest 确认的环境组件。下一切片。
+# 审清前当作潜在 github 洞,别假设已镜像。
+needs_audit:
+  - {name: ripgrep,   note: "工具二进制;源(pip/npm/bundled/github)未确认"}
+  - {name: ffmpeg,    note: "媒体工具;源未确认"}
+  # chromium 经 `agent-browser install`(Install-AgentBrowser)另触发一次下载;
+  # agent-browser 大概率内部也走 Playwright,但其 npm 包是外部黑盒,未验证是否
+  # 同样吃 PLAYWRIGHT_DOWNLOAD_HOST——hc-476 只治理直接 `playwright install`
+  # 调用点,这行本票不动,留给下一次源码审计确认。
+  - {name: chromium,  note: "agent-browser;Install-AgentBrowser 源未确认"}
+  - {name: bun,       note: "源未确认"}

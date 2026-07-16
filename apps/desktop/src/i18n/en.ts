@@ -419,6 +419,7 @@ export const en: Translations = {
       engineTapCheck: 'Check whether a newer engine is available.',
       engineFound: value => `New engine version ${value} found.`,
       engineFoundGeneric: 'A new engine version is available.',
+      engineDesktopUpgradeRequired: value => `Update your desktop app to v${value} or later to install this engine.`,
       engineCompatNotes: 'Compatibility notes',
       engineApply: 'Apply update',
       engineApplying: 'Applying…',
@@ -427,7 +428,10 @@ export const en: Translations = {
       engineConfirmBody: value =>
         `This will switch to engine version ${value} and restart the app to apply it. Your work is safe.`,
       engineConfirmBodyGeneric: 'This will update the AI engine and restart the app to apply it. Your work is safe.',
-      engineConfirmApply: 'Update engine'
+      engineConfirmApply: 'Update engine',
+      engineUpdateNeeded: 'Engine update needed',
+      engineUpdateNeededDetail: value =>
+        `This app needs engine ${value} or later. Use "Check for update" below to update the engine.`
     },
     config: {
       none: 'None',
@@ -667,6 +671,70 @@ export const en: Translations = {
       searchKeys: 'Search providers…',
       noKeysMatch: 'No providers match your search.',
       loading: 'Loading providers...'
+    },
+    // hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu app
+    // down to the desktop so the assistant can read/write Feishu docs, sheets and
+    // messages.
+    feishu: {
+      title: 'Feishu / Lark',
+      intro:
+        'Let the assistant work in your Feishu — read and write docs, sheets and messages. It uses the Feishu app you already set up in the cloud.',
+      connectedTitle: 'Connected',
+      connectedTo: agent => `Synced from “${agent}”`,
+      connectedGeneric: 'Feishu credential synced to this device.',
+      // Status badges keyed to the hc-190 probe verdict.
+      statusOk: 'Working',
+      statusExpired: 'Login expired',
+      statusInvalid: 'Credential rejected',
+      statusStale:
+        'This credential is flagged as expired in the cloud. Re-bind in the browser, then sync again.',
+      sync: 'Sync from cloud',
+      resync: 'Re-sync',
+      syncing: 'Syncing…',
+      disconnect: 'Disconnect',
+      disconnectConfirm:
+        'Disconnect Feishu on this device? Your cloud binding stays intact; the assistant just stops using Feishu here until you sync again.',
+      // Signed-out gate: sync needs a managed sign-in (its login JWT).
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect Feishu.',
+      // No cloud binding yet → guide to the web flow.
+      noEntryTitle: 'No Feishu app yet',
+      noEntry:
+        'You have not set up a Feishu app in the cloud yet. Open the web binding flow, scan the QR to create your app, then come back and sync.',
+      openBind: 'Set up in browser',
+      afterBind: 'Finished binding? Sync now.',
+      // Toasts.
+      syncedTitle: 'Feishu connected',
+      syncedMessage: 'Your assistant can now work in Feishu. Restarting to apply…',
+      disconnectedTitle: 'Feishu disconnected',
+      disconnectedMessage: 'The assistant will stop using Feishu on this device.',
+      syncFailed: 'Could not sync your Feishu credential. Please try again.',
+      sessionExpired: 'Your session expired. Sign in again, then sync.',
+      loading: 'Checking Feishu…'
+    },
+    localAgent: {
+      title: 'Local agent scheduling',
+      intro:
+        'Let your cloud assistant hand a coding task to an agent on this computer (Claude Code, Codex or Cursor) — it runs here with your own tools and credentials, and the result flows back. Nothing runs unless you turn this on.',
+      enableLabel: 'Allow my cloud assistant to use this computer',
+      enableHint:
+        'When on, this computer connects to APEX and stays ready for tasks while the app is open. Dangerous actions always ask for your approval here first.',
+      statusLabel: 'Status',
+      statusDormant: 'Off',
+      statusConnecting: 'Connecting…',
+      statusOnline: 'Online — ready for tasks',
+      statusOffline: 'Reconnecting…',
+      statusError: 'Sign in to your APEX account to connect',
+      deviceNameLabel: 'Device name',
+      deviceNamePlaceholder: 'This computer',
+      unregister: 'Unregister this device',
+      unregisterConfirm:
+        'Unregister this computer? It stops receiving tasks until you turn scheduling back on.',
+      signInFirst: 'Sign in to your APEX account first.',
+      saved: 'Device name saved.',
+      enableFailed: 'Could not save — secure storage is unavailable on this system.',
+      engineOutdated: value =>
+        `The installed engine is too old for local agent dispatch (needs ${value} or later). Update it in Settings › About, otherwise tool calls may silently fail.`
     },
     sessions: {
       loading: 'Loading archived sessions…',
@@ -1011,6 +1079,77 @@ export const en: Translations = {
     platformIntro: {}
   },
 
+  imEntry: {
+    title: 'Messaging',
+    intro: 'Let your assistant reply for you in the chat apps you already use — scan a code to connect one.',
+    loading: 'Loading channels…',
+    connect: 'Connect',
+    manage: 'Manage',
+    comingSoon: 'Coming soon',
+    connectedBadge: 'Connected',
+    availableHeading: 'Available now',
+    comingSoonHeading: 'Coming soon',
+    boundHeading: 'Connected channels',
+    boundEmpty: 'No channels connected yet.',
+    connectedOn: when => `Connected ${when}`,
+    unbind: 'Disconnect',
+    unbindConfirm: name => `Disconnect ${name}? Your assistant will stop replying there on this device.`,
+    unbindDoneTitle: 'Disconnected',
+    unbindDoneMessage: 'Restarting to apply…',
+    liveState: {
+      connected: 'Connected',
+      pending: 'Restarting to apply',
+      error: 'Connection problem',
+      connecting: 'Connecting…',
+      unknown: 'Unknown'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Reply in your Feishu chats and groups.' },
+      dingtalk: { name: 'DingTalk', tagline: 'Reply in your DingTalk chats and groups.' },
+      weixin: { name: 'WeChat', tagline: 'Reply from your personal WeChat.' },
+      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' },
+      wecom: { name: 'WeCom', tagline: 'Reply in WeCom (Enterprise WeChat).' }
+    },
+    dialog: {
+      connectTitle: name => `Connect ${name}`,
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect a channel.',
+      issuing: 'Preparing your QR code…',
+      scanPrompt: 'Scan to connect',
+      scanHint: 'Open Feishu, scan the code, and confirm on your phone.',
+      openLink: 'Open link instead',
+      weixinBotNote:
+        "You're connecting a new bot contact (an iLink bot identity) — not taking over your own WeChat. The bot usually can't join ordinary group chats and works mainly through friend DMs.",
+      connecting: 'Connecting…',
+      authorizedTitle: 'Connected',
+      authorizedMessage: 'Restarting to apply…',
+      authorizedRestartHint: 'Connected and saved — restart the app to finish applying it.',
+      retry: 'Try again',
+      cancel: 'Cancel',
+      close: 'Close',
+      comingSoonTitle: 'Coming soon',
+      comingSoonBody: 'This channel isn’t available to connect yet. We’re working on it.',
+      pasteHeading: 'Paste your code',
+      pasteLabel: 'Connection code',
+      pastePlaceholder: 'Paste the code from the platform',
+      pasteSubmit: 'Connect',
+      advanced: 'Advanced',
+      errors: {
+        sign_in: 'Your session expired. Sign in again, then reconnect.',
+        service_unavailable: 'This channel isn’t open yet. Please try again later.',
+        rate_limited: 'A connection request is already in progress. Finish or wait for it to expire, then try again.',
+        expired: 'The code expired. Start again to get a new one.',
+        denied: 'The request was declined. Start again to retry.',
+        request_failed: 'Something went wrong. Please try again.',
+        keychain: 'Secure storage is off, so the connection wasn’t saved. Enable keychain access and try again.'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} ${count === 1 ? 'channel' : 'channels'} connected`,
+      openCta: 'Go to messaging'
+    }
+  },
+
   profiles: {
     close: 'Close profiles',
     nameHint: 'Lowercase letters, digits, hyphens, and underscores. Must start with a letter or digit.',
@@ -1235,7 +1374,6 @@ export const en: Translations = {
   },
 
   tasks: {
-    loading: 'Loading tasks…',
     newTask: 'New task',
     tabRunning: 'Running',
     tabDone: 'Done',
@@ -1396,9 +1534,30 @@ export const en: Translations = {
 
   composer: {
     message: 'Message',
+    projectPicker: {
+      label: 'Project',
+      select: 'Select project',
+      searchPlaceholder: 'Search projects…',
+      recentHeading: 'Recent projects',
+      noRecent: 'No projects yet',
+      noMatches: 'No matching projects',
+      useExisting: 'Open existing folder…',
+      newBlank: 'New blank project…',
+      newTitle: 'New project',
+      namePlaceholder: 'Project name',
+      locationLabel: 'Location',
+      chooseParent: 'Choose parent folder…',
+      create: 'Create',
+      back: 'Back',
+      useExistingTitle: 'Choose a project folder',
+      chooseParentTitle: 'Choose where to create the project',
+      pickFailed: 'Could not open the folder picker',
+      createFailed: 'Could not create the project folder'
+    },
     approvalMode: {
       label: 'Approvals',
-      review: { label: 'Approve for me', desc: 'Only ask for detected risky operations' },
+      manual: { label: 'Manual', desc: 'Ask only before an operation flagged as dangerous' },
+      smart: { label: 'Smart', desc: 'AI weighs the risk, then asks when needed' },
       full: { label: 'Full access', desc: 'Unrestricted access to the internet and any file on your computer' }
     },
     wakingProfile: profile => `Waking up ${profile}…`,
@@ -1626,6 +1785,35 @@ export const en: Translations = {
       complete: 'Complete',
       'bootstrap-marker': 'Complete'
     },
+    // hc-452: rough per-step duration hints shown next to a PENDING stage row
+    // (before it starts, when there's nothing else to show there). Based on
+    // Kael's 2026-07-08 real-machine measurement (prerequisites 8.6s / venv+
+    // python-deps 6.3s / node-deps 43s+ on a from-scratch bootstrap) -- these
+    // are first-install ballparks; an up-to-date incremental re-run (hc-452's
+    // skip logic) finishes most of these in under a second instead, which the
+    // "Skipped · <1s" duration already visible on a SKIPPED row communicates
+    // on its own. An id with no entry here simply renders no hint.
+    stageDurationHints: {
+      prerequisites: '~10s',
+      uv: '~3s',
+      python: '~3s',
+      git: '~2s',
+      node: '~3s',
+      'system-packages': '~2s',
+      repository: '~5s',
+      venv: '~3s',
+      'python-deps': '~5s',
+      dependencies: '~5s',
+      'node-deps': '~45s',
+      desktop: '~2 min',
+      path: '~1s',
+      config: '~1s',
+      'config-templates': '~1s',
+      'platform-sdks': '~2s',
+      setup: '~1s',
+      configure: '~1s',
+      gateway: '~3s'
+    },
     oneTimeTitle: 'APEX needs a one-time install',
     unsupportedDesc: platform =>
       `Automated first-launch install isn’t available on ${platform} yet. Open Terminal and run the command below, then relaunch this app. Subsequent launches will skip this step.`,
@@ -1636,11 +1824,26 @@ export const en: Translations = {
     retryAfterRun: 'I’ve run it -- retry',
     failedTitle: 'Installation failed',
     settingUpTitle: 'Setting up APEX',
+    // hc-452: shown instead of settingUpTitle when this bootstrap run is an
+    // opt-in runtime version UPDATE, not a first-ever install. version may be
+    // null (e.g. the eager synthetic manifest frame shown before the target
+    // version resolves).
+    settingUpTitleUpdate: version => (version ? `Updating to ${version}` : 'Updating APEX'),
     finishingTitle: 'Finishing up',
     failedDesc:
       'One of the install steps failed. On Windows, this can happen if another APEX CLI or desktop instance is running. Stop any running APEX instances, then retry. Check the details below or the desktop log for the full transcript.',
     activeDesc:
       'This is a one-time setup. The installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
+    // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
+    // repeat "one-time setup" / "subsequent launches skip this" -- Kael's
+    // real-machine report flagged that exact phrasing as misleading during a
+    // version update (it recurs on every future update too, it's not a
+    // one-time thing). Unchanged dependencies are skipped automatically so
+    // most updates finish in well under a minute.
+    activeDescUpdate: version =>
+      version
+        ? `Updating to ${version}. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.`
+        : 'Updating APEX. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.',
     progress: (completed, total) => `${completed} of ${total} steps complete`,
     currentStage: stage => ` -- now: ${stage}`,
     fetchingManifest: 'Fetching installer manifest...',
@@ -1757,6 +1960,19 @@ export const en: Translations = {
     docs: provider => `${provider} docs`
   },
 
+  managedRecovery: {
+    healed: {
+      title: 'APEX credentials refreshed',
+      retrying: 'Your sign-in had expired — refreshed automatically, retrying…',
+      resend: 'Your sign-in had expired — refreshed automatically, please resend.'
+    },
+    signInRequired: {
+      title: 'Sign in to APEX again',
+      message: 'Your APEX session has expired or is not connected — sign in again to keep chatting.',
+      reason: 'Your APEX session has expired. Sign in again to keep chatting.'
+    }
+  },
+
   auth: {
     login: {
       title: 'Get started',
@@ -1772,7 +1988,9 @@ export const en: Translations = {
       profile: 'Profile',
       settings: 'Settings',
       usage: 'Usage',
-      logout: 'Sign out'
+      logout: 'Sign out',
+      sessionExpiredTitle: 'Session expired',
+      sessionExpiredAction: 'Click to sign in again'
     }
   },
 
@@ -1810,6 +2028,8 @@ export const en: Translations = {
       editModels: 'Edit Models…',
       refreshModels: 'Refresh Models',
       loadFailed: 'Could not load models — try again shortly.',
+      catalogUnauthorized: 'Model catalog unavailable: sign-in expired — tap to sign in again',
+      catalogUnreachable: 'Model catalog unavailable: network error — tap to retry',
       moaPresets: 'MoA presets',
       moaPresetItem: preset => `MoA: ${preset}`,
       fast: 'Fast',
@@ -2184,6 +2404,8 @@ export const en: Translations = {
     modelSwitchFailed: 'Model switch failed',
     modelSwitchBusy: 'The assistant is still responding — switch models after this turn finishes.',
     modelSwitchRetry: 'The switch did not apply. Please try again.',
+    modelNotInCatalogTitle: 'Selected model unavailable',
+    modelNotInCatalog: 'That model is no longer in the catalog — switched back to the default model.',
     sessionExported: 'Session exported',
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',

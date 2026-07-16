@@ -125,6 +125,8 @@ function derivePinFromLatest(body) {
   const version = String(body.version || '').trim()
   const compatibilityNotes =
     body.compatibility_notes == null ? null : String(body.compatibility_notes)
+  // hc-475 (F4): version-level shell↔runtime compat gate. null/absent = no gate.
+  const minDesktopVersion = String(body.min_desktop_version || '').trim() || null
 
   const keyFromUrl = parseCosTarballKey(cosTarballUrl)
 
@@ -166,8 +168,92 @@ function derivePinFromLatest(body) {
     cosTarballUrl,
     cosPublishStatus,
     compatibilityNotes,
+    minDesktopVersion,
     key
   }
+}
+
+/**
+ * Parse a semver-ish version into [major, minor, patch]. Tolerant: strips a
+ * leading 'v', ignores any -prerelease / +build suffix, treats a missing
+ * minor/patch as 0. Returns null when there is no leading numeric major, so
+ * callers can FAIL OPEN — an unparseable version must never brick an install.
+ * @param {string} value
+ * @returns {[number, number, number] | null}
+ */
+function parseSemver(value) {
+  const m = /^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(value || ''))
+  if (!m) return null
+  return [Number(m[1]), Number(m[2] || 0), Number(m[3] || 0)]
+}
+
+/**
+ * Compare two semver-ish strings. Returns -1 / 0 / 1, or null when EITHER side
+ * is unparseable (the caller decides; the desktop gate treats null as "no
+ * opinion" = fail open).
+ * @param {string} a
+ * @param {string} b
+ * @returns {-1 | 0 | 1 | null}
+ */
+function compareSemver(a, b) {
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
+  if (!pa || !pb) return null
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1
+  }
+  return 0
+}
+
+/**
+ * hc-475 (F4): does the running desktop SHELL satisfy a runtime version's
+ * min_desktop_version gate? This is the single place the shell-vs-engine
+ * comparison lives. FAIL OPEN by design so the gate can never become a new
+ * brick vector:
+ *   - no gate (minDesktopVersion null/empty)  -> true
+ *   - either version unparseable              -> true  (never block on garbage)
+ *   - desktopVersion >= minDesktopVersion     -> true
+ *   - desktopVersion <  minDesktopVersion     -> false (BLOCK the engine update)
+ * @param {string|null|undefined} desktopVersion the shell semver (app.getVersion())
+ * @param {string|null|undefined} minDesktopVersion the engine's declared minimum
+ * @returns {boolean}
+ */
+function desktopMeetsMinVersion(desktopVersion, minDesktopVersion) {
+  const min = String(minDesktopVersion || '').trim()
+  if (!min) return true
+  const cmp = compareSemver(desktopVersion, min)
+  if (cmp === null) return true
+  return cmp >= 0
+}
+
+/**
+ * hc-532 (gate 1): the MIRROR of desktopMeetsMinVersion — does the locally
+ * installed ENGINE satisfy the SHELL's declared minimum? hc-475 answered "is
+ * this shell new enough for that engine?" (blocks a too-new engine on a stale
+ * shell). This answers the opposite axis: "is the installed engine new enough
+ * for the daemon/tool features THIS shell ships?" (A-10: a 0.16.10 shell taught
+ * social_download to an engine bundle that never had it). It NEVER blocks
+ * usage — the caller uses the false result only to surface an explicit
+ * "engine needs update" prompt. Same FAIL-OPEN contract so a garbage/absent
+ * version can never nag:
+ *   - no floor declared (minEngineVersion null/empty) -> true
+ *   - either version unparseable                      -> true  (never nag on garbage)
+ *   - engineVersion >= minEngineVersion               -> true
+ *   - engineVersion <  minEngineVersion               -> false (SHOW the prompt)
+ *
+ * Engine versions are calver+fork (e.g. v2026.7.13-fork.3ab3eabf); parseSemver
+ * reads only the leading v2026.7.13 triple and ignores the -fork.<sha> suffix,
+ * so the SHA never affects the comparison.
+ * @param {string|null|undefined} engineVersion installed engine (bootstrap marker version)
+ * @param {string|null|undefined} minEngineVersion the shell's declared minimum
+ * @returns {boolean}
+ */
+function engineMeetsMinVersion(engineVersion, minEngineVersion) {
+  const min = String(minEngineVersion || '').trim()
+  if (!min) return true
+  const cmp = compareSemver(engineVersion, min)
+  if (cmp === null) return true
+  return cmp >= 0
 }
 
 /**
@@ -247,6 +333,7 @@ async function checkForRuntimeUpdate({
   fetchJson,
   marker,
   frameworkId = DEFAULT_FRAMEWORK_ID,
+  desktopVersion = null,
   log = () => {}
 }) {
   const installedCommit = (marker && marker.pinnedCommit) || null
@@ -273,7 +360,8 @@ async function checkForRuntimeUpdate({
     key: pin.key,
     cosTarballUrl: pin.cosTarballUrl,
     cosPublishStatus: pin.cosPublishStatus,
-    compatibilityNotes: pin.compatibilityNotes
+    compatibilityNotes: pin.compatibilityNotes,
+    minDesktopVersion: pin.minDesktopVersion
   }
 
   // No installed key recorded (older marker) -> we can't compare reliably; do
@@ -288,6 +376,23 @@ async function checkForRuntimeUpdate({
   const keyDiffers = String(installedKey) !== String(pin.key)
   const versionDiffers = Boolean(installedVersion && pin.version && installedVersion !== pin.version)
   const updateAvailable = keyDiffers || versionDiffers
+
+  // hc-475 (F4): shell↔runtime compat gate. When there IS a newer engine but this
+  // desktop shell is too old to run it (min_desktop_version), do NOT offer a
+  // normal update (a click would be refused at apply time). Instead report
+  // updateAvailable:false + desktopUpgradeRequired so the UI prompts the user to
+  // upgrade the desktop app first. No gate / satisfied / unparseable -> unchanged.
+  if (updateAvailable && !desktopMeetsMinVersion(desktopVersion, pin.minDesktopVersion)) {
+    return {
+      updateAvailable: false,
+      current,
+      latest,
+      desktopUpgradeRequired: {
+        minDesktopVersion: pin.minDesktopVersion,
+        currentDesktopVersion: desktopVersion || null
+      }
+    }
+  }
 
   return { updateAvailable, current, latest }
 }
@@ -329,6 +434,10 @@ module.exports = {
   INSTALLABLE_COS_STATUSES,
   parseCosTarballKey,
   derivePinFromLatest,
+  parseSemver,
+  compareSemver,
+  desktopMeetsMinVersion,
+  engineMeetsMinVersion,
   latestUrl,
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,

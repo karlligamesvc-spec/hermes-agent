@@ -46,12 +46,81 @@ declare global {
       // user's cloud account. See electron/apex-managed.cjs.
       managed: {
         status: () => Promise<DesktopManagedStatus>
+        // hc-512: live relay model-catalog state for the model menu. Optional:
+        // an older main process may not expose it yet. `refresh: true`
+        // re-probes now (menu open / user retry); a 401 kicks the key
+        // self-heal chain before reporting.
+        relayCatalog?: (opts?: { refresh?: boolean }) => Promise<DesktopRelayCatalogState>
         signIn: (payload: { email: string; password: string }) => Promise<DesktopManagedSignInResult>
         // Browser (loopback) sign-in: "用 Google 登录" / "用 APEX 登录". Opens
         // the system browser, catches the loopback redirect, and resolves with
         // the same managed assignment shape the email/password flow returns.
         browserSignIn: (payload: { provider: 'apex' | 'google' }) => Promise<DesktopManagedSignInResult>
+        // hc-530: web handoff sign-in. Exchange the one-time code delivered via the
+        // apexnodes://login deep link for the same managed assignment shape.
+        // Optional: an older main process may not expose it.
+        deepLinkSignIn?: (payload: { code: string }) => Promise<DesktopManagedSignInResult>
         signOut: () => Promise<{ ok: boolean }>
+        // On-demand relay-key self-heal after a chat turn hit a relay auth error
+        // (HTTP 401/403). Optional: an older main process may not expose it.
+        selfHeal?: () => Promise<DesktopManagedSelfHealResult>
+      }
+      // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
+      // Feishu app credential (from the cloud agent_entries) down to the local
+      // runtime so the Feishu adapter + lark doc/drive tools light up. No secret
+      // ever crosses to the renderer. Optional: an older main process may not
+      // expose the bridge yet. See electron/apex-feishu.cjs.
+      feishu?: {
+        // Read-only local state for the settings card (no network, no secret).
+        status: () => Promise<DesktopFeishuStatus>
+        // Fetch the cloud credential (authed with the stored login JWT), persist
+        // it encrypted, and re-home the backend so the adapter comes alive.
+        sync: () => Promise<DesktopFeishuSyncResult>
+        // Forget the local credential (cloud entry untouched) + restart backend.
+        disconnect: () => Promise<{ ok: boolean }>
+        // Open the cloud web binding flow in the system browser (unbound users).
+        openBind: () => Promise<{ ok: boolean; url: string }>
+      }
+      // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
+      // scanning a QR / pasting one code. feishu issues an INDEPENDENT app via a
+      // cloud device-code flow (renderer owns the polling loop). No secret ever
+      // crosses to the renderer. Optional: an older main process may not expose
+      // the bridge yet. See electron/apex-im-entry.cjs.
+      imEntry?: {
+        // Local bound channels (display fields only, no network, no secret).
+        list: () => Promise<DesktopImEntryListResult>
+        // Start the feishu provisioning flow → scan link + provision_id handle.
+        feishuIssue: () => Promise<DesktopImEntryIssueResult>
+        // One provisioning status check; on 'success' main fetches + persists
+        // the credential (encrypted) + restarts the backend (reloads the window).
+        feishuPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
+        // hc-538 WeChat (iLink) — same contract as feishuIssue/feishuPoll
+        // against the /desktop/weixin/* cloud leg.
+        weixinIssue: () => Promise<DesktopImEntryIssueResult>
+        weixinPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
+        // Revoke the cloud binding (feishu/weixin, best-effort), forget the
+        // local binding + restart the backend.
+        unbind: (channelId: string) => Promise<{ ok: boolean }>
+      }
+      // hc-533 本机 Agent 调度 — the A2A daemon leg. Toggles the reverse-connect
+      // daemon (default off) that lets the user's cloud assistant dispatch a task
+      // to a local coding agent on this machine. No secret ever crosses to the
+      // renderer: status carries only display fields; the device token is stored
+      // encrypted in main. Optional: an older main process may not expose it.
+      // See electron/apex-daemon.cjs.
+      daemon?: {
+        // Read-only status for the settings block (no network, no secret).
+        status: () => Promise<DesktopDaemonStatus>
+        // The on/off toggle. Enabling registers + starts the loops; disabling
+        // goes dormant but keeps the registration for an instant re-enable.
+        setEnabled: (enabled: boolean) => Promise<DesktopDaemonMutationResult>
+        // Rename this device (re-registers to update the cloud row when live).
+        setDeviceName: (name: string) => Promise<DesktopDaemonMutationResult>
+        // Forget this device locally + go dormant (cloud row goes offline on its
+        // own once heartbeats stop).
+        unregister: () => Promise<DesktopDaemonMutationResult>
+        // Subscribe to live status pushed on connection transitions.
+        onStatus: (callback: (status: DesktopDaemonStatus) => void) => () => void
       }
       // Platform client-config sync — the cloud serves a versioned client
       // config the main process caches at boot / after sign-in and applies to
@@ -111,6 +180,11 @@ declare global {
       openExternal: (url: string) => Promise<void>
       fetchLinkTitle: (url: string) => Promise<string>
       sanitizeWorkspaceCwd: (cwd?: null | string) => Promise<{ cwd: string; sanitized: boolean }>
+      // hc-517 — create a new empty project folder <parentDir>/<name> to bind as
+      // a fresh session's cwd (the picker's "New blank project"). Validates the
+      // name to a single, traversal-free segment and never clobbers an existing
+      // entry. Optional: an older main process may not expose it.
+      createProjectDir?: (parentDir: string, name: string) => Promise<HermesCreateProjectResult>
       settings: {
         getDefaultProjectDir: () => Promise<{ defaultLabel: string; dir: null | string; resolvedCwd: string }>
         pickDefaultProjectDir: () => Promise<{ canceled: boolean; dir: null | string }>
@@ -151,13 +225,11 @@ declare global {
       cancelBootstrap: () => Promise<{ ok: boolean; cancelled: boolean }>
       onBootstrapEvent: (callback: (payload: DesktopBootstrapEvent) => void) => () => void
       getVersion: () => Promise<DesktopVersionInfo>
-      updates: {
-        check: () => Promise<DesktopUpdateStatus>
-        apply: (opts?: DesktopUpdateApplyOptions) => Promise<DesktopUpdateApplyResult>
-        getBranch: () => Promise<{ branch: string }>
-        setBranch: (name: string) => Promise<{ branch: string }>
-        onProgress: (callback: (payload: DesktopUpdateProgress) => void) => () => void
-      }
+      // hc-475 follow-up: the `updates` bridge (check/apply/getBranch/setBranch/
+      // onProgress — the legacy client self-rebuild plane's IPC surface) has no
+      // renderer caller left; its type contract was removed with them. The
+      // preload.cjs / main.cjs implementation is untouched (dev/non-packaged use
+      // stays reachable at that layer; see store/updates.ts's file header).
       uninstall: {
         summary: () => Promise<DesktopUninstallSummary>
         run: (mode: DesktopUninstallMode) => Promise<DesktopUninstallResult>
@@ -261,12 +333,6 @@ export interface DesktopUpdateStatus {
   fetchedAt?: number
 }
 
-export type DesktopUpdateDirtyStrategy = 'abort' | 'stash' | 'force'
-
-export interface DesktopUpdateApplyOptions {
-  dirtyStrategy?: DesktopUpdateDirtyStrategy
-}
-
 export interface DesktopUpdateApplyResult {
   ok: boolean
   branch?: string
@@ -280,14 +346,6 @@ export interface DesktopUpdateApplyResult {
 }
 
 export type DesktopUpdateStage = 'idle' | 'prepare' | 'fetch' | 'pull' | 'pydeps' | 'restart' | 'manual' | 'error'
-
-export interface DesktopUpdateProgress {
-  stage: DesktopUpdateStage
-  message: string
-  percent: number | null
-  error: string | null
-  at: number
-}
 
 export interface HermesConnection {
   baseUrl: string
@@ -360,6 +418,11 @@ export interface DesktopManagedStatus {
   email: string
   // True when the managed-LLM default path is enabled for this build.
   enabled: boolean
+  // hc-519 rollback switch (default true): whether relay-auth loss drives the
+  // global login state (account-card degrade + startup/catalog self-heal).
+  // Optional so an older main process (no field) reads as undefined → treated as
+  // enabled (fail-safe to the new single-source-of-truth behavior).
+  loginStateTruth?: boolean
   // Real routed model id (e.g. deepseek-v4-pro).
   model: string
   // UI display label for the model (e.g. deepseek-v4-pro-APEX).
@@ -373,6 +436,135 @@ export interface DesktopManagedStatus {
   provider: string
   // True when a relay key is on disk (user already signed in to managed).
   signedIn: boolean
+  // True only when a reusable login JWT is on disk — a real cloud sign-in that
+  // can self-heal a rotated/expired relay key. A seeded/env key (a `*.local`
+  // release account or a CI test key) is signedIn=true but hasToken=false: the
+  // UI can then show an honest "not connected to platform" state. Optional so an
+  // older main process (no field) reads as undefined rather than a hard error.
+  hasToken?: boolean
+}
+
+// Result of hermesDesktop.managed.selfHeal() — an on-demand relay-key recovery.
+// relayUnauthorized=false means the relay accepted the key (the failure was not
+// a managed-relay auth problem). healed=true means a fresh key is on disk and
+// `assignment` should be applied via /api/model/set before retrying. needsSignIn
+// =true means recovery is impossible without a re-login (no token, or an expired
+// JWT) — surface the sign-in flow rather than retry into another silent 401.
+export interface DesktopManagedSelfHealResult {
+  ok: boolean
+  relayUnauthorized: boolean
+  healed: boolean
+  needsSignIn: boolean
+  assignment: DesktopManagedSignInResult['assignment']
+}
+
+// hc-512: state of the relay's live model catalog (`GET {base_url}/v1/models`
+// with the stored relay key — the same listing the runtime's picker builds the
+// APEX group from). 'unauthorized' = the stored key is dead (re-login is the
+// fix); 'unreachable' = transient network/relay failure (retry is the fix);
+// 'unknown' = never probed / not a managed install.
+export interface DesktopRelayCatalogState {
+  checkedAt: number
+  status: 'ok' | 'unauthorized' | 'unreachable' | 'unknown'
+}
+
+// hc-444: local Feishu bridge state for the settings card. No secret fields —
+// the app_secret never leaves the main process.
+export interface DesktopFeishuStatus {
+  // True when an injectable Feishu credential is stored locally (adapter will
+  // light up on the next backend boot).
+  connected: boolean
+  // True when a managed sign-in exists (the prerequisite for sync — sync auths
+  // with the stored login JWT). When false the card prompts sign-in first.
+  signedIn: boolean
+  // Display-only: the bound agent's name ('' when unknown / not connected).
+  agentName: string
+  // 'feishu' (China) or 'lark' (International); '' when not connected.
+  domain: string
+  // hc-190 probe verdict (ok / expired / invalid / '' when never probed) so the
+  // card can warn the credential the platform mirrored is already known-dead.
+  credentialStatus: string
+  // Epoch ms of the last successful sync, or null.
+  syncedAt: number | null
+}
+
+// Result of a Feishu sync/openBind action. `hasEntry:false` means the user has
+// no bound Feishu app in the cloud yet → the card opens the web binding flow.
+// `needsSignIn:true` means the stored login JWT is missing/expired → sign in
+// first. `message` is a stable marker code the renderer maps to Chinese copy.
+export interface DesktopFeishuSyncResult {
+  ok: boolean
+  hasEntry?: boolean
+  needsSignIn?: boolean
+  agentName?: string
+  domain?: string
+  credentialStatus?: string
+  message?: string
+}
+
+// hc-417: one locally-bound IM 入口 channel (display-only — no secret). `boundAt`
+// is epoch ms; `domain` is the non-secret feishu/lark routing value ('' if none).
+export interface DesktopImEntryBinding {
+  channelId: string
+  boundAt: number | null
+  domain: string
+}
+
+export interface DesktopImEntryListResult {
+  channels: DesktopImEntryBinding[]
+}
+
+// Result of imEntry.feishuIssue() — the provisioning START (cloud v2:
+// POST /api/v1/desktop/feishu/provision). On ok:true it carries the scan LINK
+// (qrUrl — render it as a QR locally) + a poll handle (provisionId + cadence).
+// On ok:false, `message` is a stable marker the renderer maps to copy:
+// NOT_SIGNED_IN / SESSION_EXPIRED (→ sign in) · SERVICE_UNAVAILABLE (endpoint
+// not deployed → coming soon) · RATE_LIMITED (another flow in flight) ·
+// REQUEST_FAILED (transient → retry).
+export interface DesktopImEntryIssueResult {
+  ok: boolean
+  needsSignIn?: boolean
+  message?: string
+  provisionId?: string
+  qrUrl?: string
+  intervalMs?: number
+  expiresInMs?: number
+}
+
+// Result of imEntry.feishuPoll() — one status check (cloud v2:
+// GET /api/v1/desktop/feishu/provision/{id}). `status` is one of
+// pending | success | denied | expired. On success the main process has already
+// fetched + stored the credential and is restarting the backend; when the
+// automatic restart failed, `restartFailed` is set and the binding is still
+// saved (the user restarts manually). KEYCHAIN_UNAVAILABLE means secure storage
+// is off, so the credential was NOT saved (never written in plaintext) — the
+// user must enable OS keychain access.
+export interface DesktopImEntryPollResult {
+  ok: boolean
+  status?: 'denied' | 'expired' | 'pending' | 'success'
+  restartFailed?: boolean
+  needsSignIn?: boolean
+  message?: string
+}
+
+// hc-533 本机 Agent 调度 daemon status (display-only; no secret). `status` is
+// the single label the settings block shows; the booleans back it.
+export interface DesktopDaemonStatus {
+  status: 'connecting' | 'dormant' | 'error' | 'offline' | 'online'
+  enabled: boolean
+  deviceName: string
+  deviceId: string
+  registered: boolean
+  connected: boolean
+  lastError: string
+}
+
+// Result of a daemon mutation (setEnabled / setDeviceName / unregister) — the
+// fresh status snapshot + an ok flag (+ an optional message, e.g. keychain).
+export interface DesktopDaemonMutationResult {
+  ok: boolean
+  message?: string
+  snapshot: DesktopDaemonStatus
 }
 
 // Payload of the continuous auth-gate broadcast (hermes:auth-gate). `reason`
@@ -431,6 +623,13 @@ export interface DesktopRuntimeVersion {
   commit: string | null
   branch: string | null
   key: string | null
+  // hc-532 (gate 1): the shell's declared minimum engine (package.json
+  // apexnodes.minEngineVersion), and whether the installed engine satisfies it.
+  // meetsMinEngine FAILS OPEN — it is false ONLY when the engine is positively
+  // behind the floor; unparseable/absent versions read true. The renderer uses
+  // false to surface a non-blocking "engine needs update" prompt.
+  minEngineVersion?: string | null
+  meetsMinEngine?: boolean
 }
 
 // Result of hermesDesktop.runtime.checkUpdate(). ok:false only on an unexpected
@@ -440,7 +639,11 @@ export interface DesktopRuntimeUpdateCheck {
   ok: boolean
   updateAvailable: boolean
   current: DesktopRuntimeVersionRef
-  latest: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
+  latest: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null; minDesktopVersion?: string | null }) | null
+  // hc-475 (F4): present only when a newer engine exists but this desktop shell
+  // is too old to run it (min_desktop_version gate). updateAvailable is false in
+  // that case (no clickable offer); the UI prompts the user to upgrade the app.
+  desktopUpgradeRequired?: { minDesktopVersion: string | null; currentDesktopVersion: string | null } | null
   // Present only when ok is false (defensive — the handler swallows errors).
   error?: string
 }
@@ -455,8 +658,12 @@ export interface DesktopRuntimeUpdateApply {
   applied?: boolean
   alreadyCurrent?: boolean
   reloadRequired?: boolean
-  latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null }) | null
+  latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null; minDesktopVersion?: string | null }) | null
   error?: string
+  // hc-475 (F4): on error==='min_desktop_version', the engine's required minimum
+  // desktop version and the current shell version (for the upgrade prompt).
+  required?: string | null
+  current?: string | null
 }
 
 // 壳自更新状态机快照(electron/shell-updater.cjs 推送/查询的同一形状)。
@@ -541,9 +748,34 @@ export interface DesktopBootstrapUnsupportedPlatform {
   docsUrl: string
 }
 
+// hc-452: distinguishes a re-bootstrap for an opt-in runtime version UPDATE
+// (main.cjs's hermes:runtime:apply-update dropped the marker and re-runs the
+// bootstrap against a pending pin override) from a genuine first-ever
+// install (no prior runtime on disk). The install overlay uses this to show
+// "updating to vX" instead of "APEX needs a one-time install" -- both are
+// literally the same 10-stage bootstrap protocol underneath, but a runtime
+// update is not a "one-time setup" and calling it that on every version bump
+// misleads the user (hc-452 origin: Kael real-machine 2026-07-08 report).
+export interface DesktopBootstrapUpdateInfo {
+  isUpdate: boolean
+  // The version being installed. Populated once bootstrapStamp resolves in
+  // main.cjs (before that -- e.g. the eager synthetic manifest emitted while
+  // the network fetch for the manifest is still in flight -- this is null).
+  toVersion: string | null
+  // The version being replaced, when known (from the runtime-pin override's
+  // previousMarker snapshot). null for a first install, or when the prior
+  // marker didn't carry a version label.
+  fromVersion: string | null
+}
+
 export interface DesktopBootstrapState {
   active: boolean
-  manifest: { type: 'manifest'; stages: DesktopBootstrapStageDescriptor[]; protocolVersion: number | null } | null
+  manifest: {
+    type: 'manifest'
+    stages: DesktopBootstrapStageDescriptor[]
+    protocolVersion: number | null
+    updateInfo: DesktopBootstrapUpdateInfo
+  } | null
   stages: Record<string, DesktopBootstrapStageResult>
   error: string | null
   log: Array<{ ts: number; stage: string | null; line: string; stream?: 'stdout' | 'stderr' }>
@@ -553,7 +785,12 @@ export interface DesktopBootstrapState {
 }
 
 export type DesktopBootstrapEvent =
-  | { type: 'manifest'; stages: DesktopBootstrapStageDescriptor[]; protocolVersion: number | null }
+  | {
+      type: 'manifest'
+      stages: DesktopBootstrapStageDescriptor[]
+      protocolVersion: number | null
+      updateInfo?: DesktopBootstrapUpdateInfo
+    }
   | {
       type: 'stage'
       name: string
@@ -650,6 +887,17 @@ export interface HermesPreviewFileChanged {
   id: string
   path: string
   url: string
+}
+
+// Result of hermesDesktop.createProjectDir(). `ok:true` carries the absolute
+// `path` of the freshly created folder; on failure `code` is a stable marker
+// (invalid-name / invalid-path / ENOENT / ENOTDIR / EEXIST / mkdir-error) and
+// `error` a human message.
+export interface HermesCreateProjectResult {
+  ok: boolean
+  path: null | string
+  error: null | string
+  code: null | string
 }
 
 export interface HermesSelectPathsOptions {

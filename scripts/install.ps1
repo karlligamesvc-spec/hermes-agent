@@ -496,10 +496,10 @@ function Install-Uv {
         return $true
     }
 
-    # CN mode: prefer our COS mirror (github-free) before the astral.sh installer.
-    # Install-UvFromCos comes from the overlay lib (dot-sourced at the top of this
-    # script when present); the command guard keeps this a no-op on a remote run
-    # where the lib was not dot-sourced.
+    # COS-first (hc-474: any region): prefer our COS mirror (github-free) before
+    # the astral.sh installer. Install-UvFromCos comes from the overlay lib
+    # (dot-sourced at the top of this script when present); the command guard
+    # keeps this a no-op on a remote run where the lib was not dot-sourced.
     if ((Get-Command Install-UvFromCos -ErrorAction SilentlyContinue) -and (Install-UvFromCos)) { return $true }
 
     Write-Info "Installing managed uv into $HermesHome\bin ..."
@@ -546,6 +546,26 @@ function Install-Uv {
 # PATH view.  Cheap (registry reads, no I/O elsewhere) and idempotent.
 function Sync-EnvPath {
     $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+}
+
+# npm lifecycle scripts on Windows spawn ``cmd.exe /d /s /c node <script>``.
+# PowerShell can resolve ``node`` via Get-Command while the child cmd process
+# still sees a PATH without node.exe's directory (nvm4w shims, App Paths
+# aliases, stale cross-process PATH).  Prepend the resolved node.exe parent
+# directory so postinstall hooks (electron-winstaller, native modules, etc.)
+# can find ``node``.  Regression for #48130.
+function Ensure-NodeExeOnPath {
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $nodeCmd) { return $false }
+
+    $nodeExeDir = Split-Path $nodeCmd.Source -Parent
+    if (-not $nodeExeDir) { return $false }
+
+    $pathParts = $env:Path -split ";"
+    if ($pathParts -notcontains $nodeExeDir) {
+        $env:Path = "$nodeExeDir;$env:Path"
+    }
+    return $true
 }
 
 # Re-discover uv without re-installing it.  Cross-process stage drivers
@@ -772,6 +792,28 @@ function Install-Git {
         return $true
     }
 
+    # ApexNodes COS-first (hc-474: any region): fetch PortableGit from our COS
+    # mirror (github-free) before the git-for-windows GitHub download.
+    # Install-GitFromCos (overlay lib, dot-sourced up top) extracts to
+    # $HermesHome\git and sets the session PATH on success; here we persist the
+    # User PATH + git-bash env exactly as the github path does below. Returns
+    # $false (no-op) when no COS base is configured or on any failure, so the
+    # github download stays the fallback everywhere.
+    if ((Get-Command Install-GitFromCos -ErrorAction SilentlyContinue) -and (Install-GitFromCos)) {
+        $gitDir = "$HermesHome\git"
+        $gitExe = "$gitDir\cmd\git.exe"
+        $newPathEntries = @("$gitDir\cmd", "$gitDir\bin", "$gitDir\usr\bin")
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        $userPathItems = if ($userPath) { $userPath -split ";" } else { @() }
+        $changed = $false
+        foreach ($entry in $newPathEntries) {
+            if ($userPathItems -notcontains $entry) { $userPathItems += $entry; $changed = $true }
+        }
+        if ($changed) { Set-UserEnvSafe "Path" ($userPathItems -join ";") | Out-Null }
+        Set-GitBashEnvVar
+        return $true
+    }
+
     # Download PortableGit into $HermesHome\git.  Always works as long as
     # we can reach github.com -- no admin, no winget, no reliance on the
     # user's possibly-broken system Git install.
@@ -989,6 +1031,7 @@ function Test-Node {
     if (Get-Command node -ErrorAction SilentlyContinue) {
         $version = node --version
         if (Test-NodeVersionOk $version) {
+            Ensure-NodeExeOnPath | Out-Null
             Write-Success "Node.js $version found"
             $script:HasNode = $true
             return $true
@@ -1504,13 +1547,14 @@ function Install-Repository {
                 Pop-Location
             }
             $didUpdate = $true
-        } elseif ((Get-Command Test-CnEnabled -ErrorAction SilentlyContinue) -and (Test-CnEnabled) -and (Test-Path (Join-Path $InstallDir "pyproject.toml"))) {
-            # CN install: $InstallDir was populated from the COS source tarball on
-            # a previous (interrupted) run -- no .git, but a valid checkout. Reuse
-            # it instead of erroring out so the repository stage stays idempotent.
-            # Test-CnEnabled comes from the overlay lib; the command guard keeps
-            # this a no-op on a remote run where the lib was not dot-sourced.
-            # Mirrors install.sh's apexnodes_cn_enabled reuse branch.
+        } elseif ((Get-Command Test-CosConfigured -ErrorAction SilentlyContinue) -and (Test-CosConfigured) -and (Test-Path (Join-Path $InstallDir "pyproject.toml"))) {
+            # COS-first install (hc-474: any region): $InstallDir was populated
+            # from the COS source tarball on a previous (interrupted) run -- no
+            # .git, but a valid checkout. Reuse it instead of erroring out so the
+            # repository stage stays idempotent. Test-CosConfigured comes from
+            # the overlay lib; the command guard keeps this a no-op on a remote
+            # run where the lib was not dot-sourced. Mirrors install.sh's
+            # apexnodes_cos_configured reuse branch.
             Write-Info "Existing COS-mirror checkout found at $InstallDir, reusing"
             $didUpdate = $true
         } else {
@@ -1537,10 +1581,11 @@ function Install-Repository {
     if (-not $didUpdate) {
         $cloneSuccess = $false
 
-        # CN mode: prefer our public-read COS source tarball (github-free) before
-        # any git clone. Install-RuntimeFromCos comes from the overlay lib; the
-        # command guard keeps this a no-op on a remote run where the lib was not
-        # dot-sourced. Mirrors install.sh's apexnodes_download_runtime_tarball.
+        # COS-first (hc-474: any region): prefer our public-read COS source
+        # tarball (github-free) before any git clone. Install-RuntimeFromCos
+        # comes from the overlay lib; the command guard keeps this a no-op on a
+        # remote run where the lib was not dot-sourced. Mirrors install.sh's
+        # apexnodes_download_runtime_tarball.
         if ((Get-Command Install-RuntimeFromCos -ErrorAction SilentlyContinue) -and (Install-RuntimeFromCos)) { $cloneSuccess = $true }
 
         # Fix Windows git "copy-fd: write returned: Invalid argument" error.
@@ -1716,6 +1761,11 @@ function Install-Venv {
         Write-Info "Existing venv is Python $venvVer, need $PythonVersion -- recreating..."
     }
 
+    # Tasks we disabled below and must re-enable no matter how this stage
+    # exits. Populated only with tasks that were ENABLED before we touched
+    # them, so a task the user deliberately disabled is never re-armed.
+    $gatewayTasksDisabled = @()
+    try {
     if (Test-Path "venv") {
         Write-Info "Virtual environment already exists, recreating..."
         # On Windows, native Python extensions (e.g. _bcrypt.pyd, tornado's
@@ -1727,6 +1777,31 @@ function Install-Venv {
         if ($env:OS -eq "Windows_NT") {
             $myPid = $PID
             Write-Info "Stopping any running hermes processes before recreating venv..."
+            # Disarm the respawner FIRST: the gateway autostart Scheduled Task
+            # relaunches a killed gateway within seconds, and losing that race
+            # re-locks the venv's .pyd files between our kill sweep and
+            # Remove-Item (the July 2026 _brotlicffi.pyd incident). schtasks
+            # /End stops a running task instance; /Change /DISABLE stops it
+            # from re-firing mid-install. (The Startup-folder .vbs fallback is
+            # NOT touched: it only fires at logon, so it cannot respawn a
+            # gateway mid-install.) Re-enabled in the finally below — including
+            # on failure — but only for tasks that were enabled to begin with.
+            # Best-effort: a missing task just errors quietly.
+            try {
+                schtasks /Query /FO CSV 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like '*Hermes_Gateway*' } | ForEach-Object {
+                    $tn = $_.TaskName
+                    if ($_.Status -eq 'Disabled') {
+                        Write-Info "  gateway autostart task $tn is already disabled; leaving it that way"
+                        return
+                    }
+                    schtasks /End /TN $tn 2>$null | Out-Null
+                    schtasks /Change /TN $tn /DISABLE 2>$null | Out-Null
+                    $gatewayTasksDisabled += $tn
+                    Write-Info "  disabled gateway autostart task $tn for the duration of the install"
+                }
+            } catch {
+                Write-Warn "Could not enumerate gateway scheduled tasks: $($_.Exception.Message)"
+            }
             # The launcher CLI (hermes.exe) plus its child tree.
             & taskkill /F /T /IM hermes.exe /FI "PID ne $myPid" 2>$null | Out-Null
             # taskkill /IM hermes.exe is NOT enough: the gateway/agent that a
@@ -1745,27 +1820,68 @@ function Install-Venv {
             # ExecutablePath for a process it cannot inspect (a different session)
             # instead of throwing, so an unreadable process is skipped rather than
             # aborting the whole sweep.
+            #
+            # The sweep is a bounded LOOP, not single-shot: supervised processes
+            # (the Desktop app's backend, a watchdog-managed gateway) respawn in
+            # the window between one kill pass and the delete. Each pass re-
+            # enumerates; three consecutive clean passes (or the attempt cap)
+            # ends the loop.
             $venvPrefix = [System.IO.Path]::GetFullPath((Join-Path $InstallDir "venv")).TrimEnd('\') + '\'
-            try {
-                Get-CimInstance Win32_Process -ErrorAction Stop |
-                    Where-Object { $_.ProcessId -ne $myPid -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($venvPrefix, [System.StringComparison]::OrdinalIgnoreCase) } |
-                    ForEach-Object {
-                        Write-Info "  stopping PID $($_.ProcessId) ($($_.Name)) running from venv"
-                        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-                    }
-            } catch {
-                Write-Warn "Could not enumerate venv processes: $($_.Exception.Message)"
+            $cleanPasses = 0
+            for ($sweep = 0; $sweep -lt 10 -and $cleanPasses -lt 3; $sweep++) {
+                $found = 0
+                try {
+                    Get-CimInstance Win32_Process -ErrorAction Stop |
+                        Where-Object { $_.ProcessId -ne $myPid -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($venvPrefix, [System.StringComparison]::OrdinalIgnoreCase) } |
+                        ForEach-Object {
+                            $found++
+                            Write-Info "  stopping PID $($_.ProcessId) ($($_.Name)) running from venv"
+                            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                        }
+                } catch {
+                    Write-Warn "Could not enumerate venv processes: $($_.Exception.Message)"
+                    break
+                }
+                if ($found -eq 0) { $cleanPasses++ } else { $cleanPasses = 0 }
+                Start-Sleep -Milliseconds 400
             }
-            Start-Sleep -Milliseconds 800
         }
-        Remove-Item -Recurse -Force "venv" -ErrorAction SilentlyContinue
-        # A killed process can take a moment to release its file handles, so a
-        # first Remove-Item may still hit a locked .pyd. Retry once after a short
-        # pause before giving up and letting the stage fail loudly.
-        if (Test-Path "venv") {
-            Start-Sleep -Seconds 2
-            Remove-Item -Recurse -Force "venv"
+        # Rename-then-delete: on Windows a directory RENAME succeeds even while
+        # files inside it are mapped as DLLs (only in-place delete/replace of
+        # the mapped file is denied, and only same-volume renames are atomic
+        # moves). Moving the old venv aside means `uv venv` can create a fresh
+        # one immediately even if some straggler still holds a .pyd from the
+        # old tree; the renamed dir is deleted best-effort (now, and by the
+        # cleanup pass below on the NEXT install if a handle outlives this one).
+        $staleName = "venv.stale.{0}" -f (Get-Date -Format "yyyyMMddHHmmss")
+        $renamed = $false
+        try {
+            Rename-Item -Path "venv" -NewName $staleName -ErrorAction Stop
+            $renamed = $true
+        } catch {
+            Write-Warn "Could not rename venv aside ($($_.Exception.Message)); falling back to in-place delete"
         }
+        if ($renamed) {
+            Remove-Item -Recurse -Force $staleName -ErrorAction SilentlyContinue
+            if (Test-Path $staleName) {
+                Write-Warn "Old venv parked at $staleName (a process still holds files in it); it will be cleaned up on the next install"
+            }
+        } else {
+            Remove-Item -Recurse -Force "venv" -ErrorAction SilentlyContinue
+            # A killed process can take a moment to release its file handles, so a
+            # first Remove-Item may still hit a locked .pyd. Retry once after a short
+            # pause before giving up and letting the stage fail loudly.
+            if (Test-Path "venv") {
+                Start-Sleep -Seconds 2
+                Remove-Item -Recurse -Force "venv"
+            }
+        }
+    }
+
+    # Clean up parked venvs from previous installs whose handles have since
+    # been released. Best-effort — a still-held tree just stays for next time.
+    Get-ChildItem -Directory -Filter "venv.stale.*" -ErrorAction SilentlyContinue | ForEach-Object {
+        Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
     }
     
     # uv creates the venv and pins the Python version in one step.  uv emits
@@ -1779,7 +1895,6 @@ function Install-Venv {
     # ok=true) when the venv was never created.
     $venvExitCode = $LASTEXITCODE
     if ($venvExitCode -ne 0) {
-        Pop-Location
         throw "Failed to create virtual environment (uv venv exited with $venvExitCode)"
     }
 
@@ -1794,10 +1909,80 @@ function Install-Venv {
     if (Test-Path $venvPythonExe) {
         $env:UV_PYTHON = $venvPythonExe
     }
+    } finally {
+        Pop-Location
+        # Re-arm the gateway autostart tasks disabled during the venv teardown
+        # — in a finally so a failed teardown/creation can never strand the
+        # user's gateway autostart in the disabled state. Same function scope,
+        # so the list survives even under the stage-per-process bootstrap.
+        # Deliberately NOT started here — dependencies aren't installed yet;
+        # the task fires normally on next logon and `hermes update` / the
+        # gateway resume path handles the immediate restart.
+        if ($gatewayTasksDisabled -and $gatewayTasksDisabled.Count -gt 0) {
+            foreach ($tn in $gatewayTasksDisabled) {
+                schtasks /Change /TN $tn /ENABLE 2>$null | Out-Null
+            }
+            Write-Info "Re-enabled gateway autostart task(s): $($gatewayTasksDisabled -join ', ')"
+        }
+    }
 
-    Pop-Location
-    
     Write-Success "Virtual environment ready (Python $PythonVersion)"
+}
+
+# uv.lock records the ACTUAL registry each package was resolved against
+# (`source = { registry = "https://pypi.org/simple" }` in uv.lock). A CN
+# mirror default index ($env:UV_DEFAULT_INDEX = TUNA etc, exported by
+# Set-ApexCnMirrorEnv when HERMES_CN_MIRRORS=1) is a DIFFERENT identity than
+# the one recorded, so `--locked` refuses outright with "The lockfile ...
+# needs to be updated" -- verified against uv 0.11: an index mismatch forces
+# a live re-resolve against the mirror (30s+) that always ends in that same
+# refusal, before ever reaching hash comparison. Every CN-mirror install
+# therefore silently skipped the hash-verified tier and fell straight
+# through to the unverified `uv pip install` fallback below -- for every
+# install, not just flaky ones (hc-472 followup).
+#
+# Sanitizing the index env here costs the CN path nothing: a `--locked` sync's
+# package URLs are pinned literal files.pythonhosted.org links inside the
+# lock regardless of which index is configured, and when the index DOES
+# match the recorded one, uv trusts the lock directly with NO network probe
+# at all -- so this is strictly faster on top of restoring real hash
+# verification. Only the unlocked `uv pip install` fallback tiers below still
+# want the CN mirror (they re-resolve fresh from an index, so the mirror
+# genuinely buys speed there); this helper deliberately does not touch those.
+# Mirrors scripts/install.sh::_uv_sync_locked -- keep the two in step.
+function Invoke-UvSyncLocked {
+    param([switch]$Check)
+
+    $savedIndexEnv = @{
+        UV_DEFAULT_INDEX    = $env:UV_DEFAULT_INDEX
+        UV_INDEX_URL        = $env:UV_INDEX_URL
+        UV_EXTRA_INDEX_URL  = $env:UV_EXTRA_INDEX_URL
+        UV_INDEX            = $env:UV_INDEX
+        PIP_INDEX_URL       = $env:PIP_INDEX_URL
+        PIP_EXTRA_INDEX_URL = $env:PIP_EXTRA_INDEX_URL
+    }
+    $env:UV_DEFAULT_INDEX = $null
+    $env:UV_INDEX_URL = $null
+    $env:UV_EXTRA_INDEX_URL = $null
+    $env:UV_INDEX = $null
+    $env:PIP_INDEX_URL = $null
+    $env:PIP_EXTRA_INDEX_URL = $null
+
+    try {
+        $env:UV_PROJECT_ENVIRONMENT = "$InstallDir\venv"
+        if ($Check) {
+            Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked --check *> $null }
+        } else {
+            Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked }
+        }
+    } finally {
+        $env:UV_DEFAULT_INDEX = $savedIndexEnv.UV_DEFAULT_INDEX
+        $env:UV_INDEX_URL = $savedIndexEnv.UV_INDEX_URL
+        $env:UV_EXTRA_INDEX_URL = $savedIndexEnv.UV_EXTRA_INDEX_URL
+        $env:UV_INDEX = $savedIndexEnv.UV_INDEX
+        $env:PIP_INDEX_URL = $savedIndexEnv.PIP_INDEX_URL
+        $env:PIP_EXTRA_INDEX_URL = $savedIndexEnv.PIP_EXTRA_INDEX_URL
+    }
 }
 
 function Install-Dependencies {
@@ -1830,10 +2015,11 @@ function Install-Dependencies {
     # never mask a stale or partial environment (those fall through and
     # reinstall). Correctness-preserving by construction: we only skip when uv
     # itself confirms nothing would change. Mirrors install.sh::install_deps.
+    # Goes through Invoke-UvSyncLocked (see above) so a CN mirror index in the
+    # env can't turn this into a permanent no-op.
     $venvPythonExe = Join-Path $InstallDir "venv\Scripts\python.exe"
     if ((-not $NoVenv) -and (Test-Path "uv.lock") -and (Test-Path $venvPythonExe)) {
-        $env:UV_PROJECT_ENVIRONMENT = "$InstallDir\venv"
-        Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked --check *> $null }
+        Invoke-UvSyncLocked -Check
         if ($LASTEXITCODE -eq 0) {
             Pop-Location
             Write-Success "Python dependencies already satisfied (uv.lock) -- skipping"
@@ -1869,8 +2055,10 @@ function Install-Dependencies {
         # empty and producing the broken state where `hermes.exe` exists
         # in the wrong directory and imports fail with ModuleNotFoundError.
         # (Mirrors the same flag in scripts/install.sh::install_deps.)
-        $env:UV_PROJECT_ENVIRONMENT = "$InstallDir\venv"
-        Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked }
+        # Invoke-UvSyncLocked (above) sanitizes the CN mirror index env so
+        # this tier is actually attempted instead of always refusing under
+        # HERMES_CN_MIRRORS=1.
+        Invoke-UvSyncLocked
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Main package installed (hash-verified via uv.lock)"
             $script:InstalledTier = "hash-verified (uv.lock)"
@@ -2043,6 +2231,7 @@ print(','.join(scripts))
     $pythonExe = if (-not $NoVenv) { "$InstallDir\venv\Scripts\python.exe" } else { (& $UvCmd python find $PythonVersion) }
     if (Test-Path $pythonExe) {
         $webOk = $false
+        $webServerSyntaxOk = $false
         # Relax EAP=Stop while running the import probe; see the matching
         # comment on the baseline-imports check above.  Python writes
         # deprecation warnings to stderr and we don't want those wrapped
@@ -2054,6 +2243,10 @@ print(','.join(scripts))
             & $pythonExe -c "import fastapi, uvicorn" 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { $webOk = $true }
         } catch { }
+        try {
+            & $pythonExe -m py_compile "$InstallDir\hermes_cli\web_server.py" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $webServerSyntaxOk = $true }
+        } catch { }
         $ErrorActionPreference = $prevEAP
         if (-not $webOk) {
             Write-Warn "fastapi/uvicorn not importable -- `hermes dashboard` will not work."
@@ -2064,6 +2257,9 @@ print(','.join(scripts))
             } else {
                 Write-Warn "Could not install [web] extra. Run manually: uv pip install --python `"$pythonExe`" `"fastapi>=0.104,<1`" `"uvicorn[standard]>=0.24,<1`""
             }
+        }
+        if (-not $webServerSyntaxOk) {
+            throw "dashboard backend source failed syntax check: hermes_cli/web_server.py"
         }
     }
     
@@ -2271,6 +2467,97 @@ You are Hermes Agent, an intelligent AI assistant created by Nous Research. You 
     }
 }
 
+# Fingerprint the file(s) that determine whether `npm install` in $Dir would
+# change anything: package.json always; package-lock.json too when present
+# (repo root has one, ui-tui does not). Returns $null when neither exists (
+# fingerprint undefined -> caller must treat as "needs install").
+#
+# Built on System.Security.Cryptography.SHA256 (BCL, available since
+# PowerShell 5.1) fed via TransformBlock/TransformFinalBlock so both files
+# hash as ONE stream without a temp concatenation file -- this is what lets
+# order-sensitive semantics match install.sh's `cat file1 file2 | cksum`
+# (package.json, then package-lock.json). On Windows there is no cross-
+# platform-portability concern with using a strong hash here (unlike
+# install.sh, which avoids GNU/Perl-only hash tools for its POSIX targets),
+# so this is the simpler choice over hand-rolling a CRC. Hashing the
+# concatenation (not each file independently) mirrors
+# scripts/install.sh::node_deps_fingerprint so a package.json-only edit still
+# invalidates the marker even when the lockfile update lags in the same commit.
+function Get-NodeDepsFingerprint {
+    param([string]$Dir)
+    $inputs = @()
+    foreach ($name in @("package.json", "package-lock.json")) {
+        $candidate = Join-Path $Dir $name
+        if (Test-Path $candidate) { $inputs += $candidate }
+    }
+    if ($inputs.Count -eq 0) { return $null }
+    # Concatenate bytes from every input file into one stream, then hash once
+    # -- matches install.sh's `cat file1 file2 | cksum` semantics (order
+    # matters and is fixed: package.json, then package-lock.json).
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($path in $inputs) {
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            [void]$hasher.TransformBlock($bytes, 0, $bytes.Length, $null, 0)
+        }
+        [void]$hasher.TransformFinalBlock(@(), 0, 0)
+        return [System.BitConverter]::ToString($hasher.Hash) -replace '-', ''
+    } finally {
+        $hasher.Dispose()
+    }
+}
+
+# Marker lives INSIDE the npm project dir it describes (repo-local), same
+# placement rationale as Write-BootstrapMarker: removing the checkout or
+# deleting node_modules by hand naturally invalidates it.
+function Get-NodeDepsMarkerPath {
+    param([string]$Dir)
+    return (Join-Path $Dir ".node-deps-installed")
+}
+
+# True when `npm install` in $Dir would be a no-op: package.json/
+# package-lock.json are unchanged since the last successful install of THIS
+# checkout AND node_modules actually has real content beyond npm's own
+# bookkeeping file. That second check is load-bearing -- Install-Desktop's
+# npm-ci comment (below) documents a real flake where node_modules\
+# .package-lock.json can be stale while node_modules is actually empty
+# (Windows workspace-hoisting), so trusting our own marker file in isolation
+# would risk skipping an install that's actually needed. Fail-open by
+# construction: any missing piece (no marker yet, empty node_modules,
+# fingerprint mismatch) returns $false and the caller does a real install.
+function Test-NodeDepsUpToDate {
+    param([string]$Dir)
+    $marker = Get-NodeDepsMarkerPath $Dir
+    if (-not (Test-Path $marker)) { return $false }
+
+    $nodeModules = Join-Path $Dir "node_modules"
+    if (-not (Test-Path $nodeModules)) { return $false }
+    $realEntries = Get-ChildItem $nodeModules -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne ".package-lock.json" }
+    if (-not $realEntries -or @($realEntries).Count -eq 0) { return $false }
+
+    $current = Get-NodeDepsFingerprint $Dir
+    if (-not $current) { return $false }
+
+    $stored = $null
+    try { $stored = (Get-Content $marker -Raw -ErrorAction Stop).Trim() } catch { return $false }
+    return ($stored -eq $current)
+}
+
+# Record success so the next run's Test-NodeDepsUpToDate can skip. Best-effort
+# -- a write failure (read-only FS, permissions) just means the next run
+# reinstalls instead of skipping; never treated as a stage failure.
+function Set-NodeDepsInstalled {
+    param([string]$Dir)
+    $current = Get-NodeDepsFingerprint $Dir
+    if (-not $current) { return }
+    try {
+        Set-Content -Path (Get-NodeDepsMarkerPath $Dir) -Value $current -NoNewline -ErrorAction Stop
+    } catch {
+        # Best-effort; see doc comment above.
+    }
+}
+
 function Install-NodeDeps {
     if (-not $HasNode) {
         # Cross-process driver mode (Hermes-Setup.exe runs each -Stage NAME
@@ -2283,6 +2570,11 @@ function Install-NodeDeps {
             return
         }
     }
+
+    # npm lifecycle scripts need node.exe on the PATH visible to child
+    # cmd.exe processes.  Stage-Node may have run in a prior process, so
+    # re-apply here before any npm install (regression #48130).
+    Ensure-NodeExeOnPath | Out-Null
 
     # Resolve npm explicitly to npm.cmd, NOT npm.ps1.  Node.js on Windows
     # ships BOTH npm.cmd (a batch shim) and npm.ps1 (a PowerShell shim).
@@ -2384,11 +2676,24 @@ function Install-NodeDeps {
         }
     }
 
+    # Track whether every sub-check below was a no-op, so this stage can
+    # surface skipped=true (via $script:_StageSkippedReason, same channel
+    # Stage-Node already uses) when there was truly nothing to install --
+    # mirrors scripts/install.sh::install_node_deps's mark_stage_skipped call.
+    $nodeDepsAnySkipped = $true
+
     # Browser tools
     if (Test-Path "$InstallDir\package.json") {
-        Write-Info "Installing Node.js dependencies (browser tools)..."
-        $browserLog = "$env:TEMP\hermes-npm-browser-$(Get-Random).log"
-        $browserNpmOk = _Run-NpmInstall "Browser tools" $InstallDir $browserLog $npmExe
+        if (Test-NodeDepsUpToDate $InstallDir) {
+            Write-Success "Node.js dependencies already up to date (package.json/package-lock.json unchanged) -- skipping"
+            $browserNpmOk = $true
+        } else {
+            $nodeDepsAnySkipped = $false
+            Write-Info "Installing Node.js dependencies (browser tools)..."
+            $browserLog = "$env:TEMP\hermes-npm-browser-$(Get-Random).log"
+            $browserNpmOk = _Run-NpmInstall "Browser tools" $InstallDir $browserLog $npmExe
+            if ($browserNpmOk) { Set-NodeDepsInstalled $InstallDir }
+        }
 
         # Install Playwright Chromium (mirrors scripts/install.sh behaviour for
         # Linux).  Without this, tools/browser_tool.py::check_browser_requirements
@@ -2487,12 +2792,31 @@ function Install-NodeDeps {
         }
     }
 
-    # TUI
+    # TUI. ui-tui has no package-lock.json (see Get-NodeDepsFingerprint), so
+    # the fingerprint here is package.json-only -- weaker than the browser-
+    # tools lock-verified check, but still fail-open and still catches the
+    # common case (a dependency version bump in package.json).
     $tuiDir = "$InstallDir\ui-tui"
     if (Test-Path "$tuiDir\package.json") {
-        Write-Info "Installing TUI dependencies..."
-        $tuiLog = "$env:TEMP\hermes-npm-tui-$(Get-Random).log"
-        [void](_Run-NpmInstall "TUI" $tuiDir $tuiLog $npmExe)
+        if (Test-NodeDepsUpToDate $tuiDir) {
+            Write-Success "TUI dependencies already up to date (package.json unchanged) -- skipping"
+        } else {
+            $nodeDepsAnySkipped = $false
+            Write-Info "Installing TUI dependencies..."
+            $tuiLog = "$env:TEMP\hermes-npm-tui-$(Get-Random).log"
+            $tuiNpmOk = _Run-NpmInstall "TUI" $tuiDir $tuiLog $npmExe
+            if ($tuiNpmOk) { Set-NodeDepsInstalled $tuiDir }
+        }
+    }
+
+    # Surface "nothing to do" to Invoke-Stage the same way Stage-Node already
+    # does, so the desktop bootstrap UI shows this stage as skipped=true
+    # instead of succeeded=true when every sub-check above was a no-op. Only
+    # fires when BOTH browser-tools and TUI (when present) were already up to
+    # date -- a real install anywhere in this stage correctly keeps it a plain
+    # "succeeded".
+    if ($nodeDepsAnySkipped) {
+        $script:_StageSkippedReason = "Node.js dependencies already up to date"
     }
 }
 

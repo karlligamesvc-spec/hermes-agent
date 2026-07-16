@@ -188,11 +188,52 @@ def test_completion_cwd_prefers_profile_over_stale_env(monkeypatch, tmp_path):
     stale.mkdir()
 
     monkeypatch.setenv("TERMINAL_CWD", str(stale))
+    monkeypatch.setattr(server, "_load_cfg", lambda: {})
     monkeypatch.setattr(server, "_profile_home", lambda name: home if name else None)
 
     assert server._completion_cwd({"profile": "ef-design"}) == str(profile_b)
-    # No profile → unchanged fallback to the launch env var.
+    # No profile and no launch config → fallback to the launch env var.
     assert server._completion_cwd({}) == str(stale)
+
+
+def test_completion_cwd_prefers_launch_config_over_stale_env(monkeypatch, tmp_path):
+    """Dashboard /chat's launch-profile in-memory gateway must honor config.
+
+    The embedded Node TUI child gets TERMINAL_CWD from the dashboard PTY bridge,
+    but the default-profile chat attaches to the dashboard process's already
+    running in-memory gateway. That process may not have TERMINAL_CWD in its own
+    environment (or has a stale one), so config.yaml is read directly and wins
+    over the process env before falling back to the launch directory.
+    """
+    configured = tmp_path / "omni"
+    configured.mkdir()
+    stale = tmp_path / "hermes-agent"
+    stale.mkdir()
+
+    monkeypatch.setenv("TERMINAL_CWD", str(stale))
+    monkeypatch.setattr(server, "_load_cfg", lambda: {"terminal": {"cwd": str(configured)}})
+    monkeypatch.setattr(server, "_profile_home", lambda _name: None)
+
+    assert server._completion_cwd({}) == str(configured)
+
+
+def test_default_session_cwd_prefers_launch_config(monkeypatch, tmp_path):
+    """A freshly created / resumed session with no explicit cwd lands in the
+    configured terminal.cwd, not os.getcwd(), even when the in-memory gateway
+    process env carries a stale TERMINAL_CWD."""
+    configured = tmp_path / "workspace"
+    configured.mkdir()
+    stale = tmp_path / "launch-dir"
+    stale.mkdir()
+
+    monkeypatch.setenv("TERMINAL_CWD", str(stale))
+    monkeypatch.setattr(server, "_load_cfg", lambda: {"terminal": {"cwd": str(configured)}})
+
+    assert server._default_session_cwd() == str(configured)
+
+    # No launch config → fall back to the process env var.
+    monkeypatch.setattr(server, "_load_cfg", lambda: {})
+    assert server._default_session_cwd() == str(stale)
 
 
 def test_completion_cwd_explicit_cwd_wins_over_profile(monkeypatch, tmp_path):
@@ -1375,7 +1416,11 @@ def test_config_sync_switches_unpinned_session(monkeypatch):
         (
             "sid",
             "new/model --provider nous",
-            {"confirm_expensive_model": True, "pin_session_override": False},
+            {
+                "confirm_expensive_model": True,
+                "pin_session_override": False,
+                "persist_override": False,
+            },
         )
     ]
     assert session["config_model_seen"] == ("new/model", "nous")
@@ -1493,6 +1538,78 @@ def test_config_sync_config_wins_over_env_seed(monkeypatch):
 
     assert calls == ["new/model"]
     assert session["config_model_seen"] == ("new/model", "")
+
+
+def test_config_sync_ignores_env_seed_without_config_model(monkeypatch):
+    # `hermes --tui -m <model>` sets HERMES_MODEL/HERMES_INFERENCE_MODEL as a
+    # launch-scoped seed. When config.yaml has NO model.default (typical
+    # custom-provider-only setup), the sync must NOT adopt the env seed as a
+    # config target — doing so replayed the -m flag as a /model switch and
+    # (with persist_switch_by_default=True) wrote it into config.yaml
+    # permanently.
+    monkeypatch.setenv("HERMES_MODEL", "one-shot/model")
+    monkeypatch.setenv("HERMES_INFERENCE_MODEL", "one-shot/model")
+    monkeypatch.setattr(
+        server, "_load_cfg", lambda: {"model": {"provider": "custom:mylocal"}}
+    )
+    session = _sync_test_session()
+    monkeypatch.setattr(
+        server,
+        "_apply_model_switch",
+        lambda *a, **k: pytest.fail("env seed must not trigger a config sync switch"),
+    )
+
+    server._sync_agent_model_with_config("sid", session)
+
+
+def test_config_model_target_never_reads_env(monkeypatch):
+    monkeypatch.setenv("HERMES_MODEL", "seed/model")
+    monkeypatch.setenv("HERMES_INFERENCE_MODEL", "seed/model")
+    monkeypatch.setattr(server, "_load_cfg", lambda: {"model": {"provider": "nous"}})
+
+    assert server._config_model_target() == ("", "nous")
+
+
+def test_apply_model_switch_persist_override_false_never_persists(monkeypatch):
+    # Internal callers (config sync, /moa one-shot + restore) pass
+    # persist_override=False; even with persist_switch_by_default=True the
+    # switch must not write config.yaml.
+    import types as _types
+
+    result = _types.SimpleNamespace(
+        success=True,
+        new_model="new/model",
+        target_provider="nous",
+        base_url="",
+        api_key="key",
+        api_mode="chat_completions",
+        warning_message="",
+        model_info=None,
+        error_message="",
+    )
+    monkeypatch.setattr(
+        "hermes_cli.model_switch.switch_model", lambda **kw: result
+    )
+    monkeypatch.setattr(
+        "hermes_cli.model_switch.resolve_persist_behavior",
+        lambda *a: pytest.fail("persist_override must bypass resolve_persist_behavior"),
+    )
+    monkeypatch.setattr(
+        server, "_persist_model_switch",
+        lambda _r: pytest.fail("persist_override=False must not persist"),
+    )
+    monkeypatch.setattr(
+        "hermes_cli.model_cost_guard.expensive_model_warning",
+        lambda *a, **k: None,
+    )
+    session = {"agent": None}
+
+    out = server._apply_model_switch(
+        "sid", session, "new/model --provider nous", persist_override=False
+    )
+
+    assert out["value"] == "new/model"
+    assert session["model_override"]["model"] == "new/model"
 
 
 def test_startup_runtime_uses_tui_provider_env(monkeypatch):
@@ -1830,7 +1947,7 @@ def test_init_session_fires_reset_hook(monkeypatch):
     hooks = []
 
     class _FakeWorker:
-        def __init__(self, key, model):
+        def __init__(self, key, model, profile_home=None):
             self.key = key
 
         def close(self):
@@ -2579,6 +2696,120 @@ def test_config_set_yolo_global_scope_honors_explicit_value(tmp_path, monkeypatc
     )
     assert resp_again["result"]["value"] == "1"
     assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "off"
+
+
+def test_config_set_approvals_mode_writes_all_three_tiers(tmp_path, monkeypatch):
+    """hc-514 desktop approval pill -> config.set approvals.mode writes the full
+    three-value mode globally (manual/smart/off), not just the binary yolo flip."""
+    import yaml
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "manual"}}))
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+
+    for mode in ("smart", "off", "manual"):
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "config.set",
+                "params": {"key": "approvals.mode", "value": mode},
+            }
+        )
+        assert resp["result"]["value"] == mode
+        assert resp["result"]["scope"] == "global"
+        assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == mode
+
+
+def test_config_set_approvals_mode_rejects_unknown(tmp_path, monkeypatch):
+    """An out-of-set value is rejected rather than silently written — the runtime
+    would normalize it to manual and the pill would then lie about the tier."""
+    import yaml
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "smart"}}))
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+
+    resp = server.handle_request(
+        {
+            "id": "1",
+            "method": "config.set",
+            "params": {"key": "approvals.mode", "value": "yolo"},
+        }
+    )
+    assert resp["error"]["code"] == 4002
+    # Config is left untouched on rejection.
+    assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
+
+
+def test_config_get_approvals_mode_returns_normalized():
+    """The pill seeds its tier from config.get at connect; the value is normalized
+    so a YAML `mode: off` (parsed as False) reads back as the string 'off'."""
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": False}}):
+        resp = server.handle_request(
+            {"id": "1", "method": "config.get", "params": {"key": "approvals.mode"}}
+        )
+        assert resp["result"]["value"] == "off"
+
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "smart"}}):
+        resp = server.handle_request(
+            {"id": "2", "method": "config.get", "params": {"key": "approvals.mode"}}
+        )
+        assert resp["result"]["value"] == "smart"
+
+
+def test_session_info_reports_approval_mode(monkeypatch):
+    """session.info carries the global three-value approval_mode alongside the
+    effective yolo bool so the desktop can tell smart apart from manual."""
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "smart"}}):
+        info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
+        assert info["approval_mode"] == "smart"
+        # smart still gates, so the effective bypass bool stays False.
+        assert info["yolo"] is False
+
+    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "off"}}):
+        info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
+        assert info["approval_mode"] == "off"
+        assert info["yolo"] is True
+
+
+def test_full_access_tier_is_session_scoped_and_leaves_global_mode(tmp_path, monkeypatch):
+    """hc-514 review: the pill's 完全访问 tier arms ONLY the per-session yolo
+    override — the persistent global approvals.mode must never be written to
+    "off" by it, and once the session ends (or for any new session key) the
+    effective tier falls back to the global gating mode."""
+    import yaml
+
+    from tools.approval import clear_session, is_session_yolo_enabled
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "smart"}}))
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+
+    server._sessions["sid"] = _session()
+    try:
+        resp = server.handle_request(
+            {
+                "id": "1",
+                "method": "config.set",
+                "params": {"session_id": "sid", "key": "yolo", "value": "1"},
+            }
+        )
+        assert resp["result"]["value"] == "1"
+        assert resp["result"]["scope"] == "session"
+        assert is_session_yolo_enabled("session-key") is True
+        # The global gating tier survives untouched — full access is temporary.
+        assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
+        # A different (new) session key is not yolo'd: fresh sessions start on
+        # the global tier, not on this session's override.
+        assert is_session_yolo_enabled("fresh-session-key") is False
+
+        # Session end clears the override — back to the global tier.
+        clear_session("session-key")
+        assert is_session_yolo_enabled("session-key") is False
+        assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
+    finally:
+        clear_session("session-key")
+        server._sessions.clear()
 
 
 def test_config_set_fast_updates_live_agent_and_config(monkeypatch):
@@ -5336,7 +5567,7 @@ def test_session_create_close_race_does_not_orphan_worker(monkeypatch):
     unregistered_keys: list[str] = []
 
     class _FakeWorker:
-        def __init__(self, key, model):
+        def __init__(self, key, model, profile_home=None):
             self.key = key
             self._closed = False
 
@@ -5457,7 +5688,7 @@ def test_session_create_no_race_keeps_worker_alive(monkeypatch):
     unregistered_keys: list[str] = []
 
     class _FakeWorker:
-        def __init__(self, key, model):
+        def __init__(self, key, model, profile_home=None):
             self.key = key
 
         def close(self):
@@ -5561,7 +5792,7 @@ def test_get_db_degrades_cleanly_when_sessiondb_init_fails(monkeypatch):
 
 def test_session_create_continues_when_state_db_is_unavailable(monkeypatch):
     class _FakeWorker:
-        def __init__(self, key, model):
+        def __init__(self, key, model, profile_home=None):
             self.key = key
 
         def close(self):
@@ -5609,7 +5840,7 @@ def test_session_create_lazy_info_reports_desktop_contract(monkeypatch):
     date" on every launch even against a current backend."""
 
     class _FakeWorker:
-        def __init__(self, key, model):
+        def __init__(self, key, model, profile_home=None):
             self.key = key
 
         def close(self):
@@ -5845,6 +6076,8 @@ def test_model_options_does_not_overwrite_curated_models(monkeypatch):
     live_fetch.assert_not_called()
     # list_authenticated_providers is the single source.
     assert listing.call_count == 1
+    assert listing.call_args.kwargs["probe_custom_providers"] is False
+    assert listing.call_args.kwargs["probe_current_custom_provider"] is True
 
 
 def test_model_options_propagates_list_exception(monkeypatch):
@@ -5865,9 +6098,72 @@ def test_model_options_propagates_list_exception(monkeypatch):
     assert "catalog blew up" in resp["error"]["message"]
 
 
+def test_model_options_hides_unconfigured_providers_by_default(monkeypatch):
+    from hermes_cli.inventory import ConfigContext
+
+    calls = []
+
+    monkeypatch.setattr(server, "_resolve_model", lambda: "")
+    monkeypatch.setattr(
+        "hermes_cli.inventory.load_picker_context",
+        lambda: ConfigContext(
+            current_provider="",
+            current_model="",
+            current_base_url="",
+            user_providers={},
+            custom_providers=[],
+        ),
+    )
+
+    def _fake_build_models_payload(_ctx, **kwargs):
+        calls.append(kwargs)
+        return {"providers": [], "model": "", "provider": ""}
+
+    monkeypatch.setattr(
+        "hermes_cli.inventory.build_models_payload",
+        _fake_build_models_payload,
+    )
+
+    resp = server._methods["model.options"](99, {"session_id": ""})
+    assert "result" in resp, resp
+    assert calls[-1]["explicit_only"] is False
+    assert calls[-1]["include_unconfigured"] is False
+
+    resp = server._methods["model.options"](
+        100,
+        {"session_id": "", "explicit_only": True},
+    )
+    assert "result" in resp, resp
+    assert calls[-1]["explicit_only"] is True
+
+    resp = server._methods["model.options"](
+        101,
+        {"session_id": "", "include_unconfigured": True},
+    )
+    assert "result" in resp, resp
+    assert calls[-1]["include_unconfigured"] is True
+
+
 # ---------------------------------------------------------------------------
 # prompt.submit — auto-title
 # ---------------------------------------------------------------------------
+
+
+def test_model_options_refresh_allows_custom_provider_probes(monkeypatch):
+    monkeypatch.setattr(
+        server,
+        "_load_cfg",
+        lambda: {"providers": {}, "custom_providers": []},
+    )
+    with patch(
+        "hermes_cli.model_switch.list_authenticated_providers",
+        return_value=[],
+    ) as listing:
+        resp = server._methods["model.options"](78, {"session_id": "", "refresh": True})
+
+    assert "result" in resp, resp
+    assert listing.call_args.kwargs["probe_custom_providers"] is True
+    assert listing.call_args.kwargs["probe_current_custom_provider"] is False
 
 
 class _ImmediateThread:
@@ -6418,7 +6714,17 @@ def test_verification_status_returns_recorded_evidence(tmp_path):
     assert verification["evidence"]["scope"] == "full"
 
 
-def test_verification_status_outside_workspace_is_not_applicable(tmp_path):
+def test_verification_status_outside_workspace_is_not_applicable(monkeypatch, tmp_path):
+    # A cwd with no project facts (outside any code workspace) must report
+    # not_applicable. Force the "no facts" precondition rather than relying on
+    # tmp_path's ancestors being pristine — a stray marker file in a shared
+    # tmp-root ancestor (e.g. /tmp/package.json left by another tool) would
+    # otherwise make _marker_root() resolve tmp_path as a workspace and flip
+    # the status to "unverified".
+    import agent.coding_context as coding_context
+
+    monkeypatch.setattr(coding_context, "project_facts_for", lambda _cwd=None: None)
+
     home = tmp_path / ".hermes"
     home.mkdir()
     token = set_hermes_home_override(home)
@@ -8588,3 +8894,57 @@ def test_get_usage_clamps_post_compression_sentinel():
     usage = server._get_usage(agent)
     assert "context_used" not in usage
     assert "context_percent" not in usage
+
+
+# hc-511: a non-retryable auth/authorization failure (relay/provider rejected
+# the key) must surface as a terminal ``error`` event so the desktop shows a
+# persistent, actionable failure (self-heal + re-sign-in) instead of dropping
+# the rejection into the transcript as if the model had answered. These pin the
+# classification -> error-event payload mapping that the result handler keys on.
+@pytest.mark.parametrize(
+    "result, expected",
+    [
+        # Relay 401 as agent.conversation_loop tags it (error_kind + error_status).
+        (
+            {"failed": True, "error": "Invalid Agent API key", "error_kind": "auth", "error_status": 401},
+            {"message": "Invalid Agent API key", "code": "auth", "retryable": False, "status_code": 401},
+        ),
+        # 403 folded in defensively (revoked/forbidden key).
+        (
+            {"failed": True, "error": "Forbidden", "error_kind": "auth", "error_status": 403},
+            {"message": "Forbidden", "code": "auth", "retryable": False, "status_code": 403},
+        ),
+        # Status alone (no error_kind) still classifies as auth via the code.
+        (
+            {"failed": True, "error": "nope", "error_status": 401},
+            {"message": "nope", "code": "auth", "retryable": False, "status_code": 401},
+        ),
+        # Empty error string falls back to a generic message, not "".
+        (
+            {"failed": True, "error": "", "error_kind": "auth", "error_status": 401},
+            {"message": "Authentication failed", "code": "auth", "retryable": False, "status_code": 401},
+        ),
+    ],
+)
+def test_terminal_auth_error_payload_classifies_auth_failures(result, expected):
+    assert server._terminal_auth_error_payload(result) == expected
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        # A non-auth client error (bad model slug, 400) stays on message.complete.
+        {"failed": True, "error": "bad request", "error_kind": "client", "error_status": 400},
+        # Rate limit / server error — not an auth problem.
+        {"failed": True, "error": "overloaded", "error_status": 503},
+        # A successful turn.
+        {"failed": False, "final_response": "hi"},
+        # An error string with no failure flag (never a terminal auth event).
+        {"error": "Invalid Agent API key", "error_status": 401},
+        # Non-dict inputs.
+        None,
+        "boom",
+    ],
+)
+def test_terminal_auth_error_payload_ignores_non_auth_results(result):
+    assert server._terminal_auth_error_payload(result) is None

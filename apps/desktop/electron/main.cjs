@@ -21,6 +21,7 @@ const fs = require('node:fs')
 const http = require('node:http')
 const https = require('node:https')
 const net = require('node:net')
+const os = require('node:os')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { execFileSync, spawn } = require('node:child_process')
@@ -29,8 +30,23 @@ const { runBootstrap } = require('./bootstrap-runner.cjs')
 const {
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
-  overlayStampWithPin
+  overlayStampWithPin,
+  desktopMeetsMinVersion,
+  engineMeetsMinVersion
 } = require('./apex-runtime-latest.cjs')
+const {
+  canUseOnDiskRuntime,
+  resolvePreBootstrapDecision,
+  resolveBootstrapFailureFallback
+} = require('./apex-runtime-select.cjs')
+// hc-472 P1 · versioned runtime bundle (opt-in, behind HERMES_BUNDLE_MODE).
+// main talks to the layout only through the migrate + diskspace facades (which
+// wrap reconcile/GC with the D1 migration + C2 watermark), so it does not
+// require apex-bundle-layout directly.
+const bundleMigrate = require('./apex-bundle-migrate.cjs')
+const bundleDiskspace = require('./apex-bundle-diskspace.cjs')
+const { downloadWithResume } = require('./apex-bundle-download.cjs')
+const { applyBundleUpdate: applyRuntimeBundleUpdate } = require('./apex-bundle-install.cjs')
 const { createShellUpdater } = require('./shell-updater.cjs')
 const {
   applyConfigYamlKeys,
@@ -38,6 +54,14 @@ const {
   normalizeStoredClientConfig,
   shouldApply: shouldApplyClientConfig
 } = require('./apex-client-config.cjs')
+const {
+  applyPlatformSkills,
+  fetchPlatformSkills,
+  isPlatformSkillsEnabled,
+  normalizeStoredManifest,
+  removePlatformSkills,
+  shouldApplyManifest
+} = require('./apex-platform-skills.cjs')
 const {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
@@ -56,6 +80,7 @@ const { readWindowsUserEnvVar } = require('./windows-user-env.cjs')
 const { readDirForIpc } = require('./fs-read-dir.cjs')
 const { gitRootForIpc } = require('./git-root.cjs')
 const { worktreesForIpc } = require('./git-worktrees.cjs')
+const { createProjectDirForIpc } = require('./workspace-create.cjs')
 const { OFFICIAL_REPO_HTTPS_URL, isOfficialSshRemote } = require('./update-remote.cjs')
 const { runRebuildWithRetry } = require('./update-rebuild.cjs')
 const {
@@ -85,12 +110,15 @@ const {
 } = require('./connection-config.cjs')
 const {
   accessTokenFromLogin,
+  renewedTokenFromHeaders,
   accountFromLogin,
   apexWebLoginUrl,
   buildManagedModelConfig,
   defaultModelPath,
   googleStartUrl,
+  isLoginStateTruthEnabled,
   isManagedEnabled,
+  isRelayUnauthorized,
   managedModelConfigYaml,
   ensurePluginsEnabledYaml,
   ensureSkillsDisabledYaml,
@@ -100,14 +128,58 @@ const {
   MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
   parseProvisionResponse,
+  relayCatalogStatusFromProbe,
   resolveApexEndpoints,
+  shouldAttemptReprovision,
   syncCustomProviderKeyYaml
 } = require('./apex-managed.cjs')
+const {
+  buildFeishuBackendEnv,
+  feishuCredentialsUrl,
+  normalizeStoredFeishu,
+  parseFeishuCredentialsResponse
+} = require('./apex-feishu.cjs')
+const {
+  buildImEntrySpawnEnv,
+  feishuProvisionPollUrl,
+  isAllowedFeishuProvisionUrl,
+  isKnownChannel: isKnownImEntryChannel,
+  normalizeStoredImEntry,
+  parseFeishuCredentialsV2Response,
+  parseFeishuProvisionResponse,
+  parseFeishuProvisionStatusResponse,
+  parseWeixinCredentialsResponse,
+  resolveFeishuProvisionEndpoints,
+  resolveWeixinProvisionEndpoints,
+  secretFieldsFor: imEntrySecretFieldsFor,
+  shapeBinding: shapeImEntryBinding,
+  stripFeishuEnvOverrides
+} = require('./apex-im-entry.cjs')
+const {
+  DAEMON_STATUS,
+  bridgeResultUrl,
+  buildInvalidTaskResult,
+  buildRegisterBody,
+  buildResultSubmitBody,
+  defaultDeviceName: daemonDefaultDeviceName,
+  deriveDaemonStatus,
+  isAllowedDaemonUrl,
+  nextBackoffMs: daemonNextBackoffMs,
+  normalizeStoredDaemon,
+  parseHeartbeatResponse,
+  parseLocalAgentRunPayload,
+  parsePollResponse,
+  parseRegisterResponse,
+  parseTaskEnvelope,
+  resolveDaemonEndpoints,
+  sanitizeDeviceName: sanitizeDaemonDeviceName
+} = require('./apex-daemon.cjs')
 const { startLoopbackLogin } = require('./apex-loopback.cjs')
 const {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
   TEXT_PREVIEW_SOURCE_MAX_BYTES,
+  decryptDesktopSecret: decryptDesktopSecretWith,
   encryptDesktopSecret: encryptDesktopSecretStrict,
   resolveReadableFileForIpc,
   resolveRequestedPathForIpc,
@@ -547,6 +619,121 @@ function rollbackRuntimePinOverride(reason) {
   return true
 }
 
+// ── hc-472 P1 · versioned runtime bundle wiring (opt-in) ────────────────────
+// Everything below is gated on HERMES_BUNDLE_MODE and is a strict no-op when the
+// switch is off (the default). The three consumer pieces live in dedicated,
+// unit-tested modules: apex-bundle-layout (versioned catalog + pointer-truth
+// atomic switch + rollback + startup GC), apex-bundle-download (Range-resumable,
+// sha-gated downloader) and apex-bundle-install (never-extract-in-place staging
+// + the F1→F2→C1 orchestration). Any bundle-path failure returns cleanly so the
+// caller falls back to the existing install chain — a bundle attempt can never
+// brick a working install (the design's core回退 contract).
+
+function bundleModeEnabled() {
+  const v = String(process.env.HERMES_BUNDLE_MODE || '').trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'on' || v === 'yes'
+}
+
+// This machine's bundle (os, arch). P1 ships win-x64; mac legs arrive with P2.
+// null = unsupported platform (caller falls back to the legacy chain).
+function desktopBundleTarget() {
+  if (IS_WINDOWS) return process.arch === 'x64' ? { os: 'win', arch: 'x64' } : null
+  if (IS_MAC) return { os: 'mac', arch: process.arch === 'arm64' ? 'arm64' : 'x64' }
+  return null
+}
+
+// Extract with bsdtar exactly as the bundle build/install contract expects:
+// System32\tar.exe on Windows (immune to the GNU-tar "C: is a remote host" trap
+// — same reason build-runtime-bundle.mjs::tarBin pins it), `tar` elsewhere.
+// Async spawn so a multi-minute extract never freezes the electron main thread.
+function extractBundleArchive(archivePath, destDir) {
+  return new Promise((resolve, reject) => {
+    const tarExe = IS_WINDOWS
+      ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
+      : 'tar'
+    const child = spawn(tarExe, ['-xzf', archivePath, '-C', destDir], hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] }))
+    let stderr = ''
+    child.stderr.on('data', d => {
+      stderr = (stderr + String(d)).slice(-2000)
+    })
+    child.on('error', reject)
+    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`tar exited ${code}: ${stderr.slice(-400)}`))))
+  })
+}
+
+// Run the BUNDLED node against the BUNDLED tool copy (fixup / verify). The
+// bundle ships scripts/build-runtime-bundle.mjs + its own node, so there is no
+// external fixup binary to keep in lockstep (manifest.fixup drives the argv).
+function runBundledTool(exe, argv, label) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exe, argv, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
+    let tail = ''
+    const cap = d => {
+      tail = (tail + String(d)).slice(-2000)
+    }
+    child.stdout.on('data', cap)
+    child.stderr.on('data', cap)
+    child.on('error', reject)
+    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`bundle ${label} exited ${code}: ${tail.slice(-400)}`))))
+  })
+}
+
+function bundleRuntimeDownload({ url, dest, sha256, size }) {
+  return downloadWithResume({ url, dest, sha256, size, log: msg => rememberLog(msg) })
+}
+
+// Startup self-heal: rebuild the active link from the truth pointer (a switch or
+// legacy migration interrupted mid-repoint — D1), GC everything but
+// current+previous and any `.tmp` half-installs, tighten past the disk budget if
+// versions/ overflowed (C2), and reap the legacy in-place fallback once it is no
+// longer a rollback target (D1). Runs before any runtime child is spawned
+// (nothing holds a handle on an old venv), and is fully fail-soft.
+function reconcileAndGcBundleRuntime() {
+  if (!bundleModeEnabled()) return
+  try {
+    const rec = bundleMigrate.reconcileMigration(HERMES_HOME)
+    if (rec.reconciled) rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)
+    // Watermark-aware GC: normal keep current+previous, or drop previous when
+    // versions/ blew past its disk budget. One pass (the watermark check runs GC).
+    const water = bundleDiskspace.enforceVersionsWatermark(HERMES_HOME)
+    const gc = water.gc
+    if (gc && (gc.removed.length || gc.orphansRemoved.length || gc.skipped.length)) {
+      rememberLog(
+        `[bundle] GC removed=${JSON.stringify(gc.removed)} staging=${JSON.stringify(gc.orphansRemoved)} ` +
+          `skipped=${JSON.stringify(gc.skipped)}`
+      )
+    }
+    if (water.warning) rememberLog(`[bundle] ${water.warning}`)
+    // Reap the legacy in-place fallback once the sentinel has left the pointer.
+    const asideGc = bundleMigrate.gcLegacyAside(HERMES_HOME)
+    if (asideGc.removed) rememberLog(`[bundle] reaped legacy in-place fallback ${asideGc.path}`)
+  } catch (error) {
+    rememberLog(`[bundle] reconcile/GC errored (ignored): ${error && error.message}`)
+  }
+}
+
+// R5 opt-in update via the bundle set. Resolves {ok:true,...} on a completed
+// pointer+link switch, or {ok:false, code, ...} so apply-update can fall back to
+// the legacy marker-drop re-bootstrap. Never throws.
+async function applyRuntimeBundleUpdateFlow(pin) {
+  const target = desktopBundleTarget()
+  if (!target) return { ok: false, code: 'unsupported_platform' }
+  if (!pin || !pin.key) return { ok: false, code: 'no_pin_key' }
+  return applyRuntimeBundleUpdate({
+    hermesHome: HERMES_HOME,
+    os: target.os,
+    arch: target.arch,
+    key: String(pin.key),
+    desktopVersion: app.getVersion(),
+    cosBase: process.env.HERMES_RUNTIME_COS_BASE || '',
+    fetchManifest: url => fetchPublicJson(url, { timeoutMs: 20000 }),
+    download: bundleRuntimeDownload,
+    extract: extractBundleArchive,
+    runTool: runBundledTool,
+    log: msg => rememberLog(msg)
+  })
+}
+
 // Shell UI locale block, appended to every seed. The runtime writes
 // display.language: en by default, which beats the China-first zh fallback (it
 // only triggers when the key is absent); pre-seeding zh makes a fresh install
@@ -743,6 +930,40 @@ const DESKTOP_MANAGED_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-man
 // runtime's global-config API once the gateway is open. No secrets inside, so
 // plain JSON (no safeStorage), unlike apex-managed.json.
 const DESKTOP_CLIENT_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-client-config.json')
+// apex-platform-skills.json caches the installed platform SKILL manifest hash
+// ({ manifestHash, installedAt, count } — see apex-platform-skills.cjs). The
+// desktop pulls the platform SKILL family (JWT-authed) after sign-in and at
+// boot, writing it under HERMES_HOME/skills/apexnodes/ so a desktop agent has
+// the same steering SKILLs a cloud agent has (hc-520 / A-10). The hash lets an
+// unchanged boot skip the ~150KB payload. No secrets inside (curated Markdown),
+// so plain JSON — like apex-client-config.json, unlike apex-managed.json.
+const DESKTOP_PLATFORM_SKILLS_PATH = path.join(app.getPath('userData'), 'apex-platform-skills.json')
+// apex-feishu.json holds the signed-in user's OWN Feishu app credential mirrored
+// from the cloud (hc-444). The app_secret is a real secret → stored ENCRYPTED
+// (safeStorage, same treatment as the managed relay key in apex-managed.json);
+// app_id / domain / agent_name / status are non-secret and kept in clear. main
+// injects the decrypted creds JUST-IN-TIME into the backend spawn env
+// (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN) so the runtime's Feishu
+// adapter + lark doc/drive tools light up — the secret never touches a plaintext
+// .env and is never logged. Own file (not apex-managed.json) because the Feishu
+// office-suite credential and the managed-LLM relay key are unrelated concerns.
+const DESKTOP_FEISHU_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-feishu.json')
+// apex-im-entry.json holds hc-417 "IM 入口" channel bindings — the INDEPENDENT
+// per-channel credentials the user connects on the IM 入口 page (feishu first).
+// Secret field values are stored ENCRYPTED (safeStorage, same treatment as the
+// hc-444 app_secret); non-secret ids/domain in clear. main injects the decrypted
+// values JUST-IN-TIME into the backend spawn env, ADD-ONLY and spread AFTER the
+// hc-444 bridge so an hc-417 feishu app WINS any FEISHU_* collision → only one
+// Feishu app credential ever reaches the runtime (the dual-app WS collision the
+// hc-417 spike warned about can't happen). See electron/apex-im-entry.cjs.
+const DESKTOP_IM_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-im-entry.json')
+// hc-533 本机 Agent 调度: the reverse-connect daemon's local state. The device
+// bridge token (abr-…) is a credential → stored ENCRYPTED (safeStorage, same
+// treatment as the managed relay key / hc-417 app secret); the non-secret
+// deviceId/deviceName/serverId + the enabled flag in clear. See
+// electron/apex-daemon.cjs. Default is DISABLED (dormant): the daemon only ever
+// connects after the user turns it on in settings.
+const DESKTOP_DAEMON_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-daemon.json')
 // Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
 // value its profile resolver would reject and exit on.
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -1047,7 +1268,7 @@ app.setName(APP_NAME)
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
   applicationVersion: resolveHermesVersion(),
-  copyright: 'Copyright © 2026 Nous Research'
+  copyright: 'Copyright © 2026 ApexNodes'
 })
 
 // Custom scheme for streaming local media (video/audio) into the renderer.
@@ -1841,9 +2062,13 @@ function readDesktopUpdateConfig() {
 
 // Atomic file write: temp + rename (atomic on all platforms). Prevents
 // partial writes on crash/power loss that corrupt JSON config files.
-function writeFileAtomic(targetPath, data, encoding) {
+// `options` passes through to fs.writeFileSync — an encoding string, or an
+// options object; `{ mode: 0o600 }` lets credential-bearing stores land
+// owner-only (rename preserves the temp file's mode, replacing any looser
+// mode an existing file had).
+function writeFileAtomic(targetPath, data, options) {
   const tmp = targetPath + '.tmp'
-  fs.writeFileSync(tmp, data, encoding)
+  fs.writeFileSync(tmp, data, options)
   fs.renameSync(tmp, targetPath)
 }
 
@@ -1937,6 +2162,20 @@ async function resolveHealedBranch(updateRoot, branch) {
 
 async function checkUpdates() {
   const updateRoot = resolveUpdateRoot()
+  // hc-475 (F4): the legacy "N commits behind upstream" detection is the data
+  // source for the「落后 N commit」sync card, which drives the disabled self-
+  // rebuild plane (see applyUpdates). In a packaged runtime report unsupported so
+  // that card never renders its actionable "update now" state; managed updates
+  // surface through the shell-updater and R4/R5 engine planes instead.
+  if (IS_PACKAGED) {
+    return {
+      supported: false,
+      reason: 'managed-runtime',
+      message: 'Updates are managed automatically for this build.',
+      hermesRoot: updateRoot,
+      branch: readDesktopUpdateConfig().branch
+    }
+  }
   let { branch } = readDesktopUpdateConfig()
   const gitDir = path.join(updateRoot, '.git')
   if (!directoryExists(gitDir)) {
@@ -2208,6 +2447,17 @@ async function releaseBackendLock(updateRoot, tag) {
 // Detection (checkUpdates / commit changelog / "N behind") stays in the UI;
 // only this apply action changed.
 async function applyUpdates(opts = {}) {
+  // hc-475 (F4): the legacy git-pull + `hermes update` + `hermes desktop
+  // --build-only` self-rebuild plane is DEAD for a packaged desktop. A packaged
+  // shell (COS source-tarball / NSIS / dmg install) has no source tree or .git to
+  // rebuild against, self-built packages are unsigned, and this plane fought the
+  // managed shell-updater (electron-updater) + R4/R5 engine planes — the hc-435
+  // two-plane collision. Packaged builds update ONLY via those managed planes;
+  // refuse here so a packaged build can never git-pull / rebuild / swap itself.
+  if (IS_PACKAGED) {
+    rememberLog('[updates] legacy self-rebuild plane disabled in packaged runtime (hc-475); refusing apply')
+    return { ok: false, disabled: true, error: 'legacy_update_plane_disabled' }
+  }
   if (updateInFlight) {
     throw new Error('An update is already in progress.')
   }
@@ -2553,6 +2803,19 @@ function readJson(filePath) {
   }
 }
 
+// hc-532 (gate 1): the shell's declared minimum ENGINE version, read from the
+// packaged package.json's `apexnodes.minEngineVersion`. This is the floor the
+// daemon/tool features THIS shell ships need from the installed engine bundle
+// (mirror of the engine's own min_desktop_version, hc-475). Tolerant: any
+// read/parse miss (dev layout, malformed field) returns null, which
+// engineMeetsMinVersion treats as "no floor" -> fail open (never nag). Electron's
+// fs is asar-aware, so APP_ROOT/package.json resolves in packaged builds too.
+function readDeclaredMinEngineVersion() {
+  const pkg = readJson(path.join(APP_ROOT, 'package.json'))
+  const value = pkg && pkg.apexnodes && pkg.apexnodes.minEngineVersion
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 // Bootstrap-complete marker helpers. The marker is written ONCE by the
 // first-launch bootstrap runner (Phase 1D) after install.ps1 stages succeed
 // AND the user has finished initial configuration. On every subsequent boot
@@ -2584,6 +2847,23 @@ function isBootstrapComplete() {
   // + checkout without a venv, and trusting that spawns a dead backend
   // ("gateway offline") instead of re-running bootstrap to repair it.
   return isHermesSourceRoot(ACTIVE_HERMES_ROOT) && fileExists(getVenvPython(VENV_ROOT))
+}
+
+// Probe the on-disk canonical install for the runtime-select fail-open logic.
+// Reports the two facts canUseOnDiskRuntime() needs: is the runtime SOURCE
+// present (hermes_cli/main.py) and is a runnable interpreter present. We scope
+// "python present" to the co-located venv on purpose: ensureRuntime()'s adoption
+// path (the createActiveBackend venv-wiring branch) REQUIRES getVenvPython(
+// VENV_ROOT) and throws without it, so adopting on the strength of a mere system
+// Python would just trade a bootstrap brick for a venv-missing brick. The pair
+// here is therefore exactly the pair isBootstrapComplete() checks — the only
+// difference the fail-open path cares about is the presence/absence of the
+// attesting MARKER, not the runnability of the install.
+function probeOnDiskRuntime() {
+  return {
+    sourcePresent: isHermesSourceRoot(ACTIVE_HERMES_ROOT),
+    pythonPresent: fileExists(getVenvPython(VENV_ROOT))
+  }
 }
 
 function writeBootstrapMarker(payload) {
@@ -2822,6 +3102,35 @@ function resolveHermesBackend(dashboardArgs) {
     return createActiveBackend(dashboardArgs)
   }
 
+  // 3.5 FAIL-OPEN (2026-07-06 incident): a usable runtime is already extracted at
+  //     ACTIVE_HERMES_ROOT (source + venv on disk) but the bootstrap-complete
+  //     marker is absent/stale — an interrupted install, a dropped marker, a
+  //     legacy install predating the marker, or a COS-tarball extract that was
+  //     never registered on PATH. WITHOUT this, resolution falls through to the
+  //     bootstrap-needed sentinel (step 6), which fires the network runtime-latest
+  //     resolve; when the cloud advertises a version whose COS tarball is not yet
+  //     published, install.sh 404s and the WHOLE gateway refuses to start —
+  //     stranding the user on an error page despite a perfectly runnable runtime
+  //     sitting right there. Adopt the on-disk runtime directly instead (same
+  //     venv-wiring adoption path createActiveBackend feeds). We do NOT do this
+  //     while an opt-in update is pending: the user chose a new version and
+  //     adopting the old one would silently no-op their request (that case must
+  //     drive the bootstrap re-run below). The client must self-heal against a
+  //     wrong/ahead server answer rather than assume the cloud is always right.
+  const preBootstrap = resolvePreBootstrapDecision({
+    markerComplete: false, // isBootstrapComplete() already returned false above
+    onDiskUsable: canUseOnDiskRuntime(probeOnDiskRuntime()),
+    updatePending: readRuntimePinOverride() !== null
+  })
+  if (preBootstrap === 'use-installed') {
+    rememberLog(
+      '[runtime-select] bootstrap marker absent/stale but a runnable runtime is on disk at ' +
+        `${ACTIVE_HERMES_ROOT}; adopting it instead of re-bootstrapping (fail-open — avoids ` +
+        'bricking on an unpublished admin-latest / package fetch failure).'
+    )
+    return createActiveBackend(dashboardArgs)
+  }
+
   // R5: a pending opt-in update (override file present, marker just dropped by
   // hermes:runtime:apply-update) MUST drive the bootstrap re-run so install.sh
   // re-fetches the new pin. Skip the "use an existing install" steps 4-5 — the
@@ -2983,6 +3292,33 @@ async function ensureRuntime(backend) {
       throw handoffError
     }
 
+    // hc-452: is this a re-bootstrap for an opt-in runtime UPDATE (marker
+    // dropped by hermes:runtime:apply-update, an override pin waiting to be
+    // installed), or a genuine first-ever install (no prior runtime, no
+    // override)? Same signal the fail-open/rollback logic below already reads
+    // via readRuntimePinOverride() !== null (see wasOptInUpdate at the ok===false
+    // branch). Read synchronously and early (before the eager synthetic-manifest
+    // broadcast just below) so even the very first UI frame — shown before the
+    // real manifest fetch resolves — carries the right "updating" vs
+    // "first-time setup" signal instead of flashing the wrong copy on a slow
+    // network. override.previousMarker (persisted by hermes:runtime:apply-update
+    // right before it drops the marker) carries the version being replaced.
+    const runtimeUpdateOverride = readRuntimePinOverride()
+    const isRuntimeUpdate = runtimeUpdateOverride !== null
+    const bootstrapUpdateInfoEarly = isRuntimeUpdate
+      ? {
+          isUpdate: true,
+          // The resolved target version isn't known yet at this point
+          // (resolveBootstrapStamp hasn't run) — the real 'manifest' event
+          // fills this in once bootstrapStamp resolves, just below.
+          toVersion: null,
+          fromVersion:
+            runtimeUpdateOverride.previousMarker && runtimeUpdateOverride.previousMarker.version
+              ? runtimeUpdateOverride.previousMarker.version
+              : null
+        }
+      : { isUpdate: false, toVersion: null, fromVersion: null }
+
     // Eagerly flip the bootstrap UI state to 'active' so the renderer
     // shows the install overlay BEFORE the runner finishes fetching the
     // manifest (which on slow networks can take tens of seconds and would
@@ -2993,7 +3329,8 @@ async function ensureRuntime(backend) {
       broadcastBootstrapEvent({
         type: 'manifest',
         stages: [],
-        protocolVersion: null
+        protocolVersion: null,
+        updateInfo: bootstrapUpdateInfoEarly
       })
     } catch {
       void 0
@@ -3008,6 +3345,14 @@ async function ensureRuntime(backend) {
     // stamp, so a fresh install proceeds even when the cloud is unreachable.
     const bootstrapStamp = await resolveBootstrapStamp(backend.installStamp)
 
+    // Now that bootstrapStamp is resolved, fill in the target version the
+    // real bootstrap run (and its 'manifest' event, emitted from inside
+    // runBootstrap once install.ps1/.sh -Manifest returns) will carry.
+    const bootstrapUpdateInfo = {
+      ...bootstrapUpdateInfoEarly,
+      toVersion: bootstrapStamp && bootstrapStamp.version ? bootstrapStamp.version : null
+    }
+
     const bootstrapResult = await runBootstrap({
       installStamp: bootstrapStamp,
       activeRoot: backend.activeRoot,
@@ -3015,7 +3360,13 @@ async function ensureRuntime(backend) {
       resourcesPath: process.resourcesPath,
       hermesHome: HERMES_HOME,
       logRoot: path.join(HERMES_HOME, 'logs'),
+      // hc-532 (gate 3): thread the shell version so the install/bootstrap
+      // beacons carry app_version (the runner defaults it to null when omitted,
+      // which is why the cloud desktop_install_events.app_version column read
+      // empty for the install funnel before this).
+      appVersion: app.getVersion(),
       abortSignal: bootstrapAbortController.signal,
+      updateInfo: bootstrapUpdateInfo,
       // Region (CN mirrors vs upstream defaults) is auto-detected per machine by
       // install.sh / install.ps1 themselves (IP/timezone heuristic), so a
       // packaged build serves both foreign and mainland-China users correctly —
@@ -3061,6 +3412,41 @@ async function ensureRuntime(backend) {
     }
 
     if (!bootstrapResult.ok) {
+      // Capture whether this was an opt-in update BEFORE any rollback clears the
+      // override (the fail-open decision below needs to know).
+      const wasOptInUpdate = readRuntimePinOverride() !== null
+
+      // FAIL-OPEN safety net (2026-07-06 incident): a bootstrap can fail because
+      // the cloud advertised a version whose COS tarball isn't published yet
+      // (install.sh 404) or any transient network/checksum error. For a plain
+      // first-install/marker-repair run (NOT an opt-in update), if a runnable
+      // runtime is STILL on disk after the failed attempt, start the gateway
+      // with it instead of latching a fatal failure and stranding the user.
+      // Step 3.5 in resolveHermesBackend normally prevents us from ever reaching
+      // here with a usable on-disk runtime, but this backstops any failure that
+      // slips past it (e.g. a genuine fresh install whose download 404s while a
+      // prior good extract survives). Opt-in updates deliberately fall through
+      // to the rollback path below (restores the previous marker → old runtime
+      // boots next launch); we must not silently no-op the user's chosen version.
+      if (!wasOptInUpdate && canUseOnDiskRuntime(probeOnDiskRuntime())) {
+        const fallback = resolveBootstrapFailureFallback({
+          onDiskUsable: true,
+          updatePending: false
+        })
+        if (fallback === 'fallback-to-disk') {
+          rememberLog(
+            `[runtime-select] bootstrap failed${
+              bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''
+            } (${bootstrapResult.error || 'unknown error'}); a runnable runtime remains on disk at ` +
+              `${ACTIVE_HERMES_ROOT} — degrading to it and starting the gateway (fail-open) instead of ` +
+              'bricking. This typically means the admin latest advertised an unpublished/unreachable ' +
+              'package; the existing runtime is used until a valid update is available.'
+          )
+          // Re-resolve; step 3.5 now adopts the on-disk runtime and wires venv.
+          return ensureRuntime(resolveHermesBackend(backend.args))
+        }
+      }
+
       // R5 don't-brick guard: a failed re-bootstrap of an opt-in update rolls
       // back to the previous marker so the next launch boots the OLD runtime
       // (still on disk) instead of bricking on the new pin.
@@ -4560,25 +4946,7 @@ function encryptDesktopSecret(value) {
 }
 
 function decryptDesktopSecret(secret) {
-  if (!secret || typeof secret !== 'object') {
-    return ''
-  }
-
-  const value = String(secret.value || '')
-
-  if (!value) {
-    return ''
-  }
-
-  if (secret.encoding === 'safeStorage') {
-    try {
-      return safeStorage.decryptString(Buffer.from(value, 'base64'))
-    } catch {
-      return ''
-    }
-  }
-
-  return value
+  return decryptDesktopSecretWith(secret, safeStorage)
 }
 
 // Validate + normalize the per-profile remote overrides map read from disk.
@@ -4691,30 +5059,36 @@ function readManagedAccount(stored) {
   return { email: str(account.email), name: str(account.name), plan: str(account.plan) }
 }
 
-// The stored managed config: { key, baseUrl, model, account }. key is '' when
-// none is stored / managed is disabled. Centralizes the "do we have a managed
-// credential?" question for the boot seed, onboarding gate, and IPC status. The
-// server is the source of truth for baseUrl/model (from provision-key); env
-// defaults only fill gaps. `account` is display-only identity (email/name/plan),
-// never a secret.
+// The stored managed config: { key, baseUrl, model, account, accessToken }. key
+// is '' when none is stored / managed is disabled. Centralizes the "do we have a
+// managed credential?" question for the boot seed, onboarding gate, and IPC
+// status. The server is the source of truth for baseUrl/model (from
+// provision-key); env defaults only fill gaps. `account` is display-only
+// identity (email/name/plan), never a secret. `accessToken` is the login JWT
+// (decrypted), kept ONLY so the boot 401-self-heal can re-provision a rotated
+// relay key without a re-login — it is never used for authorization here beyond
+// re-calling provision-key (server-validated). '' when none stored / env key.
 function resolveManagedConfig() {
   if (!isManagedEnabled(process.env)) {
-    return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' } }
+    return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' }, accessToken: '' }
   }
   const endpoints = resolveApexEndpoints(process.env)
   const stored = readManagedConfig()
   const account = readManagedAccount(stored)
   // An explicit env key (e.g. a CI/dev/admin-provisioned key for real-machine
-  // testing) wins over stored state, using env/default base_url + model.
+  // testing) wins over stored state, using env/default base_url + model. No JWT
+  // in this path — an env key is managed out-of-band, so self-heal stays off
+  // (shouldAttemptReprovision gates on hasToken).
   const fromEnv = String(process.env.APEXNODES_RELAY_KEY || '').trim()
   if (fromEnv) {
-    return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account }
+    return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account, accessToken: '' }
   }
   return {
     key: decryptDesktopSecret(stored.relayKey),
     baseUrl: String(stored.baseUrl || '').trim() || endpoints.relayBaseUrl,
     model: String(stored.model || '').trim() || endpoints.model,
-    account
+    account,
+    accessToken: decryptDesktopSecret(stored.accessToken)
   }
 }
 
@@ -4727,17 +5101,26 @@ function resolveManagedRelayCredential() {
 // Persist the provision-key result. Pass null/empty to clear. `provisioned` may
 // carry an optional display-only `account` ({ email, name, plan }) captured from
 // the login response / JWT claims — stored in clear (it is not a secret) so the
-// account panel can render who is signed in.
+// account panel can render who is signed in. It may also carry the login JWT as
+// `accessToken` — persisted ENCRYPTED (same safeStorage as relayKey) so the boot
+// 401-self-heal can re-provision a rotated relay key without a re-login. The JWT
+// lives 7 days server-side (ACCESS_TOKEN_EXPIRE_DAYS); once it expires,
+// provision-key 401s and the self-heal stops (the user re-logs in via the normal
+// flow). This rewrites the WHOLE record on every write (each follows a fresh
+// provision), so a provision that carries no token simply stores none — we never
+// resurrect a stale token, and clearing (no key) wipes the token too.
 function writeManagedConfig(provisioned) {
   fs.mkdirSync(path.dirname(DESKTOP_MANAGED_CONFIG_PATH), { recursive: true })
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
   const account = provisioned && provisioned.account ? readManagedAccount({ account: provisioned.account }) : null
+  const accessToken = provisioned && typeof provisioned.accessToken === 'string' ? provisioned.accessToken.trim() : ''
   const next = key
     ? {
         relayKey: encryptDesktopSecret(key),
         baseUrl: String(provisioned.baseUrl || '').trim(),
         model: String(provisioned.model || '').trim(),
         ...(account && (account.email || account.name || account.plan) ? { account } : {}),
+        ...(accessToken ? { accessToken: encryptDesktopSecret(accessToken) } : {}),
         savedAt: Date.now()
       }
     : {}
@@ -4749,6 +5132,811 @@ function clearManagedRelayCredential() {
     fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true })
   } catch {
     // Best effort.
+  }
+}
+
+// hc-529: slide the stored login JWT forward when the cloud hands back a renewed
+// one (X-Apex-Renewed-Token) on an authenticated response. Rewrites ONLY the
+// accessToken, preserving the encrypted relay key + baseUrl/model/account, so the
+// desktop's login token (used for provision-key / feishu-credentials /
+// platform-skills) never dies at the 7-day mark for an active user. Best-effort
+// and never throws — a persist hiccup must not fail the request the user made.
+// Skips when: managed isn't signed in (no stored key), there is no existing login
+// JWT to slide (env-key path stores none), or the token is unchanged.
+function persistRenewedLoginToken(token) {
+  try {
+    const next = String(token || '').trim()
+    if (!next) return false
+    const managed = resolveManagedConfig()
+    if (!managed.key || !managed.accessToken) return false
+    if (next === managed.accessToken) return false
+    writeManagedConfig({
+      apiKey: managed.key,
+      baseUrl: managed.baseUrl,
+      model: managed.model,
+      account: managed.account,
+      accessToken: next
+    })
+    rememberLog('[managed] login token renewed via sliding-window header (hc-529)')
+    return true
+  } catch (error) {
+    rememberLog(`[managed] renewed-token persist failed (non-fatal): ${error && error.message ? error.message : error}`)
+    return false
+  }
+}
+
+// ── hc-444: desktop ↔ cloud Feishu credential bridge ────────────────────────
+// The cloud Feishu line is complete (each user self-registers their own app; the
+// creds live in agent_entries). This mirrors the user's OWN credential down to the
+// desktop so the local runtime's Feishu adapter + lark tools light up. The
+// app_secret is persisted ENCRYPTED (safeStorage, same as the managed relay key);
+// app_id/domain/agent_name/status are non-secret and stored in clear. See
+// apex-feishu.cjs for the pure shaping/gating helpers.
+
+// Read + decrypt the stored Feishu credential into the normalized runtime shape
+// ({ connected, appId, appSecret, domain, agentName, credentialStatus, syncedAt }).
+// Synchronous + never throws (read at spawn time); a decrypt failure blanks the
+// secret, which normalizeStoredFeishu degrades to `connected:false`.
+function resolveFeishuConfig() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_FEISHU_CONFIG_PATH, 'utf8'))
+  } catch {
+    return normalizeStoredFeishu(null)
+  }
+  const appSecret = raw && typeof raw === 'object' ? decryptDesktopSecret(raw.appSecret) : ''
+  // Hand normalizeStoredFeishu the record with the secret already decrypted; the
+  // stored `appSecret` is ciphertext, so replace it with the plaintext (or '').
+  return normalizeStoredFeishu(raw && typeof raw === 'object' ? { ...raw, appSecret } : null)
+}
+
+// Persist a fetched Feishu credential. Pass a parsed credential
+// ({ appId, appSecret, domain, agentName, credentialStatus }) to store, or
+// null/empty to clear. The whole record is rewritten each call (each follows a
+// fresh fetch), so clearing wipes the secret too. app_secret is encrypted; the
+// rest is clear (non-secret display/routing).
+function writeFeishuConfig(credential) {
+  fs.mkdirSync(path.dirname(DESKTOP_FEISHU_CONFIG_PATH), { recursive: true })
+  const appId = credential && typeof credential.appId === 'string' ? credential.appId.trim() : ''
+  const appSecret = credential && typeof credential.appSecret === 'string' ? credential.appSecret.trim() : ''
+  const next =
+    appId && appSecret
+      ? {
+          appId,
+          appSecret: encryptDesktopSecret(appSecret),
+          domain: String(credential.domain || '').trim() || 'feishu',
+          agentName: String(credential.agentName || '').trim(),
+          credentialStatus: String(credential.credentialStatus || '').trim(),
+          syncedAt: Date.now()
+        }
+      : {}
+  writeFileAtomic(DESKTOP_FEISHU_CONFIG_PATH, JSON.stringify(next, null, 2))
+}
+
+function clearFeishuConfig() {
+  try {
+    fs.rmSync(DESKTOP_FEISHU_CONFIG_PATH, { force: true })
+  } catch {
+    // Best effort.
+  }
+}
+
+// Build the FEISHU_* spawn-env fragment for the local backend from the stored
+// (decrypted) credential — but ADD-ONLY, never clobbering a FEISHU_APP_ID the
+// parent env already set (a power-user / staging / CI that wants to test with
+// their own app credential out-of-band). Mirrors the HF_ENDPOINT add-only rule in
+// backend-env.cjs. Returns {} for a not-connected user, so a spread merge is a
+// safe no-op. Called at spawn time (not cached) so a mid-session sync/disconnect
+// takes effect on the next backend (re)start.
+function desktopFeishuSpawnEnv() {
+  // An explicit parent-env credential wins — leave it untouched.
+  if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
+    return {}
+  }
+  return buildFeishuBackendEnv(resolveFeishuConfig())
+}
+
+// ── hc-417: Desktop IM 入口 channel bindings (store + injection) ─────────────
+// The IM 入口 page connects the local agent to an IM platform by scanning a QR /
+// pasting one code. Each binding's credential is persisted here ENCRYPTED and
+// injected into the backend spawn env so the runtime's adapter lights up on the
+// next boot. Separate store from apex-feishu.json (hc-444): that bridge mirrors
+// the cloud AGENT's app; hc-417 issues an INDEPENDENT app per the spike, so the
+// two never put a second long-connection on one Feishu app.
+
+// Read + decrypt the whole IM 入口 store into the normalized runtime shape (a map
+// keyed by channel id, secret fields already decrypted). Synchronous + never
+// throws (read at spawn time); a decrypt failure blanks that secret, which
+// normalizeStoredImEntry then drops as an unusable binding.
+function resolveImEntryStore() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
+  } catch {
+    return {}
+  }
+  if (!raw || typeof raw !== 'object' || !raw.bindings || typeof raw.bindings !== 'object') {
+    return {}
+  }
+  // Decrypt every secret-valued field in place before normalization; non-secret
+  // fields (app id, domain) are stored + read in clear.
+  const decryptedBindings = {}
+  for (const [channelId, record] of Object.entries(raw.bindings)) {
+    if (!record || typeof record !== 'object' || !record.fields || typeof record.fields !== 'object') {
+      continue
+    }
+    const secretKeys = new Set(imEntrySecretFieldsFor(channelId))
+    const fields = {}
+    for (const [fieldKey, value] of Object.entries(record.fields)) {
+      fields[fieldKey] = secretKeys.has(fieldKey) ? decryptDesktopSecret(value) : String(value ?? '')
+    }
+    decryptedBindings[channelId] = { fields, boundAt: record.boundAt }
+  }
+  return normalizeStoredImEntry({ bindings: decryptedBindings })
+}
+
+// Persist (or replace) one channel's binding, encrypting its secret fields via
+// safeStorage. Pass a shaped binding ({ channelId, fields, boundAt }); merges
+// into the existing store so other channels are untouched. THROWS if secure
+// storage is unavailable (encryptDesktopSecret is strict — a secret is never
+// written in clear), so the IPC caller can fail the bind cleanly.
+function writeImEntryBinding(binding) {
+  if (!binding || !isKnownImEntryChannel(binding.channelId)) {
+    return
+  }
+  fs.mkdirSync(path.dirname(DESKTOP_IM_ENTRY_CONFIG_PATH), { recursive: true })
+  let existing
+  try {
+    existing = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
+  } catch {
+    existing = null
+  }
+  const bindings =
+    existing && typeof existing === 'object' && existing.bindings && typeof existing.bindings === 'object'
+      ? { ...existing.bindings }
+      : {}
+  const secretKeys = new Set(imEntrySecretFieldsFor(binding.channelId))
+  const storedFields = {}
+  for (const [fieldKey, value] of Object.entries(binding.fields)) {
+    storedFields[fieldKey] = secretKeys.has(fieldKey) ? encryptDesktopSecret(String(value)) : String(value)
+  }
+  bindings[binding.channelId] = { fields: storedFields, boundAt: binding.boundAt }
+  // 0o600: the store carries (encrypted) credentials — owner-only on disk.
+  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2), { mode: 0o600 })
+}
+
+// Forget one channel's binding (unbind). Rewrites the file without it, or removes
+// the file entirely when nothing remains.
+function clearImEntryBinding(channelId) {
+  let existing
+  try {
+    existing = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
+  } catch {
+    return
+  }
+  if (!existing || typeof existing !== 'object' || !existing.bindings) {
+    return
+  }
+  const bindings = { ...existing.bindings }
+  delete bindings[channelId]
+  if (Object.keys(bindings).length === 0) {
+    try {
+      fs.rmSync(DESKTOP_IM_ENTRY_CONFIG_PATH, { force: true })
+    } catch {
+      // Best effort.
+    }
+    return
+  }
+  writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2), { mode: 0o600 })
+}
+
+// hc-417 P1: strip plaintext FEISHU_* keys from the runtime home .env files.
+// The runtime loads {HERMES_HOME}/.env with override=True
+// (hermes_cli/env_loader.py::load_hermes_dotenv), so any leftover plaintext
+// FEISHU_* there silently beats the credential we inject into the spawn env —
+// the freshly-provisioned independent app would never take effect (or its
+// app_id would mix with a stale .env secret). Called on a successful hc-417
+// binding, BEFORE the backend re-home, over the default home and the active
+// named profile's home (named profiles re-home HERMES_HOME to
+// {root}/profiles/<name>, so their .env is the one the backend loads).
+// Warning is logged BEFORE the rewrite (key names only, never values).
+// Best-effort: a read/write failure must not fail the bind — the injected env
+// still wins for any key .env does not carry.
+function cleanFeishuPlaintextEnvOverrides() {
+  const homes = [HERMES_HOME]
+  const profile = readActiveDesktopProfile()
+  if (profile && profile !== 'default') {
+    homes.push(path.join(HERMES_HOME, 'profiles', profile))
+  }
+
+  for (const home of homes) {
+    const envPath = path.join(home, '.env')
+    let raw
+    try {
+      raw = fs.readFileSync(envPath, 'utf8')
+    } catch {
+      continue // no .env → nothing to clean
+    }
+    const { text, removed } = stripFeishuEnvOverrides(raw)
+    if (removed.length === 0) {
+      continue
+    }
+    rememberLog(
+      `[im-entry] WARNING: removing plaintext ${removed.join(', ')} from ${envPath} — ` +
+        'the runtime loads .env with override=True, which would shadow the Feishu app ' +
+        'provisioned for this desktop. The desktop-injected credential is now the only Feishu source.'
+    )
+    try {
+      writeFileAtomic(envPath, text, { mode: 0o600 })
+    } catch (error) {
+      rememberLog(
+        `[im-entry] failed to rewrite ${envPath}: ${error && error.message ? error.message : error}`
+      )
+    }
+  }
+}
+
+// Build the IM 入口 spawn-env fragment for the local backend. Add-only vs an
+// explicit parent-env credential (a power-user / CI that set FEISHU_* out of band
+// wins). Called at spawn time (not cached) so a mid-session bind/unbind applies
+// on the next backend (re)start. Spread AFTER desktopFeishuSpawnEnv() at the call
+// site so an hc-417 feishu binding wins the FEISHU_* keys over the hc-444 bridge.
+function desktopImEntrySpawnEnv() {
+  const fragment = buildImEntrySpawnEnv(resolveImEntryStore())
+  if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
+    delete fragment.FEISHU_APP_ID
+    delete fragment.FEISHU_APP_SECRET
+    delete fragment.FEISHU_DOMAIN
+  }
+  return fragment
+}
+
+// Display-only view of the IM 入口 bindings for the renderer — NO secret ever
+// crosses the bridge (only channel id, bound timestamp, non-secret domain).
+function imEntryBoundList() {
+  return Object.values(resolveImEntryStore()).map(binding => ({
+    channelId: binding.channelId,
+    boundAt: binding.boundAt || null,
+    domain: binding.fields.domain || ''
+  }))
+}
+
+// ── hc-533 本机 Agent 调度 — A2A daemon leg (reverse-connect + AcpHarness) ─────
+// The desktop side of the A2A epic: a signed-in user's cloud分身 (hc-523) can
+// dispatch a task to one of the user's OWN local coding agents; this daemon
+// registers the machine, heartbeats (~30s), polls the bridge queue for tasks
+// addressed to this device, drives the agent via the hc-524 AcpHarness
+// (out-of-process, agent/coding_agents/run_once.py — the harness lives in
+// Python, so Node never re-implements a wire protocol), and posts the result
+// back. v1 runs INSIDE the desktop main process (Desktop online ⇒ schedulable);
+// a standalone always-on daemon is a later ticket (hc-535 cluster). All the
+// wire contract / parsing / backoff logic is the pure, tested apex-daemon.cjs;
+// this block is the electron-coupled glue: encrypted token store, timers,
+// runner spawn, IPC. Default DISABLED — nothing connects until the user opts in.
+const DAEMON_HEARTBEAT_INTERVAL_MS = 30_000
+const DAEMON_POLL_INTERVAL_MS = 5_000
+const DAEMON_RUNNER_TIMEOUT_MS = 900_000
+
+// In-memory runtime state (NOT persisted). The device token lives only here +
+// (encrypted) on disk, never in a log. `busy` serializes task execution: v1
+// runs one local-agent task at a time in-process.
+const daemonRuntime = {
+  started: false,
+  registered: false,
+  connected: false,
+  busy: false,
+  lastError: '',
+  connLoopTimer: null,
+  pollLoopTimer: null,
+  connAttempt: 0,
+  pollAttempt: 0
+}
+let daemonToken = '' // decrypted abr-… device token, in memory only
+
+// Read apex-daemon.json: non-secret fields normalized by the pure helper, the
+// token decrypted separately. A decrypt failure (keychain unavailable / rotated
+// OS key) drops the token so the daemon cleanly re-registers rather than sending
+// a garbage Bearer. Never throws.
+function readDaemonConfig() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_DAEMON_CONFIG_PATH, 'utf8'))
+  } catch {
+    raw = null
+  }
+  const base = normalizeStoredDaemon(raw)
+  let token = ''
+  if (raw && typeof raw === 'object' && raw.token) {
+    try {
+      token = decryptDesktopSecret(raw.token)
+    } catch {
+      token = ''
+    }
+  }
+  return { ...base, token }
+}
+
+// Merge-persist apex-daemon.json. The token (when present) is encrypted via
+// safeStorage; a keychain failure THROWS so the caller never falls back to a
+// plaintext credential on disk. 0o600 — owner-only.
+function writeDaemonConfig(patch) {
+  const current = readDaemonConfig()
+  const next = { ...current, ...patch }
+  fs.mkdirSync(path.dirname(DESKTOP_DAEMON_CONFIG_PATH), { recursive: true })
+  const onDisk = {
+    enabled: next.enabled === true,
+    deviceId: String(next.deviceId || ''),
+    deviceName: String(next.deviceName || ''),
+    serverId: String(next.serverId || '')
+  }
+  const token = String(next.token || '')
+  if (token) {
+    onDisk.token = encryptDesktopSecret(token) // strict — throws without keychain
+  }
+  writeFileAtomic(DESKTOP_DAEMON_CONFIG_PATH, JSON.stringify(onDisk, null, 2), { mode: 0o600 })
+  return next
+}
+
+// Ensure a stable machine id + a readable device name exist (minting a UUID /
+// hostname default on first use) and are persisted. Returns { deviceId, deviceName }.
+function ensureDaemonIdentity() {
+  const config = readDaemonConfig()
+  let deviceId = config.deviceId
+  let deviceName = config.deviceName
+  const patch = {}
+  if (!deviceId) {
+    deviceId = crypto.randomUUID()
+    patch.deviceId = deviceId
+  }
+  if (!deviceName) {
+    deviceName = daemonDefaultDeviceName(safeHostname())
+    patch.deviceName = deviceName
+  }
+  if (Object.keys(patch).length) {
+    writeDaemonConfig(patch)
+  }
+  return { deviceId, deviceName }
+}
+
+function safeHostname() {
+  try {
+    return os.hostname()
+  } catch {
+    return ''
+  }
+}
+
+// The status snapshot the settings block reads (IPC) + we push on transitions.
+// Derives the single label via the pure helper; never leaks the token.
+function daemonStatusSnapshot() {
+  const config = readDaemonConfig()
+  return {
+    status: deriveDaemonStatus({
+      enabled: config.enabled,
+      registered: daemonRuntime.registered,
+      connected: daemonRuntime.connected,
+      lastError: daemonRuntime.lastError
+    }),
+    enabled: config.enabled,
+    deviceName: config.deviceName || daemonDefaultDeviceName(safeHostname()),
+    deviceId: config.deviceId,
+    registered: daemonRuntime.registered,
+    connected: daemonRuntime.connected,
+    lastError: daemonRuntime.lastError
+  }
+}
+
+function pushDaemonStatus() {
+  try {
+    mainWindow?.webContents.send('hermes:daemon:status', daemonStatusSnapshot())
+  } catch {
+    // best effort — the renderer also pulls the snapshot on mount
+  }
+}
+
+// Allowlist-gate one daemon URL (login JWT / device token travel here). A URL
+// that fails apex-nodes.com/loopback is refused outright — logged, not called.
+function guardedDaemonUrl(url) {
+  if (isAllowedDaemonUrl(url)) {
+    return url
+  }
+  rememberLog(`[daemon] refusing call to non-allowlisted URL: ${url}`)
+  return null
+}
+
+// Register (or re-register → token rotation) this device with the login JWT.
+// Persists the fresh token encrypted. Returns { ok } or { ok:false, needsSignIn }.
+async function daemonRegister() {
+  const managed = resolveManagedConfig()
+  const jwt = String(managed.accessToken || '').trim()
+  if (!jwt) {
+    daemonRuntime.lastError = 'NOT_SIGNED_IN'
+    return { ok: false, needsSignIn: true }
+  }
+  const { deviceId, deviceName } = ensureDaemonIdentity()
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).registerUrl)
+  if (!url) {
+    daemonRuntime.lastError = 'REQUEST_FAILED'
+    return { ok: false }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(url, { body: buildRegisterBody({ deviceId, deviceName }), bearer: jwt })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      daemonRuntime.lastError = 'SESSION_EXPIRED'
+      return { ok: false, needsSignIn: true }
+    }
+    rememberLog(`[daemon] register failed: ${error && error.message ? error.message : error}`)
+    daemonRuntime.lastError = 'REQUEST_FAILED'
+    return { ok: false }
+  }
+  const parsed = parseRegisterResponse(body)
+  if (!parsed) {
+    rememberLog('[daemon] register response malformed')
+    daemonRuntime.lastError = 'REQUEST_FAILED'
+    return { ok: false }
+  }
+  daemonToken = parsed.token
+  try {
+    writeDaemonConfig({ token: parsed.token, serverId: parsed.serverId })
+  } catch (error) {
+    // No keychain → we won't persist a plaintext token. The in-memory token
+    // still works this session; a restart re-registers.
+    rememberLog(`[daemon] token not persisted (keychain): ${error && error.message ? error.message : 'unavailable'}`)
+  }
+  daemonRuntime.registered = true
+  daemonRuntime.lastError = ''
+  rememberLog('[daemon] device registered (token rotated)')
+  return { ok: true }
+}
+
+// One heartbeat (device token). Returns { ok, tokenDead }. A 401 means the token
+// was rotated/revoked cloud-side → the caller re-registers.
+async function daemonHeartbeatOnce() {
+  if (!daemonToken) {
+    return { ok: false, tokenDead: true }
+  }
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).heartbeatUrl)
+  if (!url) {
+    return { ok: false }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(url, { body: {}, bearer: daemonToken })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, tokenDead: true }
+    }
+    return { ok: false }
+  }
+  return { ok: parseHeartbeatResponse(body).online === true }
+}
+
+// One poll (device token). Returns the raw task object or null. A 401 signals a
+// dead token to the caller.
+async function daemonPollOnce() {
+  if (!daemonToken) {
+    return { task: null, tokenDead: true }
+  }
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).pollUrl)
+  if (!url) {
+    return { task: null }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(url, { body: {}, bearer: daemonToken })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { task: null, tokenDead: true }
+    }
+    return { task: null, error: true }
+  }
+  return { task: parsePollResponse(body) }
+}
+
+// Post a task result (device token). 409 = already submitted (idempotent — the
+// task was claimed twice or a retry raced); treated as success. Never throws.
+async function submitDaemonTaskResult(taskId, resultBody) {
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = guardedDaemonUrl(bridgeResultUrl(endpoints.apiBase, taskId, process.env))
+  if (!url) {
+    return false
+  }
+  try {
+    await apexAuthPostJson(url, { body: resultBody, bearer: daemonToken })
+    return true
+  } catch (error) {
+    if (error && error.statusCode === 409) {
+      return true // already recorded
+    }
+    rememberLog(`[daemon] result submit failed for ${taskId}: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    return false
+  }
+}
+
+// Drive one local-agent job out-of-process via the venv python runner. Feeds the
+// job JSON on stdin, parses one result JSON from stdout. Resolves null on any
+// spawn/parse/timeout failure so the caller posts a clean runner_no_result.
+function runLocalAgentJob(job) {
+  return new Promise(resolve => {
+    const venvPython = getVenvPython(VENV_ROOT)
+    const pythonExe = fileExists(venvPython) ? venvPython : findSystemPython()
+    if (!pythonExe) {
+      rememberLog('[daemon] no python to run the local agent')
+      resolve(null)
+      return
+    }
+    let child
+    try {
+      child = spawn(pythonExe, ['-m', 'agent.coding_agents.run_once'], hiddenWindowsChildOptions({
+        cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env }
+      }))
+    } catch (error) {
+      rememberLog(`[daemon] runner spawn failed: ${error && error.message ? error.message : error}`)
+      resolve(null)
+      return
+    }
+    let stdout = ''
+    let settled = false
+    const finish = value => {
+      if (settled) return
+      settled = true
+      clearTimeout(killTimer)
+      resolve(value)
+    }
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        /* already gone */
+      }
+      rememberLog('[daemon] runner timed out')
+      finish(null)
+    }, DAEMON_RUNNER_TIMEOUT_MS)
+    child.stdout.on('data', chunk => {
+      stdout += chunk.toString()
+    })
+    child.on('error', () => finish(null))
+    child.on('close', () => {
+      try {
+        finish(JSON.parse(stdout.trim()))
+      } catch {
+        finish(null)
+      }
+    })
+    try {
+      child.stdin.write(JSON.stringify(job))
+      child.stdin.end()
+    } catch {
+      finish(null)
+    }
+  })
+}
+
+// Claim → execute → post-back for one polled task. A payload the daemon rejects
+// (bad kind / unsupported family / missing prompt) is failed immediately without
+// spawning. permission_required flows through untouched: the cloud turns it into
+// a Feishu notice; the daemon NEVER auto-approves.
+async function handleDaemonTask(rawTask) {
+  const envelope = parseTaskEnvelope(rawTask)
+  if (!envelope) {
+    rememberLog('[daemon] skipping malformed task envelope')
+    return
+  }
+  const { taskId, payload } = envelope
+  const parsed = parseLocalAgentRunPayload(payload)
+  if (!parsed.ok) {
+    rememberLog(`[daemon] rejecting task ${taskId}: ${parsed.reason}`)
+    await submitDaemonTaskResult(taskId, buildInvalidTaskResult(parsed.reason))
+    return
+  }
+  rememberLog(`[daemon] running task ${taskId} (family=${parsed.job.family})`)
+  const runnerResult = await runLocalAgentJob(parsed.job)
+  const resultBody = buildResultSubmitBody(runnerResult)
+  await submitDaemonTaskResult(taskId, resultBody)
+  rememberLog(`[daemon] task ${taskId} → ${resultBody.status}`)
+}
+
+// Connection loop (self-scheduling): keep a live token + heartbeat. Reschedules
+// at the heartbeat cadence on success, or with capped exponential backoff on
+// failure (断线指数退避重连). Stops itself when the daemon is disabled/stopped.
+async function daemonConnectionTick() {
+  if (!daemonRuntime.started) {
+    return
+  }
+  let delay = DAEMON_HEARTBEAT_INTERVAL_MS
+  if (!daemonToken) {
+    const reg = await daemonRegister()
+    if (!reg.ok) {
+      if (reg.needsSignIn) {
+        // No usable JWT — stop hammering; the user must sign in. Timers idle
+        // until re-enabled / signed in; status shows ERROR.
+        daemonRuntime.connected = false
+        pushDaemonStatus()
+        stopDaemonTimers()
+        return
+      }
+      daemonRuntime.connected = false
+      pushDaemonStatus()
+      delay = daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 })
+      scheduleDaemonConnection(delay)
+      return
+    }
+  }
+  const hb = await daemonHeartbeatOnce()
+  if (hb.tokenDead) {
+    daemonToken = ''
+    daemonRuntime.registered = false
+    daemonRuntime.connected = false
+    pushDaemonStatus()
+    scheduleDaemonConnection(daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 }))
+    return
+  }
+  if (hb.ok) {
+    daemonRuntime.connected = true
+    daemonRuntime.connAttempt = 0
+    daemonRuntime.lastError = ''
+  } else {
+    daemonRuntime.connected = false
+    delay = daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 })
+  }
+  pushDaemonStatus()
+  scheduleDaemonConnection(delay)
+}
+
+// Poll loop (self-scheduling): claim + run one task when connected and idle.
+async function daemonPollTick() {
+  if (!daemonRuntime.started) {
+    return
+  }
+  let delay = DAEMON_POLL_INTERVAL_MS
+  if (daemonRuntime.connected && daemonToken && !daemonRuntime.busy) {
+    const { task, tokenDead, error } = await daemonPollOnce()
+    if (tokenDead) {
+      // The connection loop re-registers; just back off polling briefly.
+      delay = DAEMON_POLL_INTERVAL_MS
+    } else if (error) {
+      delay = daemonNextBackoffMs(daemonRuntime.pollAttempt++, { baseMs: 2000, capMs: 30000 })
+    } else {
+      daemonRuntime.pollAttempt = 0
+      if (task) {
+        daemonRuntime.busy = true
+        try {
+          await handleDaemonTask(task)
+        } catch (err) {
+          rememberLog(`[daemon] task handling error: ${err && err.message ? err.message : err}`)
+        } finally {
+          daemonRuntime.busy = false
+        }
+      }
+    }
+  }
+  scheduleDaemonPoll(delay)
+}
+
+function scheduleDaemonConnection(delay) {
+  if (!daemonRuntime.started) return
+  clearTimeout(daemonRuntime.connLoopTimer)
+  daemonRuntime.connLoopTimer = setTimeout(() => {
+    void daemonConnectionTick()
+  }, delay)
+}
+
+function scheduleDaemonPoll(delay) {
+  if (!daemonRuntime.started) return
+  clearTimeout(daemonRuntime.pollLoopTimer)
+  daemonRuntime.pollLoopTimer = setTimeout(() => {
+    void daemonPollTick()
+  }, delay)
+}
+
+function stopDaemonTimers() {
+  clearTimeout(daemonRuntime.connLoopTimer)
+  clearTimeout(daemonRuntime.pollLoopTimer)
+  daemonRuntime.connLoopTimer = null
+  daemonRuntime.pollLoopTimer = null
+}
+
+// Start the daemon (idempotent). Loads the persisted token, then kicks the two
+// loops immediately. No-op unless enabled.
+function startLocalAgentDaemon() {
+  const config = readDaemonConfig()
+  if (!config.enabled) {
+    return
+  }
+  if (daemonRuntime.started) {
+    return
+  }
+  daemonRuntime.started = true
+  daemonRuntime.connAttempt = 0
+  daemonRuntime.pollAttempt = 0
+  daemonRuntime.lastError = ''
+  daemonToken = config.token || ''
+  daemonRuntime.registered = Boolean(daemonToken)
+  rememberLog('[daemon] starting local-agent scheduler (enabled)')
+  scheduleDaemonConnection(0)
+  scheduleDaemonPoll(DAEMON_POLL_INTERVAL_MS)
+  pushDaemonStatus()
+}
+
+// Stop the loops (dormant). Keeps the persisted registration/token so a re-enable
+// resumes without re-registering.
+function stopLocalAgentDaemon() {
+  stopDaemonTimers()
+  daemonRuntime.started = false
+  daemonRuntime.connected = false
+  pushDaemonStatus()
+}
+
+// Boot hook: start only if the user previously opted in. Fire-and-forget.
+function startLocalAgentDaemonOnBoot() {
+  try {
+    startLocalAgentDaemon()
+  } catch (error) {
+    rememberLog(`[daemon] boot start failed: ${error && error.message ? error.message : error}`)
+  }
+}
+
+// Fetch the signed-in user's Feishu credential from the cloud and persist it
+// (encrypted). Authenticates with the STORED login JWT (the same encrypted JWT
+// the managed self-heal reuses) — no re-login needed for a user already signed in
+// to managed. Returns a status object the IPC layer relays to the renderer:
+//   { ok, hasEntry, agentName, domain, credentialStatus, needsSignIn?, message? }
+// NEVER throws; a fetch failure resolves ok:false with a message. The secret is
+// never logged — only counts/flags are.
+async function fetchAndStoreFeishuCredentials() {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    // No stored JWT → the user must sign in (managed) first; the renderer opens
+    // the sign-in / web flow. Not an error — an expected pre-condition.
+    return { ok: false, needsSignIn: true, hasEntry: false, message: 'NOT_SIGNED_IN' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  let body
+  try {
+    body = await apexAuthGetJson(feishuCredentialsUrl(endpoints.apiBase), { bearer: token })
+  } catch (error) {
+    // A 401 means the stored JWT expired → treat as "needs sign-in" so the
+    // renderer routes the user back through login; other errors are transient.
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, hasEntry: false, message: 'SESSION_EXPIRED' }
+    }
+    rememberLog(`[feishu-bridge] credential fetch failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, hasEntry: false, message: 'FETCH_FAILED' }
+  }
+
+  const parsed = parseFeishuCredentialsResponse(body)
+  if (!parsed) {
+    rememberLog('[feishu-bridge] credential response malformed')
+    return { ok: false, hasEntry: false, message: 'FETCH_FAILED' }
+  }
+
+  if (!parsed.hasEntry) {
+    // The user has not bound a Feishu app in the cloud yet — clear any stale
+    // local credential and tell the renderer to guide them into the web flow.
+    clearFeishuConfig()
+    rememberLog('[feishu-bridge] no cloud Feishu entry for this user; guiding to web binding')
+    return { ok: true, hasEntry: false, credentialStatus: parsed.credentialStatus }
+  }
+
+  writeFeishuConfig(parsed)
+  rememberLog(
+    `[feishu-bridge] synced Feishu credential (app ${parsed.appId}, domain ${parsed.domain}, status ${parsed.credentialStatus || 'unknown'})`
+  )
+  return {
+    ok: true,
+    hasEntry: true,
+    agentName: parsed.agentName,
+    domain: parsed.domain,
+    credentialStatus: parsed.credentialStatus
   }
 }
 
@@ -4813,6 +6001,85 @@ async function refreshClientConfigFromPlatform(reason) {
     rememberLog(`[client-config] stored platform config v${fetched.version} (${reason})`)
   } catch (error) {
     rememberLog(`[client-config] refresh failed (ignored): ${error && error.message ? error.message : error}`)
+  }
+}
+
+// ── Platform SKILL distribution (apex-platform-skills.cjs) ──────────────────
+// The desktop bundle ships zero platform skills. We pull the platform SKILL
+// family (JWT-authed GET /api/v1/desktop/platform-skills) at boot and after
+// every successful managed sign-in, and write it under HERMES_HOME/skills/
+// apexnodes/ — the runtime's native categorized skill layout — so a desktop
+// agent gains the same steering SKILLs a cloud agent has (notably
+// douyin-video-transcript: forces social_download instead of a browser hard-
+// scrape, the A-10 fix). Fail-soft: any failure leaves the installed set intact.
+
+function readPlatformSkillsState() {
+  try {
+    const raw = fs.readFileSync(DESKTOP_PLATFORM_SKILLS_PATH, 'utf8')
+    return normalizeStoredManifest(JSON.parse(raw))
+  } catch {
+    return normalizeStoredManifest(null)
+  }
+}
+
+function writePlatformSkillsState(next) {
+  fs.mkdirSync(path.dirname(DESKTOP_PLATFORM_SKILLS_PATH), { recursive: true })
+  writeFileAtomic(DESKTOP_PLATFORM_SKILLS_PATH, JSON.stringify(next, null, 2))
+}
+
+// Pull the platform SKILL manifest and (re)install it when the hash changed.
+// Non-blocking by contract (callers `void` it), bounded (~12s), and never throws
+// — any error only logs and leaves the installed skills untouched.
+async function refreshPlatformSkillsFromPlatform(reason) {
+  try {
+    const skillsRoot = path.join(HERMES_HOME, 'skills')
+
+    // Feature switch OFF → revert to the no-platform-SKILL state (idempotent)
+    // and clear the cache so a later re-enable re-pulls from scratch.
+    if (!isPlatformSkillsEnabled(process.env)) {
+      const { removed } = removePlatformSkills({ log: msg => rememberLog(msg), skillsRoot })
+      if (removed || readPlatformSkillsState().manifestHash) {
+        writePlatformSkillsState({ count: 0, installedAt: Date.now(), manifestHash: '' })
+      }
+      rememberLog(`[platform-skills] disabled via APEXNODES_PLATFORM_SKILLS; reverted (${reason})`)
+      return
+    }
+
+    const token = String(resolveManagedConfig().accessToken || '').trim()
+    if (!token) {
+      rememberLog(`[platform-skills] no login JWT on hand; skipping (${reason})`)
+      return
+    }
+
+    const stored = readPlatformSkillsState()
+    const fetched = await fetchPlatformSkills({
+      apiBase: apexApiBase(),
+      fetchJson: apexAuthGetJson,
+      knownHash: stored.manifestHash,
+      log: msg => rememberLog(msg),
+      timeoutMs: 12_000,
+      token
+    })
+    if (!fetched) return // offline / 401 / garbage → installed set stands
+    if (fetched.unchanged) {
+      rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
+      return
+    }
+    if (!shouldApplyManifest(fetched.manifestHash, stored.manifestHash)) {
+      rememberLog(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
+      return
+    }
+
+    const result = applyPlatformSkills({ log: msg => rememberLog(msg), skills: fetched.skills, skillsRoot })
+    writePlatformSkillsState({ count: result.installed.length, installedAt: Date.now(), manifestHash: fetched.manifestHash })
+    rememberLog(
+      `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
+    )
+    if (result.skippedUnsafe.length) {
+      rememberLog(`[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`)
+    }
+  } catch (error) {
+    rememberLog(`[platform-skills] refresh failed (ignored): ${error && error.message ? error.message : error}`)
   }
 }
 
@@ -5020,6 +6287,9 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 } = {}) {
           reject(err)
           return
         }
+        // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
+        // the stored token forward (best-effort; persist gates on being signed in).
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
         if (!text) {
           resolve(null)
           return
@@ -5039,6 +6309,270 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 } = {}) {
     if (payload) request.write(payload)
     request.end()
   })
+}
+
+// Bearer-authed body-less JSON request (GET / DELETE) — the read/revoke
+// counterpart to apexAuthPostJson (same electronNet transport + explicit
+// timeout + statusCode on the rejection). A >=400 rejects with an Error
+// carrying `.statusCode` so the caller can distinguish 401 (expired JWT →
+// re-login) from a transient failure.
+function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 } = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch (error) {
+      reject(new Error(`Invalid ApexNodes URL: ${error.message}`))
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      reject(new Error(`Unsupported ApexNodes URL protocol: ${parsed.protocol}`))
+      return
+    }
+
+    const request = electronNet.request({ method, url, redirect: 'follow' })
+    request.setHeader('Accept', 'application/json')
+    if (bearer) {
+      request.setHeader('Authorization', `Bearer ${bearer}`)
+    }
+
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      try {
+        request.abort()
+      } catch {
+        // already finished
+      }
+      reject(new Error(`Timed out connecting to ApexNodes after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    request.on('response', res => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      res.on('end', () => {
+        if (timedOut) return
+        clearTimeout(timer)
+        const text = Buffer.concat(chunks).toString('utf8')
+        const statusCode = res.statusCode || 500
+        if (statusCode >= 400) {
+          const err = new Error(`${statusCode}: ${text || ''}`)
+          err.statusCode = statusCode
+          reject(err)
+          return
+        }
+        // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
+        // the stored token forward (best-effort; persist gates on being signed in).
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        if (!text) {
+          resolve(null)
+          return
+        }
+        try {
+          resolve(JSON.parse(text))
+        } catch {
+          reject(new Error(`Invalid JSON from ${url} (status ${statusCode}): ${text.slice(0, 200)}`))
+        }
+      })
+    })
+    request.on('error', error => {
+      if (timedOut) return
+      clearTimeout(timer)
+      reject(error)
+    })
+    request.end()
+  })
+}
+
+function apexAuthGetJson(url, opts) {
+  return apexAuthBodylessJson('GET', url, opts)
+}
+
+// DELETE counterpart — used by the hc-417 IM 入口 unbind to revoke the Desktop
+// anchor's cloud-side Feishu binding (DELETE /api/v1/desktop/feishu/entry).
+function apexAuthDeleteJson(url, opts) {
+  return apexAuthBodylessJson('DELETE', url, opts)
+}
+
+// Probe the relay's OpenAI-compatible model listing with a Bearer relay key —
+// the SAME `GET {base_url}/v1/models` the runtime's model picker calls to build
+// its live "APEX-NODES.COM" model group. We only need the status code: 401/403
+// means the stored relay key is dead (rotated out) and the picker list has
+// collapsed; that is the self-heal trigger. Returns { ok, statusCode }; on a
+// timeout / network error resolves { ok:false, statusCode:0 } (NOT an auth
+// failure — we must not re-provision on a transient outage). Mirrors
+// apexAuthPostJson's transport (electronNet + explicit timeout), GET + no body.
+//
+// base_url already ends at the relay `/v1` segment (see DEFAULT_RELAY_BASE_URL),
+// so the listing path is `${base_url}/models`.
+function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 } = {}) {
+  return new Promise(resolve => {
+    const base = String(baseUrl || '').trim().replace(/\/+$/, '')
+    const relayKey = String(key || '').trim()
+    if (!base || !relayKey) {
+      resolve({ ok: false, statusCode: 0 })
+      return
+    }
+    const url = `${base}/models`
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch {
+      resolve({ ok: false, statusCode: 0 })
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      resolve({ ok: false, statusCode: 0 })
+      return
+    }
+
+    let settled = false
+    const done = result => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
+    request.setHeader('Authorization', `Bearer ${relayKey}`)
+    request.setHeader('Accept', 'application/json')
+
+    const timer = setTimeout(() => {
+      try {
+        request.abort()
+      } catch {
+        // already finished
+      }
+      done({ ok: false, statusCode: 0 })
+    }, timeoutMs)
+
+    request.on('response', res => {
+      const statusCode = res.statusCode || 0
+      // Drain so the socket can be reused/closed cleanly; body is irrelevant.
+      res.on('data', () => {})
+      res.on('end', () => done({ ok: statusCode >= 200 && statusCode < 400, statusCode }))
+    })
+    request.on('error', () => done({ ok: false, statusCode: 0 }))
+    request.end()
+  })
+}
+
+// Timestamp (ms) of the last self-heal re-provision ATTEMPT — module-level so the
+// anti-storm cooldown (shouldAttemptReprovision) survives across boot probes
+// within one app run. Reset only by restarting the app; a genuine rotation heals
+// on the first attempt, so the cooldown only matters when re-provision keeps
+// failing (expired JWT / provision-key down), which must not loop.
+let lastManagedReprovisionAttemptAt = 0
+
+// hc-512: last known state of the relay's live model catalog, from the same
+// `GET {base_url}/v1/models` probe the runtime's picker uses. The runtime's own
+// probe failure is SILENT (its APEX picker row just shrinks to the configured
+// sentinel), so the shell keeps this explicit answer to "why is the live list
+// missing?" for the renderer's model menu (`hermes:managed:relayCatalog`).
+// status: 'unknown' (never probed / not applicable) | 'ok' | 'unauthorized' |
+// 'unreachable'; checkedAt: ms timestamp of the last probe (0 = never).
+let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+
+// Probe the relay model listing with the CURRENT stored key and remember the
+// classified outcome. Shared by the boot self-heal and the renderer's
+// on-demand catalog-state IPC. Resolves to the remembered state. Not managed /
+// no key → 'unknown' (BYOK installs never probe).
+async function probeRelayCatalogState() {
+  const managed = resolveManagedConfig()
+  if (!isManagedEnabled(process.env) || !managed.key || !managed.baseUrl) {
+    lastRelayCatalogState = { status: 'unknown', checkedAt: Date.now() }
+    return lastRelayCatalogState
+  }
+  const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
+  lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
+  return lastRelayCatalogState
+}
+
+// Boot self-heal: if the stored relay key is dead (relay /v1/models → 401/403),
+// re-provision it in place using the stored login JWT, then re-sync the
+// custom_providers entry so the model picker's live listing recovers THIS launch
+// — fixing the "过几天列表缩水到只剩一个" bug without a manual re-login.
+//
+// Gated + rate-limited via the pure shouldAttemptReprovision (managed enabled +
+// relay key present + login JWT present + cooldown elapsed), so BYOK / signed-out
+// / env-key installs are strict no-ops. A probe that is anything other than a
+// clean 401/403 (2xx, 5xx, timeout, offline) does NOTHING — we never burn the
+// re-provision on a key that is actually fine or a relay that is merely down.
+// If provision-key itself 401s (the stored JWT has also expired), we stop and
+// log; re-login UX is the existing sign-in flow's job, not a popup storm.
+//
+// Fire-and-forget from the boot path (app.whenReady, alongside the client-config
+// boot sync); never blocks the gateway spawn and only ever logs on failure.
+// Returns a structured outcome so the on-demand caller (a renderer-reported
+// runtime 401, hermes:managed:selfHeal) can act on it — apply + retry when
+// healed, or route to re-sign-in when there is no reusable login token. The
+// boot caller ignores the return (fire-and-forget). Shape:
+//   { ok, relayUnauthorized, healed, hasToken }
+//   - relayUnauthorized=false → relay accepted the key (or managed off / no
+//     key): nothing to heal, not a managed-relay auth problem.
+//   - relayUnauthorized=true, healed=true → fresh key minted + config re-synced.
+//   - relayUnauthorized=true, healed=false, hasToken=false → seed/env key or a
+//     cleared token: can't re-provision, the user must sign in again.
+//   - relayUnauthorized=true, healed=false, hasToken=true → the stored JWT is
+//     itself expired (provision-key rejected it) — sign in again.
+async function selfHealManagedKeyOn401() {
+  try {
+    const managed = resolveManagedConfig()
+    if (!isManagedEnabled(process.env)) return { ok: true, relayUnauthorized: false }
+    if (!managed.key || !managed.baseUrl) return { ok: true, relayUnauthorized: false }
+
+    // Cheap probe of the exact listing the picker uses. Remember the outcome
+    // for the renderer's model-menu catalog state (hc-512); only a hard auth
+    // rejection is actionable for the self-heal itself (hc-511) — a 2xx/5xx/
+    // offline probe heals nothing and (for an on-demand call) tells the
+    // renderer this wasn't a relay-auth failure.
+    const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
+    lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
+    if (!isRelayUnauthorized(probe.statusCode)) return { ok: true, relayUnauthorized: false }
+
+    const hasToken = Boolean(managed.accessToken)
+    if (
+      !shouldAttemptReprovision({
+        enabled: true,
+        hasKey: Boolean(managed.key),
+        hasToken,
+        lastAttemptAt: lastManagedReprovisionAttemptAt,
+        now: Date.now()
+      })
+    ) {
+      if (!hasToken) {
+        rememberLog(
+          '[apexnodes] relay key rejected (401) but no stored login token to re-provision with; ' +
+            'sign in again to refresh (self-heal skipped).'
+        )
+      }
+      return { ok: true, relayUnauthorized: true, healed: false, hasToken }
+    }
+
+    lastManagedReprovisionAttemptAt = Date.now()
+    rememberLog('[apexnodes] relay key rejected (401); auto re-provisioning with stored login token…')
+    // Re-run the SAME provision chain the sign-in routes use: mints a fresh relay
+    // key (server rotates), persists it (+ the — possibly unchanged — JWT), and
+    // syncs the custom_providers entry. A stored account keeps the panel intact.
+    const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
+    if (result && result.hasRelayKey) {
+      // Fresh key minted + synced — the live catalog is reachable again.
+      lastRelayCatalogState = { status: 'ok', checkedAt: Date.now() }
+      rememberLog('[apexnodes] relay key self-heal succeeded; model picker list restored.')
+      return { ok: true, relayUnauthorized: true, healed: true, hasToken: true }
+    }
+    // provision-key returned no key: JWT expired (401) or endpoint unavailable.
+    // Stop here — the cooldown prevents a retry storm; the user re-logs in via
+    // the normal flow when the token is truly dead.
+    rememberLog(
+      '[apexnodes] relay key self-heal could not re-provision (login token likely expired); ' +
+        'sign in again to refresh.'
+    )
+    return { ok: true, relayUnauthorized: true, healed: false, hasToken: true }
+  } catch (error) {
+    rememberLog(`[apexnodes] relay key self-heal skipped: ${error && error.message ? error.message : error}`)
+    return { ok: false, relayUnauthorized: false, healed: false, hasToken: false }
+  }
 }
 
 // Shared post-auth path for EVERY managed sign-in route (email/password,
@@ -5087,7 +6621,9 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
       name: provisioned.name || resolvedAccount.name,
       plan: provisioned.plan || resolvedAccount.plan
     }
-    writeManagedConfig({ ...provisioned, account: account2 })
+    // Persist the login JWT (encrypted) alongside the fresh relay key so the boot
+    // 401-self-heal can silently re-provision if this key is later rotated out.
+    writeManagedConfig({ ...provisioned, account: account2, accessToken: token })
     // A re-login just ROTATED the relay key — refresh the registered custom
     // provider entry immediately so the model picker's live listing doesn't
     // run on the dead key until the next app restart.
@@ -5096,11 +6632,17 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
     // (contract: check at boot AND after every successful sign-in).
     // Fire-and-forget — provisioning must not wait on it.
     void refreshClientConfigFromPlatform('sign-in')
+    // Same sync point for the platform SKILL family (pull → install under
+    // HERMES_HOME/skills/apexnodes/). Fire-and-forget; must not block sign-in.
+    void refreshPlatformSkillsFromPlatform('sign-in')
     return { ok: true, hasRelayKey: true }
   }
   // Sign-in itself succeeded (valid token) even though provisioning fell back
   // to BYOK — still a sync point for the platform client config.
   void refreshClientConfigFromPlatform('sign-in')
+  // A valid token still lets us pull the platform SKILL family even when
+  // provisioning fell back to BYOK (the SKILLs are independent of the relay key).
+  void refreshPlatformSkillsFromPlatform('sign-in')
   return { ok: true, hasRelayKey: false }
 }
 
@@ -5743,6 +7285,17 @@ async function spawnPoolBackend(profile, entry) {
         ...process.env,
         HERMES_HOME,
         ...backend.env,
+        // hc-444: inject the signed-in user's mirrored Feishu credential
+        // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
+        // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
+        // {} (no keys) when not connected; add-only vs an explicit parent-env
+        // credential.
+        ...desktopFeishuSpawnEnv(),
+        // hc-417: inject any IM 入口 channel binding (feishu first) — decrypted
+        // just in time. Spread AFTER the hc-444 bridge so an hc-417 feishu app
+        // wins the FEISHU_* keys → only one Feishu app credential reaches the
+        // runtime (the dual-app WS collision the spike warned about can't happen).
+        ...desktopImEntrySpawnEnv(),
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
@@ -5963,6 +7516,16 @@ async function startHermes() {
           // can't reliably do that, so we set it inline for every spawn.
           HERMES_HOME,
           ...backend.env,
+          // hc-444: inject the signed-in user's mirrored Feishu credential
+          // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
+          // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
+          // {} (no keys) when not connected; add-only vs an explicit parent-env
+          // credential.
+          ...desktopFeishuSpawnEnv(),
+          // hc-417: IM 入口 channel binding injection — see the primary spawn
+          // site above. Spread after the hc-444 bridge for the same collision
+          // guarantee.
+          ...desktopImEntrySpawnEnv(),
           TERMINAL_CWD: hermesCwd,
           HERMES_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -6414,10 +7977,18 @@ ipcMain.handle('hermes:runtime:version', async () => {
     const commit = (marker && marker.pinnedCommit) || null
     const branch = (marker && marker.pinnedBranch) || null
     const version = (marker && marker.version) || null
-    return { ok: true, version, commit, branch, key: commit || branch || null }
+    // hc-532 (gate 1): compare the installed engine against the shell's declared
+    // minimum. engineMeetsMinVersion FAILS OPEN (unparseable/absent -> true), so
+    // meetsMinEngine is false ONLY when we can positively say the engine is
+    // behind. The renderer uses false to show an "engine needs update" prompt —
+    // it never blocks usage.
+    const minEngineVersion = readDeclaredMinEngineVersion()
+    const meetsMinEngine = engineMeetsMinVersion(version, minEngineVersion)
+    return { ok: true, version, commit, branch, key: commit || branch || null, minEngineVersion, meetsMinEngine }
   } catch (error) {
     rememberLog(`[runtime-update] version read errored: ${error && error.message}`)
-    return { ok: false, version: null, commit: null, branch: null, key: null }
+    // Fail open on the gate too: an unexpected read error must not nag.
+    return { ok: false, version: null, commit: null, branch: null, key: null, minEngineVersion: null, meetsMinEngine: true }
   }
 })
 
@@ -6429,6 +8000,9 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
       marker: readBootstrapMarker(),
+      // hc-475 (F4): pass the running shell version so the check can gate an
+      // engine that requires a newer desktop (surfaces desktopUpgradeRequired).
+      desktopVersion: app.getVersion(),
       log: msg => rememberLog(msg)
     })
     return { ok: true, ...result }
@@ -6469,6 +8043,89 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
     if (!versionMoved) {
       return { ok: true, applied: false, alreadyCurrent: true, latest: { version: pin.version, key: pin.key } }
     }
+  }
+
+  // 2a. hc-475 (F4): shell↔runtime compatibility gate — the SINGLE hard refuse
+  //     covering BOTH the bundle path (2b) and the legacy re-bootstrap path (3-4),
+  //     BEFORE any apply work. If the admin-latest engine declares a
+  //     min_desktop_version this shell is too old to satisfy, refuse and tell the
+  //     user to upgrade the desktop app first. This is the version-level gate (the
+  //     whole engine version) — distinct from, and evaluated ahead of, the
+  //     per-bundle manifest gate the bundle flow also enforces. No gate /
+  //     satisfied / unparseable version -> proceed unchanged (fail open).
+  const shellVersion = app.getVersion()
+  if (!desktopMeetsMinVersion(shellVersion, pin.minDesktopVersion)) {
+    rememberLog(
+      `[runtime-update] refusing apply: engine ${pin.version || pin.key} requires desktop >= ` +
+        `${pin.minDesktopVersion}, shell is ${shellVersion}`
+    )
+    return {
+      ok: false,
+      error: 'min_desktop_version',
+      required: pin.minDesktopVersion,
+      current: shellVersion,
+      latest: { version: pin.version, key: pin.key }
+    }
+  }
+
+  // 2b. hc-472 opt-in: when HERMES_BUNDLE_MODE is on, apply via the versioned
+  //     bundle set (download → sha gate → never-in-place stage/verify → atomic
+  //     pointer+link switch). Its own manifest fetch IS the reachability proof,
+  //     so this runs BEFORE the legacy tarball reachability check. A min-desktop
+  //     incompatibility is a hard stop (拒装+提示); any other failure falls
+  //     through to the legacy re-bootstrap path below (the design回退 contract).
+  if (bundleModeEnabled()) {
+    rememberLog(`[bundle] apply-update via bundle set: key=${pin.key} version=${pin.version || '?'}`)
+    const result = await applyRuntimeBundleUpdateFlow(pin)
+    if (result.ok) {
+      // Stamp the bootstrap-complete marker into the freshly-activated version
+      // (design §4 step 4) so the next boot treats the switched runtime as good
+      // and does NOT re-run install.ps1. The link already points at versions/<key>.
+      try {
+        writeBootstrapMarker({
+          pinnedCommit: result.runtimeCommit || pin.commit || pin.key,
+          pinnedBranch: pin.branch,
+          version: pin.version
+        })
+      } catch (error) {
+        rememberLog(`[bundle] switched but failed to stamp marker: ${error && error.message}`)
+      }
+      bootstrapFailure = null
+      resetHermesConnection()
+      return {
+        ok: true,
+        applied: true,
+        via: 'bundle',
+        reloadRequired: true,
+        latest: { version: pin.version, key: pin.key, compatibilityNotes: pin.compatibilityNotes }
+      }
+    }
+    if (result.code === 'min_desktop_version') {
+      rememberLog(`[bundle] refusing update: ${result.error}`)
+      return {
+        ok: false,
+        error: 'min_desktop_version',
+        required: result.required,
+        current: result.current,
+        latest: { version: pin.version, key: pin.key }
+      }
+    }
+    if (result.code === 'insufficient_disk') {
+      // Hard stop: the legacy chain re-bootstraps IN PLACE and needs even more
+      // disk, so falling back would only fail worse (and mutate a working
+      // runtime). Surface the readable precheck message (C2, design §8).
+      rememberLog(`[bundle] refusing update: ${result.error}`)
+      return {
+        ok: false,
+        error: 'insufficient_disk',
+        message: result.error,
+        freeBytes: result.freeBytes,
+        requiredBytes: result.requiredBytes,
+        latest: { version: pin.version, key: pin.key }
+      }
+    }
+    rememberLog(`[bundle] apply failed (${result.code}@${result.stage || '?'}); falling back to legacy install chain`)
+    // fall through to the legacy steps 3-4 below
   }
 
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
@@ -6581,7 +8238,19 @@ ipcMain.handle('hermes:managed:status', async () => {
   const account = managed.account || { email: '', name: '', plan: '' }
   return {
     enabled: isManagedEnabled(process.env),
+    // hc-519 rollback switch (default on): whether relay-auth loss drives the
+    // global login state (account-card degrade + startup/catalog self-heal). Off
+    // → hc-511 behavior (relay 401 only surfaced on a chat send). Exposed here so
+    // the renderer reads the same env the electron self-heal does.
+    loginStateTruth: isLoginStateTruthEnabled(process.env),
     signedIn: Boolean(managed.key),
+    // True only when a reusable login JWT is on disk — i.e. a real cloud
+    // sign-in that CAN self-heal a rotated/expired relay key. A seeded/env key
+    // (e.g. a `*.local` release account or a CI-provisioned test key) has a
+    // relay key but no token: signedIn=true yet hasToken=false, so the UI can
+    // show an honest "not connected to platform" state instead of pretending a
+    // silent-failing account is a live managed sign-in.
+    hasToken: Boolean(managed.accessToken),
     // When signed in, reflect the server-provided routing (base_url/model);
     // otherwise the env/default for display.
     model: managed.model || endpoints.model,
@@ -6595,6 +8264,33 @@ ipcMain.handle('hermes:managed:status', async () => {
     plan: account.plan || ''
   }
 })
+
+// hc-512: live relay model-catalog state for the model menu. The runtime's own
+// live-catalog probe fails silently (its APEX picker row just shrinks to the
+// configured sentinel model), so the renderer asks the shell — which holds the
+// relay key — whether the catalog is actually reachable, and shows an explicit
+// "目录不可用" line instead of a silently-shrunk list. `refresh:true` re-probes
+// now (menu open / user retry); otherwise the remembered boot-probe state is
+// returned. A 401 kicks the existing self-heal chain (cooldown-gated inside),
+// then reports the healed state — so a menu retry can recover in one click.
+ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
+  try {
+    const refresh = Boolean(opts && opts.refresh)
+    if (refresh || !lastRelayCatalogState.checkedAt) {
+      await probeRelayCatalogState()
+      if (lastRelayCatalogState.status === 'unauthorized') {
+        // Same chain as boot: re-provision with the stored JWT when allowed
+        // (shouldAttemptReprovision gates + cools down inside), which flips
+        // the remembered state to 'ok' on success.
+        await selfHealManagedKeyOn401()
+      }
+    }
+  } catch (error) {
+    rememberLog(`[apexnodes] relay catalog probe failed: ${error && error.message ? error.message : error}`)
+  }
+  return { status: lastRelayCatalogState.status, checkedAt: lastRelayCatalogState.checkedAt }
+})
+
 // Shape a managed sign-in result into the IPC payload the renderer applies. When
 // a relay key was provisioned, build the assignment from the STORED provision
 // result (server-truth base_url + model), not env defaults. When provision-key
@@ -6691,11 +8387,576 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
     return { ok: false, message: managedSignInErrorMessage(error) }
   }
 })
+
+// hc-530: exchange a web-minted one-time handoff code for a login JWT. The code
+// (never a token) arrived over the apexnodes://login deep link; this is the only
+// extra network hop the deep-link sign-in adds — everything after reuses the
+// shared provision path. Unauthenticated by design: the code IS the credential.
+async function exchangeHandoffCodeForToken(code) {
+  const trimmed = String(code || '').trim()
+  if (!trimmed) {
+    throw new Error('Desktop handoff code missing.')
+  }
+  const endpoints = resolveApexEndpoints(process.env)
+  const body = await apexAuthPostJson(endpoints.handoffExchangeUrl, { body: { code: trimmed } })
+  const token = body && typeof body.access_token === 'string' ? body.access_token.trim() : ''
+  if (!token) {
+    throw new Error('Desktop handoff exchange did not return an access token.')
+  }
+  return token
+}
+
+// deepLinkSignIn: the web "在桌面端打开" handoff. The web app (already signed in)
+// minted a one-time code delivered over apexnodes://login?code=…; exchange it for
+// a login JWT, then run the SAME provision-key → assignment path as the
+// email/password and browser flows (no separate auth system).
+ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
+  const code = String(payload?.code || '').trim()
+  if (!code) {
+    // EMPTY_FIELDS marker → renderer keeps it on the login screen silently.
+    return { ok: false, message: 'EMPTY_FIELDS' }
+  }
+  try {
+    const token = await exchangeHandoffCodeForToken(code)
+    const result = await provisionManagedFromAccessToken(token)
+    return managedSignInResultPayload(result)
+  } catch (error) {
+    return { ok: false, message: managedSignInErrorMessage(error) }
+  }
+})
+
 // signOut: forget the relay key. The renderer is responsible for re-pointing the
 // model at a BYOK provider if the user wants to keep chatting.
 ipcMain.handle('hermes:managed:signOut', async () => {
   clearManagedRelayCredential()
   return { ok: true }
+})
+
+// selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat
+// turn fails with a relay auth error (HTTP 401/403). Runs the SAME gated probe +
+// re-provision as the boot self-heal and reports the outcome so the renderer can
+// either apply the fresh key + retry once (healed), or route to re-sign-in when
+// there is no reusable login token (a `*.local`/env seed key, or an expired JWT)
+// — turning a silent 401 loop into a visible, actionable state. Never throws.
+ipcMain.handle('hermes:managed:selfHeal', async () => {
+  const outcome = await selfHealManagedKeyOn401()
+  // Relay accepted the key (or managed off / no key): not a managed-relay auth
+  // problem — let the renderer's generic error path surface it.
+  if (!outcome || !outcome.relayUnauthorized) {
+    return { ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null }
+  }
+  if (outcome.healed) {
+    // Fresh key on disk + config.yaml re-synced; hand back the assignment so the
+    // renderer applies it via /api/model/set (same path as sign-in) and retries.
+    return {
+      ok: true,
+      relayUnauthorized: true,
+      healed: true,
+      needsSignIn: false,
+      assignment: managedSignInResultPayload({ hasRelayKey: true }).assignment
+    }
+  }
+  // Could not heal (no token, or the stored JWT is itself expired) → the user
+  // must sign in again. Honest, visible state instead of a silent 401 loop.
+  return { ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null }
+})
+
+// ── hc-444: Feishu bridge (renderer surface) ────────────────────────────────
+// status: read-only view of the LOCAL stored credential for the settings card —
+// no network, no secret. `connected` reflects a stored, injectable credential;
+// `signedIn` tells the card whether a managed sign-in exists (the prerequisite
+// for sync, since sync authenticates with the stored login JWT).
+ipcMain.handle('hermes:feishu:status', async () => {
+  const stored = resolveFeishuConfig()
+  const managed = resolveManagedConfig()
+  return {
+    connected: stored.connected,
+    signedIn: Boolean(String(managed.accessToken || '').trim()),
+    agentName: stored.agentName || '',
+    domain: stored.domain || '',
+    credentialStatus: stored.credentialStatus || '',
+    syncedAt: stored.syncedAt || null
+  }
+})
+
+// sync: fetch the signed-in user's cloud Feishu credential and persist it
+// (encrypted), then re-home the backend so the runtime boots with the new
+// FEISHU_* env and the Feishu adapter + lark tools come alive. On hasEntry=false
+// the renderer opens the web binding flow (openBind). On needsSignIn the renderer
+// routes the user through managed sign-in first. The backend restart only happens
+// when a credential was actually stored (hasEntry) — a no-op sync shouldn't churn
+// the runtime.
+ipcMain.handle('hermes:feishu:sync', async () => {
+  const result = await fetchAndStoreFeishuCredentials()
+  if (result.ok && result.hasEntry) {
+    // Re-home the local backend (same teardown+reload path as a profile switch)
+    // so the freshly-injected FEISHU_* env takes effect immediately.
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  }
+  return result
+})
+
+// disconnect: forget the local Feishu credential and restart the backend so the
+// adapter goes dark on the next boot. Does NOT touch the cloud entry (the user's
+// app binding stays intact for the cloud webhook line + other devices) — this is
+// a desktop-local un-sync only.
+ipcMain.handle('hermes:feishu:disconnect', async () => {
+  clearFeishuConfig()
+  await teardownPrimaryBackendAndWait()
+  mainWindow?.reload()
+  return { ok: true }
+})
+
+// openBind: open the cloud web binding flow in the system browser for a user who
+// has no Feishu app bound yet. China-first locale (matches apexWebLoginUrl's /zh
+// pin). After the user finishes binding in the browser, they press "Sync" back on
+// the card. Returns { ok } — the actual sync stays an explicit user action so we
+// never poll a browser tab we don't control.
+ipcMain.handle('hermes:feishu:openBind', async () => {
+  const endpoints = resolveApexEndpoints(process.env)
+  const url = `${endpoints.authBase}/zh/createbot`
+  const opened = openExternalUrl(url)
+  return { ok: opened, url }
+})
+
+// ── hc-417: Desktop IM 入口 (renderer surface) ──────────────────────────────
+// The IM 入口 page connects the local agent to an IM platform. feishu is the
+// first channel: an INDEPENDENT app is registered via the cloud v2 provisioning
+// endpoints (hermes-cloud app/routers/desktop.py — POST /desktop/feishu/provision,
+// GET .../provision/{id}, GET /desktop/feishu/credentials, DELETE
+// /desktop/feishu/entry; credential pinned to the user's Desktop anchor agent)
+// — NOT the hc-444 GET /desktop/feishu-credentials path, which reuses the
+// cloud agent's app and would collide on Feishu's WS cluster (spike finding).
+// The renderer owns the polling state machine; main exposes issue (one
+// provision start) + poll (one status check) + list + unbind. No secret ever
+// crosses to the renderer — list returns only display fields; the credential is
+// fetched main-side on success, persisted encrypted here and injected into the
+// backend spawn env.
+
+// list: display-only view of the local bindings (no network, no secret).
+ipcMain.handle('hermes:imEntry:list', async () => ({ channels: imEntryBoundList() }))
+
+// Resolve + allowlist-gate one hc-417 provisioning URL. These calls carry the
+// login JWT (and the credentials call receives an app secret), so a URL that
+// fails the apex-nodes.com/loopback allowlist is refused outright — logged as a
+// warning, surfaced to the renderer as a plain REQUEST_FAILED.
+function guardedFeishuProvisionUrl(url) {
+  if (isAllowedFeishuProvisionUrl(url)) {
+    return url
+  }
+  rememberLog(`[im-entry] refusing feishu provisioning call to non-allowlisted URL: ${url}`)
+  return null
+}
+
+// feishuIssue: start the cloud provisioning flow (hc-417 v2 contract —
+// POST /api/v1/desktop/feishu/provision). Authenticates with the stored managed
+// login JWT (same as the hc-444 bridge). Returns the scan link (qrUrl — the
+// renderer renders the QR locally) + the provision_id poll handle the renderer's
+// state machine drives. A 404 surfaces as SERVICE_UNAVAILABLE (endpoint rolled
+// back / older cloud), a 429 as RATE_LIMITED (another flow already in flight).
+// NEVER throws; the secret is never logged.
+ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { provisionUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
+  const guardedUrl = guardedFeishuProvisionUrl(provisionUrl)
+  if (!guardedUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(guardedUrl, { body: {}, bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      // The cloud provisioning endpoint isn't deployed → friendly "coming soon".
+      return { ok: false, message: 'SERVICE_UNAVAILABLE' }
+    }
+    if (error && error.statusCode === 429) {
+      // a2a audit P2-9: the cloud caps in-flight flows per user.
+      return { ok: false, message: 'RATE_LIMITED' }
+    }
+    rememberLog(`[im-entry] feishu provision failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const parsed = parseFeishuProvisionResponse(body)
+  if (!parsed) {
+    rememberLog('[im-entry] feishu provision response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  return { ok: true, ...parsed }
+})
+
+// feishuPoll: one provisioning status check for a given provisionId
+// (GET /api/v1/desktop/feishu/provision/{id} — v2 contract: the poll response
+// NEVER carries the credential). On 'success' it fetches the credential from
+// GET /api/v1/desktop/feishu/credentials, persists it ENCRYPTED, strips any
+// plaintext FEISHU_* .env overrides (P1 — .env loads with override=True and
+// would shadow the injection), and re-homes the backend so the Feishu adapter
+// comes alive. All other statuses return as-is so the renderer's machine
+// decides whether to keep polling / stop. A keychain failure fails the bind
+// cleanly (KEYCHAIN_UNAVAILABLE) — never a plaintext write. A restart failure
+// after the credential is safely stored still reports success (the binding IS
+// saved) with restartFailed so the UI tells the user to restart manually.
+ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+  const id = typeof provisionId === 'string' ? provisionId.trim() : ''
+  if (!id) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { provisionUrl, credentialsUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
+  const pollUrl = guardedFeishuProvisionUrl(feishuProvisionPollUrl(provisionUrl, id))
+  if (!pollUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let body
+  try {
+    body = await apexAuthGetJson(pollUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      // The flow is unknown/lost (scheduler restart, TTL sweep) — terminal for
+      // THIS flow; let the user start a fresh one instead of polling a ghost.
+      return { ok: true, status: 'expired' }
+    }
+    rememberLog(`[im-entry] feishu provision poll failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const { status } = parseFeishuProvisionStatusResponse(body)
+  if (status !== 'success') {
+    return { ok: true, status }
+  }
+
+  // success → the credential is persisted cloud-side; fetch it (separate call —
+  // the poll response never carries it) and store it encrypted.
+  const guardedCredentialsUrl = guardedFeishuProvisionUrl(credentialsUrl)
+  if (!guardedCredentialsUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let credentialsBody
+  try {
+    credentialsBody = await apexAuthGetJson(guardedCredentialsUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    // Transient — report a failed poll; the machine re-polls, the flow is
+    // already terminal 'success' cloud-side, and the next tick retries this
+    // fetch. NEVER log the body (it would carry the secret on a partial read).
+    rememberLog(`[im-entry] feishu credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const credential = parseFeishuCredentialsV2Response(credentialsBody)
+  if (!credential) {
+    rememberLog('[im-entry] feishu credentials response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const binding = shapeImEntryBinding('feishu', credential)
+  if (!binding) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  try {
+    writeImEntryBinding(binding)
+  } catch (error) {
+    // encryptDesktopSecret is strict — no keychain → no plaintext write.
+    rememberLog(`[im-entry] feishu credential not stored: ${error && error.message ? error.message : 'keychain'}`)
+    return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
+  }
+
+  // P1: make spawn injection the ONLY Feishu source — a plaintext FEISHU_* in
+  // the runtime home .env would override the injected credential on load.
+  try {
+    cleanFeishuPlaintextEnvOverrides()
+  } catch (error) {
+    rememberLog(`[im-entry] .env FEISHU_* cleanup failed: ${error && error.message ? error.message : error}`)
+  }
+
+  // Re-home the local backend so the freshly-injected FEISHU_* env takes
+  // effect. The credential is already safe on disk — a teardown/reload failure
+  // must not fail the bind, only downgrade it to "restart manually".
+  try {
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  } catch (error) {
+    rememberLog(`[im-entry] backend restart after bind failed: ${error && error.message ? error.message : error}`)
+    return { ok: true, status: 'success', restartFailed: true }
+  }
+  return { ok: true, status: 'success' }
+})
+
+// weixinIssue / weixinPoll: the hc-538 WeChat (iLink) cloud leg — the exact
+// same request/response contract as feishuIssue/feishuPoll (only the endpoint
+// paths + the credentials body differ), so the renderer's channel-agnostic
+// device-code machine drives it unchanged. The bot token is a real secret: the
+// poll response never carries it (fetched separately on success), and it is
+// stored ENCRYPTED (safeStorage). NEVER throws; the secret is never logged.
+ipcMain.handle('hermes:imEntry:weixinIssue', async () => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { provisionUrl } = resolveWeixinProvisionEndpoints(endpoints.apiBase, process.env)
+  const guardedUrl = guardedFeishuProvisionUrl(provisionUrl)
+  if (!guardedUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let body
+  try {
+    body = await apexAuthPostJson(guardedUrl, { body: {}, bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      return { ok: false, message: 'SERVICE_UNAVAILABLE' }
+    }
+    if (error && error.statusCode === 429) {
+      return { ok: false, message: 'RATE_LIMITED' }
+    }
+    rememberLog(`[im-entry] weixin provision failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  // Provision START shares the feishu shape (provision_id/qr_url/interval/expires_in).
+  const parsed = parseFeishuProvisionResponse(body)
+  if (!parsed) {
+    rememberLog('[im-entry] weixin provision response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  return { ok: true, ...parsed }
+})
+
+ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
+  const managed = resolveManagedConfig()
+  const token = String(managed.accessToken || '').trim()
+  if (!token) {
+    return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
+  }
+  const id = typeof provisionId === 'string' ? provisionId.trim() : ''
+  if (!id) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const endpoints = resolveApexEndpoints(process.env)
+  const { provisionUrl, credentialsUrl } = resolveWeixinProvisionEndpoints(endpoints.apiBase, process.env)
+  const pollUrl = guardedFeishuProvisionUrl(feishuProvisionPollUrl(provisionUrl, id))
+  if (!pollUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let body
+  try {
+    body = await apexAuthGetJson(pollUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    if (error && error.statusCode === 404) {
+      // The flow is unknown/lost — terminal for THIS flow; start a fresh one.
+      return { ok: true, status: 'expired' }
+    }
+    rememberLog(`[im-entry] weixin provision poll failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  // Poll STATUS shares the feishu shape (status/agent_name).
+  const { status } = parseFeishuProvisionStatusResponse(body)
+  if (status !== 'success') {
+    return { ok: true, status }
+  }
+
+  // success → the bot credential is persisted cloud-side; fetch it (separate
+  // call — the poll response never carries it) and store it encrypted.
+  const guardedCredentialsUrl = guardedFeishuProvisionUrl(credentialsUrl)
+  if (!guardedCredentialsUrl) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  let credentialsBody
+  try {
+    credentialsBody = await apexAuthGetJson(guardedCredentialsUrl, { bearer: token })
+  } catch (error) {
+    if (error && error.statusCode === 401) {
+      return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
+    }
+    // Transient — the flow is already terminal 'success' cloud-side; the next
+    // tick retries this fetch. NEVER log the body (it carries the token).
+    rememberLog(`[im-entry] weixin credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const credential = parseWeixinCredentialsResponse(credentialsBody)
+  if (!credential) {
+    rememberLog('[im-entry] weixin credentials response malformed')
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+
+  const binding = shapeImEntryBinding('weixin', credential)
+  if (!binding) {
+    return { ok: false, message: 'REQUEST_FAILED' }
+  }
+  try {
+    writeImEntryBinding(binding)
+  } catch (error) {
+    // encryptDesktopSecret is strict — no keychain → no plaintext write.
+    rememberLog(`[im-entry] weixin credential not stored: ${error && error.message ? error.message : 'keychain'}`)
+    return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
+  }
+
+  // Unlike feishu (whose hc-444 bridge historically wrote plaintext FEISHU_* to
+  // the runtime home .env), no path writes plaintext WEIXIN_* into .env, so
+  // spawn injection is already the only WEIXIN_* source — no .env strip needed.
+
+  // Re-home the local backend so the freshly-injected WEIXIN_* env takes effect.
+  // The credential is already safe on disk — a teardown/reload failure must not
+  // fail the bind, only downgrade it to "restart manually".
+  try {
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  } catch (error) {
+    rememberLog(`[im-entry] backend restart after weixin bind failed: ${error && error.message ? error.message : error}`)
+    return { ok: true, status: 'success', restartFailed: true }
+  }
+  return { ok: true, status: 'success' }
+})
+
+// unbind: revoke the cloud-side Desktop binding (DELETE /api/v1/desktop/{channel}/entry
+// — v2 contract; feishu (hc-417) and weixin (hc-538) each have a cloud leg), then
+// forget the local binding and restart the backend so its adapter goes dark on
+// the next boot. The cloud revoke is best-effort: a 404 means nothing was bound
+// cloud-side (already revoked / legacy local-only binding) and any other failure
+// is logged but never blocks the LOCAL disconnect — the user's machine must
+// always be able to stop replying, even offline.
+const CLOUD_UNBIND_ENDPOINT_RESOLVERS = {
+  feishu: resolveFeishuProvisionEndpoints,
+  weixin: resolveWeixinProvisionEndpoints
+}
+ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
+  const id = typeof channelId === 'string' ? channelId.trim() : ''
+  if (!isKnownImEntryChannel(id)) {
+    return { ok: false }
+  }
+
+  const resolveEndpoints = CLOUD_UNBIND_ENDPOINT_RESOLVERS[id]
+  if (resolveEndpoints) {
+    const managed = resolveManagedConfig()
+    const token = String(managed.accessToken || '').trim()
+    if (token) {
+      const endpoints = resolveApexEndpoints(process.env)
+      const { entryUrl } = resolveEndpoints(endpoints.apiBase, process.env)
+      const guardedEntryUrl = guardedFeishuProvisionUrl(entryUrl)
+      if (guardedEntryUrl) {
+        try {
+          await apexAuthDeleteJson(guardedEntryUrl, { bearer: token })
+        } catch (error) {
+          if (!error || error.statusCode !== 404) {
+            rememberLog(
+              `[im-entry] cloud ${id} unbind failed (local unbind proceeds): ${error && error.message ? error.message : error}`
+            )
+          }
+        }
+      }
+    } else {
+      rememberLog(`[im-entry] not signed in — skipping cloud ${id} unbind, clearing local binding only`)
+    }
+  }
+
+  clearImEntryBinding(id)
+  try {
+    await teardownPrimaryBackendAndWait()
+    mainWindow?.reload()
+  } catch (error) {
+    // The binding is already cleared; the adapter dies on the next manual restart.
+    rememberLog(`[im-entry] backend restart after unbind failed: ${error && error.message ? error.message : error}`)
+  }
+  return { ok: true }
+})
+
+// ── hc-533 本机 Agent 调度 IPC — the settings-block control surface ────────────
+// status: the snapshot the block renders (never carries the token).
+ipcMain.handle('hermes:daemon:status', async () => daemonStatusSnapshot())
+
+// setEnabled: the on/off toggle (default off). Enabling ensures identity, kicks
+// the loops, and registers on the first connection tick; disabling stops the
+// loops (dormant) but KEEPS the registration/token so re-enabling is instant.
+ipcMain.handle('hermes:daemon:setEnabled', async (_event, enabled) => {
+  const want = enabled === true
+  try {
+    if (want) {
+      ensureDaemonIdentity()
+    }
+    writeDaemonConfig({ enabled: want })
+  } catch (error) {
+    rememberLog(`[daemon] setEnabled persist failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, message: 'KEYCHAIN_UNAVAILABLE', snapshot: daemonStatusSnapshot() }
+  }
+  if (want) {
+    startLocalAgentDaemon()
+  } else {
+    stopLocalAgentDaemon()
+  }
+  return { ok: true, snapshot: daemonStatusSnapshot() }
+})
+
+// setDeviceName: rename this device. Persists locally; when already registered
+// we re-register so the cloud device row reflects the new name (best-effort —
+// a failed re-register does not lose the local rename).
+ipcMain.handle('hermes:daemon:setDeviceName', async (_event, name) => {
+  const cleaned = sanitizeDaemonDeviceName(name, safeHostname())
+  try {
+    writeDaemonConfig({ deviceName: cleaned })
+  } catch (error) {
+    rememberLog(`[daemon] setDeviceName persist failed: ${error && error.message ? error.message : error}`)
+    return { ok: false, snapshot: daemonStatusSnapshot() }
+  }
+  if (daemonRuntime.started && daemonToken) {
+    void daemonRegister().then(() => pushDaemonStatus())
+  }
+  pushDaemonStatus()
+  return { ok: true, snapshot: daemonStatusSnapshot() }
+})
+
+// unregister: forget this device locally (clear token + serverId) and go dormant.
+// v1 is a LOCAL forget — the cloud device row goes offline on its own once
+// heartbeats stop (90s window); a cloud-side revoke endpoint + device manager is
+// a follow-up ticket (hc-523 TODO "设备注销/管理 UI"). Cheap, offline-safe,
+// always lets the user stop being schedulable.
+ipcMain.handle('hermes:daemon:unregister', async () => {
+  stopLocalAgentDaemon()
+  daemonToken = ''
+  daemonRuntime.registered = false
+  daemonRuntime.connected = false
+  daemonRuntime.lastError = ''
+  try {
+    writeDaemonConfig({ enabled: false, token: '', serverId: '' })
+  } catch (error) {
+    rememberLog(`[daemon] unregister persist failed: ${error && error.message ? error.message : error}`)
+  }
+  // Belt-and-suspenders: even if the merge above kept a stale token, drop the
+  // file's token by rewriting without it (writeDaemonConfig omits an empty token).
+  pushDaemonStatus()
+  return { ok: true, snapshot: daemonStatusSnapshot() }
 })
 
 // ── Platform client-config sync (renderer surface) ──────────────────────────
@@ -7131,6 +9392,13 @@ ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => ({
 
 ipcMain.handle('hermes:workspace:sanitize', async (_event, cwd) => sanitizeWorkspaceCwd(cwd))
 
+// hc-517 — create a new empty project folder <parentDir>/<name> for the desktop
+// project picker's "New blank project" action. Validation + no-clobber live in
+// workspace-create.cjs; this just adapts it to IPC.
+ipcMain.handle('hermes:workspace:createDir', async (_event, parentDir, name) =>
+  createProjectDirForIpc(parentDir, name)
+)
+
 ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
   const next = typeof dir === 'string' && dir.trim() ? dir.trim() : null
 
@@ -7493,7 +9761,7 @@ function showAboutPanelFresh() {
     // About's engine-update section. resolveHermesVersion() reads the ENGINE
     // source tree and confusingly surfaced e.g. "0.17.0" as the app version.
     applicationVersion: app.getVersion(),
-    copyright: 'Copyright © 2026 Nous Research'
+    copyright: 'Copyright © 2026 ApexNodes'
   })
   app.showAboutPanel()
 }
@@ -7832,6 +10100,9 @@ function initShellUpdater() {
     ipcMain,
     isPackaged: app.isPackaged,
     log: rememberLog,
+    // hc-532 (gate 3): thread the shell version so the shell-update beacons
+    // carry app_version (createShellUpdater defaults it to null when omitted).
+    appVersion: app.getVersion(),
     broadcast: (channel, payload) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
@@ -7867,6 +10138,10 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  // hc-472: heal the runtime bundle's active link from the truth pointer and GC
+  // stale versions/.tmp BEFORE any runtime child spawns (no handle held on an
+  // old venv yet). No-op unless HERMES_BUNDLE_MODE is on; fully fail-soft.
+  reconcileAndGcBundleRuntime()
   if (IS_MAC) {
     Menu.setApplicationMenu(buildApplicationMenu())
   } else {
@@ -7884,6 +10159,26 @@ app.whenReady().then(() => {
   // + after every successful sign-in). Bounded at ~5s and strictly fail-soft —
   // an offline user boots exactly as before, on the cached state.
   void refreshClientConfigFromPlatform('boot')
+
+  // Platform SKILL sync: non-blocking boot pull for an already-signed-in user
+  // (contract: every boot + after every successful sign-in). Fail-soft and
+  // gated on a stored login JWT; a signed-out or offline user is a no-op.
+  void refreshPlatformSkillsFromPlatform('boot')
+
+  // Managed relay-key self-heal: non-blocking boot probe of the relay's
+  // /v1/models. If the stored key was rotated out (401), auto re-provision with
+  // the stored login JWT and re-sync config.yaml so the model picker's live
+  // listing recovers without a manual re-login (the "list shrinks to one model
+  // after a few days" bug). Gated to signed-in managed installs; strict no-op
+  // for BYOK / signed-out / offline. Fire-and-forget, same as the boot config
+  // sync above — the picker reads config.yaml fresh per open, so a heal that
+  // lands after the gateway is up still takes effect on the next picker open.
+  void selfHealManagedKeyOn401()
+
+  // hc-533 本机 Agent 调度: start the reverse-connect daemon ONLY if the user
+  // previously opted in (default off / dormant). Fire-and-forget, gated on the
+  // enabled flag + a stored login JWT; a signed-out / disabled user is a no-op.
+  startLocalAgentDaemonOnBoot()
 
   // 壳自更新:首查本身就延迟 60s(shell-updater.cjs),不和启动高峰抢资源。
   initShellUpdater()

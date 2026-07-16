@@ -22,9 +22,61 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
   managed: {
     status: () => ipcRenderer.invoke('hermes:managed:status'),
+    // hc-512: live relay model-catalog state for the model menu ('ok' |
+    // 'unauthorized' | 'unreachable' | 'unknown'); { refresh: true } re-probes.
+    relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),
     signIn: payload => ipcRenderer.invoke('hermes:managed:signIn', payload),
     browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
-    signOut: () => ipcRenderer.invoke('hermes:managed:signOut')
+    // hc-530: web → desktop one-click login. Exchange the one-time handoff code
+    // (from the apexnodes://login deep link) for a session — same result shape as
+    // browserSignIn.
+    deepLinkSignIn: payload => ipcRenderer.invoke('hermes:managed:deepLinkSignIn', payload),
+    signOut: () => ipcRenderer.invoke('hermes:managed:signOut'),
+    // On-demand relay-key self-heal after a chat turn hit a relay auth error
+    // (HTTP 401/403): re-provision + report whether it healed or the user must
+    // sign in again. See electron/main.cjs hermes:managed:selfHeal.
+    selfHeal: () => ipcRenderer.invoke('hermes:managed:selfHeal')
+  },
+  // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
+  // Feishu app credential down to light up the Feishu adapter + lark tools. See
+  // electron/apex-feishu.cjs. No secret crosses to the renderer: status returns
+  // only display fields; sync/disconnect return status objects.
+  feishu: {
+    status: () => ipcRenderer.invoke('hermes:feishu:status'),
+    sync: () => ipcRenderer.invoke('hermes:feishu:sync'),
+    disconnect: () => ipcRenderer.invoke('hermes:feishu:disconnect'),
+    openBind: () => ipcRenderer.invoke('hermes:feishu:openBind')
+  },
+  // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
+  // scanning a QR / pasting one code. feishu registers an INDEPENDENT app via
+  // the cloud v2 provisioning flow (renderer owns the polling loop: issue →
+  // poll* → success; main fetches + stores the credential on success). No
+  // secret crosses to the renderer: list returns display fields; the credential
+  // is persisted encrypted + injected into the backend spawn env.
+  // See electron/apex-im-entry.cjs.
+  imEntry: {
+    list: () => ipcRenderer.invoke('hermes:imEntry:list'),
+    feishuIssue: () => ipcRenderer.invoke('hermes:imEntry:feishuIssue'),
+    feishuPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:feishuPoll', provisionId),
+    weixinIssue: () => ipcRenderer.invoke('hermes:imEntry:weixinIssue'),
+    weixinPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:weixinPoll', provisionId),
+    unbind: channelId => ipcRenderer.invoke('hermes:imEntry:unbind', channelId)
+  },
+  // hc-533 本机 Agent 调度 — the A2A daemon leg. The settings block toggles the
+  // reverse-connect daemon (default off), names the device, and unregisters. No
+  // secret crosses to the renderer: status returns only display fields; the
+  // device token is stored encrypted in main. onStatus subscribes to the live
+  // status main pushes on connection transitions. See electron/apex-daemon.cjs.
+  daemon: {
+    status: () => ipcRenderer.invoke('hermes:daemon:status'),
+    setEnabled: enabled => ipcRenderer.invoke('hermes:daemon:setEnabled', enabled),
+    setDeviceName: name => ipcRenderer.invoke('hermes:daemon:setDeviceName', name),
+    unregister: () => ipcRenderer.invoke('hermes:daemon:unregister'),
+    onStatus: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:daemon:status', listener)
+      return () => ipcRenderer.removeListener('hermes:daemon:status', listener)
+    }
   },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway
@@ -90,6 +142,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   openExternal: url => ipcRenderer.invoke('hermes:openExternal', url),
   fetchLinkTitle: url => ipcRenderer.invoke('hermes:fetchLinkTitle', url),
   sanitizeWorkspaceCwd: cwd => ipcRenderer.invoke('hermes:workspace:sanitize', cwd),
+  createProjectDir: (parentDir, name) => ipcRenderer.invoke('hermes:workspace:createDir', parentDir, name),
   settings: {
     getDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:get'),
     setDefaultProjectDir: dir => ipcRenderer.invoke('hermes:setting:defaultProjectDir:set', dir),

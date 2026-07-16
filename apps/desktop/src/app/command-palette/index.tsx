@@ -23,6 +23,7 @@ import {
   Globe,
   type IconComponent,
   KeyRound,
+  Link2,
   MessageCircle,
   Monitor,
   Moon,
@@ -52,6 +53,7 @@ import {
   ARTIFACTS_ROUTE,
   COMMAND_CENTER_ROUTE,
   CRON_ROUTE,
+  IM_ENTRY_ROUTE,
   MESSAGING_ROUTE,
   NEW_CHAT_ROUTE,
   PROFILES_ROUTE,
@@ -325,6 +327,15 @@ export function CommandPalette() {
             keywords: ['tools', 'toolsets', 'plugins', 'skills'],
             label: cc.nav.skills.title,
             run: go(SKILLS_ROUTE)
+          },
+          // hc-417 "IM 入口" — the consumer-facing way to connect an IM channel.
+          // Always visible (unlike 消息平台, the developer env editor below).
+          {
+            icon: Link2,
+            id: 'nav-im-entry',
+            keywords: ['messaging', 'im', 'feishu', 'channel', 'connect', 'bind', '消息', '飞书', '渠道'],
+            label: t.imEntry.title,
+            run: go(IM_ENTRY_ROUTE)
           },
           // 消息平台 follows the consumer-hidden set (the route itself stays
           // functional when navigated directly).

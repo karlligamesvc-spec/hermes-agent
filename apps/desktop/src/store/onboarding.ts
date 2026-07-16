@@ -414,6 +414,28 @@ export function requestDesktopOnboarding(reason = DEFAULT_ONBOARDING_REASON) {
   patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
 }
 
+// hc-511: a signed-in managed session lost its relay auth and can't self-heal
+// (no reusable login token, or an expired JWT). Re-open onboarding on the
+// managed sign-in panel with an explicit reason so the user re-connects, instead
+// of every send silently 401-ing. Forces the managed-first treatment
+// (managedAvailable) regardless of the cached "onboarded" flag — the same state
+// refreshOnboarding lands on for a not-yet-signed-in managed install.
+export function requestManagedReSignIn(reason = DEFAULT_ONBOARDING_REASON) {
+  writeCachedConfigured(false)
+  patch({
+    configured: false,
+    managedAvailable: true,
+    managedError: reason.trim() || null,
+    managedSubmitting: false,
+    requested: true,
+    manual: false,
+    localEndpoint: false,
+    needsCredential: false,
+    reason: null,
+    flow: { status: 'idle' }
+  })
+}
+
 // Open the onboarding provider selector on demand from an already-configured
 // app — e.g. the model picker's "Add provider" button. Reuses the entire
 // onboarding flow (OAuth rows, API-key form, model-confirm) instead of
@@ -668,6 +690,40 @@ export async function managedSignIn(email: string, password: string, ctx: Onboar
     // Network/IPC throw — keep it friendly and never leak a raw status body.
     void error
     patch({ managedSubmitting: false, managedError: MANAGED_COPY.loginFailed })
+  }
+}
+
+// hc-530: a web-handoff login code delivered via the apexnodes://login deep link,
+// parked here by the deep-link handler until the login screen is mounted and can
+// run the exchange with its onboarding ctx. Cleared on consume. null = none pending.
+export const $pendingDesktopLoginCode = atom<string | null>(null)
+
+// Deep-link (web handoff) managed sign-in: a one-time code minted by the web app
+// arrived via apexnodes://login. The electron layer exchanges it for a login JWT,
+// then runs the SAME provision-key → assignment path as the browser/email flows.
+export async function managedDeepLinkSignIn(code: string, ctx: OnboardingContext) {
+  const trimmed = code.trim()
+
+  if (!trimmed) {
+    return
+  }
+
+  const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
+
+  if (!bridge?.deepLinkSignIn) {
+    patch({ managedError: MANAGED_COPY.desktopOnly })
+
+    return
+  }
+
+  patch({ managedSubmitting: true, managedError: null })
+
+  try {
+    const res = await bridge.deepLinkSignIn({ code: trimmed })
+    await applyManagedSignInResult(res, ctx)
+  } catch (error) {
+    void error
+    patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })
   }
 }
 

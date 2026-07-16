@@ -67,6 +67,11 @@ UV_VERSION=""
 TARGETS="$DEFAULT_TARGETS"
 WITH_UV=true
 WITH_SOURCE=true
+WITH_GIT=true
+# Keep GIT_VERSION in lockstep with scripts/install.ps1 $gitVer and the overlay's
+# Install-GitFromCos. PortableGit is the last GitHub dependency in the CN Windows
+# install path; re-host it on COS so Install-GitFromCos is github-free.
+GIT_VERSION="2.54.0"
 DO_UPLOAD=false
 
 while [[ $# -gt 0 ]]; do
@@ -77,9 +82,11 @@ while [[ $# -gt 0 ]]; do
         --region) REGION="$2"; shift 2 ;;
         --prefix) PREFIX="$2"; shift 2 ;;
         --uv-version) UV_VERSION="$2"; shift 2 ;;
+        --git-version) GIT_VERSION="$2"; shift 2 ;;
         --targets) TARGETS="$2"; shift 2 ;;
         --no-uv) WITH_UV=false; shift ;;
         --no-source) WITH_SOURCE=false; shift ;;
+        --no-git) WITH_GIT=false; shift ;;
         --upload) DO_UPLOAD=true; shift ;;
         -h|--help) sed -n '2,200p' "$0" | sed -n '/^# Usage:/,/^# ====/p' | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -137,6 +144,32 @@ if [ "$WITH_UV" = true ]; then
     done
 fi
 
+# ── 2.5 PortableGit (from git-for-windows GitHub; re-hosted like uv) ─────────
+# The last GitHub dependency in the CN Windows install path. Install-Git downloads
+# PortableGit-<ver>-{64-bit,arm64}.7z.exe from github; re-host both here so the
+# overlay's Install-GitFromCos is github-free. Windows-only, version-pinned to
+# match scripts/install.ps1 $gitVer.
+GIT_ARTIFACTS=()
+if [ "$WITH_GIT" = true ]; then
+    git_tag="v${GIT_VERSION}.windows.1"
+    for gitarch in 64-bit arm64; do
+        asset="PortableGit-${GIT_VERSION}-${gitarch}.7z.exe"
+        out="$OUT_DIR/$asset"
+        url="https://github.com/git-for-windows/git/releases/download/${git_tag}/${asset}"
+        if [ -s "$out" ]; then
+            log "Reusing cached PortableGit ($gitarch) at $out"
+        else
+            log "Fetching PortableGit ($gitarch) from $url"
+            if ! curl -fSL --http1.1 --retry 5 "$url" -o "$out"; then
+                log "  PortableGit $gitarch unavailable -- skipping ($url)"
+                rm -f "$out"
+                continue
+            fi
+        fi
+        GIT_ARTIFACTS+=("$out")
+    done
+fi
+
 # ── 3. Upload to COS (public-read bucket) ───────────────────────────────────
 upload_one() {
     local local_path="$1" key="$2"
@@ -155,6 +188,9 @@ if [ "$DO_UPLOAD" = true ]; then
         upload_one "$SRC_TARBALL" "hermes-agent-${FULL_SHA}.tar.gz"
     fi
     for a in "${UV_ARTIFACTS[@]:-}"; do
+        [ -n "$a" ] && upload_one "$a" "$(basename "$a")"
+    done
+    for a in "${GIT_ARTIFACTS[@]:-}"; do
         [ -n "$a" ] && upload_one "$a" "$(basename "$a")"
     done
     BASE_HINT="https://${BUCKET}.cos.${REGION:-<region>}.myqcloud.com/${PREFIX%/}"

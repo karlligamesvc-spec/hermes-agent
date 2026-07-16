@@ -25,7 +25,10 @@ import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 import { DOMESTIC_PROVIDER_PRIORITY_MAX } from './constants'
 import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
+import { FeishuSettings } from './feishu-settings'
 import { providerGroup, providerMeta, providerPriority } from './helpers'
+import { ImEntrySettings } from './im-entry-settings'
+import { LocalAgentSettings } from './local-agent-settings'
 import { LoadingState, SettingsContent } from './primitives'
 
 // The embedded terminal (and thus the "run disconnect command" path) only
@@ -468,6 +471,18 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
 
   return (
     <SettingsContent>
+      {/* hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu
+          app down so the assistant can work in Feishu docs/sheets/messages. Only
+          renders in the Electron shell (the bridge is absent on web). */}
+      <FeishuSettings />
+      {/* hc-533: "本机 Agent 调度" — let the user's cloud assistant dispatch a
+          coding task to a local agent on this machine (default off / dormant).
+          Only renders in the Electron shell (the bridge is absent on web). */}
+      <LocalAgentSettings />
+      {/* hc-417 收口: "IM 入口" discoverability card — bound-channel summary +
+          a jump to the full /im-entry page. Only renders in the Electron shell
+          (the bridge is absent on web). */}
+      <ImEntrySettings />
       <OAuthPicker
         disconnecting={disconnecting}
         onDisconnect={provider => void handleDisconnect(provider)}

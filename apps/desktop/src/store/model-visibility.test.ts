@@ -91,6 +91,30 @@ describe('model visibility', () => {
     expect(families.map(f => f.id)).toEqual(['claude-opus-4-5-20251101', 'claude-haiku-4-5-20251001'])
   })
 
+  // hc-512: the managed sentinel (`X-APEX`) and its bare routed id `X` are the
+  // same relay route — one brand row, keyed by the collision-free sentinel.
+  it('folds a bare routed id into its managed -APEX sentinel when both appear', () => {
+    const families = collapseModelFamilies([
+      'deepseek-v4-pro-APEX',
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+      'kimi-k2.6'
+    ])
+
+    expect(families.map(f => f.id)).toEqual(['deepseek-v4-pro-APEX', 'deepseek-v4-flash', 'kimi-k2.6'])
+  })
+
+  it('keeps a bare id and a lone sentinel standing alone when unpaired', () => {
+    expect(collapseModelFamilies(['deepseek-v4-flash']).map(f => f.id)).toEqual(['deepseek-v4-flash'])
+    expect(collapseModelFamilies(['deepseek-v4-pro-APEX']).map(f => f.id)).toEqual(['deepseek-v4-pro-APEX'])
+  })
+
+  it('matches the sentinel pair case-insensitively', () => {
+    const families = collapseModelFamilies(['deepseek-v4-pro', 'deepseek-v4-pro-apex'])
+
+    expect(families.map(f => f.id)).toEqual(['deepseek-v4-pro-apex'])
+  })
+
   it('sentinel key helper produces correct format', () => {
     expect(emptyProviderSentinelKey('openai')).toBe('openai::')
     expect(isProviderSentinel('openai::')).toBe(true)

@@ -12,8 +12,10 @@ which this module reads back with the **exact same precedence** the shell uses:
        directly, so honoring it verbatim keeps runtime behavior aligned with
        how the box was provisioned.
     2. ``APEXNODES_REGION``    env, explicit knob: ``cn`` | ``global``.
-    3. ``$HERMES_HOME/.apexnodes-region`` cache file (contents ``cn`` | ``global``)
-       written by the shell detector so sibling processes don't re-probe.
+    3. ``$HERMES_HOME/.apexnodes-region`` file (contents ``cn`` | ``global``)
+       written by the shell detector as telemetry + runtime region signal
+       (since hc-474 install-time code never reads it back; this runtime
+       read-side is its only consumer).
 
 Anything ambiguous / unset / unreadable resolves to **not-CN** (``False``),
 because the only cost of guessing "global" wrong is a slightly slower metadata

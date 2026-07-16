@@ -333,6 +333,7 @@ export interface Translations {
       engineTapCheck: string
       engineFound: (value: string) => string
       engineFoundGeneric: string
+      engineDesktopUpgradeRequired: (value: string) => string
       engineCompatNotes: string
       engineApply: string
       engineApplying: string
@@ -341,6 +342,11 @@ export interface Translations {
       engineConfirmBody: (value: string) => string
       engineConfirmBodyGeneric: string
       engineConfirmApply: string
+      // hc-532 (gate 1): shown when the installed engine is older than the
+      // shell's declared minimum (package.json apexnodes.minEngineVersion).
+      // Non-blocking — points the user at the opt-in engine update below.
+      engineUpdateNeeded: string
+      engineUpdateNeededDetail: (value: string) => string
     }
     config: {
       none: string
@@ -551,6 +557,59 @@ export interface Translations {
       searchKeys: string
       noKeysMatch: string
       loading: string
+    }
+    // hc-444: "Connect Feishu" card copy.
+    feishu: {
+      title: string
+      intro: string
+      connectedTitle: string
+      connectedTo: (agent: string) => string
+      connectedGeneric: string
+      statusOk: string
+      statusExpired: string
+      statusInvalid: string
+      statusStale: string
+      sync: string
+      resync: string
+      syncing: string
+      disconnect: string
+      disconnectConfirm: string
+      signInFirstTitle: string
+      signInFirst: string
+      noEntryTitle: string
+      noEntry: string
+      openBind: string
+      afterBind: string
+      syncedTitle: string
+      syncedMessage: string
+      disconnectedTitle: string
+      disconnectedMessage: string
+      syncFailed: string
+      sessionExpired: string
+      loading: string
+    }
+    localAgent: {
+      title: string
+      intro: string
+      enableLabel: string
+      enableHint: string
+      statusLabel: string
+      statusDormant: string
+      statusConnecting: string
+      statusOnline: string
+      statusOffline: string
+      statusError: string
+      deviceNameLabel: string
+      deviceNamePlaceholder: string
+      unregister: string
+      unregisterConfirm: string
+      signInFirst: string
+      saved: string
+      enableFailed: string
+      // hc-532 (gate 1): shown in the daemon block when the installed engine is
+      // older than the shell's declared minimum — the daemon's tool leg would
+      // silently fail on a stale engine, so surface it explicitly here.
+      engineOutdated: (value: string) => string
     }
     sessions: {
       loading: string
@@ -787,6 +846,76 @@ export interface Translations {
     platformIntro: Record<string, string>
   }
 
+  // hc-417 "IM 入口" — consumer page to connect the local agent to an IM
+  // platform by scanning a QR / pasting one code. Deliberately jargon-free.
+  imEntry: {
+    title: string
+    intro: string
+    loading: string
+    connect: string
+    manage: string
+    comingSoon: string
+    connectedBadge: string
+    availableHeading: string
+    comingSoonHeading: string
+    boundHeading: string
+    boundEmpty: string
+    connectedOn: (when: string) => string
+    unbind: string
+    unbindConfirm: (name: string) => string
+    unbindDoneTitle: string
+    unbindDoneMessage: string
+    // Live connection state merged from /api/messaging/platforms.
+    liveState: { connected: string; pending: string; error: string; connecting: string; unknown: string }
+    // Per-channel display copy. Keyed by runtime Platform id.
+    channels: Record<string, { name: string; tagline: string }>
+    dialog: {
+      connectTitle: (name: string) => string
+      signInFirstTitle: string
+      signInFirst: string
+      issuing: string
+      scanPrompt: string
+      scanHint: string
+      openLink: string
+      // hc-538: WeChat expectation-gap note — the bound identity is a NEW iLink
+      // bot contact, not the user's own WeChat being taken over.
+      weixinBotNote: string
+      connecting: string
+      authorizedTitle: string
+      authorizedMessage: string
+      // Shown instead of authorizedMessage when the binding saved but the
+      // automatic backend restart failed — restart the app manually.
+      authorizedRestartHint: string
+      retry: string
+      cancel: string
+      close: string
+      comingSoonTitle: string
+      comingSoonBody: string
+      // paste-code template (framework; no available channel uses it yet).
+      pasteHeading: string
+      pasteLabel: string
+      pastePlaceholder: string
+      pasteSubmit: string
+      advanced: string
+      errors: {
+        sign_in: string
+        service_unavailable: string
+        rate_limited: string
+        expired: string
+        denied: string
+        request_failed: string
+        keychain: string
+      }
+    }
+    // hc-417 收口: Settings → 提供方 card summary + CTA (im-entry-settings.tsx).
+    // title/intro/boundEmpty above are reused verbatim for the card; these are
+    // the two settings-card-only additions.
+    settingsCard: {
+      boundSummary: (count: number) => string
+      openCta: string
+    }
+  }
+
   profiles: {
     close: string
     nameHint: string
@@ -974,7 +1103,6 @@ export interface Translations {
 
   // Goal-mode long-running tasks (one-shot cron jobs surfaced on /tasks).
   tasks: {
-    loading: string
     newTask: string
     tabRunning: string
     tabDone: string
@@ -1125,9 +1253,30 @@ export interface Translations {
 
   composer: {
     message: string
+    projectPicker: {
+      label: string
+      select: string
+      searchPlaceholder: string
+      recentHeading: string
+      noRecent: string
+      noMatches: string
+      useExisting: string
+      newBlank: string
+      newTitle: string
+      namePlaceholder: string
+      locationLabel: string
+      chooseParent: string
+      create: string
+      back: string
+      useExistingTitle: string
+      chooseParentTitle: string
+      pickFailed: string
+      createFailed: string
+    }
     approvalMode: {
       label: string
-      review: { label: string; desc: string }
+      manual: { label: string; desc: string }
+      smart: { label: string; desc: string }
       full: { label: string; desc: string }
     }
     wakingProfile: (profile: string) => string
@@ -1267,6 +1416,10 @@ export interface Translations {
     // Repository, Venv, …). Keyed by the raw stage name from the bootstrap
     // protocol; unknown ids fall back to formatStageName() in the overlay.
     stageLabels: Record<string, string>
+    /** hc-452: rough per-step duration hint shown next to a PENDING stage row
+     *  (first-install ballpark; an incremental update skips most of these).
+     *  Same key space as stageLabels; an id with no entry renders no hint. */
+    stageDurationHints: Record<string, string>
     oneTimeTitle: string
     unsupportedDesc: (platform: string) => string
     installCommand: string
@@ -1276,9 +1429,18 @@ export interface Translations {
     retryAfterRun: string
     failedTitle: string
     settingUpTitle: string
+    /** hc-452: shown instead of settingUpTitle when this run is an opt-in
+     *  runtime version update rather than a first-ever install. `version` may
+     *  be null before the target version resolves. */
+    settingUpTitleUpdate: (version: string | null) => string
     finishingTitle: string
     failedDesc: string
     activeDesc: string
+    /** hc-452: update-flow counterpart to activeDesc -- must NOT claim this is
+     *  a one-time thing or that future launches skip this step (both false
+     *  for a recurring runtime update). `version` may be null; see
+     *  settingUpTitleUpdate. */
+    activeDescUpdate: (version: string | null) => string
     progress: (completed: number, total: number) => string
     currentStage: (stage: string) => string
     fetchingManifest: string
@@ -1376,6 +1538,27 @@ export interface Translations {
     docs: (provider: string) => string
   }
 
+  /** hc-511: managed relay-key recovery after a chat turn hit a relay auth
+   *  error (HTTP 401/403). Either self-heal + retry, or a visible re-sign-in. */
+  managedRecovery: {
+    /** Shown when the relay key was self-healed. */
+    healed: {
+      title: string
+      /** The active turn is being retried automatically. */
+      retrying: string
+      /** A background turn healed — the user should resend it. */
+      resend: string
+    }
+    /** Shown when recovery is impossible without a re-login (no reusable token
+     *  or an expired JWT) — a `*.local`/env seed key or an expired session. */
+    signInRequired: {
+      title: string
+      message: string
+      /** Reason banner surfaced on the managed sign-in panel. */
+      reason: string
+    }
+  }
+
   /** Desktop auth boot-gate: the full-window login screen + bottom-left account
    *  panel (Codex-faithful, minimal). Chinese-first (China-first Desktop V0.2). */
   auth: {
@@ -1408,6 +1591,12 @@ export interface Translations {
       usage: string
       /** Menu item — sign out. */
       logout: string
+      /** hc-519: title of the degraded card when the relay session expired and
+       *  self-heal failed (e.g. "登录已失效"). */
+      sessionExpiredTitle: string
+      /** hc-519: call-to-action subtitle on the degraded card (e.g.
+       *  "点击重新登录"). */
+      sessionExpiredAction: string
     }
   }
 
@@ -1445,6 +1634,8 @@ export interface Translations {
       editModels: string
       refreshModels: string
       loadFailed: string
+      catalogUnauthorized: string
+      catalogUnreachable: string
       moaPresets: string
       moaPresetItem: (preset: string) => string
       fast: string
@@ -1815,6 +2006,8 @@ export interface Translations {
     modelSwitchFailed: string
     modelSwitchBusy: string
     modelSwitchRetry: string
+    modelNotInCatalogTitle: string
+    modelNotInCatalog: string
     sessionExported: string
     sessionExportFailed: string
     imageSaved: string

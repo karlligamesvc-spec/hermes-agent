@@ -178,6 +178,29 @@ export const ja = defineLocale({
   },
 
   settings: {
+    localAgent: {
+      title: 'ローカルエージェントのスケジューリング',
+      intro:
+        'クラウドアシスタントがコーディングタスクをこのコンピューターのエージェント(Claude Code、Codex、Cursor)に任せられるようにします。タスクはこの端末であなた自身のツールと認証情報を使って実行され、結果がクラウドアシスタントに返ります。オンにしない限り何も実行されません。',
+      enableLabel: 'クラウドアシスタントにこのコンピューターの利用を許可',
+      enableHint:
+        'オンにすると、アプリの起動中はこのコンピューターが APEX に接続してタスクを待機します。危険な操作は必ず先にこの端末で承認を求めます。',
+      statusLabel: 'ステータス',
+      statusDormant: 'オフ',
+      statusConnecting: '接続中…',
+      statusOnline: 'オンライン — タスク待機中',
+      statusOffline: '再接続中…',
+      statusError: '接続するには APEX アカウントにサインインしてください',
+      deviceNameLabel: 'デバイス名',
+      deviceNamePlaceholder: 'このコンピューター',
+      unregister: 'このデバイスの登録を解除',
+      unregisterConfirm: 'このコンピューターの登録を解除しますか?スケジューリングを再度オンにするまでタスクを受け取りません。',
+      signInFirst: '先に APEX アカウントにサインインしてください。',
+      saved: 'デバイス名を保存しました。',
+      enableFailed: '保存できませんでした — このシステムではセキュアストレージを利用できません。',
+      engineOutdated: value =>
+        `インストール済みエンジンが古すぎます（ローカルエージェント実行には ${value} 以降が必要）。「設定 › 情報」でエンジンを更新してください。更新しないとツール呼び出しが黙って失敗する場合があります。`
+    },
     closeSettings: '設定を閉じる',
     exportConfig: '設定を書き出す',
     importConfig: '設定を読み込む',
@@ -506,6 +529,9 @@ export const ja = defineLocale({
     }),
     about: {
       heading: 'APEX デスクトップ',
+      engineUpdateNeeded: 'エンジンの更新が必要です',
+      engineUpdateNeededDetail: value =>
+        `このアプリはエンジン ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
       version: value => `バージョン ${value}`,
       versionUnavailable: 'バージョンを取得できません',
       updates: '更新',
@@ -528,7 +554,25 @@ export const ja = defineLocale({
       justNow: 'たった今',
       minAgo: count => `${count} 分前`,
       hoursAgo: count => `${count} 時間前`,
-      daysAgo: count => `${count} 日前`
+      daysAgo: count => `${count} 日前`,
+      engineSection: 'AI エンジン',
+      engineVersion: value => `エンジンバージョン ${value}`,
+      engineVersionUnavailable: 'エンジンバージョンを取得できません',
+      engineCheck: 'エンジンの更新を確認',
+      engineChecking: '確認中…',
+      engineUpToDate: 'エンジンは最新です。',
+      engineTapCheck: '新しいエンジンバージョンがあるか確認します。',
+      engineFound: value => `新しいエンジンバージョン ${value} が見つかりました。`,
+      engineFoundGeneric: '新しいエンジンバージョンがあります。',
+      engineDesktopUpgradeRequired: value => `このエンジンをインストールするには、デスクトップアプリを v${value} 以降にアップデートしてください。`,
+      engineCompatNotes: '互換性に関する注意',
+      engineApply: '更新を適用',
+      engineApplying: '適用中…',
+      engineCantReach: 'エンジンの更新を確認できませんでした。接続を確認してもう一度お試しください。',
+      engineConfirmTitle: 'AI エンジンを更新しますか？',
+      engineConfirmBody: value => `エンジンバージョン ${value} に切り替え、適用のためアプリを再起動します。作業内容は安全です。`,
+      engineConfirmBodyGeneric: 'AI エンジンを更新し、適用のためアプリを再起動します。作業内容は安全です。',
+      engineConfirmApply: 'エンジンを更新'
     },
     config: {
       none: 'なし',
@@ -1118,6 +1162,77 @@ export const ja = defineLocale({
     platformIntro: {}
   },
 
+  imEntry: {
+    title: 'メッセージ連携',
+    intro: 'いつものチャットアプリで AI アシスタントに代わりに返信してもらいましょう。コードをスキャンして連携します。',
+    loading: 'チャンネルを読み込み中…',
+    connect: '連携',
+    manage: '管理',
+    comingSoon: '近日対応',
+    connectedBadge: '連携済み',
+    availableHeading: '今すぐ利用可能',
+    comingSoonHeading: '近日対応',
+    boundHeading: '連携済みチャンネル',
+    boundEmpty: 'まだ連携したチャンネルはありません。',
+    connectedOn: when => `${when} に連携`,
+    unbind: '解除',
+    unbindConfirm: name => `${name} を解除しますか？このデバイスでは AI アシスタントがそこで返信しなくなります。`,
+    unbindDoneTitle: '解除しました',
+    unbindDoneMessage: '適用のため再起動しています…',
+    liveState: {
+      connected: '連携済み',
+      pending: '再起動後に反映',
+      error: '接続の問題',
+      connecting: '接続中…',
+      unknown: '不明'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Feishu のチャットやグループで返信します。' },
+      dingtalk: { name: 'DingTalk', tagline: 'DingTalk のチャットやグループで返信します。' },
+      weixin: { name: 'WeChat', tagline: '個人の WeChat で返信します。' },
+      qqbot: { name: 'QQ', tagline: 'QQ のチャットやグループで返信します。' },
+      wecom: { name: 'WeCom', tagline: 'WeCom（企業微信）で返信します。' }
+    },
+    dialog: {
+      connectTitle: name => `${name} を連携`,
+      signInFirstTitle: '先にサインイン',
+      signInFirst: 'APEX アカウントにサインインするとチャンネルを連携できます。',
+      issuing: 'QR コードを準備中…',
+      scanPrompt: 'スキャンして連携',
+      scanHint: 'Feishu を開いて QR コードをスキャンし、スマホで確認してください。',
+      openLink: 'リンクで開く',
+      weixinBotNote:
+        '接続するのは新しいボットの連絡先（iLink ボット）で、あなた自身の WeChat が乗っ取られるわけではありません。このボットは通常グループチャットには参加できず、主に友だちとの個人チャットで使います。',
+      connecting: '接続中…',
+      authorizedTitle: '連携しました',
+      authorizedMessage: '適用のため再起動しています…',
+      authorizedRestartHint: '連携して保存しました——適用を完了するにはアプリを再起動してください。',
+      retry: '再試行',
+      cancel: 'キャンセル',
+      close: '閉じる',
+      comingSoonTitle: '近日対応',
+      comingSoonBody: 'このチャンネルはまだ連携できません。準備中です。',
+      pasteHeading: 'コードを貼り付け',
+      pasteLabel: '連携コード',
+      pastePlaceholder: 'プラットフォームのコードを貼り付け',
+      pasteSubmit: '連携',
+      advanced: '詳細設定',
+      errors: {
+        sign_in: 'セッションが期限切れです。サインインし直してから連携してください。',
+        service_unavailable: 'このチャンネルはまだ開放されていません。後でお試しください。',
+        rate_limited: '連携リクエストがすでに進行中です。完了するか期限切れを待ってから、もう一度お試しください。',
+        expired: 'コードの有効期限が切れました。もう一度開始してください。',
+        denied: 'リクエストが拒否されました。もう一度お試しください。',
+        request_failed: '問題が発生しました。もう一度お試しください。',
+        keychain: '安全なストレージが無効なため連携を保存できませんでした。キーチェーンアクセスを有効にしてください。'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count}件のチャンネルと連携済み`,
+      openCta: 'メッセージ連携を開く'
+    }
+  },
+
   profiles: {
     close: 'プロファイルを閉じる',
     nameHint: '小文字、数字、ハイフン、アンダースコア。文字または数字で始める必要があります。',
@@ -1403,9 +1518,30 @@ export const ja = defineLocale({
 
   composer: {
     message: 'メッセージ',
+    projectPicker: {
+      label: 'プロジェクト',
+      select: 'プロジェクトを選択',
+      searchPlaceholder: 'プロジェクトを検索…',
+      recentHeading: '最近のプロジェクト',
+      noRecent: 'プロジェクトはまだありません',
+      noMatches: '一致するプロジェクトがありません',
+      useExisting: '既存のフォルダを開く…',
+      newBlank: '新しい空のプロジェクト…',
+      newTitle: '新しいプロジェクト',
+      namePlaceholder: 'プロジェクト名',
+      locationLabel: '場所',
+      chooseParent: '親フォルダを選択…',
+      create: '作成',
+      back: '戻る',
+      useExistingTitle: 'プロジェクトフォルダを選択',
+      chooseParentTitle: 'プロジェクトの作成場所を選択',
+      pickFailed: 'フォルダ選択を開けませんでした',
+      createFailed: 'プロジェクトフォルダを作成できませんでした'
+    },
     approvalMode: {
       label: '承認',
-      review: { label: '自動承認', desc: '検出されたリスク操作のみ承認を求める' },
+      manual: { label: '手動承認', desc: '危険と判定された操作のみ承認を求める' },
+      smart: { label: 'スマート承認', desc: 'AI がリスクを評価し、必要に応じて承認を求める' },
       full: { label: 'フルアクセス', desc: 'インターネットとPC上のあらゆるファイルに無制限にアクセス' }
     },
     wakingProfile: profile => `${profile} を起動中…`,
@@ -1629,6 +1765,34 @@ export const ja = defineLocale({
       complete: '完了',
       'bootstrap-marker': '完了'
     },
+    // hc-452: まだ開始していない（pending）ステップ行の右側に表示するおおよ
+    // その所要時間（この欄は元々空欄だった箇所）。数値は Kael の 2026-07-08
+    // 実機計測（前提環境 8.6 秒／venv+python 依存関係 合計 6.3 秒／node 依存
+    // 関係 43 秒以上——いずれもゼロからの新規インストールでの計測）に基づく
+    // 概算値。差分更新（依存関係が変わっていない場合）はほとんどのステップが
+    // 1 秒未満で終わり「スキップ」と表示される——それ自体が十分な説明になる。
+    // 対応する id が無いステップにはヒントを表示しない。
+    stageDurationHints: {
+      prerequisites: '約 10 秒',
+      uv: '約 3 秒',
+      python: '約 3 秒',
+      git: '約 2 秒',
+      node: '約 3 秒',
+      'system-packages': '約 2 秒',
+      repository: '約 5 秒',
+      venv: '約 3 秒',
+      'python-deps': '約 5 秒',
+      dependencies: '約 5 秒',
+      'node-deps': '約 45 秒',
+      desktop: '約 2 分',
+      path: '約 1 秒',
+      config: '約 1 秒',
+      'config-templates': '約 1 秒',
+      'platform-sdks': '約 2 秒',
+      setup: '約 1 秒',
+      configure: '約 1 秒',
+      gateway: '約 3 秒'
+    },
     oneTimeTitle: 'APEX には一度限りのインストールが必要です',
     unsupportedDesc: platform =>
       `${platform} では自動の初回インストールはまだ利用できません。ターミナルを開いて以下のコマンドを実行し、このアプリを再起動してください。以降の起動ではこの手順はスキップされます。`,
@@ -1639,11 +1803,26 @@ export const ja = defineLocale({
     retryAfterRun: '実行しました — 再試行',
     failedTitle: 'インストールに失敗しました',
     settingUpTitle: 'APEX を設定中',
+    // hc-452: 今回の bootstrap が「オプトインの runtime バージョン更新」で
+    // あり、本当の意味での初回インストールではない場合に settingUpTitle の
+    // 代わりに表示する。version は null になることがある（対象バージョンが
+    // 解決される前に送られる合成 manifest イベントなど）。
+    settingUpTitleUpdate: version => (version ? `${version} に更新中` : 'APEX を更新中'),
     finishingTitle: '仕上げ中',
     failedDesc:
       'インストール手順のいずれかが失敗しました。Windows では、別の APEX CLI またはデスクトップインスタンスが実行中の場合に発生することがあります。実行中の APEX インスタンスをすべて停止してから再試行してください。詳細は以下またはデスクトップログで確認できます。',
     activeDesc:
       'これは一回限りのセットアップです。インストーラーが依存関係をダウンロードしてマシンを設定しています。以降の起動ではこの手順はスキップされます。',
+    // hc-452: 更新フロー用の activeDesc に対応する文言。「一回限りのセット
+    // アップ」「以降の起動ではスキップされます」という表現はあえて繰り返さ
+    // ない——Kael の実機レポートが、まさにこの表現が更新時には誤解を招くと
+    // 指摘した箇所（更新のたびに繰り返されるものであり、一回限りではない）。
+    // 変更のない依存関係は自動的にスキップされるため、多くの更新は数秒から
+    // 数十秒程度で完了する。
+    activeDescUpdate: version =>
+      version
+        ? `${version} に更新中です。変更のない依存関係は自動的にスキップされるため、通常は数秒から数十秒程度で完了します。`
+        : 'APEX を更新中です。変更のない依存関係は自動的にスキップされるため、通常は数秒から数十秒程度で完了します。',
     progress: (completed, total) => `${total} ステップ中 ${completed} 完了`,
     currentStage: stage => ` — 現在: ${stage}`,
     fetchingManifest: 'インストーラーマニフェストを取得中...',
@@ -1749,6 +1928,19 @@ export const ja = defineLocale({
     docs: provider => `${provider} ドキュメント`
   },
 
+  managedRecovery: {
+    healed: {
+      title: 'APEX 認証情報を更新しました',
+      retrying: 'サインインの有効期限が切れていました。自動的に更新し、再試行しています…',
+      resend: 'サインインの有効期限が切れていました。自動的に更新しました。もう一度送信してください。'
+    },
+    signInRequired: {
+      title: 'APEX に再度サインイン',
+      message: 'APEX セッションの有効期限が切れているか、未接続です。再度サインインして会話を続けてください。',
+      reason: 'APEX セッションの有効期限が切れています。再度サインインして会話を続けてください。'
+    }
+  },
+
   auth: {
     login: {
       title: 'はじめる',
@@ -1764,7 +1956,9 @@ export const ja = defineLocale({
       profile: 'プロフィール',
       settings: '設定',
       usage: '使用量',
-      logout: 'ログアウト'
+      logout: 'ログアウト',
+      sessionExpiredTitle: 'ログインが無効です',
+      sessionExpiredAction: 'クリックして再ログイン'
     }
   },
 
@@ -1802,6 +1996,8 @@ export const ja = defineLocale({
       editModels: 'モデルを編集…',
       refreshModels: 'モデルを更新',
       loadFailed: 'モデル一覧を読み込めませんでした。しばらくしてからお試しください',
+      catalogUnauthorized: 'モデル一覧を取得できません：ログインが失効しています。タップして再ログイン',
+      catalogUnreachable: 'モデル一覧を取得できません：ネットワークエラー。タップして再試行',
       moaPresets: 'MoA プリセット',
       moaPresetItem: preset => `MoA: ${preset}`,
       fast: '高速',
@@ -2178,6 +2374,8 @@ export const ja = defineLocale({
     modelSwitchFailed: 'モデルの切り替えに失敗しました',
     modelSwitchBusy: 'AI が応答中です。このターンが終わってからモデルを切り替えてください。',
     modelSwitchRetry: '切り替えが反映されませんでした。もう一度お試しください。',
+    modelNotInCatalogTitle: '選択中のモデルは利用できません',
+    modelNotInCatalog: 'このモデルは現在のモデル一覧にないため、既定のモデルに戻しました。',
     sessionExported: 'セッションをエクスポートしました',
     sessionExportFailed: 'セッションをエクスポートできませんでした',
     imageSaved: '画像を保存しました',

@@ -21,14 +21,18 @@ const {
   MANAGED_PROVIDER,
   MANAGED_PROVIDER_NAME,
   accessTokenFromLogin,
+  RENEWED_TOKEN_HEADER,
+  renewedTokenFromHeaders,
   accountFromLogin,
   apexWebLoginUrl,
   buildManagedModelConfig,
   decodeJwtClaims,
   defaultModelPath,
   googleStartUrl,
+  isLoginStateTruthEnabled,
   isLoopbackUrl,
   isManagedEnabled,
+  isRelayUnauthorized,
   managedModelConfigYaml,
   ensurePluginsEnabledYaml,
   ensureSkillsDisabledYaml,
@@ -38,10 +42,13 @@ const {
   MODEL_DISABLED_PROVIDERS,
   SEED_DISABLED_SKILLS,
   MANAGED_PLUGIN_NAMES,
+  REPROVISION_COOLDOWN_MS,
   parseLoopbackCallback,
   parseProvisionResponse,
+  relayCatalogStatusFromProbe,
   relayKeyFromResponse,
   resolveApexEndpoints,
+  shouldAttemptReprovision,
   syncCustomProviderKeyYaml
 } = require('./apex-managed.cjs')
 
@@ -60,6 +67,8 @@ test('resolveApexEndpoints returns prod defaults with empty env', () => {
   assert.equal(e.registerUrl, 'https://apex-nodes.com/api/v1/auth/register')
   // provision-key is on the API host per the P0 contract.
   assert.equal(e.provisionKeyUrl, 'https://api.apex-nodes.com/api/v1/desktop/provision-key')
+  // hc-530: handoff-code exchange is on the AUTH host alongside login.
+  assert.equal(e.handoffExchangeUrl, 'https://apex-nodes.com/api/v1/auth/desktop-handoff/exchange')
 })
 
 test('resolveApexEndpoints honors env overrides and strips trailing slashes', () => {
@@ -78,6 +87,7 @@ test('resolveApexEndpoints honors env overrides and strips trailing slashes', ()
   assert.equal(e.modelDisplay, 'deepseek-v4-flash-APEX')
   assert.equal(e.loginUrl, 'https://staging.apex-nodes.com/api/v1/auth/login')
   assert.equal(e.provisionKeyUrl, 'https://api.staging.apex-nodes.com/api/v1/desktop/provision-key')
+  assert.equal(e.handoffExchangeUrl, 'https://staging.apex-nodes.com/api/v1/auth/desktop-handoff/exchange')
 })
 
 test('resolveApexEndpoints modelDisplay precedence: explicit override > derived > default', () => {
@@ -113,6 +123,19 @@ test('isManagedEnabled is ON by default and accepts common falsy spellings to di
   }
   for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
     assert.equal(isManagedEnabled({ APEXNODES_MANAGED: v }), true, v)
+  }
+})
+
+// --- isLoginStateTruthEnabled (hc-519 rollback switch) ---
+
+test('isLoginStateTruthEnabled is ON by default and disables on the same falsy spellings', () => {
+  assert.equal(isLoginStateTruthEnabled({}), true)
+  assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: '' }), true)
+  for (const v of ['0', 'false', 'no', 'off', 'OFF']) {
+    assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: v }), false, v)
+  }
+  for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
+    assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: v }), true, v)
   }
 })
 
@@ -624,6 +647,30 @@ test('accessTokenFromLogin extracts the JWT or null', () => {
   assert.equal(accessTokenFromLogin(null), null)
 })
 
+// --- renewedTokenFromHeaders (hc-529 sliding-window renewal header) ---
+
+test('renewedTokenFromHeaders reads the lowercased header Electron/Node emit', () => {
+  assert.equal(RENEWED_TOKEN_HEADER, 'x-apex-renewed-token')
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': 'jwt.new' }), 'jwt.new')
+})
+
+test('renewedTokenFromHeaders unwraps Electron array-folded header values and trims', () => {
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': ['  jwt.arr  '] }), 'jwt.arr')
+})
+
+test('renewedTokenFromHeaders matches case-insensitively (proxy/test may preserve casing)', () => {
+  assert.equal(renewedTokenFromHeaders({ 'X-Apex-Renewed-Token': 'jwt.cap' }), 'jwt.cap')
+})
+
+test('renewedTokenFromHeaders returns "" when the header is absent, empty, or headers missing', () => {
+  assert.equal(renewedTokenFromHeaders({ 'content-type': 'application/json' }), '')
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': '   ' }), '')
+  assert.equal(renewedTokenFromHeaders({ 'x-apex-renewed-token': [] }), '')
+  assert.equal(renewedTokenFromHeaders(null), '')
+  assert.equal(renewedTokenFromHeaders(undefined), '')
+  assert.equal(renewedTokenFromHeaders('not-an-object'), '')
+})
+
 // --- googleStartUrl / apexWebLoginUrl (browser-login start URLs) ---
 
 test('googleStartUrl points at the API host with loopback redirect_uri + state', () => {
@@ -823,4 +870,93 @@ test('syncCustomProviderKeyYaml only touches the matching entry in a multi-entry
   assert.equal(changed, true)
   assert.match(next, /- api_key: sk-other\n {2}base_url: https:\/\/my-own-endpoint\.example\/v1/)
   assert.match(next, /- api_key: sk-fresh\n {2}base_url: https:\/\/apex-nodes\.com\/relay\/v1/)
+})
+
+// --- isRelayUnauthorized (401-self-heal trigger classifier) ---
+
+test('isRelayUnauthorized is true only for 401 / 403', () => {
+  // The observed dead-key status (Invalid Agent API key) + the defensive 403.
+  assert.equal(isRelayUnauthorized(401), true)
+  assert.equal(isRelayUnauthorized(403), true)
+  // string coercion (a header value could arrive as a string) still classifies.
+  assert.equal(isRelayUnauthorized('401'), true)
+})
+
+test('isRelayUnauthorized is false for success / server errors / no-response', () => {
+  // A healthy listing must NOT trigger a re-provision.
+  for (const ok of [200, 204, 301, 302]) assert.equal(isRelayUnauthorized(ok), false)
+  // A relay outage / 5xx / rate-limit is transient, NOT an auth failure — we must
+  // not burn the single re-provision attempt on a key that is actually valid.
+  for (const transient of [429, 500, 502, 503, 504]) assert.equal(isRelayUnauthorized(transient), false)
+  // 0 / undefined / NaN = timeout / offline / no response → not actionable.
+  for (const none of [0, undefined, NaN, null]) assert.equal(isRelayUnauthorized(none), false)
+})
+
+// --- relayCatalogStatusFromProbe (hc-512 model-menu catalog state) ---
+
+test('relayCatalogStatusFromProbe classifies auth-dead vs transient vs ok', () => {
+  // 401/403 = the stored key is dead → re-login/re-provision is the fix.
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 401 }), 'unauthorized')
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 403 }), 'unauthorized')
+  // Healthy listing.
+  assert.equal(relayCatalogStatusFromProbe({ ok: true, statusCode: 200 }), 'ok')
+  assert.equal(relayCatalogStatusFromProbe({ ok: true, statusCode: 302 }), 'ok')
+  // Timeout / offline / 5xx = transient → retry is the fix, never re-login.
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 0 }), 'unreachable')
+  assert.equal(relayCatalogStatusFromProbe({ ok: false, statusCode: 503 }), 'unreachable')
+  assert.equal(relayCatalogStatusFromProbe(null), 'unreachable')
+  assert.equal(relayCatalogStatusFromProbe(undefined), 'unreachable')
+})
+
+// --- shouldAttemptReprovision (gate + anti-storm cooldown) ---
+
+test('shouldAttemptReprovision requires managed enabled + a stored key + a stored token', () => {
+  const base = { enabled: true, hasKey: true, hasToken: true, lastAttemptAt: 0, now: 1_000_000 }
+  // All three present, never attempted → go.
+  assert.equal(shouldAttemptReprovision(base), true)
+  // Managed disabled (BYOK / env off) → never (zero behavior change for BYOK).
+  assert.equal(shouldAttemptReprovision({ ...base, enabled: false }), false)
+  // No relay key stored → a relay 401 isn't ours to heal.
+  assert.equal(shouldAttemptReprovision({ ...base, hasKey: false }), false)
+  // No login JWT on disk → we cannot re-mint; the user must re-login.
+  assert.equal(shouldAttemptReprovision({ ...base, hasToken: false }), false)
+  // Empty state object → false (never acts without an explicit gate pass).
+  assert.equal(shouldAttemptReprovision(), false)
+  assert.equal(shouldAttemptReprovision({}), false)
+})
+
+test('shouldAttemptReprovision enforces the cooldown between attempts', () => {
+  const gate = { enabled: true, hasKey: true, hasToken: true }
+  const last = 1_000_000
+
+  // Just attempted (0 ms elapsed) → wait.
+  assert.equal(shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last }), false)
+  // Half a cooldown later → still waiting (no 401 storm against the auth backend).
+  assert.equal(
+    shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last + REPROVISION_COOLDOWN_MS / 2 }),
+    false
+  )
+  // Exactly one cooldown later → allowed again (>= boundary).
+  assert.equal(
+    shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last + REPROVISION_COOLDOWN_MS }),
+    true
+  )
+  // Well past the cooldown → allowed.
+  assert.equal(
+    shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last + REPROVISION_COOLDOWN_MS * 3 }),
+    true
+  )
+})
+
+test('shouldAttemptReprovision treats a never-attempted state (0 / missing) as allowed', () => {
+  const gate = { enabled: true, hasKey: true, hasToken: true, now: 5_000_000 }
+  // lastAttemptAt 0 / undefined / negative all mean "never tried" → allowed
+  // regardless of `now` (no prior attempt to be cooling down from).
+  assert.equal(shouldAttemptReprovision({ ...gate, lastAttemptAt: 0 }), true)
+  assert.equal(shouldAttemptReprovision({ ...gate, lastAttemptAt: undefined }), true)
+  assert.equal(shouldAttemptReprovision({ ...gate }), true)
+})
+
+test('REPROVISION_COOLDOWN_MS is a sane positive default (10 minutes)', () => {
+  assert.equal(REPROVISION_COOLDOWN_MS, 10 * 60 * 1000)
 })

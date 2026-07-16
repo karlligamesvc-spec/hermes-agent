@@ -8,6 +8,10 @@ const path = require('node:path')
 const {
   parseCosTarballKey,
   derivePinFromLatest,
+  parseSemver,
+  compareSemver,
+  desktopMeetsMinVersion,
+  engineMeetsMinVersion,
   latestUrl,
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
@@ -258,6 +262,119 @@ test('checkForRuntimeUpdate: installed via branch key compares against branch', 
 })
 
 // ---------------------------------------------------------------------------
+// hc-475 (F4): min_desktop_version shell↔runtime compatibility gate
+// ---------------------------------------------------------------------------
+
+test('derivePinFromLatest: reads min_desktop_version when present', () => {
+  const pin = derivePinFromLatest({ ...publishedBody(SHA, 'v'), min_desktop_version: '0.16.10' })
+  assert.ok(pin)
+  assert.equal(pin.minDesktopVersion, '0.16.10')
+})
+
+test('derivePinFromLatest: min_desktop_version null/absent -> null (no gate)', () => {
+  assert.equal(derivePinFromLatest(publishedBody(SHA, 'v')).minDesktopVersion, null)
+  assert.equal(derivePinFromLatest({ ...publishedBody(SHA, 'v'), min_desktop_version: null }).minDesktopVersion, null)
+  assert.equal(derivePinFromLatest({ ...publishedBody(SHA, 'v'), min_desktop_version: '' }).minDesktopVersion, null)
+})
+
+test('parseSemver: tolerant parse (v-prefix, missing parts, prerelease/build)', () => {
+  assert.deepEqual(parseSemver('0.16.10'), [0, 16, 10])
+  assert.deepEqual(parseSemver('v1.2.3'), [1, 2, 3])
+  assert.deepEqual(parseSemver('2'), [2, 0, 0])
+  assert.deepEqual(parseSemver('1.4'), [1, 4, 0])
+  assert.deepEqual(parseSemver('0.16.10-beta.1+build'), [0, 16, 10])
+  assert.equal(parseSemver('not-a-version'), null)
+  assert.equal(parseSemver(''), null)
+})
+
+test('compareSemver: ordering + null on unparseable', () => {
+  assert.equal(compareSemver('0.16.9', '0.16.10'), -1) // numeric, not lexical
+  assert.equal(compareSemver('0.16.10', '0.16.9'), 1)
+  assert.equal(compareSemver('1.0.0', '1.0.0'), 0)
+  assert.equal(compareSemver('v0.17.0', '0.16.99'), 1)
+  assert.equal(compareSemver('garbage', '1.0.0'), null)
+})
+
+test('desktopMeetsMinVersion: no gate / satisfied / equal -> true', () => {
+  assert.equal(desktopMeetsMinVersion('0.16.5', null), true) // no gate
+  assert.equal(desktopMeetsMinVersion('0.16.5', ''), true) // no gate
+  assert.equal(desktopMeetsMinVersion('0.16.10', '0.16.9'), true) // newer
+  assert.equal(desktopMeetsMinVersion('0.16.10', '0.16.10'), true) // equal is OK
+})
+
+test('desktopMeetsMinVersion: shell older than required -> false (BLOCK)', () => {
+  assert.equal(desktopMeetsMinVersion('0.16.9', '0.16.10'), false)
+  assert.equal(desktopMeetsMinVersion('0.15.0', '0.16.0'), false)
+})
+
+test('desktopMeetsMinVersion: unparseable version fails OPEN (never brick)', () => {
+  assert.equal(desktopMeetsMinVersion(null, '0.16.10'), true)
+  assert.equal(desktopMeetsMinVersion('dev', '0.16.10'), true)
+  assert.equal(desktopMeetsMinVersion('0.16.9', 'garbage'), true)
+})
+
+// hc-532 (gate 1): the MIRROR of desktopMeetsMinVersion — installed engine vs the
+// shell's declared floor. Same fail-open contract; calver+fork versions compare
+// on the leading v2026.7.13 triple only (the -fork.<sha> suffix is ignored).
+test('engineMeetsMinVersion: no floor / satisfied / equal -> true', () => {
+  assert.equal(engineMeetsMinVersion('v2026.7.13-fork.abc', null), true) // no floor
+  assert.equal(engineMeetsMinVersion('v2026.7.13-fork.abc', ''), true) // no floor
+  assert.equal(engineMeetsMinVersion('v2026.7.14-fork.abc', 'v2026.7.13-fork.def'), true) // newer
+  // Equal calver triple, DIFFERENT fork sha -> still satisfied (suffix ignored).
+  assert.equal(engineMeetsMinVersion('v2026.7.13-fork.deadbeef', 'v2026.7.13-fork.3ab3eabf'), true)
+})
+
+test('engineMeetsMinVersion: installed engine older than the floor -> false (SHOW prompt)', () => {
+  // The verified live-prod skew: default engine v2026.7.12 under a v2026.7.13 floor.
+  assert.equal(engineMeetsMinVersion('v2026.7.12-fork.6f855229', 'v2026.7.13-fork.3ab3eabf'), false)
+  assert.equal(engineMeetsMinVersion('v2026.6.30-fork.abc', 'v2026.7.1-fork.def'), false)
+})
+
+test('engineMeetsMinVersion: unparseable version fails OPEN (never nag)', () => {
+  assert.equal(engineMeetsMinVersion(null, 'v2026.7.13-fork.abc'), true)
+  assert.equal(engineMeetsMinVersion('dev', 'v2026.7.13-fork.abc'), true)
+  assert.equal(engineMeetsMinVersion('v2026.7.12-fork.abc', 'garbage-no-digits'), true)
+})
+
+test('checkForRuntimeUpdate: gated (shell too old) -> updateAvailable false + desktopUpgradeRequired', async () => {
+  const res = await checkForRuntimeUpdate({
+    apiBase: 'https://api.apex-nodes.com',
+    marker: { pinnedCommit: 'aaaaaaa', version: '0.16.9' },
+    desktopVersion: '0.16.9',
+    fetchJson: async () => ({ ...publishedBody(SHA, 'newer'), min_desktop_version: '0.16.10' })
+  })
+  assert.equal(res.updateAvailable, false)
+  assert.ok(res.desktopUpgradeRequired)
+  assert.equal(res.desktopUpgradeRequired.minDesktopVersion, '0.16.10')
+  assert.equal(res.desktopUpgradeRequired.currentDesktopVersion, '0.16.9')
+  // still surfaces the latest engine info + its gate on the latest ref
+  assert.equal(res.latest.minDesktopVersion, '0.16.10')
+})
+
+test('checkForRuntimeUpdate: shell satisfies gate -> normal update, no desktopUpgradeRequired', async () => {
+  const res = await checkForRuntimeUpdate({
+    apiBase: 'https://api.apex-nodes.com',
+    marker: { pinnedCommit: 'aaaaaaa', version: '0.16.9' },
+    desktopVersion: '0.16.10',
+    fetchJson: async () => ({ ...publishedBody(SHA, 'newer'), min_desktop_version: '0.16.10' })
+  })
+  assert.equal(res.updateAvailable, true)
+  assert.equal(res.desktopUpgradeRequired, undefined)
+  assert.equal(res.latest.minDesktopVersion, '0.16.10')
+})
+
+test('checkForRuntimeUpdate: no min_desktop_version -> gate is a no-op', async () => {
+  const res = await checkForRuntimeUpdate({
+    apiBase: 'https://api.apex-nodes.com',
+    marker: { pinnedCommit: 'aaaaaaa' },
+    desktopVersion: '0.1.0',
+    fetchJson: async () => publishedBody(SHA, 'newer')
+  })
+  assert.equal(res.updateAvailable, true)
+  assert.equal(res.desktopUpgradeRequired, undefined)
+})
+
+// ---------------------------------------------------------------------------
 // overlayStampWithPin
 // ---------------------------------------------------------------------------
 
@@ -352,4 +469,44 @@ test('main.cjs: R5 IPC channels + the runtime preload bridge are registered', ()
   const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8')
   assert.match(preload, /checkUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:check-update'\)/)
   assert.match(preload, /applyUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:apply-update'\)/)
+})
+
+// Assert that `key: app.getVersion()` appears within the argument object of a
+// given call opener — locks a main.cjs call-site's wiring without an electron
+// runtime (same electron-bound source-contract pattern as the tests above).
+function assertCallPassesShellVersion(src, opener, key) {
+  const start = src.indexOf(opener)
+  assert.notEqual(start, -1, `call site \`${opener}\` not found in main.cjs`)
+  // Window generously past the opener to cover the whole argument object.
+  const window = src.slice(start, start + 1200)
+  assert.match(
+    window,
+    new RegExp(key + ':\\s*app\\.getVersion\\(\\)'),
+    `\`${opener}\` must pass \`${key}: app.getVersion()\` (hc-532 gate 3 telemetry wiring)`
+  )
+}
+
+test('main.cjs (hc-532 gate 3): all three desktop_install_events entry points carry app_version', () => {
+  const src = mainSource()
+  // Install/bootstrap funnel — was UNWIRED before hc-532 (column read empty).
+  assertCallPassesShellVersion(src, 'const bootstrapResult = await runBootstrap({', 'appVersion')
+  // Shell self-update beacons — also unwired before hc-532.
+  assertCallPassesShellVersion(src, 'createShellUpdater({', 'appVersion')
+  // Engine bundle apply — already wired (applyRuntimeBundleUpdateFlow); lock it
+  // so all three reporting legs stay consistent.
+  assertCallPassesShellVersion(src, 'applyRuntimeBundleUpdate({', 'desktopVersion')
+})
+
+test('main.cjs (hc-532 gate 1): runtime:version handler computes the engine floor gate', () => {
+  const src = mainSource()
+  // The shell's declared floor is read from package.json …
+  assert.match(src, /function readDeclaredMinEngineVersion\(\)/)
+  assert.match(src, /pkg\.apexnodes && pkg\.apexnodes\.minEngineVersion/)
+  // … and folded into the version IPC as meetsMinEngine via the shared gate.
+  const handlerIdx = src.indexOf("ipcMain.handle('hermes:runtime:version'")
+  assert.notEqual(handlerIdx, -1, 'runtime:version handler missing')
+  const handler = src.slice(handlerIdx, handlerIdx + 900)
+  assert.match(handler, /const meetsMinEngine = engineMeetsMinVersion\(version, minEngineVersion\)/)
+  assert.match(handler, /meetsMinEngine/)
+  assert.match(handler, /minEngineVersion/)
 })

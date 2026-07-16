@@ -364,7 +364,10 @@ def _heal_managed_node_windows() -> bool:
         return False
 
     home = get_hermes_home()
-    index_url = f"https://nodejs.org/dist/latest-v{_HERMES_NODE_TARGET_MAJOR}.x/"
+    # hc-476: honor HERMES_NODE_DIST_BASE (npmmirror in CN mode, injected into
+    # the running process by apex_overlay.cn_mirror_env). Unset keeps nodejs.org.
+    node_dist_base = (os.environ.get("HERMES_NODE_DIST_BASE") or "https://nodejs.org/dist").rstrip("/")
+    index_url = f"{node_dist_base}/latest-v{_HERMES_NODE_TARGET_MAJOR}.x/"
     try:
         with urllib.request.urlopen(index_url, timeout=60) as response:
             index_html = response.read().decode("utf-8", errors="replace")
@@ -791,21 +794,29 @@ def apply_subprocess_home_env(env: dict[str, str]) -> None:
         env["HOME"] = home
 
 
-VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 
 
-def parse_reasoning_effort(effort: str) -> dict | None:
+def parse_reasoning_effort(effort) -> dict | None:
     """Parse a reasoning effort level into a config dict.
 
-    Valid levels: "none", "minimal", "low", "medium", "high", "xhigh".
+    Valid levels: "none", "minimal", "low", "medium", "high", "xhigh", "max".
     Returns None when the input is empty or unrecognized (caller uses default).
-    Returns {"enabled": False} for "none".
+    Returns {"enabled": False} for "none" (aliases: "false", "disabled", and
+    YAML boolean False — users write ``reasoning_effort: false``/``off``/``no``
+    in config.yaml and YAML hands us a bool, which must mean disabled, not
+    "fall back to the default and keep thinking").
     Returns {"enabled": True, "effort": <level>} for valid effort levels.
     """
-    if not effort or not effort.strip():
+    if effort is False:
+        return {"enabled": False}
+    if effort is None or effort is True:
+        return None
+    effort = str(effort)
+    if not effort.strip():
         return None
     effort = effort.strip().lower()
-    if effort == "none":
+    if effort in {"none", "false", "disabled"}:
         return {"enabled": False}
     if effort in VALID_REASONING_EFFORTS:
         return {"enabled": True, "effort": effort}

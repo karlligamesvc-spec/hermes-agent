@@ -94,6 +94,7 @@ function signIn() {
     account: { email: 'kael@apex-nodes.com', name: 'Kael', plan: 'pro' },
     enabled: true,
     gateReason: null,
+    loginTruth: true,
     status: 'signed-in'
   })
 }
@@ -103,6 +104,7 @@ function signOut() {
     account: { email: '', name: '', plan: '' },
     enabled: true,
     gateReason: null,
+    loginTruth: true,
     status: 'signed-out'
   })
 }

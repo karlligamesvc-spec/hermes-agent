@@ -8,6 +8,7 @@ __pycache__/
 .venv
 .vscode/
 .env
+.op.env
 .env.local
 .env.development.local
 .env.test.local
@@ -147,3 +148,15 @@ node_modules
 # pr-infographic-workflow reference (storage rule + lapse #8 / #COMMIT-1).
 infographic/
 dist/
+
+# ApexNodes 内部笔记 / 构建产物 —— 不进公开 fork
+/WORK-NOTES-*.md
+/coscli.log
+/coscli_output/
+# scripts/publish-runtime-tarball.sh local output — a per-commit runtime
+# source tarball (~50MB+) meant for the public-read COS bucket, never for
+# git. Already covered by the blanket `dist/` rule above; called out
+# explicitly (and git-rm'd out of HEAD, hc-472 followup) because a past
+# force-add slipped one in (#29, 1f2dabf2c) alongside the coscli.log /
+# coscli_output cleanup #80 missed.
+/dist/cos-runtime/

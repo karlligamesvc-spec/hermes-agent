@@ -16,6 +16,8 @@ from unittest.mock import patch
 
 _SEAM_MODULES = (
     "provider_filter",
+    # hc-512 picker sentinel⇄real id dedupe.
+    "model_catalog_dedupe",
     "models_dev_fast",
     "gateway_bootstrap",
     "feishu_supervisor",
@@ -24,6 +26,8 @@ _SEAM_MODULES = (
     "stt_no_lazy_install",
     "first_turn_ack",
     "cn_im_messages",
+    # hc-539 IM ↔ local coding-agent passthrough.
+    "im_passthrough",
 )
 
 

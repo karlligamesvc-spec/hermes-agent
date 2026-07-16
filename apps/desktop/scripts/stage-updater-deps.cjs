@@ -70,6 +70,16 @@ const STAGE_ROOT = path.join(APP_ROOT, 'build', 'updater-deps')
 // `node_modules` naming to resolve the closure, which this preserves.
 const STAGE_NODE_MODULES = path.join(STAGE_ROOT, 'vendor', 'node_modules')
 
+// Manifest of the staged closure, written NEXT TO vendor/ so it ships via the
+// same `build/updater-deps` -> `updater-deps` extraResources mapping (lands at
+// <Resources>/updater-deps/updater-deps-manifest.json in the packaged app). The
+// post-pack integrity gate (scripts/assert-updater-deps.cjs, run by BOTH the
+// mac and win workflows) reads it to verify every package that was staged
+// actually survived into the packaged tree -- catching a dropped/short-circuited
+// copy on either platform without a hand-maintained package list.
+const MANIFEST_NAME = 'updater-deps-manifest.json'
+const STAGE_MANIFEST = path.join(STAGE_ROOT, MANIFEST_NAME)
+
 // Entry package whose full production-dependency closure we stage.
 const ROOT_PACKAGE = 'electron-updater'
 
@@ -179,6 +189,36 @@ function stagedDestFor(name, srcDir) {
   return path.join(STAGE_NODE_MODULES, rel)
 }
 
+/**
+ * The package's main-entry file, relative to the package dir, resolved to the
+ * REAL file require() would load -- not the raw package.json `main` string.
+ * Raw mains are legal without an extension or with a `./` prefix (ms ships
+ * `"./index"`, tiny-typed-emitter `"lib/index"`); the integrity gate does a
+ * literal isFile() on the recorded path, so recording the raw string made the
+ * gate's very first real run (0.16.6) fail on paths like `ms/./index` that
+ * require() resolves but the filesystem doesn't know. Resolution happens HERE,
+ * at stage time, where the source files are on disk: require.resolve() on the
+ * package dir applies Node's full main/index resolution. If even that can't
+ * produce a file inside the package (exotic exports-only package), return null
+ * and let the gate fall back to the dir-presence check for that package.
+ */
+function entryRelFor(srcDir) {
+  try {
+    // realpath BOTH sides before relativizing: require.resolve returns the
+    // real path, so a symlinked srcDir (macOS /var -> /private/var, pnpm-style
+    // layouts) would otherwise relativize into ../.. garbage.
+    const realSrc = fs.realpathSync(path.resolve(srcDir))
+    const abs = require.resolve(realSrc)
+    const rel = path.relative(realSrc, abs)
+    // A main outside its own package dir would make the manifest lie; treat as
+    // unresolvable rather than recording a path the gate can't join safely.
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return null
+    return rel
+  } catch {
+    return null
+  }
+}
+
 function copyPackage(name, srcDir) {
   const destPkgDir = stagedDestFor(name, srcDir)
   const files = walkFiles(srcDir)
@@ -194,14 +234,35 @@ function copyPackage(name, srcDir) {
   return copied
 }
 
+// POSIX-normalized path of the package dir, relative to STAGE_NODE_MODULES, so
+// the manifest is byte-identical whether staged on macOS or Windows and the
+// gate can join it with either separator.
+function stagedRelDir(name, srcDir) {
+  return path
+    .relative(STAGE_NODE_MODULES, stagedDestFor(name, srcDir))
+    .split(path.sep)
+    .join('/')
+}
+
 function main() {
   rmrf(STAGE_ROOT)
   ensureDir(STAGE_NODE_MODULES)
 
   const closure = collectClosure()
   let total = 0
+  const manifestPackages = []
   for (const [name, srcDir] of [...closure].sort((a, b) => a[0].localeCompare(b[0]))) {
     total += copyPackage(name, srcDir)
+    const dir = stagedRelDir(name, srcDir)
+    const entryRel = entryRelFor(srcDir)
+    manifestPackages.push({
+      name,
+      dir,
+      // Package-main relative to vendor/node_modules, POSIX-joined -- the
+      // REAL resolved file the gate re-checks exists in the packaged tree.
+      // null = no resolvable main (gate then relies on the dir check alone).
+      entry: entryRel ? `${dir}/${entryRel.split(path.sep).join('/')}` : null,
+    })
   }
 
   // Sanity gate: the packaged app is broken if the entry package or its own
@@ -219,10 +280,24 @@ function main() {
     )
   }
 
+  // Emit the closure manifest for the post-pack integrity gate. `root` names
+  // the entry package so the gate can hard-require its presence explicitly.
+  fs.writeFileSync(
+    STAGE_MANIFEST,
+    `${JSON.stringify({ root: ROOT_PACKAGE, packages: manifestPackages }, null, 2)}\n`
+  )
+
   console.log(
     `[stage-updater-deps] staged ${closure.size} packages, ${total} files ` +
-      `into ${path.relative(APP_ROOT, STAGE_ROOT)}`
+      `into ${path.relative(APP_ROOT, STAGE_ROOT)} ` +
+      `(+ ${MANIFEST_NAME})`
   )
 }
 
-main()
+// Testable seam (stage-updater-deps.test.cjs unit-tests the entry resolution
+// that broke the 0.16.6 gate); running as a script stages as before.
+module.exports = { entryRelFor }
+
+if (require.main === module) {
+  main()
+}

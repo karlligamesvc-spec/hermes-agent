@@ -19,6 +19,7 @@ import { isMessagingSource, LOCAL_SESSION_SOURCE_IDS, MESSAGING_SESSION_SOURCE_I
 import { latestSessionTodos } from '../lib/todos'
 import { $authState } from '../store/auth'
 import { setCronJobs } from '../store/cron'
+import { $pendingDesktopLoginCode } from '../store/onboarding'
 import { startTaskNotifier } from '../store/tasks'
 import {
   $panesFlipped,
@@ -35,6 +36,7 @@ import {
   SIDEBAR_SESSIONS_PAGE_SIZE,
   unpinSession
 } from '../store/layout'
+import { registerActiveTurnResend } from '../store/managed-recovery'
 import { respondToApprovalAction } from '../store/native-notifications'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
@@ -56,11 +58,13 @@ import {
   $selectedStoredSessionId,
   $sessions,
   $workingSessionIds,
+  coerceApprovalMode,
   CRON_SECTION_LIMIT,
   getRecentlySettledSessionIds,
   mergeSessionPage,
   MESSAGING_SECTION_LIMIT,
   sessionPinId,
+  setApprovalMode,
   setAwaitingResponse,
   setBusy,
   setCronSessions,
@@ -130,6 +134,7 @@ const ArtifactsView = lazy(async () => ({ default: (await import('./artifacts'))
 const CommandCenterView = lazy(async () => ({ default: (await import('./command-center')).CommandCenterView }))
 const CronView = lazy(async () => ({ default: (await import('./cron')).CronView }))
 const MessagingView = lazy(async () => ({ default: (await import('./messaging')).MessagingView }))
+const ImEntryView = lazy(async () => ({ default: (await import('./im-entry')).ImEntryView }))
 const ProfilesView = lazy(async () => ({ default: (await import('./profiles')).ProfilesView }))
 const ProfileStatsView = lazy(async () => ({ default: (await import('./profile')).ProfileStatsView }))
 const SearchView = lazy(async () => ({ default: (await import('./search')).SearchView }))
@@ -308,7 +313,24 @@ export function DesktopController() {
   // that arrived during boot is flushed exactly once.
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onDeepLink?.(payload => {
-      if (!payload || payload.kind !== 'blueprint' || !payload.name) {
+      if (!payload) {
+        return
+      }
+
+      // hc-530: apexnodes://login?code=… — web → desktop one-click login. Park the
+      // one-time code for the login screen to exchange (it owns the onboarding
+      // ctx). Ignore when already signed in: the web handoff is a sign-IN, not an
+      // account switch.
+      if (payload.kind === 'login') {
+        const code = typeof payload.params?.code === 'string' ? payload.params.code.trim() : ''
+        if (code && $authState.get().status !== 'signed-in') {
+          $pendingDesktopLoginCode.set(code)
+        }
+
+        return
+      }
+
+      if (payload.kind !== 'blueprint' || !payload.name) {
         return
       }
 
@@ -817,6 +839,15 @@ export function DesktopController() {
     updateSessionState
   })
 
+  // hc-511: let the detached relay-auth recovery retry the active turn once
+  // after a successful relay-key self-heal, reusing the in-place regenerate
+  // (no duplicate user bubble). Kept in sync with reloadFromMessage's identity.
+  useEffect(() => {
+    registerActiveTurnResend(() => reloadFromMessage(null))
+
+    return () => registerActiveTurnResend(null)
+  }, [reloadFromMessage])
+
   useGatewayBoot({
     handleGatewayEvent: handleDesktopGatewayEvent,
     onConnectionReady: c => {
@@ -834,13 +865,19 @@ export function DesktopController() {
       void refreshCurrentModel()
       void refreshActiveProfile()
       void refreshSessions().catch(() => undefined)
+      // Seed the composer's approval tier from the persisted global
+      // approvals.mode so a fresh draft (before any session.info arrives) shows
+      // the real tier instead of the default. session.info keeps it live after.
+      void requestGateway<{ value?: string }>('config.get', { key: 'approvals.mode' })
+        .then(result => setApprovalMode(coerceApprovalMode(result?.value)))
+        .catch(() => undefined)
       // Platform client-config: applied by the MAIN process pre-gateway via
       // config.yaml line surgery (main.cjs applyClientConfigToRuntime). The
       // old renderer apply — a full /api/config round-trip — was retired: the
       // dashboard GET drops schema-external keys (custom_providers/skills), so
       // PUT-ing it back wiped them.
     }
-  }, [gatewayState, refreshCurrentModel, refreshSessions])
+  }, [gatewayState, refreshCurrentModel, refreshSessions, requestGateway])
 
   // Keep the cron jobs section live without a user action: the scheduler ticks
   // in the background (advancing next-run/state and creating runs), so poll the
@@ -1030,6 +1067,7 @@ export function DesktopController() {
       onAttachImageBlob={composer.attachImageBlob}
       onBranchInNewChat={branchInNewChat}
       onCancel={cancelRun}
+      onChangeCwd={changeSessionCwd}
       onDeleteSelectedSession={() => {
         if (selectedStoredSessionId) {
           void removeSession(selectedStoredSessionId)
@@ -1161,6 +1199,14 @@ export function DesktopController() {
               </Suspense>
             }
             path="messaging"
+          />
+          <Route
+            element={
+              <Suspense fallback={null}>
+                <ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />
+              </Suspense>
+            }
+            path="im-entry"
           />
           <Route
             element={

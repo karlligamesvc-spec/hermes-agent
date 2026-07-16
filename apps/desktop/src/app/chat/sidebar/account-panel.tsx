@@ -14,6 +14,7 @@ import { useI18n } from '@/i18n'
 import { profileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
 import { $authState, type AuthAccount, signOutAccount } from '@/store/auth'
+import { requestManagedReSignIn } from '@/store/onboarding'
 
 import { PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 
@@ -51,10 +52,40 @@ export function AccountPanel() {
   const { account, enabled, status } = useStore($authState)
   const [open, setOpen] = useState(false)
 
-  // No account gate on this build (managed off), or not signed in yet → the
-  // account panel has nothing to show. The login gate covers signed-out.
-  if (enabled === false || status !== 'signed-in') {
+  // No account gate on this build (managed off) → nothing to show. The full
+  // login gate covers 'signed-out' / 'disabled' / 'checking'. The panel renders
+  // for 'signed-in' (normal) and 'expired' (hc-519 degrade below).
+  if (enabled === false || (status !== 'signed-in' && status !== 'expired')) {
     return null
+  }
+
+  // hc-519: the relay rejected the stored key and self-heal couldn't recover it.
+  // Instead of the old lie ("已登录 …"), show a degraded, clickable card that
+  // states "登录已失效" and re-opens the managed sign-in on click — the honest,
+  // actionable single source of truth for a dead relay session.
+  if (status === 'expired') {
+    return (
+      <button
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors',
+          'hover:bg-(--ui-control-hover-background)'
+        )}
+        onClick={() => requestManagedReSignIn(t.auth.login.sessionExpired)}
+        type="button"
+      >
+        <span
+          aria-hidden
+          className="grid size-7 shrink-0 place-items-center rounded-full text-white"
+          style={{ backgroundColor: 'var(--theme-danger, #d9534f)' }}
+        >
+          <Codicon name="warning" size="0.875rem" />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col leading-tight">
+          <span className="truncate text-[0.8125rem] font-medium text-foreground">{a.sessionExpiredTitle}</span>
+          <span className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">{a.sessionExpiredAction}</span>
+        </span>
+      </button>
+    )
   }
 
   const name = displayName(account, a.fallbackName)

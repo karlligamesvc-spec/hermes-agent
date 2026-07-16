@@ -618,6 +618,7 @@ export const zh: Translations = {
       engineTapCheck: '检查是否有更新的引擎版本。',
       engineFound: value => `发现新版本 ${value}。`,
       engineFoundGeneric: '有可用的新引擎版本。',
+      engineDesktopUpgradeRequired: value => `请先将桌面应用升级到 v${value} 或更高版本,才能安装此引擎。`,
       engineCompatNotes: '兼容性说明',
       engineApply: '应用更新',
       engineApplying: '正在应用…',
@@ -625,7 +626,9 @@ export const zh: Translations = {
       engineConfirmTitle: '更新 AI 引擎？',
       engineConfirmBody: value => `将切换到引擎版本 ${value}，并重启应用以生效。你的工作不会丢失。`,
       engineConfirmBodyGeneric: '将更新 AI 引擎，并重启应用以生效。你的工作不会丢失。',
-      engineConfirmApply: '更新引擎'
+      engineConfirmApply: '更新引擎',
+      engineUpdateNeeded: '引擎需更新',
+      engineUpdateNeededDetail: value => `本应用需要引擎 ${value} 或更高版本。请点下方「检查更新」更新引擎。`
     },
     config: {
       none: '无',
@@ -858,6 +861,60 @@ export const zh: Translations = {
       searchKeys: '搜索提供方…',
       noKeysMatch: '没有匹配的提供方。',
       loading: '正在加载提供方...'
+    },
+    // hc-444:「连接飞书」卡——把你在云端建好的飞书应用凭证同步到桌面,
+    // 助手就能读写飞书文档/表格/消息。
+    feishu: {
+      title: '飞书 / Lark',
+      intro: '让助手在你的飞书里干活——读写文档、表格和消息。用的是你已在云端建好的飞书应用。',
+      connectedTitle: '已连接',
+      connectedTo: agent => `已从「${agent}」同步`,
+      connectedGeneric: '飞书凭证已同步到本设备。',
+      statusOk: '正常',
+      statusExpired: '登录已过期',
+      statusInvalid: '凭证被拒绝',
+      statusStale: '云端已标记该凭证过期。请在浏览器里重新绑定后再同步一次。',
+      sync: '从云端同步',
+      resync: '重新同步',
+      syncing: '同步中…',
+      disconnect: '断开连接',
+      disconnectConfirm: '在本设备断开飞书?你的云端绑定不受影响,只是助手在本机暂停使用飞书,直到你再次同步。',
+      signInFirstTitle: '请先登录',
+      signInFirst: '登录你的 APEX 账号后即可连接飞书。',
+      noEntryTitle: '还没有飞书应用',
+      noEntry: '你还没有在云端建飞书应用。打开网页绑定流程,扫码创建你的应用,回来后点同步即可。',
+      openBind: '去网页绑定',
+      afterBind: '绑定好了?现在同步。',
+      syncedTitle: '飞书已连接',
+      syncedMessage: '助手现在可以在飞书里干活了。正在重启以生效…',
+      disconnectedTitle: '飞书已断开',
+      disconnectedMessage: '助手将在本设备停止使用飞书。',
+      syncFailed: '同步飞书凭证失败,请重试。',
+      sessionExpired: '登录已过期。请重新登录后再同步。',
+      loading: '正在检查飞书…'
+    },
+    localAgent: {
+      title: '本机 Agent 调度',
+      intro:
+        '让你的云端助手把编码任务交给这台电脑上的 Agent(Claude Code、Codex 或 Cursor)——任务在本机用你自己的工具和凭据执行,结果回传给云端助手。不开启则什么都不会运行。',
+      enableLabel: '允许云端助手调度这台电脑',
+      enableHint:
+        '开启后,只要 App 在运行,这台电脑就会连接 APEX 并待命接单。危险操作永远会先在本机请求你确认。',
+      statusLabel: '状态',
+      statusDormant: '已关闭',
+      statusConnecting: '连接中…',
+      statusOnline: '在线——可接单',
+      statusOffline: '重连中…',
+      statusError: '请先登录 APEX 账号以连接',
+      deviceNameLabel: '设备名称',
+      deviceNamePlaceholder: '这台电脑',
+      unregister: '注销此设备',
+      unregisterConfirm: '注销这台电脑?重新开启调度前它将不再接单。',
+      signInFirst: '请先登录你的 APEX 账号。',
+      saved: '设备名称已保存。',
+      enableFailed: '保存失败——本系统的安全存储不可用。',
+      engineOutdated: value =>
+        `当前引擎版本过旧，本机 Agent 调度需要引擎 ${value} 或更高版本。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
     },
     sessions: {
       loading: '正在加载已归档会话…',
@@ -1195,6 +1252,77 @@ export const zh: Translations = {
     }
   },
 
+  imEntry: {
+    title: '消息渠道',
+    intro: '让 AI 助手在你常用的聊天软件里替你回消息——扫一下码就能连上一个渠道。',
+    loading: '正在加载渠道…',
+    connect: '连接',
+    manage: '管理',
+    comingSoon: '即将支持',
+    connectedBadge: '已连接',
+    availableHeading: '现在可用',
+    comingSoonHeading: '即将支持',
+    boundHeading: '已连接的渠道',
+    boundEmpty: '还没有连接任何渠道。',
+    connectedOn: when => `${when} 连接`,
+    unbind: '断开',
+    unbindConfirm: name => `断开${name}？本设备上的 AI 助手会停止在那里回消息。`,
+    unbindDoneTitle: '已断开',
+    unbindDoneMessage: '正在重启以生效…',
+    liveState: {
+      connected: '已连接',
+      pending: '重启后生效',
+      error: '连接异常',
+      connecting: '连接中…',
+      unknown: '未知'
+    },
+    channels: {
+      feishu: { name: '飞书', tagline: '在飞书的私聊和群里回消息。' },
+      dingtalk: { name: '钉钉', tagline: '在钉钉的私聊和群里回消息。' },
+      weixin: { name: '微信', tagline: '用你的个人微信回消息。' },
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私聊和群里回消息。' },
+      wecom: { name: '企业微信', tagline: '在企业微信里回消息。' }
+    },
+    dialog: {
+      connectTitle: name => `连接${name}`,
+      signInFirstTitle: '请先登录',
+      signInFirst: '登录你的 APEX 账号后即可连接消息渠道。',
+      issuing: '正在生成二维码…',
+      scanPrompt: '扫码连接',
+      scanHint: '打开飞书扫描二维码，并在手机上确认。',
+      openLink: '改用链接打开',
+      weixinBotNote:
+        '连接的是一个新的机器人联系人（iLink 机器人身份），不是把你本人的微信接管；这个机器人一般无法加入普通群聊，主要通过好友私聊使用。',
+      connecting: '连接中…',
+      authorizedTitle: '已连接',
+      authorizedMessage: '正在重启以生效…',
+      authorizedRestartHint: '已连接并保存——请重启应用以完成生效。',
+      retry: '重试',
+      cancel: '取消',
+      close: '关闭',
+      comingSoonTitle: '即将支持',
+      comingSoonBody: '这个渠道还不能连接，我们正在开发中。',
+      pasteHeading: '粘贴你的码',
+      pasteLabel: '连接码',
+      pastePlaceholder: '粘贴平台给你的码',
+      pasteSubmit: '连接',
+      advanced: '高级设置',
+      errors: {
+        sign_in: '登录已过期，请重新登录后再连接。',
+        service_unavailable: '该渠道尚未开放，请稍后再试。',
+        rate_limited: '已有一个连接请求在进行中，请先完成或等它过期后再试。',
+        expired: '二维码已过期，请重新开始获取新的。',
+        denied: '请求被拒绝，请重新开始再试。',
+        request_failed: '出了点问题，请重试。',
+        keychain: '安全存储未开启，连接未保存。请开启钥匙串访问后重试。'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} 个渠道已连接`,
+      openCta: '前往消息渠道'
+    }
+  },
+
   profiles: {
     close: '关闭配置档案',
     nameHint: '小写字母、数字、连字符和下划线。必须以字母或数字开头。',
@@ -1418,7 +1546,6 @@ export const zh: Translations = {
   },
 
   tasks: {
-    loading: '正在加载任务…',
     newTask: '新任务',
     tabRunning: '进行中',
     tabDone: '已完成',
@@ -1578,9 +1705,30 @@ export const zh: Translations = {
 
   composer: {
     message: '消息',
+    projectPicker: {
+      label: '项目',
+      select: '选择项目',
+      searchPlaceholder: '搜索项目…',
+      recentHeading: '最近项目',
+      noRecent: '暂无项目',
+      noMatches: '没有匹配的项目',
+      useExisting: '使用现有文件夹…',
+      newBlank: '新建空白项目…',
+      newTitle: '新建项目',
+      namePlaceholder: '项目名称',
+      locationLabel: '位置',
+      chooseParent: '选择上级文件夹…',
+      create: '创建',
+      back: '返回',
+      useExistingTitle: '选择项目文件夹',
+      chooseParentTitle: '选择项目创建位置',
+      pickFailed: '无法打开文件夹选择器',
+      createFailed: '无法创建项目文件夹'
+    },
     approvalMode: {
       label: '审批',
-      review: { label: '替我审批', desc: '仅对检测到的风险操作请求批准' },
+      manual: { label: '手动审批', desc: '仅在检测到危险操作时请求批准' },
+      smart: { label: '智能审批', desc: 'AI 评估风险后再请求批准' },
       full: { label: '完全访问', desc: '可不受限制地访问互联网和你电脑上的任何文件' }
     },
     wakingProfile: profile => `正在唤醒 ${profile}…`,
@@ -1802,6 +1950,37 @@ export const zh: Translations = {
       complete: '完成',
       'bootstrap-marker': '完成'
     },
+    // hc-452: rough per-step duration hints shown next to a PENDING stage row
+    // (before it starts, when there's nothing else to show there) so the user
+    // has a sense of what's coming instead of a blank space. Based on Kael's
+    // 2026-07-08 real-machine measurement (前置 8.6s / venv+python-deps 6.3s /
+    // node-deps 43s+ on a from-scratch bootstrap) -- these are first-install
+    // ballparks; an up-to-date incremental re-run (hc-452's skip logic) finishes
+    // most of these in under a second instead, which the "已跳过 · <1s" duration
+    // already visible on a SKIPPED row communicates on its own. Unknown/未列出
+    // stage ids simply render no hint (stageLabel's formatStageName fallback
+    // has no matching hint entry either, which is fine -- purely cosmetic).
+    stageDurationHints: {
+      prerequisites: '约 10 秒',
+      uv: '约 3 秒',
+      python: '约 3 秒',
+      git: '约 2 秒',
+      node: '约 3 秒',
+      'system-packages': '约 2 秒',
+      repository: '约 5 秒',
+      venv: '约 3 秒',
+      'python-deps': '约 5 秒',
+      dependencies: '约 5 秒',
+      'node-deps': '约 45 秒',
+      desktop: '约 2 分钟',
+      path: '约 1 秒',
+      config: '约 1 秒',
+      'config-templates': '约 1 秒',
+      'platform-sdks': '约 2 秒',
+      setup: '约 1 秒',
+      configure: '约 1 秒',
+      gateway: '约 3 秒'
+    },
     oneTimeTitle: 'APEX 需要一次性安装',
     unsupportedDesc: platform =>
       `${platform} 暂不支持自动首次启动安装。请打开终端并运行下面的命令，然后重新启动此应用。之后启动会跳过此步骤。`,
@@ -1812,10 +1991,26 @@ export const zh: Translations = {
     retryAfterRun: '我已运行 -- 重试',
     failedTitle: '安装失败',
     settingUpTitle: '正在设置 APEX',
+    // hc-452: shown instead of settingUpTitle when this bootstrap run is an
+    // opt-in runtime version UPDATE, not a first-ever install (state.manifest
+    // .updateInfo.isUpdate). version may be null (e.g. the eager synthetic
+    // manifest frame shown before the target version resolves) -- falls back
+    // to a version-less "更新中" phrasing rather than printing "undefined".
+    settingUpTitleUpdate: version => (version ? `正在更新到 ${version}` : '正在更新 APEX'),
     finishingTitle: '正在收尾',
     failedDesc:
       '某个安装步骤失败。在 Windows 上，如果另一个 APEX CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的 APEX 实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
     activeDesc: '这是一次性设置。安装器正在下载依赖并配置你的机器。之后启动会跳过此步骤。',
+    // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
+    // repeat "一次性"/"之后启动会跳过此步骤" -- those phrases are what
+    // Kael's report flagged as actively misleading during a version update
+    // (this is not a one-time thing; it recurs on every future update too).
+    // Unchanged dependencies are skipped automatically (hc-452's hash-marker
+    // judge) so most updates finish in well under a minute.
+    activeDescUpdate: version =>
+      version
+        ? `正在更新到 ${version}。未变化的依赖会自动跳过，通常几秒到几十秒内完成。`
+        : '正在更新 APEX。未变化的依赖会自动跳过，通常几秒到几十秒内完成。',
     progress: (completed, total) => `${completed}/${total} 个步骤已完成`,
     currentStage: stage => ` -- 当前：${stage}`,
     fetchingManifest: '正在获取安装器 manifest...',
@@ -1921,6 +2116,19 @@ export const zh: Translations = {
     docs: provider => `${provider} 文档`
   },
 
+  managedRecovery: {
+    healed: {
+      title: 'APEX 凭证已刷新',
+      retrying: '登录凭证已过期,已自动刷新,正在重试…',
+      resend: '登录凭证已过期,已自动刷新,请重新发送。'
+    },
+    signInRequired: {
+      title: '请重新登录 APEX',
+      message: 'APEX 会话已过期或未连接平台,请重新登录后继续对话。',
+      reason: 'APEX 会话已过期,请重新登录以继续对话。'
+    }
+  },
+
   auth: {
     login: {
       title: '开始使用',
@@ -1936,7 +2144,9 @@ export const zh: Translations = {
       profile: '个人资料',
       settings: '设置',
       usage: '剩余用量',
-      logout: '退出登录'
+      logout: '退出登录',
+      sessionExpiredTitle: '登录已失效',
+      sessionExpiredAction: '点击重新登录'
     }
   },
 
@@ -1974,6 +2184,8 @@ export const zh: Translations = {
       editModels: '编辑模型…',
       refreshModels: '刷新模型',
       loadFailed: '模型列表加载失败，请稍后重试',
+      catalogUnauthorized: '模型目录不可用：登录已失效，点按重新登录',
+      catalogUnreachable: '模型目录不可用：网络异常，点按重试',
       moaPresets: 'MoA 预设',
       moaPresetItem: preset => `MoA：${preset}`,
       fast: '快速',
@@ -2346,6 +2558,8 @@ export const zh: Translations = {
     modelSwitchFailed: '模型切换失败',
     modelSwitchBusy: 'AI 正在回复中，等这轮结束后再切换模型。',
     modelSwitchRetry: '切换未生效，请稍后重试。',
+    modelNotInCatalogTitle: '所选模型不可用',
+    modelNotInCatalog: '该模型已不在当前模型目录中，已切回默认模型。',
     sessionExported: '会话已导出',
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',

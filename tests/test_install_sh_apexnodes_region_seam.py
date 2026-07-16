@@ -36,6 +36,7 @@ SH_PUBLIC_FUNCS = (
     "apexnodes_resolve_region",
     "apexnodes_apply_cn_mirror_env",
     "apexnodes_cn_enabled",
+    "apexnodes_cos_configured",
     "apexnodes_install_uv_from_cos",
     "apexnodes_download_runtime_tarball",
 )
@@ -43,8 +44,10 @@ PS1_PUBLIC_FUNCS = (
     "Resolve-ApexRegion",
     "Set-ApexCnMirrorEnv",
     "Test-CnEnabled",
+    "Test-CosConfigured",
     "Install-UvFromCos",
     "Install-RuntimeFromCos",
+    "Install-GitFromCos",
 )
 
 
@@ -89,7 +92,7 @@ def test_install_sh_calls_lib_functions_with_guard() -> None:
     for fn in (
         "apexnodes_resolve_region",
         "apexnodes_install_uv_from_cos",
-        "apexnodes_cn_enabled",
+        "apexnodes_cos_configured",
         "apexnodes_download_runtime_tarball",
     ):
         assert fn in text, f"install.sh must call {fn}"
@@ -109,7 +112,7 @@ def test_install_ps1_calls_lib_functions_with_guard() -> None:
     for fn in (
         "Resolve-ApexRegion",
         "Install-UvFromCos",
-        "Test-CnEnabled",
+        "Test-CosConfigured",
         "Install-RuntimeFromCos",
     ):
         assert fn in text, f"install.ps1 must call {fn}"
