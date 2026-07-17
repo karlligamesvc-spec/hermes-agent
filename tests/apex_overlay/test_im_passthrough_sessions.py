@@ -430,9 +430,9 @@ def test_cc_list_renders_and_does_not_open_a_harness(monkeypatch):
     assert handled is True
     assert "共 3 条" in reply and "summary 0" in reply
     assert harness.opened is False, "listing must not spawn an agent"
-    # ordering cached for a subsequent /cc <n>
+    # ordering cached per (chat, family) for a subsequent /cc <n>
     cache = getattr(runner, im_passthrough._LIST_STATE_ATTR)
-    assert [s.session_id for s in cache["u1:c1"]] == ["sess-0", "sess-1", "sess-2"]
+    assert [s.session_id for s in cache[("u1:c1", "claude")]] == ["sess-0", "sess-1", "sess-2"]
 
 
 def test_cc_number_attaches_to_listed_session(monkeypatch):
@@ -541,18 +541,21 @@ def test_cc_new_with_dir_forces_fresh_session(monkeypatch, tmp_path):
     assert harness.opened_with_session_id in (None, ""), "new session is NOT a resume"
 
 
-def test_codex_list_is_claude_only(monkeypatch):
+def test_codex_list_routes_to_codex_store_not_claude(monkeypatch):
+    # hc-546: /codex list now enumerates the codex rollout store (parity with
+    # /cc), and must NOT reach into the Claude projects store.
     harness = _FakeHarness()
     _install_factory(monkeypatch, harness)
-    called = {"n": 0}
-    monkeypatch.setattr(im_passthrough, "list_recent_sessions", lambda limit=10: called.__setitem__("n", called["n"] + 1) or [])
+    claude_hits = {"n": 0}
+    monkeypatch.setattr(im_passthrough, "list_recent_sessions", lambda limit=10: claude_hits.__setitem__("n", claude_hits["n"] + 1) or [])
+    monkeypatch.setattr(im_passthrough, "list_codex_sessions", lambda limit=10: _fake_sessions(2))
     runner = _FakeRunner()
 
     handled, reply = _run(im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex list")))
     assert handled is True
-    assert "仅支持 Claude Code" in reply
-    assert called["n"] == 0, "must not scan the Claude store for a codex list"
-    assert harness.opened is False
+    assert "Codex" in reply and "/codex <编号>" in reply
+    assert claude_hits["n"] == 0, "codex list must NOT scan the Claude store"
+    assert harness.opened is False, "listing must not spawn an agent"
 
 
 def test_cc_list_while_in_session_does_not_close_it(monkeypatch):
@@ -571,5 +574,93 @@ def test_cc_list_while_in_session_does_not_close_it(monkeypatch):
         assert harness.closed is False
         sessions = getattr(runner, im_passthrough._STATE_ATTR)
         assert src.user_id + ":" + src.chat_id in sessions
+
+    _run(_go())
+
+
+# ---------------------------------------------------------------------------
+# hc-546 — /codex session targeting (controller paths, in-memory harness)
+# ---------------------------------------------------------------------------
+
+
+def test_codex_number_attaches_to_listed_codex_session(monkeypatch):
+    harness = _FakeHarness()
+    captured = _install_factory(monkeypatch, harness)
+    codex_sessions = [
+        SessionInfo(session_id="codex-0", cwd="/x/0", summary="s0", mtime=9),
+        SessionInfo(session_id="codex-1", cwd="/x/1", summary="s1", mtime=8),
+    ]
+    monkeypatch.setattr(im_passthrough, "list_codex_sessions", lambda limit=10: codex_sessions)
+    runner = _FakeRunner()
+    src = _FakeSource()
+
+    async def _go():
+        await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex list", src))
+        handled, reply = await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex 2", src))
+        assert handled is True and "已挂接" in reply and "s1" in reply
+        assert captured["family"] == "codex"
+        assert captured["cwd"] == "/x/1"
+        assert harness.opened_with_session_id == "codex-1", "first turn will thread/resume this id"
+        assert "permission_callback" not in captured["kwargs"], "red line: no approver"
+
+    _run(_go())
+
+
+def test_codex_resume_by_id_uses_codex_store(monkeypatch):
+    harness = _FakeHarness()
+    captured = _install_factory(monkeypatch, harness)
+    info = SessionInfo(session_id="019f-codex-99", cwd="/Users/k/x", summary="resume me", mtime=1.0)
+    # routes to the codex store, never find_session (Claude).
+    monkeypatch.setattr(im_passthrough, "find_session", lambda sid: pytest.fail("used Claude store"))
+    monkeypatch.setattr(im_passthrough, "find_codex_session", lambda sid: info if sid == "019f-codex-99" else None)
+    runner = _FakeRunner()
+
+    handled, reply = _run(im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex resume 019f-codex-99")))
+    assert handled is True and "已挂接" in reply
+    assert captured["family"] == "codex" and captured["cwd"] == "/Users/k/x"
+    assert harness.opened_with_session_id == "019f-codex-99"
+
+
+def test_bare_codex_appends_codex_list_hint(monkeypatch):
+    harness = _FakeHarness()
+    _install_factory(monkeypatch, harness)
+    runner = _FakeRunner()
+
+    handled, reply = _run(im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex")))
+    assert handled is True and "直通模式" in reply
+    assert "/codex list" in reply, "bare /codex must advertise session attaching"
+    assert "/cc list" not in reply
+    assert harness.opened is True
+
+
+def test_two_families_are_numbered_independently(monkeypatch):
+    # THE hc-546 isolation guarantee: /cc list and /codex list keep SEPARATE
+    # orderings; /codex 2 selects the codex list's #2 even though the Claude list
+    # has only one entry (so a leaked shared numbering would be out-of-range).
+    harness = _FakeHarness()
+    captured = _install_factory(monkeypatch, harness)
+    claude_sessions = [SessionInfo(session_id="claude-A", cwd="/c/a", summary="cA", mtime=9)]
+    codex_sessions = [
+        SessionInfo(session_id="codex-A", cwd="/x/a", summary="xA", mtime=8),
+        SessionInfo(session_id="codex-B", cwd="/x/b", summary="xB", mtime=7),
+    ]
+    monkeypatch.setattr(im_passthrough, "list_recent_sessions", lambda limit=10: claude_sessions)
+    monkeypatch.setattr(im_passthrough, "list_codex_sessions", lambda limit=10: codex_sessions)
+    runner = _FakeRunner()
+    src = _FakeSource()
+    key = src.user_id + ":" + src.chat_id
+
+    async def _go():
+        await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/cc list", src))
+        await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex list", src))
+        cache = getattr(runner, im_passthrough._LIST_STATE_ATTR)
+        assert [s.session_id for s in cache[(key, "claude")]] == ["claude-A"]
+        assert [s.session_id for s in cache[(key, "codex")]] == ["codex-A", "codex-B"]
+
+        handled, reply = await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/codex 2", src))
+        assert handled is True and "已挂接" in reply
+        assert captured["family"] == "codex", "must attach a codex session, not claude"
+        assert captured["cwd"] == "/x/b"
+        assert harness.opened_with_session_id == "codex-B"
 
     _run(_go())
