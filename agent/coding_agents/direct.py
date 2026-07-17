@@ -214,7 +214,16 @@ class CodexDirectHarness(AgentHarness):
         if self._channel is None:
             self._channel = self._make_channel()
             self._initialize()
-            self.session_id = self._start_thread()
+            # A ``session_id`` preset before ``open()`` means "attach to this
+            # existing thread" — the same convention ClaudeDirectHarness uses to
+            # emit ``--resume`` on its first turn (hc-546). codex app-server
+            # exposes a native ``thread/resume`` (verified against codex-cli
+            # 0.144), so we re-open the persisted rollout in place instead of
+            # forking a fresh thread. No preset id ⇒ a brand-new thread.
+            if self.session_id:
+                self.session_id = self._resume_thread(self.session_id)
+            else:
+                self.session_id = self._start_thread()
         assert self.session_id is not None
         return self.session_id
 
@@ -240,6 +249,22 @@ class CodexDirectHarness(AgentHarness):
         if not thread_id:
             raise RuntimeError(f"codex thread/start returned no thread id (keys: {sorted(result)})")
         return str(thread_id)
+
+    def _resume_thread(self, thread_id: str) -> str:
+        """Re-open an existing codex thread by id via ``thread/resume`` (hc-546).
+
+        Returns the resumed thread id (same ``{thread:{id,sessionId}}`` shape as
+        ``thread/start``). Verified against the real binary (codex-cli 0.144):
+        ``thread/resume`` loads the persisted rollout WITHOUT replaying its
+        history as ``item/*`` notifications, so the subsequent ``turn/start``
+        appends to the resumed session and the normalized event stream is
+        identical to a fresh thread. The timeout is generous because resume also
+        boots the thread's MCP servers and loads history off disk.
+        """
+        result = self._request("thread/resume", {"threadId": thread_id}, timeout=60.0)
+        thread = result.get("thread") or {}
+        resumed = thread.get("id") or thread.get("sessionId") or thread_id
+        return str(resumed)
 
     def prompt(self, text: str) -> Iterator[AgentEvent]:
         if self.session_id is None:

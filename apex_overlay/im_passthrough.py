@@ -59,24 +59,27 @@ ACP ``session/update``). Session continuity is the harness's ``session_id``
 round-trip (Claude ``--resume`` / Codex ``threadId`` / ACP ``sessionId``), so
 the IM conversation ↔ agent session binding is persistent across messages.
 
-Session targeting (v1.1, hc-542)
-================================
-``/cc`` alone still opens a *fresh* session, but a chat can now attach to one of
-the machine's existing Claude Code sessions instead:
+Session targeting (v1.1 hc-542 · codex parity hc-546)
+=====================================================
+``/cc`` / ``/codex`` alone still open a *fresh* session, but a chat can now
+attach to one of the machine's existing sessions of either family instead:
 
-  * ``/cc list`` — the machine's recent Claude Code sessions (newest first, ≤10:
-    number, project dir, first-message preview, relative time). Truth is Claude
-    Code's own store (``$CLAUDE_CONFIG_DIR/projects/<slug>/<id>.jsonl``), read
-    **only** — never written — and every preview is control-char-scrubbed +
-    length-capped before it can reach IM (injection red line).
-  * ``/cc <n>`` — attach to the n-th session the chat last listed.
-  * ``/cc resume <id>`` — attach to a session by its id (id is path-validated).
-  * ``/cc new [绝对目录]`` — force a fresh session (optionally in a given cwd).
+  * ``/cc list`` / ``/codex list`` — that family's recent sessions (newest first,
+    ≤10: number, project dir, first-message preview, relative time). Truth is the
+    coding agent's OWN store, read **only** — never written: Claude Code's
+    ``$CLAUDE_CONFIG_DIR/projects/<slug>/<id>.jsonl`` and codex's
+    ``$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl``. Every preview is
+    control-char-scrubbed + length-capped before it can reach IM (injection red
+    line). The two families' listings are numbered independently.
+  * ``/cc <n>`` / ``/codex <n>`` — attach to the n-th session the chat last
+    listed *for that family*.
+  * ``/cc resume <id>`` / ``/codex resume <id>`` — attach by id (id is validated).
+  * ``/cc new [绝对目录]`` / ``/codex new [绝对目录]`` — force a fresh session.
 
-Attaching presets the harness ``session_id`` before the first turn, so
-continuation runs ``--resume <id>`` from the very first prompt (no new fork).
-Codex has no equivalent read-only thread store wired here, so ``/codex list`` /
-``/codex <n>`` reply "仅支持 Claude Code" rather than fabricate a mapping.
+Attaching presets the harness ``session_id`` before the first turn. Claude Code
+then runs ``--resume <id>`` from the very first prompt; codex re-opens the
+persisted thread via the app-server's native ``thread/resume`` (codex-cli 0.144)
+— either way continuation appends to the existing session, no new fork.
 
 Credentials (§4): the harness spawns the user's own ``claude`` / ``codex`` with
 a Hermes-secret-scrubbed env and the real HOME, so the coding agent authced from
@@ -514,17 +517,269 @@ def find_session(session_id: str, *, root: Optional[str] = None) -> Optional[Ses
     return None
 
 
-def render_session_list(sessions: list[SessionInfo], *, now_ts: float) -> str:
-    """Format the ``/cc list`` reply. Pure given ``sessions`` + ``now_ts``."""
+# ---------------------------------------------------------------------------
+# Codex rollout store — /codex list · /codex <n> · /codex resume <id> (hc-546)
+# ---------------------------------------------------------------------------
+#
+# Kael's ask: "我需要的是电脑里打开的 codex" — enumerate + attach to the machine's
+# existing Codex sessions, exactly like /cc. Codex keeps its own session truth at
+# ``$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`` (``CODEX_HOME``
+# defaults to ``~/.codex`` — the same override codex itself reads). Each rollout
+# opens with a ``session_meta`` record carrying the authoritative ``cwd`` + id,
+# and the first *typed* user turn is an ``event_msg`` whose
+# ``payload.type == "user_message"`` — verified against the real store across
+# three format eras (2026-05 → 2026-07; older metas expose ``id`` not
+# ``session_id``, and record the real prompt only after ``developer`` /
+# ``<user_instructions>`` / AGENTS.md context wrappers). We READ these files only
+# (never write/delete), head-scan just enough to find cwd + the first prompt, and
+# control-char-scrub + length-cap every preview before it can reach IM (same
+# injection red line as the Claude path). Attaching presets the harness
+# ``session_id`` before ``open()``; CodexDirectHarness.open() then calls the
+# app-server's native ``thread/resume`` instead of forking a fresh thread.
+
+# The UUID codex uses as a session/thread id, embedded in every rollout filename.
+_CODEX_ID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedRollout:
+    """Head-scan result of one codex rollout: cwd + raw preview + meta id."""
+
+    cwd: Optional[str]
+    summary_raw: Optional[str]
+    session_id: Optional[str]
+
+
+def _looks_like_context_wrapper(text: str) -> bool:
+    """True for injected context blocks (``<user_instructions>``,
+    ``<environment_context>``, ``# AGENTS.md`` …) that codex records with
+    ``role:"user"`` but the user never typed — so they never become a preview."""
+    t = text.lstrip()
+    return t.startswith("<") or t.startswith("# AGENTS.md")
+
+
+def _extract_rollout_user_text(obj: dict) -> Optional[str]:
+    """Pull the first *typed* prompt text from a codex rollout record, or None.
+
+    Prefers the ``event_msg`` / ``user_message`` record — codex's own marker for
+    a genuine user turn, present across format eras and free of the developer /
+    context-wrapper noise. Falls back to a ``response_item`` ``message`` with
+    ``role:"user"`` whose text is not an injected context wrapper (so a rollout
+    that predates the ``user_message`` event still yields a real preview).
+    """
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    otype = obj.get("type")
+    ptype = payload.get("type")
+    if otype == "event_msg" and ptype == "user_message":
+        msg = payload.get("message")
+        if isinstance(msg, str) and msg.strip():
+            return msg.strip()
+        return None
+    if otype == "response_item" and ptype == "message" and payload.get("role") == "user":
+        content = payload.get("content")
+        text: Optional[str] = None
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            parts = [
+                b["text"].strip()
+                for b in content
+                if isinstance(b, dict)
+                and isinstance(b.get("text"), str)
+                and b["text"].strip()
+            ]
+            text = " ".join(parts) if parts else None
+        if text and text.strip() and not _looks_like_context_wrapper(text):
+            return text.strip()
+    return None
+
+
+def parse_codex_rollout(lines: Iterable[str], *, max_scan: int = 400) -> ParsedRollout:
+    """Head-scan a codex rollout jsonl (iterable of raw lines) for cwd + first
+    typed prompt + session id.
+
+    Pure over its input and fault-tolerant: non-JSON / non-dict lines are
+    skipped; ``session_meta`` supplies cwd + the authoritative id; the first
+    typed user turn supplies the preview; the scan stops as soon as both cwd and
+    a preview are found (only the file head is read) or ``max_scan`` lines
+    elapse. Returns all-``None`` for an empty / unusable file.
+    """
+    cwd: Optional[str] = None
+    summary: Optional[str] = None
+    session_id: Optional[str] = None
+    for n, line in enumerate(lines):
+        if cwd is not None and summary is not None:
+            break
+        if n >= max_scan:
+            break
+        line = line.strip() if isinstance(line, str) else ""
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if obj.get("type") == "session_meta":
+            payload = obj.get("payload")
+            if isinstance(payload, dict):
+                if cwd is None:
+                    c = payload.get("cwd")
+                    if isinstance(c, str) and c.strip():
+                        cwd = c.strip()
+                if session_id is None:
+                    sid = payload.get("session_id") or payload.get("id")
+                    if isinstance(sid, str) and sid.strip():
+                        session_id = sid.strip()
+            continue
+        if summary is None:
+            text = _extract_rollout_user_text(obj)
+            if text:
+                summary = text
+    return ParsedRollout(cwd=cwd, summary_raw=summary, session_id=session_id)
+
+
+def _codex_sessions_root() -> str:
+    """Codex's rollout store root. Honors ``CODEX_HOME`` (the same override codex
+    itself reads), else ``~/.codex``; sessions live under ``<home>/sessions``."""
+    base = os.environ.get("CODEX_HOME", "").strip()
+    home = os.path.expanduser(base) if base else os.path.expanduser("~/.codex")
+    return os.path.join(home, "sessions")
+
+
+def _codex_id_from_name(path: str) -> str:
+    """Extract the session UUID embedded in a ``rollout-…-<uuid>.jsonl`` name."""
+    m = _CODEX_ID_RE.search(os.path.basename(path))
+    return m.group(0) if m else ""
+
+
+def _read_codex_session_info(path: str) -> Optional[SessionInfo]:
+    """Build a :class:`SessionInfo` from a codex rollout path (read-only). The id
+    comes from the ``session_meta`` record, falling back to the filename UUID."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            parsed = parse_codex_rollout(fh)
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    session_id = parsed.session_id or _codex_id_from_name(path)
+    if not session_id:
+        return None
+    return SessionInfo(
+        session_id=session_id,
+        cwd=parsed.cwd or "",
+        summary=sanitize_summary(parsed.summary_raw or ""),
+        mtime=mtime,
+    )
+
+
+def _iter_codex_rollouts(root: str) -> Iterable[tuple[float, str]]:
+    """Yield ``(mtime, path)`` for every non-empty ``rollout-*.jsonl`` under the
+    sessions root (recursive over the ``YYYY/MM/DD`` layout)."""
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if not (name.startswith("rollout-") and name.endswith(".jsonl")):
+                continue
+            p = os.path.join(dirpath, name)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            if st.st_size == 0:
+                continue
+            yield (st.st_mtime, p)
+
+
+def list_codex_sessions(limit: int = 10, *, root: Optional[str] = None) -> list[SessionInfo]:
+    """Newest-first codex sessions (read-only FS scan of the rollout store).
+
+    Only the newest ``limit`` rollouts are head-parsed (sorted by mtime), so a
+    store with hundreds of sessions stays cheap. Empty files are skipped. Any FS
+    error degrades to ``[]`` — listing can never raise into the gateway.
+    """
+    root = root or _codex_sessions_root()
+    try:
+        entries = list(_iter_codex_rollouts(root))
+    except OSError:
+        return []
+    entries.sort(key=lambda t: t[0], reverse=True)
+    out: list[SessionInfo] = []
+    seen: set[str] = set()
+    for _mtime, path in entries:
+        info = _read_codex_session_info(path)
+        # One logical codex session spans multiple rollout files (a new segment
+        # is written each time it is resumed, all carrying the original id). Show
+        # it once — the newest segment, which sorts first — so ``/codex <n>``
+        # numbering stays unambiguous.
+        if info is None or info.session_id in seen:
+            continue
+        seen.add(info.session_id)
+        out.append(info)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def find_codex_session(session_id: str, *, root: Optional[str] = None) -> Optional[SessionInfo]:
+    """Locate one codex session by id in the rollout store (read-only). ``None``
+    if the id is malformed (validated by :data:`_SESSION_ID_RE`) or no rollout
+    carries it. The id is matched only as a filename substring — never joined
+    into a path — so a crafted id can never escape the store."""
+    session_id = (session_id or "").strip()
+    if not _SESSION_ID_RE.match(session_id):
+        return None
+    root = root or _codex_sessions_root()
+    try:
+        for dirpath, _dirs, files in os.walk(root):
+            for name in files:
+                if not (name.startswith("rollout-") and name.endswith(".jsonl")):
+                    continue
+                if session_id in name:
+                    return _read_codex_session_info(os.path.join(dirpath, name))
+    except OSError:
+        return None
+    return None
+
+
+# --- family dispatch (both stores are read-only) ----------------------------
+
+
+def _list_for_family(family: str, limit: int = 10) -> list[SessionInfo]:
+    """Route to the family's recent-session store. Codex reads the rollout store;
+    everything else (Claude) reads the projects store."""
+    if family == "codex":
+        return list_codex_sessions(limit)
+    return list_recent_sessions(limit)
+
+
+def _find_for_family(family: str, session_id: str) -> Optional[SessionInfo]:
+    """Route a by-id lookup to the family's store (read-only)."""
+    if family == "codex":
+        return find_codex_session(session_id)
+    return find_session(session_id)
+
+
+def render_session_list(
+    sessions: list[SessionInfo], *, now_ts: float, family: str = "claude"
+) -> str:
+    """Format the ``/cc list`` / ``/codex list`` reply. Pure given its args; the
+    family selects the store label and the entry command shown in hints."""
+    label = _family_name(family)
+    entry = _entry_cmd(family)
     if not sessions:
-        return "本机没有找到 Claude Code 历史会话。\n发送 /cc new 新开一个。"
-    out = [f"本机 Claude Code 会话(新→旧,共 {len(sessions)} 条):"]
+        return f"本机没有找到 {label} 历史会话。\n发送 /{entry} new 新开一个。"
+    out = [f"本机 {label} 会话(新→旧,共 {len(sessions)} 条):"]
     for i, s in enumerate(sessions, 1):
         project = os.path.basename(s.cwd.rstrip("/")) or s.cwd
         out.append(f"{i}. {project} · {format_relative_time(now_ts, s.mtime)}")
         out.append(f"   {s.summary or '(无预览)'}")
         out.append(f"   id {s.session_id[:8]}")
-    out.append("发送 /cc <编号> 挂接会话,或 /cc resume <会话id>。")
+    out.append(f"发送 /{entry} <编号> 挂接会话,或 /{entry} resume <会话id>。")
     return "\n".join(out)
 
 
@@ -571,6 +826,11 @@ def _family_name(family: str) -> str:
     return {"claude": "Claude Code", "codex": "Codex"}.get(family, family)
 
 
+def _entry_cmd(family: str) -> str:
+    """The IM entry command a family is driven by (``/cc`` vs ``/codex``)."""
+    return "codex" if family == "codex" else "cc"
+
+
 def _t_entered(family: str, cwd: str) -> str:
     return (
         f"已进入 {_family_name(family)} 直通模式(工作目录 {cwd})。\n"
@@ -600,26 +860,26 @@ def _t_busy() -> str:
     return "上一条还在处理中,请稍候,或发送 /cancel 打断。"
 
 
-def _t_list_hint() -> str:
-    return "(提示:发送 /cc list 可挂接本机已有会话)"
+def _t_list_hint(family: str) -> str:
+    entry = _entry_cmd(family)
+    return f"(提示:发送 /{entry} list 可挂接本机已有会话)"
 
 
-def _t_resume_usage() -> str:
-    return "用法:/cc resume <会话id>。发送 /cc list 可查看会话 id。"
+def _t_resume_usage(family: str) -> str:
+    entry = _entry_cmd(family)
+    return f"用法:/{entry} resume <会话id>。发送 /{entry} list 可查看会话 id。"
 
 
-def _t_index_out_of_range(count: int) -> str:
+def _t_index_out_of_range(count: int, family: str) -> str:
+    entry = _entry_cmd(family)
     if count <= 0:
-        return "当前没有可挂接的会话。发送 /cc list 查看,或 /cc new 新开。"
-    return f"编号超出范围(共 {count} 条)。发送 /cc list 重新查看。"
+        return f"当前没有可挂接的会话。发送 /{entry} list 查看,或 /{entry} new 新开。"
+    return f"编号超出范围(共 {count} 条)。发送 /{entry} list 重新查看。"
 
 
-def _t_session_not_found(session_id: str) -> str:
-    return f"未找到会话 {session_id}。发送 /cc list 查看可挂接的会话。"
-
-
-def _t_targeting_claude_only() -> str:
-    return "会话列表与挂接目前仅支持 Claude Code(/cc);/codex 只会新开会话。"
+def _t_session_not_found(session_id: str, family: str) -> str:
+    entry = _entry_cmd(family)
+    return f"未找到会话 {session_id}。发送 /{entry} list 查看可挂接的会话。"
 
 
 def _t_unavailable(family: str, detail: str) -> str:
@@ -815,8 +1075,8 @@ async def _enter(
     sessions[session_key] = session
 
     welcome = _t_entered(family, cwd)
-    if bare and family == "claude":
-        welcome += "\n" + _t_list_hint()
+    if bare:
+        welcome += "\n" + _t_list_hint(family)
     if first_prompt:
         body = await _forward(runner, source, session, first_prompt)
         return welcome if not body else f"{welcome}\n\n{body}"
@@ -845,45 +1105,42 @@ async def _enter_resumed(
     return _t_resumed(family, info)
 
 
-# --- /cc list · /cc <n> · /cc resume <id> dispatch (Claude-only) -------------
+# --- /cc | /codex  list · <n> · resume <id> dispatch (both families) ---------
 
 
 async def _handle_list(runner, session_key: str, family: str) -> str:
-    """``/cc list`` — enumerate sessions and cache the ordering for ``/cc <n>``.
-    A pure query: it never opens/closes/switches the bound session."""
-    if family != "claude":
-        return _t_targeting_claude_only()
-    sessions = await asyncio.to_thread(list_recent_sessions, 10)
-    _last_list_for(runner)[session_key] = sessions
-    return render_session_list(sessions, now_ts=time.time())
+    """``/cc list`` / ``/codex list`` — enumerate the family's sessions and cache
+    the ordering (per family, so the two never share numbering) for a subsequent
+    ``<n>``. A pure query: it never opens/closes/switches the bound session."""
+    sessions = await asyncio.to_thread(_list_for_family, family, 10)
+    _last_list_for(runner)[(session_key, family)] = sessions
+    return render_session_list(sessions, now_ts=time.time(), family=family)
 
 
 async def _handle_select(
     runner, source, session_key: str, sessions: dict, family: str, index: int
 ) -> str:
-    """``/cc <n>`` — attach to the n-th session of the chat's last list."""
-    if family != "claude":
-        return _t_targeting_claude_only()
-    cached = _last_list_for(runner).get(session_key)
+    """``/cc <n>`` / ``/codex <n>`` — attach to the n-th session of the chat's
+    last list *for that family* (the families are numbered independently)."""
+    cache = _last_list_for(runner)
+    cached = cache.get((session_key, family))
     if cached is None:
-        cached = await asyncio.to_thread(list_recent_sessions, 10)
-        _last_list_for(runner)[session_key] = cached
+        cached = await asyncio.to_thread(_list_for_family, family, 10)
+        cache[(session_key, family)] = cached
     if index < 1 or index > len(cached):
-        return _t_index_out_of_range(len(cached))
+        return _t_index_out_of_range(len(cached), family)
     return await _enter_resumed(runner, source, session_key, sessions, family, cached[index - 1])
 
 
 async def _handle_resume_id(
     runner, source, session_key: str, sessions: dict, family: str, session_id: str
 ) -> str:
-    """``/cc resume <id>`` — attach to a session by explicit id."""
-    if family != "claude":
-        return _t_targeting_claude_only()
+    """``/cc resume <id>`` / ``/codex resume <id>`` — attach by explicit id."""
     if not session_id:
-        return _t_resume_usage()
-    info = await asyncio.to_thread(find_session, session_id)
+        return _t_resume_usage(family)
+    info = await asyncio.to_thread(_find_for_family, family, session_id)
     if info is None:
-        return _t_session_not_found(session_id)
+        return _t_session_not_found(session_id, family)
     return await _enter_resumed(runner, source, session_key, sessions, family, info)
 
 
