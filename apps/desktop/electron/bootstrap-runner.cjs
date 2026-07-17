@@ -66,6 +66,69 @@ function hiddenWindowsChildOptions(options = {}) {
 
 const STAMP_COMMIT_RE = /^[0-9a-f]{7,40}$/i
 
+// hc-543: name of the in-tree provenance file written by the COS extract
+// (scripts/lib/apexnodes-region-detect.sh -> apexnodes_download_runtime_tarball).
+// It records the commit the source tree was extracted at — the ONLY on-disk
+// signal tying a .git-less COS tree to a commit. Kept in sync with the shell
+// literal by tests/test_source_commit_stamp_contract (source-contract test).
+const SOURCE_COMMIT_STAMP = '.hermes-source-commit'
+
+// hc-543: read the source-commit stamp off an installed tree. Returns the
+// trimmed commit/branch key, or null when no stamp exists (a git checkout, a
+// legacy pre-hc-543 COS tree, or a tree that was never extracted). Never throws.
+function readSourceCommitStamp(activeRoot) {
+  if (!activeRoot) return null
+  try {
+    const raw = fs.readFileSync(path.join(activeRoot, SOURCE_COMMIT_STAMP), 'utf8').trim()
+    return raw || null
+  } catch {
+    return null
+  }
+}
+
+// hc-543: two commit keys match when either is a prefix of the other and the
+// shared prefix is a plausible SHA (>=7 hex) — tolerates a short pin stamped
+// against a full SHA (or vice-versa) without ever matching on an empty string.
+function commitKeysMatch(a, b) {
+  if (!a || !b) return false
+  const x = String(a).trim().toLowerCase()
+  const y = String(b).trim().toLowerCase()
+  if (!x || !y) return false
+  if (x === y) return true
+  const shorter = x.length <= y.length ? x : y
+  const longer = x.length <= y.length ? y : x
+  if (shorter.length < 7 || !STAMP_COMMIT_RE.test(shorter)) return false
+  return longer.startsWith(shorter)
+}
+
+// hc-543: DETERMINISTIC decision for "did the on-disk tree actually reach the
+// target commit before we stamp the bootstrap-complete marker?" Pure function
+// (no fs / no I/O) so the three states are unit-testable in isolation:
+//
+//   1. consistent  — stamp present and matches target        -> ok, 'match'
+//   2. inconsistent — stamp present but a DIFFERENT commit    -> FAIL, 'commit_mismatch'
+//        This is the hc-543 false-success: the repository stage silently
+//        reused/failed to replace the tree, yet every stage returned ok, so
+//        without this the marker would be stamped with a version the files on
+//        disk are NOT. We refuse the marker; the caller rolls back to the old
+//        runtime instead of reporting a phantom update.
+//   3. unverifiable — no stamp, OR nothing to verify against  -> ok, fail OPEN
+//        A git checkout (upstream curl|bash) and a legacy COS tree have no
+//        stamp; a branch-only pin has no target commit. We must not block those
+//        — after hc-543 lands, every COS extract writes the stamp, so a genuine
+//        desktop update lands in state 1 or 2, and this branch only ever covers
+//        installs that were never subject to the bug.
+//
+// @param {{treeCommit: string|null, targetCommit: string|null}} opts
+// @returns {{ok: boolean, reason: string, treeCommit: string|null, targetCommit: string|null}}
+function evaluateTreeIntegrity({ treeCommit = null, targetCommit = null } = {}) {
+  const base = { treeCommit: treeCommit || null, targetCommit: targetCommit || null }
+  if (!targetCommit) return { ok: true, reason: 'no_target', ...base }
+  if (!treeCommit) return { ok: true, reason: 'unverifiable', ...base }
+  if (commitKeysMatch(treeCommit, targetCommit)) return { ok: true, reason: 'match', ...base }
+  return { ok: false, reason: 'commit_mismatch', ...base }
+}
+
 // Stages flagged needs_user_input=true in the manifest are skipped by the
 // runner (passed -NonInteractive to install.ps1, which the install script
 // itself handles by emitting skipped=true frames). The renderer / 1E onboarding
@@ -923,6 +986,40 @@ async function runBootstrap(opts) {
       }
     }
 
+    // 3.5 hc-543: verify the on-disk tree actually reached the target commit
+    //     BEFORE stamping the "install complete" marker. Every stage above can
+    //     return ok while the repository stage silently reused a stale tree
+    //     (a .git-less COS checkout during an opt-in update: the marker then
+    //     claimed vNext but the files were still vPrev — `/cc` unknown command).
+    //     The COS extract stamps the tree's commit into SOURCE_COMMIT_STAMP;
+    //     read it back and refuse the marker on a positive mismatch. Absent
+    //     stamp / no target commit fails OPEN (git & legacy installs).
+    const targetCommit = installStamp ? installStamp.commit : null
+    const treeCommit = readSourceCommitStamp(activeRoot)
+    const integrity = evaluateTreeIntegrity({ treeCommit, targetCommit })
+    if (!integrity.ok) {
+      const detail =
+        `on-disk source is '${treeCommit || 'unknown'}' but the update targets ` +
+        `'${targetCommit}' — the repository stage did not replace the tree. ` +
+        'Not stamping the complete marker; keeping the previous runtime.'
+      emit({ type: 'failed', stage: 'verify', error: detail })
+      fireTelemetry(sendTelemetry, {
+        ...telemetryBase,
+        stage: 'bootstrap',
+        status: STATUS_FAILURE,
+        error_code: 'bootstrap:stage_failed:verify'
+      })
+      return { ok: false, failedStage: 'verify', error: detail }
+    }
+    if (integrity.reason === 'unverifiable') {
+      emit({
+        type: 'log',
+        line:
+          `[bootstrap] tree-integrity check: no ${SOURCE_COMMIT_STAMP} stamp on ${activeRoot} ` +
+          `(git checkout or legacy tree) — cannot verify commit, proceeding (fail-open)`
+      })
+    }
+
     // 4. Write the bootstrap-complete marker.
     const markerPayload = {
       pinnedCommit: installStamp ? installStamp.commit : null,
@@ -962,5 +1059,11 @@ module.exports = {
   bundledInstallScript,
   cnInstallEnv,
   cachedScriptPath,
-  runtimeKeyFromStamp
+  runtimeKeyFromStamp,
+  // hc-543: update-integrity primitives (also consumed by main.cjs for the
+  // truthful engine-version IPC).
+  SOURCE_COMMIT_STAMP,
+  readSourceCommitStamp,
+  commitKeysMatch,
+  evaluateTreeIntegrity
 }

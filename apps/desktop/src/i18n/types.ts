@@ -347,6 +347,12 @@ export interface Translations {
       // Non-blocking — points the user at the opt-in engine update below.
       engineUpdateNeeded: string
       engineUpdateNeededDetail: (value: string) => string
+      // hc-543: shown when the bootstrap marker's version disagrees with the
+      // source tree actually on disk (a botched .git-less update stamped a new
+      // version over unchanged files). The version label is NOT trustworthy;
+      // re-running the engine update re-extracts the correct tree.
+      engineTreeMismatch: string
+      engineTreeMismatchDetail: string
     }
     config: {
       none: string

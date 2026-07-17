@@ -630,6 +630,13 @@ export interface DesktopRuntimeVersion {
   // false to surface a non-blocking "engine needs update" prompt.
   minEngineVersion?: string | null
   meetsMinEngine?: boolean
+  // hc-543: the commit the on-disk source tree was actually extracted at
+  // (.hermes-source-commit provenance stamp), and whether it agrees with the
+  // marker's pinnedCommit. treeMatchesMarker === false means the marker LIES —
+  // the version label reflects an update that never landed on disk. null when
+  // there is no stamp to check (git checkout / legacy tree) — treat as unknown.
+  treeCommit?: string | null
+  treeMatchesMarker?: boolean | null
 }
 
 // Result of hermesDesktop.runtime.checkUpdate(). ok:false only on an unexpected

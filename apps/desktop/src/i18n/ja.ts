@@ -532,6 +532,9 @@ export const ja = defineLocale({
       engineUpdateNeeded: 'エンジンの更新が必要です',
       engineUpdateNeededDetail: value =>
         `このアプリはエンジン ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
+      engineTreeMismatch: 'エンジンファイルが未同期です',
+      engineTreeMismatchDetail:
+        '前回の更新で新しいバージョンが記録されましたが、ディスク上のエンジンファイルは置き換えられていないため、表示中のバージョンが正しくない可能性があります。下のエンジン更新を実行して正しいファイルを再ダウンロードしてください。',
       version: value => `バージョン ${value}`,
       versionUnavailable: 'バージョンを取得できません',
       updates: '更新',

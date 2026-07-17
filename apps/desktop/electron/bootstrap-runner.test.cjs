@@ -19,7 +19,11 @@ const {
   bundledInstallScript,
   cnInstallEnv,
   cachedScriptPath,
-  runtimeKeyFromStamp
+  runtimeKeyFromStamp,
+  SOURCE_COMMIT_STAMP,
+  readSourceCommitStamp,
+  commitKeysMatch,
+  evaluateTreeIntegrity
 } = require('./bootstrap-runner.cjs')
 const { normalizeDesktopPlatform } = require('./apexnodes-telemetry.cjs')
 
@@ -515,6 +519,188 @@ describeManifestFlow(
         // emitter is a fast no-op here rather than a live network call.
       })
       assert.equal(result.ok, true, `bootstrap should succeed even with no sendTelemetry override: ${JSON.stringify(result)}`)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }
+)
+
+// ===========================================================================
+// hc-543: engine-update integrity — verify the on-disk tree reached the target
+// commit BEFORE stamping the bootstrap-complete marker, so a botched .git-less
+// COS update can no longer report a phantom "engine updated" success.
+// ===========================================================================
+
+const SHA_A = 'a'.repeat(40)
+const SHA_B = 'b'.repeat(40)
+
+// --- pure decision function: the three states the task calls out -----------
+test('evaluateTreeIntegrity: consistent (stamp matches target) -> ok/match', () => {
+  const r = evaluateTreeIntegrity({ treeCommit: SHA_A, targetCommit: SHA_A })
+  assert.deepEqual(r, { ok: true, reason: 'match', treeCommit: SHA_A, targetCommit: SHA_A })
+})
+
+test('evaluateTreeIntegrity: inconsistent (stamp is a DIFFERENT commit) -> FAIL/commit_mismatch', () => {
+  const r = evaluateTreeIntegrity({ treeCommit: SHA_A, targetCommit: SHA_B })
+  assert.equal(r.ok, false)
+  assert.equal(r.reason, 'commit_mismatch')
+  assert.equal(r.treeCommit, SHA_A)
+  assert.equal(r.targetCommit, SHA_B)
+})
+
+test('evaluateTreeIntegrity: git dead-end / legacy tree (no stamp) -> ok/unverifiable (fail open)', () => {
+  const r = evaluateTreeIntegrity({ treeCommit: null, targetCommit: SHA_B })
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, 'unverifiable')
+})
+
+test('evaluateTreeIntegrity: no target commit (branch pin / dev) -> ok/no_target', () => {
+  const r = evaluateTreeIntegrity({ treeCommit: null, targetCommit: null })
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, 'no_target')
+})
+
+test('evaluateTreeIntegrity: short pin stamped against a full SHA still matches (prefix-aware)', () => {
+  const r = evaluateTreeIntegrity({ treeCommit: SHA_A.slice(0, 12), targetCommit: SHA_A })
+  assert.equal(r.ok, true)
+  assert.equal(r.reason, 'match')
+})
+
+test('evaluateTreeIntegrity: empty-string stamp never matches an empty target', () => {
+  // Guards against a truncated/blank stamp being treated as "matches" via a
+  // vacuous prefix. Both null -> no_target (ok), but a blank stamp with a real
+  // target must be unverifiable, never a false match.
+  assert.equal(evaluateTreeIntegrity({ treeCommit: '', targetCommit: SHA_A }).reason, 'unverifiable')
+})
+
+test('commitKeysMatch: exact, prefix (both directions), and non-matches', () => {
+  assert.equal(commitKeysMatch(SHA_A, SHA_A), true)
+  assert.equal(commitKeysMatch(SHA_A, SHA_A.slice(0, 8)), true)
+  assert.equal(commitKeysMatch(SHA_A.slice(0, 8), SHA_A), true)
+  assert.equal(commitKeysMatch(SHA_A, SHA_B), false)
+  assert.equal(commitKeysMatch(SHA_A, ''), false)
+  assert.equal(commitKeysMatch(null, SHA_A), false)
+  // A too-short (<7) shared prefix must NOT match — avoids collisions on stubs.
+  assert.equal(commitKeysMatch('abc', 'abcdef0'), false)
+})
+
+test('readSourceCommitStamp: reads + trims the stamp, null when absent', () => {
+  const dir = mkTmpHome()
+  try {
+    assert.equal(readSourceCommitStamp(dir), null)
+    fs.writeFileSync(path.join(dir, SOURCE_COMMIT_STAMP), `  ${SHA_A}\n`)
+    assert.equal(readSourceCommitStamp(dir), SHA_A)
+    assert.equal(readSourceCommitStamp(null), null)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// --- end-to-end through runBootstrap: marker gate ---------------------------
+function seedTreeStamp(activeRoot, commit) {
+  fs.mkdirSync(activeRoot, { recursive: true })
+  if (commit !== null) fs.writeFileSync(path.join(activeRoot, SOURCE_COMMIT_STAMP), `${commit}\n`)
+}
+
+describeManifestFlow(
+  'runBootstrap: REFUSES the marker when the tree stamp is a different commit than the target (hc-543 false-success gate)',
+  async () => {
+    const home = mkTmpHome()
+    try {
+      writeFakeInstallSh(home)
+      const activeRoot = path.join(home, 'hermes-agent')
+      // Simulate the bug: every install stage "succeeds" but the repository
+      // stage left the OLD tree in place (stamp still points at SHA_A) while
+      // the update targets SHA_B.
+      seedTreeStamp(activeRoot, SHA_A)
+      let markerWritten = false
+      const events = []
+      const result = await runBootstrap({
+        installStamp: { commit: SHA_B, version: '2026.7.15' },
+        activeRoot,
+        sourceRepoRoot: home,
+        hermesHome: home,
+        logRoot: home,
+        onEvent: ev => events.push(ev),
+        writeMarker: payload => {
+          markerWritten = true
+          return payload
+        }
+      })
+      assert.equal(result.ok, false, `must fail closed on a stale tree: ${JSON.stringify(result)}`)
+      assert.equal(result.failedStage, 'verify')
+      assert.equal(markerWritten, false, 'the bootstrap-complete marker must NOT be written on a stale tree')
+      assert.ok(
+        events.some(ev => ev.type === 'failed' && ev.stage === 'verify'),
+        'a verify-stage failed event must be emitted'
+      )
+      assert.ok(
+        !events.some(ev => ev.type === 'complete'),
+        'no complete event on a refused update'
+      )
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }
+)
+
+describeManifestFlow(
+  'runBootstrap: writes the marker when the tree stamp matches the target commit',
+  async () => {
+    const home = mkTmpHome()
+    try {
+      writeFakeInstallSh(home)
+      const activeRoot = path.join(home, 'hermes-agent')
+      seedTreeStamp(activeRoot, SHA_B) // extract landed the target tree
+      let marker = null
+      const result = await runBootstrap({
+        installStamp: { commit: SHA_B, version: '2026.7.15' },
+        activeRoot,
+        sourceRepoRoot: home,
+        hermesHome: home,
+        logRoot: home,
+        onEvent: () => {},
+        writeMarker: payload => {
+          marker = payload
+          return payload
+        }
+      })
+      assert.equal(result.ok, true, `matching tree must succeed: ${JSON.stringify(result)}`)
+      assert.ok(marker && marker.pinnedCommit === SHA_B, 'marker stamped with the target commit')
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }
+)
+
+describeManifestFlow(
+  'runBootstrap: fails OPEN (writes marker) when the tree has no stamp — git checkout / legacy tree',
+  async () => {
+    const home = mkTmpHome()
+    try {
+      writeFakeInstallSh(home)
+      const activeRoot = path.join(home, 'hermes-agent')
+      seedTreeStamp(activeRoot, null) // no .hermes-source-commit (git/legacy)
+      let markerWritten = false
+      const events = []
+      const result = await runBootstrap({
+        installStamp: { commit: SHA_B, version: '2026.7.15' },
+        activeRoot,
+        sourceRepoRoot: home,
+        hermesHome: home,
+        logRoot: home,
+        onEvent: ev => events.push(ev),
+        writeMarker: payload => {
+          markerWritten = true
+          return payload
+        }
+      })
+      assert.equal(result.ok, true, `no stamp must fail open, not brick: ${JSON.stringify(result)}`)
+      assert.equal(markerWritten, true)
+      assert.ok(
+        events.some(ev => ev.type === 'log' && /cannot verify commit, proceeding \(fail-open\)/.test(ev.line || '')),
+        'a fail-open log line must explain why verification was skipped'
+      )
     } finally {
       fs.rmSync(home, { recursive: true, force: true })
     }

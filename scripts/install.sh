@@ -1390,12 +1390,34 @@ clone_repo() {
             fi
         elif command -v apexnodes_cos_configured >/dev/null 2>&1 && apexnodes_cos_configured && [ -f "$INSTALL_DIR/pyproject.toml" ]; then
             # COS-first install (hc-474: any region): INSTALL_DIR was populated
-            # from the COS source tarball on a previous (interrupted) run — no
-            # .git, but a valid checkout. Reuse it instead of erroring out so the
-            # repository stage stays idempotent. apexnodes_cos_configured comes
-            # from the overlay lib; the command -v guard keeps this a no-op on
-            # the upstream curl|bash path (lib not sourced).
-            log_info "Existing COS-mirror checkout found at $INSTALL_DIR, reusing"
+            # from the COS source tarball on a previous run — no .git, but a
+            # valid checkout. apexnodes_cos_configured comes from the overlay
+            # lib; the command -v guard keeps this a no-op on the upstream
+            # curl|bash path (lib not sourced).
+            #
+            # hc-543: reuse is correct ONLY for an interrupted install of the
+            # SAME commit. An opt-in UPDATE re-runs bootstrap with a NEW
+            # INSTALL_COMMIT against the OLD on-disk tree; blindly reusing left
+            # the stale tree in place while the bootstrap-complete marker got
+            # stamped with the new version — a false "engine updated" where the
+            # new code (e.g. apex_overlay/im_passthrough.py) was never on disk
+            # (`/cc` then fails "unknown command"). Reuse the tree ONLY when its
+            # source-commit stamp already matches the target; otherwise
+            # re-extract the target tarball over it. An absent stamp (legacy
+            # pre-hc-543 tree) is treated as a mismatch so it self-heals.
+            local installed_src_commit=""
+            if command -v apexnodes_installed_source_commit >/dev/null 2>&1; then
+                installed_src_commit="$(apexnodes_installed_source_commit "$INSTALL_DIR")"
+            fi
+            if [ -n "$INSTALL_COMMIT" ] && [ "$installed_src_commit" = "$INSTALL_COMMIT" ]; then
+                log_info "Existing COS-mirror checkout already at $INSTALL_COMMIT, reusing"
+            elif command -v apexnodes_download_runtime_tarball >/dev/null 2>&1 && apexnodes_download_runtime_tarball; then
+                log_success "Repository re-extracted from COS mirror (was '${installed_src_commit:-unknown}' -> ${INSTALL_COMMIT:-$BRANCH})"
+            else
+                log_error "Existing checkout at $INSTALL_DIR is stale (source '${installed_src_commit:-unknown}' != target '${INSTALL_COMMIT:-?}') and the COS re-download failed."
+                log_info "Check your network and re-run, or reinstall with: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+                exit 1
+            fi
         else
             log_error "Directory exists but is not a git repository: $INSTALL_DIR"
             log_info "Remove it or choose a different directory with --dir"

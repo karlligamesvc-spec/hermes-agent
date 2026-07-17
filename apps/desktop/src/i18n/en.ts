@@ -431,7 +431,10 @@ export const en: Translations = {
       engineConfirmApply: 'Update engine',
       engineUpdateNeeded: 'Engine update needed',
       engineUpdateNeededDetail: value =>
-        `This app needs engine ${value} or later. Use "Check for update" below to update the engine.`
+        `This app needs engine ${value} or later. Use "Check for update" below to update the engine.`,
+      engineTreeMismatch: 'Engine files out of sync',
+      engineTreeMismatchDetail:
+        'A previous update recorded a new version but the engine files on disk were not replaced, so the version shown may be wrong. Run the engine update below to re-download the correct files.'
     },
     config: {
       none: 'None',
