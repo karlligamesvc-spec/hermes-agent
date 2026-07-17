@@ -122,6 +122,21 @@ declare global {
         // Subscribe to live status pushed on connection transitions.
         onStatus: (callback: (status: DesktopDaemonStatus) => void) => () => void
       }
+      // hc-545 coding-agent account connection — three-state detection + in-app
+      // OAuth hosting for the user's own claude/codex CLIs. No secret crosses to
+      // the renderer. Optional: an older main process may not expose it.
+      agentAuth?: {
+        // Detect logged_out / unreachable / ready for both families (headless).
+        status: () => Promise<DesktopAgentAuthStatus>
+        // Host the CLI's own OAuth login (opens the browser / degrades to a
+        // guided terminal command). The renderer then polls status().
+        connect: (family: DesktopAgentFamily) => Promise<DesktopAgentConnectResult>
+      }
+      // hc-545 coding-agent network proxy — auto (follow system) / custom / off.
+      agentProxy?: {
+        get: () => Promise<DesktopAgentProxyState>
+        set: (payload: { mode: DesktopAgentProxyMode; customUrl?: string }) => Promise<DesktopAgentProxyState>
+      }
       // Platform client-config sync — the cloud serves a versioned client
       // config the main process caches at boot / after sign-in and applies to
       // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
@@ -565,6 +580,48 @@ export interface DesktopDaemonMutationResult {
   ok: boolean
   message?: string
   snapshot: DesktopDaemonStatus
+}
+
+// hc-545 coding-agent account connection ------------------------------------
+export type DesktopAgentFamily = 'claude' | 'codex'
+
+// The three-state result (+ no_cli / unknown) from the anti-conflation detector.
+// `logged_out` and `unreachable` are DELIBERATELY distinct — different fixes
+// (sign in vs configure a proxy). See electron/apex-agent-auth.cjs.
+export type DesktopAgentAuthState = 'logged_out' | 'no_cli' | 'ready' | 'unknown' | 'unreachable'
+
+export interface DesktopAgentAuthResult {
+  family: DesktopAgentFamily
+  state: DesktopAgentAuthState
+  email: string
+  plan: string
+}
+
+export interface DesktopAgentAuthStatus {
+  ok: boolean
+  claude: DesktopAgentAuthResult
+  codex: DesktopAgentAuthResult
+}
+
+// Outcome of hosting a CLI login. `mode` tells the renderer how to follow up:
+// browser/started → poll status(); completed → already signed in; guide/no_cli →
+// show `guideCommand` for the user to run in a terminal (honest degrade).
+export interface DesktopAgentConnectResult {
+  ok: boolean
+  mode: 'browser' | 'completed' | 'guide' | 'no_cli' | 'started'
+  url?: string
+  reason?: string
+  guideCommand: string
+}
+
+export type DesktopAgentProxyMode = 'auto' | 'custom' | 'off'
+
+export interface DesktopAgentProxyState {
+  ok: boolean
+  mode: DesktopAgentProxyMode
+  customUrl: string
+  // Display-safe (credentials stripped) description of the resolved proxy.
+  detected: { active: boolean; url: string }
 }
 
 // Payload of the continuous auth-gate broadcast (hermes:auth-gate). `reason`

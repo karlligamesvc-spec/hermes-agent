@@ -186,6 +186,22 @@ const {
   resolveDaemonEndpoints,
   sanitizeDeviceName: sanitizeDaemonDeviceName
 } = require('./apex-daemon.cjs')
+// hc-545: coding-agent account-connection UX — system-proxy autopilot + the
+// three-state (logged_out / unreachable / ready) auth detector for the user's
+// own claude/codex CLIs that the passthrough + daemon legs drive.
+const {
+  normalizeProxyMode,
+  resolveAgentProxyEnv,
+  readSystemProxy,
+  systemProxyToUrls,
+  describeAgentProxy
+} = require('./apex-agent-proxy.cjs')
+const {
+  AGENT_STATE,
+  detectClaude: detectClaudeAuth,
+  detectCodex: detectCodexAuth,
+  extractOAuthUrl
+} = require('./apex-agent-auth.cjs')
 const { startLoopbackLogin } = require('./apex-loopback.cjs')
 const {
   DATA_URL_READ_MAX_BYTES,
@@ -976,6 +992,12 @@ const DESKTOP_IM_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-im
 // electron/apex-daemon.cjs. Default is DISABLED (dormant): the daemon only ever
 // connects after the user turns it on in settings.
 const DESKTOP_DAEMON_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-daemon.json')
+// hc-545: coding-agent network-proxy mode. Non-secret (mode + a custom proxy
+// URL) → plain JSON, no encryption. Default AUTO (follow the macOS system
+// proxy). This governs the HTTP(S)_PROXY fragment folded into the gateway spawn
+// env (which the claude/codex child inherits) and the env for the auth-status /
+// login spawns. See electron/apex-agent-proxy.cjs.
+const DESKTOP_AGENT_PROXY_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-agent-proxy.json')
 // Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
 // value its profile resolver would reject and exit on.
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -3104,6 +3126,78 @@ function augmentDesktopProcessPath() {
   return Math.max(0, afterCount - beforeCount)
 }
 
+// ── hc-545: coding-agent proxy config + CLI env ─────────────────────────────
+// Read apex-agent-proxy.json → { mode, customUrl }. Non-secret; a read failure
+// falls back to the AUTO default. Never throws.
+function readAgentProxyConfig() {
+  let raw
+  try {
+    raw = JSON.parse(fs.readFileSync(DESKTOP_AGENT_PROXY_CONFIG_PATH, 'utf8'))
+  } catch {
+    raw = null
+  }
+  const mode = normalizeProxyMode(raw && typeof raw === 'object' ? raw.mode : undefined)
+  const customUrl = raw && typeof raw === 'object' && typeof raw.customUrl === 'string' ? raw.customUrl : ''
+  return { mode, customUrl }
+}
+
+// Merge-persist apex-agent-proxy.json (0o600, owner-only — no secret, but tidy).
+function writeAgentProxyConfig(patch) {
+  const current = readAgentProxyConfig()
+  const next = {
+    mode: normalizeProxyMode(patch && patch.mode !== undefined ? patch.mode : current.mode),
+    customUrl:
+      patch && typeof patch.customUrl === 'string' ? patch.customUrl : current.customUrl
+  }
+  try {
+    fs.mkdirSync(path.dirname(DESKTOP_AGENT_PROXY_CONFIG_PATH), { recursive: true })
+    fs.writeFileSync(DESKTOP_AGENT_PROXY_CONFIG_PATH, JSON.stringify(next, null, 2), { mode: 0o600 })
+  } catch (error) {
+    rememberLog(`[agent-proxy] persist failed: ${error && error.message ? error.message : error}`)
+  }
+  return next
+}
+
+// Resolve the proxy env fragment for the stored config, evaluated against the
+// live process env (so an AUTO mode stays add-only vs a power-user's export).
+function resolveAgentProxyEnvFragment() {
+  try {
+    const { mode, customUrl } = readAgentProxyConfig()
+    return resolveAgentProxyEnv({ mode, customUrl, currentEnv: process.env })
+  } catch (error) {
+    rememberLog(`[agent-proxy] resolve failed: ${error && error.message ? error.message : error}`)
+    return {}
+  }
+}
+
+// The proxy URL (https leg) the coding agent will actually use — passed to the
+// reachability probe so it tests the SAME path the agent travels.
+function activeAgentProxyUrl(fragment) {
+  const frag = fragment || resolveAgentProxyEnvFragment()
+  return frag.HTTPS_PROXY || frag.https_proxy || frag.HTTP_PROXY || frag.http_proxy || ''
+}
+
+// Env for spawning the claude/codex CLIs directly (auth status + login). Adds
+// the same sane PATH the backend gets PLUS ~/.local/bin (where the user's claude
+// often lives; a GUI-launched app misses it — the hc-544 gap), restores the real
+// HOME so the CLI reads/writes ITS OWN credential store (Keychain / ~/.codex),
+// and folds in the proxy fragment. The proxy fragment is spread LAST so it wins.
+function buildAgentCliEnv(proxyFragment) {
+  const frag = proxyFragment || resolveAgentProxyEnvFragment()
+  const home = app.getPath('home')
+  const localBin = path.join(home, '.local', 'bin')
+  const base = buildDesktopBackendEnv({
+    hermesHome: HERMES_HOME,
+    venvRoot: VENV_ROOT,
+    proxyEnv: frag
+  })
+  const pathKey = process.platform === 'win32' ? 'Path' : 'PATH'
+  const augmentedPath = [localBin, base[pathKey] || process.env[pathKey] || '']
+    .filter(Boolean)
+    .join(path.delimiter)
+  return { ...process.env, ...base, [pathKey]: augmentedPath, HOME: home }
+}
+
 function createPythonBackend(root, label, dashboardArgs, options = {}) {
   const python = findPythonForRoot(root)
   if (!python) return null
@@ -3116,7 +3210,8 @@ function createPythonBackend(root, label, dashboardArgs, options = {}) {
     env: buildDesktopBackendEnv({
       hermesHome: HERMES_HOME,
       pythonPathEntries: [root],
-      venvRoot: path.join(root, 'venv')
+      venvRoot: path.join(root, 'venv'),
+      proxyEnv: resolveAgentProxyEnvFragment()
     }),
     root,
     bootstrap: Boolean(options.bootstrap),
@@ -3139,7 +3234,8 @@ function createActiveBackend(dashboardArgs) {
     env: buildDesktopBackendEnv({
       hermesHome: HERMES_HOME,
       pythonPathEntries: [ACTIVE_HERMES_ROOT],
-      venvRoot: VENV_ROOT
+      venvRoot: VENV_ROOT,
+      proxyEnv: resolveAgentProxyEnvFragment()
     }),
     root: ACTIVE_HERMES_ROOT,
     bootstrap: true,
@@ -9246,6 +9342,152 @@ ipcMain.handle('hermes:daemon:unregister', async () => {
   // file's token by rewriting without it (writeDaemonConfig omits an empty token).
   pushDaemonStatus()
   return { ok: true, snapshot: daemonStatusSnapshot() }
+})
+
+// ── hc-545: coding-agent account connection (renderer surface) ──────────────
+// status: run the three-state detector for claude + codex against the CLI env
+// (augmented PATH + real HOME + resolved proxy). No secret crosses to the
+// renderer — only { state, email, plan } display fields.
+ipcMain.handle('hermes:agentAuth:status', async () => {
+  const proxyFragment = resolveAgentProxyEnvFragment()
+  const env = buildAgentCliEnv(proxyFragment)
+  const proxyUrl = activeAgentProxyUrl(proxyFragment)
+  const [claude, codex] = await Promise.all([
+    detectClaudeAuth({ env, proxyUrl }).catch(() => ({ family: 'claude', state: AGENT_STATE.UNKNOWN })),
+    detectCodexAuth({ env, homeDir: app.getPath('home'), proxyUrl }).catch(() => ({ family: 'codex', state: AGENT_STATE.UNKNOWN }))
+  ])
+  const sanitize = result => ({
+    family: result.family,
+    state: result.state,
+    email: typeof result.email === 'string' ? result.email : '',
+    plan: typeof result.plan === 'string' ? result.plan : ''
+  })
+  return { ok: true, claude: sanitize(claude), codex: sanitize(codex) }
+})
+
+// The login sub-command per family. We only ever host the login of the CLIs THIS
+// app drives (claude/codex) — never a third party (§4). Credentials land in each
+// CLI's OWN store; main never reads/persists/uploads them.
+const CODING_AGENT_LOGIN = Object.freeze({
+  claude: { command: 'claude', args: ['auth', 'login'], guide: 'claude auth login' },
+  codex: { command: 'codex', args: ['login'], guide: 'codex login' }
+})
+// One in-flight login child per family (the loopback callback server). A second
+// connect replaces the first; all are killed on quit.
+const activeAgentLogin = { claude: null, codex: null }
+const AGENT_LOGIN_GRACE_MS = 2500
+const AGENT_LOGIN_ABANDON_MS = 180_000
+
+// connect: host the CLI's own OAuth. Best effort with an HONEST degrade — if we
+// can spawn it we open the authorize URL (when the CLI prints one) and let the
+// renderer poll status while its loopback captures the callback; if it can't be
+// driven headlessly we return a guide command for the user to run in a terminal
+// (never a fake "connected"). The renderer always gets guideCommand as a backup.
+async function connectAgentAccount(family) {
+  const spec = CODING_AGENT_LOGIN[family]
+  if (!spec) return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }
+
+  try {
+    if (activeAgentLogin[family]) activeAgentLogin[family].kill()
+  } catch {
+    // ignore
+  }
+  activeAgentLogin[family] = null
+
+  const env = buildAgentCliEnv()
+  let child
+  try {
+    child = spawn(spec.command, spec.args, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'], env }))
+  } catch {
+    return { ok: false, mode: 'guide', reason: 'spawn_failed', guideCommand: spec.guide }
+  }
+  activeAgentLogin[family] = child
+
+  return await new Promise(resolve => {
+    let output = ''
+    let openedUrl = ''
+    let settled = false
+    const finish = result => {
+      if (settled) return
+      settled = true
+      resolve({ ...result, guideCommand: spec.guide })
+    }
+    const onChunk = data => {
+      output += data.toString('utf8')
+      if (!openedUrl) {
+        const url = extractOAuthUrl(output)
+        if (url) {
+          openedUrl = url
+          openExternalUrl(url)
+          finish({ ok: true, mode: 'browser', url })
+        }
+      }
+    }
+    if (child.stdout) child.stdout.on('data', onChunk)
+    if (child.stderr) child.stderr.on('data', onChunk)
+    child.on('error', err => {
+      if (activeAgentLogin[family] === child) activeAgentLogin[family] = null
+      finish({ ok: false, mode: err && err.code === 'ENOENT' ? 'no_cli' : 'guide', reason: 'spawn_error' })
+    })
+    child.on('exit', code => {
+      if (activeAgentLogin[family] === child) activeAgentLogin[family] = null
+      // Exited before we saw/opened a URL: 0 = already completed; else degrade.
+      finish(code === 0 ? { ok: true, mode: 'completed' } : { ok: false, mode: 'guide', reason: 'exited' })
+    })
+    // Grace window: the CLI may open its own browser without printing a parseable
+    // URL. If it's still running, report 'started' so the renderer polls status
+    // (and shows the guide as a backup) rather than us aborting a live login.
+    setTimeout(() => {
+      if (!settled && child.exitCode === null) finish({ ok: true, mode: 'started', url: openedUrl })
+    }, AGENT_LOGIN_GRACE_MS).unref?.()
+    // Reap an abandoned login so a never-completed flow can't leak a child.
+    setTimeout(() => {
+      if (activeAgentLogin[family] === child) {
+        try {
+          child.kill()
+        } catch {
+          // ignore
+        }
+        activeAgentLogin[family] = null
+      }
+    }, AGENT_LOGIN_ABANDON_MS).unref?.()
+  })
+}
+
+ipcMain.handle('hermes:agentAuth:connect', async (_event, family) => {
+  const normalized = family === 'codex' ? 'codex' : family === 'claude' ? 'claude' : ''
+  if (!normalized) return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }
+  return connectAgentAccount(normalized)
+})
+
+// proxy get: current mode/customUrl + a display-safe description of what AUTO
+// detected (host:port only, credentials stripped). No network beyond scutil.
+ipcMain.handle('hermes:agentProxy:get', async () => {
+  const config = readAgentProxyConfig()
+  let detected = { active: false, url: '' }
+  try {
+    const systemUrls = systemProxyToUrls(readSystemProxy({}))
+    detected = describeAgentProxy({ mode: config.mode, customUrl: config.customUrl, systemUrls })
+  } catch {
+    // ignore — detection is best-effort
+  }
+  return { ok: true, mode: config.mode, customUrl: config.customUrl, detected }
+})
+
+// proxy set: persist mode/customUrl. Takes effect on the NEXT backend spawn
+// (the gateway reads env at launch; hc-533 daemon path re-reads on reconnect).
+ipcMain.handle('hermes:agentProxy:set', async (_event, payload) => {
+  const mode = normalizeProxyMode(payload && payload.mode)
+  const customUrl = payload && typeof payload.customUrl === 'string' ? payload.customUrl : ''
+  const next = writeAgentProxyConfig({ mode, customUrl })
+  let detected = { active: false, url: '' }
+  try {
+    const systemUrls = systemProxyToUrls(readSystemProxy({}))
+    detected = describeAgentProxy({ mode: next.mode, customUrl: next.customUrl, systemUrls })
+  } catch {
+    // ignore
+  }
+  return { ok: true, mode: next.mode, customUrl: next.customUrl, detected }
 })
 
 // ── Platform client-config sync (renderer surface) ──────────────────────────

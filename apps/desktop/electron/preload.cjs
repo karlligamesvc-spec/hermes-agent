@@ -78,6 +78,22 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
       return () => ipcRenderer.removeListener('hermes:daemon:status', listener)
     }
   },
+  // hc-545 coding-agent account connection — the three-state (logged_out /
+  // unreachable / ready) detector for the user's own claude/codex CLIs plus the
+  // in-app OAuth hosting. No secret ever crosses to the renderer: status returns
+  // only display fields; OAuth credentials land in each CLI's own store, never
+  // in main or the renderer. See electron/apex-agent-auth.cjs.
+  agentAuth: {
+    status: () => ipcRenderer.invoke('hermes:agentAuth:status'),
+    connect: family => ipcRenderer.invoke('hermes:agentAuth:connect', family)
+  },
+  // hc-545 coding-agent network proxy — auto (follow macOS system proxy) /
+  // custom / off. Governs the HTTP(S)_PROXY fragment injected into the agent's
+  // env (with a mainland-China NO_PROXY whitelist). See electron/apex-agent-proxy.cjs.
+  agentProxy: {
+    get: () => ipcRenderer.invoke('hermes:agentProxy:get'),
+    set: payload => ipcRenderer.invoke('hermes:agentProxy:set', payload)
+  },
   // Platform client-config sync — informational read of the cached versioned
   // config (no network). Application happens in the MAIN process pre-gateway
   // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.

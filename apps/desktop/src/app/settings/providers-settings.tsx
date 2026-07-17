@@ -22,6 +22,7 @@ import { notify, notifyError } from '@/store/notifications'
 import { $desktopOnboarding, startManualProviderOAuth } from '@/store/onboarding'
 import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 
+import { AgentAuthSettings } from './agent-auth-settings'
 import { DOMESTIC_PROVIDER_PRIORITY_MAX } from './constants'
 import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
@@ -475,6 +476,11 @@ export function ProvidersSettings({ onClose, onViewChange, view }: ProvidersSett
           app down so the assistant can work in Feishu docs/sheets/messages. Only
           renders in the Electron shell (the bridge is absent on web). */}
       <FeishuSettings />
+      {/* hc-545: "编码 Agent 账号" — connect the user's own Claude Code / Codex
+          (the passthrough + daemon legs drive them) with in-app OAuth + a
+          system-proxy autopilot. Sits directly above local dispatch, which
+          depends on these being connected. Electron-shell only. */}
+      <AgentAuthSettings />
       {/* hc-533: "本机 Agent 调度" — let the user's cloud assistant dispatch a
           coding task to a local agent on this machine (default off / dormant).
           Only renders in the Electron shell (the bridge is absent on web). */}

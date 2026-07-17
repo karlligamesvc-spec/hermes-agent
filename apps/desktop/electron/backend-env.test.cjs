@@ -155,3 +155,30 @@ test('buildDesktopBackendEnv ignores a blank inherited HF_ENDPOINT and falls bac
   })
   assert.equal(env.HF_ENDPOINT, HF_MIRROR_ENDPOINT)
 })
+
+test('buildDesktopBackendEnv folds in a hc-545 proxy fragment (non-empty values only)', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.hermes',
+    venvRoot: '/Users/test/.hermes/hermes-agent/venv',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    platform: 'darwin',
+    pathModule: path.posix,
+    proxyEnv: { HTTPS_PROXY: 'http://127.0.0.1:1081', NO_PROXY: 'apex-nodes.com', ALL_PROXY: '' }
+  })
+  assert.equal(env.HTTPS_PROXY, 'http://127.0.0.1:1081')
+  assert.equal(env.NO_PROXY, 'apex-nodes.com')
+  // Empty fragment values are not emitted (never blanks an inherited var).
+  assert.equal('ALL_PROXY' in env, false)
+})
+
+test('buildDesktopBackendEnv without a proxy fragment adds no proxy keys', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.hermes',
+    venvRoot: '/Users/test/.hermes/hermes-agent/venv',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+  assert.equal('HTTPS_PROXY' in env, false)
+  assert.equal('NO_PROXY' in env, false)
+})
