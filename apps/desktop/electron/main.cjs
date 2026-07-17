@@ -82,6 +82,11 @@ const { waitForDashboardPort } = require('./backend-ready.cjs')
 const { serializeJsonBody, setJsonRequestHeaders } = require('./oauth-net-request.cjs')
 const { fetchMarketplaceThemes, searchMarketplaceThemes } = require('./vscode-marketplace.cjs')
 const { buildDesktopBackendEnv, normalizeHermesHomeRoot } = require('./backend-env.cjs')
+const {
+  loginShellPathProbeArgs,
+  parseLoginShellPath,
+  resolveAugmentedPath
+} = require('./apex-shell-path.cjs')
 const { readWindowsUserEnvVar } = require('./windows-user-env.cjs')
 const { readDirForIpc } = require('./fs-read-dir.cjs')
 const { gitRootForIpc } = require('./git-root.cjs')
@@ -3036,6 +3041,67 @@ function writeDefaultProjectDir(dir) {
   } catch (error) {
     rememberLog(`[settings] write default project dir failed: ${error.message}`)
   }
+}
+
+function isDirectorySync(dir) {
+  try {
+    return fs.statSync(dir).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+// hc-544: probe the user's login shell for its fully-resolved PATH (the
+// fix-path pattern). Best-effort and cached: a hard timeout bounds startup cost,
+// and any failure (timeout / non-zero / ENOENT / no sentinel) returns null so
+// the caller falls back to the static user-bin floor. macOS/Linux only — a
+// Windows GUI already inherits the full user PATH from the registry.
+let _loginShellPathProbe // undefined = not yet probed; string | null afterwards
+function probeLoginShellPath() {
+  if (_loginShellPathProbe !== undefined) return _loginShellPathProbe
+  _loginShellPathProbe = null
+  if (IS_WINDOWS) return _loginShellPathProbe
+  const shell = String(process.env.SHELL || '').trim() || '/bin/zsh'
+  try {
+    const out = execFileSync(shell, loginShellPathProbeArgs(), {
+      timeout: 3000,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true
+    })
+    _loginShellPathProbe = parseLoginShellPath(out)
+  } catch {
+    // Swallow — a slow/broken login shell must never block or crash boot; the
+    // static floor in resolveAugmentedPath still repairs ~/.local/bin et al.
+  }
+  return _loginShellPathProbe
+}
+
+// hc-544: augment THIS process's PATH once at boot so every spawned child — the
+// dashboard/gateway backend (buildDesktopBackendPath reads process.env PATH) AND
+// the hc-533 daemon's out-of-process agent runner (spawned with {...process.env})
+// — inherits ~/.local/bin etc. and can resolve the user's claude/codex. Idempotent
+// (append-only + de-duplicated) and fail-soft. Returns the count of dirs added,
+// for a one-line boot log.
+function augmentDesktopProcessPath() {
+  if (IS_WINDOWS) return 0
+  const before = String(process.env.PATH || '')
+  let after = before
+  try {
+    after = resolveAugmentedPath({
+      currentPath: before,
+      home: os.homedir(),
+      loginShellPath: probeLoginShellPath(),
+      platform: process.platform,
+      isDir: isDirectorySync
+    })
+    process.env.PATH = after
+  } catch {
+    return 0
+  }
+  const beforeCount = before ? before.split(path.delimiter).filter(Boolean).length : 0
+  const afterCount = after ? after.split(path.delimiter).filter(Boolean).length : 0
+  return Math.max(0, afterCount - beforeCount)
 }
 
 function createPythonBackend(root, label, dashboardArgs, options = {}) {
@@ -10361,6 +10427,18 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  // hc-544: repair the GUI-minimal PATH BEFORE any child spawns, so the backend,
+  // messaging gateway, and daemon agent-runner all inherit ~/.local/bin etc. and
+  // can resolve the user's claude/codex CLI. Fail-soft; no-op on Windows.
+  try {
+    const added = augmentDesktopProcessPath()
+    if (added > 0) {
+      rememberLog(`[hc-544] PATH augmented for child spawns (+${added} user bin dir${added === 1 ? '' : 's'})`)
+    }
+  } catch {
+    // Never let PATH repair block boot.
+  }
+
   // hc-472: heal the runtime bundle's active link from the truth pointer and GC
   // stale versions/.tmp BEFORE any runtime child spawns (no handle held on an
   // old venv yet). No-op unless HERMES_BUNDLE_MODE is on; fully fail-soft.

@@ -102,7 +102,14 @@ class AgentHarness(abc.ABC):
         """Probe whether this agent can be driven here. Never raises."""
 
     def _which(self) -> str | None:
-        return shutil.which(self.spec.command)
+        # hc-544: search the SAME user-augmented PATH the spawn will use, so a
+        # GUI-launched gateway (minimal macOS PATH) resolves the user's claude /
+        # codex in ~/.local/bin etc. Without this, the availability probe reports
+        # the CLI missing even though _scrubbed_env()'s augmented PATH could
+        # launch it — the "Claude Code 未接入" false negative (hc-544).
+        from tools.environments.local import augmented_user_path
+
+        return shutil.which(self.spec.command, path=augmented_user_path())
 
     # --- lifecycle ---------------------------------------------------------
 
