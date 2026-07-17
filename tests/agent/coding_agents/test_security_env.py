@@ -4,6 +4,9 @@ adapter never forwards Hermes provider credentials into the user's agent."""
 
 from __future__ import annotations
 
+import os
+import stat
+
 from agent.coding_agents import harness_for
 
 
@@ -46,3 +49,45 @@ def test_scrubbed_env_strips_channel_secrets(monkeypatch) -> None:
         "FEISHU_ENCODING_AES_KEY",
     ):
         assert leaked not in env, f"{leaked} leaked into spawned CLI env"
+
+
+# --- hc-544: PATH augmentation so a GUI-launched gateway (minimal macOS PATH)
+# finds the user's claude/codex in ~/.local/bin — without weakening the scrub. ---
+
+
+def test_scrubbed_env_augments_path_with_user_bin(monkeypatch, tmp_path):
+    # GUI-minimal PATH that omits ~/.local/bin (the repro condition).
+    local_bin = tmp_path / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    env = harness_for("claude", "/tmp")._scrubbed_env()
+    assert str(local_bin) in env["PATH"].split(os.pathsep)
+
+
+def test_scrubbed_env_augments_path_without_leaking_secrets(monkeypatch, tmp_path):
+    (tmp_path / ".local" / "bin").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-hermes-secret")
+    monkeypatch.setenv("FEISHU_APP_SECRET", "feishu-secret")
+    env = harness_for("cursor", "/tmp")._scrubbed_env()
+    assert str(tmp_path / ".local" / "bin") in env["PATH"].split(os.pathsep)
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "FEISHU_APP_SECRET" not in env
+
+
+def test_which_resolves_binary_in_user_local_bin(monkeypatch, tmp_path):
+    """The availability probe searches the same augmented PATH the spawn uses, so
+    a `cursor-agent` installed only in ~/.local/bin resolves even though the
+    process PATH (GUI-minimal) doesn't list that dir — the hc-544 false-negative."""
+    local_bin = tmp_path / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    fake = local_bin / "cursor-agent"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # deliberately excludes ~/.local/bin
+    resolved = harness_for("cursor", "/tmp")._which()
+    assert resolved == str(fake)

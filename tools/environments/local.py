@@ -497,6 +497,20 @@ def hermes_subprocess_env(*, inherit_credentials: bool = False) -> dict[str, str
 
     _apply_windows_msys_bash_env_defaults(env)
 
+    # hc-544: append user-level bin dirs (~/.local/bin, nvm/volta, Homebrew, …)
+    # so a GUI-launched spawn — whose inherited macOS PATH is minimal — can still
+    # resolve the user's coding-agent CLI (claude/codex) and other user tools.
+    # PATH carries no credential, so this is orthogonal to the strip-by-default
+    # policy above and applies on both the inherit and non-inherit paths. Uses
+    # the OS account home (get_real_home), never a profile home. No-op on Windows.
+    from hermes_constants import get_real_home
+
+    _path_key = _path_env_key(env)
+    if _path_key is not None:
+        env[_path_key] = _augment_path_with_user_bins(
+            env.get(_path_key, ""), home=get_real_home(env), env=env
+        )
+
     # Cross-session leak guard, same as the terminal spawn paths: this helper
     # copies os.environ, whose HERMES_SESSION_* mirror is a last-writer-wins
     # global under a concurrent multi-session host. A caller that re-binds the
@@ -748,6 +762,156 @@ def _append_missing_sane_path_entries(existing_path: str) -> str:
             ordered_entries.append(entry)
 
     return ":".join(ordered_entries)
+
+
+# --- hc-544: user-level bin dirs for GUI-launched spawns --------------------
+#
+# A GUI-launched process on macOS (Finder/Dock/launchd) inherits a *minimal*
+# PATH (``/usr/bin:/bin:/usr/sbin:/sbin``) that omits the user-level bin dirs
+# where npm-global / installer CLIs land — notably ``~/.local/bin``, the
+# ``claude`` / ``codex`` install target. A subprocess we spawn with that PATH
+# can't find the user's coding-agent binary: ``AgentHarness._spawn`` passes the
+# child env to ``Popen``, and CPython resolves a bare ``argv[0]`` via
+# ``os.get_exec_path(env)`` — i.e. the *child* env's PATH — so a bare ``claude``
+# hits ``FileNotFoundError`` ("Claude Code 未接入"). ``shutil.which`` on the same
+# minimal PATH reports it missing too, so the availability probe also fails.
+#
+# We APPEND the common user-level install dirs (existence-filtered, de-duplicated,
+# order-preserving) so a bare ``claude`` / ``codex`` resolves regardless of how
+# the gateway was launched. Appended, never prepended — any system-tool
+# precedence in the inherited PATH is left unchanged. POSIX-only: on Windows the
+# GUI inherits the full user PATH from the registry, so this is a no-op there.
+#
+# This is the deterministic floor. The desktop electron layer additionally probes
+# the user's login shell for its fully-resolved PATH (apex-shell-path.cjs),
+# covering asdf / pyenv / fnm and other version managers this static list cannot
+# enumerate; that probed PATH flows into this process's ``os.environ`` before any
+# spawn, so this helper and the probe compose rather than compete.
+
+
+def _node_version_sort_key(name: str) -> tuple[int, int, int]:
+    """Parse a node version dir name (``v18.17.1``) into a comparable tuple.
+
+    Used to pick the highest nvm-installed node when no active ``$NVM_BIN`` is
+    set. Non-version names sort lowest so a stray dir never wins.
+    """
+    m = re.match(r"v?(\d+)(?:\.(\d+))?(?:\.(\d+))?", name.strip())
+    if not m:
+        return (-1, -1, -1)
+    return tuple(int(g or 0) for g in m.groups())  # type: ignore[return-value]
+
+
+def _nvm_current_bin_dir(
+    home: str,
+    env: dict[str, str] | None = None,
+    *,
+    isdir=None,
+    listdir=None,
+) -> str | None:
+    """Best-effort nvm 'current' node ``bin`` dir, or None.
+
+    Prefers ``$NVM_BIN`` (exported by nvm when a version is active); otherwise
+    the highest-versioned ``<home>/.nvm/versions/node/*/bin`` on disk. ``isdir`` /
+    ``listdir`` are injectable so the selection is deterministically testable;
+    they default to the live filesystem, resolved at call time (so a test that
+    monkeypatches ``os.path.isdir`` is honoured).
+    """
+    isdir = isdir or os.path.isdir
+    listdir = listdir or os.listdir
+    src = os.environ if env is None else env
+    nvm_bin = src.get("NVM_BIN")
+    if nvm_bin and isdir(nvm_bin):
+        return nvm_bin
+    if not home:
+        return None
+    versions_root = os.path.join(home, ".nvm", "versions", "node")
+    try:
+        names = listdir(versions_root)
+    except OSError:
+        return None
+    best: str | None = None
+    best_key: tuple[int, int, int] | None = None
+    for name in names:
+        bin_dir = os.path.join(versions_root, name, "bin")
+        if not isdir(bin_dir):
+            continue
+        key = _node_version_sort_key(name)
+        if best_key is None or key > best_key:
+            best_key, best = key, bin_dir
+    return best
+
+
+def _user_bin_dir_candidates(home: str) -> list[str]:
+    """Common POSIX user-level bin dirs, in priority order.
+
+    ``home`` must be the OS account home (``get_real_home``), never a Hermes
+    profile home — the user's CLIs install and authenticate under their real
+    ``~``. nvm is resolved separately (:func:`_nvm_current_bin_dir`).
+    """
+    if not home:
+        return []
+    join = os.path.join
+    return [
+        join(home, ".local", "bin"),       # claude/codex installer, pipx, npm prefix=~/.local
+        join(home, ".npm-global", "bin"),  # `npm config set prefix ~/.npm-global`
+        join(home, "bin"),                 # ad-hoc user bin
+        join(home, ".volta", "bin"),       # Volta shim dir
+        "/opt/homebrew/bin",               # Apple Silicon Homebrew
+        "/usr/local/bin",                  # Intel Homebrew / manual installs
+    ]
+
+
+def _augment_path_with_user_bins(
+    existing_path: str,
+    *,
+    home: str,
+    env: dict[str, str] | None = None,
+    isdir=None,
+    listdir=None,
+) -> str:
+    """Append existing user-level bin dirs to ``existing_path`` (hc-544).
+
+    De-duplicates against the entries already present (first occurrence wins) and
+    preserves their order — only *missing* candidate dirs that exist on disk are
+    appended, at the end, so inherited precedence is untouched. Cross-platform
+    join via ``os.pathsep``; a POSIX-only no-op on Windows (the GUI already
+    inherits the full user PATH there). ``isdir`` / ``listdir`` default to the
+    live filesystem (resolved at call time) and are injectable for tests.
+    """
+    if _IS_WINDOWS:
+        return existing_path
+    isdir = isdir or os.path.isdir
+    sep = os.pathsep
+    entries = [e for e in existing_path.split(sep) if e] if existing_path else []
+    seen = set(entries)
+    candidates = _user_bin_dir_candidates(home)
+    nvm_bin = _nvm_current_bin_dir(home, env, isdir=isdir, listdir=listdir)
+    if nvm_bin:
+        candidates.append(nvm_bin)
+    for cand in candidates:
+        if cand in seen or not isdir(cand):
+            continue
+        seen.add(cand)
+        entries.append(cand)
+    return sep.join(entries)
+
+
+def augmented_user_path(base_path: str | None = None, env: dict[str, str] | None = None) -> str:
+    """Return a search PATH with user-level bin dirs appended (hc-544).
+
+    Convenience wrapper over :func:`_augment_path_with_user_bins` for callers
+    that need the resolved search PATH rather than a full env dict — e.g. the
+    coding-agent availability probe's ``shutil.which(cmd, path=...)``. Reads the
+    current ``PATH`` and the OS account home (``get_real_home``) when not given,
+    so the probe searches exactly what a spawned child (whose env PATH this same
+    helper augments) will see.
+    """
+    src = os.environ if env is None else env
+    if base_path is None:
+        base_path = src.get("PATH", "")
+    from hermes_constants import get_real_home
+
+    return _augment_path_with_user_bins(base_path, home=get_real_home(src), env=src)
 
 
 def _apply_windows_msys_bash_env_defaults(env: dict) -> None:

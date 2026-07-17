@@ -209,3 +209,48 @@ class TestInternalDynamicSecrets:
         assert {
             "GATEWAY_RELAY_ID", "GATEWAY_RELAY_SECRET", "GATEWAY_RELAY_DELIVERY_KEY",
         } <= _ALWAYS_STRIP_KEYS
+
+
+class TestUserBinPathAugmentation:
+    """hc-544: the returned env's PATH gains the user's ~/.local/bin (etc.) so a
+    GUI-launched spawn can find claude/codex — WITHOUT weakening the credential
+    strip (PATH augmentation and secret stripping are orthogonal)."""
+
+    def _build_with_home(self, home, extra=None, *, inherit_credentials=False):
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "USER": "u"}
+        if extra:
+            env.update(extra)
+        with patch.dict(os.environ, env, clear=True):
+            return hermes_subprocess_env(inherit_credentials=inherit_credentials)
+
+    def test_local_bin_appended_when_present(self, tmp_path):
+        local_bin = tmp_path / ".local" / "bin"
+        local_bin.mkdir(parents=True)
+        result = self._build_with_home(tmp_path)
+        entries = result["PATH"].split(os.pathsep)
+        assert str(local_bin) in entries
+        # Appended, not prepended: inherited system dirs keep precedence.
+        assert entries[0] == "/usr/bin"
+        assert entries.index("/usr/bin") < entries.index(str(local_bin))
+
+    def test_no_phantom_entries_when_absent(self, tmp_path):
+        # Empty home → none of the home-relative candidates exist.
+        result = self._build_with_home(tmp_path)
+        for entry in result["PATH"].split(os.pathsep):
+            assert not entry.startswith(str(tmp_path)), f"phantom entry {entry!r}"
+
+    def test_augmentation_does_not_resurrect_secrets(self, tmp_path):
+        (tmp_path / ".local" / "bin").mkdir(parents=True)
+        secrets = {"ANTHROPIC_API_KEY": "sk-x", "TELEGRAM_BOT_TOKEN": "bot", "FEISHU_APP_SECRET": "fs"}
+        result = self._build_with_home(tmp_path, secrets)
+        # PATH augmented …
+        assert str(tmp_path / ".local" / "bin") in result["PATH"].split(os.pathsep)
+        # … and every secret still stripped (orthogonality invariant).
+        for var in secrets:
+            assert var not in result, f"{var} leaked alongside PATH augmentation"
+
+    def test_augmentation_applies_on_inherit_path_too(self, tmp_path):
+        # codex/copilot spawn (inherit_credentials=True) must also find its CLI.
+        (tmp_path / ".local" / "bin").mkdir(parents=True)
+        result = self._build_with_home(tmp_path, inherit_credentials=True)
+        assert str(tmp_path / ".local" / "bin") in result["PATH"].split(os.pathsep)
