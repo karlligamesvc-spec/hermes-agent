@@ -617,6 +617,51 @@ export interface Translations {
       // silently fail on a stale engine, so surface it explicitly here.
       engineOutdated: (value: string) => string
     }
+    // hc-545: coding-agent account connection card. Detects the three-state
+    // login status of the user's own claude/codex CLIs (the passthrough/daemon
+    // legs drive them) and hosts an in-app OAuth + system-proxy autopilot.
+    agentAuth: {
+      title: string
+      intro: string
+      checking: string
+      refresh: string
+      // Per-state one-liners (the anti-conflation core — logged_out ≠ unreachable).
+      stateReady: string
+      stateReadyEmail: (email: string) => string
+      stateLoggedOut: string
+      stateUnreachable: string
+      stateNoCli: string
+      stateUnknown: string
+      // Action buttons per state.
+      connect: string
+      reconnect: string
+      fixNetwork: string
+      // no_cli install hints.
+      installHint: string
+      // OAuth follow-up.
+      opening: string
+      waitingBrowser: string
+      completed: string
+      // Honest degrade: run this command in a terminal.
+      guideIntro: string
+      copyCommand: string
+      copied: string
+      // Network proxy sub-block.
+      proxyTitle: string
+      proxyIntro: string
+      proxyModeAuto: string
+      proxyModeAutoHint: string
+      proxyModeCustom: string
+      proxyModeOff: string
+      proxyModeOffHint: string
+      proxyDetected: (url: string) => string
+      proxyNone: string
+      proxyCustomLabel: string
+      proxyCustomPlaceholder: string
+      proxyInvalid: string
+      save: string
+      saved: string
+    }
     sessions: {
       loading: string
       archivedTitle: string
