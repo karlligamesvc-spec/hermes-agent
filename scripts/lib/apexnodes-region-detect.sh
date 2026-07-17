@@ -343,6 +343,26 @@ apexnodes_download_runtime_tarball() {
         return 1
     fi
 
+    # hc-543: stamp the tree with the commit it was extracted at. The COS
+    # tarball has NO .git, so this is the ONLY on-disk provenance tying the
+    # source tree to a commit. clone_repo's reuse guard reads it back to refuse
+    # reusing a stale tree during an update, and the desktop bootstrap runner
+    # reads it to verify the tree actually moved to the target commit BEFORE
+    # stamping the bootstrap-complete marker (no more "marker says vNext but the
+    # files are still vPrev" false success).
+    printf '%s\n' "$key" > "$INSTALL_DIR/.hermes-source-commit" 2>/dev/null || \
+        log_warn "Could not write source-commit stamp to $INSTALL_DIR (update-integrity check will fail open)"
+
     log_success "Runtime source ready from COS mirror ($key)"
     return 0
+}
+
+# hc-543: read the commit a COS-extracted tree was stamped with (written by
+# apexnodes_download_runtime_tarball). Echoes the stamped key (commit or branch)
+# with surrounding whitespace stripped, or nothing when no stamp is present
+# (a git checkout, a legacy pre-hc-543 COS tree, or an interrupted extract).
+apexnodes_installed_source_commit() {
+    local dir="${1:-${INSTALL_DIR:-}}"
+    [ -n "$dir" ] && [ -f "$dir/.hermes-source-commit" ] || return 0
+    tr -d '[:space:]' < "$dir/.hermes-source-commit" 2>/dev/null || true
 }

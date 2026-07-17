@@ -26,7 +26,13 @@ const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { execFileSync, spawn } = require('node:child_process')
 const { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } = require('./bootstrap-platform.cjs')
-const { runBootstrap } = require('./bootstrap-runner.cjs')
+const {
+  runBootstrap,
+  // hc-543: read the on-disk source-commit provenance so the engine-version IPC
+  // can report the ACTUAL tree, not just what the bootstrap marker claims.
+  readSourceCommitStamp,
+  commitKeysMatch
+} = require('./bootstrap-runner.cjs')
 const {
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
@@ -8149,11 +8155,44 @@ ipcMain.handle('hermes:runtime:version', async () => {
     // it never blocks usage.
     const minEngineVersion = readDeclaredMinEngineVersion()
     const meetsMinEngine = engineMeetsMinVersion(version, minEngineVersion)
-    return { ok: true, version, commit, branch, key: commit || branch || null, minEngineVersion, meetsMinEngine }
+    // hc-543: the marker attests what the LAST bootstrap TARGETED, not what is
+    // on disk. A botched .git-less COS update can leave the marker on vNext
+    // while the files are still vPrev (the "engine is latest" lie). Cross-check
+    // the marker's commit against the tree's own source-commit stamp so the
+    // renderer can warn instead of blindly trusting the version label.
+    //   treeMatchesMarker === true  -> stamp present and agrees with the marker
+    //   treeMatchesMarker === false -> stamp present but a DIFFERENT commit (lie)
+    //   treeMatchesMarker === null  -> no stamp (git / legacy tree): unknown, don't alarm
+    const treeCommit = readSourceCommitStamp(ACTIVE_HERMES_ROOT)
+    let treeMatchesMarker = null
+    if (treeCommit && commit) {
+      treeMatchesMarker = commitKeysMatch(treeCommit, commit)
+    }
+    return {
+      ok: true,
+      version,
+      commit,
+      branch,
+      key: commit || branch || null,
+      minEngineVersion,
+      meetsMinEngine,
+      treeCommit,
+      treeMatchesMarker
+    }
   } catch (error) {
     rememberLog(`[runtime-update] version read errored: ${error && error.message}`)
     // Fail open on the gate too: an unexpected read error must not nag.
-    return { ok: false, version: null, commit: null, branch: null, key: null, minEngineVersion: null, meetsMinEngine: true }
+    return {
+      ok: false,
+      version: null,
+      commit: null,
+      branch: null,
+      key: null,
+      minEngineVersion: null,
+      meetsMinEngine: true,
+      treeCommit: null,
+      treeMatchesMarker: null
+    }
   }
 })
 

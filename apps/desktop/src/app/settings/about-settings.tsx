@@ -59,6 +59,11 @@ function EngineUpdateSection() {
   // banner points the user at the opt-in engine update right below. Never blocks.
   const engineOutdated = installed?.meetsMinEngine === false
   const minEngineVersion = installed?.minEngineVersion ?? null
+  // hc-543: the marker's version disagrees with the source tree actually on
+  // disk — a botched .git-less update stamped a new version over unchanged
+  // files. Only true when we have a positive contradiction (stamp present and
+  // different); null/undefined (git or legacy tree with no stamp) never alarms.
+  const engineTreeMismatch = installed?.treeMatchesMarker === false
 
   let statusLine: string
   let statusTone: 'available' | 'error' | 'idle' = 'idle'
@@ -105,6 +110,20 @@ function EngineUpdateSection() {
             {minEngineVersion && (
               <p className="mt-1 text-xs">{a.engineUpdateNeededDetail(minEngineVersion)}</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {engineTreeMismatch && (
+        <div
+          className="p5-panel mb-2 flex items-start gap-2 px-4 py-3 text-sm text-destructive"
+          data-testid="engine-tree-mismatch-banner"
+          data-tone="error"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium">{a.engineTreeMismatch}</p>
+            <p className="mt-1 text-xs">{a.engineTreeMismatchDetail}</p>
           </div>
         </div>
       )}

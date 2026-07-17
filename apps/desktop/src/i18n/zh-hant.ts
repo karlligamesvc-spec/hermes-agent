@@ -560,7 +560,10 @@ export const zhHant = defineLocale({
       engineConfirmBodyGeneric: '將更新 AI 引擎，並重新啟動應用以生效。你的工作不會遺失。',
       engineConfirmApply: '更新引擎',
       engineUpdateNeeded: '引擎需更新',
-      engineUpdateNeededDetail: value => `本應用需要引擎 ${value} 或更新版本。請點下方「檢查更新」更新引擎。`
+      engineUpdateNeededDetail: value => `本應用需要引擎 ${value} 或更新版本。請點下方「檢查更新」更新引擎。`,
+      engineTreeMismatch: '引擎檔案未同步',
+      engineTreeMismatchDetail:
+        '上次更新記錄了新版本,但磁碟上的引擎檔案並未替換,目前顯示的版本號可能不準確。請點下方更新引擎以重新下載正確的檔案。'
     },
     config: {
       none: '無',

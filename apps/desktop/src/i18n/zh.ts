@@ -628,7 +628,10 @@ export const zh: Translations = {
       engineConfirmBodyGeneric: '将更新 AI 引擎，并重启应用以生效。你的工作不会丢失。',
       engineConfirmApply: '更新引擎',
       engineUpdateNeeded: '引擎需更新',
-      engineUpdateNeededDetail: value => `本应用需要引擎 ${value} 或更高版本。请点下方「检查更新」更新引擎。`
+      engineUpdateNeededDetail: value => `本应用需要引擎 ${value} 或更高版本。请点下方「检查更新」更新引擎。`,
+      engineTreeMismatch: '引擎文件未同步',
+      engineTreeMismatchDetail:
+        '上次更新记录了新版本,但磁盘上的引擎文件并未替换,当前显示的版本号可能不准确。请点下方更新引擎以重新下载正确的文件。'
     },
     config: {
       none: '无',
