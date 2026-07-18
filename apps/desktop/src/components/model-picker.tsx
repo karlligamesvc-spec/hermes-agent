@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import { currentPickerSelection, managedModelDisplayName } from '@/lib/model-status-label'
+import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders } from '@/lib/provider-allowlist'
 import type { ModelOptionProvider, ModelOptionsResponse, ModelPricing } from '@/types/hermes'
 
@@ -15,6 +16,7 @@ import { InlineNotice } from './notifications'
 import { Button } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
+import { ProviderIcon } from './ui/provider-icon'
 import { Skeleton } from './ui/skeleton'
 
 interface ModelPickerDialogProps {
@@ -239,6 +241,7 @@ function ModelResults({
                   }}
                   value={`${provider.slug}:${model}`}
                 >
+                  <ProviderIcon vendor={modelVendor(model, provider.name)} />
                   <span className="min-w-0 flex-1 truncate">{model}</span>
                   {locked && <span className="shrink-0 text-[0.62rem] uppercase tracking-wide opacity-80">{copy.pro}</span>}
                   <ModelPrice isCurrent={isCurrent} price={price} />
