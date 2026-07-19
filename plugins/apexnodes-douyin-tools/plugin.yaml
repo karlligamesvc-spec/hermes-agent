@@ -1,5 +1,5 @@
 name: apexnodes-douyin-tools
-version: "0.5.0"
+version: "0.6.0"
 description: "Social media tools — video download/transcription, image text OCR, and async batch download+transcribe. P1 gateway mode (default): all vendor calls go through the ApexNodes tools gateway (api.apex-nodes.com /tools/v1); legacy master-endpoint path kept behind TOOLS_GATEWAY_DISABLED=1 (cloud rollback channel)."
 provides_tools:
   - social_download

@@ -131,6 +131,31 @@ GENERATE_VIDEO_SCHEMA = {
 }
 
 
+def _localize_gateway_video(result: dict[str, Any], prompt: str) -> str:
+    """hc-562 网关腿取件收尾:master 返回的 ``video_path``/``media_tag`` 是 master
+    本机路径(云侧靠共享卷才成立),本端不存在该文件——原样下发会让 agent 发出
+    指向不存在文件的 MEDIA 标签。改为用 ``video_url`` 直链本地落地(同
+    social_download 网关腿的直链自取模式,PD §8),成功后以本机路径重建
+    ``video_path``/``media_tag``;失败则只保留 ``video_url`` 并明说链接有时效。
+    绝不把 master 本机路径下发到本端结果面。"""
+    result.pop("video_path", None)
+    result.pop("media_tag", None)
+    video_url = str(result.get("video_url") or result.get("video") or "").strip()
+    if not video_url:
+        return tool_result(**result)
+    try:
+        local_path = _gateway.download_media(video_url, filename_hint=prompt[:40] or "generated_video")
+    except _gateway.GatewayError:
+        result["note"] = (
+            "视频已生成，但保存到本机失败：请尽快通过 video_url 查看/下载"
+            "（该链接有有效期，过期后需重新生成）。"
+        )
+        return tool_result(**result)
+    result["video_path"] = str(local_path)
+    result["media_tag"] = f"MEDIA:{local_path}"
+    return tool_result(**result)
+
+
 def _handle_generate_video(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
         return tool_error("generate_video expects a JSON object argument")
@@ -150,7 +175,7 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
             )
         except _gateway.GatewayError as exc:
             return tool_error(f"视频生成失败: {exc}")
-        return tool_result(**_gateway.unwrap(response))
+        return _localize_gateway_video(_gateway.unwrap(response), prompt)
     try:
         return tool_result(**_request("POST", "/media/video-generate", payload))
     except RuntimeError as exc:
