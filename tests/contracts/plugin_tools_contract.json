@@ -1,0 +1,340 @@
+{
+  "contract_name": "apexnodes-plugin-tools-parity",
+  "contract_version": 1,
+  "ticket": "hc-563",
+  "sync_policy": {
+    "copies": [
+      "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
+      "hermes-agent fork: tests/contracts/plugin_tools_contract.json (byte-identical copy)"
+    ],
+    "rule": "Both repos pin sha256(<this file's bytes>) as EXPECTED_CONTRACT_SHA256 inside their contract test. Any contract change = bump contract_version + paired PRs updating JSON AND the pinned hash in BOTH repos (cloud first, fork on the next engine train). A one-sided plugin change fails that repo's contract test immediately; a one-sided contract edit fails that repo's fingerprint pin. Audit cross-repo sync anytime with: sha256sum tests/contracts/plugin_tools_contract.json in both checkouts."
+  },
+  "legs": {
+    "legacy": "master internal endpoints over shared-volume transport (cloud containers always; fork fallback under TOOLS_GATEWAY_DISABLED=1)",
+    "gateway": "public /tools/v1/* tools gateway (desktop default; media bytes never proxied - client fetches direct links; ASR audio goes up out-of-band)"
+  },
+  "sides": {
+    "cloud": {
+      "plugin_root": "app/runtime_plugins",
+      "legs": ["legacy"]
+    },
+    "desktop": {
+      "plugin_root": "plugins",
+      "legs": ["legacy", "gateway"]
+    }
+  },
+  "plugins": {
+    "apexnodes-douyin-tools": [
+      "social_download",
+      "media_transcribe",
+      "image_ocr",
+      "social_batch_submit",
+      "social_batch_status"
+    ],
+    "apexnodes-social-tools": [
+      "social_content",
+      "social_search",
+      "social_profile",
+      "social_comments",
+      "social_trending",
+      "social_posts",
+      "social_captions",
+      "creator_top_posts"
+    ],
+    "apexnodes-video-tools": ["generate_video"]
+  },
+  "tools": {
+    "social_download": {
+      "schema": {
+        "params": {"url": {"type": "string"}},
+        "required": ["url"]
+      },
+      "endpoints": {
+        "legacy": ["/media/social-download"],
+        "gateway": ["/tools/v1/social/{platform}/download"]
+      },
+      "behaviors": {
+        "routed_intent_passthrough": {"legs": ["legacy"]}
+      }
+    },
+    "media_transcribe": {
+      "schema": {
+        "params": {
+          "url": {"type": "string"},
+          "video_path": {"type": "string"}
+        },
+        "required": []
+      },
+      "endpoints": {
+        "legacy": ["/media/transcribe"],
+        "gateway": ["/tools/v1/asr/*", "/tools/v1/social/{platform}/download"]
+      },
+      "behaviors": {
+        "routed_intent_passthrough": {"legs": ["legacy"]},
+        "asr_upload_modes": {
+          "legs": ["gateway"],
+          "allowed_modes": ["multipart-file", "json-media-url", "presign-json"],
+          "note": "hc-560 large-file leg may switch the desktop upload from multipart to a presign handshake; any /tools/v1/asr/* JSON call that is neither multipart nor media_url counts as presign-json. Do NOT narrow this to a single shape."
+        }
+      }
+    },
+    "image_ocr": {
+      "schema": {
+        "params": {
+          "image_urls": {"type": "array", "items": {"type": "string"}},
+          "prompt": {"type": "string"},
+          "url": {"type": "string"}
+        },
+        "required": []
+      },
+      "endpoints": {
+        "legacy": ["/media/image-understand"],
+        "gateway": ["/tools/v1/social/{platform}/image-ocr"]
+      },
+      "behaviors": {
+        "url_or_image_urls_required": {"legs": ["legacy", "gateway"]},
+        "gateway_platform_fallback_douyin": {"legs": ["gateway"], "fallback_platform": "douyin"}
+      }
+    },
+    "social_batch_submit": {
+      "schema": {
+        "params": {
+          "bitable_url": {"type": "string"},
+          "creator_url": {"type": "string"},
+          "delivery_format": {"type": "string"},
+          "min_likes": {"type": "integer"},
+          "platform": {"type": "string"},
+          "top": {"type": "integer"},
+          "urls": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": []
+      },
+      "endpoints": {
+        "legacy": ["/media/batch/submit"],
+        "gateway": ["/tools/v1/social/batch/submit"]
+      },
+      "behaviors": {
+        "urls_or_creator_url_required": {"legs": ["legacy", "gateway"]},
+        "delivery_format_normalized_passthrough": {"legs": ["legacy", "gateway"]},
+        "routed_intent_passthrough": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_batch_status": {
+      "schema": {
+        "params": {"job_id": {"type": "string"}},
+        "required": ["job_id"]
+      },
+      "endpoints": {
+        "legacy": ["/media/batch/status/{job_id}"],
+        "gateway": ["/tools/v1/social/batch/status/{job_id}"]
+      },
+      "behaviors": {
+        "job_id_required": {"legs": ["legacy", "gateway"]},
+        "instruction_decoration": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_content": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["platform"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/content"],
+        "gateway": ["/tools/v1/social/{platform}/content"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_search": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["platform", "query"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/search"],
+        "gateway": ["/tools/v1/social/{platform}/search"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_profile": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["platform", "user_id"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/profile"],
+        "gateway": ["/tools/v1/social/{platform}/profile"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_comments": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["item_id", "platform"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/comments"],
+        "gateway": ["/tools/v1/social/{platform}/comments"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_trending": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["platform"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/trending"],
+        "gateway": ["/tools/v1/social/{platform}/trending"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_posts": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["platform", "user_id"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/posts"],
+        "gateway": ["/tools/v1/social/{platform}/posts"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "social_captions": {
+      "schema": {
+        "params": {
+          "count": {"type": "integer"},
+          "cursor": {"type": "string"},
+          "item_id": {"type": "string"},
+          "params": {"type": "object"},
+          "platform": {"type": "string"},
+          "query": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": ["platform"]
+      },
+      "endpoints": {
+        "legacy": ["/data/social/captions"],
+        "gateway": ["/tools/v1/social/{platform}/captions"]
+      },
+      "behaviors": {
+        "platform_arg_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "creator_top_posts": {
+      "schema": {
+        "params": {
+          "min_collects": {"type": "integer"},
+          "min_comments": {"type": "integer"},
+          "min_likes": {"type": "integer"},
+          "platform": {"type": "string"},
+          "scan_limit": {"type": "integer"},
+          "since": {"type": "string"},
+          "sort_by": {"type": "string"},
+          "top": {"type": "integer"},
+          "until": {"type": "string"},
+          "url": {"type": "string"},
+          "user_id": {"type": "string"}
+        },
+        "required": []
+      },
+      "endpoints": {
+        "legacy": ["/data/creator/top-posts"],
+        "gateway": ["/tools/v1/social/{platform}/top-posts"]
+      },
+      "behaviors": {
+        "url_or_user_id_required": {"legs": ["legacy", "gateway"]}
+      }
+    },
+    "generate_video": {
+      "schema": {
+        "params": {
+          "aspect_ratio": {"type": "string", "enum": ["landscape", "square", "portrait"]},
+          "prompt": {"type": "string"},
+          "seconds": {"type": "integer"},
+          "size": {"type": "string"}
+        },
+        "required": ["prompt"]
+      },
+      "endpoints": {
+        "legacy": ["/media/video-generate"],
+        "gateway": ["/tools/v1/video/generate"]
+      },
+      "behaviors": {
+        "prompt_required": {"legs": ["legacy", "gateway"]},
+        "aspect_ratio_defaults_landscape": {"legs": ["legacy", "gateway"]},
+        "no_foreign_paths_in_result": {
+          "legs": ["gateway"],
+          "poison_path": "/data/hermes/agents/a1/media/jobs/j1/video_1.mp4",
+          "note": "master-local video_path/media_tag must never reach the desktop result face; localize via video_url or drop the fields (hc-562)."
+        }
+      }
+    }
+  }
+}
