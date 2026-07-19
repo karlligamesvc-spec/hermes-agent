@@ -444,8 +444,33 @@ class TestGatewayCallSurface:
         )
         # 桌面形态没有 IM 会话 env → delivery_target=None → 轮询模式提示。
         assert fake_httpx.requests[0].json["delivery_target"] is None
+        # hc-562 回归锚:未显式传参时缺省字段保持 None(不补默认值)。
+        assert fake_httpx.requests[0].json["delivery_format"] is None
+        assert "routed_intent" not in fake_httpx.requests[0].json
         assert submit["job_id"] == "j1"
         assert "social_batch_status" in submit["_instruction"]
+
+    def test_batch_submit_forwards_delivery_format_and_routed_intent(
+        self, desktop_env, fake_httpx, douyin_mod
+    ):
+        # hc-562 回归锚 ①:delivery_format 桌面网关腿透传(hc-450 PR2 云侧字段,
+        # /tools/v1/social/batch/submit 服务端已收;此前 fork schema/payload 双缺)。
+        assert "delivery_format" in (
+            douyin_mod.SOCIAL_BATCH_SUBMIT_SCHEMA["parameters"]["properties"]
+        )
+        fake_httpx.responses.append(
+            FakeResponse(200, {"data": {"job_id": "j2", "status": "queued"}})
+        )
+        douyin_mod._handle_social_batch_submit(
+            {
+                "urls": ["https://v.douyin.com/a/"],
+                "delivery_format": "XLSX",
+                "routed_intent": "single_transcribe_xlsx",
+            }
+        )
+        body = fake_httpx.requests[0].json
+        assert body["delivery_format"] == "xlsx"  # 归一化小写后透传
+        assert body["routed_intent"] == "single_transcribe_xlsx"
 
         fake_httpx.responses.append(
             FakeResponse(200, {"data": {"status": "completed", "product": {}}})
@@ -457,24 +482,80 @@ class TestGatewayCallSurface:
         )
         assert "任务已完成" in status["_instruction"]
 
-    def test_generate_video_gateway_endpoint(
-        self, desktop_env, fake_httpx, video_mod
+    # hc-562 回归锚 ④:generate_video 网关腿绝不输出非本机路径——master 返回的
+    # video_path/media_tag 是 master 本机路径(云侧共享卷语义),桌面必须用
+    # video_url 直链本地落地后再出 MEDIA 标签。
+    _MASTER_VIDEO_PATH = "/data/hermes/agents/a1/media/jobs/j1/video_1.mp4"
+
+    def test_generate_video_gateway_lands_video_locally(
+        self, desktop_env, fake_httpx, video_mod, monkeypatch, tmp_path
     ):
+        gateway_module = _gateway_module()
         fake_httpx.responses.append(
             FakeResponse(
                 200,
-                {"data": {"ok": True, "video_url": "https://cdn.example/o.mp4"}, "cost_cents": 40},
+                {
+                    "data": {
+                        "video_url": "https://cdn.example/o.mp4",
+                        "video": "https://cdn.example/o.mp4",
+                        "video_path": self._MASTER_VIDEO_PATH,
+                        "media_tag": f"MEDIA:{self._MASTER_VIDEO_PATH}",
+                    },
+                    "cost_cents": 40,
+                },
             )
         )
-        result = _parse(
-            video_mod._handle_generate_video({"prompt": "一只猫在弹钢琴"})
-        )
+        downloaded = tmp_path / "gen.mp4"
+        downloaded.write_bytes(b"fake-video")
+        seen = {}
+
+        def fake_download(url, **kwargs):
+            seen["url"] = url
+            return downloaded
+
+        monkeypatch.setattr(gateway_module, "download_media", fake_download)
+        raw = video_mod._handle_generate_video({"prompt": "一只猫在弹钢琴"})
+        result = _parse(raw)
         request = fake_httpx.requests[0]
         assert request.url == f"{GATEWAY_BASE}/tools/v1/video/generate"
         assert request.json["prompt"] == "一只猫在弹钢琴"
         assert request.headers["X-Capability-Version"]
+        assert seen["url"] == "https://cdn.example/o.mp4"
+        assert result["video_path"] == str(downloaded)
+        assert result["media_tag"] == f"MEDIA:{downloaded}"
         assert result["video_url"] == "https://cdn.example/o.mp4"
         assert result["cost_cents"] == 40
+        assert self._MASTER_VIDEO_PATH not in raw  # master 本机路径绝不进结果面
+
+    def test_generate_video_gateway_download_failure_keeps_url_with_expiry_note(
+        self, desktop_env, fake_httpx, video_mod, monkeypatch
+    ):
+        gateway_module = _gateway_module()
+        fake_httpx.responses.append(
+            FakeResponse(
+                200,
+                {
+                    "data": {
+                        "video_url": "https://cdn.example/o.mp4",
+                        "video_path": self._MASTER_VIDEO_PATH,
+                        "media_tag": f"MEDIA:{self._MASTER_VIDEO_PATH}",
+                    },
+                    "cost_cents": 40,
+                },
+            )
+        )
+
+        def failing_download(url, **kwargs):
+            raise gateway_module.GatewayError("direct link fetch failed")
+
+        monkeypatch.setattr(gateway_module, "download_media", failing_download)
+        raw = video_mod._handle_generate_video({"prompt": "一只猫在弹钢琴"})
+        result = _parse(raw)
+        assert result["video_url"] == "https://cdn.example/o.mp4"
+        assert "video_path" not in result
+        assert "media_tag" not in result
+        assert "有效期" in result["note"]  # 回退=只给 url 并明说链接时效
+        assert self._MASTER_VIDEO_PATH not in raw
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +660,32 @@ class TestGatewayDisabledFallback:
     ):
         douyin_mod._handle_social_download({"url": "https://v.douyin.com/abc/"})
         assert fake_urlopen[0].full_url == "http://master.test/api/v1/media/social-download"
+        # hc-562 回归锚:未被路由命中时不注入 routed_intent(缺省字段不补)。
+        assert "routed_intent" not in json.loads(fake_urlopen[0].data.decode("utf-8"))
         assert not fake_httpx.requests
+
+    def test_social_download_forwards_routed_intent(
+        self, legacy_env, fake_urlopen, fake_httpx, douyin_mod
+    ):
+        # hc-562 回归锚 ②:intent-router 命中标记透传 master(hc-450 PR1,
+        # master 端点据此打 intent_router_hit 结构化日志)。
+        douyin_mod._handle_social_download(
+            {"url": "https://v.douyin.com/abc/", "routed_intent": "single_download"}
+        )
+        body = json.loads(fake_urlopen[0].data.decode("utf-8"))
+        assert body == {"url": "https://v.douyin.com/abc/", "routed_intent": "single_download"}
+
+    def test_media_transcribe_forwards_routed_intent(
+        self, legacy_env, fake_urlopen, fake_httpx, douyin_mod
+    ):
+        # hc-562 回归锚 ③:transcribe 同样透传命中标记(url 一步转写形态)。
+        douyin_mod._handle_media_transcribe(
+            {"url": "https://v.douyin.com/abc/", "routed_intent": "single_transcribe"}
+        )
+        assert fake_urlopen[0].full_url == "http://master.test/api/v1/media/transcribe"
+        body = json.loads(fake_urlopen[0].data.decode("utf-8"))
+        assert body["url"] == "https://v.douyin.com/abc/"
+        assert body["routed_intent"] == "single_transcribe"
 
     def test_generate_video_falls_back_to_master_endpoint(
         self, legacy_env, fake_urlopen, fake_httpx, video_mod

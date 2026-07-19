@@ -381,6 +381,13 @@ def _gateway_image_ocr(payload: dict[str, Any]) -> str:
     return tool_result(**_gateway.unwrap(response))
 
 
+def _routed_intent(args: dict) -> str | None:
+    """hc-450: log-only marker the intent-router hook stamps onto a routed call;
+    forwarded so the master can emit its structured intent_router_hit line."""
+    value = str(args.get("routed_intent") or "").strip()
+    return value[:64] or None
+
+
 def _handle_social_download(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
         return tool_error("social_download expects a JSON object argument")
@@ -389,8 +396,11 @@ def _handle_social_download(args: dict, **_kwargs) -> str:
         return tool_error("请提供视频分享链接")
     if _use_gateway():
         return _gateway_social_download(url)
+    payload: dict[str, Any] = {"url": url}
+    if _routed_intent(args):
+        payload["routed_intent"] = _routed_intent(args)
     try:
-        return tool_result(**_post("/media/social-download", {"url": url}))
+        return tool_result(**_post("/media/social-download", payload))
     except RuntimeError as exc:
         return tool_error(f"视频下载失败: {exc}")
 
@@ -521,7 +531,9 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
         return tool_error("请提供 video_path 或视频分享链接")
     if _use_gateway():
         return _gateway_media_transcribe(video_path, url)
-    payload = {"video_path": video_path, "url": url}
+    payload: dict[str, Any] = {"video_path": video_path, "url": url}
+    if _routed_intent(args):
+        payload["routed_intent"] = _routed_intent(args)
     try:
         result = _post("/media/transcribe", payload, timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS)
     except RuntimeError as exc:
@@ -588,6 +600,10 @@ SOCIAL_BATCH_SUBMIT_SCHEMA = {
             "min_likes": {"type": "integer", "description": "可选，creator_url 时只保留点赞≥该值的作品（如 100000）。"},
             "top": {"type": "integer", "description": "可选，最多取前 N 条（按点赞排序）。"},
             "bitable_url": {"type": "string", "description": "可选，飞书多条交付时写入的目标多维表格 /base/ 链接。"},
+            "delivery_format": {
+                "type": "string",
+                "description": "可选，产物格式覆盖：xlsx=强制出 Excel 表格（用户明确要「表格/Excel」时，即使只有一条链接也出表）。缺省按条数自动（单条 Word、多条 Excel）。",
+            },
         },
     },
 }
@@ -673,12 +689,19 @@ def _handle_social_batch_submit(args: dict, **_kwargs) -> str:
         "min_likes": int(args.get("min_likes") or 0),
         "top": args.get("top"),
         "bitable_url": str(args.get("bitable_url") or "").strip() or None,
+        # hc-450 PR2: explicit product-format override(今日仅 "xlsx")——legacy
+        # /media/batch/submit 与网关 /tools/v1/social/batch/submit 两端点同形接收。
+        "delivery_format": str(args.get("delivery_format") or "").strip().lower() or None,
         # hc-371: routing snapshot; the master stores it and pushes the result on
         # completion. Always captured (harmless when the feature is off — nothing
         # reads it until the master's async-delivery flag is armed for this agent;
         # 桌面形态没有 IM 会话 env ⇒ None ⇒ 轮询模式).
         "delivery_target": _session_target(),
     }
+    # hc-450 PR1 观测透传:legacy 端点打 intent_router_hit 结构化行;网关端点当前
+    # 忽略该字段(服务端模型未收,pydantic 默认丢弃)——共用同一 payload,服务端补字段后即生效。
+    if _routed_intent(args):
+        payload["routed_intent"] = _routed_intent(args)
     if not payload["urls"] and not payload["creator_url"]:
         return tool_error("请提供 urls(链接清单) 或 creator_url(作者主页链接，或某个抖音合集的分享链接)。")
     if _use_gateway():
