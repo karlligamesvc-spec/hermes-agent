@@ -671,6 +671,20 @@ def _decorate_batch_status(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _read_batch_response(body: dict[str, Any]) -> dict[str, Any]:
+    """批量端点响应直读(hc-567):云端 ``/tools/v1/social/batch/*`` 返回**平铺形**
+    ``{ok, job_id, status, ...}``(cloud app/routers/tools_gateway.py 直接
+    ``return {"ok": True, **status}``,没有 ``{data: {...}}`` 信封)——此前误走
+    ``_gateway.unwrap``,平铺响应被解成空 dict、job_id 丢失,桌面批量流程断链。
+    宽容读法:若某版本服务端把结果包进 data 信封(dict),兼容取内层;否则平铺
+    直读。两形并存兼容,勿再换个方向锁死单一形状。
+    """
+    data = body.get("data")
+    if isinstance(data, dict):
+        return dict(data)
+    return dict(body)
+
+
 def _handle_social_batch_submit(args: dict, **_kwargs) -> str:
     if not isinstance(args, dict):
         return tool_error("social_batch_submit expects a JSON object argument")
@@ -701,7 +715,7 @@ def _handle_social_batch_submit(args: dict, **_kwargs) -> str:
         return tool_error("请提供 urls(链接清单) 或 creator_url(作者主页链接，或某个抖音合集的分享链接)。")
     if _use_gateway():
         try:
-            result = _gateway.unwrap(
+            result = _read_batch_response(
                 _gateway.request_json("POST", "/tools/v1/social/batch/submit", payload, timeout=120)
             )
         except _gateway.GatewayError as exc:
@@ -722,7 +736,7 @@ def _handle_social_batch_status(args: dict, **_kwargs) -> str:
         return tool_error("请提供 job_id。")
     if _use_gateway():
         try:
-            result = _gateway.unwrap(
+            result = _read_batch_response(
                 _gateway.request_json("GET", f"/tools/v1/social/batch/status/{job_id}", timeout=60)
             )
         except _gateway.GatewayError as exc:
