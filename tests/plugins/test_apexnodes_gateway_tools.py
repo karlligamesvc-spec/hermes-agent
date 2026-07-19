@@ -162,6 +162,8 @@ class RecordedRequest:
         self.json = kwargs.get("json")
         self.data = kwargs.get("data")
         self.files = kwargs.get("files")
+        # hc-560: 直传 PUT 走 content=<字节迭代器>(流式,带 Content-Length)。
+        self.content = kwargs.get("content")
 
 
 @pytest.fixture
@@ -556,6 +558,325 @@ class TestGatewayCallSurface:
         assert "media_tag" not in result
         assert "有效期" in result["note"]  # 回退=只给 url 并明说链接时效
         assert self._MASTER_VIDEO_PATH not in raw
+
+
+# ---------------------------------------------------------------------------
+# hc-560 大音频直传三跳:upload-url → PUT → JSON 提交(阈值/回退/判定语义)
+# ---------------------------------------------------------------------------
+
+
+UPLOAD_URL_OK = {
+    "ok": True,
+    "put_url": "https://bucket.cos.ap-hongkong.myqcloud.com/asr-upload/a1/k.m4a?sign=put",
+    "media_url": "https://bucket.cos.ap-hongkong.myqcloud.com/asr-upload/a1/k.m4a?sign=get",
+    "expires_in": 1800,
+    "media_url_expires_in": 7200,
+}
+
+
+class TestLargeAudioDirectUpload:
+    """>阈值:三跳直传;≤阈值:multipart;通道故障回退、业务判定透出。"""
+
+    @pytest.fixture
+    def tiny_threshold(self, monkeypatch):
+        """把阈值压到 16 字节,免得测试造真 8MB 文件。"""
+        gateway_module = _gateway_module()
+        monkeypatch.setenv(gateway_module.ENV_ASR_DIRECT_UPLOAD_THRESHOLD, "16")
+
+    @pytest.fixture
+    def big_clip(self, tmp_path):
+        clip = tmp_path / "big_clip.m4a"
+        clip.write_bytes(b"A" * 32)  # 32 > 16 阈值
+        return clip
+
+    def test_large_file_takes_three_hops_not_multipart(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, big_clip
+    ):
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        fake_httpx.responses.extend(
+            [
+                FakeResponse(200, UPLOAD_URL_OK),
+                FakeResponse(200, {}),  # COS PUT(空体 200)
+                FakeResponse(
+                    200, {"text": "大文件转写正文", "duration_seconds": 900.0, "cost_cents": 90}
+                ),
+            ]
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        issue, put, submit = fake_httpx.requests
+        # ① 领预签名:带鉴权,报 filename/size_bytes
+        assert issue.method == "POST"
+        assert issue.url == f"{GATEWAY_BASE}/tools/v1/asr/upload-url"
+        assert issue.headers["Authorization"] == f"Bearer {GATEWAY_KEY}"
+        assert issue.json["filename"] == "big_clip.m4a"
+        assert issue.json["size_bytes"] == 32
+        # ② PUT 直传:流式 content + 显式 Content-Length;Agent key 绝不发给 COS
+        assert put.method == "PUT"
+        assert put.url == UPLOAD_URL_OK["put_url"]
+        assert put.content is not None and put.files is None
+        assert put.headers["Content-Length"] == "32"
+        assert "Authorization" not in put.headers
+        # ③ JSON media_url 提交转写(不是 multipart)
+        assert submit.method == "POST"
+        assert submit.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        assert submit.json == {"media_url": UPLOAD_URL_OK["media_url"]}
+        assert submit.files is None
+        # 结果面与 multipart 形态同构
+        assert result["transcript"] == "大文件转写正文"
+        assert result["audio_duration_seconds"] == 900.0
+        assert result["cost_cents"] == 90
+
+    def test_at_threshold_stays_multipart(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, tmp_path
+    ):
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        clip = tmp_path / "small.mp3"
+        clip.write_bytes(b"A" * 16)  # == 阈值,不大于 → multipart
+        fake_httpx.responses.append(FakeResponse(200, {"text": "小文件", "duration_seconds": 3.0}))
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(clip)}))
+        assert len(fake_httpx.requests) == 1
+        request = fake_httpx.requests[0]
+        assert request.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        assert request.files and "file" in request.files
+        assert result["transcript"] == "小文件"
+
+    def test_upload_url_endpoint_missing_falls_back_to_multipart(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, big_clip
+    ):
+        """旧网关没有 /asr/upload-url(404)→ 直传通道不可用,回退 multipart,转写照常。"""
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        fake_httpx.responses.extend(
+            [
+                FakeResponse(404, {"detail": "Not Found"}),
+                FakeResponse(200, {"text": "回退转写", "duration_seconds": 5.0}),
+            ]
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        issue, fallback = fake_httpx.requests
+        assert issue.url == f"{GATEWAY_BASE}/tools/v1/asr/upload-url"
+        assert fallback.url == f"{GATEWAY_BASE}/tools/v1/asr/transcribe"
+        assert fallback.files and "file" in fallback.files  # multipart 回退
+        assert result["transcript"] == "回退转写"
+
+    def test_put_failure_retries_once_then_falls_back(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, big_clip
+    ):
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        fake_httpx.responses.extend(
+            [
+                FakeResponse(200, UPLOAD_URL_OK),
+                FakeResponse(500, {}),  # PUT 首次失败
+                FakeResponse(500, {}),  # PUT 重试一次仍失败
+                FakeResponse(200, {"text": "回退转写", "duration_seconds": 5.0}),
+            ]
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        methods = [r.method for r in fake_httpx.requests]
+        assert methods == ["POST", "PUT", "PUT", "POST"]
+        assert fake_httpx.requests[-1].files and "file" in fake_httpx.requests[-1].files
+        assert result["transcript"] == "回退转写"
+
+    def test_incomplete_upload_url_response_falls_back(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, big_clip
+    ):
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        fake_httpx.responses.extend(
+            [
+                FakeResponse(200, {"ok": True, "put_url": "https://cos.example/x"}),  # 缺 media_url
+                FakeResponse(200, {"text": "回退转写", "duration_seconds": 5.0}),
+            ]
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        assert [r.method for r in fake_httpx.requests] == ["POST", "POST"]
+        assert fake_httpx.requests[-1].files
+        assert result["transcript"] == "回退转写"
+
+    def test_413_verdict_propagates_with_neutral_copy_no_multipart_replay(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, big_clip
+    ):
+        """upload-url 413 是对本次转写的最终结论:不回退 multipart(那只会把超限
+        文件再推一次 web 层);用户文案中性——不含「抽音轨/压缩/装 ffmpeg/切文件」
+        指引,且不拼旧版服务端 detail 里的自救话术。"""
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        fake_httpx.responses.append(
+            FakeResponse(
+                413,
+                {
+                    "detail": {
+                        "code": "audio_too_large",
+                        # 旧版云端 413 detail(带自救指引)——客户端必须屏蔽,不透传
+                        "message": "上传音频超过上限。请在本地抽音轨并压缩(16k 单声道 mp3/ogg)后重试。",
+                    }
+                },
+            )
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        assert len(fake_httpx.requests) == 1  # 不再 multipart 重演
+        assert "大小上限" in result["error"] and "413" in result["error"]
+        for banned in ("抽音轨", "压缩", "ffmpeg", "切文件", "安装"):
+            assert banned not in result["error"], banned
+
+    def test_transcribe_business_error_after_direct_upload_propagates(
+        self, desktop_env, tiny_threshold, fake_httpx, douyin_mod, monkeypatch, big_clip
+    ):
+        """第三跳(transcribe)的业务错误(如 402 额度)原样透出——不是通道故障,
+        绝不拿同一文件再走一遍 multipart。"""
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module, "extract_audio_for_asr", lambda _p: None)
+        fake_httpx.responses.extend(
+            [
+                FakeResponse(200, UPLOAD_URL_OK),
+                FakeResponse(200, {}),
+                FakeResponse(413, {"detail": {"code": "audio_too_large", "message": "过大"}}),
+            ]
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        assert len(fake_httpx.requests) == 3
+        assert "大小上限" in result["error"]
+
+        fake_httpx.requests.clear()
+        fake_httpx.responses.extend(
+            [
+                FakeResponse(200, UPLOAD_URL_OK),
+                FakeResponse(200, {}),
+                FakeResponse(402, {"detail": {"message": "配额已用尽"}}),
+            ]
+        )
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(big_clip)}))
+        assert len(fake_httpx.requests) == 3
+        assert "额度不足" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# hc-560 压缩兜底链:ffmpeg → macOS afconvert → 直传原文件
+# ---------------------------------------------------------------------------
+
+
+class TestAudioCompressionFallbackChain:
+    @pytest.fixture
+    def source_clip(self, tmp_path):
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"fake-video")
+        return clip
+
+    def _fake_run_writing_output(self, calls):
+        def _run(command, **kwargs):
+            calls.append(command)
+            Path(command[-1]).write_bytes(b"aac-bytes")
+            return types.SimpleNamespace(returncode=0)
+
+        return _run
+
+    def test_ffmpeg_present_uses_ffmpeg_and_never_probes_afconvert(
+        self, monkeypatch, source_clip
+    ):
+        gateway_module = _gateway_module()
+        probed = []
+        calls = []
+        monkeypatch.setattr(
+            gateway_module.shutil,
+            "which",
+            lambda name: probed.append(name) or ("/opt/bin/ffmpeg" if name == "ffmpeg" else None),
+        )
+        monkeypatch.setattr(gateway_module.subprocess, "run", self._fake_run_writing_output(calls))
+        output = gateway_module.extract_audio_for_asr(source_clip)
+        assert output is not None and output.suffix == ".m4a"
+        assert calls[0][0] == "/opt/bin/ffmpeg"
+        assert probed == ["ffmpeg"]  # 未探测 afconvert
+
+    def test_no_ffmpeg_on_macos_falls_back_to_afconvert(self, monkeypatch, source_clip):
+        gateway_module = _gateway_module()
+        calls = []
+        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")
+        monkeypatch.setattr(
+            gateway_module.shutil,
+            "which",
+            lambda name: "/usr/bin/afconvert" if name == "afconvert" else None,
+        )
+        monkeypatch.setattr(gateway_module.subprocess, "run", self._fake_run_writing_output(calls))
+        output = gateway_module.extract_audio_for_asr(source_clip)
+        assert output is not None and output.suffix == ".m4a"
+        command = calls[0]
+        assert command[0] == "/usr/bin/afconvert"
+        # 单声道 16kHz AAC/m4a(与 ffmpeg 腿同参数)
+        assert command[1:5] == ["-f", "m4af", "-d", "aac@16000"]
+        assert command[5:7] == ["-c", "1"]
+        assert command[-2] == str(source_clip)
+
+    def test_no_ffmpeg_not_macos_returns_none_without_running_anything(
+        self, monkeypatch, source_clip
+    ):
+        gateway_module = _gateway_module()
+        ran = []
+        monkeypatch.setattr(gateway_module.sys, "platform", "linux")
+        monkeypatch.setattr(gateway_module.shutil, "which", lambda _name: None)
+        monkeypatch.setattr(
+            gateway_module.subprocess, "run", lambda *a, **k: ran.append(a)
+        )
+        assert gateway_module.extract_audio_for_asr(source_clip) is None
+        assert not ran
+
+    def test_afconvert_failure_returns_none_and_cleans_partial_output(
+        self, monkeypatch, source_clip
+    ):
+        gateway_module = _gateway_module()
+        partial = []
+
+        def failing_run(command, **kwargs):
+            Path(command[-1]).write_bytes(b"partial")
+            partial.append(Path(command[-1]))
+            return types.SimpleNamespace(returncode=1)
+
+        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")
+        monkeypatch.setattr(
+            gateway_module.shutil,
+            "which",
+            lambda name: "/usr/bin/afconvert" if name == "afconvert" else None,
+        )
+        monkeypatch.setattr(gateway_module.subprocess, "run", failing_run)
+        assert gateway_module.extract_audio_for_asr(source_clip) is None
+        assert not partial[0].exists()  # 残件已清
+
+    def test_ffmpeg_failure_returns_none_without_afconvert_attempt(
+        self, monkeypatch, source_clip
+    ):
+        """链条语义:ffmpeg 存在但失败 → 直接回退原文件(不换 afconvert 重试)。"""
+        gateway_module = _gateway_module()
+        probed = []
+        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")
+        monkeypatch.setattr(
+            gateway_module.shutil,
+            "which",
+            lambda name: probed.append(name) or ("/opt/bin/ffmpeg" if name == "ffmpeg" else None),
+        )
+        monkeypatch.setattr(
+            gateway_module.subprocess,
+            "run",
+            lambda command, **kwargs: types.SimpleNamespace(returncode=1),
+        )
+        assert gateway_module.extract_audio_for_asr(source_clip) is None
+        assert probed == ["ffmpeg"]
+
+    def test_compression_failure_never_fails_transcription_end_to_end(
+        self, desktop_env, fake_httpx, douyin_mod, monkeypatch, tmp_path
+    ):
+        """端到端兜底:压缩链整体失败(返回 None)→ 原文件照常上传转写成功。"""
+        gateway_module = _gateway_module()
+        monkeypatch.setattr(gateway_module.shutil, "which", lambda _name: None)
+        monkeypatch.setattr(gateway_module.sys, "platform", "linux")
+        clip = tmp_path / "raw.mp4"
+        clip.write_bytes(b"fake-bytes")
+        fake_httpx.responses.append(FakeResponse(200, {"text": "原文件转写", "duration_seconds": 2.0}))
+        result = _parse(douyin_mod._handle_media_transcribe({"video_path": str(clip)}))
+        request = fake_httpx.requests[0]
+        assert request.files and request.files["file"][0] == "raw.mp4"
+        assert result["transcript"] == "原文件转写"
 
 
 # ---------------------------------------------------------------------------

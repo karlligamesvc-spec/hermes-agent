@@ -301,17 +301,12 @@ def _gateway_media_transcribe(video_path: str | None, url: str | None) -> str:
                     local_path = None
 
         if local_path is not None:
+            # hc-560: 压缩链(ffmpeg → macOS afconvert → 原文件)后交统一提交口——
+            # ≤阈值 multipart / >阈值 COS 直传三跳,直传通道故障自动回退 multipart。
             upload_path = _gateway.extract_audio_for_asr(local_path) or local_path
-            with open(upload_path, "rb") as fh:
-                files = {
-                    "file": (upload_path.name, fh, _gateway.guess_media_content_type(upload_path)),
-                }
-                response = _gateway.request_json(
-                    "POST",
-                    "/tools/v1/asr/transcribe",
-                    files=files,
-                    timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS,
-                )
+            response = _gateway.transcribe_upload(
+                upload_path, timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS
+            )
         elif media_url:
             response = _gateway.request_json(
                 "POST",
