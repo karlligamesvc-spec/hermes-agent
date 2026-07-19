@@ -5,9 +5,11 @@ import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
+import { ProviderIcon } from '@/components/ui/provider-icon'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
+import { modelVendor } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
 import {
   $currentFastMode,
@@ -57,14 +59,17 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
   const label = (
     <>
       {currentModel.trim() ? (
-        <span className="truncate">
-          {formatModelStatusLabel(currentModel, {
-            effortLabel,
-            fastLabel: modelOptionsCopy.fast,
-            fastMode,
-            reasoningEffort
-          })}
-        </span>
+        <>
+          <ProviderIcon size={12} vendor={modelVendor(currentModel, currentProvider)} />
+          <span className="truncate">
+            {formatModelStatusLabel(currentModel, {
+              effortLabel,
+              fastLabel: modelOptionsCopy.fast,
+              fastMode,
+              reasoningEffort
+            })}
+          </span>
+        </>
       ) : (
         <GlyphSpinner className="opacity-50" spinner="braille" />
       )}

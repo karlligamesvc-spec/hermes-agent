@@ -17,12 +17,14 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
+import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import type { HermesGateway } from '@/hermes'
 import { getGlobalModelOptions, getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/lib/model-status-label'
+import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { $authState, signOutAccount } from '@/store/auth'
@@ -374,6 +376,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
           submenu, so the top level stays reasoning + model + speed. */}
       <DropdownMenuSub>
         <DropdownMenuSubTrigger className={dropdownMenuRow}>
+          {optionsModel ? <ProviderIcon vendor={modelVendor(optionsModel, optionsProvider)} /> : null}
           <span className="min-w-0 flex-1 truncate">{currentModelLabel}</span>
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent className="w-64 p-0">
@@ -458,6 +461,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                         closeMenu()
                       }}
                     >
+                      <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
                       <span className="min-w-0 flex-1 truncate">
                         {name}
                         {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}

@@ -5,11 +5,13 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
+import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Switch } from '@/components/ui/switch'
 import type { HermesGateway } from '@/hermes'
 import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
+import { modelVendor } from '@/lib/model-vendor'
 import {
   $visibleModels,
   collapseModelFamilies,
@@ -132,6 +134,7 @@ export function ModelVisibilityDialog({
                         className="flex cursor-pointer items-center gap-2 px-3 py-1 text-xs hover:bg-accent/50"
                         key={key}
                       >
+                        <ProviderIcon vendor={modelVendor(family.id, provider.name)} />
                         <span className="min-w-0 flex-1 truncate">
                           {name}
                           {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
