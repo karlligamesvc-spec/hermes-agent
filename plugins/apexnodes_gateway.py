@@ -10,9 +10,16 @@
 ASR 族:
   POST {base}/tools/v1/asr/transcribe
     JSON  {"media_url": str}                            ← 基本形态(网关自取媒体)
-    multipart file=<音频/视频文件>                        ← 大媒体优化:本地 ffmpeg 抽音轨
-                                                          压缩后上传(PD §8)
+    multipart file=<音频/视频文件>                        ← ≤阈值小文件:本地抽音轨压缩后上传
+                                                          (压缩链 ffmpeg → macOS afconvert
+                                                          兜底 → 原文件,PD §8)
     → {"text": str, "segments"?: [...], "duration_seconds": float, "cost_cents": int}
+  POST {base}/tools/v1/asr/upload-url                   ← hc-560 大文件三跳(>阈值,默认 8MB):
+    {"filename": str, "size_bytes": int,                  ① 领预签名 → ② PUT put_url 直传 COS
+     "content_type"?: str}                                → ③ JSON media_url 提交 transcribe;
+    → {"put_url": str, "media_url": str,                  直传通道不可用(旧网关 404/COS 故障/
+       "expires_in": int, ...}                            PUT 失败)自动回退 multipart,转写本身
+                                                          的业务错误(402/413/429)原样透出
 
 社媒族(platform ∈ SOCIAL_PLATFORMS 10 平台白名单):
   POST {base}/tools/v1/social/{platform}/{action} → {"data": {...}, "cost_cents": int}
@@ -64,6 +71,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -78,6 +86,7 @@ __all__ = [
     "GATEWAY_PUBLIC_BASE",
     "GatewayError",
     "agent_api_key",
+    "asr_direct_upload_threshold_bytes",
     "capability_version",
     "detect_platform",
     "download_media",
@@ -87,6 +96,7 @@ __all__ = [
     "guess_media_content_type",
     "media_cache_dir",
     "request_json",
+    "transcribe_upload",
     "unwrap",
     "use_gateway",
 ]
@@ -131,6 +141,19 @@ _TRUTHY = {"1", "true", "yes", "on"}
 # 429 有限退避:最多重试 2 次,Retry-After 上限 8s(媒体长轮询场景不宜久睡)。
 _MAX_429_RETRIES = 2
 _MAX_RETRY_AFTER_SECONDS = 8.0
+
+# hc-560 大音频直传:>阈值走「upload-url → PUT 直传 COS → JSON media_url 提交」,
+# ≤阈值维持 multipart(默认 8MB,env 可调;0=全部直传,拉大=事实关停直传)。
+ENV_ASR_DIRECT_UPLOAD_THRESHOLD = "TOOLS_GATEWAY_ASR_DIRECT_UPLOAD_THRESHOLD_BYTES"
+ASR_DIRECT_UPLOAD_THRESHOLD_BYTES = 8 * 1024 * 1024
+_ASR_UPLOAD_URL_TIMEOUT_SECONDS = 60.0  # 预签名是元数据小调用
+_ASR_PUT_CHUNK_BYTES = 1024 * 1024
+_ASR_PUT_ATTEMPTS = 2  # 首次 + 重试一次
+# 转写通道的业务性判定(额度/尺寸/限流/鉴权):upload-url 返回这些时按最终结论
+# 原样抛出,不再让同一请求换 multipart 通道重演一遍(尤其 413——回退只会把超限
+# 文件再推一次 web 层)。其余(旧网关 404、503 direct_upload_unavailable、网络
+# 故障)才是「通道不可用」,回退 multipart。
+_ASR_DIRECT_VERDICT_STATUSES = frozenset({401, 402, 413, 429})
 
 
 class GatewayError(RuntimeError):
@@ -265,6 +288,9 @@ def _error_from_response(response: httpx.Response) -> GatewayError:
         )
     elif status == 402:
         message = "平台工具额度不足(402):套餐配额已用尽或余额不足,请升级套餐/充值后再试。"
+    elif status == 413:
+        # hc-560 话术纪律:中性一句;不指引用户本地抽音轨/压缩/装工具/切文件。
+        message = "文件超过平台大小上限(413),本次未能处理。"
     elif status == 429:
         message = "平台工具请求过于频繁(429):已自动退避重试仍被限流,请稍等 1-2 分钟再试。"
     elif status == 503:
@@ -274,7 +300,9 @@ def _error_from_response(response: httpx.Response) -> GatewayError:
         )
     else:
         message = f"平台工具网关返回错误(HTTP {status})"
-    if detail:
+    # 413 不拼服务端 detail:旧版云端的 413 文案带「请在本地抽音轨并压缩」类
+    # 自救指引(hc-560 已改中性,但客户端不应依赖服务端版本),中性一句已完整。
+    if detail and status != 413:
         message = f"{message}(详情: {detail})"
     return GatewayError(message, status=status)
 
@@ -357,6 +385,110 @@ def unwrap(response_body: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# ASR 提交:小文件 multipart / 大文件 COS 直传三跳(hc-560)
+# ---------------------------------------------------------------------------
+
+def asr_direct_upload_threshold_bytes() -> int:
+    """直传阈值(字节):env 可调,缺省 8MB;非法值回落缺省。"""
+    raw = (os.getenv(ENV_ASR_DIRECT_UPLOAD_THRESHOLD) or "").strip()
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return ASR_DIRECT_UPLOAD_THRESHOLD_BYTES
+
+
+def transcribe_upload(upload_path: Path | str, *, timeout: float) -> dict[str, Any]:
+    """把一个本地音频文件提交转写(插件转写路径的唯一提交口)。
+
+    >阈值走「upload-url → PUT 直传 COS → JSON media_url 提交」三跳(大文件不过
+    nginx/scheduler 的 multipart 同步管道);≤阈值维持 multipart。直传**通道**故障
+    (旧网关无端点、COS 不可用、PUT 失败)自动回退 multipart,绝不因通道失败让转写
+    失败;转写本身的业务错误(402/413/429/鉴权)原样抛 :class:`GatewayError`。
+    """
+    source = Path(upload_path)
+    size = source.stat().st_size
+    if size > asr_direct_upload_threshold_bytes():
+        result = _transcribe_via_direct_upload(source, size, timeout=timeout)
+        if result is not None:
+            return result
+    with open(source, "rb") as fh:
+        files = {"file": (source.name, fh, guess_media_content_type(source))}
+        return request_json("POST", "/tools/v1/asr/transcribe", files=files, timeout=timeout)
+
+
+def _transcribe_via_direct_upload(
+    source: Path, size: int, *, timeout: float
+) -> dict[str, Any] | None:
+    """三跳直传;返回 ``None`` 表示直传通道不可用(调用方回退 multipart)。
+
+    「业务判定 vs 通道故障」的分界:upload-url 若给出 401/402/413/429
+    (_ASR_DIRECT_VERDICT_STATUSES)是对本次转写的最终结论——原样抛出;
+    其余失败(404 旧网关、503 直传未配置、网络错误)只说明通道不可用。
+    第三跳 transcribe 的任何错误都是业务错误,一律透出、不回退。
+    """
+    try:
+        issued = request_json(
+            "POST",
+            "/tools/v1/asr/upload-url",
+            {
+                "filename": source.name,
+                "size_bytes": size,
+                "content_type": guess_media_content_type(source),
+            },
+            timeout=_ASR_UPLOAD_URL_TIMEOUT_SECONDS,
+        )
+    except GatewayError as exc:
+        if exc.status in _ASR_DIRECT_VERDICT_STATUSES:
+            raise
+        logger.info("asr upload-url unavailable (status=%s); falling back to multipart", exc.status)
+        return None
+    put_url = str(issued.get("put_url") or "").strip()
+    media_url = str(issued.get("media_url") or "").strip()
+    if not (put_url and media_url):
+        logger.info("asr upload-url response incomplete; falling back to multipart")
+        return None
+    try:
+        _put_presigned(put_url, source, size, timeout=timeout)
+    except GatewayError:
+        logger.info("asr direct PUT failed after retry; falling back to multipart")
+        return None
+    return request_json(
+        "POST", "/tools/v1/asr/transcribe", {"media_url": media_url}, timeout=timeout
+    )
+
+
+def _put_presigned(put_url: str, source: Path, size: int, *, timeout: float) -> None:
+    """把文件流式 ``PUT`` 到预签名 URL(带 Content-Length,不整读进内存;失败重试
+    一次)。预签名 PUT 对请求头零约束(契约 §3.5),故不带 Content-Type,避免与
+    签名头列表冲突。失败抛 :class:`GatewayError`。"""
+    last_error: Exception | None = None
+    for attempt in range(1, _ASR_PUT_ATTEMPTS + 1):
+        try:
+            with open(source, "rb") as fh:
+                chunks = iter(lambda: fh.read(_ASR_PUT_CHUNK_BYTES), b"")
+                # 显式 Content-Length ⇒ httpx 按定长成帧(COS 的 PUT Object 需要),
+                # 不落 Transfer-Encoding: chunked。
+                with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+                    response = client.request(
+                        "PUT",
+                        put_url,
+                        content=chunks,
+                        headers={"Content-Length": str(size)},
+                    )
+            if response.status_code < 400:
+                return
+            last_error = GatewayError(
+                f"直传存储返回 HTTP {response.status_code}", status=response.status_code
+            )
+        except httpx.HTTPError as exc:
+            last_error = exc
+        logger.info("asr direct PUT attempt %d/%d failed", attempt, _ASR_PUT_ATTEMPTS)
+    raise GatewayError(f"大文件直传失败: {last_error}") from last_error
+
+
+# ---------------------------------------------------------------------------
 # 本地媒体:下载 / 抽音轨(PD §8——大媒体不过网关,网关只出直链)
 # ---------------------------------------------------------------------------
 
@@ -425,15 +557,46 @@ def download_media(
 
 
 def extract_audio_for_asr(media_path: Path | str, *, timeout: int = 1800) -> Path | None:
-    """用本地 ffmpeg 抽音轨压缩(16kHz 单声道 AAC),供 multipart 上传转写。
+    """本地抽音轨压缩(16kHz 单声道 AAC),供上传转写(multipart 或直传)。
 
-    ffmpeg 不存在或抽取失败时返回 None(调用方回退上传原文件)——
-    抽音轨是带宽优化(PD §8),不是正确性前提。
+    压缩兜底链(hc-560):ffmpeg 存在 → ffmpeg;无 ffmpeg 且 macOS 有 afconvert
+    (系统自带)→ afconvert;两者都无、或任何一步失败 → 返回 None,调用方直接
+    上传原文件——压缩是带宽优化(PD §8),不是正确性前提,绝不因压缩失败让转写失败。
     """
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        return None
     source = Path(media_path)
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        return _extract_audio_ffmpeg(ffmpeg, source, timeout=timeout)
+    if sys.platform == "darwin":
+        afconvert = shutil.which("afconvert")
+        if afconvert:
+            return _extract_audio_afconvert(afconvert, source, timeout=timeout)
+    return None
+
+
+def _run_audio_extraction(command: list[str], output: Path, *, timeout: int, tool: str) -> Path | None:
+    """跑一条抽音轨命令;任何失败(崩溃/超时/非零退出/空产物)→ 清残件返回 None。"""
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except Exception:  # noqa: BLE001 — 抽取失败回退原文件,不是致命错误
+        logger.warning("%s audio extraction crashed; uploading original media", tool, exc_info=True)
+        output.unlink(missing_ok=True)
+        return None
+    if completed.returncode != 0 or not output.exists() or output.stat().st_size == 0:
+        logger.info(
+            "%s audio extraction failed (rc=%s); uploading original media", tool, completed.returncode
+        )
+        output.unlink(missing_ok=True)
+        return None
+    return output
+
+
+def _extract_audio_ffmpeg(ffmpeg: str, source: Path, *, timeout: int) -> Path | None:
     output = media_cache_dir() / f"asr_{uuid.uuid4().hex[:8]}.m4a"
     command = [
         ffmpeg,
@@ -449,21 +612,27 @@ def extract_audio_for_asr(media_path: Path | str, *, timeout: int = 1800) -> Pat
         "48k",
         str(output),
     ]
-    try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except Exception:  # noqa: BLE001 — 抽取失败回退原文件,不是致命错误
-        logger.warning("ffmpeg audio extraction crashed; uploading original media", exc_info=True)
-        return None
-    if completed.returncode != 0 or not output.exists() or output.stat().st_size == 0:
-        logger.info("ffmpeg audio extraction failed (rc=%s); uploading original media", completed.returncode)
-        output.unlink(missing_ok=True)
-        return None
-    return output
+    return _run_audio_extraction(command, output, timeout=timeout, tool="ffmpeg")
+
+
+def _extract_audio_afconvert(afconvert: str, source: Path, *, timeout: int) -> Path | None:
+    """macOS 系统自带 afconvert 兜底:m4a 容器、AAC@16kHz 单声道 48kbps(与 ffmpeg
+    腿同参数)。CoreAudio 读不动的容器(如 mkv/webm)会以非零退出 → None 回退原文件。"""
+    output = media_cache_dir() / f"asr_{uuid.uuid4().hex[:8]}.m4a"
+    command = [
+        afconvert,
+        "-f",
+        "m4af",
+        "-d",
+        "aac@16000",
+        "-c",
+        "1",
+        "-b",
+        "48000",
+        str(source),
+        str(output),
+    ]
+    return _run_audio_extraction(command, output, timeout=timeout, tool="afconvert")
 
 
 def guess_media_content_type(path: Path | str) -> str:
