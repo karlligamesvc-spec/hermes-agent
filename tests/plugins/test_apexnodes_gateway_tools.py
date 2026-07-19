@@ -432,8 +432,14 @@ class TestGatewayCallSurface:
     def test_batch_submit_and_status_endpoints(
         self, desktop_env, fake_httpx, douyin_mod
     ):
+        # hc-567 回归锚:/tools/v1/social/batch/* 服务端返回**平铺形**
+        # {ok, job_id, status, ...}(cloud app/routers/tools_gateway.py),没有
+        # {data: {...}} 信封——mock 必须按真实线形 can,否则会掩盖 unwrap 断链。
         fake_httpx.responses.append(
-            FakeResponse(200, {"data": {"job_id": "j1", "status": "queued"}})
+            FakeResponse(
+                200,
+                {"ok": True, "async_delivery": False, "job_id": "j1", "status": "queued"},
+            )
         )
         submit = _parse(
             douyin_mod._handle_social_batch_submit(
@@ -461,7 +467,10 @@ class TestGatewayCallSurface:
             douyin_mod.SOCIAL_BATCH_SUBMIT_SCHEMA["parameters"]["properties"]
         )
         fake_httpx.responses.append(
-            FakeResponse(200, {"data": {"job_id": "j2", "status": "queued"}})
+            FakeResponse(
+                200,
+                {"ok": True, "async_delivery": False, "job_id": "j2", "status": "queued"},
+            )
         )
         douyin_mod._handle_social_batch_submit(
             {
@@ -475,14 +484,31 @@ class TestGatewayCallSurface:
         assert body["routed_intent"] == "single_transcribe_xlsx"
 
         fake_httpx.responses.append(
-            FakeResponse(200, {"data": {"status": "completed", "product": {}}})
+            FakeResponse(
+                200, {"ok": True, "job_id": "j1", "status": "completed", "product": {}}
+            )
         )
         status = _parse(douyin_mod._handle_social_batch_status({"job_id": "j1"}))
         assert fake_httpx.requests[1].method == "GET"
         assert fake_httpx.requests[1].url == (
             f"{GATEWAY_BASE}/tools/v1/social/batch/status/j1"
         )
+        # hc-567 回归锚:平铺响应直读,job_id/status 不得在解包中丢失。
+        assert status["job_id"] == "j1"
         assert "任务已完成" in status["_instruction"]
+
+    def test_batch_responses_tolerate_legacy_envelope_shape(
+        self, desktop_env, fake_httpx, douyin_mod
+    ):
+        # hc-567 宽容读法:若某版本服务端把结果包进 {data: {...}} 信封,兼容取
+        # 内层——修复方向是「两形并存」,不是换个方向再锁死平铺形。
+        fake_httpx.responses.append(
+            FakeResponse(200, {"data": {"job_id": "j9", "status": "queued"}})
+        )
+        submit = _parse(
+            douyin_mod._handle_social_batch_submit({"urls": ["https://v.douyin.com/a/"]})
+        )
+        assert submit["job_id"] == "j9"
 
     # hc-562 回归锚 ④:generate_video 网关腿绝不输出非本机路径——master 返回的
     # video_path/media_tag 是 master 本机路径(云侧共享卷语义),桌面必须用
