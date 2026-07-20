@@ -26,6 +26,16 @@ interface PageSearchShellProps extends React.ComponentProps<'section'> {
    * the column's content as `children`.
    */
   centered?: boolean
+  /**
+   * Where the search field sits, for the default full-width layout only.
+   * `inline` (default) keeps it on the top row beside the tabs. `centered`
+   * lifts it onto its own row below the tabs — horizontally centered, widened,
+   * and boxed (a subtle frame) so it reads as a prominent page-level search
+   * entry (used by the 技能 page). Opt-in, so other tab-style pages
+   * (插件 / 产物 / 渠道) keep the inline field. Ignored when `centered` (the
+   * full-page single-column mode) is set, which owns its own header geometry.
+   */
+  searchRow?: 'inline' | 'centered'
 }
 
 export function PageSearchShell({
@@ -40,8 +50,26 @@ export function PageSearchShell({
   searchHidden = false,
   searchInputRef,
   centered = false,
+  searchRow = 'inline',
   ...props
 }: PageSearchShellProps) {
+  // The opt-in centered search row only applies to the default full-width
+  // layout; the `centered` single-column mode owns its own header geometry.
+  const searchOnOwnRow = searchRow === 'centered' && !centered
+  const inlineSearch = !searchHidden && !searchOnOwnRow
+
+  const renderSearch = (containerClassName: string, variant?: 'underline' | 'boxed') => (
+    <SearchField
+      containerClassName={containerClassName}
+      inputRef={searchInputRef}
+      onChange={onSearchChange}
+      placeholder={searchPlaceholder}
+      trailingAction={searchTrailingAction}
+      value={searchValue}
+      variant={variant}
+    />
+  )
+
   return (
     <section
       {...props}
@@ -64,7 +92,7 @@ export function PageSearchShell({
         (see app-shell.tsx), so window dragging still works here.
       */}
       <div className="shrink-0">
-        {(tabs || !searchHidden) && (
+        {(tabs || inlineSearch) && (
           <div
             className={cn(
               'flex items-center gap-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]',
@@ -75,19 +103,20 @@ export function PageSearchShell({
             )}
           >
             {tabs ? <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">{tabs}</div> : null}
-            {!searchHidden && (
+            {inlineSearch && (
               <div className={cn('flex items-center', centered ? 'flex-1' : cn('shrink-0', !tabs && 'flex-1'))}>
-                <SearchField
-                  containerClassName={centered ? 'w-full' : 'max-w-[45vw]'}
-                  inputRef={searchInputRef}
-                  onChange={onSearchChange}
-                  placeholder={searchPlaceholder}
-                  trailingAction={searchTrailingAction}
-                  value={searchValue}
-                />
+                {renderSearch(centered ? 'w-full' : 'max-w-[45vw]')}
               </div>
             )}
           </div>
+        )}
+        {/*
+          Opt-in centered search row: its own line below the tabs, horizontally
+          centered and widened to a boxed 520px bar. The grid below stays
+          full-width — this only reflows the header search, not the body.
+        */}
+        {searchOnOwnRow && !searchHidden && (
+          <div className="flex justify-center px-3 pb-2">{renderSearch('w-full max-w-[520px]', 'boxed')}</div>
         )}
         {filters ? <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">{filters}</div> : null}
       </div>
