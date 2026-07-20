@@ -24,6 +24,10 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # hc-568: coscli has hung for 4.5h at zero bytes before erroring (run
+    # 29700050356); don't let a wedged upload eat the 6h default. Slowest
+    # legitimate publish observed to date: ~2h05m (full artifact set).
+    timeout-minutes: 240
     steps:
       - name: Checkout fork at commit
         uses: actions/checkout@v4
@@ -31,7 +35,11 @@ jobs:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
 
+      # hc-568: explicit `shell: bash` on every run step — GitHub then invokes
+      # `bash --noprofile --norc -eo pipefail`, so pipefail holds even if a
+      # future edit drops the in-script `set -euo pipefail` line.
       - name: Install coscli
+        shell: bash
         run: |
           set -euo pipefail
           curl -fSL --retry 5 -o /usr/local/bin/coscli \
@@ -43,6 +51,7 @@ jobs:
         env:
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
           if [ -z "${COS_SECRET_ID:-}" ] || [ -z "${COS_SECRET_KEY:-}" ]; then
@@ -62,6 +71,7 @@ jobs:
           } > "$HOME/.cos.yaml"
 
       - name: Publish runtime source tarball
+        shell: bash
         run: |
           set -euo pipefail
           UVFLAG=""
@@ -74,4 +84,5 @@ jobs:
 
       - name: Scrub coscli creds
         if: always()
+        shell: bash
         run: rm -f "$HOME/.cos.yaml"

@@ -41,12 +41,14 @@
 #     --commit <sha|ref>   Runtime commit to archive (default: the pinned SHA)
 #     --out-dir <dir>      Where to write artifacts (default: ./dist/cos-runtime)
 #     --bucket <name>      COS bucket name (or set COS_BUCKET); required for --upload
-#     --region <region>    COS region, e.g. ap-shanghai (or set COS_REGION)
+#     --region <region>    COS region, e.g. ap-shanghai (or set COS_REGION);
+#                          required for --upload (public reachability check)
 #     --prefix <path>      Key prefix inside the bucket (default: runtime)
 #     --uv-version <ver>   Pin a uv release (default: latest)
 #     --targets "<a b..>"  uv target triples (default: the 4 mac/linux triples)
 #     --no-uv              Skip the uv binaries (publish only the source tarball)
-#     --upload             Actually upload to COS (default: build artifacts only)
+#     --upload             Upload to COS, then verify every published object is
+#                          publicly reachable (default: build artifacts only)
 #     -h, --help           Show this help
 # ============================================================================
 
@@ -149,7 +151,6 @@ fi
 # PortableGit-<ver>-{64-bit,arm64}.7z.exe from github; re-host both here so the
 # overlay's Install-GitFromCos is github-free. Windows-only, version-pinned to
 # match scripts/install.ps1 $gitVer.
-GIT_ARTIFACTS=()
 if [ "$WITH_GIT" = true ]; then
     git_tag="v${GIT_VERSION}.windows.1"
     for gitarch in 64-bit arm64; do
@@ -161,16 +162,35 @@ if [ "$WITH_GIT" = true ]; then
         else
             log "Fetching PortableGit ($gitarch) from $url"
             if ! curl -fSL --http1.1 --retry 5 "$url" -o "$out"; then
+                # Intentional allow-fail (hc-568): the asset is version-pinned and
+                # normally already on COS from a previous publish; a transient
+                # GitHub outage must not kill the train. The --upload path still
+                # verifies the COS copy is publicly reachable, so a truly missing
+                # asset stays red.
                 log "  PortableGit $gitarch unavailable -- skipping ($url)"
                 rm -f "$out"
                 continue
             fi
         fi
-        GIT_ARTIFACTS+=("$out")
     done
 fi
 
 # ── 3. Upload to COS (public-read bucket) ───────────────────────────────────
+# hc-568: a green run must mean "the desktop can pull every published object
+# anonymously". coscli's exit code alone is not that guarantee (2026-07-19: a
+# green train published nothing the install could reach), and bucket-ACL /
+# region / prefix drift would 404 the install even after a clean upload — so
+# every key gets a final HEAD check against the exact public URL that
+# install.sh / bootstrap-runner will hit.
+verify_public() {
+    local url="${PUBLIC_BASE}/$1"
+    log "  public check: $url"
+    # --retry only re-tries transient errors (timeouts/429/5xx); a 404 fails
+    # immediately. No pipe: curl's exit status must reach set -e / die as-is.
+    curl -fsSI --retry 3 "$url" >/dev/null \
+        || die "object not publicly reachable: $url (upload lost, or bucket not public-read / wrong region|prefix?)"
+}
+
 upload_one() {
     local local_path="$1" key="$2"
     local dest="cos://${BUCKET}/${PREFIX%/}/${key}"
@@ -179,22 +199,35 @@ upload_one() {
     # has no --region flag (it resolves the bucket alias from config).
     coscli cp "$local_path" "$dest" \
         || die "coscli upload failed for $key (is coscli configured + bucket public-read?)"
+    verify_public "$key"
 }
 
 if [ "$DO_UPLOAD" = true ]; then
     command -v coscli >/dev/null 2>&1 || die "coscli not found — install + configure it, or drop --upload to only build artifacts"
     [ -n "$BUCKET" ] || die "--bucket (or COS_BUCKET) is required for --upload"
+    [ -n "$REGION" ] || die "--region (or COS_REGION) is required for --upload (public reachability check)"
+    PUBLIC_BASE="https://${BUCKET}.cos.${REGION}.myqcloud.com/${PREFIX%/}"
     if [ "$WITH_SOURCE" = true ]; then
         upload_one "$SRC_TARBALL" "hermes-agent-${FULL_SHA}.tar.gz"
     fi
     for a in "${UV_ARTIFACTS[@]:-}"; do
         [ -n "$a" ] && upload_one "$a" "$(basename "$a")"
     done
-    for a in "${GIT_ARTIFACTS[@]:-}"; do
-        [ -n "$a" ] && upload_one "$a" "$(basename "$a")"
-    done
-    BASE_HINT="https://${BUCKET}.cos.${REGION:-<region>}.myqcloud.com/${PREFIX%/}"
-    log "Done. Set HERMES_RUNTIME_COS_BASE=${BASE_HINT}"
+    if [ "$WITH_GIT" = true ]; then
+        for gitarch in 64-bit arm64; do
+            asset="PortableGit-${GIT_VERSION}-${gitarch}.7z.exe"
+            if [ -s "$OUT_DIR/$asset" ]; then
+                upload_one "$OUT_DIR/$asset" "$asset"
+            else
+                # Fetch above was intentionally skipped (GitHub hiccup): green is
+                # only OK if the pinned asset is already served from a previous
+                # publish — otherwise the CN Windows install would 404.
+                log "PortableGit $gitarch not fetched this run; verifying existing COS copy"
+                verify_public "$asset"
+            fi
+        done
+    fi
+    log "Done. Set HERMES_RUNTIME_COS_BASE=${PUBLIC_BASE}"
 else
     log "Built artifacts in $OUT_DIR (re-run with --upload to push to COS):"
     ls -1 "$OUT_DIR"
