@@ -69,6 +69,10 @@ const {
   shouldApplyManifest
 } = require('./apex-platform-skills.cjs')
 const {
+  normalizeStoredPluginsState,
+  syncPlatformPlugins
+} = require('./apex-platform-plugins.cjs')
+const {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
   createSessionWindowRegistry,
@@ -966,6 +970,12 @@ const DESKTOP_CLIENT_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-clie
 // unchanged boot skip the ~150KB payload. No secrets inside (curated Markdown),
 // so plain JSON — like apex-client-config.json, unlike apex-managed.json.
 const DESKTOP_PLATFORM_SKILLS_PATH = path.join(app.getPath('userData'), 'apex-platform-skills.json')
+// apex-platform-plugins.json caches the installed platform PLUGIN state
+// ({ manifestHash, installedAt, plugins: { name → sha256 } } — see
+// apex-platform-plugins.cjs, hc-564). Only ever written when the OPT-IN
+// `APEXNODES_PLATFORM_PLUGINS` switch is on (default OFF = the file never
+// appears and no sync runs). No secrets inside, so plain JSON.
+const DESKTOP_PLATFORM_PLUGINS_PATH = path.join(app.getPath('userData'), 'apex-platform-plugins.json')
 // apex-feishu.json holds the signed-in user's OWN Feishu app credential mirrored
 // from the cloud (hc-444). The app_secret is a real secret → stored ENCRYPTED
 // (safeStorage, same treatment as the managed relay key in apex-managed.json);
@@ -6257,6 +6267,59 @@ async function refreshPlatformSkillsFromPlatform(reason) {
   }
 }
 
+// ── Platform PLUGIN distribution (apex-platform-plugins.cjs, hc-564) ─────────
+// Pull per-plugin tar.gz archives from master and install them under
+// HERMES_HOME/plugins/<name>, where the runtime's native user>bundled override
+// makes them win over the engine-train copy — plugin updates decoupled from
+// engine releases (机制 C). ⚠️ OPT-IN, DEFAULT OFF: without an explicit
+// `APEXNODES_PLATFORM_PLUGINS=1` the sync returns immediately with zero network
+// and zero fs writes (P0 guard in apex-platform-plugins.test.cjs), so shipped
+// behavior is unchanged. Same boot + post-sign-in trigger points as the
+// platform SKILL sync; strictly fail-soft; a dropped plugin loads at the next
+// gateway restart (nothing here executes downloaded content). Flipping the
+// switch back off leaves installed files in place (v1: no auto-recycle — the
+// sync only logs a hint; remove HERMES_HOME/plugins/<name> manually if needed).
+
+function readPlatformPluginsState() {
+  try {
+    const raw = fs.readFileSync(DESKTOP_PLATFORM_PLUGINS_PATH, 'utf8')
+    return normalizeStoredPluginsState(JSON.parse(raw))
+  } catch {
+    return normalizeStoredPluginsState(null)
+  }
+}
+
+function writePlatformPluginsState(next) {
+  fs.mkdirSync(path.dirname(DESKTOP_PLATFORM_PLUGINS_PATH), { recursive: true })
+  writeFileAtomic(DESKTOP_PLATFORM_PLUGINS_PATH, JSON.stringify(next, null, 2))
+}
+
+// Non-blocking by contract (callers `void` it), bounded, never throws. The
+// whole flow lives in syncPlatformPlugins (DI'd, unit-tested); this wrapper
+// only supplies the real transports/paths and persists the returned state.
+async function refreshPlatformPluginsFromPlatform(reason) {
+  try {
+    const result = await syncPlatformPlugins({
+      apiBase: apexApiBase(),
+      env: process.env,
+      fetchBuffer: apexAuthGetBuffer,
+      fetchJson: apexAuthGetJson,
+      log: msg => rememberLog(`${msg} (${reason})`),
+      pluginsRoot: path.join(HERMES_HOME, 'plugins'),
+      // MUST live outside HERMES_HOME/plugins (the runtime plugin scanner walks
+      // every plugins/ subdir) and on the same volume (atomic rename).
+      stagingRoot: path.join(HERMES_HOME, '.apexnodes-plugin-staging'),
+      stored: readPlatformPluginsState(),
+      token: String(resolveManagedConfig().accessToken || '').trim()
+    })
+    if (result && result.newStored) {
+      writePlatformPluginsState(result.newStored)
+    }
+  } catch (error) {
+    rememberLog(`[platform-plugins] refresh failed (ignored): ${error && error.message ? error.message : error}`)
+  }
+}
+
 // Product-critical config.yaml blocks watchdog. The dashboard's full-record
 // config save (settings pages still use it) has at least once dropped blocks
 // it didn't round-trip (custom_providers — killing relay routing with
@@ -6568,6 +6631,85 @@ function apexAuthDeleteJson(url, opts) {
   return apexAuthBodylessJson('DELETE', url, opts)
 }
 
+// Binary counterpart of apexAuthBodylessJson — authed GET resolving to a raw
+// Buffer (hc-564: per-plugin tar.gz downloads, sha256-verified by the caller
+// BEFORE anything touches disk). Same transport (electronNet, explicit timeout,
+// >=400 rejects with `.statusCode`, renewed-JWT slide); differences: Accept is
+// gzip/octet-stream, the body is never parsed, and `maxBytes` aborts a
+// runaway/oversize response mid-flight instead of buffering it.
+function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 1024 * 1024 } = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed
+    try {
+      parsed = new URL(url)
+    } catch (error) {
+      reject(new Error(`Invalid ApexNodes URL: ${error.message}`))
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      reject(new Error(`Unsupported ApexNodes URL protocol: ${parsed.protocol}`))
+      return
+    }
+
+    const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
+    request.setHeader('Accept', 'application/gzip, application/octet-stream')
+    if (bearer) {
+      request.setHeader('Authorization', `Bearer ${bearer}`)
+    }
+
+    let settled = false
+    const fail = error => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(error)
+    }
+    const timer = setTimeout(() => {
+      try {
+        request.abort()
+      } catch {
+        // already finished
+      }
+      fail(new Error(`Timed out downloading from ApexNodes after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    request.on('response', res => {
+      const chunks = []
+      let received = 0
+      res.on('data', chunk => {
+        received += chunk.length
+        if (received > maxBytes) {
+          try {
+            request.abort()
+          } catch {
+            // already finished
+          }
+          fail(new Error(`Response exceeds ${maxBytes} bytes; aborted`))
+          return
+        }
+        chunks.push(Buffer.from(chunk))
+      })
+      res.on('end', () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        const statusCode = res.statusCode || 500
+        const body = Buffer.concat(chunks)
+        if (statusCode >= 400) {
+          const err = new Error(`${statusCode}: ${body.toString('utf8').slice(0, 200)}`)
+          err.statusCode = statusCode
+          reject(err)
+          return
+        }
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        resolve(body)
+      })
+    })
+    request.on('error', error => fail(error))
+    request.end()
+  })
+}
+
 // Probe the relay's OpenAI-compatible model listing with a Bearer relay key —
 // the SAME `GET {base_url}/v1/models` the runtime's model picker calls to build
 // its live "APEX-NODES.COM" model group. We only need the status code: 401/403
@@ -6809,6 +6951,9 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
     // Same sync point for the platform SKILL family (pull → install under
     // HERMES_HOME/skills/apexnodes/). Fire-and-forget; must not block sign-in.
     void refreshPlatformSkillsFromPlatform('sign-in')
+    // Platform PLUGIN sync (hc-564) shares the trigger points; no-op unless
+    // APEXNODES_PLATFORM_PLUGINS is explicitly enabled (default OFF).
+    void refreshPlatformPluginsFromPlatform('sign-in')
     return { ok: true, hasRelayKey: true }
   }
   // Sign-in itself succeeded (valid token) even though provisioning fell back
@@ -6817,6 +6962,8 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   // A valid token still lets us pull the platform SKILL family even when
   // provisioning fell back to BYOK (the SKILLs are independent of the relay key).
   void refreshPlatformSkillsFromPlatform('sign-in')
+  // Platform PLUGIN sync (hc-564): same reasoning, same opt-in gate (default OFF).
+  void refreshPlatformPluginsFromPlatform('sign-in')
   return { ok: true, hasRelayKey: false }
 }
 
@@ -10707,6 +10854,11 @@ app.whenReady().then(() => {
   // (contract: every boot + after every successful sign-in). Fail-soft and
   // gated on a stored login JWT; a signed-out or offline user is a no-op.
   void refreshPlatformSkillsFromPlatform('boot')
+
+  // Platform PLUGIN sync (hc-564): same boot trigger, but OPT-IN — without an
+  // explicit APEXNODES_PLATFORM_PLUGINS=1 this is a strict no-op (zero network,
+  // zero fs writes; P0 guard in apex-platform-plugins.test.cjs).
+  void refreshPlatformPluginsFromPlatform('boot')
 
   // Managed relay-key self-heal: non-blocking boot probe of the relay's
   // /v1/models. If the stored key was rotated out (401), auto re-provision with
