@@ -390,12 +390,20 @@ emit_stage_json() {
     local ok="$2"
     local skipped="${3:-false}"
     local reason="${4:-}"
-    local escaped_reason
+    # hc-569: optional machine-readable skip code (e.g. deps_unchanged,
+    # prereq_cached). The desktop overlay maps it to a localized "why was this
+    # skipped" line; absent for plain skips so the frame stays byte-compatible.
+    local skip_code="${5:-}"
+    local escaped_reason extra
     escaped_reason="$(json_escape "$reason")"
+    extra=""
+    if [ -n "$skip_code" ]; then
+        extra=",\"skip_code\":\"$(json_escape "$skip_code")\""
+    fi
     if [ -n "$escaped_reason" ]; then
-        printf '{"ok":%s,"stage":"%s","skipped":%s,"reason":"%s"}\n' "$ok" "$stage" "$skipped" "$escaped_reason"
+        printf '{"ok":%s,"stage":"%s","skipped":%s,"reason":"%s"%s}\n' "$ok" "$stage" "$skipped" "$escaped_reason" "$extra"
     else
-        printf '{"ok":%s,"stage":"%s","skipped":%s}\n' "$ok" "$stage" "$skipped"
+        printf '{"ok":%s,"stage":"%s","skipped":%s%s}\n' "$ok" "$stage" "$skipped" "$extra"
     fi
 }
 
@@ -1295,6 +1303,134 @@ show_manual_install_hint() {
 }
 
 # ============================================================================
+# hc-569 fast-update channel: prerequisites-stage result cache
+# ============================================================================
+# A desktop engine update re-runs the full prerequisites chain (uv / python /
+# git / node probes + connectivity + system packages, ~9s) on every version
+# bump even though the machine's toolchain essentially never changes between
+# two updates days apart. Cache the LAST FULLY-SUCCESSFUL chain result keyed
+# by a cheap machine+toolchain fingerprint; a fresh (<7 days), matching entry
+# fast-passes the stage in well under a second.
+#
+# Correctness posture (deliberately conservative):
+#   * ONLY the dependency-check work is skipped — tree integrity verification
+#     (bootstrap-runner evaluateTreeIntegrity) and the gateway restart are
+#     never part of this stage and are untouched by the fast pass.
+#   * The cache is written ONLY after the full chain succeeded, in --stage
+#     mode only (the monolithic curl|bash path is byte-for-byte unchanged).
+#   * ANY later stage failure invalidates this cache (plus the deps
+#     fingerprints) via invalidate_fast_path_caches, so a broken machine
+#     state re-runs the full chain on the next attempt — self-heal first.
+#   * Every read/parse hiccup fails open to the full chain, mirroring
+#     check_network_prerequisites' cache contract above.
+PREREQ_CACHE_TTL_SECONDS="${HERMES_PREREQ_CACHE_TTL_SECONDS:-604800}"
+
+prereq_cache_path() {
+    printf '%s/bootstrap-cache/prereq-check.marker' "$HERMES_HOME"
+}
+
+# Cheap machine + toolchain identity: OS/distro/kernel/hostname plus the
+# version strings of the tools the full chain would probe (uv, node, git) and
+# presence bits for the optional ones (rg, ffmpeg). Recomputing this costs a
+# few fast --version spawns (~0.2-0.5s total) — the point is skipping the
+# expensive parts (network probes with 8s ceilings, uv python resolution,
+# package-manager checks). NOT a security boundary: it only decides whether a
+# recheck can be deferred, never whether something gets trusted.
+prereq_fingerprint() {
+    local uv_v="missing" node_v="missing" git_v="missing" rg_p="0" ffmpeg_p="0"
+    if [ -x "$HERMES_HOME/bin/uv" ]; then
+        uv_v="$("$HERMES_HOME/bin/uv" --version 2>/dev/null | head -1 || true)"
+        [ -n "$uv_v" ] || uv_v="unreadable"
+    fi
+    if command -v node >/dev/null 2>&1; then
+        node_v="$(node --version 2>/dev/null | head -1 || true)"
+    elif [ -x "$HERMES_HOME/node/bin/node" ]; then
+        node_v="managed:$("$HERMES_HOME/node/bin/node" --version 2>/dev/null | head -1 || true)"
+    fi
+    if command -v git >/dev/null 2>&1; then
+        git_v="$(git --version 2>/dev/null | head -1 || true)"
+    fi
+    command -v rg >/dev/null 2>&1 && rg_p="1"
+    command -v ffmpeg >/dev/null 2>&1 && ffmpeg_p="1"
+    printf 'v1|%s|%s|%s|%s|%s|uv:%s|node:%s|git:%s|rg:%s|ffmpeg:%s' \
+        "${OS:-unknown}" "${DISTRO:-unknown}" "${DISTRO_VERSION:-}" \
+        "$(uname -rm 2>/dev/null | tr -s ' ' '_' || echo unknown)" \
+        "$(hostname 2>/dev/null || echo unknown)" \
+        "$uv_v" "$node_v" "$git_v" "$rg_p" "$ffmpeg_p"
+}
+
+# Fast pass for the prerequisites stage. Returns 0 (and marks the stage
+# skipped with an honest reason) ONLY when: running in --stage mode, a cache
+# marker exists, it is younger than PREREQ_CACHE_TTL_SECONDS, its fingerprint
+# matches the freshly recomputed one, and the python interpreter recorded at
+# the last full pass still exists. Anything else returns 1 → full chain.
+prereq_fast_pass() {
+    [ -n "$STAGE_NAME" ] || return 1
+    local cache_file
+    cache_file="$(prereq_cache_path)"
+    [ -f "$cache_file" ] || return 1
+
+    local cached_fp cached_epoch cached_python now_epoch age current_fp
+    cached_fp="$(sed -n '1p' "$cache_file" 2>/dev/null || true)"
+    cached_epoch="$(sed -n '2p' "$cache_file" 2>/dev/null || true)"
+    cached_python="$(sed -n '3p' "$cache_file" 2>/dev/null || true)"
+    now_epoch="$(date +%s 2>/dev/null || true)"
+    [ -n "$cached_fp" ] && [ -n "$cached_epoch" ] && [ -n "$now_epoch" ] || return 1
+    case "$cached_epoch" in ''|*[!0-9]*) return 1 ;; esac
+    age=$((now_epoch - cached_epoch))
+    [ "$age" -ge 0 ] && [ "$age" -lt "$PREREQ_CACHE_TTL_SECONDS" ] || return 1
+    current_fp="$(prereq_fingerprint 2>/dev/null || true)"
+    [ -n "$current_fp" ] || return 1
+    if [ "$current_fp" != "$cached_fp" ]; then
+        log_info "Prerequisites fingerprint changed — full recheck"
+        log_info "  cached:  $cached_fp"
+        log_info "  current: $current_fp"
+        return 1
+    fi
+    [ -n "$cached_python" ] && [ -x "$cached_python" ] || return 1
+
+    log_success "Prerequisites verified $((age / 3600))h ago — fast pass (toolchain fingerprint unchanged)"
+    mark_stage_skipped prereq_cached "environment verified $((age / 3600))h ago; toolchain fingerprint unchanged"
+    return 0
+}
+
+# Record a fully-successful prerequisites chain (called only from the --stage
+# path, after every check in the chain passed). Best-effort: a write failure
+# just means the next run rechecks — never a stage failure.
+prereq_record_success() {
+    [ -n "$STAGE_NAME" ] || return 0
+    local cache_file
+    cache_file="$(prereq_cache_path)"
+    mkdir -p "$(dirname "$cache_file")" 2>/dev/null || return 0
+    {
+        printf '%s\n' "$(prereq_fingerprint 2>/dev/null || echo unfingerprintable)"
+        date +%s 2>/dev/null || echo 0
+        printf '%s\n' "${PYTHON_PATH:-}"
+    } > "$cache_file.tmp" 2>/dev/null \
+        && mv "$cache_file.tmp" "$cache_file" 2>/dev/null || true
+    return 0
+}
+
+# hc-569 self-heal: called by run_stage_protocol whenever ANY stage fails.
+# Drops every fast-path cache (prerequisites result, the hc-452 network-check
+# cache, and the python/node dependency fingerprints) so the next bootstrap
+# attempt runs the full, slow-but-correct path instead of re-trusting a cache
+# that may describe the broken state — a failed stage is often a network
+# problem, and a <1h-old "connectivity looks good" entry is exactly the kind
+# of stale answer the retry must not inherit. Best-effort by construction —
+# never fails the caller.
+invalidate_fast_path_caches() {
+    rm -f "$(prereq_cache_path)" \
+          "$HERMES_HOME/bootstrap-cache/network-check.marker" 2>/dev/null || true
+    if [ -n "${INSTALL_DIR:-}" ] && [ -d "$INSTALL_DIR" ]; then
+        rm -f "$(python_deps_marker_path "$INSTALL_DIR")" \
+              "$(node_deps_marker_path "$INSTALL_DIR")" \
+              "$(node_deps_marker_path "$INSTALL_DIR/ui-tui")" 2>/dev/null || true
+    fi
+    return 0
+}
+
+# ============================================================================
 # Installation
 # ============================================================================
 
@@ -1504,6 +1640,13 @@ setup_venv() {
         rm -rf venv
     fi
 
+    # hc-569: a (re)created venv starts EMPTY, so any recorded python-deps
+    # fingerprint now describes an environment that no longer exists. Drop it
+    # BEFORE creating the venv so the python-deps stage can never fast-skip
+    # over an empty environment (the fingerprint fast path also probes the
+    # venv itself — this is belt and braces, both fail toward a full install).
+    rm -f "$(python_deps_marker_path "$INSTALL_DIR")" 2>/dev/null || true
+
     # uv creates the venv and pins the Python version in one step
     $UV_CMD venv venv --python "$PYTHON_VERSION"
 
@@ -1547,6 +1690,67 @@ _uv_sync_locked() {
     env -u UV_DEFAULT_INDEX -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INDEX \
         -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL \
         UV_PROJECT_ENVIRONMENT="$INSTALL_DIR/venv" $UV_CMD sync --extra all --locked "$@"
+}
+
+# ----------------------------------------------------------------------------
+# hc-569 fast-update channel: python-deps fingerprint short-circuit
+# ----------------------------------------------------------------------------
+# The exact analogue of the node_deps_fingerprint / node_deps_up_to_date /
+# node_deps_mark_installed trio below: after a LOCK-VERIFIED python install
+# succeeds, record the cksum of uv.lock in a repo-local marker; the next
+# --stage run whose uv.lock hashes identically skips the whole install segment
+# — including the ~5s read-only `uv sync --locked --check` probe — without
+# invoking uv at all. cksum (POSIX) for the same dependency-free reason as
+# node_deps_fingerprint; not a security boundary, it only decides whether a
+# redundant install can be skipped.
+#
+# Fail-open by construction: no marker, unreadable uv.lock, fingerprint
+# mismatch, missing venv interpreter, or a failed import probe all report
+# "needs install" and the caller runs the full multi-tier path. The marker is
+# written ONLY after uv itself verified the environment against uv.lock
+# (check-pass or locked-sync success) — never after an unlocked fallback tier,
+# so a degraded tier install keeps re-attempting the hash-verified path on
+# every update instead of freezing in place.
+python_deps_marker_path() {
+    printf '%s/.python-deps-installed' "$1"
+}
+
+python_deps_fingerprint() {
+    local dir="$1"
+    [ -f "$dir/uv.lock" ] || return 1
+    cksum < "$dir/uv.lock" 2>/dev/null | tr -s ' \t' '-'
+}
+
+# True (rc 0) when the python-deps install segment would be a no-op: uv.lock
+# is unchanged since the last lock-verified install of THIS checkout AND the
+# venv still exists AND the installed package is actually importable. The
+# import probe is the decisive cheap guard against trusting a marker that
+# outlived its venv (recreated venv, half-deleted site-packages).
+python_deps_up_to_date() {
+    local dir="$1"
+    local marker
+    marker="$(python_deps_marker_path "$dir")"
+
+    [ -f "$marker" ] || return 1
+    [ -x "$dir/venv/bin/python" ] || return 1
+
+    local current
+    current="$(python_deps_fingerprint "$dir" 2>/dev/null)" || return 1
+    [ -n "$current" ] || return 1
+    [ "$(cat "$marker" 2>/dev/null)" = "$current" ] || return 1
+
+    "$dir/venv/bin/python" -c 'import hermes_cli' >/dev/null 2>&1 || return 1
+}
+
+# Record a lock-verified install so the next run's python_deps_up_to_date can
+# skip. Best-effort: a write failure just means the next run re-verifies.
+python_deps_mark_installed() {
+    local dir="$1"
+    local current
+    current="$(python_deps_fingerprint "$dir" 2>/dev/null)" || return 0
+    [ -n "$current" ] || return 0
+    printf '%s' "$current" > "$(python_deps_marker_path "$dir").tmp" 2>/dev/null \
+        && mv "$(python_deps_marker_path "$dir").tmp" "$(python_deps_marker_path "$dir")" 2>/dev/null || true
 }
 
 install_deps() {
@@ -1622,6 +1826,28 @@ install_deps() {
         export VIRTUAL_ENV="$INSTALL_DIR/venv"
     fi
 
+    # hc-569 fast-update channel (--stage bootstrap only): when uv.lock hashes
+    # identically to the fingerprint recorded at the last lock-verified install
+    # of this checkout AND the venv still imports the package, skip the entire
+    # install segment without invoking uv at all — this is what turns the ~5s
+    # no-op python-deps stage into a sub-second one on a dependency-unchanged
+    # engine update. Only the dependency install is skipped; tree integrity
+    # verification and the gateway restart live elsewhere and are untouched.
+    # Guarded to --stage mode so the monolithic curl|bash path keeps its
+    # existing behavior byte-for-byte; every ambiguous state falls through to
+    # the uv-verified check / full install below (fail-open to slow-but-correct).
+    if [ -n "$STAGE_NAME" ] && [ "$USE_VENV" = true ]; then
+        local _py_fp_now _py_fp_prev
+        _py_fp_now="$(python_deps_fingerprint "$INSTALL_DIR" 2>/dev/null || true)"
+        _py_fp_prev="$(cat "$(python_deps_marker_path "$INSTALL_DIR")" 2>/dev/null || true)"
+        if python_deps_up_to_date "$INSTALL_DIR"; then
+            log_success "Python dependencies unchanged (uv.lock fingerprint $_py_fp_now) — skipping install"
+            mark_stage_skipped deps_unchanged "uv.lock unchanged since last verified install (fingerprint $_py_fp_now)"
+            return 0
+        fi
+        log_info "Python deps fingerprint: recorded=${_py_fp_prev:-<none>} current=${_py_fp_now:-<unreadable>} — verifying with uv"
+    fi
+
     # Fast path: if the venv already exactly matches the lockfile, skip the whole
     # install (build-tools probe + multi-tier sync). `uv sync --locked --check`
     # is read-only — it verifies the environment against uv.lock and exits
@@ -1633,7 +1859,11 @@ install_deps() {
     if [ "$USE_VENV" = true ] && [ -f "uv.lock" ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
         if _uv_sync_locked --check >/dev/null 2>&1; then
             log_success "Python dependencies already satisfied (uv.lock) — skipping"
-            mark_stage_skipped
+            # hc-569: uv just confirmed the environment matches uv.lock —
+            # record the fingerprint so the NEXT run takes the sub-second
+            # fingerprint path instead of re-running this ~5s uv check.
+            python_deps_mark_installed "$INSTALL_DIR"
+            mark_stage_skipped deps_unchanged "environment verified against uv.lock"
             return 0
         fi
     fi
@@ -1708,6 +1938,9 @@ install_deps() {
         # refusing under HERMES_CN_MIRRORS=1.
         if _uv_sync_locked; then
             log_success "Main package installed (hash-verified via uv.lock)"
+            # hc-569: lock-verified success — record the uv.lock fingerprint so
+            # the next dependency-unchanged update can skip this segment.
+            python_deps_mark_installed "$INSTALL_DIR"
             log_success "All dependencies installed"
             return 0
         fi
@@ -1715,6 +1948,12 @@ install_deps() {
     else
         log_info "uv.lock not found — falling back to PyPI resolve (no hash verification)"
     fi
+
+    # hc-569: from here on the install is NOT lock-verified (unlocked tiers
+    # re-resolve fresh from an index). Drop any recorded fingerprint so a
+    # tier-degraded environment is never fast-skipped on a later update — the
+    # fingerprint fast path may only ever vouch for a lock-verified state.
+    rm -f "$(python_deps_marker_path "$INSTALL_DIR")" 2>/dev/null || true
 
     # Multi-tier fallback. The point of the tiers is that ONE compromised
     # PyPI package (a worm-poisoned release that gets quarantined, like
@@ -2415,6 +2654,34 @@ node_deps_mark_installed() {
         && mv "$(node_deps_marker_path "$dir").tmp" "$(node_deps_marker_path "$dir")" 2>/dev/null || true
 }
 
+# hc-569: cheap "is a browser already provisioned?" probe gating the node-deps
+# whole-stage fast path. True when nothing in the Playwright section would
+# have work to do: browsers explicitly skipped, an explicit executable
+# override is set, or the Playwright cache already holds a Chromium build.
+# Purely a skip-eligibility check (a stat + a glob, ~1ms) — when it returns 1
+# the stage falls through to the full path and `playwright install` gets its
+# usual chance to (re)provision, so a missing browser keeps self-healing on
+# every update exactly as before.
+node_browser_provisioned() {
+    [ "$SKIP_BROWSER" = true ] && return 0
+    if find_system_browser >/dev/null 2>&1; then
+        return 0
+    fi
+    local cache_root="${PLAYWRIGHT_BROWSERS_PATH:-}"
+    if [ -z "$cache_root" ]; then
+        if [ "$OS" = "macos" ]; then
+            cache_root="$HOME/Library/Caches/ms-playwright"
+        else
+            cache_root="$HOME/.cache/ms-playwright"
+        fi
+    fi
+    local d
+    for d in "$cache_root"/chromium-* "$cache_root"/chromium_headless_shell-*; do
+        [ -d "$d" ] && return 0
+    done
+    return 1
+}
+
 install_node_deps() {
     if [ "$HAS_NODE" = false ]; then
         log_info "Skipping Node.js dependencies (Node not installed)"
@@ -2425,6 +2692,28 @@ install_node_deps() {
         log_info "Skipping automatic Node/browser dependency setup on Termux"
         log_info "Browser automation is not part of the tested Termux install path yet."
         log_info "If you want to experiment manually later, run: cd $INSTALL_DIR && npm install"
+        return 0
+    fi
+
+    # hc-569 fast-update channel (--stage bootstrap only): when BOTH npm
+    # projects' fingerprints are unchanged since their last successful install
+    # AND a browser is already provisioned, short-circuit the entire stage —
+    # including the unconditional `npx playwright install` no-op re-run that
+    # dominates the 20-40s this stage costs on a dependency-unchanged engine
+    # update (hc-452 already skips the two npm installs; the npx spawn was
+    # still paid every time). Fail-open: any mismatch, missing marker, empty
+    # node_modules, or missing browser falls through to the full path below,
+    # which behaves exactly as before. Monolithic (non --stage) runs are
+    # byte-for-byte unchanged.
+    if [ -n "$STAGE_NAME" ] \
+        && [ -f "$INSTALL_DIR/package.json" ] \
+        && node_deps_up_to_date "$INSTALL_DIR" \
+        && { [ ! -f "$INSTALL_DIR/ui-tui/package.json" ] || node_deps_up_to_date "$INSTALL_DIR/ui-tui"; } \
+        && node_browser_provisioned; then
+        local _node_fp
+        _node_fp="$(node_deps_fingerprint "$INSTALL_DIR" 2>/dev/null | tr -s ' \t' '-' || true)"
+        log_success "Node.js dependencies unchanged (fingerprint ${_node_fp:-n/a}, browser present) — skipping stage"
+        mark_stage_skipped deps_unchanged "package.json/package-lock.json unchanged since last install (fingerprint ${_node_fp:-n/a}); browser already provisioned"
         return 0
     fi
 
@@ -3286,12 +3575,20 @@ run_stage_body() {
             print_banner
             detect_os
             resolve_install_layout
-            install_uv
-            check_python
-            check_git
-            check_node
-            check_network_prerequisites
-            install_system_packages
+            # hc-569: fresh (<7 days), fingerprint-matching cache of the last
+            # FULLY-successful chain run fast-passes this stage in <1s. The
+            # cache is written only after the whole chain below succeeded and
+            # is dropped by run_stage_protocol whenever ANY stage fails, so a
+            # broken machine state always gets a full recheck next attempt.
+            if ! prereq_fast_pass; then
+                install_uv
+                check_python
+                check_git
+                check_node
+                check_network_prerequisites
+                install_system_packages
+                prereq_record_success
+            fi
             ;;
         repository)
             detect_os
@@ -3411,13 +3708,30 @@ run_stage_protocol() {
     ( STAGE_SKIP_MARKER="$skip_marker" run_stage_body "$stage" )
     local code=$?
     set -e
-    local skipped=false
-    [ -f "$skip_marker" ] && skipped=true
+    # hc-569: the marker file now optionally carries WHY the stage skipped
+    # (line 1 = machine-readable code, line 2 = human reason) so the desktop
+    # overlay can show "skipped — dependencies unchanged" instead of a bare
+    # skip. A legacy empty marker (mark_stage_skipped with no args) still
+    # reads as a plain skip — frame shape unchanged in that case.
+    local skipped=false skip_code="" skip_reason=""
+    if [ -f "$skip_marker" ]; then
+        skipped=true
+        skip_code="$(sed -n '1p' "$skip_marker" 2>/dev/null || true)"
+        skip_reason="$(sed -n '2p' "$skip_marker" 2>/dev/null || true)"
+    fi
     rm -f "$skip_marker" 2>/dev/null || true
+
+    # hc-569 self-heal: ANY stage failure drops every fast-path cache
+    # (prerequisites result + python/node dependency fingerprints) so the next
+    # bootstrap attempt takes the full, slow-but-correct path instead of
+    # re-trusting a cache that may describe the broken state.
+    if [ "$code" -ne 0 ]; then
+        invalidate_fast_path_caches
+    fi
 
     if [ "$JSON_OUTPUT" = true ]; then
         if [ "$code" -eq 0 ]; then
-            emit_stage_json "$stage" true "$skipped"
+            emit_stage_json "$stage" true "$skipped" "$skip_reason" "$skip_code"
         else
             emit_stage_json "$stage" false false "exit code $code"
         fi
@@ -3430,9 +3744,18 @@ run_stage_protocol() {
 # subshell-based stage runner (run_stage_protocol) reads after the body returns,
 # so it can emit skipped=true. A no-op outside stage mode (the monolithic main()
 # path leaves STAGE_SKIP_MARKER unset and emits no JSON frames). Safe to call
-# multiple times within one stage.
+# multiple times within one stage (the last call's reason wins).
+#
+# hc-569: optionally records WHY, for the desktop overlay:
+#   $1 = machine-readable skip code (e.g. deps_unchanged, prereq_cached)
+#   $2 = human-readable reason
+# Both optional; calling with no args preserves the legacy plain-skip frame.
 mark_stage_skipped() {
-    [ -n "${STAGE_SKIP_MARKER:-}" ] && : > "$STAGE_SKIP_MARKER" 2>/dev/null || true
+    [ -n "${STAGE_SKIP_MARKER:-}" ] || return 0
+    {
+        printf '%s\n' "${1:-}"
+        printf '%s\n' "${2:-}"
+    } > "$STAGE_SKIP_MARKER" 2>/dev/null || true
     return 0
 }
 

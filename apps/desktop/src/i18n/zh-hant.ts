@@ -1729,6 +1729,11 @@ export const zhHant = defineLocale({
       skipped: '已略過',
       failed: '失敗'
     },
+    // hc-569:略過原因(按安裝器 skip_code 鍵)。
+    skipReasons: {
+      deps_unchanged: '依賴未變',
+      prereq_cached: '環境近期已驗證'
+    },
     stageLabels: {
       prerequisites: '前置環境',
       uv: '前置環境',

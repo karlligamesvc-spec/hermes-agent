@@ -801,7 +801,10 @@ export interface DesktopBootstrapStageResult {
   state: DesktopBootstrapStageState
   durationMs: number | null
   startedAt: number | null
-  json: { ok: boolean; skipped?: boolean; reason?: string | null; stage: string } | null
+  // hc-569: skip_code is the installer's machine-readable "why was this stage
+  // skipped" (e.g. deps_unchanged, prereq_cached); the overlay maps it to a
+  // localized reason and falls back to the raw `reason` string when unknown.
+  json: { ok: boolean; skipped?: boolean; reason?: string | null; skip_code?: string | null; stage: string } | null
   error: string | null
 }
 
