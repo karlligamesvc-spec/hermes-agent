@@ -250,6 +250,7 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
       onSearchChange={setQuery}
       searchHidden={mode === 'skills' ? (skills?.length ?? 0) === 0 : (toolsets?.length ?? 0) === 0}
       searchPlaceholder={mode === 'skills' ? t.skills.searchSkills : t.skills.searchToolsets}
+      searchRow="centered"
       searchTrailingAction={
         <Button
           aria-label={refreshing ? t.skills.refreshing : t.skills.refresh}
