@@ -1,6 +1,6 @@
 {
   "contract_name": "apexnodes-plugin-tools-parity",
-  "contract_version": 1,
+  "contract_version": 2,
   "ticket": "hc-563",
   "sync_policy": {
     "copies": [
@@ -75,6 +75,10 @@
           "legs": ["gateway"],
           "allowed_modes": ["multipart-file", "json-media-url", "presign-json"],
           "note": "hc-560 large-file leg may switch the desktop upload from multipart to a presign handshake; any /tools/v1/asr/* JSON call that is neither multipart nor media_url counts as presign-json. Do NOT narrow this to a single shape."
+        },
+        "result_cache_idempotent": {
+          "legs": [],
+          "note": "hc-570 server-side promise (no plugin leg to probe, hence legs=[]): a same-tenant retry of the same audio content (same output-affecting params) within the cache TTL is answered from the server's result cache with cache_hit=true, ZERO vendor call and ZERO new billing; force_refresh=true (accepted by BOTH transcribe endpoints) skips the cache; cached results are strictly tenant-scoped (never served cross-user). Enforced by hermes-cloud tests/test_hc570_asr_result_cache.py; the plugin needs no change (the server fingerprints every upload mode)."
         }
       }
     },
