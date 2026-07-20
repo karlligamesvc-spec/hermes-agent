@@ -1798,6 +1798,11 @@ export const en: Translations = {
       skipped: 'Skipped',
       failed: 'Failed'
     },
+    // hc-569: why a stage was skipped, keyed by the installer's skip_code.
+    skipReasons: {
+      deps_unchanged: 'dependencies unchanged',
+      prereq_cached: 'environment recently verified'
+    },
     // Keyed by the raw bootstrap stage id (covers both the install.ps1 and
     // install.sh naming schemes). Unknown ids fall back to formatStageName.
     stageLabels: {

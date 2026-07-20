@@ -1783,6 +1783,11 @@ export const ja = defineLocale({
       skipped: 'スキップ',
       failed: '失敗'
     },
+    // hc-569: スキップ理由(インストーラーの skip_code をキーとする)。
+    skipReasons: {
+      deps_unchanged: '依存関係に変更なし',
+      prereq_cached: '環境は最近確認済み'
+    },
     stageLabels: {
       prerequisites: '前提環境',
       uv: '前提環境',

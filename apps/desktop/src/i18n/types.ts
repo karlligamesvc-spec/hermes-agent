@@ -1471,6 +1471,10 @@ export interface Translations {
      *  (first-install ballpark; an incremental update skips most of these).
      *  Same key space as stageLabels; an id with no entry renders no hint. */
     stageDurationHints: Record<string, string>
+    /** hc-569: localized reasons for skipped stages, keyed by the installer's
+     *  machine-readable skip_code (deps_unchanged, prereq_cached, …). Codes
+     *  with no entry fall back to the installer's raw reason string. */
+    skipReasons: Record<string, string>
     oneTimeTitle: string
     unsupportedDesc: (platform: string) => string
     installCommand: string

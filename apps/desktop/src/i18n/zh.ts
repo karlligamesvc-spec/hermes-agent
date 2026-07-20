@@ -1966,6 +1966,11 @@ export const zh: Translations = {
       skipped: '已跳过',
       failed: '失败'
     },
+    // hc-569:跳过原因(按安装器 skip_code 键)。
+    skipReasons: {
+      deps_unchanged: '依赖未变',
+      prereq_cached: '环境近期已验证'
+    },
     stageLabels: {
       prerequisites: '前置环境',
       uv: '前置环境',

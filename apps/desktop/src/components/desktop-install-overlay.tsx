@@ -118,7 +118,13 @@ function StageRow({ descriptor, result, isCurrent, now }: StageRowProps) {
     }
   }, [state])
 
-  const reason = result?.json?.reason || result?.error || null
+  // hc-569: a skipped stage carries the installer's machine-readable skip_code
+  // (deps_unchanged / prereq_cached). Map it to a localized reason so the row
+  // honestly reads "Skipped — dependencies unchanged" instead of looking like
+  // a stage that ran; unknown codes fall back to the installer's raw reason.
+  const skipCode = state === 'skipped' ? result?.json?.skip_code : null
+  const localizedSkipReason = (skipCode && copy.skipReasons[skipCode]) || null
+  const reason = localizedSkipReason || result?.json?.reason || result?.error || null
 
   return (
     <li
@@ -140,7 +146,12 @@ function StageRow({ descriptor, result, isCurrent, now }: StageRowProps) {
                 ? `${copy.stageStates[state]} · ${elapsed}`
                 : copy.stageStates[state]
               : null}
-            {state === 'succeeded' || state === 'skipped' ? formatDuration(result?.durationMs) : null}
+            {state === 'succeeded' ? formatDuration(result?.durationMs) : null}
+            {/* hc-569: label skipped rows explicitly ("Skipped · 12 ms") so a
+                fast-passed stage never masquerades as one that ran. */}
+            {state === 'skipped'
+              ? [copy.stageStates[state], formatDuration(result?.durationMs)].filter(Boolean).join(' · ')
+              : null}
             {state === 'failed' ? copy.stageStates[state] : null}
             {/* hc-452: rough duration hint for a step that hasn't started yet
                 -- this slot is otherwise blank while pending. Once the step
