@@ -1878,6 +1878,18 @@ export const zh: Translations = {
     snippetsDesc: '选择一个起始提示词放入输入框。',
     dropFiles: '拖入资料、链接或聊天记录',
     dropSession: '拖放以链接此对话',
+    capabilities: {
+      enabledLabel: '已启用',
+      unused: '未启用技能',
+      connectors: '连接器',
+      connectorsHint: '飞书 · 微信…',
+      noneEnabled: '还没有启用的技能',
+      browseDesc: '拨开开关即启用(对新会话生效),并升到菜单一级。',
+      searchPlaceholder: '搜索技能…',
+      allEnabled: '技能都已启用 🎉',
+      loading: '正在加载技能…',
+      toggle: name => `启用 ${name}`
+    },
     snippets: {
       codeReview: {
         label: '代码审查',

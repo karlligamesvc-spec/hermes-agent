@@ -1709,6 +1709,18 @@ export const en: Translations = {
     snippetsDesc: 'Pick a starter prompt to drop into the composer.',
     dropFiles: 'Drop a document, link, or chat log',
     dropSession: 'Drop to link this chat',
+    capabilities: {
+      enabledLabel: 'Enabled',
+      unused: 'Unused skills',
+      connectors: 'Connectors',
+      connectorsHint: 'Feishu · WeChat…',
+      noneEnabled: 'No skills enabled yet',
+      browseDesc: 'Toggle one on — it turns on for new sessions and moves up into this menu.',
+      searchPlaceholder: 'Search skills…',
+      allEnabled: 'Every skill is enabled 🎉',
+      loading: 'Loading skills…',
+      toggle: (name: string) => `Enable ${name}`
+    },
     snippets: {
       codeReview: {
         label: 'Code review',

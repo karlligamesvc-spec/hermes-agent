@@ -1407,6 +1407,18 @@ export interface Translations {
     snippets: Record<string, { label: string; description: string; text: string }>
     dropFiles: string
     dropSession: string
+    capabilities: {
+      enabledLabel: string
+      unused: string
+      connectors: string
+      connectorsHint: string
+      noneEnabled: string
+      browseDesc: string
+      searchPlaceholder: string
+      allEnabled: string
+      loading: string
+      toggle: (name: string) => string
+    }
   }
 
   statusStack: {

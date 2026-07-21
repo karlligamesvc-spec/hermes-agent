@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
+import { IM_ENTRY_ROUTE, SKILLS_ROUTE } from '@/app/routes'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,14 +15,34 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Kbd } from '@/components/ui/kbd'
 import { useI18n } from '@/i18n'
-import { Clipboard, FileText, FolderOpen, type IconComponent, ImageIcon, Link, MessageSquareText } from '@/lib/icons'
+import {
+  Clipboard,
+  FileText,
+  FolderOpen,
+  type IconComponent,
+  ImageIcon,
+  Link,
+  MessageCircle,
+  MessageSquareText,
+  Package,
+  Sparkles
+} from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { GHOST_ICON_BTN } from './controls'
+import { SkillBrowseDialog } from './skill-browse-dialog'
+import { type SkillCatalog, useSkillCatalog } from './skill-catalog'
 import type { ChatBarState } from './types'
 
 const SNIPPET_KEYS = ['codeReview', 'implementationPlan', 'explainThis']
 
+// hc-572: the composer "+" is a unified capability entry (aligning with Navos),
+// not just an attachment picker. Four zones: (1) upload attachment [existing],
+// (2) enabled skills each surfaced at the top level, (3) every UNUSED skill
+// collapsed behind one "unused skills" entry that opens a search/browse dialog
+// (117 skills never flatten into the menu), (4) connectors. Enablement is global
+// (reuses the Skills-page toggle) — flip a skill on in the browse dialog and it
+// moves up into the "enabled" zone.
 export function ContextMenu({
   state,
   onInsertText,
@@ -32,15 +54,28 @@ export function ContextMenu({
 }: ContextMenuProps) {
   const { t } = useI18n()
   const c = t.composer
+  const cap = c.capabilities
+  const navigate = useNavigate()
   // Prompt snippets used to be a Radix submenu. That submenu didn't open
   // reliably when the parent menu was positioned at the bottom of the
   // window (composer "+" anchor), so we promoted it to a real Dialog —
   // easier to grow with search / descriptions, and no positioning math.
   const [snippetsOpen, setSnippetsOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [browseOpen, setBrowseOpen] = useState(false)
+
+  // Skills load lazily the first time the menu or its browse dialog opens.
+  const catalog = useSkillCatalog(menuOpen || browseOpen, {
+    enabled: t.skills.skillEnabled,
+    disabled: t.skills.skillDisabled,
+    appliesToNewSessions: t.skills.appliesToNewSessions,
+    failedToUpdate: t.skills.failedToUpdate,
+    loadFailed: t.skills.skillsLoadFailed
+  })
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             aria-label={state.tools.label}
@@ -57,7 +92,13 @@ export function ContextMenu({
             <Codicon name="add" size="1rem" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-60" side="top" sideOffset={10}>
+        <DropdownMenuContent
+          align="start"
+          className="max-h-[min(30rem,var(--radix-dropdown-menu-content-available-height))] w-64 overflow-y-auto"
+          side="top"
+          sideOffset={10}
+        >
+          {/* Zone 1 — upload attachment (existing pickers kept intact). */}
           <DropdownMenuLabel className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground/85">
             {c.attachLabel}
           </DropdownMenuLabel>
@@ -76,12 +117,37 @@ export function ContextMenu({
           <ContextMenuItem icon={Link} onSelect={onOpenUrlDialog}>
             {c.url}
           </ContextMenuItem>
-
-          <DropdownMenuSeparator />
-
           <ContextMenuItem icon={MessageSquareText} onSelect={() => setSnippetsOpen(true)}>
             {c.promptSnippets}
           </ContextMenuItem>
+
+          <DropdownMenuSeparator />
+
+          {/* Zone 2 — enabled skills, each surfaced at the top level. */}
+          <DropdownMenuLabel className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground/85">
+            {cap.enabledLabel}
+          </DropdownMenuLabel>
+          <EnabledCapabilities catalog={catalog} loadingLabel={cap.loading} noneLabel={cap.noneEnabled} onManage={() => navigate(SKILLS_ROUTE)} />
+
+          <DropdownMenuSeparator />
+
+          {/* Zone 3 — every unused skill collapsed behind one entry. */}
+          <DropdownMenuItem onSelect={() => setBrowseOpen(true)}>
+            <Package />
+            <span className="min-w-0 flex-1 truncate">{cap.unused}</span>
+            {catalog.skills ? (
+              <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.disabled.length}</span>
+            ) : null}
+            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
+          </DropdownMenuItem>
+
+          {/* Zone 4 — connectors (IM channels). */}
+          <DropdownMenuItem onSelect={() => navigate(IM_ENTRY_ROUTE)}>
+            <MessageCircle />
+            <span className="min-w-0 flex-1 truncate">{cap.connectors}</span>
+            <span className="truncate text-[0.7rem] text-(--ui-text-tertiary)">{cap.connectorsHint}</span>
+            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 
@@ -94,6 +160,41 @@ export function ContextMenu({
       </DropdownMenu>
 
       <PromptSnippetsDialog onInsertText={onInsertText} onOpenChange={setSnippetsOpen} open={snippetsOpen} />
+      <SkillBrowseDialog catalog={catalog} onOpenChange={setBrowseOpen} open={browseOpen} />
+    </>
+  )
+}
+
+// The "enabled" zone body: a live view of globally-enabled skills. Clicking one
+// opens the Skills page to manage it (disable / configure) — the "+" menu stays
+// an add surface, so it never disables in place.
+function EnabledCapabilities({
+  catalog,
+  loadingLabel,
+  noneLabel,
+  onManage
+}: {
+  catalog: SkillCatalog
+  loadingLabel: string
+  noneLabel: string
+  onManage: () => void
+}) {
+  if (!catalog.skills && catalog.loading) {
+    return <div className="px-2 py-1.5 text-xs text-(--ui-text-tertiary)">{loadingLabel}</div>
+  }
+
+  if (catalog.enabled.length === 0) {
+    return <div className="px-2 py-1.5 text-xs text-(--ui-text-tertiary)">{noneLabel}</div>
+  }
+
+  return (
+    <>
+      {catalog.enabled.map(skill => (
+        <DropdownMenuItem key={skill.name} onSelect={onManage}>
+          <Sparkles className="text-primary!" />
+          <span className="min-w-0 flex-1 truncate">{skill.name}</span>
+        </DropdownMenuItem>
+      ))}
     </>
   )
 }
