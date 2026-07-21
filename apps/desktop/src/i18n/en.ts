@@ -1582,7 +1582,22 @@ export const en: Translations = {
     connectTitle: 'Connect your agent',
     phoneRemote: 'Phone remote',
     remoteOn: 'On · /cc',
-    bindCta: 'Scan to bind'
+    bindCta: 'Scan to bind',
+    remoteBannerTitle: 'Phone is remote-controlling this machine · Feishu /cc',
+    remoteBannerApproval: 'Risky actions still need manual approval',
+    taskTargetCloud: 'Delegated to cloud agent',
+    taskTargetLocal: 'Direct on this machine',
+    taskStatus: { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return 'heartbeat just now'}
+
+      if (seconds < 60) {return `heartbeat ${seconds}s ago`}
+
+      if (seconds < 3600) {return `heartbeat ${Math.floor(seconds / 60)}m ago`}
+
+      return `heartbeat ${Math.floor(seconds / 3600)}h ago`
+    },
+    guideTitle: 'Connect a channel so your agent reaches you everywhere'
   },
 
   composer: {

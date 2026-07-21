@@ -57,6 +57,8 @@ import { ChatBar, ChatBarFallback } from './composer'
 import { requestComposerInsert, requestComposerInsertRefs } from './composer/focus'
 import { droppedFileInlineRefs, type SessionDragPayload, sessionInlineRef } from './composer/inline-refs'
 import type { ChatBarState } from './composer/types'
+import { ConnectionGuide } from './connection-guide'
+import { DirectConnectBanner } from './direct-connect-banner'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { useFileDropZone } from './hooks/use-file-drop-zone'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
@@ -434,6 +436,12 @@ export function ChatView({
       />
 
       <PromptOverlays />
+
+      {/* hc-555 显化: phone-remote (/cc) live banner + first-run connection
+          guidance. Both self-gate to null on the common path (nothing to show),
+          so they add zero chrome to an ordinary conversation. */}
+      <DirectConnectBanner />
+      <ConnectionGuide />
 
       <div
         className="relative min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
