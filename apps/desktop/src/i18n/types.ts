@@ -1434,6 +1434,11 @@ export interface Translations {
       allEnabled: string
       loading: string
       toggle: (name: string) => string
+      generateLabel: string
+      generateImage: string
+      generateVideo: string
+      generateImageStarter: string
+      generateVideoStarter: string
     }
   }
 

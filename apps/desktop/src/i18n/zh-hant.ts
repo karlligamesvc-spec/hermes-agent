@@ -1661,7 +1661,12 @@ export const zhHant = defineLocale({
       searchPlaceholder: '搜尋技能…',
       allEnabled: '技能都已啟用 🎉',
       loading: '正在載入技能…',
-      toggle: name => `啟用 ${name}`
+      toggle: name => `啟用 ${name}`,
+      generateLabel: '生成',
+      generateImage: '圖片',
+      generateVideo: '影片',
+      generateImageStarter: '我想生成一張圖片,想法是:',
+      generateVideoStarter: '我想做一個影片,想法是:'
     },
     snippets: {
       codeReview: {

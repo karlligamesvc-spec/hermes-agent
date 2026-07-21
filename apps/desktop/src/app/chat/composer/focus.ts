@@ -10,8 +10,8 @@
  * steal focus from the composer effect.
  */
 
-import { RICH_INPUT_SLOT } from './rich-editor'
 import type { InlineRefInput } from './inline-refs'
+import { RICH_INPUT_SLOT } from './rich-editor'
 
 export type ComposerTarget = 'edit' | 'main'
 export type ComposerInsertMode = 'block' | 'inline'
@@ -31,9 +31,14 @@ interface InsertRefsDetail {
   target: ComposerTarget
 }
 
+interface SubmitDetail {
+  text: string
+}
+
 const FOCUS_EVENT = 'hermes:composer-focus'
 const INSERT_EVENT = 'hermes:composer-insert'
 const INSERT_REFS_EVENT = 'hermes:composer-insert-refs'
+const SUBMIT_EVENT = 'hermes:composer-submit'
 
 let activeTarget: ComposerTarget = 'main'
 
@@ -104,6 +109,24 @@ export const requestComposerInsertRefs = (
 
 export const onComposerInsertRefsRequest = (handler: (detail: InsertRefsDetail) => void) =>
   subscribe<InsertRefsDetail>(INSERT_REFS_EVENT, handler)
+
+/**
+ * Submit `text` as a fresh user turn from outside the composer — the send-now
+ * cousin of {@link requestComposerInsert} (which only prefills). Used by inline
+ * message-stream controls that stand in for the user, such as a generation
+ * ladder card's priced button: tapping it *is* the turn, so it sends straight
+ * through the active session's submit path rather than seeding the input.
+ */
+export const requestComposerSubmit = (text: string) => {
+  const trimmed = text.trim()
+
+  if (trimmed) {
+    dispatch<SubmitDetail>(SUBMIT_EVENT, { text: trimmed })
+  }
+}
+
+export const onComposerSubmitRequest = (handler: (text: string) => void) =>
+  subscribe<SubmitDetail>(SUBMIT_EVENT, ({ text }) => handler(text))
 
 /**
  * Focus a composer input across React commit + browser focus restore.

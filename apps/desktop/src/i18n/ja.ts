@@ -1713,7 +1713,12 @@ export const ja = defineLocale({
       searchPlaceholder: 'スキルを検索…',
       allEnabled: 'すべてのスキルが有効です 🎉',
       loading: 'スキルを読み込み中…',
-      toggle: name => `${name} を有効化`
+      toggle: name => `${name} を有効化`,
+      generateLabel: '生成',
+      generateImage: '画像',
+      generateVideo: '動画',
+      generateImageStarter: '画像を生成したいです。アイデアは:',
+      generateVideoStarter: '動画を作りたいです。アイデアは:'
     },
     snippets: {
       codeReview: {
