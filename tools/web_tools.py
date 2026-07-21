@@ -98,6 +98,7 @@ from tools.tool_backend_helpers import (  # noqa: F401
     prefers_gateway,
 )
 from tools.url_safety import async_is_safe_url, normalize_url_for_request, sensitive_query_param_name
+from tools.website_policy import check_website_access
 import sys
 
 logger = logging.getLogger(__name__)
@@ -597,6 +598,35 @@ def _ensure_web_plugins_loaded() -> None:
         logger.warning("Web plugin discovery failed (non-fatal): %s", exc)
 
 
+def _filter_search_results_by_policy(response_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop web-search hits whose host is on the website blocklist.
+
+    Search returns URL candidates the model may then hand to
+    ``web_extract_tool``; dropping blocklisted hosts here keeps them from
+    being surfaced at all, mirroring the pre-dispatch gate the extract path
+    applies. The blocklist is operator opt-in (disabled by default), so this
+    is a no-op unless configured. Mutates and returns ``response_data``.
+    """
+    web_results = response_data.get("data", {}).get("web")
+    if not isinstance(web_results, list):
+        return response_data
+
+    kept: List[Dict[str, Any]] = []
+    for item in web_results:
+        url = item.get("url", "") if isinstance(item, dict) else ""
+        blocked = check_website_access(url) if url else None
+        if blocked:
+            logger.info(
+                "Filtered web_search result %s by rule '%s' from %s",
+                blocked["host"], blocked["rule"], blocked["source"],
+            )
+            continue
+        kept.append(item)
+
+    response_data["data"]["web"] = kept
+    return response_data
+
+
 def web_search_tool(query: str, limit: int = 5) -> str:
     """
     Search the web for information using available search API backend.
@@ -702,6 +732,9 @@ def web_search_tool(query: str, limit: int = 5) -> str:
                 provider.name, query, limit,
             )
             response_data = provider.search(query, limit)
+            # Enforce the website blocklist on returned candidates (opt-in;
+            # a no-op unless the operator has configured it).
+            response_data = _filter_search_results_by_policy(response_data)
 
         debug_call_data["results_count"] = len(response_data.get("data", {}).get("web", []))
         result_json = json.dumps(response_data, indent=2, ensure_ascii=False)
@@ -802,17 +835,39 @@ async def web_extract_tool(
     try:
         logger.info("Extracting content from %d URL(s)", len(normalized_urls))
 
-        # ── SSRF protection — filter out private/internal URLs before any backend ──
+        # ── Pre-dispatch URL gate — reject targets before any backend sees them.
+        #    Two independent checks, each producing a per-URL error entry:
+        #      1. SSRF — private/internal network addresses (always on).
+        #      2. Website policy — the operator blocklist (opt-in, disabled by
+        #         default, so a no-op unless configured). Enforced here so the
+        #         blocklist covers every extract backend uniformly instead of
+        #         relying on each provider to re-implement the gate. ──
         safe_urls = []
-        ssrf_blocked: List[Dict[str, Any]] = []
+        blocked_before_dispatch: List[Dict[str, Any]] = []
         for url in normalized_urls:
             if not await async_is_safe_url(url):
-                ssrf_blocked.append({
+                blocked_before_dispatch.append({
                     "url": url, "title": "", "content": "",
                     "error": "Blocked: URL targets a private or internal network address",
                 })
-            else:
-                safe_urls.append(url)
+                continue
+            policy_block = check_website_access(url)
+            if policy_block:
+                logger.info(
+                    "Blocked web_extract for %s by rule '%s' from %s",
+                    policy_block["host"], policy_block["rule"], policy_block["source"],
+                )
+                blocked_before_dispatch.append({
+                    "url": url, "title": "", "content": "",
+                    "error": policy_block["message"],
+                    "blocked_by_policy": {
+                        "host": policy_block["host"],
+                        "rule": policy_block["rule"],
+                        "source": policy_block["source"],
+                    },
+                })
+                continue
+            safe_urls.append(url)
 
         # Dispatch only safe URLs to the configured backend
         if not safe_urls:
@@ -825,8 +880,10 @@ async def web_extract_tool(
             # registry lookup + delegation. Some providers' extract() is
             # async (parallel, firecrawl), others sync (exa, tavily) — we
             # detect coroutine functions and await; sync functions run
-            # inline (the policy gate, SSRF re-check, etc. live inside the
-            # provider itself for the firecrawl per-URL loop).
+            # inline. The website-policy blocklist and the initial SSRF check
+            # are enforced above (pre-dispatch) so they cover every backend;
+            # the firecrawl per-URL loop additionally re-checks the final URL
+            # after any redirect.
             _ensure_web_plugins_loaded()
             from agent.web_search_registry import (
                 get_active_extract_provider,
@@ -906,9 +963,9 @@ async def web_extract_tool(
                     provider.extract, safe_urls, format=format
                 )
 
-        # Merge any SSRF-blocked results back in
-        if ssrf_blocked:
-            results = ssrf_blocked + results
+        # Merge the pre-dispatch blocked results (SSRF + website policy) back in
+        if blocked_before_dispatch:
+            results = blocked_before_dispatch + results
 
         response = {"results": results}
         

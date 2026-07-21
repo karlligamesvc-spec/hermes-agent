@@ -513,3 +513,243 @@ def test_check_website_access_fails_open_on_malformed_config(tmp_path, monkeypat
     # With default path, errors are caught and fail open
     result = check_website_access("https://example.com")
     assert result is None  # allowed, not crashed
+
+
+# ── Central web_tools gate ────────────────────────────────────────────────
+#
+# The per-URL policy gate historically lived only inside the firecrawl
+# provider, so the blocklist was silently bypassable via any other extract
+# backend (tavily / exa / parallel) and via web_search entirely. These tests
+# cover the central gate in tools.web_tools that closes that gap: it filters
+# both the extract input URLs and the search result URLs, for every backend.
+
+
+def _search_payload(urls):
+    return {
+        "success": True,
+        "data": {
+            "web": [
+                {"title": f"t{i}", "url": url, "description": "d", "position": i}
+                for i, url in enumerate(urls, start=1)
+            ]
+        },
+    }
+
+
+def _block_hosts(*hosts):
+    """Return a check_website_access stand-in that blocks the given hosts."""
+
+    def _check(url):
+        for host in hosts:
+            if host in url:
+                return {
+                    "host": host,
+                    "rule": host,
+                    "source": "config",
+                    "message": f"Blocked by website policy: '{host}' matched rule '{host}' from config",
+                }
+        return None
+
+    return _check
+
+
+@pytest.mark.parametrize(
+    "blocked_hosts, input_urls, expected_urls",
+    [
+        # Nothing on the blocklist (e.g. disabled) → every result kept.
+        ((), ["https://a.test/1", "https://b.test/2"], ["https://a.test/1", "https://b.test/2"]),
+        # Target host on the list → only that result is dropped.
+        (
+            ("blocked.test",),
+            ["https://ok.test/1", "https://blocked.test/2", "https://fine.test/3"],
+            ["https://ok.test/1", "https://fine.test/3"],
+        ),
+        # Allowed hosts never false-positive while a blocklist is active.
+        (
+            ("blocked.test",),
+            ["https://ok.test/1", "https://fine.test/2"],
+            ["https://ok.test/1", "https://fine.test/2"],
+        ),
+        # Subdomain of a blocked parent is dropped too (delegated to the gate).
+        (
+            ("blocked.test",),
+            ["https://cdn.blocked.test/1", "https://ok.test/2"],
+            ["https://ok.test/2"],
+        ),
+    ],
+)
+def test_filter_search_results_by_policy_table(monkeypatch, blocked_hosts, input_urls, expected_urls):
+    from tools import web_tools
+
+    monkeypatch.setattr(web_tools, "check_website_access", _block_hosts(*blocked_hosts))
+
+    filtered = web_tools._filter_search_results_by_policy(_search_payload(input_urls))
+
+    assert [item["url"] for item in filtered["data"]["web"]] == expected_urls
+
+
+def test_filter_search_results_by_policy_ignores_error_shaped_response(monkeypatch):
+    """An error dict (no data.web) is passed through untouched — and the
+    policy gate is never consulted for it."""
+    from tools import web_tools
+
+    monkeypatch.setattr(
+        web_tools,
+        "check_website_access",
+        lambda url: pytest.fail("policy must not be consulted without result URLs"),
+    )
+
+    payload = {"success": False, "error": "No web search provider configured."}
+    assert web_tools._filter_search_results_by_policy(payload) == payload
+
+
+class _StubSearchProvider:
+    """Minimal search provider returning a fixed candidate list."""
+
+    name = "stub"
+
+    def __init__(self, urls):
+        self._urls = urls
+
+    def supports_search(self):
+        return True
+
+    def search(self, query, limit):
+        return _search_payload(self._urls)
+
+
+def _install_stub_search_provider(monkeypatch, urls):
+    from tools import web_tools
+    import agent.web_search_registry as registry
+
+    # Force the active-provider walk to resolve to our stub regardless of config.
+    monkeypatch.setattr(web_tools, "_get_search_backend", lambda: "")
+    monkeypatch.setattr(registry, "get_active_search_provider", lambda: _StubSearchProvider(urls))
+    monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
+
+
+def test_web_search_tool_drops_blocklisted_results(monkeypatch):
+    from tools import web_tools
+
+    _install_stub_search_provider(
+        monkeypatch,
+        ["https://allowed.test/a", "https://blocked.test/b", "https://also-allowed.test/c"],
+    )
+    monkeypatch.setattr(web_tools, "check_website_access", _block_hosts("blocked.test"))
+
+    result = json.loads(web_tools.web_search_tool("q", limit=5))
+
+    urls = [item["url"] for item in result["data"]["web"]]
+    assert urls == ["https://allowed.test/a", "https://also-allowed.test/c"]
+
+
+def test_web_search_tool_keeps_all_results_when_blocklist_disabled(monkeypatch):
+    """Hard premise: with no blocklist configured (default), nothing is
+    filtered — zero behavior change. Uses the real, disabled policy."""
+    from tools import web_tools, website_policy
+
+    _install_stub_search_provider(
+        monkeypatch,
+        ["https://allowed.test/a", "https://blocked.test/b"],
+    )
+    # Fresh per-test HERMES_HOME has no config.yaml → policy disabled.
+    website_policy.invalidate_cache()
+
+    result = json.loads(web_tools.web_search_tool("q", limit=5))
+
+    urls = [item["url"] for item in result["data"]["web"]]
+    assert urls == ["https://allowed.test/a", "https://blocked.test/b"]
+
+
+class TestWebExtractCentralPolicyGate:
+    """The pre-dispatch website-policy gate in ``web_extract_tool``.
+
+    Distinct from ``TestWebToolPolicy`` (which patches the firecrawl
+    provider's own per-URL gate): these patch the CENTRAL gate in
+    ``tools.web_tools``, which is what makes the blocklist cover every
+    extract backend rather than firecrawl alone.
+    """
+
+    _register_providers = staticmethod(register_all_web_providers)
+
+    @pytest.fixture(autouse=True)
+    def _populate_web_registry(self):
+        self._register_providers()
+        yield
+        from agent.web_search_registry import _reset_for_tests
+        _reset_for_tests()
+
+    @pytest.mark.asyncio
+    async def test_central_gate_filters_blocked_and_extracts_allowed(self, monkeypatch):
+        from tools import web_tools
+        from plugins.web.firecrawl import provider as firecrawl_provider
+
+        async def _allow_ssrf(_url: str) -> bool:
+            return True
+
+        monkeypatch.setattr(web_tools, "async_is_safe_url", _allow_ssrf)
+        monkeypatch.setattr(firecrawl_provider, "is_safe_url", lambda url: True)
+
+        # Central gate blocks only blocked.test; the provider-level gate stays
+        # permissive so the CENTRAL gate is unambiguously what we exercise.
+        monkeypatch.setattr(web_tools, "check_website_access", _block_hosts("blocked.test"))
+        monkeypatch.setattr(firecrawl_provider, "check_website_access", lambda url: None)
+
+        scraped = []
+
+        class FakeFirecrawlClient:
+            def scrape(self, url, formats):
+                scraped.append(url)
+                return {
+                    "markdown": "allowed content",
+                    "metadata": {"title": "Allowed", "sourceURL": url},
+                }
+
+        monkeypatch.setattr(firecrawl_provider, "_get_firecrawl_client", lambda: FakeFirecrawlClient())
+        monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
+
+        result = json.loads(
+            await web_tools.web_extract_tool(["https://blocked.test/page", "https://allowed.test/page"])
+        )
+        by_url = {r["url"]: r for r in result["results"]}
+
+        # Blocked URL never reached the backend and is reported as a policy block.
+        assert "https://blocked.test/page" not in scraped
+        assert by_url["https://blocked.test/page"]["content"] == ""
+        assert by_url["https://blocked.test/page"]["blocked_by_policy"]["rule"] == "blocked.test"
+        assert "Blocked by website policy" in by_url["https://blocked.test/page"]["error"]
+        # Allowed URL passed the central gate and was extracted normally.
+        assert scraped == ["https://allowed.test/page"]
+        assert by_url["https://allowed.test/page"]["content"] == "allowed content"
+
+    @pytest.mark.asyncio
+    async def test_central_gate_precedes_backend_selection(self, monkeypatch):
+        """A fully-blocked batch is rejected before any extract backend is
+        selected — proving the gate is central and backend-agnostic, so
+        tavily / exa / parallel are covered without re-implementing it."""
+        from tools import web_tools
+
+        async def _allow_ssrf(_url: str) -> bool:
+            return True
+
+        monkeypatch.setattr(web_tools, "async_is_safe_url", _allow_ssrf)
+        monkeypatch.setattr(web_tools, "check_website_access", _block_hosts("blocked.test"))
+        monkeypatch.setattr(
+            web_tools,
+            "_get_extract_backend",
+            lambda: pytest.fail("backend must not be selected when every URL is blocked"),
+        )
+        monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
+
+        result = json.loads(
+            await web_tools.web_extract_tool(["https://blocked.test/a", "https://blocked.test/b"])
+        )
+
+        assert {r["url"] for r in result["results"]} == {
+            "https://blocked.test/a",
+            "https://blocked.test/b",
+        }
+        for entry in result["results"]:
+            assert entry["blocked_by_policy"]["rule"] == "blocked.test"
+            assert entry["content"] == ""
