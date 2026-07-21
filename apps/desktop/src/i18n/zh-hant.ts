@@ -1641,6 +1641,18 @@ export const zhHant = defineLocale({
     snippetsDesc: '選擇一個起始提示詞放入輸入框。',
     dropFiles: '拖入資料、連結或聊天記錄',
     dropSession: '拖曳以連結此聊天',
+    capabilities: {
+      enabledLabel: '已啟用',
+      unused: '未啟用技能',
+      connectors: '連接器',
+      connectorsHint: '飛書 · 微信…',
+      noneEnabled: '尚未啟用任何技能',
+      browseDesc: '撥開開關即啟用(對新工作階段生效),並升到選單第一層。',
+      searchPlaceholder: '搜尋技能…',
+      allEnabled: '技能都已啟用 🎉',
+      loading: '正在載入技能…',
+      toggle: name => `啟用 ${name}`
+    },
     snippets: {
       codeReview: {
         label: '程式碼審查',

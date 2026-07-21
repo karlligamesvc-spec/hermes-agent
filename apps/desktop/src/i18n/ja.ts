@@ -1692,6 +1692,18 @@ export const ja = defineLocale({
     snippetsDesc: 'スターターのプロンプトをコンポーザーに挿入します。',
     dropFiles: '資料・リンク・チャット履歴をドロップ',
     dropSession: 'ドロップしてこのチャットをリンク',
+    capabilities: {
+      enabledLabel: '有効',
+      unused: '未使用のスキル',
+      connectors: 'コネクタ',
+      connectorsHint: 'Feishu · WeChat…',
+      noneEnabled: '有効なスキルはまだありません',
+      browseDesc: 'オンにすると新しいセッションで有効になり、このメニューの一段目に上がります。',
+      searchPlaceholder: 'スキルを検索…',
+      allEnabled: 'すべてのスキルが有効です 🎉',
+      loading: 'スキルを読み込み中…',
+      toggle: name => `${name} を有効化`
+    },
     snippets: {
       codeReview: {
         label: 'コードレビュー',
