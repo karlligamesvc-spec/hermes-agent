@@ -17,12 +17,19 @@ plugins:
     # picker cache prewarm, so the denylist applies before any startup fetch.
     - apex-overlay
     # ApexNodes 平台工具(P1,DESKTOP-CLOUD-CAPABILITY-PARITY-PD):社媒数据/
-    # 下载转写/文生视频。默认经平台工具网关(api.apex-nodes.com /tools/v1,
+    # 下载转写/文生视频/文生图。默认经平台工具网关(api.apex-nodes.com /tools/v1,
     # 云容器用 TOOLS_GATEWAY_BASE 指内网 base;TOOLS_GATEWAY_DISABLED=1 回退
     # 旧 master 直连)。vendor key 不落本机;鉴权用登录后的 Agent API key。
     - apexnodes-douyin-tools
     - apexnodes-social-tools
     - apexnodes-video-tools
+    - apexnodes-image-tools
+    # ApexNodes 本地文档导出工具(hc-565):把结构化长回复渲染成 .xlsx/.pptx/.docx
+    # 文件,经 MEDIA: 交付。纯本地(不走网关、无 vendor 调用);依赖随桌面装机自带
+    # ([file-export] extra)。doc_file_write 在桌面(HERMES_DESKTOP=1)与非飞书 IM 入口显形。
+    - apexnodes-xlsx-file-write
+    - apexnodes-pptx-file-write
+    - apexnodes-doc-file-write
 
 # =============================================================================
 # Model Configuration

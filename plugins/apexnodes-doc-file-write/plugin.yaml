@@ -1,0 +1,7 @@
+name: apexnodes-doc-file-write
+version: "0.1.0"
+description: >-
+  Render a long structured reply to a .docx file for delivery on non-Feishu IM
+  entries (WeChat/QQ/WeCom/DingTalk), where a Feishu doc link would be unopenable.
+provides_tools:
+  - doc_file_write

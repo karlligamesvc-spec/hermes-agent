@@ -1,0 +1,5 @@
+name: apexnodes-image-tools
+version: "0.1.0"
+description: "Text-to-image generation (hc-565). P1 gateway mode (default) calls the ApexNodes tools gateway /tools/v1/image/generate; legacy Scheduler endpoint path kept behind TOOLS_GATEWAY_DISABLED=1 (cloud rollback channel). Vendor keys (agnes / Nano Banana) never leave the cloud."
+provides_tools:
+  - generate_image
