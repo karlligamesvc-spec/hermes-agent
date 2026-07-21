@@ -1573,6 +1573,27 @@ export const en: Translations = {
     title: 'What should we do?'
   },
 
+  scenarios: {
+    button: 'Scenarios',
+    menuAria: 'Scenarios',
+    searchPlaceholder: 'Search scenarios…',
+    noMatches: 'No matching scenarios',
+    comingSoon: 'Coming soon',
+    allScenarios: 'All scenarios',
+    sample: 'Sample',
+    detailHeading: 'Scenario details',
+    labelCommand: 'Command',
+    labelInput: 'Input',
+    labelOutput: 'Output',
+    inputNone: 'No input needed — runs right away',
+    use: 'Use scenario',
+    channelsTitle: 'Channels · where your agent lives',
+    connectTitle: 'Connect your agent',
+    phoneRemote: 'Phone remote',
+    remoteOn: 'On · /cc',
+    bindCta: 'Scan to bind'
+  },
+
   composer: {
     message: 'Message',
     projectPicker: {

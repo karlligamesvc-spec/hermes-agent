@@ -1742,6 +1742,27 @@ export const zh: Translations = {
     title: '我们该做什么？'
   },
 
+  scenarios: {
+    button: '场景',
+    menuAria: '场景',
+    searchPlaceholder: '搜索场景…',
+    noMatches: '没有匹配的场景',
+    comingSoon: '即将上线',
+    allScenarios: '全部场景',
+    sample: '样例',
+    detailHeading: '场景详情',
+    labelCommand: '口令',
+    labelInput: '输入',
+    labelOutput: '产出',
+    inputNone: '无需参数，直接出结果',
+    use: '使用场景',
+    channelsTitle: '渠道 · 分身在哪',
+    connectTitle: '连接你的分身',
+    phoneRemote: '手机遥控',
+    remoteOn: '开 · /cc',
+    bindCta: '扫码绑定'
+  },
+
   composer: {
     message: '消息',
     projectPicker: {

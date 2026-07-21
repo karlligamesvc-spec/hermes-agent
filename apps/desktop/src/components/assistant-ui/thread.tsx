@@ -197,8 +197,15 @@ export const Thread: FC<{
   )
 
   const emptyPlaceholder = intro ? (
-    <div className="flex min-h-0 w-full flex-col items-center justify-center pt-[var(--composer-measured-height)]">
-      <Intro {...intro} />
+    // Scroll-safe centering: the greeting alone centers as before, but the
+    // hc-554 scenario shelf can make the block taller than the viewport — the
+    // outer scroll + min-h-full inner center-if-fits/scroll-if-not pattern keeps
+    // the top reachable (a plain justify-center flex clips it). Symmetric
+    // composer-height padding clears the floating composer top and bottom.
+    <div className="min-h-0 w-full overflow-y-auto">
+      <div className="flex min-h-full w-full flex-col items-center justify-center py-[var(--composer-measured-height)]">
+        <Intro {...intro} />
+      </div>
     </div>
   ) : undefined
 

@@ -58,6 +58,7 @@ import { $threadScrolledUp } from '@/store/thread-scroll'
 import { useTheme } from '@/themes'
 
 import { extractDroppedFiles, HERMES_PATHS_MIME, partitionDroppedFiles } from '../hooks/use-composer-actions'
+import { ScenarioButton } from '../scenarios/scenario-button'
 
 import { ApprovalPill } from './approval-pill'
 import { AttachmentList } from './attachments'
@@ -1956,6 +1957,10 @@ export function ChatBar({
                 >
                   <div className="flex items-center gap-1 [grid-area:menu]">
                     {contextMenu}
+                    {/* hc-554 场景入口副入口 — self-contained ✦ button + menu; single
+                        mount here (kept minimal to reduce overlap with hc-572's
+                        composer "+" menu, which touches the attachment button). */}
+                    <ScenarioButton disabled={disabled} />
                     <ApprovalPill disabled={disabled} />
                   </div>
                   <div className="min-w-0 [grid-area:input]">{input}</div>

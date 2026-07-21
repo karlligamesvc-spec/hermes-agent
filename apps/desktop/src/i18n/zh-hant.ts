@@ -1506,6 +1506,27 @@ export const zhHant = defineLocale({
     title: '我們該做什麼？'
   },
 
+  scenarios: {
+    button: '場景',
+    menuAria: '場景',
+    searchPlaceholder: '搜尋場景…',
+    noMatches: '沒有符合的場景',
+    comingSoon: '即將上線',
+    allScenarios: '全部場景',
+    sample: '範例',
+    detailHeading: '場景詳情',
+    labelCommand: '口令',
+    labelInput: '輸入',
+    labelOutput: '產出',
+    inputNone: '無需參數，直接出結果',
+    use: '使用場景',
+    channelsTitle: '管道 · 分身在哪',
+    connectTitle: '連接你的分身',
+    phoneRemote: '手機遙控',
+    remoteOn: '開 · /cc',
+    bindCta: '掃碼綁定'
+  },
+
   composer: {
     message: '訊息',
     projectPicker: {
