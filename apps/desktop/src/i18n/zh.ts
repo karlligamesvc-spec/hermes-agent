@@ -1898,7 +1898,12 @@ export const zh: Translations = {
       searchPlaceholder: '搜索技能…',
       allEnabled: '技能都已启用 🎉',
       loading: '正在加载技能…',
-      toggle: name => `启用 ${name}`
+      toggle: name => `启用 ${name}`,
+      generateLabel: '生成',
+      generateImage: '图片',
+      generateVideo: '视频',
+      generateImageStarter: '我想生成一张图片,想法是:',
+      generateVideoStarter: '我想做一个视频,想法是:'
     },
     snippets: {
       codeReview: {

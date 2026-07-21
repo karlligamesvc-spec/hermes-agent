@@ -7,7 +7,7 @@ import {
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import type * as React from 'react'
-import { Suspense, useCallback, useMemo, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { Thread } from '@/components/assistant-ui/thread'
@@ -54,7 +54,7 @@ import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitle
 import { ChatDropOverlay } from './chat-drop-overlay'
 import { ChatSwapOverlay } from './chat-swap-overlay'
 import { ChatBar, ChatBarFallback } from './composer'
-import { requestComposerInsert, requestComposerInsertRefs } from './composer/focus'
+import { onComposerSubmitRequest, requestComposerInsert, requestComposerInsertRefs } from './composer/focus'
 import { droppedFileInlineRefs, type SessionDragPayload, sessionInlineRef } from './composer/inline-refs'
 import type { ChatBarState } from './composer/types'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
@@ -414,6 +414,10 @@ export function ChatView({
   const onDropSession = useCallback((session: SessionDragPayload) => {
     requestComposerInsertRefs([sessionInlineRef(session)], { target: 'main' })
   }, [])
+
+  // Inline message-stream controls (e.g. a generation ladder card's priced
+  // button) submit a fresh user turn through the same path as the composer.
+  useEffect(() => onComposerSubmitRequest(text => void onSubmit(text)), [onSubmit])
 
   const { dragKind, dropHandlers } = useFileDropZone({ enabled: showChatBar, onDropFiles, onDropSession })
 

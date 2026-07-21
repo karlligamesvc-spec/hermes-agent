@@ -1731,7 +1731,12 @@ export const en: Translations = {
       searchPlaceholder: 'Search skills…',
       allEnabled: 'Every skill is enabled 🎉',
       loading: 'Loading skills…',
-      toggle: (name: string) => `Enable ${name}`
+      toggle: (name: string) => `Enable ${name}`,
+      generateLabel: 'Generate',
+      generateImage: 'Image',
+      generateVideo: 'Video',
+      generateImageStarter: "I want to generate an image. Here's the idea: ",
+      generateVideoStarter: "I want to make a video. Here's the idea: "
     },
     snippets: {
       codeReview: {

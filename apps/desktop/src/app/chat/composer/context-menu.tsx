@@ -25,11 +25,13 @@ import {
   MessageCircle,
   MessageSquareText,
   Package,
-  Sparkles
+  Sparkles,
+  Video
 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { GHOST_ICON_BTN } from './controls'
+import { requestComposerFocus, requestComposerInsert } from './focus'
 import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillCatalog, useSkillCatalog } from './skill-catalog'
 import type { ChatBarState } from './types'
@@ -63,6 +65,15 @@ export function ContextMenu({
   const [snippetsOpen, setSnippetsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [browseOpen, setBrowseOpen] = useState(false)
+
+  // Seed the composer with a generation opener and focus it, then close the
+  // menu. Prefill (not auto-send) so the user finishes describing the idea —
+  // the ladder's stage 0. The agent picks it up and returns the first card.
+  const startGeneration = (starter: string) => {
+    requestComposerInsert(starter, { mode: 'block', target: 'main' })
+    requestComposerFocus('main')
+    setMenuOpen(false)
+  }
 
   // Skills load lazily the first time the menu or its browse dialog opens.
   const catalog = useSkillCatalog(menuOpen || browseOpen, {
@@ -119,6 +130,22 @@ export function ContextMenu({
           </ContextMenuItem>
           <ContextMenuItem icon={MessageSquareText} onSelect={() => setSnippetsOpen(true)}>
             {c.promptSnippets}
+          </ContextMenuItem>
+
+          <DropdownMenuSeparator />
+
+          {/* Zone 1b — generate image / video. The generation entry lives in the
+              unified "+" menu: picking one injects a stage-0 opener into the
+              composer and kicks off the ladder (no param/model chips here — the
+              ladder's own cards carry those). */}
+          <DropdownMenuLabel className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground/85">
+            {cap.generateLabel}
+          </DropdownMenuLabel>
+          <ContextMenuItem icon={ImageIcon} onSelect={() => startGeneration(cap.generateImageStarter)}>
+            {cap.generateImage}
+          </ContextMenuItem>
+          <ContextMenuItem icon={Video} onSelect={() => startGeneration(cap.generateVideoStarter)}>
+            {cap.generateVideo}
           </ContextMenuItem>
 
           <DropdownMenuSeparator />
