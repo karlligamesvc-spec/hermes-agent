@@ -81,6 +81,7 @@ import { SidebarPanelLabel } from '../../shell/sidebar-label'
 import type { SidebarNavItem } from '../../types'
 
 import { AccountPanel } from './account-panel'
+import { SidebarChannelStatus } from './channel-status'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { resolveManualSessionOrderIds } from './order'
 import { RuntimeUpdatePill } from './runtime-update-pill'
@@ -737,6 +738,10 @@ export function ChatSidebar({
                 background check finds a newer runtime, then a one-click apply
                 capsule sits directly above the account row. */}
             <RuntimeUpdatePill />
+            {/* hc-554 显化 — "渠道 · 分身在哪": channel presence (飞书/微信/手机遥控)
+                above the account row. Self-gates to nothing when no channel
+                bridge exists. */}
+            <SidebarChannelStatus />
             {/* Codex-style bottom-left account row (avatar + name + email →
                 popover menu). Renders only on managed builds when signed in; the
                 auth gate covers the signed-out case. Profile management lives in

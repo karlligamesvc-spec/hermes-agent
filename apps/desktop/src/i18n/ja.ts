@@ -1557,6 +1557,27 @@ export const ja = defineLocale({
     title: '何をしましょうか？'
   },
 
+  scenarios: {
+    button: 'シナリオ',
+    menuAria: 'シナリオ',
+    searchPlaceholder: 'シナリオを検索…',
+    noMatches: '一致するシナリオがありません',
+    comingSoon: '近日公開',
+    allScenarios: 'すべてのシナリオ',
+    sample: 'サンプル',
+    detailHeading: 'シナリオの詳細',
+    labelCommand: 'コマンド',
+    labelInput: '入力',
+    labelOutput: '成果物',
+    inputNone: '入力不要 — すぐに実行',
+    use: 'このシナリオを使う',
+    channelsTitle: 'チャネル · 分身の所在',
+    connectTitle: '分身を接続',
+    phoneRemote: 'スマホ遠隔',
+    remoteOn: 'オン · /cc',
+    bindCta: 'スキャンして接続'
+  },
+
   composer: {
     message: 'メッセージ',
     projectPicker: {

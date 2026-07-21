@@ -1302,6 +1302,33 @@ export interface Translations {
     title: string
   }
 
+  // hc-554 场景入口 — zero-state scenario shelf, the composer ✦ menu, the
+  // scenario detail overlay, and the sidebar channel-status manifestation.
+  scenarios: {
+    // Composer ✦ button + two-level menu (screen ②).
+    button: string
+    menuAria: string
+    searchPlaceholder: string
+    noMatches: string
+    comingSoon: string
+    // Zero-state shelf (screen ①).
+    allScenarios: string
+    sample: string
+    // Scenario detail overlay (样例 → preview before use).
+    detailHeading: string
+    labelCommand: string
+    labelInput: string
+    labelOutput: string
+    inputNone: string
+    use: string
+    // ① manifestation: sidebar channel status + "connect your agent" strip.
+    channelsTitle: string
+    connectTitle: string
+    phoneRemote: string
+    remoteOn: string
+    bindCta: string
+  }
+
   composer: {
     message: string
     projectPicker: {

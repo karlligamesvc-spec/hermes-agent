@@ -271,5 +271,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
     searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)
+  },
+  // hc-554 场景目录 — the desktop scenario shelf + ✦ menu read the shared catalog
+  // (cloud GET /media/scenario-catalog, agent-key auth + TTL) via main, which
+  // owns the key + cache. Returns the catalog JSON or null (renderer falls back
+  // to its built-in catalog). See electron/apex-scenario-catalog.cjs.
+  scenarioCatalog: {
+    get: () => ipcRenderer.invoke('hermes:scenarioCatalog:get')
   }
 })

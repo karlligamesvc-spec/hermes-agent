@@ -72,6 +72,7 @@ const {
   normalizeStoredPluginsState,
   syncPlatformPlugins
 } = require('./apex-platform-plugins.cjs')
+const { loadScenarioCatalog } = require('./apex-scenario-catalog.cjs')
 const {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
@@ -9049,6 +9050,29 @@ ipcMain.handle('hermes:feishu:openBind', async () => {
 
 // list: display-only view of the local bindings (no network, no secret).
 ipcMain.handle('hermes:imEntry:list', async () => ({ channels: imEntryBoundList() }))
+
+// hc-554 场景目录 — serve the shared scenario catalog to the desktop shelf + ✦
+// menu. Authenticated with the managed relay key (the agent API key the
+// endpoint accepts as a Bearer). TTL-cached in-process; fail-open (any error
+// resolves to the last-known-good catalog or null, and the renderer falls back
+// to its built-in catalog). No secret crosses to the renderer — only the
+// catalog JSON does.
+const scenarioCatalogCache = {}
+ipcMain.handle('hermes:scenarioCatalog:get', async () => {
+  try {
+    const managed = resolveManagedConfig()
+
+    return await loadScenarioCatalog({
+      apiBase: apexApiBase(),
+      apiKey: managed.key,
+      fetchJson: apexAuthGetJson,
+      cache: scenarioCatalogCache,
+      log: message => console.log(message)
+    })
+  } catch {
+    return null
+  }
+})
 
 // Resolve + allowlist-gate one hc-417 provisioning URL. These calls carry the
 // login JWT (and the credentials call receives an app secret), so a URL that

@@ -257,6 +257,14 @@ declare global {
         // returns the most-installed themes.
         searchMarketplace: (query: string) => Promise<DesktopMarketplaceSearchItem[]>
       }
+      // hc-554 场景目录 — the desktop scenario shelf + ✦ menu read the shared
+      // catalog (cloud GET /media/scenario-catalog, agent-key auth + TTL) here.
+      // Main owns the agent key + TTL cache; the renderer gets the raw JSON and
+      // normalizes it. Returns null on any failure so the renderer falls back
+      // to its built-in catalog. Optional: an older main may not expose it.
+      scenarioCatalog?: {
+        get: () => Promise<unknown>
+      }
     }
   }
 }
