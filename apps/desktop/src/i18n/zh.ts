@@ -1749,7 +1749,22 @@ export const zh: Translations = {
     connectTitle: '连接你的分身',
     phoneRemote: '手机遥控',
     remoteOn: '开 · /cc',
-    bindCta: '扫码绑定'
+    bindCta: '扫码绑定',
+    remoteBannerTitle: '手机正遥控本机 · 飞书 /cc',
+    remoteBannerApproval: '危险操作仍需手动审批',
+    taskTargetCloud: '委派给云端分身',
+    taskTargetLocal: '直连本机',
+    taskStatus: { running: '执行中', done: '已完成', failed: '失败', queued: '排队中' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return '心跳 刚刚'}
+
+      if (seconds < 60) {return `心跳 ${seconds} 秒前`}
+
+      if (seconds < 3600) {return `心跳 ${Math.floor(seconds / 60)} 分钟前`}
+
+      return `心跳 ${Math.floor(seconds / 3600)} 小时前`
+    },
+    guideTitle: '连接一个渠道,分身随处可达'
   },
 
   composer: {

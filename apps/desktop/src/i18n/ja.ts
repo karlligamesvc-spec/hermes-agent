@@ -1565,7 +1565,22 @@ export const ja = defineLocale({
     connectTitle: '分身を接続',
     phoneRemote: 'スマホ遠隔',
     remoteOn: 'オン · /cc',
-    bindCta: 'スキャンして接続'
+    bindCta: 'スキャンして接続',
+    remoteBannerTitle: 'スマホがこの端末を遠隔操作中 · Feishu /cc',
+    remoteBannerApproval: '危険な操作は手動承認が必要です',
+    taskTargetCloud: 'クラウド分身に委任',
+    taskTargetLocal: 'この端末で直結',
+    taskStatus: { running: '実行中', done: '完了', failed: '失敗', queued: '待機中' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return 'ハートビート たった今'}
+
+      if (seconds < 60) {return `ハートビート ${seconds}秒前`}
+
+      if (seconds < 3600) {return `ハートビート ${Math.floor(seconds / 60)}分前`}
+
+      return `ハートビート ${Math.floor(seconds / 3600)}時間前`
+    },
+    guideTitle: 'チャネルを接続すれば、分身がどこでも届く'
   },
 
   composer: {

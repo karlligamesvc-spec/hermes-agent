@@ -1513,7 +1513,22 @@ export const zhHant = defineLocale({
     connectTitle: '連接你的分身',
     phoneRemote: '手機遙控',
     remoteOn: '開 · /cc',
-    bindCta: '掃碼綁定'
+    bindCta: '掃碼綁定',
+    remoteBannerTitle: '手機正遙控本機 · 飛書 /cc',
+    remoteBannerApproval: '危險操作仍需手動審批',
+    taskTargetCloud: '委派給雲端分身',
+    taskTargetLocal: '直連本機',
+    taskStatus: { running: '執行中', done: '已完成', failed: '失敗', queued: '排隊中' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return '心跳 剛剛'}
+
+      if (seconds < 60) {return `心跳 ${seconds} 秒前`}
+
+      if (seconds < 3600) {return `心跳 ${Math.floor(seconds / 60)} 分鐘前`}
+
+      return `心跳 ${Math.floor(seconds / 3600)} 小時前`
+    },
+    guideTitle: '連接一個管道,分身隨處可達'
   },
 
   composer: {

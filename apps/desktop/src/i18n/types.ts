@@ -1316,6 +1316,16 @@ export interface Translations {
     phoneRemote: string
     remoteOn: string
     bindCta: string
+    // ④ manifestation: direct-connect banner + delegated/direct task card +
+    // connection-guidance (unconnected onboarding).
+    remoteBannerTitle: string
+    remoteBannerApproval: string
+    taskTargetCloud: string
+    taskTargetLocal: string
+    taskStatus: { running: string; done: string; failed: string; queued: string }
+    /** Relative "heartbeat N ago" for a task card. */
+    heartbeatAgo: (seconds: number) => string
+    guideTitle: string
   }
 
   composer: {
