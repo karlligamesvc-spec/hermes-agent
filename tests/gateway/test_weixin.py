@@ -706,6 +706,170 @@ class TestWeixinBlankMessagePrevention:
             )
 
 
+class TestWeixinRuntimeBannerFiltering:
+    """hc-457: runtime session-reset / model-provider-context banners must
+    never reach a Weixin reply.
+
+    Weixin (iLink) replies are sent by WeixinAdapter directly — there is no
+    scheduler-side render layer in front of iLink the way there is for
+    Feishu, so hc-451's IM sanitizer (hermes-cloud's
+    app/services/response_sanitizer.py, RUNTIME_BANNER_PATTERNS) never sees
+    this text. These patterns are ported verbatim from hc-451 and applied at
+    WeixinAdapter.send() — the single choke point every outbound Weixin text
+    delivery passes through (live replies, send_weixin_direct() for cron/
+    subscription pushes, and the session-reset notice itself).
+
+    CLI/desktop output is a separate regression concern covered structurally,
+    not by a test in this file: CLI never calls WeixinAdapter.send() or
+    _strip_runtime_banners_for_weixin(), and the shared banner-construction
+    code (GatewayRunner._format_session_info() in gateway/run.py) is not
+    touched by this change — see tests/gateway/test_session_info.py, which
+    still asserts that function returns the raw, unfiltered ◆ Model/Provider/
+    Context text.
+    """
+
+    SESSION_RESET_BANNER = (
+        "◐ Session automatically reset (inactive for 24h). Conversation history "
+        "cleared.\nUse /resume to browse and restore a previous session.\n"
+        "Adjust reset timing in config.yaml under session_reset."
+    )
+    MODEL_DEBUG_HEADER = "◆ Model: deepseek-v4-pro\n◆ Provider: custom\n◆ Context: 1.0M tokens"
+
+    # -- Pure function: gateway.platforms.weixin._strip_runtime_banners_for_weixin --
+
+    def test_session_reset_banner_stripped(self):
+        text = f"{self.SESSION_RESET_BANNER}\n\n用户可见的真实回答内容。"
+        result = weixin._strip_runtime_banners_for_weixin(text)
+        assert "◐" not in result
+        assert "Session automatically reset" not in result
+        assert "/resume" not in result
+        assert "session_reset" not in result
+        assert result.strip() == "用户可见的真实回答内容。"
+
+    def test_model_debug_header_stripped(self):
+        text = f"{self.MODEL_DEBUG_HEADER}\n\n你好！这是我的回答正文。"
+        result = weixin._strip_runtime_banners_for_weixin(text)
+        assert "◆" not in result
+        assert "Model:" not in result
+        assert "Provider:" not in result
+        assert "Context:" not in result
+        assert "deepseek-v4-pro" not in result
+        assert "这是我的回答正文" in result
+
+    def test_both_banners_together_fully_stripped(self):
+        text = f"{self.SESSION_RESET_BANNER}\n{self.MODEL_DEBUG_HEADER}\n\n真实回答内容。"
+        result = weixin._strip_runtime_banners_for_weixin(text)
+        assert "◐" not in result
+        assert "◆" not in result
+        assert result.strip() == "真实回答内容。"
+
+    def test_banner_only_message_collapses_to_empty(self):
+        assert weixin._strip_runtime_banners_for_weixin(self.SESSION_RESET_BANNER) == ""
+
+    def test_glyph_only_removed_at_line_start_not_mid_sentence(self):
+        # Anchored to line-start (^): only removes a banner on its own line,
+        # matching how the runtime actually emits these — never a stray
+        # ◆/◐ glyph fused mid-sentence into unrelated text.
+        text = "你好！◆ Model: deepseek-v4-pro ◆ Provider: custom ◆ Context: 1.0M tokens\n\n正文"
+        assert weixin._strip_runtime_banners_for_weixin(text) == text
+
+    def test_empty_and_none_safe(self):
+        assert weixin._strip_runtime_banners_for_weixin("") == ""
+        assert weixin._strip_runtime_banners_for_weixin(None) is None
+
+    @pytest.mark.parametrize(
+        "safe_text",
+        [
+            # Similar vocabulary in organic prose — must NOT be touched.
+            "你的 Session 已经保存，如果想 reset 可以联系管理员。",
+            "我们的 Model 是 deepseek，Provider 是自建，这次 Context 比较长。",
+            "请使用 /resume 命令查看历史会话。",
+            "◐ 这是一个圆圈符号，不代表任何系统消息。",
+            "Model: gpt-4 是很强的模型，这里没有系统横幅前缀。",
+            "Use /resume to browse your previous conversations.",
+            "正常的微信回复内容，不含任何系统横幅。",
+        ],
+    )
+    def test_lookalike_organic_text_never_touched(self, safe_text):
+        assert weixin._strip_runtime_banners_for_weixin(safe_text) == safe_text
+
+    def test_disabled_via_env_falls_back_to_prior_behavior(self, monkeypatch):
+        monkeypatch.setenv("WEIXIN_FILTER_RUNTIME_BANNERS", "false")
+        text = f"{self.SESSION_RESET_BANNER}\n\n正文"
+        assert weixin._strip_runtime_banners_for_weixin(text) == text
+
+    def test_enabled_by_default_without_env_set(self, monkeypatch):
+        monkeypatch.delenv("WEIXIN_FILTER_RUNTIME_BANNERS", raising=False)
+        text = f"{self.SESSION_RESET_BANNER}\n\n正文"
+        result = weixin._strip_runtime_banners_for_weixin(text)
+        assert "◐" not in result
+        assert "正文" in result
+
+    # -- Integration: WeixinAdapter.send() (the actual direct-send path) --
+
+    def _connected_adapter(self) -> WeixinAdapter:
+        adapter = _make_adapter()
+        adapter._session = object()
+        adapter._send_session = adapter._session
+        adapter._token = "test-token"
+        adapter._base_url = "https://weixin.example.com"
+        adapter._token_store.get = lambda account_id, chat_id: "ctx-token"
+        return adapter
+
+    @patch("gateway.platforms.weixin._send_message", new_callable=AsyncMock)
+    def test_send_swallows_banner_only_content_without_calling_ilink(self, send_message_mock):
+        """The session-reset notice, unaccompanied by real content, must
+        never reach iLink — mirrors hc-451's banner-only-collapses-to-empty
+        case, verified here at the actual outbound send() boundary."""
+        adapter = self._connected_adapter()
+
+        result = asyncio.run(adapter.send("wxid_test123", self.SESSION_RESET_BANNER))
+
+        assert result.success is True
+        send_message_mock.assert_not_awaited()
+
+    @patch("gateway.platforms.weixin._send_message", new_callable=AsyncMock)
+    def test_send_strips_banner_but_delivers_trailing_real_content(self, send_message_mock):
+        """The session-reset notice is followed by _format_session_info()'s
+        real session details (gateway/run.py appends it as
+        f"{notice}\\n\\n{session_info}") — that trailing content is real,
+        user-useful text and must still be delivered, banner-free."""
+        adapter = self._connected_adapter()
+        content = f"{self.SESSION_RESET_BANNER}\n\n下面是新会话的配置信息。"
+
+        result = asyncio.run(adapter.send("wxid_test123", content))
+
+        assert result.success is True
+        send_message_mock.assert_awaited_once()
+        delivered_text = send_message_mock.await_args.kwargs["text"]
+        assert "◐" not in delivered_text
+        assert "Session automatically reset" not in delivered_text
+        assert "下面是新会话的配置信息。" in delivered_text
+
+    @patch("gateway.platforms.weixin._send_message", new_callable=AsyncMock)
+    def test_send_delivers_normal_content_unchanged(self, send_message_mock):
+        adapter = self._connected_adapter()
+
+        result = asyncio.run(adapter.send("wxid_test123", "你好！很高兴为你服务。"))
+
+        assert result.success is True
+        send_message_mock.assert_awaited_once()
+        assert send_message_mock.await_args.kwargs["text"] == "你好！很高兴为你服务。"
+
+    @patch("gateway.platforms.weixin._send_message", new_callable=AsyncMock)
+    def test_send_with_filter_disabled_delivers_raw_banner(self, send_message_mock, monkeypatch):
+        """Env kill-switch parity with hc-451: WEIXIN_FILTER_RUNTIME_BANNERS=false
+        restores pre-hc-457 (unfiltered) behavior."""
+        monkeypatch.setenv("WEIXIN_FILTER_RUNTIME_BANNERS", "false")
+        adapter = self._connected_adapter()
+
+        result = asyncio.run(adapter.send("wxid_test123", self.SESSION_RESET_BANNER))
+
+        assert result.success is True
+        send_message_mock.assert_awaited_once()
+        assert "◐ Session automatically reset" in send_message_mock.await_args.kwargs["text"]
+
+
 class TestWeixinStreamingCursorSuppression:
     """WeChat doesn't support message editing — cursor must be suppressed."""
 
