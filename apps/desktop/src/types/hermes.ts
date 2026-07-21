@@ -690,6 +690,10 @@ export interface MoaConfigResponse {
     max_tokens: number
     reference_models: MoaModelSlot[]
     reference_temperature: number
+    /** Fan-out cadence: "user_turn" (advisors run once per user turn) vs the
+     *  runtime default "per_iteration". The silent multi-select composer pins
+     *  "user_turn" so cost is ~N per turn, not N × tool steps (hc-578). */
+    fanout?: string
   }>
   aggregator: MoaModelSlot
   aggregator_temperature: number
@@ -697,6 +701,7 @@ export interface MoaConfigResponse {
   max_tokens: number
   reference_models: MoaModelSlot[]
   reference_temperature: number
+  fanout?: string
 }
 
 export interface ModelAssignmentRequest {

@@ -589,27 +589,18 @@ export const en: Translations = {
       autoUseMain: 'auto · use main model',
       providerDefault: '(provider default)',
       requestFailed: 'Something went wrong — please try again.',
-      activate: 'Activate',
-      activating: 'Activating...',
-      setUpProvider: name => `Set up ${name}`,
-      pasteKeyPlaceholder: env => `Paste ${env}`,
-      needsApiKeyHint: name => `${name} needs an API key — set it up to choose a model.`,
-      oauthHint: name => `${name} signs in through your browser — APEX runs the flow for you.`,
       staleAux: (count, names, provider) =>
         `${count} auxiliary task${count === 1 ? '' : 's'} (${names}) still run on ${provider}, not your main model.`,
       staleAuxOtherProviders: 'other providers',
-      moa: {
-        title: 'Mixture of Agents',
-        desc: 'Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the acting model.',
-        presetPlaceholder: 'Preset',
-        setDefault: 'Set default',
-        newPresetPlaceholder: 'new preset',
-        addPreset: 'Add preset',
-        defaultLabel: 'Default:',
-        reference: index => `Reference ${index}`,
-        addReference: 'Add reference model',
-        aggregator: 'Aggregator'
-      },
+      selectTitle: 'Select models (multi-select)',
+      selectHint:
+        'Pick one for a direct connection; pick several and they answer together, each billed by actual usage.',
+      selectedSummary: count =>
+        `${count} models selected · they answer together, each billed to your ledger by its own actual usage.`,
+      byoTitle: 'My keys (BYO)',
+      byoHint: 'Use a model on your own key.',
+      byoMixNote: "Can't be combined with platform models yet in v1 — using them on their own is unaffected.",
+      noModels: 'No models available yet. Add a provider in Settings › Providers.',
       tasks: {
         vision: { label: 'Vision', hint: 'Image analysis' },
         web_extract: { label: 'Web extract', hint: 'Page summarization' },

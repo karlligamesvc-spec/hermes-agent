@@ -13,50 +13,56 @@ beforeAll(() => {
 const getGlobalModelInfo = vi.fn()
 const getGlobalModelOptions = vi.fn()
 const getAuxiliaryModels = vi.fn()
+const getMoaModels = vi.fn()
+const saveMoaModels = vi.fn()
 const setModelAssignment = vi.fn()
-const getRecommendedDefaultModel = vi.fn()
-const setEnvVar = vi.fn()
 const getHermesConfigRecord = vi.fn()
 const saveHermesConfig = vi.fn()
-const startManualProviderOAuth = vi.fn()
 
 vi.mock('@/hermes', () => ({
   getGlobalModelInfo: () => getGlobalModelInfo(),
   getGlobalModelOptions: () => getGlobalModelOptions(),
   getAuxiliaryModels: () => getAuxiliaryModels(),
+  getMoaModels: () => getMoaModels(),
+  saveMoaModels: (body: unknown) => saveMoaModels(body),
   setModelAssignment: (body: unknown) => setModelAssignment(body),
-  getRecommendedDefaultModel: (slug: string) => getRecommendedDefaultModel(slug),
-  setEnvVar: (key: string, value: string) => setEnvVar(key, value),
   getHermesConfigRecord: () => getHermesConfigRecord(),
   saveHermesConfig: (config: unknown) => saveHermesConfig(config)
 }))
 
-vi.mock('@/store/onboarding', () => ({
-  startManualProviderOAuth: (slug: string) => startManualProviderOAuth(slug)
+vi.mock('@/store/notifications', () => ({
+  notifyError: vi.fn()
 }))
 
+const MANAGED = 'custom:apex-nodes.com'
+
 beforeEach(() => {
+  // Main model is a hidden/foreign provider so the picker starts with an empty
+  // selection (clean slate for the toggle tests).
   getGlobalModelInfo.mockResolvedValue({ provider: 'nous', model: 'hermes-4' })
   getGlobalModelOptions.mockResolvedValue({
     providers: [
       {
-        name: 'Nous',
-        slug: 'nous',
-        models: ['hermes-4', 'hermes-4-mini'],
+        name: 'Apex-nodes.com',
+        slug: MANAGED,
+        is_user_defined: true,
         authenticated: true,
-        capabilities: { 'hermes-4': { reasoning: true, fast: true } }
+        models: ['deepseek-v4-pro-APEX', 'glm-5.2', 'qwen3.7-max', 'kimi-k2.6'],
+        capabilities: { 'deepseek-v4-pro-APEX': { reasoning: true, fast: true } }
       },
-      // An unconfigured api_key provider — surfaced by the full-universe payload.
-      { name: 'DeepSeek', slug: 'deepseek', models: [], authenticated: false, auth_type: 'api_key', key_env: 'DEEPSEEK_API_KEY' }
+      // A domestic BYO provider (the user's own key) — kept by the China-first filter.
+      { name: 'MiniMax', slug: 'minimax', authenticated: true, models: ['minimax-m2'] },
+      // A foreign provider — the China-first filter must hide it from the chips.
+      { name: 'OpenAI', slug: 'openai-codex', authenticated: true, models: ['gpt-5.5'] }
     ]
   })
   getAuxiliaryModels.mockResolvedValue({
     main: { provider: 'nous', model: 'hermes-4' },
     tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
   })
-  setModelAssignment.mockResolvedValue({ provider: 'nous', model: 'hermes-4', gateway_tools: [] })
-  getRecommendedDefaultModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-chat', free_tier: null })
-  setEnvVar.mockResolvedValue({ ok: true })
+  getMoaModels.mockResolvedValue(null)
+  saveMoaModels.mockImplementation((body: unknown) => Promise.resolve({ ok: true, ...(body as object) }))
+  setModelAssignment.mockResolvedValue({ provider: '', model: '', gateway_tools: [], stale_aux: [] })
   getHermesConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
   saveHermesConfig.mockResolvedValue({ ok: true })
 })
@@ -73,46 +79,124 @@ async function renderModelSettings() {
 }
 
 describe('ModelSettings', () => {
-  it('loads the current main model and lists the full provider universe', async () => {
+  it('renders platform model chips and hides foreign providers', async () => {
     await renderModelSettings()
 
-    await waitFor(() => expect(getGlobalModelInfo).toHaveBeenCalled())
-    await waitFor(() => expect(getGlobalModelOptions).toHaveBeenCalled())
-
-    // Open the provider Select — every provider from the full payload should be
-    // listed, including the unconfigured one with its "set up" hint.
-    const triggers = await screen.findAllByRole('combobox')
-    fireEvent.click(triggers[0])
-
-    // "Nous" shows in both the trigger and the open list; the unconfigured
-    // provider + its setup hint are the unique signal of the full universe.
-    expect((await screen.findAllByText('Nous')).length).toBeGreaterThan(0)
-    expect(await screen.findByText(/DeepSeek/)).toBeTruthy()
-    expect(await screen.findByText(/set up/)).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'DeepSeek V4 Pro' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'GLM 5.2' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Qwen3.7 Max' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Kimi K2.6' })).toBeTruthy()
+    // BYO (domestic own-key) is shown; the foreign provider is filtered out.
+    expect(screen.getByRole('button', { name: 'Minimax M2' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /GPT/ })).toBeNull()
   })
 
-  it('activates an unconfigured api_key provider inline by saving its key', async () => {
+  it('never surfaces any MoA / aggregator / preset terminology', async () => {
     await renderModelSettings()
+    await screen.findByRole('button', { name: 'GLM 5.2' })
 
-    await waitFor(() => expect(getGlobalModelOptions).toHaveBeenCalled())
+    // Select two platform models so the status line appears too.
+    fireEvent.click(screen.getByRole('button', { name: 'GLM 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
+    await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
 
-    // Open the provider Select and pick the unconfigured provider.
-    const triggers = screen.getAllByRole('combobox')
-    fireEvent.click(triggers[0])
-    const deepseekOption = await screen.findByText(/DeepSeek/)
-    fireEvent.click(deepseekOption)
+    expect(screen.queryByText(/mixture of agents|aggregator|reference model|preset|__auto__/i)).toBeNull()
+  })
 
-    // The inline key input appears for an api_key provider that needs setup.
-    const keyInput = await screen.findByPlaceholderText(/Paste DEEPSEEK_API_KEY/)
-    fireEvent.change(keyInput, { target: { value: 'sk-test-123' } })
+  it('applies a single platform model through the plain main-model path (no MoA)', async () => {
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
 
-    const activate = await screen.findByRole('button', { name: /Activate/ })
-    fireEvent.click(activate)
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenCalledWith({ model: 'glm-5.2', provider: MANAGED, scope: 'main' })
+    )
+    expect(saveMoaModels).not.toHaveBeenCalled()
+  })
 
-    await waitFor(() => expect(setEnvVar).toHaveBeenCalledWith('DEEPSEEK_API_KEY', 'sk-test-123'))
+  it('applies a single BYO model through the plain main-model path', async () => {
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'Minimax M2' }))
+
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenCalledWith({ model: 'minimax-m2', provider: 'minimax', scope: 'main' })
+    )
+    expect(saveMoaModels).not.toHaveBeenCalled()
+  })
+
+  it('composes a hidden user_turn MoA when a second platform model is picked', async () => {
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
+
+    // qwen3.7-max ranks highest → aggregator; glm-5.2 is the sole reference;
+    // fanout is pinned to user_turn (billing red line).
+    await waitFor(() =>
+      expect(saveMoaModels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          default_preset: '__auto__',
+          active_preset: '__auto__',
+          presets: expect.objectContaining({
+            __auto__: expect.objectContaining({
+              fanout: 'user_turn',
+              aggregator: { provider: MANAGED, model: 'qwen3.7-max' },
+              reference_models: [{ provider: MANAGED, model: 'glm-5.2' }]
+            })
+          })
+        })
+      )
+    )
+    // Activation switches the main slot onto the virtual moa provider.
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenCalledWith({ model: '__auto__', provider: 'moa', scope: 'main' })
+    )
+  })
+
+  it('normalizes the managed -APEX default to its routed id in MoA slots', async () => {
+    await renderModelSettings()
+    // deepseek-v4-pro-APEX + kimi-k2.6 → deepseek (rank 1) aggregates over kimi (rank 2).
+    fireEvent.click(await screen.findByRole('button', { name: 'DeepSeek V4 Pro' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Kimi K2.6' }))
+
+    await waitFor(() =>
+      expect(saveMoaModels).toHaveBeenCalledWith(
+        expect.objectContaining({
+          presets: expect.objectContaining({
+            __auto__: expect.objectContaining({
+              aggregator: { provider: MANAGED, model: 'deepseek-v4-pro' },
+              reference_models: [{ provider: MANAGED, model: 'kimi-k2.6' }]
+            })
+          })
+        })
+      )
+    )
+  })
+
+  it('grays out BYO models while 2+ platform models are selected', async () => {
+    await renderModelSettings()
+    const byo = (await screen.findByRole('button', { name: 'Minimax M2' })) as HTMLButtonElement
+    expect(byo.disabled).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'GLM 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
+
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Minimax M2' }) as HTMLButtonElement).disabled).toBe(true)
+    )
+    expect(screen.getByText(/can't be combined with platform models/i)).toBeTruthy()
+  })
+
+  it('shows the multi-model status summary once 2+ are selected', async () => {
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
+
+    expect(await screen.findByText(/2 models selected/i)).toBeTruthy()
   })
 
   it('writes the profile default speed (service_tier) when the fast switch is toggled', async () => {
+    // A managed main model with fast capability so the speed switch renders.
+    getGlobalModelInfo.mockResolvedValueOnce({ provider: MANAGED, model: 'deepseek-v4-pro-APEX' })
+
     await renderModelSettings()
     await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
 
@@ -126,17 +210,6 @@ describe('ModelSettings', () => {
     )
   })
 
-  it('hides the reasoning/speed defaults when the main model reports no capabilities', async () => {
-    getGlobalModelOptions.mockResolvedValueOnce({
-      providers: [{ name: 'Nous', slug: 'nous', models: ['hermes-4'], authenticated: true, capabilities: { 'hermes-4': { reasoning: false, fast: false } } }]
-    })
-
-    await renderModelSettings()
-    await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
-
-    expect(screen.queryByRole('switch')).toBeNull()
-  })
-
   it('renders the auxiliary task rows', async () => {
     await renderModelSettings()
 
@@ -145,50 +218,44 @@ describe('ModelSettings', () => {
   })
 
   it('assigns an auxiliary task to the main model via setModelAssignment', async () => {
+    getGlobalModelInfo.mockResolvedValueOnce({ provider: MANAGED, model: 'deepseek-v4-pro-APEX' })
     await renderModelSettings()
 
-    // One "Set to main" button per task slot; the first is Vision.
     const setToMainButtons = await screen.findAllByRole('button', { name: 'Set to main' })
     fireEvent.click(setToMainButtons[0])
 
     await waitFor(() =>
       expect(setModelAssignment).toHaveBeenCalledWith({
-        model: 'hermes-4',
-        provider: 'nous',
+        model: 'deepseek-v4-pro-APEX',
+        provider: MANAGED,
         scope: 'auxiliary',
         task: 'vision'
       })
     )
   })
 
-  it('warns when a main switch leaves auxiliary tasks pinned to another provider', async () => {
-    setModelAssignment.mockResolvedValueOnce({
-      provider: 'openrouter',
-      model: 'anthropic/claude-opus-4.7',
-      gateway_tools: [],
-      stale_aux: [{ task: 'compression', provider: 'nous', model: 'hermes-4' }]
-    })
-
-    await renderModelSettings()
-    await waitFor(() => expect(getGlobalModelInfo).toHaveBeenCalled())
-
-    const applyButton = await screen.findByRole('button', { name: 'Apply' })
-    fireEvent.click(applyButton)
-
-    // The switch-time notice names the pinned provider and offers a reset.
-    expect(await screen.findByText(/still run on/)).toBeTruthy()
-    expect(screen.getByText('nous')).toBeTruthy()
-  })
-
-  it('shows a persistent banner when a loaded aux slot mismatches the main provider', async () => {
-    getAuxiliaryModels.mockResolvedValueOnce({
-      main: { provider: 'nous', model: 'hermes-4' },
-      tasks: [{ task: 'curator', provider: 'openrouter', model: 'anthropic/claude-opus-4.7', base_url: '' }]
+  it('reconstructs the selection from an active __auto__ MoA preset on load', async () => {
+    getGlobalModelInfo.mockResolvedValueOnce({ provider: 'moa', model: '__auto__' })
+    getMoaModels.mockResolvedValueOnce({
+      default_preset: '__auto__',
+      active_preset: '__auto__',
+      presets: {
+        __auto__: {
+          reference_models: [{ provider: MANAGED, model: 'glm-5.2' }],
+          aggregator: { provider: MANAGED, model: 'qwen3.7-max' },
+          fanout: 'user_turn',
+          enabled: true
+        }
+      }
     })
 
     await renderModelSettings()
 
-    // Banner present on load, no switch required.
-    expect(await screen.findByText(/still run on/)).toBeTruthy()
+    // Both members show selected (aria-pressed), and the summary reflects 2.
+    const glm = await screen.findByRole('button', { name: 'GLM 5.2' })
+    const qwen = screen.getByRole('button', { name: 'Qwen3.7 Max' })
+    expect(glm.getAttribute('aria-pressed')).toBe('true')
+    expect(qwen.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText(/2 models selected/i)).toBeTruthy()
   })
 })

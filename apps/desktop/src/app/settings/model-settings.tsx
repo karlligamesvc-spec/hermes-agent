@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -10,18 +9,25 @@ import {
   getGlobalModelOptions,
   getHermesConfigRecord,
   getMoaModels,
-  getRecommendedDefaultModel,
   saveHermesConfig,
   saveMoaModels,
-  setEnvVar,
   setModelAssignment
 } from '@/hermes'
-import type { AuxiliaryModelsResponse, MoaConfigResponse, MoaModelSlot, ModelOptionProvider, StaleAuxAssignment } from '@/hermes'
+import type {
+  AuxiliaryModelsResponse,
+  MoaConfigResponse,
+  MoaModelSlot,
+  ModelInfoResponse,
+  ModelOptionProvider,
+  StaleAuxAssignment
+} from '@/hermes'
 import { useI18n } from '@/i18n'
-import { AlertTriangle, Cpu, Loader2 } from '@/lib/icons'
+import { AlertTriangle, Cpu } from '@/lib/icons'
+import { AUTO_PRESET_NAME, buildAutoMoaConfig, composeAutoMoa, routedModelId } from '@/lib/moa-compose'
+import { displayModelName } from '@/lib/model-status-label'
+import { filterPickerProviders, isManagedProviderSlug, isPickerVisibleProvider } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
-import { startManualLocalEndpoint, startManualProviderOAuth } from '@/store/onboarding'
 import type { HermesConfigRecord } from '@/types/hermes'
 
 import { CONTROL_TEXT } from './constants'
@@ -43,7 +49,8 @@ const effortLabelKey = (v: string) => (v === 'xhigh' ? 'max' : v) as 'high' | 'l
 // A provider row is "ready" to pick a model from when it reports models. The
 // backend now surfaces the full `hermes model` universe (every canonical
 // provider), so unconfigured providers come back with `authenticated:false`
-// and an empty `models` list — those need a setup step before a model exists.
+// and an empty `models` list — those need a setup step (Settings › Providers)
+// before a model exists here.
 function isProviderReady(p?: ModelOptionProvider): boolean {
   return !!p && (p.authenticated !== false || (p.models?.length ?? 0) > 0)
 }
@@ -67,6 +74,71 @@ const AUX_TASKS: readonly AuxTaskMeta[] = [
 ]
 
 const NO_PROVIDERS: readonly ModelOptionProvider[] = [{ name: '—', slug: '', models: [] }]
+
+const routedKey = (model: string): string => routedModelId(model).toLowerCase()
+
+/** A selectable model chip. `raw` is the id as it appears in the provider's
+ *  model list (what the single-model apply path sends verbatim — regression
+ *  red line); the MoA composer separately normalizes it to the routed id. */
+interface ModelChip {
+  provider: string
+  raw: string
+  label: string
+}
+
+/** Reconstruct the picker selection from the currently-applied main model so
+ *  reopening the page shows what is active. `provider === 'moa'` means a
+ *  composed multi-model preset is live — expand it back to its member set;
+ *  otherwise it's a single model (platform or BYO). Pure so it can be reasoned
+ *  about without the component. */
+function initialSelection(
+  info: Pick<ModelInfoResponse, 'model' | 'provider'>,
+  moa: MoaConfigResponse | null,
+  managedModels: readonly string[]
+): { platform: string[]; byo: MoaModelSlot | null } {
+  const rawByRouted = new Map<string, string>()
+  managedModels.forEach(raw => {
+    const key = routedKey(raw)
+
+    if (!rawByRouted.has(key)) {
+      rawByRouted.set(key, raw)
+    }
+  })
+
+  const provider = String(info.provider || '').trim().toLowerCase()
+
+  if (provider === 'moa') {
+    const preset = moa?.presets?.[info.model]
+
+    if (!preset) {
+      return { platform: [], byo: null }
+    }
+
+    const wanted = new Set<string>()
+
+    ;[...preset.reference_models, preset.aggregator].forEach(slot => wanted.add(routedKey(slot.model)))
+    // Emit in directory order so the composed aggregator stays deterministic.
+    const platform = managedModels.filter(raw => wanted.has(routedKey(raw)))
+
+    return { platform, byo: null }
+  }
+
+  if (!info.model || !provider) {
+    return { platform: [], byo: null }
+  }
+
+  if (isManagedProviderSlug(info.provider)) {
+    const raw = rawByRouted.get(routedKey(info.model)) ?? info.model
+
+    return { platform: [raw], byo: null }
+  }
+
+  if (isPickerVisibleProvider(info.provider)) {
+    return { platform: [], byo: { provider: info.provider, model: info.model } }
+  }
+
+  return { platform: [], byo: null }
+}
 
 interface StaleAuxWarningProps {
   applying: boolean
@@ -102,6 +174,38 @@ function StaleAuxWarning({ applying, onReset, slots, taskLabel }: StaleAuxWarnin
   )
 }
 
+interface ChipButtonProps {
+  active: boolean
+  disabled?: boolean
+  label: string
+  onClick: () => void
+}
+
+// One model chip. Selected = primary tint + check; disabled = grayed (BYO while
+// 2+ platform models are picked). Styling stays on semantic tokens so light/dark
+// both read correctly.
+function ChipButton({ active, disabled, label, onClick }: ChipButtonProps) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+        active
+          ? 'border-primary bg-primary/10 font-medium text-foreground'
+          : 'border-muted-foreground/25 text-foreground hover:border-primary/60',
+        disabled && 'cursor-not-allowed opacity-40 hover:border-muted-foreground/25'
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {active && <span aria-hidden className="text-primary">✓</span>}
+      {label}
+    </button>
+  )
+}
+
 interface ModelSettingsProps {
   /** Notified after the main model is applied, so live UI stores can sync. */
   onMainModelChanged?: (provider: string, model: string) => void
@@ -114,12 +218,13 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   const [error, setError] = useState('')
   const [mainModel, setMainModel] = useState<{ model: string; provider: string } | null>(null)
   const [providers, setProviders] = useState<ModelOptionProvider[]>([])
-  const [selectedProvider, setSelectedProvider] = useState('')
-  const [selectedModel, setSelectedModel] = useState('')
+  // Picker selection. Platform models (managed relay) multi-select; BYO stays
+  // single (they don't mix in v1 — MOA-INVISIBLE-DESIGN §9). `platformSel` holds
+  // the raw ids in directory order.
+  const [platformSel, setPlatformSel] = useState<string[]>([])
+  const [byoSel, setByoSel] = useState<MoaModelSlot | null>(null)
   const [auxiliary, setAuxiliary] = useState<AuxiliaryModelsResponse | null>(null)
   const [moa, setMoa] = useState<MoaConfigResponse | null>(null)
-  const [selectedMoaPreset, setSelectedMoaPreset] = useState('')
-  const [newMoaPresetName, setNewMoaPresetName] = useState('')
   // Full profile config, kept so the reasoning/speed defaults round-trip
   // (read agent.* → write back the whole record) like the generic config page.
   const [config, setConfig] = useState<HermesConfigRecord | null>(null)
@@ -129,10 +234,13 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   // Aux slots reported stale by the backend immediately after a main-model
   // switch (provider differs from the new main). Cleared on next switch/reset.
   const [switchStaleAux, setSwitchStaleAux] = useState<StaleAuxAssignment[]>([])
-  // Inline API-key entry for picking an unconfigured `api_key` provider in
-  // place — mirrors the onboarding ApiKeyForm but scoped to the model picker.
-  const [apiKeyDraft, setApiKeyDraft] = useState('')
-  const [activating, setActivating] = useState(false)
+
+  // Latest MoA config, read inside the serialized applier without re-binding it
+  // (so a burst of chip toggles composes against the freshest presets).
+  const moaRef = useRef<MoaConfigResponse | null>(null)
+  useEffect(() => {
+    moaRef.current = moa
+  }, [moa])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -147,18 +255,18 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         getHermesConfigRecord()
       ])
 
+      const providerList = modelOptions.providers || []
       setMainModel({ model: modelInfo.model, provider: modelInfo.provider })
-      setProviders(modelOptions.providers || [])
-      setSelectedProvider(prev => prev || modelInfo.provider)
-      setSelectedModel(prev => prev || modelInfo.model)
+      setProviders(providerList)
       setAuxiliary(auxiliaryModels)
       setMoa(moaModels)
-
-      if (moaModels) {
-        setSelectedMoaPreset(prev => prev && moaModels.presets[prev] ? prev : moaModels.default_preset)
-      }
-
       setConfig(cfg)
+
+      const visible = filterPickerProviders(providerList)
+      const managed = visible.find(p => isManagedProviderSlug(p.slug, p.name))
+      const { platform, byo } = initialSelection(modelInfo, moaModels, managed?.models ?? [])
+      setPlatformSel(platform)
+      setByoSel(byo)
     } catch (err) {
       console.error('[model-settings] request failed', err)
       setError(err instanceof Error ? err.message : String(err))
@@ -173,85 +281,63 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
 
   const providerOptions = providers.length ? providers : NO_PROVIDERS
 
-  const selectedProviderRow = useMemo(
-    () => providers.find(provider => provider.slug === selectedProvider),
-    [providers, selectedProvider]
+  // China-first visible providers, split into the managed platform relay (its
+  // models multi-select) and everything else (BYO, single-select). The virtual
+  // `moa` provider row the backend injects is dropped here — filterPickerProviders
+  // never keeps it — so "MoA" never surfaces as a selectable model.
+  const visibleProviders = useMemo(() => filterPickerProviders(providers), [providers])
+
+  const managedProvider = useMemo(
+    () => visibleProviders.find(p => isManagedProviderSlug(p.slug, p.name)) ?? null,
+    [visibleProviders]
   )
 
-  const selectedProviderModels = selectedProviderRow?.models ?? []
+  const platformChips = useMemo<ModelChip[]>(() => {
+    if (!managedProvider || !isProviderReady(managedProvider)) {
+      return []
+    }
 
-  // An unconfigured provider was picked: no credentials yet, so there are no
-  // models to choose. `api_key` providers can be activated inline (paste key);
-  // OAuth / external flows hand off to the onboarding sign-in.
-  const needsSetup = !!selectedProvider && !isProviderReady(selectedProviderRow)
-  const setupIsApiKey = needsSetup && selectedProviderRow?.auth_type === 'api_key' && !!selectedProviderRow?.key_env
+    const seen = new Set<string>()
+    const chips: ModelChip[] = []
 
-  // Clear any half-typed key when switching provider so it can't leak across.
-  useEffect(() => {
-    setApiKeyDraft('')
-  }, [selectedProvider])
+    for (const raw of managedProvider.models ?? []) {
+      const key = routedKey(raw)
+
+      if (seen.has(key)) {
+        continue
+      }
+
+      seen.add(key)
+      chips.push({ provider: managedProvider.slug, raw, label: displayModelName(raw) })
+    }
+
+    return chips
+  }, [managedProvider])
+
+  const byoChips = useMemo<ModelChip[]>(() => {
+    const chips: ModelChip[] = []
+
+    for (const provider of visibleProviders) {
+      if (isManagedProviderSlug(provider.slug, provider.name) || !isProviderReady(provider)) {
+        continue
+      }
+
+      for (const raw of provider.models ?? []) {
+        chips.push({ provider: provider.slug, raw, label: displayModelName(raw) })
+      }
+    }
+
+    return chips
+  }, [visibleProviders])
+
+  const platformSelSet = useMemo(() => new Set(platformSel.map(routedKey)), [platformSel])
+  const selectedCount = byoSel ? 1 : platformSel.length
+  const byoDisabled = platformSel.length >= 2
 
   const auxDraftProviderModels = useMemo(
     () => providers.find(provider => provider.slug === auxDraft.provider)?.models ?? [],
     [auxDraft.provider, providers]
   )
-
-  const modelsForProvider = useCallback(
-    (provider: string) => providers.find(row => row.slug === provider)?.models ?? [],
-    [providers]
-  )
-
-  const currentMoaPreset = useMemo(() => {
-    if (!moa) {
-      return null
-    }
-
-    return moa.presets[selectedMoaPreset] || moa.presets[moa.default_preset] || Object.values(moa.presets)[0] || null
-  }, [moa, selectedMoaPreset])
-
-  const updateMoaPreset = useCallback(
-    (updater: (preset: NonNullable<typeof currentMoaPreset>) => NonNullable<typeof currentMoaPreset>) => {
-      setMoa(prev => {
-        if (!prev || !selectedMoaPreset || !prev.presets[selectedMoaPreset]) {
-          return prev
-        }
-
-        return {
-          ...prev,
-          presets: {
-            ...prev.presets,
-            [selectedMoaPreset]: updater(prev.presets[selectedMoaPreset])
-          }
-        }
-      })
-    },
-    [selectedMoaPreset]
-  )
-
-  const updateMoaSlot = useCallback((slot: MoaModelSlot, patch: Partial<MoaModelSlot>): MoaModelSlot => {
-    const next = { ...slot, ...patch }
-
-    if (patch.provider) {
-      next.model = ''
-    }
-
-    return next
-  }, [])
-
-  const saveMoa = useCallback(async (next: MoaConfigResponse) => {
-    setApplying(true)
-    setError('')
-
-    try {
-      const saved = await saveMoaModels(next)
-      setMoa(saved)
-    } catch (err) {
-      console.error('[model-settings] request failed', err)
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setApplying(false)
-    }
-  }, [])
 
   const auxiliaryTaskLabel = useCallback((key: string) => m.tasks[key]?.label ?? key, [m.tasks])
 
@@ -310,93 +396,115 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     [config, m.defaultsFailed]
   )
 
-  // Paste an API key for the selected `api_key` provider, persist it, then
-  // refresh so the now-authenticated provider's models populate. Auto-selects
-  // the recommended default model so the user can Apply in one more click.
-  const activateApiKeyProvider = useCallback(async () => {
-    const keyEnv = selectedProviderRow?.key_env
-    const slug = selectedProviderRow?.slug
+  const applyMain = useCallback(
+    async (provider: string, model: string) => {
+      const result = await setModelAssignment({ model, provider, scope: 'main' })
+      const nextProvider = result.provider || provider
+      const nextModel = result.model || model
+      setMainModel({ provider: nextProvider, model: nextModel })
+      setSwitchStaleAux(result.stale_aux ?? [])
+      onMainModelChanged?.(nextProvider, nextModel)
+    },
+    [onMainModelChanged]
+  )
 
-    if (!keyEnv || !slug || !apiKeyDraft.trim()) {
-      return
-    }
+  // Apply a selection snapshot to config. <=1 model keeps the plain single-model
+  // path (setModelAssignment scope:main) UNCHANGED (regression red line); 2+
+  // platform models compose the hidden `__auto__` MoA preset (references = S\{A},
+  // ranked aggregator, fanout:user_turn) and activate provider=moa/model=__auto__.
+  const doApply = useCallback(
+    async (snapshot: { byo: MoaModelSlot | null; platform: MoaModelSlot[] }) => {
+      if (snapshot.byo) {
+        await applyMain(snapshot.byo.provider, snapshot.byo.model)
 
-    setActivating(true)
-    setError('')
-
-    try {
-      await setEnvVar(keyEnv, apiKeyDraft.trim())
-      setApiKeyDraft('')
-
-      // Pick a sensible default for the freshly-activated provider (mirrors
-      // `hermes model` curation). Best-effort — fall through to the refreshed
-      // model list if it fails.
-      let nextModel = ''
-
-      try {
-        const rec = await getRecommendedDefaultModel(slug)
-        nextModel = rec.model || ''
-      } catch {
-        nextModel = ''
+        return
       }
 
-      const options = await getGlobalModelOptions()
-      setProviders(options.providers || [])
-      const refreshedRow = options.providers?.find(p => p.slug === slug)
-      const fallbackModel = refreshedRow?.models?.[0] ?? ''
-      setSelectedModel(nextModel || fallbackModel)
-    } catch (err) {
-      console.error('[model-settings] request failed', err)
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setActivating(false)
-    }
-  }, [apiKeyDraft, selectedProviderRow])
+      if (snapshot.platform.length === 0) {
+        return
+      }
 
-  // OAuth / external providers can't be activated with a pasted key — hand off
-  // to the shared onboarding flow scoped to this provider's real sign-in. The
-  // custom / local endpoint is NOT an OAuth provider, so it gets the dedicated
-  // local-endpoint form (URL + optional API key) instead of being dead-ended
-  // on the OAuth picker (the original "booted back to the first screen" loop).
-  const startProviderSetup = useCallback(() => {
-    const slug = selectedProviderRow?.slug
+      if (snapshot.platform.length === 1) {
+        await applyMain(snapshot.platform[0].provider, snapshot.platform[0].model)
 
-    if (!slug) {
-      return
-    }
+        return
+      }
 
-    const lower = slug.toLowerCase()
+      const composed = composeAutoMoa(snapshot.platform)
 
-    if (lower === 'custom' || lower === 'local' || lower.startsWith('custom:')) {
-      startManualLocalEndpoint()
-    } else {
-      startManualProviderOAuth(slug)
-    }
-  }, [selectedProviderRow])
+      if (!composed) {
+        return
+      }
 
-  const applyMainModel = useCallback(async () => {
-    if (!selectedProvider || !selectedModel) {
-      return
-    }
+      const saved = await saveMoaModels(buildAutoMoaConfig(moaRef.current, composed))
+      setMoa(saved)
+      await applyMain('moa', AUTO_PRESET_NAME)
+    },
+    [applyMain]
+  )
 
-    setApplying(true)
-    setError('')
+  // Auto-apply on every toggle (mockup: "选 2+ 自动生效", no confirm dialog).
+  // Serialized through a promise chain so a rapid burst of toggles lands the
+  // final selection without overlapping writes.
+  const applyQueueRef = useRef<Promise<void>>(Promise.resolve())
 
-    try {
-      const result = await setModelAssignment({ model: selectedModel, provider: selectedProvider, scope: 'main' })
-      const provider = result.provider || selectedProvider
-      const model = result.model || selectedModel
-      setMainModel({ provider, model })
-      setSwitchStaleAux(result.stale_aux ?? [])
-      onMainModelChanged?.(provider, model)
-      await refresh()
-    } catch (err) {
-      console.error('[model-settings] request failed', err)
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setApplying(false)
-    }
-  }, [onMainModelChanged, refresh, selectedModel, selectedProvider])
+  const runApply = useCallback(
+    (snapshot: { byo: MoaModelSlot | null; platform: MoaModelSlot[] }) => {
+      applyQueueRef.current = applyQueueRef.current.then(async () => {
+        setApplying(true)
+        setError('')
+
+        try {
+          await doApply(snapshot)
+        } catch (err) {
+          console.error('[model-settings] request failed', err)
+          setError(err instanceof Error ? err.message : String(err))
+        } finally {
+          setApplying(false)
+        }
+      })
+    },
+    [doApply]
+  )
+
+  const togglePlatform = useCallback(
+    (chip: ModelChip) => {
+      const key = routedKey(chip.raw)
+      const has = platformSel.some(raw => routedKey(raw) === key)
+      const nextRaw = has ? platformSel.filter(raw => routedKey(raw) !== key) : [...platformSel, chip.raw]
+      // Keep directory order so the composed aggregator/reference split is stable.
+      const order = new Map(platformChips.map((c, i) => [routedKey(c.raw), i]))
+      nextRaw.sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
+
+      setByoSel(null)
+      setPlatformSel(nextRaw)
+
+      const slots = platformChips
+        .filter(c => nextRaw.some(raw => routedKey(raw) === routedKey(c.raw)))
+        .map(c => ({ provider: c.provider, model: c.raw }))
+
+      runApply({ byo: null, platform: slots })
+    },
+    [platformChips, platformSel, runApply]
+  )
+
+  const selectByo = useCallback(
+    (chip: ModelChip) => {
+      if (byoDisabled) {
+        return
+      }
+
+      const already = byoSel?.provider === chip.provider && byoSel?.model === chip.raw
+      const next = already ? byoSel : { provider: chip.provider, model: chip.raw }
+      setPlatformSel([])
+      setByoSel(next)
+
+      if (!already) {
+        runApply({ byo: next, platform: [] })
+      }
+    },
+    [byoDisabled, byoSel, runApply]
+  )
 
   const setAuxiliaryToMain = useCallback(
     async (task: string) => {
@@ -486,85 +594,59 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     return <LoadingState label={m.loading} />
   }
 
+  const hasAnyModel = platformChips.length > 0 || byoChips.length > 0
+
   return (
     <div className="grid gap-6">
       <section>
         <p className="p5-section-intro mb-3.5">{m.appliesDesc}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select onValueChange={setSelectedProvider} value={selectedProvider}>
-            <SelectTrigger className={cn('min-w-40', CONTROL_TEXT)}>
-              <SelectValue placeholder={m.provider} />
-            </SelectTrigger>
-            <SelectContent>
-              {providerOptions.map(provider => (
-                <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>
-                  {provider.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {needsSetup ? (
-            setupIsApiKey ? (
-              <>
-                <Input
-                  autoComplete="off"
-                  className={cn('min-w-60 flex-1', CONTROL_TEXT)}
-                  onChange={event => setApiKeyDraft(event.target.value)}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter') {
-                      void activateApiKeyProvider()
-                    }
-                  }}
-                  placeholder={m.pasteKeyPlaceholder(selectedProviderRow?.key_env ?? 'API key')}
-                  type="password"
-                  value={apiKeyDraft}
-                />
-                <Button
-                  disabled={!apiKeyDraft.trim() || activating}
-                  onClick={() => void activateApiKeyProvider()}
-                  size="sm"
-                >
-                  {activating && <Loader2 className="size-3.5 animate-spin" />}
-                  {activating ? m.activating : m.activate}
-                </Button>
-              </>
-            ) : (
-              <Button onClick={startProviderSetup} size="sm" variant="textStrong">
-                {m.setUpProvider(selectedProviderRow?.name ?? m.provider)}
-              </Button>
-            )
-          ) : (
-            <>
-              <Select onValueChange={setSelectedModel} value={selectedModel}>
-                <SelectTrigger className={cn('min-w-60', CONTROL_TEXT)}>
-                  <SelectValue placeholder={m.model} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(selectedProviderModels.length ? selectedProviderModels : []).map(model => (
-                    <SelectItem key={model} value={model}>
-                      {model}
-                    </SelectItem>
+
+        {!hasAnyModel ? (
+          <p className="text-xs text-muted-foreground">{m.noModels}</p>
+        ) : (
+          <>
+            {platformChips.length > 0 && (
+              <div className="mb-4">
+                <div className="mb-1 text-xs font-medium text-foreground">{m.selectTitle}</div>
+                <p className="mb-2.5 text-xs text-muted-foreground">{m.selectHint}</p>
+                <div className="flex flex-wrap gap-2">
+                  {platformChips.map(chip => (
+                    <ChipButton
+                      active={platformSelSet.has(routedKey(chip.raw))}
+                      key={chip.raw}
+                      label={chip.label}
+                      onClick={() => togglePlatform(chip)}
+                    />
                   ))}
-                </SelectContent>
-              </Select>
-              <Button
-                disabled={!selectedProvider || !selectedModel || applying}
-                onClick={() => void applyMainModel()}
-                size="sm"
-              >
-                {applying && <Loader2 className="size-3.5 animate-spin" />}
-                {applying ? m.applying : t.common.apply}
-              </Button>
-            </>
-          )}
-        </div>
-        {needsSetup && !setupIsApiKey && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {selectedProviderRow?.auth_type === 'api_key'
-              ? m.needsApiKeyHint(selectedProviderRow?.name ?? m.provider)
-              : m.oauthHint(selectedProviderRow?.name ?? m.provider)}
-          </p>
+                </div>
+                {selectedCount >= 2 && (
+                  <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
+                    {m.selectedSummary(selectedCount)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {byoChips.length > 0 && (
+              <div>
+                <div className="mb-1 text-xs font-medium text-foreground">{m.byoTitle}</div>
+                <p className="mb-2.5 text-xs text-muted-foreground">{byoDisabled ? m.byoMixNote : m.byoHint}</p>
+                <div className="flex flex-wrap gap-2">
+                  {byoChips.map(chip => (
+                    <ChipButton
+                      active={!byoDisabled && byoSel?.provider === chip.provider && byoSel?.model === chip.raw}
+                      disabled={byoDisabled}
+                      key={`${chip.provider}:${chip.raw}`}
+                      label={chip.label}
+                      onClick={() => selectByo(chip)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
+
         {config && mainModel && (reasoningSupported || fastSupported) && (
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
             <span className="text-xs text-muted-foreground">{m.defaultsLabel}</span>
@@ -729,113 +811,6 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
           })}
         </div>
       </section>
-      {moa && currentMoaPreset && (
-        <section>
-          <div className="mb-2.5 flex items-center justify-between">
-            <SectionHeading icon={Cpu} title={m.moa.title} />
-            <Button disabled={applying} onClick={() => void saveMoa(moa)} size="sm" variant="textStrong">
-              {applying ? m.applying : t.common.save}
-            </Button>
-          </div>
-          <p className="p5-section-intro mb-3">{m.moa.desc}</p>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Select onValueChange={setSelectedMoaPreset} value={selectedMoaPreset || moa.default_preset}>
-              <SelectTrigger className={cn('min-w-40', CONTROL_TEXT)}><SelectValue placeholder={m.moa.presetPlaceholder} /></SelectTrigger>
-              <SelectContent>{Object.keys(moa.presets).map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent>
-            </Select>
-            <Button disabled={applying} onClick={() => setMoa(prev => prev && ({ ...prev, default_preset: selectedMoaPreset || prev.default_preset }))} size="sm" variant="text">
-              {m.moa.setDefault}
-            </Button>
-            <Button
-              disabled={Object.keys(moa.presets).length <= 1 || applying}
-              onClick={() => {
-                setMoa(prev => {
-                  if (!prev || Object.keys(prev.presets).length <= 1) {
-                    return prev
-                  }
-
-                  const next = { ...prev.presets }
-                  delete next[selectedMoaPreset]
-                  const fallback = Object.keys(next)[0]
-
-                  return {
-                    ...prev,
-                    presets: next,
-                    default_preset: prev.default_preset === selectedMoaPreset ? fallback : prev.default_preset,
-                    active_preset: prev.active_preset === selectedMoaPreset ? '' : prev.active_preset
-                  }
-                })
-                setSelectedMoaPreset(Object.keys(moa.presets).find(name => name !== selectedMoaPreset) || '')
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              {t.common.delete}
-            </Button>
-            <Input className={cn('w-40', CONTROL_TEXT)} onChange={event => setNewMoaPresetName(event.target.value)} placeholder={m.moa.newPresetPlaceholder} value={newMoaPresetName} />
-            <Button
-              disabled={!newMoaPresetName.trim() || !!moa.presets[newMoaPresetName.trim()] || applying}
-              onClick={() => {
-                const name = newMoaPresetName.trim()
-                setMoa(prev => prev && ({
-                  ...prev,
-                  presets: { ...prev.presets, [name]: { ...currentMoaPreset, reference_models: [...currentMoaPreset.reference_models] } }
-                }))
-                setSelectedMoaPreset(name)
-                setNewMoaPresetName('')
-              }}
-              size="sm"
-              variant="textStrong"
-            >
-              {m.moa.addPreset}
-            </Button>
-          </div>
-          <div className="mb-2 text-xs text-muted-foreground">{m.moa.defaultLabel} <span className="font-mono">{moa.default_preset}</span></div>
-          <div className="p5-card p5-rows">
-            {currentMoaPreset.reference_models.map((slot, index) => (
-              <ListRow
-                below={
-                  <div className="mt-2 flex flex-wrap items-center gap-2 pt-1">
-                    <Select onValueChange={value => updateMoaPreset(prev => ({ ...prev, reference_models: prev.reference_models.map((s, i) => i === index ? updateMoaSlot(s, { provider: value }) : s) }))} value={slot.provider}>
-                      <SelectTrigger className={cn('min-w-32', CONTROL_TEXT)}><SelectValue placeholder={m.provider} /></SelectTrigger>
-                      <SelectContent>{providerOptions.map(provider => <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>{provider.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select onValueChange={value => updateMoaPreset(prev => ({ ...prev, reference_models: prev.reference_models.map((s, i) => i === index ? updateMoaSlot(s, { model: value }) : s) }))} value={slot.model}>
-                      <SelectTrigger className={cn('min-w-48', CONTROL_TEXT)}><SelectValue placeholder={m.model} /></SelectTrigger>
-                      <SelectContent>{modelsForProvider(slot.provider).map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Button disabled={currentMoaPreset.reference_models.length <= 1 || applying} onClick={() => updateMoaPreset(prev => ({ ...prev, reference_models: prev.reference_models.filter((_, i) => i !== index) }))} size="sm" variant="ghost">
-                      {t.common.remove}
-                    </Button>
-                  </div>
-                }
-                description={<span className="font-mono text-[0.68rem]">{slot.provider} · {slot.model}</span>}
-                key={`${selectedMoaPreset}-${slot.provider}-${slot.model}-${index}`}
-                title={m.moa.reference(index + 1)}
-              />
-            ))}
-            <Button className="my-2 self-start" disabled={applying} onClick={() => updateMoaPreset(prev => ({ ...prev, reference_models: [...prev.reference_models, prev.aggregator] }))} size="sm" variant="textStrong">
-              {m.moa.addReference}
-            </Button>
-            <ListRow
-              below={
-                <div className="mt-2 flex flex-wrap items-center gap-2 pt-1">
-                  <Select onValueChange={value => updateMoaPreset(prev => ({ ...prev, aggregator: updateMoaSlot(prev.aggregator, { provider: value }) }))} value={currentMoaPreset.aggregator.provider}>
-                    <SelectTrigger className={cn('min-w-32', CONTROL_TEXT)}><SelectValue placeholder={m.provider} /></SelectTrigger>
-                    <SelectContent>{providerOptions.map(provider => <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>{provider.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Select onValueChange={value => updateMoaPreset(prev => ({ ...prev, aggregator: updateMoaSlot(prev.aggregator, { model: value }) }))} value={currentMoaPreset.aggregator.model}>
-                    <SelectTrigger className={cn('min-w-48', CONTROL_TEXT)}><SelectValue placeholder={m.model} /></SelectTrigger>
-                    <SelectContent>{modelsForProvider(currentMoaPreset.aggregator.provider).map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              }
-              description={<span className="font-mono text-[0.68rem]">{currentMoaPreset.aggregator.provider} · {currentMoaPreset.aggregator.model}</span>}
-              title={m.moa.aggregator}
-            />
-          </div>
-        </section>
-      )}
     </div>
   )
 }
