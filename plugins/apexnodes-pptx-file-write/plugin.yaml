@@ -1,0 +1,7 @@
+name: apexnodes-pptx-file-write
+version: "0.1.0"
+description: >-
+  Render structured slide data to a .pptx file under the runtime document cache
+  and return a MEDIA tag for native delivery.
+provides_tools:
+  - pptx_file_write

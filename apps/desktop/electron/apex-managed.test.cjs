@@ -383,12 +383,16 @@ test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 50 v0
 // names load), so the desktop seed must carry the block and the config
 // watchdog must be able to heal a config.yaml that lost (or predates) it.
 
-test('MANAGED_PLUGIN_NAMES carries apex-overlay + the three platform tool plugins', () => {
+test('MANAGED_PLUGIN_NAMES carries apex-overlay + the gateway tool plugins + the local file-write plugins', () => {
   assert.deepEqual(MANAGED_PLUGIN_NAMES, [
     'apex-overlay',
     'apexnodes-douyin-tools',
     'apexnodes-social-tools',
-    'apexnodes-video-tools'
+    'apexnodes-video-tools',
+    'apexnodes-image-tools',
+    'apexnodes-xlsx-file-write',
+    'apexnodes-pptx-file-write',
+    'apexnodes-doc-file-write'
   ])
 })
 
@@ -440,12 +444,13 @@ test('ensurePluginsEnabledYaml unions missing managed names and preserves user e
     '  default: x\n'
   const r = ensurePluginsEnabledYaml(raw)
   assert.equal(r.changed, true)
-  assert.deepEqual(r.added, ['apexnodes-douyin-tools', 'apexnodes-social-tools', 'apexnodes-video-tools'])
+  // apex-overlay already present ⇒ added = every other managed name.
+  assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES.slice(1))
   // User entry + order preserved; apex-overlay NOT duplicated.
   assert.match(r.next, /enabled:\n {4}- my-own-plugin\n {4}- apex-overlay\n {4}- apexnodes-douyin-tools/)
   assert.equal((r.next.match(/- apex-overlay/g) || []).length, 1)
   // Inserted INSIDE the plugins block (before the next top-level key).
-  assert.ok(r.next.indexOf('- apexnodes-video-tools') < r.next.indexOf('model:'))
+  assert.ok(r.next.indexOf('- apexnodes-doc-file-write') < r.next.indexOf('model:'))
 })
 
 test('ensurePluginsEnabledYaml is idempotent (re-run is a no-op, no duplicates)', () => {
@@ -485,9 +490,9 @@ test('ensurePluginsEnabledYaml handles PyYAML re-dump shapes (2-space items, flo
   const redump = 'plugins:\n  enabled:\n  - apex-overlay\n  - user-extra\nmodel:\n  default: x\n'
   const r = ensurePluginsEnabledYaml(redump)
   assert.equal(r.changed, true)
-  assert.deepEqual(r.added, ['apexnodes-douyin-tools', 'apexnodes-social-tools', 'apexnodes-video-tools'])
+  assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES.slice(1))
   // Missing names appended after the last item, at the SAME 2-space indent.
-  assert.match(r.next, /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\nmodel:/)
+  assert.match(r.next, /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\n {2}- apexnodes-image-tools\n {2}- apexnodes-xlsx-file-write\n {2}- apexnodes-pptx-file-write\n {2}- apexnodes-doc-file-write\nmodel:/)
 
   // Flow list: rewritten as a block list, existing entries + order kept.
   const flow = 'plugins:\n  enabled: [apex-overlay, user-extra]\nmodel:\n  default: x\n'
@@ -510,7 +515,7 @@ test('ensurePluginsEnabledYaml tolerates comments/quotes in the list (example-co
   const r = ensurePluginsEnabledYaml(raw)
   assert.equal(r.changed, true)
   // Quoted + commented entry recognized: apex-overlay NOT re-added.
-  assert.deepEqual(r.added, ['apexnodes-douyin-tools', 'apexnodes-social-tools', 'apexnodes-video-tools'])
+  assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES.slice(1))
   // Comments survive; insertion right after the last existing item.
   assert.match(r.next, /# ApexNodes cloud overlay boot hook/)
   assert.match(r.next, /- 'apex-overlay' {2}# pinned\n {4}- apexnodes-douyin-tools/)

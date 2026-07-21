@@ -150,10 +150,18 @@ const MANAGED_PLUGIN_NAMES = [
   // upstream Hermes at load time (monkey-patch, zero in-place edits).
   'apex-overlay',
   // ApexNodes platform tools (P1): social-media data / download+transcribe /
-  // text-to-video, routed through the platform tools gateway.
+  // text-to-video / text-to-image, routed through the platform tools gateway
+  // (vendor keys never leave the cloud).
   'apexnodes-douyin-tools',
   'apexnodes-social-tools',
-  'apexnodes-video-tools'
+  'apexnodes-video-tools',
+  'apexnodes-image-tools',
+  // ApexNodes local document-export tools (hc-565): render structured replies to
+  // .xlsx / .pptx / .docx files delivered via MEDIA:. Pure-local (no gateway, no
+  // vendor call); deps ship with the desktop install ([file-export] extra).
+  'apexnodes-xlsx-file-write',
+  'apexnodes-pptx-file-write',
+  'apexnodes-doc-file-write'
 ]
 
 // Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default
