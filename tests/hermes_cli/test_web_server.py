@@ -734,6 +734,51 @@ class TestWebServerEndpoints:
         assert cfg["moa"]["reference_models"] == payload["reference_models"]
         assert cfg["moa"]["aggregator"] == payload["aggregator"]
 
+    def test_put_moa_presets_preserve_fanout_user_turn(self):
+        """A preset saved with fanout=user_turn must round-trip (hc-578).
+
+        The silent multi-select composer pins ``fanout: user_turn`` so a MoA
+        turn costs ~N calls, not N × tool-loop steps (the billing red line). The
+        PUT handler used to rebuild presets without the field, so it silently
+        reset to the ``per_iteration`` default — this guards that regression.
+        """
+        from hermes_cli.config import load_config
+
+        payload = {
+            "default_preset": "__auto__",
+            "active_preset": "__auto__",
+            "presets": {
+                "__auto__": {
+                    "reference_models": [
+                        {"provider": "custom:apex-nodes.com", "model": "deepseek-v4-pro"},
+                        {"provider": "custom:apex-nodes.com", "model": "glm-5.2"},
+                    ],
+                    "aggregator": {"provider": "custom:apex-nodes.com", "model": "qwen3.7-max"},
+                    "reference_temperature": 0.6,
+                    "aggregator_temperature": 0.4,
+                    "max_tokens": 4096,
+                    "fanout": "user_turn",
+                    "enabled": True,
+                }
+            },
+        }
+
+        resp = self.client.put("/api/model/moa", json=payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        # Echoed active-preset view + the flattened compat view both reflect it.
+        assert body["presets"]["__auto__"]["fanout"] == "user_turn"
+        assert body["fanout"] == "user_turn"
+
+        cfg = load_config()
+        assert cfg["moa"]["presets"]["__auto__"]["fanout"] == "user_turn"
+
+        # And a fresh GET (re-normalized from disk) keeps it.
+        got = self.client.get("/api/model/moa")
+        assert got.status_code == 200
+        assert got.json()["presets"]["__auto__"]["fanout"] == "user_turn"
+
     # ── GET /api/media (remote image display) ───────────────────────────
 
     def test_get_media_serves_image_in_root(self):

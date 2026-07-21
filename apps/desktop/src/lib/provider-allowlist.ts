@@ -48,6 +48,31 @@ export const DOMESTIC_PROVIDER_SLUGS: ReadonlySet<string> = new Set([
   'tencent-tokenhub' // Tencent TokenHub
 ])
 
+/** The ApexNodes managed-relay provider slug — the zero-key "platform" default.
+ *  The relay is registered as the named custom provider "Apex-nodes.com"
+ *  (electron/apex-managed.cjs MANAGED_PROVIDER_NAME), which the runtime lowercases
+ *  + hyphenates into this slug (hermes_cli/providers.py custom_provider_slug).
+ *  It is the single reliable signal for a *platform* model (billed via the user's
+ *  cloud account through the relay) vs a *BYO* model (the user's own key). Neither
+ *  `is_user_defined` (true for the relay too) nor the `-APEX` display suffix (only
+ *  the default carries it) distinguishes them — the slug does. */
+export const MANAGED_PROVIDER_SLUG = 'custom:apex-nodes.com'
+
+/** True when a provider row is the ApexNodes managed relay (platform models),
+ *  as opposed to a user's own BYO provider. Keyed on the slug, with the display
+ *  name as a belt-and-suspenders fallback (mirrors model-menu-panel's label). */
+export function isManagedProviderSlug(slug: string | null | undefined, name?: string | null): boolean {
+  const normalized = String(slug || '')
+    .trim()
+    .toLowerCase()
+
+  if (normalized === MANAGED_PROVIDER_SLUG) {
+    return true
+  }
+
+  return /^apex-?nodes/i.test(String(name || '').trim())
+}
+
 /** True when a provider slug is the ApexNodes managed relay or a user's own
  *  custom / local OpenAI-compatible endpoint. Covers the bare `custom` slug and
  *  any named `custom:<name>` (e.g. `custom:apex-nodes.com`). */

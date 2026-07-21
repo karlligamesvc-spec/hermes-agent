@@ -25,7 +25,7 @@ import { getGlobalModelOptions, getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
-import { filterPickerProviders } from '@/lib/provider-allowlist'
+import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { $authState, signOutAccount } from '@/store/auth'
 import { reconcileRelayAuthState } from '@/store/managed-recovery'
@@ -532,7 +532,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 // (electron/apex-managed.cjs); surface it under the clean "APEX" brand in the
 // picker. Custom BYOK / domestic providers keep their own names.
 function providerGroupLabel(provider: ModelOptionProvider): string {
-  if (provider.slug === 'custom:apex-nodes.com' || /^apex-?nodes/i.test(provider.name || '')) {
+  if (isManagedProviderSlug(provider.slug, provider.name)) {
     return 'APEX'
   }
 

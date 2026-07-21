@@ -502,26 +502,15 @@ export interface Translations {
       autoUseMain: string
       providerDefault: string
       requestFailed: string
-      activate: string
-      activating: string
-      setUpProvider: (name: string) => string
-      pasteKeyPlaceholder: (env: string) => string
-      needsApiKeyHint: (name: string) => string
-      oauthHint: (name: string) => string
       staleAux: (count: number, names: string, provider: string) => string
       staleAuxOtherProviders: string
-      moa: {
-        title: string
-        desc: string
-        presetPlaceholder: string
-        setDefault: string
-        newPresetPlaceholder: string
-        addPreset: string
-        defaultLabel: string
-        reference: (index: number) => string
-        addReference: string
-        aggregator: string
-      }
+      selectTitle: string
+      selectHint: string
+      selectedSummary: (count: number) => string
+      byoTitle: string
+      byoHint: string
+      byoMixNote: string
+      noModels: string
       tasks: Record<string, AuxTaskCopy>
     }
     uninstall: {
