@@ -383,7 +383,7 @@ test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 50 v0
 // names load), so the desktop seed must carry the block and the config
 // watchdog must be able to heal a config.yaml that lost (or predates) it.
 
-test('MANAGED_PLUGIN_NAMES carries apex-overlay + the gateway tool plugins + the local file-write plugins', () => {
+test('MANAGED_PLUGIN_NAMES carries apex-overlay + the gateway tool plugins + the local file-write plugins + the Feishu write plugins', () => {
   assert.deepEqual(MANAGED_PLUGIN_NAMES, [
     'apex-overlay',
     'apexnodes-douyin-tools',
@@ -392,7 +392,9 @@ test('MANAGED_PLUGIN_NAMES carries apex-overlay + the gateway tool plugins + the
     'apexnodes-image-tools',
     'apexnodes-xlsx-file-write',
     'apexnodes-pptx-file-write',
-    'apexnodes-doc-file-write'
+    'apexnodes-doc-file-write',
+    'apexnodes-feishu-doc-write',
+    'apexnodes-feishu-bitable-write'
   ])
 })
 
@@ -492,7 +494,7 @@ test('ensurePluginsEnabledYaml handles PyYAML re-dump shapes (2-space items, flo
   assert.equal(r.changed, true)
   assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES.slice(1))
   // Missing names appended after the last item, at the SAME 2-space indent.
-  assert.match(r.next, /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\n {2}- apexnodes-image-tools\n {2}- apexnodes-xlsx-file-write\n {2}- apexnodes-pptx-file-write\n {2}- apexnodes-doc-file-write\nmodel:/)
+  assert.match(r.next, /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\n {2}- apexnodes-image-tools\n {2}- apexnodes-xlsx-file-write\n {2}- apexnodes-pptx-file-write\n {2}- apexnodes-doc-file-write\n {2}- apexnodes-feishu-doc-write\n {2}- apexnodes-feishu-bitable-write\nmodel:/)
 
   // Flow list: rewritten as a block list, existing entries + order kept.
   const flow = 'plugins:\n  enabled: [apex-overlay, user-extra]\nmodel:\n  default: x\n'

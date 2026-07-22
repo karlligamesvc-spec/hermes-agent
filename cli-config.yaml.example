@@ -30,6 +30,11 @@ plugins:
     - apexnodes-xlsx-file-write
     - apexnodes-pptx-file-write
     - apexnodes-doc-file-write
+    # ApexNodes 飞书写入工具(hc-581):用 owner 飞书应用凭证写飞书云文档 / 多维表格。
+    # 仅在绑定飞书后显形——桌面只有绑定飞书时才把 owner FEISHU_APP_ID/FEISHU_APP_SECRET
+    # 注入后端 spawn env(hc-417/hc-444),未绑定时这两条 enabled 是空转、工具自隐。
+    - apexnodes-feishu-doc-write
+    - apexnodes-feishu-bitable-write
 
 # =============================================================================
 # Model Configuration

@@ -1,0 +1,8 @@
+name: apexnodes-feishu-bitable-write
+version: "0.1.0"
+description: >-
+  Owner-scoped Feishu Bitable (多维表格) record write tool for ApexNodes desktop
+  agents. Surfaces only when a Feishu channel is bound (owner
+  FEISHU_APP_ID/FEISHU_APP_SECRET present).
+provides_tools:
+  - feishu_bitable_write
