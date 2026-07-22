@@ -1,0 +1,7 @@
+name: apexnodes-feishu-doc-write
+version: "0.1.0"
+description: >-
+  Owner-scoped Feishu doc write tool for ApexNodes desktop agents. Surfaces only
+  when a Feishu channel is bound (owner FEISHU_APP_ID/FEISHU_APP_SECRET present).
+provides_tools:
+  - feishu_doc_write

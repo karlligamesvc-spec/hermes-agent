@@ -161,7 +161,14 @@ const MANAGED_PLUGIN_NAMES = [
   // vendor call); deps ship with the desktop install ([file-export] extra).
   'apexnodes-xlsx-file-write',
   'apexnodes-pptx-file-write',
-  'apexnodes-doc-file-write'
+  'apexnodes-doc-file-write',
+  // ApexNodes Feishu write tools (hc-581): write a Feishu docx / Bitable record
+  // using the owner Feishu app credential. Each tool self-hides until a Feishu
+  // channel is bound (the desktop injects owner FEISHU_APP_ID/FEISHU_APP_SECRET
+  // into the backend spawn env only then, hc-417/hc-444), so enabling them here
+  // is inert on an unbound install.
+  'apexnodes-feishu-doc-write',
+  'apexnodes-feishu-bitable-write'
 ]
 
 // Skills physically present in ~/.hermes/skills/ but kept INACTIVE by default
