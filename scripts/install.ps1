@@ -65,8 +65,8 @@ $ErrorActionPreference = "Stop"
 # ApexNodes overlay seam: region self-detection + China mirror downgrade
 # ===========================================================================
 # OVERLAY SEAM (see apex_overlay/README.md + docs/OVERLAY-SEAM-AUDIT.md). All the
-# ApexNodes-specific logic — mainland-China region auto-detection and the
-# domestic mirror / COS source downgrade it turns on — lives in our own
+# ApexNodes-specific logic -- mainland-China region auto-detection and the
+# domestic mirror / COS source downgrade it turns on -- lives in our own
 # scripts/lib/apexnodes-region-detect.ps1, which upstream Hermes never creates
 # (zero merge-conflict surface). install.ps1 stays byte-for-byte upstream apart
 # from this dot-source hook and a few one-line call sites in Install-Uv /
@@ -74,13 +74,13 @@ $ErrorActionPreference = "Stop"
 #
 # WHY DOT-SOURCE-WITH-GUARD (and not the simpler "extract + always dot-source"):
 # install.ps1 runs in several distribution contexts and only SOME of them have a
-# sibling scripts\lib\ on disk —
+# sibling scripts\lib\ on disk --
 #   * bundled desktop copy (process.resourcesPath)  -> lib staged alongside it
 #     by apps/desktop/scripts/stage-install-script.cjs
 #   * PyPI-wheel copy (hermes_cli\scripts\install.ps1) -> lib copied alongside it
 #     by .github/workflows/upload_to_pypi.yml
 #   * a real git checkout (dev / installed agent)    -> lib present as a sibling
-#   * `irm … | iex` style remote run                 -> $PSScriptRoot is empty
+#   * `irm ... | iex` style remote run                 -> $PSScriptRoot is empty
 #     and there is no lib to dot-source; the guard then no-ops and the installer
 #     behaves like upstream (which has no CN logic anyway).
 # Hence: dot-source the lib IFF $PSScriptRoot resolves and the file is present,
@@ -1068,7 +1068,7 @@ function Set-UserEnvSafe {
     Best-effort persist of a User-scope environment variable.
 
     Group-policy-managed machines can lock HKCU\Environment (seen in the
-    field 2026-07-05: "SetEnvironmentVariable ... 未经授权的操作" on a plain
+    field 2026-07-05: "SetEnvironmentVariable ... unauthorized operation" on a plain
     User-scope write, which killed the whole install at the git stage).
     Persistence is a nicety -- the gateway is launched by the desktop shell
     with a full process environment -- so failure here must NEVER abort the
