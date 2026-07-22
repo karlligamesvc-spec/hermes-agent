@@ -7,11 +7,23 @@ name: Build ApexNodes Runtime Bundle
 #
 # Each job: scripts/build-runtime-bundle.mjs build → same-machine smoke
 # (extract → fixup → verify → interpreter/CLI probes → MOVE the tree and
-# re-probe, proving relocatability) → publish to COS under
+# re-probe, proving relocatability) → emit the cloud registration payload →
+# publish to COS under
 #   bundle/hermes-agent/<key>/<os>-<arch>/
 #     runtime-bundle-<key>-<os>-<arch>.tar.gz (+ .sha256, manifest.json)
-# → re-check the PUBLIC url (HEAD 200 + sha match) so "published" means
-# "downloadable and intact", not "coscli exited 0".
+# → re-check the PUBLIC url per object (HEAD 200 + positive Content-Length,
+# hc-568 gate) + sha match, so "published" means "downloadable and intact",
+# not "coscli exited 0".
+#
+# Fired by pushing the `runtime-<sha8>` release tag (the engine train ritual)
+# or by workflow_dispatch. This is a SEPARATE workflow from
+# publish-runtime-tarball.yml; a bundle failure reds only this run and never
+# blocks the source-tarball release.
+#
+# Cloud registration is path B (payload artifact + one human command): the
+# endpoint is admin-JWT-authed, so CI emits the request body and the release
+# engineer POSTs it via scripts/register_runtime_bundle.py. See
+# docs/runtime-bundle-release.md.
 #
 # mac jobs are marked experimental for P1 (win-x64 is the acceptance gate;
 # design §7 Phase 1) — their failure does not fail the workflow.
@@ -36,12 +48,16 @@ on:
         description: "pin a uv release tag (default: latest)"
         required: false
         default: ""
-  # Pre-merge validation trigger for the hc-472 P1 branch: pushing the branch
-  # runs the full matrix for real (same-repo branch ⇒ COS secrets available).
-  # Harmless to keep after merge; dispatch is the normal entry point.
+  # Engine release-train wiring: the release ritual tags the runtime commit
+  # `runtime-<sha8>` before flipping default, so pushing that tag auto-fires this
+  # per-OS bundle matrix — bundles get built + published alongside the
+  # (separately dispatched) source-tarball train. This workflow is INDEPENDENT
+  # of publish-runtime-tarball.yml: a bundle failure reds only this run and never
+  # blocks the source-tarball release. `workflow_dispatch` above stays the manual
+  # escape hatch (rebuild a bundle for any ref without re-tagging).
   push:
-    branches:
-      - "codex/hc472-p1-bundle-build"
+    tags:
+      - "runtime-*"
 
 permissions:
   contents: read
@@ -116,8 +132,41 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Small artifacts only (manifest + sha + summary) — the tar.gz goes to
-      # COS, its bytes have no business in GH artifact storage.
+      # Registration payload (path B): the cloud bundle-registration endpoint is
+      # admin-JWT-authed (POST /api/v1/admin/runtime-versions/bundles), so CI can
+      # NOT safely hold a credential to call it — a full-admin session token in a
+      # public-repo Action would over-scope massively and JWTs expire anyway. We
+      # emit the exact request body per platform instead; the release engineer,
+      # who already holds an admin session to flip is_default, POSTs it with one
+      # command (scripts/register_runtime_bundle.py). runtime_key = the runtime
+      # commit; the cloud resolves it by commit-prefix (get_runtime_version_by_key).
+      - name: Emit registration payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          RT="${RUNNER_TEMP//\\//}"
+          MANIFEST=$(ls "$RT"/hb/runtime-bundle-*.manifest.json)
+          PLATFORM="${{ matrix.os }}-${{ matrix.arch }}"
+          BASE="https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com"
+          BUNDLE_URL="$BASE/bundle/hermes-agent/${{ steps.summary.outputs.key }}/$PLATFORM/${{ steps.summary.outputs.bundle }}"
+          OUT="$RT/hb/${{ steps.summary.outputs.bundle }}.register-payload.json"
+          jq -n \
+            --arg runtime_key "$(jq -r .runtime_commit "$MANIFEST")" \
+            --arg platform "$PLATFORM" \
+            --arg bundle_url "$BUNDLE_URL" \
+            --arg sha256 "${{ steps.summary.outputs.sha256 }}" \
+            --arg min_desktop_version "$(jq -r '.min_desktop_version // empty' "$MANIFEST")" \
+            --arg schema_version "$(jq -r '.schema // empty' "$MANIFEST")" \
+            --slurpfile manifest "$MANIFEST" \
+            '{runtime_key:$runtime_key, platform:$platform, bundle_url:$bundle_url, sha256:$sha256}
+             + (if $min_desktop_version == "" then {} else {min_desktop_version:$min_desktop_version} end)
+             + (if $schema_version == "" then {} else {schema_version:$schema_version} end)
+             + {manifest:$manifest[0]}' \
+            > "$OUT"
+          echo "wrote $OUT"; jq . "$OUT"
+
+      # Small artifacts only (manifest + sha + summary + registration payload) —
+      # the tar.gz goes to COS, its bytes have no business in GH artifact storage.
       - name: Upload manifest artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -126,6 +175,7 @@ jobs:
             ${{ runner.temp }}/hb/*.manifest.json
             ${{ runner.temp }}/hb/*.sha256
             ${{ runner.temp }}/hb/*.summary.json
+            ${{ runner.temp }}/hb/*.register-payload.json
           if-no-files-found: error
 
       # ── COS publish, windows leg (coscli — mirrors desktop-windows.yml) ────
@@ -220,9 +270,20 @@ jobs:
           fi
           BASE="https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com"
           PREFIX="bundle/hermes-agent/${BUNDLE_KEY}/${{ matrix.os }}-${{ matrix.arch }}"
+          # hc-568 final-verify gate, applied PER OBJECT: an independent HEAD must
+          # return 200 AND a positive Content-Length. A green `coscli cp` has
+          # published 0 bytes before (run 29700050356) — a bare 200 would wave
+          # that through, so we assert the length too. `curl -f` makes any 4xx/5xx
+          # exit nonzero; a missing/zero/non-numeric length fails explicitly. Any
+          # failure propagates as exit 1 and reds this (independent) bundle run.
           for obj in "$BUNDLE_NAME" "$BUNDLE_NAME.sha256" "manifest.json"; do
-            curl -sSfI "$BASE/$PREFIX/$obj" >/dev/null
-            echo "HEAD 200: $PREFIX/$obj"
+            headers=$(curl -fsSI --retry 3 "$BASE/$PREFIX/$obj")
+            len=$(printf '%s' "$headers" | awk 'tolower($1)=="content-length:"{print $2}' | tr -d '\r' | tail -n1)
+            if ! printf '%s' "$len" | grep -Eq '^[1-9][0-9]*$'; then
+              echo "final-verify FAIL: $PREFIX/$obj served no positive Content-Length (got '${len:-<none>}')" >&2
+              exit 1
+            fi
+            echo "final-verify OK: $PREFIX/$obj (HTTP 200, Content-Length=$len)"
           done
           REMOTE_SHA=$(curl -sSf "$BASE/$PREFIX/$BUNDLE_NAME.sha256" | awk '{print $1}')
           if [ "$REMOTE_SHA" != "$BUNDLE_SHA" ]; then
