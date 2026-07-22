@@ -12456,17 +12456,15 @@ def _(rid, params: dict) -> dict:
             rid,
             {"value": (_load_cfg().get("display") or {}).get("personality") or "none"},
         )
-    if key == "approvals.mode":
+    if key in {"approval_mode", "approvals.mode"}:
         # Current global approval tier for the desktop composer pill to seed from
-        # at connect (before any session.info arrives). Normalized to one of
-        # manual/smart/off so a hand-edited config reads back what the runtime
-        # actually enforces.
+        # at connect (before any session.info arrives). Reads through the
+        # gateway-home-aware loader so it reports the SAME value session.info
+        # reconciles to (upstream v0.19 shape; both key spellings accepted).
         try:
-            from tools.approval import _get_approval_mode
-
-            return _ok(rid, {"value": _get_approval_mode()})
-        except Exception:
-            return _ok(rid, {"value": "manual"})
+            return _ok(rid, {"value": _load_approval_mode()})
+        except Exception as e:
+            return _err(rid, 5001, str(e))
     if key == "reasoning":
         cfg = _load_cfg()
         session = _sessions.get(params.get("session_id", ""))

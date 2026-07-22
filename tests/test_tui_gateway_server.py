@@ -4089,7 +4089,10 @@ def test_config_set_approvals_mode_writes_all_three_tiers(tmp_path, monkeypatch)
             }
         )
         assert resp["result"]["value"] == mode
-        assert resp["result"]["scope"] == "global"
+        # The pre-v0.19 fork response also carried scope="global"; the merged
+        # upstream handler dropped the field. The desktop pill only reads
+        # result.value (yolo-session.ts applyApprovalMode), so the write being
+        # global is asserted through the config file below instead.
         assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == mode
 
 
@@ -4114,35 +4117,35 @@ def test_config_set_approvals_mode_rejects_unknown(tmp_path, monkeypatch):
     assert yaml.safe_load(cfg_path.read_text())["approvals"]["mode"] == "smart"
 
 
-def test_config_get_approvals_mode_returns_normalized():
-    """The pill seeds its tier from config.get at connect; the value is normalized
-    so a YAML `mode: off` (parsed as False) reads back as the string 'off'."""
-    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": False}}):
-        resp = server.handle_request(
-            {"id": "1", "method": "config.get", "params": {"key": "approvals.mode"}}
-        )
-        assert resp["result"]["value"] == "off"
-
-    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "smart"}}):
-        resp = server.handle_request(
-            {"id": "2", "method": "config.get", "params": {"key": "approvals.mode"}}
-        )
-        assert resp["result"]["value"] == "smart"
+# NOTE(hc-584): the fork's test_config_get_approvals_mode_returns_normalized was
+# retired in the v0.19.0 merge. Upstream ships the same coverage against the
+# merged home-aware getter (test_config_get_approval_mode_normalizes_yaml_off +
+# test_config_get_approval_mode_fails_safe_to_manual_for_invalid_explicit_value),
+# and the smart-passthrough leg lives on in test_session_info_reports_approval_mode.
 
 
-def test_session_info_reports_approval_mode(monkeypatch):
+def test_session_info_reports_approval_mode(tmp_path, monkeypatch):
     """session.info carries the global three-value approval_mode alongside the
-    effective yolo bool so the desktop can tell smart apart from manual."""
-    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "smart"}}):
-        info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
-        assert info["approval_mode"] == "smart"
-        # smart still gates, so the effective bypass bool stays False.
-        assert info["yolo"] is False
+    effective yolo bool so the desktop can tell smart apart from manual (hc-514).
 
-    with patch("hermes_cli.config.load_config", return_value={"approvals": {"mode": "off"}}):
-        info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
-        assert info["approval_mode"] == "off"
-        assert info["yolo"] is True
+    Since the v0.19.0 merge the read goes through the gateway-home-aware
+    loader, so the tiers are staged as real config files instead of
+    load_config patches."""
+    import yaml
+
+    monkeypatch.setattr(server, "_hermes_home", tmp_path)
+    cfg_path = tmp_path / "config.yaml"
+
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "smart"}}))
+    info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
+    assert info["approval_mode"] == "smart"
+    # smart still gates, so the effective bypass bool stays False.
+    assert info["yolo"] is False
+
+    cfg_path.write_text(yaml.safe_dump({"approvals": {"mode": "off"}}))
+    info = server._session_info(types.SimpleNamespace(tools=[], model="", provider="deepseek"))
+    assert info["approval_mode"] == "off"
+    assert info["yolo"] is True
 
 
 def test_full_access_tier_is_session_scoped_and_leaves_global_mode(tmp_path, monkeypatch):
