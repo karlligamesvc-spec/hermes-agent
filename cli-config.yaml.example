@@ -703,6 +703,21 @@ session_reset:
   idle_minutes: 1440   # Inactivity timeout in minutes (used by "idle"/"both")
   at_hour: 4           # Daily reset hour, 0-23 local time (used by "daily"/"both")
 
+# Dangerous-command approval gating.
+#
+# Upstream v0.19.0 flipped the built-in default from "manual" to "smart"
+# (#62661: an LLM classifier auto-approves commands it judges low-risk).
+# This template pins the pre-v0.19 behavior explicitly so installs created
+# from it never absorb that flip silently; switching to "smart" is a
+# deliberate product decision, not a merge side effect.
+#
+# Modes:
+#   "manual" - Every dangerous command asks for approval (pinned default here)
+#   "smart"  - Low-risk commands auto-approve; the rest ask
+#   "off"    - No approval gating (equivalent to --yolo; not recommended)
+approvals:
+  mode: manual
+
 # Maximum number of simultaneously active chat sessions across CLI, TUI,
 # dashboard chat, and messaging gateway. Set to null, 0, or omit to allow
 # unlimited concurrent sessions. When the limit is reached, new sessions get a
@@ -1435,6 +1450,14 @@ display:
   #   true:  Show the reasoning box
   #   false: Hide reasoning (default)
   show_reasoning: false
+
+  # Codex-engine mid-turn commentary (narration between tool calls).
+  # New in upstream v0.19.0 with a built-in default of true; pinned false here
+  # to keep this fork's pre-v0.19 behavior (no mid-turn narration messages on
+  # chat channels) until enabling it is decided deliberately.
+  #   true:  Emit commentary messages mid-turn
+  #   false: Suppress commentary (pinned fork default)
+  show_commentary: false
 
   # Stream tokens to the terminal as they arrive instead of waiting for the
   # full response. The response box opens on first token and text appears
