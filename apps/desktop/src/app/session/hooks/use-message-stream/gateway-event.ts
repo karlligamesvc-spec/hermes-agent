@@ -11,7 +11,9 @@ import { coerceGatewayText, coerceThinkingText, normalizePersonalityValue } from
 import { playCompletionSound } from '@/lib/completion-sound'
 import { resolveGatewayEventSessionId } from '@/lib/gateway-events'
 import { triggerHaptic } from '@/lib/haptics'
+import { isOperationTool, operationInfo } from '@/lib/operation-tool'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
+import { clearActiveOperation, setActiveOperation } from '@/store/active-operation'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
 import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
@@ -363,6 +365,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
         flushQueuedDeltas(sessionId)
         clearSessionSubagents(sessionId)
+        clearActiveOperation(sessionId)
         setSessionCompacting(sessionId, false)
         compactedTurnRef.current.delete(sessionId)
         nativeSubagentSessionsRef.current.delete(sessionId)
@@ -480,6 +483,7 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         // last item stuck pending/in_progress. Finished lists keep their linger.
         clearActiveSessionTodos(sessionId)
         setSessionCompacting(sessionId, false)
+        clearActiveOperation(sessionId)
 
         flushQueuedDeltas(sessionId)
 
@@ -535,6 +539,26 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
         flushQueuedDeltas(sessionId)
         upsertToolCall(sessionId, toTodoPayload(payload) ?? payload, 'running', event.type)
 
+        // hc-555 显化: light the "controlling browser / desktop" chip as soon
+        // as an operation tool starts, so the user always knows when the agent
+        // has taken hold of a real surface.
+        if (isOperationTool(payload?.name)) {
+          const info = operationInfo(payload!.name!, payload?.args ?? payload?.arguments, undefined, {
+            running: true,
+            error: false
+          })
+
+          if (info) {
+            setActiveOperation(sessionId, {
+              action: info.action,
+              surface: info.surface,
+              target: info.target,
+              toolCallId: String(payload?.tool_id || payload?.tool_call_id || payload?.id || payload!.name!),
+              toolName: payload!.name!
+            })
+          }
+        }
+
         if (isActiveEvent) {
           setPetActivity({ reasoning: false, toolRunning: true })
         }
@@ -545,6 +569,16 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
 
           if (isActiveEvent) {
             setPetActivity({ toolRunning: false })
+          }
+
+          // The operation instant ended — drop the chip. A follow-up operation
+          // re-lights it on its own tool.start, so back-to-back browser steps
+          // keep it visible without it ever going stale.
+          if (isOperationTool(payload?.name)) {
+            clearActiveOperation(
+              sessionId,
+              String(payload?.tool_id || payload?.tool_call_id || payload?.id || payload?.name || '')
+            )
           }
 
           // A pending clarify blocks the turn, so the first tool.complete after

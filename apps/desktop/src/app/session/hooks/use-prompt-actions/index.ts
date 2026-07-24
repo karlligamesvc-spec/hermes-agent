@@ -11,6 +11,7 @@ import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { triggerHaptic } from '@/lib/haptics'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { normalize } from '@/lib/text'
+import { clearActiveOperation } from '@/store/active-operation'
 import { clearClarifyRequest } from '@/store/clarify'
 import {
   $composerAttachments,
@@ -559,6 +560,7 @@ export function usePromptActions({
 
     clearSessionTodos(sessionId)
     clearSessionSubagents(sessionId)
+    clearActiveOperation(sessionId)
     resetSessionBackground(sessionId)
     // Stop ends the turn, so the gateway is no longer blocked on any prompt it
     // raised. Drop this session's pending clarify / approval / sudo / secret so

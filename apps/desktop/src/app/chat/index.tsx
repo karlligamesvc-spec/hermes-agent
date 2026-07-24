@@ -48,6 +48,8 @@ import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
 import { useComposerScope } from './composer/scope'
 import type { ChatBarState } from './composer/types'
+import { ConnectionGuide } from './connection-guide'
+import { DirectConnectBanner } from './direct-connect-banner'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
 import { ProfileTag } from './profile-tag'
@@ -434,6 +436,19 @@ export function ChatView({
           so a tiled/background session's blocking prompt surfaces instead of
           stalling to timeout. */}
       <PromptOverlays sessionId={activeSessionId} />
+
+      {/* hc-555 显化: the phone-remote (/cc) live banner and the first-run
+          connection guidance. Machine-wide, not session-scoped — so they ride
+          with the primary surface only, like the header, rather than repeating
+          in every tile. Both self-gate to null on the common path (no daemon
+          online / a channel already connected), which means an ordinary
+          conversation gains zero chrome. */}
+      {isPrimary && (
+        <>
+          <DirectConnectBanner />
+          <ConnectionGuide />
+        </>
+      )}
 
       <ChatRuntimeBoundary
         busy={busy}
