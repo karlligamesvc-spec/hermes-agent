@@ -31,7 +31,7 @@ function provider(id: string, loggedIn: boolean, patch: Partial<OAuthProvider> =
     docs_url: '',
     flow: 'device_code',
     id,
-    name: id === 'nous' ? 'Nous Portal' : 'MiniMax',
+    name: id === 'minimax-oauth' ? 'MiniMax' : id,
     status: {
       logged_in: loggedIn
     },
@@ -61,9 +61,9 @@ function keyVar(patch: Partial<EnvVarInfo> = {}): EnvVarInfo {
 beforeEach(() => {
   onboarding.set({ manual: false })
   getEnvVars.mockResolvedValue({})
-  disconnectOAuthProvider.mockResolvedValue({ ok: true, provider: 'nous' })
+  disconnectOAuthProvider.mockResolvedValue({ ok: true, provider: 'minimax-oauth' })
   listOAuthProviders.mockResolvedValue({
-    providers: [provider('nous', true), provider('minimax-oauth', false)]
+    providers: [provider('minimax-oauth', true), provider('qwen-oauth', false)]
   })
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
@@ -95,12 +95,12 @@ describe('ProvidersSettings', () => {
   it('disconnects a connected provider account and refreshes the accounts list', async () => {
     await renderProvidersSettings()
 
-    const remove = await screen.findByRole('button', { name: 'Remove Nous Portal' })
+    const remove = await screen.findByRole('button', { name: 'Remove MiniMax' })
     await act(async () => {
       fireEvent.click(remove)
     })
 
-    await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('nous'))
+    await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('minimax-oauth'))
     expect(listOAuthProviders).toHaveBeenCalledTimes(2)
   })
 
@@ -108,11 +108,25 @@ describe('ProvidersSettings', () => {
     await renderProvidersSettings()
 
     await act(async () => {
-      fireEvent.click(await screen.findByText('Nous Portal'))
+      fireEvent.click(await screen.findByText('MiniMax'))
     })
 
-    expect(startManualProviderOAuth).toHaveBeenCalledWith('nous')
+    expect(startManualProviderOAuth).toHaveBeenCalledWith('minimax-oauth')
     expect(disconnectOAuthProvider).not.toHaveBeenCalled()
+  })
+
+  it('hides foreign provider accounts from the China-first accounts list', async () => {
+    // Consumer build: only domestic sign-ins render. Nous / Anthropic /
+    // OpenAI-style accounts disappear even when the backend reports them.
+    listOAuthProviders.mockResolvedValue({
+      providers: [provider('nous', true), provider('anthropic', false), provider('minimax-oauth', true)]
+    })
+
+    await renderProvidersSettings()
+
+    expect(await screen.findByText('MiniMax')).toBeTruthy()
+    expect(screen.queryByText('nous')).toBeNull()
+    expect(screen.queryByText(/anthropic/)).toBeNull()
   })
 
   it('does not offer removal for externally managed providers', async () => {

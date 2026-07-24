@@ -18,6 +18,7 @@ import { SearchField } from '@/components/ui/search-field'
 import { disconnectOAuthProvider, listOAuthProviders } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronRight, KeyRound, Loader2, Terminal, Trash2 } from '@/lib/icons'
+import { isPickerVisibleProvider } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
@@ -354,10 +355,13 @@ export function ProvidersSettings({
   // they launched from this page — otherwise the cards keep their stale status.
   const onboardingActive = useStore($desktopOnboarding).manual
 
+  // Accounts view is China-first too: only providers whose sign-in works from
+  // the mainland (domestic OAuth flows; same slug allowlist the model picker
+  // uses). Foreign accounts (Nous, OpenAI, Anthropic, xAI, …) never render.
   const refreshOAuthProviders = useCallback(async () => {
     // OAuth providers are best-effort — a failure here just hides the panel.
     const { providers } = await listOAuthProviders()
-    setOauthProviders(providers)
+    setOauthProviders(providers.filter(p => isPickerVisibleProvider(p.id)))
   }, [])
 
   useEffect(() => {
@@ -372,7 +376,7 @@ export function ProvidersSettings({
         const { providers } = await listOAuthProviders()
 
         if (!cancelled) {
-          setOauthProviders(providers)
+          setOauthProviders(providers.filter(p => isPickerVisibleProvider(p.id)))
         }
       } catch {
         // Ignore — the OAuth panel just won't render.
