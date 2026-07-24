@@ -2096,8 +2096,6 @@ export const ja = defineLocale({
       loadFailed: 'モデル一覧を読み込めませんでした。しばらくしてからお試しください',
       catalogUnauthorized: 'モデル一覧を取得できません：ログインが失効しています。タップして再ログイン',
       catalogUnreachable: 'モデル一覧を取得できません：ネットワークエラー。タップして再試行',
-      moaPresets: 'MoA プリセット',
-      moaPresetItem: preset => `MoA: ${preset}`,
       fast: '高速',
       medium: '中'
     },

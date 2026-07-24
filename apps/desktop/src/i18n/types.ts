@@ -1741,8 +1741,6 @@ export interface Translations {
       loadFailed: string
       catalogUnauthorized: string
       catalogUnreachable: string
-      moaPresets: string
-      moaPresetItem: (preset: string) => string
       fast: string
       medium: string
     }

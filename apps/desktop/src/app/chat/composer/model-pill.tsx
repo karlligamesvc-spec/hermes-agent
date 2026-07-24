@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
@@ -6,8 +7,10 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { ProviderIcon } from '@/components/ui/provider-icon'
+import { getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
+import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
@@ -18,6 +21,7 @@ import {
   $currentReasoningEffort,
   setModelPickerOpen
 } from '@/store/session'
+import type { MoaConfigResponse } from '@/types/hermes'
 
 import type { ChatBarState } from './types'
 
@@ -41,6 +45,19 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
   const reasoningEffort = useStore($currentReasoningEffort)
   const [open, setOpen] = useState(false)
 
+  // hc-578 leg A/B: a composed multi-model selection has no single model name
+  // to show ("__auto__"/"moa" would leak the mechanism) — read the same
+  // preset the picker composes from (shared cache, same query key) so the
+  // pill can show "N models selected" instead. Only fetched when it matters.
+  const moaOptions = useQuery({
+    queryKey: ['moa-presets'],
+    queryFn: (): Promise<MoaConfigResponse | null> => getMoaModels().catch(() => null),
+    enabled: currentProvider === 'moa'
+  })
+
+  const composedCount =
+    currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
+
   // Localized effort tag for the pill (低/中/高/超高) — unknown/none efforts fall
   // back to the lib's compact English labels.
   const effortLabels: Record<string, string> = {
@@ -58,7 +75,9 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
   // color at half opacity) until a model lands.
   const label = (
     <>
-      {currentModel.trim() ? (
+      {composedCount >= 2 ? (
+        <span className="truncate">{t.settings.model.selectedSummary(composedCount)}</span>
+      ) : currentModel.trim() ? (
         <>
           <ProviderIcon size={12} vendor={modelVendor(currentModel, currentProvider)} />
           <span className="truncate">
@@ -77,7 +96,14 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
     </>
   )
 
-  const title = currentProvider ? copy.modelTitle(currentProvider, currentModel || copy.modelNone) : copy.switchModel
+  // A composed selection has no single provider/model to name in the hover
+  // title either — same "N models selected" copy, never "moa"/"__auto__".
+  const title =
+    composedCount >= 2
+      ? t.settings.model.selectedSummary(composedCount)
+      : currentProvider
+        ? copy.modelTitle(currentProvider, currentModel || copy.modelNone)
+        : copy.switchModel
 
   if (!model.modelMenuContent) {
     return (
