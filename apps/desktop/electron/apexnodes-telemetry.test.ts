@@ -1,9 +1,8 @@
-'use strict'
+import assert from 'node:assert/strict'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
+import { test } from 'vitest'
 
-const {
+import {
   STATUS_START,
   STATUS_SUCCESS,
   STATUS_FAILURE,
@@ -19,7 +18,7 @@ const {
   buildErrorCode,
   sendDesktopTelemetry,
   fireTelemetry
-} = require('./apexnodes-telemetry.cjs')
+} from './apexnodes-telemetry'
 
 // ---------------------------------------------------------------------------
 // isTelemetryDisabled / telemetryEndpoint
@@ -44,7 +43,7 @@ test('telemetryEndpoint: defaults to api.apex-nodes.com/api/v1/desktop/telemetry
   assert.equal(telemetryEndpoint({}), `${DEFAULT_API_BASE}${TELEMETRY_PATH}`)
 })
 
-test('telemetryEndpoint: honors the shared APEXNODES_API_BASE override (same var apex-managed.cjs uses)', () => {
+test('telemetryEndpoint: honors the shared APEXNODES_API_BASE override (same var apex-managed.ts uses)', () => {
   assert.equal(
     telemetryEndpoint({ APEXNODES_API_BASE: 'https://staging.example.com/' }),
     'https://staging.example.com/api/v1/desktop/telemetry'
@@ -127,7 +126,7 @@ test('classifyErrorCategory: buckets common Node/install error shapes, never ech
     [null, 'unknown'],
     ['', 'unknown']
   ]
-  for (const [err, want] of cases) {
+  for (const [err, want] of cases as any[]) {
     assert.equal(classifyErrorCategory(err), want, `expected ${want} for ${err && err.message}`)
   }
 })
@@ -150,7 +149,7 @@ test('buildErrorCode: "<stage>:<category>" shape, capped to error_code max_lengt
 // sendDesktopTelemetry — fake transport only, NEVER the real network
 // ---------------------------------------------------------------------------
 
-function baseEvent(overrides = {}) {
+function baseEvent(overrides: any = {}) {
   return { platform: 'win', arch: 'x64', stage: 'repository', status: STATUS_SUCCESS, ...overrides }
 }
 

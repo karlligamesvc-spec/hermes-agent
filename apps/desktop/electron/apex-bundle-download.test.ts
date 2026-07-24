@@ -1,14 +1,13 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import http from 'node:http'
+import { createHash } from 'node:crypto'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
-const http = require('node:http')
-const { createHash } = require('node:crypto')
+import { test } from 'vitest'
 
-const { downloadWithResume, BundleDownloadError } = require('./apex-bundle-download.cjs')
+import { downloadWithResume, BundleDownloadError } from './apex-bundle-download'
 
 // Deterministic payload (not random — no fake fuzzing). Range semantics are
 // exercised against a REAL loopback http server, so this is genuine transport.
@@ -27,7 +26,7 @@ const noSleep = () => Promise.resolve()
  * Start a loopback server with a scripted per-request behaviour.
  * `handler(req, res, count)` fully owns the response.
  */
-function startServer(handler) {
+function startServer(handler): Promise<any> {
   return new Promise(resolve => {
     let count = 0
     const server = http.createServer((req, res) => {
@@ -35,7 +34,7 @@ function startServer(handler) {
       handler(req, res, count)
     })
     server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
+      const { port } = server.address() as any
       resolve({ server, url: `http://127.0.0.1:${port}/bundle.tar.gz`, close: () => new Promise(r => server.close(r)) })
     })
   })
@@ -141,7 +140,7 @@ test('downloadWithResume: sha mismatch discards the file and fails', async () =>
     const dest = path.join(dir, 'bundle.tar.gz')
     await assert.rejects(
       downloadWithResume({ url, dest, sha256: 'deadbeef'.repeat(8), size: BODY.length, maxAttempts: 2, sleep: noSleep }),
-      err => {
+      (err: any) => {
         assert.ok(err instanceof BundleDownloadError)
         assert.equal(err.code, 'sha_mismatch')
         return true
@@ -167,7 +166,7 @@ test('downloadWithResume: a 404 fails fast without exhausting retries', async ()
     const dest = path.join(dir, 'bundle.tar.gz')
     await assert.rejects(
       downloadWithResume({ url, dest, sha256: BODY_SHA, maxAttempts: 5, sleep: noSleep }),
-      err => {
+      (err: any) => {
         assert.equal(err.code, 'http_client_error')
         return true
       }

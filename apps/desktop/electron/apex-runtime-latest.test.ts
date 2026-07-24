@@ -1,11 +1,10 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const fs = require('node:fs')
-const path = require('node:path')
+import { test } from 'vitest'
 
-const {
+import {
   parseCosTarballKey,
   derivePinFromLatest,
   parseSemver,
@@ -16,7 +15,7 @@ const {
   resolveLatestRuntimePin,
   checkForRuntimeUpdate,
   overlayStampWithPin
-} = require('./apex-runtime-latest.cjs')
+} from './apex-runtime-latest'
 
 const SHA = '87740e8021390455962caa3ad2c16d522c0d306a'
 const COS_BASE = 'https://bucket.cos.ap-guangzhou.myqcloud.com/runtime'
@@ -419,16 +418,16 @@ test('overlayStampWithPin: null baked + real pin -> pin-derived stamp', () => {
 })
 
 // ---------------------------------------------------------------------------
-// main.cjs glue source-contract (electron-bound; can't be required directly).
+// main.ts glue source-contract (electron-bound; can't be required directly).
 // These guard the brick-safety wiring against a future refactor silently
 // dropping it. Same source-assertion pattern as windows-child-process.test.cjs.
 // ---------------------------------------------------------------------------
 
 function mainSource() {
-  return fs.readFileSync(path.join(__dirname, 'main.cjs'), 'utf8').replace(/\r\n/g, '\n')
+  return fs.readFileSync(path.join(__dirname, 'main.ts'), 'utf8').replace(/\r\n/g, '\n')
 }
 
-test('main.cjs: a pending pin override forces the bootstrap re-run (steps 4-5 gated)', () => {
+test('main.ts: a pending pin override forces the bootstrap re-run (steps 4-5 gated)', () => {
   const src = mainSource()
   assert.match(src, /const runtimeUpdatePending = readRuntimePinOverride\(\) !== null/)
   // Step 4 (existing `hermes` on PATH) must be skipped while an update is pending.
@@ -437,14 +436,14 @@ test('main.cjs: a pending pin override forces the bootstrap re-run (steps 4-5 ga
   assert.match(src, /const python = runtimeUpdatePending \? null : findSystemPython\(\)/)
 })
 
-test('main.cjs: failed AND cancelled bootstrap roll the opt-in update back', () => {
+test('main.ts: failed AND cancelled bootstrap roll the opt-in update back', () => {
   const src = mainSource()
   // Both terminal paths must restore the previous marker.
   assert.match(src, /rollbackRuntimePinOverride\('install cancelled'\)/)
   assert.match(src, /rollbackRuntimePinOverride\(bootstrapResult\.failedStage \|\| 'bootstrap failed'\)/)
 })
 
-test('main.cjs: apply-update verifies artifact reachability BEFORE retargeting', () => {
+test('main.ts: apply-update verifies artifact reachability BEFORE retargeting', () => {
   const src = mainSource()
   // The HEAD pre-flight must appear, and the override must only be written after.
   const reachIdx = src.indexOf('isUpdateArtifactReachable(pin.cosTarballUrl)')
@@ -454,7 +453,7 @@ test('main.cjs: apply-update verifies artifact reachability BEFORE retargeting',
   assert.ok(reachIdx < writeIdx, 'artifact must be probed before the override is persisted')
 })
 
-test('main.cjs: a successful re-bootstrap retires the pin override', () => {
+test('main.ts: a successful re-bootstrap retires the pin override', () => {
   const src = mainSource()
   assert.match(src, /clearRuntimePinOverride\(\)/)
   // The override is persisted under HERMES_HOME (survives a checkout wipe), not
@@ -462,21 +461,21 @@ test('main.cjs: a successful re-bootstrap retires the pin override', () => {
   assert.match(src, /RUNTIME_PIN_OVERRIDE_PATH = path\.join\(HERMES_HOME, '\.apexnodes-runtime-override\.json'\)/)
 })
 
-test('main.cjs: R5 IPC channels + the runtime preload bridge are registered', () => {
+test('main.ts: R5 IPC channels + the runtime preload bridge are registered', () => {
   const src = mainSource()
   assert.match(src, /ipcMain\.handle\('hermes:runtime:check-update'/)
   assert.match(src, /ipcMain\.handle\('hermes:runtime:apply-update'/)
-  const preload = fs.readFileSync(path.join(__dirname, 'preload.cjs'), 'utf8')
+  const preload = fs.readFileSync(path.join(__dirname, 'preload.ts'), 'utf8')
   assert.match(preload, /checkUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:check-update'\)/)
   assert.match(preload, /applyUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:apply-update'\)/)
 })
 
 // Assert that `key: app.getVersion()` appears within the argument object of a
-// given call opener — locks a main.cjs call-site's wiring without an electron
+// given call opener — locks a main.ts call-site's wiring without an electron
 // runtime (same electron-bound source-contract pattern as the tests above).
 function assertCallPassesShellVersion(src, opener, key) {
   const start = src.indexOf(opener)
-  assert.notEqual(start, -1, `call site \`${opener}\` not found in main.cjs`)
+  assert.notEqual(start, -1, `call site \`${opener}\` not found in main.ts`)
   // Window generously past the opener to cover the whole argument object.
   const window = src.slice(start, start + 1200)
   assert.match(
@@ -486,7 +485,7 @@ function assertCallPassesShellVersion(src, opener, key) {
   )
 }
 
-test('main.cjs (hc-532 gate 3): all three desktop_install_events entry points carry app_version', () => {
+test('main.ts (hc-532 gate 3): all three desktop_install_events entry points carry app_version', () => {
   const src = mainSource()
   // Install/bootstrap funnel — was UNWIRED before hc-532 (column read empty).
   assertCallPassesShellVersion(src, 'const bootstrapResult = await runBootstrap({', 'appVersion')
@@ -497,7 +496,7 @@ test('main.cjs (hc-532 gate 3): all three desktop_install_events entry points ca
   assertCallPassesShellVersion(src, 'applyRuntimeBundleUpdate({', 'desktopVersion')
 })
 
-test('main.cjs (hc-532 gate 1): runtime:version handler computes the engine floor gate', () => {
+test('main.ts (hc-532 gate 1): runtime:version handler computes the engine floor gate', () => {
   const src = mainSource()
   // The shell's declared floor is read from package.json …
   assert.match(src, /function readDeclaredMinEngineVersion\(\)/)

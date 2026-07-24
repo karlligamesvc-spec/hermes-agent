@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-bundle-download.cjs — hc-472 P1 · F1
+ * apex-bundle-download.ts — hc-472 P1 · F1
  *
  * HTTP Range resumable downloader for the ~0.6 GB runtime bundle archive.
  *
@@ -21,7 +19,7 @@
  * exactly two integrity artifacts: (1) the whole-archive sha256 (sidecar
  * `.sha256` + sibling manifest `archive.sha256`), enforced HERE before extract,
  * and (2) a per-EXTRACTED-file sha index (.runtime/files.tsv) enforced AFTER
- * extract by the bundled `verify` (see apex-bundle-install.cjs). There is no
+ * extract by the bundled `verify` (see apex-bundle-install.ts). There is no
  * per-download-chunk sha in the manifest, so chunk-granular verification is not
  * possible; the whole-archive hash is the authoritative download gate and the
  * per-file index catches any post-extract damage.
@@ -32,18 +30,20 @@
  * Range semantics; only the backoff `sleep` is injected so retries don't wait.
  */
 
-const fs = require('node:fs')
-const path = require('node:path')
-const http = require('node:http')
-const https = require('node:https')
-const { createHash } = require('node:crypto')
+import fs from 'node:fs'
+import path from 'node:path'
+import http from 'node:http'
+import https from 'node:https'
+import { createHash } from 'node:crypto'
 
 const DEFAULT_MAX_ATTEMPTS = 5
 const DEFAULT_TIMEOUT_MS = 900_000 // 15 min: a whole bundle over a slow CN link
 const DEFAULT_BACKOFF_MS = 1_500
 
 class BundleDownloadError extends Error {
-  constructor(message, code) {
+  declare code: string
+
+  constructor(message, code?) {
     super(message)
     this.name = 'BundleDownloadError'
     this.code = code || 'download_failed'
@@ -84,7 +84,7 @@ function sha256File(file) {
  *   - rejects (BundleDownloadError) on network/stream/status errors, leaving the
  *     partial file intact for the next resume.
  */
-function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }) {
+function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
     try {
@@ -251,7 +251,7 @@ async function downloadWithResume(o) {
       fs.renameSync(partPath, dest)
       log(`[bundle-download] complete: ${gotSize} bytes (no expected sha to gate on)`)
       return { ok: true, path: dest, bytes: gotSize, sha256: finalSha, attempts: attempt }
-    } catch (err) {
+    } catch (err: any) {
       lastErr = err instanceof BundleDownloadError ? err : new BundleDownloadError(String(err && err.message || err), 'download_failed')
       log(`[bundle-download] attempt ${attempt} failed: ${lastErr.code} — ${lastErr.message}`)
       // A 4xx (object genuinely absent / gone) will not fix itself on retry.
@@ -266,7 +266,7 @@ async function downloadWithResume(o) {
   throw lastErr || new BundleDownloadError('download failed after retries', 'download_failed')
 }
 
-module.exports = {
+export {
   BundleDownloadError,
   DEFAULT_MAX_ATTEMPTS,
   downloadWithResume,

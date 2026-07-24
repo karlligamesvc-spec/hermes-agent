@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-bundle-layout.cjs — hc-472 P1 · C1
+ * apex-bundle-layout.ts — hc-472 P1 · C1
  *
  * Versioned runtime catalog with an atomic-switch pointer, a self-healing
  * compatibility link, crash-safe rollback, and startup GC.
@@ -27,7 +25,7 @@
  *
  * CORE INVARIANT: the pointer and the link only ever reference a version dir
  * that has already passed full sha verification (the caller renames a staging
- * dir into place only after verify — see apex-bundle-install.cjs). Any failure
+ * dir into place only after verify — see apex-bundle-install.ts). Any failure
  * stops in an UNREFERENCED `.tmp` dir.
  *
  * Pure/electron-free and rooted at an explicit `hermesHome` so every branch is
@@ -35,19 +33,19 @@
  * annotated WIN-VERIFY where it can only be exercised on a real Windows machine.
  */
 
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
 
 const POINTER_BASENAME = '.apexnodes-runtime-current.json'
 const POINTER_SCHEMA_VERSION = 1
 const VERSIONS_DIRNAME = 'versions'
-// MUST equal main.cjs ACTIVE_HERMES_ROOT's basename: every existing consumer
-// (install scripts, main.cjs, tool shell-outs) resolves HERMES_HOME/hermes-agent
+// MUST equal main.ts ACTIVE_HERMES_ROOT's basename: every existing consumer
+// (install scripts, main.ts, tool shell-outs) resolves HERMES_HOME/hermes-agent
 // as a fixed path. Making it the versioned link keeps them all working verbatim.
 const ACTIVE_LINK_BASENAME = 'hermes-agent'
 const TMP_SUFFIX = '.tmp'
 
-function currentPlatform(opts) {
+function currentPlatform(opts?) {
   return (opts && opts.platform) || process.platform
 }
 
@@ -171,7 +169,7 @@ function removeLinkOnly(p) {
  *   mac : relative 'dir' symlink so a relocated HERMES_HOME keeps a valid link.
  * Assumes any prior occupant at linkPath has already been removed.
  */
-function createActiveLink(linkPath, targetDir, opts) {
+function createActiveLink(linkPath, targetDir, opts?) {
   const platform = currentPlatform(opts)
   if (isWin(platform)) {
     fs.symlinkSync(path.resolve(targetDir), linkPath, 'junction')
@@ -203,7 +201,7 @@ function linkResolvesTo(activeLink, targetDir) {
  * converting it is the side-by-side migration's job (design §5 / D1), NOT this
  * add-only layer's. Never deletes user data.
  */
-function repointActiveLink(hermesHome, key, opts) {
+function repointActiveLink(hermesHome, key, opts?) {
   const { activeLink, versionDir } = bundlePaths(hermesHome)
   const target = versionDir(key)
   if (!fs.existsSync(target)) {
@@ -237,7 +235,7 @@ function repointActiveLink(hermesHome, key, opts) {
  * The version dir MUST already exist and be verified (caller's atomic rename).
  * `previous` becomes the displaced current so rollback has a target.
  */
-function switchToVersion(hermesHome, newKey, opts) {
+function switchToVersion(hermesHome, newKey, opts?) {
   const { versionDir, activeLink } = bundlePaths(hermesHome)
   if (!fs.existsSync(versionDir(newKey))) {
     return { ok: false, reason: 'version-missing', key: newKey }
@@ -261,7 +259,7 @@ function switchToVersion(hermesHome, newKey, opts) {
  * this is what makes F5 go away. Refuses when there is no previous or its dir is
  * gone (GC'd).
  */
-function rollbackToPrevious(hermesHome, opts) {
+function rollbackToPrevious(hermesHome, opts?) {
   const { versionDir, activeLink } = bundlePaths(hermesHome)
   const pointer = readPointer(hermesHome)
   if (!pointer) return { ok: false, reason: 'no-pointer' }
@@ -280,7 +278,7 @@ function rollbackToPrevious(hermesHome, opts) {
  * thing, so a switch interrupted mid-repoint (link stale/missing) self-repairs.
  * Fully defensive — every branch returns a reason, never throws.
  */
-function reconcileActiveLink(hermesHome, opts) {
+function reconcileActiveLink(hermesHome, opts?) {
   const { activeLink, versionDir } = bundlePaths(hermesHome)
   const pointer = readPointer(hermesHome)
   if (!pointer) return { reconciled: false, reason: 'no-pointer' }
@@ -337,7 +335,7 @@ function listVersions(hermesHome) {
  * WIN-VERIFY: the rename-refused-while-open-handle behaviour is Windows-specific
  * and only exercisable on a real Windows machine; asserted structurally here.
  */
-function removeVersionDir(absDir, platform) {
+function removeVersionDir(absDir, platform?) {
   if (isWin(platform)) {
     const detached = `${absDir}.gc${TMP_SUFFIX}`
     try {
@@ -378,7 +376,7 @@ function removeVersionDir(absDir, platform) {
  *
  * Returns {kept, removed, skipped, orphansRemoved, orphansSkipped, droppedPrevious}.
  */
-function garbageCollect(hermesHome, opts = {}) {
+function garbageCollect(hermesHome, opts: any = {}) {
   const { versionsDir } = bundlePaths(hermesHome)
   const platform = currentPlatform(opts)
   const isLocked = typeof opts.isLocked === 'function' ? opts.isLocked : () => false
@@ -437,7 +435,7 @@ function layoutState(hermesHome) {
   }
 }
 
-module.exports = {
+export {
   POINTER_BASENAME,
   POINTER_SCHEMA_VERSION,
   VERSIONS_DIRNAME,

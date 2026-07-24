@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apexnodes-telemetry.cjs — hc-473 (fork half): anonymous desktop
+ * apexnodes-telemetry.ts — hc-473 (fork half): anonymous desktop
  * install/update/apply beacon emitter.
  *
  * The cloud half (hermes-cloud PR #549, `app/routers/desktop.py`
@@ -12,18 +10,18 @@
  * (api.apex-nodes.com proxies 1:1 to the same FastAPI backend as
  * apex-nodes.com/api — deploy/nginx/api.apex-nodes.com.conf `location / {
  * proxy_pass http://127.0.0.1:8000; }` — so this is the exact same host every
- * other desktop -> scheduler call already uses, see apex-managed.cjs
+ * other desktop -> scheduler call already uses, see apex-managed.ts
  * `DEFAULT_API_BASE` / `APEXNODES_API_BASE`). Public, unauthenticated,
  * rate-limited per-IP; carries NO user identity by design (no account, email,
  * session or IP column on the `desktop_install_events` table it writes to).
  *
  * This module is the ONE place that actually calls that endpoint. The three
- * instrumentation call sites — bootstrap-runner.cjs (install-stage loop),
- * shell-updater.cjs (electron-updater lifecycle), apex-bundle-install.cjs
+ * instrumentation call sites — bootstrap-runner.ts (install-stage loop),
+ * shell-updater.ts (electron-updater lifecycle), apex-bundle-install.ts
  * (F1 download / F2 verify / C1 switch) — `require` it directly and fire a
- * beacon inline; there is no main.cjs wiring to do, wrapping the real
+ * beacon inline; there is no main.ts wiring to do, wrapping the real
  * `sendDesktopTelemetry` is the default for all three so telemetry ships the
- * moment this file is required, with zero call-site changes to main.cjs.
+ * moment this file is required, with zero call-site changes to main.ts.
  *
  * Request body is a hard allow-list of exactly seven anonymous fields,
  * mirroring `app.routers.desktop.DesktopTelemetryEvent` field-for-field:
@@ -52,8 +50,8 @@
  * never reaches the anonymous beacon.
  */
 
-const http = require('node:http')
-const https = require('node:https')
+import http from 'node:http'
+import https from 'node:https'
 
 // Mirrors app.models.desktop_install_event.{STATUS_START,STATUS_SUCCESS,
 // STATUS_FAILURE,VALID_STATUSES} exactly — the cloud Pydantic validator
@@ -63,7 +61,7 @@ const STATUS_SUCCESS = 'success'
 const STATUS_FAILURE = 'failure'
 const VALID_STATUSES = new Set([STATUS_START, STATUS_SUCCESS, STATUS_FAILURE])
 
-// Same default host + same override env var apex-managed.cjs already uses for
+// Same default host + same override env var apex-managed.ts already uses for
 // every other desktop -> scheduler call (resolveApexEndpoints). Deliberately
 // reused rather than inventing a telemetry-specific env var: one override
 // redirects every desktop->cloud call at once (staging, region migration,
@@ -122,7 +120,7 @@ function telemetryEndpoint(env = process.env) {
  * outside ANON_FIELDS is ever read off the caller's event object.
  */
 function buildPayload(event) {
-  const payload = {}
+  const payload: any = {}
   for (const field of ANON_FIELDS) {
     const value = event ? event[field] : undefined
     if (value === undefined || value === null || value === '') continue
@@ -188,8 +186,8 @@ function buildErrorCode(stage, err) {
  * resolves to `{ok, status?, error?}`. No retry: a single attempt, dropped on
  * failure (v1 — see the module docstring's guarantee #4).
  *
- * Uses node:http/https (matching main.cjs's own `fetchPublicJson` +
- * bootstrap-runner.cjs's install-script downloader) rather than global
+ * Uses node:http/https (matching main.ts's own `fetchPublicJson` +
+ * bootstrap-runner.ts's install-script downloader) rather than global
  * fetch, for one consistent desktop -> cloud transport convention.
  *
  * @param {string} url
@@ -197,12 +195,12 @@ function buildErrorCode(stage, err) {
  * @param {{timeoutMs?: number}} [opts]
  * @returns {Promise<{ok:boolean, status?:number, error?:string}>}
  */
-function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
   return new Promise(resolve => {
     let parsed
     try {
       parsed = new URL(url)
-    } catch (err) {
+    } catch (err: any) {
       resolve({ ok: false, error: `invalid_url: ${(err && err.message) || err}` })
       return
     }
@@ -226,7 +224,7 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': String(body.length) }
       })
-    } catch (err) {
+    } catch (err: any) {
       finish({ ok: false, error: (err && err.message) || 'request_failed' })
       return
     }
@@ -276,7 +274,7 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
  *   ever touching the real network.
  * @returns {Promise<{ok:boolean, skipped?:string, status?:number, error?:string}>}
  */
-function sendDesktopTelemetry(event, opts = {}) {
+function sendDesktopTelemetry(event, opts: any = {}) {
   const env = opts.env || process.env
   if (isTelemetryDisabled(env)) return Promise.resolve({ ok: false, skipped: 'disabled' })
   if (!event || typeof event.stage !== 'string' || !event.stage.trim()) {
@@ -296,7 +294,7 @@ function sendDesktopTelemetry(event, opts = {}) {
   let result
   try {
     result = post(telemetryEndpoint(env), payload, { timeoutMs })
-  } catch (err) {
+  } catch (err: any) {
     return Promise.resolve({ ok: false, error: (err && err.message) || 'post_threw' })
   }
   return Promise.resolve(result).catch(err => ({ ok: false, error: (err && err.message) || 'post_rejected' }))
@@ -323,7 +321,7 @@ function fireTelemetry(sendFn, event) {
   }
 }
 
-module.exports = {
+export {
   STATUS_START,
   STATUS_SUCCESS,
   STATUS_FAILURE,

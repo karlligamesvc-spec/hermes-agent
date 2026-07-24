@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-bundle-diskspace.cjs — hc-472 P1 · C2 (disk watermark + install precheck)
+ * apex-bundle-diskspace.ts — hc-472 P1 · C2 (disk watermark + install precheck)
  *
  * WHY (design §4 水位 / §8 预检 — hermes-cloud docs/work-notes/DESIGN-hc472-runtime-bundle.md)
  * -----------------------------------------------------------------------------
@@ -26,10 +24,10 @@
  * — no real disk needed).
  */
 
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
 
-const layout = require('./apex-bundle-layout.cjs')
+import * as layout from './apex-bundle-layout'
 
 const GIB = 1024 * 1024 * 1024
 // Accounting anchor: one EXTRACTED bundle ≈ 1.03 GiB (design §2 "1.1–1.4 GB
@@ -79,7 +77,7 @@ function dirSize(dir) {
 }
 
 /** Per-committed-version + staging usage under versions/. */
-function versionsUsage(hermesHome, opts = {}) {
+function versionsUsage(hermesHome, opts: any = {}) {
   const { versionsDir } = layout.bundlePaths(hermesHome)
   const sizeOf = typeof opts.dirSizeOf === 'function' ? opts.dirSizeOf : dirSize
   const { versions, staging } = layout.listVersions(hermesHome)
@@ -103,12 +101,12 @@ function freeBytesAt(p) {
   }
 }
 
-function resolveVersionsBudget(opts = {}) {
+function resolveVersionsBudget(opts: any = {}) {
   if (Number.isFinite(opts.budgetBytes) && opts.budgetBytes > 0) return opts.budgetBytes
   return parseEnvBytes(process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES) || DEFAULT_VERSIONS_BUDGET_BYTES
 }
 
-function resolveInstallMinFree(opts = {}, archiveSize) {
+function resolveInstallMinFree(opts: any = {}, archiveSize?) {
   if (Number.isFinite(opts.minFreeBytes) && opts.minFreeBytes > 0) return opts.minFreeBytes
   const floor = parseEnvBytes(process.env.HERMES_BUNDLE_MIN_FREE_BYTES) || DEFAULT_INSTALL_MIN_FREE_BYTES
   if (Number.isFinite(archiveSize) && archiveSize > 0) {
@@ -122,7 +120,7 @@ function resolveInstallMinFree(opts = {}, archiveSize) {
  * current) to reclaim ~1 bundle early and surface a warning; otherwise a normal
  * keep-current+previous GC. Returns usage before/after + whether it tightened.
  */
-function enforceVersionsWatermark(hermesHome, opts = {}) {
+function enforceVersionsWatermark(hermesHome, opts: any = {}) {
   const budget = resolveVersionsBudget(opts)
   const before = versionsUsage(hermesHome, opts).total
   const overBudget = before > budget
@@ -143,7 +141,7 @@ function enforceVersionsWatermark(hermesHome, opts = {}) {
  * the archive + its extracted staging dir (design §8 预检). Returns a readable
  * message the shell surfaces verbatim. `freeBytesOf` is injected in tests.
  */
-function preflightDiskSpace(o = {}) {
+function preflightDiskSpace(o: any = {}) {
   const { hermesHome, archiveSize } = o
   const freeOf = typeof o.freeBytesOf === 'function' ? o.freeBytesOf : freeBytesAt
   const requiredBytes = resolveInstallMinFree(o, archiveSize)
@@ -162,7 +160,7 @@ function preflightDiskSpace(o = {}) {
   }
 }
 
-module.exports = {
+export {
   GIB,
   SINGLE_BUNDLE_EXTRACTED_BYTES,
   DEFAULT_VERSIONS_BUDGET_BYTES,

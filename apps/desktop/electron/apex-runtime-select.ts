@@ -1,10 +1,8 @@
-'use strict'
-
 /**
- * apex-runtime-select.cjs
+ * apex-runtime-select.ts
  *
  * Startup RESILIENCE for the "which runtime do we start the gateway with?"
- * decision. Pure, electron-free, unit-testable helpers; main.cjs supplies the
+ * decision. Pure, electron-free, unit-testable helpers; main.ts supplies the
  * live filesystem probe and wires the outcome into resolveHermesBackend() /
  * ensureRuntime().
  *
@@ -16,7 +14,7 @@
  *     [runtime-latest] resolved admin latest: version=v2026.7.1-fork.f9da5169
  *                      key=462c8b02...
  *
- * apex-runtime-latest.cjs faithfully resolved that pin (the server said it was
+ * apex-runtime-latest.ts faithfully resolved that pin (the server said it was
  * installable), the bootstrap runner then tried to fetch the missing tarball,
  * install.sh's CN path 404'd, and — because the *only* backend resolution that
  * had been reached was `bootstrap-needed` — the whole local gateway refused to
@@ -89,7 +87,7 @@ function canUseOnDiskRuntime(probe) {
  *   'bootstrap' — proceed with the normal bootstrap resolution (marker already
  *     complete, an opt-in update is pending, or nothing usable is on disk).
  */
-function resolvePreBootstrapDecision({ markerComplete, onDiskUsable, updatePending } = {}) {
+function resolvePreBootstrapDecision({ markerComplete, onDiskUsable, updatePending }: any = {}) {
   // An explicit opt-in update must drive the bootstrap so the new pin installs;
   // adopting the on-disk (old) runtime here would no-op the user's request.
   if (updatePending) return 'bootstrap'
@@ -117,7 +115,7 @@ function resolvePreBootstrapDecision({ markerComplete, onDiskUsable, updatePendi
  *   marker so the OLD runtime boots next launch) rather than adopting silently.
  * @returns {'fallback-to-disk' | 'fatal'}
  */
-function resolveBootstrapFailureFallback({ onDiskUsable, updatePending } = {}) {
+function resolveBootstrapFailureFallback({ onDiskUsable, updatePending }: any = {}) {
   // Opt-in update failures go through rollbackRuntimePinOverride() in the caller,
   // which re-points at the previous marker; don't short-circuit that here.
   if (updatePending) return 'fatal'
@@ -128,7 +126,7 @@ function resolveBootstrapFailureFallback({ onDiskUsable, updatePending } = {}) {
   return 'fatal'
 }
 
-module.exports = {
+export {
   canUseOnDiskRuntime,
   resolvePreBootstrapDecision,
   resolveBootstrapFailureFallback

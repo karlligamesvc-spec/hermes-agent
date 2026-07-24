@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-bundle-migrate.cjs — hc-472 P1 · D1 (legacy → versioned side-by-side migration)
+ * apex-bundle-migrate.ts — hc-472 P1 · D1 (legacy → versioned side-by-side migration)
  *
  * WHY (design §5 — hermes-cloud docs/work-notes/DESIGN-hc472-runtime-bundle.md)
  * -----------------------------------------------------------------------------
@@ -39,10 +37,10 @@
  * hermesHome so every branch is unit-testable with real tmpdirs.
  */
 
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
 
-const layout = require('./apex-bundle-layout.cjs')
+import * as layout from './apex-bundle-layout'
 
 // The renamed-aside legacy in-place runtime dir, kept one cycle as a rollback
 // fallback. It sits in HERMES_HOME root (NOT under versions/), so layout GC never
@@ -106,7 +104,7 @@ function detectLegacyInPlace(hermesHome) {
 }
 
 /** Data-location assertion (design §5). Returns {safe, found:[names]}. */
-function assertNoUserDataInLegacy(legacyDir, opts = {}) {
+function assertNoUserDataInLegacy(legacyDir, opts: any = {}) {
   const markers = opts.markers || DEFAULT_USER_DATA_MARKERS
   const found = []
   for (const m of markers) {
@@ -116,7 +114,7 @@ function assertNoUserDataInLegacy(legacyDir, opts = {}) {
 }
 
 /** Point the active link at an ARBITRARY target dir, replacing any prior LINK. */
-function relinkTo(activeLink, targetDir, opts) {
+function relinkTo(activeLink, targetDir, opts?) {
   const status = layout.linkStatus(activeLink)
   if (status.kind === 'dir') return { ok: false, reason: 'active-path-occupied-by-real-dir' }
   if (status.kind === 'link') {
@@ -140,7 +138,7 @@ function relinkTo(activeLink, targetDir, opts) {
  * already exists. A Windows open handle refusing the rename is reported
  * {ok:false, reason:'aside-move-failed'} so the caller leaves it for reconcile.
  */
-function moveLegacyAside(hermesHome, opts = {}) {
+function moveLegacyAside(hermesHome, opts: any = {}) {
   const { activeLink } = layout.bundlePaths(hermesHome)
   const aside = legacyAsidePath(hermesHome)
   if (layout.linkStatus(activeLink).kind !== 'dir') {
@@ -155,7 +153,7 @@ function moveLegacyAside(hermesHome, opts = {}) {
   }
   try {
     fs.renameSync(activeLink, aside)
-  } catch (err) {
+  } catch (err: any) {
     return { ok: false, moved: false, asideDir: aside, reason: 'aside-move-failed', error: String((err && err.message) || err) }
   }
   return { ok: true, moved: true, asideDir: aside }
@@ -174,7 +172,7 @@ function moveLegacyAside(hermesHome, opts = {}) {
  * names the new version, so {ok:true, linkPending:true} is returned and reconcile
  * finishes the switch once no child holds the old venv.
  */
-function migrateLegacyInPlace(hermesHome, newKey, opts = {}) {
+function migrateLegacyInPlace(hermesHome, newKey, opts: any = {}): any {
   const { versionDir, activeLink } = layout.bundlePaths(hermesHome)
   const log = typeof opts.log === 'function' ? opts.log : () => {}
   if (!fs.existsSync(versionDir(newKey))) return { ok: false, reason: 'version-missing', key: newKey }
@@ -215,7 +213,7 @@ function migrateLegacyInPlace(hermesHome, newKey, opts = {}) {
  * is a legacy REAL dir. Returns the same {ok, key, previous, ...} shape as
  * switchToVersion so the orchestrator treats both uniformly.
  */
-function switchToVersionOrMigrate(hermesHome, newKey, opts = {}) {
+function switchToVersionOrMigrate(hermesHome, newKey, opts: any = {}): any {
   const { activeLink } = layout.bundlePaths(hermesHome)
   if (layout.linkStatus(activeLink).kind === 'dir') {
     return migrateLegacyInPlace(hermesHome, newKey, opts)
@@ -231,7 +229,7 @@ function switchToVersionOrMigrate(hermesHome, newKey, opts = {}) {
  * link, so the old runtime runs exactly as before. Pointer first (key:=sentinel)
  * so a crash mid-repoint self-heals.
  */
-function rollbackToLegacyInPlace(hermesHome, opts = {}) {
+function rollbackToLegacyInPlace(hermesHome, opts: any = {}) {
   const { activeLink } = layout.bundlePaths(hermesHome)
   const aside = legacyAsidePath(hermesHome)
   const pointer = layout.readPointer(hermesHome)
@@ -254,7 +252,7 @@ function rollbackToLegacyInPlace(hermesHome, opts = {}) {
  *     dir (crash after pointer-write, before move) → finish the move-aside, link.
  * Fully fail-soft; never throws.
  */
-function reconcileMigration(hermesHome, opts = {}) {
+function reconcileMigration(hermesHome, opts: any = {}) {
   const { activeLink, versionDir } = layout.bundlePaths(hermesHome)
   const aside = legacyAsidePath(hermesHome)
   const pointer = layout.readPointer(hermesHome)
@@ -288,7 +286,7 @@ function reconcileMigration(hermesHome, opts = {}) {
  * bundle key, dropping the sentinel). Design §5: "新版稳定跑通…后 GC 删老
  * hermes-agent.legacy/". Respects an injected isLocked; fail-soft.
  */
-function gcLegacyAside(hermesHome, opts = {}) {
+function gcLegacyAside(hermesHome, opts: any = {}) {
   const aside = legacyAsidePath(hermesHome)
   if (!fs.existsSync(aside)) return { removed: false, reason: 'no-aside' }
   const pointer = layout.readPointer(hermesHome)
@@ -301,7 +299,7 @@ function gcLegacyAside(hermesHome, opts = {}) {
   try {
     fs.rmSync(aside, { recursive: true, force: true })
     return { removed: true, path: aside }
-  } catch (err) {
+  } catch (err: any) {
     return { removed: false, reason: 'rm-failed', error: String((err && err.message) || err) }
   }
 }
@@ -320,7 +318,7 @@ function migrationState(hermesHome) {
   }
 }
 
-module.exports = {
+export {
   LEGACY_ASIDE_BASENAME,
   LEGACY_SENTINEL,
   DEFAULT_USER_DATA_MARKERS,

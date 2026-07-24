@@ -1,11 +1,9 @@
-'use strict'
-
 /**
- * apex-runtime-latest.cjs
+ * apex-runtime-latest.ts
  *
  * Runtime 3-end consistency — R4 (first-install default = admin latest) + R5
  * (opt-in update of an installed desktop). Pure, electron-free helpers so they
- * are deterministic and unit-testable; main.cjs wires the IPC + bootstrap.
+ * are deterministic and unit-testable; main.ts wires the IPC + bootstrap.
  *
  * WHAT THIS SOLVES
  * ----------------
@@ -33,7 +31,7 @@
  * COS source-tarball install does not have — it is a `git archive` extract — and
  * it defaults to pulling raw upstream/main, which a managed product must never
  * track). Instead we re-point the pin and re-run our own bootstrap/installer
- * (see main.cjs). This deviates from PD §6's original "reuse native hermes
+ * (see main.ts). This deviates from PD §6's original "reuse native hermes
  * update" wording for those exact reasons.
  *
  * HOW THE PIN MAPS TO THE COS OBJECT
@@ -275,7 +273,7 @@ function latestUrl(apiBase, frameworkId = DEFAULT_FRAMEWORK_ID) {
  * @param {object} opts
  * @param {string} opts.apiBase
  * @param {(url: string, options?: object) => Promise<any>} opts.fetchJson
- *   credential-free JSON GET (main.cjs passes fetchPublicJson)
+ *   credential-free JSON GET (main.ts passes fetchPublicJson)
  * @param {string} [opts.frameworkId]
  * @param {number} [opts.timeoutMs]
  * @param {(msg: string) => void} [opts.log]
@@ -287,13 +285,13 @@ async function resolveLatestRuntimePin({
   frameworkId = DEFAULT_FRAMEWORK_ID,
   timeoutMs = 10_000,
   log = () => {}
-}) {
+}: any) {
   if (!apiBase || typeof fetchJson !== 'function') return null
   const url = latestUrl(apiBase, frameworkId)
   let body
   try {
     body = await fetchJson(url, { timeoutMs })
-  } catch (err) {
+  } catch (err: any) {
     // 404 (no default), network error, HTML, etc. -> treat as "no managed
     // latest available"; the baked pin stands.
     log(`[runtime-latest] /latest unavailable (${(err && err.message) || err}); using baked pin`)
@@ -323,7 +321,7 @@ async function resolveLatestRuntimePin({
  * @param {string} opts.apiBase
  * @param {(url: string, options?: object) => Promise<any>} opts.fetchJson
  * @param {{pinnedCommit?: string|null, pinnedBranch?: string|null, version?: string|null}|null} opts.marker
- *   the bootstrap-complete marker (main.cjs readBootstrapMarker())
+ *   the bootstrap-complete marker (main.ts readBootstrapMarker())
  * @param {string} [opts.frameworkId]
  * @param {(msg: string) => void} [opts.log]
  * @returns {Promise<{updateAvailable: boolean, current: object, latest: object|null, error?: string}>}
@@ -335,7 +333,7 @@ async function checkForRuntimeUpdate({
   frameworkId = DEFAULT_FRAMEWORK_ID,
   desktopVersion = null,
   log = () => {}
-}) {
+}: any) {
   const installedCommit = (marker && marker.pinnedCommit) || null
   const installedBranch = (marker && marker.pinnedBranch) || null
   const installedVersion = (marker && marker.version) || null
@@ -345,7 +343,7 @@ async function checkForRuntimeUpdate({
   let pin
   try {
     pin = await resolveLatestRuntimePin({ apiBase, fetchJson, frameworkId, log })
-  } catch (err) {
+  } catch (err: any) {
     // resolveLatestRuntimePin already swallows, but be defensive.
     return { updateAvailable: false, current, latest: null, error: (err && err.message) || String(err) }
   }
@@ -428,7 +426,7 @@ function overlayStampWithPin(bakedStamp, pin, source = 'api-latest') {
   }
 }
 
-module.exports = {
+export {
   COMMIT_RE,
   DEFAULT_FRAMEWORK_ID,
   INSTALLABLE_COS_STATUSES,

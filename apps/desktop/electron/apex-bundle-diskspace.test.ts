@@ -1,13 +1,12 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
+import { test } from 'vitest'
 
-const layout = require('./apex-bundle-layout.cjs')
-const disk = require('./apex-bundle-diskspace.cjs')
+import * as layout from './apex-bundle-layout'
+import * as disk from './apex-bundle-diskspace'
 
 const GIB = disk.GIB
 

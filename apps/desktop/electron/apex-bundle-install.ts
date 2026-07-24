@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-bundle-install.cjs — hc-472 P1 · F2 (+ manifest/version/COS glue)
+ * apex-bundle-install.ts — hc-472 P1 · F2 (+ manifest/version/COS glue)
  *
  * The half-state protection that carries the CORE INVARIANT (design §8):
  * NEVER extract in place. A bundle is staged into versions/<key>.tmp/, stamped
@@ -24,24 +22,24 @@
  * manifest.json adds `archive:{name,sha256,size}`).
  *
  * hc-473: applyBundleUpdate also fires anonymous download/verify/switch
- * telemetry beacons around its own F1/F2/C1 steps (apexnodes-telemetry.cjs);
+ * telemetry beacons around its own F1/F2/C1 steps (apexnodes-telemetry.ts);
  * see that function's JSDoc for exactly which sub-step maps to which stage.
  */
 
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
 
-const layout = require('./apex-bundle-layout.cjs')
-const migrate = require('./apex-bundle-migrate.cjs')
-const diskspace = require('./apex-bundle-diskspace.cjs')
-const {
+import * as layout from './apex-bundle-layout'
+import * as migrate from './apex-bundle-migrate'
+import * as diskspace from './apex-bundle-diskspace'
+import {
   sendDesktopTelemetry,
   fireTelemetry,
   classifyErrorCategory,
   STATUS_START,
   STATUS_SUCCESS,
   STATUS_FAILURE
-} = require('./apexnodes-telemetry.cjs')
+} from './apexnodes-telemetry'
 
 const MANIFEST_SCHEMA = 1
 const BUNDLE_KIND = 'apexnodes-runtime-bundle'
@@ -53,7 +51,10 @@ const FRAMEWORK = 'hermes-agent'
 const DEFAULT_COS_HOST = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com'
 
 class BundleInstallError extends Error {
-  constructor(message, code, stage) {
+  declare code: string
+  declare stage?: string
+
+  constructor(message, code?, stage?) {
     super(message)
     this.name = 'BundleInstallError'
     this.code = code || 'install_failed'
@@ -71,12 +72,12 @@ class BundleInstallError extends Error {
  * `requireArchive` (default true) also demands the sibling `archive` block that
  * the COS manifest.json carries (the in-bundle .bundle-manifest.json omits it).
  */
-function parseBundleManifest(input, { requireArchive = true } = {}) {
+function parseBundleManifest(input, { requireArchive = true }: any = {}) {
   let m = input
   if (typeof input === 'string') {
     try {
       m = JSON.parse(input)
-    } catch (err) {
+    } catch (err: any) {
       throw new BundleInstallError(`manifest is not valid JSON: ${err.message}`, 'bad_manifest')
     }
   }
@@ -158,7 +159,7 @@ function deriveCosHost(cosBase) {
 /**
  * @returns {{host, prefix, prefixUrl, manifestUrl, objectUrl:(name:string)=>string}}
  */
-function bundleCosLayout({ cosBase, key, os, arch, framework = FRAMEWORK }) {
+function bundleCosLayout({ cosBase, key, os, arch, framework = FRAMEWORK }: any) {
   const host = deriveCosHost(cosBase)
   const prefix = `bundle/${framework}/${key}/${os}-${arch}`
   const prefixUrl = `${host}/${prefix}`
@@ -260,7 +261,7 @@ async function stageAndCommitBundle(o) {
     fs.renameSync(stagingDir, finalDir)
     log(`[bundle-install] committed versions/${key}`)
     return { ok: true, versionDir: finalDir }
-  } catch (err) {
+  } catch (err: any) {
     // Confine the damage: drop the staging dir so we don't accumulate half
     // trees. (A hard crash instead leaves it for startup GC — same invariant.)
     fs.rmSync(stagingDir, { recursive: true, force: true })
@@ -275,7 +276,7 @@ async function stageAndCommitBundle(o) {
 
 /**
  * Full bundle apply. Every effect is injected so the flow is unit-testable end
- * to end with fakes; main.cjs supplies the real download / tar / spawn.
+ * to end with fakes; main.ts supplies the real download / tar / spawn.
  *
  * @param {object} o
  * @param {string} o.hermesHome
@@ -296,7 +297,7 @@ async function stageAndCommitBundle(o) {
  * @param {string[]} [o.migrateMarkers] D1 data-location assertion marker override
  * @param {(msg:string)=>void} [o.log]
  * @param {(event:object) => any} [o.sendTelemetry] hc-473 anonymous beacon
- *   emitter, defaults to the real apexnodes-telemetry.cjs; tests inject a
+ *   emitter, defaults to the real apexnodes-telemetry.ts; tests inject a
  *   fake to capture events without touching the network. Fires around the
  *   three stages the dispatch asks for: download (F1), verify (F2 — covers
  *   stageAndCommitBundle's own extract+fixup+verify sub-steps as one outer
@@ -397,7 +398,7 @@ async function applyBundleUpdate(o) {
         sha256: manifest.archive.sha256,
         size: manifest.archive.size
       })
-    } catch (err) {
+    } catch (err: any) {
       fireTelemetry(sendTelemetry, {
         ...telemetryBase,
         stage: 'download',
@@ -415,7 +416,7 @@ async function applyBundleUpdate(o) {
     let staged
     try {
       staged = await stageAndCommitBundle({ hermesHome, key, archivePath, manifest, extract, runTool, opts: platformOpts, log })
-    } catch (err) {
+    } catch (err: any) {
       fireTelemetry(sendTelemetry, {
         ...telemetryBase,
         stage: 'verify',
@@ -462,7 +463,7 @@ async function applyBundleUpdate(o) {
     }
 
     return { ok: true, key, versionDir: staged.versionDir, runtimeCommit: manifest.runtime_commit || null, switched: sw, gc }
-  } catch (err) {
+  } catch (err: any) {
     const code = (err && err.code) || 'install_failed'
     const stage = (err && err.stage) || 'unknown'
     log(`[bundle-install] FAILED at ${stage}: ${code} — ${err && err.message}`)
@@ -470,7 +471,7 @@ async function applyBundleUpdate(o) {
   }
 }
 
-module.exports = {
+export {
   MANIFEST_SCHEMA,
   BUNDLE_KIND,
   FRAMEWORK,

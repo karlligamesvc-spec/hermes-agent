@@ -1,15 +1,16 @@
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const path = require('node:path')
+import assert from 'node:assert/strict'
+import path from 'node:path'
 
-const {
+import { test } from 'vitest'
+
+import {
   LOGIN_SHELL_PATH_SENTINEL,
   loginShellPathProbeArgs,
   mergePathEntries,
   parseLoginShellPath,
   posixUserBinDirCandidates,
   resolveAugmentedPath
-} = require('./apex-shell-path.cjs')
+} from './apex-shell-path'
 
 // --- parseLoginShellPath ----------------------------------------------------
 

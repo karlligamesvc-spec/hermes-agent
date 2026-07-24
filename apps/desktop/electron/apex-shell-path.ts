@@ -1,5 +1,5 @@
 /**
- * apex-shell-path.cjs
+ * apex-shell-path.ts
  *
  * hc-544: PATH augmentation for the GUI-launched desktop app.
  *
@@ -15,7 +15,7 @@
  * ~/.apexnodes/node/bin, which an engine update wipes — not a root fix.
  *
  * ── Fix (fix-path pattern + static floor) ───────────────────────────────────
- * main.cjs augments THIS process's PATH once at boot (before any child spawn) so
+ * main.ts augments THIS process's PATH once at boot (before any child spawn) so
  * every downstream spawn inherits a usable PATH. Two composed sources:
  *   1. The user's *login-shell* PATH, probed via `$SHELL -lic 'echo $PATH'`
  *      (captures nvm/fnm/asdf/pyenv and any custom rc PATH edits). Best-effort,
@@ -27,12 +27,12 @@
  * system-tool and python resolution are unchanged.
  *
  * Standalone (no `require('electron')`, no subprocess, no side effects) so it
- * unit-tests with `node --test`, same pattern as apex-gateway.cjs /
- * apex-daemon.cjs. main.cjs owns the electron-coupled glue: the `execFileSync`
+ * unit-tests with `vitest run --project electron`, same pattern as apex-gateway.ts /
+ * apex-daemon.ts. main.ts owns the electron-coupled glue: the `execFileSync`
  * shell probe (with timeout) and the `process.env.PATH` mutation.
  */
 
-const path = require('node:path')
+import path from 'node:path'
 
 // Sentinel bracketing the PATH value in the probe's stdout, so we can pluck it
 // out of any rc-file noise (banners, `nvm use` output, etc.).
@@ -77,7 +77,7 @@ function parseLoginShellPath(stdout) {
  * @param {{ pathModule?: typeof path.posix }} [opts]
  * @returns {string[]}
  */
-function posixUserBinDirCandidates(home, { pathModule = path.posix } = {}) {
+function posixUserBinDirCandidates(home, { pathModule = path.posix }: any = {}) {
   if (!home) return []
   const j = (...parts) => pathModule.join(home, ...parts)
   return [
@@ -101,7 +101,7 @@ function posixUserBinDirCandidates(home, { pathModule = path.posix } = {}) {
  * @param {{ delimiter?: string }} [opts]
  * @returns {string}
  */
-function mergePathEntries(base, sources, { delimiter = ':' } = {}) {
+function mergePathEntries(base, sources, { delimiter = ':' }: any = {}) {
   const seen = new Set()
   const ordered = []
   const push = entry => {
@@ -143,7 +143,7 @@ function resolveAugmentedPath({
   platform = process.platform,
   isDir = () => true,
   pathModule = platform === 'win32' ? path.win32 : path.posix
-} = {}) {
+}: any = {}) {
   if (platform === 'win32') return currentPath
   const delimiter = path.posix.delimiter
   const staticFloor = posixUserBinDirCandidates(home, { pathModule }).filter(isDir)
@@ -153,7 +153,7 @@ function resolveAugmentedPath({
   return mergePathEntries(currentPath, sources, { delimiter })
 }
 
-module.exports = {
+export {
   LOGIN_SHELL_PATH_SENTINEL,
   loginShellPathProbeArgs,
   mergePathEntries,

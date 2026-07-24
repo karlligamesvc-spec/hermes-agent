@@ -1,13 +1,12 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
+import { test } from 'vitest'
 
-const layout = require('./apex-bundle-layout.cjs')
-const migrate = require('./apex-bundle-migrate.cjs')
+import * as layout from './apex-bundle-layout'
+import * as migrate from './apex-bundle-migrate'
 
 // The link-creating branches under test are posix symlinks; the Windows junction
 // branch is asserted structurally in the module (WIN-VERIFY) and only exercisable
@@ -22,11 +21,11 @@ function rm(home) {
   fs.rmSync(home, { recursive: true, force: true })
 }
 /** A legacy in-place install: a REAL hermes-agent/ dir with an abs-path venv. */
-function seedLegacy(home, extra = {}) {
+function seedLegacy(home, extra: any = {}) {
   const dir = layout.bundlePaths(home).activeLink
   fs.mkdirSync(path.join(dir, 'venv', 'bin'), { recursive: true })
   fs.writeFileSync(path.join(dir, 'venv', 'bin', 'python'), '#!/legacy/abs/venv/bin/python')
-  for (const [rel, body] of Object.entries(extra)) {
+  for (const [rel, body] of Object.entries<any>(extra)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
     fs.writeFileSync(path.join(dir, rel), body)
   }

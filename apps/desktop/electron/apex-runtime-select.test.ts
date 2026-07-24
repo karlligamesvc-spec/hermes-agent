@@ -1,13 +1,12 @@
-'use strict'
+import assert from 'node:assert/strict'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
+import { test } from 'vitest'
 
-const {
+import {
   canUseOnDiskRuntime,
   resolvePreBootstrapDecision,
   resolveBootstrapFailureFallback
-} = require('./apex-runtime-select.cjs')
+} from './apex-runtime-select'
 
 // ---------------------------------------------------------------------------
 // canUseOnDiskRuntime

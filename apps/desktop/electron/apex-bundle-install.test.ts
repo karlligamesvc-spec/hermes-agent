@@ -1,29 +1,28 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
+import { test } from 'vitest'
 
 // hc-473: keep this suite hermetic regardless of how it's invoked (npm run
 // test:desktop:platforms already sets this too, but this file must not rely
-// on that -- a bare `node --test electron/apex-bundle-install.test.cjs` must
+// on that -- a bare `npx vitest run electron/apex-bundle-install.test.ts` must
 // never let applyBundleUpdate's default sendTelemetry touch the real
 // network). Tests that assert on beacon content inject their own fake
 // sendTelemetry, which always takes priority over this env var.
 process.env.APEXNODES_TELEMETRY = 'off'
 
-const layout = require('./apex-bundle-layout.cjs')
-const migrate = require('./apex-bundle-migrate.cjs')
-const install = require('./apex-bundle-install.cjs')
+import * as layout from './apex-bundle-layout'
+import * as migrate from './apex-bundle-migrate'
+import * as install from './apex-bundle-install'
 
 // A manifest faithful to scripts/build-runtime-bundle.mjs output (sibling
 // manifest.json shape, incl. the `archive` block). The key/os/arch match the
 // REAL published win-x64 bundle noted in the ticket:
 //   COS bundle/hermes-agent/c2ba29f37c67/win-x64/
 const REAL_KEY = 'c2ba29f37c67'
-function winManifest(overrides = {}) {
+function winManifest(overrides: any = {}) {
   return {
     schema: 1,
     kind: 'apexnodes-runtime-bundle',
@@ -69,7 +68,7 @@ test('parseBundleManifest: rejects wrong schema/kind/framework/missing fields', 
     ['no archive', () => install.parseBundleManifest(winManifest({ archive: undefined }))]
   ]
   for (const [label, fn] of bad) {
-    assert.throws(fn, err => err.code === 'bad_manifest', `expected bad_manifest for ${label}`)
+    assert.throws(fn, (err: any) => err.code === 'bad_manifest', `expected bad_manifest for ${label}`)
   }
 })
 
@@ -203,7 +202,7 @@ test('stageAndCommitBundle: verify failure leaves NO committed version, cleans .
           if (label === 'verify') throw new Error('sha mismatch on 3 files')
         }
       }),
-      err => err.code === 'stage_failed' || err.stage === 'stage'
+      (err: any) => err.code === 'stage_failed' || err.stage === 'stage'
     )
     // Core invariant: the committed version dir never appears on a failed verify.
     assert.equal(fs.existsSync(layout.bundlePaths(home).versionDir(REAL_KEY)), false)
@@ -225,7 +224,7 @@ test('stageAndCommitBundle: mismatched embedded key is rejected before commit', 
         extract: fakeExtract('deadbeefdead'), // extracts a DIFFERENT key
         runTool: () => {}
       }),
-      err => err.code === 'key_mismatch'
+      (err: any) => err.code === 'key_mismatch'
     )
     assert.equal(fs.existsSync(layout.bundlePaths(home).versionDir(REAL_KEY)), false)
   } finally {
@@ -262,7 +261,7 @@ test('stageAndCommitBundle: an already-committed version is reused (idempotent)'
 // applyBundleUpdate — F1→F2→C1 orchestration (all effects injected)
 // ---------------------------------------------------------------------------
 
-function baseDeps(home, key = REAL_KEY, manifest = winManifest()) {
+function baseDeps(home, key = REAL_KEY, manifest = winManifest()): any {
   const seen = { download: 0, extract: 0 }
   return {
     seen,
@@ -411,12 +410,12 @@ test('applyBundleUpdate: low disk first drops `previous` to reclaim, then procee
 // D1 — legacy in-place side-by-side migration (design §5) via applyBundleUpdate
 // ---------------------------------------------------------------------------
 
-function seedLegacyInPlace(home, extra = {}) {
+function seedLegacyInPlace(home, extra: any = {}) {
   const dir = layout.bundlePaths(home).activeLink // HERMES_HOME/hermes-agent, a REAL dir
   fs.mkdirSync(path.join(dir, 'venv', 'bin'), { recursive: true })
   fs.writeFileSync(path.join(dir, 'venv', 'bin', 'python'), '#!/legacy/abs/venv/bin/python')
   fs.writeFileSync(path.join(dir, '.hermes-bootstrap-complete'), '{}')
-  for (const [rel, body] of Object.entries(extra)) {
+  for (const [rel, body] of Object.entries<any>(extra)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
     fs.writeFileSync(path.join(dir, rel), body)
   }

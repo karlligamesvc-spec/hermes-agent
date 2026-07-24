@@ -1,12 +1,11 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
+import { test } from 'vitest'
 
-const layout = require('./apex-bundle-layout.cjs')
+import * as layout from './apex-bundle-layout'
 
 // ---------------------------------------------------------------------------
 // helpers — a throwaway HERMES_HOME per test
@@ -19,7 +18,7 @@ function rm(home) {
   fs.rmSync(home, { recursive: true, force: true })
 }
 /** Materialize a committed version dir with a recognizable file inside. */
-function seedVersion(home, key, marker) {
+function seedVersion(home, key, marker?) {
   const dir = layout.bundlePaths(home).versionDir(key)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'id.txt'), marker || key)
