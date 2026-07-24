@@ -1,4 +1,5 @@
 import {
+  Box,
   Brain,
   type IconComponent,
   Lock,
@@ -7,7 +8,6 @@ import {
   Monitor,
   Moon,
   Palette,
-  Sparkles,
   Sun,
   Wrench
 } from '@/lib/icons'
@@ -37,219 +37,190 @@ interface ProviderPrefix {
 export const EMPTY_SELECT_VALUE = '__hermes_empty__'
 export const CONTROL_TEXT = 'text-xs'
 
-// ── Consumer (China-first) settings surface ─────────────────────────────────
-// APEX Desktop ships a consumer-sized settings IA: 个性化 / 外观 / 提供方 /
-// 已归档对话. Every pro/technical section below is HIDDEN — not deleted — from
-// the settings nav, the settings-field search index and the ⌘K command
-// palette, all of which consult this one set. Pages and their `?tab=` deep
-// links keep working, so re-enabling a section later is a one-line delete
-// here.
-export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set([
-  'config:model', // 模型 — platform config drives model choice for now
-  'config:chat', // 对话 — 人格 moved into 个性化; the rest became defaults
-  'config:workspace', // 工作区
-  'config:safety', // 安全
-  'config:memory', // 记忆与上下文
-  'config:voice', // 语音
-  'config:advanced', // 高级
-  'notifications', // 通知
-  'gateway', // 网关
-  'keys', // 工具与密钥 (tools list + key settings)
-  'mcp', // MCP servers
-  'messaging' // 消息平台 jump entry inside settings
-])
-
-export const isConsumerHiddenSection = (view: string): boolean => CONSUMER_HIDDEN_SECTIONS.has(view)
-
-// ApexNodes (China-first) ordering: mainland-stable domestic providers get the
-// low priorities (1–9) so they float to the top of Settings → Keys, matching the
-// onboarding API-key picker's domestic-first layout. International providers
-// (need a VPN / overseas payment) sink to 10+. Priority drives sort only —
-// membership is still longest-prefix match (providerGroup in helpers.ts).
 export const PROVIDER_GROUPS: ProviderPrefix[] = [
-  // ── Domestic — mainland-China stable, no VPN (1–9) ────────────────────────
-  {
-    prefix: 'DEEPSEEK_',
-    name: 'DeepSeek',
-    description: 'Direct DeepSeek API (V3.x, R1)',
-    docsUrl: 'https://platform.deepseek.com/api_keys',
-    priority: 1
-  },
-  {
-    prefix: 'DASHSCOPE_',
-    name: 'DashScope (Qwen)',
-    description: 'Alibaba Cloud DashScope — Qwen and multi-vendor models',
-    docsUrl: 'https://modelstudio.console.alibabacloud.com/',
-    priority: 2
-  },
-  { prefix: 'HERMES_QWEN_', name: 'DashScope (Qwen)', priority: 2 },
-  {
-    prefix: 'GLM_',
-    name: 'GLM / Z.AI',
-    description: 'Zhipu GLM-4.6 and Z.AI hosted endpoints',
-    docsUrl: 'https://z.ai/',
-    priority: 3
-  },
-  { prefix: 'ZAI_', name: 'GLM / Z.AI', priority: 3 },
-  { prefix: 'Z_AI_', name: 'GLM / Z.AI', priority: 3 },
-  {
-    prefix: 'KIMI_',
-    name: 'Kimi / Moonshot',
-    description: 'Moonshot Kimi K2 / coding endpoints',
-    docsUrl: 'https://platform.moonshot.cn/',
-    priority: 4
-  },
-  {
-    prefix: 'KIMI_CN_',
-    name: 'Kimi (China)',
-    description: 'Moonshot China endpoint',
-    docsUrl: 'https://platform.moonshot.cn/',
-    priority: 5
-  },
-  {
-    prefix: 'MINIMAX_',
-    name: 'MiniMax',
-    description: 'MiniMax-M2 and Hailuo international endpoints',
-    docsUrl: 'https://www.minimax.io/',
-    priority: 6
-  },
-  {
-    prefix: 'MINIMAX_CN_',
-    name: 'MiniMax (China)',
-    description: 'MiniMax mainland China endpoint',
-    docsUrl: 'https://www.minimaxi.com/',
-    priority: 7
-  },
-  {
-    prefix: 'STEPFUN_',
-    name: 'StepFun',
-    description: 'StepFun Step Plan coding models',
-    docsUrl: 'https://platform.stepfun.com/',
-    priority: 8
-  },
-  {
-    prefix: 'XIAOMI_',
-    name: 'Xiaomi MiMo',
-    description: 'MiMo-V2.5 and Xiaomi proprietary models',
-    docsUrl: 'https://platform.xiaomimimo.com',
-    priority: 9
-  },
-  // ── International — need VPN / overseas payment, backup only (10+) ─────────
   {
     prefix: 'NOUS_',
     name: 'Nous Portal',
     description: 'Hosted Hermes & Nous-trained models',
     docsUrl: 'https://portal.nousresearch.com',
-    priority: 10
+    priority: 0
+  },
+  {
+    prefix: 'FIREWORKS_',
+    name: 'Fireworks AI',
+    description: 'OpenAI-compatible direct model API',
+    docsUrl: 'https://app.fireworks.ai/settings/users/api-keys',
+    // Slot #2 — mirrors CANONICAL_PROVIDERS (after Nous, ahead of OpenRouter).
+    // Same numeric priority as OpenRouter; name sort puts Fireworks first.
+    priority: 1
   },
   {
     prefix: 'OPENROUTER_',
     name: 'OpenRouter',
     description: 'Aggregator for hundreds of frontier models',
     docsUrl: 'https://openrouter.ai/keys',
-    priority: 11
+    priority: 1
   },
   {
     prefix: 'ANTHROPIC_',
     name: 'Anthropic',
     description: 'Claude API access (Sonnet, Opus, Haiku)',
     docsUrl: 'https://console.anthropic.com/settings/keys',
-    priority: 12
+    priority: 2
   },
   {
     prefix: 'XAI_',
     name: 'xAI',
     description: 'Grok models (use OAuth for SuperGrok / Premium+)',
     docsUrl: 'https://console.x.ai/',
-    priority: 13
+    priority: 3
   },
   {
     prefix: 'GOOGLE_',
     name: 'Gemini',
     description: 'Google AI Studio (Gemini 1.5 / 2.0 / 2.5)',
     docsUrl: 'https://aistudio.google.com/app/apikey',
-    priority: 14
+    priority: 4
   },
-  { prefix: 'GEMINI_', name: 'Gemini', priority: 14 },
-  { prefix: 'HERMES_GEMINI_', name: 'Gemini', priority: 14 },
+  { prefix: 'GEMINI_', name: 'Gemini', priority: 4 },
+  {
+    prefix: 'DEEPSEEK_',
+    name: 'DeepSeek',
+    description: 'Direct DeepSeek API (V3.x, R1)',
+    docsUrl: 'https://platform.deepseek.com/api_keys',
+    priority: 5
+  },
+  {
+    prefix: 'DASHSCOPE_',
+    name: 'DashScope (Qwen)',
+    description: 'Alibaba Cloud DashScope — Qwen and multi-vendor models',
+    docsUrl: 'https://modelstudio.console.alibabacloud.com/',
+    priority: 6
+  },
+  { prefix: 'HERMES_QWEN_', name: 'DashScope (Qwen)', priority: 6 },
+  {
+    prefix: 'GLM_',
+    name: 'GLM / Z.AI',
+    description: 'Zhipu GLM-4.6 and Z.AI hosted endpoints',
+    docsUrl: 'https://z.ai/',
+    priority: 7
+  },
+  { prefix: 'ZAI_', name: 'GLM / Z.AI', priority: 7 },
+  { prefix: 'Z_AI_', name: 'GLM / Z.AI', priority: 7 },
+  {
+    prefix: 'KIMI_',
+    name: 'Kimi / Moonshot',
+    description: 'Moonshot Kimi K2 / coding endpoints',
+    docsUrl: 'https://platform.moonshot.cn/',
+    priority: 8
+  },
+  {
+    prefix: 'KIMI_CN_',
+    name: 'Kimi (China)',
+    description: 'Moonshot China endpoint',
+    docsUrl: 'https://platform.moonshot.cn/',
+    priority: 9
+  },
+  {
+    prefix: 'MINIMAX_',
+    name: 'MiniMax',
+    description: 'MiniMax-M2 and Hailuo international endpoints',
+    docsUrl: 'https://www.minimax.io/',
+    priority: 10
+  },
+  {
+    prefix: 'MINIMAX_CN_',
+    name: 'MiniMax (China)',
+    description: 'MiniMax mainland China endpoint',
+    docsUrl: 'https://www.minimaxi.com/',
+    priority: 11
+  },
   {
     prefix: 'HF_',
     name: 'Hugging Face',
     description: 'Inference Providers — 20+ open models via router.huggingface.co',
     docsUrl: 'https://huggingface.co/settings/tokens',
-    priority: 15
+    priority: 12
   },
   {
     prefix: 'OPENCODE_ZEN_',
     name: 'OpenCode Zen',
     description: 'Pay-as-you-go access to curated coding models',
     docsUrl: 'https://opencode.ai/auth',
-    priority: 16
+    priority: 13
   },
   {
     prefix: 'OPENCODE_GO_',
     name: 'OpenCode Go',
     description: '$10/month subscription for open coding models',
     docsUrl: 'https://opencode.ai/auth',
-    priority: 17
+    priority: 14
   },
   {
     prefix: 'NVIDIA_',
     name: 'NVIDIA NIM',
     description: 'build.nvidia.com or your own local NIM endpoint',
     docsUrl: 'https://build.nvidia.com/',
-    priority: 18
+    priority: 15
   },
   {
     prefix: 'OLLAMA_',
     name: 'Ollama Cloud',
     description: 'Cloud-hosted open models from ollama.com',
     docsUrl: 'https://ollama.com/settings',
-    priority: 19
+    priority: 16
   },
   {
     prefix: 'LM_',
     name: 'LM Studio',
     description: 'Local LM Studio server (OpenAI-compatible)',
     docsUrl: 'https://lmstudio.ai/docs/local-server',
-    priority: 20
+    priority: 17
+  },
+  {
+    prefix: 'STEPFUN_',
+    name: 'StepFun',
+    description: 'StepFun Step Plan coding models',
+    docsUrl: 'https://platform.stepfun.com/',
+    priority: 18
+  },
+  {
+    prefix: 'XIAOMI_',
+    name: 'Xiaomi MiMo',
+    description: 'MiMo-V2.5 and Xiaomi proprietary models',
+    docsUrl: 'https://platform.xiaomimimo.com',
+    priority: 19
   },
   {
     prefix: 'ARCEEAI_',
     name: 'Arcee AI',
     description: 'Arcee-hosted small + medium models',
     docsUrl: 'https://chat.arcee.ai/',
-    priority: 21
+    priority: 20
   },
-  { prefix: 'ARCEE_', name: 'Arcee AI', priority: 21 },
+  { prefix: 'ARCEE_', name: 'Arcee AI', priority: 20 },
   {
     prefix: 'GMI_',
     name: 'GMI Cloud',
     description: 'GMI Cloud GPU + model serving',
     docsUrl: 'https://www.gmicloud.ai/',
-    priority: 22
+    priority: 21
   },
   {
     prefix: 'AZURE_FOUNDRY_',
     name: 'Azure Foundry',
     description: 'Azure AI Foundry custom endpoints (OpenAI / Anthropic-compatible)',
     docsUrl: 'https://ai.azure.com/',
-    priority: 23
+    priority: 22
   },
   {
     prefix: 'AWS_',
     name: 'AWS Bedrock',
     description: 'Authenticate via AWS profile + region',
     docsUrl: 'https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html',
-    priority: 24
+    priority: 23
   }
 ]
-
-// PROVIDER_GROUPS is priority-split: 1–9 are the mainland-China stable
-// (domestic, no-VPN) providers, 10+ are international. The consumer Providers
-// page keeps only groups at or below this priority (plus groups the backend
-// tags with a DOMESTIC_PROVIDER_SLUGS provider id).
-export const DOMESTIC_PROVIDER_PRIORITY_MAX = 9
 
 export const BUILTIN_PERSONALITIES = [
   'helpful',
@@ -275,8 +246,11 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   'approvals.mode': ['manual', 'smart', 'off'],
   'code_execution.mode': ['project', 'strict'],
   'context.engine': ['compressor', 'default', 'custom'],
-  'delegation.reasoning_effort': ['', 'minimal', 'low', 'medium', 'high', 'xhigh'],
-  'memory.provider': ['', 'builtin', 'hindsight', 'honcho'],
+  'delegation.reasoning_effort': ['', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+  // Built-in memory is not a provider plugin: the empty sentinel renders as
+  // "Built-in only" and a legacy literal `builtin` value is only kept visible
+  // via enumOptionsFor's current-value passthrough (#49513).
+  'memory.provider': ['', 'honcho', 'hindsight'],
   // Terminal execution backends — kept in sync with the dispatch ladder in
   // tools/terminal_tool.py::_create_environment (local/docker/singularity/
   // modal/daytona/ssh). Remote backends need extra env (image, tokens, host).
@@ -286,7 +260,77 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   // Speech-to-text backends — kept in sync with the stt block in
   // hermes_cli/config.py (local/groq/openai/mistral/elevenlabs).
   'stt.provider': ['local', 'groq', 'openai', 'mistral', 'xai', 'elevenlabs'],
-  'tts.openai.voice': ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
+  // gpt-4o-mini-tts voice set (the tts-1 era stopped at shimmer). Free-input
+  // field — the list is suggestions, not a gate (see FREE_INPUT_KEYS).
+  'tts.openai.voice': [
+    'alloy',
+    'ash',
+    'ballad',
+    'cedar',
+    'coral',
+    'echo',
+    'fable',
+    'marin',
+    'nova',
+    'onyx',
+    'sage',
+    'shimmer',
+    'verse'
+  ],
+  // Popular Edge neural voices (the full catalog is 400+ — free input).
+  'tts.edge.voice': [
+    'en-US-AriaNeural',
+    'en-US-JennyNeural',
+    'en-US-AndrewNeural',
+    'en-US-BrianNeural',
+    'en-US-GuyNeural',
+    'en-GB-SoniaNeural'
+  ],
+  'tts.gemini.model': ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'],
+  // Gemini TTS prebuilt voice set.
+  'tts.gemini.voice': [
+    'Zephyr',
+    'Puck',
+    'Charon',
+    'Kore',
+    'Fenrir',
+    'Leda',
+    'Orus',
+    'Aoede',
+    'Callirrhoe',
+    'Autonoe',
+    'Enceladus',
+    'Iapetus',
+    'Umbriel',
+    'Algieba',
+    'Despina',
+    'Erinome',
+    'Algenib',
+    'Rasalgethi',
+    'Laomedeia',
+    'Achernar',
+    'Alnilam',
+    'Schedar',
+    'Gacrux',
+    'Pulcherrima',
+    'Achird',
+    'Zubenelgenubi',
+    'Vindemiatrix',
+    'Sadachbia',
+    'Sadaltager',
+    'Sulafat'
+  ],
+  'tts.xai.voice_id': ['eve'],
+  'tts.minimax.model': ['speech-02-hd', 'speech-02-turbo'],
+  'tts.mistral.model': ['voxtral-mini-tts-2603'],
+  'tts.kittentts.model': [
+    'KittenML/kitten-tts-nano-0.8-int8',
+    'KittenML/kitten-tts-micro-0.8-int8',
+    'KittenML/kitten-tts-mini-0.8-int8'
+  ],
+  'tts.kittentts.voice': ['Jasper'],
+  'tts.piper.voice': ['en_US-lessac-medium', 'en_US-amy-medium', 'en_US-ryan-high', 'en_GB-alan-medium'],
+  'tts.neutts.model': ['neuphonic/neutts-air-q4-gguf', 'neuphonic/neutts-air-q8-gguf', 'neuphonic/neutts-air'],
   // Text-to-speech backends — kept in sync with the built-in source of truth
   // (agent/tts_registry.py::_BUILTIN_NAMES / tools/tts_tool.py::
   // BUILTIN_TTS_PROVIDERS). 'xai' is Grok TTS.
@@ -310,6 +354,31 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   'tts.neutts.device': ['cpu', 'cuda', 'mps'],
   'updates.non_interactive_local_changes': ['stash', 'discard']
 }
+
+// Voice/model name fields render as a free-input combobox (Input + datalist)
+// instead of a closed Select: providers accept custom voice IDs (ElevenLabs
+// cloned voices, xAI custom voices, Edge's 400+ catalog) and ship new model
+// names faster than this list updates. The ENUM_OPTIONS above become
+// suggestions rather than a gate for these keys.
+export const FREE_INPUT_KEYS = new Set([
+  'tts.edge.voice',
+  'tts.openai.model',
+  'tts.openai.voice',
+  'tts.elevenlabs.voice_id',
+  'tts.gemini.model',
+  'tts.gemini.voice',
+  'tts.xai.voice_id',
+  'tts.minimax.model',
+  'tts.minimax.voice_id',
+  'tts.mistral.model',
+  'tts.mistral.voice_id',
+  'tts.neutts.model',
+  'tts.kittentts.model',
+  'tts.kittentts.voice',
+  'tts.piper.voice',
+  'tts.deepinfra.model',
+  'tts.deepinfra.voice'
+])
 
 export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   model: 'Default Model',
@@ -373,6 +442,7 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   },
   stt: {
     enabled: 'Speech To Text',
+    echoTranscripts: 'Echo Transcripts',
     provider: 'Speech-To-Text Provider',
     local: {
       model: 'Local Transcription Model',
@@ -409,7 +479,12 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     },
     xai: {
       voiceId: 'xAI (Grok) Voice',
-      language: 'xAI Language'
+      language: 'xAI Language',
+      speed: 'xAI Playback Speed',
+      autoSpeechTags: 'xAI Auto Speech Tags',
+      optimizeStreamingLatency: 'xAI Streaming Latency Optimization',
+      sampleRate: 'xAI Sample Rate',
+      bitRate: 'xAI Bit Rate'
     },
     minimax: {
       model: 'MiniMax TTS Model',
@@ -433,6 +508,10 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     },
     piper: {
       voice: 'Piper Voice'
+    },
+    deepinfra: {
+      model: 'DeepInfra TTS Model',
+      voice: 'DeepInfra Voice'
     }
   },
   memory: {
@@ -516,7 +595,12 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   tts: {
     xai: {
       voiceId: 'xAI voice ID (e.g. eve) or a custom voice ID.',
-      language: 'Spoken language code, e.g. en.'
+      language: 'Spoken language code (e.g. en, pt-BR) or "auto" for auto-detection.',
+      speed: 'Playback speed. 0.7 = slower, 1.0 = normal, 1.5 = faster.',
+      autoSpeechTags: 'Let an LLM insert expressive audio tags ([laughing], [sighs]) into the script before synthesis.',
+      optimizeStreamingLatency: 'Latency vs. quality trade-off. 0 = best quality, 2 = lowest latency.',
+      sampleRate: 'Audio sample rate in Hz. Higher = better quality, larger files.',
+      bitRate: 'MP3 bitrate in bps. Only applies when codec is mp3.'
     },
     neutts: {
       device: 'Local inference device for NeuTTS.'
@@ -524,6 +608,7 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   },
   stt: {
     enabled: 'Enable local or provider-backed speech transcription.',
+    echoTranscripts: 'Post the raw 🎙️ transcript of voice messages back to the chat.',
     elevenlabs: {
       languageCode: 'Optional ISO-639-3 language code. Blank lets ElevenLabs auto-detect.'
     }
@@ -537,30 +622,16 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
 // Curated desktop config surface: only fields a user might tune from the app.
 export const SECTIONS: DesktopConfigSection[] = [
   {
-    // 个性化 — the consumer landing section: the 人格 (personality) picker plus
-    // the former About content. Rendered by PersonalizationSettings (index.tsx
-    // routes `config:personalization` past ConfigSettings, same pattern as
-    // appearance); the key listed here feeds the ⌘K settings-field search.
-    id: 'personalization',
-    label: 'Personalization',
-    icon: Sparkles,
-    keys: ['display.personality']
-  },
-  {
     id: 'model',
     label: 'Model',
-    icon: Sparkles,
+    icon: Box,
     keys: ['model_context_length', 'fallback_providers']
   },
   {
-    // 人格 moved to the 个性化 section above. The remaining chat knobs are
-    // consumer defaults now (timezone → OS, show_reasoning → on, image mode →
-    // auto) and this whole section is consumer-hidden; the keys stay so the
-    // page still renders when deep-linked.
     id: 'chat',
     label: 'Chat',
     icon: MessageCircle,
-    keys: ['timezone', 'display.show_reasoning', 'agent.image_input_mode']
+    keys: ['display.personality', 'timezone', 'display.show_reasoning', 'agent.image_input_mode']
   },
   {
     id: 'appearance',
@@ -620,6 +691,7 @@ export const SECTIONS: DesktopConfigSection[] = [
     keys: [
       'tts.provider',
       'stt.enabled',
+      'stt.echo_transcripts',
       'stt.provider',
       'voice.auto_tts',
       'tts.edge.voice',
@@ -629,6 +701,11 @@ export const SECTIONS: DesktopConfigSection[] = [
       'tts.elevenlabs.model_id',
       'tts.xai.voice_id',
       'tts.xai.language',
+      'tts.xai.speed',
+      'tts.xai.auto_speech_tags',
+      'tts.xai.optimize_streaming_latency',
+      'tts.xai.sample_rate',
+      'tts.xai.bit_rate',
       'tts.minimax.model',
       'tts.minimax.voice_id',
       'tts.mistral.model',
@@ -640,6 +717,8 @@ export const SECTIONS: DesktopConfigSection[] = [
       'tts.kittentts.model',
       'tts.kittentts.voice',
       'tts.piper.voice',
+      'tts.deepinfra.model',
+      'tts.deepinfra.voice',
       'stt.local.model',
       'stt.local.language',
       'stt.openai.model',

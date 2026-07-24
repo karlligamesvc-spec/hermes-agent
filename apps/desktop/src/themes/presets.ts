@@ -9,8 +9,7 @@ import type { DesktopTheme, DesktopThemeTypography } from './types'
 // text/mono fonts carry emoji glyphs, so without this emoji render as tofu
 // boxes on platforms whose default text font lacks them (e.g. Linux/#40364).
 // Covers macOS, Windows, Linux, plus the `emoji` generic for anything else.
-export const EMOJI_FALLBACK =
-  '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji'
+export const EMOJI_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji'
 
 const SYSTEM_SANS =
   '"Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
@@ -25,56 +24,44 @@ const NOUS_BLUE = '#0053FD'
 const PSYCHE_BLUE = '#1540B1'
 const PSYCHE_WARM = '#FFE6CB'
 
-// ApexNodes brand violet — the single accent on the light "Claude" identity.
-// Used only as an accent SEED: the styles.css derivation chain mixes it into
-// neutral grays at 3–16%, so it never floods — selected/hover/send read as a
-// whisper of purple over a gray-white surface (the "灰白为主、紫极淡" call).
-const APEX_VIOLET = '#7E6CEF'
-
-const apexTint = (pct: number) => `color-mix(in srgb, ${APEX_VIOLET} ${pct}%, #FFFFFF)`
-const apexTintTransparent = (pct: number) => `color-mix(in srgb, ${APEX_VIOLET} ${pct}%, transparent)`
+const nousTint = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, #FFFFFF)`
+const nousTintTransparent = (pct: number) => `color-mix(in srgb, ${NOUS_BLUE} ${pct}%, transparent)`
 
 /**
- * Nous — the default desktop identity, retuned to the Claude-style macOS look:
- * gray-white neutral surfaces (#FFF / #F6F6F6 chrome, hairline #E8E8E8 borders),
- * near-black text, and the ApexNodes violet kept as a faint accent only. No
- * blue tint on surfaces; status blue (#0A84FF) lives in styles.css `--ui-blue`.
- * `darkColors` (the psyche cream/navy night palette) is intentionally left
- * untouched — this redesign targets the light identity.
+ * Nous — canonical Hermes desktop identity. The palette keeps the current
+ * glass geometry neutral, then lets the old bb/gui blue and psyche cream
+ * return as accent seeds.
  */
 export const nousTheme: DesktopTheme = {
   name: 'nous',
   label: 'Nous',
-  description: 'Claude-style gray-white neutrals with a faint APEX violet accent',
+  description: 'Glass neutrals with Nous blue accents',
   colors: {
-    background: '#FFFFFF',
-    foreground: '#222226',
+    background: '#F8FAFF',
+    foreground: '#17171A',
     card: '#FFFFFF',
-    cardForeground: '#222226',
-    muted: '#F4F4F5',
-    mutedForeground: '#7A7A80',
+    cardForeground: '#17171A',
+    muted: nousTint(5),
+    mutedForeground: '#666678',
     popover: '#FFFFFF',
-    popoverForeground: '#222226',
-    primary: APEX_VIOLET,
-    primaryForeground: '#FFFFFF',
-    secondary: apexTint(6),
-    secondaryForeground: '#33333A',
-    accent: apexTint(8),
-    accentForeground: '#2A2A30',
-    // Borders stay neutral gray hairlines (~#E5E5E5 / #E8E8E8), NOT violet —
-    // borders are the loudest "is this purple everywhere?" tell, so they get
-    // no accent. Only fills (selected/hover) carry the faint violet.
-    border: 'color-mix(in srgb, #1c1c20 11%, transparent)',
-    input: 'color-mix(in srgb, #1c1c20 14%, transparent)',
-    ring: APEX_VIOLET,
-    midground: APEX_VIOLET,
-    composerRing: APEX_VIOLET,
+    popoverForeground: '#17171A',
+    primary: NOUS_BLUE,
+    primaryForeground: '#FCFCFC',
+    secondary: nousTint(7),
+    secondaryForeground: '#242432',
+    accent: nousTint(10),
+    accentForeground: '#202030',
+    border: nousTintTransparent(22),
+    input: nousTintTransparent(30),
+    ring: NOUS_BLUE,
+    midground: NOUS_BLUE,
+    composerRing: NOUS_BLUE,
     destructive: '#C72E4D',
     destructiveForeground: '#FFFFFF',
-    sidebarBackground: '#F6F6F6',
-    sidebarBorder: 'color-mix(in srgb, #1c1c20 9%, transparent)',
-    userBubble: apexTint(5),
-    userBubbleBorder: 'color-mix(in srgb, #1c1c20 10%, transparent)'
+    sidebarBackground: '#F3F7FF',
+    sidebarBorder: nousTintTransparent(18),
+    userBubble: nousTint(6),
+    userBubbleBorder: nousTintTransparent(24)
   },
   darkColors: {
     background: '#0D2F86',

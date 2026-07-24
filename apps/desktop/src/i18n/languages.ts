@@ -1,9 +1,7 @@
+import { normalize } from '@/lib/text'
+
 import type { Locale } from './types'
 
-// Universal safe fallback (also the test/type baseline). The ApexNodes shell
-// opens China-first in Simplified Chinese via I18nProvider's initialLocale="zh"
-// + the config-absent fallback in context.tsx — not by changing this constant,
-// so unrelated unit tests keep their stable English baseline.
 export const DEFAULT_LOCALE: Locale = 'en'
 
 export const LOCALE_OPTIONS = [
@@ -78,11 +76,11 @@ export function normalizeLocale(value: unknown): Locale {
     return DEFAULT_LOCALE
   }
 
-  return LOCALE_ALIASES[value.trim().toLowerCase()] ?? DEFAULT_LOCALE
+  return LOCALE_ALIASES[normalize(value)] ?? DEFAULT_LOCALE
 }
 
 export function isSupportedLocaleValue(value: unknown): boolean {
-  return typeof value === 'string' && LOCALE_ALIASES[value.trim().toLowerCase()] != null
+  return typeof value === 'string' && LOCALE_ALIASES[normalize(value)] != null
 }
 
 export function localeConfigValue(locale: Locale): string {

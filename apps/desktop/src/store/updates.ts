@@ -1,24 +1,14 @@
 /**
- * Desktop update store. Tracks the connected (remote) backend's distance from
- * its target branch, surfaces it as an ambient pill, and orchestrates its
- * apply flow. Also publishes the running desktop shell's own version
- * ($desktopVersion) for the About panel.
- *
- * hc-475 follow-up: the legacy client self-rebuild plane (git-pull +
- * `hermes update` + `hermes desktop --build-only`) has been physically
- * removed from this store and its overlay — apps/desktop/electron/main.cjs
- * already hard-disables that plane for packaged builds (hc-475 F4: IS_PACKAGED
- * -> applyUpdates refuses / checkUpdates reports supported:false), and this
- * file no longer has any UI entry point that calls into it. main.cjs /
- * preload.cjs are untouched — the underlying `hermes:updates:*` IPC channels
- * still exist (dev/non-packaged use is intentionally left reachable at that
- * layer), they're just no longer wired to any renderer state or component.
+ * Desktop self-update store. Tracks distance from the configured branch,
+ * surfaces it as an ambient pill, and orchestrates the apply flow.
  */
 
 import { atom } from 'nanostores'
 
 import type {
+  DesktopUpdateApplyOptions,
   DesktopUpdateApplyResult,
+  DesktopUpdateProgress,
   DesktopUpdateStage,
   DesktopUpdateStatus,
   DesktopVersionInfo
@@ -53,25 +43,29 @@ const IDLE: UpdateApplyState = {
 }
 
 export const $desktopVersion = atom<DesktopVersionInfo | null>(null)
+export const $updateApply = atom<UpdateApplyState>(IDLE)
+export const $updateChecking = atom<boolean>(false)
 export const $updateOverlayOpen = atom<boolean>(false)
+export const $updateStatus = atom<DesktopUpdateStatus | null>(null)
 
+// Client and backend are independently updatable; each keeps its own state.
 export const $backendUpdateStatus = atom<DesktopUpdateStatus | null>(null)
 export const $backendUpdateApply = atom<UpdateApplyState>(IDLE)
 export const $backendUpdateChecking = atom<boolean>(false)
 
+export type UpdateTarget = 'client' | 'backend'
+export const $updateOverlayTarget = atom<UpdateTarget>('client')
+
 export const setUpdateOverlayOpen = (open: boolean) => $updateOverlayOpen.set(open)
 
-/** Open the updates overlay for the connected backend and kick off a check.
- *  The overlay only ever targets the backend now (see file header) — this is
- *  the single entry point into it, called both from the "Check for Updates…"
- *  menu path (openUpdatesWindow, gated on remote mode) and directly from the
- *  statusbar's backend-version pill (already only rendered in remote mode). */
-export const openBackendUpdateOverlay = () => {
+export const openUpdateOverlayFor = (target: UpdateTarget) => {
+  $updateOverlayTarget.set(target)
   $updateOverlayOpen.set(true)
-  void checkBackendUpdates()
+  void (target === 'backend' ? checkBackendUpdates() : checkUpdates())
 }
 
 export const resetUpdateApplyState = () => {
+  $updateApply.set(IDLE)
   $backendUpdateApply.set(IDLE)
 }
 
@@ -97,7 +91,9 @@ function isUpdateToastSnoozed(): boolean {
 // against. The backend reports its own value in session runtime info; a lower
 // value (or none — a pre-GUI checkout) means GUI<->backend skew.
 // v2: requires the file.attach RPC (remote-gateway non-image file upload).
-const REQUIRED_BACKEND_CONTRACT = 2
+// v3: requires approvals.mode config RPCs and session.info reconciliation.
+// v4: requires explicit Fast-off session creation and session-scoped Fast edits.
+const REQUIRED_BACKEND_CONTRACT = 4
 const SKEW_TOAST_ID = 'backend-contract-skew'
 // The contract check runs on every session.resume (applyRuntimeInfo), so
 // without a snooze the warning re-popped on every thread the user opened, even
@@ -113,6 +109,24 @@ function snoozeSkewToast(): void {
 
 function isSkewToastSnoozed(): boolean {
   const until = Number(storedString(SKEW_TOAST_SNOOZE_KEY) || 0)
+
+  return Number.isFinite(until) && Date.now() < until
+}
+
+const INSTALL_METHOD_TOAST_ID = 'install-method-not-supported'
+// Same time-based snooze pattern as the update/skew toasts: the warning is
+// re-derived from every session.info (session.create/resume/activate all
+// route through applyRuntimeInfo), so without a snooze it would re-pop on
+// every session switch even right after the user dismissed it.
+const INSTALL_METHOD_TOAST_SNOOZE_KEY = 'hermes:install-method-toast-snooze-until'
+const INSTALL_METHOD_TOAST_COOLDOWN_MS = 24 * 60 * 60 * 1000
+
+function snoozeInstallMethodToast(): void {
+  persistString(INSTALL_METHOD_TOAST_SNOOZE_KEY, String(Date.now() + INSTALL_METHOD_TOAST_COOLDOWN_MS))
+}
+
+function isInstallMethodToastSnoozed(): boolean {
+  const until = Number(storedString(INSTALL_METHOD_TOAST_SNOOZE_KEY) || 0)
 
   return Number.isFinite(until) && Date.now() < until
 }
@@ -157,6 +171,27 @@ export function reportBackendContract(contract: number | undefined): void {
   })
 }
 
+export function reportInstallMethodWarning(message: string | undefined): void {
+  if (!message) {
+    dismissNotification(INSTALL_METHOD_TOAST_ID)
+
+    return
+  }
+
+  if (isInstallMethodToastSnoozed()) {
+    return
+  }
+
+  notify({
+    durationMs: 0,
+    id: INSTALL_METHOD_TOAST_ID,
+    kind: 'warning',
+    message,
+    onDismiss: () => snoozeInstallMethodToast(),
+    title: translateNow('notifications.installMethodUnsupportedTitle')
+  })
+}
+
 /**
  * Fire a toast when an update is available, at most once per cooldown window.
  * Closing the toast — dismissing it or opening the updates window from it —
@@ -176,11 +211,10 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null) {
     return
   }
 
-  // hc-475 follow-up: this used to gate on the (now-removed) client apply
-  // atom, which real packaged/backend users could never actually set — the
-  // client self-rebuild plane never reached an "applying" state for them
-  // (main.cjs refuses it before that point). So that check was always false
-  // in practice; dropping it changes nothing observable.
+  if ($updateApply.get().applying) {
+    return
+  }
+
   const behind = status.behind ?? 0
 
   notify({
@@ -192,6 +226,7 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null) {
       }
     },
     durationMs: 0,
+    icon: 'gift',
     id: UPDATE_TOAST_ID,
     kind: 'info',
     message: translateNow('notifications.updateReadyMessage', behind),
@@ -200,16 +235,22 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null) {
   })
 }
 
-/** "Check for Updates…" entry point (app menu -> onOpenUpdatesRequested, see
- *  desktop-controller.tsx). Only meaningful when connected to a remote backend
- *  — the legacy local self-rebuild target is gone (see file header), so this
- *  is a no-op outside remote mode instead of opening a dead-end card. */
 export function openUpdatesWindow(): void {
-  if (!isRemoteMode()) {
-    return
-  }
+  openUpdateOverlayFor(isRemoteMode() ? 'backend' : 'client')
+}
 
-  openBackendUpdateOverlay()
+/**
+ * Start applying the available update for the active target right away. Opens
+ * the updates overlay first so the user sees apply progress (the overlay
+ * renders ApplyingView once `applying` flips true), then kicks off the install.
+ * Used by the "Update now" affordance on the About panel, which would otherwise
+ * only be able to open the changelog overlay.
+ */
+export function startActiveUpdate(): void {
+  const target: UpdateTarget = isRemoteMode() ? 'backend' : 'client'
+  $updateOverlayTarget.set(target)
+  $updateOverlayOpen.set(true)
+  void (target === 'backend' ? applyBackendUpdate() : applyUpdates())
 }
 
 /** Re-read the running app's version from the Electron main process and
@@ -222,11 +263,11 @@ export async function refreshDesktopVersion(): Promise<DesktopVersionInfo | null
     return null
   }
 
-  // Best-effort UI sync: callers (startUpdatePoller, window focus handler)
-  // all kick this off with `void refreshDesktopVersion()`, so any rejection
-  // from the IPC bridge (e.g. main process shutting down mid-reload, or the
-  // bridge not yet ready on first paint) would surface as an unhandled
-  // promise rejection in the renderer. Swallow it.
+  // Best-effort UI sync: callers (checkUpdates, startUpdatePoller, window
+  // focus handler) all kick this off with `void refreshDesktopVersion()`,
+  // so any rejection from the IPC bridge (e.g. main process shutting down
+  // mid-reload, or the bridge not yet ready on first paint) would surface
+  // as an unhandled promise rejection in the renderer. Swallow it.
   try {
     const next = await window.hermesDesktop?.getVersion?.()
 
@@ -250,6 +291,7 @@ function mapBackendCheck(res: BackendUpdateCheckResponse): DesktopUpdateStatus {
   return {
     supported: res.can_apply,
     message: res.message ?? undefined,
+    updateAvailable: res.update_available,
     behind: behind > 0 ? behind : 0,
     targetSha: res.update_available ? `backend:${res.current_version}` : undefined,
     commits: res.commits,
@@ -286,12 +328,151 @@ export async function checkBackendUpdates(): Promise<DesktopUpdateStatus | null>
   }
 }
 
+export async function checkUpdates(): Promise<DesktopUpdateStatus | null> {
+  const bridge = window.hermesDesktop?.updates
+
+  if (!bridge || $updateChecking.get()) {
+    return $updateStatus.get()
+  }
+
+  $updateChecking.set(true)
+
+  try {
+    const status = await bridge.check()
+    $updateStatus.set(status)
+    maybeNotifyUpdateAvailable(status)
+    void refreshDesktopVersion()
+
+    return status
+  } catch (error) {
+    const previous = $updateStatus.get()
+
+    const fallback: DesktopUpdateStatus = {
+      supported: previous?.supported ?? true,
+      branch: previous?.branch,
+      error: 'check-failed',
+      message: error instanceof Error ? error.message : String(error),
+      fetchedAt: Date.now()
+    }
+
+    $updateStatus.set(fallback)
+
+    return fallback
+  } finally {
+    $updateChecking.set(false)
+  }
+}
+
+export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
+  const bridge = window.hermesDesktop?.updates
+
+  if (!bridge) {
+    return { ok: false, error: 'unavailable', message: 'Desktop bridge unavailable.' }
+  }
+
+  dismissNotification(UPDATE_TOAST_ID)
+  $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: 'Starting update…' })
+
+  try {
+    const result = await bridge.apply(opts)
+
+    // CLI install with no staged updater: not an error — the user just runs
+    // `hermes update` themselves. Land on a dedicated manual state so the
+    // overlay shows the command + copy button instead of a dead retry loop.
+    if (result?.manual) {
+      $updateApply.set({
+        ...IDLE,
+        applying: false,
+        stage: 'manual',
+        message: result.command ?? 'hermes update',
+        command: result.command ?? 'hermes update'
+      })
+
+      return result
+    }
+
+    // A detached relauncher took over (macOS bundle swap / Linux re-exec): the
+    // app is about to quit and reopen, so hold the "Restarting…" view until it
+    // does. Every other resolved outcome MUST land on a terminal, closeable
+    // state: the apply IPC resolves here, but the progress stream may have left
+    // us on a non-terminal stage (e.g. 'done'/'rebuild'), which renders as a
+    // spinner with no close button — the exact hang this guards against.
+    // Linux GUI/backend skew (#45205): the backend was updated but the running
+    // desktop app PACKAGE was not changed (AppImage/.deb/.rpm). We must NOT tell
+    // the user "the new version loads next launch" — that's false; this packaged
+    // shell keeps running old GUI code against the new backend. Land on the
+    // dedicated, closeable guiSkew terminal state telling them to update/reinstall
+    // the desktop app.
+    if (result?.guiSkew) {
+      $updateApply.set({
+        ...IDLE,
+        applying: false,
+        stage: 'guiSkew',
+        message: result.message ?? translateNow('updates.guiSkewBody')
+      })
+
+      return result
+    }
+
+    // Backend updated but the app couldn't auto-relaunch (e.g. the rebuilt
+    // sandbox helper isn't launchable): keep a closeable manual-restart state so
+    // the user keeps a working window instead of a dead app or a stuck spinner.
+    if (result?.ok && result?.manualRestart) {
+      $updateApply.set({
+        ...IDLE,
+        applying: false,
+        stage: 'manual',
+        message: result.message ?? translateNow('updates.manualPickedUp')
+      })
+
+      return result
+    }
+
+    if (!result?.handedOff) {
+      if (result?.ok) {
+        // Updated, but couldn't relaunch in place (AppImage / dev run). Dismiss
+        // the overlay and let the user know the new version loads next launch
+        // rather than stranding them on an un-closeable spinner.
+        setUpdateOverlayOpen(false)
+        resetUpdateApplyState()
+        notify({
+          durationMs: 8000,
+          id: UPDATE_TOAST_ID,
+          kind: 'success',
+          message: translateNow('updates.manualPickedUp'),
+          // No action button here, but it's still update-lifecycle news — keep
+          // it with the other update toasts instead of the ambient bottom-right
+          // stack.
+          placement: 'default',
+          title: translateNow('updates.allSetTitle')
+        })
+      } else {
+        $updateApply.set({
+          ...$updateApply.get(),
+          applying: false,
+          stage: 'error',
+          error: result?.error ?? 'apply-failed',
+          message: result?.message ?? translateNow('updates.errorBody')
+        })
+      }
+    }
+
+    return result
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    $updateApply.set({ ...$updateApply.get(), applying: false, stage: 'error', error: 'apply-failed', message })
+
+    return { ok: false, error: 'apply-failed', message }
+  }
+}
+
 const BACKEND_RETURN_POLL_MS = 1500
 const BACKEND_RETURN_MAX_ATTEMPTS = 40
 
 async function waitForBackendReturn(): Promise<boolean> {
   for (let attempt = 0; attempt < BACKEND_RETURN_MAX_ATTEMPTS; attempt += 1) {
     await new Promise(resolve => globalThis.setTimeout(resolve, BACKEND_RETURN_POLL_MS))
+
     try {
       await checkHermesUpdate()
 
@@ -324,9 +505,35 @@ function finishBackendApply(returned: boolean): DesktopUpdateApplyResult {
   return { ok: false, error: 'apply-failed', message: 'Backend did not come back online.' }
 }
 
+function ingestBackendActionStatus(status: Awaited<ReturnType<typeof getActionStatus>>): void {
+  const current = $backendUpdateApply.get()
+
+  const log = status.lines
+    .filter(line => line.trim().length > 0)
+    .map(line => ({ at: Date.now(), message: line, stage: current.stage }))
+    .slice(-50)
+
+  const latest = log.at(-1)?.message
+
+  if (log.length === 0 && !latest) {
+    return
+  }
+
+  $backendUpdateApply.set({
+    ...current,
+    log,
+    message: latest ?? current.message
+  })
+}
+
 export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
   dismissNotification(UPDATE_TOAST_ID)
-  $backendUpdateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: translateNow('updates.applyStatus.preparing') })
+  $backendUpdateApply.set({
+    ...IDLE,
+    applying: true,
+    stage: 'prepare',
+    message: translateNow('updates.applyStatus.preparing')
+  })
 
   try {
     const started = await updateHermes()
@@ -339,13 +546,21 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
       return { ok: false, error: 'manual', manual: true, message, command }
     }
 
-    $backendUpdateApply.set({ ...IDLE, applying: true, stage: 'pull', message: translateNow('updates.applyStatus.pulling') })
+    $backendUpdateApply.set({
+      ...IDLE,
+      applying: true,
+      stage: 'pull',
+      message: translateNow('updates.applyStatus.pulling')
+    })
 
     let last: Awaited<ReturnType<typeof getActionStatus>> | null = null
+
     for (let attempt = 0; attempt < 30; attempt += 1) {
       await new Promise(resolve => globalThis.setTimeout(resolve, 1500))
+
       try {
         last = await getActionStatus(started.name, 200)
+        ingestBackendActionStatus(last)
       } catch {
         // The dashboard restarts mid-update, dropping this connection — expected, not a failure.
         $backendUpdateApply.set({
@@ -364,8 +579,14 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
     }
 
     const ok = !!last && (last.exit_code ?? 1) === 0
+
     if (ok) {
-      $backendUpdateApply.set({ ...$backendUpdateApply.get(), applying: true, stage: 'restart', message: translateNow('updates.applyStatus.restarting') })
+      $backendUpdateApply.set({
+        ...$backendUpdateApply.get(),
+        applying: true,
+        stage: 'restart',
+        message: translateNow('updates.applyStatus.restarting')
+      })
 
       return finishBackendApply(await waitForBackendReturn())
     }
@@ -381,10 +602,40 @@ export async function applyBackendUpdate(): Promise<DesktopUpdateApplyResult> {
     return { ok: false, error: 'apply-failed', message: 'Backend update failed.' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    $backendUpdateApply.set({ ...$backendUpdateApply.get(), applying: false, stage: 'error', error: 'apply-failed', message })
+    $backendUpdateApply.set({
+      ...$backendUpdateApply.get(),
+      applying: false,
+      stage: 'error',
+      error: 'apply-failed',
+      message
+    })
 
     return { ok: false, error: 'apply-failed', message }
   }
+}
+
+function ingestProgress(payload: DesktopUpdateProgress): void {
+  const current = $updateApply.get()
+  const log = [...current.log, { stage: payload.stage, message: payload.message, at: payload.at }].slice(-50)
+
+  const terminal =
+    payload.stage === 'error' ||
+    payload.stage === 'restart' ||
+    payload.stage === 'manual' ||
+    payload.stage === 'guiSkew'
+
+  $updateApply.set({
+    applying: !terminal,
+    stage: payload.stage,
+    message: payload.message,
+    // Streamed log lines carry percent: null; keep the last milestone percent
+    // (10/60/…) instead of resetting the bar to indeterminate on every line.
+    percent: payload.percent ?? current.percent,
+    error: payload.error,
+    // 'manual' carries the command to run in its message field.
+    command: payload.stage === 'manual' ? payload.message : current.command,
+    log
+  })
 }
 
 let pollerStarted = false
@@ -393,16 +644,23 @@ let lastFocusAt = 0
 let connectionUnsub: (() => void) | null = null
 let lastConnectionMode: string | undefined
 
-/** Wire up background polling for the backend update check + desktop version
- *  refresh. Idempotent. */
+/** Wire up background polling + progress streaming. Idempotent. */
 export function startUpdatePoller(): void {
-  if (pollerStarted || typeof window === 'undefined' || !window.hermesDesktop) {
+  if (pollerStarted || typeof window === 'undefined') {
+    return
+  }
+
+  const bridge = window.hermesDesktop?.updates
+
+  if (!bridge) {
     return
   }
 
   pollerStarted = true
+  void checkUpdates()
   void checkBackendUpdates()
   void refreshDesktopVersion()
+  bridge.onProgress(ingestProgress)
 
   // The poller starts at mount, before the gateway connects — so the first
   // backend check above sees mode≠remote and no-ops. Re-check once the
@@ -411,16 +669,22 @@ export function startUpdatePoller(): void {
     if (conn?.mode === lastConnectionMode) {
       return
     }
+
     lastConnectionMode = conn?.mode
+
     if (conn?.mode === 'remote') {
       void checkBackendUpdates()
     }
   })
 
   window.addEventListener('focus', onFocus)
-  backgroundTimer = setInterval(() => {
-    void checkBackendUpdates()
-  }, 30 * 60 * 1000)
+  backgroundTimer = setInterval(
+    () => {
+      void checkUpdates()
+      void checkBackendUpdates()
+    },
+    30 * 60 * 1000
+  )
 }
 
 export function stopUpdatePoller(): void {
@@ -444,6 +708,7 @@ function onFocus() {
   }
 
   lastFocusAt = now
+  void checkUpdates()
   void checkBackendUpdates()
   void refreshDesktopVersion()
 }

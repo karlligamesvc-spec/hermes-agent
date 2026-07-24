@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
+import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import type { HermesGateway } from '@/hermes'
-import type { ComposerAttachment } from '@/store/composer'
 
 import type { DroppedFile } from '../hooks/use-composer-actions'
 
@@ -42,18 +42,17 @@ export interface ChatBarProps {
   sessionId?: string | null
   cwd?: string | null
   onCancel: () => Promise<void> | void
-  /** hc-517 — bind the new-conversation project picker's choice as the session
-   *  cwd. Absent → no project picker chip (feature off / older host). */
-  onChangeCwd?: (cwd: string) => Promise<void> | void
   onAddContextRef?: (refText: string, label?: string, detail?: string) => void
+  onAddUrl?: (url: string) => void
   onAttachImageBlob?: (blob: Blob) => Promise<boolean | void> | boolean | void
   onAttachDroppedItems?: (candidates: DroppedFile[]) => Promise<boolean | void> | boolean | void
+  onPasteClipboardImage?: (opts?: { silent?: boolean }) => Promise<boolean> | void
+  onPickFiles?: () => void
+  onPickFolders?: () => void
+  onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
   onSteer?: (text: string) => Promise<boolean> | boolean
-  onSubmit: (
-    value: string,
-    options?: { attachments?: ComposerAttachment[]; fromQueue?: boolean }
-  ) => Promise<boolean> | boolean
+  onSubmit: (value: string, options?: SubmitTextOptions) => Promise<boolean> | boolean
   onTranscribeAudio?: (audio: Blob) => Promise<string>
 }
 

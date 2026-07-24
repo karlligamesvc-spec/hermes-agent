@@ -1,16 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { $modelPresets } from '@/store/model-presets'
-import { $visibleModels } from '@/store/model-visibility'
+import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu'
+import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
 import { $activeSessionId, $currentModel, $currentProvider } from '@/store/session'
 
 import { ModelMenuPanel } from './model-menu-panel'
 
-// Radix calls these on open; jsdom doesn't implement them (same shim used by
-// model-edit-submenu.test.tsx / model-settings.test.tsx).
+// Radix calls these on open; jsdom doesn't implement them.
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
   Element.prototype.hasPointerCapture = vi.fn(() => false)
@@ -18,50 +16,37 @@ beforeAll(() => {
 })
 
 const getGlobalModelOptions = vi.fn()
-const getGlobalModelInfo = vi.fn()
-const getMoaModels = vi.fn()
-const saveMoaModels = vi.fn()
-const setModelAssignment = vi.fn()
 
 vi.mock('@/hermes', () => ({
-  getGlobalModelInfo: () => getGlobalModelInfo(),
   getGlobalModelOptions: (...args: unknown[]) => getGlobalModelOptions(...args),
-  getMoaModels: () => getMoaModels(),
-  saveMoaModels: (body: unknown) => saveMoaModels(body),
-  setModelAssignment: (body: unknown) => setModelAssignment(body)
+  setApiRequestProfile: vi.fn()
 }))
 
-vi.mock('@/store/notifications', () => ({
-  notify: vi.fn(),
-  notifyError: vi.fn()
-}))
+// MoA presets now arrive as the catalog's virtual `moa` provider row (the same
+// payload a remote gateway's model.options returns), not the /api/model/moa
+// REST config.
+const MOA_PROVIDER = { models: ['default', 'BeastMode'], name: 'Mixture of Agents', slug: 'moa' }
 
-const MANAGED = 'custom:apex-nodes.com'
+const DEEPSEEK_PROVIDER = {
+  models: ['deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
+  name: 'DeepSeek',
+  slug: 'deepseek'
+}
+
+const GOOGLE_PROVIDER = {
+  models: ['gemini-3.1-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+  name: 'Google',
+  slug: 'google'
+}
+
+const MOCK_PROVIDERS = [DEEPSEEK_PROVIDER, GOOGLE_PROVIDER, MOA_PROVIDER]
 
 beforeEach(() => {
-  $activeSessionId.set(null)
+  $activeSessionId.set('runtime-1')
   $currentModel.set('')
   $currentProvider.set('')
-  $modelPresets.set({})
-  $visibleModels.set(null)
-
-  getGlobalModelOptions.mockResolvedValue({
-    providers: [
-      {
-        name: 'Apex-nodes.com',
-        slug: MANAGED,
-        is_user_defined: true,
-        authenticated: true,
-        models: ['deepseek-v4-pro-APEX', 'glm-5.2', 'qwen3.7-max', 'kimi-k2.6']
-      },
-      // A domestic BYO provider — kept by the China-first filter, single-select.
-      { name: 'MiniMax', slug: 'minimax', authenticated: true, models: ['minimax-m2'] }
-    ]
-  })
-  getGlobalModelInfo.mockResolvedValue({ model: '', provider: '' })
-  getMoaModels.mockResolvedValue(null)
-  saveMoaModels.mockImplementation((body: unknown) => Promise.resolve({ ok: true, ...(body as object) }))
-  setModelAssignment.mockResolvedValue({ ok: true, model: '__auto__', provider: 'moa' })
+  $collapsedProviders.set([])
+  getGlobalModelOptions.mockResolvedValue({ providers: MOCK_PROVIDERS })
 })
 
 afterEach(() => {
@@ -69,133 +54,198 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function renderPanel(onSelectModel = vi.fn().mockResolvedValue(true)) {
-  const queryClient = new QueryClient()
-  const requestGateway = vi.fn().mockResolvedValue({})
+function renderPanel(onSelectModel = vi.fn()) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-  render(
-    <QueryClientProvider client={queryClient}>
+  const content = render(
+    <QueryClientProvider client={client}>
       <DropdownMenu open>
-        <DropdownMenuTrigger>menu</DropdownMenuTrigger>
         <DropdownMenuContent>
-          <ModelMenuPanel onSelectModel={onSelectModel} requestGateway={requestGateway} />
+          <ModelMenuPanel onSelectModel={onSelectModel} requestGateway={vi.fn() as never} />
         </DropdownMenuContent>
       </DropdownMenu>
     </QueryClientProvider>
   )
 
-  return { onSelectModel, requestGateway }
+  return { onSelectModel, content }
 }
 
-// The full model list lives one level deep, behind the "current model" row
-// (Codex-style top-level: reasoning + model + speed). Open it before every
-// interaction/assertion that needs a family row.
-async function openModelList() {
-  const trigger = await screen.findByText('No models found')
-  fireEvent.click(trigger)
-  await screen.findByRole('button', { name: 'Search models' }).catch(() => null)
-}
+describe('ModelMenuPanel MoA presets', () => {
+  it('selecting a MoA preset switches PERSISTENTLY via onSelectModel (not the one-shot dispatch)', async () => {
+    const { content, onSelectModel } = renderPanel()
 
-describe('ModelMenuPanel', () => {
-  it('renders platform models as checkable rows and BYO as a plain row', async () => {
-    renderPanel()
-    await openModelList()
+    // moaOptions is async (useQuery) — wait for the preset row to mount.
+    const row = await content.findByText('MoA: BeastMode')
+    fireEvent.click(row)
 
-    expect(await screen.findByRole('menuitemcheckbox', { name: /DeepSeek V4 Pro/ })).toBeTruthy()
-    expect(screen.getByRole('menuitemcheckbox', { name: /GLM 5.2/ })).toBeTruthy()
-    expect(screen.getByRole('menuitem', { name: /Minimax M2/ })).toBeTruthy()
+    // #54670: must route through the persistent model-switch path
+    // i.e. onSelectModel with provider 'moa' (which session-scopes live-session
+    // switches), NOT a one-shot command.dispatch that reverts after a turn.
+    expect(onSelectModel).toHaveBeenCalledWith({ model: 'BeastMode', provider: 'moa', sessionId: 'runtime-1' })
   })
 
-  it('never surfaces any MoA / aggregator / preset / reference terminology', async () => {
-    renderPanel()
-    await openModelList()
+  it('shows the check on the preset that matches the current moa selection', async () => {
+    $currentProvider.set('moa')
+    $currentModel.set('BeastMode')
+    const { content } = renderPanel()
 
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
-
-    await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
-
-    expect(screen.queryByText(/mixture of agents|aggregator|reference model|preset|__auto__|\bmoa\b/i)).toBeNull()
-    // The "N models selected" status line does appear (that's the one thing
-    // multi-select IS allowed to say) — both in the top "current model" row
-    // and the status line under the list.
-    expect(screen.getAllByText(/2 models selected/i).length).toBeGreaterThan(0)
+    const row = await content.findByText('MoA: BeastMode')
+    // The check codicon renders as a sibling within the same row item.
+    const item = row.closest('[role="menuitem"]') ?? row.parentElement
+    expect(item?.querySelector('.codicon-check')).not.toBeNull()
   })
 
-  it('selecting exactly one platform model keeps the plain single-select path (no MoA call)', async () => {
-    const { onSelectModel } = renderPanel()
-    await openModelList()
+  it('keeps the virtual moa provider out of the main model groups (presets section only)', async () => {
+    const { content } = renderPanel()
 
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
+    await content.findByText('MoA: BeastMode')
 
-    await waitFor(() => expect(onSelectModel).toHaveBeenCalledWith({ model: 'glm-5.2', provider: MANAGED }))
-    expect(saveMoaModels).not.toHaveBeenCalled()
-    expect(setModelAssignment).not.toHaveBeenCalled()
+    // The provider group header would read "Mixture of Agents"; the presets
+    // section header reads "MoA presets". Only the latter should exist.
+    // Radix DropdownMenu portals its content to document.body, so assert
+    // against the body (not content.container) to see the rendered items.
+
+    // eslint-disable-next-line no-restricted-globals
+    expect(document.body.textContent).toContain('MoA presets')
+    // eslint-disable-next-line no-restricted-globals
+    expect(document.body.textContent).not.toContain('Mixture of Agents')
   })
 
-  it('composes a hidden user_turn MoA once a second platform model is checked', async () => {
-    renderPanel()
-    await openModelList()
+  it('renders presets from the catalog even before a session exists', async () => {
+    $activeSessionId.set('')
+    const { onSelectModel, content } = renderPanel()
 
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
+    const row = await content.findByText('MoA: BeastMode')
+    fireEvent.click(row)
 
-    // qwen3.7-max ranks highest → aggregator; glm-5.2 is the sole reference;
-    // fanout pinned to user_turn (billing red line) — same assembly as
-    // Settings → Model (model-settings.tsx / moa-compose.ts).
-    await waitFor(() =>
-      expect(saveMoaModels).toHaveBeenCalledWith(
-        expect.objectContaining({
-          default_preset: '__auto__',
-          active_preset: '__auto__',
-          presets: expect.objectContaining({
-            __auto__: expect.objectContaining({
-              fanout: 'user_turn',
-              aggregator: { provider: MANAGED, model: 'qwen3.7-max' },
-              reference_models: [{ provider: MANAGED, model: 'glm-5.2' }]
-            })
-          })
-        })
-      )
-    )
-    await waitFor(() =>
-      expect(setModelAssignment).toHaveBeenCalledWith({ model: '__auto__', provider: 'moa', scope: 'main' })
-    )
+    // Pre-session picks are UI state shipped on the next session.create — the
+    // row must not be disabled and must still route through onSelectModel.
+    expect(onSelectModel).toHaveBeenCalledWith({ model: 'BeastMode', provider: 'moa', sessionId: null })
+  })
+})
+
+describe('ModelMenuPanel provider collapse', () => {
+  it('shows all provider models by default (none collapsed)', async () => {
+    const { content } = renderPanel()
+
+    await content.findByText('DeepSeek')
+    expect(content.queryByText('Deepseek V4 Pro')).not.toBeNull()
+    expect(content.queryByText('Deepseek Chat')).not.toBeNull()
   })
 
-  it('grays out BYO rows once 2+ platform models are selected, with an explanation', async () => {
-    renderPanel()
-    await openModelList()
+  it('collapses provider models when header is clicked', async () => {
+    const { content } = renderPanel()
 
-    const byo = (await screen.findByRole('menuitem', { name: /Minimax M2/ })) as HTMLElement
-    expect(byo.getAttribute('aria-disabled')).not.toBe('true')
+    const header = await content.findByText('DeepSeek')
+    fireEvent.click(header)
 
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
-
-    await waitFor(() =>
-      expect((screen.getByRole('menuitem', { name: /Minimax M2/ }) as HTMLElement).getAttribute('aria-disabled')).toBe(
-        'true'
-      )
-    )
-    expect(screen.getByText(/can't be combined with platform models/i)).toBeTruthy()
+    // Models should disappear but header stays
+    expect(content.queryByText('Deepseek V4 Pro')).toBeNull()
+    expect(content.queryByText('DeepSeek')).not.toBeNull()
   })
 
-  it('deselecting back down to one model returns to the plain single-select path', async () => {
-    const { onSelectModel } = renderPanel()
-    await openModelList()
+  it('expands provider models when header is clicked again', async () => {
+    const { content } = renderPanel()
 
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
-    await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
+    const header = await content.findByText('DeepSeek')
+    // Collapse
+    fireEvent.click(header)
+    expect(content.queryByText('Deepseek V4 Pro')).toBeNull()
+    // Expand
+    fireEvent.click(header)
+    await vi.waitFor(() => {
+      expect(content.queryByText('Deepseek V4 Pro')).not.toBeNull()
+    })
+  })
 
-    onSelectModel.mockClear()
+  it('auto-expands the active provider even when collapsed', async () => {
+    $currentProvider.set('deepseek')
+    $currentModel.set('deepseek-v4-pro')
+    const { content } = renderPanel()
 
-    // Uncheck qwen — glm-5.2 alone remains, so this must fall back to the
-    // composer's ordinary single-model switch (never a second MoA save).
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
+    const header = await content.findByText('DeepSeek')
+    fireEvent.click(header)
 
-    await waitFor(() => expect(onSelectModel).toHaveBeenCalledWith({ model: 'glm-5.2', provider: MANAGED }))
-    expect(saveMoaModels).toHaveBeenCalledTimes(1)
+    // Should still show models because it's the active provider
+    expect(content.queryByText('Deepseek V4 Pro')).not.toBeNull()
+  })
+
+  it('bypasses collapse when search is active', async () => {
+    const { content } = renderPanel()
+
+    const header = await content.findByText('DeepSeek')
+    fireEvent.click(header)
+    expect(content.queryByText('Deepseek V4 Pro')).toBeNull()
+
+    // Type in the search bar (auto-focused by DropdownMenuSearch)
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    expect(input).not.toBeNull()
+    fireEvent.change(input, { target: { value: 'deepseek' } })
+
+    // Should show models — search bypasses collapse
+    await vi.waitFor(() => {
+      expect(content.queryByText('Deepseek V4 Pro')).not.toBeNull()
+    })
+  })
+
+  it('toggles collapse via keyboard Enter on header', async () => {
+    const { content } = renderPanel()
+
+    const header = await content.findByText('DeepSeek')
+    // Radix DropdownMenuItem fires onSelect on Enter from the onKeyDown handler
+    fireEvent.keyDown(header.closest('[role="menuitem"]') ?? header, { key: 'Enter' })
+
+    expect(content.queryByText('Deepseek V4 Pro')).toBeNull()
+  })
+
+  // The collapsed-providers set is a global presentation preference
+  // (`hermes.desktop.collapsed-providers`), but the catalog the picker renders
+  // is profile-scoped (`getGlobalModelOptions` routes through
+  // `profileScoped()`). Pruning the global set against only the active catalog
+  // would silently delete a user's collapse preference on every profile switch
+  // whose configured providers don't include the slug — the bug the maintainer
+  // flagged. The set must survive catalog changes; if the same provider shows
+  // up again later, the previous collapse is preserved.
+  it('preserves the collapsed set across a profile switch whose catalog lacks the slug', async () => {
+    toggleCollapsedProvider('deepseek')
+    toggleCollapsedProvider('google')
+    expect($collapsedProviders.get()).toEqual(['deepseek', 'google'])
+
+    // Profile A: both providers present, render + unmount.
+    getGlobalModelOptions.mockResolvedValueOnce({ providers: MOCK_PROVIDERS })
+    const a = renderPanel()
+    await a.content.findByText('DeepSeek')
+    a.content.unmount()
+
+    // Profile B: google is not in the catalog (simulates a profile whose
+    // configured providers differ). The previously-collapsed 'google' slug
+    // must survive — pruning it would lose state across a profile switch.
+    getGlobalModelOptions.mockResolvedValueOnce({ providers: [DEEPSEEK_PROVIDER, MOA_PROVIDER] })
+    const b = renderPanel()
+    await b.content.findByText('DeepSeek')
+
+    expect($collapsedProviders.get()).toEqual(['deepseek', 'google'])
+  })
+
+  it('preserves the collapsed set when Refresh Models drops a provider', async () => {
+    toggleCollapsedProvider('deepseek')
+    toggleCollapsedProvider('google')
+
+    // First load: both providers present.
+    getGlobalModelOptions.mockResolvedValueOnce({ providers: MOCK_PROVIDERS })
+    const a = renderPanel()
+    await a.content.findByText('DeepSeek')
+    a.content.unmount()
+
+    // Refresh Models returns a catalog that drops google (revoked key,
+    // plugin disabled, backend policy change). 'google' must survive — the
+    // user explicitly collapsed it, and the global set is not tied to any
+    // single refresh.
+    getGlobalModelOptions.mockResolvedValueOnce({ providers: [DEEPSEEK_PROVIDER, MOA_PROVIDER] })
+    const b = renderPanel()
+    await b.content.findByText('DeepSeek')
+
+    expect($collapsedProviders.get()).toContain('google')
+    expect($collapsedProviders.get()).toContain('deepseek')
   })
 })

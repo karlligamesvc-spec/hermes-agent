@@ -12,14 +12,12 @@ import {
   submitOAuthCode,
   validateProviderCredential
 } from '@/hermes'
-import { translateNow } from '@/i18n'
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { notify, notifyError } from '@/store/notifications'
 import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/hermes'
 
 type PkceStart = Extract<OAuthStartResponse, { flow: 'pkce' }>
 type DeviceStart = Extract<OAuthStartResponse, { flow: 'device_code' }>
-type LoopbackStart = Extract<OAuthStartResponse, { flow: 'loopback' }>
 
 export type OnboardingMode = 'apikey' | 'oauth'
 
@@ -28,10 +26,6 @@ export type OnboardingFlow =
   | { provider: OAuthProvider; status: 'starting' }
   | { code: string; provider: OAuthProvider; start: PkceStart; status: 'awaiting_user' }
   | { copied: boolean; provider: OAuthProvider; start: DeviceStart; status: 'polling' }
-  // Loopback PKCE (xAI Grok): browser opens, the local backend's 127.0.0.1
-  // listener catches the redirect, and we poll until the worker finishes.
-  // No code to paste and no user_code to show — just a waiting state.
-  | { provider: OAuthProvider; start: LoopbackStart; status: 'awaiting_browser' }
   | { provider: OAuthProvider; start: OAuthStartResponse; status: 'submitting' }
   | { copied: boolean; provider: OAuthProvider; status: 'external_pending' }
   | { provider: OAuthProvider; status: 'success' }
@@ -60,11 +54,6 @@ export interface DesktopOnboardingState {
   mode: OnboardingMode
   providers: null | OAuthProvider[]
   reason: null | string
-  /** True when a provider is already selected (e.g. our DeepSeek seed) but its
-   *  credential is missing/unusable — setup.status reports configured while the
-   *  runtime check fails. Onboarding then lands on the API-key form with a clean
-   *  "add your key" prompt instead of surfacing the raw runtime error. */
-  needsCredential: boolean
   requested: boolean
   /** True when the user explicitly chose "I'll choose a provider later" on the
    *  first-run picker. Persisted to localStorage so the blocking overlay never
@@ -83,17 +72,6 @@ export interface DesktopOnboardingState {
    *  custom endpoint"). Forces the API-key form with the local option
    *  preselected instead of the OAuth picker. */
   localEndpoint: boolean
-  /** True when the ApexNodes managed-LLM default path is enabled for this build
-   *  AND the user is not yet signed in. The first-run overlay then leads with a
-   *  managed sign-in panel (zero-key chat) instead of the BYOK provider picker.
-   *  null until managed.status() resolves; false on builds where managed is off
-   *  or the user is already signed in (then onboarding behaves exactly as before
-   *  — the BYOK picker / runtime-readiness gate). */
-  managedAvailable: boolean | null
-  /** Inline error from a managed sign-in attempt, surfaced in the managed panel. */
-  managedError: null | string
-  /** True while a managed sign-in request is in flight. */
-  managedSubmitting: boolean
 }
 
 export interface OnboardingContext {
@@ -170,14 +148,10 @@ const INITIAL: DesktopOnboardingState = {
   mode: 'oauth',
   providers: null,
   reason: null,
-  needsCredential: false,
   requested: false,
   firstRunSkipped: readCachedSkipped(),
   manual: false,
-  localEndpoint: false,
-  managedAvailable: null,
-  managedError: null,
-  managedSubmitting: false
+  localEndpoint: false
 }
 
 export const $desktopOnboarding = atom<DesktopOnboardingState>(INITIAL)
@@ -190,8 +164,7 @@ const errMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const patch = (update: Partial<DesktopOnboardingState>) =>
   $desktopOnboarding.set({ ...$desktopOnboarding.get(), ...update })
 
-const setFlow = (flow: OnboardingFlow) =>
-  patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
+const setFlow = (flow: OnboardingFlow) => patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
 
 const sessionIdFor = (flow: OnboardingFlow) => ('start' in flow && flow.start ? flow.start.session_id : undefined)
 
@@ -202,19 +175,23 @@ function clearPoll() {
   }
 }
 
-async function checkRuntime(ctx: OnboardingContext): Promise<RuntimeReadinessResult> {
+async function checkRuntime(ctx: OnboardingContext, requestedProvider?: string): Promise<RuntimeReadinessResult> {
   return evaluateRuntimeReadiness(ctx.requestGateway, {
     defaultReason: DEFAULT_ONBOARDING_REASON,
+    requestedProvider,
     unknownReady: false
   })
 }
 
+function shouldPreserveConfiguredOnFallback(runtime: RuntimeReadinessResult, state: DesktopOnboardingState): boolean {
+  // A fallback result means both runtime probes were non-authoritative
+  // (transport timeout/disconnect). Keep a previously verified configured
+  // state instead of forcing the blocking onboarding overlay.
+  return runtime.source === 'fallback' && state.configured === true && !state.requested
+}
+
 function notifyReady(provider: string) {
-  notify({
-    kind: 'success',
-    title: translateNow('onboarding.ready.title'),
-    message: translateNow('onboarding.ready.message', provider)
-  })
+  notify({ kind: 'success', title: 'Hermes is ready', message: `${provider} connected.` })
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
@@ -262,7 +239,7 @@ async function fetchProviderDefaultModel(
   let options
 
   try {
-    options = await getGlobalModelOptions()
+    options = await getGlobalModelOptions({ includeUnconfigured: true, explicitOnly: false })
   } catch {
     return null
   }
@@ -332,15 +309,34 @@ async function completeWithModelConfirm(
   ignoreRuntimeGate = false
 ) {
   await ctx.requestGateway('reload.env').catch(() => undefined)
-  const runtime = await checkRuntime(ctx)
+
+  const defaults = await fetchProviderDefaultModel(preferredSlugs)
+
+  if (defaults) {
+    // Persist the chosen provider/model before the runtime gate so a stale
+    // config provider (e.g. anthropic from a prior failed setup) cannot make
+    // setup.runtime_check validate the wrong backend after a fresh OAuth login.
+    try {
+      const res = await setModelAssignment({
+        scope: 'main',
+        provider: defaults.providerSlug,
+        model: defaults.defaultModel
+      })
+
+      notifyGatewayTools(res.gateway_tools)
+    } catch {
+      // Persistence failed — still run the scoped runtime check below and
+      // show the confirm card so the user can pick something explicitly.
+    }
+  }
+
+  const runtime = await checkRuntime(ctx, preferredSlugs[0])
 
   if (!runtime.ready && !ignoreRuntimeGate) {
     onFail(runtime.reason)
 
     return
   }
-
-  const defaults = await fetchProviderDefaultModel(preferredSlugs)
 
   if (!defaults) {
     // Couldn't get a sensible default — proceed without confirm step.
@@ -349,27 +345,6 @@ async function completeWithModelConfirm(
     ctx.onCompleted?.()
 
     return
-  }
-
-  // Persist the default model BEFORE showing the confirm card so that:
-  // (1) "current default: X" shown in the UI is what's actually written
-  //     to config — no lying.
-  // (2) If the user clicks "Start chatting" without changing anything,
-  //     no extra write is needed.
-  // (3) If they bail out (e.g., refresh the page), they still end up
-  //     with a working config, not an empty-model fallback.
-  try {
-    const res = await setModelAssignment({
-      scope: 'main',
-      provider: defaults.providerSlug,
-      model: defaults.defaultModel
-    })
-
-    notifyGatewayTools(res.gateway_tools)
-  } catch {
-    // Persistence failed — still show the confirm card so the user can
-    // pick something explicitly. The backend will pick its own default
-    // at chat time if we end up never persisting.
   }
 
   setFlow({
@@ -414,28 +389,6 @@ export function requestDesktopOnboarding(reason = DEFAULT_ONBOARDING_REASON) {
   patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
 }
 
-// hc-511: a signed-in managed session lost its relay auth and can't self-heal
-// (no reusable login token, or an expired JWT). Re-open onboarding on the
-// managed sign-in panel with an explicit reason so the user re-connects, instead
-// of every send silently 401-ing. Forces the managed-first treatment
-// (managedAvailable) regardless of the cached "onboarded" flag — the same state
-// refreshOnboarding lands on for a not-yet-signed-in managed install.
-export function requestManagedReSignIn(reason = DEFAULT_ONBOARDING_REASON) {
-  writeCachedConfigured(false)
-  patch({
-    configured: false,
-    managedAvailable: true,
-    managedError: reason.trim() || null,
-    managedSubmitting: false,
-    requested: true,
-    manual: false,
-    localEndpoint: false,
-    needsCredential: false,
-    reason: null,
-    flow: { status: 'idle' }
-  })
-}
-
 // Open the onboarding provider selector on demand from an already-configured
 // app — e.g. the model picker's "Add provider" button. Reuses the entire
 // onboarding flow (OAuth rows, API-key form, model-confirm) instead of
@@ -446,7 +399,6 @@ export function startManualOnboarding(reason: null | string = DEFAULT_MANUAL_ONB
     manual: true,
     requested: true,
     localEndpoint: false,
-    needsCredential: false,
     // `null` opts out of the prompt banner entirely (e.g. when the user already
     // picked a specific provider and we auto-start its sign-in).
     reason: reason ? reason.trim() || DEFAULT_ONBOARDING_REASON : null,
@@ -467,7 +419,6 @@ export function startManualLocalEndpoint(reason: null | string = null) {
     manual: true,
     requested: true,
     localEndpoint: true,
-    needsCredential: false,
     mode: 'apikey',
     reason: reason ? reason.trim() || DEFAULT_ONBOARDING_REASON : null,
     flow: { status: 'idle' }
@@ -505,7 +456,7 @@ export function clearPendingProviderOAuth() {
 export function closeManualOnboarding() {
   pendingProviderOAuthId = null
 
-  patch({ manual: false, requested: false, localEndpoint: false, needsCredential: false, flow: { status: 'idle' } })
+  patch({ manual: false, requested: false, localEndpoint: false, flow: { status: 'idle' } })
 }
 
 export function completeDesktopOnboarding() {
@@ -520,14 +471,10 @@ export function completeDesktopOnboarding() {
     mode: 'oauth',
     providers: null,
     reason: null,
-    needsCredential: false,
     requested: false,
     firstRunSkipped: false,
     manual: false,
-    localEndpoint: false,
-    managedAvailable: false,
-    managedError: null,
-    managedSubmitting: false
+    localEndpoint: false
   })
 }
 
@@ -540,222 +487,11 @@ export function completeDesktopOnboarding() {
 export function dismissFirstRunOnboarding() {
   clearPoll()
   writeCachedSkipped(true)
-  patch({
-    firstRunSkipped: true,
-    requested: false,
-    manual: false,
-    localEndpoint: false,
-    needsCredential: false,
-    flow: { status: 'idle' }
-  })
+  patch({ firstRunSkipped: true, requested: false, manual: false, localEndpoint: false, flow: { status: 'idle' } })
 }
 
 export function setOnboardingMode(mode: OnboardingMode) {
   patch({ mode })
-}
-
-// Probe the ApexNodes managed-LLM status via the desktop bridge. Best-effort:
-// when the bridge is absent (web dashboard / dev preview) or the call fails,
-// managed is treated as unavailable so onboarding falls back to the BYOK flow.
-// Returns the status so callers can act on `signedIn` without a second read.
-async function refreshManagedStatus(): Promise<{ enabled: boolean; signedIn: boolean } | null> {
-  const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
-
-  if (!bridge) {
-    patch({ managedAvailable: false })
-
-    return null
-  }
-
-  try {
-    const status = await bridge.status()
-    // "Available" for onboarding purposes means: enabled AND the user still
-    // needs to sign in. An already-signed-in user has a relay key on disk, so
-    // the runtime is configured and the normal readiness gate handles them.
-    patch({ managedAvailable: status.enabled && !status.signedIn })
-
-    return { enabled: status.enabled, signedIn: status.signedIn }
-  } catch {
-    patch({ managedAvailable: false })
-
-    return null
-  }
-}
-
-// User-facing Chinese copy for managed sign-in. All managed-login messages are
-// Chinese (Desktop V0.2 China-first), and we never surface a raw `401: {...}`
-// body — login failures collapse to a single friendly line, mirroring the web
-// public-login-page errors block (createbot.json).
-const MANAGED_COPY = {
-  // Empty email/password.
-  emptyFields: '请输入邮箱和密码',
-  // Login (and the login-or-register retry) failed → bad email/password.
-  loginFailed: '登录失败,请检查邮箱或密码',
-  // Bridge absent (web dashboard / dev preview) — managed sign-in is desktop-only.
-  desktopOnly: '托管登录仅在桌面应用中可用',
-  // Signed in, but the local runtime couldn't reach the relay after applying it.
-  relayUnreachable: '登录成功,但运行时无法连接 APEX 中转服务,请重试',
-  // Browser flow could not be started / was cancelled.
-  browserFailed: '浏览器登录未完成,请重试'
-}
-
-// Map an electron managed-sign-in `res.message` to user-facing Chinese. The
-// electron layer returns opaque markers (EMPTY_FIELDS / INVALID_CREDENTIALS) for
-// the known cases and a raw string otherwise; we collapse the credential cases
-// to loginFailed and never echo a raw `NNN: {...}` body to the user.
-function managedErrorCopy(message: string | undefined): string {
-  const raw = (message ?? '').trim()
-
-  if (raw === 'EMPTY_FIELDS') {
-    return MANAGED_COPY.emptyFields
-  }
-
-  // INVALID_CREDENTIALS marker, any raw HTTP-status body (e.g. `401: {...}`),
-  // or anything else → the single friendly login-failed line. We never echo the
-  // electron message verbatim, so a raw status/JSON body can't reach the user.
-  return MANAGED_COPY.loginFailed
-}
-
-// Shared tail for every managed sign-in path (email/password, Google, APEX):
-// given a successful electron result, either degrade to BYOK (no relay key yet),
-// or apply the assignment through the SAME /api/model/set path the BYOK
-// local-endpoint flow uses, verify the runtime, and complete onboarding.
-async function applyManagedSignInResult(
-  res: { assignment?: unknown; hasRelayKey?: boolean; message?: string; ok: boolean },
-  ctx: OnboardingContext
-): Promise<void> {
-  if (!res.ok) {
-    patch({ managedSubmitting: false, managedError: managedErrorCopy(res.message) })
-
-    return
-  }
-
-  if (!res.hasRelayKey || !res.assignment) {
-    // Logged in, but managed isn't wired server-side yet — degrade to BYOK.
-    patch({ managedSubmitting: false, managedAvailable: false, mode: 'apikey' })
-    await refreshProviders()
-    patch({ mode: 'apikey' })
-
-    return
-  }
-
-  // Apply the managed relay assignment through the existing model-set path
-  // (provider=custom + base_url + api_key + model), then verify + finish.
-  await setModelAssignment(res.assignment as Parameters<typeof setModelAssignment>[0])
-  await ctx.requestGateway('reload.env').catch(() => undefined)
-
-  const runtime = await checkRuntime(ctx)
-
-  if (!runtime.ready) {
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.relayUnreachable })
-
-    return
-  }
-
-  patch({ managedSubmitting: false })
-  notifyReady('APEX')
-  completeDesktopOnboarding()
-  ctx.onCompleted?.()
-}
-
-// Sign in to ApexNodes managed LLM (zero-key) with email + password. The electron
-// layer does login-or-register (mirrors web): an unknown email auto-registers; a
-// registered email with the wrong password returns the Chinese login-failed line.
-// On success with a provisioned relay key, apply the returned model assignment,
-// reload env, and complete onboarding. If the backend relay-key endpoint isn't
-// deployed yet (hasRelayKey=false), fall back to the BYOK provider picker.
-export async function managedSignIn(email: string, password: string, ctx: OnboardingContext) {
-  const trimmedEmail = email.trim()
-
-  if (!trimmedEmail || !password) {
-    patch({ managedError: MANAGED_COPY.emptyFields })
-
-    return
-  }
-
-  const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
-
-  if (!bridge) {
-    patch({ managedError: MANAGED_COPY.desktopOnly })
-
-    return
-  }
-
-  patch({ managedSubmitting: true, managedError: null })
-
-  try {
-    const res = await bridge.signIn({ email: trimmedEmail, password })
-    await applyManagedSignInResult(res, ctx)
-  } catch (error) {
-    // Network/IPC throw — keep it friendly and never leak a raw status body.
-    void error
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.loginFailed })
-  }
-}
-
-// hc-530: a web-handoff login code delivered via the apexnodes://login deep link,
-// parked here by the deep-link handler until the login screen is mounted and can
-// run the exchange with its onboarding ctx. Cleared on consume. null = none pending.
-export const $pendingDesktopLoginCode = atom<string | null>(null)
-
-// Deep-link (web handoff) managed sign-in: a one-time code minted by the web app
-// arrived via apexnodes://login. The electron layer exchanges it for a login JWT,
-// then runs the SAME provision-key → assignment path as the browser/email flows.
-export async function managedDeepLinkSignIn(code: string, ctx: OnboardingContext) {
-  const trimmed = code.trim()
-
-  if (!trimmed) {
-    return
-  }
-
-  const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
-
-  if (!bridge?.deepLinkSignIn) {
-    patch({ managedError: MANAGED_COPY.desktopOnly })
-
-    return
-  }
-
-  patch({ managedSubmitting: true, managedError: null })
-
-  try {
-    const res = await bridge.deepLinkSignIn({ code: trimmed })
-    await applyManagedSignInResult(res, ctx)
-  } catch (error) {
-    void error
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })
-  }
-}
-
-// Browser (loopback) managed sign-in: "用 Google 登录" / "用 APEX 登录". The
-// electron layer opens the system browser, catches the loopback redirect with
-// the minted JWT, then runs the SAME provision-key → assignment path as the
-// email/password flow. Reuses the existing OAuth/loopback + openExternal infra.
-export async function managedBrowserSignIn(provider: 'apex' | 'google', ctx: OnboardingContext) {
-  const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
-
-  if (!bridge?.browserSignIn) {
-    patch({ managedError: MANAGED_COPY.desktopOnly })
-
-    return
-  }
-
-  patch({ managedSubmitting: true, managedError: null })
-
-  try {
-    const res = await bridge.browserSignIn({ provider })
-    await applyManagedSignInResult(res, ctx)
-  } catch (error) {
-    void error
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })
-  }
-}
-
-// "Use my own provider instead" escape hatch from the managed sign-in panel:
-// drop the managed-first treatment for this session and show the BYOK picker.
-export function skipManagedForByok() {
-  patch({ managedAvailable: false, managedError: null, mode: 'oauth' })
-  void refreshProviders()
 }
 
 export async function refreshOnboarding(ctx: OnboardingContext) {
@@ -778,45 +514,34 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
     return true
   }
 
-  // Runtime isn't ready and the user isn't configured. Before falling to the
-  // BYOK picker, check whether this build leads with managed sign-in (zero-key).
-  // When managed is available, surface the managed panel instead of the picker
-  // — the user signs in once and gets chat with no key. An already-signed-in
-  // managed user would have passed the readiness check above (relay key seeded),
-  // so we only reach here for the not-yet-signed-in case.
-  const managed = await refreshManagedStatus()
+  const state = $desktopOnboarding.get()
 
-  if (managed?.enabled && !managed.signedIn) {
-    writeCachedConfigured(false)
-    patch({ configured: false, reason: null, needsCredential: false, managedAvailable: true })
+  if (shouldPreserveConfiguredOnFallback(runtime, state)) {
+    // Gateway probes timed out but the user was already configured — don't
+    // downgrade to the blocking onboarding overlay. Surface a non-blocking
+    // notification with a stable id so repeated calls during an outage dedup
+    // instead of stacking toasts.
+    notify({
+      id: 'runtime-not-ready',
+      kind: 'error',
+      title: 'Runtime not ready',
+      message:
+        'Hermes Desktop could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'
+    })
 
     return false
   }
 
-  const state = $desktopOnboarding.get()
-
-  // checksDisagree (setup.status says configured, runtime check says not) means a
-  // provider is already selected but its credential is missing/unusable — exactly
-  // the DeepSeek seed with no key yet. Treat it as "just add your key", not as a
-  // failure: land on the API-key form (mode='apikey') and suppress the raw
-  // "No usable credentials … runtime resolution still failed" reason banner.
-  const needsCredential = runtime.checksDisagree
-  const reason = needsCredential ? null : runtime.reason || state.reason || DEFAULT_ONBOARDING_REASON
+  const reason = runtime.reason || state.reason || DEFAULT_ONBOARDING_REASON
 
   writeCachedConfigured(false)
-  patch({ configured: false, reason, needsCredential, ...(needsCredential ? { mode: 'apikey' as const } : {}) })
+  patch({ configured: false, reason })
 
   if (state.providers !== null && !state.requested) {
     return false
   }
 
   await refreshProviders()
-
-  // refreshProviders sets mode from the OAuth provider list; re-assert the
-  // key-form landing for the seed-needs-key case so it isn't flipped to 'oauth'.
-  if (needsCredential) {
-    patch({ mode: 'apikey' })
-  }
 
   return false
 }
@@ -863,15 +588,6 @@ export async function startProviderOAuth(provider: OAuthProvider, ctx: Onboardin
       return
     }
 
-    if (start.flow === 'loopback') {
-      // No code to paste: the redirect lands on the backend's loopback
-      // listener. Just wait and poll the session until the worker finishes.
-      setFlow({ status: 'awaiting_browser', provider, start })
-      pollTimer = window.setInterval(() => void pollSession(provider, start, ctx), POLL_MS)
-
-      return
-    }
-
     setFlow({ status: 'polling', provider, start, copied: false })
     pollTimer = window.setInterval(() => void pollSession(provider, start, ctx), POLL_MS)
   } catch (error) {
@@ -879,10 +595,8 @@ export async function startProviderOAuth(provider: OAuthProvider, ctx: Onboardin
   }
 }
 
-// Poll a session-backed flow (device_code or loopback) until it resolves.
-// Both shapes only need the session_id to poll; the start is threaded
-// through to the error flow so the user can retry from the same context.
-async function pollSession(provider: OAuthProvider, start: DeviceStart | LoopbackStart, ctx: OnboardingContext) {
+// Poll a session-backed device-code flow until it resolves.
+async function pollSession(provider: OAuthProvider, start: DeviceStart, ctx: OnboardingContext) {
   try {
     const { error_message, status } = await pollOAuthSession(provider.id, start.session_id)
 

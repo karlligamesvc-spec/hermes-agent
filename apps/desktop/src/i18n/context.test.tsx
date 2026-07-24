@@ -76,33 +76,7 @@ describe('I18nProvider', () => {
     expect(configClient.saveConfig).not.toHaveBeenCalled()
   })
 
-  it('opens in the shell default (zh) on a fresh install with no saved language', async () => {
-    // Fresh ApexNodes install: config exists but has no display.language yet.
-    // The shell prefers zh (initialLocale), so it should open Chinese rather than
-    // the universal en fallback — and must not persist anything.
-    const configClient: I18nConfigClient = {
-      getConfig: vi.fn().mockResolvedValue({ display: { skin: 'mono' } }),
-      saveConfig: vi.fn()
-    }
-
-    render(
-      <I18nProvider configClient={configClient} initialLocale="zh">
-        <LanguageProbe target="en" />
-      </I18nProvider>
-    )
-
-    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
-
-    expect(screen.getByTestId('locale').textContent).toBe('zh')
-    expect(screen.getByTestId('label').textContent).toBe('语言')
-    expect(configClient.saveConfig).not.toHaveBeenCalled()
-  })
-
-  it('keeps the shell default (zh) when config loading fails', async () => {
-    // The boot-failure path: the backend HTTP API is down, so getConfig()
-    // rejects. The shell is Chinese-first (initialLocale="zh"), so the overlay
-    // must stay Chinese rather than downgrading to the universal en fallback —
-    // this is the boot-failure-renders-in-English bug.
+  it('keeps English usable when config loading fails', async () => {
     const configClient: I18nConfigClient = {
       getConfig: vi.fn().mockRejectedValue(new Error('config unavailable')),
       saveConfig: vi.fn()
@@ -110,27 +84,6 @@ describe('I18nProvider', () => {
 
     render(
       <I18nProvider configClient={configClient} initialLocale="zh">
-        <LanguageProbe />
-      </I18nProvider>
-    )
-
-    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
-
-    expect(screen.getByTestId('locale').textContent).toBe('zh')
-    expect(screen.getByTestId('label').textContent).toBe('语言')
-    expect(configClient.saveConfig).not.toHaveBeenCalled()
-  })
-
-  it('falls back to en when config loading fails with no shell preference', async () => {
-    // Without an explicit initialLocale the shell has no preference, so a failed
-    // config load still resolves to the universal en baseline.
-    const configClient: I18nConfigClient = {
-      getConfig: vi.fn().mockRejectedValue(new Error('config unavailable')),
-      saveConfig: vi.fn()
-    }
-
-    render(
-      <I18nProvider configClient={configClient}>
         <LanguageProbe />
       </I18nProvider>
     )

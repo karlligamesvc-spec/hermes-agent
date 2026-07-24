@@ -1,9 +1,12 @@
-import { type MutableRefObject, useCallback, useState } from 'react'
+import { type MutableRefObject, useCallback, useRef, useState } from 'react'
 
-import { getHermesConfig, getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
+import { getHermesConfig, getHermesConfigDefaults } from '@/hermes'
 import { BUILTIN_PERSONALITIES, normalizePersonalityValue, personalityNamesFromConfig } from '@/lib/chat-runtime'
+import { normalize } from '@/lib/text'
 import {
   $currentCwd,
+  getComposerSelectionGeneration,
+  getCurrentModelSource,
   setAvailablePersonalities,
   setCurrentCwd,
   setCurrentFastMode,
@@ -12,6 +15,7 @@ import {
   setCurrentServiceTier,
   setIntroPersonality
 } from '@/store/session'
+import { applyAutoSpeakFromConfig } from '@/store/voice-prefs'
 
 const DEFAULT_VOICE_SECONDS = 120
 const FAST_TIERS = new Set(['fast', 'priority', 'on'])
@@ -20,25 +24,21 @@ function recordingLimit(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : DEFAULT_VOICE_SECONDS
 }
 
-// Consumer default: reasoning blocks (推理过程块) are ON. The runtime ships
-// display.show_reasoning=false and the gateway gates reasoning output on it
-// server-side, but the 对话 settings page that exposed the toggle is gone from
-// the consumer UI, so seed the value through the existing config persistence.
-// After the first write the config reads back true and this is a no-op —
-// nothing new is stored client-side.
-async function ensureReasoningBlocksOnByDefault(): Promise<void> {
-  const record = await getHermesConfigRecord()
-
-  const display =
-    record.display && typeof record.display === 'object' && !Array.isArray(record.display)
-      ? (record.display as Record<string, unknown>)
-      : {}
-
-  if (display.show_reasoning === true) {
-    return
+/** config.yaml hands back whatever the user wrote — `reasoning_effort: false`
+ *  (or `off`/`no`, which YAML also parses to boolean false) means thinking
+ *  disabled, and a bare boolean must not throw on `.trim()`. */
+function normalizeConfigEffort(value: unknown): string {
+  if (value === false) {
+    return 'none'
   }
 
-  await saveHermesConfig({ ...record, display: { ...display, show_reasoning: true } })
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  const effort = normalize(value)
+
+  return effort === 'false' || effort === 'disabled' ? 'none' : effort
 }
 
 interface HermesConfigOptions {
@@ -49,52 +49,74 @@ interface HermesConfigOptions {
 export function useHermesConfig({ activeSessionIdRef, refreshProjectBranch }: HermesConfigOptions) {
   const [voiceMaxRecordingSeconds, setVoiceMaxRecordingSeconds] = useState(DEFAULT_VOICE_SECONDS)
   const [sttEnabled, setSttEnabled] = useState(true)
+  const profileRefreshEpochRef = useRef(0)
 
-  const refreshHermesConfig = useCallback(async () => {
-    try {
-      const [config, defaults] = await Promise.all([getHermesConfig(), getHermesConfigDefaults().catch(() => ({}))])
+  const refreshHermesConfig = useCallback(
+    async (force = false) => {
+      if (force) {
+        profileRefreshEpochRef.current += 1
+      }
 
-      const personality = normalizePersonalityValue(
-        typeof config.display?.personality === 'string' ? config.display.personality : ''
-      )
+      const profileRefreshEpoch = profileRefreshEpochRef.current
+      const selectionGeneration = getComposerSelectionGeneration()
 
-      setIntroPersonality(personality)
-      // Active sessions keep their per-session value; standalone falls back to config.
-      setCurrentPersonality(prev => (activeSessionIdRef.current ? prev || personality : personality))
-      setAvailablePersonalities([
-        ...new Set([
-          'none',
-          ...BUILTIN_PERSONALITIES,
-          ...personalityNamesFromConfig(defaults),
-          ...personalityNamesFromConfig(config)
+      try {
+        const [config, defaults] = await Promise.all([getHermesConfig(), getHermesConfigDefaults().catch(() => ({}))])
+
+        if (profileRefreshEpochRef.current !== profileRefreshEpoch) {
+          return
+        }
+
+        const personality = normalizePersonalityValue(
+          typeof config.display?.personality === 'string' ? config.display.personality : ''
+        )
+
+        setIntroPersonality(personality)
+        // Active sessions keep their per-session value; standalone falls back to config.
+        setCurrentPersonality(prev => (activeSessionIdRef.current ? prev || personality : personality))
+        setAvailablePersonalities([
+          ...new Set([
+            'none',
+            ...BUILTIN_PERSONALITIES,
+            ...personalityNamesFromConfig(defaults),
+            ...personalityNamesFromConfig(config)
+          ])
         ])
-      ])
 
-      const cwd = (config.terminal?.cwd ?? '').trim()
+        const cwd = (config.terminal?.cwd ?? '').trim()
 
-      if (cwd && cwd !== '.') {
-        setCurrentCwd(prev => prev || cwd)
-        void refreshProjectBranch($currentCwd.get() || cwd)
+        if (cwd && cwd !== '.') {
+          // Configured terminal.cwd beats a stale remembered workspace cwd
+          // (#38855) — but never yank the workspace out from under an active
+          // session; those keep their own cwd until the user detaches.
+          setCurrentCwd(prev => (activeSessionIdRef.current ? prev : cwd))
+          void refreshProjectBranch($currentCwd.get() || cwd)
+        }
+
+        const reasoning = normalizeConfigEffort(config.agent?.reasoning_effort)
+        const tier = (config.agent?.service_tier ?? '').trim()
+
+        const shouldSeedComposer =
+          !activeSessionIdRef.current &&
+          getComposerSelectionGeneration() === selectionGeneration &&
+          (force || getCurrentModelSource() !== 'manual')
+
+        if (shouldSeedComposer) {
+          setCurrentReasoningEffort(reasoning)
+          setCurrentFastMode(FAST_TIERS.has(tier.toLowerCase()))
+        }
+
+        setCurrentServiceTier(prev => (activeSessionIdRef.current ? prev : tier))
+
+        setVoiceMaxRecordingSeconds(recordingLimit(config.voice?.max_recording_seconds))
+        setSttEnabled(config.stt?.enabled !== false)
+        applyAutoSpeakFromConfig(config)
+      } catch {
+        // Config is nice-to-have; chat still works without it.
       }
-
-      const reasoning = (config.agent?.reasoning_effort ?? '').trim()
-      const tier = (config.agent?.service_tier ?? '').trim()
-
-      setCurrentReasoningEffort(prev => (activeSessionIdRef.current ? prev : reasoning))
-      setCurrentServiceTier(prev => (activeSessionIdRef.current ? prev : tier))
-      setCurrentFastMode(prev => (activeSessionIdRef.current ? prev : FAST_TIERS.has(tier.toLowerCase())))
-
-      setVoiceMaxRecordingSeconds(recordingLimit(config.voice?.max_recording_seconds))
-      setSttEnabled(config.stt?.enabled !== false)
-
-      // Steady state (value already true) skips the extra round-trip entirely.
-      if (config.display?.show_reasoning !== true) {
-        void ensureReasoningBlocksOnByDefault().catch(() => undefined)
-      }
-    } catch {
-      // Config is nice-to-have; chat still works without it.
-    }
-  }, [activeSessionIdRef, refreshProjectBranch])
+    },
+    [activeSessionIdRef, refreshProjectBranch]
+  )
 
   return { refreshHermesConfig, sttEnabled, voiceMaxRecordingSeconds }
 }

@@ -1,74 +1,73 @@
 import type { ReactNode } from 'react'
 
 import { SearchField } from '@/components/ui/search-field'
+import { ResponsiveTabs } from '@/components/ui/tab-dropdown'
 import { cn } from '@/lib/utils'
+
+// Tabs are data, not nodes: the shell owns their presentation so every page
+// gets the same behavior — a centered TextTab row on wide viewports that
+// collapses into a dropdown when the header can't fit both search and tabs.
+export interface PageShellTab {
+  id: string
+  label: string
+  /** Count badge. `null` = still loading (renders a skeleton); `undefined` = no badge. */
+  meta?: string | number | null
+}
 
 interface PageSearchShellProps extends React.ComponentProps<'section'> {
   children: ReactNode
-  /** Primary tabs shown on the top row, beside the search. */
-  tabs?: ReactNode
+  tabs?: PageShellTab[]
+  activeTab?: string
+  onTabChange?: (id: string) => void
   /** Secondary filters shown full-width on their own row below (expands). */
   filters?: ReactNode
   onSearchChange: (value: string) => void
   searchPlaceholder: string
-  searchTrailingAction?: ReactNode
+  /** Data-derived rotating placeholder nudges (see SearchField.hints). */
+  searchHints?: string[]
   searchValue: string
   /** Hide the search field when there's nothing to search (empty dataset). */
   searchHidden?: boolean
-  /** Reach the underlying input (e.g. to focus it on page mount / hotkey). */
-  searchInputRef?: React.RefObject<HTMLInputElement | null>
-  /**
-   * Centered single-column mode: the header row and the body share one
-   * `mx-auto max-w-2xl` column, so the search field lines up (same width, same
-   * axis) with the content beneath it — used by the 搜索 page. Off by default,
-   * so tab-style pages (插件 / 产物 / 渠道) keep their full-width layout. In this
-   * mode the shell owns the scroll container and the centered column; pass just
-   * the column's content as `children`.
-   */
-  centered?: boolean
-  /**
-   * Where the search field sits, for the default full-width layout only.
-   * `inline` (default) keeps it on the top row beside the tabs. `centered`
-   * lifts it onto its own row below the tabs — horizontally centered, widened,
-   * and boxed (a subtle frame) so it reads as a prominent page-level search
-   * entry (used by the 技能 page). Opt-in, so other tab-style pages
-   * (插件 / 产物 / 渠道) keep the inline field. Ignored when `centered` (the
-   * full-page single-column mode) is set, which owns its own header geometry.
-   */
-  searchRow?: 'inline' | 'centered'
+  /** Right-aligned control in the header's trailing cell (e.g. a refresh button)
+   *  so mouse users get a visible affordance for the refresh hotkey. */
+  searchTrailingAction?: ReactNode
+}
+
+function ShellTabs({
+  tabs,
+  activeTab,
+  onTabChange
+}: {
+  tabs: PageShellTab[]
+  activeTab?: string
+  onTabChange?: (id: string) => void
+}) {
+  return (
+    <ResponsiveTabs
+      onChange={id => onTabChange?.(id)}
+      tabs={tabs}
+      value={activeTab ?? tabs[0]?.id ?? ''}
+      wideClassName="justify-center"
+    />
+  )
 }
 
 export function PageSearchShell({
   children,
   className,
   tabs,
+  activeTab,
+  onTabChange,
   filters,
   onSearchChange,
   searchPlaceholder,
-  searchTrailingAction,
+  searchHints,
   searchValue,
   searchHidden = false,
-  searchInputRef,
-  centered = false,
-  searchRow = 'inline',
+  searchTrailingAction,
   ...props
 }: PageSearchShellProps) {
-  // The opt-in centered search row only applies to the default full-width
-  // layout; the `centered` single-column mode owns its own header geometry.
-  const searchOnOwnRow = searchRow === 'centered' && !centered
-  const inlineSearch = !searchHidden && !searchOnOwnRow
-
-  const renderSearch = (containerClassName: string, variant?: 'underline' | 'boxed') => (
-    <SearchField
-      containerClassName={containerClassName}
-      inputRef={searchInputRef}
-      onChange={onSearchChange}
-      placeholder={searchPlaceholder}
-      trailingAction={searchTrailingAction}
-      value={searchValue}
-      variant={variant}
-    />
-  )
+  const hasTabs = (tabs?.length ?? 0) > 0
 
   return (
     <section
@@ -78,9 +77,8 @@ export function PageSearchShell({
       {/*
         Header lives in the page body, below the window chrome (the shell floats
         traffic lights over the top titlebar-height strip, which the `pt` clears
-        and leaves draggable). Top row: primary tabs + search. Second row:
-        secondary filters, full-width so they expand. Interactive bits opt out
-        of the drag region.
+        and leaves draggable). Search left, tabs centered on the page via the
+        1fr/auto/1fr grid; the trailing 1fr keeps the center honest.
       */}
       {/*
         IMPORTANT: do NOT put `-webkit-app-region: drag` on this header. It spans
@@ -92,45 +90,26 @@ export function PageSearchShell({
         (see app-shell.tsx), so window dragging still works here.
       */}
       <div className="shrink-0">
-        {(tabs || inlineSearch) && (
-          <div
-            className={cn(
-              'flex items-center gap-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]',
-              // Centered mode shares the body's `mx-auto max-w-2xl px-3` box so the
-              // search field lines up with the column beneath it; default keeps the
-              // original full-width `px-3` header.
-              centered ? 'mx-auto w-full max-w-2xl px-3' : 'px-3'
-            )}
-          >
-            {tabs ? <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">{tabs}</div> : null}
-            {inlineSearch && (
-              <div className={cn('flex items-center', centered ? 'flex-1' : cn('shrink-0', !tabs && 'flex-1'))}>
-                {renderSearch(centered ? 'w-full' : 'max-w-[45vw]')}
-              </div>
-            )}
+        {(hasTabs || !searchHidden) && (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]">
+            <div className="flex min-w-0 items-center justify-start">
+              {!searchHidden && (
+                <SearchField
+                  containerClassName="max-w-[45vw]"
+                  hints={searchHints}
+                  onChange={onSearchChange}
+                  placeholder={searchPlaceholder}
+                  value={searchValue}
+                />
+              )}
+            </div>
+            {hasTabs ? <ShellTabs activeTab={activeTab} onTabChange={onTabChange} tabs={tabs!} /> : <span />}
+            <div className="flex min-w-0 items-center justify-end">{searchTrailingAction}</div>
           </div>
-        )}
-        {/*
-          Opt-in centered search row: its own line below the tabs, horizontally
-          centered and widened to a boxed 520px bar. The grid below stays
-          full-width — this only reflows the header search, not the body.
-        */}
-        {searchOnOwnRow && !searchHidden && (
-          <div className="flex justify-center px-3 pb-2">{renderSearch('w-full max-w-[520px]', 'boxed')}</div>
         )}
         {filters ? <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">{filters}</div> : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">
-        {centered ? (
-          // Scroll at the window edge, content in the same centered column as the
-          // header. `px-3` matches the header so both left/right edges align.
-          <div className="h-full overflow-y-auto">
-            <div className="mx-auto w-full max-w-2xl px-3">{children}</div>
-          </div>
-        ) : (
-          children
-        )}
-      </div>
+      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">{children}</div>
     </section>
   )
 }

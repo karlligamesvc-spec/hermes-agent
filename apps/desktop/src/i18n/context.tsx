@@ -108,28 +108,13 @@ export function I18nProvider({ children, configClient = defaultConfigClient, ini
       .getConfig()
       .then(config => {
         if (!cancelled) {
-          const configured = getConfigDisplayLanguage(config)
-          // No language saved yet (fresh install): fall back to the shell's
-          // preferred default (initialLocale — "zh" for ApexNodes) instead of the
-          // universal en DEFAULT_LOCALE, so a first-run China install opens in
-          // Chinese. A saved (or unsupported) value still normalizes as before.
-          setLocaleState(configured == null ? normalizeLocale(initialLocale) : normalizeLocale(configured))
+          setLocaleState(normalizeLocale(getConfigDisplayLanguage(config)))
         }
       })
       .catch(error => {
         if (!cancelled) {
           setConfigLoadError(toError(error))
-          // Config load failures are the COMMON case on the boot-failure path:
-          // the backend HTTP API (/api/config) is down precisely when the
-          // gateway never came up, so getConfig() rejects. Falling back to the
-          // universal en DEFAULT_LOCALE here downgraded every early-error
-          // overlay (boot-failure, etc.) to English even though the shell is
-          // Chinese-first — the install overlay rendered zh only because it
-          // shows before this rejection lands. Keep the shell's preferred
-          // default (initialLocale — "zh" for ApexNodes) so ALL overlays stay
-          // consistent; a transient backend-down shouldn't switch the UI
-          // language. The user's saved choice still wins once the backend is up.
-          setLocaleState(normalizeLocale(initialLocale))
+          setLocaleState(DEFAULT_LOCALE)
         }
       })
       .finally(() => {

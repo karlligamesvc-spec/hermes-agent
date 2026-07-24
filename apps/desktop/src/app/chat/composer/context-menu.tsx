@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
-import { IM_ENTRY_ROUTE } from '@/app/routes'
+import { composerPanelCard } from '@/components/chat/composer-dock'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,123 +13,98 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Kbd } from '@/components/ui/kbd'
+import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { type IconComponent, ImageIcon, MessageCircle, Package, Sparkles, Video } from '@/lib/icons'
+import { Clipboard, FileText, FolderOpen, type IconComponent, ImageIcon, Link, MessageSquareText } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
+import { useComposerAttachmentProviders } from './contrib'
 import { GHOST_ICON_BTN } from './controls'
-import { requestComposerFocus, requestComposerInsert } from './focus'
-import { SkillBrowseDialog } from './skill-browse-dialog'
-import { type SkillScope, useSkillCatalog } from './skill-catalog'
 import type { ChatBarState } from './types'
 
-// hc-572 made the composer "+" a unified capability entry (aligning with
-// Navos) instead of just an attachment picker. hc-572-followup (real-machine
-// feedback, both rounds): the file/folder/image/paste-image/URL/prompt-snippet
-// pickers were dropped from this menu entirely — the composer already accepts
-// drag-and-drop and paste for all of that (see composer/index.tsx's
-// onDrop/onPaste handlers), so the buttons were pure redundant chrome; and the
-// "enabled skills" zone, which originally listed every enabled skill at the
-// top level, collapsed to a single row after real use showed a long enable
-// list buries everything below it. The menu is now three short zones: (1)
-// generate image/video, (2) two skill rows — enabled / unused — that both open
-// the same browse dialog (see skill-browse-dialog.tsx), (3) connectors.
-// Enablement is global (reuses the Skills-page toggle) — flip a skill in the
-// browse dialog and its row's count updates immediately.
-export function ContextMenu({ state }: ContextMenuProps) {
+const SNIPPET_KEYS = ['codeReview', 'implementationPlan', 'explainThis']
+
+export function ContextMenu({
+  state,
+  onInsertText,
+  onOpenUrlDialog,
+  onPasteClipboardImage,
+  onPickFiles,
+  onPickFolders,
+  onPickImages
+}: ContextMenuProps) {
   const { t } = useI18n()
   const c = t.composer
-  const cap = c.capabilities
-  const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [browseOpen, setBrowseOpen] = useState(false)
-  const [browseScope, setBrowseScope] = useState<SkillScope>('enabled')
-
-  // Seed the composer with a generation opener and focus it, then close the
-  // menu. Prefill (not auto-send) so the user finishes describing the idea —
-  // the ladder's stage 0. The agent picks it up and returns the first card.
-  const startGeneration = (starter: string) => {
-    requestComposerInsert(starter, { mode: 'block', target: 'main' })
-    requestComposerFocus('main')
-    setMenuOpen(false)
-  }
-
-  const openBrowse = (scope: SkillScope) => {
-    setBrowseScope(scope)
-    setBrowseOpen(true)
-  }
-
-  // Skills load lazily the first time the menu or its browse dialog opens.
-  const catalog = useSkillCatalog(menuOpen || browseOpen, {
-    enabled: t.skills.skillEnabled,
-    disabled: t.skills.skillDisabled,
-    appliesToNewSessions: t.skills.appliesToNewSessions,
-    failedToUpdate: t.skills.failedToUpdate,
-    loadFailed: t.skills.skillsLoadFailed
-  })
+  // Prompt snippets used to be a Radix submenu. That submenu didn't open
+  // reliably when the parent menu was positioned at the bottom of the
+  // window (composer "+" anchor), so we promoted it to a real Dialog —
+  // easier to grow with search / descriptions, and no positioning math.
+  const [snippetsOpen, setSnippetsOpen] = useState(false)
+  // `composer.attachments` contributions — plugin/core-registered rows that
+  // extend this menu through the same registry as every other surface.
+  const attachmentProviders = useComposerAttachmentProviders()
 
   return (
     <>
-      <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={state.tools.label}
-            className={cn(
-              GHOST_ICON_BTN,
-              'data-[state=open]:bg-(--chrome-action-hover) data-[state=open]:text-foreground'
-            )}
-            disabled={!state.tools.enabled}
-            size="icon"
-            title={state.tools.label}
-            type="button"
-            variant="ghost"
-          >
-            <Codicon name="add" size="1rem" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64" side="top" sideOffset={10}>
-          {/* Zone 1 — generate image / video. The generation entry lives in the
-              unified "+" menu: picking one injects a stage-0 opener into the
-              composer and kicks off the ladder (no param/model chips here — the
-              ladder's own cards carry those). */}
-          <DropdownMenuLabel className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground/85">
-            {cap.generateLabel}
+      <DropdownMenu>
+        <Tip label={state.tools.label} side="top">
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={state.tools.label}
+              className={cn(
+                GHOST_ICON_BTN,
+                'data-[state=open]:bg-(--chrome-action-hover) data-[state=open]:text-foreground'
+              )}
+              disabled={!state.tools.enabled}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <Codicon name="add" size="0.875rem" />
+            </Button>
+          </DropdownMenuTrigger>
+        </Tip>
+        <DropdownMenuContent align="start" className={cn('w-60', composerPanelCard)} side="top" sideOffset={6}>
+          <DropdownMenuLabel className="px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
+            {c.attachLabel}
           </DropdownMenuLabel>
-          <ContextMenuItem icon={ImageIcon} onSelect={() => startGeneration(cap.generateImageStarter)}>
-            {cap.generateImage}
+          <ContextMenuItem disabled={!onPickFiles} icon={FileText} onSelect={onPickFiles}>
+            {c.files}
           </ContextMenuItem>
-          <ContextMenuItem icon={Video} onSelect={() => startGeneration(cap.generateVideoStarter)}>
-            {cap.generateVideo}
+          <ContextMenuItem disabled={!onPickFolders} icon={FolderOpen} onSelect={onPickFolders}>
+            {c.folder}
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!onPickImages} icon={ImageIcon} onSelect={onPickImages}>
+            {c.images}
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!onPasteClipboardImage}
+            icon={Clipboard}
+            onSelect={onPasteClipboardImage ? () => void onPasteClipboardImage() : undefined}
+          >
+            {c.pasteImage}
+          </ContextMenuItem>
+          <ContextMenuItem icon={Link} onSelect={onOpenUrlDialog}>
+            {c.url}
           </ContextMenuItem>
 
           <DropdownMenuSeparator />
 
-          {/* Zone 2 — skills, collapsed into two rows (enabled / unused). Both
-              open the same search/browse dialog, defaulting to that row's half. */}
-          <DropdownMenuItem onSelect={() => openBrowse('enabled')}>
-            <Sparkles className="text-primary!" />
-            <span className="min-w-0 flex-1 truncate">{cap.enabledLabel}</span>
-            {catalog.skills ? (
-              <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.enabled.length}</span>
-            ) : null}
-            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => openBrowse('disabled')}>
-            <Package />
-            <span className="min-w-0 flex-1 truncate">{cap.unused}</span>
-            {catalog.skills ? (
-              <span className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">{catalog.disabled.length}</span>
-            ) : null}
-            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
-          </DropdownMenuItem>
+          <ContextMenuItem icon={MessageSquareText} onSelect={() => setSnippetsOpen(true)}>
+            {c.promptSnippets}
+          </ContextMenuItem>
 
-          {/* Zone 3 — connectors (IM channels). */}
-          <DropdownMenuItem onSelect={() => navigate(IM_ENTRY_ROUTE)}>
-            <MessageCircle />
-            <span className="min-w-0 flex-1 truncate">{cap.connectors}</span>
-            <span className="truncate text-[0.7rem] text-(--ui-text-tertiary)">{cap.connectorsHint}</span>
-            <Codicon className="text-(--ui-text-tertiary)" name="chevron-right" size="0.875rem" />
-          </DropdownMenuItem>
+          {attachmentProviders.length > 0 && <DropdownMenuSeparator />}
+          {attachmentProviders.map(provider => (
+            <DropdownMenuItem
+              className="text-[length:var(--conversation-tool-font-size)] focus:bg-(--ui-bg-tertiary)"
+              key={provider.key}
+              onSelect={() => void provider.run({ insertText: onInsertText })}
+            >
+              <Codicon name={provider.icon ?? 'plug'} size="0.875rem" />
+              <span>{provider.label}</span>
+            </DropdownMenuItem>
+          ))}
 
           <DropdownMenuSeparator />
 
@@ -141,14 +116,61 @@ export function ContextMenu({ state }: ContextMenuProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <SkillBrowseDialog catalog={catalog} initialScope={browseScope} onOpenChange={setBrowseOpen} open={browseOpen} />
+      <PromptSnippetsDialog onInsertText={onInsertText} onOpenChange={setSnippetsOpen} open={snippetsOpen} />
     </>
+  )
+}
+
+function PromptSnippetsDialog({ onInsertText, onOpenChange, open }: PromptSnippetsDialogProps) {
+  const { t } = useI18n()
+  const c = t.composer
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent className="max-w-md gap-3">
+        <DialogHeader>
+          <DialogTitle>{c.snippetsTitle}</DialogTitle>
+          <DialogDescription>{c.snippetsDesc}</DialogDescription>
+        </DialogHeader>
+        <ul className="grid gap-1">
+          {SNIPPET_KEYS.map(key => {
+            const snippet = c.snippets[key]
+
+            return (
+              <li key={key}>
+                <button
+                  className="group/snippet flex w-full cursor-pointer items-start gap-2.5 rounded-md border border-transparent px-2.5 py-2 text-left transition-colors hover:border-(--ui-stroke-tertiary) hover:bg-(--ui-control-hover-background) focus-visible:border-(--ui-stroke-tertiary) focus-visible:bg-(--ui-control-hover-background) focus-visible:outline-none"
+                  onClick={() => {
+                    onInsertText(snippet.text)
+                    onOpenChange(false)
+                  }}
+                  type="button"
+                >
+                  <MessageSquareText className="mt-0.5 size-3.5 shrink-0 text-(--ui-text-tertiary) group-hover/snippet:text-foreground" />
+                  <span className="grid min-w-0 gap-0.5">
+                    <span className="text-sm font-medium text-foreground">{snippet.label}</span>
+                    <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                      {snippet.description}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 export function ContextMenuItem({ children, disabled, icon: Icon, onSelect }: ContextMenuItemProps) {
   return (
-    <DropdownMenuItem disabled={disabled} onSelect={onSelect}>
+    // Override font size + highlight to match the / · @ completion rows exactly.
+    <DropdownMenuItem
+      className="text-[length:var(--conversation-tool-font-size)] focus:bg-(--ui-bg-tertiary)"
+      disabled={disabled}
+      onSelect={onSelect}
+    >
       <Icon />
       <span>{children}</span>
     </DropdownMenuItem>
@@ -163,5 +185,17 @@ interface ContextMenuItemProps {
 }
 
 interface ContextMenuProps {
+  onInsertText: (text: string) => void
+  onOpenUrlDialog: () => void
+  onPasteClipboardImage?: (opts?: { silent?: boolean }) => Promise<boolean> | void
+  onPickFiles?: () => void
+  onPickFolders?: () => void
+  onPickImages?: () => void
   state: ChatBarState
+}
+
+interface PromptSnippetsDialogProps {
+  onInsertText: (text: string) => void
+  onOpenChange: (open: boolean) => void
+  open: boolean
 }

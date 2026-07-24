@@ -52,16 +52,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 }
 
-function RootErrorFallback({ reset }: ErrorBoundaryFallbackProps) {
+function RootErrorFallback({ error, reset }: ErrorBoundaryFallbackProps) {
   const { t } = useI18n()
 
-  // The raw error is already logged by componentDidCatch; the visible copy
-  // stays friendly and localized instead of leaking `error.message`.
   return (
     <div className="fixed inset-0 z-[1500] grid place-items-center bg-(--ui-chat-surface-background) p-6">
       <ErrorState
         className="w-full max-w-[28rem]"
-        description={t.errors.boundaryDesc}
+        description={error.message || t.errors.boundaryDesc}
         title={t.errors.boundaryTitle}
       >
         <Button className="font-semibold" onClick={reset} size="lg">

@@ -8,6 +8,7 @@ import { sessionTitle } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
 import { Archive, ArchiveOff, FolderOpen, Loader2, Trash2 } from '@/lib/icons'
 import { notify, notifyError } from '@/store/notifications'
+import { untombstoneSessions } from '@/store/projects'
 import { applyConfiguredDefaultProjectDir, ensureDefaultWorkspaceCwd, setSessions } from '@/store/session'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -56,40 +57,48 @@ export function SessionsSettings() {
     void load()
   }, [load])
 
-  const unarchive = useCallback(async (session: SessionInfo) => {
-    setBusyId(session.id)
+  const unarchive = useCallback(
+    async (session: SessionInfo) => {
+      setBusyId(session.id)
 
-    try {
-      await setSessionArchived(session.id, false, session.profile)
-      setLocalSessions(prev => prev.filter(s => s.id !== session.id))
-      // Surface it again in the sidebar without waiting for a full refresh.
-      setSessions(prev => [{ ...session, archived: false }, ...prev.filter(s => s.id !== session.id)])
-      triggerHaptic('selection')
-      notify({ durationMs: 2_000, kind: 'success', message: s.restored })
-    } catch (err) {
-      notifyError(err, s.unarchiveFailed)
-    } finally {
-      setBusyId(null)
-    }
-  }, [s])
+      try {
+        await setSessionArchived(session.id, false, session.profile)
+        setLocalSessions(prev => prev.filter(s => s.id !== session.id))
+        // Surface it again in the sidebar without waiting for a full refresh, and
+        // lift any optimistic eviction so the grouped tree shows it again too.
+        untombstoneSessions([session.id, session._lineage_root_id])
+        setSessions(prev => [{ ...session, archived: false }, ...prev.filter(s => s.id !== session.id)])
+        triggerHaptic('selection')
+        notify({ durationMs: 2_000, kind: 'success', message: s.restored })
+      } catch (err) {
+        notifyError(err, s.unarchiveFailed)
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [s]
+  )
 
-  const remove = useCallback(async (session: SessionInfo) => {
-    if (!window.confirm(s.deleteConfirm(sessionTitle(session)))) {
-      return
-    }
+  const remove = useCallback(
+    async (session: SessionInfo) => {
+      if (!window.confirm(s.deleteConfirm(sessionTitle(session)))) {
+        return
+      }
 
-    setBusyId(session.id)
+      setBusyId(session.id)
 
-    try {
-      await deleteSession(session.id, session.profile)
-      setLocalSessions(prev => prev.filter(s => s.id !== session.id))
-      triggerHaptic('warning')
-    } catch (err) {
-      notifyError(err, s.deleteFailed)
-    } finally {
-      setBusyId(null)
-    }
-  }, [s])
+      try {
+        await deleteSession(session.id, session.profile)
+        setLocalSessions(prev => prev.filter(s => s.id !== session.id))
+        triggerHaptic('warning')
+      } catch (err) {
+        notifyError(err, s.deleteFailed)
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [s]
+  )
 
   useDeepLinkHighlight({
     elementId: id => `archived-session-${id}`,
@@ -110,18 +119,20 @@ export function SessionsSettings() {
         meta={sessions.length ? String(sessions.length) : undefined}
         title={s.archivedTitle}
       />
-      <p className="p5-section-intro">{s.archivedIntro}</p>
+      <p className="mb-2 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+        {s.archivedIntro}
+      </p>
 
       {sessions.length === 0 ? (
         <EmptyState description={s.emptyArchivedDesc} title={s.emptyArchivedTitle} />
       ) : (
-        <div className="p5-card p5-rows mt-3.5">
+        <div className="grid gap-1">
           {sessions.map(session => {
             const label = workspaceLabel(session.cwd)
             const busy = busyId === session.id
 
             return (
-              <div className="scroll-mt-6" id={`archived-session-${session.id}`} key={session.id}>
+              <div className="scroll-mt-6 rounded-lg" id={`archived-session-${session.id}`} key={session.id}>
                 <ListRow
                   action={
                     <div className="flex items-center gap-1.5">
@@ -251,13 +262,14 @@ function DefaultProjectDirSetting() {
   }, [s])
 
   return (
-    <div className="mb-8">
+    <div className="mb-6">
       <SectionHeading icon={FolderOpen} title={s.defaultDirTitle} />
-      <p className="p5-section-intro">{s.defaultDirDesc}</p>
-      <div className="p5-card p5-rows mt-3.5">
-        <ListRow
-          action={
-            <div className="flex items-center gap-3">
+      <p className="mb-2 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+        {s.defaultDirDesc}
+      </p>
+      <ListRow
+        action={
+          <div className="flex items-center gap-3">
             <Button disabled={busy} onClick={() => void choose()} size="sm" type="button" variant="textStrong">
               <FolderOpen className="size-3.5" />
               <span>{dir ? s.change : s.choose}</span>
@@ -269,10 +281,9 @@ function DefaultProjectDirSetting() {
             )}
           </div>
         }
-          description={dir || s.defaultsTo(fallback || '~')}
-          title={dir ? dir : s.notSet}
-        />
-      </div>
+        description={dir || s.defaultsTo(fallback || '~')}
+        title={dir ? dir : s.notSet}
+      />
     </div>
   )
 }

@@ -69,30 +69,27 @@ export function NotificationsSettings() {
   return (
     <SettingsContent>
       <SectionHeading icon={Bell} title={copy.title} />
-      <Caption className="p5-section-intro">{copy.intro}</Caption>
+      <Caption className="mb-2 leading-(--conversation-caption-line-height)">{copy.intro}</Caption>
 
-      <div className="p5-card p5-rows mt-3.5">
+      <ToggleRow
+        checked={prefs.enabled}
+        description={copy.enableAllDesc}
+        label={copy.enableAll}
+        onChange={setNativeNotifyEnabled}
+      />
+
+      {NATIVE_NOTIFICATION_KINDS.map(kind => (
         <ToggleRow
-          checked={prefs.enabled}
-          description={copy.enableAllDesc}
-          label={copy.enableAll}
-          onChange={setNativeNotifyEnabled}
+          checked={prefs.enabled && prefs.kinds[kind]}
+          description={copy.kinds[kind].description}
+          disabled={!prefs.enabled}
+          key={kind}
+          label={copy.kinds[kind].label}
+          onChange={on => setNativeNotifyKind(kind, on)}
         />
+      ))}
 
-        {NATIVE_NOTIFICATION_KINDS.map(kind => (
-          <ToggleRow
-            checked={prefs.enabled && prefs.kinds[kind]}
-            description={copy.kinds[kind].description}
-            disabled={!prefs.enabled}
-            key={kind}
-            label={copy.kinds[kind].label}
-            onChange={on => setNativeNotifyKind(kind, on)}
-          />
-        ))}
-      </div>
-
-      <div className="p5-card p5-rows mt-3.5">
-        <ListRow
+      <ListRow
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Select
@@ -133,12 +130,11 @@ export function NotificationsSettings() {
             </Button>
           </div>
         }
-          description={copy.completionSoundDesc}
-          title={copy.completionSoundTitle}
-        />
-      </div>
+        description={copy.completionSoundDesc}
+        title={copy.completionSoundTitle}
+      />
 
-      <div className="mt-5 flex flex-col gap-2">
+      <div className="mt-4 flex flex-col gap-2">
         <Button className="self-start" onClick={() => void runTest()} size="sm" type="button" variant="outline">
           <Bell />
           {copy.test}
