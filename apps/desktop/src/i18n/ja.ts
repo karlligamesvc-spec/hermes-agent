@@ -781,6 +781,7 @@ export const ja = defineLocale({
       noOutput: 'まだ出力がありません。'
     },
     model: {
+      selectedShort: (count: number) => `${count} モデルを選択中`,
       loading: 'モデル設定を読み込み中...',
       appliesDesc:
         '新しいセッションに適用されます。コンポーザーのモデルピッカーを使ってアクティブなチャットをホットスワップできます。',

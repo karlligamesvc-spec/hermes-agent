@@ -1,5 +1,7 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, render as rtlRender, screen } from '@testing-library/react'
 import { atom } from 'nanostores'
+import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { ChatBarState } from '@/app/chat/composer/types'
@@ -14,6 +16,16 @@ const modelState = (over: Partial<ChatBarState['model']> = {}): ChatBarState['mo
   provider: 'openai',
   ...over
 })
+
+// The pill reads the shared ['moa-presets'] cache to render "N models
+// selected" for a composed multi-model pick, so it needs a client in scope.
+// Retries off: the query only runs on provider === 'moa', which no case here
+// sets, but a stray fetch must not keep the test alive.
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 afterEach(() => {
   cleanup()

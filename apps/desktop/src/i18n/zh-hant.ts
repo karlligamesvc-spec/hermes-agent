@@ -759,6 +759,7 @@ export const zhHant = defineLocale({
       noOutput: '尚無輸出。'
     },
     model: {
+      selectedShort: (count: number) => `已選 ${count} 個模型`,
       loading: '正在載入模型設定...',
       appliesDesc: '套用至新工作階段。可在輸入框的模型選擇器中臨時切換目前對話。',
       provider: '提供方',

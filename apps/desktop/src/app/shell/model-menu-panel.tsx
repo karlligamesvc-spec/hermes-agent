@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { Codicon } from '@/components/ui/codicon'
@@ -16,9 +16,17 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { HermesGateway } from '@/hermes'
+import { getMoaModels, type HermesGateway, saveMoaModels, setModelAssignment } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown, ChevronRight } from '@/lib/icons'
+import {
+  AUTO_PRESET_NAME,
+  buildAutoMoaConfig,
+  composeAutoMoa,
+  composedMemberCount,
+  expandMoaPresetMembers,
+  routedKey
+} from '@/lib/moa-compose'
 import { requestModelOptions } from '@/lib/model-options'
 import {
   currentPickerSelection,
@@ -26,6 +34,7 @@ import {
   modelDisplayParts,
   reasoningEffortLabel
 } from '@/lib/model-status-label'
+import { isManagedProviderSlug } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
@@ -38,8 +47,9 @@ import {
   modelVisibilityKey,
   setModelVisibilityOpen
 } from '@/store/model-visibility'
+import { notifyError } from '@/store/notifications'
 import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
-import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
+import type { MoaConfigResponse, MoaModelSlot, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 
@@ -73,6 +83,10 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   const closeMenu = useContext(ModelMenuCloseContext)
   const [search, setSearch] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  // hc-578 (MOA-INVISIBLE-DESIGN): the platform (managed-relay) provider's rows
+  // MULTI-select. Raw model ids in directory order; BYO providers stay
+  // single-select and don't mix with this (§9).
+  const [platformSel, setPlatformSel] = useState<string[]>([])
   const queryClient = useQueryClient()
   // Bind to THIS surface's SessionView (primary or tile) so each pane's menu
   // shows/switches its own model — not the primary-only globals.
@@ -94,6 +108,14 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, sessionId: activeSessionId })
   })
 
+  // Also the source of "what is currently multi-selected" (expandMoaPresetMembers
+  // below). `.catch` keeps a never-configured profile (no moa.json yet) from
+  // parking this query in an error state.
+  const moaOptions = useQuery({
+    queryKey: ['moa-presets'],
+    queryFn: (): Promise<MoaConfigResponse | null> => getMoaModels().catch(() => null)
+  })
+
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     !!activeSessionId,
     { model: currentModel, provider: currentProvider },
@@ -112,11 +134,47 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   // The catalog carries MoA presets as a virtual `moa` provider row. Render
   // them in their dedicated section below and keep the row out of the main
-  // provider groups so presets don't show up twice.
+  // provider groups so presets don't show up twice. `__auto__` is filtered out:
+  // it is the reserved preset the multi-select composes silently, and naming it
+  // in a list would leak the mechanism the design exists to hide.
   const moaPresets = useMemo(
-    () => providers?.find(provider => provider.slug.toLowerCase() === 'moa')?.models ?? [],
+    () =>
+      (providers?.find(provider => provider.slug.toLowerCase() === 'moa')?.models ?? []).filter(
+        preset => preset !== AUTO_PRESET_NAME
+      ),
     [providers]
   )
+
+  // The ApexNodes managed relay — the only provider whose rows multi-select.
+  const managedProvider = useMemo(
+    () => (providers ?? []).find(provider => isManagedProviderSlug(provider.slug, provider.name)) ?? null,
+    [providers]
+  )
+
+  const platformSelSet = useMemo(() => new Set(platformSel.map(routedKey)), [platformSel])
+
+  // Reconstruct "what is currently multi-selected" from whatever is actually
+  // active: an active provider === 'moa' preset expands back to its member set,
+  // a single managed pick seeds a 1-element array, anything else (BYO / none)
+  // clears it. Runs on every fresh mount (this panel remounts each time the
+  // dropdown opens) and whenever the active selection or MoA config changes.
+  useEffect(() => {
+    if (optionsProvider === 'moa') {
+      setPlatformSel(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
+
+      return
+    }
+
+    // Compare against the resolved managed row's own slug, not a fuzzy name
+    // check — optionsProvider is a bare slug here.
+    if (optionsModel && managedProvider && optionsProvider === managedProvider.slug) {
+      setPlatformSel([optionsModel])
+
+      return
+    }
+
+    setPlatformSel([])
+  }, [optionsProvider, optionsModel, moaOptions.data, managedProvider])
 
   const pickerProviders = useMemo(
     () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
@@ -190,6 +248,60 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
         sessionId: activeSessionId
       }
     )
+  }
+
+  // hc-578 (MOA-INVISIBLE-DESIGN): toggle a managed-relay row in/out of the
+  // platform multi-selection. The picker never shows "MoA" — just checked model
+  // rows. <= 1 selected keeps the plain single-select path verbatim
+  // (selectFamily → onSelectModel, session-scoped — the regression red line,
+  // never touches the profile default); >= 2 composes the hidden `__auto__`
+  // preset and activates it. `fanout` is pinned to user_turn by composeAutoMoa,
+  // which is the billing red line (§2.2/§7).
+  const togglePlatformModel = async (family: ModelFamily, provider: ModelOptionProvider) => {
+    const key = routedKey(family.id)
+    const has = platformSel.some(id => routedKey(id) === key)
+    const nextIds = has ? platformSel.filter(id => routedKey(id) !== key) : [...platformSel, family.id]
+
+    // Keep directory order stable so the composed aggregator/reference split
+    // never depends on click order.
+    const directory = collapseModelFamilies(provider.models ?? [])
+    const order = new Map(directory.map((f, index) => [routedKey(f.id), index]))
+    nextIds.sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
+
+    const prevSel = platformSel
+    setPlatformSel(nextIds)
+
+    // Deselecting the last platform model is a no-op — a main model can't be
+    // "none", so the previous selection stays active until another is picked.
+    if (nextIds.length === 0) {
+      return
+    }
+
+    if (nextIds.length === 1) {
+      const sole = directory.find(f => routedKey(f.id) === routedKey(nextIds[0]))
+
+      if (sole) {
+        await selectFamily(sole, provider)
+      }
+
+      return
+    }
+
+    const composed = composeAutoMoa(nextIds.map((id): MoaModelSlot => ({ provider: provider.slug, model: id })))
+
+    if (!composed) {
+      return
+    }
+
+    try {
+      const saved = await saveMoaModels(buildAutoMoaConfig(moaOptions.data ?? null, composed))
+      queryClient.setQueryData(['moa-presets'], saved)
+      await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
+      void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+    } catch (err) {
+      setPlatformSel(prevSel)
+      notifyError(err, t.shell.modelOptions.updateFailed)
+    }
   }
 
   // Selecting a MoA preset switches the session to it PERSISTENTLY, using the
@@ -276,7 +388,14 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                         ? optionsModel
                         : null
 
+                    // Is this row the LIVE model (drives effort/fast display and
+                    // the edit submenu's active state)? A composed multi-model
+                    // selection has no single live model, so this stays false.
                     const isCurrent = activeId !== null
+                    // hc-578: on the managed relay the rows MULTI-select, so the
+                    // check mark tracks set membership instead.
+                    const multiSelect = managedProvider !== null && group.provider.slug === managedProvider.slug
+                    const isChecked = multiSelect ? platformSelSet.has(routedKey(family.id)) : isCurrent
                     const name = modelDisplayParts(family.id).name
                     // Capabilities are looked up against the active/base id; the
                     // -fast variant carries the same param support as its base.
@@ -312,7 +431,16 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                     // Clicking the row commits the model and closes the picker; the
                     // edit submenu (reasoning/fast) is reached by HOVER, so you can
                     // still tweak those without the click dismissing everything.
+                    // On the managed relay a click TOGGLES membership and keeps
+                    // the menu open (you are building a set), so the composed
+                    // selection can be assembled without reopening the picker.
                     const activate = () => {
+                      if (multiSelect) {
+                        void togglePlatformModel(family, group.provider)
+
+                        return
+                      }
+
                       if (!isCurrent) {
                         void selectFamily(family, group.provider)
                       }
@@ -336,7 +464,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                             {name}
                             {meta ? <span className="text-(--ui-text-tertiary)"> {meta}</span> : null}
                           </span>
-                          {isCurrent ? (
+                          {isChecked ? (
                             <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" />
                           ) : null}
                         </DropdownMenuSubTrigger>

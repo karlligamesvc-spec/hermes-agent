@@ -732,6 +732,7 @@ export const en: Translations = {
       noOutput: 'No output yet.'
     },
     model: {
+      selectedShort: (count: number) => `${count} models selected`,
       loading: 'Loading model configuration...',
       appliesDesc: 'Applies to new sessions. Use the model picker in the composer to hot-swap the active chat.',
       provider: 'Provider',

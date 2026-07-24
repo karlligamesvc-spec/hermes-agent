@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
@@ -7,11 +8,14 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { Tip } from '@/components/ui/tooltip'
+import { getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
+import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
 import { cn } from '@/lib/utils'
 import { $currentModelSource, setModelPickerOpen } from '@/store/session'
+import type { MoaConfigResponse } from '@/types/hermes'
 
 import type { ChatBarState } from './types'
 
@@ -37,7 +41,8 @@ export function ModelPill({
   disabled: boolean
   model: ChatBarState['model']
 }) {
-  const copy = useI18n().t.shell.statusbar
+  const { t } = useI18n()
+  const copy = t.shell.statusbar
   const view = useSessionView()
   // Prefer the chat-bar snapshot (already view-scoped by ChatView); fall back
   // to the live SessionView atoms so a mid-flight session.info still paints.
@@ -60,6 +65,20 @@ export function ModelPill({
   const pinnedOverride =
     view.kind === 'primary' && !runtimeId && modelSource === 'manual' && Boolean(currentModel.trim())
 
+  // hc-578 (MOA-INVISIBLE-DESIGN): a composed multi-model selection has no
+  // single model name to show — "__auto__" / "moa" would leak the mechanism.
+  // Read the preset the picker composed (same query key, shared cache) so the
+  // pill can read "N models selected" instead. Only fetched when it matters.
+  const moaOptions = useQuery({
+    queryKey: ['moa-presets'],
+    queryFn: (): Promise<MoaConfigResponse | null> => getMoaModels().catch(() => null),
+    enabled: currentProvider === 'moa'
+  })
+
+  // The member count is the ONLY number any surface may show; the
+  // aggregator/reference split underneath stays invisible everywhere.
+  const composedCount = currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
+
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text
   // color at half opacity) until a model lands.
@@ -67,7 +86,9 @@ export function ModelPill({
     <ChevronDown className="size-3.5 shrink-0 opacity-70" />
   ) : (
     <>
-      {currentModel.trim() ? (
+      {composedCount >= 2 ? (
+        <span className="truncate">{t.settings.model.selectedShort(composedCount)}</span>
+      ) : currentModel.trim() ? (
         <span className="truncate">{formatModelStatusLabel(currentModel, { fastMode, reasoningEffort })}</span>
       ) : (
         <GlyphSpinner className="opacity-50" spinner="braille" />
@@ -93,9 +114,14 @@ export function ModelPill({
       )
     : PILL
 
-  const baseTitle = currentProvider
-    ? copy.modelTitle(currentProvider, currentModel || copy.modelNone)
-    : copy.switchModel
+  // A composed selection has no single provider/model to name in the hover
+  // title either — same "N models selected" copy, never "moa" / "__auto__".
+  const baseTitle =
+    composedCount >= 2
+      ? t.settings.model.selectedShort(composedCount)
+      : currentProvider
+        ? copy.modelTitle(currentProvider, currentModel || copy.modelNone)
+        : copy.switchModel
 
   const title = pinnedOverride ? `${baseTitle} — ${copy.modelPinned}` : baseTitle
 

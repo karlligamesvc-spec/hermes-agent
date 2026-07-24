@@ -635,6 +635,7 @@ export interface Translations {
       noOutput: string
     }
     model: {
+      selectedShort: (count: number) => string
       loading: string
       appliesDesc: string
       provider: string
