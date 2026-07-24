@@ -1189,7 +1189,7 @@ export const zhHant = defineLocale({
       signInFirst: '登入你的 APEX 帳號後即可連接訊息管道。',
       issuing: '正在產生 QR code…',
       scanPrompt: '掃碼連接',
-      scanHint: '開啟飛書掃描 QR code，並在手機上確認。',
+      scanHint: (name: string) => `開啟${name}掃描 QR code，並在手機上確認。`,
       openLink: '改用連結開啟',
       weixinBotNote:
         '連接的是一個新的機器人聯絡人（iLink 機器人身分），不是把你本人的微信接管；這個機器人一般無法加入普通群組，主要透過好友私訊使用。',

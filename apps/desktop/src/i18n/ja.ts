@@ -1239,7 +1239,7 @@ export const ja = defineLocale({
       signInFirst: 'APEX アカウントにサインインするとチャンネルを連携できます。',
       issuing: 'QR コードを準備中…',
       scanPrompt: 'スキャンして連携',
-      scanHint: 'Feishu を開いて QR コードをスキャンし、スマホで確認してください。',
+      scanHint: (name: string) => `${name} を開いて QR コードをスキャンし、スマホで確認してください。`,
       openLink: 'リンクで開く',
       weixinBotNote:
         '接続するのは新しいボットの連絡先（iLink ボット）で、あなた自身の WeChat が乗っ取られるわけではありません。このボットは通常グループチャットには参加できず、主に友だちとの個人チャットで使います。',

@@ -1325,7 +1325,7 @@ export const zh: Translations = {
       signInFirst: '登录你的 APEX 账号后即可连接消息渠道。',
       issuing: '正在生成二维码…',
       scanPrompt: '扫码连接',
-      scanHint: '打开飞书扫描二维码，并在手机上确认。',
+      scanHint: (name: string) => `打开${name}扫描二维码，并在手机上确认。`,
       openLink: '改用链接打开',
       weixinBotNote:
         '连接的是一个新的机器人联系人（iLink 机器人身份），不是把你本人的微信接管；这个机器人一般无法加入普通群聊，主要通过好友私聊使用。',
