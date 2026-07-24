@@ -311,6 +311,9 @@ function DeviceCodeTemplate({
   // hc-538 expectation-gap note (WeChat only): what the user is connecting is a
   // NEW iLink bot contact, not their own WeChat being taken over.
   const channelNote = channelId === 'weixin' ? copy.weixinBotNote : ''
+  // The scan hint names the app the user must scan WITH — it is per-channel
+  // (scan WeChat's code with WeChat, DingTalk's with DingTalk), not always Feishu.
+  const channelDisplayName = t.imEntry.channels[channelId as keyof typeof t.imEntry.channels]?.name ?? channelId
 
   // On success the main process is restarting + reloading the window; surface a
   // toast so the intent is confirmed even before the reload lands. When the
@@ -368,7 +371,7 @@ function DeviceCodeTemplate({
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         )}
       </div>
-      <p className="text-xs text-muted-foreground">{copy.scanHint}</p>
+      <p className="text-xs text-muted-foreground">{copy.scanHint(channelDisplayName)}</p>
       {channelNote && (
         <p className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground">
           {channelNote}

@@ -922,7 +922,7 @@ export interface Translations {
       signInFirst: string
       issuing: string
       scanPrompt: string
-      scanHint: string
+      scanHint: (name: string) => string
       openLink: string
       // hc-538: WeChat expectation-gap note — the bound identity is a NEW iLink
       // bot contact, not the user's own WeChat being taken over.

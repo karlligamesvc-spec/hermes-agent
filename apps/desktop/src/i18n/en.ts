@@ -1157,7 +1157,7 @@ export const en: Translations = {
       signInFirst: 'Sign in to your APEX account to connect a channel.',
       issuing: 'Preparing your QR code…',
       scanPrompt: 'Scan to connect',
-      scanHint: 'Open Feishu, scan the code, and confirm on your phone.',
+      scanHint: (name: string) => `Open ${name}, scan the code, and confirm on your phone.`,
       openLink: 'Open link instead',
       weixinBotNote:
         "You're connecting a new bot contact (an iLink bot identity) — not taking over your own WeChat. The bot usually can't join ordinary group chats and works mainly through friend DMs.",
