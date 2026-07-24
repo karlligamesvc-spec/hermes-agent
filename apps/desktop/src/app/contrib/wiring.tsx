@@ -57,6 +57,7 @@ import {
   setMessages
 } from '@/store/session'
 import { focusOpenSession } from '@/store/session-states'
+import { startTaskNotifier } from '@/store/tasks'
 import { clearSessionTodos, setSessionTodos, todosForHydration } from '@/store/todos'
 import { isSecondaryWindow } from '@/store/windows'
 import { useSkinCommand } from '@/themes/use-skin-command'
@@ -683,6 +684,13 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     refreshSessions,
     requestGateway
   })
+
+  // Fire native "task finished / failed" notifications for one-shot (Goal-mode)
+  // tasks. Subscribes to the shared cron atom (fed by useBackgroundSync's poll)
+  // and watches phase transitions — independent of which page is open, since the
+  // whole point of a background task is to walk away from it. Lives here, not in
+  // the lazy /tasks page, so walking away doesn't switch the notifier off.
+  useEffect(() => startTaskNotifier(), [])
 
   // Electron-main / OS / cross-window integrations: update polling, ⌘W close,
   // deep links, native-notification nav, preview-shortcut enablement,
