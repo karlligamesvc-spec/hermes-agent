@@ -2006,8 +2006,6 @@ export const zhHant = defineLocale({
       loadFailed: '模型清單載入失敗，請稍後重試',
       catalogUnauthorized: '模型目錄不可用：登入已失效，點按重新登入',
       catalogUnreachable: '模型目錄不可用：網路異常，點按重試',
-      moaPresets: 'MoA 預設集',
-      moaPresetItem: preset => `MoA：${preset}`,
       fast: '快速',
       medium: '中'
     },

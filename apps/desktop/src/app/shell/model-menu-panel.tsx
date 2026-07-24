@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
 import {
+  DropdownMenuCheckboxItem,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -21,8 +22,16 @@ import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import type { HermesGateway } from '@/hermes'
-import { getGlobalModelOptions, getMoaModels } from '@/hermes'
+import { getGlobalModelOptions, getMoaModels, saveMoaModels, setModelAssignment } from '@/hermes'
 import { useI18n } from '@/i18n'
+import {
+  AUTO_PRESET_NAME,
+  buildAutoMoaConfig,
+  composeAutoMoa,
+  composedMemberCount,
+  expandMoaPresetMembers,
+  routedKey
+} from '@/lib/moa-compose'
 import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
@@ -48,9 +57,11 @@ import {
   $currentReasoningEffort,
   markLocalReasoningIntent,
   setCurrentFastMode,
+  setCurrentModel,
+  setCurrentProvider,
   setCurrentReasoningEffort
 } from '@/store/session'
-import type { MoaConfigResponse, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
+import type { MoaConfigResponse, MoaModelSlot, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 import { useModelControls } from '../session/hooks/use-model-controls'
 
@@ -79,7 +90,10 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   const [search, setSearch] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const queryClient = useQueryClient()
-  const [activeMoaPreset, setActiveMoaPreset] = useState('')
+  // Platform (managed-relay) multi-select, mirrors Settings → Model
+  // (model-settings.tsx): raw model ids in directory order. BYO stays
+  // single-select and doesn't mix with this (MOA-INVISIBLE-DESIGN §9).
+  const [platformSel, setPlatformSel] = useState<string[]>([])
   // Reactive session state is read from the stores here (not drilled in), so
   // toggling effort/fast/model re-renders this panel in place without forcing
   // the parent to rebuild the menu content (which would close the dropdown).
@@ -102,15 +116,18 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     }
   })
 
+  // hc-578 leg A/B: also the source of "what's currently multi-selected"
+  // (expandMoaPresetMembers below) — .catch keeps a never-configured profile
+  // (no moa.json yet) from parking this query in an error state.
   const moaOptions = useQuery({
     queryKey: ['moa-presets'],
-    queryFn: (): Promise<MoaConfigResponse> => getMoaModels()
+    queryFn: (): Promise<MoaConfigResponse | null> => getMoaModels().catch(() => null)
   })
 
   // hc-512 ③: when a freshly loaded catalog no longer contains the sticky
   // pre-session pick, snap back to the default with a one-time toast instead
   // of silently showing a model that isn't in the list.
-  const { reconcileModelSelection } = useModelControls({
+  const { reconcileModelSelection, updateModelOptionsCache } = useModelControls({
     activeSessionId,
     queryClient,
     requestGateway
@@ -184,6 +201,40 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     [visibleModels, providers]
   )
 
+  // The ApexNodes managed relay row — the only provider whose rows multi-select
+  // (hc-578 leg A/B). Mirrors model-settings.tsx's managedProvider lookup.
+  const managedProvider = useMemo(
+    () => (providers ?? []).find(p => isManagedProviderSlug(p.slug, p.name)) ?? null,
+    [providers]
+  )
+
+  const platformSelSet = useMemo(() => new Set(platformSel.map(routedKey)), [platformSel])
+
+  // Reconstruct "what's currently multi-selected" from whatever is actually
+  // active, mirroring model-settings.tsx's initialSelection: an active
+  // provider==='moa' preset expands back to its member set; a single managed
+  // pick seeds a 1-element array; anything else (BYO/none) clears it. Runs on
+  // every fresh mount (this panel remounts each time the dropdown opens) and
+  // whenever the active selection or the MoA config changes underneath it.
+  useEffect(() => {
+    if (optionsProvider === 'moa') {
+      setPlatformSel(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
+
+      return
+    }
+
+    // Compare against the resolved managedProvider row's own slug (not a fuzzy
+    // name check) — optionsProvider is a bare slug string here, and the name
+    // that belongs to IT (if any) isn't managedProvider's.
+    if (optionsModel && managedProvider && optionsProvider === managedProvider.slug) {
+      setPlatformSel([optionsModel])
+
+      return
+    }
+
+    setPlatformSel([])
+  }, [optionsProvider, optionsModel, moaOptions.data, managedProvider])
+
   // The composer picker never persists the profile default. With a session it
   // scopes the switch to that session; with none it's UI state shipped on the
   // next session.create (see selectModel). The default lives in Settings → Model.
@@ -246,13 +297,65 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     )
   }
 
-  const toggleMoaPreset = async (preset: string) => {
-    if (!activeSessionId) {
+  // Toggle a managed-relay row in/out of the platform multi-selection
+  // (hc-578 leg A/B: the picker never shows "MoA" — just checked model rows
+  // and a "N models selected" line). <=1 selected keeps today's plain
+  // single-select path verbatim (switchTo/onSelectModel, session-scoped —
+  // regression red line, never touches the profile default); >=2 composes the
+  // hidden preset through the SAME assembly Settings → Model uses
+  // (composeAutoMoa → saveMoaModels → setModelAssignment(moa/__auto__/main)),
+  // so the two surfaces can never diverge on how a selection becomes a plan.
+  const togglePlatformModel = async (family: ModelFamily, provider: ModelOptionProvider) => {
+    const key = routedKey(family.id)
+    const has = platformSel.some(id => routedKey(id) === key)
+    const nextIds = has ? platformSel.filter(id => routedKey(id) !== key) : [...platformSel, family.id]
+
+    // Keep directory order stable so the composed aggregator/reference split
+    // never depends on click order (mirrors model-settings.tsx's togglePlatform).
+    const directory = collapseModelFamilies(provider.models ?? [])
+    const order = new Map(directory.map((f, i) => [routedKey(f.id), i]))
+    nextIds.sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
+
+    const prevSel = platformSel
+    setPlatformSel(nextIds)
+
+    if (nextIds.length === 0) {
+      // Mirrors model-settings.tsx's doApply: deselecting the last platform
+      // model is a no-op (a main model can't be "none").
       return
     }
 
-    await requestGateway('command.dispatch', { name: 'moa', arg: preset, session_id: activeSessionId })
-    setActiveMoaPreset(current => (current === preset ? '' : preset))
+    if (nextIds.length === 1) {
+      const sole = directory.find(f => routedKey(f.id) === routedKey(nextIds[0]))
+
+      if (sole) {
+        await selectFamily(sole, provider)
+      }
+
+      return
+    }
+
+    const composed = composeAutoMoa(nextIds.map((id): MoaModelSlot => ({ provider: provider.slug, model: id })))
+
+    if (!composed) {
+      return
+    }
+
+    try {
+      const saved = await saveMoaModels(buildAutoMoaConfig(moaOptions.data ?? null, composed))
+      queryClient.setQueryData(['moa-presets'], saved)
+
+      const result = await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
+      const nextProvider = result.provider || 'moa'
+      const nextModel = result.model || AUTO_PRESET_NAME
+      setCurrentProvider(nextProvider)
+      setCurrentModel(nextModel)
+      updateModelOptionsCache(nextProvider, nextModel, true)
+      void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+    } catch (err) {
+      setPlatformSel(prevSel)
+      notifyError(err, t.shell.modelOptions.updateFailed)
+    }
   }
 
   const groups = useMemo(
@@ -291,9 +394,23 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     ? currentReasoningEffort
     : 'high'
 
+  // Member count of the active composed preset (0 when not composed) — the
+  // only number the trigger/pill are allowed to show; never the preset id
+  // or its aggregator/reference split (MOA-INVISIBLE-DESIGN).
+  const composedCount =
+    optionsProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[optionsModel]) : 0
+
   // Codex-style top-level model row: shows whichever model is current; the full
-  // list is one click deeper in its submenu.
-  const currentModelLabel = optionsModel ? displayModelName(optionsModel) : copy.noModels
+  // list is one click deeper in its submenu. A composed 2+ selection has no
+  // single model name to show, so it reads as "N models selected" instead
+  // (same copy as Settings → Model — never "MoA"/"aggregator"/"preset").
+  const currentModelLabel = (() => {
+    if (composedCount >= 2) {
+      return t.settings.model.selectedSummary(composedCount)
+    }
+
+    return optionsModel ? displayModelName(optionsModel) : copy.noModels
+  })()
 
   // Mirrors ModelEditSubmenu.patchReasoning, but for the composer's active model.
   const setCurrentEffort = async (next: string) => {
@@ -430,68 +547,94 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
               {copy.noModels}
             </DropdownMenuItem>
           ) : (
-            groups.map(group => (
-              <DropdownMenuGroup className="py-0.5" key={group.provider.slug}>
-                <DropdownMenuLabel className={dropdownMenuSectionLabel}>{providerGroupLabel(group.provider)}</DropdownMenuLabel>
-                {group.families.map(family => {
-                  // The active id may be the base or its -fast sibling; either
-                  // way this one family row represents both.
-                  const isCurrent =
-                    group.provider.slug === optionsProvider &&
-                    (optionsModel === family.id || optionsModel === family.fastId)
+            groups.map(group => {
+              const isPlatformGroup = isManagedProviderSlug(group.provider.slug, group.provider.name)
+              // v1 doesn't mix BYO with a platform multi-selection (MOA-INVISIBLE
+              // §9) — gray the BYO rows out with an explanation once 2+ platform
+              // models are active, mirroring model-settings.tsx's byoDisabled.
+              const byoDisabled = !isPlatformGroup && platformSel.length >= 2
 
-                  // Same splitter the composer pill uses (displayModelName →
-                  // modelDisplayParts), so the selected model always reads
-                  // identically in the pill and in this list (hc-512). Brand /
-                  // variant suffixes render as a grayed tag, like the
-                  // visibility dialog.
-                  const { name, tag } = modelDisplayParts(family.id)
+              return (
+                <DropdownMenuGroup className="py-0.5" key={group.provider.slug}>
+                  <DropdownMenuLabel className={dropdownMenuSectionLabel}>{providerGroupLabel(group.provider)}</DropdownMenuLabel>
+                  {byoDisabled ? (
+                    <div className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}>{t.settings.model.byoMixNote}</div>
+                  ) : null}
+                  {group.families.map(family => {
+                    // The active id may be the base or its -fast sibling; either
+                    // way this one family row represents both.
+                    const isCurrent =
+                      group.provider.slug === optionsProvider &&
+                      (optionsModel === family.id || optionsModel === family.fastId)
 
-                  // Reasoning/speed live at the top for the active model, so a
-                  // row is a plain select: commit the model + close the picker.
-                  return (
-                    <DropdownMenuItem
-                      className={dropdownMenuRow}
-                      key={`${group.provider.slug}:${family.id}`}
-                      onSelect={() => {
-                        if (!isCurrent) {
-                          void selectFamily(family, group.provider)
-                        }
+                    // Same splitter the composer pill uses (displayModelName →
+                    // modelDisplayParts), so the selected model always reads
+                    // identically in the pill and in this list (hc-512). Brand /
+                    // variant suffixes render as a grayed tag, like the
+                    // visibility dialog.
+                    const { name, tag } = modelDisplayParts(family.id)
 
-                        closeMenu()
-                      }}
-                    >
-                      <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
-                      <span className="min-w-0 flex-1 truncate">
-                        {name}
-                        {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
-                      </span>
-                      {isCurrent ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
-                    </DropdownMenuItem>
-                  )
-                })}
-              </DropdownMenuGroup>
-            ))
+                    if (isPlatformGroup) {
+                      // Multi-select: every click toggles membership and the
+                      // menu stays open (preventDefault, same convention the
+                      // old per-session MoA toggle used) so more models can be
+                      // picked in one visit; togglePlatformModel decides
+                      // whether that lands as a plain single switch or a
+                      // composed selection.
+                      return (
+                        <DropdownMenuCheckboxItem
+                          checked={platformSelSet.has(routedKey(family.id))}
+                          className={dropdownMenuRow}
+                          key={`${group.provider.slug}:${family.id}`}
+                          onSelect={event => {
+                            event.preventDefault()
+                            void togglePlatformModel(family, group.provider)
+                          }}
+                        >
+                          <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
+                          <span className="min-w-0 flex-1 truncate">
+                            {name}
+                            {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
+                          </span>
+                        </DropdownMenuCheckboxItem>
+                      )
+                    }
+
+                    // BYO: unchanged plain select-and-close, just gated by
+                    // byoDisabled above.
+                    return (
+                      <DropdownMenuItem
+                        className={dropdownMenuRow}
+                        disabled={byoDisabled}
+                        key={`${group.provider.slug}:${family.id}`}
+                        onSelect={() => {
+                          if (!isCurrent) {
+                            void selectFamily(family, group.provider)
+                          }
+
+                          closeMenu()
+                        }}
+                      >
+                        <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
+                        <span className="min-w-0 flex-1 truncate">
+                          {name}
+                          {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
+                        </span>
+                        {isCurrent ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </DropdownMenuGroup>
+              )
+            })
           )}
 
-          {moaOptions.data && Object.keys(moaOptions.data.presets ?? {}).length > 0 ? (
+          {platformSel.length >= 2 ? (
             <>
               <DropdownMenuSeparator className="mx-0" />
-              <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.moaPresets}</DropdownMenuLabel>
-              {Object.keys(moaOptions.data.presets).map(preset => (
-                <DropdownMenuItem
-                  className={dropdownMenuRow}
-                  disabled={!activeSessionId}
-                  key={`moa:${preset}`}
-                  onSelect={event => {
-                    event.preventDefault()
-                    void toggleMoaPreset(preset)
-                  }}
-                >
-                  <span className="min-w-0 flex-1 truncate">{copy.moaPresetItem(preset)}</span>
-                  {activeMoaPreset === preset ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
-                </DropdownMenuItem>
-              ))}
+              <div className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}>
+                {t.settings.model.selectedSummary(platformSel.length)}
+              </div>
             </>
           ) : null}
 
