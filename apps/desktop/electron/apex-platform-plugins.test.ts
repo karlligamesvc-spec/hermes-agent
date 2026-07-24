@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-platform-plugins.cjs (hc-564 fork leg).
+ * Tests for electron/apex-platform-plugins.ts (hc-564 fork leg).
  *
- * Run with: node --test electron/apex-platform-plugins.test.cjs
+ * Run with: npx vitest run electron/apex-platform-plugins.test.ts
  *
  * The P0 contract is FIRST: with `APEXNODES_PLATFORM_PLUGINS` unset (the
  * shipped default) the sync entrypoint performs ZERO network calls and ZERO fs
@@ -13,14 +13,15 @@
  * stub transports — sha256 mismatch must never touch disk.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
-const zlib = require('node:zlib')
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import zlib from 'node:zlib'
 
-const {
+import { test } from 'vitest'
+
+import {
   applyPlatformPlugin,
   extractTarGz,
   isPlatformPluginsEnabled,
@@ -36,7 +37,7 @@ const {
   platformPluginsUrl,
   sha256Hex,
   syncPlatformPlugins
-} = require('./apex-platform-plugins.cjs')
+} from './apex-platform-plugins'
 
 function tmpRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'apex-plugins-'))

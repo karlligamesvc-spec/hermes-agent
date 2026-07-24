@@ -1,9 +1,8 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const path = require('node:path')
+import { test } from 'vitest'
 
 const ELECTRON_DIR = __dirname
 
@@ -37,7 +36,7 @@ function requireHiddenChildOptions(source, needle) {
 }
 
 test('desktop background child processes opt into hidden Windows consoles', () => {
-  const source = readElectronFile('main.cjs')
+  const source = readElectronFile('main.ts')
 
   assert.match(source, /function hiddenWindowsChildOptions\(options = \{\}\)/)
 
@@ -57,7 +56,7 @@ test('desktop background child processes opt into hidden Windows consoles', () =
 })
 
 test('intentional or interactive desktop child processes stay documented', () => {
-  const source = readElectronFile('main.cjs')
+  const source = readElectronFile('main.ts')
 
   assert.match(source, /windowsHide: false/)
   assert.match(source, /handOffWindowsBootstrapRecovery/)
@@ -68,7 +67,7 @@ test('intentional or interactive desktop child processes stay documented', () =>
 })
 
 test('bootstrap PowerShell runner hides Windows console children', () => {
-  const source = readElectronFile('bootstrap-runner.cjs')
+  const source = readElectronFile('bootstrap-runner.ts')
 
   assert.match(source, /function hiddenWindowsChildOptions\(options = \{\}\)/)
   requireHiddenChildOptions(source, 'spawn(ps, fullArgs')

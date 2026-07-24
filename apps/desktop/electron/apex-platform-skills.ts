@@ -1,10 +1,8 @@
-'use strict'
-
 /**
- * apex-platform-skills.cjs
+ * apex-platform-skills.ts
  *
  * Platform SKILL distribution — pure, dependency-light helpers (like
- * apex-client-config.cjs). The desktop bundle ships ZERO platform skills, so a
+ * apex-client-config.ts). The desktop bundle ships ZERO platform skills, so a
  * desktop agent lacks the cloud steering SKILLs — notably
  * `douyin-video-transcript`, which forces a Douyin/TikTok/小红书 share link
  * through the `social_download` gateway tool instead of a browser hard-scrape
@@ -12,7 +10,7 @@
  * the path that SKILL forbids). The download/transcribe TOOLS already ride the
  * desktop (apexnodes-douyin-tools); this closes the missing SKILL leg.
  *
- * main.cjs wires the fetch (authed with the stored login JWT), the boot /
+ * main.ts wires the fetch (authed with the stored login JWT), the boot /
  * post-sign-in refresh, and the persisted manifest cache; this file holds the
  * pure logic + the fs apply:
  *   - URL + response parsing (fail-soft: any garbage → null → installed set stands)
@@ -40,8 +38,8 @@
  * safeStorage encryption, unlike apex-managed.json.
  */
 
-const fs = require('fs')
-const path = require('path')
+import fs from 'fs'
+import path from 'path'
 
 const PLATFORM_SKILLS_PATH = '/api/v1/desktop/platform-skills'
 
@@ -63,7 +61,7 @@ function trimTrailingSlash(value) {
  * @param {string} [knownHash] included as ?known_hash=<h> when a non-empty string
  * @returns {string}
  */
-function platformSkillsUrl(apiBase, knownHash) {
+function platformSkillsUrl(apiBase, knownHash?) {
   const base = trimTrailingSlash(apiBase)
   const known = typeof knownHash === 'string' ? knownHash.trim() : ''
   const query = known ? `?known_hash=${encodeURIComponent(known)}` : ''
@@ -195,7 +193,7 @@ function normalizeStoredManifest(raw) {
 
 /**
  * Is platform-skill distribution enabled? Default ON. An explicit opt-out
- * (`APEXNODES_PLATFORM_SKILLS=0|false|off|no`) disables the feature; main.cjs
+ * (`APEXNODES_PLATFORM_SKILLS=0|false|off|no`) disables the feature; main.ts
  * then reverts the desktop to the no-platform-SKILL state.
  *
  * @param {Record<string, string | undefined>} [env]
@@ -215,7 +213,7 @@ function platformSkillsCategoryDir(skillsRoot) {
  * Fetch + parse the platform skill manifest. NEVER throws — returns null on any
  * failure (offline, 401 expired JWT, garbage body) so the boot / post-sign-in
  * refresh degrades to the installed set. Mirrors
- * apex-client-config.cjs::fetchClientConfig, but AUTHED: main.cjs passes its
+ * apex-client-config.ts::fetchClientConfig, but AUTHED: main.ts passes its
  * Bearer GET (`apexAuthGetJson`) as `fetchJson` and the stored login JWT as
  * `token`.
  *
@@ -228,13 +226,13 @@ function platformSkillsCategoryDir(skillsRoot) {
  * @param {(msg: string) => void} [opts.log]
  * @returns {Promise<null | ReturnType<typeof parsePlatformSkillsResponse>>}
  */
-async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeoutMs = 12_000, log = () => {} }) {
+async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeoutMs = 12_000, log = () => {} }: any) {
   if (!apiBase || !token || typeof fetchJson !== 'function') return null
   const url = platformSkillsUrl(apiBase, knownHash)
   let body
   try {
     body = await fetchJson(url, { bearer: token, timeoutMs })
-  } catch (err) {
+  } catch (err: any) {
     // 401 (expired JWT), network error, HTML gateway page, timeout → "nothing
     // new"; the installed set stands.
     log(`[platform-skills] fetch unavailable (${(err && err.message) || err}); keeping installed set`)
@@ -262,7 +260,7 @@ async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeo
  * @param {(msg: string) => void} [opts.log]
  * @returns {{ installed: string[], skippedUnsafe: string[], categoryDir: string }}
  */
-function applyPlatformSkills({ skillsRoot, skills, log = () => {} }) {
+function applyPlatformSkills({ skillsRoot, skills, log = () => {} }: any) {
   const categoryDir = platformSkillsCategoryDir(skillsRoot)
   const categoryResolved = path.resolve(categoryDir)
   fs.rmSync(categoryDir, { force: true, recursive: true })
@@ -310,7 +308,7 @@ function applyPlatformSkills({ skillsRoot, skills, log = () => {} }) {
  * @param {(msg: string) => void} [opts.log]
  * @returns {{ removed: boolean, categoryDir: string }}
  */
-function removePlatformSkills({ skillsRoot, log = () => {} }) {
+function removePlatformSkills({ skillsRoot, log = () => {} }: any) {
   const categoryDir = platformSkillsCategoryDir(skillsRoot)
   const existed = fs.existsSync(categoryDir)
   fs.rmSync(categoryDir, { force: true, recursive: true })
@@ -318,7 +316,7 @@ function removePlatformSkills({ skillsRoot, log = () => {} }) {
   return { categoryDir, removed: existed }
 }
 
-module.exports = {
+export {
   applyPlatformSkills,
   fetchPlatformSkills,
   isPlatformSkillsEnabled,

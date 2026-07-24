@@ -1,14 +1,13 @@
-'use strict'
-
 // hc-517 — "New blank project" support for the desktop project picker. The
 // renderer picks a PARENT directory (via the standard open dialog) and a NAME;
 // this creates exactly `<parent>/<name>` and returns the absolute path to bind
 // as the new session's cwd. Name is validated to a single, traversal-free path
 // segment and an existing entry is never clobbered.
 
-const fs = require('node:fs')
-const path = require('node:path')
-const { resolveRequestedPathForIpc } = require('./hardening.cjs')
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { resolveRequestedPathForIpc } from './hardening'
 
 // Traversal-safety guard: a project name may never contain a path separator,
 // so it can only ever create a child of the chosen parent. Null bytes are
@@ -18,7 +17,7 @@ const { resolveRequestedPathForIpc } = require('./hardening.cjs')
 const PATH_SEPARATOR = /[/\\]/
 
 function nameError(message) {
-  const error = new Error(message)
+  const error: any = new Error(message)
   error.code = 'invalid-name'
   return error
 }
@@ -54,20 +53,20 @@ function failure(error, fallbackCode) {
 
 /** Create `<parentDir>/<name>` and return its absolute path. Never overwrites
  *  an existing entry; the parent must already be a real directory. */
-async function createProjectDirForIpc(parentDir, name, options = {}) {
+async function createProjectDirForIpc(parentDir, name, options: any = {}) {
   const fsImpl = options.fs || fs
 
   let validName
   try {
     validName = validateProjectName(name)
-  } catch (error) {
+  } catch (error: any) {
     return failure(error, 'invalid-name')
   }
 
   let parent
   try {
     parent = resolveRequestedPathForIpc(parentDir, { purpose: 'Create project' })
-  } catch (error) {
+  } catch (error: any) {
     return failure(error, 'invalid-path')
   }
 
@@ -99,14 +98,14 @@ async function createProjectDirForIpc(parentDir, name, options = {}) {
 
   try {
     await fsImpl.promises.mkdir(target, { recursive: false })
-  } catch (error) {
+  } catch (error: any) {
     return failure(error, 'mkdir-error')
   }
 
   return { ok: true, path: target, error: null, code: null }
 }
 
-module.exports = {
+export {
   createProjectDirForIpc,
   validateProjectName
 }

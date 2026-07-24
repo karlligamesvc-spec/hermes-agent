@@ -1,24 +1,23 @@
-'use strict'
+import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 
-const assert = require('node:assert/strict')
-const test = require('node:test')
-const { EventEmitter } = require('node:events')
+import { test } from 'vitest'
 
 // hc-473: keep this suite hermetic regardless of how it's invoked (npm run
 // test:desktop:platforms already sets this too, but this file must not rely
-// on that -- a bare `node --test electron/shell-updater.test.cjs` must never
+// on that -- a bare `npx vitest run electron/shell-updater.test.ts` must never
 // let createShellUpdater's default sendTelemetry touch the real network).
 // Tests that assert on beacon content inject their own fake sendTelemetry,
 // which always takes priority over this env var.
 process.env.APEXNODES_TELEMETRY = 'off'
 
-const {
+import {
   SHELL_UPDATE_EVENT_CHANNEL,
   SHELL_UPDATE_FEED_BASE,
   createShellUpdater,
   normalizeReleaseNotes,
   shellUpdateFeedUrl
-} = require('./shell-updater.cjs')
+} from './shell-updater'
 
 // ---------------------------------------------------------------------------
 // 假件:ipcMain 只要 .handle;autoUpdater 是 EventEmitter + 可数的 stub。
@@ -38,7 +37,7 @@ function fakeIpcMain() {
 }
 
 function fakeAutoUpdater() {
-  const updater = new EventEmitter()
+  const updater: any = new EventEmitter()
   updater.autoDownload = false
   updater.autoInstallOnAppQuit = false
   updater.allowDowngrade = true
@@ -57,7 +56,7 @@ function fakeAutoUpdater() {
   return updater
 }
 
-function harness({ isPackaged = true, autoUpdater = fakeAutoUpdater(), ...rest } = {}) {
+function harness({ isPackaged = true, autoUpdater = fakeAutoUpdater(), ...rest }: any = {}) {
   const ipcMain = fakeIpcMain()
   const broadcasts = []
   const logs = []
@@ -380,7 +379,7 @@ test('a rejecting checkForUpdates is swallowed and logged (no unhandled rejectio
 // hc-473: anonymous shell-update telemetry
 // ---------------------------------------------------------------------------
 
-function telemetryHarness(extra = {}) {
+function telemetryHarness(extra: any = {}) {
   const telemetryEvents = []
   const h = harness({ appVersion: '0.16.7', sendTelemetry: ev => telemetryEvents.push(ev), ...extra })
   return { ...h, telemetryEvents }

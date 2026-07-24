@@ -1,5 +1,3 @@
-'use strict'
-
 // Resolve git-worktree relationships for a set of session cwds, reading git's
 // on-disk metadata directly (no `git` spawn per path):
 //
@@ -14,9 +12,10 @@
 // branch (read from the worktree's own HEAD) gives each worktree a meaningful
 // label.
 
-const fs = require('node:fs')
-const path = require('node:path')
-const { resolveRequestedPathForIpc } = require('./hardening.cjs')
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { resolveRequestedPathForIpc } from './hardening'
 
 // Walk up from `start` to the nearest ancestor that carries a `.git` entry
 // (file for a linked worktree, dir for the main checkout). Capped so a stray
@@ -152,7 +151,7 @@ function resolveWorktree(startPath, fsImpl = fs) {
 // Batch entry point for the renderer: maps each requested cwd to its worktree
 // info (or null when it isn't inside a git checkout / can't be read). Dedupes so
 // many sessions sharing a cwd cost one lookup.
-async function worktreesForIpc(cwds, options = {}) {
+async function worktreesForIpc(cwds, options: any = {}) {
   const fsImpl = options.fs || fs
   const list = Array.isArray(cwds) ? cwds : []
   const out = {}
@@ -168,7 +167,7 @@ async function worktreesForIpc(cwds, options = {}) {
   return out
 }
 
-module.exports = {
+export {
   resolveWorktree,
   worktreesForIpc
 }

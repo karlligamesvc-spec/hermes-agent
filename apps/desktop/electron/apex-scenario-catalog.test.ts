@@ -1,14 +1,13 @@
-'use strict'
+import assert from 'node:assert/strict'
 
-const assert = require('node:assert/strict')
-const { test } = require('node:test')
+import { test } from 'vitest'
 
-const {
+import {
   DEFAULT_TTL_MS,
   isFresh,
   loadScenarioCatalog,
   scenarioCatalogUrl
-} = require('./apex-scenario-catalog.cjs')
+} from './apex-scenario-catalog'
 
 const CATALOG = { enabled: true, version: 'hc552-v1', sections: [{ key: 'social', title: '社媒', items: [] }] }
 

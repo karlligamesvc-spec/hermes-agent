@@ -1,5 +1,3 @@
-'use strict'
-
 // 壳自更新(electron-updater 接线)— 更新的是 Electron 壳本体(dmg/zip/exe),
 // 和引擎(runtime)的 opt-in 更新(apex-runtime-latest.cjs)是两条互不相扰的
 // 通道。策略:全程静默 —— 启动 60s 后首查、之后每 6h 重查;发现新版自动下载
@@ -16,11 +14,11 @@
 // 真正生效的 feed URL 以这里 shellUpdateFeedUrl() 运行时 setFeedURL 为准。
 //
 // 依赖注入设计(同 apex-runtime-latest.cjs):模块不 require electron /
-// electron-updater,autoUpdater、ipcMain、broadcast 全部由 main.cjs 传入,
+// electron-updater,autoUpdater、ipcMain、broadcast 全部由 main.ts 传入,
 // 这样 node --test 能用假件直接测事件流→IPC 推送,不需要 electron 环境。
 //
 // hc-473: 同样的注入设计延伸到匿名遥测 —— sendTelemetry 缺省即真实发射器
-// (apexnodes-telemetry.cjs),main.cjs 不需要任何接线改动;测试注入假件截获
+// (apexnodes-telemetry.cjs),main.ts 不需要任何接线改动;测试注入假件截获
 // 事件而不碰网络。四个上报点对应 dispatch 的 update-available/downloaded/
 // applied/error:'shell_update' 一个 stage 覆盖 available(start)→downloaded
 // (success)/error(failure)的检查+下载生命周期,'shell_update_apply' 另一个
@@ -29,7 +27,7 @@
 // checking-for-update / update-not-available / download-progress 故意不打点
 // (高频 + 无操作性,不在 dispatch 的四项清单里)。
 
-const {
+import {
   sendDesktopTelemetry,
   fireTelemetry,
   classifyErrorCategory,
@@ -37,7 +35,7 @@ const {
   STATUS_START,
   STATUS_SUCCESS,
   STATUS_FAILURE
-} = require('./apexnodes-telemetry.cjs')
+} from './apexnodes-telemetry'
 
 const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
 const SHELL_UPDATE_FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
@@ -53,7 +51,7 @@ const SHELL_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 // 的 GenericProvider 会取 `<这里的URL>/latest-mac.yml`,所以只要这里塌回根基址
 // (os/arch 缺失被拼成空段),updater 就会去读 404 的根 feed → 自更新静默失效。
 // 因此空 os/arch 直接抛,绝不让 feed 退化成根目录。
-function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.platform, arch = process.arch } = {}) {
+function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.platform, arch = process.arch }: any = {}) {
   const os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : 'linux'
   if (!arch) {
     throw new Error(`shellUpdateFeedUrl: missing arch (platform=${platform}) — feed would collapse to the empty root desktop/ prefix`)
@@ -96,14 +94,14 @@ function normalizeReleaseNotes(value) {
 }
 
 /**
- * 装配壳自更新。返回 { getState, checkNow, dispose } —— main.cjs 只管调一次,
+ * 装配壳自更新。返回 { getState, checkNow, dispose } —— main.ts 只管调一次,
  * 返回值主要给测试用(dispose 清定时器/摘监听)。
  *
  * @param {object} options
  * @param {object|null} options.autoUpdater  electron-updater 的 autoUpdater;dev 传 null
  * @param {object} options.ipcMain           electron ipcMain(或测试假件,只需 .handle)
  * @param {boolean} options.isPackaged       app.isPackaged;false 时整体停用
- * @param {(msg: string) => void} [options.log]        接 main.cjs rememberLog
+ * @param {(msg: string) => void} [options.log]        接 main.ts rememberLog
  * @param {(channel: string, payload: object) => void} [options.broadcast]  推给所有窗口
  * @param {string} [options.feedBase]        缺省 COS desktop/ 基址
  * @param {string} [options.platform]        缺省 process.platform
@@ -141,7 +139,7 @@ function createShellUpdater(options) {
     Object.assign(state, patch)
     try {
       broadcast(SHELL_UPDATE_EVENT_CHANNEL, { ...state })
-    } catch (error) {
+    } catch (error: any) {
       log(`[shell-update] broadcast failed (ignored): ${error && error.message}`)
     }
   }
@@ -165,7 +163,7 @@ function createShellUpdater(options) {
     setImmediate(() => {
       try {
         autoUpdater.quitAndInstall(true, true)
-      } catch (error) {
+      } catch (error: any) {
         log(`[shell-update] quitAndInstall failed: ${error && error.message}`)
         setState({ phase: 'error', error: (error && error.message) || String(error) })
         fireTelemetry(sendTelemetry, {
@@ -190,7 +188,7 @@ function createShellUpdater(options) {
   let feedUrl
   try {
     feedUrl = shellUpdateFeedUrl({ base: feedBase, platform, arch })
-  } catch (error) {
+  } catch (error: any) {
     log(`[shell-update] disabled: cannot resolve per-arch feed URL: ${error && error.message}`)
     setState({ phase: 'disabled' })
     return { getState: () => ({ ...state }), checkNow: async () => {}, dispose: () => {} }
@@ -292,7 +290,7 @@ function createShellUpdater(options) {
   async function checkNow() {
     try {
       await autoUpdater.checkForUpdates()
-    } catch (error) {
+    } catch (error: any) {
       // checkForUpdates 的失败通常也会走 'error' 事件;这里兜同步 throw /
       // rejection,保证后台定时器永远打不出 unhandled rejection。
       log(`[shell-update] check failed (silent): ${(error && error.message) || error}`)
@@ -317,7 +315,7 @@ function createShellUpdater(options) {
   return { getState: () => ({ ...state }), checkNow, dispose }
 }
 
-module.exports = {
+export {
   SHELL_UPDATE_EVENT_CHANNEL,
   SHELL_UPDATE_FEED_BASE,
   SHELL_UPDATE_INITIAL_DELAY_MS,

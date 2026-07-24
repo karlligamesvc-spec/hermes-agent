@@ -1,12 +1,11 @@
-'use strict'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
-const test = require('node:test')
+import { test } from 'vitest'
 
-const { createProjectDirForIpc, validateProjectName } = require('./workspace-create.cjs')
+import { createProjectDirForIpc, validateProjectName } from './workspace-create'
 
 function mkTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-workspace-create-'))
@@ -26,7 +25,7 @@ test('validateProjectName rejects empty, traversal, and separators', () => {
 
 test('createProjectDirForIpc creates a child folder and returns its path', async t => {
   const parent = mkTmpDir()
-  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  t.onTestFinished(() => fs.rmSync(parent, { recursive: true, force: true }))
 
   const result = await createProjectDirForIpc(parent, 'my-new-project')
 
@@ -37,7 +36,7 @@ test('createProjectDirForIpc creates a child folder and returns its path', async
 
 test('createProjectDirForIpc refuses to clobber an existing entry', async t => {
   const parent = mkTmpDir()
-  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  t.onTestFinished(() => fs.rmSync(parent, { recursive: true, force: true }))
   fs.mkdirSync(path.join(parent, 'taken'))
 
   const result = await createProjectDirForIpc(parent, 'taken')
@@ -49,7 +48,7 @@ test('createProjectDirForIpc refuses to clobber an existing entry', async t => {
 
 test('createProjectDirForIpc rejects an invalid name without touching disk', async t => {
   const parent = mkTmpDir()
-  t.after(() => fs.rmSync(parent, { recursive: true, force: true }))
+  t.onTestFinished(() => fs.rmSync(parent, { recursive: true, force: true }))
 
   const result = await createProjectDirForIpc(parent, '../escape')
 
@@ -68,7 +67,7 @@ test('createProjectDirForIpc fails when the parent does not exist', async () => 
 
 test('createProjectDirForIpc fails when the parent is a file', async t => {
   const dir = mkTmpDir()
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  t.onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }))
   const filePath = path.join(dir, 'a-file')
   fs.writeFileSync(filePath, 'x', 'utf8')
 

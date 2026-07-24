@@ -1,5 +1,5 @@
 /**
- * user-data-dir.cjs
+ * user-data-dir.ts
  *
  * Pure resolver for the desktop app's userData directory pin.
  *
@@ -12,16 +12,16 @@
  * user's managed-LLM relay key. A bare rename would silently point every one
  * of those reads at an empty "APEX" directory and log everyone out.
  *
- * So main.cjs pins userData to the historical location at startup, before any
+ * So main.ts pins userData to the historical location at startup, before any
  * app.getPath('userData') use. Verified on Electron 40: app.setPath('userData')
  * also re-points sessionData (cookies / localStorage), so the single pin keeps
  * remote-gateway sessions alive too.
  *
  * Kept standalone (no `require('electron')`) so it unit-tests with
- * `node --test` — same pattern as connection-config.cjs / desktop-uninstall.cjs.
+ * `vitest run --project electron` — same pattern as connection-config.ts / desktop-uninstall.ts.
  */
 
-const path = require('node:path')
+import path from 'node:path'
 
 // The pre-rename userData dirname (Electron derived it from the old
 // productName "ApexNodes"). Every shipped install stores its config there.
@@ -40,4 +40,4 @@ function resolveUserDataDir(appDataDir, override) {
   return path.join(appDataDir, LEGACY_USER_DATA_DIRNAME)
 }
 
-module.exports = { LEGACY_USER_DATA_DIRNAME, resolveUserDataDir }
+export { LEGACY_USER_DATA_DIRNAME, resolveUserDataDir }

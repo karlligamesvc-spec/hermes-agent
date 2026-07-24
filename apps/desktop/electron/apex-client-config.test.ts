@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-client-config.cjs.
+ * Tests for electron/apex-client-config.ts.
  *
- * Run with: node --test electron/apex-client-config.test.cjs
+ * Run with: npx vitest run electron/apex-client-config.test.ts
  *
  * These are the pure helpers behind the platform client-config sync: response
  * validation/normalization, the apply predicate, the persisted-state
@@ -9,10 +9,11 @@
  * fetchJson implementations — no network).
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   applyConfigYamlKeys,
   CLIENT_CONFIG_PATH,
   clientConfigUrl,
@@ -21,7 +22,7 @@ const {
   normalizeVersion,
   parseClientConfigResponse,
   shouldApply
-} = require('./apex-client-config.cjs')
+} from './apex-client-config'
 
 // --- clientConfigUrl ---
 

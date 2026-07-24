@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-platform-skills.cjs (hc-520 fork leg).
+ * Tests for electron/apex-platform-skills.ts (hc-520 fork leg).
  *
- * Run with: node --test electron/apex-platform-skills.test.cjs
+ * Run with: npx vitest run electron/apex-platform-skills.test.ts
  *
  * The pure helpers behind the platform SKILL pull: URL building, response
  * validation/normalization, name/path SAFETY (skills come off the network), the
@@ -12,13 +12,14 @@
  * category directory.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-const {
+import { test } from 'vitest'
+
+import {
   applyPlatformSkills,
   fetchPlatformSkills,
   isPlatformSkillsEnabled,
@@ -33,7 +34,7 @@ const {
   platformSkillsUrl,
   removePlatformSkills,
   shouldApplyManifest
-} = require('./apex-platform-skills.cjs')
+} from './apex-platform-skills'
 
 function tmpSkillsRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'apex-skills-'))
@@ -275,7 +276,7 @@ test('removePlatformSkills: idempotent category removal', () => {
 // ── fail-soft authed fetch ──────────────────────────────────────────────────
 
 test('fetchPlatformSkills: success → parsed, forwards bearer + known_hash', async () => {
-  const seen = {}
+  const seen: any = {}
   const fetchJson = async (url, options) => {
     seen.url = url
     seen.options = options
@@ -294,7 +295,7 @@ test('fetchPlatformSkills: success → parsed, forwards bearer + known_hash', as
 
 test('fetchPlatformSkills: fetch throws (e.g. 401) → null, fail-soft', async () => {
   const fetchJson = async () => {
-    const err = new Error('401: expired')
+    const err: any = new Error('401: expired')
     err.statusCode = 401
     throw err
   }

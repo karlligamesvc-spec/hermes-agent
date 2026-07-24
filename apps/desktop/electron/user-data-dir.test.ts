@@ -1,7 +1,7 @@
 /**
- * Tests for electron/user-data-dir.cjs.
+ * Tests for electron/user-data-dir.ts.
  *
- * Run with: node --test electron/user-data-dir.test.cjs
+ * Run with: npx vitest run electron/user-data-dir.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * Data-continuity contract for the APEX brand rename: userData must keep
@@ -10,11 +10,12 @@
  * HERMES_DESKTOP_USER_DATA_DIR override must still win.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const path = require('node:path')
+import assert from 'node:assert/strict'
+import path from 'node:path'
 
-const { LEGACY_USER_DATA_DIRNAME, resolveUserDataDir } = require('./user-data-dir.cjs')
+import { test } from 'vitest'
+
+import { LEGACY_USER_DATA_DIRNAME, resolveUserDataDir } from './user-data-dir'
 
 test('pins userData to the legacy ApexNodes directory (existing installs keep their login)', () => {
   assert.equal(

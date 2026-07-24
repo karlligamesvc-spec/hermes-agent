@@ -1,5 +1,3 @@
-'use strict'
-
 // hc-554 — desktop scenario catalog fetch (main-process leg).
 //
 // The renderer's scenario shelf + ✦ menu read the shared catalog through the
@@ -17,7 +15,7 @@
 //
 // Kept dependency-injected + side-effect-free (the transport, clock, and cache
 // are passed in) so it unit-tests without Electron — same shape as
-// apex-platform-plugins.cjs.
+// apex-platform-plugins.ts.
 
 const SCENARIO_CATALOG_PATH = '/api/v1/media/scenario-catalog'
 const DEFAULT_TTL_MS = 5 * 60 * 1000
@@ -60,7 +58,7 @@ async function loadScenarioCatalog({
   ttlMs = DEFAULT_TTL_MS,
   cache = {},
   log = () => {}
-} = {}) {
+}: any = {}) {
   if (isFresh(cache, now, ttlMs)) {
     return cache.value
   }
@@ -85,7 +83,7 @@ async function loadScenarioCatalog({
 
     // A non-object 2xx (empty/HTML-ish) isn't a usable catalog; keep any prior.
     return cache.value ?? null
-  } catch (error) {
+  } catch (error: any) {
     log(`[scenario-catalog] fetch failed: ${error && error.message}`)
 
     // Fail-open: a live error must not blank the shelf — serve the last catalog.
@@ -93,7 +91,7 @@ async function loadScenarioCatalog({
   }
 }
 
-module.exports = {
+export {
   DEFAULT_TTL_MS,
   SCENARIO_CATALOG_PATH,
   isFresh,

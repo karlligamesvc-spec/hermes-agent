@@ -1,11 +1,9 @@
-'use strict'
-
 /**
- * apex-client-config.cjs
+ * apex-client-config.ts
  *
  * Platform client-config sync — pure, dependency-free helpers (like the other
  * electron/*.cjs siblings) behind the versioned client config the APEX cloud
- * serves to every desktop. main.cjs wires the persistence, IPC and the boot /
+ * serves to every desktop. main.ts wires the persistence, IPC and the boot /
  * post-sign-in refresh; the renderer (src/store/platform-config.ts) applies the
  * payload through the runtime's global-config dashboard API.
  *
@@ -64,7 +62,7 @@ function normalizeVersion(value) {
  *   positive integer
  * @returns {string}
  */
-function clientConfigUrl(apiBase, knownVersion) {
+function clientConfigUrl(apiBase, knownVersion?) {
   const base = trimTrailingSlash(apiBase)
   const known = normalizeVersion(knownVersion)
   const q = known > 0 ? `?known_version=${known}` : ''
@@ -148,7 +146,7 @@ function normalizeStoredClientConfig(raw) {
  * Fetch + parse the platform client config. NEVER throws — returns null on any
  * failure (offline, 404 no-active-config, HTML, garbage body) so the boot /
  * post-sign-in refresh degrades to the cached state. Mirrors
- * apex-runtime-latest.cjs::resolveLatestRuntimePin: main.cjs passes its
+ * apex-runtime-latest.cjs::resolveLatestRuntimePin: main.ts passes its
  * fetchPublicJson as `fetchJson` (credential-free — this endpoint is PUBLIC and
  * must never see a token).
  *
@@ -160,13 +158,13 @@ function normalizeStoredClientConfig(raw) {
  * @param {(msg: string) => void} [opts.log]
  * @returns {Promise<null | ReturnType<typeof parseClientConfigResponse>>}
  */
-async function fetchClientConfig({ apiBase, fetchJson, knownVersion, timeoutMs = 5_000, log = () => {} }) {
+async function fetchClientConfig({ apiBase, fetchJson, knownVersion, timeoutMs = 5_000, log = () => {} }: any) {
   if (!apiBase || typeof fetchJson !== 'function') return null
   const url = clientConfigUrl(apiBase, knownVersion)
   let body
   try {
     body = await fetchJson(url, { timeoutMs })
-  } catch (err) {
+  } catch (err: any) {
     // 404 (no active config), network error, HTML gateway page, timeout →
     // "nothing new"; the cached state stands.
     log(`[client-config] fetch unavailable (${(err && err.message) || err}); keeping cached state`)
@@ -296,7 +294,7 @@ function applyConfigYamlKeys(raw, entries) {
   return { changed: next !== source, next, applied, skipped }
 }
 
-module.exports = {
+export {
   applyConfigYamlKeys,
   CLIENT_CONFIG_PATH,
   clientConfigUrl,

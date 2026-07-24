@@ -1,10 +1,8 @@
-'use strict'
-
 /**
- * apex-platform-plugins.cjs
+ * apex-platform-plugins.ts
  *
  * Platform runtime-PLUGIN distribution (hc-564, 机制 C) — pure, dependency-light
- * helpers in the apex-platform-skills.cjs mold. Desktop plugins today only move
+ * helpers in the apex-platform-skills.ts mold. Desktop plugins today only move
  * on the engine release train (fork `plugins/`), which is the day/week-scale
  * drift the hc-561 audit measured. This channel pulls per-plugin archives from
  * master and drops them under HERMES_HOME/plugins/<name>, where the runtime's
@@ -21,7 +19,7 @@
  * a running gateway may have loaded; silent deletion is the riskier move); the
  * sync logs a hint that files remain instead.
  *
- * main.cjs wires the fetch (stored login JWT), the boot / post-sign-in triggers
+ * main.ts wires the fetch (stored login JWT), the boot / post-sign-in triggers
  * and the persisted state (userData/apex-platform-plugins.json); this file holds
  * the pure logic + the fs apply:
  *   - URL building PINNED to the master apiBase (package URLs are derived from
@@ -52,10 +50,10 @@
  * so no safeStorage encryption (same reasoning as apex-platform-skills.json).
  */
 
-const fs = require('fs')
-const path = require('path')
-const zlib = require('zlib')
-const crypto = require('crypto')
+import fs from 'fs'
+import path from 'path'
+import zlib from 'zlib'
+import crypto from 'crypto'
 
 const PLATFORM_PLUGINS_PATH = '/api/v1/desktop/platform-plugins'
 
@@ -118,7 +116,7 @@ function isSafeRelPath(relPath) {
  * @param {string} [knownHash]
  * @returns {string}
  */
-function platformPluginsUrl(apiBase, knownHash) {
+function platformPluginsUrl(apiBase, knownHash?) {
   const base = trimTrailingSlash(apiBase)
   const known = typeof knownHash === 'string' ? knownHash.trim() : ''
   const query = known ? `?known_hash=${encodeURIComponent(known)}` : ''
@@ -244,7 +242,7 @@ function sha256Hex(buffer) {
  * @param {string} opts.pluginsRoot HERMES_HOME/plugins
  * @returns {{ toInstall: any[], upToDate: string[] }}
  */
-function planPluginSync({ plugins, storedPlugins, pluginsRoot }) {
+function planPluginSync({ plugins, storedPlugins, pluginsRoot }: any) {
   const toInstall = []
   const upToDate = []
   for (const entry of Array.isArray(plugins) ? plugins : []) {
@@ -303,7 +301,7 @@ function tarChecksumValid(block) {
  * @param {number} [caps.maxFiles]
  * @returns {{ path: string, data: Buffer }[]}
  */
-function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxFiles = MAX_FILES_PER_PLUGIN } = {}) {
+function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxFiles = MAX_FILES_PER_PLUGIN }: any = {}) {
   const tar = zlib.gunzipSync(packageBuffer, { maxOutputLength: maxTotalBytes + 4 * TAR_BLOCK })
   const files = []
   let totalBytes = 0
@@ -369,7 +367,7 @@ function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxF
  * @param {(msg: string) => void} [opts.log]
  * @returns {{ targetDir: string, fileCount: number }}
  */
-function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () => {} }) {
+function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () => {} }: any) {
   if (!isSafePluginName(name)) throw new Error(`unsafe plugin name: ${name}`)
   if (!Array.isArray(files) || files.length === 0) throw new Error(`no files to install for ${name}`)
   if (!files.some(file => file.path === 'plugin.yaml')) throw new Error(`plugin package missing plugin.yaml: ${name}`)
@@ -405,7 +403,7 @@ function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () =
     if (hadPrevious) fs.renameSync(targetDir, backupDir)
     try {
       fs.renameSync(stagingDir, targetDir)
-    } catch (error) {
+    } catch (error: any) {
       // Swap failed after the old install moved aside — restore it.
       if (hadPrevious) {
         try {
@@ -426,7 +424,7 @@ function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () =
 /**
  * The whole sync, dependency-injected (apex-bundle-install.cjs mold) so the
  * OFF-guard, diff, verify and atomicity are all unit-testable without electron
- * or the network. main.cjs supplies the real transports + persisted state and
+ * or the network. main.ts supplies the real transports + persisted state and
  * writes back `newStored` when returned.
  *
  * FIRST GATE — the P0 contract: when `APEXNODES_PLATFORM_PLUGINS` is not
@@ -465,7 +463,7 @@ async function syncPlatformPlugins({
   stored,
   timeoutMs = 30_000,
   log = () => {}
-}) {
+}: any) {
   const state = normalizeStoredPluginsState(stored)
 
   if (!isPlatformPluginsEnabled(env)) {
@@ -483,7 +481,7 @@ async function syncPlatformPlugins({
   let body
   try {
     body = await fetchJson(platformPluginsUrl(apiBase, state.manifestHash), { bearer: token, timeoutMs })
-  } catch (err) {
+  } catch (err: any) {
     log(`[platform-plugins] manifest unavailable (${(err && err.message) || err}); keeping installed set`)
     return { status: 'unavailable' }
   }
@@ -531,7 +529,7 @@ async function syncPlatformPlugins({
       installedMap[entry.name] = entry.sha256
       installed.push(entry.name)
       log(`[platform-plugins] installed ${entry.name}@${entry.version} (${entry.sha256.slice(0, 12)}…)`)
-    } catch (err) {
+    } catch (err: any) {
       failed.push(entry.name)
       log(`[platform-plugins] ${entry.name} not installed (${(err && err.message) || err}); previous version stands`)
     }
@@ -554,7 +552,7 @@ async function syncPlatformPlugins({
   }
 }
 
-module.exports = {
+export {
   applyPlatformPlugin,
   extractTarGz,
   isPlatformPluginsEnabled,
