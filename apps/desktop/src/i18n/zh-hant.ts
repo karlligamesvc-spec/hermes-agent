@@ -1632,11 +1632,6 @@ export const zhHant = defineLocale({
       'composer.cancel': '關閉彈出視窗 · 取消執行',
       'composer.history': '循環彈出視窗 / 歷史記錄'
     },
-    attachUrlTitle: '附加 URL',
-    attachUrlDesc: 'APEX 將擷取該頁面並作為此回合的脈絡。',
-    urlPlaceholder: 'https://example.com/post',
-    urlHintPre: '請輸入完整 URL，例如 ',
-    attach: '附加',
     queued: count => `${count} 個排隊中`,
     attachmentOnly: '僅附件回合',
     emptyTurn: '空回合',
@@ -1661,52 +1656,29 @@ export const zhHant = defineLocale({
     noMatchingThemes: '沒有相符的主題。',
     themeTryPre: '試試 ',
     themeTryPost: '。',
-    attachLabel: '附加',
-    files: '檔案…',
-    folder: '資料夾…',
     images: '圖片…',
-    pasteImage: '貼上圖片',
-    url: 'URL…',
-    promptSnippets: '提示詞片段…',
     tipPre: '提示：輸入 ',
     tipPost: ' 以行內參照檔案。',
-    snippetsTitle: '提示詞片段',
-    snippetsDesc: '選擇一個起始提示詞放入輸入框。',
     dropFiles: '拖入資料、連結或聊天記錄',
     dropSession: '拖曳以連結此聊天',
     capabilities: {
-      enabledLabel: '已啟用',
+      enabledLabel: '已啟用技能',
       unused: '未啟用技能',
       connectors: '連接器',
       connectorsHint: '飛書 · 微信…',
       noneEnabled: '尚未啟用任何技能',
       browseDesc: '撥開開關即啟用(對新工作階段生效),並升到選單第一層。',
+      browseDescEnabled: '撥開開關即關閉(對新工作階段生效),並降回未啟用技能。',
       searchPlaceholder: '搜尋技能…',
       allEnabled: '技能都已啟用 🎉',
       loading: '正在載入技能…',
       toggle: name => `啟用 ${name}`,
+      disable: name => `停用 ${name}`,
       generateLabel: '生成',
       generateImage: '圖片',
       generateVideo: '影片',
       generateImageStarter: '我想生成一張圖片,想法是:',
       generateVideoStarter: '我想做一個影片,想法是:'
-    },
-    snippets: {
-      codeReview: {
-        label: '程式碼審查',
-        description: '審查目前的變更是否有回歸、遺漏的邊緣情況和缺少的測試。',
-        text: '請審查這部分是否有錯誤、回歸和缺少的測試。'
-      },
-      implementationPlan: {
-        label: '實作計劃',
-        description: '在動程式碼之前先勾勒方案，讓 diff 保持聚焦。',
-        text: '請在修改程式碼前制定一個簡潔的實作計劃。'
-      },
-      explainThis: {
-        label: '解釋這段',
-        description: '說明所選程式碼的運作方式，並連結到關鍵檔案。',
-        text: '請解釋這是如何運作的，並告訴我關鍵檔案在哪裡。'
-      }
     }
   },
 

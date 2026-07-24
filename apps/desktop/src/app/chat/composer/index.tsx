@@ -101,7 +101,6 @@ import { ComposerStatusStack } from './status-stack'
 import { detectTrigger, extractClipboardImageBlobs, textBeforeCaret, type TriggerState } from './text-utils'
 import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
-import { UrlDialog } from './url-dialog'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
 
 const COMPOSER_STACK_BREAKPOINT_PX = 320
@@ -171,13 +170,8 @@ export function ChatBar({
   state,
   onCancel,
   onChangeCwd,
-  onAddUrl,
   onAttachDroppedItems,
   onAttachImageBlob,
-  onPasteClipboardImage,
-  onPickFiles,
-  onPickFolders,
-  onPickImages,
   onRemoveAttachment,
   onSteer,
   onSubmit,
@@ -219,10 +213,7 @@ export function ChatBar({
   // Per-entry auto-drain failure counts; bounds retries so a persistent 404
   // can't spin-loop. Cleared on success; reset naturally on remount/reconnect.
   const drainFailuresRef = useRef(new Map<string, number>())
-  const urlInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [urlOpen, setUrlOpen] = useState(false)
-  const [urlValue, setUrlValue] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [voiceConversationActive, setVoiceConversationActive] = useState(false)
   const [tight, setTight] = useState(false)
@@ -384,12 +375,6 @@ export function ChatBar({
       renderComposerContents(editor, draft)
     }
   }, [draft])
-
-  useEffect(() => {
-    if (urlOpen) {
-      window.requestAnimationFrame(() => urlInputRef.current?.focus({ preventScroll: true }))
-    }
-  }, [urlOpen])
 
   // Expansion (input on its own full-width row, controls below) is driven by
   // the editor's *actual* rendered height via the ResizeObserver in
@@ -1627,24 +1612,6 @@ export function ChatBar({
     focusInput()
   }
 
-  const submitUrl = () => {
-    const url = urlValue.trim()
-
-    if (!url) {
-      return
-    }
-
-    if (onAddUrl) {
-      onAddUrl(url)
-    } else {
-      insertText(`@url:${url}`)
-    }
-
-    triggerHaptic('success')
-    setUrlValue('')
-    setUrlOpen(false)
-  }
-
   const { dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
@@ -1703,20 +1670,7 @@ export function ChatBar({
     pendingResponse
   })
 
-  const contextMenu = (
-    <ContextMenu
-      onInsertText={insertText}
-      onOpenUrlDialog={() => {
-        triggerHaptic('open')
-        setUrlOpen(true)
-      }}
-      onPasteClipboardImage={onPasteClipboardImage}
-      onPickFiles={onPickFiles}
-      onPickFolders={onPickFolders}
-      onPickImages={onPickImages}
-      state={state}
-    />
-  )
+  const contextMenu = <ContextMenu state={state} />
 
   const controls = (
     <ComposerControls
@@ -1971,15 +1925,6 @@ export function ChatBar({
           </div>
         </ComposerPrimitive.Root>
       </ComposerPrimitive.Unstable_TriggerPopoverRoot>
-
-      <UrlDialog
-        inputRef={urlInputRef}
-        onChange={setUrlValue}
-        onOpenChange={setUrlOpen}
-        onSubmit={submitUrl}
-        open={urlOpen}
-        value={urlValue}
-      />
     </>
   )
 }

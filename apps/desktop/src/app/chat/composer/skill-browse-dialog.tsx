@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
@@ -7,45 +7,82 @@ import { Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import {
-  disabledCategoryCounts,
-  filterDisabledSkills,
+  filterSkillsByScope,
+  scopedCategoryCounts,
   type SkillCatalog,
   skillCategoryLabel,
-  skillDescriptionFor
+  skillDescriptionFor,
+  type SkillScope
 } from './skill-catalog'
 
-// hc-572: the "unused skills" browse surface reached from the composer "+" menu.
-// 117 skills don't flatten into the menu — the disabled ones collapse to one
-// entry that opens this dialog (search + category browse). Flipping a switch on
-// enables the skill globally and, on reopening the menu, it has moved up into
-// the "enabled" zone. Modeled on the Skills page rows + the existing prompt-
-// snippets dialog (Radix submenus don't anchor reliably off the composer "+").
+// hc-572 gave the composer "+" menu two skill rows — "Enabled skills" and
+// "Unused skills" — each showing a live count. hc-572-followup: real-machine
+// feedback found the ENABLED row had also flattened into a full one-row-per-
+// skill list (Kael: "已启用的插件显示的太多了" — too many enabled skills shown
+// here), so both rows now collapse to a single line and share this one browse
+// dialog. Which row you click sets `initialScope`; a tab inside lets you flip
+// to the other half without reopening from the menu. Search + category
+// narrowing is unchanged from hc-572; the switch now toggles BOTH directions
+// (enable from the "Unused" tab, disable from the "Enabled" tab) since a single
+// dialog now owns both halves.
 export function SkillBrowseDialog({
   catalog,
+  initialScope,
   onOpenChange,
   open
 }: {
   catalog: SkillCatalog
+  initialScope: SkillScope
   onOpenChange: (open: boolean) => void
   open: boolean
 }) {
   const { locale, t } = useI18n()
   const c = t.composer.capabilities
   const zh = locale === 'zh'
+  const [scope, setScope] = useState<SkillScope>(initialScope)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
 
+  // Either menu row can open this dialog — land on that row's half every time
+  // it opens, rather than remembering whatever a previous visit left selected.
+  useEffect(() => {
+    if (open) {
+      setScope(initialScope)
+      setQuery('')
+      setCategory(null)
+    }
+  }, [open, initialScope])
+
+  const changeScope = (next: SkillScope) => {
+    setScope(next)
+    setCategory(null)
+  }
+
   const skills = catalog.skills
-  const categories = useMemo(() => disabledCategoryCounts(skills ?? []), [skills])
-  const rows = useMemo(() => filterDisabledSkills(skills ?? [], query, category, zh), [skills, query, category, zh])
+  const categories = useMemo(() => scopedCategoryCounts(skills ?? [], scope), [skills, scope])
+
+  const rows = useMemo(
+    () => filterSkillsByScope(skills ?? [], scope, query, category, zh),
+    [skills, scope, query, category, zh]
+  )
+
+  const enabledScope = scope === 'enabled'
+  const title = enabledScope ? c.enabledLabel : c.unused
+  const description = enabledScope ? c.browseDescEnabled : c.browseDesc
+  const emptyCopy = enabledScope ? c.noneEnabled : c.allEnabled
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-md gap-3">
         <DialogHeader>
-          <DialogTitle>{c.unused}</DialogTitle>
-          <DialogDescription>{c.browseDesc}</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+
+        <div className="flex gap-1.5">
+          <ScopeTab active={enabledScope} count={catalog.enabled.length} label={c.enabledLabel} onClick={() => changeScope('enabled')} />
+          <ScopeTab active={!enabledScope} count={catalog.disabled.length} label={c.unused} onClick={() => changeScope('disabled')} />
+        </div>
 
         <label className="flex items-center gap-2 rounded-md border border-(--ui-stroke-tertiary) px-2.5 py-1.5 text-sm focus-within:border-(--ui-stroke-secondary)">
           <Search className="size-3.5 shrink-0 text-(--ui-text-tertiary)" />
@@ -80,7 +117,7 @@ export function SkillBrowseDialog({
         <div className="max-h-80 overflow-y-auto">
           {rows.length === 0 ? (
             <div className="grid min-h-24 place-items-center px-4 text-center text-xs text-muted-foreground">
-              {c.allEnabled}
+              {emptyCopy}
             </div>
           ) : (
             <ul className="grid gap-0.5">
@@ -96,10 +133,10 @@ export function SkillBrowseDialog({
                     </p>
                   </div>
                   <Switch
-                    aria-label={c.toggle(skill.name)}
-                    checked={false}
+                    aria-label={skill.enabled ? c.disable(skill.name) : c.toggle(skill.name)}
+                    checked={skill.enabled}
                     disabled={catalog.saving === skill.name}
-                    onCheckedChange={() => void catalog.setEnabled(skill, true)}
+                    onCheckedChange={checked => void catalog.setEnabled(skill, checked)}
                   />
                 </li>
               ))}
@@ -108,6 +145,42 @@ export function SkillBrowseDialog({
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// The scope switcher: "Enabled skills · N" / "Unused skills · M". Same active/
+// inactive treatment as CategoryChip below, sized to split the dialog's width
+// evenly since there are always exactly two.
+function ScopeTab({
+  active,
+  count,
+  label,
+  onClick
+}: {
+  active: boolean
+  count: number
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      aria-label={`${label} (${count})`}
+      className={cn(
+        'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm transition-colors',
+        active
+          ? 'border-(--ui-stroke-secondary) bg-(--ui-control-active-background) text-foreground'
+          : 'border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-foreground'
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      <span aria-hidden className="truncate">
+        {label}
+      </span>
+      <span aria-hidden className="text-[0.7rem] tabular-nums text-(--ui-text-tertiary)">
+        {count}
+      </span>
+    </button>
   )
 }
 

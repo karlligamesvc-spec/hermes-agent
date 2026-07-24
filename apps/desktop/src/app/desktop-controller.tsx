@@ -11,7 +11,6 @@ import { Pane, PaneMain } from '@/components/pane-shell'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useSkinCommand } from '@/themes/use-skin-command'
 
-import { formatRefValue } from '../components/assistant-ui/directive-text'
 import { getCronJobs, getSessionMessages, listAllProfileSessions, type SessionInfo } from '../hermes'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '../lib/chat-messages'
 import { storedSessionIdForNotification } from '../lib/session-ids'
@@ -19,8 +18,6 @@ import { isMessagingSource, LOCAL_SESSION_SOURCE_IDS, MESSAGING_SESSION_SOURCE_I
 import { latestSessionTodos } from '../lib/todos'
 import { $authState } from '../store/auth'
 import { setCronJobs } from '../store/cron'
-import { $pendingDesktopLoginCode } from '../store/onboarding'
-import { startTaskNotifier } from '../store/tasks'
 import {
   $panesFlipped,
   $pinnedSessionIds,
@@ -38,6 +35,7 @@ import {
 } from '../store/layout'
 import { registerActiveTurnResend } from '../store/managed-recovery'
 import { respondToApprovalAction } from '../store/native-notifications'
+import { $pendingDesktopLoginCode } from '../store/onboarding'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -81,6 +79,7 @@ import {
   setSessionsTotal
 } from '../store/session'
 import { onSessionsChanged } from '../store/session-sync'
+import { startTaskNotifier } from '../store/tasks'
 import { clearSessionTodos, setSessionTodos, todoListActive } from '../store/todos'
 import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '../store/updates'
 import { isSecondaryWindow } from '../store/windows'
@@ -324,6 +323,7 @@ export function DesktopController() {
       // account switch.
       if (payload.kind === 'login') {
         const code = typeof payload.params?.code === 'string' ? payload.params.code.trim() : ''
+
         if (code && $authState.get().status !== 'signed-in') {
           $pendingDesktopLoginCode.set(code)
         }
@@ -1072,7 +1072,6 @@ export function DesktopController() {
       maxVoiceRecordingSeconds={voiceMaxRecordingSeconds}
       modelMenuContent={modelMenuContent}
       onAddContextRef={composer.addContextRefAttachment}
-      onAddUrl={url => composer.addContextRefAttachment(`@url:${formatRefValue(url)}`, url)}
       onAttachDroppedItems={composer.attachDroppedItems}
       onAttachImageBlob={composer.attachImageBlob}
       onBranchInNewChat={branchInNewChat}
@@ -1085,10 +1084,6 @@ export function DesktopController() {
       }}
       onDismissError={dismissError}
       onEdit={editMessage}
-      onPasteClipboardImage={() => void composer.pasteClipboardImage()}
-      onPickFiles={() => void composer.pickContextPaths('file')}
-      onPickFolders={() => void composer.pickContextPaths('folder')}
-      onPickImages={() => void composer.pickImages()}
       onReload={reloadFromMessage}
       onRemoveAttachment={id => void composer.removeAttachment(id)}
       onRestoreToMessage={restoreToMessage}

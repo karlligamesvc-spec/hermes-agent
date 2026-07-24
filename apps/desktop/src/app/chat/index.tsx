@@ -72,16 +72,11 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   onDeleteSelectedSession: () => void
   onCancel: () => Promise<void> | void
   onAddContextRef: (refText: string, label?: string, detail?: string) => void
-  onAddUrl: (url: string) => void
   onBranchInNewChat: (messageId: string) => void
   onChangeCwd?: (cwd: string) => Promise<void> | void
   maxVoiceRecordingSeconds?: number
   onAttachImageBlob: (blob: Blob) => Promise<boolean | void> | boolean | void
   onAttachDroppedItems: (candidates: DroppedFile[]) => Promise<boolean | void> | boolean | void
-  onPasteClipboardImage: () => void
-  onPickFiles: () => void
-  onPickFolders: () => void
-  onPickImages: () => void
   onRemoveAttachment: (id: string) => void
   onSteer: (text: string) => Promise<boolean> | boolean
   onSubmit: (
@@ -264,16 +259,11 @@ export function ChatView({
   onDeleteSelectedSession,
   onCancel,
   onAddContextRef,
-  onAddUrl,
   onAttachImageBlob,
   onAttachDroppedItems,
   onBranchInNewChat,
   onChangeCwd,
   maxVoiceRecordingSeconds,
-  onPasteClipboardImage,
-  onPickFiles,
-  onPickFolders,
-  onPickImages,
   onRemoveAttachment,
   onSteer,
   onSubmit,
@@ -482,15 +472,10 @@ export function ChatView({
                 gateway={gateway}
                 maxRecordingSeconds={maxVoiceRecordingSeconds}
                 onAddContextRef={onAddContextRef}
-                onAddUrl={onAddUrl}
                 onAttachDroppedItems={onAttachDroppedItems}
                 onAttachImageBlob={onAttachImageBlob}
                 onCancel={onCancel}
                 onChangeCwd={onChangeCwd}
-                onPasteClipboardImage={onPasteClipboardImage}
-                onPickFiles={onPickFiles}
-                onPickFolders={onPickFolders}
-                onPickImages={onPickImages}
                 onRemoveAttachment={onRemoveAttachment}
                 onSteer={onSteer}
                 onSubmit={onSubmit}
