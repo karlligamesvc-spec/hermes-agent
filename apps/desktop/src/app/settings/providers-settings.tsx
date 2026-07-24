@@ -24,10 +24,14 @@ import { notify, notifyError } from '@/store/notifications'
 import { $desktopOnboarding, startManualLocalEndpoint, startManualProviderOAuth } from '@/store/onboarding'
 import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 
+import { AgentAuthSettings } from './agent-auth-settings'
 import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { CustomEndpointsSettings } from './custom-endpoints-settings'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
+import { FeishuSettings } from './feishu-settings'
 import { providerGroup, providerMeta, providerPriority } from './helpers'
+import { ImEntrySettings } from './im-entry-settings'
+import { LocalAgentSettings } from './local-agent-settings'
 import { LoadingState, SettingsContent } from './primitives'
 
 // The embedded terminal (and thus the "run disconnect command" path) only
@@ -496,6 +500,22 @@ export function ProvidersSettings({
 
   return (
     <SettingsContent>
+      {/* hc-444 「连接飞书」 — mirror the signed-in user's own Feishu app down so
+          the assistant can work in Feishu docs/sheets/messages. */}
+      <FeishuSettings />
+      {/* hc-545 「编码 Agent 账号」 — connect the user's own Claude Code / Codex
+          (the passthrough + daemon legs drive them) with in-app OAuth and a
+          system-proxy autopilot. Sits directly above local dispatch, which
+          depends on these being connected. */}
+      <AgentAuthSettings />
+      {/* hc-533 「本机 Agent 调度」 — let the cloud assistant dispatch a coding
+          task to a local agent on this machine (default off / dormant). */}
+      <LocalAgentSettings />
+      {/* hc-417 收口 — 「IM 入口」 discoverability card: bound-channel summary
+          plus a jump to the full /im-entry page. */}
+      <ImEntrySettings />
+      {/* All four are Electron-shell only: their window.hermesDesktop bridge is
+          absent on the web dashboard build, where each renders nothing. */}
       <OAuthPicker
         disconnecting={disconnecting}
         onDisconnect={provider => void handleDisconnect(provider)}

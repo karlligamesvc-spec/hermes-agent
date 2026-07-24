@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { atom } from 'nanostores'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
@@ -73,11 +74,18 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+// The accounts view hosts the ApexNodes connection cards; the IM-entry one
+// navigates to /im-entry, so this view needs a router in scope. The cards
+// themselves render nothing here (no window.hermesDesktop bridge in jsdom).
 async function renderProvidersSettings() {
   const { ProvidersSettings } = await import('./providers-settings')
   let result: ReturnType<typeof render>
   await act(async () => {
-    result = render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />)
+    result = render(
+      <MemoryRouter>
+        <ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />
+      </MemoryRouter>
+    )
   })
 
   return result!

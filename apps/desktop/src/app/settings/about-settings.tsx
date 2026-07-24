@@ -18,6 +18,7 @@ import {
   startActiveUpdate
 } from '@/store/updates'
 
+import { ChangelogSection } from './changelog-section'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
@@ -118,6 +119,11 @@ export function AboutSettingsBody() {
       </div>
 
       <div className="mx-auto mt-4 w-full max-w-2xl">
+        {/* hc-447 更新日志 — the cloud product-update feed (the same "you can
+            now…" content the web /app/whats-new page shows), read-only. An
+            empty feed is a normal state and renders its own friendly copy. */}
+        <ChangelogSection />
+
         <SectionHeading icon={RefreshCw} title={a.updates} />
 
         <div
