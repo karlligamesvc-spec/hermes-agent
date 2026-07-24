@@ -947,3 +947,406 @@ export interface BackendExit {
   code: number | null
   signal: string | null
 }
+
+// ---------------------------------------------------------------------------
+// ApexNodes fork-only IPC contracts. The Window bridge above already declares
+// the matching namespaces (managed / feishu / announcements / imEntry / daemon
+// / agentAuth / runtime / shellUpdate / worktrees); these are the payload
+// shapes the renderer imports from '@/global'.
+// ---------------------------------------------------------------------------
+
+export interface DesktopManagedStatus {
+  // The relay base_url the managed config points at (e.g.
+  // https://apex-nodes.com/relay/v1).
+  baseUrl: string
+  // Signed-in user's email, for the account panel. '' when unknown / signed out.
+  // Display-only — never a secret (the relay key stays encrypted on disk).
+  email: string
+  // True when the managed-LLM default path is enabled for this build.
+  enabled: boolean
+  // hc-519 rollback switch (default true): whether relay-auth loss drives the
+  // global login state (account-card degrade + startup/catalog self-heal).
+  // Optional so an older main process (no field) reads as undefined → treated as
+  // enabled (fail-safe to the new single-source-of-truth behavior).
+  loginStateTruth?: boolean
+  // Real routed model id (e.g. deepseek-v4-pro).
+  model: string
+  // UI display label for the model (e.g. deepseek-v4-pro-APEX).
+  modelDisplay: string
+  // Signed-in user's display name, if the backend/JWT provided one. '' otherwise.
+  name: string
+  // Signed-in user's plan/tier label (e.g. 'free', 'pro'), if available. ''
+  // otherwise — the account panel omits the plan badge when empty.
+  plan: string
+  // Runtime provider slug used for the relay (custom).
+  provider: string
+  // True when a relay key is on disk (user already signed in to managed).
+  signedIn: boolean
+  // True only when a reusable login JWT is on disk — a real cloud sign-in that
+  // can self-heal a rotated/expired relay key. A seeded/env key (a `*.local`
+  // release account or a CI test key) is signedIn=true but hasToken=false: the
+  // UI can then show an honest "not connected to platform" state. Optional so an
+  // older main process (no field) reads as undefined rather than a hard error.
+  hasToken?: boolean
+}
+
+// Result of hermesDesktop.managed.selfHeal() — an on-demand relay-key recovery.
+// relayUnauthorized=false means the relay accepted the key (the failure was not
+// a managed-relay auth problem). healed=true means a fresh key is on disk and
+// `assignment` should be applied via /api/model/set before retrying. needsSignIn
+// =true means recovery is impossible without a re-login (no token, or an expired
+// JWT) — surface the sign-in flow rather than retry into another silent 401.
+export interface DesktopManagedSelfHealResult {
+  ok: boolean
+  relayUnauthorized: boolean
+  healed: boolean
+  needsSignIn: boolean
+  assignment: DesktopManagedSignInResult['assignment']
+}
+
+// hc-512: state of the relay's live model catalog (`GET {base_url}/v1/models`
+// with the stored relay key — the same listing the runtime's picker builds the
+// APEX group from). 'unauthorized' = the stored key is dead (re-login is the
+// fix); 'unreachable' = transient network/relay failure (retry is the fix);
+// 'unknown' = never probed / not a managed install.
+export interface DesktopRelayCatalogState {
+  checkedAt: number
+  status: 'ok' | 'unauthorized' | 'unreachable' | 'unknown'
+}
+
+// hc-444: local Feishu bridge state for the settings card. No secret fields —
+// the app_secret never leaves the main process.
+export interface DesktopFeishuStatus {
+  // True when an injectable Feishu credential is stored locally (adapter will
+  // light up on the next backend boot).
+  connected: boolean
+  // True when a managed sign-in exists (the prerequisite for sync — sync auths
+  // with the stored login JWT). When false the card prompts sign-in first.
+  signedIn: boolean
+  // Display-only: the bound agent's name ('' when unknown / not connected).
+  agentName: string
+  // 'feishu' (China) or 'lark' (International); '' when not connected.
+  domain: string
+  // hc-190 probe verdict (ok / expired / invalid / '' when never probed) so the
+  // card can warn the credential the platform mirrored is already known-dead.
+  credentialStatus: string
+  // Epoch ms of the last successful sync, or null.
+  syncedAt: number | null
+}
+
+// Result of a Feishu sync/openBind action. `hasEntry:false` means the user has
+// no bound Feishu app in the cloud yet → the card opens the web binding flow.
+// `needsSignIn:true` means the stored login JWT is missing/expired → sign in
+// first. `message` is a stable marker code the renderer maps to Chinese copy.
+export interface DesktopFeishuSyncResult {
+  ok: boolean
+  hasEntry?: boolean
+  needsSignIn?: boolean
+  agentName?: string
+  domain?: string
+  credentialStatus?: string
+  message?: string
+}
+
+// hc-447: one published product-update announcement (hc-446 content source —
+// admin-authored "you can now…" copy, never hc numbers/jargon). `level`
+// only affects upstream delivery cadence (major=instant, normal=monthly
+// batch), not display; the desktop renders both the same way.
+export interface DesktopAnnouncementItem {
+  id: string
+  title: string
+  body: string
+  level: 'major' | 'normal'
+  // ISO 8601, or null (should not happen for a published row, but the main
+  // process normalizer degrades a missing/malformed value to null rather
+  // than guessing).
+  publishedAt: string | null
+  read: boolean
+}
+
+// Result of announcements.list(). `needsSignIn:true` means the stored login
+// JWT is missing/expired — the panel shows a sign-in prompt instead of an
+// error. An empty `items` array with ok:true is a normal, expected state (no
+// published announcements yet) — never treated as an error.
+export interface DesktopAnnouncementsListResult {
+  ok: boolean
+  items: DesktopAnnouncementItem[]
+  needsSignIn?: boolean
+  message?: string
+}
+
+// hc-417: one locally-bound IM 入口 channel (display-only — no secret). `boundAt`
+// is epoch ms; `domain` is the non-secret feishu/lark routing value ('' if none).
+export interface DesktopImEntryBinding {
+  channelId: string
+  boundAt: number | null
+  domain: string
+}
+
+export interface DesktopImEntryListResult {
+  channels: DesktopImEntryBinding[]
+}
+
+// Result of imEntry.feishuIssue() — the provisioning START (cloud v2:
+// POST /api/v1/desktop/feishu/provision). On ok:true it carries the scan LINK
+// (qrUrl — render it as a QR locally) + a poll handle (provisionId + cadence).
+// On ok:false, `message` is a stable marker the renderer maps to copy:
+// NOT_SIGNED_IN / SESSION_EXPIRED (→ sign in) · SERVICE_UNAVAILABLE (endpoint
+// not deployed → coming soon) · RATE_LIMITED (another flow in flight) ·
+// REQUEST_FAILED (transient → retry).
+export interface DesktopImEntryIssueResult {
+  ok: boolean
+  needsSignIn?: boolean
+  message?: string
+  provisionId?: string
+  qrUrl?: string
+  intervalMs?: number
+  expiresInMs?: number
+}
+
+// Result of imEntry.feishuPoll() — one status check (cloud v2:
+// GET /api/v1/desktop/feishu/provision/{id}). `status` is one of
+// pending | success | denied | expired. On success the main process has already
+// fetched + stored the credential and is restarting the backend; when the
+// automatic restart failed, `restartFailed` is set and the binding is still
+// saved (the user restarts manually). KEYCHAIN_UNAVAILABLE means secure storage
+// is off, so the credential was NOT saved (never written in plaintext) — the
+// user must enable OS keychain access.
+export interface DesktopImEntryPollResult {
+  ok: boolean
+  status?: 'denied' | 'expired' | 'pending' | 'success'
+  restartFailed?: boolean
+  needsSignIn?: boolean
+  message?: string
+}
+
+// hc-533 本机 Agent 调度 daemon status (display-only; no secret). `status` is
+// the single label the settings block shows; the booleans back it.
+export interface DesktopDaemonStatus {
+  status: 'connecting' | 'dormant' | 'error' | 'offline' | 'online'
+  enabled: boolean
+  deviceName: string
+  deviceId: string
+  registered: boolean
+  connected: boolean
+  lastError: string
+}
+
+// Result of a daemon mutation (setEnabled / setDeviceName / unregister) — the
+// fresh status snapshot + an ok flag (+ an optional message, e.g. keychain).
+export interface DesktopDaemonMutationResult {
+  ok: boolean
+  message?: string
+  snapshot: DesktopDaemonStatus
+}
+
+// hc-545 coding-agent account connection ------------------------------------
+export type DesktopAgentFamily = 'claude' | 'codex'
+
+// The three-state result (+ no_cli / unknown) from the anti-conflation detector.
+// `logged_out` and `unreachable` are DELIBERATELY distinct — different fixes
+// (sign in vs configure a proxy). See electron/apex-agent-auth.cjs.
+export type DesktopAgentAuthState = 'logged_out' | 'no_cli' | 'ready' | 'unknown' | 'unreachable'
+
+export interface DesktopAgentAuthResult {
+  family: DesktopAgentFamily
+  state: DesktopAgentAuthState
+  email: string
+  plan: string
+}
+
+export interface DesktopAgentAuthStatus {
+  ok: boolean
+  claude: DesktopAgentAuthResult
+  codex: DesktopAgentAuthResult
+}
+
+// Outcome of hosting a CLI login. `mode` tells the renderer how to follow up:
+// browser/started → poll status(); completed → already signed in; guide/no_cli →
+// show `guideCommand` for the user to run in a terminal (honest degrade).
+export interface DesktopAgentConnectResult {
+  ok: boolean
+  mode: 'browser' | 'completed' | 'guide' | 'no_cli' | 'started'
+  url?: string
+  reason?: string
+  guideCommand: string
+}
+
+export type DesktopAgentProxyMode = 'auto' | 'custom' | 'off'
+
+export interface DesktopAgentProxyState {
+  ok: boolean
+  mode: DesktopAgentProxyMode
+  customUrl: string
+  // Display-safe (credentials stripped) description of the resolved proxy.
+  detected: { active: boolean; url: string }
+}
+
+// Payload of the continuous auth-gate broadcast (hermes:auth-gate). `reason`
+// distinguishes a lost/expired login (401) from an abnormal account (403
+// account_disabled) so the login screen can show the right message.
+export interface DesktopAuthGateEvent {
+  reason: 'account_disabled' | 'unauthorized'
+  statusCode: number
+}
+
+export interface DesktopManagedSignInResult {
+  // The model assignment to apply via /api/model/set (POST), present only when
+  // hasRelayKey is true. Mirrors the ModelAssignmentRequest shape the BYOK
+  // local-endpoint flow uses, so applying managed reuses that exact path.
+  assignment: {
+    api_key: string
+    base_url: string
+    model: string
+    provider: string
+    scope: 'main'
+  } | null
+  // True when sign-in succeeded AND a relay-valid key was provisioned. False
+  // means login worked but the backend relay-key endpoint isn't deployed yet —
+  // the caller falls back to the BYOK onboarding.
+  hasRelayKey?: boolean
+  message?: string
+  ok: boolean
+}
+
+// Cached platform client-config state, as returned by
+// hermesDesktop.clientConfig.get() (a local disk read — no network). version 0
+// / payload null means nothing has been fetched yet. payload carries the
+// server contract's fields (v1: config_yaml — a dotted-key → scalar map);
+// unknown fields ride along for forward compat and are ignored.
+export interface DesktopClientConfigState {
+  version: number
+  payload: Record<string, unknown> | null
+  appliedVersion: number
+}
+
+// One side (installed or admin-latest) of an engine version, as derived by
+// electron/apex-runtime-latest.cjs. `version` is the human label; `key` is the
+// install.sh COS/source key (commit or branch) used to compare installed vs
+// latest. Both can be null on an older marker that didn't record them.
+export interface DesktopRuntimeVersionRef {
+  version: string | null
+  key: string | null
+}
+
+// Result of hermesDesktop.runtime.getVersion() (R6) — the installed engine
+// version read locally from the bootstrap marker. `ok:false` only on an
+// unexpected read error (all fields null). No network is involved.
+export interface DesktopRuntimeVersion {
+  ok: boolean
+  version: string | null
+  commit: string | null
+  branch: string | null
+  key: string | null
+  // hc-532 (gate 1): the shell's declared minimum engine (package.json
+  // apexnodes.minEngineVersion), and whether the installed engine satisfies it.
+  // meetsMinEngine FAILS OPEN — it is false ONLY when the engine is positively
+  // behind the floor; unparseable/absent versions read true. The renderer uses
+  // false to surface a non-blocking "engine needs update" prompt.
+  minEngineVersion?: string | null
+  meetsMinEngine?: boolean
+  // hc-543: the commit the on-disk source tree was actually extracted at
+  // (.hermes-source-commit provenance stamp), and whether it agrees with the
+  // marker's pinnedCommit. treeMatchesMarker === false means the marker LIES —
+  // the version label reflects an update that never landed on disk. null when
+  // there is no stamp to check (git checkout / legacy tree) — treat as unknown.
+  treeCommit?: string | null
+  treeMatchesMarker?: boolean | null
+}
+
+// Result of hermesDesktop.runtime.checkUpdate(). ok:false only on an unexpected
+// throw; an offline / no-admin-latest check resolves ok:true with
+// updateAvailable:false and latest:null (no nagging).
+export interface DesktopRuntimeUpdateCheck {
+  ok: boolean
+  updateAvailable: boolean
+  current: DesktopRuntimeVersionRef
+  latest: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null; minDesktopVersion?: string | null }) | null
+  // hc-475 (F4): present only when a newer engine exists but this desktop shell
+  // is too old to run it (min_desktop_version gate). updateAvailable is false in
+  // that case (no clickable offer); the UI prompts the user to upgrade the app.
+  desktopUpgradeRequired?: { minDesktopVersion: string | null; currentDesktopVersion: string | null } | null
+  // Present only when ok is false (defensive — the handler swallows errors).
+  error?: string
+}
+
+// Result of hermesDesktop.runtime.applyUpdate(). On success the pin is
+// re-armed and the renderer must reload (reloadRequired) to drive bootstrap.
+// `applied:false` with `alreadyCurrent` means the installed engine already
+// matches admin-latest. On failure, `error` is a stable code such as
+// 'no_admin_latest_available' or 'update_artifact_unreachable'.
+export interface DesktopRuntimeUpdateApply {
+  ok: boolean
+  applied?: boolean
+  alreadyCurrent?: boolean
+  reloadRequired?: boolean
+  latest?: (DesktopRuntimeVersionRef & { compatibilityNotes?: string | null; minDesktopVersion?: string | null }) | null
+  error?: string
+  // hc-475 (F4): on error==='min_desktop_version', the engine's required minimum
+  // desktop version and the current shell version (for the upgrade prompt).
+  required?: string | null
+  current?: string | null
+}
+
+// 壳自更新状态机快照(electron/shell-updater.cjs 推送/查询的同一形状)。
+// disabled = dev/未打包停用;downloading 全程静默(UI 不渲染);downloaded =
+// 新壳就位等重启(侧栏胶囊唯一渲染的相位);error 只记日志,下轮周期检查自愈。
+export type DesktopShellUpdatePhase = 'available' | 'checking' | 'disabled' | 'downloaded' | 'downloading' | 'error' | 'idle'
+
+export interface DesktopShellUpdateState {
+  phase: DesktopShellUpdatePhase
+  // electron-updater 的裸 semver(如 0.16.1);idle/checking 阶段为 null。
+  version: string | null
+  // 下载进度 0-100;非下载阶段 null。
+  percent: number | null
+  error: string | null
+  // hc-447: human-readable release notes carried through from electron-updater's
+  // UpdateInfo (sourced from latest.yml's `releaseNotes:` field, hand-authored at
+  // release time per NEXT-TAG-BUMP-CHECKLIST.md). null when the release shipped
+  // with no authored notes — not an error state, the capsule just shows the bare
+  // version in that case (same as before hc-447).
+  releaseNotes: string | null
+}
+
+// hc-452: distinguishes a re-bootstrap for an opt-in runtime version UPDATE
+// (main.cjs's hermes:runtime:apply-update dropped the marker and re-runs the
+// bootstrap against a pending pin override) from a genuine first-ever
+// install (no prior runtime on disk). The install overlay uses this to show
+// "updating to vX" instead of "APEX needs a one-time install" -- both are
+// literally the same 10-stage bootstrap protocol underneath, but a runtime
+// update is not a "one-time setup" and calling it that on every version bump
+// misleads the user (hc-452 origin: Kael real-machine 2026-07-08 report).
+export interface DesktopBootstrapUpdateInfo {
+  isUpdate: boolean
+  // The version being installed. Populated once bootstrapStamp resolves in
+  // main.cjs (before that -- e.g. the eager synthetic manifest emitted while
+  // the network fetch for the manifest is still in flight -- this is null).
+  toVersion: string | null
+  // The version being replaced, when known (from the runtime-pin override's
+  // previousMarker snapshot). null for a first install, or when the prior
+  // marker didn't carry a version label.
+  fromVersion: string | null
+}
+
+export interface HermesWorktreeInfo {
+  // Main repo root — the shared grouping key for a checkout and all its linked
+  // worktrees.
+  repoRoot: string
+  // This cwd's own worktree root.
+  worktreeRoot: string
+  // True when this is the repo's primary checkout (.git is a directory).
+  isMainWorktree: boolean
+  // Current branch (or short detached-HEAD sha), null when unreadable.
+  branch: null | string
+}
+
+// Result of hermesDesktop.createProjectDir(). `ok:true` carries the absolute
+// `path` of the freshly created folder; on failure `code` is a stable marker
+// (invalid-name / invalid-path / ENOENT / ENOTDIR / EEXIST / mkdir-error) and
+// `error` a human message.
+export interface HermesCreateProjectResult {
+  ok: boolean
+  path: null | string
+  error: null | string
+  code: null | string
+}

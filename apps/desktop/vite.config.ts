@@ -60,6 +60,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@hermes/plugin-sdk': path.resolve(__dirname, './src/sdk/index.ts'),
       '@hermes/shared/billing': path.resolve(__dirname, '../shared/src/billing-types.ts'),
+      '@hermes/shared/billing-policy': path.resolve(__dirname, '../shared/src/billing-policy.ts'),
+      '@hermes/shared/charge-settlement': path.resolve(__dirname, '../shared/src/charge-settlement.ts'),
       '@hermes/shared': path.resolve(__dirname, '../shared/src'),
       react: path.resolve(__dirname, '../../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
