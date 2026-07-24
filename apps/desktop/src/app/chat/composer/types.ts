@@ -46,13 +46,8 @@ export interface ChatBarProps {
    *  cwd. Absent → no project picker chip (feature off / older host). */
   onChangeCwd?: (cwd: string) => Promise<void> | void
   onAddContextRef?: (refText: string, label?: string, detail?: string) => void
-  onAddUrl?: (url: string) => void
   onAttachImageBlob?: (blob: Blob) => Promise<boolean | void> | boolean | void
   onAttachDroppedItems?: (candidates: DroppedFile[]) => Promise<boolean | void> | boolean | void
-  onPasteClipboardImage?: () => void
-  onPickFiles?: () => void
-  onPickFolders?: () => void
-  onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
   onSteer?: (text: string) => Promise<boolean> | boolean
   onSubmit: (

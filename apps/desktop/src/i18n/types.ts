@@ -1397,11 +1397,6 @@ export interface Translations {
     helpFooter: string
     commandDescs: Record<string, string>
     hotkeyDescs: Record<string, string>
-    attachUrlTitle: string
-    attachUrlDesc: string
-    urlPlaceholder: string
-    urlHintPre: string
-    attach: string
     queued: (count: number) => string
     attachmentOnly: string
     emptyTurn: string
@@ -1426,18 +1421,9 @@ export interface Translations {
     noMatchingThemes: string
     themeTryPre: string
     themeTryPost: string
-    attachLabel: string
-    files: string
-    folder: string
     images: string
-    pasteImage: string
-    url: string
-    promptSnippets: string
     tipPre: string
     tipPost: string
-    snippetsTitle: string
-    snippetsDesc: string
-    snippets: Record<string, { label: string; description: string; text: string }>
     dropFiles: string
     dropSession: string
     capabilities: {
@@ -1447,10 +1433,12 @@ export interface Translations {
       connectorsHint: string
       noneEnabled: string
       browseDesc: string
+      browseDescEnabled: string
       searchPlaceholder: string
       allEnabled: string
       loading: string
       toggle: (name: string) => string
+      disable: (name: string) => string
       generateLabel: string
       generateImage: string
       generateVideo: string

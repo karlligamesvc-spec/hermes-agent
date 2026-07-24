@@ -1869,11 +1869,6 @@ export const zh: Translations = {
       'composer.cancel': '关闭弹窗 · 取消运行',
       'composer.history': '循环弹窗 / 历史'
     },
-    attachUrlTitle: '附加 URL',
-    attachUrlDesc: 'APEX 将抓取该页面并作为本回合的上下文。',
-    urlPlaceholder: 'https://example.com/post',
-    urlHintPre: '请包含完整 URL，例如 ',
-    attach: '附加',
     queued: count => `${count} 条排队`,
     attachmentOnly: '仅附件回合',
     emptyTurn: '空回合',
@@ -1898,52 +1893,29 @@ export const zh: Translations = {
     noMatchingThemes: '没有匹配的主题。',
     themeTryPre: '试试 ',
     themeTryPost: '。',
-    attachLabel: '附加',
-    files: '文件…',
-    folder: '文件夹…',
     images: '图片…',
-    pasteImage: '粘贴图片',
-    url: 'URL…',
-    promptSnippets: '提示词片段…',
     tipPre: '提示：输入 ',
     tipPost: ' 以内联引用文件。',
-    snippetsTitle: '提示词片段',
-    snippetsDesc: '选择一个起始提示词放入输入框。',
     dropFiles: '拖入资料、链接或聊天记录',
     dropSession: '拖放以链接此对话',
     capabilities: {
-      enabledLabel: '已启用',
+      enabledLabel: '已启用技能',
       unused: '未启用技能',
       connectors: '连接器',
       connectorsHint: '飞书 · 微信…',
       noneEnabled: '还没有启用的技能',
       browseDesc: '拨开开关即启用(对新会话生效),并升到菜单一级。',
+      browseDescEnabled: '拨开开关即关闭(对新会话生效),并降回未启用技能。',
       searchPlaceholder: '搜索技能…',
       allEnabled: '技能都已启用 🎉',
       loading: '正在加载技能…',
       toggle: name => `启用 ${name}`,
+      disable: name => `禁用 ${name}`,
       generateLabel: '生成',
       generateImage: '图片',
       generateVideo: '视频',
       generateImageStarter: '我想生成一张图片,想法是:',
       generateVideoStarter: '我想做一个视频,想法是:'
-    },
-    snippets: {
-      codeReview: {
-        label: '代码审查',
-        description: '审查当前更改是否存在回归、遗漏的边界情况和缺失的测试。',
-        text: '请审查这部分是否存在缺陷、回归和缺失的测试。'
-      },
-      implementationPlan: {
-        label: '实现计划',
-        description: '在动代码之前先勾勒方案，让 diff 保持聚焦。',
-        text: '请在修改代码前制定一个简洁的实现计划。'
-      },
-      explainThis: {
-        label: '解释这段',
-        description: '讲解所选代码的工作方式，并链接到关键文件。',
-        text: '请解释这是如何工作的，并指给我关键文件。'
-      }
     }
   },
 

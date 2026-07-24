@@ -1685,11 +1685,6 @@ export const ja = defineLocale({
       'composer.cancel': 'ポップオーバーを閉じる · 実行をキャンセル',
       'composer.history': 'ポップオーバー / 履歴を切り替え'
     },
-    attachUrlTitle: 'URL を添付',
-    attachUrlDesc: 'APEX がページを取得し、このターンのコンテキストとして含めます。',
-    urlPlaceholder: 'https://example.com/post',
-    urlHintPre: '完全な URL を入力してください。例: ',
-    attach: '添付',
     queued: count => `${count} 件キュー済み`,
     attachmentOnly: '添付のみのターン',
     emptyTurn: '空のターン',
@@ -1714,52 +1709,29 @@ export const ja = defineLocale({
     noMatchingThemes: '一致するテーマがありません。',
     themeTryPre: '試してみる: ',
     themeTryPost: '。',
-    attachLabel: '添付',
-    files: 'ファイル…',
-    folder: 'フォルダー…',
     images: '画像…',
-    pasteImage: '画像を貼り付け',
-    url: 'URL…',
-    promptSnippets: 'プロンプトスニペット…',
     tipPre: 'ヒント: ',
     tipPost: ' と入力してファイルをインラインで参照。',
-    snippetsTitle: 'プロンプトスニペット',
-    snippetsDesc: 'スターターのプロンプトをコンポーザーに挿入します。',
     dropFiles: '資料・リンク・チャット履歴をドロップ',
     dropSession: 'ドロップしてこのチャットをリンク',
     capabilities: {
-      enabledLabel: '有効',
+      enabledLabel: '有効なスキル',
       unused: '未使用のスキル',
       connectors: 'コネクタ',
       connectorsHint: 'Feishu · WeChat…',
       noneEnabled: '有効なスキルはまだありません',
       browseDesc: 'オンにすると新しいセッションで有効になり、このメニューの一段目に上がります。',
+      browseDescEnabled: 'オフにすると新しいセッションで無効になり、「未使用のスキル」に戻ります。',
       searchPlaceholder: 'スキルを検索…',
       allEnabled: 'すべてのスキルが有効です 🎉',
       loading: 'スキルを読み込み中…',
       toggle: name => `${name} を有効化`,
+      disable: name => `${name} を無効化`,
       generateLabel: '生成',
       generateImage: '画像',
       generateVideo: '動画',
       generateImageStarter: '画像を生成したいです。アイデアは:',
       generateVideoStarter: '動画を作りたいです。アイデアは:'
-    },
-    snippets: {
-      codeReview: {
-        label: 'コードレビュー',
-        description: '回帰、エッジケースの欠落、テストの欠如を確認します。',
-        text: 'バグ、回帰、テストの欠如を確認してください。'
-      },
-      implementationPlan: {
-        label: '実装計画',
-        description: 'コードに手をつける前にアプローチを概説して、差分を集中させます。',
-        text: 'コードを変更する前に簡潔な実装計画を立ててください。'
-      },
-      explainThis: {
-        label: 'これを説明する',
-        description: '選択したコードがどのように機能するかを説明し、主要なファイルにリンクします。',
-        text: 'これがどのように機能するか説明し、主要なファイルを教えてください。'
-      }
     }
   },
 

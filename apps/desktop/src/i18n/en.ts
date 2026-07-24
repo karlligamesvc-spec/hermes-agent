@@ -1703,11 +1703,6 @@ export const en: Translations = {
       'composer.cancel': 'close popover · cancel run',
       'composer.history': 'cycle popover / history'
     },
-    attachUrlTitle: 'Attach a URL',
-    attachUrlDesc: 'APEX will fetch the page and include it as context for this turn.',
-    urlPlaceholder: 'https://example.com/post',
-    urlHintPre: 'Include the full URL, e.g. ',
-    attach: 'Attach',
     queued: count => `${count} Queued`,
     attachmentOnly: 'Attachment-only turn',
     emptyTurn: 'Empty turn',
@@ -1732,52 +1727,29 @@ export const en: Translations = {
     noMatchingThemes: 'No matching themes.',
     themeTryPre: 'Try ',
     themeTryPost: '.',
-    attachLabel: 'Attach',
-    files: 'Files…',
-    folder: 'Folder…',
     images: 'Images…',
-    pasteImage: 'Paste image',
-    url: 'URL…',
-    promptSnippets: 'Prompt snippets…',
     tipPre: 'Tip: type ',
     tipPost: ' to reference files inline.',
-    snippetsTitle: 'Prompt snippets',
-    snippetsDesc: 'Pick a starter prompt to drop into the composer.',
     dropFiles: 'Drop a document, link, or chat log',
     dropSession: 'Drop to link this chat',
     capabilities: {
-      enabledLabel: 'Enabled',
+      enabledLabel: 'Enabled skills',
       unused: 'Unused skills',
       connectors: 'Connectors',
       connectorsHint: 'Feishu · WeChat…',
       noneEnabled: 'No skills enabled yet',
       browseDesc: 'Toggle one on — it turns on for new sessions and moves up into this menu.',
+      browseDescEnabled: 'Toggle one off — it stops applying to new sessions and moves back to Unused.',
       searchPlaceholder: 'Search skills…',
       allEnabled: 'Every skill is enabled 🎉',
       loading: 'Loading skills…',
       toggle: (name: string) => `Enable ${name}`,
+      disable: (name: string) => `Disable ${name}`,
       generateLabel: 'Generate',
       generateImage: 'Image',
       generateVideo: 'Video',
       generateImageStarter: "I want to generate an image. Here's the idea: ",
       generateVideoStarter: "I want to make a video. Here's the idea: "
-    },
-    snippets: {
-      codeReview: {
-        label: 'Code review',
-        description: 'Audit the current change for regressions, dropped edge cases, and missing tests.',
-        text: 'Please review this for bugs, regressions, and missing tests.'
-      },
-      implementationPlan: {
-        label: 'Implementation plan',
-        description: 'Outline an approach before touching code so the diff stays focused.',
-        text: 'Please make a concise implementation plan before changing code.'
-      },
-      explainThis: {
-        label: 'Explain this',
-        description: 'Walk through how the selected code works and link to the key files.',
-        text: 'Please explain how this works and point me to the key files.'
-      }
     }
   },
 

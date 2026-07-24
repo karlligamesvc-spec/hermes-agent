@@ -9,11 +9,14 @@ import { notify, notifyError } from '@/store/notifications'
 import type { SkillInfo } from '@/types/hermes'
 
 // hc-572 composer "+" capability menu — the skill catalog that backs the
-// "enabled" zone and the "unused skills" browse dialog. Enablement is GLOBAL:
-// the same toggleSkill the Skills page drives (PD ②: reuse the page's global
-// state, no session-scoped copy). Pure helpers here mirror the Skills page so
-// the two surfaces read the same runtime facts; the hook keeps a live copy so a
-// toggle in the dialog is reflected in the menu without a reload.
+// menu's two skill rows ("Enabled skills" / "Unused skills") and the shared
+// browse dialog they both open (hc-572-followup: real-machine feedback found
+// flattening every enabled skill into the menu made it scroll forever, so both
+// halves now collapse to one row each — see skill-browse-dialog.tsx). Enablement
+// is GLOBAL: the same toggleSkill the Skills page drives (PD ②: reuse the
+// page's global state, no session-scoped copy). Pure helpers here mirror the
+// Skills page so the two surfaces read the same runtime facts; the hook keeps a
+// live copy so a toggle in the dialog is reflected in the menu without a reload.
 
 export function skillCategory(skill: SkillInfo): string {
   return asText(skill.category) || 'general'
@@ -73,13 +76,23 @@ export function skillMatchesQuery(skill: SkillInfo, query: string, zh: boolean):
   )
 }
 
-export function filterDisabledSkills(
+// The browse dialog now serves EITHER half of the catalog (enabled or
+// disabled/"unused") depending on which menu row opened it, with a tab inside
+// to flip between them — see skill-browse-dialog.tsx.
+export type SkillScope = 'enabled' | 'disabled'
+
+function skillsInScope(skills: SkillInfo[], scope: SkillScope): SkillInfo[] {
+  return scope === 'enabled' ? enabledSkills(skills) : disabledSkills(skills)
+}
+
+export function filterSkillsByScope(
   skills: SkillInfo[],
+  scope: SkillScope,
   query: string,
   category: string | null,
   zh: boolean
 ): SkillInfo[] {
-  return disabledSkills(skills).filter(skill => {
+  return skillsInScope(skills, scope).filter(skill => {
     if (category && skillCategory(skill) !== category) {
       return false
     }
@@ -93,16 +106,13 @@ export interface SkillCategoryCount {
   count: number
 }
 
-// Categories present among the DISABLED skills only — the browse dialog scopes
-// its chips to what you can still enable.
-export function disabledCategoryCounts(skills: SkillInfo[]): SkillCategoryCount[] {
+// Categories present within one scope (enabled or disabled) — the browse
+// dialog's category chips scope to whichever half is currently active, so
+// switching the scope tab also narrows the chip row to what's actually there.
+export function scopedCategoryCounts(skills: SkillInfo[], scope: SkillScope): SkillCategoryCount[] {
   const counts = new Map<string, number>()
 
-  for (const skill of skills) {
-    if (skill.enabled) {
-      continue
-    }
-
+  for (const skill of skillsInScope(skills, scope)) {
     const key = skillCategory(skill)
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
