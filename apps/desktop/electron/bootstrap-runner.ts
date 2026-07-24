@@ -13,11 +13,16 @@
  *     sourceRepoRoot,      // SOURCE_REPO_ROOT (for dev install.ps1 lookup)
  *     hermesHome,          // HERMES_HOME
  *     logRoot,             // HERMES_HOME/logs
+ *     updateInfo,          // hc-452: {isUpdate, toVersion, fromVersion} -- caller
+ *                          // resolves this from whether a runtime-pin override is
+ *                          // pending (an opt-in update re-bootstrap) vs a genuine
+ *                          // first install. Defaults to a first-install shape.
  *     emit: ev => {...}    // event sink (sender.send or similar)
  *   })
  *
  * Emits events with shape:
- *   { type: 'manifest',  stages: [{name, title, category, needs_user_input}, ...] }
+ *   { type: 'manifest',  stages: [{name, title, category, needs_user_input}, ...],
+ *                        updateInfo: {isUpdate, toVersion, fromVersion} }
  *   { type: 'stage',     name, state: 'running'|'succeeded'|'skipped'|'failed',
  *                        json?, durationMs?, error? }
  *   { type: 'log',       stage?, line, stream: 'stdout'|'stderr' } // raw line from install.ps1
@@ -38,6 +43,15 @@ import fsp from 'node:fs/promises'
 import https from 'node:https'
 import path from 'node:path'
 
+import {
+  buildErrorCode,
+  fireTelemetry,
+  normalizeDesktopPlatform,
+  sendDesktopTelemetry,
+  STATUS_FAILURE,
+  STATUS_START,
+  STATUS_SUCCESS
+} from './apexnodes-telemetry'
 import { hiddenWindowsChildOptions } from './windows-child-options'
 
 const IS_WINDOWS = process.platform === 'win32'
@@ -72,6 +86,33 @@ function commitKeysMatch(a, b) {
   const longer = x.length <= y.length ? y : x
   if (shorter.length < 7 || !STAMP_COMMIT_RE.test(shorter)) return false
   return longer.startsWith(shorter)
+}
+
+// hc-543: DETERMINISTIC decision for "did the on-disk tree actually reach the
+// target commit before we stamp the bootstrap-complete marker?" Pure function
+// (no fs / no I/O) so the three states are unit-testable in isolation:
+//
+//   1. consistent  — stamp present and matches target        -> ok, 'match'
+//   2. inconsistent — stamp present but a DIFFERENT commit    -> FAIL, 'commit_mismatch'
+//        This is the hc-543 false-success: the repository stage silently
+//        reused/failed to replace the tree, yet every stage returned ok, so
+//        without this the marker would be stamped with a version the files on
+//        disk are NOT. We refuse the marker; the caller rolls back to the old
+//        runtime instead of reporting a phantom update.
+//   3. unverifiable — no stamp, OR nothing to verify against  -> ok, fail OPEN
+//        A git checkout (upstream curl|bash) and a legacy COS tree have no
+//        stamp; a branch-only pin has no target commit. We must not block those
+//        — after hc-543 lands, every COS extract writes the stamp, so a genuine
+//        desktop update lands in state 1 or 2, and this branch only ever covers
+//        installs that were never subject to the bug.
+function evaluateTreeIntegrity({ treeCommit = null, targetCommit = null }: any = {}) {
+  const base = { treeCommit: treeCommit || null, targetCommit: targetCommit || null }
+
+  if (!targetCommit) return { ok: true, reason: 'no_target', ...base }
+  if (!treeCommit) return { ok: true, reason: 'unverifiable', ...base }
+  if (commitKeysMatch(treeCommit, targetCommit)) return { ok: true, reason: 'match', ...base }
+
+  return { ok: false, reason: 'commit_mismatch', ...base }
 }
 
 function isPinnedCommit(commit) {
@@ -239,6 +280,73 @@ function installedAgentInstallScript(hermesHome) {
   }
 }
 
+// The install.sh / install.ps1 we ship INSIDE the packaged app via
+// electron-builder's extraResources (staged from scripts/install.sh by
+// scripts/stage-install-script.cjs -> process.resourcesPath/install.sh). This
+// is the primary installer source for a packaged ApexNodes build: it lets a
+// fresh, network-restricted (mainland-China) machine bootstrap without first
+// fetching install.sh from raw.githubusercontent.com (blocked there). Absent in
+// dev and in older builds that predate bundling, in which case resolution falls
+// through to the GitHub download.
+function bundledInstallScript(resourcesPath) {
+  if (!resourcesPath) {
+    return null
+  }
+
+  const candidate = path.join(resourcesPath, installScriptName())
+
+  try {
+    fs.accessSync(candidate, fs.constants.R_OK)
+
+    return candidate
+  } catch {
+    return null
+  }
+}
+
+// Build the extra environment handed to the install.sh / install.ps1 spawn.
+//
+// Two INDEPENDENT pieces, deliberately decoupled:
+//
+//   1. HERMES_RUNTIME_COS_BASE — the public-read COS base that hosts the runtime
+//      tarball + uv binary. This is threaded through *regardless of the mirror
+//      decision* so that when install.sh's OWN region auto-detection picks CN,
+//      it has the COS base it needs (install.sh has no built-in default; without
+//      it the CN runtime fetch silently falls back to git clone / astral.sh,
+//      which are blocked in mainland China). An explicit env value wins.
+//
+//   2. HERMES_CN_MIRRORS — only set when the mirror region is being FORCED, via
+//      either an explicit process.env.HERMES_CN_MIRRORS (ops/CI escape hatch) or
+//      the caller passing cnMirrors:true. When neither forces it we OMIT the
+//      flag entirely so install.sh runs its IP/timezone region auto-detection
+//      (precedence rule #3 in install.sh). This is the whole point: packaged
+//      desktop builds must auto-detect per machine, not statically assume China.
+//
+// Forwarding an explicit '0' is intentional — install.sh treats a set
+// HERMES_CN_MIRRORS as authoritative (rule #1) and stays on upstream defaults
+// without probing, which is what an operator who set '0' wants.
+function cnInstallEnv({ cnMirrors = false, runtimeCosBase = '' }: any = {}) {
+  const env: any = {}
+
+  // COS base: env override first, then the passed value. Only include it when
+  // non-empty so we never blank out an inherited value with ''.
+  const base = process.env.HERMES_RUNTIME_COS_BASE != null ? process.env.HERMES_RUNTIME_COS_BASE : runtimeCosBase || ''
+
+  if (base) {
+    env.HERMES_RUNTIME_COS_BASE = base
+  }
+
+  // Mirror flag: forward an explicit env value verbatim; otherwise only force it
+  // on when the caller opts in. Unset => let install.sh auto-detect the region.
+  if (process.env.HERMES_CN_MIRRORS != null) {
+    env.HERMES_CN_MIRRORS = process.env.HERMES_CN_MIRRORS
+  } else if (cnMirrors) {
+    env.HERMES_CN_MIRRORS = '1'
+  }
+
+  return env
+}
+
 function hasExistingGitCheckout(activeRoot) {
   if (!activeRoot) {
     return false
@@ -345,10 +453,11 @@ function downloadInstallScript(ref, destPath) {
 async function resolveInstallScript({
   installStamp,
   sourceRepoRoot,
+  resourcesPath,
   hermesHome,
   emit,
   _download = downloadInstallScript
-}) {
+}: any) {
   // 1. Dev shortcut: prefer a local checkout's installer so we can iterate
   //    without pushing. SOURCE_REPO_ROOT comes from main.ts (path.resolve
   //    of APP_ROOT/../..).
@@ -358,6 +467,18 @@ async function resolveInstallScript({
     emit({ type: 'log', line: `[bootstrap] using local ${installScriptName()} at ${localScript}` })
 
     return { path: localScript, source: 'local', kind: installScriptKind() }
+  }
+
+  // 1.5. Packaged primary: the install.sh we shipped inside the app. Used
+  //      directly for fresh installs so a network-restricted (mainland-China)
+  //      machine never has to reach raw.githubusercontent.com. Falls through to
+  //      the GitHub download only for older builds that predate bundling.
+  const bundled = bundledInstallScript(resourcesPath)
+
+  if (bundled) {
+    emit({ type: 'log', line: `[bootstrap] using bundled ${installScriptName()} at ${bundled}` })
+
+    return { path: bundled, source: 'bundled', kind: installScriptKind() }
   }
 
   // 2. Packaged path: download from GitHub at the install stamp's ref.
@@ -484,7 +605,7 @@ function resolveWindowsPowerShell() {
   return 'powershell.exe'
 }
 
-function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, hermesHome }: any = {}) {
+function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, hermesHome, extraEnv }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const ps = process.platform === 'win32' ? resolveWindowsPowerShell() : 'pwsh'
     const fullArgs = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args]
@@ -498,7 +619,12 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
           ...process.env,
           // Pass HERMES_HOME through so install.ps1 respects the caller's
           // choice rather than re-computing the default.
-          HERMES_HOME: hermesHome || process.env.HERMES_HOME || ''
+          HERMES_HOME: hermesHome || process.env.HERMES_HOME || '',
+          // CN mirror mode + COS runtime source (empty {} when off). Spread last so
+          // an explicit value here overrides any inherited process.env entry. This
+          // mirrors spawnBash so install.ps1's China mirror mode activates on
+          // Windows too (HERMES_CN_MIRRORS / HERMES_RUNTIME_COS_BASE).
+          ...(extraEnv || {})
         }
       })
     )
@@ -588,13 +714,16 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
   })
 }
 
-function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome }: any = {}) {
+function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome, extraEnv }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const child = spawn('bash', [scriptPath, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        HERMES_HOME: hermesHome || process.env.HERMES_HOME || ''
+        HERMES_HOME: hermesHome || process.env.HERMES_HOME || '',
+        // CN mirror mode + COS runtime source (empty {} when off). Spread last so
+        // an explicit value here overrides any inherited process.env entry.
+        ...(extraEnv || {})
       }
     })
 
@@ -704,6 +833,19 @@ function buildPinArgs(installStamp, { pinCommit = true } = {}) {
   return args
 }
 
+// hc-473: the runtime_key a bootstrap-stage beacon carries. Same priority
+// order overlayStampWithPin / derivePinFromLatest (apex-runtime-latest.ts)
+// already use for "the key" -- commit first (what install.sh actually keys
+// the COS/git-checkout source by), then branch, then the human version label
+// as a last resort so a tag-only or pre-hc-085 stamp still reports something.
+function runtimeKeyFromStamp(installStamp) {
+  if (!installStamp) {
+    return null
+  }
+
+  return installStamp.commit || installStamp.branch || installStamp.version || null
+}
+
 function buildPosixPinArgs({ installStamp, activeRoot, hermesHome, pinCommit = true }) {
   const args = ['--dir', activeRoot, '--hermes-home', hermesHome]
 
@@ -718,7 +860,16 @@ function buildPosixPinArgs({ installStamp, activeRoot, hermesHome, pinCommit = t
   return args
 }
 
-async function fetchManifest({ scriptPath, installerKind, emit, hermesHome, activeRoot, installStamp, pinCommit }) {
+async function fetchManifest({
+  scriptPath,
+  installerKind,
+  emit,
+  hermesHome,
+  activeRoot,
+  installStamp,
+  pinCommit,
+  extraEnv
+}: any) {
   const isPosix = installerKind === 'posix'
 
   const args = isPosix
@@ -728,7 +879,8 @@ async function fetchManifest({ scriptPath, installerKind, emit, hermesHome, acti
   const result = await (isPosix ? spawnBash : spawnPowerShell)(scriptPath, args, {
     emit,
     stageName: '__manifest__',
-    hermesHome
+    hermesHome,
+    extraEnv
   })
 
   if (result.code !== 0) {
@@ -789,10 +941,20 @@ async function runStage({
   activeRoot,
   abortSignal,
   installStamp,
-  pinCommit
-}) {
+  pinCommit,
+  extraEnv,
+  // hc-473: anonymous per-stage install telemetry. sendTelemetry defaults to
+  // the real emitter (apexnodes-telemetry.ts) so every caller of runBootstrap
+  // gets beacons for free, with zero main.ts wiring; tests override it (via
+  // runBootstrap's own sendTelemetry option, threaded down to here) to capture
+  // events without touching the network. telemetryBase is precomputed once by
+  // runBootstrap and just carries {platform, arch, app_version, runtime_key}.
+  sendTelemetry = sendDesktopTelemetry,
+  telemetryBase = {}
+}: any) {
   const startedAt = Date.now()
   emit({ type: 'stage', name: stage.name, state: 'running' })
+  fireTelemetry(sendTelemetry, { ...telemetryBase, stage: stage.name, status: STATUS_START })
 
   const isPosix = installerKind === 'posix'
 
@@ -810,7 +972,8 @@ async function runStage({
     emit,
     stageName: stage.name,
     abortSignal,
-    hermesHome
+    hermesHome,
+    extraEnv
   })
 
   const durationMs = Date.now() - startedAt
@@ -818,6 +981,12 @@ async function runStage({
   if (result.killed) {
     const ev = { type: 'stage', name: stage.name, state: 'failed', durationMs, error: 'cancelled by user' }
     emit(ev)
+    fireTelemetry(sendTelemetry, {
+      ...telemetryBase,
+      stage: stage.name,
+      status: STATUS_FAILURE,
+      error_code: buildErrorCode(stage.name, ev.error)
+    })
 
     return ev
   }
@@ -835,6 +1004,12 @@ async function runStage({
     }
 
     emit(ev)
+    fireTelemetry(sendTelemetry, {
+      ...telemetryBase,
+      stage: stage.name,
+      status: STATUS_FAILURE,
+      error_code: buildErrorCode(stage.name, ev.error)
+    })
 
     return ev
   }
@@ -843,12 +1018,17 @@ async function runStage({
     const ev = { type: 'stage', name: stage.name, state: 'skipped', durationMs, json }
     emit(ev)
 
+    // No terminal beacon here on purpose: a deliberately-skipped stage (e.g. a
+    // needs_user_input stage under -NonInteractive) neither succeeded nor
+    // failed. The `start` beacon above already recorded that this stage was
+    // reached; leaving it without a terminal is honest telemetry, not a gap.
     return ev
   }
 
   if (json.ok) {
     const ev = { type: 'stage', name: stage.name, state: 'succeeded', durationMs, json }
     emit(ev)
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: stage.name, status: STATUS_SUCCESS })
 
     return ev
   }
@@ -863,6 +1043,12 @@ async function runStage({
   }
 
   emit(ev)
+  fireTelemetry(sendTelemetry, {
+    ...telemetryBase,
+    stage: stage.name,
+    status: STATUS_FAILURE,
+    error_code: buildErrorCode(stage.name, ev.error)
+  })
 
   return ev
 }
@@ -889,17 +1075,59 @@ async function runBootstrap(opts) {
     installStamp,
     activeRoot,
     sourceRepoRoot,
+    resourcesPath,
     hermesHome,
     logRoot,
     onEvent,
     abortSignal,
-    writeMarker // callback to write the bootstrap-complete marker; main.ts provides
+    cnMirrors, // true -> activate install.sh CN mirror mode (packaged ApexNodes)
+    runtimeCosBase, // public-read COS base hosting the runtime tarball + uv
+    writeMarker, // callback to write the bootstrap-complete marker; main.ts provides
+    // hc-452: { isUpdate, toVersion, fromVersion } -- main.ts resolves this
+    // BEFORE calling runBootstrap (from whether a runtime-pin override is
+    // pending) and threads it through so the renderer can show "updating to
+    // vX" instead of "one-time setup" on every runtime version bump, not just
+    // a genuine first install. Defaults to a plain first-install shape so
+    // every existing caller (tests, dev shortcuts) that doesn't pass this
+    // keeps working unchanged.
+    updateInfo = { isUpdate: false, toVersion: null, fromVersion: null },
+    // hc-473: anonymous install-chain telemetry (apexnodes-telemetry.ts).
+    // sendTelemetry defaults to the real emitter so this beacons with zero
+    // main.ts wiring; tests override it to capture events without touching
+    // the network. appVersion is the Electron shell's own app.getVersion().
+    sendTelemetry = sendDesktopTelemetry,
+    appVersion = null
   } = opts
+
+  // Where the bundled installer lives (process.resourcesPath in a packaged
+  // Electron app). Honor an explicit opt for testability; fall back to the
+  // ambient Electron value.
+  const resolvedResourcesPath = resourcesPath !== undefined ? resourcesPath : process.resourcesPath
+  // Extra spawn env that turns on install.sh's CN mirror mode. {} when off.
+  const extraEnv = cnInstallEnv({ cnMirrors, runtimeCosBase })
+
+  // hc-473: one {platform, arch, app_version, runtime_key} shape reused by
+  // every beacon this run fires -- only `stage` (and status/error_code) vary
+  // per call site: 'bootstrap' for the whole-run lifecycle emitted here,
+  // the manifest stage name (uv/repository/venv/...) inside runStage.
+  const telemetryBase = {
+    platform: normalizeDesktopPlatform(process.platform),
+    arch: process.arch,
+    app_version: appVersion,
+    runtime_key: runtimeKeyFromStamp(installStamp)
+  }
 
   // Bail before spawning anything if the user already cancelled — otherwise an
   // already-aborted signal would still fetch the manifest (a spawn) before the
   // in-loop abort check fires.
   if (abortSignal && abortSignal.aborted) {
+    fireTelemetry(sendTelemetry, {
+      ...telemetryBase,
+      stage: 'bootstrap',
+      status: STATUS_FAILURE,
+      error_code: 'bootstrap:cancelled'
+    })
+
     if (typeof onEvent === 'function') {
       try {
         onEvent({ type: 'failed', error: 'bootstrap cancelled by user' })
@@ -910,6 +1138,8 @@ async function runBootstrap(opts) {
 
     return { ok: false, cancelled: true }
   }
+
+  fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'bootstrap', status: STATUS_START })
 
   const runLog = openRunLog(logRoot || path.join(hermesHome, 'logs'))
 
@@ -938,6 +1168,7 @@ async function runBootstrap(opts) {
       `[bootstrap] starting at ${new Date().toISOString()}; ` +
       `activeRoot=${activeRoot}; ` +
       `stamp=${installStamp ? installStamp.commit.slice(0, 12) : '<none>'}; ` +
+      `cn=${extraEnv.HERMES_CN_MIRRORS === '1' ? 'on' : 'off'}; ` +
       `runLog=${runLog.path}`
   })
 
@@ -955,7 +1186,13 @@ async function runBootstrap(opts) {
     }
 
     // 1. Resolve the platform installer.
-    const scriptInfo = await resolveInstallScript({ installStamp, sourceRepoRoot, hermesHome, emit })
+    const scriptInfo = await resolveInstallScript({
+      installStamp,
+      sourceRepoRoot,
+      resourcesPath: resolvedResourcesPath,
+      hermesHome,
+      emit
+    })
     const installerKind = scriptInfo.kind || 'powershell'
 
     // 2. Fetch manifest
@@ -966,13 +1203,15 @@ async function runBootstrap(opts) {
       hermesHome,
       activeRoot,
       installStamp,
-      pinCommit
+      pinCommit,
+      extraEnv
     })
 
     emit({
       type: 'manifest',
       stages: manifest.stages,
-      protocolVersion: manifest.protocol_version || manifest.protocolVersion || null
+      protocolVersion: manifest.protocol_version || manifest.protocolVersion || null,
+      updateInfo
     })
 
     // 3. Iterate stages in order. Stages flagged needs_user_input are still
@@ -982,6 +1221,12 @@ async function runBootstrap(opts) {
     for (const stage of manifest.stages) {
       if (abortSignal && abortSignal.aborted) {
         emit({ type: 'failed', error: 'bootstrap cancelled by user' })
+        fireTelemetry(sendTelemetry, {
+          ...telemetryBase,
+          stage: 'bootstrap',
+          status: STATUS_FAILURE,
+          error_code: 'bootstrap:cancelled'
+        })
 
         return { ok: false, cancelled: true }
       }
@@ -995,14 +1240,67 @@ async function runBootstrap(opts) {
         activeRoot,
         abortSignal,
         installStamp,
-        pinCommit
+        pinCommit,
+        extraEnv,
+        sendTelemetry,
+        telemetryBase
       })
 
       if (ev.state === 'failed') {
         emit({ type: 'failed', stage: stage.name, error: (ev as any).error || 'stage failed' })
+        // Bootstrap-level rollup, IN ADDITION TO runStage's own per-stage
+        // failure beacon above (deliberate double-signal, not a duplicate:
+        // one answers "how far did this run get", the other "which stage").
+        fireTelemetry(sendTelemetry, {
+          ...telemetryBase,
+          stage: 'bootstrap',
+          status: STATUS_FAILURE,
+          error_code: `bootstrap:stage_failed:${stage.name}`.slice(0, 120)
+        })
 
         return { ok: false, failedStage: stage.name, error: (ev as any).error }
       }
+    }
+
+    // 3.5 hc-543: verify the on-disk tree actually reached the target commit
+    //     BEFORE stamping the "install complete" marker. Every stage above can
+    //     return ok while the repository stage silently reused a stale tree
+    //     (a .git-less COS checkout during an opt-in update: the marker then
+    //     claimed vNext but the files were still vPrev — `/cc` unknown command).
+    //     The COS extract stamps the tree's commit into SOURCE_COMMIT_STAMP;
+    //     read it back and refuse the marker on a positive mismatch. Absent
+    //     stamp / no target commit fails OPEN (git & legacy installs).
+    //
+    //     Only a REAL pin is a verification target: a non-git build carries the
+    //     all-zero placeholder commit, which names no tree, so comparing a
+    //     genuine stamp against it would be a false mismatch.
+    const targetCommit = installStamp && isPinnedCommit(installStamp.commit) ? installStamp.commit : null
+    const treeCommit = readSourceCommitStamp(activeRoot)
+    const integrity = evaluateTreeIntegrity({ treeCommit, targetCommit })
+
+    if (!integrity.ok) {
+      const detail =
+        `on-disk source is '${treeCommit || 'unknown'}' but the update targets ` +
+        `'${targetCommit}' — the repository stage did not replace the tree. ` +
+        'Not stamping the complete marker; keeping the previous runtime.'
+      emit({ type: 'failed', stage: 'verify', error: detail })
+      fireTelemetry(sendTelemetry, {
+        ...telemetryBase,
+        stage: 'bootstrap',
+        status: STATUS_FAILURE,
+        error_code: 'bootstrap:stage_failed:verify'
+      })
+
+      return { ok: false, failedStage: 'verify', error: detail }
+    }
+
+    if (integrity.reason === 'unverifiable') {
+      emit({
+        type: 'log',
+        line:
+          `[bootstrap] tree-integrity check: no ${SOURCE_COMMIT_STAMP} stamp on ${activeRoot} ` +
+          `(git checkout or legacy tree) — cannot verify commit, proceeding (fail-open)`
+      })
     }
 
     // 4. Write the bootstrap-complete marker. Fallback (all-zero) stamps are
@@ -1027,15 +1325,24 @@ async function runBootstrap(opts) {
 
     const markerPayload = {
       pinnedCommit,
-      pinnedBranch: installStamp ? installStamp.branch : null
+      pinnedBranch: installStamp ? installStamp.branch : null,
+      // Runtime version label, when the caller threaded it onto the stamp (R4/R5).
+      version: installStamp ? installStamp.version || null : null
     }
 
     const marker = typeof writeMarker === 'function' ? writeMarker(markerPayload) : markerPayload
     emit({ type: 'complete', marker })
+    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'bootstrap', status: STATUS_SUCCESS })
 
     return { ok: true, marker }
   } catch (err) {
     emit({ type: 'failed', error: err.message || String(err) })
+    fireTelemetry(sendTelemetry, {
+      ...telemetryBase,
+      stage: 'bootstrap',
+      status: STATUS_FAILURE,
+      error_code: buildErrorCode('bootstrap', err)
+    })
 
     return { ok: false, error: err.message || String(err) }
   } finally {
@@ -1050,8 +1357,13 @@ async function runBootstrap(opts) {
 export {
   buildPinArgs,
   buildPosixPinArgs,
+  bundledInstallScript,
   cachedScriptPath,
+  cnInstallEnv,
   commitKeysMatch,
+  // hc-543: update-integrity primitives (also consumed by main.ts for the
+  // truthful engine-version IPC).
+  evaluateTreeIntegrity,
   hasExistingGitCheckout,
   installedAgentInstallScript,
   installRefForStamp,
@@ -1064,5 +1376,6 @@ export {
   resolveMarkerPinnedCommit,
   readSourceCommitStamp,
   runBootstrap,
+  runtimeKeyFromStamp,
   SOURCE_COMMIT_STAMP
 }

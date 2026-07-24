@@ -22,7 +22,7 @@
     "profile:main:cpu": "wait-on http://127.0.0.1:5174 && node scripts/bundle-electron-main.mjs --dev && cross-env XCURSOR_SIZE=24 NODE_OPTIONS=--cpu-prof HERMES_DESKTOP_DEV_SERVER=http://127.0.0.1:5174 electron .",
     "start": "npm run build && electron .",
     "prebuild": "tsc -b . --clean",
-    "build": "node scripts/assert-root-install.mjs && node scripts/write-build-stamp.mjs && vite build && node scripts/bundle-electron-main.mjs && node scripts/stage-native-deps.mjs",
+    "build": "node scripts/assert-root-install.mjs && node scripts/write-build-stamp.mjs && node scripts/stage-install-script.cjs && vite build && node scripts/bundle-electron-main.mjs && node scripts/stage-native-deps.mjs",
     "postbuild": "node scripts/assert-dist-built.mjs",
     "prebuilder": "node scripts/patch-electron-builder-mac-binary.mjs",
     "builder": "cross-env NODE_OPTIONS=--max-old-space-size=16384 node scripts/run-electron-builder.mjs",
@@ -189,6 +189,18 @@
       {
         "from": "build/install-stamp.json",
         "to": "install-stamp.json"
+      },
+      {
+        "from": "build/install.sh",
+        "to": "install.sh"
+      },
+      {
+        "from": "build/install.ps1",
+        "to": "install.ps1"
+      },
+      {
+        "from": "build/lib",
+        "to": "lib"
       },
       {
         "from": "assets/icon.ico",

@@ -3376,6 +3376,11 @@ function writeBootstrapMarker(payload) {
     schemaVersion: BOOTSTRAP_MARKER_SCHEMA_VERSION,
     pinnedCommit: payload.pinnedCommit || null,
     pinnedBranch: payload.pinnedBranch || null,
+    // The admin runtime version label this install landed on, when known (R4/R5
+    // thread it through the stamp). Lets the opt-in update check compare the
+    // installed version against /latest even when the commit key is unchanged
+    // (a re-publish under the same key with a bumped label).
+    version: payload.version || null,
     completedAt: new Date().toISOString(),
     desktopVersion: app.getVersion()
   }
