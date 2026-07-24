@@ -105,7 +105,13 @@ export const zh: Translations = {
       signInFailed: '登录失败',
       signInToRemoteGateway: '登录远程网关',
       signInWithProvider: provider => `使用 ${provider} 登录`,
-      identityProvider: '你的身份提供方'
+      identityProvider: '你的身份提供方',
+      errorMap: {
+        cancelled: '安装已取消',
+        prerequisites: '无法准备所需环境。请尝试修复安装，或查看下方日志。',
+        network: '安装过程中出现网络问题。请检查网络连接后重试。',
+        unknown: 'APEX 未能完成启动。请尝试下面的恢复步骤。'
+      }
     }
   },
 
@@ -706,7 +712,15 @@ export const zh: Translations = {
       justNow: '刚刚',
       minAgo: count => `${count} 分钟前`,
       hoursAgo: count => `${count} 小时前`,
-      daysAgo: count => `${count} 天前`
+      daysAgo: count => `${count} 天前`,
+      // hc-447:更新日志入口 —— 读 hc-446 的公告源(与 web /app/whats-new
+      // 同一份「你现在可以…」人话文案),范围限当前登录的 ApexNodes 账号。
+      changelogTitle: '更新日志',
+      changelogIntro: '查看 APEX 的最新动态。',
+      changelogView: '查看',
+      changelogEmpty: '暂无更新公告,过段时间再来看看。',
+      changelogLoadError: '更新日志加载失败,请检查网络后重试。',
+      changelogNeedsSignIn: '登录 ApexNodes 账号后可查看产品更新。'
     },
     config: {
       none: '无',
@@ -1066,6 +1080,102 @@ export const zh: Translations = {
         failedSelect: backend => `选择 ${backend} 失败`,
         needsSetupHint: '现在即可选择此后端——但在完成设置前命令将会失败。'
       }
+    },
+    agentAuth: {
+      title: '编码 Agent 账号',
+      intro: '直通与本机调度依赖这台电脑上已登录的 Claude Code 和 Codex。在这里连接账号，无需打开终端。',
+      checking: '检测中…',
+      refresh: '重新检测',
+      stateReady: '已连接',
+      stateReadyEmail: email => `已连接 · ${email}`,
+      stateLoggedOut: '未登录',
+      stateUnreachable: '已登录，但无法访问 API——需要配置网络代理',
+      stateNoCli: '本机未安装',
+      stateUnknown: '状态不可用',
+      connect: '连接账号',
+      reconnect: '重新连接',
+      fixNetwork: '配置网络代理',
+      installHint: '请先安装，然后重新连接',
+      opening: '正在打开浏览器…',
+      waitingBrowser: '请在浏览器中完成登录——状态会自动刷新。',
+      completed: '已登录。',
+      guideIntro: '无法自动登录。请在终端运行以下命令,然后重新检测:',
+      copyCommand: '复制命令',
+      copied: '已复制',
+      proxyTitle: '网络代理',
+      proxyIntro: '部分地区会封锁 Agent 的 API。APEX 可让 Agent 走代理访问,同时保持国内链路直连。',
+      proxyModeAuto: '跟随系统',
+      proxyModeAutoHint: '自动使用 macOS 系统代理(推荐)。',
+      proxyModeCustom: '自定义',
+      proxyModeOff: '关闭',
+      proxyModeOffHint: '始终不让 Agent 走代理。',
+      proxyDetected: url => `已检测到系统代理 · ${url}`,
+      proxyNone: '未检测到系统代理。',
+      proxyCustomLabel: '代理地址',
+      proxyCustomPlaceholder: 'http://127.0.0.1:1081',
+      proxyInvalid: '请填写有效的代理地址(如 http://127.0.0.1:1081)。',
+      save: '保存',
+      saved: '代理设置已保存。'
+    },
+    localAgent: {
+      title: '本机 Agent 调度',
+      intro:
+        '让你的云端助手把编码任务交给这台电脑上的 Agent(Claude Code、Codex 或 Cursor)——任务在本机用你自己的工具和凭据执行,结果回传给云端助手。不开启则什么都不会运行。',
+      enableLabel: '允许云端助手调度这台电脑',
+      enableHint:
+        '开启后,只要 App 在运行,这台电脑就会连接 APEX 并待命接单。危险操作永远会先在本机请求你确认。',
+      statusLabel: '状态',
+      statusDormant: '已关闭',
+      statusConnecting: '连接中…',
+      statusOnline: '在线——可接单',
+      statusOffline: '重连中…',
+      statusError: '请先登录 APEX 账号以连接',
+      deviceNameLabel: '设备名称',
+      deviceNamePlaceholder: '这台电脑',
+      unregister: '注销此设备',
+      unregisterConfirm: '注销这台电脑?重新开启调度前它将不再接单。',
+      signInFirst: '请先登录你的 APEX 账号。',
+      saved: '设备名称已保存。',
+      enableFailed: '保存失败——本系统的安全存储不可用。',
+      engineOutdated: value =>
+        `当前引擎版本过旧，本机 Agent 调度需要引擎 ${value} 或更高版本。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
+    },
+    personalization: {
+      personalityTitle: '人格',
+      personalityIntro: '选择 APEX 和你说话的风格，新对话会默认使用。',
+      soulTitle: '人格文件（SOUL.md）',
+      soulIntro: '当前配置档案的 SOUL.md——APEX 每次对话开始时加载的系统提示词与人格指令。'
+    },
+    // hc-444:「连接飞书」卡——把你在云端建好的飞书应用凭证同步到桌面,
+    // 助手就能读写飞书文档/表格/消息。
+    feishu: {
+      title: '飞书 / Lark',
+      intro: '让助手在你的飞书里干活——读写文档、表格和消息。用的是你已在云端建好的飞书应用。',
+      connectedTitle: '已连接',
+      connectedTo: agent => `已从「${agent}」同步`,
+      connectedGeneric: '飞书凭证已同步到本设备。',
+      statusOk: '正常',
+      statusExpired: '登录已过期',
+      statusInvalid: '凭证被拒绝',
+      statusStale: '云端已标记该凭证过期。请在浏览器里重新绑定后再同步一次。',
+      sync: '从云端同步',
+      resync: '重新同步',
+      syncing: '同步中…',
+      disconnect: '断开连接',
+      disconnectConfirm: '在本设备断开飞书?你的云端绑定不受影响,只是助手在本机暂停使用飞书,直到你再次同步。',
+      signInFirstTitle: '请先登录',
+      signInFirst: '登录你的 APEX 账号后即可连接飞书。',
+      noEntryTitle: '还没有飞书应用',
+      noEntry: '你还没有在云端建飞书应用。打开网页绑定流程,扫码创建你的应用,回来后点同步即可。',
+      openBind: '去网页绑定',
+      afterBind: '绑定好了?现在同步。',
+      syncedTitle: '飞书已连接',
+      syncedMessage: '助手现在可以在飞书里干活了。正在重启以生效…',
+      disconnectedTitle: '飞书已断开',
+      disconnectedMessage: '助手将在本设备停止使用飞书。',
+      syncFailed: '同步飞书凭证失败,请重试。',
+      sessionExpired: '登录已过期。请重新登录后再同步。',
+      loading: '正在检查飞书…'
     }
   },
 
@@ -1898,6 +2008,14 @@ export const zh: Translations = {
       ageDay: '天',
       ageHour: '时',
       ageMin: '分'
+    },
+    engineUpdate: {
+      found: '发现新引擎',
+      updating: '正在更新引擎…',
+      failedRolledBack: '更新失败,已回滚'
+    },
+    shellUpdate: {
+      restartToUpdate: version => (version ? `重启以更新 ${version}` : '重启以更新')
     }
   },
 
@@ -2029,6 +2147,51 @@ export const zh: Translations = {
         description: '讲解所选代码的工作方式，并链接到关键文件。',
         text: '请解释这是如何工作的，并指给我关键文件。'
       }
+    },
+    approvalMode: {
+      label: '审批',
+      manual: { label: '手动审批', desc: '仅在检测到危险操作时请求批准' },
+      smart: { label: '智能审批', desc: 'AI 评估风险后再请求批准' },
+      full: { label: '完全访问', desc: '可不受限制地访问互联网和你电脑上的任何文件' }
+    },
+    projectPicker: {
+      label: '项目',
+      select: '选择项目',
+      searchPlaceholder: '搜索项目…',
+      recentHeading: '最近项目',
+      noRecent: '暂无项目',
+      noMatches: '没有匹配的项目',
+      useExisting: '使用现有文件夹…',
+      newBlank: '新建空白项目…',
+      newTitle: '新建项目',
+      namePlaceholder: '项目名称',
+      locationLabel: '位置',
+      chooseParent: '选择上级文件夹…',
+      create: '创建',
+      back: '返回',
+      useExistingTitle: '选择项目文件夹',
+      chooseParentTitle: '选择项目创建位置',
+      pickFailed: '无法打开文件夹选择器',
+      createFailed: '无法创建项目文件夹'
+    },
+    capabilities: {
+      enabledLabel: '已启用技能',
+      unused: '未启用技能',
+      connectors: '连接器',
+      connectorsHint: '飞书 · 微信…',
+      noneEnabled: '还没有启用的技能',
+      browseDesc: '拨开开关即启用(对新会话生效),并升到菜单一级。',
+      browseDescEnabled: '拨开开关即关闭(对新会话生效),并降回未启用技能。',
+      searchPlaceholder: '搜索技能…',
+      allEnabled: '技能都已启用 🎉',
+      loading: '正在加载技能…',
+      toggle: name => `启用 ${name}`,
+      disable: name => `禁用 ${name}`,
+      generateLabel: '生成',
+      generateImage: '图片',
+      generateVideo: '视频',
+      generateImageStarter: '我想生成一张图片,想法是:',
+      generateVideoStarter: '我想做一个视频,想法是:'
     }
   },
 
@@ -2180,7 +2343,30 @@ export const zh: Translations = {
     transcriptSaved: '完整记录已保存到',
     copiedOutput: '已复制！',
     copyOutput: '复制输出',
-    reloadRetry: '重新加载并重试'
+    reloadRetry: '重新加载并重试',
+    stageLabels: {
+      prerequisites: '前置环境',
+      uv: '前置环境',
+      python: '前置环境',
+      git: '前置环境',
+      node: '前置环境',
+      'system-packages': '前置环境',
+      repository: '拉取程序',
+      venv: 'Python 环境',
+      'python-deps': 'Python 依赖',
+      dependencies: 'Python 依赖',
+      'node-deps': 'Node 依赖',
+      desktop: '桌面应用',
+      path: '配置路径',
+      config: '写入配置',
+      'config-templates': '写入配置',
+      'platform-sdks': '写入配置',
+      setup: '初始化',
+      configure: '初始化',
+      gateway: '启动网关',
+      complete: '完成',
+      'bootstrap-marker': '完成'
+    }
   },
 
   onboarding: {
@@ -2249,7 +2435,20 @@ export const zh: Translations = {
     price: (input, output) => `${input} 输入 / ${output} 输出每 Mtok`,
     change: '更改',
     startChatting: '开始',
-    docs: provider => `${provider} 文档`
+    docs: provider => `${provider} 文档`,
+    addKeyToStart: '已选好提供方 — 填入它的 API Key 即可开始对话。',
+    moreProvidersVpn: '更多（需科学上网）',
+    managed: {
+      subtitle: '登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。',
+      emailPlaceholder: '邮箱',
+      passwordPlaceholder: '密码',
+      signIn: '登录并开始',
+      signingIn: '正在登录…',
+      useOwnProvider: '使用我自己的提供方',
+      dividerOr: '或',
+      signInGoogle: '用 Google 登录',
+      signInApex: '用 APEX 登录'
+    }
   },
 
   modelPicker: {
@@ -2603,7 +2802,10 @@ export const zh: Translations = {
       restoreNext: '恢复下一个检查点',
       goForward: '前进',
       sendEdited: '发送编辑后的消息',
-      attachingFile: '正在附加…'
+      attachingFile: '正在附加…',
+      compacting: '正在整理对话',
+      steered: '已引导',
+      processOutput: '输出'
     },
     approval: {
       gatewayDisconnected: 'Hermes 网关未连接',
@@ -2702,7 +2904,10 @@ export const zh: Translations = {
         web_extract: { done: '已读取网页', pending: '正在读取网页', pendingAction: '正在读取' },
         web_search: { done: '已搜索网页', pending: '正在搜索网页', pendingAction: '正在搜索' },
         write_file: { done: '已编辑文件', pending: '正在编辑文件', pendingAction: '正在编辑' }
-      }
+      },
+      searchResults: '搜索结果',
+      stdoutLabel: '输出',
+      stderrLabel: '错误输出'
     }
   },
 
@@ -2812,5 +3017,236 @@ export const zh: Translations = {
       description: '显示移动端侧边栏。',
       toggle: '切换侧边栏'
     }
+  },
+
+  scenarios: {
+    button: '场景',
+    menuAria: '场景',
+    searchPlaceholder: '搜索场景…',
+    noMatches: '没有匹配的场景',
+    comingSoon: '即将上线',
+    allScenarios: '全部场景',
+    sample: '样例',
+    detailHeading: '场景详情',
+    labelCommand: '口令',
+    labelInput: '输入',
+    labelOutput: '产出',
+    inputNone: '无需参数，直接出结果',
+    use: '使用场景',
+    channelsTitle: '渠道 · 分身在哪',
+    connectTitle: '连接你的分身',
+    phoneRemote: '手机遥控',
+    remoteOn: '开 · /cc',
+    bindCta: '扫码绑定',
+    remoteBannerTitle: '手机正遥控本机 · 飞书 /cc',
+    remoteBannerApproval: '危险操作仍需手动审批',
+    taskTargetCloud: '委派给云端分身',
+    taskTargetLocal: '直连本机',
+    taskStatus: { running: '执行中', done: '已完成', failed: '失败', queued: '排队中' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return '心跳 刚刚'}
+
+      if (seconds < 60) {return `心跳 ${seconds} 秒前`}
+
+      if (seconds < 3600) {return `心跳 ${Math.floor(seconds / 60)} 分钟前`}
+
+      return `心跳 ${Math.floor(seconds / 3600)} 小时前`
+    },
+    guideTitle: '连接一个渠道,分身随处可达'
+  },
+
+  imEntry: {
+    title: '消息渠道',
+    intro: '让 AI 助手在你常用的聊天软件里替你回消息——扫一下码就能连上一个渠道。',
+    loading: '正在加载渠道…',
+    connect: '连接',
+    manage: '管理',
+    comingSoon: '即将支持',
+    connectedBadge: '已连接',
+    availableHeading: '现在可用',
+    comingSoonHeading: '即将支持',
+    boundHeading: '已连接的渠道',
+    boundEmpty: '还没有连接任何渠道。',
+    connectedOn: when => `${when} 连接`,
+    unbind: '断开',
+    unbindConfirm: name => `断开${name}？本设备上的 AI 助手会停止在那里回消息。`,
+    unbindDoneTitle: '已断开',
+    unbindDoneMessage: '正在重启以生效…',
+    liveState: {
+      connected: '已连接',
+      pending: '重启后生效',
+      error: '连接异常',
+      connecting: '连接中…',
+      unknown: '未知'
+    },
+    channels: {
+      feishu: { name: '飞书', tagline: '在飞书的私聊和群里回消息。' },
+      dingtalk: { name: '钉钉', tagline: '在钉钉的私聊和群里回消息。' },
+      weixin: { name: '微信', tagline: '用你的个人微信回消息。' },
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私聊和群里回消息。' },
+      wecom: { name: '企业微信', tagline: '在企业微信里回消息。' }
+    },
+    dialog: {
+      connectTitle: name => `连接${name}`,
+      signInFirstTitle: '请先登录',
+      signInFirst: '登录你的 APEX 账号后即可连接消息渠道。',
+      issuing: '正在生成二维码…',
+      scanPrompt: '扫码连接',
+      scanHint: (name: string) => `打开${name}扫描二维码，并在手机上确认。`,
+      openLink: '改用链接打开',
+      weixinBotNote:
+        '连接的是一个新的机器人联系人（iLink 机器人身份），不是把你本人的微信接管；这个机器人一般无法加入普通群聊，主要通过好友私聊使用。',
+      connecting: '连接中…',
+      authorizedTitle: '已连接',
+      authorizedMessage: '正在重启以生效…',
+      authorizedRestartHint: '已连接并保存——请重启应用以完成生效。',
+      retry: '重试',
+      cancel: '取消',
+      close: '关闭',
+      comingSoonTitle: '即将支持',
+      comingSoonBody: '这个渠道还不能连接，我们正在开发中。',
+      pasteHeading: '粘贴你的码',
+      pasteLabel: '连接码',
+      pastePlaceholder: '粘贴平台给你的码',
+      pasteSubmit: '连接',
+      advanced: '高级设置',
+      errors: {
+        sign_in: '登录已过期，请重新登录后再连接。',
+        service_unavailable: '该渠道尚未开放，请稍后再试。',
+        rate_limited: '已有一个连接请求在进行中，请先完成或等它过期后再试。',
+        expired: '二维码已过期，请重新开始获取新的。',
+        denied: '请求被拒绝，请重新开始再试。',
+        request_failed: '出了点问题，请重试。',
+        keychain: '安全存储未开启，连接未保存。请开启钥匙串访问后重试。'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} 个渠道已连接`,
+      openCta: '前往消息渠道'
+    }
+  },
+
+  home: {
+    title: '我们该做什么？'
+  },
+
+  auth: {
+    login: {
+      title: '开始使用',
+      signInApex: '登录 APEX 账户',
+      signInGoogle: '使用 Google 登录',
+      signingIn: '登录中…',
+      failed: '登录失败,请重试',
+      accountDisabled: '账户状态异常,请重新登录或联系客服',
+      sessionExpired: '登录已过期,请重新登录'
+    },
+    account: {
+      fallbackName: '账户',
+      profile: '个人资料',
+      settings: '设置',
+      usage: '剩余用量',
+      logout: '退出登录',
+      sessionExpiredTitle: '登录已失效',
+      sessionExpiredAction: '点击重新登录'
+    }
+  },
+
+  tasks: {
+    newTask: '新任务',
+    tabRunning: '进行中',
+    tabDone: '已完成',
+    emptyRunning: '暂无进行中的任务。把耗时的活交出去，它会在后台一直跑。',
+    emptyDone: '还没有已完成的任务。',
+    emptyDetail: '发起一个长任务，在这里跟进它的进度。',
+    pending: '等待开始',
+    started: '开始于',
+    runAgain: '再跑一次',
+    goalLabel: '目标',
+    goalPlaceholder: '调研 5 家头部竞品，写一份对比报告…',
+    stuckHint: '较久没有动静',
+    stuckDetail: '这个任务已较久没有动静，可能卡住了。打开运行记录看看，或重新发起一次。',
+    waitingToStart: '等待任务启动…',
+    progressLabel: '进度',
+    stepsOf: (completed, total) => `${completed} / ${total} 步`,
+    currentStepLabel: '当前：',
+    latestOutputLabel: '最新输出',
+    runHistory: '运行记录',
+    noRuns: '还没有运行记录。',
+    phases: {
+      running: '进行中',
+      done: '已完成',
+      failed: '失败'
+    },
+    newTaskTitle: '新任务',
+    newTaskDesc: '描述目标，智能体会在后台执行，完成后通知你。',
+    goalRequired: '先描述一下目标。',
+    timeRequired: '先选择开始时间。',
+    whenLabel: '开始',
+    whenNow: '立即',
+    whenIn: '延后',
+    whenAt: '指定时间',
+    delayLabel: '延后时长',
+    atLabel: '开始时间',
+    persistNote: '任务在后端运行，应用重启后仍会继续；也可以在「已安排」页看到。',
+    startTask: '开始任务',
+    created: '任务已创建',
+    startedNow: '任务已开始',
+    failedStart: '任务启动失败',
+    deleted: '任务已删除',
+    failedDelete: '删除任务失败',
+    deleting: '删除中…',
+    deleteTitle: '删除这个任务？',
+    deleteDescPrefix: '将永久移除 ',
+    deleteDescSuffix: ' 及其排程；已产生的运行会话仍保留在历史中。',
+    notify: {
+      doneTitle: '任务完成',
+      failedTitle: '任务失败'
+    }
+  },
+
+  profileStats: {
+    close: '关闭个人资料',
+    signedOut: '未登录',
+    loading: '正在加载使用统计…',
+    failedLoad: '加载使用统计失败',
+    emptyTitle: '暂无使用数据',
+    emptyDesc: '开始对话后，这里会展示你的使用统计。',
+    stats: {
+      sessions: '会话',
+      tokens: 'Token 总量',
+      apiCalls: 'API 调用',
+      activeDays: '活跃天数',
+      skillsUsed: '用过的技能'
+    },
+    heatmap: {
+      title: 'Token 活动',
+      daily: '每日',
+      weekly: '每周',
+      cumulative: '累计',
+      less: '少',
+      more: '多',
+      cellTitle: (date, tokens) => `${date}：${tokens} tokens`
+    },
+    insights: {
+      title: '活动洞察',
+      busiestDay: '最活跃的一天',
+      avgPerActiveDay: '活跃日均 Token',
+      topModel: '最常用模型',
+      longestStreak: '最长连续活跃',
+      streakDays: days => `${days} 天`,
+      estimatedCost: '预估成本'
+    },
+    topSkills: {
+      title: '最常用的插件',
+      uses: count => `${count} 次`
+    }
+  },
+
+  operationStatus: {
+    browserActive: '正在操作浏览器',
+    computerActive: '正在操作电脑',
+    computerWarning: 'AI 正在操作你的电脑',
+    running: '运行中',
+    stop: '停止'
   }
 }

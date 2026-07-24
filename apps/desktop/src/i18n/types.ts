@@ -150,6 +150,15 @@ export interface Translations {
       signInToRemoteGateway: string
       signInWithProvider: (provider: string) => string
       identityProvider: string
+      // Friendly, user-facing replacements for common raw bootstrap errors
+      // (the raw transcript stays available behind the "show recent logs"
+      // expander). `unknown` is the generic fallback when no pattern matches.
+      errorMap: {
+        cancelled: string
+        prerequisites: string
+        network: string
+        unknown: string
+      }
     }
   }
 
@@ -421,6 +430,13 @@ export interface Translations {
       minAgo: (count: number) => string
       hoursAgo: (count: number) => string
       daysAgo: (count: number) => string
+      // hc-447: 更新日志 (changelog) entry — reads the hc-446 announcement feed.
+      changelogTitle: string
+      changelogIntro: string
+      changelogView: string
+      changelogEmpty: string
+      changelogLoadError: string
+      changelogNeedsSignIn: string
     }
     config: {
       none: string
@@ -764,6 +780,112 @@ export interface Translations {
         failedSelect: (backend: string) => string
         needsSetupHint: string
       }
+    }
+    // hc-545: coding-agent account connection card. Detects the three-state
+    // login status of the user's own claude/codex CLIs (the passthrough/daemon
+    // legs drive them) and hosts an in-app OAuth + system-proxy autopilot.
+    agentAuth: {
+      title: string
+      intro: string
+      checking: string
+      refresh: string
+      // Per-state one-liners (the anti-conflation core — logged_out ≠ unreachable).
+      stateReady: string
+      stateReadyEmail: (email: string) => string
+      stateLoggedOut: string
+      stateUnreachable: string
+      stateNoCli: string
+      stateUnknown: string
+      // Action buttons per state.
+      connect: string
+      reconnect: string
+      fixNetwork: string
+      // no_cli install hints.
+      installHint: string
+      // OAuth follow-up.
+      opening: string
+      waitingBrowser: string
+      completed: string
+      // Honest degrade: run this command in a terminal.
+      guideIntro: string
+      copyCommand: string
+      copied: string
+      // Network proxy sub-block.
+      proxyTitle: string
+      proxyIntro: string
+      proxyModeAuto: string
+      proxyModeAutoHint: string
+      proxyModeCustom: string
+      proxyModeOff: string
+      proxyModeOffHint: string
+      proxyDetected: (url: string) => string
+      proxyNone: string
+      proxyCustomLabel: string
+      proxyCustomPlaceholder: string
+      proxyInvalid: string
+      save: string
+      saved: string
+    }
+    localAgent: {
+      title: string
+      intro: string
+      enableLabel: string
+      enableHint: string
+      statusLabel: string
+      statusDormant: string
+      statusConnecting: string
+      statusOnline: string
+      statusOffline: string
+      statusError: string
+      deviceNameLabel: string
+      deviceNamePlaceholder: string
+      unregister: string
+      unregisterConfirm: string
+      signInFirst: string
+      saved: string
+      enableFailed: string
+      // hc-532 (gate 1): shown in the daemon block when the installed engine is
+      // older than the shell's declared minimum — the daemon's tool leg would
+      // silently fail on a stale engine, so surface it explicitly here.
+      engineOutdated: (value: string) => string
+    }
+    // 个性化 — the consumer landing section (人格 picker + SOUL.md + the former
+    // About content).
+    personalization: {
+      personalityTitle: string
+      personalityIntro: string
+      soulTitle: string
+      soulIntro: string
+    }
+    // hc-444: "Connect Feishu" card copy.
+    feishu: {
+      title: string
+      intro: string
+      connectedTitle: string
+      connectedTo: (agent: string) => string
+      connectedGeneric: string
+      statusOk: string
+      statusExpired: string
+      statusInvalid: string
+      statusStale: string
+      sync: string
+      resync: string
+      syncing: string
+      disconnect: string
+      disconnectConfirm: string
+      signInFirstTitle: string
+      signInFirst: string
+      noEntryTitle: string
+      noEntry: string
+      openBind: string
+      afterBind: string
+      syncedTitle: string
+      syncedMessage: string
+      disconnectedTitle: string
+      disconnectedMessage: string
+      syncFailed: string
+      sessionExpired: string
+      loading: string
     }
   }
 
@@ -1440,6 +1562,15 @@ export interface Translations {
       ageHour: string
       ageMin: string
     }
+    engineUpdate: {
+      found: string
+      updating: string
+      failedRolledBack: string
+    }
+    // 壳(应用本体)更新胶囊:downloaded 后的「重启以更新 vX.Y.Z」。
+    shellUpdate: {
+      restartToUpdate: (version: string) => string
+    }
   }
 
   composer: {
@@ -1523,6 +1654,51 @@ export interface Translations {
     snippets: Record<string, { label: string; description: string; text: string }>
     dropFiles: string
     dropSession: string
+    approvalMode: {
+      label: string
+      manual: { label: string; desc: string }
+      smart: { label: string; desc: string }
+      full: { label: string; desc: string }
+    }
+    projectPicker: {
+      label: string
+      select: string
+      searchPlaceholder: string
+      recentHeading: string
+      noRecent: string
+      noMatches: string
+      useExisting: string
+      newBlank: string
+      newTitle: string
+      namePlaceholder: string
+      locationLabel: string
+      chooseParent: string
+      create: string
+      back: string
+      useExistingTitle: string
+      chooseParentTitle: string
+      pickFailed: string
+      createFailed: string
+    }
+    capabilities: {
+      enabledLabel: string
+      unused: string
+      connectors: string
+      connectorsHint: string
+      noneEnabled: string
+      browseDesc: string
+      browseDescEnabled: string
+      searchPlaceholder: string
+      allEnabled: string
+      loading: string
+      toggle: (name: string) => string
+      disable: (name: string) => string
+      generateLabel: string
+      generateImage: string
+      generateVideo: string
+      generateImageStarter: string
+      generateVideoStarter: string
+    }
   }
 
   statusStack: {
@@ -1653,6 +1829,10 @@ export interface Translations {
     copiedOutput: string
     copyOutput: string
     reloadRetry: string
+    // Localized labels for the installer's known stage ids (Prerequisites,
+    // Repository, Venv, …). Keyed by the raw stage name from the bootstrap
+    // protocol; unknown ids fall back to formatStageName() in the overlay.
+    stageLabels: Record<string, string>
   }
 
   onboarding: {
@@ -1708,6 +1888,26 @@ export interface Translations {
     change: string
     startChatting: string
     docs: (provider: string) => string
+    /** Clean prompt shown when a provider is seeded (DeepSeek) but its key is
+     *  missing — replaces the raw "no usable credentials" runtime error. */
+    addKeyToStart: string
+    /** "More — needs VPN" disclosure label hiding the international providers. */
+    moreProvidersVpn: string
+    /** ApexNodes managed-LLM (zero-key) first-run sign-in panel. */
+    managed: {
+      subtitle: string
+      emailPlaceholder: string
+      passwordPlaceholder: string
+      signIn: string
+      signingIn: string
+      useOwnProvider: string
+      /** Divider between the email/password form and the browser-login buttons. */
+      dividerOr: string
+      /** "用 Google 登录" browser (loopback) sign-in button. */
+      signInGoogle: string
+      /** "用 APEX 登录" browser (loopback) sign-in button. */
+      signInApex: string
+    }
   }
 
   modelPicker: {
@@ -2060,6 +2260,9 @@ export interface Translations {
       goForward: string
       sendEdited: string
       attachingFile: string
+      compacting: string
+      steered: string
+      processOutput: string
     }
     approval: {
       gatewayDisconnected: string
@@ -2135,6 +2338,9 @@ export interface Translations {
         runningTool: (action: string) => string
       }
       titles: Record<ToolTitleKey, ToolTitleCopy>
+      searchResults: string
+      stdoutLabel: string
+      stderrLabel: string
     }
   }
 
@@ -2244,5 +2450,256 @@ export interface Translations {
       description: string
       toggle: string
     }
+  }
+
+  // hc-554 场景入口 — zero-state scenario shelf, the composer ✦ menu, the
+  // scenario detail overlay, and the sidebar channel-status manifestation.
+  scenarios: {
+    // Composer ✦ button + two-level menu (screen ②).
+    button: string
+    menuAria: string
+    searchPlaceholder: string
+    noMatches: string
+    comingSoon: string
+    // Zero-state shelf (screen ①).
+    allScenarios: string
+    sample: string
+    // Scenario detail overlay (样例 → preview before use).
+    detailHeading: string
+    labelCommand: string
+    labelInput: string
+    labelOutput: string
+    inputNone: string
+    use: string
+    // ① manifestation: sidebar channel status + "connect your agent" strip.
+    channelsTitle: string
+    connectTitle: string
+    phoneRemote: string
+    remoteOn: string
+    bindCta: string
+    // ④ manifestation: direct-connect banner + delegated/direct task card +
+    // connection-guidance (unconnected onboarding).
+    remoteBannerTitle: string
+    remoteBannerApproval: string
+    taskTargetCloud: string
+    taskTargetLocal: string
+    taskStatus: { running: string; done: string; failed: string; queued: string }
+    /** Relative "heartbeat N ago" for a task card. */
+    heartbeatAgo: (seconds: number) => string
+    guideTitle: string
+  }
+
+  // hc-417 "IM 入口" — consumer page to connect the local agent to an IM
+  // platform by scanning a QR / pasting one code. Deliberately jargon-free.
+  imEntry: {
+    title: string
+    intro: string
+    loading: string
+    connect: string
+    manage: string
+    comingSoon: string
+    connectedBadge: string
+    availableHeading: string
+    comingSoonHeading: string
+    boundHeading: string
+    boundEmpty: string
+    connectedOn: (when: string) => string
+    unbind: string
+    unbindConfirm: (name: string) => string
+    unbindDoneTitle: string
+    unbindDoneMessage: string
+    // Live connection state merged from /api/messaging/platforms.
+    liveState: { connected: string; pending: string; error: string; connecting: string; unknown: string }
+    // Per-channel display copy. Keyed by runtime Platform id.
+    channels: Record<string, { name: string; tagline: string }>
+    dialog: {
+      connectTitle: (name: string) => string
+      signInFirstTitle: string
+      signInFirst: string
+      issuing: string
+      scanPrompt: string
+      scanHint: (name: string) => string
+      openLink: string
+      // hc-538: WeChat expectation-gap note — the bound identity is a NEW iLink
+      // bot contact, not the user's own WeChat being taken over.
+      weixinBotNote: string
+      connecting: string
+      authorizedTitle: string
+      authorizedMessage: string
+      // Shown instead of authorizedMessage when the binding saved but the
+      // automatic backend restart failed — restart the app manually.
+      authorizedRestartHint: string
+      retry: string
+      cancel: string
+      close: string
+      comingSoonTitle: string
+      comingSoonBody: string
+      // paste-code template (framework; no available channel uses it yet).
+      pasteHeading: string
+      pasteLabel: string
+      pastePlaceholder: string
+      pasteSubmit: string
+      advanced: string
+      errors: {
+        sign_in: string
+        service_unavailable: string
+        rate_limited: string
+        expired: string
+        denied: string
+        request_failed: string
+        keychain: string
+      }
+    }
+    // hc-417 收口: Settings → 提供方 card summary + CTA (im-entry-settings.tsx).
+    // title/intro/boundEmpty above are reused verbatim for the card; these are
+    // the two settings-card-only additions.
+    settingsCard: {
+      boundSummary: (count: number) => string
+      openCta: string
+    }
+  }
+
+  home: {
+    title: string
+  }
+
+  /** Desktop auth boot-gate: the full-window login screen + bottom-left account
+   *  panel (Codex-faithful, minimal). Chinese-first (China-first Desktop V0.2). */
+  auth: {
+    /** Login screen. */
+    login: {
+      /** Hero line under the logo ("开始使用"). */
+      title: string
+      /** Primary button — sign in with the Apex account. */
+      signInApex: string
+      /** Secondary button — quick sign-in with Google. */
+      signInGoogle: string
+      /** In-flight label while a browser sign-in is pending. */
+      signingIn: string
+      /** Generic sign-in failure line. */
+      failed: string
+      /** Account-abnormal (403 account_disabled) message shown on the gate. */
+      accountDisabled: string
+      /** Session-expired / login-lost (401) message shown on the gate. */
+      sessionExpired: string
+    }
+    /** Bottom-left account panel + its popover menu. */
+    account: {
+      /** Fallback display name when no email/name is known (e.g. "账户"). */
+      fallbackName: string
+      /** Menu item — open profile. */
+      profile: string
+      /** Menu item — open settings. */
+      settings: string
+      /** Menu item — remaining usage / quota. */
+      usage: string
+      /** Menu item — sign out. */
+      logout: string
+      /** hc-519: title of the degraded card when the relay session expired and
+       *  self-heal failed (e.g. "登录已失效"). */
+      sessionExpiredTitle: string
+      /** hc-519: call-to-action subtitle on the degraded card (e.g.
+       *  "点击重新登录"). */
+      sessionExpiredAction: string
+    }
+  }
+
+  // Goal-mode long-running tasks (one-shot cron jobs surfaced on /tasks).
+  tasks: {
+    newTask: string
+    tabRunning: string
+    tabDone: string
+    emptyRunning: string
+    emptyDone: string
+    emptyDetail: string
+    pending: string
+    started: string
+    runAgain: string
+    goalLabel: string
+    goalPlaceholder: string
+    stuckHint: string
+    stuckDetail: string
+    waitingToStart: string
+    progressLabel: string
+    stepsOf: (completed: number, total: number) => string
+    currentStepLabel: string
+    latestOutputLabel: string
+    runHistory: string
+    noRuns: string
+    phases: Record<'done' | 'failed' | 'running', string>
+    newTaskTitle: string
+    newTaskDesc: string
+    goalRequired: string
+    timeRequired: string
+    whenLabel: string
+    whenNow: string
+    whenIn: string
+    whenAt: string
+    delayLabel: string
+    atLabel: string
+    persistNote: string
+    startTask: string
+    created: string
+    startedNow: string
+    failedStart: string
+    deleted: string
+    failedDelete: string
+    deleting: string
+    deleteTitle: string
+    deleteDescPrefix: string
+    deleteDescSuffix: string
+    // Native OS notification copy fired by the task notifier (store/tasks.ts).
+    notify: {
+      doneTitle: string
+      failedTitle: string
+    }
+  }
+
+  // 个人资料 — the profile stats page (avatar header + usage stats off the
+  // local analytics API). Distinct from `profiles` (the multi-profile manager).
+  profileStats: {
+    close: string
+    signedOut: string
+    loading: string
+    failedLoad: string
+    emptyTitle: string
+    emptyDesc: string
+    stats: {
+      sessions: string
+      tokens: string
+      apiCalls: string
+      activeDays: string
+      skillsUsed: string
+    }
+    heatmap: {
+      title: string
+      daily: string
+      weekly: string
+      cumulative: string
+      less: string
+      more: string
+      cellTitle: (date: string, tokens: string) => string
+    }
+    insights: {
+      title: string
+      busiestDay: string
+      avgPerActiveDay: string
+      topModel: string
+      longestStreak: string
+      streakDays: (days: number) => string
+      estimatedCost: string
+    }
+    topSkills: {
+      title: string
+      uses: (count: string) => string
+    }
+  }
+
+  operationStatus: {
+    browserActive: string
+    computerActive: string
+    computerWarning: string
+    running: string
+    stop: string
   }
 }

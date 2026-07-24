@@ -107,7 +107,13 @@ export const en: Translations = {
       signInFailed: 'Sign-in failed',
       signInToRemoteGateway: 'Sign in to remote gateway',
       signInWithProvider: provider => `Sign in with ${provider}`,
-      identityProvider: 'your identity provider'
+      identityProvider: 'your identity provider',
+      errorMap: {
+        cancelled: 'Install cancelled.',
+        prerequisites: "Couldn't set up the required environment. Repair the install or check the logs below.",
+        network: 'Network issue during install. Check your connection, then retry.',
+        unknown: "APEX couldn't finish starting. Try the recovery steps below."
+      }
     }
   },
 
@@ -509,7 +515,16 @@ export const en: Translations = {
       justNow: 'just now',
       minAgo: count => `${count} min ago`,
       hoursAgo: count => `${count} hours ago`,
-      daysAgo: count => `${count} days ago`
+      daysAgo: count => `${count} days ago`,
+      // hc-447: 更新日志 (product-update changelog) entry — reads the hc-446
+      // announcement feed (same "you can now…" copy the web /app/whats-new page
+      // shows), scoped to the signed-in ApexNodes account.
+      changelogTitle: 'Changelog',
+      changelogIntro: "See what's new in APEX.",
+      changelogView: 'View',
+      changelogEmpty: 'No announcements yet — check back soon.',
+      changelogLoadError: "Couldn't load the changelog. Check your connection and try again.",
+      changelogNeedsSignIn: 'Sign in to your ApexNodes account to see product updates.'
     },
     config: {
       none: 'None',
@@ -876,6 +891,114 @@ export const en: Translations = {
         failedSelect: backend => `Failed to select ${backend}`,
         needsSetupHint: 'You can select this backend now — commands will fail until setup is complete.'
       }
+    },
+    agentAuth: {
+      title: 'Coding agent account',
+      intro:
+        'Passthrough and local dispatch use Claude Code and Codex signed in on this machine. Connect them here — no terminal needed.',
+      checking: 'Checking…',
+      refresh: 'Recheck',
+      stateReady: 'Connected',
+      stateReadyEmail: email => `Connected · ${email}`,
+      stateLoggedOut: 'Not signed in',
+      stateUnreachable: 'Signed in, but the API is unreachable — a network proxy is needed',
+      stateNoCli: 'Not installed on this machine',
+      stateUnknown: 'Status unavailable',
+      connect: 'Connect account',
+      reconnect: 'Reconnect',
+      fixNetwork: 'Set up network proxy',
+      installHint: 'Install it, then reconnect',
+      opening: 'Opening your browser…',
+      waitingBrowser: 'Finish signing in in your browser — this updates automatically.',
+      completed: 'Signed in.',
+      guideIntro: 'Automatic sign-in is unavailable. Run this in a terminal, then recheck:',
+      copyCommand: 'Copy command',
+      copied: 'Copied',
+      proxyTitle: 'Network proxy',
+      proxyIntro:
+        'Some regions block the agent APIs. APEX can route the agent through a proxy while keeping mainland-China links direct.',
+      proxyModeAuto: 'Follow system',
+      proxyModeAutoHint: 'Use the macOS system proxy automatically (recommended).',
+      proxyModeCustom: 'Custom',
+      proxyModeOff: 'Off',
+      proxyModeOffHint: 'Never route the agent through a proxy.',
+      proxyDetected: url => `Detected system proxy · ${url}`,
+      proxyNone: 'No system proxy detected.',
+      proxyCustomLabel: 'Proxy URL',
+      proxyCustomPlaceholder: 'http://127.0.0.1:1081',
+      proxyInvalid: 'Enter a valid proxy URL (e.g. http://127.0.0.1:1081).',
+      save: 'Save',
+      saved: 'Proxy settings saved.'
+    },
+    localAgent: {
+      title: 'Local agent scheduling',
+      intro:
+        'Let your cloud assistant hand a coding task to an agent on this computer (Claude Code, Codex or Cursor) — it runs here with your own tools and credentials, and the result flows back. Nothing runs unless you turn this on.',
+      enableLabel: 'Allow my cloud assistant to use this computer',
+      enableHint:
+        'When on, this computer connects to APEX and stays ready for tasks while the app is open. Dangerous actions always ask for your approval here first.',
+      statusLabel: 'Status',
+      statusDormant: 'Off',
+      statusConnecting: 'Connecting…',
+      statusOnline: 'Online — ready for tasks',
+      statusOffline: 'Reconnecting…',
+      statusError: 'Sign in to your APEX account to connect',
+      deviceNameLabel: 'Device name',
+      deviceNamePlaceholder: 'This computer',
+      unregister: 'Unregister this device',
+      unregisterConfirm:
+        'Unregister this computer? It stops receiving tasks until you turn scheduling back on.',
+      signInFirst: 'Sign in to your APEX account first.',
+      saved: 'Device name saved.',
+      enableFailed: 'Could not save — secure storage is unavailable on this system.',
+      engineOutdated: value =>
+        `The installed engine is too old for local agent dispatch (needs ${value} or later). Update it in Settings › About, otherwise tool calls may silently fail.`
+    },
+    personalization: {
+      personalityTitle: 'Personality',
+      personalityIntro: 'Choose how APEX talks to you. New chats start with this style.',
+      soulTitle: 'Personality file (SOUL.md)',
+      soulIntro: 'The active profile’s SOUL.md — the system prompt and personality instructions APEX starts every chat with.'
+    },
+    // hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu app
+    // down to the desktop so the assistant can read/write Feishu docs, sheets and
+    // messages.
+    feishu: {
+      title: 'Feishu / Lark',
+      intro:
+        'Let the assistant work in your Feishu — read and write docs, sheets and messages. It uses the Feishu app you already set up in the cloud.',
+      connectedTitle: 'Connected',
+      connectedTo: agent => `Synced from “${agent}”`,
+      connectedGeneric: 'Feishu credential synced to this device.',
+      // Status badges keyed to the hc-190 probe verdict.
+      statusOk: 'Working',
+      statusExpired: 'Login expired',
+      statusInvalid: 'Credential rejected',
+      statusStale:
+        'This credential is flagged as expired in the cloud. Re-bind in the browser, then sync again.',
+      sync: 'Sync from cloud',
+      resync: 'Re-sync',
+      syncing: 'Syncing…',
+      disconnect: 'Disconnect',
+      disconnectConfirm:
+        'Disconnect Feishu on this device? Your cloud binding stays intact; the assistant just stops using Feishu here until you sync again.',
+      // Signed-out gate: sync needs a managed sign-in (its login JWT).
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect Feishu.',
+      // No cloud binding yet → guide to the web flow.
+      noEntryTitle: 'No Feishu app yet',
+      noEntry:
+        'You have not set up a Feishu app in the cloud yet. Open the web binding flow, scan the QR to create your app, then come back and sync.',
+      openBind: 'Set up in browser',
+      afterBind: 'Finished binding? Sync now.',
+      // Toasts.
+      syncedTitle: 'Feishu connected',
+      syncedMessage: 'Your assistant can now work in Feishu. Restarting to apply…',
+      disconnectedTitle: 'Feishu disconnected',
+      disconnectedMessage: 'The assistant will stop using Feishu on this device.',
+      syncFailed: 'Could not sync your Feishu credential. Please try again.',
+      sessionExpired: 'Your session expired. Sign in again, then sync.',
+      loading: 'Checking Feishu…'
     }
   },
 
@@ -1717,6 +1840,14 @@ export const en: Translations = {
       ageDay: 'd',
       ageHour: 'h',
       ageMin: 'm'
+    },
+    engineUpdate: {
+      found: 'New engine available',
+      updating: 'Updating engine…',
+      failedRolledBack: 'Update failed, rolled back'
+    },
+    shellUpdate: {
+      restartToUpdate: version => (version ? `Restart to update ${version}` : 'Restart to update')
     }
   },
 
@@ -1848,6 +1979,51 @@ export const en: Translations = {
         description: 'Walk through how the selected code works and link to the key files.',
         text: 'Please explain how this works and point me to the key files.'
       }
+    },
+    approvalMode: {
+      label: 'Approvals',
+      manual: { label: 'Manual', desc: 'Ask only before an operation flagged as dangerous' },
+      smart: { label: 'Smart', desc: 'AI weighs the risk, then asks when needed' },
+      full: { label: 'Full access', desc: 'Unrestricted access to the internet and any file on your computer' }
+    },
+    projectPicker: {
+      label: 'Project',
+      select: 'Select project',
+      searchPlaceholder: 'Search projects…',
+      recentHeading: 'Recent projects',
+      noRecent: 'No projects yet',
+      noMatches: 'No matching projects',
+      useExisting: 'Open existing folder…',
+      newBlank: 'New blank project…',
+      newTitle: 'New project',
+      namePlaceholder: 'Project name',
+      locationLabel: 'Location',
+      chooseParent: 'Choose parent folder…',
+      create: 'Create',
+      back: 'Back',
+      useExistingTitle: 'Choose a project folder',
+      chooseParentTitle: 'Choose where to create the project',
+      pickFailed: 'Could not open the folder picker',
+      createFailed: 'Could not create the project folder'
+    },
+    capabilities: {
+      enabledLabel: 'Enabled skills',
+      unused: 'Unused skills',
+      connectors: 'Connectors',
+      connectorsHint: 'Feishu · WeChat…',
+      noneEnabled: 'No skills enabled yet',
+      browseDesc: 'Toggle one on — it turns on for new sessions and moves up into this menu.',
+      browseDescEnabled: 'Toggle one off — it stops applying to new sessions and moves back to Unused.',
+      searchPlaceholder: 'Search skills…',
+      allEnabled: 'Every skill is enabled 🎉',
+      loading: 'Loading skills…',
+      toggle: (name: string) => `Enable ${name}`,
+      disable: (name: string) => `Disable ${name}`,
+      generateLabel: 'Generate',
+      generateImage: 'Image',
+      generateVideo: 'Video',
+      generateImageStarter: "I want to generate an image. Here's the idea: ",
+      generateVideoStarter: "I want to make a video. Here's the idea: "
     }
   },
 
@@ -2002,7 +2178,35 @@ export const en: Translations = {
     transcriptSaved: 'Full transcript saved to',
     copiedOutput: 'Copied!',
     copyOutput: 'Copy output',
-    reloadRetry: 'Reload and retry'
+    reloadRetry: 'Reload and retry',
+    // Keyed by the raw bootstrap stage id (covers both the install.ps1 and
+    // install.sh naming schemes). Unknown ids fall back to formatStageName.
+    stageLabels: {
+      // prerequisites (posix single stage + windows sub-stages)
+      prerequisites: 'Prerequisites',
+      uv: 'Prerequisites',
+      python: 'Prerequisites',
+      git: 'Prerequisites',
+      node: 'Prerequisites',
+      'system-packages': 'Prerequisites',
+      // install
+      repository: 'Repository',
+      venv: 'Virtual env',
+      'python-deps': 'Python deps',
+      dependencies: 'Python deps',
+      'node-deps': 'Node deps',
+      desktop: 'Desktop app',
+      // finalize / config
+      path: 'Path',
+      config: 'Config',
+      'config-templates': 'Config',
+      'platform-sdks': 'Config',
+      setup: 'Setup',
+      configure: 'Setup',
+      gateway: 'Gateway',
+      complete: 'Complete',
+      'bootstrap-marker': 'Complete'
+    }
   },
 
   onboarding: {
@@ -2079,7 +2283,20 @@ export const en: Translations = {
     price: (input, output) => `${input} in / ${output} out per Mtok`,
     change: 'Change',
     startChatting: 'Begin',
-    docs: provider => `${provider} docs`
+    docs: provider => `${provider} docs`,
+    addKeyToStart: 'Your provider is selected — just add its API key to start chatting.',
+    moreProvidersVpn: 'More (needs a VPN)',
+    managed: {
+      subtitle: 'Sign in with your APEX account to start chatting right away — no API key needed.',
+      emailPlaceholder: 'Email',
+      passwordPlaceholder: 'Password',
+      signIn: 'Sign in & start',
+      signingIn: 'Signing in…',
+      useOwnProvider: 'Use my own provider',
+      dividerOr: 'or',
+      signInGoogle: 'Sign in with Google',
+      signInApex: 'Sign in with APEX'
+    }
   },
 
   modelPicker: {
@@ -2439,7 +2656,10 @@ export const en: Translations = {
       restoreNext: 'Restore next checkpoint',
       goForward: 'Go forward',
       sendEdited: 'Send edited message',
-      attachingFile: 'Attaching…'
+      attachingFile: 'Attaching…',
+      compacting: 'Summarizing thread',
+      steered: 'steered',
+      processOutput: 'output'
     },
     approval: {
       gatewayDisconnected: 'Hermes gateway is not connected',
@@ -2550,7 +2770,10 @@ export const en: Translations = {
         web_extract: { done: 'Read webpage', pending: 'Reading webpage', pendingAction: 'Reading' },
         web_search: { done: 'Searched web', pending: 'Searching web', pendingAction: 'Searching' },
         write_file: { done: 'Edited file', pending: 'Editing file', pendingAction: 'Editing' }
-      }
+      },
+      searchResults: 'Search results',
+      stdoutLabel: 'stdout',
+      stderrLabel: 'stderr'
     }
   },
 
@@ -2662,5 +2885,237 @@ export const en: Translations = {
       description: 'Displays the mobile sidebar.',
       toggle: 'Toggle Sidebar'
     }
+  },
+
+  scenarios: {
+    button: 'Scenarios',
+    menuAria: 'Scenarios',
+    searchPlaceholder: 'Search scenarios…',
+    noMatches: 'No matching scenarios',
+    comingSoon: 'Coming soon',
+    allScenarios: 'All scenarios',
+    sample: 'Sample',
+    detailHeading: 'Scenario details',
+    labelCommand: 'Command',
+    labelInput: 'Input',
+    labelOutput: 'Output',
+    inputNone: 'No input needed — runs right away',
+    use: 'Use scenario',
+    channelsTitle: 'Channels · where your agent lives',
+    connectTitle: 'Connect your agent',
+    phoneRemote: 'Phone remote',
+    remoteOn: 'On · /cc',
+    bindCta: 'Scan to bind',
+    remoteBannerTitle: 'Phone is remote-controlling this machine · Feishu /cc',
+    remoteBannerApproval: 'Risky actions still need manual approval',
+    taskTargetCloud: 'Delegated to cloud agent',
+    taskTargetLocal: 'Direct on this machine',
+    taskStatus: { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return 'heartbeat just now'}
+
+      if (seconds < 60) {return `heartbeat ${seconds}s ago`}
+
+      if (seconds < 3600) {return `heartbeat ${Math.floor(seconds / 60)}m ago`}
+
+      return `heartbeat ${Math.floor(seconds / 3600)}h ago`
+    },
+    guideTitle: 'Connect a channel so your agent reaches you everywhere'
+  },
+
+  imEntry: {
+    title: 'Messaging',
+    intro: 'Let your assistant reply for you in the chat apps you already use — scan a code to connect one.',
+    loading: 'Loading channels…',
+    connect: 'Connect',
+    manage: 'Manage',
+    comingSoon: 'Coming soon',
+    connectedBadge: 'Connected',
+    availableHeading: 'Available now',
+    comingSoonHeading: 'Coming soon',
+    boundHeading: 'Connected channels',
+    boundEmpty: 'No channels connected yet.',
+    connectedOn: when => `Connected ${when}`,
+    unbind: 'Disconnect',
+    unbindConfirm: name => `Disconnect ${name}? Your assistant will stop replying there on this device.`,
+    unbindDoneTitle: 'Disconnected',
+    unbindDoneMessage: 'Restarting to apply…',
+    liveState: {
+      connected: 'Connected',
+      pending: 'Restarting to apply',
+      error: 'Connection problem',
+      connecting: 'Connecting…',
+      unknown: 'Unknown'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Reply in your Feishu chats and groups.' },
+      dingtalk: { name: 'DingTalk', tagline: 'Reply in your DingTalk chats and groups.' },
+      weixin: { name: 'WeChat', tagline: 'Reply from your personal WeChat.' },
+      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' },
+      wecom: { name: 'WeCom', tagline: 'Reply in WeCom (Enterprise WeChat).' }
+    },
+    dialog: {
+      connectTitle: name => `Connect ${name}`,
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect a channel.',
+      issuing: 'Preparing your QR code…',
+      scanPrompt: 'Scan to connect',
+      scanHint: (name: string) => `Open ${name}, scan the code, and confirm on your phone.`,
+      openLink: 'Open link instead',
+      weixinBotNote:
+        "You're connecting a new bot contact (an iLink bot identity) — not taking over your own WeChat. The bot usually can't join ordinary group chats and works mainly through friend DMs.",
+      connecting: 'Connecting…',
+      authorizedTitle: 'Connected',
+      authorizedMessage: 'Restarting to apply…',
+      authorizedRestartHint: 'Connected and saved — restart the app to finish applying it.',
+      retry: 'Try again',
+      cancel: 'Cancel',
+      close: 'Close',
+      comingSoonTitle: 'Coming soon',
+      comingSoonBody: 'This channel isn’t available to connect yet. We’re working on it.',
+      pasteHeading: 'Paste your code',
+      pasteLabel: 'Connection code',
+      pastePlaceholder: 'Paste the code from the platform',
+      pasteSubmit: 'Connect',
+      advanced: 'Advanced',
+      errors: {
+        sign_in: 'Your session expired. Sign in again, then reconnect.',
+        service_unavailable: 'This channel isn’t open yet. Please try again later.',
+        rate_limited: 'A connection request is already in progress. Finish or wait for it to expire, then try again.',
+        expired: 'The code expired. Start again to get a new one.',
+        denied: 'The request was declined. Start again to retry.',
+        request_failed: 'Something went wrong. Please try again.',
+        keychain: 'Secure storage is off, so the connection wasn’t saved. Enable keychain access and try again.'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} ${count === 1 ? 'channel' : 'channels'} connected`,
+      openCta: 'Go to messaging'
+    }
+  },
+
+  home: {
+    title: 'What should we do?'
+  },
+
+  auth: {
+    login: {
+      title: 'Get started',
+      signInApex: 'Sign in with APEX',
+      signInGoogle: 'Continue with Google',
+      signingIn: 'Signing in…',
+      failed: 'Sign-in failed. Please try again.',
+      accountDisabled: 'Your account is unavailable. Please sign in again or contact support.',
+      sessionExpired: 'Your session has expired. Please sign in again.'
+    },
+    account: {
+      fallbackName: 'Account',
+      profile: 'Profile',
+      settings: 'Settings',
+      usage: 'Usage',
+      logout: 'Sign out',
+      sessionExpiredTitle: 'Session expired',
+      sessionExpiredAction: 'Click to sign in again'
+    }
+  },
+
+  tasks: {
+    newTask: 'New task',
+    tabRunning: 'Running',
+    tabDone: 'Done',
+    emptyRunning: 'No running tasks. Hand off a long job — it keeps working in the background.',
+    emptyDone: 'No finished tasks yet.',
+    emptyDetail: 'Kick off a long-running task and follow its progress here.',
+    pending: 'Waiting to start',
+    started: 'Started',
+    runAgain: 'Run again',
+    goalLabel: 'Goal',
+    goalPlaceholder: 'Research the top 5 competitors and write a comparison report…',
+    stuckHint: 'No recent activity',
+    stuckDetail:
+      'This task has shown no activity for a while and may be stuck. Open its run to check, or start it again.',
+    waitingToStart: 'Waiting for the task to start…',
+    progressLabel: 'Progress',
+    stepsOf: (completed, total) => `${completed} / ${total} steps`,
+    currentStepLabel: 'Now:',
+    latestOutputLabel: 'Latest output',
+    runHistory: 'Runs',
+    noRuns: 'No runs yet.',
+    phases: {
+      running: 'Running',
+      done: 'Done',
+      failed: 'Failed'
+    },
+    newTaskTitle: 'New task',
+    newTaskDesc: 'Describe the goal. The agent runs it in the background and notifies you when it finishes.',
+    goalRequired: 'Describe the goal first.',
+    timeRequired: 'Pick a start time first.',
+    whenLabel: 'Start',
+    whenNow: 'Now',
+    whenIn: 'After a delay',
+    whenAt: 'At a specific time',
+    delayLabel: 'Delay',
+    atLabel: 'Start time',
+    persistNote: 'Tasks run in the backend and survive app restarts. They also appear on the Scheduled page.',
+    startTask: 'Start task',
+    created: 'Task created',
+    startedNow: 'Task started',
+    failedStart: 'Could not start the task',
+    deleted: 'Task deleted',
+    failedDelete: 'Could not delete the task',
+    deleting: 'Deleting…',
+    deleteTitle: 'Delete this task?',
+    deleteDescPrefix: 'This permanently removes ',
+    deleteDescSuffix: ' and its schedule. Runs already recorded stay in your session history.',
+    notify: {
+      doneTitle: 'Task finished',
+      failedTitle: 'Task failed'
+    }
+  },
+
+  profileStats: {
+    close: 'Close profile',
+    signedOut: 'Not signed in',
+    loading: 'Loading usage stats…',
+    failedLoad: 'Failed to load usage stats',
+    emptyTitle: 'No activity yet',
+    emptyDesc: 'Start chatting and your usage stats will show up here.',
+    stats: {
+      sessions: 'Sessions',
+      tokens: 'Total tokens',
+      apiCalls: 'API calls',
+      activeDays: 'Active days',
+      skillsUsed: 'Skills used'
+    },
+    heatmap: {
+      title: 'Token activity',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      cumulative: 'Cumulative',
+      less: 'Less',
+      more: 'More',
+      cellTitle: (date, tokens) => `${date} · ${tokens} tokens`
+    },
+    insights: {
+      title: 'Activity insights',
+      busiestDay: 'Busiest day',
+      avgPerActiveDay: 'Avg tokens per active day',
+      topModel: 'Most used model',
+      longestStreak: 'Longest streak',
+      streakDays: days => (days === 1 ? '1 day' : `${days} days`),
+      estimatedCost: 'Estimated cost'
+    },
+    topSkills: {
+      title: 'Top plugins',
+      uses: count => `${count} uses`
+    }
+  },
+
+  operationStatus: {
+    browserActive: 'Controlling browser',
+    computerActive: 'Controlling computer',
+    computerWarning: 'AI is controlling your computer',
+    running: 'Running',
+    stop: 'Stop'
   }
 }

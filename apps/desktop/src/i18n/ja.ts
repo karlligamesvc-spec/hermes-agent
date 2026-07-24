@@ -108,7 +108,13 @@ export const ja = defineLocale({
       signInFailed: 'サインインに失敗しました',
       signInToRemoteGateway: 'リモートゲートウェイにサインイン',
       signInWithProvider: provider => `${provider} でサインイン`,
-      identityProvider: 'ID プロバイダー'
+      identityProvider: 'ID プロバイダー',
+      errorMap: {
+        cancelled: 'インストールをキャンセルしました。',
+        prerequisites: '必要な環境を準備できませんでした。インストールを修復するか、下のログを確認してください。',
+        network: 'インストール中にネットワークの問題が発生しました。接続を確認してから再試行してください。',
+        unknown: 'APEX の起動を完了できませんでした。以下の回復手順をお試しください。'
+      }
     }
   },
 
@@ -607,7 +613,16 @@ export const ja = defineLocale({
       justNow: 'たった今',
       minAgo: count => `${count} 分前`,
       hoursAgo: count => `${count} 時間前`,
-      daysAgo: count => `${count} 日前`
+      daysAgo: count => `${count} 日前`,
+      // hc-447: 更新日誌 (changelog) エントリ —— hc-446 のお知らせフィード
+      // (web /app/whats-new と同じ「今できること」コピー) を、サインイン中の
+      // ApexNodes アカウントの範囲で読み込みます。
+      changelogTitle: 'アップデート情報',
+      changelogIntro: 'APEX の最新情報を確認できます。',
+      changelogView: '表示',
+      changelogEmpty: 'まだお知らせはありません。しばらくしてからご確認ください。',
+      changelogLoadError: 'アップデート情報を読み込めませんでした。接続を確認してもう一度お試しください。',
+      changelogNeedsSignIn: 'ApexNodes アカウントにサインインすると製品アップデートを確認できます。'
     },
     config: {
       none: 'なし',
@@ -908,6 +923,71 @@ export const ja = defineLocale({
         failedSelect: backend => `${backend} の選択に失敗しました`,
         needsSetupHint: 'このバックエンドは今すぐ選択できますが、セットアップが完了するまでコマンドは失敗します。'
       }
+    },
+    agentAuth: {
+      title: 'コーディングエージェントのアカウント',
+      intro:
+        'パススルーとローカル実行は、このマシンでサインイン済みの Claude Code と Codex を使います。ターミナル不要でここから接続できます。',
+      checking: '確認中…',
+      refresh: '再確認',
+      stateReady: '接続済み',
+      stateReadyEmail: email => `接続済み · ${email}`,
+      stateLoggedOut: '未サインイン',
+      stateUnreachable: 'サインイン済みですが API に到達できません — ネットワークプロキシが必要です',
+      stateNoCli: 'このマシンに未インストール',
+      stateUnknown: 'ステータスを取得できません',
+      connect: 'アカウントを接続',
+      reconnect: '再接続',
+      fixNetwork: 'ネットワークプロキシを設定',
+      installHint: 'インストール後、再接続してください',
+      opening: 'ブラウザを開いています…',
+      waitingBrowser: 'ブラウザでサインインを完了してください — 自動で更新されます。',
+      completed: 'サインインしました。',
+      guideIntro: '自動サインインを利用できません。ターミナルで次を実行してから再確認してください:',
+      copyCommand: 'コマンドをコピー',
+      copied: 'コピーしました',
+      proxyTitle: 'ネットワークプロキシ',
+      proxyIntro:
+        '一部の地域ではエージェントの API がブロックされます。APEX は中国本土向けリンクを直結のまま、エージェントだけをプロキシ経由にできます。',
+      proxyModeAuto: 'システムに従う',
+      proxyModeAutoHint: 'macOS のシステムプロキシを自動的に使用します（推奨）。',
+      proxyModeCustom: 'カスタム',
+      proxyModeOff: 'オフ',
+      proxyModeOffHint: 'エージェントを決してプロキシ経由にしません。',
+      proxyDetected: url => `システムプロキシを検出 · ${url}`,
+      proxyNone: 'システムプロキシは検出されませんでした。',
+      proxyCustomLabel: 'プロキシ URL',
+      proxyCustomPlaceholder: 'http://127.0.0.1:1081',
+      proxyInvalid: '有効なプロキシ URL を入力してください（例: http://127.0.0.1:1081）。',
+      save: '保存',
+      saved: 'プロキシ設定を保存しました。'
+    },
+    localAgent: {
+      title: 'ローカルエージェントのスケジューリング',
+      intro:
+        'クラウドアシスタントがコーディングタスクをこのコンピューターのエージェント(Claude Code、Codex、Cursor)に任せられるようにします。タスクはこの端末であなた自身のツールと認証情報を使って実行され、結果がクラウドアシスタントに返ります。オンにしない限り何も実行されません。',
+      enableLabel: 'クラウドアシスタントにこのコンピューターの利用を許可',
+      enableHint:
+        'オンにすると、アプリの起動中はこのコンピューターが APEX に接続してタスクを待機します。危険な操作は必ず先にこの端末で承認を求めます。',
+      statusLabel: 'ステータス',
+      statusDormant: 'オフ',
+      statusConnecting: '接続中…',
+      statusOnline: 'オンライン — タスク待機中',
+      statusOffline: '再接続中…',
+      statusError: '接続するには APEX アカウントにサインインしてください',
+      deviceNameLabel: 'デバイス名',
+      deviceNamePlaceholder: 'このコンピューター',
+      unregister: 'このデバイスの登録を解除',
+      unregisterConfirm: 'このコンピューターの登録を解除しますか?スケジューリングを再度オンにするまでタスクを受け取りません。',
+      signInFirst: '先に APEX アカウントにサインインしてください。',
+      saved: 'デバイス名を保存しました。',
+      enableFailed: '保存できませんでした — このシステムではセキュアストレージを利用できません。',
+      engineOutdated: value =>
+        `インストール済みエンジンが古すぎます（ローカルエージェント実行には ${value} 以降が必要）。「設定 › 情報」でエンジンを更新してください。更新しないとツール呼び出しが黙って失敗する場合があります。`
+    },
+    personalization: {
+      personalityTitle: '人格',
+      personalityIntro: 'APEX の話し方を選べます。新しいチャットはこのスタイルで始まります。'
     }
   },
 
@@ -1772,6 +1852,51 @@ export const ja = defineLocale({
         description: '選択したコードがどのように機能するかを説明し、主要なファイルにリンクします。',
         text: 'これがどのように機能するか説明し、主要なファイルを教えてください。'
       }
+    },
+    approvalMode: {
+      label: '承認',
+      manual: { label: '手動承認', desc: '危険と判定された操作のみ承認を求める' },
+      smart: { label: 'スマート承認', desc: 'AI がリスクを評価し、必要に応じて承認を求める' },
+      full: { label: 'フルアクセス', desc: 'インターネットとPC上のあらゆるファイルに無制限にアクセス' }
+    },
+    projectPicker: {
+      label: 'プロジェクト',
+      select: 'プロジェクトを選択',
+      searchPlaceholder: 'プロジェクトを検索…',
+      recentHeading: '最近のプロジェクト',
+      noRecent: 'プロジェクトはまだありません',
+      noMatches: '一致するプロジェクトがありません',
+      useExisting: '既存のフォルダを開く…',
+      newBlank: '新しい空のプロジェクト…',
+      newTitle: '新しいプロジェクト',
+      namePlaceholder: 'プロジェクト名',
+      locationLabel: '場所',
+      chooseParent: '親フォルダを選択…',
+      create: '作成',
+      back: '戻る',
+      useExistingTitle: 'プロジェクトフォルダを選択',
+      chooseParentTitle: 'プロジェクトの作成場所を選択',
+      pickFailed: 'フォルダ選択を開けませんでした',
+      createFailed: 'プロジェクトフォルダを作成できませんでした'
+    },
+    capabilities: {
+      enabledLabel: '有効なスキル',
+      unused: '未使用のスキル',
+      connectors: 'コネクタ',
+      connectorsHint: 'Feishu · WeChat…',
+      noneEnabled: '有効なスキルはまだありません',
+      browseDesc: 'オンにすると新しいセッションで有効になり、このメニューの一段目に上がります。',
+      browseDescEnabled: 'オフにすると新しいセッションで無効になり、「未使用のスキル」に戻ります。',
+      searchPlaceholder: 'スキルを検索…',
+      allEnabled: 'すべてのスキルが有効です 🎉',
+      loading: 'スキルを読み込み中…',
+      toggle: name => `${name} を有効化`,
+      disable: name => `${name} を無効化`,
+      generateLabel: '生成',
+      generateImage: '画像',
+      generateVideo: '動画',
+      generateImageStarter: '画像を生成したいです。アイデアは:',
+      generateVideoStarter: '動画を作りたいです。アイデアは:'
     }
   },
 
@@ -1928,7 +2053,30 @@ export const ja = defineLocale({
     transcriptSaved: 'フルトランスクリプトを保存しました:',
     copiedOutput: 'コピーしました！',
     copyOutput: '出力をコピー',
-    reloadRetry: '再読み込みして再試行'
+    reloadRetry: '再読み込みして再試行',
+    stageLabels: {
+      prerequisites: '前提環境',
+      uv: '前提環境',
+      python: '前提環境',
+      git: '前提環境',
+      node: '前提環境',
+      'system-packages': '前提環境',
+      repository: 'プログラム取得',
+      venv: 'Python 環境',
+      'python-deps': 'Python 依存関係',
+      dependencies: 'Python 依存関係',
+      'node-deps': 'Node 依存関係',
+      desktop: 'デスクトップアプリ',
+      path: 'パス設定',
+      config: '設定の書き込み',
+      'config-templates': '設定の書き込み',
+      'platform-sdks': '設定の書き込み',
+      setup: '初期化',
+      configure: '初期化',
+      gateway: 'ゲートウェイ起動',
+      complete: '完了',
+      'bootstrap-marker': '完了'
+    }
   },
 
   onboarding: {
@@ -2005,7 +2153,9 @@ export const ja = defineLocale({
     price: (input, output) => `${input} 入力 / ${output} 出力 per Mtok`,
     change: '変更',
     startChatting: '始める',
-    docs: provider => `${provider} ドキュメント`
+    docs: provider => `${provider} ドキュメント`,
+    addKeyToStart: 'プロバイダーは選択済みです — API キーを入力すればチャットを始められます。',
+    moreProvidersVpn: 'その他（VPN が必要）'
   },
 
   modelPicker: {
@@ -2359,7 +2509,10 @@ export const ja = defineLocale({
       restoreNext: '次のチェックポイントに戻す',
       goForward: '進む',
       sendEdited: '編集済みメッセージを送信',
-      attachingFile: '添付中…'
+      attachingFile: '添付中…',
+      compacting: 'スレッドを要約中',
+      steered: '誘導済み',
+      processOutput: '出力'
     },
     approval: {
       gatewayDisconnected: 'Hermes ゲートウェイが接続されていません',
@@ -2486,7 +2639,10 @@ export const ja = defineLocale({
         },
         web_search: { done: 'Web を検索しました', pending: 'Web を検索中', pendingAction: '検索中' },
         write_file: { done: 'ファイルを編集しました', pending: 'ファイルを編集中', pendingAction: '編集中' }
-      }
+      },
+      searchResults: '検索結果',
+      stdoutLabel: '出力',
+      stderrLabel: 'エラー出力'
     }
   },
 
@@ -2599,6 +2755,138 @@ export const ja = defineLocale({
       title: 'サイドバー',
       description: 'モバイルサイドバーを表示します。',
       toggle: 'サイドバーを切り替え'
+    }
+  },
+
+  scenarios: {
+    button: 'シナリオ',
+    menuAria: 'シナリオ',
+    searchPlaceholder: 'シナリオを検索…',
+    noMatches: '一致するシナリオがありません',
+    comingSoon: '近日公開',
+    allScenarios: 'すべてのシナリオ',
+    sample: 'サンプル',
+    detailHeading: 'シナリオの詳細',
+    labelCommand: 'コマンド',
+    labelInput: '入力',
+    labelOutput: '成果物',
+    inputNone: '入力不要 — すぐに実行',
+    use: 'このシナリオを使う',
+    channelsTitle: 'チャネル · 分身の所在',
+    connectTitle: '分身を接続',
+    phoneRemote: 'スマホ遠隔',
+    remoteOn: 'オン · /cc',
+    bindCta: 'スキャンして接続',
+    remoteBannerTitle: 'スマホがこの端末を遠隔操作中 · Feishu /cc',
+    remoteBannerApproval: '危険な操作は手動承認が必要です',
+    taskTargetCloud: 'クラウド分身に委任',
+    taskTargetLocal: 'この端末で直結',
+    taskStatus: { running: '実行中', done: '完了', failed: '失敗', queued: '待機中' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return 'ハートビート たった今'}
+
+      if (seconds < 60) {return `ハートビート ${seconds}秒前`}
+
+      if (seconds < 3600) {return `ハートビート ${Math.floor(seconds / 60)}分前`}
+
+      return `ハートビート ${Math.floor(seconds / 3600)}時間前`
+    },
+    guideTitle: 'チャネルを接続すれば、分身がどこでも届く'
+  },
+
+  imEntry: {
+    title: 'メッセージ連携',
+    intro: 'いつものチャットアプリで AI アシスタントに代わりに返信してもらいましょう。コードをスキャンして連携します。',
+    loading: 'チャンネルを読み込み中…',
+    connect: '連携',
+    manage: '管理',
+    comingSoon: '近日対応',
+    connectedBadge: '連携済み',
+    availableHeading: '今すぐ利用可能',
+    comingSoonHeading: '近日対応',
+    boundHeading: '連携済みチャンネル',
+    boundEmpty: 'まだ連携したチャンネルはありません。',
+    connectedOn: when => `${when} に連携`,
+    unbind: '解除',
+    unbindConfirm: name => `${name} を解除しますか？このデバイスでは AI アシスタントがそこで返信しなくなります。`,
+    unbindDoneTitle: '解除しました',
+    unbindDoneMessage: '適用のため再起動しています…',
+    liveState: {
+      connected: '連携済み',
+      pending: '再起動後に反映',
+      error: '接続の問題',
+      connecting: '接続中…',
+      unknown: '不明'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Feishu のチャットやグループで返信します。' },
+      dingtalk: { name: 'DingTalk', tagline: 'DingTalk のチャットやグループで返信します。' },
+      weixin: { name: 'WeChat', tagline: '個人の WeChat で返信します。' },
+      qqbot: { name: 'QQ', tagline: 'QQ のチャットやグループで返信します。' },
+      wecom: { name: 'WeCom', tagline: 'WeCom（企業微信）で返信します。' }
+    },
+    dialog: {
+      connectTitle: name => `${name} を連携`,
+      signInFirstTitle: '先にサインイン',
+      signInFirst: 'APEX アカウントにサインインするとチャンネルを連携できます。',
+      issuing: 'QR コードを準備中…',
+      scanPrompt: 'スキャンして連携',
+      scanHint: (name: string) => `${name} を開いて QR コードをスキャンし、スマホで確認してください。`,
+      openLink: 'リンクで開く',
+      weixinBotNote:
+        '接続するのは新しいボットの連絡先（iLink ボット）で、あなた自身の WeChat が乗っ取られるわけではありません。このボットは通常グループチャットには参加できず、主に友だちとの個人チャットで使います。',
+      connecting: '接続中…',
+      authorizedTitle: '連携しました',
+      authorizedMessage: '適用のため再起動しています…',
+      authorizedRestartHint: '連携して保存しました——適用を完了するにはアプリを再起動してください。',
+      retry: '再試行',
+      cancel: 'キャンセル',
+      close: '閉じる',
+      comingSoonTitle: '近日対応',
+      comingSoonBody: 'このチャンネルはまだ連携できません。準備中です。',
+      pasteHeading: 'コードを貼り付け',
+      pasteLabel: '連携コード',
+      pastePlaceholder: 'プラットフォームのコードを貼り付け',
+      pasteSubmit: '連携',
+      advanced: '詳細設定',
+      errors: {
+        sign_in: 'セッションが期限切れです。サインインし直してから連携してください。',
+        service_unavailable: 'このチャンネルはまだ開放されていません。後でお試しください。',
+        rate_limited: '連携リクエストがすでに進行中です。完了するか期限切れを待ってから、もう一度お試しください。',
+        expired: 'コードの有効期限が切れました。もう一度開始してください。',
+        denied: 'リクエストが拒否されました。もう一度お試しください。',
+        request_failed: '問題が発生しました。もう一度お試しください。',
+        keychain: '安全なストレージが無効なため連携を保存できませんでした。キーチェーンアクセスを有効にしてください。'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count}件のチャンネルと連携済み`,
+      openCta: 'メッセージ連携を開く'
+    }
+  },
+
+  home: {
+    title: '何をしましょうか？'
+  },
+
+  auth: {
+    login: {
+      title: 'はじめる',
+      signInApex: 'APEX アカウントでログイン',
+      signInGoogle: 'Google でログイン',
+      signingIn: 'ログイン中…',
+      failed: 'ログインに失敗しました。もう一度お試しください。',
+      accountDisabled: 'アカウントが利用できません。再度ログインするかサポートにお問い合わせください。',
+      sessionExpired: 'セッションの有効期限が切れました。再度ログインしてください。'
+    },
+    account: {
+      fallbackName: 'アカウント',
+      profile: 'プロフィール',
+      settings: '設定',
+      usage: '使用量',
+      logout: 'ログアウト',
+      sessionExpiredTitle: 'ログインが無効です',
+      sessionExpiredAction: 'クリックして再ログイン'
     }
   }
 })

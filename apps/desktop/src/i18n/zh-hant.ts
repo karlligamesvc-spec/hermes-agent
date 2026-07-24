@@ -105,7 +105,13 @@ export const zhHant = defineLocale({
       signInFailed: '登入失敗',
       signInToRemoteGateway: '登入遠端閘道',
       signInWithProvider: provider => `使用 ${provider} 登入`,
-      identityProvider: '您的身分提供方'
+      identityProvider: '您的身分提供方',
+      errorMap: {
+        cancelled: '安裝已取消',
+        prerequisites: '無法準備所需環境。請嘗試修復安裝，或查看下方記錄。',
+        network: '安裝過程中出現網路問題。請檢查網路連線後重試。',
+        unknown: 'APEX 未能完成啟動。請嘗試下面的復原步驟。'
+      }
     }
   },
 
@@ -595,7 +601,15 @@ export const zhHant = defineLocale({
       justNow: '剛剛',
       minAgo: count => `${count} 分鐘前`,
       hoursAgo: count => `${count} 小時前`,
-      daysAgo: count => `${count} 天前`
+      daysAgo: count => `${count} 天前`,
+      // hc-447:更新日誌入口 —— 讀 hc-446 的公告源(與 web /app/whats-new
+      // 同一份「你現在可以…」人話文案),範圍限當前登入的 ApexNodes 帳號。
+      changelogTitle: '更新日誌',
+      changelogIntro: '查看 APEX 的最新動態。',
+      changelogView: '查看',
+      changelogEmpty: '暫無更新公告,過段時間再來看看。',
+      changelogLoadError: '更新日誌載入失敗,請檢查網路後重試。',
+      changelogNeedsSignIn: '登入 ApexNodes 帳號後可查看產品更新。'
     },
     config: {
       none: '無',
@@ -879,6 +893,68 @@ export const zhHant = defineLocale({
         failedSelect: backend => `選擇 ${backend} 失敗`,
         needsSetupHint: '現在即可選擇此後端——但在完成設定前命令將會失敗。'
       }
+    },
+    agentAuth: {
+      title: '編碼 Agent 帳號',
+      intro: '直通與本機調度依賴這台電腦上已登入的 Claude Code 和 Codex。在這裡連接帳號,無需開啟終端機。',
+      checking: '偵測中…',
+      refresh: '重新偵測',
+      stateReady: '已連接',
+      stateReadyEmail: email => `已連接 · ${email}`,
+      stateLoggedOut: '未登入',
+      stateUnreachable: '已登入,但無法存取 API——需要設定網路代理',
+      stateNoCli: '本機未安裝',
+      stateUnknown: '狀態不可用',
+      connect: '連接帳號',
+      reconnect: '重新連接',
+      fixNetwork: '設定網路代理',
+      installHint: '請先安裝,然後重新連接',
+      opening: '正在開啟瀏覽器…',
+      waitingBrowser: '請在瀏覽器中完成登入——狀態會自動重新整理。',
+      completed: '已登入。',
+      guideIntro: '無法自動登入。請在終端機執行以下指令,然後重新偵測:',
+      copyCommand: '複製指令',
+      copied: '已複製',
+      proxyTitle: '網路代理',
+      proxyIntro: '部分地區會封鎖 Agent 的 API。APEX 可讓 Agent 走代理存取,同時保持國內鏈路直連。',
+      proxyModeAuto: '跟隨系統',
+      proxyModeAutoHint: '自動使用 macOS 系統代理(建議)。',
+      proxyModeCustom: '自訂',
+      proxyModeOff: '關閉',
+      proxyModeOffHint: '始終不讓 Agent 走代理。',
+      proxyDetected: url => `已偵測到系統代理 · ${url}`,
+      proxyNone: '未偵測到系統代理。',
+      proxyCustomLabel: '代理位址',
+      proxyCustomPlaceholder: 'http://127.0.0.1:1081',
+      proxyInvalid: '請填寫有效的代理位址(如 http://127.0.0.1:1081)。',
+      save: '儲存',
+      saved: '代理設定已儲存。'
+    },
+    localAgent: {
+      title: '本機 Agent 排程',
+      intro:
+        '讓你的雲端助手把編碼任務交給這台電腦上的 Agent(Claude Code、Codex 或 Cursor)——任務在本機用你自己的工具與憑證執行,結果回傳給雲端助手。未開啟則不會執行任何東西。',
+      enableLabel: '允許雲端助手排程這台電腦',
+      enableHint: '開啟後,只要 App 在執行,這台電腦就會連線 APEX 並待命接單。危險操作永遠會先在本機請求你確認。',
+      statusLabel: '狀態',
+      statusDormant: '已關閉',
+      statusConnecting: '連線中…',
+      statusOnline: '線上——可接單',
+      statusOffline: '重新連線中…',
+      statusError: '請先登入 APEX 帳號以連線',
+      deviceNameLabel: '裝置名稱',
+      deviceNamePlaceholder: '這台電腦',
+      unregister: '登出此裝置',
+      unregisterConfirm: '登出這台電腦?重新開啟排程前它將不再接單。',
+      signInFirst: '請先登入你的 APEX 帳號。',
+      saved: '裝置名稱已儲存。',
+      enableFailed: '儲存失敗——本系統的安全儲存不可用。',
+      engineOutdated: value =>
+        `目前引擎版本過舊，本機 Agent 調度需要引擎 ${value} 或更新版本。請到「設定 › 關於」更新引擎，否則工具呼叫可能靜默失敗。`
+    },
+    personalization: {
+      personalityTitle: '人格',
+      personalityIntro: '選擇 APEX 和你說話的風格，新對話會預設使用。'
     }
   },
 
@@ -1719,6 +1795,51 @@ export const zhHant = defineLocale({
         description: '說明所選程式碼的運作方式，並連結到關鍵檔案。',
         text: '請解釋這是如何運作的，並告訴我關鍵檔案在哪裡。'
       }
+    },
+    approvalMode: {
+      label: '審批',
+      manual: { label: '手動審批', desc: '僅在偵測到危險操作時請求批准' },
+      smart: { label: '智慧審批', desc: 'AI 評估風險後再請求批准' },
+      full: { label: '完全存取', desc: '可不受限制地存取網際網路和您電腦上的任何檔案' }
+    },
+    projectPicker: {
+      label: '專案',
+      select: '選擇專案',
+      searchPlaceholder: '搜尋專案…',
+      recentHeading: '最近專案',
+      noRecent: '尚無專案',
+      noMatches: '沒有相符的專案',
+      useExisting: '使用現有資料夾…',
+      newBlank: '新增空白專案…',
+      newTitle: '新增專案',
+      namePlaceholder: '專案名稱',
+      locationLabel: '位置',
+      chooseParent: '選擇上層資料夾…',
+      create: '建立',
+      back: '返回',
+      useExistingTitle: '選擇專案資料夾',
+      chooseParentTitle: '選擇專案建立位置',
+      pickFailed: '無法開啟資料夾選擇器',
+      createFailed: '無法建立專案資料夾'
+    },
+    capabilities: {
+      enabledLabel: '已啟用技能',
+      unused: '未啟用技能',
+      connectors: '連接器',
+      connectorsHint: '飛書 · 微信…',
+      noneEnabled: '尚未啟用任何技能',
+      browseDesc: '撥開開關即啟用(對新工作階段生效),並升到選單第一層。',
+      browseDescEnabled: '撥開開關即關閉(對新工作階段生效),並降回未啟用技能。',
+      searchPlaceholder: '搜尋技能…',
+      allEnabled: '技能都已啟用 🎉',
+      loading: '正在載入技能…',
+      toggle: name => `啟用 ${name}`,
+      disable: name => `停用 ${name}`,
+      generateLabel: '生成',
+      generateImage: '圖片',
+      generateVideo: '影片',
+      generateImageStarter: '我想生成一張圖片,想法是:',
+      generateVideoStarter: '我想做一個影片,想法是:'
     }
   },
 
@@ -1870,7 +1991,30 @@ export const zhHant = defineLocale({
     transcriptSaved: '完整記錄已儲存至',
     copiedOutput: '已複製！',
     copyOutput: '複製輸出',
-    reloadRetry: '重新載入並重試'
+    reloadRetry: '重新載入並重試',
+    stageLabels: {
+      prerequisites: '前置環境',
+      uv: '前置環境',
+      python: '前置環境',
+      git: '前置環境',
+      node: '前置環境',
+      'system-packages': '前置環境',
+      repository: '拉取程式',
+      venv: 'Python 環境',
+      'python-deps': 'Python 相依套件',
+      dependencies: 'Python 相依套件',
+      'node-deps': 'Node 相依套件',
+      desktop: '桌面應用程式',
+      path: '設定路徑',
+      config: '寫入設定',
+      'config-templates': '寫入設定',
+      'platform-sdks': '寫入設定',
+      setup: '初始化',
+      configure: '初始化',
+      gateway: '啟動閘道',
+      complete: '完成',
+      'bootstrap-marker': '完成'
+    }
   },
 
   onboarding: {
@@ -1938,7 +2082,20 @@ export const zhHant = defineLocale({
     price: (input, output) => `${input} 輸入 / ${output} 輸出 每 Mtok`,
     change: '變更',
     startChatting: '開始',
-    docs: provider => `${provider} 文件`
+    docs: provider => `${provider} 文件`,
+    addKeyToStart: '已選好提供方 — 填入它的 API 金鑰即可開始聊天。',
+    moreProvidersVpn: '更多（需科學上網）',
+    managed: {
+      subtitle: '登入 APEX 帳號即可直接開始聊天 —— 無需填寫 API 金鑰。',
+      emailPlaceholder: '電子郵件',
+      passwordPlaceholder: '密碼',
+      signIn: '登入並開始',
+      signingIn: '正在登入…',
+      useOwnProvider: '使用我自己的提供方',
+      dividerOr: '或',
+      signInGoogle: '用 Google 登入',
+      signInApex: '用 APEX 登入'
+    }
   },
 
   modelPicker: {
@@ -2287,7 +2444,10 @@ export const zhHant = defineLocale({
       restoreNext: '還原至下一個檢查點',
       goForward: '前進',
       sendEdited: '傳送編輯後的訊息',
-      attachingFile: '正在附加…'
+      attachingFile: '正在附加…',
+      compacting: '正在整理對話',
+      steered: '已引導',
+      processOutput: '輸出'
     },
     approval: {
       gatewayDisconnected: 'Hermes 閘道未連線',
@@ -2390,7 +2550,10 @@ export const zhHant = defineLocale({
         web_extract: { done: '已讀取網頁', pending: '正在讀取網頁', pendingAction: '正在讀取' },
         web_search: { done: '已搜尋網頁', pending: '正在搜尋網頁', pendingAction: '正在搜尋' },
         write_file: { done: '已編輯檔案', pending: '正在編輯檔案', pendingAction: '正在編輯' }
-      }
+      },
+      searchResults: '搜尋結果',
+      stdoutLabel: '輸出',
+      stderrLabel: '錯誤輸出'
     }
   },
 
@@ -2499,6 +2662,138 @@ export const zhHant = defineLocale({
       title: '側邊欄',
       description: '顯示行動裝置側邊欄。',
       toggle: '切換側邊欄'
+    }
+  },
+
+  scenarios: {
+    button: '場景',
+    menuAria: '場景',
+    searchPlaceholder: '搜尋場景…',
+    noMatches: '沒有符合的場景',
+    comingSoon: '即將上線',
+    allScenarios: '全部場景',
+    sample: '範例',
+    detailHeading: '場景詳情',
+    labelCommand: '口令',
+    labelInput: '輸入',
+    labelOutput: '產出',
+    inputNone: '無需參數，直接出結果',
+    use: '使用場景',
+    channelsTitle: '管道 · 分身在哪',
+    connectTitle: '連接你的分身',
+    phoneRemote: '手機遙控',
+    remoteOn: '開 · /cc',
+    bindCta: '掃碼綁定',
+    remoteBannerTitle: '手機正遙控本機 · 飛書 /cc',
+    remoteBannerApproval: '危險操作仍需手動審批',
+    taskTargetCloud: '委派給雲端分身',
+    taskTargetLocal: '直連本機',
+    taskStatus: { running: '執行中', done: '已完成', failed: '失敗', queued: '排隊中' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {return '心跳 剛剛'}
+
+      if (seconds < 60) {return `心跳 ${seconds} 秒前`}
+
+      if (seconds < 3600) {return `心跳 ${Math.floor(seconds / 60)} 分鐘前`}
+
+      return `心跳 ${Math.floor(seconds / 3600)} 小時前`
+    },
+    guideTitle: '連接一個管道,分身隨處可達'
+  },
+
+  imEntry: {
+    title: '訊息管道',
+    intro: '讓 AI 助手在你常用的聊天軟體裡替你回訊息——掃一下碼就能連上一個管道。',
+    loading: '正在載入管道…',
+    connect: '連接',
+    manage: '管理',
+    comingSoon: '即將支援',
+    connectedBadge: '已連接',
+    availableHeading: '現在可用',
+    comingSoonHeading: '即將支援',
+    boundHeading: '已連接的管道',
+    boundEmpty: '還沒有連接任何管道。',
+    connectedOn: when => `${when} 連接`,
+    unbind: '中斷',
+    unbindConfirm: name => `中斷${name}？本裝置上的 AI 助手會停止在那裡回訊息。`,
+    unbindDoneTitle: '已中斷',
+    unbindDoneMessage: '正在重新啟動以套用…',
+    liveState: {
+      connected: '已連接',
+      pending: '重新啟動後生效',
+      error: '連接異常',
+      connecting: '連接中…',
+      unknown: '未知'
+    },
+    channels: {
+      feishu: { name: '飛書 / Lark', tagline: '在飛書的私訊和群組裡回訊息。' },
+      dingtalk: { name: '釘釘', tagline: '在釘釘的私訊和群組裡回訊息。' },
+      weixin: { name: '微信', tagline: '用你的個人微信回訊息。' },
+      qqbot: { name: 'QQ', tagline: '在 QQ 的私訊和群組裡回訊息。' },
+      wecom: { name: '企業微信', tagline: '在企業微信裡回訊息。' }
+    },
+    dialog: {
+      connectTitle: name => `連接${name}`,
+      signInFirstTitle: '請先登入',
+      signInFirst: '登入你的 APEX 帳號後即可連接訊息管道。',
+      issuing: '正在產生 QR code…',
+      scanPrompt: '掃碼連接',
+      scanHint: (name: string) => `開啟${name}掃描 QR code，並在手機上確認。`,
+      openLink: '改用連結開啟',
+      weixinBotNote:
+        '連接的是一個新的機器人聯絡人（iLink 機器人身分），不是把你本人的微信接管；這個機器人一般無法加入普通群組，主要透過好友私訊使用。',
+      connecting: '連接中…',
+      authorizedTitle: '已連接',
+      authorizedMessage: '正在重新啟動以套用…',
+      authorizedRestartHint: '已連接並儲存——請重新啟動應用程式以完成套用。',
+      retry: '重試',
+      cancel: '取消',
+      close: '關閉',
+      comingSoonTitle: '即將支援',
+      comingSoonBody: '這個管道還不能連接，我們正在開發中。',
+      pasteHeading: '貼上你的碼',
+      pasteLabel: '連接碼',
+      pastePlaceholder: '貼上平台給你的碼',
+      pasteSubmit: '連接',
+      advanced: '進階設定',
+      errors: {
+        sign_in: '登入已過期，請重新登入後再連接。',
+        service_unavailable: '此管道尚未開放，請稍後再試。',
+        rate_limited: '已有一個連接請求進行中，請先完成或等它過期後再試。',
+        expired: 'QR code 已過期，請重新開始取得新的。',
+        denied: '請求被拒絕，請重新開始再試。',
+        request_failed: '出了點問題，請重試。',
+        keychain: '安全儲存未開啟，連接未儲存。請開啟鑰匙圈存取後重試。'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} 個管道已連接`,
+      openCta: '前往消息管道'
+    }
+  },
+
+  home: {
+    title: '我們該做什麼？'
+  },
+
+  auth: {
+    login: {
+      title: '開始使用',
+      signInApex: '登入 APEX 帳戶',
+      signInGoogle: '使用 Google 登入',
+      signingIn: '登入中…',
+      failed: '登入失敗,請重試',
+      accountDisabled: '帳戶狀態異常,請重新登入或聯絡客服',
+      sessionExpired: '登入已過期,請重新登入'
+    },
+    account: {
+      fallbackName: '帳戶',
+      profile: '個人資料',
+      settings: '設定',
+      usage: '剩餘用量',
+      logout: '登出',
+      sessionExpiredTitle: '登入已失效',
+      sessionExpiredAction: '點擊重新登入'
     }
   }
 })
