@@ -631,7 +631,15 @@ export const zh: Translations = {
       engineUpdateNeededDetail: value => `本应用需要引擎 ${value} 或更高版本。请点下方「检查更新」更新引擎。`,
       engineTreeMismatch: '引擎文件未同步',
       engineTreeMismatchDetail:
-        '上次更新记录了新版本,但磁盘上的引擎文件并未替换,当前显示的版本号可能不准确。请点下方更新引擎以重新下载正确的文件。'
+        '上次更新记录了新版本,但磁盘上的引擎文件并未替换,当前显示的版本号可能不准确。请点下方更新引擎以重新下载正确的文件。',
+      // hc-447:更新日志入口 —— 读 hc-446 的公告源(与 web /app/whats-new
+      // 同一份「你现在可以…」人话文案),范围限当前登录的 ApexNodes 账号。
+      changelogTitle: '更新日志',
+      changelogIntro: '查看 APEX 的最新动态。',
+      changelogView: '查看',
+      changelogEmpty: '暂无更新公告,过段时间再来看看。',
+      changelogLoadError: '更新日志加载失败,请检查网络后重试。',
+      changelogNeedsSignIn: '登录 ApexNodes 账号后可查看产品更新。'
     },
     config: {
       none: '无',

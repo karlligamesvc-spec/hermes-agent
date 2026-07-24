@@ -353,6 +353,13 @@ export interface Translations {
       // re-running the engine update re-extracts the correct tree.
       engineTreeMismatch: string
       engineTreeMismatchDetail: string
+      // hc-447: 更新日志 (changelog) entry — reads the hc-446 announcement feed.
+      changelogTitle: string
+      changelogIntro: string
+      changelogView: string
+      changelogEmpty: string
+      changelogLoadError: string
+      changelogNeedsSignIn: string
     }
     config: {
       none: string

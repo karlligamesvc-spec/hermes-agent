@@ -66,7 +66,33 @@ function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.
 //   idle → checking → available → downloading → downloaded(终态,等重启)
 //                   ↘ idle(update-not-available)          ↘ error → checking(下轮)
 function initialState(disabled) {
-  return { phase: disabled ? 'disabled' : 'idle', version: null, percent: null, error: null }
+  return { phase: disabled ? 'disabled' : 'idle', version: null, percent: null, error: null, releaseNotes: null }
+}
+
+// hc-447: normalize electron-updater's `info.releaseNotes` into the single
+// flat string (or null) the renderer capsule renders. electron-updater hands
+// back one of three shapes depending on the provider/how many versions the
+// user is skipping over:
+//   - a plain string (the common generic-provider case, hand-authored into
+//     latest.yml's `releaseNotes:` field per the release checklist)
+//   - an array of { version, note } — multi-version jumps aggregate one entry
+//     per intermediate version; we join them so nothing is silently dropped
+//   - null/undefined — nothing authored for this release (the field is
+//     optional; a shell release with no hand-edited notes ships one, same as
+//     today)
+// Never throws; any other shape (garbage) degrades to null.
+function normalizeReleaseNotes(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  if (Array.isArray(value)) {
+    const notes = value
+      .map(entry => (entry && typeof entry.note === 'string' ? entry.note.trim() : ''))
+      .filter(Boolean)
+    return notes.length ? notes.join('\n\n') : null
+  }
+  return null
 }
 
 /**
@@ -192,7 +218,16 @@ function createShellUpdater(options) {
     [
       'update-available',
       info => {
-        setState({ phase: 'available', version: (info && info.version) || null, error: null })
+        setState({
+          phase: 'available',
+          version: (info && info.version) || null,
+          error: null,
+          // hc-447: carried straight through from electron-updater's UpdateInfo
+          // (sourced from latest.yml's `releaseNotes:` field) so the capsule can
+          // show human-readable copy alongside the bare version. null when the
+          // release shipped with no hand-authored notes — not an error state.
+          releaseNotes: normalizeReleaseNotes(info && info.releaseNotes)
+        })
         log(`[shell-update] update available: ${(info && info.version) || '?'} (auto-downloading)`)
         // hc-473: 'start' of the shell_update funnel — found + autoDownload
         // begins right after this listener returns.
@@ -213,7 +248,17 @@ function createShellUpdater(options) {
     [
       'update-downloaded',
       info => {
-        setState({ phase: 'downloaded', version: (info && info.version) || state.version, percent: 100, error: null })
+        setState({
+          phase: 'downloaded',
+          version: (info && info.version) || state.version,
+          percent: 100,
+          error: null,
+          // Same UpdateInfo as 'update-available' normally repeats releaseNotes
+          // here too; fall back to whatever 'available' already captured so a
+          // payload quirk on this specific event can't blank out notes we
+          // already had (mirrors the `version` fallback just above).
+          releaseNotes: normalizeReleaseNotes(info && info.releaseNotes) || state.releaseNotes
+        })
         log(`[shell-update] update downloaded: ${(info && info.version) || '?'} (waiting for restart)`)
         // hc-473: 'success' of the shell_update funnel (electron-updater has
         // already verified the download internally by this point).
@@ -278,5 +323,6 @@ module.exports = {
   SHELL_UPDATE_INITIAL_DELAY_MS,
   SHELL_UPDATE_RECHECK_INTERVAL_MS,
   createShellUpdater,
+  normalizeReleaseNotes,
   shellUpdateFeedUrl
 }

@@ -22,7 +22,7 @@ import { $shellUpdate } from '@/store/shell-update'
 
 import { ShellUpdatePill } from './shell-update-pill'
 
-const DOWNLOADED: DesktopShellUpdateState = { error: null, percent: 100, phase: 'downloaded', version: '0.16.1' }
+const DOWNLOADED: DesktopShellUpdateState = { error: null, percent: 100, phase: 'downloaded', releaseNotes: null, version: '0.16.1' }
 
 beforeEach(() => {
   installShellUpdateMock.mockReset()
@@ -41,7 +41,7 @@ describe('ShellUpdatePill', () => {
 
     // 下载中不打扰:downloading 也不出胶囊。
     for (const phase of ['idle', 'disabled', 'checking', 'available', 'downloading', 'error'] as const) {
-      $shellUpdate.set({ error: null, percent: 10, phase, version: '0.16.1' })
+      $shellUpdate.set({ error: null, percent: 10, phase, releaseNotes: null, version: '0.16.1' })
       expect(container.firstChild).toBeNull()
     }
   })
@@ -62,6 +62,36 @@ describe('ShellUpdatePill', () => {
     render(<ShellUpdatePill />)
 
     expect(screen.getByText('Restart to update v0.17.0')).toBeTruthy()
+  })
+
+  it('shows no notes line when the release shipped with none (pre-hc-447 behavior, unchanged)', () => {
+    $shellUpdate.set(DOWNLOADED)
+    const { container } = render(<ShellUpdatePill />)
+
+    expect(container.querySelector('.p5-update-pill-notes')).toBeNull()
+  })
+
+  it('renders the hand-authored release notes as human-readable text in the capsule', () => {
+    $shellUpdate.set({ ...DOWNLOADED, releaseNotes: 'Faster startup and a fixed crash on launch.' })
+    render(<ShellUpdatePill />)
+
+    expect(screen.getByText('Faster startup and a fixed crash on launch.')).toBeTruthy()
+  })
+
+  it('collapses multi-line release notes to their first line in the compact pill', () => {
+    $shellUpdate.set({ ...DOWNLOADED, releaseNotes: 'Faster startup.\n\nAlso fixed a crash on launch.' })
+    render(<ShellUpdatePill />)
+
+    expect(screen.getByText('Faster startup.')).toBeTruthy()
+    expect(screen.queryByText('Also fixed a crash on launch.')).toBeNull()
+  })
+
+  it('exposes the full notes text via a title tooltip for the truncated/first-line preview', () => {
+    const fullNotes = 'Faster startup.\n\nAlso fixed a crash on launch.'
+    $shellUpdate.set({ ...DOWNLOADED, releaseNotes: fullNotes })
+    render(<ShellUpdatePill />)
+
+    expect(screen.getByText('Faster startup.').getAttribute('title')).toBe(fullNotes)
   })
 
   it('installs on click and locks the pill while quitting', async () => {

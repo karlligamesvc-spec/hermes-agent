@@ -47,6 +47,14 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     disconnect: () => ipcRenderer.invoke('hermes:feishu:disconnect'),
     openBind: () => ipcRenderer.invoke('hermes:feishu:openBind')
   },
+  // hc-447: 更新日志 (changelog) entry point — reads the hc-446 announcement
+  // feed (same content the web /app/whats-new page shows), scoped to the
+  // signed-in ApexNodes account. Read-only: list + a best-effort read
+  // receipt. See electron/apex-announcements.cjs.
+  announcements: {
+    list: () => ipcRenderer.invoke('hermes:announcements:list'),
+    markRead: announcementId => ipcRenderer.invoke('hermes:announcements:markRead', announcementId)
+  },
   // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
   // scanning a QR / pasting one code. feishu registers an INDEPENDENT app via
   // the cloud v2 provisioning flow (renderer owns the polling loop: issue →

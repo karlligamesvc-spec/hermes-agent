@@ -71,7 +71,7 @@ describe('RuntimeUpdatePill', () => {
   it('yields to the shell-update pill while a shell update is downloaded', () => {
     // 壳胶囊优先:壳包就绪时引擎 offer 让位(壳更新通常带引擎 pin bump)。
     $runtimeUpdateCheck.set(UPDATE_AVAILABLE)
-    $shellUpdate.set({ error: null, percent: 100, phase: 'downloaded', version: '0.16.1' })
+    $shellUpdate.set({ error: null, percent: 100, phase: 'downloaded', releaseNotes: null, version: '0.16.1' })
 
     const { container } = render(<RuntimeUpdatePill />)
 

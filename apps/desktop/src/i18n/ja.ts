@@ -613,7 +613,16 @@ export const ja = defineLocale({
       engineConfirmTitle: 'AI エンジンを更新しますか？',
       engineConfirmBody: value => `エンジンバージョン ${value} に切り替え、適用のためアプリを再起動します。作業内容は安全です。`,
       engineConfirmBodyGeneric: 'AI エンジンを更新し、適用のためアプリを再起動します。作業内容は安全です。',
-      engineConfirmApply: 'エンジンを更新'
+      engineConfirmApply: 'エンジンを更新',
+      // hc-447: 更新日誌 (changelog) エントリ —— hc-446 のお知らせフィード
+      // (web /app/whats-new と同じ「今できること」コピー) を、サインイン中の
+      // ApexNodes アカウントの範囲で読み込みます。
+      changelogTitle: 'アップデート情報',
+      changelogIntro: 'APEX の最新情報を確認できます。',
+      changelogView: '表示',
+      changelogEmpty: 'まだお知らせはありません。しばらくしてからご確認ください。',
+      changelogLoadError: 'アップデート情報を読み込めませんでした。接続を確認してもう一度お試しください。',
+      changelogNeedsSignIn: 'ApexNodes アカウントにサインインすると製品アップデートを確認できます。'
     },
     config: {
       none: 'なし',
