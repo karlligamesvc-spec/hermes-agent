@@ -94,6 +94,7 @@ import {
   PREVIEW_RAIL_MIN_WIDTH,
   PREVIEW_RAIL_PANE_WIDTH
 } from './chat/right-rail'
+import { onScenarioSessionRequest } from './chat/scenarios/scenario-session-bridge'
 import { ChatSidebar } from './chat/sidebar'
 import { CommandPalette } from './command-palette'
 import { DesktopAuthGate } from './desktop-auth-gate'
@@ -662,6 +663,7 @@ export function DesktopController() {
     archiveSession,
     branchCurrentSession,
     createBackendSessionForSend,
+    handleScenarioSessionRequest,
     openSettings,
     removeSession,
     resumeSession,
@@ -705,6 +707,14 @@ export function DesktopController() {
     lastFreshRef.current = freshSessionRequest
     startFreshSessionDraft()
   }, [freshSessionRequest, startFreshSessionDraft])
+
+  // A scenario pick (zero-state shelf or the ✦ menu) asks for its session via
+  // this bus — the picker components have no access to session lifecycle. See
+  // chat/scenarios/pick.ts + scenario-session-bridge.ts.
+  useEffect(
+    () => onScenarioSessionRequest(handleScenarioSessionRequest),
+    [handleScenarioSessionRequest]
+  )
 
   // Swapping the live gateway to another profile must re-pull that profile's
   // global model + active-profile pill. Both are nanostores, so the blanket
