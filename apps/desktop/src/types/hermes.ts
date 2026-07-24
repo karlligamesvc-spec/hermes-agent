@@ -78,6 +78,12 @@ export type OAuthStartResponse =
       user_code: string
       verification_url: string
     }
+  | {
+      auth_url: string
+      expires_in: number
+      flow: 'loopback'
+      session_id: string
+    }
 
 export interface OAuthSubmitResponse {
   message?: string
@@ -1002,6 +1008,10 @@ export interface MoaConfigResponse {
   max_tokens: number
   reference_models: MoaModelSlot[]
   reference_temperature: number
+  /** Fan-out cadence: "user_turn" (advisors run once per user turn) vs the
+   *  runtime default "per_iteration". The silent multi-select composer pins
+   *  "user_turn" so cost is ~N per turn, not N × tool steps (hc-578). */
+  fanout?: string
 }
 
 export interface ModelAssignmentRequest {

@@ -24,7 +24,7 @@ import { PrettyLink, LinkifiedText as SharedLinkifiedText, urlSlugTitleLabel } f
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
-import { $toolInlineDiffs } from '@/store/tool-diffs'
+import { $toolInlineDiff } from '@/store/tool-diffs'
 import { $toolRowDismissed, dismissToolRow } from '@/store/tool-dismiss'
 import { $toolDisclosureOpen, $toolViewMode, setToolDisclosureOpen } from '@/store/tool-view'
 
@@ -213,8 +213,10 @@ function ToolEntry({ part }: ToolEntryProps) {
   // handles its own enter animation, so embedded children skip it.
   const enterRef = useEnterAnimation(messageRunning && !embedded, `tool-entry:${disclosureId}`)
   const elapsed = useElapsedSeconds(isPending, `tool:${disclosureId}`)
-  const liveDiffs = useStore($toolInlineDiffs)
-  const sideDiff = part.toolCallId ? liveDiffs[part.toolCallId] || '' : ''
+  // One subscription per tool call: the store hands out a cached derived atom
+  // per id, so recording a diff re-renders only that row instead of every
+  // mounted tool row. An empty id yields a permanently empty atom.
+  const sideDiff = useStore($toolInlineDiff(part.toolCallId ?? ''))
   const inlineDiff = stripInlineDiffChrome(sideDiff) || inlineDiffFromResult(part.result)
 
   // Stale parts (no result, but message stopped running) get a synthetic
