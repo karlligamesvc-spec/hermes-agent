@@ -108,12 +108,15 @@ import {
 } from '../../routes'
 import type { SidebarNavItem } from '../../types'
 
+import { AccountPanel } from './account-panel'
+import { SidebarChannelStatus } from './channel-status'
 import { countLabel } from './chrome'
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
 import { ProfileRail } from './profile-switcher'
 import { ProjectDialog } from './project-dialog'
+import { RuntimeUpdatePill } from './runtime-update-pill'
 import {
   overlayLiveLanes,
   overlayLivePreviews,
@@ -131,6 +134,7 @@ import {
 } from './projects'
 import { SidebarBlankState, SidebarPinnedEmptyState, SidebarSessionSkeletons } from './section-states'
 import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section'
+import { ShellUpdatePill } from './shell-update-pill'
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
 
 // Non-session groups (messaging platforms) stay compact: show a few rows up
@@ -1479,6 +1483,23 @@ export function ChatSidebar({
         {!showSessionSections && <SidebarBlankState onNewProject={openProjectCreate} />}
 
         <div className="shrink-0 px-0.5 pb-1 pt-0.5">
+          {/* Shell-update pill: invisible until electron-updater has a new shell
+              downloaded, then offers 「重启以更新 vX.Y.Z」 with the release note's
+              first line. Takes precedence over the engine pill below (a shell
+              release usually carries the engine pin bump, so one restart
+              delivers both). */}
+          <ShellUpdatePill />
+          {/* Engine-update pill: invisible until a silent background check finds
+              a newer runtime, then a one-click apply capsule. */}
+          <RuntimeUpdatePill />
+          {/* hc-554 显化 — 「渠道 · 分身在哪」: channel presence (飞书/微信/手机遥控)
+              above the account row. Self-gates to nothing when no channel bridge
+              exists. */}
+          <SidebarChannelStatus />
+          {/* Bottom-left account row (avatar + name + email → popover menu).
+              Renders only on managed builds when signed in; the auth gate covers
+              the signed-out case. */}
+          <AccountPanel />
           <ProfileRail />
         </div>
       </SidebarContent>

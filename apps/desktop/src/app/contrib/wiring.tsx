@@ -27,6 +27,7 @@ import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChat
 import { sessionMessagesSignature } from '@/lib/session-signatures'
 import { isMessagingSource } from '@/lib/session-source'
 import { latestSessionTodos } from '@/lib/todos'
+import { $authState } from '@/store/auth'
 import { setCronFocusJobId } from '@/store/cron'
 import { $pinnedSessionIds, pinSession, restoreWorktree, unpinSession } from '@/store/layout'
 import { $filePreviewTarget, $previewTarget } from '@/store/preview'
@@ -64,6 +65,7 @@ import { requestComposerInsert } from '../chat/composer/focus'
 import { useComposerActions } from '../chat/hooks/use-composer-actions'
 import { onScenarioSessionRequest } from '../chat/scenarios/scenario-session-bridge'
 import { CommandPalette } from '../command-palette'
+import { DesktopAuthGate } from '../desktop-auth-gate'
 import { useGatewayBoot } from '../gateway/hooks/use-gateway-boot'
 import { useGatewayRequest } from '../gateway/hooks/use-gateway-request'
 import { useKeybinds } from '../hooks/use-keybinds'
@@ -133,6 +135,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // in place each render so memoized surfaces never re-render on churn.
   const actionsRef = useRef<WiringActions | null>(null)
 
+  const authState = useStore($authState)
   const gatewayState = useStore($gatewayState)
   const activeSessionId = useStore($activeSessionId)
   const currentCwd = useStore($currentCwd)
@@ -897,7 +900,26 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       {/* The full real overlay set (mirrors DesktopController's `overlays`). */}
       <RemoteDisplayBanner />
       {!isSecondaryWindow() && <DesktopInstallOverlay />}
+      {/* Hard auth gate: once env is ready, block the app with a full-window
+          login screen until the user is signed in, and catch a mid-session
+          401 / 403 account_disabled back to it. Mounted BEFORE onboarding so
+          login is the primary gate. */}
       {!isSecondaryWindow() && (
+        <DesktopAuthGate
+          enabled={gatewayState === 'open'}
+          onSignedIn={() => {
+            void refreshHermesConfig()
+            void refreshCurrentModel()
+            void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+          }}
+          requestGateway={requestGateway}
+        />
+      )}
+      {/* Onboarding (BYOK provider config) waits for the gate to let the user
+          through: on a managed build it mounts only once signed in, so it never
+          races the login screen underneath. On a managed-disabled build the gate
+          reports signed-in immediately and this behaves exactly as upstream. */}
+      {!isSecondaryWindow() && (authState.enabled === false || authState.status === 'signed-in') && (
         <DesktopOnboardingOverlay
           enabled={gatewayState === 'open'}
           onCompleted={() => {
