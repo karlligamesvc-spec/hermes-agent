@@ -20,6 +20,7 @@ import {
   $currentProvider,
   $currentReasoningEffort,
   $messages,
+  $messagesEmpty,
   $sessions,
   $yoloActive,
   coerceApprovalMode,
@@ -56,7 +57,7 @@ import { isWatchWindow } from '@/store/windows'
 import type { SessionCreateResponse, SessionInfo, SessionResumeResponse, SessionRuntimeInfo, UsageStats } from '@/types/hermes'
 
 import { NEW_CHAT_ROUTE, sessionRoute, SETTINGS_ROUTE } from '../../routes'
-import type { ClientSessionState, SidebarNavItem } from '../../types'
+import type { ClientSessionState, SessionTitleResponse, SidebarNavItem } from '../../types'
 
 interface SessionActionsOptions {
   activeSessionId: string | null
@@ -209,6 +210,34 @@ function upsertOptimisticSession(
   }
 
   setSessions(prev => [session, ...prev.filter(s => s.id !== id)])
+}
+
+// Persist a scenario's queued title (see useSessionActions' pendingScenarioTitleRef)
+// onto the session `session.create` just produced — the same gateway RPC the
+// `/title` slash command uses (REST renameSession 404s on a runtime id this
+// fresh). `pending: true` just means the row isn't flushed to the SessionDB yet
+// (no turn has completed) — the gateway queues the title for that first flush,
+// so it's a success case here too, not an error. Best-effort: the optimistic
+// title already applied via upsertOptimisticSession covers the UI in the
+// meantime, so a failed RPC here only risks the name not surviving a refresh.
+async function applyPendingScenarioTitle(
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>,
+  runtimeSessionId: string,
+  storedSessionId: string,
+  title: string
+): Promise<void> {
+  try {
+    const result = await requestGateway<SessionTitleResponse>('session.title', {
+      session_id: runtimeSessionId,
+      title
+    })
+
+    const finalTitle = (result?.title || title).trim()
+
+    setSessions(prev => prev.map(s => (s.id === storedSessionId ? { ...s, title: finalTitle || null } : s)))
+  } catch {
+    // Optimistic title already covers the sidebar; leave it be.
+  }
 }
 
 function patchSessionWorkspace(sessionId: string, cwd: string | undefined) {
@@ -398,9 +427,18 @@ export function useSessionActions({
   const { t } = useI18n()
   const copy = t.desktop
   const resumeRequestRef = useRef(0)
+  // Scenario name queued for the NEXT session `createBackendSessionForSend`
+  // materializes from the draft this reset produces (a scenario pick, not
+  // e.g. Cmd+N) — see handleScenarioSessionRequest below. Cleared here so any
+  // OTHER path to a fresh draft (keybind, sidebar "new session", profile
+  // switch) can't inherit a stale title from an earlier, abandoned scenario
+  // pick; handleScenarioSessionRequest always re-sets it right after calling
+  // this, so its own intent survives the clear.
+  const pendingScenarioTitleRef = useRef<string | null>(null)
 
   const startFreshSessionDraft = useCallback(
     (replaceRoute = false) => {
+      pendingScenarioTitleRef.current = null
       busyRef.current = false
       setBusy(false)
       setAwaitingResponse(false)
@@ -434,6 +472,28 @@ export function useSessionActions({
       setFreshDraftReady(true)
     },
     [activeSessionIdRef, busyRef, navigate, selectedStoredSessionIdRef]
+  )
+
+  // Scenario picker's session-lifecycle half (see chat/scenarios/pick.ts +
+  // scenario-session-bridge.ts): a scenario picked mid-conversation gets a
+  // fresh, scenario-named session instead of landing in the middle of an
+  // unrelated thread; one picked on an already-empty draft (zero state, or an
+  // untouched earlier scenario pick) is named in place — no reset, so idly
+  // browsing scenarios never spends an extra draft. Naming itself is deferred:
+  // a session only materializes server-side on first send (see
+  // createBackendSessionForSend below), so this just queues the title for
+  // whichever draft is now active; an empty/whitespace name (catalog names are
+  // normally non-empty — defensive only) queues nothing, which is the same as
+  // today's un-named default.
+  const handleScenarioSessionRequest = useCallback(
+    (title: string) => {
+      if (!$messagesEmpty.get()) {
+        startFreshSessionDraft()
+      }
+
+      pendingScenarioTitleRef.current = title.trim() || null
+    },
+    [startFreshSessionDraft]
   )
 
   const createBackendSessionForSend = useCallback(
@@ -494,16 +554,28 @@ export function useSessionActions({
         selectedStoredSessionIdRef.current = stored
         ensureSessionState(created.session_id, stored)
 
+        // Take (read + clear) whatever a scenario pick queued for THIS draft —
+        // see handleScenarioSessionRequest. Cleared unconditionally so it can't
+        // leak onto some later, unrelated session this call didn't create.
+        const pendingScenarioTitle = pendingScenarioTitleRef.current
+        pendingScenarioTitleRef.current = null
+
         if (stored) {
           // Seed the sidebar preview with the user's first message so the row
           // reads meaningfully while the turn is in flight, instead of flashing
           // "Untitled session" until the turn persists and auto-title runs. The
-          // server later returns its own preview/title and supersedes this.
-          upsertOptimisticSession(created, stored, null, preview?.trim() || null)
+          // server later returns its own preview/title and supersedes this — a
+          // scenario-queued title wins over that default, which is the whole
+          // point of the scenario picker's session request.
+          upsertOptimisticSession(created, stored, pendingScenarioTitle, preview?.trim() || null)
           navigate(sessionRoute(stored), { replace: true })
           // Other windows (e.g. the main window when this is the pop-out) can't
           // see this session until they re-pull the shared list.
           broadcastSessionsChanged()
+
+          if (pendingScenarioTitle) {
+            await applyPendingScenarioTitle(requestGateway, created.session_id, stored, pendingScenarioTitle)
+          }
         }
 
         setFreshDraftReady(false)
@@ -1101,6 +1173,7 @@ export function useSessionActions({
     branchCurrentSession,
     closeSettings,
     createBackendSessionForSend,
+    handleScenarioSessionRequest,
     openSettings,
     removeSession,
     resumeSession,

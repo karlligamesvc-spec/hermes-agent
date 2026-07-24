@@ -5,7 +5,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { getSessionMessages } from '@/hermes'
 import { $activeGatewayProfile, $newChatProfile } from '@/store/profile'
-import { $currentCwd, $messages, $resumeFailedSessionId, setMessages, setResumeFailedSessionId } from '@/store/session'
+import {
+  $currentCwd,
+  $freshDraftReady,
+  $messages,
+  $resumeFailedSessionId,
+  $sessions,
+  setFreshDraftReady,
+  setMessages,
+  setResumeFailedSessionId,
+  setSessions
+} from '@/store/session'
 
 import type { ClientSessionState } from '../../types'
 
@@ -255,5 +265,178 @@ describe('resumeSession failure recovery', () => {
     await runResume(requestGateway)
 
     expect($resumeFailedSessionId.get()).toBeNull()
+  })
+})
+
+// ── Scenario session request (hc-554 follow-up: pick a scenario → named session) ──
+// A scenario picked mid-conversation gets a fresh, scenario-named session
+// instead of landing in the middle of an unrelated thread; one picked on an
+// already-empty draft is named in place — no reset, so idly browsing scenarios
+// never spends an extra draft. Naming itself is deferred to actual session
+// creation (a draft has no backend id until createBackendSessionForSend runs),
+// so handleScenarioSessionRequest only queues it; these tests exercise both
+// halves together, the way pick.ts's single call site actually drives them.
+function ScenarioHarness({
+  onReady,
+  requestGateway
+}: {
+  onReady: (actions: {
+    create: (preview?: string | null) => Promise<string | null>
+    handleScenarioSessionRequest: (title: string) => void
+    startFreshSessionDraft: () => void
+  }) => void
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+}) {
+  const ref = <T,>(value: T): MutableRefObject<T> => ({ current: value })
+
+  const actions = useSessionActions({
+    activeSessionId: null,
+    activeSessionIdRef: ref<string | null>(null),
+    busyRef: ref(false),
+    creatingSessionRef: ref(false),
+    ensureSessionState: () => ({}) as ClientSessionState,
+    getRouteToken: () => 'token',
+    navigate: vi.fn() as never,
+    requestGateway,
+    runtimeIdByStoredSessionIdRef: ref(new Map<string, string>()),
+    selectedStoredSessionId: null,
+    selectedStoredSessionIdRef: ref<string | null>(null),
+    sessionStateByRuntimeIdRef: ref(new Map<string, ClientSessionState>()),
+    syncSessionStateToView: vi.fn(),
+    updateSessionState: () => ({}) as ClientSessionState
+  })
+
+  useEffect(() => {
+    onReady({
+      create: actions.createBackendSessionForSend,
+      handleScenarioSessionRequest: actions.handleScenarioSessionRequest,
+      startFreshSessionDraft: actions.startFreshSessionDraft
+    })
+  }, [actions.createBackendSessionForSend, actions.handleScenarioSessionRequest, actions.startFreshSessionDraft, onReady])
+
+  return null
+}
+
+function scenarioSessionCreateGateway(storedSessionId: string) {
+  return vi.fn(async (method: string) => {
+    if (method === 'session.create') {
+      return { session_id: RUNTIME_SESSION_ID, stored_session_id: storedSessionId } as never
+    }
+
+    if (method === 'session.title') {
+      return { title: undefined } as never
+    }
+
+    return {} as never
+  })
+}
+
+async function withScenarioHarness(requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>) {
+  let ready: {
+    create: (preview?: string | null) => Promise<string | null>
+    handleScenarioSessionRequest: (title: string) => void
+    startFreshSessionDraft: () => void
+  } | null = null
+
+  render(<ScenarioHarness onReady={r => (ready = r)} requestGateway={requestGateway} />)
+  await waitFor(() => expect(ready).not.toBeNull())
+
+  return ready!
+}
+
+describe('scenario session request (pick → named session)', () => {
+  afterEach(() => {
+    cleanup()
+    setMessages([])
+    setSessions([])
+    setFreshDraftReady(false)
+    vi.restoreAllMocks()
+  })
+
+  it('has-messages: resets to a fresh (empty) draft, then names the session it creates', async () => {
+    setMessages([{ id: 'm1', parts: [{ text: 'hi', type: 'text' }], role: 'user' }] as never)
+
+    const requestGateway = scenarioSessionCreateGateway('stored-1')
+    const { create, handleScenarioSessionRequest } = await withScenarioHarness(requestGateway)
+
+    handleScenarioSessionRequest('拆一条视频')
+
+    // The reset actually ran — reusing in place would have left the prior
+    // message untouched, and $freshDraftReady is startFreshSessionDraft's own
+    // "a reset just happened" signal.
+    expect($messages.get()).toEqual([])
+    expect($freshDraftReady.get()).toBe(true)
+
+    await create()
+
+    expect(requestGateway).toHaveBeenCalledWith('session.title', { session_id: RUNTIME_SESSION_ID, title: '拆一条视频' })
+    expect($sessions.get().find(s => s.id === 'stored-1')?.title).toBe('拆一条视频')
+  })
+
+  it('empty session: names in place with no reset (no session litter from idle browsing)', async () => {
+    setMessages([])
+
+    const requestGateway = scenarioSessionCreateGateway('stored-2')
+    const { create, handleScenarioSessionRequest } = await withScenarioHarness(requestGateway)
+
+    handleScenarioSessionRequest('热榜')
+
+    // startFreshSessionDraft never ran — its own "a reset just happened" flag
+    // stayed at its default.
+    expect($freshDraftReady.get()).toBe(false)
+
+    await create()
+
+    expect(requestGateway).toHaveBeenCalledWith('session.title', { session_id: RUNTIME_SESSION_ID, title: '热榜' })
+    expect($sessions.get().find(s => s.id === 'stored-2')?.title).toBe('热榜')
+  })
+
+  it('blank/whitespace scenario name: queues nothing — falls back to the un-named default', async () => {
+    setMessages([])
+
+    const requestGateway = scenarioSessionCreateGateway('stored-3')
+    const { create, handleScenarioSessionRequest } = await withScenarioHarness(requestGateway)
+
+    handleScenarioSessionRequest('   ')
+    await create()
+
+    expect(requestGateway).not.toHaveBeenCalledWith('session.title', expect.anything())
+    expect($sessions.get().find(s => s.id === 'stored-3')?.title).toBeNull()
+  })
+
+  it('a queued title is consumed exactly once — a later, unrelated session creation gets no title', async () => {
+    setMessages([{ id: 'm1', parts: [{ text: 'hi', type: 'text' }], role: 'user' }] as never)
+
+    const requestGateway = scenarioSessionCreateGateway('stored-4')
+    const { create, handleScenarioSessionRequest } = await withScenarioHarness(requestGateway)
+
+    handleScenarioSessionRequest('拆一条视频')
+    await create()
+    requestGateway.mockClear()
+
+    // A second session created from the same harness with no new scenario
+    // request in between (e.g. the composer just sends another message on a
+    // later fresh draft) must not inherit the already-consumed title.
+    await create()
+
+    expect(requestGateway).not.toHaveBeenCalledWith('session.title', expect.anything())
+  })
+
+  it('an unrelated fresh-draft reset (Cmd+N) clears a stale title from an abandoned scenario pick', async () => {
+    setMessages([{ id: 'm1', parts: [{ text: 'hi', type: 'text' }], role: 'user' }] as never)
+
+    const requestGateway = scenarioSessionCreateGateway('stored-5')
+    const { create, handleScenarioSessionRequest, startFreshSessionDraft } = await withScenarioHarness(requestGateway)
+
+    handleScenarioSessionRequest('拆一条视频') // queues "拆一条视频" for the draft this starts
+    // The user abandons that draft without sending, then starts an unrelated
+    // one — the same reset Cmd+N / sidebar "new session" call directly. The
+    // abandoned scenario's name must not attach to this unrelated chat.
+    startFreshSessionDraft()
+
+    await create()
+
+    expect(requestGateway).not.toHaveBeenCalledWith('session.title', expect.anything())
+    expect($sessions.get().find(s => s.id === 'stored-5')?.title).toBeNull()
   })
 })
