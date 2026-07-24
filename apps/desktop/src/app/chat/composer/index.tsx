@@ -686,17 +686,17 @@ export function ChatBar({
     target: scope.target
   })
 
-  const contextMenu = (
-    <ContextMenu
-      onInsertText={insertText}
-      onOpenUrlDialog={openUrlDialog}
-      onPasteClipboardImage={onPasteClipboardImage}
-      onPickFiles={onPickFiles}
-      onPickFolders={onPickFolders}
-      onPickImages={onPickImages}
-      state={state}
-    />
-  )
+  // hc-572: the "+" is the unified CAPABILITY menu (generate / skills /
+  // connectors), not an attachment picker — it takes no pick/paste/URL
+  // handlers. Those attachments still arrive by drag-and-drop and paste (the
+  // onDrop/onPaste handlers above), which is why the rows were dropped.
+  const contextMenu = <ContextMenu state={state} />
+
+  // Consequence of that: `openUrlDialog` has no trigger on this surface today.
+  // The dialog, its hook and the host `onAddUrl` stay wired rather than being
+  // deleted — they are upstream v0.19.0 code, and where a URL entry belongs
+  // under the capability menu is a product call, not a port call.
+  void openUrlDialog
 
   const controls = (
     <ComposerControls

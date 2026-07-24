@@ -50,12 +50,12 @@ const STATE: ChatBarState = {
 }
 
 function renderMenu() {
-  // The two required callbacks belong to menu entries this file never opens
-  // (prompt snippets / the URL dialog); what it asserts is which skill rows the
-  // menu renders at all.
+  // The capability menu takes no attachment handlers — the router is the only
+  // context it needs (the connectors row navigates). What this file asserts is
+  // which skill rows the menu renders at all.
   return render(
     <MemoryRouter>
-      <ContextMenu onInsertText={() => {}} onOpenUrlDialog={() => {}} state={STATE} />
+      <ContextMenu state={STATE} />
     </MemoryRouter>
   )
 }
