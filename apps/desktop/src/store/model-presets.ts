@@ -3,7 +3,7 @@ import { atom } from 'nanostores'
 import { persistString, storedString } from '@/lib/storage'
 
 import { notifyError } from './notifications'
-import { setCurrentFastMode, setCurrentReasoningEffort } from './session'
+import { markLocalReasoningIntent, setCurrentFastMode, setCurrentReasoningEffort } from './session'
 import { sessionTileDelegate } from './session-states'
 
 const STORAGE_KEY = 'hermes.desktop.model-presets'
@@ -66,6 +66,7 @@ export async function applyModelPreset(
 ): Promise<void> {
   if (ctx.primary ?? true) {
     if (effort !== undefined) {
+      markLocalReasoningIntent(effort)
       setCurrentReasoningEffort(effort)
     }
 
