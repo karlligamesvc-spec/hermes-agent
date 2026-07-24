@@ -786,6 +786,7 @@ export const ja = defineLocale({
       staleAuxOtherProviders: '他のプロバイダー',
       selectTitle: 'モデルを選択(複数選択可)',
       selectHint: '1 つ選べばそのまま直結、複数選べば一緒に回答し、それぞれ実使用量で課金されます。',
+      selectedShort: count => `${count} モデルを選択中`,
       selectedSummary: count =>
         `${count} 個のモデルを選択中 · 選んだモデルが一緒に回答し、使用量はそれぞれの実消費として台帳に計上されます。`,
       byoTitle: '自分のキー(BYO)',

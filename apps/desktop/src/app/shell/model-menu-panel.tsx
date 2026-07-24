@@ -403,10 +403,11 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // Codex-style top-level model row: shows whichever model is current; the full
   // list is one click deeper in its submenu. A composed 2+ selection has no
   // single model name to show, so it reads as "N models selected" instead
-  // (same copy as Settings → Model — never "MoA"/"aggregator"/"preset").
+  // (never "MoA"/"aggregator"/"preset"). Short form — this row is a single
+  // truncating line; the billing sentence only fits in Settings › Model.
   const currentModelLabel = (() => {
     if (composedCount >= 2) {
-      return t.settings.model.selectedSummary(composedCount)
+      return t.settings.model.selectedShort(composedCount)
     }
 
     return optionsModel ? displayModelName(optionsModel) : copy.noModels
@@ -633,7 +634,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
             <>
               <DropdownMenuSeparator className="mx-0" />
               <div className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}>
-                {t.settings.model.selectedSummary(platformSel.length)}
+                {t.settings.model.selectedShort(platformSel.length)}
               </div>
             </>
           ) : null}

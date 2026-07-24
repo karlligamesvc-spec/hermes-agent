@@ -76,7 +76,7 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
   const label = (
     <>
       {composedCount >= 2 ? (
-        <span className="truncate">{t.settings.model.selectedSummary(composedCount)}</span>
+        <span className="truncate">{t.settings.model.selectedShort(composedCount)}</span>
       ) : currentModel.trim() ? (
         <>
           <ProviderIcon size={12} vendor={modelVendor(currentModel, currentProvider)} />
@@ -98,9 +98,11 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
 
   // A composed selection has no single provider/model to name in the hover
   // title either — same "N models selected" copy, never "moa"/"__auto__".
+  // Short form: this doubles as the button's aria-label, and reading the full
+  // billing sentence out on every focus is noise (it lives in Settings › Model).
   const title =
     composedCount >= 2
-      ? t.settings.model.selectedSummary(composedCount)
+      ? t.settings.model.selectedShort(composedCount)
       : currentProvider
         ? copy.modelTitle(currentProvider, currentModel || copy.modelNone)
         : copy.switchModel

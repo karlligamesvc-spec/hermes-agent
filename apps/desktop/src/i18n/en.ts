@@ -604,6 +604,7 @@ export const en: Translations = {
       selectTitle: 'Select models (multi-select)',
       selectHint:
         'Pick one for a direct connection; pick several and they answer together, each billed by actual usage.',
+      selectedShort: count => `${count} models selected`,
       selectedSummary: count =>
         `${count} models selected · they answer together, each billed to your ledger by its own actual usage.`,
       byoTitle: 'My keys (BYO)',

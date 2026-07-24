@@ -198,4 +198,109 @@ describe('ModelMenuPanel', () => {
     await waitFor(() => expect(onSelectModel).toHaveBeenCalledWith({ model: 'glm-5.2', provider: MANAGED }))
     expect(saveMoaModels).toHaveBeenCalledTimes(1)
   })
+
+  // Kael, v0.16.17 real-device: after checking the 2nd model the list showed
+  // only ONE model, so a 3rd could never be picked. The catalog collapse came
+  // from the backend (composing pins the main provider to the virtual `moa`,
+  // which strands the relay row without its live-catalog probe — see
+  // apex_overlay/moa_picker_probe.py), but the picker must hold its own end of
+  // the contract too: rendering the list is driven by the provider payload and
+  // the selection set, NEVER by reverse-lookup of the active model. `__auto__`
+  // has no family row of its own, so any such lookup would empty the list.
+  it('keeps every platform model listed while a composed selection is active', async () => {
+    renderPanel()
+    await openModelList()
+
+    const platformRows = () =>
+      screen.getAllByRole('menuitemcheckbox').map(row => row.textContent?.replace(/\s+/g, ' ').trim())
+
+    expect(platformRows()).toEqual(['DeepSeek V4 Pro APEX', 'GLM 5.2', 'Qwen3.7 Max', 'Kimi K2.6'])
+
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
+    await waitFor(() => expect(setModelAssignment).toHaveBeenCalled())
+
+    // Same four rows, same order — the active model is now the virtual
+    // `__auto__`/`moa` pair, and that must not remove a single row.
+    await waitFor(() =>
+      expect(platformRows()).toEqual(['DeepSeek V4 Pro APEX', 'GLM 5.2', 'Qwen3.7 Max', 'Kimi K2.6'])
+    )
+
+    const checked = Object.fromEntries(
+      screen
+        .getAllByRole('menuitemcheckbox')
+        .map(row => [row.textContent?.replace(/\s+/g, ' ').trim(), row.getAttribute('aria-checked')])
+    )
+
+    expect(checked).toEqual({
+      'DeepSeek V4 Pro APEX': 'false',
+      'GLM 5.2': 'true',
+      'Qwen3.7 Max': 'true',
+      'Kimi K2.6': 'false'
+    })
+  })
+
+  it('can grow a composed selection from 2 to 3 models', async () => {
+    renderPanel()
+    await openModelList()
+
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
+    await waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
+
+    // The third click is the one Kael could not make — the row had vanished.
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Kimi K2.6/ }))
+
+    await waitFor(() =>
+      expect(saveMoaModels).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          presets: expect.objectContaining({
+            __auto__: expect.objectContaining({
+              // qwen3.7-max still outranks the newcomer, so the acting model is
+              // unchanged and kimi joins the advisors.
+              aggregator: { provider: MANAGED, model: 'qwen3.7-max' },
+              reference_models: [
+                { provider: MANAGED, model: 'glm-5.2' },
+                { provider: MANAGED, model: 'kimi-k2.6' }
+              ]
+            })
+          })
+        })
+      )
+    )
+    expect(await screen.findAllByText(/3 models selected/i)).toBeTruthy()
+  })
+
+  it('never rewrites the user-maintained visible-model set', async () => {
+    renderPanel()
+    await openModelList()
+
+    // "Edit models…" is the ONLY writer of this store. A multi-select must not
+    // narrow it as a side effect (that would shrink the list permanently, and
+    // for every provider, not just while a selection is composed).
+    expect($visibleModels.get()).toBeNull()
+
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
+    await waitFor(() => expect(setModelAssignment).toHaveBeenCalled())
+
+    expect($visibleModels.get()).toBeNull()
+  })
+
+  // The menu's two composed-selection slots are single truncating lines (the
+  // "current model" sub-trigger and the status line under the list), so both
+  // take the short copy. The long sentence lives in Settings › Model.
+  it('uses the short copy in both composed-selection slots', async () => {
+    renderPanel()
+    await openModelList()
+
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /GLM 5.2/ }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Qwen3.7 Max/ }))
+    await waitFor(() => expect(setModelAssignment).toHaveBeenCalled())
+
+    const slots = await screen.findAllByText(/2 models selected/i)
+    expect(slots.length).toBe(2)
+    slots.forEach(slot => expect(slot.textContent).toBe('2 models selected'))
+    expect(screen.queryByText(/answer together|ledger|actual usage/i)).toBeNull()
+  })
 })

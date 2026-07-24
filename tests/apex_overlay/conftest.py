@@ -18,6 +18,8 @@ _SEAM_MODULES = (
     "provider_filter",
     # hc-512 picker sentinel⇄real id dedupe.
     "model_catalog_dedupe",
+    # Virtual-'moa' main provider keeps the platform catalog probe-eligible.
+    "moa_picker_probe",
     "models_dev_fast",
     "gateway_bootstrap",
     "feishu_supervisor",

@@ -794,6 +794,7 @@ export const zh: Translations = {
       staleAuxOtherProviders: '其他提供方',
       selectTitle: '选择模型(可多选)',
       selectHint: '选一个照常直连;选多个则共同参与回答,各按实际用量计。',
+      selectedShort: count => `已选 ${count} 个模型`,
       selectedSummary: count => `已选 ${count} 个模型 · 回答由所选模型共同完成,用量按各自实际消耗计入台账。`,
       byoTitle: '我的密钥(BYO)',
       byoHint: '使用你自己密钥下的模型。',
