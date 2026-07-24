@@ -17,6 +17,7 @@ import {
 } from '@/store/runtime-update'
 import { $desktopVersion, refreshDesktopVersion } from '@/store/updates'
 
+import { ChangelogSection } from './changelog-section'
 import { SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
@@ -222,6 +223,8 @@ export function AboutSettingsBody() {
       </div>
 
       <div className="mx-auto mt-4 w-full max-w-2xl">
+        <ChangelogSection />
+
         <EngineUpdateSection />
 
         <UninstallSection />

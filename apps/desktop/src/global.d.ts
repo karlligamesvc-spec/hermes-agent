@@ -81,6 +81,16 @@ declare global {
         // Open the cloud web binding flow in the system browser (unbound users).
         openBind: () => Promise<{ ok: boolean; url: string }>
       }
+      // hc-447: 更新日志 (changelog) entry point. Reads the hc-446 announcement
+      // feed (same "you can now…" copy the web /app/whats-new page shows) with
+      // the stored login JWT — no secret crosses to the renderer. Optional: an
+      // older main process may not expose the bridge yet. See
+      // electron/apex-announcements.cjs.
+      announcements?: {
+        list: () => Promise<DesktopAnnouncementsListResult>
+        // Best-effort read receipt; the renderer does not gate its UI on this.
+        markRead: (announcementId: string) => Promise<{ ok: boolean }>
+      }
       // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
       // scanning a QR / pasting one code. feishu issues an INDEPENDENT app via a
       // cloud device-code flow (renderer owns the polling loop). No secret ever
@@ -525,6 +535,33 @@ export interface DesktopFeishuSyncResult {
   message?: string
 }
 
+// hc-447: one published product-update announcement (hc-446 content source —
+// admin-authored "you can now…" copy, never hc numbers/jargon). `level`
+// only affects upstream delivery cadence (major=instant, normal=monthly
+// batch), not display; the desktop renders both the same way.
+export interface DesktopAnnouncementItem {
+  id: string
+  title: string
+  body: string
+  level: 'major' | 'normal'
+  // ISO 8601, or null (should not happen for a published row, but the main
+  // process normalizer degrades a missing/malformed value to null rather
+  // than guessing).
+  publishedAt: string | null
+  read: boolean
+}
+
+// Result of announcements.list(). `needsSignIn:true` means the stored login
+// JWT is missing/expired — the panel shows a sign-in prompt instead of an
+// error. An empty `items` array with ok:true is a normal, expected state (no
+// published announcements yet) — never treated as an error.
+export interface DesktopAnnouncementsListResult {
+  ok: boolean
+  items: DesktopAnnouncementItem[]
+  needsSignIn?: boolean
+  message?: string
+}
+
 // hc-417: one locally-bound IM 入口 channel (display-only — no secret). `boundAt`
 // is epoch ms; `domain` is the non-secret feishu/lark routing value ('' if none).
 export interface DesktopImEntryBinding {
@@ -750,6 +787,12 @@ export interface DesktopShellUpdateState {
   // 下载进度 0-100;非下载阶段 null。
   percent: number | null
   error: string | null
+  // hc-447: human-readable release notes carried through from electron-updater's
+  // UpdateInfo (sourced from latest.yml's `releaseNotes:` field, hand-authored at
+  // release time per NEXT-TAG-BUMP-CHECKLIST.md). null when the release shipped
+  // with no authored notes — not an error state, the capsule just shows the bare
+  // version in that case (same as before hc-447).
+  releaseNotes: string | null
 }
 
 export interface DesktopAuthProvider {

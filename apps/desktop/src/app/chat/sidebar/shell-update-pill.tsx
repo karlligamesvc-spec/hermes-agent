@@ -5,6 +5,22 @@ import { useI18n } from '@/i18n'
 import { ChevronRight, Loader2, RefreshCw } from '@/lib/icons'
 import { $shellUpdate, initShellUpdateSubscription, installShellUpdate } from '@/store/shell-update'
 
+// hc-447: the pill is compact by design (one line, sidebar-bottom) — a full
+// changelog reader belongs in Settings → About (see ChangelogSection), not
+// here. This just surfaces the FIRST line of the hand-authored notes so the
+// capsule reads as human copy instead of a bare version number; the complete
+// text is still available via the native title tooltip on hover. No line
+// breaks in the preview — multi-line notes (or a joined multi-version note,
+// see shell-updater.cjs normalizeReleaseNotes) collapse to their first
+// non-blank line.
+function firstReleaseNotesLine(notes: string | null): string {
+  if (!notes) {
+    return ''
+  }
+
+  return notes.split('\n').map(line => line.trim()).find(Boolean) ?? ''
+}
+
 // 侧栏底部「壳更新」胶囊(Codex 同款「重启以更新 vX.Y.Z」),复用引擎胶囊的
 // p5-update-pill 视觉,挂在引擎胶囊上方。刻意比引擎胶囊更沉默:
 //   - 检查/下载全程隐形(机制在主进程 electron-updater,autoDownload 静默拉);
@@ -29,6 +45,9 @@ export function ShellUpdatePill() {
 
   // electron-updater 的 info.version 是裸 semver(0.16.1);展示带 v 前缀。
   const version = state.version ? (state.version.startsWith('v') ? state.version : `v${state.version}`) : null
+  // hc-447: '' when the release shipped with no hand-authored notes — the
+  // pill then renders exactly as it did before this ticket (title + version).
+  const notesPreview = firstReleaseNotesLine(state.releaseNotes)
 
   const handleClick = async () => {
     if (installing) {
@@ -62,6 +81,11 @@ export function ShellUpdatePill() {
       </span>
       <span className="p5-update-pill-text">
         <span className="p5-update-pill-title">{t.sidebar.shellUpdate.restartToUpdate(version ?? '')}</span>
+        {notesPreview && (
+          <span className="p5-update-pill-notes" title={state.releaseNotes ?? undefined}>
+            {notesPreview}
+          </span>
+        )}
       </span>
       {installing ? null : <ChevronRight aria-hidden className="p5-update-pill-chevron size-3.5" />}
     </button>

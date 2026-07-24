@@ -1980,6 +1980,19 @@ canvas {
   white-space: nowrap;
 }
 
+/* hc-447: single-line preview of the hand-authored release notes (first line
+   only — see firstReleaseNotesLine in shell-update-pill.tsx). Same treatment
+   as the version line beneath the title; the full text is one hover away via
+   the native title tooltip. Absent entirely for a release with no notes. */
+.p5-update-pill-notes {
+  overflow: hidden;
+  color: var(--ui-text-tertiary);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .p5-update-pill-chevron {
   flex: none;
   color: var(--ui-text-tertiary);

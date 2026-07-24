@@ -434,7 +434,16 @@ export const en: Translations = {
         `This app needs engine ${value} or later. Use "Check for update" below to update the engine.`,
       engineTreeMismatch: 'Engine files out of sync',
       engineTreeMismatchDetail:
-        'A previous update recorded a new version but the engine files on disk were not replaced, so the version shown may be wrong. Run the engine update below to re-download the correct files.'
+        'A previous update recorded a new version but the engine files on disk were not replaced, so the version shown may be wrong. Run the engine update below to re-download the correct files.',
+      // hc-447: 更新日志 (product-update changelog) entry — reads the hc-446
+      // announcement feed (same "you can now…" copy the web /app/whats-new page
+      // shows), scoped to the signed-in ApexNodes account.
+      changelogTitle: 'Changelog',
+      changelogIntro: "See what's new in APEX.",
+      changelogView: 'View',
+      changelogEmpty: 'No announcements yet — check back soon.',
+      changelogLoadError: "Couldn't load the changelog. Check your connection and try again.",
+      changelogNeedsSignIn: 'Sign in to your ApexNodes account to see product updates.'
     },
     config: {
       none: 'None',

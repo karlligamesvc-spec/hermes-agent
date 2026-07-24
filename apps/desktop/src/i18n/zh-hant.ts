@@ -599,7 +599,15 @@ export const zhHant = defineLocale({
       engineUpdateNeededDetail: value => `本應用需要引擎 ${value} 或更新版本。請點下方「檢查更新」更新引擎。`,
       engineTreeMismatch: '引擎檔案未同步',
       engineTreeMismatchDetail:
-        '上次更新記錄了新版本,但磁碟上的引擎檔案並未替換,目前顯示的版本號可能不準確。請點下方更新引擎以重新下載正確的檔案。'
+        '上次更新記錄了新版本,但磁碟上的引擎檔案並未替換,目前顯示的版本號可能不準確。請點下方更新引擎以重新下載正確的檔案。',
+      // hc-447:更新日誌入口 —— 讀 hc-446 的公告源(與 web /app/whats-new
+      // 同一份「你現在可以…」人話文案),範圍限當前登入的 ApexNodes 帳號。
+      changelogTitle: '更新日誌',
+      changelogIntro: '查看 APEX 的最新動態。',
+      changelogView: '查看',
+      changelogEmpty: '暫無更新公告,過段時間再來看看。',
+      changelogLoadError: '更新日誌載入失敗,請檢查網路後重試。',
+      changelogNeedsSignIn: '登入 ApexNodes 帳號後可查看產品更新。'
     },
     config: {
       none: '無',
