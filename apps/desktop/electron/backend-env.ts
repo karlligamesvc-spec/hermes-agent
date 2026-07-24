@@ -96,13 +96,14 @@ function buildDesktopBackendEnv({
   venvRoot,
   currentEnv = process.env,
   platform = process.platform,
-  pathModule = pathModuleForPlatform(platform)
+  pathModule = pathModuleForPlatform(platform),
+  proxyEnv = {}
 }: any = {}) {
   const delimiter = delimiterForPlatform(platform)
   const currentPythonPath = currentEnv?.PYTHONPATH || ''
   const key = pathEnvKey(currentEnv, platform)
 
-  return {
+  const env: any = {
     PYTHONPATH: appendUniquePathEntries([...pythonPathEntries, currentPythonPath], { delimiter }),
     [key]: buildDesktopBackendPath({
       hermesHome,
@@ -112,6 +113,21 @@ function buildDesktopBackendEnv({
       pathModule
     })
   }
+
+  // hc-545: fold in the coding-agent proxy fragment (HTTP(S)_PROXY / NO_PROXY,
+  // resolved from the macOS system proxy in AUTO mode). Because the gateway
+  // spawn merges { ...process.env, ...backend.env } and hermes_subprocess_env
+  // does NOT strip proxy vars, these propagate to the spawned claude/codex child
+  // by plain env inheritance — one injection point covers gateway + agent. The
+  // fragment is already add-only vs the parent env (apex-agent-proxy.ts), so a
+  // spread here is safe; an empty fragment (OFF / no system proxy) is a no-op.
+  if (proxyEnv && typeof proxyEnv === 'object') {
+    for (const [proxyKey, proxyValue] of Object.entries(proxyEnv)) {
+      if (proxyValue) env[proxyKey] = proxyValue
+    }
+  }
+
+  return env
 }
 
 export {

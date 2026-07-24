@@ -71,6 +71,149 @@ declare global {
         // clear the preference.
         set: (name: string | null) => Promise<DesktopActiveProfile>
       }
+      // ApexNodes managed-LLM (zero-key) default path. Routes the local
+      // runtime's inference through the ApexNodes relay using the signed-in
+      // user's cloud account. See electron/apex-managed.cjs.
+      managed: {
+        status: () => Promise<DesktopManagedStatus>
+        // hc-512: live relay model-catalog state for the model menu. Optional:
+        // an older main process may not expose it yet. `refresh: true`
+        // re-probes now (menu open / user retry); a 401 kicks the key
+        // self-heal chain before reporting.
+        relayCatalog?: (opts?: { refresh?: boolean }) => Promise<DesktopRelayCatalogState>
+        signIn: (payload: { email: string; password: string }) => Promise<DesktopManagedSignInResult>
+        // Browser (loopback) sign-in: "用 Google 登录" / "用 APEX 登录". Opens
+        // the system browser, catches the loopback redirect, and resolves with
+        // the same managed assignment shape the email/password flow returns.
+        browserSignIn: (payload: { provider: 'apex' | 'google' }) => Promise<DesktopManagedSignInResult>
+        // hc-530: web handoff sign-in. Exchange the one-time code delivered via the
+        // apexnodes://login deep link for the same managed assignment shape.
+        // Optional: an older main process may not expose it.
+        deepLinkSignIn?: (payload: { code: string }) => Promise<DesktopManagedSignInResult>
+        signOut: () => Promise<{ ok: boolean }>
+        // On-demand relay-key self-heal after a chat turn hit a relay auth error
+        // (HTTP 401/403). Optional: an older main process may not expose it.
+        selfHeal?: () => Promise<DesktopManagedSelfHealResult>
+      }
+      // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
+      // Feishu app credential (from the cloud agent_entries) down to the local
+      // runtime so the Feishu adapter + lark doc/drive tools light up. No secret
+      // ever crosses to the renderer. Optional: an older main process may not
+      // expose the bridge yet. See electron/apex-feishu.cjs.
+      feishu?: {
+        // Read-only local state for the settings card (no network, no secret).
+        status: () => Promise<DesktopFeishuStatus>
+        // Fetch the cloud credential (authed with the stored login JWT), persist
+        // it encrypted, and re-home the backend so the adapter comes alive.
+        sync: () => Promise<DesktopFeishuSyncResult>
+        // Forget the local credential (cloud entry untouched) + restart backend.
+        disconnect: () => Promise<{ ok: boolean }>
+        // Open the cloud web binding flow in the system browser (unbound users).
+        openBind: () => Promise<{ ok: boolean; url: string }>
+      }
+      // hc-447: 更新日志 (changelog) entry point. Reads the hc-446 announcement
+      // feed (same "you can now…" copy the web /app/whats-new page shows) with
+      // the stored login JWT — no secret crosses to the renderer. Optional: an
+      // older main process may not expose the bridge yet. See
+      // electron/apex-announcements.cjs.
+      announcements?: {
+        list: () => Promise<DesktopAnnouncementsListResult>
+        // Best-effort read receipt; the renderer does not gate its UI on this.
+        markRead: (announcementId: string) => Promise<{ ok: boolean }>
+      }
+      // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
+      // scanning a QR / pasting one code. feishu issues an INDEPENDENT app via a
+      // cloud device-code flow (renderer owns the polling loop). No secret ever
+      // crosses to the renderer. Optional: an older main process may not expose
+      // the bridge yet. See electron/apex-im-entry.cjs.
+      imEntry?: {
+        // Local bound channels (display fields only, no network, no secret).
+        list: () => Promise<DesktopImEntryListResult>
+        // Start the feishu provisioning flow → scan link + provision_id handle.
+        feishuIssue: () => Promise<DesktopImEntryIssueResult>
+        // One provisioning status check; on 'success' main fetches + persists
+        // the credential (encrypted) + restarts the backend (reloads the window).
+        feishuPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
+        // hc-538 WeChat (iLink) — same contract as feishuIssue/feishuPoll
+        // against the /desktop/weixin/* cloud leg.
+        weixinIssue: () => Promise<DesktopImEntryIssueResult>
+        weixinPoll: (provisionId: string) => Promise<DesktopImEntryPollResult>
+        // Revoke the cloud binding (feishu/weixin, best-effort), forget the
+        // local binding + restart the backend.
+        unbind: (channelId: string) => Promise<{ ok: boolean }>
+      }
+      // hc-533 本机 Agent 调度 — the A2A daemon leg. Toggles the reverse-connect
+      // daemon (default off) that lets the user's cloud assistant dispatch a task
+      // to a local coding agent on this machine. No secret ever crosses to the
+      // renderer: status carries only display fields; the device token is stored
+      // encrypted in main. Optional: an older main process may not expose it.
+      // See electron/apex-daemon.cjs.
+      daemon?: {
+        // Read-only status for the settings block (no network, no secret).
+        status: () => Promise<DesktopDaemonStatus>
+        // The on/off toggle. Enabling registers + starts the loops; disabling
+        // goes dormant but keeps the registration for an instant re-enable.
+        setEnabled: (enabled: boolean) => Promise<DesktopDaemonMutationResult>
+        // Rename this device (re-registers to update the cloud row when live).
+        setDeviceName: (name: string) => Promise<DesktopDaemonMutationResult>
+        // Forget this device locally + go dormant (cloud row goes offline on its
+        // own once heartbeats stop).
+        unregister: () => Promise<DesktopDaemonMutationResult>
+        // Subscribe to live status pushed on connection transitions.
+        onStatus: (callback: (status: DesktopDaemonStatus) => void) => () => void
+      }
+      // hc-545 coding-agent account connection — three-state detection + in-app
+      // OAuth hosting for the user's own claude/codex CLIs. No secret crosses to
+      // the renderer. Optional: an older main process may not expose it.
+      agentAuth?: {
+        // Detect logged_out / unreachable / ready for both families (headless).
+        status: () => Promise<DesktopAgentAuthStatus>
+        // Host the CLI's own OAuth login (opens the browser / degrades to a
+        // guided terminal command). The renderer then polls status().
+        connect: (family: DesktopAgentFamily) => Promise<DesktopAgentConnectResult>
+      }
+      // hc-545 coding-agent network proxy — auto (follow system) / custom / off.
+      agentProxy?: {
+        get: () => Promise<DesktopAgentProxyState>
+        set: (payload: { mode: DesktopAgentProxyMode; customUrl?: string }) => Promise<DesktopAgentProxyState>
+      }
+      // Platform client-config sync — the cloud serves a versioned client
+      // config the main process caches at boot / after sign-in and applies to
+      // config.yaml pre-gateway (main.cjs applyClientConfigToRuntime). `get`
+      // reads the cached state from disk (no network), informational only.
+      // Optional: an older main process may not expose the bridge yet.
+      clientConfig?: {
+        get: () => Promise<DesktopClientConfigState>
+      }
+      // Continuous auth gate: fires when a backend call returns 401 (login lost)
+      // or 403 account_disabled (account abnormal). The renderer clears auth and
+      // returns to the login screen. See electron/main.cjs broadcastAuthGate.
+      onAuthGate?: (callback: (payload: DesktopAuthGateEvent) => void) => () => void
+      // Runtime 3-end consistency — desktop opt-in engine update (R5/R6).
+      // checkUpdate compares the installed engine (bootstrap marker) against the
+      // admin-set default; applyUpdate re-points the pin and re-runs bootstrap
+      // (renderer reloads when reloadRequired is true). Both are safe no-ops
+      // offline. Backed by electron/apex-runtime-latest.cjs (do not change the
+      // mechanism here — this is the IPC surface only). See main.cjs handlers
+      // hermes:runtime:check-update / hermes:runtime:apply-update.
+      runtime: {
+        // R6: installed engine version, read locally from the bootstrap marker
+        // (no network, no state change). Used to show the engine version on
+        // About-panel open without triggering an opt-in update check.
+        getVersion: () => Promise<DesktopRuntimeVersion>
+        checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
+        applyUpdate: () => Promise<DesktopRuntimeUpdateApply>
+      }
+      // 壳(Electron 应用本体)自更新 — electron-updater 通道,和 runtime(引擎)
+      // 更新互不相扰。机制全在主进程(electron/shell-updater.cjs):启动延迟
+      // 静默检查 + autoDownload;renderer 只订状态、在 downloaded 时出
+      // 「重启以更新」胶囊,install 触发 quitAndInstall。Optional:旧壳的主
+      // 进程没有这个桥。
+      shellUpdate?: {
+        getState: () => Promise<DesktopShellUpdateState>
+        install: () => Promise<{ ok: boolean; error?: string }>
+        onEvent: (callback: (state: DesktopShellUpdateState) => void) => () => void
+      }
       api: <T>(request: HermesApiRequest) => Promise<T>
       notify: (payload: HermesNotification) => Promise<boolean>
       requestMicrophoneAccess: () => Promise<boolean>
@@ -93,6 +236,11 @@ declare global {
       openPreviewInBrowser?: (url: string) => Promise<void>
       fetchLinkTitle: (url: string) => Promise<string>
       sanitizeWorkspaceCwd: (cwd?: null | string) => Promise<{ cwd: string; sanitized: boolean }>
+      // hc-517 — create a new empty project folder <parentDir>/<name> to bind as
+      // a fresh session's cwd (the picker's "New blank project"). Validates the
+      // name to a single, traversal-free segment and never clobbers an existing
+      // entry. Optional: an older main process may not expose it.
+      createProjectDir?: (parentDir: string, name: string) => Promise<HermesCreateProjectResult>
       settings: {
         getDefaultProjectDir: () => Promise<{ defaultLabel: string; dir: null | string; resolvedCwd: string }>
         pickDefaultProjectDir: () => Promise<{ canceled: boolean; dir: null | string }>
@@ -107,6 +255,10 @@ declare global {
       getRecentLogs: () => Promise<{ path: string; lines: string[] }>
       readDir: (path: string) => Promise<HermesReadDirResult>
       gitRoot?: (path: string) => Promise<string | null>
+      // Resolve git-worktree identity for a batch of session cwds, reading git's
+      // on-disk metadata locally. Returns null per cwd that isn't inside a
+      // checkout (or can't be read — e.g. a remote backend's path).
+      worktrees?: (cwds: string[]) => Promise<Record<string, HermesWorktreeInfo | null>>
       // Reveal a path in the OS file manager (Finder / Explorer).
       revealPath?: (path: string) => Promise<boolean>
       // Open a DIRECTORY (created if missing) in the OS file manager.
@@ -221,6 +373,14 @@ declare global {
         // Search the Marketplace for color-theme extensions. An empty query
         // returns the most-installed themes.
         searchMarketplace: (query: string) => Promise<DesktopMarketplaceSearchItem[]>
+      }
+      // hc-554 场景目录 — the desktop scenario shelf + ✦ menu read the shared
+      // catalog (cloud GET /media/scenario-catalog, agent-key auth + TTL) here.
+      // Main owns the agent key + TTL cache; the renderer gets the raw JSON and
+      // normalizes it. Returns null on any failure so the renderer falls back
+      // to its built-in catalog. Optional: an older main may not expose it.
+      scenarioCatalog?: {
+        get: () => Promise<unknown>
       }
     }
   }

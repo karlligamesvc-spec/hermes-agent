@@ -23,6 +23,34 @@ function resolveTimeoutMs(timeoutMs, fallbackMs = DEFAULT_FETCH_TIMEOUT_MS) {
   return fallback
 }
 
+/**
+ * Read a secret written by encryptDesktopSecret back out. Returns '' for a
+ * missing/blank record and for a safeStorage payload this OS keychain can no
+ * longer open, so a rotated keychain degrades to "not configured" instead of
+ * throwing at every read site.
+ */
+function decryptDesktopSecret(secret, safeStorageApi) {
+  if (!secret || typeof secret !== 'object') {
+    return ''
+  }
+
+  const value = String(secret.value || '')
+
+  if (!value) {
+    return ''
+  }
+
+  if (secret.encoding === 'safeStorage') {
+    try {
+      return safeStorageApi.decryptString(Buffer.from(value, 'base64'))
+    } catch {
+      return ''
+    }
+  }
+
+  return value
+}
+
 function encryptDesktopSecret(value, safeStorageApi) {
   const raw = String(value || '')
 
@@ -306,6 +334,7 @@ async function resolveReadableFileForIpc(
 export {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
+  decryptDesktopSecret,
   encryptDesktopSecret,
   rejectUnsafePathSyntax,
   resolveDirectoryForIpc,

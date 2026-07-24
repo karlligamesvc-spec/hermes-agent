@@ -56,6 +56,126 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     get: () => ipcRenderer.invoke('hermes:profile:get'),
     set: name => ipcRenderer.invoke('hermes:profile:set', name)
   },
+  // ApexNodes managed-LLM (zero-key) default path. See electron/apex-managed.cjs.
+  managed: {
+    status: () => ipcRenderer.invoke('hermes:managed:status'),
+    // hc-512: live relay model-catalog state for the model menu ('ok' |
+    // 'unauthorized' | 'unreachable' | 'unknown'); { refresh: true } re-probes.
+    relayCatalog: opts => ipcRenderer.invoke('hermes:managed:relayCatalog', opts),
+    signIn: payload => ipcRenderer.invoke('hermes:managed:signIn', payload),
+    browserSignIn: payload => ipcRenderer.invoke('hermes:managed:browserSignIn', payload),
+    // hc-530: web → desktop one-click login. Exchange the one-time handoff code
+    // (from the apexnodes://login deep link) for a session — same result shape as
+    // browserSignIn.
+    deepLinkSignIn: payload => ipcRenderer.invoke('hermes:managed:deepLinkSignIn', payload),
+    signOut: () => ipcRenderer.invoke('hermes:managed:signOut'),
+    // On-demand relay-key self-heal after a chat turn hit a relay auth error
+    // (HTTP 401/403): re-provision + report whether it healed or the user must
+    // sign in again. See electron/main.cjs hermes:managed:selfHeal.
+    selfHeal: () => ipcRenderer.invoke('hermes:managed:selfHeal')
+  },
+  // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
+  // Feishu app credential down to light up the Feishu adapter + lark tools. See
+  // electron/apex-feishu.cjs. No secret crosses to the renderer: status returns
+  // only display fields; sync/disconnect return status objects.
+  feishu: {
+    status: () => ipcRenderer.invoke('hermes:feishu:status'),
+    sync: () => ipcRenderer.invoke('hermes:feishu:sync'),
+    disconnect: () => ipcRenderer.invoke('hermes:feishu:disconnect'),
+    openBind: () => ipcRenderer.invoke('hermes:feishu:openBind')
+  },
+  // hc-447: 更新日志 (changelog) entry point — reads the hc-446 announcement
+  // feed (same content the web /app/whats-new page shows), scoped to the
+  // signed-in ApexNodes account. Read-only: list + a best-effort read
+  // receipt. See electron/apex-announcements.cjs.
+  announcements: {
+    list: () => ipcRenderer.invoke('hermes:announcements:list'),
+    markRead: announcementId => ipcRenderer.invoke('hermes:announcements:markRead', announcementId)
+  },
+  // hc-417: Desktop IM 入口 — connect the local agent to an IM platform by
+  // scanning a QR / pasting one code. feishu registers an INDEPENDENT app via
+  // the cloud v2 provisioning flow (renderer owns the polling loop: issue →
+  // poll* → success; main fetches + stores the credential on success). No
+  // secret crosses to the renderer: list returns display fields; the credential
+  // is persisted encrypted + injected into the backend spawn env.
+  // See electron/apex-im-entry.cjs.
+  imEntry: {
+    list: () => ipcRenderer.invoke('hermes:imEntry:list'),
+    feishuIssue: () => ipcRenderer.invoke('hermes:imEntry:feishuIssue'),
+    feishuPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:feishuPoll', provisionId),
+    weixinIssue: () => ipcRenderer.invoke('hermes:imEntry:weixinIssue'),
+    weixinPoll: provisionId => ipcRenderer.invoke('hermes:imEntry:weixinPoll', provisionId),
+    unbind: channelId => ipcRenderer.invoke('hermes:imEntry:unbind', channelId)
+  },
+  // hc-533 本机 Agent 调度 — the A2A daemon leg. The settings block toggles the
+  // reverse-connect daemon (default off), names the device, and unregisters. No
+  // secret crosses to the renderer: status returns only display fields; the
+  // device token is stored encrypted in main. onStatus subscribes to the live
+  // status main pushes on connection transitions. See electron/apex-daemon.cjs.
+  daemon: {
+    status: () => ipcRenderer.invoke('hermes:daemon:status'),
+    setEnabled: enabled => ipcRenderer.invoke('hermes:daemon:setEnabled', enabled),
+    setDeviceName: name => ipcRenderer.invoke('hermes:daemon:setDeviceName', name),
+    unregister: () => ipcRenderer.invoke('hermes:daemon:unregister'),
+    onStatus: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:daemon:status', listener)
+      return () => ipcRenderer.removeListener('hermes:daemon:status', listener)
+    }
+  },
+  // hc-545 coding-agent account connection — the three-state (logged_out /
+  // unreachable / ready) detector for the user's own claude/codex CLIs plus the
+  // in-app OAuth hosting. No secret ever crosses to the renderer: status returns
+  // only display fields; OAuth credentials land in each CLI's own store, never
+  // in main or the renderer. See electron/apex-agent-auth.cjs.
+  agentAuth: {
+    status: () => ipcRenderer.invoke('hermes:agentAuth:status'),
+    connect: family => ipcRenderer.invoke('hermes:agentAuth:connect', family)
+  },
+  // hc-545 coding-agent network proxy — auto (follow macOS system proxy) /
+  // custom / off. Governs the HTTP(S)_PROXY fragment injected into the agent's
+  // env (with a mainland-China NO_PROXY whitelist). See electron/apex-agent-proxy.cjs.
+  agentProxy: {
+    get: () => ipcRenderer.invoke('hermes:agentProxy:get'),
+    set: payload => ipcRenderer.invoke('hermes:agentProxy:set', payload)
+  },
+  // Platform client-config sync — informational read of the cached versioned
+  // config (no network). Application happens in the MAIN process pre-gateway
+  // (main.cjs applyClientConfigToRuntime); the renderer no longer applies.
+  clientConfig: {
+    get: () => ipcRenderer.invoke('hermes:clientConfig:get')
+  },
+  // Continuous auth gate: main broadcasts when a backend call returns 401
+  // (login lost) or 403 account_disabled (account abnormal). The renderer
+  // clears auth and returns to the login screen. See main.cjs broadcastAuthGate.
+  onAuthGate: callback => {
+    const listener = (_event, payload) => callback(payload)
+    ipcRenderer.on('hermes:auth-gate', listener)
+    return () => ipcRenderer.removeListener('hermes:auth-gate', listener)
+  },
+  // Runtime 3-end consistency — desktop opt-in engine update (R5). checkUpdate
+  // compares the installed runtime against the admin-set default; applyUpdate
+  // re-points the pin and re-runs bootstrap (renderer reloads when
+  // reloadRequired is true). Both are safe no-ops offline.
+  runtime: {
+    // R6: installed engine version, read locally from the bootstrap marker.
+    // No network / no state change — the About panel calls this on open.
+    getVersion: () => ipcRenderer.invoke('hermes:runtime:version'),
+    checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
+    applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update')
+  },
+  // 壳(Electron 应用本体)自更新 — electron-updater,和上面的引擎(runtime)
+  // 更新是两条通道。机制全在主进程(electron/shell-updater.cjs):静默检查+
+  // 下载,状态经 onEvent 推给侧栏胶囊;install = quitAndInstall(应用退出重装)。
+  shellUpdate: {
+    getState: () => ipcRenderer.invoke('hermes:shell-update:get'),
+    install: () => ipcRenderer.invoke('hermes:shell-update:install'),
+    onEvent: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:shell-update:event', listener)
+      return () => ipcRenderer.removeListener('hermes:shell-update:event', listener)
+    }
+  },
   api: request => ipcRenderer.invoke('hermes:api', request),
   notify: payload => ipcRenderer.invoke('hermes:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
@@ -84,6 +204,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   openPreviewInBrowser: url => ipcRenderer.invoke('hermes:openPreviewInBrowser', url),
   fetchLinkTitle: url => ipcRenderer.invoke('hermes:fetchLinkTitle', url),
   sanitizeWorkspaceCwd: cwd => ipcRenderer.invoke('hermes:workspace:sanitize', cwd),
+  createProjectDir: (parentDir, name) => ipcRenderer.invoke('hermes:workspace:createDir', parentDir, name),
   settings: {
     getDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:get'),
     setDefaultProjectDir: dir => ipcRenderer.invoke('hermes:setting:defaultProjectDir:set', dir),
@@ -106,6 +227,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   getRecentLogs: () => ipcRenderer.invoke('hermes:logs:recent'),
   readDir: dirPath => ipcRenderer.invoke('hermes:fs:readDir', dirPath),
   gitRoot: startPath => ipcRenderer.invoke('hermes:fs:gitRoot', startPath),
+  worktrees: cwds => ipcRenderer.invoke('hermes:fs:worktrees', cwds),
   revealPath: targetPath => ipcRenderer.invoke('hermes:fs:reveal', targetPath),
   openDir: dirPath => ipcRenderer.invoke('hermes:fs:openDir', dirPath),
   renamePath: (targetPath, newName) => ipcRenderer.invoke('hermes:fs:rename', targetPath, newName),
@@ -263,5 +385,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
     searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)
+  },
+  // hc-554 场景目录 — the desktop scenario shelf + ✦ menu read the shared catalog
+  // (cloud GET /media/scenario-catalog, agent-key auth + TTL) via main, which
+  // owns the key + cache. Returns the catalog JSON or null (renderer falls back
+  // to its built-in catalog). See electron/apex-scenario-catalog.cjs.
+  scenarioCatalog: {
+    get: () => ipcRenderer.invoke('hermes:scenarioCatalog:get')
   }
 })

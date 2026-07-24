@@ -46,6 +46,34 @@ const STAMP_COMMIT_RE = /^[0-9a-f]{7,40}$/i
 const FALLBACK_COMMIT_RE = /^0{7,40}$/
 const FALLBACK_BRANCH = 'main'
 
+// hc-543: the COS extract stamps the tree's own commit here, so the desktop can
+// report the ACTUAL source tree rather than whatever the bootstrap marker claims.
+const SOURCE_COMMIT_STAMP = '.hermes-source-commit'
+
+/** The commit stamped into an installed tree, or null when unstamped. */
+function readSourceCommitStamp(activeRoot) {
+  if (!activeRoot) return null
+  try {
+    const raw = fs.readFileSync(path.join(activeRoot, SOURCE_COMMIT_STAMP), 'utf8').trim()
+    return raw || null
+  } catch {
+    return null
+  }
+}
+
+/** Do two commit keys name the same commit, allowing an abbreviated form? */
+function commitKeysMatch(a, b) {
+  if (!a || !b) return false
+  const x = String(a).trim().toLowerCase()
+  const y = String(b).trim().toLowerCase()
+  if (!x || !y) return false
+  if (x === y) return true
+  const shorter = x.length <= y.length ? x : y
+  const longer = x.length <= y.length ? y : x
+  if (shorter.length < 7 || !STAMP_COMMIT_RE.test(shorter)) return false
+  return longer.startsWith(shorter)
+}
+
 function isPinnedCommit(commit) {
   return typeof commit === 'string' && STAMP_COMMIT_RE.test(commit) && !FALLBACK_COMMIT_RE.test(commit)
 }
@@ -1023,6 +1051,7 @@ export {
   buildPinArgs,
   buildPosixPinArgs,
   cachedScriptPath,
+  commitKeysMatch,
   hasExistingGitCheckout,
   installedAgentInstallScript,
   installRefForStamp,
@@ -1033,5 +1062,7 @@ export {
   resolveInstallScript,
   resolveLocalInstallScript,
   resolveMarkerPinnedCommit,
-  runBootstrap
+  readSourceCommitStamp,
+  runBootstrap,
+  SOURCE_COMMIT_STAMP
 }

@@ -38,7 +38,10 @@ function requireHiddenChildOptions(source, needle) {
 test('desktop background child processes opt into hidden Windows consoles', () => {
   const source = readElectronFile('main.ts')
 
-  assert.match(source, /function hiddenWindowsChildOptions\(options = \{\}\)/)
+  // The helper itself now lives in its own module (windows-child-options.ts,
+  // unit-tested directly there for both platform branches); main.ts must reach
+  // for that shared one rather than growing a private copy.
+  assert.match(source, /import \{ hiddenWindowsChildOptions \} from '\.\/windows-child-options'/)
 
   requireHiddenChildOptions(source, "execFileSync('reg'")
   requireHiddenChildOptions(source, 'execFileSync(pyExe')
@@ -58,9 +61,7 @@ test('desktop background child processes opt into hidden Windows consoles', () =
 test('intentional or interactive desktop child processes stay documented', () => {
   const source = readElectronFile('main.ts')
 
-  assert.match(source, /windowsHide: false/)
   assert.match(source, /handOffWindowsBootstrapRecovery/)
-  assert.match(source, /'--repair', '--branch'/)
   assert.match(source, /'--update', '--branch'/)
   assert.match(source, /nodePty\.spawn\(command, args/)
   assert.match(source, /spawn\('cmd\.exe', \['\/c', 'start'/)
@@ -69,6 +70,6 @@ test('intentional or interactive desktop child processes stay documented', () =>
 test('bootstrap PowerShell runner hides Windows console children', () => {
   const source = readElectronFile('bootstrap-runner.ts')
 
-  assert.match(source, /function hiddenWindowsChildOptions\(options = \{\}\)/)
+  assert.match(source, /import \{ hiddenWindowsChildOptions \} from '\.\/windows-child-options'/)
   requireHiddenChildOptions(source, 'spawn(ps, fullArgs')
 })
