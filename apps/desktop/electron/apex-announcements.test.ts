@@ -1,26 +1,27 @@
 /**
- * Tests for electron/apex-announcements.cjs (hc-447 desktop 更新日志 entry
+ * Tests for electron/apex-announcements.ts (hc-447 desktop 更新日志 entry
  * point, reading the hc-446 announcement feed).
  *
- * Run with: node --test electron/apex-announcements.test.cjs
+ * Run with: npx vitest run electron/apex-announcements.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * These are the pure helpers behind the bridge: URL building and response
  * parsing/normalization. Auth transport (the stored login JWT, safeStorage)
- * lives in main.cjs and is exercised there; here we prove the pure
+ * lives in main.ts and is exercised there; here we prove the pure
  * shaping/gating logic.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   ANNOUNCEMENTS_LIST_PATH,
   announcementReadUrl,
   announcementsListUrl,
   normalizeAnnouncement,
   parseAnnouncementsResponse
-} = require('./apex-announcements.cjs')
+} from './apex-announcements'
 
 test('announcementsListUrl appends the account route and trims a trailing slash', () => {
   assert.equal(announcementsListUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}`)

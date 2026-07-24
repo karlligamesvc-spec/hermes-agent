@@ -1,11 +1,9 @@
-'use strict'
-
 /**
- * apex-announcements.cjs
+ * apex-announcements.ts
  *
  * Pure, electron-free helpers for the hc-447 desktop "更新日志" (changelog)
  * entry point. Kept standalone (no `require('electron')`) so it can be
- * unit-tested with `node --test`, same pattern as apex-feishu.cjs. main.cjs
+ * unit-tested with `vitest run --project electron`, same pattern as apex-feishu.ts. main.ts
  * requires these and wires them into the electron-coupled IPC (the stored
  * login JWT, the authed fetch transport).
  *
@@ -110,7 +108,7 @@ function parseAnnouncementsResponse(body) {
   return body.items.map(normalizeAnnouncement).filter(Boolean)
 }
 
-module.exports = {
+export {
   ANNOUNCEMENTS_LIST_PATH,
   announcementReadUrl,
   announcementsListUrl,

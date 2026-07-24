@@ -1,16 +1,16 @@
 /**
- * apex-managed.cjs
+ * apex-managed.ts
  *
  * Pure, electron-free helpers for the ApexNodes "managed LLM" default path
  * (Desktop V0.2). Kept standalone (no `require('electron')`) so it can be
- * unit-tested with `node --test`, same pattern as connection-config.cjs /
- * dashboard-token.cjs. main.cjs requires these and wires them into the
+ * unit-tested with `vitest run --project electron`, same pattern as connection-config.ts /
+ * dashboard-token.ts. main.ts requires these and wires them into the
  * electron-coupled IPC + boot layer.
  *
  * Background — the two independent "login/connection" systems this app has:
  *
- *   1. REMOTE GATEWAY (connection-config.cjs / dashboard-token.cjs /
- *      oauth-net-request.cjs / gateway-ws-probe.cjs): connects the desktop to a
+ *   1. REMOTE GATEWAY (connection-config.ts / dashboard-token.ts /
+ *      oauth-net-request.ts / gateway-ws-probe.ts): connects the desktop to a
  *      *remote orchestration backend* (the dashboard/gateway that runs agent
  *      sessions) via HttpOnly session cookies + /api/ws tickets. This is a
  *      power-user feature, OFF by default; the desktop runs a LOCAL runtime.
@@ -47,7 +47,7 @@
 
 // ── ApexNodes default endpoints ─────────────────────────────────────────────
 // All overridable via env so a staging build can retarget without a code change
-// (mirrors how main.cjs lets HERMES_DESKTOP_* env vars override prod defaults).
+// (mirrors how main.ts lets HERMES_DESKTOP_* env vars override prod defaults).
 
 // User-facing site host. Login lives under `${AUTH_BASE}/api/v1/auth/...`. The
 // relay public path also lives on this host (nginx `location /relay/` →
@@ -124,7 +124,7 @@ const MANAGED_PROVIDER_NAME = 'Apex-nodes.com'
 
 // ── ApexNodes China default profile (hc-392) ───────────────────────────────
 // The desktop pre-seeds config.yaml BEFORE install.sh can copy
-// cli-config.yaml.example (seedDefaultModelConfig in main.cjs only writes when
+// cli-config.yaml.example (seedDefaultModelConfig in main.ts only writes when
 // config.yaml is absent, and install.sh's example-copy is likewise
 // absent-gated — so the seed wins). The China profile therefore CANNOT rely on
 // cli-config.yaml.example reaching the desktop; we fold the same two policy
@@ -260,15 +260,15 @@ const SEED_DISABLED_SKILLS = [
 // the block above into a SEED_WEB_GATEWAY constant + a seedWebGatewayBlockYaml()
 // helper (top-level `web:` key, same pattern as seedSkillsBlockYaml), fold it
 // into seedDefaultModelConfig's composition, add the two env vars to the desktop
-// shell env (SEARXNG_URL alongside HF_ENDPOINT in backend-env.cjs), and add a
-// guard/heal pass in main.cjs guardConfigYamlProductBlocks (union the `web:`
+// shell env (SEARXNG_URL alongside HF_ENDPOINT in backend-env.ts), and add a
+// guard/heal pass in main.ts guardConfigYamlProductBlocks (union the `web:`
 // keys, mirroring ensureSkillsDisabledYaml) so the upgrade path covers it too.
 // The env vars ride the same spawn merge (`{...process.env, ...backend.env}`).
 
 /**
  * Render the `model.disabled_providers` YAML lines (indented to sit INSIDE the
  * `model:` block). Returns '' when the list is empty. Kept as a helper so the
- * managed (apex-managed) and BYOK (main.cjs raw string) seed paths emit the
+ * managed (apex-managed) and BYOK (main.ts raw string) seed paths emit the
  * identical block.
  *
  * @param {string[]} [providers]
@@ -398,7 +398,7 @@ function ensureSkillsDisabledYaml(raw, skills = SEED_DISABLED_SKILLS) {
  * @param {{ blockKey: string, listKey: string, wanted: string[], seedBlock: (names: string[]) => string }} opts
  * @returns {{ changed: boolean, next: string, added: string[] }}
  */
-function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBlock }) {
+function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBlock }: any) {
   const source = String(raw || '')
   const wanted = (Array.isArray(wantedRaw) ? wantedRaw : []).map(p => String(p || '').trim()).filter(Boolean)
   const unchanged = { changed: false, next: source, added: [] }
@@ -537,7 +537,7 @@ function trimTrailingSlash(value) {
  *             model: string, modelDisplay: string, provider: string,
  *             loginUrl: string, provisionKeyUrl: string }}
  */
-function resolveApexEndpoints(env = {}) {
+function resolveApexEndpoints(env: any = {}) {
   const authBase = trimTrailingSlash(env.APEXNODES_AUTH_BASE || DEFAULT_AUTH_BASE)
   const apiBase = trimTrailingSlash(env.APEXNODES_API_BASE || DEFAULT_API_BASE)
   const relayBaseUrl = trimTrailingSlash(env.APEXNODES_RELAY_BASE_URL || DEFAULT_RELAY_BASE_URL)
@@ -578,7 +578,7 @@ function resolveApexEndpoints(env = {}) {
  * @param {Record<string, string | undefined>} [env]
  * @returns {string}
  */
-function googleStartUrl(redirectUri, state, env = {}) {
+function googleStartUrl(redirectUri, state, env: any = {}) {
   const { apiBase } = resolveApexEndpoints(env)
   const u = new URL(`${apiBase}${GOOGLE_START_PATH}`)
   u.searchParams.set('redirect_uri', String(redirectUri || ''))
@@ -597,7 +597,7 @@ function googleStartUrl(redirectUri, state, env = {}) {
  * @param {Record<string, string | undefined>} [env]
  * @returns {string}
  */
-function apexWebLoginUrl(redirectUri, state, env = {}) {
+function apexWebLoginUrl(redirectUri, state, env: any = {}) {
   const { authBase } = resolveApexEndpoints(env)
   const u = new URL(`${authBase}${WEB_LOGIN_PATH}`)
   u.searchParams.set('desktop_cb', String(redirectUri || ''))
@@ -688,7 +688,7 @@ function isLoopbackUrl(url) {
  *
  * @param {Record<string, string | undefined>} [env]
  */
-function isManagedEnabled(env = {}) {
+function isManagedEnabled(env: any = {}) {
   const raw = String(env.APEXNODES_MANAGED ?? '').trim().toLowerCase()
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
@@ -700,7 +700,7 @@ function isManagedEnabled(env = {}) {
 // APEXNODES_LOGIN_STATE_TRUTH=0 to fall back to the hc-511 behavior (a relay 401
 // is only surfaced on an actual chat send; the account card and startup are
 // untouched). Mirrors isManagedEnabled's parsing so the two read the same way.
-function isLoginStateTruthEnabled(env = {}) {
+function isLoginStateTruthEnabled(env: any = {}) {
   const raw = String(env.APEXNODES_LOGIN_STATE_TRUTH ?? '').trim().toLowerCase()
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
@@ -741,7 +741,7 @@ function isLoginStateTruthEnabled(env = {}) {
  *   custom_providers: Array<{ name: string, base_url: string, api_key: string, model: string }>
  * }}
  */
-function buildManagedModelConfig(relayKey, env = {}, overrides = {}) {
+function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
   const key = String(relayKey || '').trim()
   if (!key) {
     throw new Error('buildManagedModelConfig: a relay key is required.')
@@ -789,7 +789,7 @@ function buildManagedModelConfig(relayKey, env = {}, overrides = {}) {
  * @param {Record<string, string | undefined>} [env]
  * @returns {{ apiKey: string, baseUrl: string, model: string, email: string, name: string, plan: string } | null}
  */
-function parseProvisionResponse(body, env = {}) {
+function parseProvisionResponse(body, env: any = {}) {
   const key = relayKeyFromResponse(body)
   if (!key) return null
   const endpoints = resolveApexEndpoints(env)
@@ -824,7 +824,7 @@ function parseProvisionResponse(body, env = {}) {
  *   duplicate YAML key).
  * @returns {string}
  */
-function managedModelConfigYaml(block, opts = {}) {
+function managedModelConfigYaml(block, opts: any = {}) {
   const q = v => JSON.stringify(String(v)) // JSON string == valid YAML double-quoted scalar
   let yaml =
     'model:\n' +
@@ -869,7 +869,7 @@ function defaultModelPath(state) {
 // dead: the model picker's live `GET /v1/models` listing 401s and collapses to
 // the single configured model — the "过几天列表缩水到只剩一个" bug. Manual
 // re-login fixes it (provision re-mints + syncs), but the user shouldn't have
-// to. These pure helpers back the auto-heal: main.cjs probes /v1/models at
+// to. These pure helpers back the auto-heal: main.ts probes /v1/models at
 // boot, and on a 401 re-runs the existing provision chain with the STORED login
 // JWT (persisted encrypted alongside the relay key), then re-syncs the
 // custom_providers entry. If the stored JWT is itself expired, provision-key
@@ -945,7 +945,7 @@ const REPROVISION_COOLDOWN_MS = 10 * 60 * 1000
  * }} state
  * @returns {boolean}
  */
-function shouldAttemptReprovision(state = {}) {
+function shouldAttemptReprovision(state: any = {}) {
   if (!state.enabled || !state.hasKey || !state.hasToken) return false
   const now = Number.isFinite(state.now) ? state.now : Date.now()
   const last = Number.isFinite(state.lastAttemptAt) ? state.lastAttemptAt : 0
@@ -1070,7 +1070,7 @@ const RENEWED_TOKEN_HEADER = 'x-apex-renewed-token'
  * Pull a renewed login JWT out of a response's headers, or '' when none is
  * present. Pure + defensive: tolerates a missing headers object, Electron's
  * array-valued header folding, and stray whitespace. The caller decides whether
- * to persist it (only when actually signed in to managed — see main.cjs
+ * to persist it (only when actually signed in to managed — see main.ts
  * persistRenewedLoginToken). Never renews on an invalid/expired token: the cloud
  * only emits this header on an authenticated response for a still-valid token.
  *
@@ -1137,7 +1137,7 @@ function accountFromLogin(loginBody, accessToken = '') {
   return { email, name, plan }
 }
 
-module.exports = {
+export {
   DEFAULT_AUTH_BASE,
   DEFAULT_API_BASE,
   DEFAULT_RELAY_BASE_URL,

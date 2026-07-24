@@ -1,26 +1,27 @@
 /**
- * Tests for electron/apex-loopback.cjs — the minimal loopback HTTP server behind
+ * Tests for electron/apex-loopback.ts — the minimal loopback HTTP server behind
  * the ApexNodes Desktop browser-login flows ("用 Google 登录" / "用 APEX 登录").
  *
- * Run with: node --test electron/apex-loopback.test.cjs
+ * Run with: npx vitest run electron/apex-loopback.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
- * apex-loopback.cjs is electron-free (node:http + node:crypto), so we exercise
+ * apex-loopback.ts is electron-free (node:http + node:crypto), so we exercise
  * the real server over a real socket — bind it, hit 127.0.0.1:<port>/cb with the
  * Node http client, and assert the `result` promise settles correctly.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const http = require('node:http')
+import assert from 'node:assert/strict'
+import http from 'node:http'
 
-const { generateState, startLoopbackLogin, DEFAULT_TIMEOUT_MS } = require('./apex-loopback.cjs')
+import { test } from 'vitest'
+
+import { generateState, startLoopbackLogin, DEFAULT_TIMEOUT_MS } from './apex-loopback'
 
 // Fire a GET at the loopback callback and resolve with { statusCode, body }.
 // agent:false → no keep-alive pooling, so the client socket closes right after
 // the response (mirrors how a real browser navigation behaves and lets the
 // server's handle release cleanly between tests).
-function hitLoopback(port, pathAndQuery) {
+function hitLoopback(port, pathAndQuery): Promise<any> {
   return new Promise((resolve, reject) => {
     const req = http.request(
       { host: '127.0.0.1', port, path: pathAndQuery, method: 'GET', agent: false },
@@ -69,7 +70,7 @@ test('rejects (state_mismatch) on a CSRF mismatch and serves a 400 page', async 
   // Attach the rejection expectation BEFORE triggering the callback: the flow
   // rejects synchronously while servicing the request, so a handler must already
   // be on lb.result or Node flags it as an unhandled rejection.
-  const rejected = assert.rejects(lb.result, err => err.reason === 'state_mismatch')
+  const rejected = assert.rejects(lb.result, (err: any) => err.reason === 'state_mismatch')
   const res = await hitLoopback(lb.port, '/cb?token=jwt.x&state=evil')
   assert.equal(res.statusCode, 400)
   assert.match(res.body, /登录失败/)
@@ -78,7 +79,7 @@ test('rejects (state_mismatch) on a CSRF mismatch and serves a 400 page', async 
 
 test('rejects (missing_token) when state matches but no token is present', async () => {
   const lb = await startLoopbackLogin()
-  const rejected = assert.rejects(lb.result, err => err.reason === 'missing_token')
+  const rejected = assert.rejects(lb.result, (err: any) => err.reason === 'missing_token')
   const res = await hitLoopback(lb.port, `/cb?state=${encodeURIComponent(lb.state)}`)
   assert.equal(res.statusCode, 400)
   await rejected
@@ -98,14 +99,14 @@ test('ignores a non-/cb request (favicon) without settling, then resolves on /cb
 
 test('close() rejects an in-flight flow with reason "aborted"', async () => {
   const lb = await startLoopbackLogin()
-  const rejected = assert.rejects(lb.result, err => err.reason === 'aborted')
+  const rejected = assert.rejects(lb.result, (err: any) => err.reason === 'aborted')
   lb.close()
   await rejected
 })
 
 test('the watchdog rejects with "timeout" when the browser never returns', async () => {
   const lb = await startLoopbackLogin({ timeoutMs: 30 })
-  await assert.rejects(lb.result, err => err.reason === 'timeout')
+  await assert.rejects(lb.result, (err: any) => err.reason === 'timeout')
 })
 
 test('DEFAULT_TIMEOUT_MS is a generous, browser-friendly window', () => {

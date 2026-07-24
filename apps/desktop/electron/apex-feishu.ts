@@ -1,10 +1,10 @@
 /**
- * apex-feishu.cjs
+ * apex-feishu.ts
  *
  * Pure, electron-free helpers for the hc-444 "desktop ↔ cloud Feishu bridge".
  * Kept standalone (no `require('electron')`) so it can be unit-tested with
- * `node --test`, same pattern as apex-managed.cjs / apex-client-config.cjs.
- * main.cjs requires these and wires them into the electron-coupled IPC, the
+ * `vitest run --project electron`, same pattern as apex-managed.ts / apex-client-config.ts.
+ * main.ts requires these and wires them into the electron-coupled IPC, the
  * encrypted persistence (safeStorage, like apex-managed.json) and the backend
  * spawn env.
  *
@@ -26,7 +26,7 @@
  *
  * The endpoint is JWT-authed (only the owner can fetch), TLS-only, and
  * audit-logged with the secret redacted. This module returns the credential to
- * main.cjs, which persists it ENCRYPTED (Electron safeStorage — same treatment
+ * main.ts, which persists it ENCRYPTED (Electron safeStorage — same treatment
  * as the managed relay key) and injects it JUST-IN-TIME into the backend spawn
  * env. The secret is never written to a plaintext `.env` and never logged.
  *
@@ -119,7 +119,7 @@ function parseFeishuCredentialsResponse(body) {
 }
 
 /**
- * Normalize the persisted apex-feishu.json content (AFTER main.cjs has decrypted
+ * Normalize the persisted apex-feishu.json content (AFTER main.ts has decrypted
  * the app_secret). Any garbage (missing file, corrupt JSON, tampered fields)
  * degrades to the empty state so boot can never throw over the cache and a
  * partial record (secret lost) is treated as "not connected".
@@ -197,7 +197,7 @@ function buildFeishuBackendEnv(cred) {
   }
 }
 
-module.exports = {
+export {
   DEFAULT_FEISHU_DOMAIN,
   FEISHU_CREDENTIALS_PATH,
   VALID_FEISHU_DOMAINS,

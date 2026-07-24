@@ -1,17 +1,17 @@
 /**
- * apex-im-entry.cjs
+ * apex-im-entry.ts
  *
  * Pure, electron-free helpers for hc-417 "Desktop IM 入口" — the consumer-facing
  * page where a signed-in user connects their local agent to an IM platform
  * (飞书 first, more channels to follow) by scanning a QR / pasting one code, with
  * NO developer jargon. Kept standalone (no `require('electron')`) so it can be
- * unit-tested with `node --test`, same pattern as apex-feishu.cjs / apex-managed.cjs.
- * main.cjs requires these and wires them into the electron-coupled IPC, the
+ * unit-tested with `vitest run --project electron`, same pattern as apex-feishu.ts / apex-managed.ts.
+ * main.ts requires these and wires them into the electron-coupled IPC, the
  * encrypted persistence (safeStorage, like apex-feishu.json) and the backend
  * spawn env.
  *
  * ── Why a NEW pipeline (not the hc-444 feishu bridge) ───────────────────────
- * hc-444 (apex-feishu.cjs) mirrors the user's EXISTING cloud-agent Feishu app
+ * hc-444 (apex-feishu.ts) mirrors the user's EXISTING cloud-agent Feishu app
  * credential down to the desktop. Per the hc-417 spike, reusing that same app on
  * both the cloud agent and the desktop puts two long-connections on one Feishu
  * app, and Feishu's WS cluster then random-dispatches events between them →
@@ -21,7 +21,7 @@
  * that separate credential store + its spawn-env injection.
  *
  * ── Storage / injection contract ────────────────────────────────────────────
- * main.cjs persists this store ENCRYPTED (Electron safeStorage — same treatment
+ * main.ts persists this store ENCRYPTED (Electron safeStorage — same treatment
  * as the managed relay key and the hc-444 app_secret): secret env values are
  * encrypted at rest, non-secret display/routing fields in clear. At spawn time
  * main injects the decrypted values JUST-IN-TIME into the backend env, ADD-ONLY,
@@ -85,7 +85,7 @@ const CHANNEL_ENV_DESCRIPTORS = Object.freeze({
   })
 })
 
-// The valid Feishu domains the runtime accepts (mirrors apex-feishu.cjs).
+// The valid Feishu domains the runtime accepts (mirrors apex-feishu.ts).
 const VALID_FEISHU_DOMAINS = new Set(['feishu', 'lark'])
 const DEFAULT_FEISHU_DOMAIN = 'feishu'
 
@@ -125,7 +125,7 @@ function isKnownChannel(channelId) {
  * @param {{ boundAt?: number }} [opts]
  * @returns {null | { channelId: string, fields: Record<string,string>, boundAt: number }}
  */
-function shapeBinding(channelId, credential, opts = {}) {
+function shapeBinding(channelId, credential, opts: any = {}): any {
   if (!isKnownChannel(channelId) || !credential || typeof credential !== 'object') {
     return null
   }
@@ -154,7 +154,7 @@ function shapeBinding(channelId, credential, opts = {}) {
 }
 
 /**
- * Validate + normalize the persisted apex-im-entry.json content AFTER main.cjs
+ * Validate + normalize the persisted apex-im-entry.json content AFTER main.ts
  * has decrypted the secret fields in place. Any garbage (missing file, corrupt
  * JSON, tampered/unknown channels, partial records) degrades to an empty store
  * so boot can never throw over the cache. Returns a map keyed by channel id.
@@ -162,14 +162,14 @@ function shapeBinding(channelId, credential, opts = {}) {
  * @param {unknown} raw parsed file content with secret fields already decrypted
  * @returns {Record<string, { channelId: string, fields: Record<string,string>, boundAt: number }>}
  */
-function normalizeStoredImEntry(raw) {
+function normalizeStoredImEntry(raw): any {
   const out = {}
   const bindings = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw.bindings : null
   if (!bindings || typeof bindings !== 'object') {
     return out
   }
 
-  for (const [channelId, record] of Object.entries(bindings)) {
+  for (const [channelId, record] of Object.entries<any>(bindings)) {
     if (!isKnownChannel(channelId) || !record || typeof record !== 'object') {
       continue
     }
@@ -199,12 +199,12 @@ function normalizeStoredImEntry(raw) {
  * @returns {Record<string, string>}
  */
 function buildImEntrySpawnEnv(store) {
-  const env = {}
+  const env: any = {}
   if (!store || typeof store !== 'object') {
     return env
   }
 
-  for (const [channelId, binding] of Object.entries(store)) {
+  for (const [channelId, binding] of Object.entries<any>(store)) {
     if (!isKnownChannel(channelId) || !binding || typeof binding.fields !== 'object') {
       continue
     }
@@ -221,7 +221,7 @@ function buildImEntrySpawnEnv(store) {
 
 /**
  * The list of channel ids that carry at least one secret field — used only by
- * the encrypt layer in main.cjs to know which stored field values to run through
+ * the encrypt layer in main.ts to know which stored field values to run through
  * safeStorage. Kept here so the secret classification lives with the descriptor.
  *
  * @param {string} channelId
@@ -497,7 +497,7 @@ function parseWeixinCredentialsResponse(body) {
 // FEISHU_APP_ID/… in the user's .env silently BEATS the credential the desktop
 // injects into the spawn env — the freshly-provisioned independent app would
 // never take effect (or worse, mix .env's app_id with the injected secret).
-// On a successful hc-417 binding, main.cjs strips every FEISHU_* assignment
+// On a successful hc-417 binding, main.ts strips every FEISHU_* assignment
 // from the runtime home's .env (warning first) so spawn injection becomes the
 // single Feishu credential source.
 
@@ -540,7 +540,7 @@ function stripFeishuEnvOverrides(envText) {
   return { text: kept.join('\n'), removed }
 }
 
-module.exports = {
+export {
   CHANNEL_ENV_DESCRIPTORS,
   DEFAULT_FEISHU_DOMAIN,
   FEISHU_PROVISION_CREDENTIALS_PATH,

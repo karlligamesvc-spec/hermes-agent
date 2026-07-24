@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-managed.cjs.
+ * Tests for electron/apex-managed.ts.
  *
- * Run with: node --test electron/apex-managed.test.cjs
+ * Run with: npx vitest run electron/apex-managed.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * These are the pure helpers behind the ApexNodes managed-LLM default path:
@@ -9,10 +9,11 @@
  * and its YAML serialization, the enable gate, and the response parsers.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   DEFAULT_AUTH_BASE,
   DEFAULT_API_BASE,
   DEFAULT_RELAY_BASE_URL,
@@ -50,7 +51,7 @@ const {
   resolveApexEndpoints,
   shouldAttemptReprovision,
   syncCustomProviderKeyYaml
-} = require('./apex-managed.cjs')
+} from './apex-managed'
 
 // --- resolveApexEndpoints ---
 

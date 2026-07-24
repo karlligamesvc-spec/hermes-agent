@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-agent-auth.cjs (hc-545).
+ * Tests for electron/apex-agent-auth.ts (hc-545).
  *
- * Run with: node --test electron/apex-agent-auth.test.cjs
+ * Run with: npx vitest run electron/apex-agent-auth.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * The anti-conflation classifier is the heart: credential-presence and
@@ -11,11 +11,12 @@
  * orchestrators driven by injected fakes (no real CLI / socket).
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { EventEmitter } = require('node:events')
+import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 
-const {
+import { test } from 'vitest'
+
+import {
   AGENT_STATE,
   classifyAgentState,
   extractEmail,
@@ -29,7 +30,7 @@ const {
   probeReachable,
   detectClaude,
   detectCodex
-} = require('./apex-agent-auth.cjs')
+} from './apex-agent-auth'
 
 // --- classifier: the anti-conflation matrix --------------------------------
 
@@ -171,7 +172,7 @@ test('proxyEndpoint: parses http proxy host:port; rejects socks/empty', () => {
 // A fake socket that scripts the connect/data/error/timeout lifecycle.
 function fakeSocketFactory(script) {
   return () => {
-    const socket = new EventEmitter()
+    const socket: any = new EventEmitter()
     socket.written = []
     socket.setTimeout = () => {}
     socket.destroy = () => {}

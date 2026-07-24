@@ -1,5 +1,5 @@
 /**
- * apex-gateway.cjs
+ * apex-gateway.ts
  *
  * Pure, electron-free helpers for the hc-417 messaging-gateway lifecycle — the
  * real-machine P0 fix for "IM 入口 绑定后飞书永不连接".
@@ -30,12 +30,12 @@
  * old green was fake precisely because the gateway never ran).
  *
  * Credential boundary: the secret reaches the gateway ONLY through the child
- * process env (decrypted just in time in main.cjs), never a plist, never a
+ * process env (decrypted just in time in main.ts), never a plist, never a
  * repo-path config.yaml, never a log line — identical treatment to the
  * dashboard spawn.
  *
- * Kept standalone (no `require('electron')`) so it unit-tests with `node --test`,
- * same pattern as apex-im-entry.cjs / apex-daemon.cjs. main.cjs owns the
+ * Kept standalone (no `require('electron')`) so it unit-tests with `vitest run --project electron`,
+ * same pattern as apex-im-entry.ts / apex-daemon.ts. main.ts owns the
  * electron-coupled glue (spawn, lifecycle, env injection).
  */
 
@@ -66,7 +66,7 @@
  * @param {string | null | undefined} profile the desktop's active profile name
  * @returns {string[]} argv for `python -m hermes_cli.main …`
  */
-function buildGatewayRunArgs(profile) {
+function buildGatewayRunArgs(profile?) {
   const args = ['gateway', 'run', '--replace']
   const name = typeof profile === 'string' ? profile.trim() : ''
   if (name) {
@@ -92,7 +92,7 @@ function imEntryStoreHasBinding(store) {
   if (!store || typeof store !== 'object') {
     return false
   }
-  return Object.values(store).some(
+  return Object.values<any>(store).some(
     binding =>
       binding &&
       typeof binding === 'object' &&
@@ -102,7 +102,7 @@ function imEntryStoreHasBinding(store) {
   )
 }
 
-module.exports = {
+export {
   buildGatewayRunArgs,
   imEntryStoreHasBinding
 }

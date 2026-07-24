@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-im-entry.cjs (hc-417 Desktop IM 入口 config pipeline).
+ * Tests for electron/apex-im-entry.ts (hc-417 Desktop IM 入口 config pipeline).
  *
- * Run with: node --test electron/apex-im-entry.test.cjs
+ * Run with: npx vitest run electron/apex-im-entry.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * These are the pure helpers behind the pipeline: the channel env descriptors,
@@ -10,13 +10,14 @@
  * classification the encrypt layer reads, the cloud v2 provisioning endpoint
  * resolution + its host allowlist, the provision/status/credentials response
  * parsers, and the .env FEISHU_* override stripper. Secret handling
- * (safeStorage) + IPC live in main.cjs; here we prove the shaping/gating logic.
+ * (safeStorage) + IPC live in main.ts; here we prove the shaping/gating logic.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   FEISHU_PROVISION_CREDENTIALS_PATH,
   FEISHU_PROVISION_ENTRY_PATH,
   FEISHU_PROVISION_PATH,
@@ -38,7 +39,7 @@ const {
   secretFieldsFor,
   shapeBinding,
   stripFeishuEnvOverrides
-} = require('./apex-im-entry.cjs')
+} from './apex-im-entry'
 
 test('isKnownChannel accepts feishu + weixin and rejects unknown / non-string ids', () => {
   assert.equal(isKnownChannel('feishu'), true)

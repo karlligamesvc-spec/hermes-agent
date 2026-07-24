@@ -1,19 +1,20 @@
 /**
- * Tests for electron/apex-feishu.cjs (hc-444 desktop ↔ cloud Feishu bridge).
+ * Tests for electron/apex-feishu.ts (hc-444 desktop ↔ cloud Feishu bridge).
  *
- * Run with: node --test electron/apex-feishu.test.cjs
+ * Run with: npx vitest run electron/apex-feishu.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * These are the pure helpers behind the bridge: URL building, response parsing +
  * the has_entry/both-halves gate, stored-state normalization, the injection gate,
  * and the backend-env fragment builder. Secret handling (safeStorage) lives in
- * main.cjs and is exercised there; here we prove the pure shaping/gating logic.
+ * main.ts and is exercised there; here we prove the pure shaping/gating logic.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   DEFAULT_FEISHU_DOMAIN,
   FEISHU_CREDENTIALS_PATH,
   buildFeishuBackendEnv,
@@ -22,7 +23,7 @@ const {
   normalizeStoredFeishu,
   parseFeishuCredentialsResponse,
   shouldInjectFeishu
-} = require('./apex-feishu.cjs')
+} from './apex-feishu'
 
 test('feishuCredentialsUrl appends the desktop route and trims a trailing slash', () => {
   assert.equal(

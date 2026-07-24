@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-agent-proxy.cjs — system-proxy autopilot for the coding-agent leg (hc-545).
+ * apex-agent-proxy.ts — system-proxy autopilot for the coding-agent leg (hc-545).
  *
  * The problem (PM real-machine, 2026-07-16): `api.anthropic.com` is geo-blocked
  * on the user's network, so a bare `claude` / `codex` subprocess hangs and reads
@@ -10,7 +8,7 @@
  *
  * This module reads the macOS *system* proxy (System Settings → Network → Proxies,
  * surfaced by `scutil --proxy`) and assembles an `HTTP(S)_PROXY` + `NO_PROXY`
- * env fragment that main.cjs folds into the backend (gateway) subprocess env.
+ * env fragment that main.ts folds into the backend (gateway) subprocess env.
  * Because `hermes_subprocess_env()` does NOT strip proxy vars, the fragment
  * propagates through the gateway to the spawned claude/codex child by plain env
  * inheritance — one injection point, no Python change.
@@ -28,7 +26,7 @@
  * (apex-agent-proxy.test.cjs).
  */
 
-const { execFileSync } = require('node:child_process')
+import { execFileSync } from 'node:child_process'
 
 // Hosts that must BYPASS the agent proxy (go direct). These are the platform's
 // own control-plane + CN vendor links: routing them through an overseas proxy
@@ -218,7 +216,7 @@ function buildNoProxyValue(existing) {
  * choice, so it overrides. OFF and "nothing to inject" both return `{}`.
  * NO_PROXY (+ lowercase twin) is emitted only when a proxy was actually set.
  */
-function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} } = {}) {
+function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
   if (resolvedMode === PROXY_MODE_OFF) return {}
 
@@ -246,7 +244,7 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} } 
   const existingHttp = firstEnvValue(currentEnv, ['HTTP_PROXY', 'http_proxy'])
   const existingAll = firstEnvValue(currentEnv, ['ALL_PROXY', 'all_proxy'])
 
-  const fragment = {}
+  const fragment: any = {}
   if (httpsUrl && (override || !existingHttps)) {
     fragment.HTTPS_PROXY = httpsUrl
     fragment.https_proxy = httpsUrl
@@ -272,7 +270,7 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} } 
  * Read the live macOS system proxy. Thin (execs `scutil --proxy`). Non-mac or
  * any failure yields an empty descriptor — the caller then injects nothing.
  */
-function readSystemProxy({ platform = process.platform, exec = execFileSync } = {}) {
+function readSystemProxy({ platform = process.platform, exec = execFileSync }: any = {}) {
   if (platform !== 'darwin') return parseScutilProxy('')
   try {
     const out = exec('scutil', ['--proxy'], { timeout: 3000, encoding: 'utf8', windowsHide: true })
@@ -293,7 +291,7 @@ function resolveAgentProxyEnv({
   currentEnv = process.env,
   platform = process.platform,
   exec = execFileSync
-} = {}) {
+}: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
   const systemUrls =
     resolvedMode === PROXY_MODE_AUTO
@@ -306,7 +304,7 @@ function resolveAgentProxyEnv({
  * A display-safe summary of the resolved proxy for the settings card. Pure.
  * Never surfaces credentials embedded in a URL (userinfo is stripped).
  */
-function describeAgentProxy({ mode, customUrl, systemUrls } = {}) {
+function describeAgentProxy({ mode, customUrl, systemUrls }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
   const strip = url => {
     if (!url) return ''
@@ -328,7 +326,7 @@ function describeAgentProxy({ mode, customUrl, systemUrls } = {}) {
   return { mode: resolvedMode, active: Boolean(url), url }
 }
 
-module.exports = {
+export {
   NO_PROXY_WHITELIST,
   PROXY_MODE_AUTO,
   PROXY_MODE_CUSTOM,

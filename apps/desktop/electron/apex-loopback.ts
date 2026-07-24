@@ -1,10 +1,10 @@
 /**
- * apex-loopback.cjs
+ * apex-loopback.ts
  *
  * Minimal loopback HTTP server for the APEX Desktop browser-login flows
  * ("用 Google 登录" / "用 APEX 登录", Desktop V0.2). Electron-free (uses only
- * `node:http` + `node:crypto`) so it unit-tests with `node --test`, same pattern
- * as apex-managed.cjs / connection-config.cjs.
+ * `node:http` + `node:crypto`) so it unit-tests with `vitest run --project electron`, same pattern
+ * as apex-managed.ts / connection-config.ts.
  *
  * Why a new server (not the existing OAuth loopback): the desktop's remote-gateway
  * "connect to dashboard" OAuth does NOT run an Electron-side listener — the
@@ -22,10 +22,10 @@
  *     and a watchdog timeout tears it down if the user never returns.
  */
 
-const crypto = require('node:crypto')
-const http = require('node:http')
+import crypto from 'node:crypto'
+import http from 'node:http'
 
-const { parseLoopbackCallback } = require('./apex-managed.cjs')
+import { parseLoopbackCallback } from './apex-managed'
 
 // How long to wait for the browser to redirect back before giving up. The user
 // has to sign in in a browser tab, so this is generous.
@@ -75,7 +75,7 @@ function generateState() {
  * @returns {Promise<{ redirectUri: string, state: string, port: number,
  *                      result: Promise<{ token: string }>, close: () => void }>}
  */
-function startLoopbackLogin(options = {}) {
+function startLoopbackLogin(options: any = {}): Promise<any> {
   const host = options.host || '127.0.0.1'
   const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : DEFAULT_TIMEOUT_MS
   const callbackPath = options.path || '/cb'
@@ -120,7 +120,7 @@ function startLoopbackLogin(options = {}) {
       if (settled) return
       settled = true
       cleanup()
-      const err = new Error(`Loopback login failed: ${reason}`)
+      const err: any = new Error(`Loopback login failed: ${reason}`)
       err.reason = reason
       rejectResult(err)
     }
@@ -200,7 +200,7 @@ function startLoopbackLogin(options = {}) {
   })
 }
 
-module.exports = {
+export {
   DEFAULT_TIMEOUT_MS,
   generateState,
   startLoopbackLogin

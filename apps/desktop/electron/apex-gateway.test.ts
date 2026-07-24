@@ -1,21 +1,22 @@
 /**
- * Tests for electron/apex-gateway.cjs (hc-417 messaging-gateway lifecycle).
+ * Tests for electron/apex-gateway.ts (hc-417 messaging-gateway lifecycle).
  *
- * Run with: node --test electron/apex-gateway.test.cjs
+ * Run with: npx vitest run electron/apex-gateway.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * These are the pure decisions behind the fix: the `gateway run` argv builder
  * (the --replace / no---force / --profile contract) and the "is any channel
  * bound?" gate that decides whether the gateway should run at all. The
  * electron-coupled spawn/stop/reconcile lifecycle + credential env injection
- * live in main.cjs; here we lock the deterministic argv + gating logic that the
+ * live in main.ts; here we lock the deterministic argv + gating logic that the
  * lifecycle is built on.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const { buildGatewayRunArgs, imEntryStoreHasBinding } = require('./apex-gateway.cjs')
+import { test } from 'vitest'
+
+import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
 
 test('buildGatewayRunArgs: default (no profile) is `gateway run --replace`', () => {
   assert.deepEqual(buildGatewayRunArgs(), ['gateway', 'run', '--replace'])

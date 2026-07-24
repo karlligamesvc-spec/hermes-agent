@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-agent-proxy.cjs (hc-545).
+ * Tests for electron/apex-agent-proxy.ts (hc-545).
  *
- * Run with: node --test electron/apex-agent-proxy.test.cjs
+ * Run with: npx vitest run electron/apex-agent-proxy.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * Pure surface: scutil parsing, enable-flag→URL mapping, custom-URL
@@ -10,10 +10,11 @@
  * are exercised with an injected fake `exec` (no real scutil).
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   NO_PROXY_WHITELIST,
   PROXY_MODE_AUTO,
   PROXY_MODE_CUSTOM,
@@ -27,7 +28,7 @@ const {
   readSystemProxy,
   resolveAgentProxyEnv,
   describeAgentProxy
-} = require('./apex-agent-proxy.cjs')
+} from './apex-agent-proxy'
 
 // A representative `scutil --proxy` dump for a Clash-style local proxy on 1081.
 const SCUTIL_ENABLED = `<dictionary> {

@@ -1,7 +1,5 @@
-'use strict'
-
 /**
- * apex-agent-auth.cjs — in-app account-connection UX for the coding agents (hc-545).
+ * apex-agent-auth.ts — in-app account-connection UX for the coding agents (hc-545).
  *
  * The direct-passthrough / daemon legs drive the user's own `claude` / `codex`
  * CLI on this machine, which authenticate from their own credential stores
@@ -26,7 +24,11 @@
  * table-tested; the spawns/network are thin, injectable wrappers.
  */
 
-const net = require('node:net')
+import { execFile as execFileNode } from 'node:child_process'
+import fsNode from 'node:fs'
+import net from 'node:net'
+import os from 'node:os'
+import pathNode from 'node:path'
 
 const AGENT_STATE = Object.freeze({
   NO_CLI: 'no_cli', // binary not on PATH — needs install
@@ -55,7 +57,7 @@ const STATUS_TIMEOUT_MS = 8000
  * optimistically as ready — we only claim UNREACHABLE on a POSITIVE failure, so
  * a flaky probe never masquerades as a login problem.
  */
-function classifyAgentState({ cliPresent, loggedIn, reachable } = {}) {
+function classifyAgentState({ cliPresent, loggedIn, reachable }: any = {}) {
   if (!cliPresent) return AGENT_STATE.NO_CLI
   if (loggedIn === false) return AGENT_STATE.LOGGED_OUT
   if (loggedIn !== true) return AGENT_STATE.UNKNOWN
@@ -114,7 +116,7 @@ function decodeJwtEmail(idToken) {
     const email = claims.email || claims.preferred_username || ''
     if (typeof email === 'string') return email
     // Codex nests some claims under an auth namespace object.
-    for (const value of Object.values(claims)) {
+    for (const value of Object.values<any>(claims)) {
       if (value && typeof value === 'object' && typeof value.email === 'string') return value.email
     }
     return ''
@@ -200,7 +202,7 @@ function proxyEndpoint(proxyUrl) {
  * provider. Without a proxy: a plain TCP connect to <host>:443. Any transport
  * failure/timeout resolves `false`. Never rejects.
  */
-function probeReachable({ host, port = REACH_PORT, proxyUrl = '', timeoutMs = REACH_TIMEOUT_MS, connect = net.connect } = {}) {
+function probeReachable({ host, port = REACH_PORT, proxyUrl = '', timeoutMs = REACH_TIMEOUT_MS, connect = net.connect }: any = {}) {
   return new Promise(resolve => {
     let settled = false
     const done = value => {
@@ -249,8 +251,8 @@ function probeReachable({ host, port = REACH_PORT, proxyUrl = '', timeoutMs = RE
  * spawnError }`. Never rejects. `spawnError` carries ENOENT so a caller can tell
  * "binary missing" from "ran and failed". Thin.
  */
-function runCli(command, args, { env, cwd, timeoutMs = STATUS_TIMEOUT_MS, execFile } = {}) {
-  const runner = execFile || require('node:child_process').execFile
+function runCli(command, args, { env, cwd, timeoutMs = STATUS_TIMEOUT_MS, execFile }: any = {}): Promise<any> {
+  const runner = execFile || execFileNode
   return new Promise(resolve => {
     let child
     try {
@@ -285,7 +287,7 @@ function runCli(command, args, { env, cwd, timeoutMs = STATUS_TIMEOUT_MS, execFi
  * (so `claude` resolves in a GUI-launched app), the real HOME, and any resolved
  * proxy fragment (so status + reachability travel the same path the agent will).
  */
-async function detectClaude({ env, execFile, probe = probeReachable, proxyUrl = '' } = {}) {
+async function detectClaude({ env, execFile, probe = probeReachable, proxyUrl = '' }: any = {}) {
   const result = await runCli('claude', ['auth', 'status', '--json'], { env, execFile })
   if (result.spawnError === 'ENOENT') {
     return { family: 'claude', state: AGENT_STATE.NO_CLI, cliPresent: false, loggedIn: null, reachable: null, email: '', plan: '' }
@@ -311,16 +313,14 @@ async function detectClaude({ env, execFile, probe = probeReachable, proxyUrl = 
  * (~/.codex/auth.json — no exec, no network), falls back to `codex login
  * status` when the file is absent/unparseable, then adds reachability.
  */
-async function detectCodex({ env, homeDir, execFile, readFile, probe = probeReachable, proxyUrl = '' } = {}) {
-  const path = require('node:path')
-  const fs = require('node:fs')
-  const reader = readFile || (p => fs.readFileSync(p, 'utf8'))
-  const home = homeDir || (env && env.HOME) || require('node:os').homedir()
+async function detectCodex({ env, homeDir, execFile, readFile, probe = probeReachable, proxyUrl = '' }: any = {}) {
+  const reader = readFile || (p => fsNode.readFileSync(p, 'utf8'))
+  const home = homeDir || (env && env.HOME) || os.homedir()
 
   let parsed = { loggedIn: null, email: '', mode: '' }
   let cliPresent = true
   try {
-    parsed = parseCodexAuthJson(reader(path.join(home, '.codex', 'auth.json')))
+    parsed = parseCodexAuthJson(reader(pathNode.join(home, '.codex', 'auth.json')))
   } catch {
     parsed = { loggedIn: null, email: '', mode: '' }
   }
@@ -347,7 +347,7 @@ async function detectCodex({ env, homeDir, execFile, readFile, probe = probeReac
   }
 }
 
-module.exports = {
+export {
   AGENT_STATE,
   CLAUDE_REACH_HOST,
   CODEX_REACH_HOST,

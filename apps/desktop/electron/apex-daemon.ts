@@ -1,5 +1,5 @@
 /**
- * apex-daemon.cjs
+ * apex-daemon.ts
  *
  * Pure, electron-free helpers for hc-533 "本机 Agent 调度" — the APEX Desktop
  * daemon leg of the A2A epic. A signed-in user's cloud分身 (hc-523) can dispatch
@@ -10,8 +10,8 @@
  * `agent/coding_agents/run_once.py`), and posts the result back.
  *
  * Kept standalone (no `require('electron')`) so every wire contract, parser and
- * the reconnect backoff is unit-tested with `node --test`, exactly like
- * apex-im-entry.cjs / apex-feishu.cjs. main.cjs requires these and wires them
+ * the reconnect backoff is unit-tested with `vitest run --project electron`, exactly like
+ * apex-im-entry.ts / apex-feishu.ts. main.ts requires these and wires them
  * into the electron-coupled parts: the encrypted token store (safeStorage, same
  * treatment as the managed relay key), the heartbeat / poll timers, the
  * venv-python spawn of the runner, and the settings-page IPC.
@@ -193,8 +193,8 @@ function normalizeDeviceId(raw) {
  * @param {{ deviceId: string, deviceName?: string }} args
  * @returns {{ device_id: string, name?: string, capabilities: object }}
  */
-function buildRegisterBody({ deviceId, deviceName } = {}) {
-  const body = {
+function buildRegisterBody({ deviceId, deviceName }: any = {}) {
+  const body: any = {
     device_id: normalizeDeviceId(deviceId),
     capabilities: { source: 'apex-desktop-daemon', agent_families: [...SUPPORTED_AGENT_FAMILIES] }
   }
@@ -299,7 +299,7 @@ function parseTaskEnvelope(task) {
  * @returns {{ ok: true, job: { family: string, prompt: string, cwd?: string } }
  *   | { ok: false, reason: string }}
  */
-function parseLocalAgentRunPayload(payload) {
+function parseLocalAgentRunPayload(payload?: any) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return { ok: false, reason: 'payload not an object' }
   }
@@ -317,7 +317,7 @@ function parseLocalAgentRunPayload(payload) {
   if (!prompt.trim()) {
     return { ok: false, reason: 'missing prompt' }
   }
-  const job = { family, prompt }
+  const job: any = { family, prompt }
   const cwd = trimStr(payload.cwd)
   if (cwd) {
     job.cwd = cwd
@@ -348,7 +348,7 @@ function buildResultSubmitBody(runnerResult) {
   const output = typeof runnerResult.output === 'string' ? runnerResult.output : ''
 
   if (runnerResult.permission_required === true) {
-    const result = { permission_required: true, permission_summary: trimStr(runnerResult.permission_summary) }
+    const result: any = { permission_required: true, permission_summary: trimStr(runnerResult.permission_summary) }
     if (output) {
       result.output = output
     }
@@ -356,7 +356,7 @@ function buildResultSubmitBody(runnerResult) {
   }
 
   if (runnerResult.status === 'failed') {
-    const result = { error: trimStr(runnerResult.error) || 'run_failed' }
+    const result: any = { error: trimStr(runnerResult.error) || 'run_failed' }
     const detail = trimStr(runnerResult.detail)
     if (detail) {
       result.detail = detail
@@ -367,7 +367,7 @@ function buildResultSubmitBody(runnerResult) {
     return { status: 'failed', result }
   }
 
-  const result = { output }
+  const result: any = { output }
   const sessionId = trimStr(runnerResult.session_id)
   if (sessionId) {
     result.session_id = sessionId
@@ -398,7 +398,7 @@ function buildInvalidTaskResult(reason) {
  * @param {{ baseMs?: number, capMs?: number }} [opts]
  * @returns {number} delay in ms
  */
-function nextBackoffMs(attempt, { baseMs = 2000, capMs = 60000 } = {}) {
+function nextBackoffMs(attempt, { baseMs = 2000, capMs = 60000 }: any = {}) {
   const n = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0
   // Cap the exponent so 2**n cannot overflow before the min() clamps it.
   const exponent = Math.min(n, 30)
@@ -425,7 +425,7 @@ const DAEMON_STATUS = Object.freeze({
  * @param {{ enabled?: boolean, registered?: boolean, connected?: boolean, lastError?: string }} state
  * @returns {string} one of DAEMON_STATUS
  */
-function deriveDaemonStatus(state = {}) {
+function deriveDaemonStatus(state: any = {}) {
   if (!state.enabled) {
     return DAEMON_STATUS.DORMANT
   }
@@ -441,7 +441,7 @@ function deriveDaemonStatus(state = {}) {
 // ── Config normalization (non-secret view; token stored separately/encrypted) ─
 
 /**
- * Validate + normalize the persisted apex-daemon.json (AFTER main.cjs has
+ * Validate + normalize the persisted apex-daemon.json (AFTER main.ts has
  * handled the encrypted token separately). Garbage degrades to a dormant,
  * unregistered default so boot never throws over the cache.
  *
@@ -458,7 +458,7 @@ function normalizeStoredDaemon(raw) {
   }
 }
 
-module.exports = {
+export {
   BRIDGE_POLL_PATH,
   BRIDGE_TASKS_PATH,
   DAEMON_BRIDGE_TYPE,

@@ -1,7 +1,7 @@
 /**
- * Tests for electron/apex-daemon.cjs (hc-533 本机 Agent 调度 daemon leg).
+ * Tests for electron/apex-daemon.ts (hc-533 本机 Agent 调度 daemon leg).
  *
- * Run with: node --test electron/apex-daemon.test.cjs
+ * Run with: npx vitest run electron/apex-daemon.test.ts
  * (Wired into npm test:desktop:platforms in package.json.)
  *
  * The pure wire contract + reconnect logic behind the daemon: the host
@@ -10,13 +10,14 @@
  * cloud submit-body shaping (incl. the permission-gate surface that v1 never
  * auto-approves), the capped exponential reconnect backoff, and the settings
  * status derivation. The encrypted token store, timers and venv-python spawn
- * live in main.cjs; here we prove the shaping/gating/backoff logic.
+ * live in main.ts; here we prove the shaping/gating/backoff logic.
  */
 
-const test = require('node:test')
-const assert = require('node:assert/strict')
+import assert from 'node:assert/strict'
 
-const {
+import { test } from 'vitest'
+
+import {
   DAEMON_BRIDGE_TYPE,
   DAEMON_HEARTBEAT_PATH,
   DAEMON_REGISTER_PATH,
@@ -39,7 +40,7 @@ const {
   parseTaskEnvelope,
   resolveDaemonEndpoints,
   sanitizeDeviceName
-} = require('./apex-daemon.cjs')
+} from './apex-daemon'
 
 // ── Host allowlist (JWT + device token must not leak off-host) ───────────────
 
@@ -196,7 +197,7 @@ test('parseLocalAgentRunPayload rejects bad kind / family / prompt with a reason
     [{ kind: 'local_agent_run', prompt: 'x' }, 'missing agent_family'],
     ['nope', 'payload not an object']
   ]
-  for (const [payload, fragment] of cases) {
+  for (const [payload, fragment] of cases as any[]) {
     const out = parseLocalAgentRunPayload(payload)
     assert.equal(out.ok, false)
     assert.ok(out.reason.includes(fragment), `${out.reason} ~ ${fragment}`)
