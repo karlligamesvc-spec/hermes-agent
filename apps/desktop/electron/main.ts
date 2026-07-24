@@ -565,17 +565,17 @@ if (INSTALL_STAMP) {
 // scripts/install.ps1's $HermesHome and scripts/install.sh's $HERMES_HOME.
 //
 // Defaults:
-//   Windows: %LOCALAPPDATA%\hermes (matches install.ps1)
-//   macOS / Linux: ~/.hermes (matches install.sh)
+//   Windows: %LOCALAPPDATA%\apexnodes
+//   macOS / Linux: ~/.apexnodes
 //
-// Special case for Windows: if the user has a legacy ~/.hermes directory
+// Special case for Windows: if the user has a legacy ~/.apexnodes directory
 // (e.g., from a prior pip install or a manual setup) AND no
-// %LOCALAPPDATA%\hermes yet, prefer the legacy path so we don't orphan their
+// %LOCALAPPDATA%\apexnodes yet, prefer the legacy path so we don't orphan their
 // existing config / sessions / .env. New installs go to %LOCALAPPDATA%.
 //
 // HERMES_DESKTOP_USER_DATA_DIR (used by test:desktop:fresh) puts the sandbox
 // HERMES_HOME beneath the throwaway userData dir so a fresh-install run never
-// touches the user's real ~/.hermes / %LOCALAPPDATA%\hermes.
+// touches the user's real ~/.apexnodes / %LOCALAPPDATA%\apexnodes.
 function resolveHermesHome() {
   if (process.env.HERMES_HOME) {
     return normalizeHermesHomeRoot(process.env.HERMES_HOME)
@@ -600,11 +600,11 @@ function resolveHermesHome() {
   }
 
   if (IS_WINDOWS && process.env.LOCALAPPDATA) {
-    const localappdata = path.join(process.env.LOCALAPPDATA, 'hermes')
-    const legacy = path.join(app.getPath('home'), '.hermes')
+    const localappdata = path.join(process.env.LOCALAPPDATA, 'apexnodes')
+    const legacy = path.join(app.getPath('home'), '.apexnodes')
 
     // Migrate transparently to LOCALAPPDATA, but honour an existing legacy
-    // ~/.hermes setup (no LOCALAPPDATA install yet) so users don't lose state.
+    // ~/.apexnodes setup (no LOCALAPPDATA install yet) so users don't lose state.
     if (!directoryExists(localappdata) && directoryExists(legacy)) {
       return legacy
     }
@@ -612,14 +612,18 @@ function resolveHermesHome() {
     return localappdata
   }
 
-  return path.join(app.getPath('home'), '.hermes')
+  // ApexNodes Desktop runs an independent runtime home (~/.apexnodes) so it
+  // never collides with a stock Hermes install (~/.hermes) sharing the machine.
+  return path.join(app.getPath('home'), '.apexnodes')
 }
 
 const HERMES_HOME = resolveHermesHome()
 // Force the resolved root into the environment so every child process — the
 // first-launch install, the dashboard backend, the messaging gateway, the
-// daemon's agent runner — inherits the SAME home instead of re-deriving its own
-// default. Idempotent when HERMES_HOME came from an explicit override.
+// daemon's agent runner — inherits the SAME independent home instead of
+// re-deriving its own ~/.hermes default. Idempotent when HERMES_HOME came from
+// an explicit override; on a default install it pins clone/config/data under
+// ~/.apexnodes.
 process.env.HERMES_HOME = HERMES_HOME
 
 function hermesManagedNodePathEntries() {
@@ -2042,15 +2046,15 @@ function findGitBash() {
     return findOnPath('bash')
   }
 
-  // install.ps1 drops PortableGit at %LOCALAPPDATA%\hermes\git\... — checked
+  // install.ps1 drops PortableGit at %LOCALAPPDATA%\apexnodes\git\... — checked
   // first so users who installed via install.ps1 are detected before we
   // start probing system-wide locations.
   const localAppData = process.env.LOCALAPPDATA || ''
   const candidates = []
 
   if (localAppData) {
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'bin', 'bash.exe'))
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'usr', 'bin', 'bash.exe'))
+    candidates.push(path.join(localAppData, 'apexnodes', 'git', 'bin', 'bash.exe'))
+    candidates.push(path.join(localAppData, 'apexnodes', 'git', 'usr', 'bin', 'bash.exe'))
   }
 
   // Standard Git for Windows install locations.
@@ -2106,7 +2110,7 @@ function makeDashboardReadyFile() {
 }
 
 // resolveGitBinary — locate git.exe on Windows. A fresh installer-driven
-// install only has PortableGit under %LOCALAPPDATA%\hermes\git (never on
+// install only has PortableGit under %LOCALAPPDATA%\apexnodes\git (never on
 // PATH), so a bare spawn('git') ENOENTs and self-update checks fail with
 // "Couldn't check for updates". Mirror findGitBash: PortableGit first, then
 // standard Git-for-Windows locations, then PATH. Cached after first probe.
@@ -2127,8 +2131,8 @@ function resolveGitBinary() {
   const candidates = []
 
   if (localAppData) {
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'cmd', 'git.exe'))
-    candidates.push(path.join(localAppData, 'hermes', 'git', 'bin', 'git.exe'))
+    candidates.push(path.join(localAppData, 'apexnodes', 'git', 'cmd', 'git.exe'))
+    candidates.push(path.join(localAppData, 'apexnodes', 'git', 'bin', 'git.exe'))
   }
 
   candidates.push(path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Git', 'cmd', 'git.exe'))
