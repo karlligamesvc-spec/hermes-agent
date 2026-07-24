@@ -759,7 +759,10 @@ export const zhHant = defineLocale({
       noOutput: '尚無輸出。'
     },
     model: {
+      selectTitle: '選擇模型(可多選)',
+      selectHint: '選一個照常直連;選多個則共同參與回答,各按實際用量計。',
       selectedShort: (count: number) => `已選 ${count} 個模型`,
+      selectedSummary: (count: number) => `已選 ${count} 個模型 · 回答由所選模型共同完成,用量按各自實際消耗計入帳本。`,
       loading: '正在載入模型設定...',
       appliesDesc: '套用至新工作階段。可在輸入框的模型選擇器中臨時切換目前對話。',
       provider: '提供方',

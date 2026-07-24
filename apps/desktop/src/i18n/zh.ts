@@ -925,7 +925,10 @@ export const zh: Translations = {
       noOutput: '暂无输出。'
     },
     model: {
+      selectTitle: '选择模型(可多选)',
+      selectHint: '选一个照常直连;选多个则共同参与回答,各按实际用量计。',
       selectedShort: (count: number) => `已选 ${count} 个模型`,
+      selectedSummary: (count: number) => `已选 ${count} 个模型 · 回答由所选模型共同完成,用量按各自实际消耗计入台账。`,
       loading: '正在加载模型配置...',
       appliesDesc: '应用于新会话。可在输入框的模型选择器中临时切换当前对话。',
       provider: '提供方',

@@ -25,7 +25,8 @@ import {
   composeAutoMoa,
   composedMemberCount,
   expandMoaPresetMembers,
-  routedKey
+  routedKey,
+  SHOW_EXPLICIT_MOA_UI
 } from '@/lib/moa-compose'
 import { requestModelOptions } from '@/lib/model-options'
 import {
@@ -34,7 +35,7 @@ import {
   modelDisplayParts,
   reasoningEffortLabel
 } from '@/lib/model-status-label'
-import { isManagedProviderSlug } from '@/lib/provider-allowlist'
+import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
@@ -130,20 +131,30 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
       : String(modelOptions.error)
     : null
 
-  const providers = modelOptions.data?.providers
-
-  // The catalog carries MoA presets as a virtual `moa` provider row. Render
-  // them in their dedicated section below and keep the row out of the main
-  // provider groups so presets don't show up twice. `__auto__` is filtered out:
-  // it is the reserved preset the multi-select composes silently, and naming it
-  // in a list would leak the mechanism the design exists to hide.
-  const moaPresets = useMemo(
-    () =>
-      (providers?.find(provider => provider.slug.toLowerCase() === 'moa')?.models ?? []).filter(
-        preset => preset !== AUTO_PRESET_NAME
-      ),
-    [providers]
+  // China-first: only the APEX-NODES.COM managed relay (+ custom BYOK endpoints)
+  // and domestic providers are shown; foreign providers are hidden even when
+  // configured (see filterPickerProviders).
+  const providers = useMemo(
+    () => (modelOptions.data?.providers ? filterPickerProviders(modelOptions.data.providers) : undefined),
+    [modelOptions.data?.providers]
   )
+
+  // The catalog carries MoA presets as a virtual `moa` provider row, which
+  // upstream lists by name in its own section below. MOA-INVISIBLE-DESIGN
+  // forbids that vocabulary, so the list is held empty (the allowlist already
+  // drops the `moa` row) and upstream's section never renders — the composer's
+  // multi-select composes the same thing silently instead. `__auto__` is
+  // filtered out for the same reason: naming the reserved preset would leak the
+  // mechanism the design exists to hide.
+  const moaPresets = useMemo(() => {
+    if (!SHOW_EXPLICIT_MOA_UI) {
+      return []
+    }
+
+    return (providers?.find(provider => provider.slug.toLowerCase() === 'moa')?.models ?? []).filter(
+      preset => preset !== AUTO_PRESET_NAME
+    )
+  }, [providers])
 
   // The ApexNodes managed relay — the only provider whose rows multi-select.
   const managedProvider = useMemo(

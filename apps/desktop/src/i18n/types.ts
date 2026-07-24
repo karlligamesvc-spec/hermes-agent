@@ -635,7 +635,10 @@ export interface Translations {
       noOutput: string
     }
     model: {
+      selectTitle: string
+      selectHint: string
       selectedShort: (count: number) => string
+      selectedSummary: (count: number) => string
       loading: string
       appliesDesc: string
       provider: string

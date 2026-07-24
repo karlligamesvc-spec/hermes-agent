@@ -54,25 +54,25 @@ vi.mock('../hooks/use-on-profile-switch', () => ({
 }))
 
 beforeEach(() => {
-  getGlobalModelInfo.mockResolvedValue({ provider: 'nous', model: 'hermes-4' })
+  getGlobalModelInfo.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-v4-pro' })
   getGlobalModelOptions.mockResolvedValue({
     providers: [
       {
-        name: 'Nous',
-        slug: 'nous',
-        models: ['hermes-4', 'hermes-4-mini'],
+        name: 'DeepSeek',
+        slug: 'deepseek',
+        models: ['deepseek-v4-pro', 'deepseek-chat'],
         authenticated: true,
-        capabilities: { 'hermes-4': { reasoning: true, fast: true } }
+        capabilities: { 'deepseek-v4-pro': { reasoning: true, fast: true } }
       }
     ]
   })
   getAuxiliaryModels.mockResolvedValue({
-    main: { provider: 'nous', model: 'hermes-4' },
+    main: { provider: 'deepseek', model: 'deepseek-v4-pro' },
     tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
   })
   getMoaModels.mockResolvedValue(null)
-  setModelAssignment.mockResolvedValue({ provider: 'nous', model: 'hermes-4', gateway_tools: [] })
-  getRecommendedDefaultModel.mockResolvedValue({ provider: 'nous', model: 'hermes-4', free_tier: null })
+  setModelAssignment.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-v4-pro', gateway_tools: [] })
+  getRecommendedDefaultModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-v4-pro', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
   getHermesConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
   saveHermesConfig.mockResolvedValue({ ok: true })
@@ -110,9 +110,9 @@ describe('ModelSettings', () => {
     const triggers = await screen.findAllByRole('combobox')
     fireEvent.click(triggers[0])
 
-    // "Nous" shows in both the trigger and the open list.
-    expect((await screen.findAllByText('Nous')).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/DeepSeek/)).toBeNull()
+    // "DeepSeek" shows in both the trigger and the open list.
+    expect((await screen.findAllByText('DeepSeek')).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/MiniMax/)).toBeNull()
   })
 
   it.each(['custom', 'local', 'custom:lab'])(
@@ -151,12 +151,12 @@ describe('ModelSettings', () => {
   })
 
   it('deep-links a known OAuth provider row into its setup flow', async () => {
-    getGlobalModelInfo.mockResolvedValueOnce({ provider: 'anthropic', model: '' })
+    getGlobalModelInfo.mockResolvedValueOnce({ provider: 'qwen-oauth', model: '' })
     getGlobalModelOptions.mockResolvedValueOnce({
       providers: [
         {
-          name: 'Anthropic',
-          slug: 'anthropic',
+          name: 'Qwen',
+          slug: 'qwen-oauth',
           models: [],
           authenticated: false,
           auth_type: 'oauth'
@@ -166,9 +166,9 @@ describe('ModelSettings', () => {
 
     await renderModelSettings()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Set up Anthropic' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up Qwen' }))
 
-    expect(startManualProviderOAuth).toHaveBeenCalledWith('anthropic')
+    expect(startManualProviderOAuth).toHaveBeenCalledWith('qwen-oauth')
     expect(startManualLocalEndpoint).not.toHaveBeenCalled()
     expect(startManualOnboarding).not.toHaveBeenCalled()
   })
@@ -176,7 +176,7 @@ describe('ModelSettings', () => {
   it('replaces the selected provider and model when the active profile changes', async () => {
     getGlobalModelInfo
       .mockResolvedValueOnce({ provider: 'custom', model: 'local-a' })
-      .mockResolvedValueOnce({ provider: 'nous', model: 'hermes-4' })
+      .mockResolvedValueOnce({ provider: 'deepseek', model: 'deepseek-v4-pro' })
     getGlobalModelOptions
       .mockResolvedValueOnce({
         providers: [
@@ -191,11 +191,11 @@ describe('ModelSettings', () => {
       .mockResolvedValueOnce({
         providers: [
           {
-            name: 'Nous',
-            slug: 'nous',
-            models: ['hermes-4'],
+            name: 'DeepSeek',
+            slug: 'deepseek',
+            models: ['deepseek-v4-pro'],
             authenticated: true,
-            capabilities: { 'hermes-4': { reasoning: true, fast: true } }
+            capabilities: { 'deepseek-v4-pro': { reasoning: true, fast: true } }
           }
         ]
       })
@@ -208,7 +208,7 @@ describe('ModelSettings', () => {
     })
 
     await waitFor(() => expect(getGlobalModelInfo).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.getAllByRole('combobox')[0].textContent).toContain('Nous'))
+    await waitFor(() => expect(screen.getAllByRole('combobox')[0].textContent).toContain('DeepSeek'))
     expect(screen.queryByRole('button', { name: 'Set up provider' })).toBeNull()
   })
 
@@ -230,11 +230,11 @@ describe('ModelSettings', () => {
     getGlobalModelOptions.mockResolvedValueOnce({
       providers: [
         {
-          name: 'Nous',
-          slug: 'nous',
-          models: ['hermes-4'],
+          name: 'DeepSeek',
+          slug: 'deepseek',
+          models: ['deepseek-v4-pro'],
           authenticated: true,
-          capabilities: { 'hermes-4': { reasoning: false, fast: false } }
+          capabilities: { 'deepseek-v4-pro': { reasoning: false, fast: false } }
         }
       ]
     })
@@ -261,8 +261,8 @@ describe('ModelSettings', () => {
 
     await waitFor(() =>
       expect(setModelAssignment).toHaveBeenCalledWith({
-        model: 'hermes-4',
-        provider: 'nous',
+        model: 'deepseek-v4-pro',
+        provider: 'deepseek',
         scope: 'auxiliary',
         task: 'vision'
       })
@@ -271,10 +271,10 @@ describe('ModelSettings', () => {
 
   it('warns when a main switch leaves auxiliary tasks pinned to another provider', async () => {
     setModelAssignment.mockResolvedValueOnce({
-      provider: 'openrouter',
-      model: 'anthropic/claude-opus-4.7',
+      provider: 'zai',
+      model: 'glm-5.2',
       gateway_tools: [],
-      stale_aux: [{ task: 'compression', provider: 'nous', model: 'hermes-4' }]
+      stale_aux: [{ task: 'compression', provider: 'deepseek', model: 'deepseek-v4-pro' }]
     })
 
     await renderModelSettings()
@@ -285,13 +285,13 @@ describe('ModelSettings', () => {
 
     // The switch-time notice names the pinned provider and offers a reset.
     expect(await screen.findByText(/still run on/)).toBeTruthy()
-    expect(screen.getByText('nous')).toBeTruthy()
+    expect(screen.getByText('deepseek')).toBeTruthy()
   })
 
   it('shows a persistent banner when a loaded aux slot mismatches the main provider', async () => {
     getAuxiliaryModels.mockResolvedValueOnce({
-      main: { provider: 'nous', model: 'hermes-4' },
-      tasks: [{ task: 'curator', provider: 'openrouter', model: 'anthropic/claude-opus-4.7', base_url: '' }]
+      main: { provider: 'deepseek', model: 'deepseek-v4-pro' },
+      tasks: [{ task: 'curator', provider: 'zai', model: 'glm-5.2', base_url: '' }]
     })
 
     await renderModelSettings()
@@ -301,138 +301,144 @@ describe('ModelSettings', () => {
   })
 })
 
-describe('ModelSettings MoA preset editor', () => {
-  const moaConfig = () => ({
-    default_preset: 'default',
-    active_preset: '',
-    presets: {
-      default: {
-        reference_models: [
-          { provider: 'nous', model: 'hermes-4' },
-          { provider: 'openrouter', model: 'deepseek/deepseek-v4-pro' }
-        ],
-        aggregator: { provider: 'openrouter', model: 'anthropic/claude-opus-4.8' },
-        reference_temperature: 0,
-        aggregator_temperature: 0,
-        max_tokens: 4096,
-        enabled: true
-      }
-    },
-    reference_models: [
-      { provider: 'nous', model: 'hermes-4' },
-      { provider: 'openrouter', model: 'deepseek/deepseek-v4-pro' }
-    ],
-    aggregator: { provider: 'openrouter', model: 'anthropic/claude-opus-4.8' },
-    reference_temperature: 0,
-    aggregator_temperature: 0,
-    max_tokens: 4096,
-    enabled: true
-  })
+
+// hc-578 / MOA-INVISIBLE-DESIGN: picking a second platform model composes a
+// hidden `__auto__` Mixture-of-Agents preset. These guard the two halves of the
+// contract — the wire calls it makes, and the words it must never say. They
+// replace upstream's explicit preset/aggregator editor tests: that editor is
+// held shut by SHOW_EXPLICIT_MOA_UI.
+describe('ModelSettings platform multi-select (invisible MoA)', () => {
+  const MANAGED = 'custom:apex-nodes.com'
 
   beforeEach(() => {
+    // A tiny stateful backend: applying writes, and the page's post-apply
+    // reload reads back what was written. Without the round-trip the reload
+    // would silently revert the chips, hiding exactly the regression these
+    // tests exist to catch.
+    // Main model starts on a BYO provider, so no platform chip is preselected.
+    let applied = { model: 'minimax-m2', provider: 'minimax' }
+    let savedMoa: unknown = null
+
+    getGlobalModelInfo.mockImplementation(() => Promise.resolve(applied))
+    saveMoaModels.mockImplementation((body: unknown) => {
+      savedMoa = body
+
+      return Promise.resolve(body)
+    })
+    getMoaModels.mockImplementation(() => Promise.resolve(savedMoa))
+    setModelAssignment.mockImplementation((body: { model: string; provider: string; scope: string }) => {
+      if (body.scope === 'main') {
+        applied = { model: body.model, provider: body.provider }
+      }
+
+      return Promise.resolve({ ...applied, gateway_tools: [], stale_aux: [] })
+    })
     getGlobalModelOptions.mockResolvedValue({
       providers: [
         {
-          name: 'Nous',
-          slug: 'nous',
-          models: ['hermes-4', 'hermes-4-mini'],
+          name: 'Apex-nodes.com',
+          slug: MANAGED,
+          is_user_defined: true,
           authenticated: true,
-          capabilities: { 'hermes-4': { reasoning: true, fast: true } }
+          models: ['deepseek-v4-pro-APEX', 'glm-5.2', 'qwen3.7-max']
         },
-        {
-          name: 'OpenRouter',
-          slug: 'openrouter',
-          models: ['deepseek/deepseek-v4-pro', 'anthropic/claude-opus-4.8'],
-          authenticated: true
-        }
+        // A domestic BYO provider (the user's own key) — survives the filter.
+        { name: 'MiniMax', slug: 'minimax', authenticated: true, models: ['minimax-m2'] },
+        // Foreign — the China-first filter must keep it out of every selector.
+        { name: 'OpenAI', slug: 'openai-codex', authenticated: true, models: ['gpt-5.5'] }
       ]
     })
-    getMoaModels.mockResolvedValue(moaConfig())
-    saveMoaModels.mockImplementation((body: unknown) => Promise.resolve(body))
+    getAuxiliaryModels.mockResolvedValue({
+      main: { provider: 'minimax', model: 'minimax-m2' },
+      tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
+    })
   })
 
-  async function openReferenceEditor() {
+  it('renders a chip per platform model and hides foreign providers', async () => {
     await renderModelSettings()
-    expect(await screen.findByText('Reference 1')).toBeTruthy()
-  }
 
-  function slotSelects() {
-    // Combobox order in the MoA section (last 7 on the page): preset select,
-    // then provider+model per reference (2 refs), then aggregator
-    // provider+model. Reference 1's pair is therefore at -6 / -5.
-    const all = screen.getAllByRole('combobox')
-
-    return { ref1Provider: all.at(-6)!, ref1Model: all.at(-5)! }
-  }
-
-  it('holds the autosave while a slot is half-filled (provider changed, model pending)', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-
-    try {
-      await openReferenceEditor()
-
-      fireEvent.click(slotSelects().ref1Provider)
-      fireEvent.click(await screen.findByRole('option', { name: 'OpenRouter' }))
-
-      // Model was cleared by the provider change → config incomplete → the
-      // debounced autosave must NOT fire, even well past the 600ms window.
-      await vi.advanceTimersByTimeAsync(2000)
-      expect(saveMoaModels).not.toHaveBeenCalled()
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(await screen.findByRole('button', { name: 'Deepseek V4 Pro APEX' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Glm 5.2' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Qwen3.7 Max' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /GPT/ })).toBeNull()
   })
 
-  it('saves once the model pick completes the slot', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+  it('keeps the plain single-model path while only one model is picked', async () => {
+    await renderModelSettings()
 
-    try {
-      await openReferenceEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Glm 5.2' }))
 
-      fireEvent.click(slotSelects().ref1Provider)
-      fireEvent.click(await screen.findByRole('option', { name: 'OpenRouter' }))
-      await vi.advanceTimersByTimeAsync(700)
-
-      fireEvent.click(slotSelects().ref1Model)
-      fireEvent.click(await screen.findByRole('option', { name: 'anthropic/claude-opus-4.8' }))
-      await vi.advanceTimersByTimeAsync(700)
-
-      expect(saveMoaModels).toHaveBeenCalledTimes(1)
-      const sent = saveMoaModels.mock.calls[0][0] as ReturnType<typeof moaConfig>
-      expect(sent.presets.default.reference_models[0]).toEqual({
-        provider: 'openrouter',
-        model: 'anthropic/claude-opus-4.8'
-      })
-      // The untouched slots ride along unchanged — nothing reverts to defaults.
-      expect(sent.presets.default.reference_models[1]).toEqual({
-        provider: 'openrouter',
-        model: 'deepseek/deepseek-v4-pro'
-      })
-      expect(sent.presets.default.aggregator).toEqual({
-        provider: 'openrouter',
-        model: 'anthropic/claude-opus-4.8'
-      })
-    } finally {
-      vi.useRealTimers()
-    }
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenCalledWith({ model: 'glm-5.2', provider: MANAGED, scope: 'main' })
+    )
+    expect(saveMoaModels).not.toHaveBeenCalled()
   })
 
-  it('does not clear the model or save when the same provider is re-selected', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+  it('composes a hidden user_turn preset once a second model is picked', async () => {
+    await renderModelSettings()
 
-    try {
-      await openReferenceEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Glm 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
 
-      fireEvent.click(slotSelects().ref1Provider)
-      fireEvent.click(await screen.findByRole('option', { name: 'Nous' }))
-      await vi.advanceTimersByTimeAsync(700)
+    await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
 
-      // Radix treats re-picking the current value as a no-op (no
-      // onValueChange), so nothing changes: no save, model still shown.
-      expect(saveMoaModels).not.toHaveBeenCalled()
-      expect(screen.getByText('nous · hermes-4')).toBeTruthy()
-    } finally {
-      vi.useRealTimers()
-    }
+    const sent = saveMoaModels.mock.calls[0][0]
+    // Qwen3.7 Max outranks GLM 5.2 on quality-per-cost, so it acts; GLM is the
+    // reference. Every member must come from the user's own selection.
+    expect(sent.presets.__auto__.aggregator).toEqual({ provider: MANAGED, model: 'qwen3.7-max' })
+    expect(sent.presets.__auto__.reference_models).toEqual([{ provider: MANAGED, model: 'glm-5.2' }])
+    // Per user turn, not per tool-loop iteration — that would multiply the bill
+    // by the loop length instead of pinning it at N+1 (MOA-INVISIBLE-DESIGN §4).
+    expect(sent.presets.__auto__.fanout).toBe('user_turn')
+
+    await waitFor(() =>
+      expect(setModelAssignment).toHaveBeenCalledWith({ model: '__auto__', provider: 'moa', scope: 'main' })
+    )
+  })
+
+  it('never surfaces MoA / aggregator / reference / preset terminology', async () => {
+    await renderModelSettings()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Glm 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
+    await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
+
+    expect(screen.queryByText(/mixture of agents|aggregator|reference model|preset|__auto__|\bmoa\b/i)).toBeNull()
+    // "N models selected" is the one thing the multi-select is allowed to say.
+    expect(screen.getByText(/2 models selected/i)).toBeTruthy()
+  })
+
+  it('reconstructs the selection from a live composed preset on load', async () => {
+    getGlobalModelInfo.mockResolvedValue({ provider: 'moa', model: '__auto__' })
+    getMoaModels.mockResolvedValue({
+      default_preset: '__auto__',
+      active_preset: '__auto__',
+      presets: {
+        __auto__: {
+          reference_models: [{ provider: MANAGED, model: 'glm-5.2' }],
+          aggregator: { provider: MANAGED, model: 'qwen3.7-max' },
+          reference_temperature: 0,
+          aggregator_temperature: 0,
+          max_tokens: 4096,
+          enabled: true,
+          fanout: 'user_turn'
+        }
+      },
+      reference_models: [{ provider: MANAGED, model: 'glm-5.2' }],
+      aggregator: { provider: MANAGED, model: 'qwen3.7-max' },
+      reference_temperature: 0,
+      aggregator_temperature: 0,
+      max_tokens: 4096,
+      enabled: true
+    })
+
+    await renderModelSettings()
+
+    expect(await screen.findByRole('button', { name: 'Glm 5.2', pressed: true })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Qwen3.7 Max', pressed: true })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Deepseek V4 Pro APEX', pressed: false })).toBeTruthy()
+    // The composed selection must never leak into the single-model selectors as
+    // the raw `moa` / `__auto__` pair.
+    expect(screen.queryByText(/__auto__/)).toBeNull()
   })
 })

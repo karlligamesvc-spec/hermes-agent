@@ -781,7 +781,11 @@ export const ja = defineLocale({
       noOutput: 'まだ出力がありません。'
     },
     model: {
+      selectTitle: 'モデルを選択(複数選択可)',
+      selectHint: '1 つ選べばそのまま直結、複数選べば一緒に回答し、それぞれ実使用量で課金されます。',
       selectedShort: (count: number) => `${count} モデルを選択中`,
+      selectedSummary: (count: number) =>
+        `${count} 個のモデルを選択中 · 選んだモデルが一緒に回答し、使用量はそれぞれの実消費として台帳に計上されます。`,
       loading: 'モデル設定を読み込み中...',
       appliesDesc:
         '新しいセッションに適用されます。コンポーザーのモデルピッカーを使ってアクティブなチャットをホットスワップできます。',

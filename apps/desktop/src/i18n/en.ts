@@ -732,7 +732,12 @@ export const en: Translations = {
       noOutput: 'No output yet.'
     },
     model: {
+      selectTitle: 'Select models (multi-select)',
+      selectHint:
+        'Pick one for a direct connection; pick several and they answer together, each billed by actual usage.',
       selectedShort: (count: number) => `${count} models selected`,
+      selectedSummary: (count: number) =>
+        `${count} models selected · they answer together, each billed to your ledger by its own actual usage.`,
       loading: 'Loading model configuration...',
       appliesDesc: 'Applies to new sessions. Use the model picker in the composer to hot-swap the active chat.',
       provider: 'Provider',

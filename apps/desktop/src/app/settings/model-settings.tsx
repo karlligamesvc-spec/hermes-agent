@@ -25,6 +25,16 @@ import type {
 } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, Cpu, Loader2 } from '@/lib/icons'
+import {
+  AUTO_PRESET_NAME,
+  buildAutoMoaConfig,
+  composeAutoMoa,
+  expandMoaPresetMembers,
+  routedKey,
+  SHOW_EXPLICIT_MOA_UI
+} from '@/lib/moa-compose'
+import { displayModelName } from '@/lib/model-status-label'
+import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
 import { startManualLocalEndpoint, startManualOnboarding, startManualProviderOAuth } from '@/store/onboarding'
@@ -149,6 +159,68 @@ export const moaConfigComplete = (config: MoaConfigResponse): boolean =>
       moaSlotComplete(preset.aggregator)
   )
 
+/** A selectable platform model chip. `raw` is the id exactly as the provider
+ *  lists it (what the single-model apply path sends verbatim — regression red
+ *  line); the composer separately normalizes it to the routed id. */
+interface ModelChip {
+  label: string
+  raw: string
+}
+
+/** Reconstruct the platform multi-selection from the model that is actually
+ *  applied, so reopening the page shows what is live. `provider === 'moa'`
+ *  means a composed selection is active — expand it back to its member set; a
+ *  single managed pick seeds one chip; BYO or nothing selects none. Pure, so
+ *  the reconstruction can be reasoned about without the component. */
+function initialPlatformSelection(
+  info: { model: string; provider: string },
+  moa: MoaConfigResponse | null,
+  managedModels: readonly string[]
+): string[] {
+  const provider = String(info.provider || '')
+    .trim()
+    .toLowerCase()
+
+  if (provider === 'moa') {
+    // Emit in directory order so the composed aggregator stays deterministic.
+    return expandMoaPresetMembers(moa, info.model, managedModels)
+  }
+
+  if (!info.model || !provider || !isManagedProviderSlug(info.provider)) {
+    return []
+  }
+
+  return [managedModels.find(raw => routedKey(raw) === routedKey(info.model)) ?? info.model]
+}
+
+interface ChipButtonProps {
+  active: boolean
+  label: string
+  onClick: () => void
+}
+
+// One model chip. Selected = primary tint + check. Styling stays on semantic
+// tokens so light and dark both read correctly.
+function ChipButton({ active, label, onClick }: ChipButtonProps) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+        active
+          ? 'border-primary bg-primary/10 font-medium text-foreground'
+          : 'border-muted-foreground/25 text-foreground hover:border-primary/60'
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {active && <span aria-hidden className="text-primary">✓</span>}
+      {label}
+    </button>
+  )
+}
+
 interface StaleAuxWarningProps {
   applying: boolean
   onReset: () => void
@@ -197,6 +269,10 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   const [providers, setProviders] = useState<ModelOptionProvider[]>([])
   const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
+  // hc-578 (MOA-INVISIBLE-DESIGN): the platform (managed-relay) models
+  // MULTI-select. Raw ids in directory order; BYO providers stay single-select
+  // on the provider/model path below and don't mix with this (§9).
+  const [platformSel, setPlatformSel] = useState<string[]>([])
   const [auxiliary, setAuxiliary] = useState<AuxiliaryModelsResponse | null>(null)
   const [moa, setMoa] = useState<MoaConfigResponse | null>(null)
   const [selectedMoaPreset, setSelectedMoaPreset] = useState('')
@@ -247,14 +323,31 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       }
 
       setMainModel({ model: modelInfo.model, provider: modelInfo.provider })
-      setProviders(modelOptions.providers || [])
+      // China-first: keep only the APEX-NODES.COM managed relay (+ custom BYOK
+      // endpoints) and domestic providers, so every selector on this page —
+      // main model, auxiliary slots, MoA slots — inherits the same rule the
+      // composer picker uses. Foreign providers are hidden even when the user
+      // has a key configured (see filterPickerProviders).
+      const visible = filterPickerProviders(modelOptions.providers || [])
+      setProviders(visible)
+
+      const managed = visible.find(provider => isManagedProviderSlug(provider.slug, provider.name))
+      setPlatformSel(initialPlatformSelection(modelInfo, moaModels, managed?.models ?? []))
+
+      // A composed multi-model selection is applied as provider=`moa` /
+      // model=`__auto__` — precisely the vocabulary MOA-INVISIBLE-DESIGN hides.
+      // It must never seed the single-model selectors; the chips above already
+      // show the real member set.
+      const composedActive = String(modelInfo.provider || '').trim().toLowerCase() === 'moa'
+      const seedProvider = composedActive ? '' : modelInfo.provider
+      const seedModel = composedActive ? '' : modelInfo.model
 
       if (replaceSelection) {
-        setSelectedProvider(modelInfo.provider)
-        setSelectedModel(modelInfo.model)
+        setSelectedProvider(seedProvider)
+        setSelectedModel(seedModel)
       } else {
-        setSelectedProvider(prev => prev || modelInfo.provider)
-        setSelectedModel(prev => prev || modelInfo.model)
+        setSelectedProvider(prev => prev || seedProvider)
+        setSelectedModel(prev => prev || seedModel)
       }
 
       setAuxiliary(auxiliaryModels)
@@ -312,6 +405,38 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   // that would create a recursive MoA tree (the backend rejects it on save).
   // Hide it from the slot selectors so it isn't offered as a dead choice.
   const moaSlotProviderOptions = providerOptions.filter(provider => (provider.slug || '').toLowerCase() !== 'moa')
+
+  // The ApexNodes managed relay — the only provider whose models multi-select
+  // (MOA-INVISIBLE-DESIGN §9). BYO providers keep the single-select
+  // provider/model path below.
+  const managedProvider = useMemo(
+    () => providers.find(provider => isManagedProviderSlug(provider.slug, provider.name)) ?? null,
+    [providers]
+  )
+
+  // One chip per platform model, deduped on the routed id so the managed
+  // relay's `-APEX`-suffixed default doesn't show twice.
+  const platformChips = useMemo<ModelChip[]>(() => {
+    if (!managedProvider || !isProviderReady(managedProvider)) {
+      return []
+    }
+
+    const seen = new Set<string>()
+    const chips: ModelChip[] = []
+
+    for (const raw of managedProvider.models ?? []) {
+      const key = routedKey(raw)
+
+      if (!seen.has(key)) {
+        seen.add(key)
+        chips.push({ label: displayModelName(raw), raw })
+      }
+    }
+
+    return chips
+  }, [managedProvider])
+
+  const platformSelSet = useMemo(() => new Set(platformSel.map(routedKey)), [platformSel])
 
   const selectedProviderRow = useMemo(
     () => providers.find(provider => provider.slug === selectedProvider),
@@ -577,7 +702,9 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         return
       }
 
-      setProviders(options.providers || [])
+      // Same China-first filter the initial load applies — a key activated for
+      // a foreign provider must not reappear in the selectors here either.
+      setProviders(filterPickerProviders(options.providers || []))
       const refreshedRow = options.providers?.find(p => p.slug === slug)
       const fallbackModel = refreshedRow?.models?.[0] ?? ''
       setSelectedModel(nextModel || fallbackModel)
@@ -642,6 +769,81 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setApplying(false)
     }
   }, [onMainModelChanged, refresh, selectedModel, selectedProvider])
+
+  // Apply a platform selection. <=1 model keeps the plain single-model path
+  // (setModelAssignment scope:main) UNCHANGED — regression red line; 2+ models
+  // compose the hidden `__auto__` preset (references = S\{aggregator}, ranked
+  // aggregator, fanout:user_turn) and activate it. Same three calls the
+  // composer picker makes, so the two surfaces can never drift.
+  const applyPlatformSelection = useCallback(
+    async (slots: MoaModelSlot[]) => {
+      const epoch = profileEpoch.current
+      setApplying(true)
+      setError('')
+
+      try {
+        let assignment = slots[0]
+
+        if (slots.length > 1) {
+          const composed = composeAutoMoa(slots)
+
+          if (!composed) {
+            return
+          }
+
+          setMoa(await saveMoaModels(buildAutoMoaConfig(moaRef.current, composed)))
+          assignment = { model: AUTO_PRESET_NAME, provider: 'moa' }
+        }
+
+        const result = await setModelAssignment({ ...assignment, scope: 'main' })
+
+        if (profileEpoch.current !== epoch) {
+          return
+        }
+
+        const provider = result.provider || assignment.provider
+        const model = result.model || assignment.model
+        setMainModel({ provider, model })
+        setSwitchStaleAux(result.stale_aux ?? [])
+        onMainModelChanged?.(provider, model)
+        await refresh()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setApplying(false)
+      }
+    },
+    [onMainModelChanged, refresh]
+  )
+
+  // Toggling a chip applies immediately (no confirm step). Writes are
+  // serialized through one promise chain so a burst of toggles lands the final
+  // selection instead of racing each other.
+  const applyQueue = useRef<Promise<void>>(Promise.resolve())
+
+  const togglePlatformModel = useCallback(
+    (chip: ModelChip) => {
+      const key = routedKey(chip.raw)
+      const next = platformSelSet.has(key)
+        ? platformSel.filter(raw => routedKey(raw) !== key)
+        : [...platformSel, chip.raw]
+
+      // Keep directory order so the composed aggregator/reference split — and
+      // therefore what the user is billed for — is deterministic.
+      const order = new Map(platformChips.map((entry, index) => [routedKey(entry.raw), index]))
+      next.sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
+
+      setPlatformSel(next)
+
+      if (next.length === 0) {
+        return
+      }
+
+      const slots = next.map((raw): MoaModelSlot => ({ model: raw, provider: managedProvider?.slug ?? '' }))
+      applyQueue.current = applyQueue.current.then(() => applyPlatformSelection(slots))
+    },
+    [applyPlatformSelection, managedProvider, platformChips, platformSel, platformSelSet]
+  )
 
   const setAuxiliaryToMain = useCallback(
     async (task: string) => {
@@ -732,6 +934,33 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     <div className="grid gap-6">
       <section>
         <p className="mb-3 text-xs text-muted-foreground">{m.appliesDesc}</p>
+
+        {/* hc-578 (MOA-INVISIBLE-DESIGN): the platform models multi-select.
+            Picking a second one silently composes them — the copy says "N
+            models selected", never "MoA" / "aggregator" / "reference" /
+            "preset". BYO providers stay on the single-select row below. */}
+        {platformChips.length > 0 && (
+          <div className="mb-4">
+            <div className="mb-1 text-xs font-medium text-foreground">{m.selectTitle}</div>
+            <p className="mb-2.5 text-xs text-muted-foreground">{m.selectHint}</p>
+            <div className="flex flex-wrap gap-2">
+              {platformChips.map(chip => (
+                <ChipButton
+                  active={platformSelSet.has(routedKey(chip.raw))}
+                  key={chip.raw}
+                  label={chip.label}
+                  onClick={() => togglePlatformModel(chip)}
+                />
+              ))}
+            </div>
+            {platformSel.length >= 2 && (
+              <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
+                {m.selectedSummary(platformSel.length)}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <Select onValueChange={setSelectedProvider} value={selectedProvider}>
             <SelectTrigger className={cn('min-w-40', CONTROL_TEXT)}>
@@ -973,7 +1202,12 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
           })}
         </div>
       </section>
-      {moa && currentMoaPreset && (
+      {/* Upstream's explicit Mixture-of-Agents editor. MOA-INVISIBLE-DESIGN
+          forbids naming the mechanism, so it stays shut behind
+          SHOW_EXPLICIT_MOA_UI — the platform multi-select above composes the
+          very same `__auto__` preset without the vocabulary. The markup is kept
+          verbatim so the next upstream bump merges clean. */}
+      {SHOW_EXPLICIT_MOA_UI && moa && currentMoaPreset && (
         <section>
           <SectionHeading icon={Cpu} title="Mixture of Agents" />
           <p className="mb-2 text-xs text-muted-foreground">

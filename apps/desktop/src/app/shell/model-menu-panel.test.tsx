@@ -70,57 +70,29 @@ function renderPanel(onSelectModel = vi.fn()) {
   return { onSelectModel, content }
 }
 
-describe('ModelMenuPanel MoA presets', () => {
-  it('selecting a MoA preset switches PERSISTENTLY via onSelectModel (not the one-shot dispatch)', async () => {
-    const { content, onSelectModel } = renderPanel()
-
-    // moaOptions is async (useQuery) — wait for the preset row to mount.
-    const row = await content.findByText('MoA: BeastMode')
-    fireEvent.click(row)
-
-    // #54670: must route through the persistent model-switch path
-    // i.e. onSelectModel with provider 'moa' (which session-scopes live-session
-    // switches), NOT a one-shot command.dispatch that reverts after a turn.
-    expect(onSelectModel).toHaveBeenCalledWith({ model: 'BeastMode', provider: 'moa', sessionId: 'runtime-1' })
-  })
-
-  it('shows the check on the preset that matches the current moa selection', async () => {
-    $currentProvider.set('moa')
-    $currentModel.set('BeastMode')
+// Radix DropdownMenu portals its content to document.body, so these assert
+// against the body (not content.container) to see the rendered items.
+describe('ModelMenuPanel China-first + invisible MoA', () => {
+  it('never names MoA, even though the catalog ships the virtual provider row', async () => {
+    // MOA-INVISIBLE-DESIGN: upstream lists the `moa` row's models as named
+    // presets ("MoA presets" / "MoA: BeastMode"). Multi-select composes the
+    // same thing silently, so none of that vocabulary may reach the menu.
     const { content } = renderPanel()
 
-    const row = await content.findByText('MoA: BeastMode')
-    // The check codicon renders as a sibling within the same row item.
-    const item = row.closest('[role="menuitem"]') ?? row.parentElement
-    expect(item?.querySelector('.codicon-check')).not.toBeNull()
+    await content.findByText('DeepSeek')
+
+    // eslint-disable-next-line no-restricted-globals
+    expect(document.body.textContent).not.toMatch(/mixture of agents|aggregator|preset|__auto__|\bmoa\b/i)
   })
 
-  it('keeps the virtual moa provider out of the main model groups (presets section only)', async () => {
+  it('hides foreign providers the user cannot reach from the mainland', async () => {
     const { content } = renderPanel()
 
-    await content.findByText('MoA: BeastMode')
-
-    // The provider group header would read "Mixture of Agents"; the presets
-    // section header reads "MoA presets". Only the latter should exist.
-    // Radix DropdownMenu portals its content to document.body, so assert
-    // against the body (not content.container) to see the rendered items.
+    await content.findByText('DeepSeek')
 
     // eslint-disable-next-line no-restricted-globals
-    expect(document.body.textContent).toContain('MoA presets')
-    // eslint-disable-next-line no-restricted-globals
-    expect(document.body.textContent).not.toContain('Mixture of Agents')
-  })
-
-  it('renders presets from the catalog even before a session exists', async () => {
-    $activeSessionId.set('')
-    const { onSelectModel, content } = renderPanel()
-
-    const row = await content.findByText('MoA: BeastMode')
-    fireEvent.click(row)
-
-    // Pre-session picks are UI state shipped on the next session.create — the
-    // row must not be disabled and must still route through onSelectModel.
-    expect(onSelectModel).toHaveBeenCalledWith({ model: 'BeastMode', provider: 'moa', sessionId: null })
+    expect(document.body.textContent).not.toContain('Google')
+    expect(content.queryByText('Gemini 3.1 Pro')).toBeNull()
   })
 })
 
