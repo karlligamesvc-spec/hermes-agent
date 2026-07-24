@@ -35,7 +35,7 @@ import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeHermesHomeRoot } from './backend-env'
 import { canImportHermesCli, verifyHermesCli } from './backend-probes'
-import { waitForDashboardPort, waitForDashboardPortAnnouncement } from './backend-ready'
+import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { shouldLatchBackendStartFailure } from './backend-start-failure'
 import { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
 import { commitKeysMatch, readSourceCommitStamp, runBootstrap } from './bootstrap-runner'
@@ -97,7 +97,6 @@ import {
 import {
   DATA_URL_READ_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
-  decryptDesktopSecret as decryptDesktopSecretWith,
   encryptDesktopSecret as encryptDesktopSecretStrict,
   resolveReadableFileForIpc,
   resolveRequestedPathForIpc,
