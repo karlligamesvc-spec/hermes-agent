@@ -20,7 +20,6 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const http = require('node:http')
 const https = require('node:https')
-const net = require('node:net')
 const os = require('node:os')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
@@ -178,7 +177,6 @@ const {
 } = require('./apex-im-entry.cjs')
 const { buildGatewayRunArgs, imEntryStoreHasBinding } = require('./apex-gateway.cjs')
 const {
-  DAEMON_STATUS,
   bridgeResultUrl,
   buildInvalidTaskResult,
   buildRegisterBody,
@@ -5275,12 +5273,6 @@ function resolveManagedConfig() {
     account,
     accessToken: decryptDesktopSecret(stored.accessToken)
   }
-}
-
-// Just the decrypted relay key (or '') — thin wrapper for call sites that only
-// need to answer "is the user signed in to managed?".
-function resolveManagedRelayCredential() {
-  return resolveManagedConfig().key
 }
 
 // Persist the provision-key result. Pass null/empty to clear. `provisioned` may
