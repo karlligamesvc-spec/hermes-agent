@@ -1,10 +1,10 @@
 {
   "name": "hermes",
-  "productName": "Hermes",
+  "productName": "APEX",
   "private": true,
   "version": "0.17.0",
   "description": "Native desktop shell for Hermes Agent.",
-  "author": "Nous Research",
+  "author": "ApexNodes",
   "type": "module",
   "main": "dist/electron-main.mjs",
   "apexnodes": {
@@ -160,19 +160,23 @@
   },
   "build": {
     "electronVersion": "40.10.2",
-    "appId": "com.nousresearch.hermes",
-    "productName": "Hermes",
-    "executableName": "Hermes",
+    "appId": "com.apexnodes.desktop",
+    "productName": "APEX",
+    "executableName": "APEX",
     "protocols": [
       {
-        "name": "Hermes Protocol",
+        "name": "APEX Protocol",
         "schemes": [
-          "hermes"
+          "apexnodes"
         ]
       }
     ],
-    "artifactName": "Hermes-${version}-${os}-${arch}.${ext}",
+    "artifactName": "APEX-${version}-${os}-${arch}.${ext}",
     "icon": "assets/icon",
+    "publish": {
+      "provider": "generic",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop"
+    },
     "directories": {
       "output": "release"
     },
@@ -219,11 +223,11 @@
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
       "extendInfo": {
-        "CFBundleDisplayName": "Hermes",
-        "CFBundleExecutable": "Hermes",
-        "CFBundleName": "Hermes",
-        "NSAudioCaptureUsageDescription": "Hermes uses audio capture for voice conversations.",
-        "NSMicrophoneUsageDescription": "Hermes uses the microphone for voice input and voice conversations."
+        "CFBundleDisplayName": "APEX",
+        "CFBundleExecutable": "APEX",
+        "CFBundleName": "APEX",
+        "NSAudioCaptureUsageDescription": "APEX uses audio capture for voice conversations.",
+        "NSMicrophoneUsageDescription": "APEX uses the microphone for voice input and voice conversations."
       },
       "gatekeeperAssess": false,
       "hardenedRuntime": true,
@@ -233,7 +237,7 @@
       ]
     },
     "dmg": {
-      "title": "Install Hermes",
+      "title": "Install APEX",
       "backgroundColor": "#f5f5f7",
       "iconSize": 96,
       "window": {
@@ -255,7 +259,7 @@
       ]
     },
     "win": {
-      "legalTrademarks": "Hermes",
+      "legalTrademarks": "APEX",
       "target": [
         "nsis",
         "msi"
@@ -263,8 +267,8 @@
       "signAndEditExecutable": false
     },
     "linux": {
-      "category": "Development",
-      "maintainer": "Nous Research <support@nousresearch.com>",
+      "category": "Utility",
+      "maintainer": "ApexNodes <support@apex-nodes.com>",
       "synopsis": "Native desktop shell for Hermes Agent.",
       "target": [
         "AppImage",
@@ -276,8 +280,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "shortcutName": "Hermes",
-      "uninstallDisplayName": "Hermes",
+      "shortcutName": "APEX",
+      "uninstallDisplayName": "APEX",
       "warningsAsErrors": false
     }
   }

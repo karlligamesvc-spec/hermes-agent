@@ -59,8 +59,10 @@ function modeRemovesUserData(mode) {
  * Resolve the on-disk app bundle/dir to remove for the running desktop app,
  * given the path to the running executable (`process.execPath`) and platform.
  *
- *   macOS:   …/Hermes.app/Contents/MacOS/Hermes  → …/Hermes.app
- *   Windows: …\Hermes\Hermes.exe                 → …\Hermes  (install dir)
+ *   macOS:   …/APEX.app/Contents/MacOS/APEX  → …/APEX.app (any *.app name)
+ *   Windows: …\APEX\APEX.exe                 → …\APEX  (install dir; accepts
+ *            the current 'APEX' name plus the pre-rename 'ApexNodes' /
+ *            upstream 'Hermes' / 'hermes-desktop' dirs for older installs)
  *   Linux:   AppImage → the APPIMAGE env path; unpacked → the *-unpacked dir
  *
  * Returns null when we can't confidently identify a removable bundle (e.g.
@@ -92,10 +94,13 @@ function resolveRemovableAppPath(execPath, platform, env: any = {}) {
   }
 
   if (platform === 'win32') {
-    // NSIS per-user installs Hermes.exe directly in the install dir.
+    // NSIS per-user installs the exe directly in the install dir, named after
+    // productName. Accept the current 'APEX' name AND every earlier one
+    // ('ApexNodes' pre-rename, 'Hermes' / 'hermes-desktop' upstream) so an
+    // uninstall from an older install still resolves its own directory.
     const dir = p.dirname(exe)
 
-    if (/[\\/]Hermes$/i.test(dir) || /[\\/]hermes-desktop$/i.test(dir)) {
+    if (/[\\/](APEX|ApexNodes|Hermes|hermes-desktop)$/i.test(dir)) {
       return dir
     }
 
