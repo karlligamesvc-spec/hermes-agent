@@ -193,6 +193,20 @@ describe('ModelSettings', () => {
     expect(await screen.findByText(/2 models selected/i)).toBeTruthy()
   })
 
+  // This callout is the ONE roomy slot for the multi-select copy — a wrapping
+  // box, not a truncating line — so it carries the long form that explains how
+  // the selection is billed. The composer pill and the model menu are
+  // single-line slots and use `selectedShort` instead; sharing the long
+  // sentence with them is what truncated the pill to "已选 2 个模…".
+  it('uses the long form (with the billing explanation) in the settings callout', async () => {
+    await renderModelSettings()
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
+
+    expect(await screen.findByText(/2 models selected · they answer together/i)).toBeTruthy()
+    expect(screen.getByText(/billed to your ledger by its own actual usage/i)).toBeTruthy()
+  })
+
   it('writes the profile default speed (service_tier) when the fast switch is toggled', async () => {
     // A managed main model with fast capability so the speed switch renders.
     getGlobalModelInfo.mockResolvedValueOnce({ provider: MANAGED, model: 'deepseek-v4-pro-APEX' })

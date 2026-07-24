@@ -77,4 +77,33 @@ describe('ModelPill', () => {
     expect(button.textContent).not.toMatch(/__auto__|\bmoa\b/i)
     expect(button.getAttribute('title')).not.toMatch(/__auto__|\bmoa\b/i)
   })
+
+  // The pill is `max-w-40` around a `truncate` label, so only the short form
+  // fits. It used to share Settings › Model's long sentence (which continues
+  // "· they answer together, each billed to your ledger …"), which clipped
+  // mid-word on a real install. The label AND the title (also the aria-label)
+  // must stay short.
+  it('keeps the composed label short enough not to truncate in the pill', async () => {
+    $currentModel.set('__auto__')
+    $currentProvider.set('moa')
+    getMoaModels.mockResolvedValue({
+      presets: {
+        __auto__: {
+          reference_models: [{ provider: MANAGED, model: 'glm-5.2' }],
+          aggregator: { provider: MANAGED, model: 'qwen3.7-max' }
+        }
+      }
+    })
+
+    renderPill()
+
+    const label = await screen.findByText(/2 models selected/i)
+    expect(label.textContent).toBe('2 models selected')
+
+    const button = screen.getByRole('button')
+    expect(button.getAttribute('title')).toBe('2 models selected')
+    // The billing explanation belongs to the roomy Settings › Model callout.
+    expect(button.textContent).not.toMatch(/answer together|ledger|actual usage/i)
+    expect(button.getAttribute('title')).not.toMatch(/answer together|ledger|actual usage/i)
+  })
 })

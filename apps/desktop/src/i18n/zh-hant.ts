@@ -758,6 +758,7 @@ export const zhHant = defineLocale({
       staleAuxOtherProviders: '其他提供方',
       selectTitle: '選擇模型(可多選)',
       selectHint: '選一個照常直連;選多個則共同參與回答,各按實際用量計。',
+      selectedShort: count => `已選 ${count} 個模型`,
       selectedSummary: count => `已選 ${count} 個模型 · 回答由所選模型共同完成,用量按各自實際消耗計入帳本。`,
       byoTitle: '我的金鑰(BYO)',
       byoHint: '使用您自己金鑰下的模型。',

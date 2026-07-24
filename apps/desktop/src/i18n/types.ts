@@ -513,6 +513,11 @@ export interface Translations {
       staleAuxOtherProviders: string
       selectTitle: string
       selectHint: string
+      /** Tight slots — the composer pill and the one-line menu rows, both of
+       *  which truncate. Keep it to "N models selected" and nothing more. */
+      selectedShort: (count: number) => string
+      /** Roomy slots — the Settings › Model callout box, which wraps freely.
+       *  Carries the billing explanation the short form has no room for. */
       selectedSummary: (count: number) => string
       byoTitle: string
       byoHint: string
