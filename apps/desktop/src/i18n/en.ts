@@ -2101,8 +2101,6 @@ export const en: Translations = {
       loadFailed: 'Could not load models — try again shortly.',
       catalogUnauthorized: 'Model catalog unavailable: sign-in expired — tap to sign in again',
       catalogUnreachable: 'Model catalog unavailable: network error — tap to retry',
-      moaPresets: 'MoA presets',
-      moaPresetItem: preset => `MoA: ${preset}`,
       fast: 'Fast',
       medium: 'Med'
     },

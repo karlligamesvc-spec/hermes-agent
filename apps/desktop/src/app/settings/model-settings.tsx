@@ -23,7 +23,7 @@ import type {
 } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, Cpu } from '@/lib/icons'
-import { AUTO_PRESET_NAME, buildAutoMoaConfig, composeAutoMoa, routedModelId } from '@/lib/moa-compose'
+import { AUTO_PRESET_NAME, buildAutoMoaConfig, composeAutoMoa, expandMoaPresetMembers, routedKey } from '@/lib/moa-compose'
 import { displayModelName } from '@/lib/model-status-label'
 import { filterPickerProviders, isManagedProviderSlug, isPickerVisibleProvider } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
@@ -75,8 +75,6 @@ const AUX_TASKS: readonly AuxTaskMeta[] = [
 
 const NO_PROVIDERS: readonly ModelOptionProvider[] = [{ name: '—', slug: '', models: [] }]
 
-const routedKey = (model: string): string => routedModelId(model).toLowerCase()
-
 /** A selectable model chip. `raw` is the id as it appears in the provider's
  *  model list (what the single-model apply path sends verbatim — regression
  *  red line); the MoA composer separately normalizes it to the routed id. */
@@ -108,19 +106,8 @@ function initialSelection(
   const provider = String(info.provider || '').trim().toLowerCase()
 
   if (provider === 'moa') {
-    const preset = moa?.presets?.[info.model]
-
-    if (!preset) {
-      return { platform: [], byo: null }
-    }
-
-    const wanted = new Set<string>()
-
-    ;[...preset.reference_models, preset.aggregator].forEach(slot => wanted.add(routedKey(slot.model)))
     // Emit in directory order so the composed aggregator stays deterministic.
-    const platform = managedModels.filter(raw => wanted.has(routedKey(raw)))
-
-    return { platform, byo: null }
+    return { platform: expandMoaPresetMembers(moa, info.model, managedModels), byo: null }
   }
 
   if (!info.model || !provider) {

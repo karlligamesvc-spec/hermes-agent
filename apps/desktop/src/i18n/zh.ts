@@ -2252,8 +2252,6 @@ export const zh: Translations = {
       loadFailed: '模型列表加载失败，请稍后重试',
       catalogUnauthorized: '模型目录不可用：登录已失效，点按重新登录',
       catalogUnreachable: '模型目录不可用：网络异常，点按重试',
-      moaPresets: 'MoA 预设',
-      moaPresetItem: preset => `MoA：${preset}`,
       fast: '快速',
       medium: '中'
     },

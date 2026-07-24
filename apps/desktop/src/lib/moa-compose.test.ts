@@ -6,6 +6,8 @@ import {
   AUTO_PRESET_NAME,
   buildAutoMoaConfig,
   composeAutoMoa,
+  composedMemberCount,
+  expandMoaPresetMembers,
   pickAggregator,
   routedModelId
 } from './moa-compose'
@@ -115,5 +117,41 @@ describe('buildAutoMoaConfig', () => {
     const cfg = buildAutoMoaConfig(existing, composed)
     expect(Object.keys(cfg.presets).sort()).toEqual([AUTO_PRESET_NAME, 'apex-moa'])
     expect(cfg.default_preset).toBe(AUTO_PRESET_NAME)
+  })
+})
+
+describe('composedMemberCount', () => {
+  it('counts references + the aggregator', () => {
+    const composed = composeAutoMoa([slot('glm-5.2'), slot('qwen3.7-max'), slot('deepseek-v4-pro')])!
+    const preset = buildAutoMoaConfig(null, composed).presets[AUTO_PRESET_NAME]
+    expect(composedMemberCount(preset)).toBe(3)
+  })
+
+  it('returns 0 for a missing preset', () => {
+    expect(composedMemberCount(undefined)).toBe(0)
+    expect(composedMemberCount(null)).toBe(0)
+  })
+})
+
+describe('expandMoaPresetMembers', () => {
+  const directory = ['deepseek-v4-pro-APEX', 'glm-5.2', 'qwen3.7-max', 'kimi-k2.6']
+
+  it('expands the active preset back to its member ids, in directory order', () => {
+    const composed = composeAutoMoa([slot('glm-5.2'), slot('qwen3.7-max')])!
+    const moa = buildAutoMoaConfig(null, composed)
+    // qwen3.7-max aggregates, glm-5.2 is the reference — directory order wins
+    // regardless of which is the aggregator.
+    expect(expandMoaPresetMembers(moa, AUTO_PRESET_NAME, directory)).toEqual(['glm-5.2', 'qwen3.7-max'])
+  })
+
+  it('matches the managed -APEX display id to its bare routed member', () => {
+    const composed = composeAutoMoa([slot('deepseek-v4-pro'), slot('kimi-k2.6')])!
+    const moa = buildAutoMoaConfig(null, composed)
+    expect(expandMoaPresetMembers(moa, AUTO_PRESET_NAME, directory)).toEqual(['deepseek-v4-pro-APEX', 'kimi-k2.6'])
+  })
+
+  it('returns an empty array when the preset key is missing', () => {
+    expect(expandMoaPresetMembers(null, AUTO_PRESET_NAME, directory)).toEqual([])
+    expect(expandMoaPresetMembers({ presets: {} } as unknown as MoaConfigResponse, AUTO_PRESET_NAME, directory)).toEqual([])
   })
 })
