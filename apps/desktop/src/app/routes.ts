@@ -15,15 +15,15 @@ export const PROFILES_ROUTE = '/profiles'
 export const AGENTS_ROUTE = '/agents'
 export const STARMAP_ROUTE = '/starmap'
 
-// ApexNodes-only destinations. Their pages (app/im-entry, app/profile) are not
-// mounted on the upstream contribution shell yet, so these are deliberately
-// path constants only: registering them in APP_ROUTES now would reserve a path
-// that resolves to a view nothing renders. The APP_ROUTES / AppView entries
-// land together with the pages.
+// ApexNodes-only destinations, mounted on the contribution shell alongside the
+// upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
+// overlay set for `profile`).
 //
 // hc-417 "IM 入口" — connect the local agent to an IM platform (飞书 first).
 // Distinct from MESSAGING_ROUTE, the developer-oriented per-platform env editor.
 export const IM_ENTRY_ROUTE = '/im-entry'
+// 任务 — the delegated/background task board.
+export const TASKS_ROUTE = '/tasks'
 // 个人资料 — the account/usage-stats page (avatar header + token heatmap).
 // Distinct from PROFILES_ROUTE, the multi-profile (配置档案) manager.
 export const PROFILE_STATS_ROUTE = '/profile'
@@ -34,6 +34,9 @@ export type AppView =
   | 'chat'
   | 'command-center'
   | 'cron'
+  | 'im-entry'
+  | 'profile'
+  | 'tasks'
   // A contributed (plugin) full page at its own route — NOT chat. Without this
   // distinction contributed paths fell through appViewForPath's 'chat' default,
   // so the sidebar kept a session highlighted and the titlebar kept the
@@ -50,12 +53,15 @@ export type AppRouteId =
   | 'artifacts'
   | 'command-center'
   | 'cron'
+  | 'im-entry'
   | 'messaging'
   | 'new'
+  | 'profile'
   | 'profiles'
   | 'settings'
   | 'skills'
   | 'starmap'
+  | 'tasks'
 
 export interface AppRoute {
   id: AppRouteId
@@ -73,7 +79,10 @@ export const APP_ROUTES = [
   { id: 'cron', path: CRON_ROUTE, view: 'cron' },
   { id: 'profiles', path: PROFILES_ROUTE, view: 'profiles' },
   { id: 'agents', path: AGENTS_ROUTE, view: 'agents' },
-  { id: 'starmap', path: STARMAP_ROUTE, view: 'starmap' }
+  { id: 'starmap', path: STARMAP_ROUTE, view: 'starmap' },
+  { id: 'im-entry', path: IM_ENTRY_ROUTE, view: 'im-entry' },
+  { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },
+  { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' }
 ] as const satisfies readonly AppRoute[]
 
 const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))
@@ -132,6 +141,9 @@ export const OVERLAY_VIEWS: ReadonlySet<AppView> = new Set([
   'agents',
   'command-center',
   'cron',
+  // 个人资料 is a full-screen card over the shell, like profiles/settings — not
+  // a workspace page (the chat stays beneath it).
+  'profile',
   'profiles',
   'settings',
   'starmap'

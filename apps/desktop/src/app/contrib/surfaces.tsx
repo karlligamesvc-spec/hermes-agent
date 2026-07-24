@@ -33,6 +33,9 @@ import type { SidebarActions, WiringActions } from './types'
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
+// ApexNodes full-page views — same lazy split, same workspace pane.
+const ImEntryView = lazy(async () => ({ default: (await import('../im-entry')).ImEntryView }))
+const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksView }))
 
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
@@ -180,7 +183,16 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
       <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
       <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
+      {/* hc-417 IM 入口 — scan-to-bind this machine's assistant to 飞书/微信/…
+          Reached from the composer "+" menu's connectors row, the sidebar's
+          channel strip, and Settings → 提供方. */}
+      <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
+      <Route
+        element={page(<TasksView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />)}
+        path="tasks"
+      />
       <Route element={null} path="agents" />
+      <Route element={null} path="profile" />
       <Route element={null} path="command-center" />
       <Route element={null} path="cron" />
       <Route element={null} path="profiles" />
