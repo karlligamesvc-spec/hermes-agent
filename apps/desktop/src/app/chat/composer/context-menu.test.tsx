@@ -46,9 +46,12 @@ const STATE: ChatBarState = {
 }
 
 function renderMenu() {
+  // The two required callbacks belong to menu entries this file never opens
+  // (prompt snippets / the URL dialog); what it asserts is which skill rows the
+  // menu renders at all.
   return render(
     <MemoryRouter>
-      <ContextMenu state={STATE} />
+      <ContextMenu onInsertText={() => {}} onOpenUrlDialog={() => {}} state={STATE} />
     </MemoryRouter>
   )
 }

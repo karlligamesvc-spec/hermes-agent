@@ -31,6 +31,17 @@ interface PageSearchShellProps extends React.ComponentProps<'section'> {
   /** Right-aligned control in the header's trailing cell (e.g. a refresh button)
    *  so mouse users get a visible affordance for the refresh hotkey. */
   searchTrailingAction?: ReactNode
+  /** Reach the underlying input (e.g. to focus it on page mount / hotkey). */
+  searchInputRef?: React.RefObject<HTMLInputElement | null>
+  /**
+   * Centered single-column mode: the header and the body share one
+   * `mx-auto max-w-2xl` column, so the search field lines up (same width, same
+   * axis) with the content beneath it — used by the 搜索 page. Off by default,
+   * so tab-style pages (插件 / 产物 / 渠道) keep their full-width layout. In this
+   * mode the shell owns the scroll container and the centered column; pass just
+   * the column's content as `children`.
+   */
+  centered?: boolean
 }
 
 function ShellTabs({
@@ -65,6 +76,8 @@ export function PageSearchShell({
   searchValue,
   searchHidden = false,
   searchTrailingAction,
+  searchInputRef,
+  centered = false,
   ...props
 }: PageSearchShellProps) {
   const hasTabs = (tabs?.length ?? 0) > 0
@@ -90,26 +103,54 @@ export function PageSearchShell({
         (see app-shell.tsx), so window dragging still works here.
       */}
       <div className="shrink-0">
-        {(hasTabs || !searchHidden) && (
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]">
-            <div className="flex min-w-0 items-center justify-start">
-              {!searchHidden && (
+        {/* Centered mode shares the body's `mx-auto max-w-2xl px-3` box so the
+            search field lines up with the column beneath it, and drops the
+            tab/trailing cells the single-column pages have no use for. */}
+        {centered
+          ? !searchHidden && (
+              <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]">
                 <SearchField
-                  containerClassName="max-w-[45vw]"
+                  containerClassName="w-full"
                   hints={searchHints}
+                  inputRef={searchInputRef}
                   onChange={onSearchChange}
                   placeholder={searchPlaceholder}
+                  trailingAction={searchTrailingAction}
                   value={searchValue}
                 />
-              )}
-            </div>
-            {hasTabs ? <ShellTabs activeTab={activeTab} onTabChange={onTabChange} tabs={tabs!} /> : <span />}
-            <div className="flex min-w-0 items-center justify-end">{searchTrailingAction}</div>
-          </div>
-        )}
+              </div>
+            )
+          : (hasTabs || !searchHidden) && (
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]">
+                <div className="flex min-w-0 items-center justify-start">
+                  {!searchHidden && (
+                    <SearchField
+                      containerClassName="max-w-[45vw]"
+                      hints={searchHints}
+                      inputRef={searchInputRef}
+                      onChange={onSearchChange}
+                      placeholder={searchPlaceholder}
+                      value={searchValue}
+                    />
+                  )}
+                </div>
+                {hasTabs ? <ShellTabs activeTab={activeTab} onTabChange={onTabChange} tabs={tabs!} /> : <span />}
+                <div className="flex min-w-0 items-center justify-end">{searchTrailingAction}</div>
+              </div>
+            )}
         {filters ? <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">{filters}</div> : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">{children}</div>
+      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">
+        {centered ? (
+          // Scroll at the window edge, content in the same centered column as
+          // the header. `px-3` matches the header so both edges align.
+          <div className="h-full overflow-y-auto">
+            <div className="mx-auto w-full max-w-2xl px-3">{children}</div>
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </section>
   )
 }

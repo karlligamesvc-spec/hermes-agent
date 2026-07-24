@@ -45,7 +45,19 @@ function relativeTime(ms: number | undefined, a: Translations['settings']['about
   return a.daysAgo(Math.round(diff / 86_400_000))
 }
 
+// The 关于 page as a standalone settings page.
 export function AboutSettings() {
+  return (
+    <SettingsContent>
+      <AboutSettingsBody />
+    </SettingsContent>
+  )
+}
+
+// The same content without the page wrapper, so 个性化 can host it as a section
+// (About is merged into 个性化 in the ApexNodes settings layout) without
+// nesting one SettingsContent inside another.
+export function AboutSettingsBody() {
   const { t } = useI18n()
   const a = t.settings.about
   const version = useStore($desktopVersion)
@@ -94,7 +106,7 @@ export function AboutSettings() {
   }
 
   return (
-    <SettingsContent>
+    <>
       <div className="flex flex-col items-center gap-3 pt-6 pb-2 text-center">
         <BrandMark className="size-16" />
         <div>
@@ -178,6 +190,6 @@ export function AboutSettings() {
 
         <UninstallSection />
       </div>
-    </SettingsContent>
+    </>
   )
 }

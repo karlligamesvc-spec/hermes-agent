@@ -20,8 +20,13 @@ interface TerminalTabProps {
 export function TerminalTab({ cwd, onAddSelectionToChat }: TerminalTabProps) {
   const { t } = useI18n()
 
+  // The takeover pane hosts exactly one terminal, so it holds a fixed id and is
+  // always the active one. The id/active pair exists for the tabbed rail
+  // (terminal/instance.tsx), where it keys the per-tab agent reader.
   const { addSelectionToChat, hostRef, selection, selectionStyle, shellName, status } = useTerminalSession({
+    id: 'right-sidebar-takeover',
     cwd,
+    active: true,
     onAddSelectionToChat
   })
 

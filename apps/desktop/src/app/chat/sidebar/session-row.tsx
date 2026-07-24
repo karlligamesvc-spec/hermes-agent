@@ -48,7 +48,9 @@ interface SidebarSessionRowProps extends React.ComponentProps<'div'> {
 
 const AGE_KEY = { day: 'ageDay', hour: 'ageHour', minute: 'ageMin' } as const
 
-function formatAge(seconds: number, r: Translations['sidebar']['row']): string {
+// Exported so the 搜索 page renders the same relative age string as the sidebar
+// rows it mirrors.
+export function formatAge(seconds: number, r: Translations['sidebar']['row']): string {
   const { unit, value } = coarseElapsed(Date.now() - seconds * 1000)
 
   // Under a minute reads as "now" — the sidebar never shows a seconds tick.

@@ -1,5 +1,7 @@
 import { Fragment, type ReactNode } from 'react'
 
+import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
 import { TabDropdown } from '@/components/ui/tab-dropdown'
 import type { IconComponent } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -83,6 +85,31 @@ export function OverlayMain({ children, className }: OverlayMainProps) {
     >
       {children}
     </main>
+  )
+}
+
+// Quiet "new …" affordance that sits above an overlay rail's nav list (任务 /
+// 场景): a ghost row rather than a filled button, so it reads as one more item
+// in the rail instead of competing with the page's primary action.
+export function OverlayNewButton({
+  icon = 'add',
+  label,
+  onClick
+}: {
+  icon?: string
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <Button
+      className="group mb-1 w-full justify-start gap-2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+      onClick={onClick}
+      size="sm"
+      variant="ghost"
+    >
+      <Codicon name={icon} />
+      <span className="underline-offset-4 group-hover:underline">{label}</span>
+    </Button>
   )
 }
 
