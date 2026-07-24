@@ -1,5 +1,6 @@
 import { type CSSProperties, useState } from 'react'
 
+import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { capitalize, normalize } from '@/lib/text'
 
 import introCopyJsonl from './intro-copy.jsonl?raw'
@@ -179,6 +180,12 @@ export function Intro({ personality, seed }: IntroProps) {
 
         <p className="m-0 text-center leading-normal tracking-tight">{copy.body}</p>
       </div>
+
+      {/* hc-554 场景货架 — the zero-state scenario shelf, below the greeting.
+          Self-gating (renders nothing when the catalog is fleet-disabled or
+          empty), and it re-enables pointer events for its own subtree over this
+          pointer-events-none block. */}
+      <ScenarioShelf />
     </div>
   )
 }

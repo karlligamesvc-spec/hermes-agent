@@ -20,6 +20,8 @@ import { $threadScrolledUp } from '@/store/thread-scroll'
 import { $autoSpeakReplies } from '@/store/voice-prefs'
 import { useTheme } from '@/themes'
 
+import { ScenarioButton } from '../scenarios/scenario-button'
+
 import { AttachmentList } from './attachments'
 import { COMPOSER_FADE_BACKGROUND, type QueueEditState, slashArgStage } from './composer-utils'
 import { ContextMenu } from './context-menu'
@@ -997,6 +999,11 @@ export function ChatBar({
                 >
                   <div className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]">
                     {contextMenu}
+                    {/* hc-554 场景入口副入口 — self-contained ✦ button + menu (it
+                        reads the catalog and drives the composer through the
+                        insert bus itself), and renders nothing when the catalog
+                        is fleet-disabled. Sits beside the "+" capability menu. */}
+                    <ScenarioButton disabled={disabled} />
                     <ContribSlot area={COMPOSER_AREAS.leading} />
                   </div>
                   <div className="min-w-0 [grid-area:input]">{input}</div>

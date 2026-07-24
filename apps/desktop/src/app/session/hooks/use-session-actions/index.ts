@@ -21,6 +21,7 @@ import {
   $currentProvider,
   $currentReasoningEffort,
   $messages,
+  $messagesEmpty,
   $newChatWorkspaceTarget,
   $sessions,
   $yoloActive,
@@ -65,6 +66,7 @@ import type { ClientSessionState, SidebarNavItem } from '../../../types'
 
 import {
   appendLiveSessionProjection,
+  applyPendingScenarioTitle,
   applyRuntimeInfo,
   applyStoredSessionPreviewRuntimeInfo,
   type BranchMessage,
@@ -205,6 +207,14 @@ export function useSessionActions({
   const { t } = useI18n()
   const copy = t.desktop
   const resumeRequestRef = useRef(0)
+  // hc-554. Scenario name queued for the NEXT session createBackendSessionForSend
+  // materializes from the draft a scenario pick produced (not e.g. Cmd+N) — see
+  // handleScenarioSessionRequest below. Cleared in startFreshSessionDraft so any
+  // OTHER path to a fresh draft (keybind, sidebar "new session", profile switch)
+  // can't inherit a stale title from an earlier, abandoned scenario pick;
+  // handleScenarioSessionRequest re-sets it right after calling that, so its own
+  // intent survives the clear.
+  const pendingScenarioTitleRef = useRef<string | null>(null)
 
   // Follow auto-compression's stored-id rotation only while the exact runtime,
   // selection, and route intent still belong to the rotating conversation.
@@ -256,6 +266,7 @@ export function useSessionActions({
         ? normalizeNewChatWorkspaceTarget(draftOptions.workspaceTarget)
         : undefined
 
+      pendingScenarioTitleRef.current = null
       resetViewSync()
       busyRef.current = false
       setBusy(false)
@@ -308,6 +319,28 @@ export function useSessionActions({
     [activeSessionIdRef, busyRef, navigate, onFreshDraftRouteIntent, resetViewSync, selectedStoredSessionIdRef]
   )
 
+  // hc-554 scenario picker's session-lifecycle half (chat/scenarios/pick.ts +
+  // scenario-session-bridge.ts): a scenario picked mid-conversation gets a
+  // fresh, scenario-named session instead of landing in the middle of an
+  // unrelated thread; one picked on an already-empty draft (zero state, or an
+  // untouched earlier scenario pick) is named in place — no reset, so idly
+  // browsing scenarios never spends an extra draft. Naming itself is deferred:
+  // a session only materializes server-side on first send (see
+  // createBackendSessionForSend below), so this just queues the title for
+  // whichever draft is now active; an empty/whitespace name (catalog names are
+  // normally non-empty — defensive only) queues nothing, which is the same as
+  // today's un-named default.
+  const handleScenarioSessionRequest = useCallback(
+    (title: string) => {
+      if (!$messagesEmpty.get()) {
+        startFreshSessionDraft()
+      }
+
+      pendingScenarioTitleRef.current = title.trim() || null
+    },
+    [startFreshSessionDraft]
+  )
+
   const createBackendSessionForSend = useCallback(
     async (preview: string | null = null): Promise<string | null> => {
       const startingActiveSessionId = activeSessionIdRef.current
@@ -348,17 +381,29 @@ export function useSessionActions({
         selectedStoredSessionIdRef.current = stored
         ensureSessionState(created.session_id, stored)
 
+        // Take (read + clear) whatever a scenario pick queued for THIS draft —
+        // see handleScenarioSessionRequest. Cleared unconditionally so it can't
+        // leak into a later, unrelated session.
+        const pendingScenarioTitle = pendingScenarioTitleRef.current
+        pendingScenarioTitleRef.current = null
+
         if (stored) {
           createdThisRun.add(stored)
           // Seed the sidebar preview with the user's first message so the row
           // reads meaningfully while the turn is in flight, instead of flashing
           // "Untitled session" until the turn persists and auto-title runs. The
-          // server later returns its own preview/title and supersedes this.
-          upsertOptimisticSession(created, stored, null, preview?.trim() || null)
+          // server later returns its own preview/title and supersedes this — but a
+          // scenario-queued title wins over that default, which is the whole
+          // point of the scenario picker's session request.
+          upsertOptimisticSession(created, stored, pendingScenarioTitle, preview?.trim() || null)
           navigate(sessionRoute(stored), { replace: true })
           // Other windows (e.g. the main window when this is the pop-out) can't
           // see this session until they re-pull the shared list.
           broadcastSessionsChanged()
+
+          if (pendingScenarioTitle) {
+            await applyPendingScenarioTitle(requestGateway, created.session_id, stored, pendingScenarioTitle)
+          }
         }
 
         setFreshDraftReady(false)
@@ -1295,6 +1340,7 @@ export function useSessionActions({
     branchStoredSession,
     closeSettings,
     createBackendSessionForSend,
+    handleScenarioSessionRequest,
     openNewSessionTile,
     openSettings,
     removeSession,

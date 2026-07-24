@@ -28,7 +28,35 @@ export { sessionMatchesStoredId }
 import { reportBackendContract, reportInstallMethodWarning } from '@/store/updates'
 import type { SessionCreateResponse, SessionInfo, SessionResumeResponse, SessionRuntimeInfo } from '@/types/hermes'
 
-import type { ClientSessionState } from '../../../types'
+import type { ClientSessionState, SessionTitleResponse } from '../../../types'
+
+// Persist a scenario's queued title (see useSessionActions' pendingScenarioTitleRef)
+// onto the session `session.create` just produced — the same gateway RPC the
+// `/title` slash command uses (REST renameSession 404s on a runtime id this
+// fresh). `pending: true` just means the row isn't flushed to the SessionDB yet
+// (no turn has completed) — the gateway queues the title for that first flush,
+// so it's a success case here too, not an error. Best-effort: the optimistic
+// title already applied via upsertOptimisticSession covers the UI in the
+// meantime, so a failed RPC here only risks the name not surviving a refresh.
+export async function applyPendingScenarioTitle(
+  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>,
+  runtimeSessionId: string,
+  storedSessionId: string,
+  title: string
+): Promise<void> {
+  try {
+    const result = await requestGateway<SessionTitleResponse>('session.title', {
+      session_id: runtimeSessionId,
+      title
+    })
+
+    const finalTitle = (result?.title || title).trim()
+
+    setSessions(prev => prev.map(s => (s.id === storedSessionId ? { ...s, title: finalTitle || null } : s)))
+  } catch {
+    // Optimistic title already covers the sidebar; leave it be.
+  }
+}
 
 function withAppendedText(message: ChatMessage, suffix: string): ChatMessage {
   let appended = false

@@ -62,6 +62,7 @@ import { useSkinCommand } from '@/themes/use-skin-command'
 
 import { requestComposerInsert } from '../chat/composer/focus'
 import { useComposerActions } from '../chat/hooks/use-composer-actions'
+import { onScenarioSessionRequest } from '../chat/scenarios/scenario-session-bridge'
 import { CommandPalette } from '../command-palette'
 import { useGatewayBoot } from '../gateway/hooks/use-gateway-boot'
 import { useGatewayRequest } from '../gateway/hooks/use-gateway-request'
@@ -109,6 +110,9 @@ const AgentsView = lazy(async () => ({ default: (await import('../agents')).Agen
 const CommandCenterView = lazy(async () => ({ default: (await import('../command-center')).CommandCenterView }))
 const CronView = lazy(async () => ({ default: (await import('../cron')).CronView }))
 const ProfilesView = lazy(async () => ({ default: (await import('../profiles')).ProfilesView }))
+// 个人资料 — the ApexNodes account/usage card (avatar header + token heatmap),
+// opened from the sidebar account menu. An overlay like profiles/settings.
+const ProfileStatsView = lazy(async () => ({ default: (await import('../profile')).ProfileStatsView }))
 const SettingsView = lazy(async () => ({ default: (await import('../settings')).SettingsView }))
 const StarmapView = lazy(async () => ({ default: (await import('../starmap')).StarmapView }))
 
@@ -173,6 +177,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     openCommandCenterSection,
     openStarmap,
     profilesOpen,
+    profileStatsOpen,
     settingsOpen,
     starmapOpen,
     toggleCommandCenter
@@ -382,6 +387,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     branchCurrentSession,
     branchStoredSession,
     createBackendSessionForSend,
+    handleScenarioSessionRequest,
     openNewSessionTile,
     removeSession,
     resumeSession,
@@ -420,6 +426,15 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     lastFreshRef.current = freshSessionRequest
     startFreshSessionDraft()
   }, [freshSessionRequest, startFreshSessionDraft])
+
+  // hc-554: a scenario pick (zero-state shelf or the composer's ✦ menu) asks for
+  // its session over this bus — the picker components sit far from session
+  // lifecycle. See chat/scenarios/pick.ts + scenario-session-bridge.ts; this
+  // wiring is the sole subscriber, as DesktopController was before it.
+  useEffect(
+    () => onScenarioSessionRequest(handleScenarioSessionRequest),
+    [handleScenarioSessionRequest]
+  )
 
   // Swapping the live gateway to another profile must re-pull that profile's
   // global model + active-profile pill (both are nanostores — the blanket
@@ -957,6 +972,12 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       {profilesOpen && (
         <Suspense fallback={null}>
           <ProfilesView onClose={closeOverlayToPreviousRoute} />
+        </Suspense>
+      )}
+
+      {profileStatsOpen && (
+        <Suspense fallback={null}>
+          <ProfileStatsView onClose={closeOverlayToPreviousRoute} />
         </Suspense>
       )}
 
