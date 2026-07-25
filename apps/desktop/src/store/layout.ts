@@ -22,6 +22,7 @@ export const SIDEBAR_SESSIONS_PAGE_SIZE = 50
 const SIDEBAR_PINNED_STORAGE_KEY = 'hermes.desktop.pinnedSessions'
 const SIDEBAR_AGENTS_GROUPED_STORAGE_KEY = 'hermes.desktop.agentsGroupedByWorkspace'
 const SIDEBAR_CRON_OPEN_STORAGE_KEY = 'hermes.desktop.sidebarCronOpen'
+const SIDEBAR_PROJECTS_OPEN_STORAGE_KEY = 'hermes.desktop.sidebarProjectsOpen'
 const SIDEBAR_MESSAGING_OPEN_STORAGE_KEY = 'hermes.desktop.sidebarMessagingOpen'
 const SIDEBAR_SESSION_ORDER_STORAGE_KEY = 'hermes.desktop.sessionOrder'
 const SIDEBAR_SESSION_ORDER_MANUAL_STORAGE_KEY = 'hermes.desktop.sessionOrder.manual'
@@ -122,6 +123,10 @@ export const $dismissedWorktreeIds = persistentAtom(
 )
 export const $sidebarPinsOpen = atom(true)
 export const $sidebarRecentsOpen = atom(true)
+// 项目 is a section of its own (sessions grouped by workspace folder), not a
+// mode the 会话 section switches into. Open by default; persisted so a
+// deliberate collapse sticks across restarts.
+export const $sidebarProjectsOpen = persistentAtom(SIDEBAR_PROJECTS_OPEN_STORAGE_KEY, true, Codecs.bool)
 // Cron-job sessions live in their own section below recents, collapsed by
 // default (it only renders at all when cron sessions exist) so the
 // scheduler's `[IMPORTANT: …]` first-message previews don't spam recents.
@@ -254,6 +259,10 @@ export function setSidebarPinsOpen(open: boolean) {
 
 export function setSidebarRecentsOpen(open: boolean) {
   $sidebarRecentsOpen.set(open)
+}
+
+export function setSidebarProjectsOpen(open: boolean) {
+  $sidebarProjectsOpen.set(open)
 }
 
 export function setSidebarCronOpen(open: boolean) {

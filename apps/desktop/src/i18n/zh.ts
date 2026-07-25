@@ -1923,9 +1923,11 @@ export const zh: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': '新建会话',
-      skills: '技能与工具',
-      messaging: '消息平台',
+      'new-session': '新对话',
+      search: '搜索',
+      cron: '已安排',
+      tasks: '任务',
+      skills: '插件',
       artifacts: '产物'
     },
     searchAria: '搜索会话',
@@ -1933,8 +1935,8 @@ export const zh: Translations = {
     clearSearch: '清除搜索',
     noMatch: query => `没有会话匹配"${query}"。`,
     results: '结果',
-    pinned: '已置顶',
-    sessions: '会话',
+    pinned: '置顶',
+    sessions: '对话',
     cronJobs: '定时任务',
     groupAriaGrouped: '以单一列表显示会话',
     groupAriaUngrouped: '按工作区分组会话',

@@ -43,7 +43,13 @@ import {
 import type { StatusResponse } from '@/types/hermes'
 
 import { CRON_ROUTE } from '../../routes'
+import { MINIMAL_STATUSBAR_LEFT_IDS, MINIMAL_STATUSBAR_RIGHT_IDS, STATUSBAR_CONTEXT_USAGE_PANEL } from '../chrome-gates'
 import type { StatusbarItem } from '../statusbar-controls'
+
+/** Codex-minimal chrome: keep only the items our product admits (chrome-gates). */
+function keepMinimal(items: readonly StatusbarItem[], allowed: ReadonlySet<string>): readonly StatusbarItem[] {
+  return items.filter(item => allowed.has(item.id))
+}
 
 const EMPTY_USAGE = { calls: 0, input: 0, output: 0, total: 0 } as const
 
@@ -416,19 +422,32 @@ export function useStatusbarItems({
         title: copy.currentTurnElapsed,
         variant: 'text'
       },
-      {
-        detail: contextBar || undefined,
-        hidden: !contextUsage,
-        id: 'context-usage',
-        label: contextUsage,
-        menuAlign: 'end',
-        menuClassName: 'w-auto border-(--ui-stroke-secondary) p-0',
-        menuContent: (
-          <ContextUsagePanel currentUsage={currentUsage} requestGateway={requestGateway} sessionId={activeSessionId} />
-        ),
-        title: copy.openContextUsage,
-        variant: 'menu'
-      },
+      STATUSBAR_CONTEXT_USAGE_PANEL
+        ? ({
+            detail: contextBar || undefined,
+            hidden: !contextUsage,
+            id: 'context-usage',
+            label: contextUsage,
+            menuAlign: 'end',
+            menuClassName: 'w-auto border-(--ui-stroke-secondary) p-0',
+            menuContent: (
+              <ContextUsagePanel
+                currentUsage={currentUsage}
+                requestGateway={requestGateway}
+                sessionId={activeSessionId}
+              />
+            ),
+            title: copy.openContextUsage,
+            variant: 'menu'
+          } satisfies StatusbarItem)
+        : ({
+            detail: contextBar || undefined,
+            hidden: !contextUsage,
+            id: 'context-usage',
+            label: contextUsage,
+            title: copy.contextUsage,
+            variant: 'text'
+          } satisfies StatusbarItem),
       {
         detail: <LiveDuration since={sessionStartedAt} />,
         hidden: !sessionStartedAt,
@@ -473,13 +492,17 @@ export function useStatusbarItems({
     ]
   )
 
+  // Codex-minimal chrome: the left cluster (command center / gateway health /
+  // working directory / agents / cron) is gone from the always-visible
+  // statusbar — those live in Settings and the sidebar. Only page-scoped
+  // plugin extras render on the left.
   const leftStatusbarItems = useMemo(
-    () => [...coreLeftStatusbarItems, ...extraLeftItems],
+    () => [...keepMinimal(coreLeftStatusbarItems, MINIMAL_STATUSBAR_LEFT_IDS), ...extraLeftItems],
     [coreLeftStatusbarItems, extraLeftItems]
   )
 
   const statusbarItems = useMemo(
-    () => [...extraRightItems, ...coreRightStatusbarItems],
+    () => [...extraRightItems, ...keepMinimal(coreRightStatusbarItems, MINIMAL_STATUSBAR_RIGHT_IDS)],
     [coreRightStatusbarItems, extraRightItems]
   )
 

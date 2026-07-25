@@ -1759,9 +1759,11 @@ export const en: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': 'New session',
-      skills: 'Capabilities',
-      messaging: 'Messaging',
+      'new-session': 'New chat',
+      search: 'Search',
+      cron: 'Scheduled',
+      tasks: 'Tasks',
+      skills: 'Plugins',
       artifacts: 'Artifacts'
     },
     searchAria: 'Search sessions',
@@ -1770,7 +1772,7 @@ export const en: Translations = {
     noMatch: query => `No sessions match “${query}”.`,
     results: 'Results',
     pinned: 'Pinned',
-    sessions: 'Sessions',
+    sessions: 'Chats',
     cronJobs: 'Cron jobs',
     groupAriaGrouped: 'Show sessions as a single list',
     groupAriaUngrouped: 'Group sessions by workspace',

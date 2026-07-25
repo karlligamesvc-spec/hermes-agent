@@ -36,6 +36,8 @@ const SkillsView = lazy(async () => ({ default: (await import('../skills')).Skil
 // ApexNodes full-page views — same lazy split, same workspace pane.
 const ImEntryView = lazy(async () => ({ default: (await import('../im-entry')).ImEntryView }))
 const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksView }))
+// 搜索 is a page, not a sidebar field (see SEARCH_ROUTE).
+const SearchView = lazy(async () => ({ default: (await import('../search')).SearchView }))
 
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
@@ -191,6 +193,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         element={page(<TasksView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />)}
         path="tasks"
       />
+      <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
       <Route element={null} path="agents" />
       <Route element={null} path="profile" />
       <Route element={null} path="command-center" />

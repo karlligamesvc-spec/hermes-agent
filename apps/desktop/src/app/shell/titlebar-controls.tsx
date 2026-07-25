@@ -21,6 +21,7 @@ import {
 
 import { appViewForPath, isOverlayView, SETTINGS_ROUTE } from '../routes'
 
+import { TITLEBAR_SYSTEM_TOOLS } from './chrome-gates'
 import { titlebarButtonClass } from './titlebar'
 
 export interface TitlebarTool {
@@ -218,7 +219,10 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     return null
   }
 
-  const visibleSystemTools = systemTools.filter(tool => !tool.hidden)
+  // Codex-minimal chrome: the system tools (layout editor / haptics / keybinds
+  // / settings gear) live in Settings and ⌘K now — only the right-sidebar
+  // toggle stays pinned to the window edge.
+  const visibleSystemTools = TITLEBAR_SYSTEM_TOOLS ? systemTools.filter(tool => !tool.hidden) : []
   const visiblePaneTools = tools.filter(tool => !tool.hidden)
 
   return (

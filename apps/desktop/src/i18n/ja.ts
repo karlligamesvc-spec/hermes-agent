@@ -1650,9 +1650,11 @@ export const ja = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新しいセッション',
-      skills: 'スキルとツール',
-      messaging: 'メッセージング',
+      'new-session': '新しいチャット',
+      search: '検索',
+      cron: '予定済み',
+      tasks: 'タスク',
+      skills: 'プラグイン',
       artifacts: 'アーティファクト'
     },
     searchAria: 'セッションを検索',
@@ -1661,7 +1663,7 @@ export const ja = defineLocale({
     noMatch: query => `"${query}" に一致するセッションがありません。`,
     results: '結果',
     pinned: 'ピン留め',
-    sessions: 'セッション',
+    sessions: 'チャット',
     cronJobs: 'Cronジョブ',
     groupAriaGrouped: 'セッションを単一リストとして表示',
     groupAriaUngrouped: 'ワークスペースごとにセッションをグループ化',

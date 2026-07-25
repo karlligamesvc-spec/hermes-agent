@@ -1589,9 +1589,11 @@ export const zhHant = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新工作階段',
-      skills: '技能與工具',
-      messaging: '訊息平台',
+      'new-session': '新對話',
+      search: '搜尋',
+      cron: '已安排',
+      tasks: '任務',
+      skills: '外掛',
       artifacts: '成品'
     },
     searchAria: '搜尋工作階段',
@@ -1599,8 +1601,8 @@ export const zhHant = defineLocale({
     clearSearch: '清除搜尋',
     noMatch: query => `沒有工作階段符合「${query}」。`,
     results: '結果',
-    pinned: '已釘選',
-    sessions: '工作階段',
+    pinned: '置頂',
+    sessions: '對話',
     cronJobs: '排程任務',
     groupAriaGrouped: '以單一清單顯示工作階段',
     groupAriaUngrouped: '依工作區分組工作階段',
