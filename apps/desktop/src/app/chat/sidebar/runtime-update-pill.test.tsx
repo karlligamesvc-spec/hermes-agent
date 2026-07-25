@@ -93,7 +93,28 @@ describe('RuntimeUpdatePill', () => {
 
     expect((button as HTMLButtonElement).disabled).toBe(false)
     expect(screen.getByText('New engine available')).toBeTruthy()
-    expect(screen.getByText('v2026.7.1')).toBeTruthy()
+    // hc-591: the fixture's 'v2026.7.1' is a pure-calver engine pin, so the
+    // pill now shows the humanized "Engine 2026.7.1", not the raw string --
+    // this assertion intentionally changed from the pre-hc-591 'v2026.7.1'.
+    expect(screen.getByText('Engine 2026.7.1')).toBeTruthy()
+  })
+
+  // hc-591: Kael flagged the update overlay's raw engine pin as an exposed
+  // internal ops key; this pins the SAME contract for the sidebar pill with
+  // the exact `-fork.<sha>` shape (the fixture above uses a pure-calver
+  // string, which doesn't by itself prove the fork segment gets stripped).
+  it('humanizes a -fork.<sha> engine pin and never shows the ops segment (hc-591)', () => {
+    $runtimeUpdateCheck.set({
+      current: { key: 'aaaa1111', version: 'v2026.6.25' },
+      latest: { compatibilityNotes: null, key: 'bbbb2222', version: 'v2026.7.25-fork.b0a720a5' },
+      ok: true,
+      updateAvailable: true
+    })
+    const { container } = render(<RuntimeUpdatePill />)
+
+    expect(screen.getByText('Engine 2026.7.25')).toBeTruthy()
+    expect(container.textContent).not.toContain('-fork.')
+    expect(container.textContent).not.toContain('b0a720a5')
   })
 
   it('applies the update on click and refreshes the check when no reload is required', async () => {

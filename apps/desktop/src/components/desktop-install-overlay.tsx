@@ -15,6 +15,7 @@ import type {
   DesktopBootstrapUpdateInfo
 } from '@/global'
 import { useI18n } from '@/i18n'
+import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { ChevronDown, ChevronRight, iconSize } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
@@ -438,18 +439,26 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
   // correctly fall through to the existing first-install copy.
   const updateInfo = state.manifest?.updateInfo ?? DEFAULT_UPDATE_INFO
 
+  // hc-591: updateInfo.toVersion is the raw internal engine pin (calver+fork,
+  // e.g. v2026.7.25-fork.b0a720a5) -- humanize it before it reaches the title/
+  // desc copy below so the overlay never shows the `-fork.<sha>` ops segment
+  // to the user. Guarded the same way the two i18n functions themselves guard
+  // a null version (still-resolving manifest before the bootstrap stamp
+  // lands), so a null toVersion keeps falling through to their "APEX" copy.
+  const toVersionDisplay = updateInfo.toVersion ? formatEngineDisplayVersion(updateInfo.toVersion) : null
+
   const headerTitle = failed
     ? copy.failedTitle
     : state.active
       ? updateInfo.isUpdate
-        ? copy.settingUpTitleUpdate(updateInfo.toVersion)
+        ? copy.settingUpTitleUpdate(toVersionDisplay)
         : copy.settingUpTitle
       : copy.finishingTitle
 
   const headerDesc = failed
     ? copy.failedDesc
     : updateInfo.isUpdate
-      ? copy.activeDescUpdate(updateInfo.toVersion)
+      ? copy.activeDescUpdate(toVersionDisplay)
       : copy.activeDesc
 
   return (

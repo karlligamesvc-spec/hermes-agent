@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useI18n } from '@/i18n'
+import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Cpu, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import {
@@ -26,7 +27,10 @@ import { UninstallSection } from './uninstall-section'
 // the admin-set default and offers a confirmed apply. Reuses the existing IPC
 // bridge (window.hermesDesktop.runtime.*) via the runtime-update store — no
 // mechanism lives here.
-function EngineUpdateSection() {
+// Exported (rather than file-private) so hc-591's engine-display wiring has a
+// direct, focused render target in about-settings.test.tsx without pulling in
+// ChangelogSection/UninstallSection's own store dependencies.
+export function EngineUpdateSection() {
   const { t } = useI18n()
   const a = t.settings.about
   const installed = useStore($runtimeVersion)
@@ -75,12 +79,18 @@ function EngineUpdateSection() {
     statusLine = a.engineCantReach
     statusTone = 'error'
   } else if (upgradeRequired) {
+    // hc-591: upgradeRequired.minDesktopVersion is a DESKTOP shell semver
+    // (e.g. "0.17.0", from min_desktop_version) -- a different versioning
+    // scheme from the engine pin, with no `-fork.<sha>` segment to hide, so it
+    // intentionally does NOT go through formatEngineDisplayVersion.
     statusLine = upgradeRequired.minDesktopVersion
       ? a.engineDesktopUpgradeRequired(upgradeRequired.minDesktopVersion)
       : a.engineFoundGeneric
     statusTone = 'error'
   } else if (latest) {
-    statusLine = latest.version ? a.engineFound(latest.version) : a.engineFoundGeneric
+    // hc-591: latest.version is the raw internal engine pin (calver+fork) --
+    // humanize it before it reaches the status line.
+    statusLine = latest.version ? a.engineFound(formatEngineDisplayVersion(latest.version)) : a.engineFoundGeneric
     statusTone = 'available'
   } else {
     statusLine = a.engineUpToDate
@@ -109,7 +119,9 @@ function EngineUpdateSection() {
           <div className="min-w-0">
             <p className="font-medium">{a.engineUpdateNeeded}</p>
             {minEngineVersion && (
-              <p className="mt-1 text-xs">{a.engineUpdateNeededDetail(minEngineVersion)}</p>
+              // hc-591: minEngineVersion is the shell's declared floor (the
+              // same calver+fork engine pin format) -- humanize it here too.
+              <p className="mt-1 text-xs">{a.engineUpdateNeededDetail(formatEngineDisplayVersion(minEngineVersion))}</p>
             )}
           </div>
         </div>
@@ -130,10 +142,7 @@ function EngineUpdateSection() {
       )}
 
       <div
-        className={cn(
-          'p5-panel px-4 py-3.5 text-sm',
-          statusTone === 'error' ? 'text-destructive' : 'text-foreground'
-        )}
+        className={cn('p5-panel px-4 py-3.5 text-sm', statusTone === 'error' ? 'text-destructive' : 'text-foreground')}
         data-tone={statusTone}
       >
         <div className="flex items-start gap-2">
@@ -147,7 +156,10 @@ function EngineUpdateSection() {
           <div className="min-w-0">
             <p className="font-medium">{statusLine}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {currentVersion ? a.engineVersion(currentVersion) : a.engineVersionUnavailable}
+              {/* hc-591: currentVersion is the raw installed engine pin (calver+fork) -- humanize it. */}
+              {currentVersion
+                ? a.engineVersion(formatEngineDisplayVersion(currentVersion))
+                : a.engineVersionUnavailable}
             </p>
             {latest && compatNotes && (
               <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">
@@ -181,7 +193,10 @@ function EngineUpdateSection() {
       <ConfirmDialog
         cancelLabel={t.common.cancel}
         confirmLabel={a.engineConfirmApply}
-        description={latest?.version ? a.engineConfirmBody(latest.version) : a.engineConfirmBodyGeneric}
+        // hc-591: same engine pin as latest.version above -- humanize it.
+        description={
+          latest?.version ? a.engineConfirmBody(formatEngineDisplayVersion(latest.version)) : a.engineConfirmBodyGeneric
+        }
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleApply}
         open={confirmOpen}
