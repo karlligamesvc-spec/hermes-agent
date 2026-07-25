@@ -23,8 +23,11 @@ Layout
 - ``provider_filter``   — hc-392 copilot/provider denylist (the pilot seam).
 - ``model_catalog_dedupe`` — hc-512 picker sentinel⇄real id pair dedupe
   (``deepseek-v4-pro-APEX`` vs live ``deepseek-v4-pro``).
-- ``moa_picker_probe``  — keep the platform model list complete while a
-  composed multi-model selection pins the main provider to virtual ``moa``.
+- ``picker_probe_widening`` — keep the platform model list complete when the
+  main provider names no saved custom endpoint (virtual ``moa``, or bare
+  ``custom`` with an empty ``base_url``).
+- ``custom_base_url_guard`` — stop a custom-family model switch from erasing
+  ``model.base_url``, and heal configs already stranded that way.
 - ``models_dev_fast``   — non-blocking models.dev catalog fetch (CN first paint).
 - ``region``            — CN-mode detection (read side of the install-time choice).
 - ``gateway_bootstrap`` — hc-384/385 non-blocking platform startup.
@@ -42,7 +45,8 @@ from __future__ import annotations
 __all__ = [
     "provider_filter",
     "model_catalog_dedupe",
-    "moa_picker_probe",
+    "picker_probe_widening",
+    "custom_base_url_guard",
     "models_dev_fast",
     "region",
     "gateway_bootstrap",

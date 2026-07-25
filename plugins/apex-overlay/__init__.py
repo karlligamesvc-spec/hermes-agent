@@ -60,17 +60,35 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: model_catalog_dedupe seam failed to load", exc_info=True)
 
     try:
-        from apex_overlay import moa_picker_probe
+        from apex_overlay import picker_probe_widening
 
-        if not moa_picker_probe.apply():
+        if not picker_probe_widening.apply():
             logger.warning(
-                "apex-overlay: virtual-'moa' picker probe seam did not fully "
-                "apply (see prior error). Composing a multi-model selection "
-                "will collapse the platform model list to its single "
+                "apex-overlay: picker probe widening seam did not fully apply "
+                "(see prior error). A main provider that names no saved custom "
+                "endpoint (virtual 'moa', or bare 'custom' with an empty "
+                "base_url) will collapse the platform model list to its single "
                 "configured id, so no further model can be picked."
             )
     except Exception:
-        logger.warning("apex-overlay: moa_picker_probe seam failed to load", exc_info=True)
+        logger.warning(
+            "apex-overlay: picker_probe_widening seam failed to load", exc_info=True
+        )
+
+    try:
+        from apex_overlay import custom_base_url_guard
+
+        if not custom_base_url_guard.apply():
+            logger.warning(
+                "apex-overlay: custom base_url guard seam did not fully apply "
+                "(see prior error). Switching models inside the custom provider "
+                "family keeps erasing model.base_url, stranding the managed "
+                "relay with no address the picker can match."
+            )
+    except Exception:
+        logger.warning(
+            "apex-overlay: custom_base_url_guard seam failed to load", exc_info=True
+        )
 
     try:
         from apex_overlay import models_dev_fast
