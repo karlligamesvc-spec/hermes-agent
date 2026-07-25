@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import type { DesktopDaemonStatus } from '@/global'
 import { useI18n } from '@/i18n'
+import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, Cpu, Loader2, Trash2 } from '@/lib/icons'
 import { notify } from '@/store/notifications'
 import { $runtimeVersion, loadRuntimeVersion } from '@/store/runtime-update'
@@ -195,9 +196,16 @@ export function LocalAgentSettings() {
         <div className="flex items-start justify-between gap-3">
           <div className="grid gap-0.5">
             <div className="text-[length:var(--conversation-text-font-size)] font-medium">{copy.enableLabel}</div>
-            <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.enableHint}</p>
+            <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+              {copy.enableHint}
+            </p>
           </div>
-          <Switch aria-label={copy.enableLabel} checked={enabled} disabled={busy} onCheckedChange={on => void handleToggle(on)} />
+          <Switch
+            aria-label={copy.enableLabel}
+            checked={enabled}
+            disabled={busy}
+            onCheckedChange={on => void handleToggle(on)}
+          />
         </div>
 
         {engineOutdated && minEngineVersion && (
@@ -206,12 +214,17 @@ export function LocalAgentSettings() {
             data-testid="daemon-engine-outdated"
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <p className="text-[length:var(--conversation-caption-font-size)]">{copy.engineOutdated(minEngineVersion)}</p>
+            {/* hc-591: minEngineVersion is the raw calver+fork engine pin -- humanize it. */}
+            <p className="text-[length:var(--conversation-caption-font-size)]">
+              {copy.engineOutdated(formatEngineDisplayVersion(minEngineVersion))}
+            </p>
           </div>
         )}
 
         <div className="flex items-center gap-2">
-          <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.statusLabel}:</span>
+          <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+            {copy.statusLabel}:
+          </span>
           <span className={`text-[length:var(--conversation-caption-font-size)] font-medium ${statusLine.tone}`}>
             {busy ? <Loader2 className="mr-1 inline size-3.5 animate-spin" /> : null}
             {statusLine.text}
@@ -219,7 +232,9 @@ export function LocalAgentSettings() {
         </div>
 
         <label className="grid gap-1">
-          <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.deviceNameLabel}</span>
+          <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+            {copy.deviceNameLabel}
+          </span>
           <Input
             onBlur={() => void handleSaveName()}
             onChange={event => setNameDraft(event.target.value)}

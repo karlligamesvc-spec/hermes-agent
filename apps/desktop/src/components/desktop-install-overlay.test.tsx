@@ -90,6 +90,35 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
     }
   })
 
+  // hc-591: Kael flagged the update overlay reading "正在更新到
+  // v2026.7.25-fork.b0a720a5" -- the internal engine pin's `-fork.<sha>`
+  // segment must never reach this title/desc. Distinct from the test above
+  // (which uses a desktop-semver-shaped '0.17.0' placeholder that never had a
+  // `-fork.` segment to begin with): this drives the overlay with the actual
+  // calver+fork shape the bootstrap stamp really produces.
+  it('humanizes the internal engine pin in the update title and description (hc-591)', async () => {
+    const desktop = stubDesktop()
+
+    try {
+      const { container } = render(<DesktopInstallOverlay />)
+      await act(async () => {})
+
+      desktop.emit({
+        type: 'manifest',
+        stages: STAGES,
+        protocolVersion: 1,
+        updateInfo: { isUpdate: true, toVersion: 'v2026.7.25-fork.b0a720a5', fromVersion: 'v2026.7.15-fork.b21a7e0d' }
+      })
+
+      expect(await screen.findByText('Updating to Engine 2026.7.25')).toBeTruthy()
+      expect(screen.getByText(/^Updating to Engine 2026\.7\.25\. Unchanged dependencies/)).toBeTruthy()
+      expect(container.textContent).not.toContain('-fork.')
+      expect(container.textContent).not.toContain('b0a720a5')
+    } finally {
+      desktop.restore()
+    }
+  })
+
   it('falls back to the first-install copy when a manifest event omits updateInfo', async () => {
     const desktop = stubDesktop()
 

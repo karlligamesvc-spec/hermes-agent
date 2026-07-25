@@ -94,6 +94,11 @@ export interface Translations {
     tryHint: (term: string) => string
     on: string
     off: string
+    // hc-591: the localized noun used to prefix a humanized engine (runtime)
+    // version for display, e.g. "Engine 2026.7.25" / "引擎 2026.7.25" — see
+    // lib/engine-display.ts::formatEngineDisplayVersion. Kept as a bare word
+    // (no trailing space) so the call site controls the join.
+    engineVersionPrefix: string
   }
 
   fileMenu: {
@@ -437,6 +442,15 @@ export interface Translations {
       hoursAgo: (count: number) => string
       daysAgo: (count: number) => string
       // Engine (runtime) opt-in update — R5/R6 of runtime 3-end consistency.
+      // hc-591: `value` on engineVersion/engineFound/engineConfirmBody/
+      // engineUpdateNeededDetail (and localAgent.engineOutdated below) is now
+      // ALREADY display-formatted by formatEngineDisplayVersion before it
+      // reaches these functions — e.g. "Engine 2026.7.25", not the raw
+      // "v2026.7.25-fork.b0a720a5" pin. Because that formatted value already
+      // carries the localized "engine" noun, these four templates (across all
+      // locales) had their own immediately-adjacent "engine"/"引擎"/"エンジン"
+      // word removed to avoid a doubled-up "Engine version Engine 2026.7.25"
+      // read — see each locale file's value for the exact wording.
       engineSection: string
       engineVersion: (value: string) => string
       engineVersionUnavailable: string
