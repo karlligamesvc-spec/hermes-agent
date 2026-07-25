@@ -57,6 +57,16 @@ const VARIANT_TAGS: ReadonlyArray<readonly [RegExp, string]> = [
 
 const titleCase = (text: string): string => text.replace(/\b\w/g, char => char.toUpperCase()).trim()
 
+// Brand names whose official casing plain title-casing gets wrong
+// ("glm-5.2" → "Glm 5.2", "deepseek-…" → "Deepseek …"). Applied word-wise
+// after titleCase.
+const ACRONYM_WORDS: Record<string, string> = {
+  Deepseek: 'DeepSeek',
+  Glm: 'GLM'
+}
+
+const fixAcronyms = (text: string): string => text.replace(/\b[A-Z][a-z]+\b/g, word => ACRONYM_WORDS[word] ?? word)
+
 function prettifyBase(base: string): string {
   if (/^claude-/i.test(base)) {
     return titleCase(base.replace(/^claude-/i, '').replace(/-/g, ' '))
@@ -70,8 +80,24 @@ function prettifyBase(base: string): string {
     return base.replace(/^gemini-/i, 'Gemini ').replace(/-/g, ' ')
   }
 
-  return titleCase(base.replace(/-/g, ' '))
+  // Ark-style ids encode semantic version segments with hyphens (id syntax
+  // forbids dots): `doubao-seed-2-1-pro` means "Seed 2.1", not "Seed 2 1".
+  // Restore a hyphen between two digits to a dot before the generic
+  // hyphen→space split, so consecutive segments chain correctly
+  // (`1-2-3` → `1.2.3`) via the lookahead re-using the un-consumed digit as
+  // the next match's start.
+  const dotted = base.replace(/(\d)-(?=\d)/g, '$1.')
+
+  return fixAcronyms(titleCase(dotted.replace(/-/g, ' ')))
 }
+
+// The ApexNodes managed-relay sentinel suffix (see electron/apex-managed.ts
+// MANAGED_MODEL_DISPLAY): the config anchor id carries `-APEX` so it can't
+// collide with a built-in provider catalog. For DISPLAY it is a brand marker,
+// not part of the model name — every surface (composer pill, picker rows,
+// visibility dialog) derives from this one splitter, so the same id can never
+// render under two different names again (hc-512).
+const APEX_SENTINEL_SUFFIX = /-APEX$/i
 
 /** Split a model id into a clean display name plus an optional grayed variant
  *  tag, so distinct ids (e.g. `…-4.8` vs `…-4.8-fast`) don't collapse. */
@@ -79,19 +105,45 @@ export function modelDisplayParts(model: string): { name: string; tag: string } 
   let base = modelBaseId(model)
   let tag = ''
 
+  // Managed-relay sentinel: strip the brand suffix into the tag slot so the
+  // NAME matches the bare routed id's name exactly (one display everywhere).
+  if (APEX_SENTINEL_SUFFIX.test(base)) {
+    tag = 'APEX'
+    base = base.replace(APEX_SENTINEL_SUFFIX, '')
+  }
+
   for (const [pattern, label] of VARIANT_TAGS) {
     if (pattern.test(base)) {
-      tag = label
+      tag = tag ? `${label} ${tag}` : label
       base = base.replace(pattern, '')
 
       break
     }
   }
 
-  // Drop a trailing date-pin (`…-20251101`) — snapshot noise, not a name.
-  base = base.replace(/-\d{8}$/, '')
+  // Drop a trailing date-pin — snapshot noise, not a name. Ark ids use a
+  // 6-digit YYMMDD pin (`doubao-seed-2-1-pro-260628`); other providers use
+  // an 8-digit YYYYMMDD pin (`claude-opus-4-5-20251101`). The optional
+  // trailing pair greedily extends a 6-digit match to 8 when present, so
+  // both widths are stripped by one pattern.
+  base = base.replace(/-\d{6}(\d{2})?$/, '')
 
   return { name: prettifyBase(base) || model.trim() || 'No model', tag }
+}
+
+// ApexNodes managed-LLM display mapping. The managed default seeds
+// `model.default: deepseek-v4-pro` routed through the relay; the UI shows the
+// ApexNodes-branded label. The relay decouples display from routing (hc-184),
+// so this is purely cosmetic. Kept in sync with electron/apex-managed.ts
+// (DEFAULT_MANAGED_MODEL / MANAGED_MODEL_DISPLAY).
+const MANAGED_MODEL_ID = 'deepseek-v4-pro'
+const MANAGED_MODEL_DISPLAY = 'deepseek-v4-pro-APEX'
+
+/** Map the managed relay model id to its ApexNodes display label; pass other
+ *  ids through unchanged. Applied at the visible "current model" chokepoints so
+ *  a managed user sees the branded name instead of the raw routed id. */
+export function managedModelDisplayName(model: string): string {
+  return modelBaseId(model) === MANAGED_MODEL_ID ? MANAGED_MODEL_DISPLAY : model
 }
 
 /** Friendly one-line model name for menus and the status bar. */
@@ -99,7 +151,10 @@ export function displayModelName(model: string): string {
   return modelDisplayParts(model).name
 }
 
-/** Status bar trigger label — model name plus the live session state (effort/fast). */
+/** Status bar trigger label — model name plus the live session state (effort/fast).
+ *  `displayModelName` already folds the managed `-APEX` brand suffix into the tag
+ *  slot (modelDisplayParts), so the pill and the picker rows render the exact
+ *  same name — no surface-local stripping needed here (hc-512). */
 export function formatModelStatusLabel(
   model: string,
   options?: { fastMode?: boolean; reasoningEffort?: string }

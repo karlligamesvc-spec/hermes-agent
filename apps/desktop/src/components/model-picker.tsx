@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { useI18n } from '@/i18n'
 import { requestModelOptions } from '@/lib/model-options'
-import { currentPickerSelection } from '@/lib/model-status-label'
+import { currentPickerSelection, managedModelDisplayName } from '@/lib/model-status-label'
 import { filterPickerProviders } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import type { ModelOptionProvider, ModelPricing } from '@/types/hermes'
@@ -99,7 +99,7 @@ export function ModelPickerDialog({
         <DialogHeader className="border-b border-border px-4 py-3">
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription className="font-mono text-xs leading-relaxed">
-            {copy.current} {optionsModel || currentModel || copy.unknown}
+            {copy.current} {managedModelDisplayName(optionsModel || currentModel) || copy.unknown}
             {optionsProvider || currentProvider ? ` · ${optionsProvider || currentProvider}` : ''}
           </DialogDescription>
         </DialogHeader>

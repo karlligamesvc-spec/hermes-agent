@@ -357,8 +357,8 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
   it('renders a chip per platform model and hides foreign providers', async () => {
     await renderModelSettings()
 
-    expect(await screen.findByRole('button', { name: 'Deepseek V4 Pro APEX' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Glm 5.2' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'DeepSeek V4 Pro' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'GLM 5.2' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Qwen3.7 Max' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /GPT/ })).toBeNull()
   })
@@ -366,7 +366,7 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
   it('keeps the plain single-model path while only one model is picked', async () => {
     await renderModelSettings()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Glm 5.2' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
 
     await waitFor(() =>
       expect(setModelAssignment).toHaveBeenCalledWith({ model: 'glm-5.2', provider: MANAGED, scope: 'main' })
@@ -377,7 +377,7 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
   it('composes a hidden user_turn preset once a second model is picked', async () => {
     await renderModelSettings()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Glm 5.2' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
     fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
 
     await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
@@ -399,7 +399,7 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
   it('never surfaces MoA / aggregator / reference / preset terminology', async () => {
     await renderModelSettings()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Glm 5.2' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'GLM 5.2' }))
     fireEvent.click(screen.getByRole('button', { name: 'Qwen3.7 Max' }))
     await waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
 
@@ -434,9 +434,9 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
 
     await renderModelSettings()
 
-    expect(await screen.findByRole('button', { name: 'Glm 5.2', pressed: true })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'GLM 5.2', pressed: true })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Qwen3.7 Max', pressed: true })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Deepseek V4 Pro APEX', pressed: false })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'DeepSeek V4 Pro', pressed: false })).toBeTruthy()
     // The composed selection must never leak into the single-model selectors as
     // the raw `moa` / `__auto__` pair.
     expect(screen.queryByText(/__auto__/)).toBeNull()
