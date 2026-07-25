@@ -1650,9 +1650,11 @@ export const ja = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新しいセッション',
-      skills: 'スキルとツール',
-      messaging: 'メッセージング',
+      'new-session': '新しいチャット',
+      search: '検索',
+      cron: '予定済み',
+      tasks: 'タスク',
+      skills: 'プラグイン',
       artifacts: 'アーティファクト'
     },
     searchAria: 'セッションを検索',

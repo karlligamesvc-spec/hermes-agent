@@ -19,11 +19,16 @@ export function SidebarCount({ children }: { children: React.ReactNode }) {
 
 // ── Row geometry (session row is canonical — everything composes these) ─────
 //
-// Height lives ONLY on SidebarRowShell (min-h-[1.625rem]). Inset children
+// Height lives ONLY on SidebarRowShell (min-h-[1.875rem]). Inset children
 // stretch to fill the cell and center content internally — never items-center
 // on the shell grid, or short clusters (projects) float 1–2px off sessions.
+//
+// 1.875rem and a 0.625rem radius, not upstream's 1.625rem / rounded-md: the
+// conversation list is what a user scans all day, so our rows breathe and stay
+// soft-cornered rather than reading as a dense file tree.
 
-const rowMinH = 'min-h-[1.625rem]'
+const rowMinH = 'min-h-[1.875rem]'
+const rowRadius = 'rounded-[0.625rem]'
 const rowPadX = 'pl-2 pr-1'
 const rowGap = 'gap-1.5'
 const rowLead = 'grid size-3.5 shrink-0 place-items-center'
@@ -51,7 +56,7 @@ export function SidebarRowShell({
   ...props
 }: React.ComponentProps<'div'> & { actions?: React.ReactNode }) {
   return (
-    <div className={cn(rowMinH, 'grid grid-cols-[minmax(0,1fr)_auto] items-stretch rounded-md', className)} {...props}>
+    <div className={cn(rowMinH, rowRadius, 'grid grid-cols-[minmax(0,1fr)_auto] items-stretch', className)} {...props}>
       {children}
       {actions ? <div className="flex shrink-0 items-center self-center">{actions}</div> : null}
     </div>

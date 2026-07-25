@@ -60,3 +60,10 @@ export const SIDEBAR_PROJECTS_SECTION: boolean = true
  * which frames the product as a project-first developer tool.
  */
 export const SIDEBAR_BLANK_STATE_PITCH: boolean = false
+
+/**
+ * 搜索 is a main-area page (SEARCH_ROUTE), not a field stacked on top of the
+ * sidebar where it pushes 置顶/项目/会话 down on every screen. Turning this on
+ * puts upstream's inline field back.
+ */
+export const SIDEBAR_SEARCH_FIELD: boolean = false

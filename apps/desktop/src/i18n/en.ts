@@ -1759,9 +1759,11 @@ export const en: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': 'New session',
-      skills: 'Capabilities',
-      messaging: 'Messaging',
+      'new-session': 'New chat',
+      search: 'Search',
+      cron: 'Scheduled',
+      tasks: 'Tasks',
+      skills: 'Plugins',
       artifacts: 'Artifacts'
     },
     searchAria: 'Search sessions',

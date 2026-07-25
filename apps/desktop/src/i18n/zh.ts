@@ -1923,9 +1923,11 @@ export const zh: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': '新建会话',
-      skills: '技能与工具',
-      messaging: '消息平台',
+      'new-session': '新对话',
+      search: '搜索',
+      cron: '已安排',
+      tasks: '任务',
+      skills: '插件',
       artifacts: '产物'
     },
     searchAria: '搜索会话',

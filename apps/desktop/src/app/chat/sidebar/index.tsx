@@ -41,6 +41,7 @@ import {
   $sidebarMessagingOpenIds,
   $sidebarPinsOpen,
   $sidebarProjectOrderIds,
+  $sidebarProjectsOpen,
   $sidebarRecentsOpen,
   $sidebarSessionOrderIds,
   $sidebarSessionOrderManual,
@@ -53,6 +54,7 @@ import {
   setSidebarCronOpen,
   setSidebarPinsOpen,
   setSidebarProjectOrderIds,
+  setSidebarProjectsOpen,
   setSidebarRecentsOpen,
   setSidebarSessionOrderIds,
   setSidebarSessionOrderManual,
@@ -101,11 +103,18 @@ import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/st
 import {
   type AppView,
   ARTIFACTS_ROUTE,
-  MESSAGING_ROUTE,
+  CRON_ROUTE,
+  SEARCH_ROUTE,
   SIDEBAR_NAV_AREA,
   type SidebarNavContribution,
-  SKILLS_ROUTE
+  SKILLS_ROUTE,
+  TASKS_ROUTE
 } from '../../routes'
+import {
+  SIDEBAR_BLANK_STATE_PITCH,
+  SIDEBAR_PROJECTS_SECTION,
+  SIDEBAR_SEARCH_FIELD
+} from '../../shell/chrome-gates'
 import type { SidebarNavItem } from '../../types'
 
 import { AccountPanel } from './account-panel'
@@ -114,9 +123,7 @@ import { countLabel } from './chrome'
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
-import { ProfileRail } from './profile-switcher'
 import { ProjectDialog } from './project-dialog'
-import { RuntimeUpdatePill } from './runtime-update-pill'
 import {
   overlayLiveLanes,
   overlayLivePreviews,
@@ -132,10 +139,12 @@ import {
   StartWorkButton,
   useRepoWorktreeMap
 } from './projects'
+import { RuntimeUpdatePill } from './runtime-update-pill'
 import { SidebarBlankState, SidebarPinnedEmptyState, SidebarSessionSkeletons } from './section-states'
 import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section'
 import { ShellUpdatePill } from './shell-update-pill'
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
+import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
 
 // Non-session groups (messaging platforms) stay compact: show a few rows up
 // front, reveal more in larger steps on demand. Keeps a busy platform from
@@ -143,32 +152,50 @@ import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
 const NON_SESSION_INITIAL_ROWS = 3
 const NON_SESSION_LOAD_STEP = 10
 
+// Our first screen: 新对话 / 搜索 / 已安排 / 任务 / 插件 / 产物. 消息平台 is a
+// per-platform env editor, not a place a consumer starts their day, so it stays
+// off the first screen (reachable from Settings and ⌘K). Icons say what the row
+// does for the user — 新对话 is a pencil ("write a message"), not a robot
+// ("launch an agent").
 const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'new-session',
     label: '',
-    icon: props => <Codicon name="robot" {...props} />,
+    icon: props => <Codicon name="edit" {...props} />,
     action: 'new-session',
     keybindActionId: 'session.new'
   },
   {
+    id: 'search',
+    label: '',
+    icon: props => <Codicon name="search" {...props} />,
+    route: SEARCH_ROUTE,
+    keybindActionId: 'session.focusSearch'
+  },
+  {
+    id: 'cron',
+    label: '',
+    icon: props => <Codicon name="calendar" {...props} />,
+    route: CRON_ROUTE,
+    keybindActionId: 'nav.cron'
+  },
+  {
+    id: 'tasks',
+    label: '',
+    icon: props => <Codicon name="rocket" {...props} />,
+    route: TASKS_ROUTE
+  },
+  {
     id: 'skills',
     label: '',
-    icon: props => <Codicon name="symbol-misc" {...props} />,
+    icon: props => <Codicon name="extensions" {...props} />,
     route: SKILLS_ROUTE,
     keybindActionId: 'nav.skills'
   },
   {
-    id: 'messaging',
-    label: '',
-    icon: props => <Codicon name="comment" {...props} />,
-    route: MESSAGING_ROUTE,
-    keybindActionId: 'nav.messaging'
-  },
-  {
     id: 'artifacts',
     label: '',
-    icon: props => <Codicon name="files" {...props} />,
+    icon: props => <Codicon name="package" {...props} />,
     route: ARTIFACTS_ROUTE,
     keybindActionId: 'nav.artifacts'
   }
@@ -292,6 +319,7 @@ export function ChatSidebar({
   const pinnedSessionIds = useStore($pinnedSessionIds)
   const pinsOpen = useStore($sidebarPinsOpen)
   const agentsOpen = useStore($sidebarRecentsOpen)
+  const projectsOpen = useStore($sidebarProjectsOpen)
   const cronOpen = useStore($sidebarCronOpen)
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
@@ -497,9 +525,29 @@ export function ChatSidebar({
     return [...out.values()]
   }, [trimmedQuery, sortedSessions, serverMatches, sessionByAnyId])
 
-  const unpinnedAgentSessions = useMemo(
+  const unpinnedSessions = useMemo(
     () => sortedSessions.filter(s => !pinnedRealIdSet.has(s.id)),
     [sortedSessions, pinnedRealIdSet]
+  )
+
+  // 项目 is a section of its own: sessions whose cwd is a real workspace folder
+  // (not the home dir) group one row per distinct folder under 项目; everything
+  // else is a plain 会话. The section disappears entirely when no session has a
+  // project cwd — it is never an empty header, and never a mode that renames
+  // 会话 out from under the user.
+  const projectSessions = useMemo(
+    () => (SIDEBAR_PROJECTS_SECTION ? unpinnedSessions.filter(x => isProjectCwd(x.cwd)) : []),
+    [unpinnedSessions]
+  )
+
+  const projectGroups = useMemo<SidebarSessionGroup[]>(
+    () => (projectSessions.length ? workspaceGroupsFor(projectSessions, s.noWorkspace) : []),
+    [projectSessions, s.noWorkspace]
+  )
+
+  const unpinnedAgentSessions = useMemo(
+    () => (SIDEBAR_PROJECTS_SECTION ? unpinnedSessions.filter(x => !isProjectCwd(x.cwd)) : unpinnedSessions),
+    [unpinnedSessions]
   )
 
   useEffect(() => {
@@ -536,7 +584,11 @@ export function ChatSidebar({
   // Workspace grouping is a `project -> repo -> lane -> sessions` tree computed
   // authoritatively on the backend (projects.tree). Parents reorder via
   // workspaceParentOrderIds; worktrees within a parent via workspaceOrderIds.
-  const worktreeGroupingActive = agentsGrouped && !showAllProfiles
+  //
+  // With our 项目 section on, 会话 never switches into the upstream repo/worktree
+  // browser: 项目 stands beside it instead of renaming it (see the 项目 section
+  // below and SIDEBAR_PROJECTS_SECTION).
+  const worktreeGroupingActive = !SIDEBAR_PROJECTS_SECTION && agentsGrouped && !showAllProfiles
   const gatewayReady = gatewayState === 'open'
 
   // The backend project tree is a structural snapshot, NOT a per-message feed.
@@ -1125,9 +1177,9 @@ export function ChatSidebar({
                       // resolved region has been observed to swallow clicks on the
                       // top rows. Same carve-out as USER_BUBBLE_BASE_CLASS in
                       // thread.tsx.
-                      'flex h-7 w-full justify-start gap-2 rounded-md border border-transparent px-2 text-left text-[0.8125rem] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
+                      'flex h-8 w-full justify-start gap-2.5 rounded-[0.625rem] border border-transparent px-2.5 text-left text-[0.8125rem] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
                       active &&
-                        'border-(--ui-stroke-tertiary) bg-(--ui-control-active-background) text-foreground shadow-none hover:border-(--ui-stroke-tertiary)!',
+                        'border-transparent bg-(--ui-row-active-background) text-foreground shadow-none hover:bg-(--ui-row-active-background)!',
                       !isInteractive &&
                         'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
                     )}
@@ -1196,7 +1248,10 @@ export function ChatSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {showSessionSections && (
+        {/* 搜索 lives on its own main-area page (/search) — a field stacked here
+            pushes 置顶/项目/会话 down the sidebar on every screen, whether or not
+            anyone is searching. */}
+        {SIDEBAR_SEARCH_FIELD && showSessionSections && (
           <div className="shrink-0 px-2 pb-1 pt-1">
             <SearchField
               aria-label={s.searchAria}
@@ -1260,6 +1315,33 @@ export function ChatSidebar({
                 sessions={pinnedSessions}
                 showProfileTags={showAllProfiles}
                 sortable={pinnedSessions.length > 1}
+                workingSessionIdSet={workingSessionIdSet}
+              />
+            )}
+
+            {/* 项目 — one row per distinct workspace folder, that folder's chats
+                nested beneath, with a count in the header and a collapse state
+                that survives a restart. Hidden entirely when no session runs in
+                a project cwd. */}
+            {!trimmedQuery && projectGroups.length > 0 && (
+              <SidebarSessionsSection
+                activeSessionId={activeSidebarSessionId}
+                contentClassName={cn('flex max-h-72 flex-col gap-px rounded-lg pb-2 pt-1', GROUP_BODY)}
+                emptyState={null}
+                groups={projectGroups}
+                label={s.projects.sectionLabel}
+                labelMeta={String(projectGroups.length)}
+                onArchiveSession={onArchiveSession}
+                onBranchSession={onBranchSession}
+                onDeleteSession={onDeleteSession}
+                onNewSessionInWorkspace={onNewSessionInWorkspace}
+                onResumeSession={onResumeSession}
+                onToggle={() => setSidebarProjectsOpen(!projectsOpen)}
+                onTogglePin={pinSession}
+                open={projectsOpen}
+                pinned={false}
+                rootClassName="shrink-0 p-0 pb-1"
+                sessions={projectSessions}
                 workingSessionIdSet={workingSessionIdSet}
               />
             )}
@@ -1355,7 +1437,7 @@ export function ChatSidebar({
                         </Button>
                       ) : null}
                       <div className="grid size-6 place-items-center">
-                        {!showAllProfiles && agentSessions.length > 0 ? (
+                        {!SIDEBAR_PROJECTS_SECTION && !showAllProfiles && agentSessions.length > 0 ? (
                           <Button
                             aria-label={agentsGrouped ? s.showSessions : s.showProjects}
                             className={cn(
@@ -1480,7 +1562,15 @@ export function ChatSidebar({
           </div>
         )}
 
-        {!showSessionSections && <SidebarBlankState onNewProject={openProjectCreate} />}
+        {/* Zero state stays empty on purpose: a 新建项目 pitch here frames the
+            product as a project-first developer tool before the user has said
+            anything. The nav above already offers 新对话. */}
+        {!showSessionSections &&
+          (SIDEBAR_BLANK_STATE_PITCH ? (
+            <SidebarBlankState onNewProject={openProjectCreate} />
+          ) : (
+            <div className="min-h-0 flex-1" />
+          ))}
 
         <div className="shrink-0 px-0.5 pb-1 pt-0.5">
           {/* Shell-update pill: invisible until electron-updater has a new shell
@@ -1498,9 +1588,9 @@ export function ChatSidebar({
           <SidebarChannelStatus />
           {/* Bottom-left account row (avatar + name + email → popover menu).
               Renders only on managed builds when signed in; the auth gate covers
-              the signed-out case. */}
+              the signed-out case. Profile management lives in the account menu
+              (个人资料), so no separate profile rail. */}
           <AccountPanel />
-          <ProfileRail />
         </div>
       </SidebarContent>
       <ProjectDialog />
