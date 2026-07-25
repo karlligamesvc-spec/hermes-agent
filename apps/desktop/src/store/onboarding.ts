@@ -624,17 +624,27 @@ export function setOnboardingMode(mode: OnboardingMode) {
   patch({ mode })
 }
 
-// Probe the ApexNodes managed-LLM status via the desktop bridge. Best-effort:
-// when the bridge is absent (web dashboard / dev preview) or the call fails,
-// managed is treated as unavailable so onboarding falls back to the BYOK flow.
-// Returns the status so callers can act on `signedIn` without a second read.
-async function refreshManagedStatus(): Promise<{ enabled: boolean; signedIn: boolean } | null> {
+// What the managed probe actually told us. Three outcomes, not two: a probe that
+// FAILED to answer is not the same as one that said "managed is off". Collapsing
+// those two is what let a busy main process (first install: skills installing,
+// backend spawning, safeStorage decrypt on the same thread) turn a silent IPC
+// round-trip into a provider-card screen for a zero-key user.
+type ManagedProbe =
+  // No desktop bridge at all — web dashboard / dev preview. BYOK is genuinely
+  // the only path there.
+  | { kind: 'absent' }
+  // Bridge present, status() threw. We know nothing; say nothing.
+  | { kind: 'unknown' }
+  | { enabled: boolean; kind: 'ok'; signedIn: boolean }
+
+// Probe the ApexNodes managed-LLM status via the desktop bridge.
+async function refreshManagedStatus(): Promise<ManagedProbe> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
   if (!bridge) {
     patch({ managedAvailable: false })
 
-    return null
+    return { kind: 'absent' }
   }
 
   try {
@@ -644,11 +654,11 @@ async function refreshManagedStatus(): Promise<{ enabled: boolean; signedIn: boo
     // the runtime is configured and the normal readiness gate handles them.
     patch({ managedAvailable: status.enabled && !status.signedIn })
 
-    return { enabled: status.enabled, signedIn: status.signedIn }
+    return { enabled: status.enabled, kind: 'ok', signedIn: status.signedIn }
   } catch {
-    patch({ managedAvailable: false })
-
-    return null
+    // Deliberately no patch: manufacturing `managedAvailable: false` out of a
+    // non-answer is how absence of a signal became a BYOK verdict.
+    return { kind: 'unknown' }
   }
 }
 
@@ -888,9 +898,18 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
   // destination onboarding routes to on its own — so NEITHER managed branch below
   // falls through to it. `byokFromLogin` is that opt-in: once taken, managed
   // stops re-asserting itself for the session and the BYOK flow runs as upstream.
-  const managed = state.byokFromLogin ? null : await refreshManagedStatus()
+  const probe: ManagedProbe = state.byokFromLogin ? { kind: 'absent' } : await refreshManagedStatus()
 
-  if (managed?.enabled && (!managed.signedIn || state.managedAvailable === true)) {
+  // Only an EXPLICIT negative may send a user to the picker: no bridge at all, or
+  // a bridge that says managed is off for this build. A probe that didn't answer
+  // leaves the zero-key default standing — we wait and ask again instead of
+  // asking the user for an API key on the strength of a failed IPC call.
+  const managedOn = probe.kind === 'unknown' || (probe.kind === 'ok' && probe.enabled)
+  // An unanswered probe can only happen once the account gate has already let
+  // this user through, which means signed in.
+  const signedIn = probe.kind === 'ok' ? probe.signedIn : true
+
+  if (managedOn && (!signedIn || state.managedAvailable === true)) {
     // Our managed sign-in panel, not upstream's provider list. Two ways in: the
     // user has never signed in, or hc-511 asked for a re-sign-in because the
     // relay key on disk is dead and can't self-heal — a key FILE exists there,
@@ -902,7 +921,7 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
     return false
   }
 
-  if (managed?.enabled) {
+  if (managedOn) {
     // Signed in: the platform issued a relay key, so this user is entitled to
     // chat — the runtime just hasn't picked the key up yet (a cold first install
     // writes config.yaml, reloads env, and only then probes). Hold our own

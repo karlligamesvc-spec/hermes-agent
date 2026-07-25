@@ -9,7 +9,7 @@ import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronLeft, KeyRound, Loader2 } from '@/lib/icons'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { cn } from '@/lib/utils'
-import { returnToManagedLogin } from '@/store/auth'
+import { $authState, returnToManagedLogin } from '@/store/auth'
 import { $desktopBoot, type DesktopBootState } from '@/store/boot'
 import {
   $desktopOnboarding,
@@ -185,6 +185,7 @@ const ONBOARDING_EXIT_MS = 1180
 export function DesktopOnboardingOverlay({ enabled, onCompleted, requestGateway }: DesktopOnboardingOverlayProps) {
   const { t } = useI18n()
   const onboarding = useStore($desktopOnboarding)
+  const auth = useStore($authState)
   const boot = useStore($desktopBoot)
   const ctxRef = useRef<OnboardingContext>({ requestGateway, onCompleted })
   ctxRef.current = { requestGateway, onCompleted }
@@ -294,17 +295,28 @@ export function DesktopOnboardingOverlay({ enabled, onCompleted, requestGateway 
   // the surface — same bare, cinematic treatment as the connecting overlay.
   const bare = ready && !showPicker && flow.status === 'confirming_model'
 
+  // This window belongs to a managed account: the account gate is in play
+  // (auth.enabled !== false) and the user has not stepped out of it — the BYOK
+  // escape hatch flips the gate off, and Settings → Providers opens onboarding
+  // in manual mode. Such a user has NOTHING to configure, so no BYOK surface may
+  // be drawn for them, not even the "connect a provider" header, and not for the
+  // one frame before a probe answers. That frame was the bug: onboarding
+  // finishing and the gate opening are different events (the gate re-probes on
+  // every gateway reconnect, and the relay key is already on disk by then), so
+  // the overlay routinely renders with configured === null and nothing decided.
+  const managedAccount = auth.enabled !== false && !onboarding.manual && !onboarding.byokFromLogin
+
   // Which of the five surfaces this overlay is showing. Named rather than
-  // nested-ternaried because two things now read it: what to render, and which
-  // header to wear — the "connect a provider" header belongs to the BYOK
-  // surfaces only. A signed-in managed user waiting on their relay key outranks
-  // everything: they have nothing to configure, so no BYOK surface may appear.
-  const surface = onboarding.managedSyncing
-    ? 'managed-preparing'
-    : !ready
-      ? 'booting'
-      : showPicker && onboarding.managedAvailable === true && !onboarding.manual
-        ? 'managed-signin'
+  // nested-ternaried because two things read it: what to render, and which
+  // header to wear.
+  const surface = managedAccount
+    ? onboarding.managedAvailable === true
+      ? 'managed-signin'
+      : 'managed-preparing'
+    : onboarding.managedSyncing
+      ? 'managed-preparing'
+      : !ready
+        ? 'booting'
         : showPicker
           ? 'picker'
           : 'flow'
