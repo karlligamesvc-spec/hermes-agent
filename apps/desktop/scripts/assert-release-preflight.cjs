@@ -24,8 +24,15 @@
  * a user's install. A *release* gate has the opposite duty: on ambiguity
  * (unreachable prod, unparseable version on a required comparison) it BLOCKS,
  * because shipping on an un-verifiable contract is exactly the skew it exists to
- * stop. Version arithmetic itself reuses compareSemver from the runtime module,
- * so the CI闸 and the runtime gate can never drift on how a version is parsed.
+ * stop.
+ *
+ * Version arithmetic is an INLINED copy of parseSemver/compareSemver from
+ * electron/apex-runtime-latest.ts. It used to be a require() of the runtime
+ * module, but the electron tree is TypeScript now and this script must stay a
+ * dependency-free node .cjs that runs before any build step. The no-drift
+ * guarantee moved into a contract test
+ * (electron/release-preflight-semver-contract.test.ts) that runs both copies
+ * against the same table and fails the suite if they ever disagree.
  */
 
 const fs = require('node:fs')
@@ -33,7 +40,23 @@ const path = require('node:path')
 const http = require('node:http')
 const https = require('node:https')
 
-const { compareSemver } = require('../electron/apex-runtime-latest.cjs')
+/** Inlined from electron/apex-runtime-latest.ts — see header note. */
+function parseSemver(value) {
+  const m = /^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(value || ''))
+  if (!m) return null
+  return [Number(m[1]), Number(m[2] || 0), Number(m[3] || 0)]
+}
+
+/** Inlined from electron/apex-runtime-latest.ts — see header note. */
+function compareSemver(a, b) {
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
+  if (!pa || !pb) return null
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1
+  }
+  return 0
+}
 
 const DEFAULT_API_BASE = 'https://api.apex-nodes.com'
 const LATEST_PATH = '/api/v1/runtime/latest'
@@ -274,7 +297,7 @@ async function main() {
   console.log('\nrelease preflight OK — shell↔engine contract holds against live prod.')
 }
 
-module.exports = { evaluatePreflight, DEFAULT_API_BASE, LATEST_PATH }
+module.exports = { evaluatePreflight, DEFAULT_API_BASE, LATEST_PATH, parseSemver, compareSemver }
 
 if (require.main === module) {
   main().catch(err => {
