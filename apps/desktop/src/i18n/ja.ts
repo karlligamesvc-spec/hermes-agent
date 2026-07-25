@@ -2978,7 +2978,8 @@ export const ja = defineLocale({
       signingIn: 'ログイン中…',
       failed: 'ログインに失敗しました。もう一度お試しください。',
       accountDisabled: 'アカウントが利用できません。再度ログインするかサポートにお問い合わせください。',
-      sessionExpired: 'セッションの有効期限が切れました。再度ログインしてください。'
+      sessionExpired: 'セッションの有効期限が切れました。再度ログインしてください。',
+      useOwnKey: '自分の API キーを使う'
     },
     account: {
       fallbackName: 'アカウント',

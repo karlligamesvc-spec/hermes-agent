@@ -1958,6 +1958,12 @@ export interface Translations {
       signInGoogle: string
       /** "用 APEX 登录" browser (loopback) sign-in button. */
       signInApex: string
+      /** Waiting line for a signed-in zero-key user while the runtime picks up
+       *  the relay key the platform just issued. Stands in for the BYOK picker,
+       *  which such a user must never see. */
+      preparing: string
+      /** Second line under `preparing` — why the wait is short and harmless. */
+      preparingHint: string
     }
   }
 
@@ -2633,6 +2639,9 @@ export interface Translations {
       accountDisabled: string
       /** Session-expired / login-lost (401) message shown on the gate. */
       sessionExpired: string
+      /** Quiet escape hatch out of the zero-key default and into BYOK — the only
+       *  entrance to the provider picker on a managed build. */
+      useOwnKey: string
     }
     /** Bottom-left account panel + its popover menu. */
     account: {

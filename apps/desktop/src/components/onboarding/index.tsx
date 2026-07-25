@@ -9,6 +9,7 @@ import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronLeft, KeyRound, Loader2 } from '@/lib/icons'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { cn } from '@/lib/utils'
+import { returnToManagedLogin } from '@/store/auth'
 import { $desktopBoot, type DesktopBootState } from '@/store/boot'
 import {
   $desktopOnboarding,
@@ -18,6 +19,7 @@ import {
   DEFAULT_MANUAL_ONBOARDING_REASON,
   DEFAULT_ONBOARDING_REASON,
   dismissFirstRunOnboarding,
+  exitByokFromLogin,
   managedBrowserSignIn,
   managedSignIn,
   type OnboardingContext,
@@ -292,6 +294,21 @@ export function DesktopOnboardingOverlay({ enabled, onCompleted, requestGateway 
   // the surface — same bare, cinematic treatment as the connecting overlay.
   const bare = ready && !showPicker && flow.status === 'confirming_model'
 
+  // Which of the five surfaces this overlay is showing. Named rather than
+  // nested-ternaried because two things now read it: what to render, and which
+  // header to wear — the "connect a provider" header belongs to the BYOK
+  // surfaces only. A signed-in managed user waiting on their relay key outranks
+  // everything: they have nothing to configure, so no BYOK surface may appear.
+  const surface = onboarding.managedSyncing
+    ? 'managed-preparing'
+    : !ready
+      ? 'booting'
+      : showPicker && onboarding.managedAvailable === true && !onboarding.manual
+        ? 'managed-signin'
+        : showPicker
+          ? 'picker'
+          : 'flow'
+
   return (
     <div
       className={cn(
@@ -315,7 +332,10 @@ export function DesktopOnboardingOverlay({ enabled, onCompleted, requestGateway 
             : 'translate-y-0 scale-100 opacity-100 blur-0'
         )}
       >
-        {showPicker || !ready ? <Header /> : null}
+        {/* The header sells "connect a provider" — the right promise for the
+            BYOK surfaces and the wrong one for a zero-key user, whose panels
+            introduce themselves. */}
+        {surface === 'picker' || surface === 'booting' ? <Header /> : null}
         {onboarding.manual ? (
           <Button
             aria-label={t.common.close}
@@ -329,22 +349,21 @@ export function DesktopOnboardingOverlay({ enabled, onCompleted, requestGateway 
         ) : null}
         <div className="grid gap-3 p-5">
           {reason ? <ReasonNotice reason={reason} /> : null}
-          {ready ? (
-            // Managed-LLM builds lead with a one-tap sign-in (zero key). The
-            // panel offers an escape hatch to the BYOK picker; once the user
-            // takes it (managedAvailable flips false) the normal flow resumes.
-            // Without this branch a managed build falls straight through to
-            // upstream's picker, whose featured row is Nous Portal — the
-            // foreign sign-in surface standing where ours belongs.
-            showPicker && onboarding.managedAvailable === true && !onboarding.manual ? (
-              <ManagedSignInPanel ctx={ctx} />
-            ) : showPicker ? (
-              <Picker ctx={ctx} />
-            ) : (
-              <FlowPanel ctx={ctx} flow={flow} leaving={leaving} onBegin={finalizeOnboarding} />
-            )
-          ) : (
+          {/* Managed-LLM builds lead with our own surfaces: a one-tap sign-in
+              (zero key) before login, and a branded wait while the relay key
+              reaches the runtime. Without them a managed build falls through to
+              upstream's picker, whose featured row is Nous Portal — the foreign
+              sign-in surface standing where ours belongs. */}
+          {surface === 'managed-preparing' ? (
+            <ManagedPreparingPanel />
+          ) : surface === 'managed-signin' ? (
+            <ManagedSignInPanel ctx={ctx} />
+          ) : surface === 'picker' ? (
+            <Picker ctx={ctx} />
+          ) : surface === 'booting' ? (
             <Preparing boot={boot} />
+          ) : (
+            <FlowPanel ctx={ctx} flow={flow} leaving={leaving} onBegin={finalizeOnboarding} />
           )}
         </div>
       </div>
@@ -392,6 +411,28 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
   )
 }
 
+// Signed in, zero-key, waiting for the runtime to see the relay key the platform
+// just issued. The whole point of this panel is that it is NOT the BYOK picker:
+// the user has nothing to configure, so they get our name, a spinner, and a way
+// to stop waiting — never a provider grid.
+function ManagedPreparingPanel() {
+  const { t } = useI18n()
+  const m = t.onboarding.managed
+
+  return (
+    <div className="grid gap-3" role="status">
+      <div className="flex items-center gap-2.5">
+        <Loader2 className="size-4 animate-spin text-(--theme-primary)" />
+        <p className="text-sm font-medium">{m.preparing}</p>
+      </div>
+      <p className="text-[0.8125rem] leading-5 text-(--ui-text-tertiary)">{m.preparingHint}</p>
+      <div className="flex justify-end pt-1">
+        <ChooseLaterLink />
+      </div>
+    </div>
+  )
+}
+
 function Header() {
   const { t } = useI18n()
 
@@ -405,6 +446,13 @@ function Header() {
 
 export const FEATURED_ID = 'nous'
 const SHOW_ALL_KEY = 'hermes-onboarding-show-all-v1'
+
+// "返回登录" out of the BYOK escape hatch: forget the detour, then put the account
+// gate — and with it the login screen — back in front of the window.
+const leaveByokForLogin = () => {
+  exitByokFromLogin()
+  returnToManagedLogin()
+}
 
 const readShowAll = () => {
   try {
@@ -426,7 +474,7 @@ const persistShowAll = (value: boolean) => {
 
 export function Picker({ ctx }: { ctx: OnboardingContext }) {
   const { t } = useI18n()
-  const { localEndpoint, manual, mode, providers } = useStore($desktopOnboarding)
+  const { byokFromLogin, localEndpoint, manual, mode, providers } = useStore($desktopOnboarding)
   const [showAll, setShowAll] = useState(readShowAll)
   // Which key-form option to preselect when we flip to 'apikey' mode. The
   // OpenRouter row selects its key; the generic link lands on the first option.
@@ -449,9 +497,12 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
     return (
       <div className="grid gap-3">
         <ApiKeyForm
-          canGoBack={hasOauth && !localEndpoint}
+          // One back control per level, always pointing one step out: to the
+          // OAuth list when there is one, otherwise straight to the login screen
+          // the user came from. Never a dead end.
+          canGoBack={(hasOauth || byokFromLogin === true) && !localEndpoint}
           initialEnvKey={localEndpoint ? 'OPENAI_BASE_URL' : apiKeyInitialEnv}
-          onBack={() => setOnboardingMode('oauth')}
+          onBack={() => (hasOauth ? setOnboardingMode('oauth') : leaveByokForLogin())}
           onSave={(envKey, value, name, apiKey) => saveOnboardingApiKey(envKey, value, name, ctx, apiKey)}
           options={apiKeyOptions}
         />
@@ -478,6 +529,20 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
 
   return (
     <div className="grid gap-2">
+      {/* The picker is an escape hatch on a managed build, so it always keeps a
+          door back to the login screen the user stepped out of. */}
+      {byokFromLogin ? (
+        <Button
+          className="-mt-1 self-start font-medium"
+          onClick={leaveByokForLogin}
+          size="xs"
+          type="button"
+          variant="text"
+        >
+          <ChevronLeft className="size-3" />
+          {t.onboarding.backToSignIn}
+        </Button>
+      ) : null}
       <div className="grid max-h-[60dvh] gap-2 overflow-y-auto p-1">
         {featured ? <FeaturedProviderRow onSelect={select} provider={featured} /> : null}
         {/* Slot #2 — always visible, matching CANONICAL_PROVIDERS (Nous → Fireworks). */}

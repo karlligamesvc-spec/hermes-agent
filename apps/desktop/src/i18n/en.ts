@@ -2388,7 +2388,9 @@ export const en: Translations = {
       useOwnProvider: 'Use my own provider',
       dividerOr: 'or',
       signInGoogle: 'Sign in with Google',
-      signInApex: 'Sign in with APEX'
+      signInApex: 'Sign in with APEX',
+      preparing: 'Getting your APEX assistant ready…',
+      preparingHint: 'Your account is set. We are syncing its model key — nothing for you to configure.'
     }
   },
 
@@ -3105,7 +3107,8 @@ export const en: Translations = {
       signingIn: 'Signing in…',
       failed: 'Sign-in failed. Please try again.',
       accountDisabled: 'Your account is unavailable. Please sign in again or contact support.',
-      sessionExpired: 'Your session has expired. Please sign in again.'
+      sessionExpired: 'Your session has expired. Please sign in again.',
+      useOwnKey: 'Use my own API key'
     },
     account: {
       fallbackName: 'Account',

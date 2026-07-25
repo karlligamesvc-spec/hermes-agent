@@ -2178,7 +2178,9 @@ export const zhHant = defineLocale({
       useOwnProvider: '使用我自己的提供方',
       dividerOr: '或',
       signInGoogle: '用 Google 登入',
-      signInApex: '用 APEX 登入'
+      signInApex: '用 APEX 登入',
+      preparing: '正在準備你的 APEX 助手…',
+      preparingHint: '帳號已就緒,正在同步模型金鑰。你不需要做任何設定,稍等片刻即可開始聊天。'
     }
   },
 
@@ -2874,7 +2876,8 @@ export const zhHant = defineLocale({
       signingIn: '登入中…',
       failed: '登入失敗,請重試',
       accountDisabled: '帳戶狀態異常,請重新登入或聯絡客服',
-      sessionExpired: '登入已過期,請重新登入'
+      sessionExpired: '登入已過期,請重新登入',
+      useOwnKey: '使用自己的金鑰'
     },
     account: {
       fallbackName: '帳戶',

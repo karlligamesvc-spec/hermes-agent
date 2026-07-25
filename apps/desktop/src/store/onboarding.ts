@@ -97,6 +97,16 @@ export interface DesktopOnboardingState {
   managedError?: null | string
   /** True while a managed sign-in request is in flight. */
   managedSubmitting?: boolean
+  /** True when the user IS signed in to managed (the platform issued a relay
+   *  key) but the local runtime hasn't picked that key up yet. Onboarding then
+   *  holds our own branded waiting state instead of falling through to the BYOK
+   *  picker — a zero-key user must never be asked to pick a provider. */
+  managedSyncing?: boolean
+  /** True when the user reached the BYOK surface by explicitly asking for it
+   *  ("使用自己的密钥"). On a managed build the picker is an escape hatch, never a
+   *  destination we route to on our own, so this flag is what puts it on screen
+   *  — and it earns that surface a way back to the login screen. */
+  byokFromLogin?: boolean
 }
 
 export interface OnboardingContext {
@@ -180,7 +190,9 @@ const INITIAL: DesktopOnboardingState = {
   needsCredential: false,
   managedAvailable: null,
   managedError: null,
-  managedSubmitting: false
+  managedSubmitting: false,
+  managedSyncing: false,
+  byokFromLogin: false
 }
 
 export const $desktopOnboarding = atom<DesktopOnboardingState>(INITIAL)
@@ -202,6 +214,55 @@ function clearPoll() {
     window.clearInterval(pollTimer)
     pollTimer = null
   }
+}
+
+// How long onboarding waits for the runtime to see a freshly-issued managed
+// relay key before it stops holding the door: ~12s of re-checks. The write is
+// config.yaml → reload.env → probe, which is fast on a warm app and slow on a
+// cold first install.
+const MANAGED_SYNC_RECHECK_MS = 1500
+const MANAGED_SYNC_MAX_RECHECKS = 8
+
+let managedSyncTimer: number | null = null
+let managedSyncRechecks = 0
+
+function clearManagedSyncRecheck() {
+  if (managedSyncTimer !== null) {
+    window.clearTimeout(managedSyncTimer)
+    managedSyncTimer = null
+  }
+
+  managedSyncRechecks = 0
+}
+
+// Keep re-running the readiness check while a signed-in managed install waits
+// for its relay key to land, then let the user in either way. Never falls to the
+// BYOK picker: the account IS provisioned, so if the key turns out to be dead it
+// is the hc-519 relay-auth path (account card + re-sign-in) that says so — not a
+// provider-card screen asking a zero-key user for an API key.
+function scheduleManagedSyncRecheck(ctx: OnboardingContext) {
+  if (managedSyncTimer !== null) {
+    return
+  }
+
+  if (managedSyncRechecks >= MANAGED_SYNC_MAX_RECHECKS) {
+    clearManagedSyncRecheck()
+    completeDesktopOnboarding()
+    ctx.onCompleted?.()
+
+    return
+  }
+
+  managedSyncRechecks += 1
+  managedSyncTimer = window.setTimeout(() => {
+    managedSyncTimer = null
+
+    // Anything that resolved the wait (sign-out, a skip, onboarding completing)
+    // clears the flag — don't keep probing behind the user's back.
+    if ($desktopOnboarding.get().managedSyncing) {
+      void refreshOnboarding(ctx)
+    }
+  }, MANAGED_SYNC_RECHECK_MS)
 }
 
 async function checkRuntime(ctx: OnboardingContext, requestedProvider?: string): Promise<RuntimeReadinessResult> {
@@ -514,6 +575,7 @@ export function closeManualOnboarding() {
 
 export function completeDesktopOnboarding() {
   clearPoll()
+  clearManagedSyncRecheck()
   writeCachedConfigured(true)
   // A real provider is now connected, so any earlier "choose later" skip is
   // moot — clear it so the flag never lingers in a configured install.
@@ -531,7 +593,9 @@ export function completeDesktopOnboarding() {
     localEndpoint: false,
     managedAvailable: false,
     managedError: null,
-    managedSubmitting: false
+    managedSubmitting: false,
+    managedSyncing: false,
+    byokFromLogin: false
   })
 }
 
@@ -543,6 +607,7 @@ export function completeDesktopOnboarding() {
 // which marks the app actually configured.
 export function dismissFirstRunOnboarding() {
   clearPoll()
+  clearManagedSyncRecheck()
   writeCachedSkipped(true)
   patch({
     firstRunSkipped: true,
@@ -550,6 +615,7 @@ export function dismissFirstRunOnboarding() {
     manual: false,
     localEndpoint: false,
     needsCredential: false,
+    managedSyncing: false,
     flow: { status: 'idle' }
   })
 }
@@ -600,7 +666,11 @@ const MANAGED_COPY = {
   // Signed in, but the local runtime couldn't reach the relay after applying it.
   relayUnreachable: '登录成功,但运行时无法连接 APEX 中转服务,请重试',
   // Browser flow could not be started / was cancelled.
-  browserFailed: '浏览器登录未完成,请重试'
+  browserFailed: '浏览器登录未完成,请重试',
+  // Signed in, but the platform returned no relay key (provision-key not
+  // deployed / temporarily failing). The account is fine, so the user stays on
+  // our sign-in surface and retries — we do NOT push them into BYOK.
+  keyPending: '登录成功,但平台暂未下发模型密钥,请稍后重试'
 }
 
 // Map an electron managed-sign-in `res.message` to user-facing Chinese. The
@@ -635,10 +705,12 @@ async function applyManagedSignInResult(
   }
 
   if (!res.hasRelayKey || !res.assignment) {
-    // Logged in, but managed isn't wired server-side yet — degrade to BYOK.
-    patch({ managedSubmitting: false, managedAvailable: false, mode: 'apikey' })
-    await refreshProviders()
-    patch({ mode: 'apikey' })
+    // Logged in, but the platform handed back no relay key. This used to degrade
+    // straight to the BYOK picker, which is how a successful managed login could
+    // still end on a provider-card screen. The account is valid, so keep the user
+    // on our own surface with an honest retry line; BYOK stays one explicit click
+    // away ("使用自己的密钥") rather than being chosen for them.
+    patch({ managedSubmitting: false, managedError: MANAGED_COPY.keyPending })
 
     return
   }
@@ -755,11 +827,21 @@ export async function managedBrowserSignIn(provider: 'apex' | 'google', ctx: Onb
   }
 }
 
-// "Use my own provider instead" escape hatch from the managed sign-in panel:
-// drop the managed-first treatment for this session and show the BYOK picker.
+// The "使用自己的密钥" escape hatch — the ONE way a managed install reaches the
+// BYOK picker. Drops the managed-first treatment for this session and marks the
+// surface as explicitly requested, which is also what earns it a way back to the
+// login screen (returnToManagedLogin + exitByokFromLogin).
 export function skipManagedForByok() {
-  patch({ managedAvailable: false, managedError: null, mode: 'oauth' })
+  clearManagedSyncRecheck()
+  patch({ byokFromLogin: true, managedAvailable: false, managedError: null, managedSyncing: false, mode: 'oauth' })
   void refreshProviders()
+}
+
+// "返回登录" from that escape hatch: forget the BYOK detour so the picker stops
+// being on screen. The caller pairs this with returnToManagedLogin(), which puts
+// the account gate (and with it the login screen) back in front.
+export function exitByokFromLogin() {
+  patch({ byokFromLogin: false, managedError: null, mode: 'oauth', localEndpoint: false, flow: { status: 'idle' } })
 }
 
 export async function refreshOnboarding(ctx: OnboardingContext) {
@@ -802,15 +884,42 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
 
   // Runtime isn't ready and the user isn't configured. Before falling to the
   // BYOK picker, check whether this build leads with managed sign-in (zero-key).
-  // When managed is available, surface the managed panel instead of the picker
-  // — the user signs in once and gets chat with no key. An already-signed-in
-  // managed user would have passed the readiness check above (relay key seeded),
-  // so we only reach here for the not-yet-signed-in case.
-  const managed = await refreshManagedStatus()
+  // On a managed build the picker is an escape hatch the user opts into, never a
+  // destination onboarding routes to on its own — so NEITHER managed branch below
+  // falls through to it. `byokFromLogin` is that opt-in: once taken, managed
+  // stops re-asserting itself for the session and the BYOK flow runs as upstream.
+  const managed = state.byokFromLogin ? null : await refreshManagedStatus()
 
-  if (managed?.enabled && !managed.signedIn) {
+  if (managed?.enabled && (!managed.signedIn || state.managedAvailable === true)) {
+    // Our managed sign-in panel, not upstream's provider list. Two ways in: the
+    // user has never signed in, or hc-511 asked for a re-sign-in because the
+    // relay key on disk is dead and can't self-heal — a key FILE exists there,
+    // so `signedIn` reads true while the session is gone, and only the caller's
+    // managedAvailable tells them apart.
     writeCachedConfigured(false)
-    patch({ configured: false, reason: null, needsCredential: false, managedAvailable: true })
+    patch({ configured: false, reason: null, needsCredential: false, managedAvailable: true, managedSyncing: false })
+
+    return false
+  }
+
+  if (managed?.enabled) {
+    // Signed in: the platform issued a relay key, so this user is entitled to
+    // chat — the runtime just hasn't picked the key up yet (a cold first install
+    // writes config.yaml, reloads env, and only then probes). Hold our own
+    // branded waiting state and re-check.
+    //
+    // `configured` is deliberately left alone here: an already-onboarded user
+    // stays in chat through a transient not-ready probe instead of being
+    // demoted to an overlay. Falling through from this state is what put a
+    // provider-card screen in front of a zero-key user on first install.
+    if (!state.managedSyncing) {
+      // A new wait rather than a re-check of one already running — start the
+      // budget over so a later hiccup gets the full window again.
+      clearManagedSyncRecheck()
+    }
+
+    patch({ reason: null, needsCredential: false, managedAvailable: false, managedSyncing: true })
+    scheduleManagedSyncRecheck(ctx)
 
     return false
   }

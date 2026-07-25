@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
+import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { type I18nConfigClient, I18nProvider } from '@/i18n/context'
+import { $authState } from '@/store/auth'
+import { $desktopOnboarding, requestManagedReSignIn, skipManagedForByok } from '@/store/onboarding'
 
 // hc-589 identity-layer guard.
 //
@@ -130,6 +133,196 @@ describe('identity: brand assets and chrome', () => {
 
     expect(brandMark).toContain("assetPath('apple-touch-icon.png')")
     expect(brandMark).not.toContain("assetPath('nous-girl.jpg')")
+  })
+})
+
+// hc-589 leg 8c — zero-setup first run.
+//
+// Kael's sandbox first-install landed on upstream's BYOK provider-card screen
+// ("开始设置 APEX" + provider cards + an API-key box). The product is托管零钥匙:
+// sign in, the platform issues the relay key, chat opens. The picker is an
+// escape hatch, so it may only appear when the user asks for it by name.
+//
+// These are behavioral: they render the real overlay against a mocked bridge and
+// assert what a user would see, because every wrong route here ends in a
+// rendered card screen — the exact thing a source check can't see.
+describe('zero setup: a managed user is never asked to pick a provider', () => {
+  // Anything the BYOK surface puts on screen. Deliberately several markers: the
+  // picker has two faces (OAuth rows and the key form) and onboarding can land
+  // on either depending on which probe disagreed.
+  const BYOK_ON_SCREEN = ['连接模型提供方', '我有 API 密钥', '获取密钥', 'Fireworks AI', 'Nous Portal']
+
+  const byokMarkersOnScreen = () => BYOK_ON_SCREEN.filter(marker => screen.queryAllByText(marker).length > 0)
+
+  const notReadyGateway = (providerConfigured: boolean) => async (method: string) => {
+    if (method === 'setup.status') {
+      return { provider_configured: providerConfigured } as never
+    }
+
+    if (method === 'setup.runtime_check') {
+      return { ok: false, error: 'Selected runtime is not available.' } as never
+    }
+
+    return undefined as never
+  }
+
+  const installBridge = (managedStatus: { enabled: boolean; signedIn: boolean }, oauthProviders: unknown[] = []) => {
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: {
+        api: async ({ path }: { path: string }) => {
+          if (path === '/api/providers/oauth') {
+            return { providers: oauthProviders }
+          }
+
+          return { providers: [] }
+        },
+        managed: { status: async () => managedStatus }
+      }
+    })
+  }
+
+  const renderOnboarding = (gateway = notReadyGateway(true)) =>
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <DesktopOnboardingOverlay enabled requestGateway={gateway as never} />
+      </I18nProvider>
+    )
+
+  const freshInstall = () => {
+    window.localStorage.clear()
+    $desktopOnboarding.set({
+      configured: null,
+      flow: { status: 'idle' },
+      mode: 'oauth',
+      providers: null,
+      reason: null,
+      requested: false,
+      firstRunSkipped: false,
+      manual: false,
+      localEndpoint: false,
+      needsCredential: false,
+      managedAvailable: null,
+      managedError: null,
+      managedSubmitting: false,
+      managedSyncing: false,
+      byokFromLogin: false
+    })
+    $authState.set({
+      account: { email: '', name: '', plan: '' },
+      enabled: true,
+      gateReason: null,
+      loginTruth: true,
+      status: 'signed-in'
+    })
+  }
+
+  afterEach(() => {
+    cleanup()
+    freshInstall()
+    Reflect.deleteProperty(window, 'hermesDesktop')
+  })
+
+  it('holds our own waiting state while the relay key reaches the runtime', async () => {
+    // The race behind Kael's screenshot: signed in (the platform issued a key),
+    // but the runtime hasn't picked it up yet, so setup.status and the runtime
+    // check disagree. That used to fall straight through to the key form.
+    freshInstall()
+    installBridge({ enabled: true, signedIn: true })
+    renderOnboarding()
+
+    await waitFor(() => expect(screen.getByText('正在准备你的 APEX 助手…')).toBeTruthy())
+    expect(byokMarkersOnScreen()).toEqual([])
+    expect($desktopOnboarding.get().managedSyncing).toBe(true)
+  })
+
+  it('leads a signed-out managed install with our sign-in, not the picker', async () => {
+    freshInstall()
+    installBridge({ enabled: true, signedIn: false }, [
+      { cli_command: '', docs_url: '', flow: 'pkce', id: 'nous', name: 'Nous Portal', status: { logged_in: false } }
+    ])
+    renderOnboarding()
+
+    await waitFor(() => expect(screen.getByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeTruthy())
+    expect(byokMarkersOnScreen()).toEqual([])
+  })
+
+  it('lets a "choose later" user into the app instead of a card screen', async () => {
+    freshInstall()
+    installBridge({ enabled: true, signedIn: true })
+    const { container } = renderOnboarding()
+
+    await waitFor(() => expect(screen.getByText('正在准备你的 APEX 助手…')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '稍后再选择提供方' }))
+
+    await waitFor(() => expect(container.textContent).toBe(''))
+    expect(byokMarkersOnScreen()).toEqual([])
+  })
+
+  it('stays out of the way on the next launch of a signed-in install', async () => {
+    // Second start: the relay key is on disk and onboarding is cached done. Even
+    // if the readiness probe answers "not ready" mid-boot, the app must not
+    // demote a returning user to an overlay — they land straight in chat.
+    freshInstall()
+    window.localStorage.setItem('hermes-desktop-onboarded-v1', '1')
+    $desktopOnboarding.set({ ...$desktopOnboarding.get(), configured: true })
+    installBridge({ enabled: true, signedIn: true })
+    const { container } = renderOnboarding()
+
+    await waitFor(() => expect($desktopOnboarding.get().managedSyncing).toBe(true))
+    expect(container.textContent).toBe('')
+    expect($desktopOnboarding.get().configured).toBe(true)
+    expect(window.localStorage.getItem('hermes-desktop-onboarded-v1')).toBe('1')
+  })
+
+  it('still re-asks for sign-in when the key on disk is dead (hc-511)', async () => {
+    // A dead relay key is still a key FILE, so the bridge reports signedIn=true.
+    // That must not be mistaken for "the key is on its way" — the caller asked
+    // for a re-sign-in, so the sign-in panel stays up rather than a wait that
+    // would end by dropping the user into a chat where every send 401s.
+    freshInstall()
+    installBridge({ enabled: true, signedIn: true })
+    requestManagedReSignIn('登录已失效,请重新登录')
+    renderOnboarding()
+
+    await waitFor(() => expect(screen.getByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeTruthy())
+    expect(screen.queryByText('正在准备你的 APEX 助手…')).toBeNull()
+    expect(byokMarkersOnScreen()).toEqual([])
+  })
+
+  it('opens the picker only when the user asks for it by name, and keeps a way back', async () => {
+    // The escape hatch: "使用自己的密钥" on the login screen. This is the ONE
+    // route to the provider cards on a managed build — and once there, "返回登录"
+    // has to work, or the hatch is a trap.
+    freshInstall()
+    installBridge({ enabled: true, signedIn: true })
+    skipManagedForByok()
+    renderOnboarding()
+
+    await waitFor(() => expect(screen.getByPlaceholderText('粘贴 API 密钥')).toBeTruthy())
+    expect(byokMarkersOnScreen().length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '返回登录' }))
+
+    expect($desktopOnboarding.get().byokFromLogin).toBe(false)
+    expect($authState.get().status).toBe('signed-out')
+    expect($authState.get().enabled).toBe(true)
+  })
+
+  it('offers that escape hatch on the login screen', () => {
+    freshInstall()
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <DesktopLoginScreen requestGateway={vi.fn() as never} />
+      </I18nProvider>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '使用自己的密钥' }))
+
+    // Marked as an explicit BYOK detour, and the account gate steps aside so the
+    // picker (which only mounts past the gate) can take the window.
+    expect($desktopOnboarding.get().byokFromLogin).toBe(true)
+    expect($authState.get().enabled).toBe(false)
   })
 })
 

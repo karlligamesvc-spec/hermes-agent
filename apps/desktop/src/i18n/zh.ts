@@ -2536,7 +2536,9 @@ export const zh: Translations = {
       useOwnProvider: '使用我自己的提供方',
       dividerOr: '或',
       signInGoogle: '用 Google 登录',
-      signInApex: '用 APEX 登录'
+      signInApex: '用 APEX 登录',
+      preparing: '正在准备你的 APEX 助手…',
+      preparingHint: '账号已就绪,正在同步模型密钥。你不需要做任何设置,稍等片刻即可开始对话。'
     }
   },
 
@@ -3233,7 +3235,8 @@ export const zh: Translations = {
       signingIn: '登录中…',
       failed: '登录失败,请重试',
       accountDisabled: '账户状态异常,请重新登录或联系客服',
-      sessionExpired: '登录已过期,请重新登录'
+      sessionExpired: '登录已过期,请重新登录',
+      useOwnKey: '使用自己的密钥'
     },
     account: {
       fallbackName: '账户',
