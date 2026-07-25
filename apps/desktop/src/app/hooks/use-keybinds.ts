@@ -50,6 +50,7 @@ import {
   CRON_ROUTE,
   MESSAGING_ROUTE,
   PROFILES_ROUTE,
+  SEARCH_ROUTE,
   sessionRoute,
   SETTINGS_ROUTE,
   SKILLS_ROUTE
@@ -151,7 +152,12 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     'session.next': () => void (cycleTreeTabInFocusedZone(1) || stepSession(1)),
     'session.prev': () => void (cycleTreeTabInFocusedZone(-1) || stepSession(-1)),
     ...sessionSlotHandlers,
-    'session.focusSearch': requestSessionSearchFocus,
+    // 搜索 is its own main-area page: the hotkey routes there, and the focus bus
+    // re-focuses the page's input when it is already open.
+    'session.focusSearch': () => {
+      navigate(SEARCH_ROUTE)
+      requestSessionSearchFocus()
+    },
     'session.togglePin': deps.toggleSelectedPin,
     // Only meaningful inside a git repo — a no-op otherwise (the key falls
     // through instead of silently doing nothing).

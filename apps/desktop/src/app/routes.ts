@@ -14,6 +14,9 @@ export const CRON_ROUTE = '/cron'
 export const PROFILES_ROUTE = '/profiles'
 export const AGENTS_ROUTE = '/agents'
 export const STARMAP_ROUTE = '/starmap'
+// 搜索 lives on its own main-area page (same shell as 插件/产物) rather than as
+// a field stacked on top of the sidebar, which pushes every conversation down.
+export const SEARCH_ROUTE = '/search'
 
 // ApexNodes-only destinations, mounted on the contribution shell alongside the
 // upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
@@ -44,6 +47,7 @@ export type AppView =
   | 'extension'
   | 'messaging'
   | 'profiles'
+  | 'search'
   | 'settings'
   | 'skills'
   | 'starmap'
@@ -58,6 +62,7 @@ export type AppRouteId =
   | 'new'
   | 'profile'
   | 'profiles'
+  | 'search'
   | 'settings'
   | 'skills'
   | 'starmap'
@@ -82,7 +87,8 @@ export const APP_ROUTES = [
   { id: 'starmap', path: STARMAP_ROUTE, view: 'starmap' },
   { id: 'im-entry', path: IM_ENTRY_ROUTE, view: 'im-entry' },
   { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },
-  { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' }
+  { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' },
+  { id: 'search', path: SEARCH_ROUTE, view: 'search' }
 ] as const satisfies readonly AppRoute[]
 
 const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))
