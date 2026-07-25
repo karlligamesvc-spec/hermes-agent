@@ -273,15 +273,22 @@ export function clearRelayAuthExpiry() {
   patch({ gateReason: null, status: 'signed-in' })
 }
 
-// Escape hatch for the "logged in but the relay-key endpoint isn't deployed"
-// case: the managed browser sign-in succeeded (valid account) but couldn't
-// provision a relay key, so the onboarding store degrades to BYOK. Managed is
-// effectively unavailable this run — drop the account gate so the BYOK onboarding
-// picker (which mounts once the gate is satisfied) can take over instead of
-// trapping the user on a login screen that can never succeed. On prod
-// provision-key is deployed, so this is a rare fallback, not the normal path.
+// Step the account gate aside for this session so the BYOK onboarding (which
+// only mounts once the gate is satisfied) can take over. Driven by the explicit
+// "使用自己的密钥" escape hatch on the login screen: a user who brings their own
+// key must not be held behind an APEX account they don't want. Reversible —
+// returnToManagedLogin puts the gate back.
 export function markManagedUnavailable() {
   patch({ enabled: false, status: 'signed-in', account: EMPTY_ACCOUNT, gateReason: null })
+}
+
+// The inverse: "返回登录" from the BYOK surface restores the managed account gate,
+// so the login screen retakes the window. Only meaningful after
+// markManagedUnavailable — on a build where managed is genuinely off, nothing
+// routes here.
+export function returnToManagedLogin() {
+  writeCachedSignedIn(false)
+  patch({ enabled: true, status: 'signed-out', account: EMPTY_ACCOUNT, gateReason: null })
 }
 
 // User chose "退出登录" (logout) in the account panel. Clears the relay key on

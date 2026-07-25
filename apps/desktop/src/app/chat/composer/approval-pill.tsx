@@ -14,7 +14,9 @@ import { useI18n } from '@/i18n'
 import { AlertTriangle, Check, ChevronDown, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { applyApprovalMode, setSessionYolo } from '@/lib/yolo-session'
-import { $activeSessionId, $approvalMode, $yoloActive, setYoloActive } from '@/store/session'
+import { $approvalModes, approvalModeForProfile } from '@/store/approval-mode'
+import { $activeGatewayProfile } from '@/store/profile'
+import { $activeSessionId, $yoloActive, setYoloActive } from '@/store/session'
 
 // Three-tier approval selector in the composer (hc-514):
 //   manual → GLOBAL approvals.mode="manual": gate ONLY commands the runtime
@@ -27,7 +29,9 @@ import { $activeSessionId, $approvalMode, $yoloActive, setYoloActive } from '@/s
 //            back to the global gating tier. The pill NEVER writes the
 //            persistent global approvals.mode to "off": a persistent
 //            unrestricted default (affecting CLI / TUI / cron too) would be a
-//            security regression over the old session-level toggle.
+//            security regression over the old session-level toggle. That is
+//            enforced statically by applyApprovalMode's Exclude<…,'off'>
+//            parameter, not by convention here.
 // The asymmetry is deliberate: the gating tiers are restrictive, so persisting
 // them globally is safe (approvals.mode has no per-session form anyway); the
 // permissive tier stays session-local. A legacy config where an older build
@@ -48,8 +52,13 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
   const t = useI18n().t.composer.approvalMode
   const { requestGateway } = useGatewayRequest()
   const yoloActive = useStore($yoloActive)
-  const approvalMode = useStore($approvalMode)
   const sessionId = useStore($activeSessionId)
+  const profile = useStore($activeGatewayProfile)
+  // approvals.mode became per-profile upstream; subscribing to the whole map
+  // keeps the pill reactive, and the helper applies the same 'smart' default
+  // the status bar uses so both surfaces can never disagree.
+  useStore($approvalModes)
+  const approvalMode = approvalModeForProfile(profile)
   const [open, setOpen] = useState(false)
 
   // "full" whenever approvals are effectively bypassed — either the global mode
@@ -88,9 +97,9 @@ export function ApprovalPill({ disabled }: { disabled: boolean }) {
       setYoloActive(false)
     }
 
-    // Persist the picked gating tier globally. If a legacy build left
-    // approvals.mode=off, this same write re-homes the global default.
-    await applyApprovalMode(requestGateway, next === 'smart' ? 'smart' : 'manual')
+    // Persist the picked gating tier for this profile. If a legacy build left
+    // approvals.mode=off, this same write re-homes the profile default.
+    await applyApprovalMode(requestGateway, profile, next === 'smart' ? 'smart' : 'manual')
   }
 
   const TriggerIcon = TIER_ICON[tier]

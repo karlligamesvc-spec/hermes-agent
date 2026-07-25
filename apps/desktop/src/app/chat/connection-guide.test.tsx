@@ -40,6 +40,16 @@ describe('ConnectionGuide', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it('stays hidden before the IM bridge answers, so it never flashes at boot', () => {
+    // imEntry bridge absent (not yet wired/answered) while the daemon bridge is
+    // present but its status() promise hasn't resolved — the synchronous first
+    // render, before any awaits. Must render nothing even though the daemon
+    // will later report an available/bound phone-remote leg.
+    setBridges(undefined, 'online')
+    const { container } = renderGuide(<ConnectionGuide />)
+    expect(container.firstChild).toBeNull()
+  })
+
   it('guides every connectable channel when the user has connected none', async () => {
     setBridges([], 'offline')
     renderGuide(<ConnectionGuide />)

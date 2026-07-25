@@ -1,6 +1,8 @@
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useEffect, useState } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Thread } from './thread'
@@ -364,7 +366,13 @@ function GroupedReasoningHarness() {
   )
 }
 
+// The zero state carries the scenario shelf: it fetches its catalog through
+// react-query and its connect strip navigates, so an intro-only thread needs a
+// client and a router in scope. Retries off so a bridge-less jsdom run resolves
+// to the built-in fallback catalog at once.
 function IntroHarness() {
+  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
+
   const runtime = useExternalStoreRuntime<ThreadMessage>({
     messages: [],
     isRunning: false,
@@ -372,9 +380,13 @@ function IntroHarness() {
   })
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <Thread intro={{ personality: 'default', seed: 1 }} />
-    </AssistantRuntimeProvider>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <AssistantRuntimeProvider runtime={runtime}>
+          <Thread intro={{ personality: 'default', seed: 1 }} />
+        </AssistantRuntimeProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
   )
 }
 

@@ -13,6 +13,14 @@ export type IntroProps = {
  * The shelf self-gates (renders nothing when the catalog is disabled/empty), so
  * with scenarios off this stays the bare Codex-minimal heading. The heading is
  * pointer-events-none; the shelf re-enables pointer events for its own subtree.
+ *
+ * hc-589: the v0.19.0 rebase reinstated upstream's zero-state here — a giant
+ * `HERMES AGENT` wordmark over a rotating line of coding-agent copy ("Search the
+ * repo, edit files, run tests, open PRs"), drawn from intro-copy.jsonl. That is
+ * the wrong product: ours is an IM assistant, not a code agent, and the first
+ * screen of every session is the last place to say otherwise. The corpus file
+ * stays on disk to keep the rebase surface small (same call as the upstream
+ * mascot art in public/) — what matters is that nothing rendered reaches for it.
  */
 export function Intro(_props: IntroProps) {
   const { t } = useI18n()

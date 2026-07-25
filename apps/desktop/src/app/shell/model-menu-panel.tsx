@@ -2,43 +2,45 @@ import { useStore } from '@nanostores/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
+import { useSessionView } from '@/app/chat/session-view'
 import { Codicon } from '@/components/ui/codicon'
 import {
-  DropdownMenuCheckboxItem,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   dropdownMenuRow,
   DropdownMenuSearch,
   dropdownMenuSectionLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
-  DropdownMenuSubContent,
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import type { HermesGateway } from '@/hermes'
-import { getGlobalModelOptions, getMoaModels, saveMoaModels, setModelAssignment } from '@/hermes'
+import { getMoaModels, type HermesGateway, saveMoaModels, setModelAssignment } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { ChevronDown, ChevronRight } from '@/lib/icons'
 import {
   AUTO_PRESET_NAME,
   buildAutoMoaConfig,
   composeAutoMoa,
   composedMemberCount,
   expandMoaPresetMembers,
-  routedKey
+  routedKey,
+  SHOW_EXPLICIT_MOA_UI
 } from '@/lib/moa-compose'
-import { currentPickerSelection, displayModelName, modelDisplayParts } from '@/lib/model-status-label'
+import { requestModelOptions } from '@/lib/model-options'
+import {
+  currentPickerSelection,
+  displayModelName,
+  modelDisplayParts,
+  reasoningEffortLabel
+} from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
+import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
-import { $authState, signOutAccount } from '@/store/auth'
-import { reconcileRelayAuthState } from '@/store/managed-recovery'
-import { $modelPresets, applyModelPreset, modelPresetKey, setModelPreset } from '@/store/model-presets'
+import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
 import {
   $visibleModels,
   collapseModelFamilies,
@@ -49,32 +51,27 @@ import {
   setModelVisibilityOpen
 } from '@/store/model-visibility'
 import { notifyError } from '@/store/notifications'
-import {
-  $activeSessionId,
-  $currentFastMode,
-  $currentModel,
-  $currentProvider,
-  $currentReasoningEffort,
-  markLocalReasoningIntent,
-  setCurrentFastMode,
-  setCurrentModel,
-  setCurrentProvider,
-  setCurrentReasoningEffort
-} from '@/store/session'
+import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
 import type { MoaConfigResponse, MoaModelSlot, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
-import { useModelControls } from '../session/hooks/use-model-controls'
-
-import { EFFORT_OPTIONS, resolveFastControl } from './model-edit-submenu'
+import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 
 // Lets the host dropdown (model-pill) hand the panel a way to dismiss itself so
 // clicking a model row commits + closes, while the hover-revealed edit submenu
 // (reasoning/fast) stays open to play with (its items preventDefault on select).
 export const ModelMenuCloseContext = createContext<() => void>(() => {})
 
+export interface ModelSelection {
+  model: string
+  provider: string
+  /** Runtime id of the surface that opened the menu. When set, the switch
+   *  targets that session (a tile) instead of the primary `$activeSessionId`. */
+  sessionId?: null | string
+}
+
 interface ModelMenuPanelProps {
   gateway?: HermesGateway
-  onSelectModel: (selection: { model: string; provider: string }) => Promise<boolean> | void
+  onSelectModel: (selection: ModelSelection) => Promise<boolean> | void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
@@ -89,86 +86,38 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   const closeMenu = useContext(ModelMenuCloseContext)
   const [search, setSearch] = useState('')
   const [refreshing, setRefreshing] = useState(false)
-  const queryClient = useQueryClient()
-  // Platform (managed-relay) multi-select, mirrors Settings → Model
-  // (model-settings.tsx): raw model ids in directory order. BYO stays
-  // single-select and doesn't mix with this (MOA-INVISIBLE-DESIGN §9).
+  // hc-578 (MOA-INVISIBLE-DESIGN): the platform (managed-relay) provider's rows
+  // MULTI-select. Raw model ids in directory order; BYO providers stay
+  // single-select and don't mix with this (§9).
   const [platformSel, setPlatformSel] = useState<string[]>([])
-  // Reactive session state is read from the stores here (not drilled in), so
-  // toggling effort/fast/model re-renders this panel in place without forcing
-  // the parent to rebuild the menu content (which would close the dropdown).
-  const activeSessionId = useStore($activeSessionId)
-  const currentFastMode = useStore($currentFastMode)
-  const currentModel = useStore($currentModel)
-  const currentProvider = useStore($currentProvider)
-  const currentReasoningEffort = useStore($currentReasoningEffort)
+  const queryClient = useQueryClient()
+  // Bind to THIS surface's SessionView (primary or tile) so each pane's menu
+  // shows/switches its own model — not the primary-only globals.
+  const view = useSessionView()
+  const activeSessionId = useStore(view.$runtimeId)
+  const currentFastMode = useStore(view.$fast)
+  const currentModel = useStore(view.$model)
+  const currentProvider = useStore(view.$provider)
+  const currentReasoningEffort = useStore(view.$reasoningEffort)
   const modelPresets = useStore($modelPresets)
   const visibleModels = useStore($visibleModels)
+  const collapsedProviders = useStore($collapsedProviders)
 
   const modelOptions = useQuery({
     queryKey: ['model-options', activeSessionId || 'global'],
-    queryFn: (): Promise<ModelOptionsResponse> => {
-      if (gateway && activeSessionId) {
-        return gateway.request<ModelOptionsResponse>('model.options', { session_id: activeSessionId })
-      }
-
-      return getGlobalModelOptions()
-    }
+    // Gateway-first even with no session yet: a connected (possibly remote)
+    // gateway owns the model catalog, including virtual providers like `moa`
+    // that the local REST fallback can't know about (#53817).
+    queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, sessionId: activeSessionId })
   })
 
-  // hc-578 leg A/B: also the source of "what's currently multi-selected"
-  // (expandMoaPresetMembers below) — .catch keeps a never-configured profile
-  // (no moa.json yet) from parking this query in an error state.
+  // Also the source of "what is currently multi-selected" (expandMoaPresetMembers
+  // below). `.catch` keeps a never-configured profile (no moa.json yet) from
+  // parking this query in an error state.
   const moaOptions = useQuery({
     queryKey: ['moa-presets'],
     queryFn: (): Promise<MoaConfigResponse | null> => getMoaModels().catch(() => null)
   })
-
-  // hc-512 ③: when a freshly loaded catalog no longer contains the sticky
-  // pre-session pick, snap back to the default with a one-time toast instead
-  // of silently showing a model that isn't in the list.
-  const { reconcileModelSelection, updateModelOptionsCache } = useModelControls({
-    activeSessionId,
-    queryClient,
-    requestGateway
-  })
-
-  useEffect(() => {
-    reconcileModelSelection(modelOptions.data)
-  }, [modelOptions.data, reconcileModelSelection])
-
-  // hc-512 ④: the runtime's live-catalog probe fails silently (the APEX group
-  // just shrinks to the configured model), so ask the shell — which holds the
-  // relay key — whether the relay catalog is actually reachable, and say so
-  // explicitly. Managed signed-in installs only; the bridge is optional (an
-  // older main process / web preview simply never shows the notice).
-  const authState = useStore($authState)
-
-  const relayCatalogBridge =
-    typeof window !== 'undefined' ? window.hermesDesktop?.managed?.relayCatalog : undefined
-
-  const relayCatalog = useQuery({
-    queryKey: ['managed-relay-catalog'],
-    enabled: Boolean(relayCatalogBridge) && authState.enabled === true && authState.status === 'signed-in',
-    queryFn: () => relayCatalogBridge!({ refresh: true }),
-    staleTime: 60_000,
-    retry: false
-  })
-
-  const relayCatalogStatus = relayCatalog.data?.status
-  const catalogDegraded = relayCatalogStatus === 'unauthorized' || relayCatalogStatus === 'unreachable'
-
-  // hc-519: a relay catalog 401 is the SAME dead-key signal as a failed chat
-  // send — reconcile it into the global login state so the account card degrades
-  // to "登录已失效" (and self-heal runs) instead of only the model menu knowing.
-  // The reconcile self-dedupes with the send/startup paths and no-ops when the
-  // rollback switch is off. 'unreachable' is transient (network) — not an auth
-  // loss — so it's left to the menu's own retry.
-  useEffect(() => {
-    if (relayCatalogStatus === 'unauthorized' && authState.loginTruth) {
-      void reconcileRelayAuthState()
-    }
-  }, [relayCatalogStatus, authState.loginTruth])
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     !!activeSessionId,
@@ -178,15 +127,11 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   const loading = modelOptions.isPending && !modelOptions.data
 
-  // Never surface the raw error message in the menu — log it for support and
-  // show a friendly, localized line instead.
-  const loadFailed = Boolean(modelOptions.error)
-
-  useEffect(() => {
-    if (modelOptions.error) {
-      console.error('[model-menu] failed to load model options', modelOptions.error)
-    }
-  }, [modelOptions.error])
+  const error = modelOptions.error
+    ? modelOptions.error instanceof Error
+      ? modelOptions.error.message
+      : String(modelOptions.error)
+    : null
 
   // China-first: only the APEX-NODES.COM managed relay (+ custom BYOK endpoints)
   // and domestic providers are shown; foreign providers are hidden even when
@@ -196,26 +141,36 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     [modelOptions.data?.providers]
   )
 
-  const effectiveVisibleModels = useMemo(
-    () => effectiveVisibleKeys(visibleModels, providers ?? []),
-    [visibleModels, providers]
-  )
+  // The catalog carries MoA presets as a virtual `moa` provider row, which
+  // upstream lists by name in its own section below. MOA-INVISIBLE-DESIGN
+  // forbids that vocabulary, so the list is held empty (the allowlist already
+  // drops the `moa` row) and upstream's section never renders — the composer's
+  // multi-select composes the same thing silently instead. `__auto__` is
+  // filtered out for the same reason: naming the reserved preset would leak the
+  // mechanism the design exists to hide.
+  const moaPresets = useMemo(() => {
+    if (!SHOW_EXPLICIT_MOA_UI) {
+      return []
+    }
 
-  // The ApexNodes managed relay row — the only provider whose rows multi-select
-  // (hc-578 leg A/B). Mirrors model-settings.tsx's managedProvider lookup.
+    return (providers?.find(provider => provider.slug.toLowerCase() === 'moa')?.models ?? []).filter(
+      preset => preset !== AUTO_PRESET_NAME
+    )
+  }, [providers])
+
+  // The ApexNodes managed relay — the only provider whose rows multi-select.
   const managedProvider = useMemo(
-    () => (providers ?? []).find(p => isManagedProviderSlug(p.slug, p.name)) ?? null,
+    () => (providers ?? []).find(provider => isManagedProviderSlug(provider.slug, provider.name)) ?? null,
     [providers]
   )
 
   const platformSelSet = useMemo(() => new Set(platformSel.map(routedKey)), [platformSel])
 
-  // Reconstruct "what's currently multi-selected" from whatever is actually
-  // active, mirroring model-settings.tsx's initialSelection: an active
-  // provider==='moa' preset expands back to its member set; a single managed
-  // pick seeds a 1-element array; anything else (BYO/none) clears it. Runs on
-  // every fresh mount (this panel remounts each time the dropdown opens) and
-  // whenever the active selection or the MoA config changes underneath it.
+  // Reconstruct "what is currently multi-selected" from whatever is actually
+  // active: an active provider === 'moa' preset expands back to its member set,
+  // a single managed pick seeds a 1-element array, anything else (BYO / none)
+  // clears it. Runs on every fresh mount (this panel remounts each time the
+  // dropdown opens) and whenever the active selection or MoA config changes.
   useEffect(() => {
     if (optionsProvider === 'moa') {
       setPlatformSel(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
@@ -223,9 +178,8 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
       return
     }
 
-    // Compare against the resolved managedProvider row's own slug (not a fuzzy
-    // name check) — optionsProvider is a bare slug string here, and the name
-    // that belongs to IT (if any) isn't managedProvider's.
+    // Compare against the resolved managed row's own slug, not a fuzzy name
+    // check — optionsProvider is a bare slug here.
     if (optionsModel && managedProvider && optionsProvider === managedProvider.slug) {
       setPlatformSel([optionsModel])
 
@@ -235,10 +189,23 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     setPlatformSel([])
   }, [optionsProvider, optionsModel, moaOptions.data, managedProvider])
 
+  const pickerProviders = useMemo(
+    () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
+    [providers]
+  )
+
+  const effectiveVisibleModels = useMemo(
+    () => effectiveVisibleKeys(visibleModels, pickerProviders),
+    [visibleModels, pickerProviders]
+  )
+
   // The composer picker never persists the profile default. With a session it
   // scopes the switch to that session; with none it's UI state shipped on the
   // next session.create (see selectModel). The default lives in Settings → Model.
-  const switchTo = (model: string, provider: string) => onSelectModel({ model, provider })
+  // Always stamp sessionId from this surface so a tile switch never hits the
+  // primary (busy) session by accident.
+  const switchTo = (model: string, provider: string) =>
+    onSelectModel({ model, provider, sessionId: activeSessionId || null })
 
   // Explicit "Refresh Models": re-fetch the catalog with refresh:true so the
   // backend busts its 1h provider-model disk cache and re-pulls each provider's
@@ -254,13 +221,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     try {
       const queryKey = ['model-options', activeSessionId || 'global']
 
-      const next =
-        gateway && activeSessionId
-          ? await gateway.request<ModelOptionsResponse>('model.options', {
-              session_id: activeSessionId,
-              refresh: true
-            })
-          : await getGlobalModelOptions({ refresh: true })
+      const next = await requestModelOptions({ gateway, refresh: true, sessionId: activeSessionId })
 
       queryClient.setQueryData<ModelOptionsResponse>(queryKey, next)
     } catch {
@@ -290,38 +251,42 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
     await applyModelPreset(
       {
-        effort: (caps?.reasoning ?? true) ? (preset.effort ?? 'high') : undefined,
+        effort: (caps?.reasoning ?? true) ? (preset.effort ?? 'medium') : undefined,
         fast: (caps?.fast ?? false) ? (preset.fast ?? false) : undefined
       },
-      { failMessage: t.shell.modelOptions.updateFailed, request: requestGateway, sessionId: activeSessionId }
+      {
+        failMessage: t.shell.modelOptions.updateFailed,
+        primary: view.kind === 'primary',
+        request: requestGateway,
+        sessionId: activeSessionId
+      }
     )
   }
 
-  // Toggle a managed-relay row in/out of the platform multi-selection
-  // (hc-578 leg A/B: the picker never shows "MoA" — just checked model rows
-  // and a "N models selected" line). <=1 selected keeps today's plain
-  // single-select path verbatim (switchTo/onSelectModel, session-scoped —
-  // regression red line, never touches the profile default); >=2 composes the
-  // hidden preset through the SAME assembly Settings → Model uses
-  // (composeAutoMoa → saveMoaModels → setModelAssignment(moa/__auto__/main)),
-  // so the two surfaces can never diverge on how a selection becomes a plan.
+  // hc-578 (MOA-INVISIBLE-DESIGN): toggle a managed-relay row in/out of the
+  // platform multi-selection. The picker never shows "MoA" — just checked model
+  // rows. <= 1 selected keeps the plain single-select path verbatim
+  // (selectFamily → onSelectModel, session-scoped — the regression red line,
+  // never touches the profile default); >= 2 composes the hidden `__auto__`
+  // preset and activates it. `fanout` is pinned to user_turn by composeAutoMoa,
+  // which is the billing red line (§2.2/§7).
   const togglePlatformModel = async (family: ModelFamily, provider: ModelOptionProvider) => {
     const key = routedKey(family.id)
     const has = platformSel.some(id => routedKey(id) === key)
     const nextIds = has ? platformSel.filter(id => routedKey(id) !== key) : [...platformSel, family.id]
 
     // Keep directory order stable so the composed aggregator/reference split
-    // never depends on click order (mirrors model-settings.tsx's togglePlatform).
+    // never depends on click order.
     const directory = collapseModelFamilies(provider.models ?? [])
-    const order = new Map(directory.map((f, i) => [routedKey(f.id), i]))
+    const order = new Map(directory.map((f, index) => [routedKey(f.id), index]))
     nextIds.sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
 
     const prevSel = platformSel
     setPlatformSel(nextIds)
 
+    // Deselecting the last platform model is a no-op — a main model can't be
+    // "none", so the previous selection stays active until another is picked.
     if (nextIds.length === 0) {
-      // Mirrors model-settings.tsx's doApply: deselecting the last platform
-      // model is a no-op (a main model can't be "none").
       return
     }
 
@@ -344,13 +309,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     try {
       const saved = await saveMoaModels(buildAutoMoaConfig(moaOptions.data ?? null, composed))
       queryClient.setQueryData(['moa-presets'], saved)
-
-      const result = await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
-      const nextProvider = result.provider || 'moa'
-      const nextModel = result.model || AUTO_PRESET_NAME
-      setCurrentProvider(nextProvider)
-      setCurrentModel(nextModel)
-      updateModelOptionsCache(nextProvider, nextModel, true)
+      await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
       void queryClient.invalidateQueries({ queryKey: ['model-options'] })
     } catch (err) {
       setPlatformSel(prevSel)
@@ -358,334 +317,244 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     }
   }
 
+  // Selecting a MoA preset switches the session to it PERSISTENTLY, using the
+  // same path real provider selections use (onSelectModel → config.set with
+  // --session for live sessions → the gateway's persistent switch_model).
+  // Previously this dispatched the one-shot `/moa` command, which ran a single
+  // turn through MoA and then silently reverted to the prior model (#54670) —
+  // the dropdown presented presets like persistent selections but they weren't.
+  // No session gate: like regular model rows, a pre-session pick is UI state
+  // shipped on the next session.create.
+  const selectMoaPreset = async (preset: string) => {
+    if ((await switchTo(preset, 'moa')) === false) {
+      return
+    }
+
+    closeMenu()
+  }
+
   const groups = useMemo(
-    () => groupModels(providers ?? [], search, { model: optionsModel, provider: optionsProvider }, effectiveVisibleModels),
-    [providers, search, optionsModel, optionsProvider, effectiveVisibleModels]
+    () =>
+      groupModels(pickerProviders, search, { model: optionsModel, provider: optionsProvider }, effectiveVisibleModels),
+    [pickerProviders, search, optionsModel, optionsProvider, effectiveVisibleModels]
   )
-
-  const modelOptionsCopy = t.shell.modelOptions
-
-  // The current model's caps/effort/speed drive the Codex-style top-level
-  // reasoning radio + speed toggle (no more per-model hover submenus).
-  const currentEntry = useMemo(() => {
-    for (const group of groups) {
-      if (group.provider.slug !== optionsProvider) {
-        continue
-      }
-
-      const family = group.families.find(item => item.id === optionsModel || item.fastId === optionsModel)
-
-      if (family) {
-        return { family, provider: group.provider }
-      }
-    }
-
-    return null
-  }, [groups, optionsModel, optionsProvider])
-
-  const currentCaps = currentEntry ? currentEntry.provider.capabilities?.[currentEntry.family.id] : undefined
-  const currentReasoningSupported = currentCaps?.reasoning ?? true
-
-  const currentFastControl = currentEntry
-    ? resolveFastControl(optionsModel, currentEntry.provider.models ?? [], currentCaps?.fast ?? false, currentFastMode)
-    : ({ kind: 'none' } as const)
-
-  const effortValue = EFFORT_OPTIONS.some(option => option.value === currentReasoningEffort)
-    ? currentReasoningEffort
-    : 'high'
-
-  // Member count of the active composed preset (0 when not composed) — the
-  // only number the trigger/pill are allowed to show; never the preset id
-  // or its aggregator/reference split (MOA-INVISIBLE-DESIGN).
-  const composedCount =
-    optionsProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[optionsModel]) : 0
-
-  // Codex-style top-level model row: shows whichever model is current; the full
-  // list is one click deeper in its submenu. A composed 2+ selection has no
-  // single model name to show, so it reads as "N models selected" instead
-  // (never "MoA"/"aggregator"/"preset"). Short form — this row is a single
-  // truncating line; the billing sentence only fits in Settings › Model.
-  const currentModelLabel = (() => {
-    if (composedCount >= 2) {
-      return t.settings.model.selectedShort(composedCount)
-    }
-
-    return optionsModel ? displayModelName(optionsModel) : copy.noModels
-  })()
-
-  // Mirrors ModelEditSubmenu.patchReasoning, but for the composer's active model.
-  const setCurrentEffort = async (next: string) => {
-    if (!optionsModel || !optionsProvider) {
-      return
-    }
-
-    const prev = currentReasoningEffort
-    setModelPreset(optionsProvider, optionsModel, { effort: next })
-    markLocalReasoningIntent(next)
-    setCurrentReasoningEffort(next)
-
-    if (!activeSessionId) {
-      return
-    }
-
-    try {
-      await requestGateway('config.set', { key: 'reasoning', session_id: activeSessionId, value: next })
-    } catch (err) {
-      markLocalReasoningIntent(prev)
-      setCurrentReasoningEffort(prev)
-      setModelPreset(optionsProvider, optionsModel, { effort: prev })
-      notifyError(err, modelOptionsCopy.updateFailed)
-    }
-  }
-
-  const setCurrentFast = (enabled: boolean) => {
-    if (currentFastControl.kind === 'variant') {
-      setModelPreset(optionsProvider, currentFastControl.baseId, { fast: enabled })
-      void switchTo(enabled ? currentFastControl.fastId : currentFastControl.baseId, optionsProvider)
-
-      return
-    }
-
-    if (currentFastControl.kind === 'param') {
-      setModelPreset(optionsProvider, optionsModel, { fast: enabled })
-      setCurrentFastMode(enabled)
-
-      if (!activeSessionId) {
-        return
-      }
-      void (async () => {
-        try {
-          await requestGateway('config.set', {
-            key: 'fast',
-            session_id: activeSessionId,
-            value: enabled ? 'fast' : 'normal'
-          })
-        } catch (err) {
-          setCurrentFastMode(!enabled)
-          setModelPreset(optionsProvider, optionsModel, { fast: !enabled })
-          notifyError(err, modelOptionsCopy.fastFailed)
-        }
-      })()
-    }
-  }
 
   return (
     <>
-      {currentReasoningSupported ? (
-        <>
-          <DropdownMenuLabel className={dropdownMenuSectionLabel}>{modelOptionsCopy.effort}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup onValueChange={value => void setCurrentEffort(value)} value={effortValue}>
-            {EFFORT_OPTIONS.map(option => (
-              <DropdownMenuRadioItem
-                className={dropdownMenuRow}
-                key={option.value}
-                onSelect={event => event.preventDefault()}
-                value={option.value}
-              >
-                {modelOptionsCopy[option.labelKey]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator className="mx-0" />
-        </>
-      ) : null}
+      <DropdownMenuSearch aria-label={copy.search} onValueChange={setSearch} placeholder={copy.search} value={search} />
 
-      {/* Codex-style: the current model is one row; the full list lives in its
-          submenu, so the top level stays reasoning + model + speed. */}
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger className={dropdownMenuRow}>
-          {optionsModel ? <ProviderIcon vendor={modelVendor(optionsModel, optionsProvider)} /> : null}
-          <span className="min-w-0 flex-1 truncate">{currentModelLabel}</span>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className="w-64 p-0">
-          <DropdownMenuSearch aria-label={copy.search} onValueChange={setSearch} placeholder={copy.search} value={search} />
+      <DropdownMenuSeparator className="mx-0" />
 
-          <DropdownMenuSeparator className="mx-0" />
+      {loading ? (
+        <DropdownMenuGroup className="py-1">
+          {Array.from({ length: 4 }, (_, index) => (
+            <DropdownMenuItem
+              className={dropdownMenuRow}
+              disabled
+              key={index}
+              onSelect={event => event.preventDefault()}
+            >
+              <Skeleton className="h-4 w-full" />
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      ) : error ? (
+        <DropdownMenuItem className={dropdownMenuRow} disabled>
+          {error}
+        </DropdownMenuItem>
+      ) : groups.length === 0 && moaPresets.length === 0 ? (
+        <DropdownMenuItem className={dropdownMenuRow} disabled>
+          {copy.noModels}
+        </DropdownMenuItem>
+      ) : (
+        <div className="max-h-[max(150px,30dvh)] overflow-y-auto py-0.5">
+          {groups.map(group => {
+            const slug = group.provider.slug
 
-          {catalogDegraded ? (
-            <>
-              <DropdownMenuItem
-                className={cn(dropdownMenuRow, 'text-amber-600 dark:text-amber-300')}
-                onSelect={event => {
-                  if (relayCatalogStatus === 'unauthorized') {
-                    // Dead relay key that self-heal couldn't refresh — the only
-                    // fix is a re-login; hand over to the login screen.
-                    void signOutAccount()
+            // Collapsed when stored + no active search + not the current provider.
+            const collapsed = collapsedProviders.includes(slug) && !search && slug !== optionsProvider
 
-                    return
-                  }
-
-                  // Transient network/relay failure — re-probe + re-pull the
-                  // catalog in place, keeping the menu open to show the result.
-                  event.preventDefault()
-                  void relayCatalog.refetch()
-                  void refreshModels()
-                }}
-              >
-                <Codicon className="mr-1.5 shrink-0" name="warning" size="0.75rem" />
-                <span className="min-w-0 flex-1 truncate">
-                  {relayCatalogStatus === 'unauthorized' ? copy.catalogUnauthorized : copy.catalogUnreachable}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="mx-0" />
-            </>
-          ) : null}
-
-          {loading ? (
-            <DropdownMenuGroup className="py-1">
-              {Array.from({ length: 4 }, (_, index) => (
-                <DropdownMenuItem className={dropdownMenuRow} disabled key={index} onSelect={event => event.preventDefault()}>
-                  <Skeleton className="h-4 w-full" />
+            return (
+              <DropdownMenuGroup className="py-0.5" key={slug}>
+                <DropdownMenuItem
+                  className={cn(dropdownMenuSectionLabel, 'cursor-pointer hover:bg-(--ui-control-active-background)')}
+                  onSelect={event => {
+                    event.preventDefault()
+                    toggleCollapsedProvider(slug)
+                  }}
+                  textValue=""
+                >
+                  {collapsed ? (
+                    <ChevronRight className="size-2.5 shrink-0" />
+                  ) : (
+                    <ChevronDown className="size-2.5 shrink-0" />
+                  )}
+                  {group.provider.name}
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          ) : loadFailed ? (
-            <DropdownMenuItem className={dropdownMenuRow} disabled>
-              {copy.loadFailed}
-            </DropdownMenuItem>
-          ) : groups.length === 0 ? (
-            <DropdownMenuItem className={dropdownMenuRow} disabled>
-              {copy.noModels}
-            </DropdownMenuItem>
-          ) : (
-            groups.map(group => {
-              const isPlatformGroup = isManagedProviderSlug(group.provider.slug, group.provider.name)
-              // v1 doesn't mix BYO with a platform multi-selection (MOA-INVISIBLE
-              // §9) — gray the BYO rows out with an explanation once 2+ platform
-              // models are active, mirroring model-settings.tsx's byoDisabled.
-              const byoDisabled = !isPlatformGroup && platformSel.length >= 2
-
-              return (
-                <DropdownMenuGroup className="py-0.5" key={group.provider.slug}>
-                  <DropdownMenuLabel className={dropdownMenuSectionLabel}>{providerGroupLabel(group.provider)}</DropdownMenuLabel>
-                  {byoDisabled ? (
-                    <div className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}>{t.settings.model.byoMixNote}</div>
-                  ) : null}
-                  {group.families.map(family => {
+                {!collapsed &&
+                  group.families.map(family => {
                     // The active id may be the base or its -fast sibling; either
                     // way this one family row represents both.
-                    const isCurrent =
+                    const activeId =
                       group.provider.slug === optionsProvider &&
                       (optionsModel === family.id || optionsModel === family.fastId)
+                        ? optionsModel
+                        : null
 
-                    // Same splitter the composer pill uses (displayModelName →
-                    // modelDisplayParts), so the selected model always reads
-                    // identically in the pill and in this list (hc-512). Brand /
-                    // variant suffixes render as a grayed tag, like the
-                    // visibility dialog.
-                    const { name, tag } = modelDisplayParts(family.id)
+                    // Is this row the LIVE model (drives effort/fast display and
+                    // the edit submenu's active state)? A composed multi-model
+                    // selection has no single live model, so this stays false.
+                    const isCurrent = activeId !== null
+                    // hc-578: on the managed relay the rows MULTI-select, so the
+                    // check mark tracks set membership instead.
+                    const multiSelect = managedProvider !== null && group.provider.slug === managedProvider.slug
+                    const isChecked = multiSelect ? platformSelSet.has(routedKey(family.id)) : isCurrent
+                    const name = modelDisplayParts(family.id).name
+                    // Capabilities are looked up against the active/base id; the
+                    // -fast variant carries the same param support as its base.
+                    const caps = group.provider.capabilities?.[family.id]
 
-                    if (isPlatformGroup) {
-                      // Multi-select: every click toggles membership and the
-                      // menu stays open (preventDefault, same convention the
-                      // old per-session MoA toggle used) so more models can be
-                      // picked in one visit; togglePlatformModel decides
-                      // whether that lands as a plain single switch or a
-                      // composed selection.
-                      return (
-                        <DropdownMenuCheckboxItem
-                          checked={platformSelSet.has(routedKey(family.id))}
+                    // Effective settings for this row: live session state when it's
+                    // the active model, otherwise its remembered preset (Hermes
+                    // defaults when unset). Row label AND submenu read from these so
+                    // they never disagree.
+                    const preset = modelPresets[modelPresetKey(group.provider.slug, family.id)] ?? {}
+                    const effEffort = isCurrent ? currentReasoningEffort : (preset.effort ?? '')
+                    const effFast = isCurrent ? currentFastMode : (preset.fast ?? false)
+
+                    const fastControl = resolveFastControl(
+                      activeId ?? family.id,
+                      group.provider.models ?? [],
+                      caps?.fast ?? false,
+                      effFast
+                    )
+
+                    const meta = [
+                      fastControl.kind !== 'none' && fastControl.on ? copy.fast : null,
+                      (caps?.reasoning ?? true) ? reasoningEffortLabel(effEffort) || copy.medium : null
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+
+                    // Every row is a hover-Edit submenu trigger. Activating it
+                    // (pointer or keyboard) switches to the family's base model and
+                    // restores its preset; the Fast toggle inside swaps to the -fast
+                    // sibling (or flips the speed param). The sub-trigger has no
+                    // `onSelect`, so wire both click and Enter/Space for keyboard parity.
+                    // Clicking the row commits the model and closes the picker; the
+                    // edit submenu (reasoning/fast) is reached by HOVER, so you can
+                    // still tweak those without the click dismissing everything.
+                    // On the managed relay a click TOGGLES membership and keeps
+                    // the menu open (you are building a set), so the composed
+                    // selection can be assembled without reopening the picker.
+                    const activate = () => {
+                      if (multiSelect) {
+                        void togglePlatformModel(family, group.provider)
+
+                        return
+                      }
+
+                      if (!isCurrent) {
+                        void selectFamily(family, group.provider)
+                      }
+
+                      closeMenu()
+                    }
+
+                    return (
+                      <DropdownMenuSub key={`${group.provider.slug}:${family.id}`}>
+                        <DropdownMenuSubTrigger
                           className={dropdownMenuRow}
-                          key={`${group.provider.slug}:${family.id}`}
-                          onSelect={event => {
-                            event.preventDefault()
-                            void togglePlatformModel(family, group.provider)
+                          hideChevron
+                          onClick={activate}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              activate()
+                            }
                           }}
                         >
                           <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
                           <span className="min-w-0 flex-1 truncate">
                             {name}
-                            {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
+                            {meta ? <span className="text-(--ui-text-tertiary)"> {meta}</span> : null}
                           </span>
-                        </DropdownMenuCheckboxItem>
-                      )
-                    }
-
-                    // BYO: unchanged plain select-and-close, just gated by
-                    // byoDisabled above.
-                    return (
-                      <DropdownMenuItem
-                        className={dropdownMenuRow}
-                        disabled={byoDisabled}
-                        key={`${group.provider.slug}:${family.id}`}
-                        onSelect={() => {
-                          if (!isCurrent) {
-                            void selectFamily(family, group.provider)
-                          }
-
-                          closeMenu()
-                        }}
-                      >
-                        <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
-                        <span className="min-w-0 flex-1 truncate">
-                          {name}
-                          {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
-                        </span>
-                        {isCurrent ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
-                      </DropdownMenuItem>
+                          {isChecked ? (
+                            <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" />
+                          ) : null}
+                        </DropdownMenuSubTrigger>
+                        <ModelEditSubmenu
+                          effort={effEffort}
+                          fastControl={fastControl}
+                          isActive={isCurrent}
+                          model={family.id}
+                          onSelectModel={nextModel => switchTo(nextModel, group.provider.slug)}
+                          provider={group.provider.slug}
+                          reasoning={caps?.reasoning ?? true}
+                          requestGateway={requestGateway}
+                        />
+                      </DropdownMenuSub>
                     )
                   })}
-                </DropdownMenuGroup>
-              )
-            })
-          )}
+              </DropdownMenuGroup>
+            )
+          })}
+        </div>
+      )}
 
-          {platformSel.length >= 2 ? (
-            <>
-              <DropdownMenuSeparator className="mx-0" />
-              <div className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}>
-                {t.settings.model.selectedShort(platformSel.length)}
-              </div>
-            </>
-          ) : null}
+      <DropdownMenuSeparator className="mx-0" />
 
+      {moaPresets.length > 0 ? (
+        <>
+          <DropdownMenuLabel className={dropdownMenuSectionLabel}>MoA presets</DropdownMenuLabel>
+          {moaPresets.map(preset => {
+            const isCurrentMoa = optionsProvider === 'moa' && optionsModel === preset
+
+            return (
+              <DropdownMenuItem
+                className={dropdownMenuRow}
+                key={`moa:${preset}`}
+                onSelect={event => {
+                  event.preventDefault()
+                  void selectMoaPreset(preset)
+                }}
+              >
+                <span className="min-w-0 flex-1 truncate">MoA: {preset}</span>
+                {isCurrentMoa ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
+              </DropdownMenuItem>
+            )
+          })}
           <DropdownMenuSeparator className="mx-0" />
-
-          <DropdownMenuItem
-            className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
-            disabled={refreshing}
-            onSelect={event => {
-              event.preventDefault()
-              void refreshModels()
-            }}
-          >
-            <Codicon className={cn('mr-1.5', refreshing && 'animate-spin')} name="sync" size="0.75rem" />
-            {copy.refreshModels}
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
-            className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
-            onSelect={() => setModelVisibilityOpen(true)}
-          >
-            {copy.editModels}
-          </DropdownMenuItem>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-
-      {currentFastControl.kind !== 'none' ? (
-        <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
-          {modelOptionsCopy.fast}
-          <Switch checked={currentFastControl.on} className="ml-auto" onCheckedChange={setCurrentFast} size="xs" />
-        </DropdownMenuItem>
+        </>
       ) : null}
+
+      <DropdownMenuItem
+        className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
+        disabled={refreshing}
+        onSelect={event => {
+          event.preventDefault()
+          void refreshModels()
+        }}
+      >
+        <Codicon className={cn(refreshing && 'animate-spin')} name="sync" size="0.75rem" />
+        {copy.refreshModels}
+      </DropdownMenuItem>
+
+      <DropdownMenuItem
+        className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
+        onSelect={() => setModelVisibilityOpen(true)}
+      >
+        <Codicon name="settings-gear" size="0.75rem" />
+        {copy.editModels}
+      </DropdownMenuItem>
     </>
   )
 }
 
-// The managed relay is registered as the custom provider "Apex-nodes.com"
-// (electron/apex-managed.cjs); surface it under the clean "APEX" brand in the
-// picker. Custom BYOK / domestic providers keep their own names.
-function providerGroupLabel(provider: ModelOptionProvider): string {
-  if (isManagedProviderSlug(provider.slug, provider.name)) {
-    return 'APEX'
-  }
-
-  return provider.name
-}
-
 // Collapsed we show the user's chosen models (or the curated default); typing
-// spans every available model so anything is reachable past the cut.
-const PER_PROVIDER_SEARCH = 12
+// spans every available model so anything is reachable past the cut. A search
+// is itself a narrowing action, so we do NOT cap per-provider matches — a
+// provider serving 19 models (e.g. opencode-go) must show all 19 when the user
+// searches for it, not a truncated subset. (#47077 follow-up)
 
 function groupModels(
   providers: ModelOptionProvider[],
@@ -693,7 +562,7 @@ function groupModels(
   current: { model: string; provider: string },
   visible: Set<string> | null
 ): ProviderGroup[] {
-  const q = search.trim().toLowerCase()
+  const q = normalize(search)
   const groups: ProviderGroup[] = []
 
   for (const provider of providers) {
@@ -732,11 +601,7 @@ function groupModels(
         ? allFamilies.find(family => family.id === current.model || family.fastId === current.model)?.id
         : undefined
 
-    let families = allFamilies.filter(family => shown.has(family.id) || family.id === activeId)
-
-    if (q) {
-      families = families.slice(0, PER_PROVIDER_SEARCH)
-    }
+    const families = allFamilies.filter(family => shown.has(family.id) || family.id === activeId)
 
     if (families.length > 0) {
       groups.push({ families, provider })

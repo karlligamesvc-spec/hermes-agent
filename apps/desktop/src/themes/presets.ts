@@ -9,13 +9,15 @@ import type { DesktopTheme, DesktopThemeTypography } from './types'
 // text/mono fonts carry emoji glyphs, so without this emoji render as tofu
 // boxes on platforms whose default text font lacks them (e.g. Linux/#40364).
 // Covers macOS, Windows, Linux, plus the `emoji` generic for anything else.
-export const EMOJI_FALLBACK =
-  '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji'
+export const EMOJI_FALLBACK = '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji'
 
 const SYSTEM_SANS =
   '"Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
   EMOJI_FALLBACK
 
+// Keep in lockstep with --dt-font-mono in styles.css — the theme writes this
+// over the CSS fallback at runtime, so a disagreement makes the rendered face
+// depend on when the theme applies. Change both or neither.
 const SYSTEM_MONO =
   '"Cascadia Code", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace, ' + EMOJI_FALLBACK
 
@@ -32,7 +34,6 @@ const PSYCHE_WARM = '#FFE6CB'
 const APEX_VIOLET = '#7E6CEF'
 
 const apexTint = (pct: number) => `color-mix(in srgb, ${APEX_VIOLET} ${pct}%, #FFFFFF)`
-const apexTintTransparent = (pct: number) => `color-mix(in srgb, ${APEX_VIOLET} ${pct}%, transparent)`
 
 /**
  * Nous — the default desktop identity, retuned to the Claude-style macOS look:

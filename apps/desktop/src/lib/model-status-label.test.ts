@@ -45,9 +45,7 @@ describe('model-status-label', () => {
   })
 
   it('renders the sentinel and the bare routed id under the same pill label', () => {
-    expect(formatModelStatusLabel('deepseek-v4-pro-APEX', { reasoningEffort: 'high' })).toBe(
-      'DeepSeek V4 Pro · High'
-    )
+    expect(formatModelStatusLabel('deepseek-v4-pro-APEX', { reasoningEffort: 'high' })).toBe('DeepSeek V4 Pro · High')
     expect(formatModelStatusLabel('deepseek-v4-pro', { reasoningEffort: 'high' })).toBe('DeepSeek V4 Pro · High')
   })
 
@@ -99,9 +97,14 @@ describe('model-status-label', () => {
     expect(displayModelName(model)).toBe(expected)
   })
 
+  // The reasoning-effort ladder grew past origin/main's four rungs (v0.19.0
+  // added max/ultra above xhigh) — xhigh keeps its own label now instead of
+  // aliasing to "Max".
   it('maps reasoning effort to compact labels', () => {
     expect(reasoningEffortLabel('high')).toBe('High')
-    expect(reasoningEffortLabel('xhigh')).toBe('Max')
+    expect(reasoningEffortLabel('xhigh')).toBe('XHigh')
+    expect(reasoningEffortLabel('max')).toBe('Max')
+    expect(reasoningEffortLabel('ultra')).toBe('Ultra')
     expect(reasoningEffortLabel('')).toBe('')
   })
 

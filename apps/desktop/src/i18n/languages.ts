@@ -1,3 +1,5 @@
+import { normalize } from '@/lib/text'
+
 import type { Locale } from './types'
 
 // Universal safe fallback (also the test/type baseline). The ApexNodes shell
@@ -78,11 +80,11 @@ export function normalizeLocale(value: unknown): Locale {
     return DEFAULT_LOCALE
   }
 
-  return LOCALE_ALIASES[value.trim().toLowerCase()] ?? DEFAULT_LOCALE
+  return LOCALE_ALIASES[normalize(value)] ?? DEFAULT_LOCALE
 }
 
 export function isSupportedLocaleValue(value: unknown): boolean {
-  return typeof value === 'string' && LOCALE_ALIASES[value.trim().toLowerCase()] != null
+  return typeof value === 'string' && LOCALE_ALIASES[normalize(value)] != null
 }
 
 export function localeConfigValue(locale: Locale): string {

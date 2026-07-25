@@ -12,6 +12,10 @@ const toggleSkill = vi.fn()
 
 vi.mock('@/hermes', () => ({
   getSkills: () => getSkills(),
+  // store/profile routes every API call through this on subscribe, and the
+  // module graph under ContextMenu pulls it in. Without the stub the mock
+  // module throws before any test body runs.
+  setApiRequestProfile: vi.fn(),
   toggleSkill: (name: string, enabled: boolean) => toggleSkill(name, enabled)
 }))
 
@@ -46,6 +50,9 @@ const STATE: ChatBarState = {
 }
 
 function renderMenu() {
+  // The capability menu takes no attachment handlers — the router is the only
+  // context it needs (the connectors row navigates). What this file asserts is
+  // which skill rows the menu renders at all.
   return render(
     <MemoryRouter>
       <ContextMenu state={STATE} />

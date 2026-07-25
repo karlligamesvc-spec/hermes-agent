@@ -30,8 +30,8 @@ export function filterEnv(info: EnvVarInfo, key: string, q: string, cat: string,
 
 export function SettingsCategoryHeading({ count, icon: Icon, title }: CategoryHeadingProps) {
   return (
-    <div className="p5-section-heading">
-      <Icon className="size-[1.0625rem]" />
+    <div className="mb-3 flex items-center gap-2 text-[length:var(--conversation-text-font-size)] font-medium">
+      <Icon className="size-4 text-muted-foreground" />
       <span>{title}</span>
       {count && <Pill>{count}</Pill>}
     </div>
@@ -76,6 +76,7 @@ export function useEnvCredentials(): UseEnvCredentials {
     })()
 
     return () => void (cancelled = true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount; copy is stable
   }, [])
 
   function patchVar(key: string, patch: Partial<Pick<EnvVarInfo, 'is_set' | 'redacted_value'>>) {

@@ -1,22 +1,35 @@
+import { atom } from 'nanostores'
+import type { ReactNode } from 'react'
+
+import { registry } from '@/contrib/registry'
+
 export const SESSION_ROUTE_PREFIX = '/'
 export const NEW_CHAT_ROUTE = '/'
 export const SETTINGS_ROUTE = '/settings'
 export const COMMAND_CENTER_ROUTE = '/command-center'
 export const SKILLS_ROUTE = '/skills'
 export const MESSAGING_ROUTE = '/messaging'
-// hc-417 "IM 入口" — the consumer-facing page to connect the local agent to an
-// IM platform (飞书 first). Distinct from MESSAGING_ROUTE, which is the
-// developer-oriented per-platform env editor (consumer-hidden).
-export const IM_ENTRY_ROUTE = '/im-entry'
 export const ARTIFACTS_ROUTE = '/artifacts'
 export const CRON_ROUTE = '/cron'
-export const TASKS_ROUTE = '/tasks'
 export const PROFILES_ROUTE = '/profiles'
-// 个人资料 — the account/usage-stats page (avatar header + token heatmap).
-// Distinct from PROFILES_ROUTE, which is the multi-profile (配置档案) manager.
-export const PROFILE_STATS_ROUTE = '/profile'
 export const AGENTS_ROUTE = '/agents'
+export const STARMAP_ROUTE = '/starmap'
+// 搜索 lives on its own main-area page (same shell as 插件/产物) rather than as
+// a field stacked on top of the sidebar, which pushes every conversation down.
 export const SEARCH_ROUTE = '/search'
+
+// ApexNodes-only destinations, mounted on the contribution shell alongside the
+// upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
+// overlay set for `profile`).
+//
+// hc-417 "IM 入口" — connect the local agent to an IM platform (飞书 first).
+// Distinct from MESSAGING_ROUTE, the developer-oriented per-platform env editor.
+export const IM_ENTRY_ROUTE = '/im-entry'
+// 任务 — the delegated/background task board.
+export const TASKS_ROUTE = '/tasks'
+// 个人资料 — the account/usage-stats page (avatar header + token heatmap).
+// Distinct from PROFILES_ROUTE, the multi-profile (配置档案) manager.
+export const PROFILE_STATS_ROUTE = '/profile'
 
 export type AppView =
   | 'agents'
@@ -25,13 +38,19 @@ export type AppView =
   | 'command-center'
   | 'cron'
   | 'im-entry'
-  | 'messaging'
   | 'profile'
+  | 'tasks'
+  // A contributed (plugin) full page at its own route — NOT chat. Without this
+  // distinction contributed paths fell through appViewForPath's 'chat' default,
+  // so the sidebar kept a session highlighted and the titlebar kept the
+  // session-title dropdown while a plugin page was showing.
+  | 'extension'
+  | 'messaging'
   | 'profiles'
   | 'search'
   | 'settings'
   | 'skills'
-  | 'tasks'
+  | 'starmap'
 
 export type AppRouteId =
   | 'agents'
@@ -46,6 +65,7 @@ export type AppRouteId =
   | 'search'
   | 'settings'
   | 'skills'
+  | 'starmap'
   | 'tasks'
 
 export interface AppRoute {
@@ -60,29 +80,79 @@ export const APP_ROUTES = [
   { id: 'command-center', path: COMMAND_CENTER_ROUTE, view: 'command-center' },
   { id: 'skills', path: SKILLS_ROUTE, view: 'skills' },
   { id: 'messaging', path: MESSAGING_ROUTE, view: 'messaging' },
-  { id: 'im-entry', path: IM_ENTRY_ROUTE, view: 'im-entry' },
   { id: 'artifacts', path: ARTIFACTS_ROUTE, view: 'artifacts' },
   { id: 'cron', path: CRON_ROUTE, view: 'cron' },
-  { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },
-  { id: 'search', path: SEARCH_ROUTE, view: 'search' },
   { id: 'profiles', path: PROFILES_ROUTE, view: 'profiles' },
+  { id: 'agents', path: AGENTS_ROUTE, view: 'agents' },
+  { id: 'starmap', path: STARMAP_ROUTE, view: 'starmap' },
+  { id: 'im-entry', path: IM_ENTRY_ROUTE, view: 'im-entry' },
+  { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },
   { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' },
-  { id: 'agents', path: AGENTS_ROUTE, view: 'agents' }
+  { id: 'search', path: SEARCH_ROUTE, view: 'search' }
 ] as const satisfies readonly AppRoute[]
 
 const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))
 const RESERVED_PATHS: ReadonlySet<string> = new Set(APP_ROUTES.map(route => route.path))
 
+// ── Contributed routes — the `routes` registry area ─────────────────────────
+// A contribution mounts a FULL PAGE in the workspace pane at `data.path`
+// (`render` on the contribution itself, like every other area). Contributed
+// paths are reserved exactly like APP_ROUTES so the session-id parser never
+// mistakes them for a session route. Navigate with `host.navigate(path)`.
+
+export const ROUTES_AREA = 'routes'
+
+/** Payload of a `routes` contribution's `data`. */
+export interface RouteContribution {
+  /** Absolute path, e.g. `/kanban`. One segment; no params. */
+  path: string
+}
+
+export function contributedRoutes(): Array<{ key: string; path: string; title?: string; render: () => ReactNode }> {
+  return registry
+    .getArea(ROUTES_AREA)
+    .map(c => ({
+      key: `${c.source ?? 'core'}:${c.id}`,
+      path: (c.data as RouteContribution | undefined)?.path ?? '',
+      title: c.title,
+      render: c.render!
+    }))
+    .filter(route => Boolean(route.path.startsWith('/') && route.render) && !RESERVED_PATHS.has(route.path))
+}
+
+function isContributedPath(pathname: string): boolean {
+  return contributedRoutes().some(route => route.path === pathname)
+}
+
+// ── Contributed sidebar nav — the `sidebar.nav` registry area ────────────────
+// A DATA contribution adds a row to the sidebar's top nav (below Artifacts).
+// Pair with a ROUTES_AREA page: the row navigates to `path` and lights up
+// while the app is there.
+
+export const SIDEBAR_NAV_AREA = 'sidebar.nav'
+
+/** Payload of a `sidebar.nav` data contribution. */
+export interface SidebarNavContribution {
+  /** Codicon name, e.g. `'project'`. */
+  codicon: string
+  label: string
+  /** Route to navigate to (usually a contributed page's path). */
+  path: string
+}
+
 // Views that render as a full-screen modal card (OverlayView) over the shell.
 // While one is open the app's titlebar control clusters must hide so they don't
 // bleed over the overlay (they sit at a higher z-index than the overlay card).
-// cron/search/skills/artifacts are NOT overlays — they render in the main region.
 export const OVERLAY_VIEWS: ReadonlySet<AppView> = new Set([
   'agents',
   'command-center',
+  'cron',
+  // 个人资料 is a full-screen card over the shell, like profiles/settings — not
+  // a workspace page (the chat stays beneath it).
   'profile',
   'profiles',
-  'settings'
+  'settings',
+  'starmap'
 ])
 
 export function isOverlayView(view: AppView): boolean {
@@ -94,7 +164,7 @@ export function isNewChatRoute(pathname: string): boolean {
 }
 
 export function routeSessionId(pathname: string): string | null {
-  if (!pathname.startsWith(SESSION_ROUTE_PREFIX) || RESERVED_PATHS.has(pathname)) {
+  if (!pathname.startsWith(SESSION_ROUTE_PREFIX) || RESERVED_PATHS.has(pathname) || isContributedPath(pathname)) {
     return null
   }
 
@@ -112,5 +182,25 @@ export function appViewForPath(pathname: string): AppView {
     return 'chat'
   }
 
+  if (isContributedPath(pathname)) {
+    return 'extension'
+  }
+
   return APP_VIEW_BY_PATH.get(pathname) ?? 'chat'
+}
+
+/** True while the workspace pane shows a FULL PAGE (skills/messaging/
+ *  artifacts/plugin routes) instead of the chat. Published by the wiring
+ *  (which owns the router location); the workspace pane contribution mirrors
+ *  it as `headerVeto` so the zone tab bar stands down on pages. Overlays
+ *  (settings/…) don't count — the chat stays beneath them. */
+export const $workspaceIsPage = atom(false)
+
+export function syncWorkspaceIsPage(pathname: string): void {
+  const view = appViewForPath(pathname)
+  const isPage = view !== 'chat' && !isOverlayView(view)
+
+  if (isPage !== $workspaceIsPage.get()) {
+    $workspaceIsPage.set(isPage)
+  }
 }

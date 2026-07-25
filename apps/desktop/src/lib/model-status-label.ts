@@ -1,14 +1,18 @@
+import { normalize } from '@/lib/text'
+
 const REASONING_LABELS: Record<string, string> = {
   none: 'Off',
   minimal: 'Min',
   low: 'Low',
   medium: 'Med',
   high: 'High',
-  xhigh: 'Max'
+  xhigh: 'XHigh',
+  max: 'Max',
+  ultra: 'Ultra'
 }
 
 export function reasoningEffortLabel(effort: string): string {
-  const key = effort.trim().toLowerCase()
+  const key = normalize(effort)
 
   if (!key) {
     return ''
@@ -61,8 +65,7 @@ const ACRONYM_WORDS: Record<string, string> = {
   Glm: 'GLM'
 }
 
-const fixAcronyms = (text: string): string =>
-  text.replace(/\b[A-Z][a-z]+\b/g, word => ACRONYM_WORDS[word] ?? word)
+const fixAcronyms = (text: string): string => text.replace(/\b[A-Z][a-z]+\b/g, word => ACRONYM_WORDS[word] ?? word)
 
 function prettifyBase(base: string): string {
   if (/^claude-/i.test(base)) {
@@ -88,7 +91,7 @@ function prettifyBase(base: string): string {
   return fixAcronyms(titleCase(dotted.replace(/-/g, ' ')))
 }
 
-// The ApexNodes managed-relay sentinel suffix (see electron/apex-managed.cjs
+// The ApexNodes managed-relay sentinel suffix (see electron/apex-managed.ts
 // MANAGED_MODEL_DISPLAY): the config anchor id carries `-APEX` so it can't
 // collide with a built-in provider catalog. For DISPLAY it is a brand marker,
 // not part of the model name — every surface (composer pill, picker rows,
@@ -131,7 +134,7 @@ export function modelDisplayParts(model: string): { name: string; tag: string } 
 // ApexNodes managed-LLM display mapping. The managed default seeds
 // `model.default: deepseek-v4-pro` routed through the relay; the UI shows the
 // ApexNodes-branded label. The relay decouples display from routing (hc-184),
-// so this is purely cosmetic. Kept in sync with electron/apex-managed.cjs
+// so this is purely cosmetic. Kept in sync with electron/apex-managed.ts
 // (DEFAULT_MANAGED_MODEL / MANAGED_MODEL_DISPLAY).
 const MANAGED_MODEL_ID = 'deepseek-v4-pro'
 const MANAGED_MODEL_DISPLAY = 'deepseek-v4-pro-APEX'
@@ -149,16 +152,18 @@ export function displayModelName(model: string): string {
 }
 
 /** Status bar trigger label — model name plus the live session state (effort/fast).
+ *  `displayModelName` already folds the managed `-APEX` brand suffix into the tag
+ *  slot (modelDisplayParts), so the pill and the picker rows render the exact
+ *  same name — no surface-local stripping needed here (hc-512).
+ *
  *  `effortLabel`/`fastLabel` let the caller pass localized display text (the
  *  composer pill passes the zh 低/中/高/… labels); without them the compact
- *  English fallbacks below apply. */
+ *  English fallbacks below apply. This lib has no i18n context of its own, so
+ *  dropping the parameters is what put `Fast Med` in front of Chinese users. */
 export function formatModelStatusLabel(
   model: string,
   options?: { fastMode?: boolean; reasoningEffort?: string; effortLabel?: string; fastLabel?: string }
 ): string {
-  // displayModelName already folds the managed `-APEX` brand suffix into the
-  // tag slot (modelDisplayParts), so the pill and the picker rows render the
-  // exact same name — no surface-local stripping (hc-512).
   const name = displayModelName(model)
 
   if (!model.trim()) {

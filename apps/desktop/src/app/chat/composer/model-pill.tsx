@@ -2,11 +2,13 @@ import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { useSessionView } from '@/app/chat/session-view'
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { ProviderIcon } from '@/components/ui/provider-icon'
+import { Tip } from '@/components/ui/tooltip'
 import { getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
@@ -14,13 +16,7 @@ import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
-import {
-  $currentFastMode,
-  $currentModel,
-  $currentProvider,
-  $currentReasoningEffort,
-  setModelPickerOpen
-} from '@/store/session'
+import { $currentModelSource, setModelPickerOpen } from '@/store/session'
 import type { MoaConfigResponse } from '@/types/hermes'
 
 import type { ChatBarState } from './types'
@@ -34,29 +30,57 @@ const PILL = cn(
  * Composer model selector — the relocated status-bar pill. Reuses the live
  * `model.options` dropdown (`modelMenuContent`) verbatim; falls back to the
  * full picker when the gateway is closed and no live menu exists.
+ *
+ * Display follows THIS surface's SessionView (primary or tile) — never the
+ * primary-only globals — so side-by-side panes each show their own model.
  */
-export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatBarState['model'] }) {
+export function ModelPill({
+  compact = false,
+  disabled,
+  model
+}: {
+  compact?: boolean
+  disabled: boolean
+  model: ChatBarState['model']
+}) {
   const { t } = useI18n()
   const copy = t.shell.statusbar
   const modelOptionsCopy = t.shell.modelOptions
-  const currentModel = useStore($currentModel)
-  const currentProvider = useStore($currentProvider)
-  const fastMode = useStore($currentFastMode)
-  const reasoningEffort = useStore($currentReasoningEffort)
+  const view = useSessionView()
+  // Prefer the chat-bar snapshot (already view-scoped by ChatView); fall back
+  // to the live SessionView atoms so a mid-flight session.info still paints.
+  const viewModel = useStore(view.$model)
+  const viewProvider = useStore(view.$provider)
+  const currentModel = model.model || viewModel
+  const currentProvider = model.provider || viewProvider
+  const fastMode = useStore(view.$fast)
+  const reasoningEffort = useStore(view.$reasoningEffort)
+  const modelSource = useStore($currentModelSource)
+  const runtimeId = useStore(view.$runtimeId)
   const [open, setOpen] = useState(false)
 
-  // hc-578 leg A/B: a composed multi-model selection has no single model name
-  // to show ("__auto__"/"moa" would leak the mechanism) — read the same
-  // preset the picker composes from (shared cache, same query key) so the
-  // pill can show "N models selected" instead. Only fetched when it matters.
+  // The composer pick is sticky: a manual selection is pinned and every NEW
+  // chat uses it instead of the Settings → Model default — silently, which has
+  // cost users real money on a forgotten paid-model pick (#62055). Surface the
+  // pin whenever a draft (no live session) is running on a manual override. A
+  // live session's footer reflects that session's model, so no badge there.
+  // Tiles always have a runtime — pin badge is primary-draft only.
+  const pinnedOverride =
+    view.kind === 'primary' && !runtimeId && modelSource === 'manual' && Boolean(currentModel.trim())
+
+  // hc-578 (MOA-INVISIBLE-DESIGN): a composed multi-model selection has no
+  // single model name to show — "__auto__" / "moa" would leak the mechanism.
+  // Read the preset the picker composed (same query key, shared cache) so the
+  // pill can read "N models selected" instead. Only fetched when it matters.
   const moaOptions = useQuery({
     queryKey: ['moa-presets'],
     queryFn: (): Promise<MoaConfigResponse | null> => getMoaModels().catch(() => null),
     enabled: currentProvider === 'moa'
   })
 
-  const composedCount =
-    currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
+  // The member count is the ONLY number any surface may show; the
+  // aggregator/reference split underneath stays invisible everywhere.
+  const composedCount = currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
 
   // Localized effort tag for the pill (低/中/高/超高) — unknown/none efforts fall
   // back to the lib's compact English labels.
@@ -73,7 +97,9 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text
   // color at half opacity) until a model lands.
-  const label = (
+  const label = compact ? (
+    <ChevronDown className="size-3.5 shrink-0 opacity-70" />
+  ) : (
     <>
       {composedCount >= 2 ? (
         <span className="truncate">{t.settings.model.selectedShort(composedCount)}</span>
@@ -92,44 +118,64 @@ export function ModelPill({ disabled, model }: { disabled: boolean; model: ChatB
       ) : (
         <GlyphSpinner className="opacity-50" spinner="braille" />
       )}
+      {pinnedOverride && (
+        <span
+          aria-label={copy.modelPinned}
+          className="size-1 shrink-0 rounded-full bg-(--ui-accent)"
+          data-testid="model-pinned-dot"
+          role="img"
+        />
+      )}
       <ChevronDown className="size-2.5 shrink-0 opacity-50" />
     </>
   )
 
+  // Compact (floating composer): a snug square holding just the chevron — no pill
+  // padding, sized to match the other composer icon buttons.
+  const pillClass = compact
+    ? cn(
+        'size-(--composer-control-size) shrink-0 justify-center gap-0 rounded-md p-0',
+        'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
+      )
+    : PILL
+
   // A composed selection has no single provider/model to name in the hover
-  // title either — same "N models selected" copy, never "moa"/"__auto__".
-  // Short form: this doubles as the button's aria-label, and reading the full
-  // billing sentence out on every focus is noise (it lives in Settings › Model).
-  const title =
+  // title either — same "N models selected" copy, never "moa" / "__auto__".
+  const baseTitle =
     composedCount >= 2
       ? t.settings.model.selectedShort(composedCount)
       : currentProvider
         ? copy.modelTitle(currentProvider, currentModel || copy.modelNone)
         : copy.switchModel
 
+  const title = pinnedOverride ? `${baseTitle} — ${copy.modelPinned}` : baseTitle
+
   if (!model.modelMenuContent) {
     return (
-      <Button
-        aria-label={copy.openModelPicker}
-        className={PILL}
-        disabled={disabled}
-        onClick={() => setModelPickerOpen(true)}
-        title={copy.openModelPicker}
-        type="button"
-        variant="ghost"
-      >
-        {label}
-      </Button>
+      <Tip label={pinnedOverride ? `${copy.openModelPicker} — ${copy.modelPinned}` : copy.openModelPicker} side="top">
+        <Button
+          aria-label={copy.openModelPicker}
+          className={pillClass}
+          disabled={disabled}
+          onClick={() => setModelPickerOpen(true)}
+          type="button"
+          variant="ghost"
+        >
+          {label}
+        </Button>
+      </Tip>
     )
   }
 
   return (
     <DropdownMenu onOpenChange={setOpen} open={open}>
-      <DropdownMenuTrigger asChild>
-        <Button aria-label={title} className={PILL} disabled={disabled} title={title} type="button" variant="ghost">
-          {label}
-        </Button>
-      </DropdownMenuTrigger>
+      <Tip label={title} side="top">
+        <DropdownMenuTrigger asChild>
+          <Button aria-label={title} className={pillClass} disabled={disabled} type="button" variant="ghost">
+            {label}
+          </Button>
+        </DropdownMenuTrigger>
+      </Tip>
       <DropdownMenuContent align="end" className="w-64 p-0" side="top" sideOffset={8}>
         <ModelMenuCloseContext.Provider value={() => setOpen(false)}>
           {model.modelMenuContent}

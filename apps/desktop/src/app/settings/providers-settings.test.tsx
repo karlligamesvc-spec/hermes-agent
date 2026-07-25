@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { atom } from 'nanostores'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +9,7 @@ const listOAuthProviders = vi.fn()
 const disconnectOAuthProvider = vi.fn()
 const getEnvVars = vi.fn()
 const startManualProviderOAuth = vi.fn()
+const startManualLocalEndpoint = vi.fn()
 const onboarding = atom({ manual: false })
 
 vi.mock('@/hermes', () => ({
@@ -19,7 +20,8 @@ vi.mock('@/hermes', () => ({
 
 vi.mock('@/store/onboarding', () => ({
   $desktopOnboarding: onboarding,
-  startManualProviderOAuth: (providerId: string) => startManualProviderOAuth(providerId)
+  startManualProviderOAuth: (providerId: string) => startManualProviderOAuth(providerId),
+  startManualLocalEndpoint: (reason: null | string) => startManualLocalEndpoint(reason)
 }))
 
 function provider(id: string, loggedIn: boolean, patch: Partial<OAuthProvider> = {}): OAuthProvider {
@@ -72,17 +74,21 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+// The accounts view hosts the ApexNodes connection cards; the IM-entry one
+// navigates to /im-entry, so this view needs a router in scope. The cards
+// themselves render nothing here (no window.hermesDesktop bridge in jsdom).
 async function renderProvidersSettings() {
   const { ProvidersSettings } = await import('./providers-settings')
+  let result: ReturnType<typeof render>
+  await act(async () => {
+    result = render(
+      <MemoryRouter>
+        <ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />
+      </MemoryRouter>
+    )
+  })
 
-  // The "accounts" view now also mounts ImEntrySettings (hc-417), which calls
-  // useNavigate() for its "go to /im-entry" button — needs a Router ancestor,
-  // same as the real app shell always provides.
-  return render(
-    <MemoryRouter>
-      <ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />
-    </MemoryRouter>
-  )
+  return result!
 }
 
 describe('ProvidersSettings', () => {
@@ -90,7 +96,9 @@ describe('ProvidersSettings', () => {
     await renderProvidersSettings()
 
     const remove = await screen.findByRole('button', { name: 'Remove MiniMax' })
-    fireEvent.click(remove)
+    await act(async () => {
+      fireEvent.click(remove)
+    })
 
     await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('minimax-oauth'))
     expect(listOAuthProviders).toHaveBeenCalledTimes(2)
@@ -99,7 +107,9 @@ describe('ProvidersSettings', () => {
   it('keeps provider selection separate from account removal', async () => {
     await renderProvidersSettings()
 
-    fireEvent.click(await screen.findByText('MiniMax'))
+    await act(async () => {
+      fireEvent.click(await screen.findByText('MiniMax'))
+    })
 
     expect(startManualProviderOAuth).toHaveBeenCalledWith('minimax-oauth')
     expect(disconnectOAuthProvider).not.toHaveBeenCalled()
@@ -115,8 +125,8 @@ describe('ProvidersSettings', () => {
     await renderProvidersSettings()
 
     expect(await screen.findByText('MiniMax')).toBeTruthy()
-    expect(screen.queryByText('Nous Portal')).toBeNull()
-    expect(screen.queryByText(/Anthropic/)).toBeNull()
+    expect(screen.queryByText('nous')).toBeNull()
+    expect(screen.queryByText(/anthropic/)).toBeNull()
   })
 
   it('does not offer removal for externally managed providers', async () => {
@@ -124,7 +134,7 @@ describe('ProvidersSettings', () => {
       providers: [
         provider('qwen-oauth', true, {
           cli_command: 'hermes auth add qwen-oauth',
-          disconnect_hint: 'Use `hermes auth add qwen-oauth` or that provider\'s CLI to remove it.',
+          disconnect_hint: "Use `hermes auth add qwen-oauth` or that provider's CLI to remove it.",
           disconnectable: false,
           flow: 'external',
           name: 'Qwen (via Qwen CLI)'
@@ -155,7 +165,9 @@ describe('ProvidersSettings', () => {
     listOAuthProviders.mockResolvedValue({ providers: [] })
 
     const { ProvidersSettings } = await import('./providers-settings')
-    render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
+    await act(async () => {
+      render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
+    })
 
     expect(await screen.findByText('Tencent TokenHub')).toBeTruthy()
   })
@@ -201,14 +213,37 @@ describe('ProvidersSettings', () => {
 
     // Typing narrows the list to matching providers only.
     const search = screen.getByPlaceholderText('Search providers…')
-    fireEvent.change(search, { target: { value: 'mid' } })
+    await act(async () => {
+      fireEvent.change(search, { target: { value: 'mid' } })
+    })
 
     await waitFor(() => expect(screen.queryByText('Acme')).toBeNull())
     expect(screen.getByText('Middle')).toBeTruthy()
     expect(screen.queryByText('Zebra')).toBeNull()
 
     // A non-matching query shows the empty-state copy.
-    fireEvent.change(search, { target: { value: 'nonesuch-xyz' } })
+    await act(async () => {
+      fireEvent.change(search, { target: { value: 'nonesuch-xyz' } })
+    })
     expect(await screen.findByText('No providers match your search.')).toBeTruthy()
+  })
+
+  it('offers a Local / custom endpoint entry in the API-keys tab that opens the custom-endpoint flow', async () => {
+    // Regression: the composer pill and the providers "have an API key"
+    // affordance both dead-end on the env-var-driven key catalog, which never
+    // lists a custom endpoint — so without this row there is no reachable
+    // Desktop GUI path to add one. See issue #62817.
+    getEnvVars.mockResolvedValue({})
+    listOAuthProviders.mockResolvedValue({ providers: [] })
+
+    const { ProvidersSettings } = await import('./providers-settings')
+    render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
+
+    const row = await screen.findByText('Local / custom endpoint')
+    expect(screen.getByText(/OpenAI-compatible endpoint/)).toBeTruthy()
+
+    fireEvent.click(row)
+
+    await waitFor(() => expect(startManualLocalEndpoint).toHaveBeenCalledWith(null))
   })
 })

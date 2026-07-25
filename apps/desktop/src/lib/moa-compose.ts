@@ -12,6 +12,21 @@ import type { MoaConfigResponse, MoaModelSlot } from '@/types/hermes'
  *  shown to the user (the picker renders "N models selected", not a preset). */
 export const AUTO_PRESET_NAME = '__auto__'
 
+/**
+ * Whether upstream's EXPLICIT Mixture-of-Agents UI may render.
+ *
+ * Upstream ships two such surfaces — Settings › 模型's preset/aggregator/
+ * reference editor, and the composer model menu's "MoA presets" list — both of
+ * which name the mechanism this design exists to hide. ApexNodes keeps them
+ * shut and offers the silent multi-select instead.
+ *
+ * Held as a flag rather than deleting upstream's markup so the next version
+ * bump merges without conflicting on those blocks. Typed `boolean` (not the
+ * `false` literal) so the gated JSX stays type-checked rather than narrowed
+ * away.
+ */
+export const SHOW_EXPLICIT_MOA_UI: boolean = false
+
 /** Aggregator priority — best quality-per-cost first (MOA-INVISIBLE-DESIGN §3).
  *  The aggregator is the ACTING model (holds the tools, takes every turn), so
  *  its discipline/speed/cost dominate; the strongest-cheapest domestic model

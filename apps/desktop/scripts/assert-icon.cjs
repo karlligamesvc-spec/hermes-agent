@@ -9,16 +9,24 @@
 //
 // To intentionally change the icon: replace the asset(s), keep 1024x1024 + the
 // ~80% art fill (10% margin), then update the sha256 below
-// (run: `shasum -a 256 assets/icon.png assets/icon.icns assets/icon.ico`).
+// (run: `shasum -a 256 assets/icon.png assets/icon.icns assets/icon.ico \
+//         public/apple-touch-icon.png`).
+//
+// hc-589: public/apple-touch-icon.png is pinned here too. It is not just a
+// favicon — it is the in-app brand mark (login screen, onboarding rows, the
+// Electron window/taskbar icon), and an upstream rebase silently replaced it
+// with the upstream mascot while the three bundle icons above were still
+// unguarded (the build script had dropped this check). Both halves are back.
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const ASSETS = path.join(__dirname, '..', 'assets')
+const ROOT = path.join(__dirname, '..')
 const EXPECTED = {
-  'icon.png': 'fb28595680bbae35b9357ebb40d4866d4e5353b31269a1e8684d66e505193817',
-  'icon.icns': '2d9f13eb9be85e243c7268fc5c83bbe66e6b26dc6e8df277c1c596ca3b724155',
-  'icon.ico': 'ae2299f9b34252c7dc3834d142319e745e1624f8bdf0b6f51d4fcd0702050eef'
+  'assets/icon.png': 'fb28595680bbae35b9357ebb40d4866d4e5353b31269a1e8684d66e505193817',
+  'assets/icon.icns': '2d9f13eb9be85e243c7268fc5c83bbe66e6b26dc6e8df277c1c596ca3b724155',
+  'assets/icon.ico': 'ae2299f9b34252c7dc3834d142319e745e1624f8bdf0b6f51d4fcd0702050eef',
+  'public/apple-touch-icon.png': 'cefdffb38638a13d574422d0d91a6a15a8590a2878f206b7717713edc16303bf'
 }
 
 let failed = false
@@ -26,19 +34,19 @@ let failed = false
 for (const [name, expected] of Object.entries(EXPECTED)) {
   let buf
   try {
-    buf = fs.readFileSync(path.join(ASSETS, name))
+    buf = fs.readFileSync(path.join(ROOT, name))
   } catch {
-    console.error(`[assert-icon] missing icon asset: assets/${name}`)
+    console.error(`[assert-icon] missing icon asset: ${name}`)
     failed = true
     continue
   }
   const got = crypto.createHash('sha256').update(buf).digest('hex')
   if (got !== expected) {
     console.error(
-      `[assert-icon] assets/${name} changed (sha256 ${got.slice(0, 12)}… ≠ pinned ${expected.slice(0, 12)}…).\n` +
-        '  The app icon is LOCKED to stop size/padding drift between updates.\n' +
-        '  If intentional: keep 1024x1024 + ~80% art fill (macOS grid), then update\n' +
-        '  the sha256 in scripts/assert-icon.cjs (shasum -a 256 assets/icon.*).'
+      `[assert-icon] ${name} changed (sha256 ${got.slice(0, 12)}… ≠ pinned ${expected.slice(0, 12)}…).\n` +
+        '  The app icon is LOCKED to stop size/padding drift AND upstream-rebase\n' +
+        '  brand loss. If intentional: keep 1024x1024 + ~80% art fill (macOS grid),\n' +
+        '  then update the sha256 in scripts/assert-icon.cjs.'
     )
     failed = true
   }
@@ -46,7 +54,7 @@ for (const [name, expected] of Object.entries(EXPECTED)) {
 
 // Belt-and-suspenders: PNG must be exactly 1024x1024 (IHDR width/height at 16..24).
 try {
-  const png = fs.readFileSync(path.join(ASSETS, 'icon.png'))
+  const png = fs.readFileSync(path.join(ROOT, 'assets', 'icon.png'))
   const w = png.readUInt32BE(16)
   const h = png.readUInt32BE(20)
   if (w !== 1024 || h !== 1024) {

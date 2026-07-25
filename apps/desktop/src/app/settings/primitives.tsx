@@ -8,24 +8,28 @@ import { cn } from '@/lib/utils'
 
 import { PAGE_INSET_X } from '../layout-constants'
 
-export function SettingsContent({ children }: { children: ReactNode }) {
+// `bare` drops the page gutters + tall bottom pad for embedding in a tighter
+// surface (e.g. the boot-failure recovery card owns its own padding).
+export function SettingsContent({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   return (
-    <section className="p5-settings min-h-0 overflow-hidden">
-      <div className={cn('h-full min-h-0 overflow-y-auto pb-24', PAGE_INSET_X)}>
-        <div className="p5-page">{children}</div>
+    <section className="min-h-0 overflow-hidden">
+      <div className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}>
+        {children}
       </div>
     </section>
   )
 }
 
-export function Pill({ tone = 'muted', children }: { tone?: 'muted' | 'primary'; children: ReactNode }) {
-  return <Badge variant={tone === 'primary' ? 'default' : 'muted'}>{children}</Badge>
+const PILL_VARIANT = { muted: 'muted', primary: 'default', warn: 'warn' } as const
+
+export function Pill({ tone = 'muted', children }: { tone?: keyof typeof PILL_VARIANT; children: ReactNode }) {
+  return <Badge variant={PILL_VARIANT[tone]}>{children}</Badge>
 }
 
 export function SectionHeading({ icon: Icon, title, meta }: { icon: IconComponent; title: string; meta?: string }) {
   return (
-    <div className="p5-section-heading">
-      <Icon className="size-[1.0625rem]" />
+    <div className="mb-2.5 flex items-center gap-2 pt-2 text-[length:var(--conversation-text-font-size)] font-medium">
+      <Icon className="size-4 text-muted-foreground" />
       <span>{title}</span>
       {meta && <Pill>{meta}</Pill>}
     </div>
@@ -78,14 +82,28 @@ export function ListRow({
   wide?: boolean
 }) {
   return (
-    <div className="p5-row" data-wide={wide || undefined}>
-      <div className="min-w-0">
-        <div className="p5-row-title">{title}</div>
-        {description && <div className="p5-row-desc">{description}</div>}
-        {hint && <div className="p5-row-hint">{hint}</div>}
-        {below}
+    // Container-queried, not viewport-queried: the label/control split keys on
+    // the row's own pane width, so a narrow detail column (messaging, split
+    // views) stacks instead of squishing the label against minmax(15rem,…).
+    <div className="@container">
+      <div
+        className={cn(
+          'grid gap-3 py-3',
+          !wide && '@2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center'
+        )}
+      >
+        <div className="min-w-0">
+          <div className="text-[length:var(--conversation-text-font-size)] font-medium text-foreground">{title}</div>
+          {description && (
+            <div className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+              {description}
+            </div>
+          )}
+          {hint && <div className="mt-1 block font-mono text-[0.68rem] text-muted-foreground/45">{hint}</div>}
+          {below}
+        </div>
+        {action && <div className={cn('min-w-0', !wide && '@2xl:justify-self-end')}>{action}</div>}
       </div>
-      {action && <div className="p5-row-control min-w-0">{action}</div>}
     </div>
   )
 }
@@ -94,15 +112,6 @@ export function LoadingState({ label }: { label: string }) {
   return <PageLoader label={label} />
 }
 
-export function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="grid min-h-52 place-items-center text-center">
-      <div className="max-w-sm">
-        <div className="text-[0.9375rem] font-medium text-foreground">{title}</div>
-        <div className="mt-1.5 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-          {description}
-        </div>
-      </div>
-    </div>
-  )
-}
+// Canonical implementation lives in components/ui; re-exported so the many
+// settings call sites keep their import path.
+export { EmptyState } from '@/components/ui/empty-state'

@@ -10,7 +10,8 @@ import {
   $pendingDesktopLoginCode,
   managedBrowserSignIn,
   managedDeepLinkSignIn,
-  type OnboardingContext
+  type OnboardingContext,
+  skipManagedForByok
 } from '@/store/onboarding'
 
 const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
@@ -63,16 +64,20 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
       return
     }
 
-    void managedBrowserSignIn(provider, ctx).then(() => {
-      // Full success calls ctx.onCompleted (→ markSignedIn) and the gate closes.
-      // But if the account is valid yet the relay-key endpoint isn't deployed,
-      // the onboarding store degrades to BYOK (managedAvailable → false) WITHOUT
-      // completing — step aside so the BYOK picker can take over instead of
-      // trapping the user on a login that can't provision a key.
-      if ($desktopOnboarding.get().managedAvailable === false) {
-        markManagedUnavailable()
-      }
-    })
+    // Full success calls ctx.onCompleted (→ markSignedIn) and the gate closes.
+    // Every failure — bad account, or a valid account the platform couldn't mint
+    // a relay key for — stays HERE with a retry line. Managed is the product's
+    // default path, so nothing routes a signed-in user to a provider picker on
+    // its own; the escape hatch below is the only way there.
+    void managedBrowserSignIn(provider, ctx)
+  }
+
+  // "使用自己的密钥": the explicit BYOK escape hatch. Drops the managed treatment
+  // and steps the account gate aside so the onboarding picker can mount; the
+  // picker's "返回登录" brings this screen back.
+  const useOwnKey = () => {
+    skipManagedForByok()
+    markManagedUnavailable()
   }
 
   // hc-530: web → desktop one-click login. A code parked by the deep-link handler
@@ -85,11 +90,7 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
     }
 
     $pendingDesktopLoginCode.set(null)
-    void managedDeepLinkSignIn(pendingLoginCode, ctx).then(() => {
-      if ($desktopOnboarding.get().managedAvailable === false) {
-        markManagedUnavailable()
-      }
-    })
+    void managedDeepLinkSignIn(pendingLoginCode, ctx)
   }, [pendingLoginCode, managedSubmitting, ctx])
 
   // Prefer the caller's gate notice (session-expired / account-disabled); fall
@@ -134,6 +135,18 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
             {a.signInGoogle}
           </Button>
         </div>
+
+        {/* Escape hatch, deliberately quiet: the product default is zero-key. */}
+        <Button
+          className="mt-6 font-medium text-(--ui-text-tertiary)"
+          disabled={managedSubmitting}
+          onClick={useOwnKey}
+          size="xs"
+          type="button"
+          variant="text"
+        >
+          {a.useOwnKey}
+        </Button>
       </div>
     </div>
   )

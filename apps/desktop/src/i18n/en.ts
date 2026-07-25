@@ -25,7 +25,9 @@ export const en: Translations = {
     docs: 'Docs',
     done: 'Done',
     error: 'Error',
+    expand: 'Expand',
     failed: 'Failed',
+    formatJson: 'Format JSON',
     free: 'Free',
     loading: 'Loading…',
     notSet: 'Not set',
@@ -38,8 +40,25 @@ export const en: Translations = {
     set: 'Set',
     skip: 'Skip',
     update: 'Update',
+    tryHint: term => `Try “${term}”`,
     on: 'On',
     off: 'Off'
+  },
+
+  fileMenu: {
+    revealFinder: 'Reveal in Finder',
+    revealExplorer: 'Reveal in File Explorer',
+    revealFileManager: 'Open Containing Folder',
+    revealInSidebar: 'Reveal in filetree',
+    copyPath: 'Copy Path',
+    copyRelativePath: 'Copy Relative Path',
+    rename: 'Rename…',
+    delete: 'Delete',
+    renameTitle: 'Rename',
+    renameLabel: 'New name',
+    deleteTitle: name => `Delete ${name}?`,
+    deleteBody: 'It will be moved to the Trash — you can restore it from there.',
+    pathCopied: 'Path copied'
   },
 
   boot: {
@@ -57,6 +76,7 @@ export const en: Translations = {
       backgroundExitedDuringStartup: 'APEX background process exited during startup.',
       backendStopped: 'Backend stopped',
       desktopBootFailed: 'Desktop boot failed',
+      gatewayConnectionLost: 'Lost connection to the gateway',
       gatewaySignInRequired: 'Gateway sign-in required',
       ipcBridgeUnavailable: 'Desktop IPC bridge is unavailable.'
     },
@@ -70,9 +90,14 @@ export const en: Translations = {
       retry: 'Retry',
       repairInstall: 'Repair install',
       useLocalGateway: 'Use local gateway',
+      gatewaySettings: 'Gateway settings',
+      back: 'Back',
       openLogs: 'Open logs',
       repairHint: 'Repair re-runs the installer and can take a few minutes on a fresh machine.',
-      remoteSignInHint: 'Opens the gateway login window. Use local gateway to switch to the bundled backend instead.',
+      remoteSignInHint: signInLabel =>
+        `Signs out of the saved remote browser session, then opens ${signInLabel}. Use local gateway to switch to the bundled backend instead.`,
+      signOutAndSignIn: 'Sign out & sign in',
+      remoteFailureHint: 'Check the gateway URL and sign-in under Gateway settings, or switch to the local gateway.',
       hideRecentLogs: 'Hide recent logs',
       showRecentLogs: 'Show recent logs',
       signedInTitle: 'Signed in',
@@ -105,6 +130,7 @@ export const en: Translations = {
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
       'Your APEX backend is older than this desktop build and may not work correctly. Update to align them.',
+    installMethodUnsupportedTitle: 'Unsupported install method',
     updateHermes: 'Update APEX',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
@@ -152,6 +178,11 @@ export const en: Translations = {
     }
   },
 
+  remoteDisplayBanner: {
+    message: reason =>
+      `Software rendering active — remote display detected (${reason}). GPU acceleration is disabled to prevent flickering.`
+  },
+
   titlebar: {
     hideSidebar: 'Hide sidebar',
     showSidebar: 'Show sidebar',
@@ -164,12 +195,16 @@ export const en: Translations = {
     muteHaptics: 'Mute haptics',
     unmuteHaptics: 'Unmute haptics',
     openSettings: 'Open settings',
-    openKeybinds: 'Keyboard shortcuts'
+    openStarmap: 'Open memory graph',
+    openKeybinds: 'Keyboard shortcuts',
+    layoutEditor: 'Layout editor',
+    layoutEditorTitle: 'Layout editor — ⌘-click resets the layout'
   },
 
   keybinds: {
     title: 'Keyboard shortcuts',
     subtitle: open => `Click a shortcut to rebind it · ${open} reopens this panel.`,
+    search: 'Search shortcuts…',
     rebind: 'Rebind',
     reset: 'Reset to default',
     resetAll: 'Reset all',
@@ -195,6 +230,7 @@ export const en: Translations = {
       'nav.cron': 'Open scheduled jobs',
       'nav.agents': 'Open agents',
       'session.new': 'New session',
+      'session.newTab': 'New session tab',
       'session.newWindow': 'New session in window',
       'session.next': 'Next session',
       'session.prev': 'Previous session',
@@ -209,14 +245,22 @@ export const en: Translations = {
       'session.slot.9': 'Switch to recent session 9',
       'session.focusSearch': 'Search sessions',
       'session.togglePin': 'Pin / unpin current session',
+      'workspace.newWorktree': 'New worktree',
       'composer.focus': 'Focus composer',
       'composer.modelPicker': 'Open model picker',
+      'composer.voice': 'Start / stop voice conversation',
       'view.toggleSidebar': 'Toggle sessions sidebar',
       'view.toggleRightSidebar': 'Toggle file browser',
+      'view.toggleReview': 'Toggle review pane',
       'view.showFiles': 'Show file browser',
-      'view.showTerminal': 'Show terminal',
+      'view.showTerminal': 'Toggle terminal',
+      'view.newTerminal': 'New terminal',
+      'view.nextTerminal': 'Next terminal',
+      'view.prevTerminal': 'Previous terminal',
+      'view.closeTerminal': 'Close terminal',
       'view.terminalSelection': 'Send terminal selection to composer',
-      'view.closePreviewTab': 'Close preview tab',
+      'view.closeTab': 'Close tab',
+      'view.reopenTab': 'Reopen closed tab',
       'view.flipPanes': 'Swap sidebar sides',
       'appearance.toggleMode': 'Toggle light / dark',
       'profile.default': 'Switch to default profile',
@@ -276,14 +320,32 @@ export const en: Translations = {
       providers: 'Providers',
       providerAccounts: 'Accounts',
       providerApiKeys: 'API keys',
+      providerCustomEndpoints: 'Custom Endpoints',
       gateway: 'Gateway',
       apiKeys: 'Tools & Keys',
+      keybinds: 'Keyboard Shortcuts',
       keysTools: 'Tools',
       keysSettings: 'Settings',
       mcp: 'MCP',
       archivedChats: 'Archived Chats',
       about: 'About',
-      notifications: 'Notifications'
+      billing: 'Billing',
+      notifications: 'Notifications',
+      plugins: 'Plugins'
+    },
+    plugins: {
+      title: 'Desktop plugins',
+      blurb:
+        'UI extensions loaded into this app — bundled with the build, or dropped into the desktop-plugins folder (including ones APEX writes). Disabling unloads a plugin live and survives restarts.',
+      count: n => `${n} installed`,
+      openFolder: 'Open plugins folder',
+      rescan: 'Rescan',
+      reveal: 'Reveal in file manager',
+      enable: 'Enable',
+      disable: 'Disable',
+      failed: 'failed',
+      empty: 'No desktop plugins installed yet.',
+      kinds: { bundled: 'bundled', disk: 'on disk', runtime: 'runtime' }
     },
     notifications: {
       title: 'Notifications',
@@ -349,15 +411,26 @@ export const en: Translations = {
     },
     appearance: {
       title: 'Appearance',
-      intro: 'Desktop-only display preferences: interface language, light or dark mode, and how tool activity is shown.',
+      intro:
+        'These are desktop-only display preferences. Mode controls brightness; theme controls the accent palette and chat surface styling.',
       colorMode: 'Color Mode',
       colorModeDesc: 'Pick a fixed mode or let APEX follow your system setting.',
       toolViewTitle: 'Tool Call Display',
       toolViewDesc: 'Product hides raw tool payloads; Technical shows full input/output.',
+      uiScaleTitle: 'UI Scale',
+      uiScaleDesc: (percent: number) =>
+        `Scales text and controls across the whole app. Cmd/Ctrl with +, - and 0 also works. Current: ${percent}%.`,
       translucencyTitle: 'Window Translucency',
       translucencyDesc: 'See your desktop through the whole window. macOS and Windows only.',
-      haptics: 'Haptic feedback',
-      hapticsDesc: 'Subtle feedback when using controls.',
+      backdropTitle: 'Chat Backdrop',
+      backdropDesc: 'The faint statue image behind the conversation.',
+      embedsTitle: 'Inline Embeds',
+      embedsDesc:
+        'Rich previews load from third-party sites (YouTube, X, …). Ask shows a placeholder until you allow each one; Always loads them automatically; Off keeps plain links.',
+      embedsAsk: 'Ask',
+      embedsAlways: 'Always',
+      embedsOff: 'Off',
+      embedsReset: (count: number) => `Reset ${count} allowed ${count === 1 ? 'service' : 'services'}`,
       product: 'Product',
       productDesc: 'Human-friendly tool activity with concise summaries.',
       technical: 'Technical',
@@ -374,13 +447,46 @@ export const en: Translations = {
       installError: 'Could not install that theme.',
       installed: name => `Installed “${name}”.`,
       removeTheme: 'Remove theme',
-      importedBadge: 'Imported'
-    },
-    personalization: {
-      personalityTitle: 'Personality',
-      personalityIntro: 'Choose how APEX talks to you. New chats start with this style.',
-      soulTitle: 'Personality file (SOUL.md)',
-      soulIntro: 'The active profile’s SOUL.md — the system prompt and personality instructions APEX starts every chat with.'
+      importedBadge: 'Imported',
+      pet: {
+        title: 'Pet',
+        intro:
+          'Adopt an animated petdex mascot that floats over the app and reacts to what APEX is doing — running while tools execute, celebrating on success, sulking on errors.',
+        restartHint:
+          'Pets need a quick restart — the running app started before this feature was added. Quit and reopen APEX, then come back here.',
+        on: 'On',
+        off: 'Off',
+        scaleTitle: 'Size',
+        scaleDesc: 'Resize the floating mascot. Applies everywhere instantly.',
+        roamTitle: 'Roam',
+        roamDesc: 'Let the pet wander the window on its own while idle.',
+        chooseTitle: 'Choose a pet',
+        chooseDesc: 'Picking one installs it (if needed) and makes it active.',
+        searchPlaceholder: 'Search pets…',
+        unreachable: "Couldn't reach the petdex gallery. Check your connection and reopen this page.",
+        noMatch: query => `No pets match "${query}".`,
+        installedTag: 'installed',
+        generatedTag: 'Generated',
+        countCapped: (cap, total) => `Showing ${cap} of ${total} — type to narrow it down.`,
+        count: n => `${n} pet${n === 1 ? '' : 's'}.`,
+        uninstall: name => `Uninstall ${name}`,
+        delete: name => `Delete ${name}`,
+        deleteTitle: name => `Delete ${name}?`,
+        deleteBody: "This permanently deletes the pet — it can't be reinstalled.",
+        deleteConfirm: 'Delete',
+        rename: name => `Rename ${name}`,
+        renameTitle: 'Rename pet',
+        renamePlaceholder: 'Name your pet',
+        renameSave: 'Save',
+        exportPet: name => `Export ${name}`,
+        adoptFailed: slug => `Could not adopt ${slug}`,
+        uninstallFailed: slug => `Could not uninstall ${slug}`,
+        renameFailed: slug => `Could not rename ${slug}`,
+        exportFailed: slug => `Could not export ${slug}`,
+        noneAvailable: 'No pets available to turn on right now.',
+        turnOnFailed: 'Could not turn the pet on.',
+        turnOffFailed: 'Could not turn the pet off.'
+      }
     },
     fieldLabels: FIELD_LABELS,
     fieldDescriptions: FIELD_DESCRIPTIONS,
@@ -392,6 +498,7 @@ export const en: Translations = {
       checkNow: 'Check now',
       checking: 'Checking…',
       seeWhatsNew: "See what's new",
+      updateNow: 'Update now',
       releaseNotes: 'Release notes',
       onLatest: "You're on the latest version.",
       installing: 'An update is currently installing.',
@@ -448,6 +555,7 @@ export const en: Translations = {
     config: {
       none: 'None',
       noneParen: '(none)',
+      builtinOnly: 'Built-in only',
       notSet: 'Not set',
       commaSeparated: 'comma-separated values',
       loading: 'Loading APEX configuration...',
@@ -465,14 +573,13 @@ export const en: Translations = {
       enterValueFirst: 'Enter a value first.',
       couldNotSave: 'Could not save credential.',
       remove: 'Remove',
-      or: 'or',
-      escToCancel: 'esc to cancel',
       getKey: 'Get a key',
       saving: 'Saving'
     },
     envActions: {
       actionsFor: label => `Actions for ${label}`,
       credentialActions: 'Credential actions',
+      manageInKeys: 'Manage in API Keys',
       docs: 'Docs',
       hideValue: 'Hide value',
       revealValue: 'Reveal value',
@@ -496,11 +603,43 @@ export const en: Translations = {
       envOverrideTitle: 'Environment variables are controlling this desktop session.',
       envOverrideDesc:
         'Unset HERMES_DESKTOP_REMOTE_URL and HERMES_DESKTOP_REMOTE_TOKEN to use the saved setting below.',
+      modeTitle: 'Connection mode',
       localTitle: 'Local gateway',
       localDesc: 'Start a private APEX backend on localhost. This is the default and works offline.',
       remoteTitle: 'Remote gateway',
-      remoteDesc:
-        'Connect this desktop shell to a remote APEX backend. Hosted gateways use OAuth or a username and password; self-hosted ones may use a session token.',
+      remoteDesc: 'Connect this desktop shell to a remote APEX backend.',
+      remoteAuthHint: 'Hosted gateways use OAuth or a username and password; self-hosted ones may use a session token.',
+      cloudTitle: 'Hermes Cloud',
+      cloudDesc: 'Sign in once to Hermes Cloud and pick from the agents on your account — no URL to paste.',
+      cloudSignInTitle: 'Hermes Cloud',
+      cloudSignIn: 'Sign in to Hermes Cloud',
+      cloudSignedIn: 'Signed in to Hermes Cloud',
+      cloudNeedsSignIn: 'Sign in to Hermes Cloud to discover the agents on your account.',
+      cloudSignedInDesc: 'You are signed in. Pick an agent below; the session refreshes automatically.',
+      cloudAgentsTitle: 'Your agents',
+      cloudOrgPickerTitle: 'Choose an organization',
+      cloudOrgSelect: 'Select',
+      cloudOrgChange: 'Change org',
+      cloudOrgRole: role => `Role: ${role}`,
+      cloudLoadingAgents: 'Loading your agents…',
+      cloudNoAgents: {
+        before: 'No agents found on this account. Create one in the ',
+        linkText: 'Nous portal',
+        after: ', then refresh.'
+      },
+      cloudRefresh: 'Refresh',
+      cloudConnect: 'Connect',
+      cloudConnecting: 'Connecting…',
+      cloudDiscoverFailed: 'Could not load your Hermes Cloud agents',
+      cloudConnectFailed: 'Could not connect to that agent',
+      cloudSignInFailed: 'Hermes Cloud sign-in failed',
+      cloudSignedOutTitle: 'Signed out of Hermes Cloud',
+      cloudSignedOutMessage: 'Cleared the Hermes Cloud session.',
+      cloudConnectedTitle: 'Connected',
+      cloudConnectedPill: 'Connected',
+      cloudConnectedTo: name => `Connected to ${name}.`,
+      cloudAgentProvisioning: 'Provisioning…',
+      cloudStatusLabel: status => `Status: ${status}`,
       remoteUrlTitle: 'Remote URL',
       remoteUrlDesc: 'Base URL for the remote dashboard backend. Path prefixes are supported, for example /hermes.',
       probing: 'Checking how this gateway authenticates…',
@@ -534,7 +673,7 @@ export const en: Translations = {
       enterUrlFirst: 'Enter a remote URL first.',
       restartingTitle: 'Gateway connection restarting',
       savedTitle: 'Gateway settings saved',
-      restartingMessage: 'APEX Desktop will reconnect using the saved settings.',
+      restartingMessage: 'APEX Desktop will reconnect using the saved settings — the shell stays open.',
       savedMessage: 'Saved for the next restart.',
       connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · APEX ${version}` : ''}`,
       reachableTitle: 'Remote gateway reachable',
@@ -578,9 +717,53 @@ export const en: Translations = {
       name: 'Name',
       serverJson: 'Server JSON',
       remove: 'Remove',
-      saveServer: 'Save server'
+      saveServer: 'Save server',
+      test: 'Test connection',
+      testing: 'Testing...',
+      testOk: count => `Connected — ${count} tool${count === 1 ? '' : 's'} available`,
+      testFailed: 'Connection failed',
+      enableServer: name => `Enable ${name}`,
+      disableServer: name => `Disable ${name}`,
+      serverEnabled: name => `${name} enabled — applies to new sessions.`,
+      serverDisabled: name => `${name} disabled — applies to new sessions.`,
+      toggleFailed: name => `Failed to toggle ${name}`,
+      tabServers: 'Servers',
+      tabCatalog: 'Catalog',
+      catalogLoading: 'Loading MCP catalog...',
+      catalogLoadFailed: 'MCP catalog failed to load',
+      catalogEmpty: 'No catalog entries available.',
+      catalogInstalled: 'Installed',
+      catalogEnabled: 'Enabled',
+      catalogNeedsInstall: 'Needs build',
+      catalogInstall: 'Install',
+      catalogInstalling: 'Installing...',
+      catalogInstallStarted: name => `Installing ${name}... applies to new sessions when done.`,
+      catalogInstallFailed: name => `Failed to install ${name}`,
+      catalogEnvPrompt: name => `${name} requires credentials`,
+      catalogEnvRequired: 'Fill in the required values before installing.',
+      capabilitySummary: (tools, prompts, resources) =>
+        `${[`${tools} tools`, ...(prompts ? [`${prompts} prompts`] : []), ...(resources ? [`${resources} resources`] : [])].join(', ')} enabled`,
+      statusConnecting: 'Connecting…',
+      statusNeedsAuth: 'Needs authentication',
+      statusError: 'Error',
+      statusOff: 'Off',
+      allServers: 'All servers',
+      authenticatedTitle: 'Authenticated',
+      authenticatedMessage: (server, count) => `${server}: ${count} tools`,
+      waitingForBrowser: 'Waiting for browser…',
+      authenticate: 'Authenticate',
+      unsavedConnect: 'Unsaved — save mcp.json to connect.',
+      enableTool: tool => `Enable ${tool}`,
+      disableTool: tool => `Disable ${tool}`,
+      noOutput: 'No output yet.'
     },
     model: {
+      selectTitle: 'Select models (multi-select)',
+      selectHint:
+        'Pick one for a direct connection; pick several and they answer together, each billed by actual usage.',
+      selectedShort: (count: number) => `${count} models selected`,
+      selectedSummary: (count: number) =>
+        `${count} models selected · they answer together, each billed to your ledger by its own actual usage.`,
       loading: 'Loading model configuration...',
       appliesDesc: 'Applies to new sessions. Use the model picker in the composer to hot-swap the active chat.',
       provider: 'Provider',
@@ -597,16 +780,13 @@ export const en: Translations = {
       change: 'Change',
       autoUseMain: 'auto · use main model',
       providerDefault: '(provider default)',
+      fallbackAdd: 'Add fallback',
+      fallbackEmpty: 'No fallback models — the default model is used unless it fails.',
+      notInCatalog: "isn't in this provider's model list — calls may fall back to a backup.",
       requestFailed: 'Something went wrong — please try again.',
       staleAux: (count, names, provider) =>
         `${count} auxiliary task${count === 1 ? '' : 's'} (${names}) still run on ${provider}, not your main model.`,
       staleAuxOtherProviders: 'other providers',
-      selectTitle: 'Select models (multi-select)',
-      selectHint:
-        'Pick one for a direct connection; pick several and they answer together, each billed by actual usage.',
-      selectedShort: count => `${count} models selected`,
-      selectedSummary: count =>
-        `${count} models selected · they answer together, each billed to your ledger by its own actual usage.`,
       byoTitle: 'My keys (BYO)',
       byoHint: 'Use a model on your own key.',
       byoMixNote: "Can't be combined with platform models yet in v1 — using them on their own is unaffected.",
@@ -626,7 +806,8 @@ export const en: Translations = {
       dangerZone: 'Danger zone',
       checking: "Checking what's installed…",
       title: 'Uninstall APEX',
-      chooseDesc: 'Choose how much to remove. The app closes to finish the job; reopen the installer any time to come back.',
+      chooseDesc:
+        'Choose how much to remove. The app closes to finish the job; reopen the installer any time to come back.',
       confirmTitle: 'Confirm uninstall',
       confirmBody: consequence => `This removes ${consequence}. This can't be undone.`,
       appPath: path => `App: ${path}`,
@@ -674,109 +855,11 @@ export const en: Translations = {
       noProviderKeys: 'No provider API keys available.',
       searchKeys: 'Search providers…',
       noKeysMatch: 'No providers match your search.',
+      localEndpoint: {
+        title: 'Local / custom endpoint',
+        description: 'Point APEX at any OpenAI-compatible endpoint (Zyphra, vLLM, llama.cpp, Ollama, etc).'
+      },
       loading: 'Loading providers...'
-    },
-    // hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu app
-    // down to the desktop so the assistant can read/write Feishu docs, sheets and
-    // messages.
-    feishu: {
-      title: 'Feishu / Lark',
-      intro:
-        'Let the assistant work in your Feishu — read and write docs, sheets and messages. It uses the Feishu app you already set up in the cloud.',
-      connectedTitle: 'Connected',
-      connectedTo: agent => `Synced from “${agent}”`,
-      connectedGeneric: 'Feishu credential synced to this device.',
-      // Status badges keyed to the hc-190 probe verdict.
-      statusOk: 'Working',
-      statusExpired: 'Login expired',
-      statusInvalid: 'Credential rejected',
-      statusStale:
-        'This credential is flagged as expired in the cloud. Re-bind in the browser, then sync again.',
-      sync: 'Sync from cloud',
-      resync: 'Re-sync',
-      syncing: 'Syncing…',
-      disconnect: 'Disconnect',
-      disconnectConfirm:
-        'Disconnect Feishu on this device? Your cloud binding stays intact; the assistant just stops using Feishu here until you sync again.',
-      // Signed-out gate: sync needs a managed sign-in (its login JWT).
-      signInFirstTitle: 'Sign in first',
-      signInFirst: 'Sign in to your APEX account to connect Feishu.',
-      // No cloud binding yet → guide to the web flow.
-      noEntryTitle: 'No Feishu app yet',
-      noEntry:
-        'You have not set up a Feishu app in the cloud yet. Open the web binding flow, scan the QR to create your app, then come back and sync.',
-      openBind: 'Set up in browser',
-      afterBind: 'Finished binding? Sync now.',
-      // Toasts.
-      syncedTitle: 'Feishu connected',
-      syncedMessage: 'Your assistant can now work in Feishu. Restarting to apply…',
-      disconnectedTitle: 'Feishu disconnected',
-      disconnectedMessage: 'The assistant will stop using Feishu on this device.',
-      syncFailed: 'Could not sync your Feishu credential. Please try again.',
-      sessionExpired: 'Your session expired. Sign in again, then sync.',
-      loading: 'Checking Feishu…'
-    },
-    localAgent: {
-      title: 'Local agent scheduling',
-      intro:
-        'Let your cloud assistant hand a coding task to an agent on this computer (Claude Code, Codex or Cursor) — it runs here with your own tools and credentials, and the result flows back. Nothing runs unless you turn this on.',
-      enableLabel: 'Allow my cloud assistant to use this computer',
-      enableHint:
-        'When on, this computer connects to APEX and stays ready for tasks while the app is open. Dangerous actions always ask for your approval here first.',
-      statusLabel: 'Status',
-      statusDormant: 'Off',
-      statusConnecting: 'Connecting…',
-      statusOnline: 'Online — ready for tasks',
-      statusOffline: 'Reconnecting…',
-      statusError: 'Sign in to your APEX account to connect',
-      deviceNameLabel: 'Device name',
-      deviceNamePlaceholder: 'This computer',
-      unregister: 'Unregister this device',
-      unregisterConfirm:
-        'Unregister this computer? It stops receiving tasks until you turn scheduling back on.',
-      signInFirst: 'Sign in to your APEX account first.',
-      saved: 'Device name saved.',
-      enableFailed: 'Could not save — secure storage is unavailable on this system.',
-      engineOutdated: value =>
-        `The installed engine is too old for local agent dispatch (needs ${value} or later). Update it in Settings › About, otherwise tool calls may silently fail.`
-    },
-    agentAuth: {
-      title: 'Coding agent account',
-      intro:
-        'Passthrough and local dispatch use Claude Code and Codex signed in on this machine. Connect them here — no terminal needed.',
-      checking: 'Checking…',
-      refresh: 'Recheck',
-      stateReady: 'Connected',
-      stateReadyEmail: email => `Connected · ${email}`,
-      stateLoggedOut: 'Not signed in',
-      stateUnreachable: 'Signed in, but the API is unreachable — a network proxy is needed',
-      stateNoCli: 'Not installed on this machine',
-      stateUnknown: 'Status unavailable',
-      connect: 'Connect account',
-      reconnect: 'Reconnect',
-      fixNetwork: 'Set up network proxy',
-      installHint: 'Install it, then reconnect',
-      opening: 'Opening your browser…',
-      waitingBrowser: 'Finish signing in in your browser — this updates automatically.',
-      completed: 'Signed in.',
-      guideIntro: 'Automatic sign-in is unavailable. Run this in a terminal, then recheck:',
-      copyCommand: 'Copy command',
-      copied: 'Copied',
-      proxyTitle: 'Network proxy',
-      proxyIntro:
-        'Some regions block the agent APIs. APEX can route the agent through a proxy while keeping mainland-China links direct.',
-      proxyModeAuto: 'Follow system',
-      proxyModeAutoHint: 'Use the macOS system proxy automatically (recommended).',
-      proxyModeCustom: 'Custom',
-      proxyModeOff: 'Off',
-      proxyModeOffHint: 'Never route the agent through a proxy.',
-      proxyDetected: url => `Detected system proxy · ${url}`,
-      proxyNone: 'No system proxy detected.',
-      proxyCustomLabel: 'Proxy URL',
-      proxyCustomPlaceholder: 'http://127.0.0.1:1081',
-      proxyInvalid: 'Enter a valid proxy URL (e.g. http://127.0.0.1:1081).',
-      save: 'Save',
-      saved: 'Proxy settings saved.'
     },
     sessions: {
       loading: 'Loading archived sessions…',
@@ -824,28 +907,178 @@ export const en: Translations = {
       noProviderOptions: 'This toolset has no provider options — enable it and it works with your current setup.',
       noProviders: 'No providers are available for this toolset right now.',
       ready: 'Ready',
+      needsSignIn: 'Needs sign-in',
+      needsSetup: 'Needs setup',
       nousIncluded: 'Included with a Nous subscription — sign in to Nous Portal to activate.',
+      nousAuthNeededTitle: 'Sign in to Nous Portal',
+      nousAuthNeededMessage: provider => `${provider} is saved but won't activate until you sign in to Nous Portal.`,
+      nousAuthSignIn: 'Sign in',
+      nousAuthDoneTitle: 'Nous Portal connected',
+      nousAuthDoneMessage: 'Your subscription backends are now active.',
+      nousAuthFailed: 'Nous Portal sign-in did not complete',
       noApiKeyRequired: 'No API key required.',
       postSetupHint: step =>
         `This backend needs a one-time install (${step}). Runs on this machine — may take a few minutes.`,
+      postSetupInstalledHint: 'Installed. Re-run setup only if something is broken.',
       postSetupRun: 'Run setup',
+      postSetupRerun: 'Re-run setup',
+      postSetupInstalled: 'Installed',
       postSetupRunning: 'Installing…',
       postSetupStarting: 'Starting…',
       postSetupCompleteTitle: 'Setup complete',
       postSetupCompleteMessage: step => `${step} installed.`,
       postSetupErrorTitle: 'Setup finished with errors',
       postSetupErrorMessage: step => `Check the ${step} log.`,
-      postSetupFailed: step => `Failed to run ${step} setup`
+      postSetupFailed: step => `Failed to run ${step} setup`,
+      webSearchActive: backend => `Search: ${backend}`,
+      webExtractActive: backend => `Extract: ${backend}`,
+      webCapabilityUnset: 'not set',
+      webUseForSearch: 'Use for Search',
+      webUseForExtract: 'Use for Extract',
+      webUsedForSearch: 'Search backend',
+      webUsedForExtract: 'Extract backend',
+      webCapabilitySelectedMessage: (provider, capability) => `${provider} now handles web ${capability}.`,
+      failedSelectCapability: provider => `Failed to set ${provider}`,
+      loadingModels: 'Loading model catalog...',
+      modelSectionTitle: 'Model',
+      modelCount: count => `${count} model${count === 1 ? '' : 's'}`,
+      modelInUse: 'In use',
+      modelDefault: 'default',
+      modelInactiveHint: 'Select this backend first to change its model.',
+      modelSelectedTitle: 'Model selected',
+      modelSelectedMessage: model => `${model} applies to new sessions.`,
+      failedSelectModel: model => `Failed to select ${model}`,
+      terminalBackend: {
+        sectionTitle: 'Execution backend',
+        loading: 'Checking execution backends…',
+        failedLoad: 'Could not load terminal backends',
+        ready: 'Ready',
+        needsSetup: 'Needs setup',
+        unavailable: 'Unavailable',
+        inUse: 'In use',
+        selectedTitle: 'Backend selected',
+        selectedMessage: backend => `Terminal commands now run via ${backend}. Applies to new sessions.`,
+        failedSelect: backend => `Failed to select ${backend}`,
+        needsSetupHint: 'You can select this backend now — commands will fail until setup is complete.'
+      }
+    },
+    agentAuth: {
+      title: 'Coding agent account',
+      intro:
+        'Passthrough and local dispatch use Claude Code and Codex signed in on this machine. Connect them here — no terminal needed.',
+      checking: 'Checking…',
+      refresh: 'Recheck',
+      stateReady: 'Connected',
+      stateReadyEmail: email => `Connected · ${email}`,
+      stateLoggedOut: 'Not signed in',
+      stateUnreachable: 'Signed in, but the API is unreachable — a network proxy is needed',
+      stateNoCli: 'Not installed on this machine',
+      stateUnknown: 'Status unavailable',
+      connect: 'Connect account',
+      reconnect: 'Reconnect',
+      fixNetwork: 'Set up network proxy',
+      installHint: 'Install it, then reconnect',
+      opening: 'Opening your browser…',
+      waitingBrowser: 'Finish signing in in your browser — this updates automatically.',
+      completed: 'Signed in.',
+      guideIntro: 'Automatic sign-in is unavailable. Run this in a terminal, then recheck:',
+      copyCommand: 'Copy command',
+      copied: 'Copied',
+      proxyTitle: 'Network proxy',
+      proxyIntro:
+        'Some regions block the agent APIs. APEX can route the agent through a proxy while keeping mainland-China links direct.',
+      proxyModeAuto: 'Follow system',
+      proxyModeAutoHint: 'Use the macOS system proxy automatically (recommended).',
+      proxyModeCustom: 'Custom',
+      proxyModeOff: 'Off',
+      proxyModeOffHint: 'Never route the agent through a proxy.',
+      proxyDetected: url => `Detected system proxy · ${url}`,
+      proxyNone: 'No system proxy detected.',
+      proxyCustomLabel: 'Proxy URL',
+      proxyCustomPlaceholder: 'http://127.0.0.1:1081',
+      proxyInvalid: 'Enter a valid proxy URL (e.g. http://127.0.0.1:1081).',
+      save: 'Save',
+      saved: 'Proxy settings saved.'
+    },
+    localAgent: {
+      title: 'Local agent scheduling',
+      intro:
+        'Let your cloud assistant hand a coding task to an agent on this computer (Claude Code, Codex or Cursor) — it runs here with your own tools and credentials, and the result flows back. Nothing runs unless you turn this on.',
+      enableLabel: 'Allow my cloud assistant to use this computer',
+      enableHint:
+        'When on, this computer connects to APEX and stays ready for tasks while the app is open. Dangerous actions always ask for your approval here first.',
+      statusLabel: 'Status',
+      statusDormant: 'Off',
+      statusConnecting: 'Connecting…',
+      statusOnline: 'Online — ready for tasks',
+      statusOffline: 'Reconnecting…',
+      statusError: 'Sign in to your APEX account to connect',
+      deviceNameLabel: 'Device name',
+      deviceNamePlaceholder: 'This computer',
+      unregister: 'Unregister this device',
+      unregisterConfirm: 'Unregister this computer? It stops receiving tasks until you turn scheduling back on.',
+      signInFirst: 'Sign in to your APEX account first.',
+      saved: 'Device name saved.',
+      enableFailed: 'Could not save — secure storage is unavailable on this system.',
+      engineOutdated: value =>
+        `The installed engine is too old for local agent dispatch (needs ${value} or later). Update it in Settings › About, otherwise tool calls may silently fail.`
+    },
+    personalization: {
+      personalityTitle: 'Personality',
+      personalityIntro: 'Choose how APEX talks to you. New chats start with this style.',
+      soulTitle: 'Personality file (SOUL.md)',
+      soulIntro:
+        'The active profile’s SOUL.md — the system prompt and personality instructions APEX starts every chat with.'
+    },
+    // hc-444: "Connect Feishu" card — mirror the signed-in user's own Feishu app
+    // down to the desktop so the assistant can read/write Feishu docs, sheets and
+    // messages.
+    feishu: {
+      title: 'Feishu / Lark',
+      intro:
+        'Let the assistant work in your Feishu — read and write docs, sheets and messages. It uses the Feishu app you already set up in the cloud.',
+      connectedTitle: 'Connected',
+      connectedTo: agent => `Synced from “${agent}”`,
+      connectedGeneric: 'Feishu credential synced to this device.',
+      // Status badges keyed to the hc-190 probe verdict.
+      statusOk: 'Working',
+      statusExpired: 'Login expired',
+      statusInvalid: 'Credential rejected',
+      statusStale: 'This credential is flagged as expired in the cloud. Re-bind in the browser, then sync again.',
+      sync: 'Sync from cloud',
+      resync: 'Re-sync',
+      syncing: 'Syncing…',
+      disconnect: 'Disconnect',
+      disconnectConfirm:
+        'Disconnect Feishu on this device? Your cloud binding stays intact; the assistant just stops using Feishu here until you sync again.',
+      // Signed-out gate: sync needs a managed sign-in (its login JWT).
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect Feishu.',
+      // No cloud binding yet → guide to the web flow.
+      noEntryTitle: 'No Feishu app yet',
+      noEntry:
+        'You have not set up a Feishu app in the cloud yet. Open the web binding flow, scan the QR to create your app, then come back and sync.',
+      openBind: 'Set up in browser',
+      afterBind: 'Finished binding? Sync now.',
+      // Toasts.
+      syncedTitle: 'Feishu connected',
+      syncedMessage: 'Your assistant can now work in Feishu. Restarting to apply…',
+      disconnectedTitle: 'Feishu disconnected',
+      disconnectedMessage: 'The assistant will stop using Feishu on this device.',
+      syncFailed: 'Could not sync your Feishu credential. Please try again.',
+      sessionExpired: 'Your session expired. Sign in again, then sync.',
+      loading: 'Checking Feishu…'
     }
   },
 
   skills: {
     tabSkills: 'Skills',
-    tabSkillsSubtitle: 'Capabilities you can enable for new sessions.',
-    tabToolsets: 'Toolsets',
+    tabToolsets: 'Tools',
+    tabMcp: 'MCP',
+    tabHub: 'Browse Hub',
     all: 'All',
     searchSkills: 'Search skills...',
-    searchToolsets: 'Search toolsets...',
+    searchToolsets: 'Search tools...',
     refresh: 'Refresh skills',
     refreshing: 'Refreshing skills',
     loading: 'Loading capabilities...',
@@ -856,6 +1089,9 @@ export const en: Translations = {
     noDescription: 'No description.',
     configured: 'Configured',
     needsKeys: 'Needs keys',
+    visionModelHint:
+      'Vision uses your auxiliary model configuration — the image-capable model is picked there, not per-provider here.',
+    visionModelLink: 'Choose vision model in Settings → Models',
     toolsetsEnabled: (enabled, total) => `${enabled}/${total} toolsets enabled`,
     configureToolset: label => `Configure ${label}`,
     toggleToolset: label => `Toggle ${label} toolset`,
@@ -866,9 +1102,109 @@ export const en: Translations = {
     toolsetEnabled: 'Toolset enabled',
     toolsetDisabled: 'Toolset disabled',
     appliesToNewSessions: name => `${name} applies to new sessions.`,
-    failedToUpdate: name => `Failed to update ${name}`
+    failedToUpdate: name => `Failed to update ${name}`,
+    sortMostUsed: 'Most used',
+    sortAlpha: 'A–Z',
+    sortMostUsedDesc: '↓ Most used',
+    sortLeastUsedAsc: '↑ Least used',
+    enableAll: 'Enable all',
+    disableAll: 'Disable all',
+    disableUnused: 'Disable unused',
+    bulkUpdated: count => `Updated ${count} ${count === 1 ? 'item' : 'items'} for new sessions.`,
+    bulkNoChange: 'Nothing to change.',
+    usageCount: count => `used ${count}×`,
+    provenance: {
+      agent: 'Learned',
+      bundled: 'Built-in',
+      hub: 'Hub'
+    },
+    emptyNoneFound: noun => `No ${noun} found`,
+    emptyNothingMatches: query => `Nothing matches “${query}”.`,
+    emptyNoneAvailable: noun => `No ${noun} available yet.`,
+    changesApplyNewSessions: 'Changes apply to new sessions.',
+    skillUpdated: 'Skill updated',
+    edit: 'Edit',
+    archive: 'Archive',
+    skillArchivedTitle: 'Skill archived',
+    skillArchivedMessage: 'Restorable via hermes curator restore.',
+    hub: {
+      searchPlaceholder: 'Search the skill hub',
+      search: 'Search',
+      searching: 'Searching...',
+      connectingHubs: 'Connecting to skill hubs...',
+      connectedHubs: 'Connected hubs:',
+      featured: 'Featured skills',
+      landingHint:
+        'Search the hub to browse installable skills from the official index, GitHub, and community sources.',
+      noResults: 'No matching skills found in the hub.',
+      resultCount: (count, ms) => `${count} result${count === 1 ? '' : 's'}${ms !== null ? ` in ${ms}ms` : ''}`,
+      timedOut: sources => `Timed out: ${sources}`,
+      installed: 'Installed',
+      install: 'Install',
+      installing: 'Installing...',
+      uninstall: 'Uninstall',
+      uninstalling: 'Uninstalling...',
+      updateAll: 'Update installed',
+      updating: 'Updating...',
+      preview: 'Preview',
+      scan: 'Scan',
+      scanning: 'Scanning...',
+      close: 'Close',
+      files: 'Files',
+      noReadme: 'This skill has no SKILL.md preview.',
+      trust: {
+        builtin: 'builtin',
+        trusted: 'trusted',
+        community: 'community'
+      },
+      verdictSafe: 'Safe',
+      verdictCaution: 'Caution',
+      verdictDangerous: 'Dangerous',
+      policyAllow: 'Install allowed',
+      policyAsk: 'Review before installing',
+      policyBlock: 'Install blocked by policy',
+      findings: count => `${count} finding${count === 1 ? '' : 's'}`,
+      noFindings: 'No security findings.',
+      installStarted: name => `Installing ${name}...`,
+      uninstallStarted: name => `Uninstalling ${name}...`,
+      updateStarted: 'Updating installed skills...',
+      actionFailed: 'Skill action failed',
+      actionLog: 'Action log',
+      loadFailed: 'Skill hub failed to load',
+      previewFailed: 'Skill preview failed',
+      scanFailed: 'Security scan failed',
+      searchFailed: 'Hub search failed'
+    }
   },
 
+  starmap: {
+    title: 'Memory Graph',
+    subtitle: (nodes, clusters) => `${nodes} skills across ${clusters} categories`,
+    close: 'Close memory graph',
+    refresh: 'Refresh',
+    memory: 'Memory',
+    filterAll: 'All',
+    filterUsed: 'Used',
+    filterLearned: 'Learned',
+    viewGraph: 'Graph',
+    loadFailed: 'Could not load memory graph',
+    loading: 'Loading…',
+    emptyTitle: 'Nothing learned yet',
+    emptyDesc: 'As APEX builds skills and memories for your work, they appear here.',
+    share: 'Share map',
+    shareHint:
+      'Copy the code to share this map, or paste one to load. It only includes the layout, not your memory or skill text.',
+    shareTitle: 'Import / export map',
+    sharePlaceholder: 'Paste a map code…',
+    copy: 'Copy map code',
+    copied: 'Copied!',
+    importMap: 'Import a map',
+    importBtn: 'Load',
+    importEmpty: 'Paste a map code to load it.',
+    importSuccess: nodes => `Loaded a map with ${nodes} ${nodes === 1 ? 'node' : 'nodes'}.`,
+    importedBadge: 'imported map',
+    resetToMine: 'Back to my map'
+  },
   agents: {
     close: 'Close agents',
     title: 'Spawn tree',
@@ -896,7 +1232,6 @@ export const en: Translations = {
     ageHours: hours => `${hours}h ago`,
     durationSeconds: seconds => `${seconds}s`,
     durationMinutes: (minutes, seconds) => `${minutes}m ${seconds}s`,
-    tokensK: k => `${k}k tok`,
     tokens: value => `${value} tok`
   },
 
@@ -907,13 +1242,62 @@ export const en: Translations = {
     searchPlaceholder: 'Search sessions, views, and actions',
     goTo: 'Go to',
     goToSession: 'Go to session',
+    branches: 'Branches',
+    commands: 'Commands',
+    startInBranch: branch => `New conversation in ${branch}`,
     commandCenter: 'Command Center',
     appearance: 'Appearance',
     settings: 'Settings',
-    changeTheme: 'Change theme...',
-    changeColorMode: 'Change color mode...',
+    changeTheme: 'Change theme',
+    changeColorMode: 'Change color mode…',
+    pets: {
+      title: 'Pets',
+      placeholder: 'Search pets…',
+      loading: 'Loading petdex gallery…',
+      error: 'Could not reach the petdex gallery.',
+      staleBackend: 'Restart APEX to use pets — the backend predates this feature.',
+      empty: 'No matching pets.',
+      turnOff: 'Turn off',
+      turnOn: 'Turn on',
+      installed: 'Installed',
+      generatedTag: 'Generated',
+      adoptFailed: 'Could not adopt that pet.',
+      toggleFailed: 'Could not toggle the pet.',
+      noneAvailable: 'No pets available — pick one below to install.'
+    },
+    generatePet: {
+      title: 'Generate a pet',
+      placeholder: 'Describe a pet to generate…',
+      promptHint: 'Type a description, then press Enter to draft four looks.',
+      readyHint: 'Press Enter to draft four looks from your description.',
+      generate: 'Generate',
+      generating: 'Generating…',
+      retry: 'Retry',
+      hatch: 'Hatch',
+      spawning: 'Spawning…',
+      hatching: 'Hatching your pet…',
+      hatchingSub: 'Bringing it to life…',
+      hatched: 'It hatched!',
+      hatchRow: (_state, done, total) => `Sketching frame ${done} of ${total}…`,
+      hatchComposing: 'Piecing it together…',
+      hatchSaving: 'Almost there…',
+      namePlaceholder: 'Name your pet',
+      staleBackend: 'Update APEX to generate pets.',
+      backgroundHint: 'You can close this — APEX will notify you when it’s done.',
+      slowProviderHint: 'This can take several minutes',
+      remix: 'Remix',
+      remixConfirmTitle: 'Remix this look?',
+      remixConfirmBody:
+        'This generates a fresh set of drafts using this one as the starting point. It can take several minutes.',
+      genericError: 'Generation failed — try again or pick a suggestion.',
+      referenceImageTooLarge: 'Reference image is too large. Use one under 16 MB.',
+      referenceImageInvalid: 'Could not read that reference image. Try a PNG, JPG, WebP, or GIF.',
+      adopt: 'Adopt',
+      startOver: 'Start over'
+    },
     installTheme: {
-      title: 'Install theme...',
+      title: 'Install theme…',
+      pageTitle: 'Install theme',
       placeholder: 'Search the VS Code Marketplace...',
       loading: 'Searching the Marketplace...',
       error: 'Could not reach the Marketplace.',
@@ -926,16 +1310,17 @@ export const en: Translations = {
     settingsFields: 'Settings fields',
     mcpServers: 'MCP servers',
     archivedChats: 'Archived chats',
-    sections: { sessions: 'Sessions', system: 'System', usage: 'Usage' },
+    sections: { maintenance: 'Maintenance', sessions: 'Sessions', system: 'System', usage: 'Usage' },
     sectionDescriptions: {
+      maintenance: 'Diagnostics, backups, curator, and memory data',
       sessions: 'Search and manage sessions',
       system: 'Status, logs, and system actions',
       usage: 'Token, cost, and skill activity over time'
     },
     nav: {
-      newChat: { title: 'New chat', detail: 'Start a fresh chat' },
-      settings: { title: 'Settings', detail: 'Configure APEX desktop' },
-      skills: { title: 'Plugins', detail: 'Enable skills, toolsets, and providers' },
+      newChat: { title: 'New session', detail: 'Start a fresh session' },
+      settings: { title: 'Settings', detail: 'Configure APEX Desktop' },
+      skills: { title: 'Capabilities', detail: 'Skills, tools, and MCP servers' },
       messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
       artifacts: { title: 'Artifacts', detail: 'Browse generated outputs' }
     },
@@ -984,14 +1369,60 @@ export const en: Translations = {
     noModelUsage: 'No model usage yet.',
     topSkills: 'Top skills',
     noSkillActivity: 'No skill activity yet.',
-    actions: count => `${count} actions`
+    actions: count => `${count} actions`,
+    logFile: 'Log file',
+    logLevel: 'Level',
+    logSearchPlaceholder: 'Filter log lines...',
+    maintenance: {
+      runOps: 'Diagnostics',
+      doctor: 'Run doctor',
+      doctorDesc: 'Health-check the install, config, and providers',
+      securityAudit: 'Security audit',
+      securityAuditDesc: 'Scan config and skills for risky settings',
+      backup: 'Create backup',
+      backupDesc: 'Zip config, memories, skills, and sessions',
+      debugShare: 'Debug share',
+      debugShareDesc: 'Upload a redacted report + logs, get shareable links (auto-deletes in 6h)',
+      debugShareRunning: 'Uploading debug report...',
+      debugShareLinks: 'Share links',
+      debugShareFailed: 'Debug share failed',
+      copyLink: 'Copy link',
+      linkCopied: 'Link copied',
+      curator: 'Skill curator',
+      curatorDesc: 'Background review that archives stale agent-created skills',
+      curatorPaused: 'Paused',
+      curatorActive: 'Active',
+      curatorDisabled: 'Disabled',
+      curatorLastRun: when => `Last run ${when}`,
+      curatorNeverRan: 'Never ran',
+      pause: 'Pause',
+      resume: 'Resume',
+      runNow: 'Run now',
+      memoryData: 'Memory data',
+      memoryDataDesc: 'Built-in memory files injected into every session',
+      memoryProvider: name => `Active provider: ${name}`,
+      builtinMemory: 'built-in',
+      memoryFile: 'Agent memory (MEMORY.md)',
+      userFile: 'User profile (USER.md)',
+      bytes: size => size,
+      empty: 'empty',
+      resetMemory: 'Reset memory',
+      resetUser: 'Reset profile',
+      resetAll: 'Reset both',
+      resetConfirm: target => `Delete ${target}? This cannot be undone.`,
+      resetDone: files => `Deleted ${files}.`,
+      resetFailed: 'Memory reset failed',
+      actionStarted: name => `${name} started — tailing log...`,
+      actionFailed: name => `${name} failed to start`,
+      running: 'Running...',
+      viewLog: 'Action log'
+    }
   },
 
   messaging: {
     search: 'Search messaging...',
     loading: 'Loading messaging platforms...',
     loadFailed: 'Messaging platforms failed to load',
-    connectionError: 'Connection error',
     states: {
       connected: 'Connected',
       connecting: 'Connecting',
@@ -1121,90 +1552,20 @@ export const en: Translations = {
     platformIntro: {}
   },
 
-  imEntry: {
-    title: 'Messaging',
-    intro: 'Let your assistant reply for you in the chat apps you already use — scan a code to connect one.',
-    loading: 'Loading channels…',
-    connect: 'Connect',
-    manage: 'Manage',
-    comingSoon: 'Coming soon',
-    connectedBadge: 'Connected',
-    availableHeading: 'Available now',
-    comingSoonHeading: 'Coming soon',
-    boundHeading: 'Connected channels',
-    boundEmpty: 'No channels connected yet.',
-    connectedOn: when => `Connected ${when}`,
-    unbind: 'Disconnect',
-    unbindConfirm: name => `Disconnect ${name}? Your assistant will stop replying there on this device.`,
-    unbindDoneTitle: 'Disconnected',
-    unbindDoneMessage: 'Restarting to apply…',
-    liveState: {
-      connected: 'Connected',
-      pending: 'Restarting to apply',
-      error: 'Connection problem',
-      connecting: 'Connecting…',
-      unknown: 'Unknown'
-    },
-    channels: {
-      feishu: { name: 'Feishu / Lark', tagline: 'Reply in your Feishu chats and groups.' },
-      dingtalk: { name: 'DingTalk', tagline: 'Reply in your DingTalk chats and groups.' },
-      weixin: { name: 'WeChat', tagline: 'Reply from your personal WeChat.' },
-      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' },
-      wecom: { name: 'WeCom', tagline: 'Reply in WeCom (Enterprise WeChat).' }
-    },
-    dialog: {
-      connectTitle: name => `Connect ${name}`,
-      signInFirstTitle: 'Sign in first',
-      signInFirst: 'Sign in to your APEX account to connect a channel.',
-      issuing: 'Preparing your QR code…',
-      scanPrompt: 'Scan to connect',
-      scanHint: (name: string) => `Open ${name}, scan the code, and confirm on your phone.`,
-      openLink: 'Open link instead',
-      weixinBotNote:
-        "You're connecting a new bot contact (an iLink bot identity) — not taking over your own WeChat. The bot usually can't join ordinary group chats and works mainly through friend DMs.",
-      connecting: 'Connecting…',
-      authorizedTitle: 'Connected',
-      authorizedMessage: 'Restarting to apply…',
-      authorizedRestartHint: 'Connected and saved — restart the app to finish applying it.',
-      retry: 'Try again',
-      cancel: 'Cancel',
-      close: 'Close',
-      comingSoonTitle: 'Coming soon',
-      comingSoonBody: 'This channel isn’t available to connect yet. We’re working on it.',
-      pasteHeading: 'Paste your code',
-      pasteLabel: 'Connection code',
-      pastePlaceholder: 'Paste the code from the platform',
-      pasteSubmit: 'Connect',
-      advanced: 'Advanced',
-      errors: {
-        sign_in: 'Your session expired. Sign in again, then reconnect.',
-        service_unavailable: 'This channel isn’t open yet. Please try again later.',
-        rate_limited: 'A connection request is already in progress. Finish or wait for it to expire, then try again.',
-        expired: 'The code expired. Start again to get a new one.',
-        denied: 'The request was declined. Start again to retry.',
-        request_failed: 'Something went wrong. Please try again.',
-        keychain: 'Secure storage is off, so the connection wasn’t saved. Enable keychain access and try again.'
-      }
-    },
-    settingsCard: {
-      boundSummary: count => `${count} ${count === 1 ? 'channel' : 'channels'} connected`,
-      openCta: 'Go to messaging'
-    }
-  },
-
   profiles: {
     close: 'Close profiles',
     nameHint: 'Lowercase letters, digits, hyphens, and underscores. Must start with a letter or digit.',
     title: 'Profiles',
     count: count => `${count} ${count === 1 ? 'profile' : 'profiles'}`,
+    search: 'Search profiles...',
     loading: 'Loading profiles...',
     newProfile: 'New profile',
     allProfiles: 'All profiles',
     showAllProfiles: 'Show all profiles',
     switchToProfile: name => `Switch to ${name}`,
-    manageProfiles: 'Manage profiles...',
+    manageProfiles: 'Manage profiles…',
     actionsFor: name => `Actions for ${name}`,
-    color: 'Color...',
+    color: 'Color…',
     colorFor: name => `Color for ${name}`,
     setColor: color => `Set color ${color}`,
     autoColor: 'Auto',
@@ -1217,6 +1578,8 @@ export const en: Translations = {
     env: 'env',
     defaultBadge: 'Default',
     rename: 'Rename',
+    renameMenu: 'Rename…',
+    editSoul: 'Edit SOUL.md…',
     copySetup: 'Copy setup',
     copying: 'Copying...',
     modelLabel: 'Model',
@@ -1267,46 +1630,10 @@ export const en: Translations = {
     failedRename: 'Failed to rename profile'
   },
 
-  profileStats: {
-    close: 'Close profile',
-    signedOut: 'Not signed in',
-    loading: 'Loading usage stats…',
-    failedLoad: 'Failed to load usage stats',
-    emptyTitle: 'No activity yet',
-    emptyDesc: 'Start chatting and your usage stats will show up here.',
-    stats: {
-      sessions: 'Sessions',
-      tokens: 'Total tokens',
-      apiCalls: 'API calls',
-      activeDays: 'Active days',
-      skillsUsed: 'Skills used'
-    },
-    heatmap: {
-      title: 'Token activity',
-      daily: 'Daily',
-      weekly: 'Weekly',
-      cumulative: 'Cumulative',
-      less: 'Less',
-      more: 'More',
-      cellTitle: (date, tokens) => `${date} · ${tokens} tokens`
-    },
-    insights: {
-      title: 'Activity insights',
-      busiestDay: 'Busiest day',
-      avgPerActiveDay: 'Avg tokens per active day',
-      topModel: 'Most used model',
-      longestStreak: 'Longest streak',
-      streakDays: days => (days === 1 ? '1 day' : `${days} days`),
-      estimatedCost: 'Estimated cost'
-    },
-    topSkills: {
-      title: 'Top plugins',
-      uses: count => `${count} uses`
-    }
-  },
-
   cron: {
     close: 'Close cron',
+    title: 'Scheduled jobs',
+    count: count => `${count} ${count === 1 ? 'job' : 'jobs'}`,
     search: 'Search cron jobs...',
     loading: 'Loading cron jobs...',
     states: {
@@ -1406,67 +1733,18 @@ export const en: Translations = {
     promptPlaceholder: 'Summarize my unread Slack threads and email me the top 5...',
     frequencyLabel: 'Frequency',
     deliverLabel: 'Deliver to',
+    modelLabel: 'Model',
+    modelDefault: 'Default (global model)',
     customScheduleLabel: 'Custom schedule',
     customPlaceholder: '0 9 * * * or weekdays at 9am',
     customHint: 'Cron expression, or phrases like "every hour" or "weekdays at 9am".',
     optional: 'Optional',
+    promptRequired: 'Prompt is required.',
     promptScheduleRequired: 'Prompt and schedule are required.',
+    scheduleRequired: 'Schedule is required.',
+    scriptOnlyEditHint: 'Script-only job (no AI prompt). Job id:',
     saveChanges: 'Save changes',
     createAction: 'Create cron'
-  },
-
-  tasks: {
-    newTask: 'New task',
-    tabRunning: 'Running',
-    tabDone: 'Done',
-    emptyRunning: 'No running tasks. Hand off a long job — it keeps working in the background.',
-    emptyDone: 'No finished tasks yet.',
-    emptyDetail: 'Kick off a long-running task and follow its progress here.',
-    pending: 'Waiting to start',
-    started: 'Started',
-    runAgain: 'Run again',
-    goalLabel: 'Goal',
-    goalPlaceholder: 'Research the top 5 competitors and write a comparison report…',
-    stuckHint: 'No recent activity',
-    stuckDetail:
-      'This task has shown no activity for a while and may be stuck. Open its run to check, or start it again.',
-    waitingToStart: 'Waiting for the task to start…',
-    progressLabel: 'Progress',
-    stepsOf: (completed, total) => `${completed} / ${total} steps`,
-    currentStepLabel: 'Now:',
-    latestOutputLabel: 'Latest output',
-    runHistory: 'Runs',
-    noRuns: 'No runs yet.',
-    phases: {
-      running: 'Running',
-      done: 'Done',
-      failed: 'Failed'
-    },
-    newTaskTitle: 'New task',
-    newTaskDesc: 'Describe the goal. The agent runs it in the background and notifies you when it finishes.',
-    goalRequired: 'Describe the goal first.',
-    timeRequired: 'Pick a start time first.',
-    whenLabel: 'Start',
-    whenNow: 'Now',
-    whenIn: 'After a delay',
-    whenAt: 'At a specific time',
-    delayLabel: 'Delay',
-    atLabel: 'Start time',
-    persistNote: 'Tasks run in the backend and survive app restarts. They also appear on the Scheduled page.',
-    startTask: 'Start task',
-    created: 'Task created',
-    startedNow: 'Task started',
-    failedStart: 'Could not start the task',
-    deleted: 'Task deleted',
-    failedDelete: 'Could not delete the task',
-    deleting: 'Deleting…',
-    deleteTitle: 'Delete this task?',
-    deleteDescPrefix: 'This permanently removes ',
-    deleteDescSuffix: ' and its schedule. Runs already recorded stay in your session history.',
-    notify: {
-      doneTitle: 'Task finished',
-      failedTitle: 'Task failed'
-    }
   },
 
   artifacts: {
@@ -1519,22 +1797,121 @@ export const en: Translations = {
     noMatch: query => `No sessions match “${query}”.`,
     results: 'Results',
     pinned: 'Pinned',
-    projects: 'Projects',
     sessions: 'Chats',
     cronJobs: 'Cron jobs',
     groupAriaGrouped: 'Show sessions as a single list',
     groupAriaUngrouped: 'Group sessions by workspace',
+    showProjects: 'Show projects',
+    showSessions: 'Show sessions',
     groupTitleGrouped: 'Ungroup sessions',
     groupTitleUngrouped: 'Group by workspace',
     allPinned: 'Everything here is pinned. Unpin a chat to show it in recents.',
     shiftClickHint: 'Shift-click a chat to pin',
     noWorkspace: 'No workspace',
+    noProject: 'No project',
+    projectEmpty: 'No sessions yet',
+    noSessions: 'No sessions yet',
+    projects: {
+      sectionLabel: 'Projects',
+      newButton: 'New project',
+      createTitle: 'New project',
+      createDesc: 'Name a workspace and add one or more folders.',
+      renameTitle: 'Rename project',
+      addFolderTitle: 'Add folder',
+      namePlaceholder: 'e.g. Skunkworks',
+      foldersLabel: 'Folders',
+      ideaLabel: 'Idea',
+      ideaPlaceholder: "What's this project about? (saved to IDEA.md)",
+      ideaGenerate: 'Generate idea',
+      ideaGenerating: 'Generating…',
+      ideaShuffle: 'Shuffle templates',
+      noFolders: 'No folders added yet.',
+      addFolder: 'Add folder',
+      primaryBadge: 'primary',
+      removeFolder: 'Remove',
+      create: 'Create',
+      menu: 'Project actions',
+      menuRename: 'Rename',
+      menuAppearance: 'Appearance',
+      noColor: 'No color',
+      menuAddFolder: 'Add folder',
+      menuSetActive: 'Set active',
+      menuDelete: 'Delete',
+      reveal: 'Reveal in folder',
+      copyPath: 'Copy path',
+      removeFromSidebar: 'Hide from sidebar',
+      createFailed: 'Could not create project',
+      staleBackend:
+        'Update the APEX backend to create projects — your backend is older than this desktop app (Settings → Updates → Backend).',
+      deleteConfirm: 'This removes the saved project from APEX. Files, git repos, and worktrees stay untouched.',
+      startWork: 'New worktree',
+      newWorktreeTitle: 'New worktree',
+      newWorktreeDesc: 'Name the branch for this worktree.',
+      branchPlaceholder: 'e.g. my-feature',
+      branchOff: () => ({ after: '', before: 'branch off ' }),
+      baseBranchPlaceholder: 'Search branches…',
+      baseBranchNone: 'No branches found',
+      startWorkFailed: 'Could not create worktree',
+      convertBranch: 'Convert a branch…',
+      convertBranchTitle: 'Convert a branch',
+      convertBranchDesc: 'Open checked-out branches, or create a worktree for a free branch.',
+      convertBranchPlaceholder: 'Search branches…',
+      convertBranchInstead: 'Convert an existing branch',
+      branchOpenExisting: 'open',
+      branchSwitchHome: 'switch home',
+      branchCreateWorktree: 'new worktree',
+      branchesLoading: 'Loading branches…',
+      noBranches: 'No branches found',
+      removeWorktree: 'Remove worktree',
+      removeWorktreeFailed: 'Could not remove worktree (uncommitted changes?)',
+      removeWorktreeConfirm:
+        'Remove it from git (deletes the worktree directory; the branch stays), or just hide the lane from the sidebar and leave the worktree on disk.',
+      removeWorktreeDirty:
+        'This worktree has uncommitted changes. Force-remove it (discards those changes), or just hide the lane and keep it on disk.',
+      forceRemove: 'Force remove',
+      enter: label => `Open ${label}`,
+      reorder: label => `Reorder ${label}`,
+      toggle: label => `Toggle ${label} sessions`,
+      back: 'All projects'
+    },
     newSessionIn: label => `New session in ${label}`,
-    reorderWorkspace: label => `Reorder workspace ${label}`,
     showMoreIn: (count, label) => `Show ${count} more in ${label}`,
     loading: 'Loading…',
     loadMore: 'Load more',
     loadCount: step => `Load ${step} more`,
+    row: {
+      pin: 'Pin',
+      unpin: 'Unpin',
+      copyId: 'Copy ID',
+      export: 'Export',
+      branchFrom: 'Branch',
+      rename: 'Rename',
+      archive: 'Archive',
+      newWindow: 'New window',
+      hideTabBar: 'Hide tab bar',
+      openInNewTab: 'Open in new tab',
+      openInSplit: 'Open in split',
+      copyIdFailed: 'Could not copy session ID',
+      actionsFor: title => `Actions for ${title}`,
+      sessionActions: 'Session actions',
+      sessionRunning: 'Session running',
+      needsInput: 'Needs your input',
+      waitingForAnswer: 'Waiting for your answer',
+      finishedUnread: 'Finished — unread',
+      backgroundRunning: 'Background task running',
+      handoffOrigin: platform => `Handed off from ${platform}`,
+      ownedByProfile: profile => `Profile: ${profile}`,
+      renamed: 'Renamed',
+      renameFailed: 'Rename failed',
+      renameTitle: 'Rename session',
+      renameDesc: 'Give this chat a memorable title. Leave empty to clear.',
+      untitledPlaceholder: 'Untitled session',
+      untitledChat: id => `Chat ${id}`,
+      ageNow: 'now',
+      ageDay: 'd',
+      ageHour: 'h',
+      ageMin: 'm'
+    },
     engineUpdate: {
       found: 'New engine available',
       updating: 'Updating engine…',
@@ -1542,102 +1919,11 @@ export const en: Translations = {
     },
     shellUpdate: {
       restartToUpdate: version => (version ? `Restart to update ${version}` : 'Restart to update')
-    },
-    row: {
-      pin: 'Pin',
-      unpin: 'Unpin',
-      copyId: 'Copy ID',
-      export: 'Export',
-      rename: 'Rename',
-      archive: 'Archive',
-      newWindow: 'New window',
-      copyIdFailed: 'Could not copy session ID',
-      actionsFor: title => `Actions for ${title}`,
-      sessionActions: 'Session actions',
-      sessionRunning: 'Session running',
-      needsInput: 'Needs your input',
-      waitingForAnswer: 'Waiting for your answer',
-      handoffOrigin: platform => `Handed off from ${platform}`,
-      renamed: 'Renamed',
-      renameFailed: 'Rename failed',
-      renameTitle: 'Rename session',
-      renameDesc: 'Give this chat a memorable title. Leave empty to clear.',
-      untitledPlaceholder: 'Untitled session',
-      ageNow: 'now',
-      ageDay: 'd',
-      ageHour: 'h',
-      ageMin: 'm'
     }
-  },
-
-  home: {
-    title: 'What should we do?'
-  },
-
-  scenarios: {
-    button: 'Scenarios',
-    menuAria: 'Scenarios',
-    searchPlaceholder: 'Search scenarios…',
-    noMatches: 'No matching scenarios',
-    comingSoon: 'Coming soon',
-    allScenarios: 'All scenarios',
-    sample: 'Sample',
-    detailHeading: 'Scenario details',
-    labelCommand: 'Command',
-    labelInput: 'Input',
-    labelOutput: 'Output',
-    inputNone: 'No input needed — runs right away',
-    use: 'Use scenario',
-    channelsTitle: 'Channels · where your agent lives',
-    connectTitle: 'Connect your agent',
-    phoneRemote: 'Phone remote',
-    remoteOn: 'On · /cc',
-    bindCta: 'Scan to bind',
-    remoteBannerTitle: 'Phone is remote-controlling this machine · Feishu /cc',
-    remoteBannerApproval: 'Risky actions still need manual approval',
-    taskTargetCloud: 'Delegated to cloud agent',
-    taskTargetLocal: 'Direct on this machine',
-    taskStatus: { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' },
-    heartbeatAgo: seconds => {
-      if (seconds < 5) {return 'heartbeat just now'}
-
-      if (seconds < 60) {return `heartbeat ${seconds}s ago`}
-
-      if (seconds < 3600) {return `heartbeat ${Math.floor(seconds / 60)}m ago`}
-
-      return `heartbeat ${Math.floor(seconds / 3600)}h ago`
-    },
-    guideTitle: 'Connect a channel so your agent reaches you everywhere'
   },
 
   composer: {
     message: 'Message',
-    projectPicker: {
-      label: 'Project',
-      select: 'Select project',
-      searchPlaceholder: 'Search projects…',
-      recentHeading: 'Recent projects',
-      noRecent: 'No projects yet',
-      noMatches: 'No matching projects',
-      useExisting: 'Open existing folder…',
-      newBlank: 'New blank project…',
-      newTitle: 'New project',
-      namePlaceholder: 'Project name',
-      locationLabel: 'Location',
-      chooseParent: 'Choose parent folder…',
-      create: 'Create',
-      back: 'Back',
-      useExistingTitle: 'Choose a project folder',
-      chooseParentTitle: 'Choose where to create the project',
-      pickFailed: 'Could not open the folder picker',
-      createFailed: 'Could not create the project folder'
-    },
-    approvalMode: {
-      label: 'Approvals',
-      manual: { label: 'Manual', desc: 'Ask only before an operation flagged as dangerous' },
-      smart: { label: 'Smart', desc: 'AI weighs the risk, then asks when needed' },
-      full: { label: 'Full access', desc: 'Unrestricted access to the internet and any file on your computer' }
-    },
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting APEX...',
     placeholderReconnecting: 'Reconnecting to APEX…',
@@ -1657,7 +1943,7 @@ export const en: Translations = {
       'Refine the request',
       "What's next?",
       'Keep it going',
-      'Take it further',
+      'Push it further',
       'Adjust or continue'
     ],
     startVoice: 'Start voice conversation',
@@ -1679,6 +1965,8 @@ export const en: Translations = {
     stopDictation: 'Stop dictation',
     transcribingDictation: 'Transcribing dictation',
     voiceDictation: 'Voice dictation',
+    speakReplies: 'Read replies aloud',
+    stopSpeakingReplies: 'Stop reading replies aloud',
     lookupLoading: 'Looking up…',
     lookupNoMatches: 'No matches.',
     lookupTry: 'Try',
@@ -1704,6 +1992,11 @@ export const en: Translations = {
       'composer.cancel': 'close popover · cancel run',
       'composer.history': 'cycle popover / history'
     },
+    attachUrlTitle: 'Attach a URL',
+    attachUrlDesc: 'APEX will fetch the page and include it as context for this turn.',
+    urlPlaceholder: 'https://example.com/post',
+    urlHintPre: 'Include the full URL, e.g. ',
+    attach: 'Attach',
     queued: count => `${count} Queued`,
     attachmentOnly: 'Attachment-only turn',
     emptyTurn: 'Empty turn',
@@ -1728,11 +2021,62 @@ export const en: Translations = {
     noMatchingThemes: 'No matching themes.',
     themeTryPre: 'Try ',
     themeTryPost: '.',
+    attachLabel: 'Attach',
+    files: 'Files…',
+    folder: 'Folder…',
     images: 'Images…',
+    pasteImage: 'Paste image',
+    url: 'URL…',
+    promptSnippets: 'Prompt snippets…',
     tipPre: 'Tip: type ',
     tipPost: ' to reference files inline.',
-    dropFiles: 'Drop a document, link, or chat log',
+    snippetsTitle: 'Prompt snippets',
+    snippetsDesc: 'Pick a starter prompt to drop into the composer.',
+    dropFiles: 'Drop files to attach',
     dropSession: 'Drop to link this chat',
+    snippets: {
+      codeReview: {
+        label: 'Code review',
+        description: 'Audit the current change for regressions, dropped edge cases, and missing tests.',
+        text: 'Please review this for bugs, regressions, and missing tests.'
+      },
+      implementationPlan: {
+        label: 'Implementation plan',
+        description: 'Outline an approach before touching code so the diff stays focused.',
+        text: 'Please make a concise implementation plan before changing code.'
+      },
+      explainThis: {
+        label: 'Explain this',
+        description: 'Walk through how the selected code works and link to the key files.',
+        text: 'Please explain how this works and point me to the key files.'
+      }
+    },
+    approvalMode: {
+      label: 'Approvals',
+      manual: { label: 'Manual', desc: 'Ask only before an operation flagged as dangerous' },
+      smart: { label: 'Smart', desc: 'AI weighs the risk, then asks when needed' },
+      full: { label: 'Full access', desc: 'Unrestricted access to the internet and any file on your computer' }
+    },
+    projectPicker: {
+      label: 'Project',
+      select: 'Select project',
+      searchPlaceholder: 'Search projects…',
+      recentHeading: 'Recent projects',
+      noRecent: 'No projects yet',
+      noMatches: 'No matching projects',
+      useExisting: 'Open existing folder…',
+      newBlank: 'New blank project…',
+      newTitle: 'New project',
+      namePlaceholder: 'Project name',
+      locationLabel: 'Location',
+      chooseParent: 'Choose parent folder…',
+      create: 'Create',
+      back: 'Back',
+      useExistingTitle: 'Choose a project folder',
+      chooseParentTitle: 'Choose where to create the project',
+      pickFailed: 'Could not open the folder picker',
+      createFailed: 'Could not create the project folder'
+    },
     capabilities: {
       enabledLabel: 'Enabled skills',
       unused: 'Unused skills',
@@ -1762,7 +2106,52 @@ export const en: Translations = {
     running: 'Running',
     stop: 'Stop',
     dismiss: 'Dismiss',
-    exit: code => `exit ${code}`
+    exit: code => `exit ${code}`,
+    coding: {
+      title: 'Working tree',
+      noBranch: 'No branch',
+      detached: 'detached',
+      clean: 'Clean',
+      changed: count => `${count} changed`,
+      ahead: count => `${count} ahead`,
+      behind: count => `${count} behind`,
+      review: 'Review',
+      close: 'Close',
+      openChanges: 'Open Changes',
+      openFile: 'Open File',
+      stage: 'Stage',
+      unstage: 'Unstage',
+      stageAll: 'Stage all',
+      viewAsTree: 'View as tree',
+      viewAsList: 'View as list',
+      revert: 'Revert',
+      revertAll: 'Revert all',
+      revertConfirm: 'Discard changes to this file and restore it to the committed state? This cannot be undone.',
+      revertAllConfirm: 'Discard every change and restore files to the committed state? This cannot be undone.',
+      staged: 'Staged',
+      noChanges: 'No changes',
+      notRepo: 'Not a git repository',
+      noDiff: 'No diff to show',
+      scopeUncommitted: 'Uncommitted',
+      scopeBranch: 'Branch',
+      scopeLastTurn: 'Last turn',
+      commit: 'Commit',
+      commitAndPush: 'Commit & Push',
+      commitPlaceholder: 'Message (⌘↵ to commit)',
+      generateCommitMessage: 'Generate commit message',
+      stopGenerating: 'Stop generating',
+      createPr: 'Create PR',
+      openPr: 'Open PR',
+      ghMissing: 'Install the GitHub CLI (gh) and sign in to open PRs',
+      agentShip: 'Ask APEX to open PR',
+      agentShipPrompt:
+        'Review the current changes, commit them with a clear conventional-commit message, push the branch, and open a pull request.',
+      newBranch: 'New branch',
+      branchOffFrom: base => `New branch from ${base}`,
+      switchTo: branch => `Switch to ${branch}`,
+      switchFailed: branch => `Could not switch to ${branch}`,
+      worktrees: 'Worktrees'
+    }
   },
 
   updates: {
@@ -1772,8 +2161,12 @@ export const en: Translations = {
       fetch: 'Downloading…',
       pull: 'Almost there…',
       pydeps: 'Finishing up…',
+      update: 'Updating APEX…',
+      rebuild: 'Rebuilding the desktop app…',
       restart: 'Restarting APEX…',
+      done: 'Update complete',
       manual: 'Update from your terminal',
+      guiSkew: 'Update the desktop app',
       error: 'Update paused'
     },
     checking: 'Looking for updates…',
@@ -1796,13 +2189,17 @@ export const en: Translations = {
     manualTitle: 'Update from your terminal',
     manualBody: 'You installed APEX from the command line, so updates run there too. Paste this into your terminal:',
     manualPickedUp: 'APEX will pick up the new version next time you launch it.',
+    guiSkewTitle: 'Update the desktop app',
+    guiSkewBody:
+      'The backend was updated, but this desktop app package wasn’t changed. Update or reinstall the APEX Desktop app (your AppImage / .deb / .rpm) to match.',
     copy: 'Copy',
     copied: 'Copied',
     done: 'Done',
-    applyingBody: 'The APEX updater will take over in its own window and reopen APEX when it’s done.',
+    applyingBody:
+      'The APEX updater takes over in its own window and reopens APEX automatically when it’s done. Please don’t reopen APEX yourself while it’s updating.',
     applyingBodyBackend:
       'The remote backend is applying the update and will restart. APEX reconnects automatically when it’s back.',
-    applyingClose: 'APEX will close to apply the update.',
+    applyingClose: 'This window will close while the update runs, then APEX reopens on its own.',
     errorTitle: 'Update didn’t finish',
     errorBody: 'No worries — nothing was lost. You can try again now.',
     notNow: 'Not now',
@@ -1829,6 +2226,50 @@ export const en: Translations = {
       deps_unchanged: 'dependencies unchanged',
       prereq_cached: 'environment recently verified'
     },
+    oneTimeTitle: 'APEX needs a one-time install',
+    unsupportedDesc: platform =>
+      `Automated first-launch install isn’t available on ${platform} yet. Open Terminal and run the command below, then relaunch this app. Subsequent launches will skip this step.`,
+    installCommand: 'Install command',
+    copyCommand: 'Copy command',
+    viewDocs: 'View install docs',
+    installTo: 'Will install to',
+    retryAfterRun: 'I’ve run it -- retry',
+    failedTitle: 'Installation failed',
+    settingUpTitle: 'Setting up APEX',
+    // hc-452: shown instead of settingUpTitle when this bootstrap run is an
+    // opt-in runtime version UPDATE, not a first-ever install. version may be
+    // null (e.g. the eager synthetic manifest frame shown before the target
+    // version resolves).
+    settingUpTitleUpdate: version => (version ? `Updating to ${version}` : 'Updating APEX'),
+    finishingTitle: 'Finishing up',
+    failedDesc:
+      'One of the install steps failed. On Windows, this can happen if another APEX CLI or desktop instance is running. Stop any running APEX instances, then retry. Check the details below or the desktop log for the full transcript.',
+    activeDesc:
+      'This is a one-time setup. The APEX installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
+    // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
+    // repeat "one-time setup" / "subsequent launches skip this" -- Kael's
+    // real-machine report flagged that exact phrasing as misleading during a
+    // version update (it recurs on every future update too, it's not a
+    // one-time thing). Unchanged dependencies are skipped automatically so
+    // most updates finish in well under a minute.
+    activeDescUpdate: version =>
+      version
+        ? `Updating to ${version}. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.`
+        : 'Updating APEX. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.',
+    progress: (completed, total) => `${completed} of ${total} steps complete`,
+    currentStage: stage => ` -- now: ${stage}`,
+    fetchingManifest: 'Fetching installer manifest...',
+    error: 'Error',
+    hideOutput: 'Hide installer output',
+    showOutput: 'Show installer output',
+    lines: count => `${count} line${count === 1 ? '' : 's'}`,
+    noOutput: 'No output yet.',
+    cancelling: 'Cancelling...',
+    cancelInstall: 'Cancel install',
+    transcriptSaved: 'Full transcript saved to',
+    copiedOutput: 'Copied!',
+    copyOutput: 'Copy output',
+    reloadRetry: 'Reload and retry',
     // Keyed by the raw bootstrap stage id (covers both the install.ps1 and
     // install.sh naming schemes). Unknown ids fall back to formatStageName.
     stageLabels: {
@@ -1885,95 +2326,29 @@ export const en: Translations = {
       setup: '~1s',
       configure: '~1s',
       gateway: '~3s'
-    },
-    oneTimeTitle: 'APEX needs a one-time install',
-    unsupportedDesc: platform =>
-      `Automated first-launch install isn’t available on ${platform} yet. Open Terminal and run the command below, then relaunch this app. Subsequent launches will skip this step.`,
-    installCommand: 'Install command',
-    copyCommand: 'Copy command',
-    viewDocs: 'View install docs',
-    installTo: 'Will install to',
-    retryAfterRun: 'I’ve run it -- retry',
-    failedTitle: 'Installation failed',
-    settingUpTitle: 'Setting up APEX',
-    // hc-452: shown instead of settingUpTitle when this bootstrap run is an
-    // opt-in runtime version UPDATE, not a first-ever install. version may be
-    // null (e.g. the eager synthetic manifest frame shown before the target
-    // version resolves).
-    settingUpTitleUpdate: version => (version ? `Updating to ${version}` : 'Updating APEX'),
-    finishingTitle: 'Finishing up',
-    failedDesc:
-      'One of the install steps failed. On Windows, this can happen if another APEX CLI or desktop instance is running. Stop any running APEX instances, then retry. Check the details below or the desktop log for the full transcript.',
-    activeDesc:
-      'This is a one-time setup. The installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
-    // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
-    // repeat "one-time setup" / "subsequent launches skip this" -- Kael's
-    // real-machine report flagged that exact phrasing as misleading during a
-    // version update (it recurs on every future update too, it's not a
-    // one-time thing). Unchanged dependencies are skipped automatically so
-    // most updates finish in well under a minute.
-    activeDescUpdate: version =>
-      version
-        ? `Updating to ${version}. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.`
-        : 'Updating APEX. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.',
-    progress: (completed, total) => `${completed} of ${total} steps complete`,
-    currentStage: stage => ` -- now: ${stage}`,
-    fetchingManifest: 'Fetching installer manifest...',
-    error: 'Error',
-    hideOutput: 'Hide installer output',
-    showOutput: 'Show installer output',
-    lines: count => `${count} line${count === 1 ? '' : 's'}`,
-    noOutput: 'No output yet.',
-    cancelling: 'Cancelling...',
-    cancelInstall: 'Cancel install',
-    transcriptSaved: 'Full transcript saved to',
-    copiedOutput: 'Copied!',
-    copyOutput: 'Copy output',
-    reloadRetry: 'Reload and retry'
+    }
   },
 
   onboarding: {
-    headerTitle: "Let's get you set up with APEX",
+    headerTitle: "Let's get you setup with APEX",
     headerDesc: 'Connect a model provider to start chatting. Most options take one click.',
-    managed: {
-      subtitle: 'Sign in with your APEX account to start chatting right away — no API key needed.',
-      emailPlaceholder: 'Email',
-      passwordPlaceholder: 'Password',
-      signIn: 'Sign in & start',
-      signingIn: 'Signing in…',
-      useOwnProvider: 'Use my own provider',
-      dividerOr: 'or',
-      signInGoogle: 'Sign in with Google',
-      signInApex: 'Sign in with APEX'
-    },
-    ready: {
-      title: 'APEX is ready',
-      message: provider => `${provider} connected — start chatting.`
-    },
-    addKeyToStart: 'Your provider is selected — just add its API key to start chatting.',
     preparingInstall: 'APEX is finishing install. This usually takes under a minute on first run.',
     starting: 'Starting APEX…',
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
-    moreProvidersVpn: 'More (needs a VPN)',
     otherProviders: 'Other providers',
     haveApiKey: 'I have an API key',
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
     featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run APEX',
+    fireworksPitch: 'Direct model API — Fireworks-hosted frontier models',
     openRouterPitch: 'One key, hundreds of models — a solid default',
     apiKeyOptions: {
-      deepseek: {
-        short: 'recommended in China',
-        description: 'Direct DeepSeek API (V3.x, R1) — fast, inexpensive, and the APEX default.'
+      fireworks: {
+        short: 'direct model API',
+        description: 'Direct access to models hosted by Fireworks AI.'
       },
-      dashscope: {
-        short: 'Alibaba Qwen',
-        description: 'Alibaba Cloud DashScope — Qwen and multi-vendor models.'
-      },
-      glm: { short: 'Zhipu GLM / Z.AI', description: 'Zhipu GLM-4.6 and Z.AI hosted endpoints.' },
-      moonshot: { short: 'Moonshot Kimi', description: 'Moonshot Kimi K2 and coding endpoints.' },
       openrouter: {
         short: 'one key, many models',
         description: 'Hosts hundreds of models behind a single key. Good default for new installs.'
@@ -1997,7 +2372,6 @@ export const en: Translations = {
     flowSubtitles: {
       pkce: 'Opens your browser to sign in, then continues here',
       device_code: 'Opens a verification page in your browser — APEX connects automatically',
-      loopback: 'Opens your browser to sign in — APEX connects automatically',
       external: 'Sign in once in your terminal, then come back to chat'
     },
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
@@ -2029,40 +2403,21 @@ export const en: Translations = {
     price: (input, output) => `${input} in / ${output} out per Mtok`,
     change: 'Change',
     startChatting: 'Begin',
-    docs: provider => `${provider} docs`
-  },
-
-  managedRecovery: {
-    healed: {
-      title: 'APEX credentials refreshed',
-      retrying: 'Your sign-in had expired — refreshed automatically, retrying…',
-      resend: 'Your sign-in had expired — refreshed automatically, please resend.'
-    },
-    signInRequired: {
-      title: 'Sign in to APEX again',
-      message: 'Your APEX session has expired or is not connected — sign in again to keep chatting.',
-      reason: 'Your APEX session has expired. Sign in again to keep chatting.'
-    }
-  },
-
-  auth: {
-    login: {
-      title: 'Get started',
-      signInApex: 'Sign in with APEX',
-      signInGoogle: 'Continue with Google',
+    docs: provider => `${provider} docs`,
+    addKeyToStart: 'Your provider is selected — just add its API key to start chatting.',
+    moreProvidersVpn: 'More (needs a VPN)',
+    managed: {
+      subtitle: 'Sign in with your APEX account to start chatting right away — no API key needed.',
+      emailPlaceholder: 'Email',
+      passwordPlaceholder: 'Password',
+      signIn: 'Sign in & start',
       signingIn: 'Signing in…',
-      failed: 'Sign-in failed. Please try again.',
-      accountDisabled: 'Your account is unavailable. Please sign in again or contact support.',
-      sessionExpired: 'Your session has expired. Please sign in again.'
-    },
-    account: {
-      fallbackName: 'Account',
-      profile: 'Profile',
-      settings: 'Settings',
-      usage: 'Usage',
-      logout: 'Sign out',
-      sessionExpiredTitle: 'Session expired',
-      sessionExpiredAction: 'Click to sign in again'
+      useOwnProvider: 'Use my own provider',
+      dividerOr: 'or',
+      signInGoogle: 'Sign in with Google',
+      signInApex: 'Sign in with APEX',
+      preparing: 'Getting your APEX assistant ready…',
+      preparingHint: 'Your account is set. We are syncing its model key — nothing for you to configure.'
     }
   },
 
@@ -2093,15 +2448,11 @@ export const en: Translations = {
     windowControls: 'Window controls',
     paneControls: 'Pane controls',
     appControls: 'App controls',
-    connectingOverlay: 'CONNECTING',
     modelMenu: {
       search: 'Search models',
       noModels: 'No models found',
       editModels: 'Edit Models…',
       refreshModels: 'Refresh Models',
-      loadFailed: 'Could not load models — try again shortly.',
-      catalogUnauthorized: 'Model catalog unavailable: sign-in expired — tap to sign in again',
-      catalogUnreachable: 'Model catalog unavailable: network error — tap to retry',
       fast: 'Fast',
       medium: 'Med'
     },
@@ -2115,7 +2466,9 @@ export const en: Translations = {
       low: 'Low',
       medium: 'Medium',
       high: 'High',
+      xhigh: 'Extra High',
       max: 'Max',
+      ultra: 'Ultra',
       updateFailed: 'Model option update failed',
       fastFailed: 'Fast mode update failed'
     },
@@ -2134,16 +2487,32 @@ export const en: Translations = {
       viewAllLogs: 'View all logs →',
       messagingPlatforms: 'Messaging platforms'
     },
+    approvalMode: {
+      title: 'Approval mode',
+      ariaLabel: mode => `Approval mode: ${mode}`,
+      manual: 'Manual',
+      manualDescription: 'Ask before actions that require approval',
+      smart: 'Smart',
+      smartDescription: 'Automatically assess actions and ask when needed',
+      off: 'Off',
+      offDescription: 'Run without approval prompts'
+    },
     statusbar: {
       unknown: 'unknown',
       restart: 'restart',
       update: 'update',
       updateInProgress: 'Update in progress',
       commitsBehind: (count, branch) => `${count} commit${count === 1 ? '' : 's'} behind ${branch}`,
+      desktopVersion: version => `APEX Desktop v${version}`,
       backendVersion: version => `Backend v${version}`,
+      clientLabel: version => `client v${version}`,
       backendLabel: version => `backend v${version}`,
+      commit: sha => `commit ${sha}`,
+      branch: branch => `branch ${branch}`,
       closeCommandCenter: 'Close Command Center',
       openCommandCenter: 'Open Command Center',
+      showTerminal: 'Show terminal',
+      hideTerminal: 'Hide terminal',
       gateway: 'Gateway',
       gatewayReady: 'ready',
       gatewayNeedsSetup: 'needs setup',
@@ -2160,15 +2529,38 @@ export const en: Translations = {
       running: count => `${count} running`,
       cron: 'Cron',
       openCron: 'Open cron jobs',
+      starmap: 'Memory Graph',
+      openStarmap: 'Open memory graph',
       turnRunning: 'Running',
       currentTurnElapsed: 'Current turn elapsed',
       contextUsage: 'Context usage',
+      contextUsagePanel: {
+        categories: {
+          conversation: 'Conversation',
+          mcp: 'MCP',
+          memory: 'Memory',
+          rules: 'Rules',
+          skills: 'Skills',
+          subagent_definitions: 'Subagent definitions',
+          system_prompt: 'System prompt',
+          tool_definitions: 'Tool definitions'
+        },
+        empty: 'No context data yet',
+        loading: 'Loading breakdown…',
+        percentFull: percent => `${percent}% Full`,
+        title: 'Context Usage',
+        tokenSummary: (used, max) => `${used} / ${max} Tokens`
+      },
+      openContextUsage: 'Open context usage breakdown',
       session: 'Session',
       runtimeSessionElapsed: 'Runtime session elapsed',
+      yoloOn: 'YOLO on — auto-approving dangerous commands. Click to turn off. Shift+click toggles it globally.',
+      yoloOff: 'YOLO off — click to auto-approve dangerous commands. Shift+click toggles it globally.',
       modelNone: 'none',
       noModel: 'no model',
       switchModel: 'Switch model',
       openModelPicker: 'Open model picker',
+      modelPinned: 'pinned by you; new chats use this instead of the Settings default',
       modelTitle: (provider, model) => `Model · ${provider}: ${model}`,
       providerModelTitle: (provider, model) => `${provider} · ${model}`
     }
@@ -2191,7 +2583,9 @@ export const en: Translations = {
     previewUnavailable: 'Preview unavailable',
     couldNotPreview: path => `Could not preview ${path}`,
     noProjectTitle: 'No project',
-    noProjectBody: 'Set a working directory from the status bar to browse files.',
+    noProjectBody: 'Open a project to browse its files and review changes.',
+    noProjectOpen: 'No project open',
+    noDiffs: 'No diffs',
     unreadableTitle: 'Unreadable',
     unreadableBody: error => `Could not read this folder (${error}).`,
     emptyTitle: 'Empty',
@@ -2202,21 +2596,31 @@ export const en: Translations = {
     loadingTree: 'Loading file tree',
     loadingFiles: 'Loading files',
     terminalHide: 'Hide terminal',
+    terminalsAria: 'Terminals',
+    terminalNew: 'New terminal',
+    terminalCloseOthers: 'Close others',
+    terminalCloseAll: 'Close all',
     addToChat: 'Add to chat'
   },
 
   preview: {
     tab: 'Preview',
     closeTab: label => `Close ${label}`,
+    closeOthers: 'Close others',
+    closeToRight: 'Close to the right',
+    closeAll: 'Close all',
     closePane: 'Close preview pane',
     loading: 'Loading preview',
     unavailable: 'Preview unavailable',
     opening: 'Opening...',
     hide: 'Hide',
     openPreview: 'Open preview',
+    openInBrowser: 'Open in browser',
+    linkHint: '⌘/Ctrl-click for preview pane',
     sourceLineTitle: 'Click to select · shift-click to extend · drag to composer',
     source: 'SOURCE',
     renderedPreview: 'PREVIEW',
+    diff: 'DIFF',
     unknownSize: 'unknown size',
     binaryTitle: 'This looks like a binary file',
     binaryBody: label => `Previewing ${label} may show unreadable text.`,
@@ -2226,6 +2630,15 @@ export const en: Translations = {
     truncated: 'Showing first 512 KB.',
     noInlineTitle: 'No inline preview',
     noInlineBody: mimeType => `${mimeType || 'This file type'} can still be attached as context.`,
+    edit: 'Edit',
+    editing: 'Editing',
+    unsavedChanges: 'Unsaved changes',
+    saveFailed: message => `Couldn't save: ${message}`,
+    diskChangedTitle: 'File changed on disk',
+    diskChangedBody:
+      'This file changed since you opened it. Overwrite it with your version, or discard your edits and reload?',
+    overwrite: 'Overwrite',
+    discardReload: 'Discard & reload',
     console: {
       deselect: 'Deselect entry',
       select: 'Select entry',
@@ -2256,7 +2669,7 @@ export const en: Translations = {
       lookingRestart: taskId => `APEX is looking for a preview server to restart (${taskId})`,
       restartingTitle: 'Restarting preview server',
       restartingMessage: 'APEX is working in the background. Watch the preview console for progress.',
-      startRestartFailed: 'Could not start the server restart. Please try again.',
+      startRestartFailed: message => `Could not start server restart: ${message}`,
       restartFailed: 'Server restart failed',
       hideConsole: 'Hide preview console',
       showConsole: 'Show preview console',
@@ -2274,7 +2687,7 @@ export const en: Translations = {
       workspaceReloading: 'Workspace changed, reloading preview',
       fileChanged: url => `File changed, reloading preview: ${url}`,
       filesChanged: (count, url) => `${count} file changes, reloading preview: ${url}`,
-      watchFailed: 'Could not watch the preview file — auto-reload is off.',
+      watchFailed: message => `Could not watch preview file: ${message}`,
       moduleMimeDescription:
         'Module scripts are being served with the wrong MIME type. This usually means a static file server is serving a Vite/React app instead of the project dev server.',
       loadFailedConsole: (code, message) => `Load failed${code ? ` (${code})` : ''}: ${message}`,
@@ -2284,11 +2697,61 @@ export const en: Translations = {
     }
   },
 
+  zones: {
+    showHeader: 'Show header',
+    hideHeader: 'Hide header',
+    minimize: 'Minimize',
+    restore: 'Restore',
+    closeRunningTitle: 'Close running tab?',
+    closeRunningBody:
+      'This chat is still working (or waiting on your input). Closing the tab hides it — the session keeps its progress and can be reopened from the sidebar.',
+    closeRunningConfirm: 'Close tab',
+    closeOthers: 'Close others',
+    closeToRight: 'Close to the right',
+    closeAll: 'Close all',
+    split: dir => `Split ${dir}`,
+    move: dir => `Move ${dir}`,
+    dirUp: 'up',
+    dirDown: 'down',
+    dirLeft: 'left',
+    dirRight: 'right',
+    pluginDisabled: pluginId => `Plugin "${pluginId}" disabled`,
+    pluginDisabledBody: 'Re-enable it in Settings → Plugins to bring the pane back.',
+    missingPane: paneId => `missing pane: ${paneId}`,
+    editTitle: 'Layouts',
+    editHint: 'Pick a layout, or drag panes between zones. Right-click a zone to split.',
+    reset: 'Reset',
+    templates: 'Templates',
+    custom: 'Custom',
+    newGridLayout: 'New grid layout',
+    saveCurrentAs: 'Save current arrangement as a template',
+    nameLayoutPlaceholder: 'Name this layout…',
+    deletePreset: name => `Delete ${name}`,
+    zoneEditorTitle: 'Zone editor',
+    editorHintPre: 'click to split · ',
+    editorHintPost: ' flips the line · drag across zones to merge · drag shared edges to resize',
+    templateColumns: 'Columns',
+    templateRows: 'Rows',
+    templateGrid: 'Grid',
+    templatePriority: 'Priority',
+    zoneTag: index => `zone ${index}`,
+    mergeZones: count => `Merge ${count} zones`,
+    customZoneName: count => `Custom ${count}-zone`,
+    layoutNamePlaceholder: fallback => `Layout name (${fallback})`,
+    saveApply: 'Save & apply',
+    notExpressible: 'this arrangement interlocks (pinwheel) — not expressible as nested splits yet',
+    zoneCount: count => `${count} zones`
+  },
+
   assistant: {
     thread: {
       loadingSession: 'Loading session',
       showEarlier: 'Show earlier messages',
       loadingResponse: 'APEX is loading a response',
+      resumeWhenBackgroundDone: count =>
+        count === 1
+          ? 'Will resume when the background task finishes'
+          : `Will resume when ${count} background tasks finish`,
       thinking: 'Thinking',
       today: time => `Today, ${time}`,
       yesterday: time => `Yesterday, ${time}`,
@@ -2302,13 +2765,15 @@ export const en: Translations = {
       stopReading: 'Stop reading',
       readAloud: 'Read aloud',
       editMessage: 'Edit message',
+      expandMessage: 'Expand message',
       scrollToBottom: 'Scroll to bottom',
       stop: 'Stop',
       restorePrevious: 'Restore previous checkpoint',
       restoreCheckpoint: 'Restore checkpoint',
       restoreFromHere: 'Restore checkpoint — rerun from this prompt',
       restoreTitle: 'Restore to this checkpoint?',
-      restoreBody: 'Everything after this prompt is removed from the conversation, and the prompt runs again from here.',
+      restoreBody:
+        'Everything after this prompt is removed from the conversation, and the prompt runs again from here.',
       restoreConfirm: 'Restore & rerun',
       restoreNext: 'Restore next checkpoint',
       goForward: 'Go forward',
@@ -2340,10 +2805,9 @@ export const en: Translations = {
       loadingQuestion: 'Loading question…',
       other: 'Other (type your answer)',
       placeholder: 'Type your answer…',
-      shortcutSuffix: ' to send',
-      back: 'Back',
       skip: 'Skip',
-      send: 'Send'
+      skipped: 'Skipped',
+      continueLabel: 'Continue'
     },
     tool: {
       code: 'Code',
@@ -2368,52 +2832,70 @@ export const en: Translations = {
       statusError: 'Error',
       statusRecovered: 'Recovered',
       statusDone: 'Done',
-      errorDetails: 'Error details',
-      searchResults: 'Search results',
-      stdoutLabel: 'stdout',
-      stderrLabel: 'stderr',
-      detailLabels: {
-        details: 'Details',
-        snapshotSummary: 'Snapshot summary',
-        commandOutput: 'Command output'
+      actions: {
+        read: 'Read',
+        reading: 'Reading',
+        opened: 'Opened',
+        opening: 'Opening',
+        failedToOpen: 'Failed to open',
+        searched: 'Searched',
+        searching: 'Searching',
+        ran: 'Ran',
+        running: 'Running',
+        ranCode: 'Ran code',
+        runningCode: 'Scripting'
+      },
+      prefixes: {
+        browser: 'Browser',
+        web: 'Web'
+      },
+      titleTemplates: {
+        actionCommand: (action, command) => `${action} ${command}`,
+        actionQuoted: (action, value) => `${action} “${value}”`,
+        actionTarget: (action, target) => `${action} ${target}`,
+        prefixedDone: (prefix, action) => `${prefix} ${action}`,
+        runningPrefixedTool: (prefix, action) => `Running ${prefix.toLowerCase()} ${action.toLowerCase()}`,
+        runningTool: action => `Running ${action.toLowerCase()}`
       },
       titles: {
-        browser_click: { done: 'Clicked page element', pending: 'Clicking page element' },
-        browser_fill: { done: 'Filled form field', pending: 'Filling form field' },
-        browser_navigate: { done: 'Opened page', pending: 'Opening page' },
-        browser_snapshot: { done: 'Captured page snapshot', pending: 'Capturing page snapshot' },
-        browser_take_screenshot: { done: 'Captured screenshot', pending: 'Capturing screenshot' },
-        browser_type: { done: 'Typed on page', pending: 'Typing on page' },
-        clarify: { done: 'Asked a question', pending: 'Asking a question' },
-        cronjob: { done: 'Cron job', pending: 'Scheduling cron job' },
-        edit_file: { done: 'Edited file', pending: 'Editing file' },
-        execute_code: { done: 'Ran code', pending: 'Running code' },
-        image_generate: { done: 'Generated image', pending: 'Generating image' },
-        list_files: { done: 'Listed files', pending: 'Listing files' },
-        patch: { done: 'Patched file', pending: 'Patching file' },
-        read_file: { done: 'Read file', pending: 'Reading file' },
-        search_files: { done: 'Searched files', pending: 'Searching files' },
-        session_search_recall: { done: 'Searched session history', pending: 'Searching session history' },
-        terminal: { done: 'Ran command', pending: 'Running command' },
-        todo: { done: 'Updated todos', pending: 'Updating todos' },
-        vision_analyze: { done: 'Analyzed image', pending: 'Analyzing image' },
-        web_extract: { done: 'Read webpage', pending: 'Reading webpage' },
-        web_search: { done: 'Searched web', pending: 'Searching web' },
-        write_file: { done: 'Edited file', pending: 'Editing file' },
-        unknown: { done: 'Ran tool', pending: 'Running tool' }
+        browser_click: { done: 'Clicked page element', pending: 'Clicking page element', pendingAction: 'Clicking' },
+        browser_fill: { done: 'Filled form field', pending: 'Filling form field', pendingAction: 'Filling' },
+        browser_navigate: { done: 'Opened page', pending: 'Opening page', pendingAction: 'Opening' },
+        browser_snapshot: {
+          done: 'Captured page snapshot',
+          pending: 'Capturing page snapshot',
+          pendingAction: 'Capturing'
+        },
+        browser_take_screenshot: {
+          done: 'Captured screenshot',
+          pending: 'Capturing screenshot',
+          pendingAction: 'Capturing'
+        },
+        browser_type: { done: 'Typed on page', pending: 'Typing on page', pendingAction: 'Typing' },
+        clarify: { done: 'Asked a question', pending: 'Asking a question', pendingAction: 'Asking' },
+        cronjob: { done: 'Cron job', pending: 'Scheduling cron job', pendingAction: 'Scheduling' },
+        edit_file: { done: 'Edited file', pending: 'Editing file', pendingAction: 'Editing' },
+        execute_code: { done: 'Ran code', pending: 'Scripting', pendingAction: 'Scripting' },
+        image_generate: { done: 'Generated image', pending: 'Generating image', pendingAction: 'Generating' },
+        list_files: { done: 'Listed files', pending: 'Listing files', pendingAction: 'Listing' },
+        patch: { done: 'Patched file', pending: 'Patching file', pendingAction: 'Patching' },
+        read_file: { done: 'Read file', pending: 'Reading file', pendingAction: 'Reading' },
+        search_files: { done: 'Searched files', pending: 'Searching files', pendingAction: 'Searching' },
+        session_search_recall: {
+          done: 'Searched session history',
+          pending: 'Searching session history',
+          pendingAction: 'Searching'
+        },
+        terminal: { done: 'Ran command', pending: 'Running command', pendingAction: 'Running' },
+        todo: { done: 'Updated todos', pending: 'Updating todos', pendingAction: 'Updating' },
+        vision_analyze: { done: 'Analyzed image', pending: 'Analyzing image', pendingAction: 'Analyzing' },
+        web_extract: { done: 'Read webpage', pending: 'Reading webpage', pendingAction: 'Reading' },
+        web_search: { done: 'Searched web', pending: 'Searching web', pendingAction: 'Searching' },
+        write_file: { done: 'Edited file', pending: 'Editing file', pendingAction: 'Editing' }
       },
-      dynamicTitles: {
-        readingHost: host => `Reading ${host}`,
-        readHost: host => `Read ${host}`,
-        openingHost: host => `Opening ${host}`,
-        openedHost: host => `Opened ${host}`,
-        searchingQuery: query => `Searching “${query}”`,
-        searchedQuery: query => `Searched “${query}”`,
-        runningCommand: command => `Running · ${command}`,
-        ranCommand: command => `Ran · ${command}`,
-        runningCode: command => `Running code · ${command}`,
-        ranCode: command => `Ran code · ${command}`
-      }
+      searchResults: 'Search results',
+      stdoutLabel: 'stdout',
+      stderrLabel: 'stderr'
     }
   },
 
@@ -2456,14 +2938,15 @@ export const en: Translations = {
     editFailed: 'Edit failed',
     resumeFailed: 'Resume failed',
     resumeStrandedTitle: "Couldn't load this session",
-    resumeStrandedBody: 'The connection to this session failed and automatic retries gave up. Check that the gateway is running, then try again.',
+    resumeStrandedBody:
+      'The connection to this session failed and automatic retries gave up. Check that the gateway is running, then try again.',
     resumeRetry: 'Retry',
     nothingToBranch: 'Nothing to branch',
     branchNeedsChat: 'Start or resume a chat before branching.',
     sessionBusy: 'Session busy',
     branchStopCurrent: 'Stop the current turn before branching this chat.',
     branchNoText: 'This message has no text to branch from.',
-    branchTitle: 'Branch',
+    branchTitle: n => `Draft: Branch #${n}`,
     branchFailed: 'Branch failed',
     deleteFailed: 'Delete failed',
     archived: 'Archived',
@@ -2472,10 +2955,6 @@ export const en: Translations = {
     cwdStagedTitle: 'Working directory staged',
     cwdStagedMessage: 'Restart the desktop backend to apply cwd changes to this active session.',
     modelSwitchFailed: 'Model switch failed',
-    modelSwitchBusy: 'The assistant is still responding — switch models after this turn finishes.',
-    modelSwitchRetry: 'The switch did not apply. Please try again.',
-    modelNotInCatalogTitle: 'Selected model unavailable',
-    modelNotInCatalog: 'That model is no longer in the catalog — switched back to the default model.',
     sessionExported: 'Session exported',
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',
@@ -2485,7 +2964,6 @@ export const en: Translations = {
     imageDownloadFailed: 'Image download failed',
     openImage: 'Open image',
     downloadImage: 'Download image',
-    generatedImageAlt: 'Generated image',
     savingImage: 'Saving image',
     imagePreviewFailed: 'Image preview failed',
     imageAttach: 'Image attach',
@@ -2530,6 +3008,238 @@ export const en: Translations = {
       toggle: 'Toggle Sidebar'
     }
   },
+
+  scenarios: {
+    button: 'Scenarios',
+    menuAria: 'Scenarios',
+    searchPlaceholder: 'Search scenarios…',
+    noMatches: 'No matching scenarios',
+    comingSoon: 'Coming soon',
+    allScenarios: 'All scenarios',
+    sample: 'Sample',
+    detailHeading: 'Scenario details',
+    labelCommand: 'Command',
+    labelInput: 'Input',
+    labelOutput: 'Output',
+    inputNone: 'No input needed — runs right away',
+    use: 'Use scenario',
+    channelsTitle: 'Channels · where your agent lives',
+    connectTitle: 'Connect your agent',
+    phoneRemote: 'Phone remote',
+    remoteOn: 'On · /cc',
+    bindCta: 'Scan to bind',
+    remoteBannerTitle: 'Phone is remote-controlling this machine · Feishu /cc',
+    remoteBannerApproval: 'Risky actions still need manual approval',
+    taskTargetCloud: 'Delegated to cloud agent',
+    taskTargetLocal: 'Direct on this machine',
+    taskStatus: { running: 'Running', done: 'Done', failed: 'Failed', queued: 'Queued' },
+    heartbeatAgo: seconds => {
+      if (seconds < 5) {
+        return 'heartbeat just now'
+      }
+
+      if (seconds < 60) {
+        return `heartbeat ${seconds}s ago`
+      }
+
+      if (seconds < 3600) {
+        return `heartbeat ${Math.floor(seconds / 60)}m ago`
+      }
+
+      return `heartbeat ${Math.floor(seconds / 3600)}h ago`
+    },
+    guideTitle: 'Connect a channel so your agent reaches you everywhere'
+  },
+
+  imEntry: {
+    title: 'Messaging',
+    intro: 'Let your assistant reply for you in the chat apps you already use — scan a code to connect one.',
+    loading: 'Loading channels…',
+    connect: 'Connect',
+    manage: 'Manage',
+    comingSoon: 'Coming soon',
+    connectedBadge: 'Connected',
+    availableHeading: 'Available now',
+    comingSoonHeading: 'Coming soon',
+    boundHeading: 'Connected channels',
+    boundEmpty: 'No channels connected yet.',
+    connectedOn: when => `Connected ${when}`,
+    unbind: 'Disconnect',
+    unbindConfirm: name => `Disconnect ${name}? Your assistant will stop replying there on this device.`,
+    unbindDoneTitle: 'Disconnected',
+    unbindDoneMessage: 'Restarting to apply…',
+    liveState: {
+      connected: 'Connected',
+      pending: 'Restarting to apply',
+      error: 'Connection problem',
+      connecting: 'Connecting…',
+      unknown: 'Unknown'
+    },
+    channels: {
+      feishu: { name: 'Feishu / Lark', tagline: 'Reply in your Feishu chats and groups.' },
+      dingtalk: { name: 'DingTalk', tagline: 'Reply in your DingTalk chats and groups.' },
+      weixin: { name: 'WeChat', tagline: 'Reply from your personal WeChat.' },
+      qqbot: { name: 'QQ', tagline: 'Reply in your QQ chats and groups.' },
+      wecom: { name: 'WeCom', tagline: 'Reply in WeCom (Enterprise WeChat).' }
+    },
+    dialog: {
+      connectTitle: name => `Connect ${name}`,
+      signInFirstTitle: 'Sign in first',
+      signInFirst: 'Sign in to your APEX account to connect a channel.',
+      issuing: 'Preparing your QR code…',
+      scanPrompt: 'Scan to connect',
+      scanHint: (name: string) => `Open ${name}, scan the code, and confirm on your phone.`,
+      openLink: 'Open link instead',
+      weixinBotNote:
+        "You're connecting a new bot contact (an iLink bot identity) — not taking over your own WeChat. The bot usually can't join ordinary group chats and works mainly through friend DMs.",
+      connecting: 'Connecting…',
+      authorizedTitle: 'Connected',
+      authorizedMessage: 'Restarting to apply…',
+      authorizedRestartHint: 'Connected and saved — restart the app to finish applying it.',
+      retry: 'Try again',
+      cancel: 'Cancel',
+      close: 'Close',
+      comingSoonTitle: 'Coming soon',
+      comingSoonBody: 'This channel isn’t available to connect yet. We’re working on it.',
+      pasteHeading: 'Paste your code',
+      pasteLabel: 'Connection code',
+      pastePlaceholder: 'Paste the code from the platform',
+      pasteSubmit: 'Connect',
+      advanced: 'Advanced',
+      errors: {
+        sign_in: 'Your session expired. Sign in again, then reconnect.',
+        service_unavailable: 'This channel isn’t open yet. Please try again later.',
+        rate_limited: 'A connection request is already in progress. Finish or wait for it to expire, then try again.',
+        expired: 'The code expired. Start again to get a new one.',
+        denied: 'The request was declined. Start again to retry.',
+        request_failed: 'Something went wrong. Please try again.',
+        keychain: 'Secure storage is off, so the connection wasn’t saved. Enable keychain access and try again.'
+      }
+    },
+    settingsCard: {
+      boundSummary: count => `${count} ${count === 1 ? 'channel' : 'channels'} connected`,
+      openCta: 'Go to messaging'
+    }
+  },
+
+  home: {
+    title: 'What should we do?'
+  },
+
+  auth: {
+    login: {
+      title: 'Get started',
+      signInApex: 'Sign in with APEX',
+      signInGoogle: 'Continue with Google',
+      signingIn: 'Signing in…',
+      failed: 'Sign-in failed. Please try again.',
+      accountDisabled: 'Your account is unavailable. Please sign in again or contact support.',
+      sessionExpired: 'Your session has expired. Please sign in again.',
+      useOwnKey: 'Use my own API key'
+    },
+    account: {
+      fallbackName: 'Account',
+      profile: 'Profile',
+      settings: 'Settings',
+      usage: 'Usage',
+      logout: 'Sign out',
+      sessionExpiredTitle: 'Session expired',
+      sessionExpiredAction: 'Click to sign in again'
+    }
+  },
+
+  tasks: {
+    newTask: 'New task',
+    tabRunning: 'Running',
+    tabDone: 'Done',
+    emptyRunning: 'No running tasks. Hand off a long job — it keeps working in the background.',
+    emptyDone: 'No finished tasks yet.',
+    emptyDetail: 'Kick off a long-running task and follow its progress here.',
+    pending: 'Waiting to start',
+    started: 'Started',
+    runAgain: 'Run again',
+    goalLabel: 'Goal',
+    goalPlaceholder: 'Research the top 5 competitors and write a comparison report…',
+    stuckHint: 'No recent activity',
+    stuckDetail:
+      'This task has shown no activity for a while and may be stuck. Open its run to check, or start it again.',
+    waitingToStart: 'Waiting for the task to start…',
+    progressLabel: 'Progress',
+    stepsOf: (completed, total) => `${completed} / ${total} steps`,
+    currentStepLabel: 'Now:',
+    latestOutputLabel: 'Latest output',
+    runHistory: 'Runs',
+    noRuns: 'No runs yet.',
+    phases: {
+      running: 'Running',
+      done: 'Done',
+      failed: 'Failed'
+    },
+    newTaskTitle: 'New task',
+    newTaskDesc: 'Describe the goal. The agent runs it in the background and notifies you when it finishes.',
+    goalRequired: 'Describe the goal first.',
+    timeRequired: 'Pick a start time first.',
+    whenLabel: 'Start',
+    whenNow: 'Now',
+    whenIn: 'After a delay',
+    whenAt: 'At a specific time',
+    delayLabel: 'Delay',
+    atLabel: 'Start time',
+    persistNote: 'Tasks run in the backend and survive app restarts. They also appear on the Scheduled page.',
+    startTask: 'Start task',
+    created: 'Task created',
+    startedNow: 'Task started',
+    failedStart: 'Could not start the task',
+    deleted: 'Task deleted',
+    failedDelete: 'Could not delete the task',
+    deleting: 'Deleting…',
+    deleteTitle: 'Delete this task?',
+    deleteDescPrefix: 'This permanently removes ',
+    deleteDescSuffix: ' and its schedule. Runs already recorded stay in your session history.',
+    notify: {
+      doneTitle: 'Task finished',
+      failedTitle: 'Task failed'
+    }
+  },
+
+  profileStats: {
+    close: 'Close profile',
+    signedOut: 'Not signed in',
+    loading: 'Loading usage stats…',
+    failedLoad: 'Failed to load usage stats',
+    emptyTitle: 'No activity yet',
+    emptyDesc: 'Start chatting and your usage stats will show up here.',
+    stats: {
+      sessions: 'Sessions',
+      tokens: 'Total tokens',
+      apiCalls: 'API calls',
+      activeDays: 'Active days',
+      skillsUsed: 'Skills used'
+    },
+    heatmap: {
+      title: 'Token activity',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      cumulative: 'Cumulative',
+      less: 'Less',
+      more: 'More',
+      cellTitle: (date, tokens) => `${date} · ${tokens} tokens`
+    },
+    insights: {
+      title: 'Activity insights',
+      busiestDay: 'Busiest day',
+      avgPerActiveDay: 'Avg tokens per active day',
+      topModel: 'Most used model',
+      longestStreak: 'Longest streak',
+      streakDays: days => (days === 1 ? '1 day' : `${days} days`),
+      estimatedCost: 'Estimated cost'
+    },
+    topSkills: {
+      title: 'Top plugins',
+      uses: count => `${count} uses`
+    }
+  },
+
   operationStatus: {
     browserActive: 'Controlling browser',
     computerActive: 'Controlling computer',

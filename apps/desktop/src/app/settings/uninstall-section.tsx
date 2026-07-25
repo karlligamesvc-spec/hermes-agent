@@ -136,12 +136,7 @@ export function UninstallSection() {
             )}
             {failed && <p className="mt-2 text-xs text-destructive">{m.startFailed}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button
-                disabled={running}
-                onClick={() => void handleConfirm()}
-                size="sm"
-                variant="destructive"
-              >
+              <Button disabled={running} onClick={() => void handleConfirm()} size="sm" variant="destructive">
                 {running && <Loader2 className="size-3 animate-spin" />}
                 {running ? m.uninstalling : m.confirmYes}
               </Button>

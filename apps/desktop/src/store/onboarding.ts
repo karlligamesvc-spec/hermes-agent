@@ -12,7 +12,6 @@ import {
   submitOAuthCode,
   validateProviderCredential
 } from '@/hermes'
-import { translateNow } from '@/i18n'
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { notify, notifyError } from '@/store/notifications'
 import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/hermes'
@@ -60,11 +59,6 @@ export interface DesktopOnboardingState {
   mode: OnboardingMode
   providers: null | OAuthProvider[]
   reason: null | string
-  /** True when a provider is already selected (e.g. our DeepSeek seed) but its
-   *  credential is missing/unusable — setup.status reports configured while the
-   *  runtime check fails. Onboarding then lands on the API-key form with a clean
-   *  "add your key" prompt instead of surfacing the raw runtime error. */
-  needsCredential: boolean
   requested: boolean
   /** True when the user explicitly chose "I'll choose a provider later" on the
    *  first-run picker. Persisted to localStorage so the blocking overlay never
@@ -83,17 +77,36 @@ export interface DesktopOnboardingState {
    *  custom endpoint"). Forces the API-key form with the local option
    *  preselected instead of the OAuth picker. */
   localEndpoint: boolean
+  /** True when a provider is already selected (e.g. our DeepSeek seed) but its
+   *  credential is missing/unusable — setup.status reports configured while the
+   *  runtime check fails. Onboarding then lands on the API-key form with a clean
+   *  "add your key" prompt instead of surfacing the raw runtime error.
+   *  Optional (not just absent-means-false): upstream's own onboarding tests
+   *  construct minimal `DesktopOnboardingState` literals that predate this
+   *  ApexNodes-only field and must keep satisfying the type unmodified. */
+  needsCredential?: boolean
   /** True when the ApexNodes managed-LLM default path is enabled for this build
    *  AND the user is not yet signed in. The first-run overlay then leads with a
    *  managed sign-in panel (zero-key chat) instead of the BYOK provider picker.
    *  null until managed.status() resolves; false on builds where managed is off
    *  or the user is already signed in (then onboarding behaves exactly as before
-   *  — the BYOK picker / runtime-readiness gate). */
-  managedAvailable: boolean | null
+   *  — the BYOK picker / runtime-readiness gate). Optional for the same reason
+   *  as `needsCredential` above. */
+  managedAvailable?: boolean | null
   /** Inline error from a managed sign-in attempt, surfaced in the managed panel. */
-  managedError: null | string
+  managedError?: null | string
   /** True while a managed sign-in request is in flight. */
-  managedSubmitting: boolean
+  managedSubmitting?: boolean
+  /** True when the user IS signed in to managed (the platform issued a relay
+   *  key) but the local runtime hasn't picked that key up yet. Onboarding then
+   *  holds our own branded waiting state instead of falling through to the BYOK
+   *  picker — a zero-key user must never be asked to pick a provider. */
+  managedSyncing?: boolean
+  /** True when the user reached the BYOK surface by explicitly asking for it
+   *  ("使用自己的密钥"). On a managed build the picker is an escape hatch, never a
+   *  destination we route to on our own, so this flag is what puts it on screen
+   *  — and it earns that surface a way back to the login screen. */
+  byokFromLogin?: boolean
 }
 
 export interface OnboardingContext {
@@ -170,14 +183,16 @@ const INITIAL: DesktopOnboardingState = {
   mode: 'oauth',
   providers: null,
   reason: null,
-  needsCredential: false,
   requested: false,
   firstRunSkipped: readCachedSkipped(),
   manual: false,
   localEndpoint: false,
+  needsCredential: false,
   managedAvailable: null,
   managedError: null,
-  managedSubmitting: false
+  managedSubmitting: false,
+  managedSyncing: false,
+  byokFromLogin: false
 }
 
 export const $desktopOnboarding = atom<DesktopOnboardingState>(INITIAL)
@@ -190,8 +205,7 @@ const errMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const patch = (update: Partial<DesktopOnboardingState>) =>
   $desktopOnboarding.set({ ...$desktopOnboarding.get(), ...update })
 
-const setFlow = (flow: OnboardingFlow) =>
-  patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
+const setFlow = (flow: OnboardingFlow) => patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
 
 const sessionIdFor = (flow: OnboardingFlow) => ('start' in flow && flow.start ? flow.start.session_id : undefined)
 
@@ -202,19 +216,72 @@ function clearPoll() {
   }
 }
 
-async function checkRuntime(ctx: OnboardingContext): Promise<RuntimeReadinessResult> {
+// How long onboarding waits for the runtime to see a freshly-issued managed
+// relay key before it stops holding the door: ~12s of re-checks. The write is
+// config.yaml → reload.env → probe, which is fast on a warm app and slow on a
+// cold first install.
+const MANAGED_SYNC_RECHECK_MS = 1500
+const MANAGED_SYNC_MAX_RECHECKS = 8
+
+let managedSyncTimer: number | null = null
+let managedSyncRechecks = 0
+
+function clearManagedSyncRecheck() {
+  if (managedSyncTimer !== null) {
+    window.clearTimeout(managedSyncTimer)
+    managedSyncTimer = null
+  }
+
+  managedSyncRechecks = 0
+}
+
+// Keep re-running the readiness check while a signed-in managed install waits
+// for its relay key to land, then let the user in either way. Never falls to the
+// BYOK picker: the account IS provisioned, so if the key turns out to be dead it
+// is the hc-519 relay-auth path (account card + re-sign-in) that says so — not a
+// provider-card screen asking a zero-key user for an API key.
+function scheduleManagedSyncRecheck(ctx: OnboardingContext) {
+  if (managedSyncTimer !== null) {
+    return
+  }
+
+  if (managedSyncRechecks >= MANAGED_SYNC_MAX_RECHECKS) {
+    clearManagedSyncRecheck()
+    completeDesktopOnboarding()
+    ctx.onCompleted?.()
+
+    return
+  }
+
+  managedSyncRechecks += 1
+  managedSyncTimer = window.setTimeout(() => {
+    managedSyncTimer = null
+
+    // Anything that resolved the wait (sign-out, a skip, onboarding completing)
+    // clears the flag — don't keep probing behind the user's back.
+    if ($desktopOnboarding.get().managedSyncing) {
+      void refreshOnboarding(ctx)
+    }
+  }, MANAGED_SYNC_RECHECK_MS)
+}
+
+async function checkRuntime(ctx: OnboardingContext, requestedProvider?: string): Promise<RuntimeReadinessResult> {
   return evaluateRuntimeReadiness(ctx.requestGateway, {
     defaultReason: DEFAULT_ONBOARDING_REASON,
+    requestedProvider,
     unknownReady: false
   })
 }
 
+function shouldPreserveConfiguredOnFallback(runtime: RuntimeReadinessResult, state: DesktopOnboardingState): boolean {
+  // A fallback result means both runtime probes were non-authoritative
+  // (transport timeout/disconnect). Keep a previously verified configured
+  // state instead of forcing the blocking onboarding overlay.
+  return runtime.source === 'fallback' && state.configured === true && !state.requested
+}
+
 function notifyReady(provider: string) {
-  notify({
-    kind: 'success',
-    title: translateNow('onboarding.ready.title'),
-    message: translateNow('onboarding.ready.message', provider)
-  })
+  notify({ kind: 'success', title: 'Hermes is ready', message: `${provider} connected.` })
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
@@ -262,7 +329,7 @@ async function fetchProviderDefaultModel(
   let options
 
   try {
-    options = await getGlobalModelOptions()
+    options = await getGlobalModelOptions({ includeUnconfigured: true, explicitOnly: false })
   } catch {
     return null
   }
@@ -332,15 +399,34 @@ async function completeWithModelConfirm(
   ignoreRuntimeGate = false
 ) {
   await ctx.requestGateway('reload.env').catch(() => undefined)
-  const runtime = await checkRuntime(ctx)
+
+  const defaults = await fetchProviderDefaultModel(preferredSlugs)
+
+  if (defaults) {
+    // Persist the chosen provider/model before the runtime gate so a stale
+    // config provider (e.g. anthropic from a prior failed setup) cannot make
+    // setup.runtime_check validate the wrong backend after a fresh OAuth login.
+    try {
+      const res = await setModelAssignment({
+        scope: 'main',
+        provider: defaults.providerSlug,
+        model: defaults.defaultModel
+      })
+
+      notifyGatewayTools(res.gateway_tools)
+    } catch {
+      // Persistence failed — still run the scoped runtime check below and
+      // show the confirm card so the user can pick something explicitly.
+    }
+  }
+
+  const runtime = await checkRuntime(ctx, preferredSlugs[0])
 
   if (!runtime.ready && !ignoreRuntimeGate) {
     onFail(runtime.reason)
 
     return
   }
-
-  const defaults = await fetchProviderDefaultModel(preferredSlugs)
 
   if (!defaults) {
     // Couldn't get a sensible default — proceed without confirm step.
@@ -349,27 +435,6 @@ async function completeWithModelConfirm(
     ctx.onCompleted?.()
 
     return
-  }
-
-  // Persist the default model BEFORE showing the confirm card so that:
-  // (1) "current default: X" shown in the UI is what's actually written
-  //     to config — no lying.
-  // (2) If the user clicks "Start chatting" without changing anything,
-  //     no extra write is needed.
-  // (3) If they bail out (e.g., refresh the page), they still end up
-  //     with a working config, not an empty-model fallback.
-  try {
-    const res = await setModelAssignment({
-      scope: 'main',
-      provider: defaults.providerSlug,
-      model: defaults.defaultModel
-    })
-
-    notifyGatewayTools(res.gateway_tools)
-  } catch {
-    // Persistence failed — still show the confirm card so the user can
-    // pick something explicitly. The backend will pick its own default
-    // at chat time if we end up never persisting.
   }
 
   setFlow({
@@ -510,6 +575,7 @@ export function closeManualOnboarding() {
 
 export function completeDesktopOnboarding() {
   clearPoll()
+  clearManagedSyncRecheck()
   writeCachedConfigured(true)
   // A real provider is now connected, so any earlier "choose later" skip is
   // moot — clear it so the flag never lingers in a configured install.
@@ -527,7 +593,9 @@ export function completeDesktopOnboarding() {
     localEndpoint: false,
     managedAvailable: false,
     managedError: null,
-    managedSubmitting: false
+    managedSubmitting: false,
+    managedSyncing: false,
+    byokFromLogin: false
   })
 }
 
@@ -539,6 +607,7 @@ export function completeDesktopOnboarding() {
 // which marks the app actually configured.
 export function dismissFirstRunOnboarding() {
   clearPoll()
+  clearManagedSyncRecheck()
   writeCachedSkipped(true)
   patch({
     firstRunSkipped: true,
@@ -546,6 +615,7 @@ export function dismissFirstRunOnboarding() {
     manual: false,
     localEndpoint: false,
     needsCredential: false,
+    managedSyncing: false,
     flow: { status: 'idle' }
   })
 }
@@ -554,17 +624,27 @@ export function setOnboardingMode(mode: OnboardingMode) {
   patch({ mode })
 }
 
-// Probe the ApexNodes managed-LLM status via the desktop bridge. Best-effort:
-// when the bridge is absent (web dashboard / dev preview) or the call fails,
-// managed is treated as unavailable so onboarding falls back to the BYOK flow.
-// Returns the status so callers can act on `signedIn` without a second read.
-async function refreshManagedStatus(): Promise<{ enabled: boolean; signedIn: boolean } | null> {
+// What the managed probe actually told us. Three outcomes, not two: a probe that
+// FAILED to answer is not the same as one that said "managed is off". Collapsing
+// those two is what let a busy main process (first install: skills installing,
+// backend spawning, safeStorage decrypt on the same thread) turn a silent IPC
+// round-trip into a provider-card screen for a zero-key user.
+type ManagedProbe =
+  // No desktop bridge at all — web dashboard / dev preview. BYOK is genuinely
+  // the only path there.
+  | { kind: 'absent' }
+  // Bridge present, status() threw. We know nothing; say nothing.
+  | { kind: 'unknown' }
+  | { enabled: boolean; kind: 'ok'; signedIn: boolean }
+
+// Probe the ApexNodes managed-LLM status via the desktop bridge.
+async function refreshManagedStatus(): Promise<ManagedProbe> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
   if (!bridge) {
     patch({ managedAvailable: false })
 
-    return null
+    return { kind: 'absent' }
   }
 
   try {
@@ -574,11 +654,11 @@ async function refreshManagedStatus(): Promise<{ enabled: boolean; signedIn: boo
     // the runtime is configured and the normal readiness gate handles them.
     patch({ managedAvailable: status.enabled && !status.signedIn })
 
-    return { enabled: status.enabled, signedIn: status.signedIn }
+    return { enabled: status.enabled, kind: 'ok', signedIn: status.signedIn }
   } catch {
-    patch({ managedAvailable: false })
-
-    return null
+    // Deliberately no patch: manufacturing `managedAvailable: false` out of a
+    // non-answer is how absence of a signal became a BYOK verdict.
+    return { kind: 'unknown' }
   }
 }
 
@@ -596,7 +676,11 @@ const MANAGED_COPY = {
   // Signed in, but the local runtime couldn't reach the relay after applying it.
   relayUnreachable: '登录成功,但运行时无法连接 APEX 中转服务,请重试',
   // Browser flow could not be started / was cancelled.
-  browserFailed: '浏览器登录未完成,请重试'
+  browserFailed: '浏览器登录未完成,请重试',
+  // Signed in, but the platform returned no relay key (provision-key not
+  // deployed / temporarily failing). The account is fine, so the user stays on
+  // our sign-in surface and retries — we do NOT push them into BYOK.
+  keyPending: '登录成功,但平台暂未下发模型密钥,请稍后重试'
 }
 
 // Map an electron managed-sign-in `res.message` to user-facing Chinese. The
@@ -631,10 +715,12 @@ async function applyManagedSignInResult(
   }
 
   if (!res.hasRelayKey || !res.assignment) {
-    // Logged in, but managed isn't wired server-side yet — degrade to BYOK.
-    patch({ managedSubmitting: false, managedAvailable: false, mode: 'apikey' })
-    await refreshProviders()
-    patch({ mode: 'apikey' })
+    // Logged in, but the platform handed back no relay key. This used to degrade
+    // straight to the BYOK picker, which is how a successful managed login could
+    // still end on a provider-card screen. The account is valid, so keep the user
+    // on our own surface with an honest retry line; BYOK stays one explicit click
+    // away ("使用自己的密钥") rather than being chosen for them.
+    patch({ managedSubmitting: false, managedError: MANAGED_COPY.keyPending })
 
     return
   }
@@ -751,11 +837,21 @@ export async function managedBrowserSignIn(provider: 'apex' | 'google', ctx: Onb
   }
 }
 
-// "Use my own provider instead" escape hatch from the managed sign-in panel:
-// drop the managed-first treatment for this session and show the BYOK picker.
+// The "使用自己的密钥" escape hatch — the ONE way a managed install reaches the
+// BYOK picker. Drops the managed-first treatment for this session and marks the
+// surface as explicitly requested, which is also what earns it a way back to the
+// login screen (returnToManagedLogin + exitByokFromLogin).
 export function skipManagedForByok() {
-  patch({ managedAvailable: false, managedError: null, mode: 'oauth' })
+  clearManagedSyncRecheck()
+  patch({ byokFromLogin: true, managedAvailable: false, managedError: null, managedSyncing: false, mode: 'oauth' })
   void refreshProviders()
+}
+
+// "返回登录" from that escape hatch: forget the BYOK detour so the picker stops
+// being on screen. The caller pairs this with returnToManagedLogin(), which puts
+// the account gate (and with it the login screen) back in front.
+export function exitByokFromLogin() {
+  patch({ byokFromLogin: false, managedError: null, mode: 'oauth', localEndpoint: false, flow: { status: 'idle' } })
 }
 
 export async function refreshOnboarding(ctx: OnboardingContext) {
@@ -778,22 +874,74 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
     return true
   }
 
-  // Runtime isn't ready and the user isn't configured. Before falling to the
-  // BYOK picker, check whether this build leads with managed sign-in (zero-key).
-  // When managed is available, surface the managed panel instead of the picker
-  // — the user signs in once and gets chat with no key. An already-signed-in
-  // managed user would have passed the readiness check above (relay key seeded),
-  // so we only reach here for the not-yet-signed-in case.
-  const managed = await refreshManagedStatus()
+  const state = $desktopOnboarding.get()
 
-  if (managed?.enabled && !managed.signedIn) {
-    writeCachedConfigured(false)
-    patch({ configured: false, reason: null, needsCredential: false, managedAvailable: true })
+  if (shouldPreserveConfiguredOnFallback(runtime, state)) {
+    // Gateway probes timed out but the user was already configured — don't
+    // downgrade to the blocking onboarding overlay. Surface a non-blocking
+    // notification with a stable id so repeated calls during an outage dedup
+    // instead of stacking toasts.
+    notify({
+      id: 'runtime-not-ready',
+      kind: 'error',
+      title: 'Runtime not ready',
+      message:
+        'Hermes Desktop could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'
+    })
 
     return false
   }
 
-  const state = $desktopOnboarding.get()
+  // Runtime isn't ready and the user isn't configured. Before falling to the
+  // BYOK picker, check whether this build leads with managed sign-in (zero-key).
+  // On a managed build the picker is an escape hatch the user opts into, never a
+  // destination onboarding routes to on its own — so NEITHER managed branch below
+  // falls through to it. `byokFromLogin` is that opt-in: once taken, managed
+  // stops re-asserting itself for the session and the BYOK flow runs as upstream.
+  const probe: ManagedProbe = state.byokFromLogin ? { kind: 'absent' } : await refreshManagedStatus()
+
+  // Only an EXPLICIT negative may send a user to the picker: no bridge at all, or
+  // a bridge that says managed is off for this build. A probe that didn't answer
+  // leaves the zero-key default standing — we wait and ask again instead of
+  // asking the user for an API key on the strength of a failed IPC call.
+  const managedOn = probe.kind === 'unknown' || (probe.kind === 'ok' && probe.enabled)
+  // An unanswered probe can only happen once the account gate has already let
+  // this user through, which means signed in.
+  const signedIn = probe.kind === 'ok' ? probe.signedIn : true
+
+  if (managedOn && (!signedIn || state.managedAvailable === true)) {
+    // Our managed sign-in panel, not upstream's provider list. Two ways in: the
+    // user has never signed in, or hc-511 asked for a re-sign-in because the
+    // relay key on disk is dead and can't self-heal — a key FILE exists there,
+    // so `signedIn` reads true while the session is gone, and only the caller's
+    // managedAvailable tells them apart.
+    writeCachedConfigured(false)
+    patch({ configured: false, reason: null, needsCredential: false, managedAvailable: true, managedSyncing: false })
+
+    return false
+  }
+
+  if (managedOn) {
+    // Signed in: the platform issued a relay key, so this user is entitled to
+    // chat — the runtime just hasn't picked the key up yet (a cold first install
+    // writes config.yaml, reloads env, and only then probes). Hold our own
+    // branded waiting state and re-check.
+    //
+    // `configured` is deliberately left alone here: an already-onboarded user
+    // stays in chat through a transient not-ready probe instead of being
+    // demoted to an overlay. Falling through from this state is what put a
+    // provider-card screen in front of a zero-key user on first install.
+    if (!state.managedSyncing) {
+      // A new wait rather than a re-check of one already running — start the
+      // budget over so a later hiccup gets the full window again.
+      clearManagedSyncRecheck()
+    }
+
+    patch({ reason: null, needsCredential: false, managedAvailable: false, managedSyncing: true })
+    scheduleManagedSyncRecheck(ctx)
+
+    return false
+  }
 
   // checksDisagree (setup.status says configured, runtime check says not) means a
   // provider is already selected but its credential is missing/unusable — exactly
@@ -879,9 +1027,7 @@ export async function startProviderOAuth(provider: OAuthProvider, ctx: Onboardin
   }
 }
 
-// Poll a session-backed flow (device_code or loopback) until it resolves.
-// Both shapes only need the session_id to poll; the start is threaded
-// through to the error flow so the user can retry from the same context.
+// Poll a session-backed device-code or loopback flow until it resolves.
 async function pollSession(provider: OAuthProvider, start: DeviceStart | LoopbackStart, ctx: OnboardingContext) {
   try {
     const { error_message, status } = await pollOAuthSession(provider.id, start.session_id)

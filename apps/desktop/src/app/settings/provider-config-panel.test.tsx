@@ -16,8 +16,14 @@ vi.mock('@/store/notifications', () => ({
   notifyError: vi.fn()
 }))
 
+// These fixtures describe one flat, ungrouped schema on purpose — the panel's
+// grouping and inline layout are not what this file asserts — so `group` and
+// `inline` are filled in with their neutral values rather than repeated on
+// every field.
+type BareField = Omit<MemoryProviderConfig['fields'][number], 'group' | 'inline'>
+
 function hindsightSchema(overrides: Partial<MemoryProviderConfig['fields'][number]>[] = []): MemoryProviderConfig {
-  const fields: MemoryProviderConfig['fields'] = [
+  const bare: BareField[] = [
     {
       key: 'mode',
       label: 'Mode',
@@ -71,7 +77,8 @@ function hindsightSchema(overrides: Partial<MemoryProviderConfig['fields'][numbe
   return {
     name: 'hindsight',
     label: 'Hindsight',
-    fields: fields.map((field, index) => ({ ...field, ...overrides[index] }))
+    docs_url: '',
+    fields: bare.map((field, index) => ({ group: '', inline: false, ...field, ...overrides[index] }))
   }
 }
 
