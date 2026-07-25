@@ -5,6 +5,12 @@
 // partial locales should use `defineLocale()` so missing desktop-only strings
 // fall back to English while new keys remain type-checked.
 
+interface UninstallOptionCopy {
+  title: string
+  description: string
+  consequence: string
+}
+
 export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja'
 
 export type ToolTitleKey =
@@ -666,6 +672,23 @@ export interface Translations {
       byoMixNote: string
       noModels: string
       tasks: Record<string, AuxTaskCopy>
+    }
+    uninstall: {
+      dangerZone: string
+      checking: string
+      title: string
+      chooseDesc: string
+      confirmTitle: string
+      confirmBody: (consequence: string) => string
+      appPath: (path: string) => string
+      uninstalling: string
+      confirmYes: string
+      startFailed: string
+      options: {
+        gui: UninstallOptionCopy
+        lite: UninstallOptionCopy
+        full: UninstallOptionCopy
+      }
     }
     providers: {
       connectAccount: string
