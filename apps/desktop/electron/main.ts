@@ -239,6 +239,7 @@ import {
   shouldAttemptReprovision,
   syncCustomProviderKeyYaml
 } from './apex-managed'
+import { guardConfigYamlOnArrival } from './apex-config-arrival'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -3815,14 +3816,37 @@ function resolveHermesBackend(backendArgs) {
 
 async function ensureRuntime(backend) {
   // Every boot path (existing install or fresh bootstrap) passes through here
-  // before the gateway starts — heal a rotated relay key in the registered
-  // custom provider so the model picker's live listing works this launch,
-  // then fold any newer platform config into config.yaml (line surgery; the
-  // gateway loads the result fresh).
+  // before the gateway starts.
+  //
+  // SEED FIRST, and on every path — not just the bootstrap branch below. A
+  // brand-new HERMES_HOME has no config.yaml at all, and every reconcile in
+  // this prologue early-returns on a missing file, so an install that ALREADY
+  // has a runtime to spawn (adopted bundle, repo checkout, pip install, a wiped
+  // or freshly created home) reached the gateway with nothing written: the
+  // runtime then created its OWN config.yaml from upstream's defaults, and that
+  // file has no `display.language`. /api/config answers out of MERGED defaults,
+  // so it returns `en` even for a file that never mentions language — the
+  // i18n "missing → zh" fallback can never fire, and the shell opens in
+  // English. Seeding here means the runtime loads OUR file instead of inventing
+  // one, which removes the race rather than chasing the file around.
+  //
+  // Still absent-gated inside: an existing config.yaml — returning user, hand
+  // edited, or one install.sh already copied from cli-config.yaml.example — is
+  // never touched, so for every install that has been up once this is a no-op
+  // and the old behavior holds byte for byte.
+  seedDefaultModelConfig()
+  // Then heal a rotated relay key in the registered custom provider so the
+  // model picker's live listing works this launch, fold any newer platform
+  // config into config.yaml (line surgery; the gateway loads the result fresh),
+  // and reconcile the product-critical blocks.
   syncManagedCustomProviderKey()
   applyClientConfigToRuntime('boot')
   guardConfigYamlProductBlocks('boot')
   watchConfigYamlProductBlocks()
+  // Backstop for the only ordering the four above cannot cover between them:
+  // the seed could not write (read-only home, full disk), so config.yaml is
+  // STILL absent here and something else creates it seconds later.
+  guardConfigYamlWhenItArrives()
 
   if (!backend.bootstrap) {
     await advanceBootProgress('runtime.external', `Using ${backend.label}`, 32)
@@ -3842,10 +3866,9 @@ async function ensureRuntime(backend) {
   if (backend.kind === 'bootstrap-needed') {
     rememberLog('[bootstrap] no Hermes install found; starting first-launch bootstrap')
 
-    // ApexNodes: seed the product defaults into config.yaml before install.sh
-    // runs (it keeps an existing config.yaml), so a fresh install boots on the
-    // APEX display/model/MoA defaults instead of the upstream ones.
-    seedDefaultModelConfig()
+    // config.yaml already carries the APEX display/model/MoA defaults: the top
+    // of this function seeds it on every path, and install.sh's own template
+    // copy is absent-gated, so the seed still wins the way it always did.
 
     if (await handOffWindowsBootstrapRecovery('bootstrap-needed')) {
       const handoffError: Error & { isBootstrapFailure?: boolean; bootstrapHandedOff?: boolean } = new Error(
@@ -10418,10 +10441,18 @@ const SEED_MOA_BLOCK =
   '      aggregator_temperature: 0.4\n'
 
 // ── ApexNodes default model preset ─────────────────────────────────────────
-// We pre-seed config.yaml BEFORE the first-launch installer runs: install.sh
-// only creates config.yaml from its template when absent, so this seed wins
-// WITHOUT forking the runtime. Idempotent + non-destructive: an existing
-// config.yaml (returning user, or one they edited) is left untouched.
+// We pre-seed config.yaml before anything else can: install.sh only creates one
+// from its template when absent, and the runtime only writes its own defaults
+// when it finds nothing — so getting there first wins WITHOUT forking the
+// runtime. Idempotent + non-destructive: an existing config.yaml (returning
+// user, or one they edited) is left untouched.
+//
+// Called from the top of ensureRuntime, i.e. on EVERY boot path before the
+// backend spawns — not just a first-launch bootstrap. The distinction matters
+// on a machine that already has a runtime but a brand-new HERMES_HOME: there is
+// no install to bootstrap there, so a bootstrap-only seed left the runtime to
+// write its own config.yaml and the product defaults (display.language: zh
+// above all) never reached disk.
 //
 // Two default paths (see apex-managed.cjs):
 //   - MANAGED (V0.2, preferred): a signed-in user's relay key is on disk, so we
@@ -11867,18 +11898,38 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 // loses a product-critical block, restore it. Idempotent; append-only; never
 // touches a block that exists.
 //
-// It doubles as the reconcile for installs the first-run seed never touched:
-// seedDefaultModelConfig only runs on the bootstrap-needed branch and returns
-// early once config.yaml exists, so a config.yaml written by anything else (the
-// runtime itself, install.sh's example copy, a bundle-mode or repeat install)
-// would otherwise keep the UPSTREAM defaults forever. ensureRuntime calls this
-// on EVERY boot path, before the gateway starts, which is what makes the
-// product defaults hold everywhere rather than only on a clean first install.
+// It doubles as the reconcile for installs the first-run seed never wrote:
+// seedDefaultModelConfig returns early once config.yaml exists, so a
+// config.yaml written by anything else (the runtime itself, install.sh's
+// example copy, a bundle-mode or repeat install) would otherwise keep the
+// UPSTREAM defaults forever. ensureRuntime calls this on EVERY boot path,
+// before the gateway starts, which is what makes the product defaults hold
+// everywhere rather than only on a clean first install.
 function guardConfigYamlProductBlocks(reason) {
+  // A pass that finds the file changed under it between read and write yields
+  // rather than clobbering the other writer, and says so — recompute against
+  // the new content and try again. The healers are add-only and idempotent, so
+  // re-running on someone else's fresh file is always safe. Bounded: three
+  // losses in a row means a writer is hammering the file, and the live watcher
+  // will pick the heal back up on its next event.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (healConfigYamlProductBlocks(reason) !== 'stale') return
+  }
+
+  rememberLog(`[config-guard] deferred to the watcher after 3 racing passes (${reason})`)
+}
+
+function healConfigYamlProductBlocks(reason) {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
-    if (!fs.existsSync(configPath)) return
+    if (!fs.existsSync(configPath)) return 'absent'
     let raw = fs.readFileSync(configPath, 'utf8')
+    // What we based this pass on. The runtime saves config.yaml atomically
+    // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
+    // half-written file; the live risk is the reverse, that it lands a whole
+    // new version between this read and our write and our plain writeFileSync
+    // silently reverts it.
+    const readBack = raw
     const fixed = []
 
     const managed = resolveManagedConfig()
@@ -11967,12 +12018,25 @@ function guardConfigYamlProductBlocks(reason) {
       fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
     }
 
-    if (fixed.length) {
-      fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
-      rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
+    if (!fixed.length) return 'clean'
+
+    // Compare-and-swap against what we read: a file that changed under us makes
+    // `raw` stale, so drop this pass rather than overwrite whatever just
+    // landed. The caller recomputes on the new content.
+    if (fs.readFileSync(configPath, 'utf8') !== readBack) {
+      rememberLog(`[config-guard] config.yaml changed mid-pass; recomputing ${fixed.join(', ')} (${reason})`)
+
+      return 'stale'
     }
+
+    fs.writeFileSync(configPath, raw, { encoding: 'utf8' })
+    rememberLog(`[config-guard] restored missing block(s): ${fixed.join(', ')} (${reason})`)
+
+    return 'healed'
   } catch (err: any) {
     rememberLog(`[config-guard] skipped: ${err && err.message ? err.message : err}`)
+
+    return 'error'
   }
 }
 
@@ -11992,6 +12056,36 @@ function watchConfigYamlProductBlocks() {
   } catch (err: any) {
     rememberLog(`[config-guard] watcher unavailable: ${err && err.message ? err.message : err}`)
   }
+}
+
+// The one ordering neither the boot guard nor the watcher can cover on its own:
+// config.yaml is still ABSENT when ensureRuntime runs (the seed a few lines
+// earlier could not write it — read-only home, full disk) and something else
+// creates it seconds later. Both functions above early-return on a missing
+// file, so without this the session would run on whatever that other writer put
+// there — upstream defaults, i.e. an English UI — with nothing left to correct
+// it and no watcher armed for the rest of the run either.
+//
+// Fire-and-forget: the waiter unrefs its timer and gives up after its own
+// deadline, so it can never hold the app open. See apex-config-arrival.ts for
+// why this polls instead of watching the directory.
+let configArrivalWaiter = null
+
+function guardConfigYamlWhenItArrives() {
+  if (configArrivalWaiter) return
+
+  const configPath = path.join(HERMES_HOME, 'config.yaml')
+  // Already there → the boot guard just reconciled it and the watcher is
+  // armed; arming a second watcher on the same file would only double every
+  // future heal.
+  if (fs.existsSync(configPath)) return
+
+  configArrivalWaiter = guardConfigYamlOnArrival({
+    configPath,
+    guard: () => guardConfigYamlProductBlocks('arrival'),
+    watch: watchConfigYamlProductBlocks,
+    log: rememberLog
+  })
 }
 
 // Apply the cached platform config to config.yaml — main-process line surgery,

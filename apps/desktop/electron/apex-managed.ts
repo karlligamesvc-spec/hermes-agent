@@ -150,12 +150,15 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 // reconciles against (ensureProductDefaultsYaml). Values must agree — a
 // source-contract test in apex-managed.test.ts holds the two together.
 //
-// Why a reconcile exists at all: seedDefaultModelConfig only runs on the
-// bootstrap-needed branch AND bails the moment config.yaml exists, so every
-// other way a config.yaml can appear (the runtime writing its own, install.sh
-// copying cli-config.yaml.example, a bundle-mode install, a reinstall over
-// kept data) used to land a user on the UPSTREAM defaults — English UI,
-// reasoning blocks hidden — with nothing to correct it. `display.language` is
+// Why a reconcile exists at all: seedDefaultModelConfig bails the moment
+// config.yaml exists, so every way a config.yaml can appear WITHOUT it (the
+// runtime writing its own, install.sh copying cli-config.yaml.example, a
+// bundle-mode install, a reinstall over kept data) lands a user on the UPSTREAM
+// defaults — English UI, reasoning blocks hidden — with nothing else to correct
+// it. The seed runs on every boot path now, not only a first install
+// (ensureRuntime in main.ts), which is what keeps that set small — but it can
+// still lose the file to another writer, so this stays the safety net.
+// `display.language` is
 // the sharp one: the runtime's /api/config answers with merged defaults, so it
 // returns `en` even when the FILE has no language key at all, and the shell's
 // China-first fallback (which only fires on a null) never gets a turn.
