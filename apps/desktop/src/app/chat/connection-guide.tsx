@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { IM_ENTRY_ROUTE, SETTINGS_ROUTE } from '../routes'
 
 import { useChannelStatus } from './scenarios/use-channel-status'
+import { useImOnboardingGuideVisible } from './scenarios/use-im-onboarding-guide-visible'
 
 // hc-555 显化 — connection-guidance for the not-yet-connected. A fuller
 // counterpart to the compact sidebar / zero-state strips (#145): when the user
@@ -21,6 +22,7 @@ export function ConnectionGuide() {
   const s = t.scenarios
   const status = useChannelStatus()
   const navigate = useNavigate()
+  const guideVisible = useImOnboardingGuideVisible(status)
 
   const legs = [
     {
@@ -47,15 +49,14 @@ export function ConnectionGuide() {
   ]
 
   const available = legs.filter(entry => entry.leg.available)
-  const anyBound = available.some(entry => entry.leg.bound)
-  // The IM bridge is the authoritative "connected?" signal; wait for it before
-  // showing so a fast daemon reply can't flash the guide at a user who in fact
-  // has an IM channel bound (whose bound state the IM bridge hasn't reported yet).
-  const imAnswered = status.feishu.available || status.weixin.available
 
   // Onboarding only: shown only once the IM bridge has answered and reports no
   // channel connected — hidden on web / older main and the moment any is bound.
-  if (!imAnswered || available.length === 0 || anyBound) {
+  // Shared gate: SidebarChannelStatus suppresses its own block on the negation
+  // of this same guideVisible, so the two surfaces never both show the "扫码
+  // 绑定" list at once — see useImOnboardingGuideVisible for the single source
+  // of truth.
+  if (!guideVisible) {
     return null
   }
 

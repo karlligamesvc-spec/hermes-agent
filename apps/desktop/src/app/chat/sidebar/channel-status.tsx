@@ -5,6 +5,7 @@ import { useI18n } from '@/i18n'
 
 import { IM_ENTRY_ROUTE, SETTINGS_ROUTE } from '../../routes'
 import { useChannelStatus } from '../scenarios/use-channel-status'
+import { useImOnboardingGuideVisible } from '../scenarios/use-im-onboarding-guide-visible'
 
 /**
  * hc-554 显化 — "渠道 · 分身在哪": a compact channel-presence group above the
@@ -12,12 +13,19 @@ import { useChannelStatus } from '../scenarios/use-channel-status'
  * its live label; an unbound one shows a muted dot + a guide label and links to
  * its connect surface. Self-gates to nothing when no channel bridge exists
  * (web build / older main), matching the footer's other self-gating pills.
+ *
+ * Also self-gates while ConnectionGuide's first-run banner is showing (zero
+ * channels bound yet) — same three channels + 扫码绑定 CTA, so showing both at
+ * once would be a duplicate. See useImOnboardingGuideVisible for the shared
+ * gate; once any channel is bound the banner disappears and this block takes
+ * over showing the real connection status.
  */
 export function SidebarChannelStatus() {
   const { t } = useI18n()
   const s = t.scenarios
   const status = useChannelStatus()
   const navigate = useNavigate()
+  const guideVisible = useImOnboardingGuideVisible(status)
 
   const legs = [
     {
@@ -46,7 +54,7 @@ export function SidebarChannelStatus() {
     }
   ].filter(entry => entry.leg.available)
 
-  if (legs.length === 0) {
+  if (guideVisible || legs.length === 0) {
     return null
   }
 
