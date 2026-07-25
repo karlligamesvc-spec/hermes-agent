@@ -73,7 +73,7 @@ def test_red_line_tree_integrity_untouched() -> None:
     bootstrap runner keeps evaluateTreeIntegrity byte-recognizable."""
     lib = (REPO_ROOT / "scripts" / "lib" / "apexnodes-region-detect.sh").read_text()
     assert '.hermes-source-commit' in lib
-    runner = (REPO_ROOT / "apps" / "desktop" / "electron" / "bootstrap-runner.cjs").read_text()
+    runner = (REPO_ROOT / "apps" / "desktop" / "electron" / "bootstrap-runner.ts").read_text()
     assert "function evaluateTreeIntegrity" in runner
     assert "commit_mismatch" in runner
 
