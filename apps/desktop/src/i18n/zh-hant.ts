@@ -776,7 +776,14 @@ export const zhHant = defineLocale({
       change: '變更',
       autoUseMain: '自動 · 使用主要模型',
       providerDefault: '(提供方預設)',
-      tasks: {
+
+      requestFailed: '操作失敗，請重試',
+      staleAux: (count, names, provider) => `${count} 個輔助任務（${names}）仍在使用 ${provider}，而不是您的主要模型。`,
+      staleAuxOtherProviders: '其他提供方',
+      byoTitle: '我的金鑰(BYO)',
+      byoHint: '使用您自己金鑰下的模型。',
+      byoMixNote: 'v1 暫不與平台模型同選;單獨使用不受影響。',
+      noModels: '還沒有可用模型,請在「設定 › 提供方」中新增。',      tasks: {
         vision: { label: '視覺', hint: '圖片分析' },
         web_extract: { label: '網頁擷取', hint: '頁面摘要' },
         compression: { label: '壓縮', hint: '上下文壓縮' },

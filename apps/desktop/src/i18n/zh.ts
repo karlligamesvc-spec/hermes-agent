@@ -949,7 +949,13 @@ export const zh: Translations = {
       fallbackAdd: '添加备用模型',
       fallbackEmpty: '未配置备用模型 — 默认模型失败时才会使用备用模型。',
       notInCatalog: '不在该提供方的模型列表中 — 调用可能回退到备用模型。',
-      tasks: {
+      requestFailed: '操作失败，请重试',
+      staleAux: (count, names, provider) => `${count} 个辅助任务（${names}）仍在使用 ${provider}，而不是你的主模型。`,
+      staleAuxOtherProviders: '其他提供方',
+      byoTitle: '我的密钥(BYO)',
+      byoHint: '使用你自己密钥下的模型。',
+      byoMixNote: 'v1 暂不与平台模型同选;单独使用不受影响。',
+      noModels: '还没有可用模型,请在「设置 › 提供方」中添加。',      tasks: {
         vision: { label: '视觉', hint: '图片分析' },
         web_extract: { label: '网页提取', hint: '页面总结' },
         compression: { label: '压缩', hint: '上下文压缩' },

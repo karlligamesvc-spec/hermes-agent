@@ -658,6 +658,13 @@ export interface Translations {
       fallbackAdd: string
       fallbackEmpty: string
       notInCatalog: string
+      requestFailed: string
+      staleAux: (count: number, names: string, provider: string) => string
+      staleAuxOtherProviders: string
+      byoTitle: string
+      byoHint: string
+      byoMixNote: string
+      noModels: string
       tasks: Record<string, AuxTaskCopy>
     }
     providers: {

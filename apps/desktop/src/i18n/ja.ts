@@ -801,7 +801,15 @@ export const ja = defineLocale({
       change: '変更',
       autoUseMain: '自動 · メインモデルを使用',
       providerDefault: '(プロバイダーのデフォルト)',
-      tasks: {
+
+      requestFailed: '操作に失敗しました。もう一度お試しください',
+      staleAux: (count, names, provider) =>
+        `${count} 件の補助タスク（${names}）はメインモデルではなく ${provider} で実行され続けています。`,
+      staleAuxOtherProviders: '他のプロバイダー',
+      byoTitle: '自分のキー(BYO)',
+      byoHint: '自分のキーのモデルを使います。',
+      byoMixNote: 'v1 ではプラットフォームモデルとの併用はできません。単独での使用には影響しません。',
+      noModels: '利用可能なモデルがまだありません。「設定 › プロバイダー」で追加してください。',      tasks: {
         vision: { label: 'ビジョン', hint: '画像分析' },
         web_extract: { label: 'ウェブ抽出', hint: 'ページの要約' },
         compression: { label: '圧縮', hint: 'コンテキストの圧縮' },

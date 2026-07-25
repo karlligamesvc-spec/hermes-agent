@@ -60,6 +60,19 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: model_catalog_dedupe seam failed to load", exc_info=True)
 
     try:
+        from apex_overlay import moa_picker_probe
+
+        if not moa_picker_probe.apply():
+            logger.warning(
+                "apex-overlay: virtual-'moa' picker probe seam did not fully "
+                "apply (see prior error). Composing a multi-model selection "
+                "will collapse the platform model list to its single "
+                "configured id, so no further model can be picked."
+            )
+    except Exception:
+        logger.warning("apex-overlay: moa_picker_probe seam failed to load", exc_info=True)
+
+    try:
         from apex_overlay import models_dev_fast
 
         if not models_dev_fast.apply():

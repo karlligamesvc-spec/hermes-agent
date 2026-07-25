@@ -758,7 +758,14 @@ export const en: Translations = {
       fallbackAdd: 'Add fallback',
       fallbackEmpty: 'No fallback models — the default model is used unless it fails.',
       notInCatalog: "isn't in this provider's model list — calls may fall back to a backup.",
-      tasks: {
+      requestFailed: 'Something went wrong — please try again.',
+      staleAux: (count, names, provider) =>
+        `${count} auxiliary task${count === 1 ? '' : 's'} (${names}) still run on ${provider}, not your main model.`,
+      staleAuxOtherProviders: 'other providers',
+      byoTitle: 'My keys (BYO)',
+      byoHint: 'Use a model on your own key.',
+      byoMixNote: "Can't be combined with platform models yet in v1 — using them on their own is unaffected.",
+      noModels: 'No models available yet. Add a provider in Settings › Providers.',      tasks: {
         vision: { label: 'Vision', hint: 'Image analysis' },
         web_extract: { label: 'Web extract', hint: 'Page summarization' },
         compression: { label: 'Compression', hint: 'Context compaction' },
