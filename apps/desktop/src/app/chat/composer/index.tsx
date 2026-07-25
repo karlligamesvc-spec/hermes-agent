@@ -22,6 +22,7 @@ import { useTheme } from '@/themes'
 
 import { ScenarioButton } from '../scenarios/scenario-button'
 
+import { ApprovalPill } from './approval-pill'
 import { AttachmentList } from './attachments'
 import { COMPOSER_FADE_BACKGROUND, type QueueEditState, slashArgStage } from './composer-utils'
 import { ContextMenu } from './context-menu'
@@ -45,6 +46,7 @@ import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
 import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
+import { ProjectPicker } from './project-picker'
 import { QueuePanel } from './queue-panel'
 import {
   composerPlainText,
@@ -63,6 +65,14 @@ import type { ChatBarProps } from './types'
 import { UrlDialog } from './url-dialog'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
 
+// Upstream v0.19.0 pins a git strip (branch name, ±diff, ahead/behind, Review,
+// stage/discard) to the top of the composer whenever the session's cwd is a
+// repo. It is the single strongest "this is a tool for writing code" signal in
+// the whole window, so it stays WIRED but default OFF (Kael 2026-07-24: 以我方
+// 为主, 上游更好的先接线默认关). CodingStatusRow keeps its own $repoStatus gate,
+// so flipping this back to true restores the upstream behavior exactly.
+const SHOW_CODING_STATUS_ROW: boolean = false
+
 export function ChatBar({
   busy,
   cwd,
@@ -74,6 +84,7 @@ export function ChatBar({
   sessionId,
   state,
   onCancel,
+  onChangeCwd,
   onAddUrl,
   onAttachDroppedItems,
   onAttachImageBlob,
@@ -923,10 +934,23 @@ export function ChatBar({
               onDoubleClick={handleComposerToggle}
             />
           )}
+          {/* hc-517 — new-conversation project picker chip, above the composer.
+              Only for a fresh draft (no session id yet); the chosen folder
+              becomes the new session's cwd. Renders nothing when the feature is
+              off / not on a local desktop backend. */}
+          {!sessionId && onChangeCwd && (
+            <div className="relative z-10 mb-1.5 flex px-1">
+              <ProjectPicker cwd={cwd} disabled={inputDisabled} onChangeCwd={onChangeCwd} />
+            </div>
+          )}
           <div className="relative w-full rounded-[inherit]">
             <div
               className={cn(
                 'group/composer-surface relative z-4 isolate grid grid-rows-[auto_1fr] overflow-hidden rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]',
+                // The composer floats off the thread — soft drop shadow at rest,
+                // ring brightening on focus. --shadow-composer is declared in
+                // styles.css for exactly this one consumer.
+                'shadow-(--shadow-composer) transition-[border-color,box-shadow] duration-200 ease-out focus-within:border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(45%*var(--composer-ring-strength)),transparent)]',
                 COMPOSER_DROP_FADE_CLASS,
                 dragActive && COMPOSER_DROP_ACTIVE_CLASS
               )}
@@ -941,15 +965,17 @@ export function ChatBar({
                   composerSurfaceGlass
                 )}
               />
-              <CodingStatusRow
-                onBranchOff={handleBranchOff}
-                onConvertBranch={handleConvertBranch}
-                onListBranches={handleListBranches}
-                onOpen={toggleReview}
-                onOpenWorktree={openInWorktree}
-                onSwitchBranch={handleSwitchBranch}
-                repoPath={cwd}
-              />
+              {SHOW_CODING_STATUS_ROW && (
+                <CodingStatusRow
+                  onBranchOff={handleBranchOff}
+                  onConvertBranch={handleConvertBranch}
+                  onListBranches={handleListBranches}
+                  onOpen={toggleReview}
+                  onOpenWorktree={openInWorktree}
+                  onSwitchBranch={handleSwitchBranch}
+                  repoPath={cwd}
+                />
+              )}
               <div
                 className={cn(
                   'relative z-1 flex min-h-0 w-full flex-col gap-(--composer-row-gap) overflow-hidden rounded-[inherit] px-(--composer-surface-pad-x) py-(--composer-surface-pad-y) transition-opacity duration-200 ease-out',
@@ -1005,6 +1031,7 @@ export function ChatBar({
                         insert bus itself), and renders nothing when the catalog
                         is fleet-disabled. Sits beside the "+" capability menu. */}
                     <ScenarioButton disabled={disabled} />
+                    <ApprovalPill disabled={disabled} />
                     <ContribSlot area={COMPOSER_AREAS.leading} />
                   </div>
                   <div className="min-w-0 [grid-area:input]">{input}</div>
