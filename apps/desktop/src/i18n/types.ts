@@ -436,6 +436,36 @@ export interface Translations {
       minAgo: (count: number) => string
       hoursAgo: (count: number) => string
       daysAgo: (count: number) => string
+      // Engine (runtime) opt-in update — R5/R6 of runtime 3-end consistency.
+      engineSection: string
+      engineVersion: (value: string) => string
+      engineVersionUnavailable: string
+      engineCheck: string
+      engineChecking: string
+      engineUpToDate: string
+      engineTapCheck: string
+      engineFound: (value: string) => string
+      engineFoundGeneric: string
+      engineDesktopUpgradeRequired: (value: string) => string
+      engineCompatNotes: string
+      engineApply: string
+      engineApplying: string
+      engineCantReach: string
+      engineConfirmTitle: string
+      engineConfirmBody: (value: string) => string
+      engineConfirmBodyGeneric: string
+      engineConfirmApply: string
+      // hc-532 (gate 1): shown when the installed engine is older than the
+      // shell's declared minimum (package.json apexnodes.minEngineVersion).
+      // Non-blocking — points the user at the opt-in engine update below.
+      engineUpdateNeeded: string
+      engineUpdateNeededDetail: (value: string) => string
+      // hc-543: shown when the bootstrap marker's version disagrees with the
+      // source tree actually on disk (a botched .git-less update stamped a new
+      // version over unchanged files). The version label is NOT trustworthy;
+      // re-running the engine update re-extracts the correct tree.
+      engineTreeMismatch: string
+      engineTreeMismatchDetail: string
       // hc-447: 更新日志 (changelog) entry — reads the hc-446 announcement feed.
       changelogTitle: string
       changelogIntro: string

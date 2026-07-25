@@ -1,71 +1,204 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
-import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
-import { Codicon } from '@/components/ui/codicon'
-import { type Translations, useI18n } from '@/i18n'
-import { CheckCircle2, ExternalLink, Loader2, RefreshCw } from '@/lib/icons'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useI18n } from '@/i18n'
+import { AlertTriangle, Cpu, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import {
-  $desktopVersion,
-  $updateApply,
-  $updateChecking,
-  $updateStatus,
-  checkUpdates,
-  openUpdatesWindow,
-  refreshDesktopVersion,
-  startActiveUpdate
-} from '@/store/updates'
+  $runtimeUpdateApplying,
+  $runtimeUpdateCheck,
+  $runtimeUpdateChecking,
+  $runtimeVersion,
+  applyRuntimeUpdate,
+  checkRuntimeUpdate,
+  loadRuntimeVersion
+} from '@/store/runtime-update'
+import { $desktopVersion, refreshDesktopVersion } from '@/store/updates'
 
 import { ChangelogSection } from './changelog-section'
-import { ListRow, SectionHeading, SettingsContent } from './primitives'
+import { SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
-const RELEASE_NOTES_URL = 'https://github.com/NousResearch/hermes-agent/releases'
+// R5 / R6 — desktop opt-in engine (runtime) update. Shows the currently
+// installed engine version and, on demand (opt-in: the user must click), checks
+// the admin-set default and offers a confirmed apply. Reuses the existing IPC
+// bridge (window.hermesDesktop.runtime.*) via the runtime-update store — no
+// mechanism lives here.
+function EngineUpdateSection() {
+  const { t } = useI18n()
+  const a = t.settings.about
+  const installed = useStore($runtimeVersion)
+  const check = useStore($runtimeUpdateCheck)
+  const checking = useStore($runtimeUpdateChecking)
+  const applying = useStore($runtimeUpdateApplying)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
-function relativeTime(ms: number | undefined, a: Translations['settings']['about']) {
-  if (!ms) {
-    return a.never
+  // R6: read the installed engine version on open. Local marker read only —
+  // no network, no opt-in violation (the update *check* still waits for a click).
+  useEffect(() => {
+    void loadRuntimeVersion()
+  }, [])
+
+  // Prefer the version from a fresh opt-in check when present; otherwise the
+  // locally-loaded marker version shown on open.
+  const currentVersion = check?.current?.version ?? installed?.version ?? null
+  const latest = check?.updateAvailable ? check.latest : null
+  const compatNotes = latest?.compatibilityNotes?.trim() || ''
+  // ok:false from a check means we couldn't reach the admin/latest endpoint.
+  // updateAvailable:false with ok:true means we reached it and we're current.
+  const reachable = check ? check.ok : true
+  // hc-475 (F4): a newer engine exists but this shell is too old to run it. The
+  // check reports updateAvailable:false (so `latest`/the Apply button are absent)
+  // and hands us the required desktop version to prompt an app upgrade instead.
+  const upgradeRequired = check?.desktopUpgradeRequired ?? null
+  // hc-532 (gate 1): the MIRROR direction — the installed engine is older than
+  // THIS shell's declared minimum (package.json apexnodes.minEngineVersion), so
+  // the daemon/tool features this build ships may silently fail. meetsMinEngine
+  // fails open (false only when positively behind); a persistent error-tone
+  // banner points the user at the opt-in engine update right below. Never blocks.
+  const engineOutdated = installed?.meetsMinEngine === false
+  const minEngineVersion = installed?.minEngineVersion ?? null
+  // hc-543: the marker's version disagrees with the source tree actually on
+  // disk — a botched .git-less update stamped a new version over unchanged
+  // files. Only true when we have a positive contradiction (stamp present and
+  // different); null/undefined (git or legacy tree with no stamp) never alarms.
+  const engineTreeMismatch = installed?.treeMatchesMarker === false
+
+  let statusLine: string
+  let statusTone: 'available' | 'error' | 'idle' = 'idle'
+
+  if (!check) {
+    statusLine = a.engineTapCheck
+  } else if (!reachable) {
+    statusLine = a.engineCantReach
+    statusTone = 'error'
+  } else if (upgradeRequired) {
+    statusLine = upgradeRequired.minDesktopVersion
+      ? a.engineDesktopUpgradeRequired(upgradeRequired.minDesktopVersion)
+      : a.engineFoundGeneric
+    statusTone = 'error'
+  } else if (latest) {
+    statusLine = latest.version ? a.engineFound(latest.version) : a.engineFoundGeneric
+    statusTone = 'available'
+  } else {
+    statusLine = a.engineUpToDate
   }
 
-  const diff = Date.now() - ms
+  const handleApply = async () => {
+    const result = await applyRuntimeUpdate()
 
-  if (diff < 60_000) {
-    return a.justNow
+    // On success the pin is re-armed; reload to drive the bootstrap re-run.
+    if (result.reloadRequired) {
+      window.location.reload()
+    }
   }
 
-  if (diff < 3_600_000) {
-    return a.minAgo(Math.round(diff / 60_000))
-  }
-
-  if (diff < 86_400_000) {
-    return a.hoursAgo(Math.round(diff / 3_600_000))
-  }
-
-  return a.daysAgo(Math.round(diff / 86_400_000))
-}
-
-// The 关于 page as a standalone settings page.
-export function AboutSettings() {
   return (
-    <SettingsContent>
-      <AboutSettingsBody />
-    </SettingsContent>
+    <div className="mt-6">
+      <SectionHeading icon={Cpu} title={a.engineSection} />
+
+      {engineOutdated && (
+        <div
+          className="p5-panel mb-2 flex items-start gap-2 px-4 py-3 text-sm text-destructive"
+          data-testid="engine-outdated-banner"
+          data-tone="error"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium">{a.engineUpdateNeeded}</p>
+            {minEngineVersion && (
+              <p className="mt-1 text-xs">{a.engineUpdateNeededDetail(minEngineVersion)}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {engineTreeMismatch && (
+        <div
+          className="p5-panel mb-2 flex items-start gap-2 px-4 py-3 text-sm text-destructive"
+          data-testid="engine-tree-mismatch-banner"
+          data-tone="error"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium">{a.engineTreeMismatch}</p>
+            <p className="mt-1 text-xs">{a.engineTreeMismatchDetail}</p>
+          </div>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          'p5-panel px-4 py-3.5 text-sm',
+          statusTone === 'error' ? 'text-destructive' : 'text-foreground'
+        )}
+        data-tone={statusTone}
+      >
+        <div className="flex items-start gap-2">
+          {statusTone === 'available' ? (
+            <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--ui-blue)]" />
+          ) : statusTone === 'error' ? (
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          ) : (
+            <Cpu className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          )}
+          <div className="min-w-0">
+            <p className="font-medium">{statusLine}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {currentVersion ? a.engineVersion(currentVersion) : a.engineVersionUnavailable}
+            </p>
+            {latest && compatNotes && (
+              <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{a.engineCompatNotes}: </span>
+                {compatNotes}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <Button
+            disabled={checking || applying}
+            onClick={() => void checkRuntimeUpdate()}
+            size="sm"
+            variant="textStrong"
+          >
+            {checking ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+            {checking ? a.engineChecking : a.engineCheck}
+          </Button>
+
+          {latest && (
+            <Button disabled={applying} onClick={() => setConfirmOpen(true)} size="sm">
+              {applying ? <Loader2 className="size-3 animate-spin" /> : null}
+              {applying ? a.engineApplying : a.engineApply}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <ConfirmDialog
+        cancelLabel={t.common.cancel}
+        confirmLabel={a.engineConfirmApply}
+        description={latest?.version ? a.engineConfirmBody(latest.version) : a.engineConfirmBodyGeneric}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleApply}
+        open={confirmOpen}
+        title={a.engineConfirmTitle}
+      />
+    </div>
   )
 }
 
-// The same content without the page wrapper, so 个性化 can host it as a section
-// (About is merged into 个性化 in the ApexNodes settings layout) without
-// nesting one SettingsContent inside another.
+// The full About block (brand header, app updates, engine updates, uninstall)
+// WITHOUT the SettingsContent scroll wrapper, so 个性化 (PersonalizationSettings)
+// can embed it below the 人格 picker. AboutSettings keeps wrapping it for the
+// still-functional `?tab=about` deep link.
 export function AboutSettingsBody() {
   const { t } = useI18n()
   const a = t.settings.about
   const version = useStore($desktopVersion)
-  const status = useStore($updateStatus)
-  const apply = useStore($updateApply)
-  const checking = useStore($updateChecking)
-  const [justChecked, setJustChecked] = useState(false)
 
   // The version atom is loaded once at app boot, which makes About show a
   // stale number after a self-update (the running binary is current, the
@@ -75,127 +208,35 @@ export function AboutSettingsBody() {
     void refreshDesktopVersion()
   }, [])
 
-  const behind = status?.behind ?? 0
-  const supported = status?.supported !== false
-  const applying = apply.applying || apply.stage === 'restart'
-
-  const handleCheck = async () => {
-    setJustChecked(false)
-    const next = await checkUpdates()
-    setJustChecked(Boolean(next))
-  }
-
-  let statusLine: string
-  let statusTone: 'idle' | 'available' | 'error' = 'idle'
-
-  if (!supported) {
-    statusLine = status?.message ?? a.cantUpdate
-    statusTone = 'error'
-  } else if (status?.error) {
-    statusLine = a.cantReach
-    statusTone = 'error'
-  } else if (applying) {
-    statusLine = a.installing
-    statusTone = 'available'
-  } else if (behind > 0) {
-    statusLine = a.updateReady(behind)
-    statusTone = 'available'
-  } else if (status) {
-    statusLine = a.onLatest
-  } else {
-    statusLine = a.tapCheck
-  }
-
+  // Upstream's app self-update block (git-checkout based `hermes update`) is
+  // intentionally NOT rendered: ApexNodes installs are COS source tarballs
+  // with no .git, so that flow can only ever error. Shell updates ship as new
+  // installers; the ENGINE update below (R5/R6) is our supported path.
   return (
     <>
-      <div className="flex flex-col items-center gap-3 pt-6 pb-2 text-center">
-        <BrandMark className="size-16" />
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">{a.heading}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {version?.appVersion ? a.version(version.appVersion) : a.versionUnavailable}
-          </p>
-        </div>
+      {/* hc: brand mark + "APEX 桌面版" heading removed per Kael — 个性化页不再顶品牌大头;
+          版本号(功能信息)保留,居中小字。 */}
+      <div className="pt-4 pb-2 text-center">
+        <p className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+          {version?.appVersion ? a.version(version.appVersion) : a.versionUnavailable}
+        </p>
       </div>
 
       <div className="mx-auto mt-4 w-full max-w-2xl">
-        {/* hc-447 更新日志 — the cloud product-update feed (the same "you can
-            now…" content the web /app/whats-new page shows), read-only. An
-            empty feed is a normal state and renders its own friendly copy. */}
         <ChangelogSection />
 
-        <SectionHeading icon={RefreshCw} title={a.updates} />
-
-        <div
-          className={cn(
-            'rounded-xl border px-4 py-3 text-sm',
-            statusTone === 'available' && 'border-primary/30 bg-primary/5 text-foreground',
-            statusTone === 'error' && 'border-destructive/35 bg-destructive/5 text-destructive',
-            statusTone === 'idle' && 'border-border/70 bg-muted/20 text-foreground'
-          )}
-        >
-          <div className="flex items-start gap-2">
-            {statusTone === 'available' ? (
-              <Codicon className="mt-0.5 size-4 shrink-0 text-primary" name="cloud-download" size="1rem" />
-            ) : statusTone === 'error' ? null : (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            )}
-            <div className="min-w-0">
-              <p className="font-medium">{statusLine}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {a.lastChecked(relativeTime(status?.fetchedAt, a))}
-                {justChecked && !checking ? a.justNowSuffix : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            <Button
-              disabled={checking || applying || !supported}
-              onClick={() => void handleCheck()}
-              size="sm"
-              variant="textStrong"
-            >
-              {checking ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-              {checking ? a.checking : a.checkNow}
-            </Button>
-
-            {behind > 0 && supported && !applying && (
-              <>
-                <Button onClick={() => startActiveUpdate()} size="sm">
-                  {a.updateNow}
-                </Button>
-                <Button onClick={() => openUpdatesWindow()} size="sm" variant="textStrong">
-                  {a.seeWhatsNew}
-                </Button>
-              </>
-            )}
-
-            <Button asChild className="ml-auto" size="sm" variant="text">
-              <a
-                href={RELEASE_NOTES_URL}
-                onClick={event => {
-                  event.preventDefault()
-                  void window.hermesDesktop?.openExternal?.(RELEASE_NOTES_URL)
-                }}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <ExternalLink className="size-3" />
-                {a.releaseNotes}
-              </a>
-            </Button>
-          </div>
-        </div>
-
-        <ListRow
-          description={a.automaticUpdatesDesc}
-          hint={a.branchCommit(status?.branch ?? 'unknown', status?.currentSha?.slice(0, 7) ?? 'unknown')}
-          title={a.automaticUpdates}
-        />
+        <EngineUpdateSection />
 
         <UninstallSection />
       </div>
     </>
+  )
+}
+
+export function AboutSettings() {
+  return (
+    <SettingsContent>
+      <AboutSettingsBody />
+    </SettingsContent>
   )
 }
