@@ -1804,11 +1804,11 @@ export const ja = defineLocale({
     placeholderReconnecting: 'APEX に再接続中…',
     placeholderFollowUp: 'フォローアップを送信',
     newSessionPlaceholders: [
-      '何を作りますか？',
-      'APEX にタスクを与える',
+      '要望・リンク・資料・チャット履歴を送ってください',
+      'AI にまず何を作らせますか？',
       '何か考えていることはありますか？',
       '必要なことを説明してください',
-      '何に取り組みますか？',
+      'まず何に取り組みますか？',
       '何でも聞いてください',
       '目標から始める'
     ],

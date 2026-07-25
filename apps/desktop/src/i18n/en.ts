@@ -1927,11 +1927,11 @@ export const en: Translations = {
     placeholderReconnecting: 'Reconnecting to APEX…',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
-      'What are we building?',
-      'Give APEX a task',
+      'Send a request, link, document, or chat log',
+      'What can AI draft for you?',
       "What's on your mind?",
       'Describe what you need',
-      'What should we tackle?',
+      'What should we work on?',
       'Ask anything',
       'Start with a goal'
     ],

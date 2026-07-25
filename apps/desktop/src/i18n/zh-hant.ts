@@ -1739,11 +1739,11 @@ export const zhHant = defineLocale({
     placeholderReconnecting: '正在重新連線至 APEX…',
     placeholderFollowUp: '傳送後續訊息',
     newSessionPlaceholders: [
-      '我們要建立什麼？',
-      '給 APEX 一個任務',
+      '發一個需求、連結、資料或聊天記錄',
+      'AI 可以先幫你做點什麼?',
       '您在想什麼？',
       '描述您需要什麼',
-      '我們該處理什麼？',
+      '我們先做哪件事?',
       '盡管問',
       '從一個目標開始'
     ],

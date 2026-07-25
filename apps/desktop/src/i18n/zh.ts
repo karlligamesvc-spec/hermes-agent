@@ -2087,11 +2087,11 @@ export const zh: Translations = {
     placeholderReconnecting: '正在重新连接 APEX…',
     placeholderFollowUp: '发送后续消息',
     newSessionPlaceholders: [
-      '我们要构建什么？',
-      '给 APEX 一个任务',
+      '发一个需求、链接、资料或聊天记录',
+      'AI 可以先帮你做点什么?',
       '你在想什么？',
       '描述你需要什么',
-      '我们该处理什么？',
+      '我们先做哪件事?',
       '随便问点什么',
       '从一个目标开始'
     ],
