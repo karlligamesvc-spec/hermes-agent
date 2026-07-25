@@ -42,7 +42,8 @@ export const ja = defineLocale({
     update: '更新',
     tryHint: term => `「${term}」を試す`,
     on: 'オン',
-    off: 'オフ'
+    off: 'オフ',
+    engineVersionPrefix: 'エンジン'
   },
 
   fileMenu: {
@@ -616,26 +617,30 @@ export const ja = defineLocale({
       hoursAgo: count => `${count} 時間前`,
       daysAgo: count => `${count} 日前`,
       engineSection: 'AI エンジン',
-      engineVersion: value => `エンジンバージョン ${value}`,
+      // hc-591: value はすでに表示用に整形済み("エンジン 2026.7.25")なので、
+      // ここでは重複する「エンジン」を外している。
+      engineVersion: value => `バージョン：${value}`,
       engineVersionUnavailable: 'エンジンバージョンを取得できません',
       engineCheck: 'エンジンの更新を確認',
       engineChecking: '確認中…',
       engineUpToDate: 'エンジンは最新です。',
       engineTapCheck: '新しいエンジンバージョンがあるか確認します。',
-      engineFound: value => `新しいエンジンバージョン ${value} が見つかりました。`,
+      engineFound: value => `新しいバージョン ${value} が見つかりました。`,
       engineFoundGeneric: '新しいエンジンバージョンがあります。',
-      engineDesktopUpgradeRequired: value => `このエンジンをインストールするには、デスクトップアプリを v${value} 以降にアップデートしてください。`,
+      engineDesktopUpgradeRequired: value =>
+        `このエンジンをインストールするには、デスクトップアプリを v${value} 以降にアップデートしてください。`,
       engineCompatNotes: '互換性に関する注意',
       engineApply: '更新を適用',
       engineApplying: '適用中…',
       engineCantReach: 'エンジンの更新を確認できませんでした。接続を確認してもう一度お試しください。',
       engineConfirmTitle: 'AI エンジンを更新しますか？',
-      engineConfirmBody: value => `エンジンバージョン ${value} に切り替え、適用のためアプリを再起動します。作業内容は安全です。`,
+      engineConfirmBody: value =>
+        `バージョン ${value} に切り替え、適用のためアプリを再起動します。作業内容は安全です。`,
       engineConfirmBodyGeneric: 'AI エンジンを更新し、適用のためアプリを再起動します。作業内容は安全です。',
       engineConfirmApply: 'エンジンを更新',
       engineUpdateNeeded: 'エンジンの更新が必要です',
       engineUpdateNeededDetail: value =>
-        `このアプリはエンジン ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
+        `このアプリは ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
       engineTreeMismatch: 'エンジンファイルが未同期です',
       engineTreeMismatchDetail:
         '前回の更新で新しいバージョンが記録されましたが、ディスク上のエンジンファイルは置き換えられていないため、表示中のバージョンが正しくない可能性があります。下のエンジン更新を実行して正しいファイルを再ダウンロードしてください。',

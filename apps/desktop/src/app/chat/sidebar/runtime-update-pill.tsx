@@ -2,8 +2,14 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, ChevronRight, Loader2, Sparkles } from '@/lib/icons'
-import { $runtimeUpdateApplying, $runtimeUpdateCheck, applyRuntimeUpdate, checkRuntimeUpdate } from '@/store/runtime-update'
+import {
+  $runtimeUpdateApplying,
+  $runtimeUpdateCheck,
+  applyRuntimeUpdate,
+  checkRuntimeUpdate
+} from '@/store/runtime-update'
 import { $shellUpdate } from '@/store/shell-update'
 
 // Silent background-check cadence. The first check waits 30s after mount so it
@@ -93,7 +99,13 @@ export function RuntimeUpdatePill() {
     return null
   }
 
-  const version = check.latest.version ?? check.latest.key
+  // hc-591: check.latest.version is the raw internal engine pin (calver+fork,
+  // e.g. v2026.7.25-fork.b0a720a5); humanize it before it renders in the
+  // capsule. The .key fallback (a raw commit sha / branch name on an older
+  // marker) isn't a calver string either way, so the formatter fails open and
+  // passes it through unchanged -- no worse than before.
+  const rawVersion = check.latest.version ?? check.latest.key
+  const version = rawVersion ? formatEngineDisplayVersion(rawVersion) : rawVersion
   const state = applying ? 'applying' : failed ? 'error' : 'idle'
 
   const handleClick = async () => {
@@ -140,7 +152,9 @@ export function RuntimeUpdatePill() {
         )}
       </span>
       <span className="p5-update-pill-text">
-        <span className="p5-update-pill-title">{applying ? s.updating : state === 'error' ? s.failedRolledBack : s.found}</span>
+        <span className="p5-update-pill-title">
+          {applying ? s.updating : state === 'error' ? s.failedRolledBack : s.found}
+        </span>
         {state !== 'error' && version ? <span className="p5-update-pill-version">{version}</span> : null}
       </span>
       {state === 'idle' ? <ChevronRight aria-hidden className="p5-update-pill-chevron size-3.5" /> : null}

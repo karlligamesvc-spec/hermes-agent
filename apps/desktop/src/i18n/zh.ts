@@ -42,7 +42,8 @@ export const zh: Translations = {
     update: '更新',
     tryHint: term => `试试“${term}”`,
     on: '开',
-    off: '关'
+    off: '关',
+    engineVersionPrefix: '引擎'
   },
 
   fileMenu: {
@@ -715,7 +716,8 @@ export const zh: Translations = {
       hoursAgo: count => `${count} 小时前`,
       daysAgo: count => `${count} 天前`,
       engineSection: 'AI 引擎',
-      engineVersion: value => `引擎版本 ${value}`,
+      // hc-591: value 已是显示格式化后的串("引擎 2026.7.25"),此处去掉重复的「引擎」二字。
+      engineVersion: value => `版本：${value}`,
       engineVersionUnavailable: '引擎版本不可用',
       engineCheck: '检查引擎更新',
       engineChecking: '检查中…',
@@ -729,11 +731,11 @@ export const zh: Translations = {
       engineApplying: '正在应用…',
       engineCantReach: '无法检查引擎更新，请检查网络后重试。',
       engineConfirmTitle: '更新 AI 引擎？',
-      engineConfirmBody: value => `将切换到引擎版本 ${value}，并重启应用以生效。你的工作不会丢失。`,
+      engineConfirmBody: value => `将切换到版本 ${value}，并重启应用以生效。你的工作不会丢失。`,
       engineConfirmBodyGeneric: '将更新 AI 引擎，并重启应用以生效。你的工作不会丢失。',
       engineConfirmApply: '更新引擎',
       engineUpdateNeeded: '引擎需更新',
-      engineUpdateNeededDetail: value => `本应用需要引擎 ${value} 或更高版本。请点下方「检查更新」更新引擎。`,
+      engineUpdateNeededDetail: value => `本应用需要 ${value} 或更高版本。请点下方「检查更新」更新引擎。`,
       engineTreeMismatch: '引擎文件未同步',
       engineTreeMismatchDetail:
         '上次更新记录了新版本,但磁盘上的引擎文件并未替换,当前显示的版本号可能不准确。请点下方更新引擎以重新下载正确的文件。',
@@ -1201,7 +1203,7 @@ export const zh: Translations = {
       saved: '设备名称已保存。',
       enableFailed: '保存失败——本系统的安全存储不可用。',
       engineOutdated: value =>
-        `当前引擎版本过旧，本机 Agent 调度需要引擎 ${value} 或更高版本。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
+        `当前引擎版本过旧，本机 Agent 调度需要 ${value} 或更高版本。请到「设置 › 关于」更新引擎，否则工具调用可能静默失败。`
     },
     personalization: {
       personalityTitle: '人格',
