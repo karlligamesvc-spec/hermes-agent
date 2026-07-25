@@ -163,6 +163,34 @@ describe('Hermes REST helpers', () => {
     expect(paths).toContainEqual(expect.stringContaining('exclude_sources=cron%2Ctool'))
   })
 
+  it('falls back on the real headless-serve 404 body, which carries no "No such API endpoint" text', async () => {
+    // Pinned from a live v2026.7.21 production-lineage probe: `hermes serve`
+    // answers unknown routes with its own catch-all — an `error` key and no
+    // FastAPI detail marker — so the fallback must not hinge on that text.
+    api.mockImplementation(({ path }: { path: string }) =>
+      path.startsWith('/api/profiles/sessions/sidebar')
+        ? Promise.reject(
+            new Error(
+              'Error invoking remote method \'hermes:api\': Error: 404: {"error":"Headless backend (hermes serve): web UI disabled — use `hermes dashboard` for the browser UI."}'
+            )
+          )
+        : Promise.resolve(emptySessionsResponse)
+    )
+
+    const result = await listSidebarSessions({
+      recentsProfile: 'all',
+      recentsLimit: 20,
+      recentsExclude: [],
+      cronLimit: 50,
+      messagingLimit: 100,
+      messagingExclude: []
+    })
+
+    expect(result.recents.sessions).toEqual([])
+    const paths = api.mock.calls.map(call => (call[0] as { path: string }).path)
+    expect(paths.filter(p => p.startsWith('/api/profiles/sessions?'))).toHaveLength(3)
+  })
+
   it('remembers endpoint-missing and skips re-probing the batched route on later refreshes', async () => {
     api.mockImplementation(({ path }: { path: string }) =>
       path.startsWith('/api/profiles/sessions/sidebar')
