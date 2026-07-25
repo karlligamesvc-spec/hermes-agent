@@ -45,6 +45,12 @@
  * falls back to the BYOK onboarding (no regression).
  */
 
+// The one sibling this module leans on: config.yaml scalar line surgery, shared
+// with the platform client-config apply so both writers treat the file the same
+// way. Still electron-free and unit-testable (apex-client-config.ts imports
+// nothing at all, so there is no cycle).
+import { applyConfigYamlKeys } from './apex-client-config'
+
 // ── ApexNodes default endpoints ─────────────────────────────────────────────
 // All overridable via env so a staging build can retarget without a code change
 // (mirrors how main.ts lets HERMES_DESKTOP_* env vars override prod defaults).
@@ -136,6 +142,44 @@ const MANAGED_PROVIDER_NAME = 'Apex-nodes.com'
 // Providers never probed / live-fetched / shown. Matched case-insensitively
 // against the Hermes slug + its models.dev id.
 const MODEL_DISABLED_PROVIDERS = ['copilot']
+
+// ── APEX product defaults, as dotted config.yaml keys ─────────────────────
+// The machine-readable twin of main.ts's SEED_DISPLAY_BLOCK +
+// SEED_PRODUCT_DEFAULTS_BLOCK: the seed blocks are what a FIRST install gets
+// written verbatim (comments and all), this map is what every LATER boot
+// reconciles against (ensureProductDefaultsYaml). Values must agree — a
+// source-contract test in apex-managed.test.ts holds the two together.
+//
+// Why a reconcile exists at all: seedDefaultModelConfig only runs on the
+// bootstrap-needed branch AND bails the moment config.yaml exists, so every
+// other way a config.yaml can appear (the runtime writing its own, install.sh
+// copying cli-config.yaml.example, a bundle-mode install, a reinstall over
+// kept data) used to land a user on the UPSTREAM defaults — English UI,
+// reasoning blocks hidden — with nothing to correct it. `display.language` is
+// the sharp one: the runtime's /api/config answers with merged defaults, so it
+// returns `en` even when the FILE has no language key at all, and the shell's
+// China-first fallback (which only fires on a null) never gets a turn.
+//
+//   display.language      zh   — China-first shell UI (runtime default: en).
+//   display.show_reasoning true — reasoning blocks visible out of the box.
+//   agent.image_input_mode auto — image attachments go native only to
+//     vision-capable models, else text pre-analysis. Pinned against upstream
+//     default drift (matches today's runtime default).
+//   timezone              ''   — empty = server-local clock, which on a desktop
+//     IS the OS timezone, i.e. follow-the-OS. Also pinned, not corrected.
+//
+// Scalars only, and deliberately only these four. The seed's other blocks are
+// either already reconciled elsewhere in guardConfigYamlProductBlocks
+// (custom_providers, skills.disabled, plugins.enabled, model.disabled_providers)
+// or must NOT be: back-filling `model:` would overwrite a BYOK user's chosen
+// provider, and back-filling the MoA preset onto an install that dropped it
+// would hand back an expensive default nobody asked for.
+const APEX_PRODUCT_DEFAULTS = {
+  'display.language': 'zh',
+  'display.show_reasoning': true,
+  'agent.image_input_mode': 'auto',
+  timezone: ''
+}
 
 // Standalone runtime plugins the product REQUIRES enabled. The runtime's
 // plugin loader is opt-in: only names listed under `plugins.enabled` in
@@ -378,6 +422,82 @@ function ensureSkillsDisabledYaml(raw, skills = SEED_DISABLED_SKILLS) {
     wanted: skills,
     seedBlock: seedSkillsBlockYaml
   })
+}
+
+/**
+ * Fill the APEX product defaults (APEX_PRODUCT_DEFAULTS) into an EXISTING
+ * config.yaml. The scalar counterpart to the two list healers above, and the
+ * reason the product defaults survive a boot that never ran the first-install
+ * seed (see APEX_PRODUCT_DEFAULTS for the paths that reach that state).
+ *
+ * ADD-ONLY by contract, and here that is the whole point: a key that is already
+ * in the file is the user's answer, not ours — someone who picked English keeps
+ * English, someone who turned reasoning off keeps it off. We only write keys the
+ * file does not mention at all, where the alternative is the runtime's merged
+ * default deciding the product's behavior. Idempotent (a second pass changes
+ * nothing) and comment-preserving (line surgery, no YAML round-trip).
+ *
+ * @param {string} raw config.yaml contents
+ * @param {Record<string, string | number | boolean>} [defaults] dotted-key → scalar
+ * @returns {{ changed: boolean, next: string, added: string[] }}
+ */
+function ensureProductDefaultsYaml(raw, defaults: any = APEX_PRODUCT_DEFAULTS) {
+  const source = String(raw || '')
+  const escape = part => String(part).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const lines = source.split('\n')
+
+  // Presence is checked with the SAME line shapes applyConfigYamlKeys would
+  // rewrite in place (top-level `key:`, child `  key:` inside its own block),
+  // so "absent" here means exactly "that writer will insert, not replace".
+  const hasKey = dotted => {
+    const path = String(dotted).split('.')
+    const head = new RegExp(`^${escape(path[0])}:`)
+
+    if (path.length === 1) {
+      return lines.some(line => head.test(line))
+    }
+
+    const start = lines.findIndex(line => head.test(line))
+
+    if (start < 0) {
+      return false
+    }
+
+    // `display: {}` / `display: null` — a child line under an inline value is
+    // not valid YAML, so treat it as "leave this file alone" rather than write
+    // something the runtime would refuse to parse.
+    if (/^\S+:\s*\S/.test(lines[start])) {
+      return true
+    }
+
+    const child = new RegExp(`^\\s{2}${escape(path[1])}:`)
+
+    for (let i = start + 1; i < lines.length && !/^\S/.test(lines[i]); i++) {
+      if (child.test(lines[i])) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  const missing = {}
+
+  for (const [dotted, value] of Object.entries(defaults || {})) {
+    if (!hasKey(dotted)) {
+      missing[dotted] = value
+    }
+  }
+
+  if (!Object.keys(missing).length) {
+    return { changed: false, next: source, added: [] }
+  }
+
+  // `applied` (not the requested set) is the truth: applyConfigYamlKeys drops
+  // anything it cannot write without damaging the file.
+  const written = applyConfigYamlKeys(source, missing)
+
+  return { changed: written.changed, next: written.next, added: written.applied }
 }
 
 /**
@@ -1138,6 +1258,7 @@ function accountFromLogin(loginBody, accessToken = '') {
 }
 
 export {
+  APEX_PRODUCT_DEFAULTS,
   DEFAULT_AUTH_BASE,
   DEFAULT_API_BASE,
   DEFAULT_RELAY_BASE_URL,
@@ -1153,6 +1274,7 @@ export {
   seedSkillsBlockYaml,
   seedPluginsBlockYaml,
   ensurePluginsEnabledYaml,
+  ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
   LOGIN_PATH,
   REGISTER_PATH,

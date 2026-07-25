@@ -226,6 +226,7 @@ import {
   isRelayUnauthorized,
   managedModelConfigYaml,
   ensurePluginsEnabledYaml,
+  ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
@@ -11865,6 +11866,14 @@ async function refreshPlatformPluginsFromPlatform(reason) {
 // writer race) — this guard makes the whole CLASS non-fatal: whenever the file
 // loses a product-critical block, restore it. Idempotent; append-only; never
 // touches a block that exists.
+//
+// It doubles as the reconcile for installs the first-run seed never touched:
+// seedDefaultModelConfig only runs on the bootstrap-needed branch and returns
+// early once config.yaml exists, so a config.yaml written by anything else (the
+// runtime itself, install.sh's example copy, a bundle-mode or repeat install)
+// would otherwise keep the UPSTREAM defaults forever. ensureRuntime calls this
+// on EVERY boot path, before the gateway starts, which is what makes the
+// product defaults hold everywhere rather than only on a clean first install.
 function guardConfigYamlProductBlocks(reason) {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
@@ -11920,9 +11929,21 @@ function guardConfigYamlProductBlocks(reason) {
       fixed.push(`skills.disabled(+${skillsHeal.added.length})`)
     }
 
-    if (!/^timezone:/m.test(raw)) {
-      raw = raw.replace(/\n*$/, '\n') + "timezone: ''\n"
-      fixed.push('timezone')
+    // APEX product defaults as scalar keys (display.language,
+    // display.show_reasoning, agent.image_input_mode, timezone). Same add-only
+    // contract as the list healers: a key the file already carries is the
+    // user's answer and is never rewritten — this only fills keys the file
+    // does not mention, where the runtime's merged default would otherwise
+    // decide (config.yaml has no display.language → /api/config still answers
+    // `en`, and the shell's China-first fallback never fires). This is also the
+    // catch-up path for every install seedDefaultModelConfig never ran on: it
+    // fires only on the bootstrap-needed branch and bails when config.yaml
+    // already exists.
+    const defaultsHeal = ensureProductDefaultsYaml(raw)
+
+    if (defaultsHeal.changed) {
+      raw = defaultsHeal.next
+      fixed.push(`product-defaults(${defaultsHeal.added.join(' ')})`)
     }
 
     // hc-392 China profile: losing model.disabled_providers silently re-enables

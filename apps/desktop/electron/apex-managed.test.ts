@@ -10,10 +10,13 @@
  */
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { test } from 'vitest'
 
 import {
+  APEX_PRODUCT_DEFAULTS,
   DEFAULT_AUTH_BASE,
   DEFAULT_API_BASE,
   DEFAULT_RELAY_BASE_URL,
@@ -36,6 +39,7 @@ import {
   isRelayUnauthorized,
   managedModelConfigYaml,
   ensurePluginsEnabledYaml,
+  ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
   modelDisabledProvidersYaml,
   seedSkillsBlockYaml,
@@ -615,6 +619,143 @@ test('ensureSkillsDisabledYaml handles PyYAML re-dump shapes (2-space items, [],
   }
   // Empty managed list → no-op.
   assert.equal(ensureSkillsDisabledYaml('skills:\n  disabled: []\n', []).changed, false)
+})
+
+// --- ensureProductDefaultsYaml (hc-589 leg 8d) ---
+//
+// seedDefaultModelConfig writes the product defaults exactly once — on the
+// bootstrap-needed branch, and only when config.yaml is absent. Every other way
+// a config.yaml can come into existence (the runtime writing its own, install.sh
+// copying the example, bundle mode, a reinstall over kept data) skipped it, and
+// the user got upstream's defaults with nothing to correct them: English UI,
+// reasoning blocks hidden. These pin the reconcile that closes that gap, and —
+// just as important — pin that it never overrules a choice the user made.
+
+test('ensureProductDefaultsYaml fills the missing product keys on a config the seed never ran on', () => {
+  // The shape a runtime-created config.yaml has: a model block, no display
+  // block at all. /api/config answers `en` for the absent language key, which
+  // is why the shell opens in English until this write lands.
+  const raw = 'model:\n  default: deepseek-v4-pro\n  provider: deepseek\n'
+  const r = ensureProductDefaultsYaml(raw)
+
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.added.sort(), [
+    'agent.image_input_mode',
+    'display.language',
+    'display.show_reasoning',
+    'timezone'
+  ])
+  // One display block holding both keys (order inside the block is the
+  // writer's business), plus the agent block and the top-level scalar.
+  assert.equal((r.next.match(/^display:$/gm) || []).length, 1)
+  assert.match(r.next, /^display:\n(?: {2}\S+: \S+\n){2}\S/m)
+  assert.match(r.next, /^ {2}language: zh$/m)
+  assert.match(r.next, /^ {2}show_reasoning: true$/m)
+  assert.match(r.next, /^agent:\n {2}image_input_mode: auto$/m)
+  assert.match(r.next, /^timezone: ''$/m)
+  // Append-only: the pre-existing model block survives verbatim.
+  assert.ok(r.next.startsWith(raw))
+})
+
+test('ensureProductDefaultsYaml never overrules a value the user set', () => {
+  // The whole point of add-only. Someone who picked English keeps English;
+  // someone who turned reasoning off keeps it off; a real timezone survives.
+  const raw =
+    'display:\n' +
+    '  language: en\n' +
+    '  show_reasoning: false\n' +
+    '  skin: mono\n' +
+    'agent:\n' +
+    '  image_input_mode: text\n' +
+    "timezone: 'Asia/Shanghai'\n"
+  const r = ensureProductDefaultsYaml(raw)
+
+  assert.equal(r.changed, false)
+  assert.equal(r.next, raw)
+  assert.deepEqual(r.added, [])
+})
+
+test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', () => {
+  // The realistic upgrade shape: the file has a display block (the user changed
+  // the skin, or install.sh copied the example, which carries show_reasoning but
+  // no language key at all) — fill language, leave the rest alone.
+  const raw = 'display:\n  show_reasoning: false\n  skin: mono\ntimezone: UTC\n'
+  const r = ensureProductDefaultsYaml(raw)
+
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.added.sort(), ['agent.image_input_mode', 'display.language'])
+  // Written INSIDE the existing display block, and the user's two keys stand.
+  assert.match(r.next, /^display:\n {2}language: zh\n {2}show_reasoning: false\n {2}skin: mono$/m)
+  assert.match(r.next, /^timezone: UTC$/m)
+})
+
+test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', () => {
+  // Second boot must be a no-op — this runs on every launch and on a file
+  // watch, so a non-idempotent write would rewrite config.yaml in a loop.
+  const first = ensureProductDefaultsYaml('model:\n  default: x\n')
+  const second = ensureProductDefaultsYaml(first.next)
+
+  assert.equal(second.changed, false)
+  assert.equal(second.next, first.next)
+  assert.deepEqual(second.added, [])
+
+  // And what seedDefaultModelConfig writes on a first install already satisfies
+  // it: the reconcile is a catch-up path, never a second opinion.
+  const seeded =
+    'display:\n  language: zh\n  show_reasoning: true\n' +
+    'agent:\n  image_input_mode: auto\n' +
+    "timezone: ''\n"
+  assert.equal(ensureProductDefaultsYaml(seeded).changed, false)
+})
+
+test('ensureProductDefaultsYaml preserves comments and unrelated blocks', () => {
+  // Line surgery, not a YAML round-trip: the seed's explanatory comments and
+  // the relay registration have to come out the other side byte-identical.
+  const raw =
+    '# Seeded by ApexNodes Desktop (V0.2 — managed).\n' +
+    'model:\n' +
+    '  default: deepseek-v4-pro-APEX\n' +
+    'custom_providers:\n' +
+    '- api_key: sk-relay\n' +
+    '  name: Apex-nodes.com\n' +
+    '# trailing note\n'
+  const r = ensureProductDefaultsYaml(raw)
+
+  assert.equal(r.changed, true)
+  assert.ok(r.next.includes('# Seeded by ApexNodes Desktop (V0.2 — managed).\n'))
+  assert.ok(r.next.includes('- api_key: sk-relay\n  name: Apex-nodes.com\n'))
+  assert.ok(r.next.includes('# trailing note\n'))
+})
+
+test('ensureProductDefaultsYaml refuses to write a child under an inline mapping', () => {
+  // `display: {}` is what a PyYAML re-dump leaves behind for an emptied block.
+  // Appending `  language: zh` beneath it would produce YAML the runtime can't
+  // load — a broken config.yaml is worse than an English UI, so we stand down.
+  const raw = 'display: {}\nagent: null\n'
+  const r = ensureProductDefaultsYaml(raw)
+
+  assert.deepEqual(r.added, ['timezone'])
+  assert.ok(!r.next.includes('language: zh'))
+  assert.match(r.next, /^display: \{\}$/m)
+})
+
+test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks', () => {
+  // Two writers, one truth: the seed blocks in main.ts are what a first install
+  // gets, this map is what every later boot reconciles to. If they drift, a
+  // fresh install and an upgraded one end up on different products — and
+  // nothing else in the suite would notice.
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+  const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
+
+  assert.ok(seedBlocks.length > 0, 'seed blocks not found in main.ts')
+  for (const [dotted, value] of Object.entries(APEX_PRODUCT_DEFAULTS)) {
+    const key = dotted.split('.').pop()
+    const rendered = value === '' ? "''" : String(value)
+    assert.ok(
+      seedBlocks.includes(`${key}: ${rendered}`),
+      `seed blocks do not carry ${dotted}: ${rendered}`
+    )
+  }
 })
 
 // --- defaultModelPath ---
