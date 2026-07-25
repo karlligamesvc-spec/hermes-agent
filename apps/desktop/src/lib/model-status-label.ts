@@ -154,10 +154,15 @@ export function displayModelName(model: string): string {
 /** Status bar trigger label — model name plus the live session state (effort/fast).
  *  `displayModelName` already folds the managed `-APEX` brand suffix into the tag
  *  slot (modelDisplayParts), so the pill and the picker rows render the exact
- *  same name — no surface-local stripping needed here (hc-512). */
+ *  same name — no surface-local stripping needed here (hc-512).
+ *
+ *  `effortLabel`/`fastLabel` let the caller pass localized display text (the
+ *  composer pill passes the zh 低/中/高/… labels); without them the compact
+ *  English fallbacks below apply. This lib has no i18n context of its own, so
+ *  dropping the parameters is what put `Fast Med` in front of Chinese users. */
 export function formatModelStatusLabel(
   model: string,
-  options?: { fastMode?: boolean; reasoningEffort?: string }
+  options?: { fastMode?: boolean; reasoningEffort?: string; effortLabel?: string; fastLabel?: string }
 ): string {
   const name = displayModelName(model)
 
@@ -170,12 +175,12 @@ export function formatModelStatusLabel(
   // Fast is shown when the speed=fast param is on (options.fastMode) OR the
   // active model is a `…-fast` variant (fast via a separate model id).
   if (options?.fastMode || /-fast$/i.test(modelBaseId(model))) {
-    parts.push('Fast')
+    parts.push(options?.fastLabel || 'Fast')
   }
 
   // Always surface the effort (empty = Hermes default of medium) so the
   // current reasoning level is visible at a glance, not just when non-default.
-  parts.push(reasoningEffortLabel(options?.reasoningEffort ?? '') || 'Med')
+  parts.push(options?.effortLabel || reasoningEffortLabel(options?.reasoningEffort ?? '') || 'Med')
 
   return `${name} · ${parts.join(' ')}`
 }
