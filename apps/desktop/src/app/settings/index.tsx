@@ -34,11 +34,12 @@ import { AboutSettings } from './about-settings'
 import { AppearanceSettings } from './appearance-settings'
 import { BillingSettings } from './billing'
 import { ConfigSettings } from './config-settings'
-import { SECTIONS } from './constants'
+import { isConsumerHiddenSection, SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
 import { NotificationsSettings } from './notifications-settings'
+import { PersonalizationSettings } from './personalization-settings'
 import { PluginsSettings } from './plugins-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
@@ -76,7 +77,9 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
   }, [navigate, search])
 
-  const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:model' as SettingsViewId)
+  // Consumer landing view is 个性化 (Personalization) — config:model is
+  // consumer-hidden and would strand a first-open user on an empty nav row.
+  const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:personalization' as SettingsViewId)
   // Providers subnav (Accounts vs API keys) lives in its own param so each
   // sub-view is deep-linkable and survives a refresh.
   const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')
@@ -135,7 +138,11 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   }
 
   const navGroups: OverlayNavGroup[] = [
-    ...SECTIONS.map(s => {
+    // Consumer nav: 个性化 / 外观 / 提供方 / 已归档对话 (+ whatever else isn't
+    // consumer-hidden). Gating through isConsumerHiddenSection (one set in
+    // constants.ts) means restoring a section re-lights its nav row, its ⌘K
+    // entries and its field search hits all at once.
+    ...SECTIONS.filter(s => !isConsumerHiddenSection(`config:${s.id}`)).map(s => {
       const view = `config:${s.id}` as SettingsViewId
 
       return {
@@ -146,13 +153,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView(view)
       }
     }),
-    {
-      active: activeView === 'notifications',
-      icon: Bell,
-      id: 'notifications',
-      label: t.settings.nav.notifications,
-      onSelect: () => setActiveView('notifications')
-    },
+    ...(!isConsumerHiddenSection('notifications')
+      ? [
+          {
+            active: activeView === 'notifications',
+            icon: Bell,
+            id: 'notifications',
+            label: t.settings.nav.notifications,
+            onSelect: () => setActiveView('notifications')
+          }
+        ]
+      : []),
     {
       active: activeView === 'billing',
       icon: BarChart3,
@@ -191,13 +202,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       label: t.settings.nav.providers,
       onSelect: () => setActiveView('providers')
     },
-    {
-      active: activeView === 'gateway',
-      icon: Globe,
-      id: 'gateway',
-      label: t.settings.nav.gateway,
-      onSelect: () => setActiveView('gateway')
-    },
+    ...(!isConsumerHiddenSection('gateway')
+      ? [
+          {
+            active: activeView === 'gateway',
+            icon: Globe,
+            id: 'gateway',
+            label: t.settings.nav.gateway,
+            onSelect: () => setActiveView('gateway')
+          }
+        ]
+      : []),
     {
       active: activeView === 'keybinds',
       icon: Keyboard,
@@ -205,29 +220,33 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       label: t.settings.nav.keybinds,
       onSelect: () => setActiveView('keybinds')
     },
-    {
-      active: activeView === 'keys',
-      children: [
-        {
-          active: activeView === 'keys' && keysView === 'tools',
-          icon: Wrench,
-          id: 'kview:tools',
-          label: t.settings.nav.keysTools,
-          onSelect: () => openKeysView('tools')
-        },
-        {
-          active: activeView === 'keys' && keysView === 'settings',
-          icon: Settings2,
-          id: 'kview:settings',
-          label: t.settings.nav.keysSettings,
-          onSelect: () => openKeysView('settings')
-        }
-      ],
-      icon: KeyRound,
-      id: 'keys',
-      label: t.settings.nav.apiKeys,
-      onSelect: () => setActiveView('keys')
-    },
+    ...(!isConsumerHiddenSection('keys')
+      ? [
+          {
+            active: activeView === 'keys',
+            children: [
+              {
+                active: activeView === 'keys' && keysView === 'tools',
+                icon: Wrench,
+                id: 'kview:tools',
+                label: t.settings.nav.keysTools,
+                onSelect: () => openKeysView('tools')
+              },
+              {
+                active: activeView === 'keys' && keysView === 'settings',
+                icon: Settings2,
+                id: 'kview:settings',
+                label: t.settings.nav.keysSettings,
+                onSelect: () => openKeysView('settings')
+              }
+            ],
+            icon: KeyRound,
+            id: 'keys',
+            label: t.settings.nav.apiKeys,
+            onSelect: () => setActiveView('keys')
+          }
+        ]
+      : []),
     {
       active: activeView === 'plugins',
       icon: Package,
@@ -289,7 +308,9 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         <OverlayNav footer={navFooter} groups={navGroups} />
 
         <OverlayMain className="px-0 pb-0 pt-[calc(var(--titlebar-height)+1rem)]">
-          {activeView === 'config:appearance' ? (
+          {activeView === 'config:personalization' ? (
+            <PersonalizationSettings onConfigSaved={onConfigSaved} />
+          ) : activeView === 'config:appearance' ? (
             <AppearanceSettings />
           ) : activeView === 'about' ? (
             <AboutSettings />

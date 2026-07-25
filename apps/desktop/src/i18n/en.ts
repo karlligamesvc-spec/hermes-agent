@@ -386,6 +386,7 @@ export const en: Translations = {
       completionSoundPreview: 'Preview'
     },
     sections: {
+      personalization: 'Personalization',
       model: 'Model',
       chat: 'Chat',
       appearance: 'Appearance',

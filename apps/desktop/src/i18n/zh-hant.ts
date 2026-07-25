@@ -265,6 +265,7 @@ export const zhHant = defineLocale({
       completionSoundPreview: '預覽'
     },
     sections: {
+      personalization: '個性化',
       model: '模型',
       chat: '聊天',
       appearance: '外觀',

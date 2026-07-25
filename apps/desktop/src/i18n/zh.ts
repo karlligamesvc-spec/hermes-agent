@@ -376,6 +376,7 @@ export const zh: Translations = {
       completionSoundPreview: '预览'
     },
     sections: {
+      personalization: '个性化',
       model: '模型',
       chat: '对话',
       appearance: '外观',

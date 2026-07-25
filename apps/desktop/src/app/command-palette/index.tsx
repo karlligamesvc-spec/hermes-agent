@@ -76,7 +76,7 @@ import {
   SKILLS_ROUTE,
   STARMAP_ROUTE
 } from '../routes'
-import { FIELD_LABELS, SECTIONS } from '../settings/constants'
+import { FIELD_LABELS, isConsumerHiddenSection, SECTIONS } from '../settings/constants'
 import { fieldCopyForSchemaKey } from '../settings/field-copy'
 import { prettyName } from '../settings/helpers'
 
@@ -263,6 +263,19 @@ const NON_CONFIG_SETTINGS: ReadonlyArray<{
   { icon: Archive, keywords: ['history', 'archived'], labelKey: 'archivedChats', tab: 'sessions' },
   { icon: Info, keywords: ['version', 'about'], labelKey: 'about', tab: 'about' }
 ]
+
+/** The settings view a palette tab string lands on (`keys&kview=tools` → `keys`). */
+const settingsTabBaseView = (tab: string) => tab.split('&')[0]
+
+// Consumer-hidden sections (CONSUMER_HIDDEN_SECTIONS in settings/constants.ts)
+// are filtered out below by the entry's base tab, so the palette mirrors the
+// settings nav automatically instead of leaking pro/technical settings (raw
+// gateway/env-var pages) into ⌘K search.
+const VISIBLE_SECTIONS = SECTIONS.filter(section => !isConsumerHiddenSection(`config:${section.id}`))
+
+const VISIBLE_NON_CONFIG_SETTINGS = NON_CONFIG_SETTINGS.filter(
+  entry => !isConsumerHiddenSection(settingsTabBaseView(entry.tab))
+)
 
 const THEME_MODES: ReadonlyArray<{ icon: IconComponent; mode: ThemeMode }> = [
   { icon: Sun, mode: 'light' },
@@ -549,14 +562,14 @@ export function CommandPalette() {
       {
         heading: cc.settings,
         items: [
-          ...SECTIONS.map(section => ({
+          ...VISIBLE_SECTIONS.map(section => ({
             icon: section.icon,
             id: `set-config-${section.id}`,
             keywords: ['settings', section.label, settingsSectionLabel(section)],
             label: settingsSectionLabel(section),
             run: go(settingsTab(`config:${section.id}`))
           })),
-          ...NON_CONFIG_SETTINGS.map(entry => ({
+          ...VISIBLE_NON_CONFIG_SETTINGS.map(entry => ({
             icon: entry.icon,
             id: `set-${entry.tab}`,
             keywords: ['settings', ...(entry.keywords ?? [])],
@@ -698,7 +711,7 @@ export function CommandPalette() {
       })
     }
 
-    const fieldItems = SECTIONS.flatMap(section =>
+    const fieldItems = VISIBLE_SECTIONS.flatMap(section =>
       section.keys.map(key => ({
         icon: section.icon,
         id: `field-${key}`,

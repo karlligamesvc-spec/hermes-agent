@@ -18,7 +18,7 @@ import { SearchField } from '@/components/ui/search-field'
 import { disconnectOAuthProvider, listOAuthProviders } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronRight, KeyRound, Loader2, Terminal, Trash2 } from '@/lib/icons'
-import { isPickerVisibleProvider } from '@/lib/provider-allowlist'
+import { DOMESTIC_PROVIDER_SLUGS, isPickerVisibleProvider } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
@@ -26,6 +26,7 @@ import { $desktopOnboarding, startManualLocalEndpoint, startManualProviderOAuth 
 import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 
 import { AgentAuthSettings } from './agent-auth-settings'
+import { DOMESTIC_PROVIDER_PRIORITY_MAX } from './constants'
 import { isKeyVar, ProviderKeyRows } from './credential-key-ui'
 import { CustomEndpointsSettings } from './custom-endpoints-settings'
 import { SettingsCategoryHeading, useEnvCredentials } from './env-credentials'
@@ -53,6 +54,22 @@ function GroupLabel({ children }: { children: ReactNode }) {
 export const PROVIDER_VIEWS = ['accounts', 'keys', 'custom-endpoints'] as const
 
 export type ProviderView = (typeof PROVIDER_VIEWS)[number]
+
+// China-first consumer split: a Keys card renders only for providers usable
+// from the mainland. Domestic membership reuses the two existing sources —
+// the backend catalog slug (DOMESTIC_PROVIDER_SLUGS, same allowlist as the
+// model picker) and the PROVIDER_GROUPS priority split (1–9 = domestic).
+// Foreign vendors (OpenAI, Anthropic, Google, xAI, OpenRouter, Nous, …) and
+// unknown backend-tagged providers are hidden, keys set or not.
+function isDomesticKeyGroup(name: string, entries: [string, EnvVarInfo][]): boolean {
+  const domesticBackendSlug = entries.some(([, info]) => {
+    const slug = info.provider?.trim().toLowerCase()
+
+    return Boolean(slug && DOMESTIC_PROVIDER_SLUGS.has(slug))
+  })
+
+  return domesticBackendSlug || providerPriority(name) <= DOMESTIC_PROVIDER_PRIORITY_MAX
+}
 
 // Group the env catalog by provider — one ListRow per vendor plus optional
 // advanced overrides (base URL, region, etc.). Groups without a key field are
@@ -88,6 +105,11 @@ function buildProviderKeyGroups(vars: Record<string, EnvVarInfo>): ProviderKeyGr
   const groups: ProviderKeyGroup[] = []
 
   for (const [name, entries] of buckets) {
+    // Consumer build: foreign providers never render a key card.
+    if (!isDomesticKeyGroup(name, entries)) {
+      continue
+    }
+
     const primary = entries.find(([k, i]) => !i.advanced && isKeyVar(k, i)) ?? entries.find(([k, i]) => isKeyVar(k, i))
 
     if (!primary) {

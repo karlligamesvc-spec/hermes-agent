@@ -272,6 +272,7 @@ export const ja = defineLocale({
       completionSoundPreview: '試聴'
     },
     sections: {
+      personalization: 'パーソナライズ',
       model: 'モデル',
       chat: 'チャット',
       appearance: '外観',

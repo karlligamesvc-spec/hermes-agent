@@ -149,16 +149,17 @@ describe('ProvidersSettings', () => {
     expect(screen.getByText(/managed by its own CLI/)).toBeTruthy()
   })
 
-  it('renders a Keys card for a backend-tagged provider with no PROVIDER_GROUPS prefix', async () => {
+  it('renders a Keys card for a domestic backend-tagged provider with no PROVIDER_GROUPS prefix', async () => {
     // A provider the backend catalog tags (provider/provider_label) but that has
     // no desktop PROVIDER_GROUPS prefix row must still render its own card —
     // this is the GUI/CLI drift fix: membership comes from the backend, not
-    // from the hand-maintained prefix list.
+    // from the hand-maintained prefix list. `tencent-tokenhub` is in
+    // DOMESTIC_PROVIDER_SLUGS, so it survives the China-first filter too.
     getEnvVars.mockResolvedValue({
-      WIDGETAI_API_KEY: keyVar({
-        provider: 'widgetai',
-        provider_label: 'WidgetAI',
-        url: 'https://widgetai.example/keys'
+      TENCENT_TOKENHUB_API_KEY: keyVar({
+        provider: 'tencent-tokenhub',
+        provider_label: 'Tencent TokenHub',
+        url: 'https://tokenhub.example/keys'
       })
     })
     listOAuthProviders.mockResolvedValue({ providers: [] })
@@ -168,17 +169,37 @@ describe('ProvidersSettings', () => {
       render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
     })
 
-    expect(await screen.findByText('WidgetAI')).toBeTruthy()
+    expect(await screen.findByText('Tencent TokenHub')).toBeTruthy()
+  })
+
+  it('hides foreign provider key cards from the China-first Keys view', async () => {
+    // Foreign vendors (prefix-grouped like Anthropic) and unknown
+    // backend-tagged providers never render a card, keys set or not; the
+    // domestic card still does.
+    getEnvVars.mockResolvedValue({
+      ANTHROPIC_API_KEY: keyVar({ is_set: true }),
+      WIDGETAI_API_KEY: keyVar({ provider: 'widgetai', provider_label: 'WidgetAI' }),
+      DEEPSEEK_API_KEY: keyVar()
+    })
+    listOAuthProviders.mockResolvedValue({ providers: [] })
+
+    const { ProvidersSettings } = await import('./providers-settings')
+    render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
+
+    expect(await screen.findByText('DeepSeek')).toBeTruthy()
+    expect(screen.queryByText('Anthropic')).toBeNull()
+    expect(screen.queryByText('WidgetAI')).toBeNull()
   })
 
   it('orders API-key providers by priority then name, and filters them via search', async () => {
-    // These three providers have no curated PROVIDER_GROUPS priority, so they
-    // share the default priority and fall back to alphabetical among themselves
-    // (Acme, Middle, Zebra) — exercising the name tiebreak of the priority sort.
+    // These three domestic backend-tagged providers have no curated
+    // PROVIDER_GROUPS priority, so they share the default priority and fall
+    // back to alphabetical among themselves (Acme, Middle, Zebra) — exercising
+    // the name tiebreak of the priority sort.
     getEnvVars.mockResolvedValue({
-      ZEBRA_API_KEY: keyVar({ provider: 'zebra', provider_label: 'Zebra' }),
-      ACME_API_KEY: keyVar({ provider: 'acme', provider_label: 'Acme' }),
-      MIDDLE_API_KEY: keyVar({ provider: 'middle', provider_label: 'Middle' })
+      ZEBRA_API_KEY: keyVar({ provider: 'zai', provider_label: 'Zebra' }),
+      ACME_API_KEY: keyVar({ provider: 'deepseek', provider_label: 'Acme' }),
+      MIDDLE_API_KEY: keyVar({ provider: 'stepfun', provider_label: 'Middle' })
     })
     listOAuthProviders.mockResolvedValue({ providers: [] })
 
