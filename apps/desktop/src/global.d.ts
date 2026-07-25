@@ -721,7 +721,10 @@ export interface DesktopBootstrapStageResult {
   state: DesktopBootstrapStageState
   durationMs: number | null
   startedAt: number | null
-  json: { ok: boolean; skipped?: boolean; reason?: string | null; stage: string } | null
+  // hc-569: skip_code is the installer's machine-readable "why was this stage
+  // skipped" (e.g. deps_unchanged, prereq_cached); the overlay maps it to a
+  // localized reason and falls back to the raw `reason` string when unknown.
+  json: { ok: boolean; skipped?: boolean; reason?: string | null; skip_code?: string | null; stage: string } | null
   error: string | null
 }
 
@@ -734,7 +737,14 @@ export interface DesktopBootstrapUnsupportedPlatform {
 
 export interface DesktopBootstrapState {
   active: boolean
-  manifest: { type: 'manifest'; stages: DesktopBootstrapStageDescriptor[]; protocolVersion: number | null } | null
+  manifest: {
+    type: 'manifest'
+    stages: DesktopBootstrapStageDescriptor[]
+    protocolVersion: number | null
+    // hc-452: see DesktopBootstrapUpdateInfo below -- distinguishes an opt-in
+    // runtime version update from a genuine first install.
+    updateInfo: DesktopBootstrapUpdateInfo
+  } | null
   stages: Record<string, DesktopBootstrapStageResult>
   error: string | null
   log: Array<{ ts: number; stage: string | null; line: string; stream?: 'stdout' | 'stderr' }>
@@ -744,7 +754,12 @@ export interface DesktopBootstrapState {
 }
 
 export type DesktopBootstrapEvent =
-  | { type: 'manifest'; stages: DesktopBootstrapStageDescriptor[]; protocolVersion: number | null }
+  | {
+      type: 'manifest'
+      stages: DesktopBootstrapStageDescriptor[]
+      protocolVersion: number | null
+      updateInfo?: DesktopBootstrapUpdateInfo
+    }
   | {
       type: 'stage'
       name: string
