@@ -18,8 +18,11 @@ _SEAM_MODULES = (
     "provider_filter",
     # hc-512 picker sentinel⇄real id dedupe.
     "model_catalog_dedupe",
-    # Virtual-'moa' main provider keeps the platform catalog probe-eligible.
-    "moa_picker_probe",
+    # hc-592 model-picker collapse: a main provider that names no saved custom
+    # endpoint keeps the platform catalog probe-eligible (read side)…
+    "picker_probe_widening",
+    # …and a custom-family switch must not erase model.base_url (write side).
+    "custom_base_url_guard",
     "models_dev_fast",
     "gateway_bootstrap",
     "feishu_supervisor",
