@@ -9,6 +9,7 @@
  * inputs; if someone ever edits one side (new pre-release syntax, different
  * v-prefix handling, four-part versions) without the other, this fails.
  */
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
 import { describe, expect, it } from 'vitest'
@@ -60,8 +61,7 @@ describe('release-preflight semver copy stays in lockstep with the runtime gate'
   })
 
   it('the preflight no longer requires the retired .cjs runtime module', () => {
-    const fs = require('node:fs') as typeof import('node:fs')
-    const src = fs.readFileSync(require.resolve('../scripts/assert-release-preflight.cjs'), 'utf8')
+    const src = readFileSync(require.resolve('../scripts/assert-release-preflight.cjs'), 'utf8')
     expect(src).not.toContain("require('../electron/apex-runtime-latest.cjs')")
   })
 })
