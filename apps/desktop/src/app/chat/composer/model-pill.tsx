@@ -7,12 +7,14 @@ import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
+import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Tip } from '@/components/ui/tooltip'
 import { getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
+import { modelVendor } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
 import { $currentModelSource, setModelPickerOpen } from '@/store/session'
 import type { MoaConfigResponse } from '@/types/hermes'
@@ -43,6 +45,7 @@ export function ModelPill({
 }) {
   const { t } = useI18n()
   const copy = t.shell.statusbar
+  const modelOptionsCopy = t.shell.modelOptions
   const view = useSessionView()
   // Prefer the chat-bar snapshot (already view-scoped by ChatView); fall back
   // to the live SessionView atoms so a mid-flight session.info still paints.
@@ -79,6 +82,18 @@ export function ModelPill({
   // aggregator/reference split underneath stays invisible everywhere.
   const composedCount = currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
 
+  // Localized effort tag for the pill (低/中/高/超高) — unknown/none efforts fall
+  // back to the lib's compact English labels.
+  const effortLabels: Record<string, string> = {
+    high: modelOptionsCopy.high,
+    low: modelOptionsCopy.low,
+    medium: modelOptionsCopy.medium,
+    minimal: modelOptionsCopy.minimal,
+    xhigh: modelOptionsCopy.max
+  }
+
+  const effortLabel = effortLabels[reasoningEffort.trim().toLowerCase()]
+
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text
   // color at half opacity) until a model lands.
@@ -89,7 +104,17 @@ export function ModelPill({
       {composedCount >= 2 ? (
         <span className="truncate">{t.settings.model.selectedShort(composedCount)}</span>
       ) : currentModel.trim() ? (
-        <span className="truncate">{formatModelStatusLabel(currentModel, { fastMode, reasoningEffort })}</span>
+        <>
+          <ProviderIcon size={12} vendor={modelVendor(currentModel, currentProvider)} />
+          <span className="truncate">
+            {formatModelStatusLabel(currentModel, {
+              effortLabel,
+              fastLabel: modelOptionsCopy.fast,
+              fastMode,
+              reasoningEffort
+            })}
+          </span>
+        </>
       ) : (
         <GlyphSpinner className="opacity-50" spinner="braille" />
       )}

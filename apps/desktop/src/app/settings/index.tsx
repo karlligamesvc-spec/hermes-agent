@@ -164,13 +164,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           }
         ]
       : []),
-    {
-      active: activeView === 'billing',
-      icon: BarChart3,
-      id: 'billing',
-      label: t.settings.nav.billing,
-      onSelect: () => setActiveView('billing')
-    },
+    ...(!isConsumerHiddenSection('billing')
+      ? [
+          {
+            active: activeView === 'billing',
+            icon: BarChart3,
+            id: 'billing',
+            label: t.settings.nav.billing,
+            onSelect: () => setActiveView('billing')
+          }
+        ]
+      : []),
     {
       active: activeView === 'providers',
       children: [
@@ -188,13 +192,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           label: t.settings.nav.providerApiKeys,
           onSelect: () => openProviderView('keys')
         },
-        {
-          active: activeView === 'providers' && providerView === 'custom-endpoints',
-          icon: Globe,
-          id: 'pview:custom-endpoints',
-          label: t.settings.nav.providerCustomEndpoints,
-          onSelect: () => openProviderView('custom-endpoints')
-        }
+        ...(!isConsumerHiddenSection('providers:custom-endpoints')
+          ? [
+              {
+                active: activeView === 'providers' && providerView === 'custom-endpoints',
+                icon: Globe,
+                id: 'pview:custom-endpoints',
+                label: t.settings.nav.providerCustomEndpoints,
+                onSelect: () => openProviderView('custom-endpoints')
+              }
+            ]
+          : [])
       ],
       gapBefore: true,
       icon: Zap,
@@ -213,13 +221,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           }
         ]
       : []),
-    {
-      active: activeView === 'keybinds',
-      icon: Keyboard,
-      id: 'keybinds',
-      label: t.settings.nav.keybinds,
-      onSelect: () => setActiveView('keybinds')
-    },
+    ...(!isConsumerHiddenSection('keybinds')
+      ? [
+          {
+            active: activeView === 'keybinds',
+            icon: Keyboard,
+            id: 'keybinds',
+            label: t.settings.nav.keybinds,
+            onSelect: () => setActiveView('keybinds')
+          }
+        ]
+      : []),
     ...(!isConsumerHiddenSection('keys')
       ? [
           {
@@ -247,13 +259,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
           }
         ]
       : []),
-    {
-      active: activeView === 'plugins',
-      icon: Package,
-      id: 'plugins',
-      label: t.settings.nav.plugins,
-      onSelect: () => setActiveView('plugins')
-    },
+    ...(!isConsumerHiddenSection('plugins')
+      ? [
+          {
+            active: activeView === 'plugins',
+            icon: Package,
+            id: 'plugins',
+            label: t.settings.nav.plugins,
+            onSelect: () => setActiveView('plugins')
+          }
+        ]
+      : []),
     {
       active: activeView === 'sessions',
       icon: Archive,
@@ -261,14 +277,21 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       label: t.settings.nav.archivedChats,
       onSelect: () => setActiveView('sessions')
     },
-    {
-      active: activeView === 'about',
-      gapBefore: true,
-      icon: Info,
-      id: 'about',
-      label: t.settings.nav.about,
-      onSelect: () => setActiveView('about')
-    }
+    // 关于 has no row of its own: its content is embedded at the bottom of
+    // 个性化 (PersonalizationSettings → AboutSettingsBody). The `?tab=about`
+    // deep link still resolves, so nothing is unreachable.
+    ...(!isConsumerHiddenSection('about')
+      ? [
+          {
+            active: activeView === 'about',
+            gapBefore: true,
+            icon: Info,
+            id: 'about',
+            label: t.settings.nav.about,
+            onSelect: () => setActiveView('about')
+          }
+        ]
+      : [])
   ]
 
   const navFooter = (

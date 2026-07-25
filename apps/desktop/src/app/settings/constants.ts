@@ -57,7 +57,16 @@ export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set([
   'gateway', // 网关
   'keys', // 工具与密钥 (tools list + key settings)
   'mcp', // MCP servers
-  'messaging' // 消息平台 jump entry inside settings
+  'messaging', // 消息平台 jump entry inside settings
+  // Upstream v0.19.0 added four more nav rows. None of them passed the consumer
+  // bar, so they are HIDDEN here rather than deleted — the pages and their
+  // `?tab=` deep links keep working, and re-enabling one is a one-line delete.
+  'billing', // 账单 — upstream's account billing page, 100% hardcoded English
+  'keybinds', // 键盘快捷键 — localized, but a power-user surface
+  'plugins', // 插件 — exposes ~/.hermes/desktop-plugins + "reveal in Finder"
+  'about', // 关于 — its content lives inside 个性化 (AboutSettingsBody)
+  // Sub-views are keyed `<parent>:<pview>` so one set still drives everything.
+  'providers:custom-endpoints' // 自定义端点 — 402 lines, zero i18n, `http://127.0.0.1:8081/v1` samples
 ])
 
 export const isConsumerHiddenSection = (view: string): boolean => CONSUMER_HIDDEN_SECTIONS.has(view)

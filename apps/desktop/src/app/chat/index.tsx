@@ -2,9 +2,11 @@ import { type AppendMessage, AssistantRuntimeProvider, type ThreadMessage } from
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import type * as React from 'react'
-import { Suspense, useCallback, useMemo } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
+import { useGatewayRequest } from '@/app/gateway/hooks/use-gateway-request'
+import { useCwdActions } from '@/app/session/hooks/use-cwd-actions'
 import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { Thread } from '@/components/assistant-ui/thread'
 import { Backdrop } from '@/components/Backdrop'
@@ -259,6 +261,18 @@ export function ChatView({
   const currentCwd = useStore(view.$cwd)
   const currentModel = useStore(view.$model)
   const currentProvider = useStore(view.$provider)
+  // hc-517 project picker: the composer's new-conversation cwd chip needs a
+  // committer. The old shell threaded changeSessionCwd down from the desktop
+  // controller, which the contrib shell no longer mounts — so the view that
+  // owns the session owns the action instead, and the chip is reachable again.
+  const { requestGateway } = useGatewayRequest()
+  const activeSessionIdRef = useRef<null | string>(activeSessionId)
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
+
+  const { changeSessionCwd } = useCwdActions({ activeSessionId, activeSessionIdRef, requestGateway })
   // A pet anywhere (in-window or popped out) owns the hearts; composer only when none.
   const petActive = useStore($petActive)
   const petOverlayActive = useStore($petOverlayActive)
@@ -531,6 +545,7 @@ export function ChatView({
               onAttachDroppedItems={onAttachDroppedItems}
               onAttachImageBlob={onAttachImageBlob}
               onCancel={onCancel}
+              onChangeCwd={changeSessionCwd}
               onPasteClipboardImage={onPasteClipboardImage}
               onPickFiles={onPickFiles}
               onPickFolders={onPickFolders}

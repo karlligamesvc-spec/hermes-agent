@@ -15,6 +15,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
+import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getMoaModels, type HermesGateway, saveMoaModels, setModelAssignment } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -35,6 +36,7 @@ import {
   modelDisplayParts,
   reasoningEffortLabel
 } from '@/lib/model-status-label'
+import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
@@ -471,6 +473,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                             }
                           }}
                         >
+                          <ProviderIcon vendor={modelVendor(family.id, group.provider.name)} />
                           <span className="min-w-0 flex-1 truncate">
                             {name}
                             {meta ? <span className="text-(--ui-text-tertiary)"> {meta}</span> : null}

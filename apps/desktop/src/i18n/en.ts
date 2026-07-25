@@ -517,6 +517,31 @@ export const en: Translations = {
       minAgo: count => `${count} min ago`,
       hoursAgo: count => `${count} hours ago`,
       daysAgo: count => `${count} days ago`,
+      engineSection: 'AI engine',
+      engineVersion: value => `Engine version ${value}`,
+      engineVersionUnavailable: 'Engine version unavailable',
+      engineCheck: 'Check for engine update',
+      engineChecking: 'Checking…',
+      engineUpToDate: 'The engine is up to date.',
+      engineTapCheck: 'Check whether a newer engine is available.',
+      engineFound: value => `New engine version ${value} found.`,
+      engineFoundGeneric: 'A new engine version is available.',
+      engineDesktopUpgradeRequired: value => `Update your desktop app to v${value} or later to install this engine.`,
+      engineCompatNotes: 'Compatibility notes',
+      engineApply: 'Apply update',
+      engineApplying: 'Applying…',
+      engineCantReach: "Couldn't check for an engine update. Check your connection and try again.",
+      engineConfirmTitle: 'Update the AI engine?',
+      engineConfirmBody: value =>
+        `This will switch to engine version ${value} and restart the app to apply it. Your work is safe.`,
+      engineConfirmBodyGeneric: 'This will update the AI engine and restart the app to apply it. Your work is safe.',
+      engineConfirmApply: 'Update engine',
+      engineUpdateNeeded: 'Engine update needed',
+      engineUpdateNeededDetail: value =>
+        `This app needs engine ${value} or later. Use "Check for update" below to update the engine.`,
+      engineTreeMismatch: 'Engine files out of sync',
+      engineTreeMismatchDetail:
+        'A previous update recorded a new version but the engine files on disk were not replaced, so the version shown may be wrong. Run the engine update below to re-download the correct files.',
       // hc-447: 更新日志 (product-update changelog) entry — reads the hc-446
       // announcement feed (same "you can now…" copy the web /app/whats-new page
       // shows), scoped to the signed-in ApexNodes account.
@@ -1904,11 +1929,11 @@ export const en: Translations = {
     placeholderReconnecting: 'Reconnecting to APEX…',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
-      'What are we building?',
-      'Give APEX a task',
+      'Send a request, link, document, or chat log',
+      'What can AI draft for you?',
       "What's on your mind?",
       'Describe what you need',
-      'What should we tackle?',
+      'What should we work on?',
       'Ask anything',
       'Start with a goal'
     ],

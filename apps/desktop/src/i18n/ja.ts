@@ -615,6 +615,30 @@ export const ja = defineLocale({
       minAgo: count => `${count} 分前`,
       hoursAgo: count => `${count} 時間前`,
       daysAgo: count => `${count} 日前`,
+      engineSection: 'AI エンジン',
+      engineVersion: value => `エンジンバージョン ${value}`,
+      engineVersionUnavailable: 'エンジンバージョンを取得できません',
+      engineCheck: 'エンジンの更新を確認',
+      engineChecking: '確認中…',
+      engineUpToDate: 'エンジンは最新です。',
+      engineTapCheck: '新しいエンジンバージョンがあるか確認します。',
+      engineFound: value => `新しいエンジンバージョン ${value} が見つかりました。`,
+      engineFoundGeneric: '新しいエンジンバージョンがあります。',
+      engineDesktopUpgradeRequired: value => `このエンジンをインストールするには、デスクトップアプリを v${value} 以降にアップデートしてください。`,
+      engineCompatNotes: '互換性に関する注意',
+      engineApply: '更新を適用',
+      engineApplying: '適用中…',
+      engineCantReach: 'エンジンの更新を確認できませんでした。接続を確認してもう一度お試しください。',
+      engineConfirmTitle: 'AI エンジンを更新しますか？',
+      engineConfirmBody: value => `エンジンバージョン ${value} に切り替え、適用のためアプリを再起動します。作業内容は安全です。`,
+      engineConfirmBodyGeneric: 'AI エンジンを更新し、適用のためアプリを再起動します。作業内容は安全です。',
+      engineConfirmApply: 'エンジンを更新',
+      engineUpdateNeeded: 'エンジンの更新が必要です',
+      engineUpdateNeededDetail: value =>
+        `このアプリはエンジン ${value} 以降が必要です。下の「更新を確認」からエンジンを更新してください。`,
+      engineTreeMismatch: 'エンジンファイルが未同期です',
+      engineTreeMismatchDetail:
+        '前回の更新で新しいバージョンが記録されましたが、ディスク上のエンジンファイルは置き換えられていないため、表示中のバージョンが正しくない可能性があります。下のエンジン更新を実行して正しいファイルを再ダウンロードしてください。',
       // hc-447: 更新日誌 (changelog) エントリ —— hc-446 のお知らせフィード
       // (web /app/whats-new と同じ「今できること」コピー) を、サインイン中の
       // ApexNodes アカウントの範囲で読み込みます。
@@ -1782,11 +1806,11 @@ export const ja = defineLocale({
     placeholderReconnecting: 'APEX に再接続中…',
     placeholderFollowUp: 'フォローアップを送信',
     newSessionPlaceholders: [
-      '何を作りますか？',
-      'APEX にタスクを与える',
+      '要望・リンク・資料・チャット履歴を送ってください',
+      'AI にまず何を作らせますか？',
       '何か考えていることはありますか？',
       '必要なことを説明してください',
-      '何に取り組みますか？',
+      'まず何に取り組みますか？',
       '何でも聞いてください',
       '目標から始める'
     ],

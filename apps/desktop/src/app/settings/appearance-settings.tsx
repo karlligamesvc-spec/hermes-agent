@@ -90,6 +90,27 @@ function useDebounced<T>(value: T, delayMs: number): T {
 
 const compactNumber = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
 
+// Consumer appearance page: 语言 + 颜色模式 + 工具调用显示 only. v0.19.0 turned
+// this page into upstream's theme workbench (theme grid + live VS Code
+// Marketplace search, UI scale, window translucency, chat backdrop, third-party
+// embed policy, virtual pet). Those stay WIRED but default OFF — flip one flag
+// to try that surface, nothing else has to change. The theme engine itself is
+// untouched: ⌘K still switches and installs themes.
+//
+// Typed `boolean` (not inferred `false`) on purpose, so flipping one flag does
+// not make TypeScript narrow every other branch to unreachable.
+const UPSTREAM_APPEARANCE: Record<
+  'themeWorkbench' | 'uiScale' | 'translucency' | 'backdrop' | 'embeds' | 'pet',
+  boolean
+> = {
+  themeWorkbench: false,
+  uiScale: false,
+  translucency: false,
+  backdrop: false,
+  embeds: false,
+  pet: false
+}
+
 /**
  * Live VS Code Marketplace theme search (the same backend as the Cmd-K "Install
  * theme…" page). Renders below the local grid when there's a query: each row
@@ -301,175 +322,187 @@ export function AppearanceSettings() {
     <SettingsContent>
       <div>
         <SectionHeading icon={Palette} title={a.title} />
-        <p className="max-w-2xl text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-          {a.intro}
-        </p>
+        <p className="p5-section-intro">{a.intro}</p>
 
-        <div className="mt-2">
+        <div className="p5-card p5-rows mt-3.5">
           <ListRow
             action={<LanguageSwitcher />}
             description={isSavingLocale ? t.language.saving : t.language.description}
             title={t.language.label}
           />
 
+          {/* 颜色模式 gets its own row. Upstream hangs the Light/Dark control off
+              the theme-grid row's title, which would take the color mode with it
+              whenever the grid is off. */}
           <ListRow
-            below={
-              <>
-                {/* One search box: filters your installed themes (the grid)
+            action={
+              <SegmentedControl
+                onChange={id => {
+                  triggerHaptic('crisp')
+                  setMode(id)
+                }}
+                options={modeOptions}
+                value={mode}
+              />
+            }
+            description={a.colorModeDesc}
+            title={a.colorMode}
+          />
+
+          {UPSTREAM_APPEARANCE.themeWorkbench && (
+            <ListRow
+              below={
+                <>
+                  {/* One search box: filters your installed themes (the grid)
                     and live-searches the VS Code Marketplace below. */}
-                <div className="mt-3">
-                  <input
-                    className="w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
-                    onChange={event => setQuery(event.target.value)}
-                    placeholder="Search your themes or the VS Code Marketplace…"
-                    spellCheck={false}
-                    value={query}
-                  />
-                </div>
+                  <div className="mt-3">
+                    <input
+                      className="w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
+                      onChange={event => setQuery(event.target.value)}
+                      placeholder="Search your themes or the VS Code Marketplace…"
+                      spellCheck={false}
+                      value={query}
+                    />
+                  </div>
 
-                {/* Fixed-height scroll area so the (growing) theme list never
+                  {/* Fixed-height scroll area so the (growing) theme list never
                     runs the page long; the grid scrolls inside it. */}
-                <div className="mt-3 max-h-96 overflow-y-auto pr-1">
-                  {filteredThemes.length === 0 ? (
-                    needle ? (
-                      <p className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
-                        No installed themes match "{query.trim()}".
-                      </p>
-                    ) : null
-                  ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {filteredThemes.map(theme => {
-                        const active = themeName === theme.name
-                        const removable = isUserTheme(theme.name)
+                  <div className="mt-3 max-h-96 overflow-y-auto pr-1">
+                    {filteredThemes.length === 0 ? (
+                      needle ? (
+                        <p className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                          No installed themes match "{query.trim()}".
+                        </p>
+                      ) : null
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {filteredThemes.map(theme => {
+                          const active = themeName === theme.name
+                          const removable = isUserTheme(theme.name)
 
-                        return (
-                          <div className="group relative" key={theme.name}>
-                            <button
-                              className={cn('w-full p-2 text-left', selectableCardClass({ active, prominent: true }))}
-                              onClick={() => {
-                                triggerHaptic('crisp')
-                                setTheme(theme.name)
-                              }}
-                              type="button"
-                            >
-                              <ThemePreview mode={resolvedMode} name={theme.name} />
-                              <div className="mt-3 px-1">
-                                <div className="truncate text-[length:var(--conversation-text-font-size)] font-medium">
-                                  {theme.label}
-                                </div>
-                                <div className="mt-0.5 line-clamp-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                                  {theme.description}
-                                </div>
-                              </div>
-                            </button>
-                            {removable && (
+                          return (
+                            <div className="group relative" key={theme.name}>
                               <button
-                                aria-label={a.removeTheme}
-                                className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-md bg-(--ui-bg-elevated)/80 text-(--ui-text-tertiary) opacity-0 backdrop-blur-sm transition hover:text-(--ui-red) focus-visible:opacity-100 group-hover:opacity-100"
+                                className={cn('w-full p-2 text-left', selectableCardClass({ active, prominent: true }))}
                                 onClick={() => {
                                   triggerHaptic('crisp')
-                                  removeUserTheme(theme.name)
-
-                                  // Re-normalize off the now-missing skin → default.
-                                  if (active) {
-                                    setTheme(theme.name)
-                                  }
+                                  setTheme(theme.name)
                                 }}
-                                title={a.removeTheme}
                                 type="button"
                               >
-                                <Trash2 className="size-3.5" />
+                                <ThemePreview mode={resolvedMode} name={theme.name} />
+                                <div className="mt-3 px-1">
+                                  <div className="truncate text-[length:var(--conversation-text-font-size)] font-medium">
+                                    {theme.label}
+                                  </div>
+                                  <div className="mt-0.5 line-clamp-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+                                    {theme.description}
+                                  </div>
+                                </div>
                               </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
+                              {removable && (
+                                <button
+                                  aria-label={a.removeTheme}
+                                  className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-md bg-(--ui-bg-elevated)/80 text-(--ui-text-tertiary) opacity-0 backdrop-blur-sm transition hover:text-(--ui-red) focus-visible:opacity-100 group-hover:opacity-100"
+                                  onClick={() => {
+                                    triggerHaptic('crisp')
+                                    removeUserTheme(theme.name)
+
+                                    // Re-normalize off the now-missing skin → default.
+                                    if (active) {
+                                      setTheme(theme.name)
+                                    }
+                                  }}
+                                  title={a.removeTheme}
+                                  type="button"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <MarketplaceThemeResults installs={installs} onInstalled={name => setTheme(name)} query={query} />
+                  </div>
+                  {showProfileNote && (
+                    <p className="mt-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+                      {a.themeProfileNote(activeProfileName)}
+                    </p>
                   )}
-                  <MarketplaceThemeResults installs={installs} onInstalled={name => setTheme(name)} query={query} />
-                </div>
-                {showProfileNote && (
-                  <p className="mt-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                    {a.themeProfileNote(activeProfileName)}
-                  </p>
-                )}
-              </>
-            }
-            description={a.themeDesc}
-            title={
-              <div className="flex items-center justify-between gap-3">
-                <span>{a.themeTitle}</span>
+                </>
+              }
+              description={a.themeDesc}
+              title={a.themeTitle}
+              wide
+            />
+          )}
+
+          {UPSTREAM_APPEARANCE.uiScale && (
+            <ListRow
+              action={
                 <SegmentedControl
                   onChange={id => {
-                    triggerHaptic('crisp')
-                    setMode(id)
-                  }}
-                  options={modeOptions}
-                  value={mode}
-                />
-              </div>
-            }
-            wide
-          />
-
-          <ListRow
-            action={
-              <SegmentedControl
-                onChange={id => {
-                  triggerHaptic('selection')
-                  setZoomPercent(Number(id))
-                }}
-                options={uiScaleOptions}
-                value={matchedScalePreset ?? ('' as UiScalePreset)}
-              />
-            }
-            description={a.uiScaleDesc(zoomPercent)}
-            title={a.uiScaleTitle}
-          />
-
-          <ListRow
-            action={
-              <div className="flex items-center gap-3">
-                <input
-                  aria-label={a.translucencyTitle}
-                  className="h-1 w-40 cursor-pointer appearance-none rounded-full bg-(--ui-stroke-tertiary)"
-                  max={100}
-                  min={0}
-                  onChange={event => {
                     triggerHaptic('selection')
-                    setTranslucency(Number(event.target.value))
+                    setZoomPercent(Number(id))
                   }}
-                  step={5}
-                  style={{ accentColor: 'var(--dt-primary)' }}
-                  type="range"
-                  value={translucency}
+                  options={uiScaleOptions}
+                  value={matchedScalePreset ?? ('' as UiScalePreset)}
                 />
-                <span className="w-9 text-right text-[length:var(--conversation-caption-font-size)] tabular-nums text-(--ui-text-tertiary)">
-                  {translucency}%
-                </span>
-              </div>
-            }
-            description={a.translucencyDesc}
-            title={a.translucencyTitle}
-          />
+              }
+              description={a.uiScaleDesc(zoomPercent)}
+              title={a.uiScaleTitle}
+            />
+          )}
 
-          <ListRow
-            action={
-              <SegmentedControl
-                onChange={id => {
-                  triggerHaptic('selection')
-                  setBackdrop(id === 'on')
-                }}
-                options={[
-                  { id: 'off', label: t.common.off },
-                  { id: 'on', label: t.common.on }
-                ]}
-                value={backdrop ? 'on' : 'off'}
-              />
-            }
-            description={a.backdropDesc}
-            title={a.backdropTitle}
-          />
+          {UPSTREAM_APPEARANCE.translucency && (
+            <ListRow
+              action={
+                <div className="flex items-center gap-3">
+                  <input
+                    aria-label={a.translucencyTitle}
+                    className="h-1 w-40 cursor-pointer appearance-none rounded-full bg-(--ui-stroke-tertiary)"
+                    max={100}
+                    min={0}
+                    onChange={event => {
+                      triggerHaptic('selection')
+                      setTranslucency(Number(event.target.value))
+                    }}
+                    step={5}
+                    style={{ accentColor: 'var(--dt-primary)' }}
+                    type="range"
+                    value={translucency}
+                  />
+                  <span className="w-9 text-right text-[length:var(--conversation-caption-font-size)] tabular-nums text-(--ui-text-tertiary)">
+                    {translucency}%
+                  </span>
+                </div>
+              }
+              description={a.translucencyDesc}
+              title={a.translucencyTitle}
+            />
+          )}
+
+          {UPSTREAM_APPEARANCE.backdrop && (
+            <ListRow
+              action={
+                <SegmentedControl
+                  onChange={id => {
+                    triggerHaptic('selection')
+                    setBackdrop(id === 'on')
+                  }}
+                  options={[
+                    { id: 'off', label: t.common.off },
+                    { id: 'on', label: t.common.on }
+                  ]}
+                  value={backdrop ? 'on' : 'off'}
+                />
+              }
+              description={a.backdropDesc}
+              title={a.backdropTitle}
+            />
+          )}
 
           <ListRow
             action={
@@ -486,40 +519,44 @@ export function AppearanceSettings() {
             title={a.toolViewTitle}
           />
 
-          <ListRow
-            action={
-              <div className="flex flex-col items-end gap-1.5">
-                <SegmentedControl
-                  onChange={id => {
-                    triggerHaptic('selection')
-                    setEmbedMode(id)
-                  }}
-                  options={embedOptions}
-                  value={embedMode}
-                />
-                {embedAllowed.length > 0 && (
-                  <Button
-                    onClick={() => {
+          {UPSTREAM_APPEARANCE.embeds && (
+            <ListRow
+              action={
+                <div className="flex flex-col items-end gap-1.5">
+                  <SegmentedControl
+                    onChange={id => {
                       triggerHaptic('selection')
-                      clearEmbedAllowed()
+                      setEmbedMode(id)
                     }}
-                    size="inline"
-                    variant="text"
-                  >
-                    {a.embedsReset(embedAllowed.length)}
-                  </Button>
-                )}
-              </div>
-            }
-            description={a.embedsDesc}
-            title={a.embedsTitle}
-          />
+                    options={embedOptions}
+                    value={embedMode}
+                  />
+                  {embedAllowed.length > 0 && (
+                    <Button
+                      onClick={() => {
+                        triggerHaptic('selection')
+                        clearEmbedAllowed()
+                      }}
+                      size="inline"
+                      variant="text"
+                    >
+                      {a.embedsReset(embedAllowed.length)}
+                    </Button>
+                  )}
+                </div>
+              }
+              description={a.embedsDesc}
+              title={a.embedsTitle}
+            />
+          )}
         </div>
       </div>
 
-      <div className="mt-6">
-        <PetSettings />
-      </div>
+      {UPSTREAM_APPEARANCE.pet && (
+        <div className="mt-6">
+          <PetSettings />
+        </div>
+      )}
     </SettingsContent>
   )
 }

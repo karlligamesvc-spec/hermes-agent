@@ -344,11 +344,16 @@
       'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
     /* Key caps always use the native UI face — never theme typography overrides. */
     --dt-font-kbd: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-    /* JetBrains Mono first — the face we bundle (@font-face above) and the
-       terminal's primary — so code/diff match the terminal on every platform
-       instead of drifting to a system Cascadia Code where it's installed. */
+    /* MUST stay byte-order-identical to SYSTEM_MONO in themes/presets.ts: the
+       active theme's typography sets --dt-font-mono at runtime, so whichever of
+       the two loses the race decides the face and the app renders differently
+       depending on when the theme applies. v0.19.0 put 'JetBrains Mono' (the
+       bundled face) first here only, which changed the rendered font on any
+       machine with Cascadia Code installed (i.e. most Windows boxes). Held at
+       the 0.16.17 order; promoting the bundled face is a deliberate visual
+       change and needs both places flipped together. */
     --dt-font-mono:
-      'JetBrains Mono', 'Cascadia Code', 'SF Mono', ui-monospace, Menlo, Consolas, monospace, 'Apple Color Emoji',
+      'Cascadia Code', 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace, 'Apple Color Emoji',
       'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
     /* Global rem base (hc-549). Sets the root font-size and therefore scales
        EVERY rem-expressed size in the app in one move — Tailwind text and
@@ -852,27 +857,39 @@ text-* variant utilities. */ .btn-arc {
 }
 
 /* Shared input chrome — mirrors composer hover/focus FX. Unlayered to beat Tailwind utilities. */
-/* Border strength is driven by the single --dt-input-border alpha knob (× the
-   theme's tuned ring color); hover doubles it and focus triples it. Only the
-   border-color animates — animating the translucent background over the window's
-   backdrop-blur flickers (badly on textareas), so the bg fill snaps instead.
-   (:focus is declared after :hover so a focused+hovered field shows focus.) */
+/* Our fields are translucent FILLED cards that lift on hover and go solid on
+   focus, over a visible resting border (--dt-input fallback), no inset. v0.19.0
+   swapped that for upstream's near-borderless recessed groove — the
+   --dt-input-bg / --dt-input-border / --dt-input-inset knobs declared above,
+   which stay declared (and per-theme tuned) so flipping back is a one-rule edit.
+   `[data-state='open']` is an upstream fix worth keeping: Radix moves focus into
+   the open list, so the trigger itself loses :focus. (:focus is declared after
+   :hover so a focused+hovered field shows focus.) */
 .desktop-input-chrome {
-  background: color-mix(in srgb, var(--dt-card) var(--dt-input-bg), transparent);
-  border-color: color-mix(in srgb, var(--dt-composer-ring) var(--dt-input-border), transparent);
-  box-shadow: var(--dt-input-inset);
-  transition: border-color 200ms ease-out;
+  --ring-pct: 18%;
+  --ring-fall: var(--dt-input);
+  background: color-mix(in srgb, var(--dt-card) 68%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--dt-composer-ring) calc(var(--ring-pct) * var(--composer-ring-strength)),
+    var(--ring-fall)
+  );
+  box-shadow: none;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out;
 }
 
 .desktop-input-chrome:hover {
-  border-color: color-mix(in srgb, var(--dt-composer-ring) calc(var(--dt-input-border) * 2), transparent);
+  --ring-pct: 30%;
+  background: color-mix(in srgb, var(--dt-card) 86%, transparent);
 }
 
-/* `[data-state='open']` keeps the trigger looking focused while its dropdown is
-   open — Radix moves focus into the list, so the trigger itself loses :focus. */
 .desktop-input-chrome:focus,
 .desktop-input-chrome[data-state='open'] {
-  border-color: var(--dt-composer-ring);
+  --ring-pct: 45%;
+  --ring-fall: transparent;
+  background: var(--dt-card);
   box-shadow: none;
   outline: none;
 }

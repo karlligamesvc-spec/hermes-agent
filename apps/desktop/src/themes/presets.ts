@@ -15,6 +15,9 @@ const SYSTEM_SANS =
   '"Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
   EMOJI_FALLBACK
 
+// Keep in lockstep with --dt-font-mono in styles.css — the theme writes this
+// over the CSS fallback at runtime, so a disagreement makes the rendered face
+// depend on when the theme applies. Change both or neither.
 const SYSTEM_MONO =
   '"Cascadia Code", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace, ' + EMOJI_FALLBACK
 
