@@ -25,15 +25,31 @@
     }
   },
   "include": ["src", "../shared/src"],
-  // The fork's pre-v0.19.0 shell pair. Upstream replaced the whole shell in
-  // v0.19.0 — `src/app/index.tsx` now renders the contribution controller
-  // (src/app/contrib), and the Pane / PaneMain / PaneShell components these two
-  // are built on no longer exist; pane layout is a tree renderer. Nothing
-  // imports them, so they are already out of the bundle, but they are the only
-  // record of how the ApexNodes views (im-entry / profile / search / tasks /
-  // the scenario session bridge) were mounted, so they stay in the tree as the
-  // reference for the re-wiring leg rather than being deleted. Type-checking a
-  // shell written against a deleted API can only report that fact.
+  // The fork's pre-v0.19.0 shell pair. `src/app/index.tsx` renders the
+  // contribution controller (src/app/contrib) instead, so nothing imports these
+  // two and they are already out of the bundle. They stay in the tree because
+  // they are the record of how the ApexNodes views (im-entry / profile / search
+  // / tasks / the scenario session bridge) were mounted, and they are excluded
+  // only to keep that dormant copy from failing the build.
+  //
+  // NOT because their foundations are gone. Pane / PaneMain / PaneShell are all
+  // still here, byte-identical to 0.16.17, in components/pane-shell/
+  // pane-shell.tsx — only the barrel (components/pane-shell/index.ts) stopped
+  // re-exporting them. An earlier version of this comment claimed they "no
+  // longer exist", which made switching back look impossible; the hc-589 audit
+  // resolved all 80 import specifiers of the pair and found five breaks:
+  //
+  //   Pane / PaneMain / PaneShell        → import from ./pane-shell directly
+  //   $workingSessionIds,
+  //     getRecentlySettledSessionIds     → moved to store/session-states
+  //   setApprovalMode, coerceApprovalMode → store/approval-mode, now per-profile
+  //   setSidebarOverlayMounted           → genuinely gone (layout tree owns it)
+  //   PREVIEW_RAIL_PANE_WIDTH            → PREVIEW_RAIL_MIN/MAX_WIDTH
+  //
+  // plus four new ChatSidebar props (onBranchSession / onNewSessionSplit /
+  // onManageCronJob / onTriggerCronJob). Restoring this shell is about a day's
+  // work, not a rewrite — the reason we run the contribution controller instead
+  // is that hc-564's plugin delivery channel rides on its registry.
   "exclude": ["src/app/desktop-controller.tsx", "src/app/shell/app-shell.tsx"],
   "references": [{ "path": "./tsconfig.electron.json" }]
 }
