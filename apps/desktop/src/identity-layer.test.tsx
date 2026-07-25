@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { Intro } from '@/components/chat/intro'
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { type I18nConfigClient, I18nProvider } from '@/i18n/context'
@@ -323,6 +326,70 @@ describe('zero setup: a managed user is never asked to pick a provider', () => {
     // picker (which only mounts past the gate) can take the window.
     expect($desktopOnboarding.get().byokFromLogin).toBe(true)
     expect($authState.get().enabled).toBe(false)
+  })
+})
+
+// hc-589 leg 8d — the zero state is ours.
+//
+// The rebase handed the empty home screen back to upstream: a giant
+// `HERMES AGENT` wordmark filling the width, under it a rotating line from
+// intro-copy.jsonl written for a CODING agent ("Search the repo, edit files, run
+// tests, open PRs"). Kael read it off the packaged build. It is the first thing
+// a user sees, in English, describing a product we do not sell — and no test
+// noticed, because upstream's own intro test only checked that copy was picked.
+//
+// Behavioral, against the real component tree: the greeting and the hc-554
+// shelf have to coexist (leg 5 wired the shelf INTO this component, so a
+// careless restore drops one or the other), and the upstream surface has to be
+// gone from what actually renders — not merely unimported.
+describe('identity: the home zero-state is ours', () => {
+  const renderIntro = () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <Intro />
+          </I18nProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+  }
+
+  it('greets in Chinese and offers the scenario shelf', () => {
+    renderIntro()
+
+    expect(screen.getByRole('heading', { name: '我们该做什么？' })).toBeTruthy()
+    // The shelf resolves to the built-in fallback catalog on first frame, so a
+    // hero scenario proves leg 5's wiring is still in place.
+    expect(screen.getByRole('button', { name: /热榜/ })).toBeTruthy()
+  })
+
+  it('never renders the upstream wordmark or its coding-agent pitch', () => {
+    const { container } = renderIntro()
+    const rendered = container.textContent || ''
+
+    expect(rendered).not.toContain('HERMES AGENT')
+    // The aria-label carried the wordmark too — a screen reader heard it even
+    // when the fit-text CSS hid the glyphs.
+    expect(container.querySelector('[aria-label*="HERMES"]')).toBeNull()
+
+    for (const upstream of ['Search the repo', 'open PRs', 'run tests', 'APEX look at']) {
+      expect(rendered).not.toContain(upstream)
+    }
+  })
+
+  it('keeps the intro off the upstream copy corpus entirely', () => {
+    // intro-copy.jsonl stays on disk (small rebase surface, same call as the
+    // upstream mascot art). What must never come back is the import — that one
+    // line is the whole difference between our zero state and theirs.
+    const intro = readSource('src', 'components', 'chat', 'intro.tsx')
+
+    expect(intro).toContain('t.home.title')
+    expect(intro).toContain('<ScenarioShelf />')
+    expect(intro).not.toMatch(/^import .*intro-copy\.jsonl/m)
+    expect(intro).not.toContain('WORDMARK')
   })
 })
 
