@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { compareSemver as runtimeCompare, parseSemver as runtimeParse } from './apex-runtime-latest'
 
 const require = createRequire(import.meta.url)
+
 const preflight = require('../scripts/assert-release-preflight.cjs') as {
   parseSemver: (v: unknown) => number[] | null
   compareSemver: (a: unknown, b: unknown) => -1 | 0 | 1 | null
