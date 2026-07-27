@@ -2364,6 +2364,7 @@ export interface Translations {
       compacting: string
       steered: string
       processOutput: string
+      timeline: string
     }
     approval: {
       gatewayDisconnected: string

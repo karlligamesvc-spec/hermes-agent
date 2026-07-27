@@ -2923,7 +2923,8 @@ export const zh: Translations = {
       attachingFile: '正在附加…',
       compacting: '正在整理对话',
       steered: '已引导',
-      processOutput: '输出'
+      processOutput: '输出',
+      timeline: '对话时间线'
     },
     approval: {
       gatewayDisconnected: 'APEX 网关未连接',

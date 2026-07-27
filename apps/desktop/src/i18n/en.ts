@@ -2784,7 +2784,8 @@ export const en: Translations = {
       attachingFile: 'Attaching…',
       compacting: 'Summarizing thread',
       steered: 'steered',
-      processOutput: 'output'
+      processOutput: 'output',
+      timeline: 'Conversation timeline'
     },
     approval: {
       gatewayDisconnected: 'APEX gateway is not connected',

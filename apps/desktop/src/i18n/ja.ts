@@ -2639,7 +2639,8 @@ export const ja = defineLocale({
       attachingFile: '添付中…',
       compacting: 'スレッドを要約中',
       steered: '誘導済み',
-      processOutput: '出力'
+      processOutput: '出力',
+      timeline: '会話タイムライン'
     },
     approval: {
       gatewayDisconnected: 'APEX ゲートウェイが接続されていません',

@@ -2560,7 +2560,8 @@ export const zhHant = defineLocale({
       attachingFile: '正在附加…',
       compacting: '正在整理對話',
       steered: '已引導',
-      processOutput: '輸出'
+      processOutput: '輸出',
+      timeline: '對話時間軸'
     },
     approval: {
       gatewayDisconnected: 'APEX 閘道未連線',
