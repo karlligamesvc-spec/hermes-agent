@@ -58,7 +58,7 @@ interface ThreadMessageListProps {
 
 // Group each user message with the assistant turn(s) that follow it so the
 // human bubble can `position: sticky` against the scroller across its whole
-// turn (see StickyHumanMessageContainer in thread.tsx).
+// turn (see StickyHumanMessageContainer in thread/user-message.tsx).
 export function buildGroups(signature: string): MessageGroup[] {
   if (!signature) {
     return []

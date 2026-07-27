@@ -9,6 +9,7 @@ import { useGatewayRequest } from '@/app/gateway/hooks/use-gateway-request'
 import { useCwdActions } from '@/app/session/hooks/use-cwd-actions'
 import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { Thread } from '@/components/assistant-ui/thread'
+import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { Backdrop } from '@/components/Backdrop'
 import { COMPOSER_HEART_CONFIG, HeartField } from '@/components/chat/vibe-hearts'
 import { $sessionTileDragging, $sessionTileEdgeHover } from '@/components/pane-shell/tree/store'
@@ -83,7 +84,7 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   onThreadMessagesChange: (messages: readonly ThreadMessage[]) => void
   onEdit: (message: AppendMessage) => Promise<void>
   onReload: (parentId: string | null) => Promise<void>
-  onRestoreToMessage?: (messageId: string, target?: { text?: string; userOrdinal?: number | null }) => Promise<void>
+  onRestoreToMessage?: (messageId: string, target?: RestoreMessageTarget) => Promise<void>
   onRetryResume: (sessionId: string) => void
   onTranscribeAudio?: (audio: Blob) => Promise<string>
   onDismissError?: (messageId: string) => void
