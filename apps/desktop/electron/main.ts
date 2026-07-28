@@ -231,6 +231,7 @@ import {
   seedSkillsBlockYaml,
   seedPluginsBlockYaml,
   MANAGED_PROVIDER_NAME,
+  managedCustomProviderEntryYaml,
   MODEL_DISABLED_PROVIDERS,
   maskRelayKey,
   parseProvisionResponse,
@@ -10554,9 +10555,12 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
     key: managed.key
   })
   if (result.ok && result.changed) {
+    // Per-anchor, by path — "custom_providers=0/0" was true on every one of
+    // Kael's boots and read as "nothing to do" rather than "I cannot see the
+    // entry I wrote myself".
+    const detail = (result.anchors || []).map(anchor => `${anchor.path}:${anchor.status}`).join(' ')
     rememberLog(
-      `[apexnodes] config.yaml relay key refreshed (${reason}) to ${maskRelayKey(managed.key)} ` +
-        `— model=${result.model}, custom_providers=${result.entries.updated}/${result.entries.matched}`
+      `[apexnodes] config.yaml relay key refreshed (${reason}) to ${maskRelayKey(managed.key)} — ${detail || 'no anchors'}`
     )
   } else if (!result.ok) {
     rememberLog(
@@ -11978,11 +11982,17 @@ function healConfigYamlProductBlocks(reason) {
 
     const managed = resolveManagedConfig()
     const endpoints = resolveApexEndpoints(process.env)
-    const relayEntryLines =
-      `- api_key: ${managed.key}\n` +
-      `  base_url: ${managed.baseUrl}\n` +
-      `  model: ${endpoints.modelDisplay}\n` +
-      `  name: ${MANAGED_PROVIDER_NAME}\n`
+    // hc-602: rendered by the SAME producer the first-run seed uses. This healer
+    // used to hand-roll a column-0 list lead while the seed emitted a two-space
+    // one — both valid YAML, and the relay-key patcher understood only one of
+    // them, which is how Kael's custom_providers entry sat on a dead key for a
+    // week while every log line said the sync had succeeded.
+    const relayEntryLines = managedCustomProviderEntryYaml({
+      name: MANAGED_PROVIDER_NAME,
+      base_url: managed.baseUrl,
+      api_key: managed.key,
+      model: endpoints.modelDisplay
+    })
 
     if (managed.key && managed.baseUrl && !/^custom_providers:/m.test(raw)) {
       raw = raw.replace(/\n*$/, '\n') + 'custom_providers:\n' + relayEntryLines

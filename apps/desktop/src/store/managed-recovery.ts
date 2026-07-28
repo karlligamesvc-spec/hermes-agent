@@ -57,6 +57,13 @@ export function registerActiveTurnResend(fn: (() => Promise<void> | void) | null
 // breaks the retry loop after exactly one attempt).
 const recovering = new Set<string>()
 
+export interface ManagedRelayRecoveryOutcome {
+  /** True when this path owns the outcome and the caller should skip its generic error UI. */
+  owned: boolean
+  /** True when a fresh relay key was minted, persisted and applied. */
+  healed: boolean
+}
+
 export interface ManagedRelayRecoveryArgs {
   /** Runtime session id the failed turn belongs to (may be unresolved). */
   sessionId: string | null | undefined
@@ -76,18 +83,28 @@ export interface ManagedRelayRecoveryArgs {
 // generic error toast; false when it was NOT a managed-relay auth problem (e.g.
 // a BYOK provider's own 401) and the generic path should surface it as usual.
 export async function recoverFromManagedRelayAuthError(args: ManagedRelayRecoveryArgs): Promise<boolean> {
+  return (await runManagedRelayRecovery(args)).owned
+}
+
+// The same recovery, with the extra bit callers who are not a chat send need:
+// WAS a fresh key applied. The model catalog has to know, because a heal is the
+// signal to re-query the (previously 401ing) live model list — the boolean above
+// conflates "healed" with "routed to re-sign-in", and both are `owned`.
+export async function runManagedRelayRecovery(
+  args: ManagedRelayRecoveryArgs
+): Promise<ManagedRelayRecoveryOutcome> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
   // No desktop bridge (web dashboard / dev preview) or an older main process
   // without self-heal → nothing to do; let the generic error UI handle it.
   if (!bridge?.selfHeal) {
-    return false
+    return { owned: false, healed: false }
   }
 
   const guardKey = args.sessionId || '*'
 
   if (recovering.has(guardKey)) {
-    return true
+    return { owned: true, healed: false }
   }
 
   recovering.add(guardKey)
@@ -98,7 +115,7 @@ export async function recoverFromManagedRelayAuthError(args: ManagedRelayRecover
     // Relay accepted the key: this failure wasn't a managed-relay auth problem
     // (a BYOK provider 401, say) — defer to the generic error handling.
     if (!outcome || !outcome.relayUnauthorized) {
-      return false
+      return { owned: false, healed: false }
     }
 
     if (outcome.healed && outcome.assignment) {
@@ -138,7 +155,7 @@ export async function recoverFromManagedRelayAuthError(args: ManagedRelayRecover
         })
       }
 
-      return true
+      return { owned: true, healed: true }
     }
 
     // Could not heal — no reusable login token, or the stored JWT is itself
@@ -159,11 +176,11 @@ export async function recoverFromManagedRelayAuthError(args: ManagedRelayRecover
       requestManagedReSignIn(translateNow('managedRecovery.signInRequired.reason'))
     }
 
-    return true
+    return { owned: true, healed: false }
   } catch {
     // A recovery that itself throws must not swallow the error — fall back to the
     // generic error UI so the failure is never invisible.
-    return false
+    return { owned: false, healed: false }
   } finally {
     recovering.delete(guardKey)
   }
@@ -178,4 +195,27 @@ export async function recoverFromManagedRelayAuthError(args: ManagedRelayRecover
 // Fire-and-forget safe — never throws, deduped with the chat-send recovery.
 export async function reconcileRelayAuthState(): Promise<void> {
   await recoverFromManagedRelayAuthError({ sessionId: null, isActive: false, silentHeal: true })
+}
+
+// hc-602 — the model catalog's 401, wired into the SAME self-heal chain.
+//
+// hc-592 classified this path as "a different mechanism, not fixed": the runtime
+// probes the relay's live `GET /v1/models` with `custom_providers[].api_key`, and
+// when that key is dead the probe fails SILENTLY — the provider row just shrinks
+// to the one model config.yaml names ("其他模型不见了"). It is not a different
+// mechanism at all; it is the same rotated credential reaching the user through a
+// second exit, and it is the exit that was still open after hc-595.
+//
+// Returns true when a fresh key was applied, i.e. the caller should re-query the
+// catalog. Dedupe and the re-provision cooldown are the shared ones: this uses
+// its own guard key so a catalog probe and an in-flight chat-send recovery do not
+// cancel each other, while the electron side still bounds minting.
+export async function recoverManagedCatalogAuth(): Promise<boolean> {
+  const { healed } = await runManagedRelayRecovery({
+    sessionId: 'model-catalog',
+    isActive: false,
+    silentHeal: true
+  })
+
+  return healed
 }

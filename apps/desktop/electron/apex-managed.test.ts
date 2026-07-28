@@ -56,8 +56,24 @@ import {
   shouldAttemptReprovision,
   maskRelayKey,
   persistRelayKeyToConfigYaml,
-  syncManagedRelayKeyYaml
+  syncManagedRelayKeyYaml,
+  parseYamlMaps
 } from './apex-managed'
+
+/**
+ * The value an anchor actually holds, read back structurally.
+ *
+ * hc-602: these tests used to assert byte patterns like `/- api_key: sk-fresh/`,
+ * which is a promise about the writer's FORMATTING, not about the credential
+ * landing. That is a smaller version of the mistake hc-595 shipped — its fixture
+ * was hand-written to the parser's shape, so the suite stayed green while the
+ * entry on disk held a dead key. Assert the parsed value instead: a quoting or
+ * indentation change is then free, and a missed anchor is not.
+ */
+function anchorValue(raw: string, path: string): string {
+  const map = parseYamlMaps(raw).maps.find(node => node.path === path)
+  return map?.fields.api_key?.value ?? ''
+}
 
 // --- resolveApexEndpoints ---
 
@@ -996,8 +1012,8 @@ test('syncManagedRelayKeyYaml refreshes BOTH the chat key and the registered ent
   assert.deepEqual(result.entries, { matched: 1, updated: 1 })
   // model.api_key is what a chat turn authenticates with — the hc-595 anchor
   // the old custom_providers-only sync left rotated.
-  assert.match(result.next, /model:\n {2}api_key: sk-fresh/)
-  assert.match(result.next, /- api_key: sk-fresh\n {2}base_url: https:\/\/apex-nodes\.com\/relay\/v1/)
+  assert.equal(anchorValue(result.next, 'model'), 'sk-fresh')
+  assert.equal(anchorValue(result.next, 'custom_providers[0]'), 'sk-fresh')
   // Untargeted keys survive.
   assert.match(result.next, /name: Apex-nodes\.com/)
   assert.match(result.next, /skills:\n {2}disabled: \[\]/)
@@ -1056,8 +1072,8 @@ test('syncManagedRelayKeyYaml only touches the matching entry in a multi-entry l
   const { changed, next, entries } = syncManagedRelayKeyYaml(multi, RELAY_BASE, 'sk-fresh')
   assert.equal(changed, true)
   assert.deepEqual(entries, { matched: 1, updated: 1 })
-  assert.match(next, /- api_key: sk-other\n {2}base_url: https:\/\/my-own-endpoint\.example\/v1/)
-  assert.match(next, /- api_key: sk-fresh\n {2}base_url: https:\/\/apex-nodes\.com\/relay\/v1/)
+  assert.equal(anchorValue(next, 'custom_providers[0]'), 'sk-other')
+  assert.equal(anchorValue(next, 'custom_providers[1]'), 'sk-fresh')
 })
 
 test('syncManagedRelayKeyYaml recognizes our entry by name when base_url drifted', () => {
@@ -1073,7 +1089,7 @@ test('syncManagedRelayKeyYaml recognizes our entry by name when base_url drifted
   const { changed, next, entries } = syncManagedRelayKeyYaml(drifted, RELAY_BASE, 'sk-fresh')
   assert.equal(changed, true)
   assert.deepEqual(entries, { matched: 1, updated: 1 })
-  assert.match(next, /- api_key: sk-fresh/)
+  assert.equal(anchorValue(next, 'custom_providers[0]'), 'sk-fresh')
 })
 
 test('syncManagedRelayKeyYaml inserts a missing api_key line on a matched anchor', () => {
@@ -1090,8 +1106,8 @@ test('syncManagedRelayKeyYaml inserts a missing api_key line on a matched anchor
   assert.equal(changed, true)
   assert.equal(model, 'updated')
   assert.deepEqual(entries, { matched: 1, updated: 1 })
-  assert.match(next, /model:\n {2}base_url: [^\n]+\n {2}api_key: "sk-fresh"/)
-  assert.match(next, /- base_url: [^\n]+\n {2}api_key: "sk-fresh"/)
+  assert.equal(anchorValue(next, 'model'), 'sk-fresh')
+  assert.equal(anchorValue(next, 'custom_providers[0]'), 'sk-fresh')
   // Re-running is a clean no-op — the inserted lines are addressable.
   assert.equal(syncManagedRelayKeyYaml(next, RELAY_BASE, 'sk-fresh').changed, false)
 })
@@ -1122,8 +1138,8 @@ test('persistRelayKeyToConfigYaml writes both anchors and verifies by read-back'
   })
   assert.equal(result.ok, true)
   assert.equal(result.changed, true)
-  assert.match(file, /model:\n {2}api_key: sk-fresh/)
-  assert.match(file, /- api_key: sk-fresh/)
+  assert.equal(anchorValue(file, 'model'), 'sk-fresh')
+  assert.equal(anchorValue(file, 'custom_providers[0]'), 'sk-fresh')
 })
 
 test('persistRelayKeyToConfigYaml reports a write that did not land instead of claiming success', () => {
@@ -1137,7 +1153,9 @@ test('persistRelayKeyToConfigYaml reports a write that did not land instead of c
     key: 'sk-fresh'
   })
   assert.equal(swallowed.ok, false)
-  assert.equal(swallowed.reason, 'verify-failed')
+  // hc-602: the reason now NAMES the anchors still holding the old key, so a
+  // support log says which place lost the write instead of just that one did.
+  assert.equal(swallowed.reason, 'verify-failed: model, custom_providers[0]')
 
   const throwing = persistRelayKeyToConfigYaml({
     read: () => ROTATED_CONFIG,
