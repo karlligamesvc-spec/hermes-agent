@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ClientSessionState } from '@/app/types'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import type * as ManagedRecovery from '@/store/managed-recovery'
 import { $notifications, clearNotifications } from '@/store/notifications'
 import type { RpcEvent } from '@/types/hermes'
 
@@ -25,7 +26,7 @@ import { useMessageStream } from './index'
 const recover = vi.hoisted(() => vi.fn(async () => true))
 
 vi.mock('@/store/managed-recovery', async importOriginal => ({
-  ...(await importOriginal<typeof import('@/store/managed-recovery')>()),
+  ...(await importOriginal<typeof ManagedRecovery>()),
   recoverFromManagedRelayAuthError: recover
 }))
 
