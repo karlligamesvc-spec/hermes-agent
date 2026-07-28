@@ -223,7 +223,6 @@ import {
   googleStartUrl,
   isLoginStateTruthEnabled,
   isManagedEnabled,
-  isRelayUnauthorized,
   managedModelConfigYaml,
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
@@ -233,11 +232,12 @@ import {
   seedPluginsBlockYaml,
   MANAGED_PROVIDER_NAME,
   MODEL_DISABLED_PROVIDERS,
+  maskRelayKey,
   parseProvisionResponse,
+  persistRelayKeyToConfigYaml,
+  reconcileManagedRelayKey,
   relayCatalogStatusFromProbe,
-  resolveApexEndpoints,
-  shouldAttemptReprovision,
-  syncCustomProviderKeyYaml
+  resolveApexEndpoints
 } from './apex-managed'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
 import {
@@ -3835,11 +3835,12 @@ async function ensureRuntime(backend) {
   // never touched, so for every install that has been up once this is a no-op
   // and the old behavior holds byte for byte.
   seedDefaultModelConfig()
-  // Then heal a rotated relay key in the registered custom provider so the
-  // model picker's live listing works this launch, fold any newer platform
-  // config into config.yaml (line surgery; the gateway loads the result fresh),
-  // and reconcile the product-critical blocks.
-  syncManagedCustomProviderKey()
+  // Then heal a rotated relay key in BOTH config.yaml anchors (model.api_key +
+  // the registered custom provider) so this launch's chat AND the picker's live
+  // listing run on the stored credential, fold any newer platform config into
+  // config.yaml (line surgery; the gateway loads the result fresh), and
+  // reconcile the product-critical blocks.
+  syncManagedRelayKeyToConfig('boot-seed')
   applyClientConfigToRuntime('boot')
   guardConfigYamlProductBlocks('boot')
   watchConfigYamlProductBlocks()
@@ -10525,25 +10526,64 @@ function seedDefaultModelConfig() {
   }
 }
 
-// Keep the registered relay custom_providers entry's api_key in lockstep with
-// the freshly provisioned relay key (see syncCustomProviderKeyYaml — provision
-// rotates the key on every sign-in, and the runtime's dedupe never refreshes a
-// registered entry's key, stranding the picker's live model listing on a dead
-// credential). Runs at boot and right after provisioning; no-op when signed
-// out, config missing, or already in sync.
-function syncManagedCustomProviderKey() {
+// Write the current managed relay key into EVERY config.yaml anchor the runtime
+// authenticates with (`model.api_key` for a chat turn, `custom_providers[].api_key`
+// for the picker's live listing) and verify it by reading the file back. See
+// persistRelayKeyToConfigYaml — provision rotates the key on every sign-in, the
+// runtime's own dedupe never refreshes a registered entry's key, and hc-595
+// showed that patching only the custom_providers half leaves every chat send
+// 401ing on a rotated `model.api_key` while the shell reports success.
+//
+// Runs at boot, right after provisioning, and from the self-heal reconcile.
+// Returns the structured persist result so callers can gate on a PROVEN write;
+// a failure is logged loudly (never silently swallowed) with a masked key.
+function syncManagedRelayKeyToConfig(reason = 'sync') {
+  const managed = resolveManagedConfig()
+  if (!managed.key || !managed.baseUrl) {
+    return { ok: false, changed: false, reason: 'signed-out', model: 'absent', entries: { matched: 0, updated: 0 } }
+  }
+  const configPath = path.join(HERMES_HOME, 'config.yaml')
+  const result = persistRelayKeyToConfigYaml({
+    read: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
+    write: next => writeFileAtomic(configPath, next, { encoding: 'utf8' }),
+    baseUrl: managed.baseUrl,
+    key: managed.key
+  })
+  if (result.ok && result.changed) {
+    rememberLog(
+      `[apexnodes] config.yaml relay key refreshed (${reason}) to ${maskRelayKey(managed.key)} ` +
+        `— model=${result.model}, custom_providers=${result.entries.updated}/${result.entries.matched}`
+    )
+  } else if (!result.ok) {
+    rememberLog(
+      `[apexnodes] config.yaml relay key write FAILED (${reason}): ${result.reason} — ` +
+        'chat will keep failing with 401 until this is resolved.'
+    )
+  }
+  return result
+}
+
+// Make the RUNNING backend authenticate with the key we just wrote. config.yaml
+// is read when an agent is constructed, and `POST /api/model/set` is documented
+// as "applies to new sessions only" — `prompt.submit` reuses the live session's
+// already-built client, so a live process keeps 401ing on the rotated key no
+// matter what is on disk. The desktop owns the backend child, so the
+// deterministic fix is the existing SOFT re-home: tear the primary down without
+// resetting boot UI, tell the renderer to re-dial, and let the respawn read the
+// fresh config.yaml. Sessions live in state.db and are resumed, so nothing is lost.
+//
+// No-op when no backend is live (the boot self-heal usually lands here — the
+// spawn that follows already reads the corrected file).
+async function reloadBackendForRelayKey(reason) {
+  if (!backendConnectionState.getProcess()) return false
   try {
-    const managed = resolveManagedConfig()
-    if (!managed.key || !managed.baseUrl) return
-    const configPath = path.join(HERMES_HOME, 'config.yaml')
-    if (!fs.existsSync(configPath)) return
-    const raw = fs.readFileSync(configPath, 'utf8')
-    const { changed, next } = syncCustomProviderKeyYaml(raw, managed.baseUrl, managed.key)
-    if (!changed) return
-    fs.writeFileSync(configPath, next, { encoding: 'utf8' })
-    rememberLog('[apexnodes] refreshed relay custom_providers api_key after key rotation')
-  } catch (err: any) {
-    rememberLog(`[apexnodes] custom provider key sync skipped: ${err && err.message ? err.message : err}`)
+    rememberLog(`[apexnodes] reloading the local backend so it picks up the refreshed relay key (${reason})…`)
+    await teardownPrimaryBackendAndWait({ soft: true })
+    sendConnectionApplied()
+    return true
+  } catch (error: any) {
+    rememberLog(`[apexnodes] backend reload after relay-key refresh failed: ${error && error.message ? error.message : error}`)
+    return false
   }
 }
 
@@ -12457,18 +12497,21 @@ async function probeRelayCatalogState() {
   return lastRelayCatalogState
 }
 
-// Boot self-heal: if the stored relay key is dead (relay /v1/models → 401/403),
-// re-provision it in place using the stored login JWT, then re-sync the
-// custom_providers entry so the model picker's live listing recovers THIS launch
-// — fixing the "过几天列表缩水到只剩一个" bug without a manual re-login.
+// Relay-key self-heal: if the stored relay key is dead (relay /v1/models →
+// 401/403), re-provision it in place using the stored login JWT, write the fresh
+// key into BOTH config.yaml anchors (verified), and reload the local backend so
+// the running process authenticates with it — fixing both the "过几天列表缩水到只
+// 剩一个" picker bug and the hc-595 permanent chat 401 without a manual re-login.
 //
-// Gated + rate-limited via the pure shouldAttemptReprovision (managed enabled +
-// relay key present + login JWT present + cooldown elapsed), so BYOK / signed-out
-// / env-key installs are strict no-ops. A probe that is anything other than a
-// clean 401/403 (2xx, 5xx, timeout, offline) does NOTHING — we never burn the
-// re-provision on a key that is actually fine or a relay that is merely down.
-// If provision-key itself 401s (the stored JWT has also expired), we stop and
-// log; re-login UX is the existing sign-in flow's job, not a popup storm.
+// The ordering/gating lives in the pure reconcileManagedRelayKey (unit-tested
+// end to end); this wrapper only supplies electron-coupled IO:
+//   - readConfig/writeConfig → HERMES_HOME/config.yaml (atomic write)
+//   - probeRelay             → apexRelayGetModels (also feeds the hc-512 catalog state)
+//   - provisionKey           → the SAME provision chain the sign-in routes use
+//   - applyToBackend         → soft re-home of the primary backend child
+//
+// BYOK / signed-out / env-key installs stay strict no-ops, a 2xx/5xx/offline
+// probe still heals nothing, and the cooldown still bounds a 401 storm.
 //
 // Fire-and-forget from the boot path (app.whenReady, alongside the client-config
 // boot sync); never blocks the gateway spawn and only ever logs on failure.
@@ -12479,65 +12522,55 @@ async function probeRelayCatalogState() {
 //   { ok, relayUnauthorized, healed, hasToken }
 //   - relayUnauthorized=false → relay accepted the key (or managed off / no
 //     key): nothing to heal, not a managed-relay auth problem.
-//   - relayUnauthorized=true, healed=true → fresh key minted + config re-synced.
+//   - relayUnauthorized=true, healed=true → fresh key minted, PROVEN written to
+//     config.yaml, and the backend reloaded onto it.
 //   - relayUnauthorized=true, healed=false, hasToken=false → seed/env key or a
 //     cleared token: can't re-provision, the user must sign in again.
 //   - relayUnauthorized=true, healed=false, hasToken=true → the stored JWT is
-//     itself expired (provision-key rejected it) — sign in again.
+//     itself expired, or config.yaml is not writable as managed (in which case
+//     we deliberately did NOT mint — see reconcileManagedRelayKey step 4).
 async function selfHealManagedKeyOn401() {
   try {
     const managed = resolveManagedConfig()
     if (!isManagedEnabled(process.env)) return { ok: true, relayUnauthorized: false }
     if (!managed.key || !managed.baseUrl) return { ok: true, relayUnauthorized: false }
 
-    // Cheap probe of the exact listing the picker uses. Remember the outcome
-    // for the renderer's model-menu catalog state (hc-512); only a hard auth
-    // rejection is actionable for the self-heal itself (hc-511) — a 2xx/5xx/
-    // offline probe heals nothing and (for an on-demand call) tells the
-    // renderer this wasn't a relay-auth failure.
-    const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
-    lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
-    if (!isRelayUnauthorized(probe.statusCode)) return { ok: true, relayUnauthorized: false }
+    const configPath = path.join(HERMES_HOME, 'config.yaml')
+    const attemptAt = lastManagedReprovisionAttemptAt
+    const outcome = await reconcileManagedRelayKey({
+      enabled: true,
+      storedKey: managed.key,
+      baseUrl: managed.baseUrl,
+      hasToken: Boolean(managed.accessToken),
+      lastAttemptAt: attemptAt,
+      now: Date.now(),
+      readConfig: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
+      writeConfig: next => writeFileAtomic(configPath, next, { encoding: 'utf8' }),
+      probeRelay: key => apexRelayGetModels(managed.baseUrl, key),
+      provisionKey: async () => {
+        // Mark the attempt before the network call so a hung provision still
+        // starts the anti-storm cooldown.
+        lastManagedReprovisionAttemptAt = Date.now()
+        // Re-run the SAME provision chain the sign-in routes use: mints a fresh
+        // relay key (server rotates), persists it (+ the — possibly unchanged —
+        // JWT). A stored account keeps the account panel intact.
+        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
+        return result && result.hasRelayKey ? { apiKey: resolveManagedConfig().key } : null
+      },
+      applyToBackend: reason => reloadBackendForRelayKey(reason),
+      log: rememberLog
+    })
 
-    const hasToken = Boolean(managed.accessToken)
-    if (
-      !shouldAttemptReprovision({
-        enabled: true,
-        hasKey: Boolean(managed.key),
-        hasToken,
-        lastAttemptAt: lastManagedReprovisionAttemptAt,
-        now: Date.now()
-      })
-    ) {
-      if (!hasToken) {
-        rememberLog(
-          '[apexnodes] relay key rejected (401) but no stored login token to re-provision with; ' +
-            'sign in again to refresh (self-heal skipped).'
-        )
-      }
-      return { ok: true, relayUnauthorized: true, healed: false, hasToken }
-    }
+    // Remember the probe outcome for the renderer's model-menu catalog state
+    // (hc-512): a heal means the live listing is reachable again.
+    lastRelayCatalogState = { status: outcome.healed ? 'ok' : outcome.probeStatus, checkedAt: Date.now() }
 
-    lastManagedReprovisionAttemptAt = Date.now()
-    rememberLog('[apexnodes] relay key rejected (401); auto re-provisioning with stored login token…')
-    // Re-run the SAME provision chain the sign-in routes use: mints a fresh relay
-    // key (server rotates), persists it (+ the — possibly unchanged — JWT), and
-    // syncs the custom_providers entry. A stored account keeps the panel intact.
-    const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
-    if (result && result.hasRelayKey) {
-      // Fresh key minted + synced — the live catalog is reachable again.
-      lastRelayCatalogState = { status: 'ok', checkedAt: Date.now() }
-      rememberLog('[apexnodes] relay key self-heal succeeded; model picker list restored.')
-      return { ok: true, relayUnauthorized: true, healed: true, hasToken: true }
+    return {
+      ok: outcome.ok,
+      relayUnauthorized: outcome.relayUnauthorized,
+      healed: outcome.healed,
+      hasToken: outcome.hasToken
     }
-    // provision-key returned no key: JWT expired (401) or endpoint unavailable.
-    // Stop here — the cooldown prevents a retry storm; the user re-logs in via
-    // the normal flow when the token is truly dead.
-    rememberLog(
-      '[apexnodes] relay key self-heal could not re-provision (login token likely expired); ' +
-        'sign in again to refresh.'
-    )
-    return { ok: true, relayUnauthorized: true, healed: false, hasToken: true }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay key self-heal skipped: ${error && error.message ? error.message : error}`)
     return { ok: false, relayUnauthorized: false, healed: false, hasToken: false }
@@ -12593,10 +12626,10 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
     // Persist the login JWT (encrypted) alongside the fresh relay key so the boot
     // 401-self-heal can silently re-provision if this key is later rotated out.
     writeManagedConfig({ ...provisioned, account: account2, accessToken: token })
-    // A re-login just ROTATED the relay key — refresh the registered custom
-    // provider entry immediately so the model picker's live listing doesn't
-    // run on the dead key until the next app restart.
-    syncManagedCustomProviderKey()
+    // A re-login just ROTATED the relay key — refresh both config.yaml anchors
+    // immediately so neither the chat path (model.api_key) nor the picker's live
+    // listing (custom_providers) runs on the dead key until the next restart.
+    syncManagedRelayKeyToConfig('sign-in')
     // A successful sign-in is a sync point for the platform client config
     // (contract: check at boot AND after every successful sign-in).
     // Fire-and-forget — provisioning must not wait on it.
