@@ -1165,7 +1165,12 @@ async function reconcileManagedRelayKey(deps: any) {
   if (preSync.ok && preSync.changed) {
     log(
       `[apexnodes] config.yaml relay key was out of sync with the stored credential; ` +
-        `rewrote it to ${maskRelayKey(storedKey)} (model=${preSync.model}, entries=${preSync.entries.updated}/${preSync.entries.matched})`
+        `rewrote it to ${maskRelayKey(storedKey)} — ` +
+        // hc-602: per anchor, by path. The old summary counted `entries` and
+        // read "0/0" on every real install — indistinguishable from "nothing to
+        // do" when what it actually meant was "I cannot see the entry I wrote
+        // myself". A log line that names each place leaves nowhere for that to hide.
+        (preSync.anchors.map(anchor => `${anchor.path}:${anchor.status}`).join(' ') || 'no anchors')
     )
     await deps.applyToBackend('key-drift')
     backendApplied = true
