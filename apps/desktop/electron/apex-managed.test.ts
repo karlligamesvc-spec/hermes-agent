@@ -54,7 +54,9 @@ import {
   relayKeyFromResponse,
   resolveApexEndpoints,
   shouldAttemptReprovision,
-  syncCustomProviderKeyYaml
+  maskRelayKey,
+  persistRelayKeyToConfigYaml,
+  syncManagedRelayKeyYaml
 } from './apex-managed'
 
 // --- resolveApexEndpoints ---
@@ -963,17 +965,22 @@ test('accountFromLogin returns empty strings when nothing is available', () => {
   assert.deepEqual(accountFromLogin(undefined, undefined), { email: '', name: '', plan: '' })
 })
 
-// --- syncCustomProviderKeyYaml ---
+// --- syncManagedRelayKeyYaml (hc-595: BOTH anchors, not just custom_providers) ---
 
+const RELAY_BASE = 'https://apex-nodes.com/relay/v1'
+
+// The exact shape hc-595 was reported on: a PyYAML re-dump where BOTH the chat
+// credential (model.api_key) and the picker credential (custom_providers) still
+// hold the rotated key.
 const ROTATED_CONFIG = [
   'model:',
-  '  api_key: sk-fresh',
-  '  base_url: https://apex-nodes.com/relay/v1',
+  '  api_key: sk-stale',
+  `  base_url: ${RELAY_BASE}`,
   '  default: deepseek-v4-pro-APEX',
   '  provider: custom',
   'custom_providers:',
   '- api_key: sk-stale',
-  '  base_url: https://apex-nodes.com/relay/v1',
+  `  base_url: ${RELAY_BASE}`,
   '  model: deepseek-v4-pro-APEX',
   '  name: Apex-nodes.com',
   'skills:',
@@ -981,44 +988,180 @@ const ROTATED_CONFIG = [
   ''
 ].join('\n')
 
-test('syncCustomProviderKeyYaml refreshes a rotated relay entry key (PyYAML dump shape)', () => {
-  const { changed, next } = syncCustomProviderKeyYaml(ROTATED_CONFIG, 'https://apex-nodes.com/relay/v1/', 'sk-fresh')
-  assert.equal(changed, true)
-  assert.match(next, /- api_key: sk-fresh\n {2}base_url: https:\/\/apex-nodes\.com\/relay\/v1/)
-  // model.* block and other keys untouched.
-  assert.match(next, /model:\n {2}api_key: sk-fresh/)
-  assert.match(next, /name: Apex-nodes\.com/)
+test('syncManagedRelayKeyYaml refreshes BOTH the chat key and the registered entry', () => {
+  const result = syncManagedRelayKeyYaml(ROTATED_CONFIG, `${RELAY_BASE}/`, 'sk-fresh')
+  assert.equal(result.changed, true)
+  assert.equal(result.matched, true)
+  assert.equal(result.model, 'updated')
+  assert.deepEqual(result.entries, { matched: 1, updated: 1 })
+  // model.api_key is what a chat turn authenticates with — the hc-595 anchor
+  // the old custom_providers-only sync left rotated.
+  assert.match(result.next, /model:\n {2}api_key: sk-fresh/)
+  assert.match(result.next, /- api_key: sk-fresh\n {2}base_url: https:\/\/apex-nodes\.com\/relay\/v1/)
+  // Untargeted keys survive.
+  assert.match(result.next, /name: Apex-nodes\.com/)
+  assert.match(result.next, /skills:\n {2}disabled: \[\]/)
 })
 
-test('syncCustomProviderKeyYaml is a no-op when the key already matches or nothing matches', () => {
-  const synced = syncCustomProviderKeyYaml(ROTATED_CONFIG, 'https://apex-nodes.com/relay/v1', 'sk-stale')
-  assert.equal(synced.changed, false)
-  assert.equal(synced.next, ROTATED_CONFIG)
+test('syncManagedRelayKeyYaml separates "already correct" from "no anchor to write"', () => {
+  // Already in sync → nothing to write, but the anchors ARE ours (matched).
+  const inSync = syncManagedRelayKeyYaml(ROTATED_CONFIG, RELAY_BASE, 'sk-stale')
+  assert.equal(inSync.changed, false)
+  assert.equal(inSync.matched, true)
+  assert.equal(inSync.model, 'in-sync')
+  assert.equal(inSync.next, ROTATED_CONFIG)
 
-  const otherBase = syncCustomProviderKeyYaml(ROTATED_CONFIG, 'https://elsewhere.example/v1', 'sk-fresh')
+  // A different relay base: none of this config is ours. changed is false for
+  // the OPPOSITE reason, and matched is what tells the two apart.
+  const otherBase = syncManagedRelayKeyYaml(ROTATED_CONFIG, 'https://elsewhere.example/v1', 'sk-fresh')
   assert.equal(otherBase.changed, false)
+  assert.equal(otherBase.matched, false)
 
-  const noList = syncCustomProviderKeyYaml('model:\n  api_key: sk-a\n', 'https://apex-nodes.com/relay/v1', 'sk-b')
-  assert.equal(noList.changed, false)
-
-  assert.equal(syncCustomProviderKeyYaml('', 'https://apex-nodes.com/relay/v1', 'sk-b').changed, false)
+  assert.equal(syncManagedRelayKeyYaml('', RELAY_BASE, 'sk-b').matched, false)
+  assert.equal(syncManagedRelayKeyYaml(ROTATED_CONFIG, RELAY_BASE, '').matched, false)
 })
 
-test('syncCustomProviderKeyYaml only touches the matching entry in a multi-entry list', () => {
+test('syncManagedRelayKeyYaml leaves a BYOK model block alone', () => {
+  // The user moved off managed: model.* points at their own provider. Rewriting
+  // its api_key would hand a relay key to someone else's endpoint.
+  const byok = [
+    'model:',
+    '  api_key: sk-users-own-deepseek-key',
+    '  base_url: https://api.deepseek.com/v1',
+    '  provider: deepseek',
+    'custom_providers:',
+    '- api_key: sk-stale',
+    `  base_url: ${RELAY_BASE}`,
+    '  name: Apex-nodes.com',
+    ''
+  ].join('\n')
+  const result = syncManagedRelayKeyYaml(byok, RELAY_BASE, 'sk-fresh')
+  assert.equal(result.model, 'absent')
+  assert.match(result.next, /model:\n {2}api_key: sk-users-own-deepseek-key/)
+  // The registered relay entry is still ours and still gets refreshed.
+  assert.deepEqual(result.entries, { matched: 1, updated: 1 })
+})
+
+test('syncManagedRelayKeyYaml only touches the matching entry in a multi-entry list', () => {
   const multi = [
     'custom_providers:',
     '- api_key: sk-other',
     '  base_url: https://my-own-endpoint.example/v1',
     '  name: mine',
     '- api_key: sk-stale',
-    '  base_url: https://apex-nodes.com/relay/v1',
+    `  base_url: ${RELAY_BASE}`,
     '  name: Apex-nodes.com',
     ''
   ].join('\n')
-  const { changed, next } = syncCustomProviderKeyYaml(multi, 'https://apex-nodes.com/relay/v1', 'sk-fresh')
+  const { changed, next, entries } = syncManagedRelayKeyYaml(multi, RELAY_BASE, 'sk-fresh')
   assert.equal(changed, true)
+  assert.deepEqual(entries, { matched: 1, updated: 1 })
   assert.match(next, /- api_key: sk-other\n {2}base_url: https:\/\/my-own-endpoint\.example\/v1/)
   assert.match(next, /- api_key: sk-fresh\n {2}base_url: https:\/\/apex-nodes\.com\/relay\/v1/)
+})
+
+test('syncManagedRelayKeyYaml recognizes our entry by name when base_url drifted', () => {
+  // A re-dump that rewrote/dropped base_url used to make the whole sync a
+  // silent no-op — the entry is still ours, identified by the seeded name.
+  const drifted = [
+    'custom_providers:',
+    '- api_key: sk-stale',
+    '  base_url: https://apex-nodes.com/relay',
+    '  name: Apex-nodes.com',
+    ''
+  ].join('\n')
+  const { changed, next, entries } = syncManagedRelayKeyYaml(drifted, RELAY_BASE, 'sk-fresh')
+  assert.equal(changed, true)
+  assert.deepEqual(entries, { matched: 1, updated: 1 })
+  assert.match(next, /- api_key: sk-fresh/)
+})
+
+test('syncManagedRelayKeyYaml inserts a missing api_key line on a matched anchor', () => {
+  const missing = [
+    'model:',
+    `  base_url: ${RELAY_BASE}`,
+    '  provider: custom',
+    'custom_providers:',
+    `- base_url: ${RELAY_BASE}`,
+    '  name: Apex-nodes.com',
+    ''
+  ].join('\n')
+  const { changed, next, model, entries } = syncManagedRelayKeyYaml(missing, RELAY_BASE, 'sk-fresh')
+  assert.equal(changed, true)
+  assert.equal(model, 'updated')
+  assert.deepEqual(entries, { matched: 1, updated: 1 })
+  assert.match(next, /model:\n {2}base_url: [^\n]+\n {2}api_key: "sk-fresh"/)
+  assert.match(next, /- base_url: [^\n]+\n {2}api_key: "sk-fresh"/)
+  // Re-running is a clean no-op — the inserted lines are addressable.
+  assert.equal(syncManagedRelayKeyYaml(next, RELAY_BASE, 'sk-fresh').changed, false)
+})
+
+// --- maskRelayKey ---
+
+test('maskRelayKey never emits the raw key', () => {
+  const masked = maskRelayKey('sk-Ws9s8supersecretvalue')
+  assert.equal(masked.includes('supersecret'), false)
+  assert.match(masked, /^sk-…#[0-9a-f]{16}$/)
+  // Stable + distinguishing: same key → same mask, different key → different.
+  assert.equal(masked, maskRelayKey('sk-Ws9s8supersecretvalue'))
+  assert.notEqual(masked, maskRelayKey('sk-Ws9s8supersecretvalu3'))
+  assert.equal(maskRelayKey(''), '(none)')
+})
+
+// --- persistRelayKeyToConfigYaml (write + PROVE it landed) ---
+
+test('persistRelayKeyToConfigYaml writes both anchors and verifies by read-back', () => {
+  let file = ROTATED_CONFIG
+  const result = persistRelayKeyToConfigYaml({
+    read: () => file,
+    write: next => {
+      file = next
+    },
+    baseUrl: RELAY_BASE,
+    key: 'sk-fresh'
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.changed, true)
+  assert.match(file, /model:\n {2}api_key: sk-fresh/)
+  assert.match(file, /- api_key: sk-fresh/)
+})
+
+test('persistRelayKeyToConfigYaml reports a write that did not land instead of claiming success', () => {
+  // A write that is silently dropped (read-only home, a racing writer that
+  // re-dumps the old value) is exactly the hc-595 failure: eight keys minted
+  // against a config.yaml that never changed. It must NOT report ok.
+  const swallowed = persistRelayKeyToConfigYaml({
+    read: () => ROTATED_CONFIG,
+    write: () => {},
+    baseUrl: RELAY_BASE,
+    key: 'sk-fresh'
+  })
+  assert.equal(swallowed.ok, false)
+  assert.equal(swallowed.reason, 'verify-failed')
+
+  const throwing = persistRelayKeyToConfigYaml({
+    read: () => ROTATED_CONFIG,
+    write: () => {
+      throw new Error('EROFS: read-only file system')
+    },
+    baseUrl: RELAY_BASE,
+    key: 'sk-fresh'
+  })
+  assert.equal(throwing.ok, false)
+  assert.match(throwing.reason, /^config-unwritable: /)
+
+  const missing = persistRelayKeyToConfigYaml({ read: () => null, write: () => {}, baseUrl: RELAY_BASE, key: 'sk-fresh' })
+  assert.equal(missing.ok, false)
+  assert.equal(missing.reason, 'config-missing')
+
+  const foreign = persistRelayKeyToConfigYaml({
+    read: () => 'model:\n  provider: deepseek\n',
+    write: () => {},
+    baseUrl: RELAY_BASE,
+    key: 'sk-fresh'
+  })
+  assert.equal(foreign.ok, false)
+  assert.equal(foreign.reason, 'no-managed-anchor')
 })
 
 // --- isRelayUnauthorized (401-self-heal trigger classifier) ---

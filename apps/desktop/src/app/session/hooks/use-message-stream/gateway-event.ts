@@ -19,6 +19,7 @@ import { clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { $gateway } from '@/store/gateway'
+import { isManagedRelayAuthError, recoverFromManagedRelayAuthError } from '@/store/managed-recovery'
 import { dispatchNativeNotification } from '@/store/native-notifications'
 import { notify } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
@@ -822,19 +823,37 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           title: translateNow('notifications.native.turnErrorTitle')
         })
 
-        if (looksLikeProviderSetup) {
-          requestDesktopOnboarding(errorMessage)
-        } else {
-          // Toast globally, not just when the failing thread is focused: a
-          // turn-ending error (e.g. out of funds) blocks every thread, so the
-          // inline error alone is too easy to miss. The stable id collapses the
-          // same error from multiple blocked threads into one toast.
+        // Toast globally, not just when the failing thread is focused: a
+        // turn-ending error (e.g. out of funds) blocks every thread, so the
+        // inline error alone is too easy to miss. The stable id collapses the
+        // same error from multiple blocked threads into one toast.
+        const toastTurnError = () =>
           notify({
             id: `gateway-error:${errorMessage}`,
             kind: 'error',
             title: 'Hermes error',
             message: errorMessage
           })
+
+        if (looksLikeProviderSetup) {
+          requestDesktopOnboarding(errorMessage)
+        } else if (isManagedRelayAuthError(payload)) {
+          // hc-595: the chat path's relay 401 happens INSIDE the backend
+          // process ("Invalid Agent API key" → a terminal `error` event tagged
+          // code:'auth'), so this event is the shell's ONLY signal that the
+          // managed key was rotated out. Without this branch the boot / catalog
+          // self-heals are the sole triggers and an already-running app 401s on
+          // every send forever. Recovery owns its own toasts (healed + retry, or
+          // re-sign-in) and is deduped + cooldown-gated inside; it returns false
+          // when the failure was not a managed-relay auth problem (a BYOK
+          // provider's own 401), which falls back to the generic toast.
+          void recoverFromManagedRelayAuthError({ sessionId, isActive: isActiveEvent }).then(owned => {
+            if (!owned) {
+              toastTurnError()
+            }
+          })
+        } else {
+          toastTurnError()
         }
 
         if (sessionId) {

@@ -1,0 +1,356 @@
+/**
+ * hc-595 — managed relay-key rotation must reach the CHAT path, not just disk.
+ *
+ * The reported failure: after the cloud rotated the desktop's relay key, every
+ * chat send failed forever with
+ *   `AuthenticationError [HTTP 401] {"detail":"Invalid Agent API key"}`
+ * while the shell's self-heal reported success. Eight fresh keys were minted
+ * against a `config.yaml` that never changed, all with `last_used_at IS NULL`.
+ *
+ * These tests reproduce that on a real sandbox `config.yaml` and assert the two
+ * things the old code could not deliver:
+ *   1. the CURRENT active key ends up in config.yaml, and
+ *   2. the BACKEND authenticates with it — i.e. chat actually stops 401ing.
+ * Asserting (1) alone is precisely the mistake the bug was made of, so the
+ * fake backend below is deliberately faithful to the two runtime facts that
+ * make this a chat bug rather than a picker bug:
+ *   - it resolves its credential from `model.api_key` (which outranks the
+ *     environment at client construction), NOT from `custom_providers`, and
+ *   - it reads config ONCE at start (`load_config` at agent construction);
+ *     `prompt.submit` reuses the already-built client, and `/api/model/set` is
+ *     documented as "applies to new sessions only". A write with no reload is
+ *     therefore invisible to a running process.
+ */
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+import { afterEach, beforeEach, test } from 'vitest'
+
+import { maskRelayKey, reconcileManagedRelayKey, syncManagedRelayKeyYaml } from './apex-managed'
+
+const RELAY_BASE = 'https://apex-nodes.com/relay/v1'
+
+// The desktop-seeded shape (managedModelConfigYaml), after a PyYAML re-dump.
+function seedConfigYaml(key: string) {
+  return [
+    'model:',
+    `  api_key: ${key}`,
+    `  base_url: ${RELAY_BASE}`,
+    '  default: deepseek-v4-pro-APEX',
+    '  provider: custom',
+    'custom_providers:',
+    `- api_key: ${key}`,
+    `  base_url: ${RELAY_BASE}`,
+    '  model: deepseek-v4-pro-APEX',
+    '  name: Apex-nodes.com',
+    'skills:',
+    '  disabled: []',
+    ''
+  ].join('\n')
+}
+
+/** The credential a runtime chat turn actually authenticates with. */
+function chatKeyFromConfig(raw: string): string {
+  const lines = raw.split('\n')
+  const start = lines.findIndex(line => /^model:\s*$/.test(line))
+  if (start < 0) return ''
+  for (let i = start + 1; i < lines.length && !/^\S/.test(lines[i]); i++) {
+    const m = lines[i].match(/^\s+api_key:\s*(.*)$/)
+    if (m) return m[1].trim().replace(/^(["'])(.*)\1$/, '$2')
+  }
+  return ''
+}
+
+/** The platform's `api_keys` table: exactly one key is relay-valid at a time. */
+class FakeRelay {
+  activeKey: string
+  mints = 0
+  rotated: string[] = []
+
+  constructor(activeKey: string) {
+    this.activeKey = activeKey
+  }
+
+  probe(key: string) {
+    return key === this.activeKey
+      ? { ok: true, statusCode: 200 }
+      : { ok: false, statusCode: 401, body: { detail: 'Invalid Agent API key' } }
+  }
+
+  /** POST /api/v1/desktop/provision-key — mints a new key and ROTATES the old. */
+  mint() {
+    this.mints += 1
+    this.rotated.push(this.activeKey)
+    this.activeKey = `sk-minted-${this.mints}`
+    return this.activeKey
+  }
+}
+
+/** The local hermes-agent backend, modelled on its real credential lifecycle. */
+class FakeBackend {
+  private key = ''
+  running = false
+  starts = 0
+
+  constructor(
+    private readonly configPath: string,
+    private readonly relay: FakeRelay
+  ) {}
+
+  start() {
+    this.key = chatKeyFromConfig(fs.readFileSync(this.configPath, 'utf8'))
+    this.running = true
+    this.starts += 1
+  }
+
+  /** A chat turn. Throws the runtime's terminal auth error on a dead key. */
+  chat() {
+    const probe = this.relay.probe(this.key)
+    if (!probe.ok) {
+      throw new Error(`AuthenticationError [HTTP ${probe.statusCode}] {"detail":"Invalid Agent API key"}`)
+    }
+    return 'ok'
+  }
+
+  /** What `reloadBackendForRelayKey` does in main.ts: soft re-home + respawn. */
+  reload() {
+    if (!this.running) return
+    this.start()
+  }
+}
+
+let home = ''
+let configPath = ''
+
+beforeEach(() => {
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'hc595-'))
+  configPath = path.join(home, 'config.yaml')
+})
+
+afterEach(() => {
+  fs.rmSync(home, { recursive: true, force: true })
+})
+
+/** Wire the reconcile against the sandbox, mirroring main.ts's dep wiring. */
+function runReconcile({
+  storedKey,
+  relay,
+  backend,
+  hasToken = true,
+  writeConfig
+}: {
+  storedKey: string
+  relay: FakeRelay
+  backend: FakeBackend
+  hasToken?: boolean
+  writeConfig?: (next: string) => void
+}) {
+  return reconcileManagedRelayKey({
+    enabled: true,
+    storedKey,
+    baseUrl: RELAY_BASE,
+    hasToken,
+    lastAttemptAt: 0,
+    now: Date.now(),
+    readConfig: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
+    writeConfig: writeConfig || (next => fs.writeFileSync(configPath, next, 'utf8')),
+    probeRelay: async (key: string) => relay.probe(key),
+    // provision-key mints AND persists to apex-managed.json; the desktop then
+    // re-reads the stored credential — modelled by returning the minted key.
+    provisionKey: async () => ({ apiKey: relay.mint() }),
+    applyToBackend: async () => backend.reload()
+  })
+}
+
+test('hc-595 repro: a rotated key in config.yaml heals and chat stops 401ing', async () => {
+  // Kael's machine: config.yaml holds a key the platform already marked
+  // `rotated`, while apex-managed.json already holds the current active one
+  // (the last of the eight orphans). The backend is up and 401ing every send.
+  const relay = new FakeRelay('sk-active')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-rotated'), 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+  assert.throws(() => backend.chat(), /HTTP 401/, 'precondition: chat is broken')
+
+  const outcome = await runReconcile({ storedKey: 'sk-active', relay, backend })
+
+  // 1. config.yaml holds the CURRENTLY ACTIVE key — in both anchors.
+  const after = fs.readFileSync(configPath, 'utf8')
+  assert.equal(chatKeyFromConfig(after), 'sk-active')
+  assert.equal(syncManagedRelayKeyYaml(after, RELAY_BASE, 'sk-active').changed, false)
+  // 2. the RUNNING backend picked it up — the acceptance bar is a live chat.
+  assert.equal(backend.chat(), 'ok')
+  assert.equal(backend.starts, 2, 'the backend was reloaded onto the new key')
+  // 3. no key was burned: the working credential was already on disk.
+  assert.equal(relay.mints, 0)
+  assert.equal(outcome.relayUnauthorized, false)
+  assert.equal(outcome.backendApplied, true)
+})
+
+test('a genuinely dead key mints exactly once, and the backend runs on the mint', async () => {
+  // Both stores agree on a key the platform rotated out from under us: a mint
+  // is the only way back, and it must be followed by a proven write + reload.
+  const relay = new FakeRelay('sk-somebody-elses-rotation')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-dead'), 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  const outcome = await runReconcile({ storedKey: 'sk-dead', relay, backend })
+
+  assert.equal(outcome.healed, true)
+  assert.equal(relay.mints, 1)
+  assert.equal(chatKeyFromConfig(fs.readFileSync(configPath, 'utf8')), 'sk-minted-1')
+  assert.equal(backend.chat(), 'ok')
+})
+
+test('regression pin: writing only custom_providers leaves chat 401ing', async () => {
+  // This is the pre-hc-595 write-back, reproduced exactly: refresh the
+  // registered entry, leave model.api_key alone. The picker's catalog recovers
+  // and the shell reports success — while every chat send still fails. If a
+  // future change narrows the write back to one anchor, this test is the alarm.
+  const relay = new FakeRelay('sk-active')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-rotated'), 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  await runReconcile({
+    storedKey: 'sk-active',
+    relay,
+    backend,
+    writeConfig: next => {
+      // Keep only the custom_providers half of the rewrite.
+      const raw = fs.readFileSync(configPath, 'utf8')
+      const modelBlock = raw.slice(0, raw.indexOf('custom_providers:'))
+      fs.writeFileSync(configPath, modelBlock + next.slice(next.indexOf('custom_providers:')), 'utf8')
+    }
+  })
+
+  assert.equal(chatKeyFromConfig(fs.readFileSync(configPath, 'utf8')), 'sk-rotated')
+  backend.reload()
+  assert.throws(() => backend.chat(), /HTTP 401/)
+})
+
+test('an unpersistable config.yaml blocks the mint instead of stranding another key', async () => {
+  // The orphan-key mechanism: mint first, discover the write is impossible
+  // second. Every restart burned one key and killed the previous one. The
+  // pre-flight has to refuse.
+  const relay = new FakeRelay('sk-somebody-elses-rotation')
+  // A config the shell cannot address as managed (user moved model.* to their
+  // own provider and dropped our registered entry).
+  fs.writeFileSync(configPath, 'model:\n  api_key: sk-dead\n  provider: deepseek\n', 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  const outcome = await runReconcile({ storedKey: 'sk-dead', relay, backend })
+
+  assert.equal(relay.mints, 0, 'no key may be minted when it cannot be persisted')
+  assert.equal(outcome.healed, false)
+  assert.equal(outcome.relayUnauthorized, true)
+  assert.match(outcome.reason, /^persist-blocked: no-managed-anchor$/)
+})
+
+test('a mint whose write is swallowed is reported, and never re-mints to recover', async () => {
+  const relay = new FakeRelay('sk-somebody-elses-rotation')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-dead'), 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  // The pre-flight is a clean no-op (config already holds the stored key), so
+  // the only write this run attempts is the post-mint one — and it is dropped
+  // on the floor, the way a read-only home or a racing re-dump would drop it.
+  const outcome = await runReconcile({
+    storedKey: 'sk-dead',
+    relay,
+    backend,
+    writeConfig: () => {}
+  })
+
+  assert.equal(outcome.healed, false)
+  assert.equal(outcome.minted, true)
+  assert.match(outcome.reason, /^persist-failed: verify-failed$/)
+  assert.equal(relay.mints, 1, 'exactly one mint — the failure must not trigger another')
+
+  // Recovery needs no ninth key: the minted one is stored, so the next
+  // reconcile writes THAT key instead of asking for a new one.
+  const retry = await runReconcile({ storedKey: 'sk-minted-1', relay, backend })
+  assert.equal(relay.mints, 1)
+  assert.equal(chatKeyFromConfig(fs.readFileSync(configPath, 'utf8')), 'sk-minted-1')
+  assert.equal(backend.chat(), 'ok')
+  assert.equal(retry.relayUnauthorized, false)
+})
+
+test('BYOK / signed-out / healthy installs never touch config.yaml or the relay', async () => {
+  const relay = new FakeRelay('sk-active')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-active'), 'utf8')
+  const before = fs.readFileSync(configPath, 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  const disabled = await reconcileManagedRelayKey({
+    enabled: false,
+    storedKey: 'sk-active',
+    baseUrl: RELAY_BASE,
+    hasToken: true,
+    readConfig: () => fs.readFileSync(configPath, 'utf8'),
+    writeConfig: () => assert.fail('a disabled managed path must not write config.yaml'),
+    probeRelay: async () => assert.fail('a disabled managed path must not probe the relay'),
+    provisionKey: async () => assert.fail('a disabled managed path must not mint'),
+    applyToBackend: () => assert.fail('a disabled managed path must not reload the backend')
+  })
+  assert.deepEqual(
+    { relayUnauthorized: disabled.relayUnauthorized, healed: disabled.healed },
+    { relayUnauthorized: false, healed: false }
+  )
+
+  // Healthy install: probe passes, nothing is written, nothing is minted.
+  const healthy = await runReconcile({ storedKey: 'sk-active', relay, backend })
+  assert.equal(healthy.relayUnauthorized, false)
+  assert.equal(healthy.backendApplied, false)
+  assert.equal(relay.mints, 0)
+  assert.equal(fs.readFileSync(configPath, 'utf8'), before)
+  assert.equal(backend.starts, 1, 'a healthy install is never reloaded')
+})
+
+test('a dead key with no reusable login token routes to re-sign-in without minting', async () => {
+  const relay = new FakeRelay('sk-somebody-elses-rotation')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-dead'), 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  const outcome = await runReconcile({ storedKey: 'sk-dead', relay, backend, hasToken: false })
+
+  assert.equal(outcome.relayUnauthorized, true)
+  assert.equal(outcome.healed, false)
+  assert.equal(outcome.hasToken, false)
+  assert.equal(relay.mints, 0)
+})
+
+test('nothing logged during a heal contains a raw key', async () => {
+  const relay = new FakeRelay('sk-active')
+  fs.writeFileSync(configPath, seedConfigYaml('sk-rotated'), 'utf8')
+  const backend = new FakeBackend(configPath, relay)
+  backend.start()
+
+  const logged: string[] = []
+  await reconcileManagedRelayKey({
+    enabled: true,
+    storedKey: 'sk-active',
+    baseUrl: RELAY_BASE,
+    hasToken: true,
+    readConfig: () => fs.readFileSync(configPath, 'utf8'),
+    writeConfig: (next: string) => fs.writeFileSync(configPath, next, 'utf8'),
+    probeRelay: async (key: string) => relay.probe(key),
+    provisionKey: async () => ({ apiKey: relay.mint() }),
+    applyToBackend: async () => backend.reload(),
+    log: (line: string) => logged.push(line)
+  })
+
+  assert.ok(logged.length > 0, 'a heal must leave a trace')
+  for (const line of logged) {
+    assert.equal(line.includes('sk-active'), false, `raw key leaked: ${line}`)
+    assert.equal(line.includes('sk-rotated'), false, `raw key leaked: ${line}`)
+  }
+  assert.ok(logged.some(line => line.includes(maskRelayKey('sk-active'))))
+})
