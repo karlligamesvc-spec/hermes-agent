@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { Codicon } from '@/components/ui/codicon'
@@ -24,7 +24,6 @@ import {
   AUTO_PRESET_NAME,
   buildAutoMoaConfig,
   composeAutoMoa,
-  composedMemberCount,
   expandMoaPresetMembers,
   routedKey,
   SHOW_EXPLICIT_MOA_UI
@@ -37,7 +36,8 @@ import {
   reasoningEffortLabel
 } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
-import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
+import { filterPickerProviders, isManagedProviderSlug, providerDisplayName } from '@/lib/provider-allowlist'
+import { nearestSupportedEffort, supportedReasoningEfforts } from '@/lib/reasoning-efforts'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
@@ -166,14 +166,51 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
   const platformSelSet = useMemo(() => new Set(platformSel.map(routedKey)), [platformSel])
 
-  // Reconstruct "what is currently multi-selected" from whatever is actually
-  // active: an active provider === 'moa' preset expands back to its member set,
-  // a single managed pick seeds a 1-element array, anything else (BYO / none)
-  // clears it. Runs on every fresh mount (this panel remounts each time the
-  // dropdown opens) and whenever the active selection or MoA config changes.
+  // hc-599: the multi-selection is USER INTENT, and this ref is the copy the
+  // async write path reads. React state alone is not enough — a burst of clicks
+  // shares one stale render closure, so the third click would compute its set
+  // from the first click's array and silently drop the second model.
+  const selectionRef = useRef<string[]>(platformSel)
+  // Seeded once from the server, then owned by the user until the menu is
+  // reopened (this panel remounts on every open). See the effect below.
+  const selectionSeededRef = useRef(false)
+
+  const setSelection = (next: string[]) => {
+    selectionRef.current = next
+    setPlatformSel(next)
+  }
+
+  // SEED "what is currently multi-selected" from whatever is actually active:
+  // an active provider === 'moa' preset expands back to its member set, a
+  // single managed pick seeds a 1-element array, anything else (BYO / none)
+  // leaves it empty.
+  //
+  // hc-599: this used to re-run as a mirror — on every change to the catalog,
+  // the saved MoA config or the active selection. Every click changes all
+  // three (saveMoaModels → setQueryData(['moa-presets']) → setModelAssignment →
+  // invalidate ['model-options']), so a click landed the effect back on the
+  // user with a SERVER snapshot taken mid-write and overwrote the checkmarks
+  // they had just set — the "selecting a third model unchecks the second"
+  // report. It cannot be repaired by ordering alone either: with a live agent
+  // the gateway answers `model.options` from the AGENT's provider/model
+  // (tui_gateway/server.py `model.options` → `with_overrides`), which is a
+  // single id, while the composed selection lives in the profile's `__auto__`
+  // preset — so the mirror is structurally incapable of expressing a
+  // multi-selection and collapses it every time it runs.
+  //
+  // So it seeds instead of mirrors: once the catalog and the saved presets have
+  // both settled, and never after the user has touched the set. Writes are
+  // serialized separately (flushSelection), which is what keeps the SERVER's
+  // final state equal to the last intent.
   useEffect(() => {
+    if (selectionSeededRef.current || !modelOptions.isSuccess || !moaOptions.isSuccess) {
+      return
+    }
+
+    selectionSeededRef.current = true
+
     if (optionsProvider === 'moa') {
-      setPlatformSel(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
+      setSelection(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
 
       return
     }
@@ -181,13 +218,13 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     // Compare against the resolved managed row's own slug, not a fuzzy name
     // check — optionsProvider is a bare slug here.
     if (optionsModel && managedProvider && optionsProvider === managedProvider.slug) {
-      setPlatformSel([optionsModel])
+      setSelection([optionsModel])
 
       return
     }
 
-    setPlatformSel([])
-  }, [optionsProvider, optionsModel, moaOptions.data, managedProvider])
+    setSelection([])
+  }, [modelOptions.isSuccess, moaOptions.isSuccess, moaOptions.data, optionsProvider, optionsModel, managedProvider])
 
   const pickerProviders = useMemo(
     () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
@@ -249,9 +286,15 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
       return
     }
 
+    // hc-598: a remembered effort the newly-selected model doesn't offer lands
+    // on its closest level instead of travelling to the vendor as-is. The
+    // stored preset keeps the user's original choice for models that honor it.
+    const supportedEfforts = supportedReasoningEfforts(family.id, provider.name || provider.slug)
+
     await applyModelPreset(
       {
-        effort: (caps?.reasoning ?? true) ? (preset.effort ?? 'medium') : undefined,
+        effort:
+          (caps?.reasoning ?? true) ? nearestSupportedEffort(preset.effort ?? 'medium', supportedEfforts) : undefined,
         fast: (caps?.fast ?? false) ? (preset.fast ?? false) : undefined
       },
       {
@@ -263,6 +306,97 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     )
   }
 
+  // Order the selection the way the directory does, so the composed
+  // aggregator/reference split never depends on click order.
+  const inDirectoryOrder = (ids: string[], provider: ModelOptionProvider): string[] => {
+    const order = new Map(collapseModelFamilies(provider.models ?? []).map((f, index) => [routedKey(f.id), index]))
+
+    return [...ids].sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
+  }
+
+  // hc-599: writes are SERIALIZED on this chain and each one persists the
+  // selection as it stands when the chain reaches it. Two saves racing could
+  // otherwise land out of order and leave the server holding an older subset
+  // than the checkmarks show.
+  const writeChainRef = useRef<Promise<void>>(Promise.resolve())
+  // Toggles the server hasn't been told about yet. A write claims the whole
+  // list, which is what coalesces a burst of clicks into ONE save — and is also
+  // exactly the set to undo if that save fails.
+  const unwrittenTogglesRef = useRef<{ added: boolean; model: string }[]>([])
+
+  const undoToggle = ({ added, model }: { added: boolean; model: string }, provider: ModelOptionProvider) => {
+    const key = routedKey(model)
+    const live = selectionRef.current
+    const present = live.some(id => routedKey(id) === key)
+
+    if (added && present) {
+      setSelection(live.filter(id => routedKey(id) !== key))
+    } else if (!added && !present) {
+      setSelection(inDirectoryOrder([...live, model], provider))
+    }
+  }
+
+  const flushSelection = async (provider: ModelOptionProvider) => {
+    const owned = unwrittenTogglesRef.current
+
+    if (owned.length === 0) {
+      // An earlier write in this burst already carried these clicks.
+      return
+    }
+
+    unwrittenTogglesRef.current = []
+
+    // Read through the ref, never this render's `platformSel`: a burst of
+    // clicks shares one render closure, so the state copy is a snapshot from
+    // before the later clicks and would persist a stale subset.
+    const ids = selectionRef.current
+
+    try {
+      if (ids.length === 0) {
+        // Deselecting the last platform model is a no-op — a main model can't
+        // be "none", so the previous selection stays active until another is
+        // picked.
+        return
+      }
+
+      if (ids.length === 1) {
+        const sole = collapseModelFamilies(provider.models ?? []).find(f => routedKey(f.id) === routedKey(ids[0]))
+
+        if (sole) {
+          await selectFamily(sole, provider)
+        }
+
+        return
+      }
+
+      const composed = composeAutoMoa(ids.map((id): MoaModelSlot => ({ provider: provider.slug, model: id })))
+
+      if (!composed) {
+        return
+      }
+
+      // Read the presets from the cache, not from this render's
+      // `moaOptions.data` — a queued write runs after earlier ones updated it.
+      const existing = queryClient.getQueryData<MoaConfigResponse>(['moa-presets']) ?? null
+      const saved = await saveMoaModels(buildAutoMoaConfig(existing, composed))
+
+      queryClient.setQueryData(['moa-presets'], saved)
+      await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
+      void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+    } catch (err) {
+      // Undo the toggles THIS write carried, against the live selection —
+      // never by restoring an array captured at click time, which would erase
+      // every choice made while the failed write was in flight. Clicks that
+      // arrived after this write claimed its batch are not ours to touch; the
+      // next queued write persists them on top of the corrected set.
+      for (const toggle of owned) {
+        undoToggle(toggle, provider)
+      }
+
+      notifyError(err, t.shell.modelOptions.updateFailed)
+    }
+  }
+
   // hc-578 (MOA-INVISIBLE-DESIGN): toggle a managed-relay row in/out of the
   // platform multi-selection. The picker never shows "MoA" — just checked model
   // rows. <= 1 selected keeps the plain single-select path verbatim
@@ -270,51 +404,19 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // never touches the profile default); >= 2 composes the hidden `__auto__`
   // preset and activates it. `fanout` is pinned to user_turn by composeAutoMoa,
   // which is the billing red line (§2.2/§7).
-  const togglePlatformModel = async (family: ModelFamily, provider: ModelOptionProvider) => {
+  const togglePlatformModel = (family: ModelFamily, provider: ModelOptionProvider) => {
+    // The user now owns the set — no server snapshot may seed over it.
+    selectionSeededRef.current = true
+
     const key = routedKey(family.id)
-    const has = platformSel.some(id => routedKey(id) === key)
-    const nextIds = has ? platformSel.filter(id => routedKey(id) !== key) : [...platformSel, family.id]
+    const current = selectionRef.current
+    const added = !current.some(id => routedKey(id) === key)
+    const nextIds = added ? [...current, family.id] : current.filter(id => routedKey(id) !== key)
 
-    // Keep directory order stable so the composed aggregator/reference split
-    // never depends on click order.
-    const directory = collapseModelFamilies(provider.models ?? [])
-    const order = new Map(directory.map((f, index) => [routedKey(f.id), index]))
-    nextIds.sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
+    setSelection(inDirectoryOrder(nextIds, provider))
+    unwrittenTogglesRef.current = [...unwrittenTogglesRef.current, { added, model: family.id }]
 
-    const prevSel = platformSel
-    setPlatformSel(nextIds)
-
-    // Deselecting the last platform model is a no-op — a main model can't be
-    // "none", so the previous selection stays active until another is picked.
-    if (nextIds.length === 0) {
-      return
-    }
-
-    if (nextIds.length === 1) {
-      const sole = directory.find(f => routedKey(f.id) === routedKey(nextIds[0]))
-
-      if (sole) {
-        await selectFamily(sole, provider)
-      }
-
-      return
-    }
-
-    const composed = composeAutoMoa(nextIds.map((id): MoaModelSlot => ({ provider: provider.slug, model: id })))
-
-    if (!composed) {
-      return
-    }
-
-    try {
-      const saved = await saveMoaModels(buildAutoMoaConfig(moaOptions.data ?? null, composed))
-      queryClient.setQueryData(['moa-presets'], saved)
-      await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
-      void queryClient.invalidateQueries({ queryKey: ['model-options'] })
-    } catch (err) {
-      setPlatformSel(prevSel)
-      notifyError(err, t.shell.modelOptions.updateFailed)
-    }
+    writeChainRef.current = writeChainRef.current.then(() => flushSelection(provider))
   }
 
   // Selecting a MoA preset switches the session to it PERSISTENTLY, using the
@@ -389,7 +491,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                   ) : (
                     <ChevronDown className="size-2.5 shrink-0" />
                   )}
-                  {group.provider.name}
+                  {providerDisplayName(group.provider, copy.unnamedEndpoint)}
                 </DropdownMenuItem>
                 {!collapsed &&
                   group.families.map(family => {
@@ -449,7 +551,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                     // selection can be assembled without reopening the picker.
                     const activate = () => {
                       if (multiSelect) {
-                        void togglePlatformModel(family, group.provider)
+                        togglePlatformModel(family, group.provider)
 
                         return
                       }
@@ -489,6 +591,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
                           model={family.id}
                           onSelectModel={nextModel => switchTo(nextModel, group.provider.slug)}
                           provider={group.provider.slug}
+                          providerName={group.provider.name}
                           reasoning={caps?.reasoning ?? true}
                           requestGateway={requestGateway}
                         />

@@ -305,6 +305,10 @@ export interface ModelOptionProvider {
   slug: string
   total_models?: number
   warning?: string
+  /** Endpoint this row routes to. Present on rows the runtime resolved to a
+   *  concrete address (custom endpoints, user-defined providers); it is the
+   *  only user-meaningful identity an unnamed custom row has. */
+  api_url?: string
   /** True when the provider has usable credentials. False for canonical
    *  providers surfaced by `include_unconfigured` that the user hasn't set up
    *  yet — render these with a setup affordance instead of hiding them. */

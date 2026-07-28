@@ -13,6 +13,7 @@ import { useI18n } from '@/i18n'
 import { isMoaProviderSlug, SHOW_EXPLICIT_MOA_UI } from '@/lib/moa-compose'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
+import { dropAliasedCustomRow, providerDisplayName } from '@/lib/provider-allowlist'
 import { normalize } from '@/lib/text'
 import {
   $visibleModels,
@@ -69,7 +70,13 @@ export function ModelVisibilityDialog({
   // outright, so upstream's row returns with the flag — and so the guard test
   // has something to go red on.
   const providers = useMemo(() => {
-    const rows = (modelOptions.data?.providers ?? []).filter(provider => (provider.models ?? []).length > 0)
+    // hc-598: drop the managed endpoint's anonymous bare-`custom` alias, the
+    // same way the composer picker does — otherwise it opens a second "CUSTOM
+    // ENDPOINT" section here, with its own visibility switches, for an endpoint
+    // already listed above under its real name.
+    const rows = dropAliasedCustomRow(modelOptions.data?.providers ?? []).filter(
+      provider => (provider.models ?? []).length > 0
+    )
 
     if (SHOW_EXPLICIT_MOA_UI) {
       return rows
@@ -123,7 +130,7 @@ export function ModelVisibilityDialog({
               return (
                 <div className="py-0.5" key={provider.slug}>
                   <div className="px-3 pb-0.5 pt-1 text-[0.625rem] font-medium uppercase tracking-wide text-(--ui-text-tertiary)">
-                    {provider.name}
+                    {providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
                   </div>
                   {models.map(family => {
                     const { name, tag } = modelDisplayParts(family.id)

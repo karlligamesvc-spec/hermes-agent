@@ -23,6 +23,8 @@ _SEAM_MODULES = (
     "picker_probe_widening",
     # …and a custom-family switch must not erase model.base_url (write side).
     "custom_base_url_guard",
+    # hc-598 one endpoint, one row — no anonymous "Custom endpoint" alias.
+    "custom_row_dedupe",
     "models_dev_fast",
     "gateway_bootstrap",
     "feishu_supervisor",

@@ -96,7 +96,82 @@ export function isPickerVisibleProvider(slug: string): boolean {
 }
 
 /** Keep only the providers the China-first picker should show (APEX-NODES.COM +
- *  custom BYOK + domestic). Order is preserved. */
+ *  custom BYOK + domestic), with the anonymous bare-`custom` alias removed.
+ *  Order is preserved. */
 export function filterPickerProviders(providers: ModelOptionProvider[]): ModelOptionProvider[] {
-  return providers.filter(provider => isPickerVisibleProvider(provider.slug))
+  return dropAliasedCustomRow(providers.filter(provider => isPickerVisibleProvider(provider.slug)))
+}
+
+const normalizeSlug = (slug: string | null | undefined): string =>
+  String(slug || '')
+    .trim()
+    .toLowerCase()
+
+/** Drop the bare `custom` row when a named `custom:<name>` row is present.
+ *
+ *  hc-598: the managed relay is registered under the BARE `custom` slug with a
+ *  named `custom_providers` entry beside it, so the runtime lists it once as
+ *  `custom:apex-nodes.com` and then — because no row is literally named
+ *  `custom` — synthesizes a second, anonymous row for the "missing" current
+ *  provider (hermes_cli/inventory.py `_append_unconfigured_rows`). Same
+ *  endpoint, twice, the second time labelled with the implementation word
+ *  "Custom endpoint" and falsely marked unauthenticated.
+ *
+ *  The bare slug carries no endpoint identity of its own — its address lives in
+ *  `model.base_url`, and upstream resolves it by falling back to a saved
+ *  `custom_providers` entry (`resolve_custom_provider`, GH #17478). So whenever
+ *  ANY named custom row exists, the bare row is an alias of one of them and
+ *  never a distinct endpoint. With no named rows it is the only representation
+ *  of the user's own endpoint and is kept.
+ *
+ *  The root fix is the runtime seam `apex_overlay/custom_row_dedupe.py`; this is
+ *  the renderer's guard, because the shell ships on its own cadence and will
+ *  run against engines built before that seam existed. */
+export function dropAliasedCustomRow(providers: ModelOptionProvider[]): ModelOptionProvider[] {
+  if (!providers.some(provider => normalizeSlug(provider.slug).startsWith('custom:'))) {
+    return providers
+  }
+
+  return providers.filter(provider => normalizeSlug(provider.slug) !== 'custom')
+}
+
+/** Names the runtime gives a custom endpoint that has none of its own:
+ *  `_PROVIDER_LABELS["custom"]` in hermes_cli/models.py, plus the bare slug that
+ *  reaches the UI when a row is assembled without a label. */
+const IMPLEMENTATION_PROVIDER_NAMES: ReadonlySet<string> = new Set(['custom', 'custom endpoint'])
+
+/** The label to render for a provider row.
+ *
+ *  hc-598: "CUSTOM ENDPOINT" is an internal word, not product language, and it
+ *  is what the model menu shouted at users whose managed relay arrived as an
+ *  unnamed row. A custom endpoint that HAS a name (the managed relay's
+ *  "Apex-nodes.com", a user's "My Ollama") shows it; one that does not is named
+ *  by its address, which is what the user typed and needs no translation.
+ *  `fallback` — a translated "your endpoint" — covers the remaining case:
+ *  unnamed AND address-less. */
+export function providerDisplayName(provider: ModelOptionProvider, fallback: string): string {
+  const name = String(provider.name || '').trim()
+
+  if (name && !IMPLEMENTATION_PROVIDER_NAMES.has(name.toLowerCase())) {
+    return name
+  }
+
+  return endpointHost(provider.api_url) || fallback
+}
+
+/** Host (with port) of an endpoint URL — `https://apex-nodes.com/relay/v1` →
+ *  `apex-nodes.com`. Empty when there is nothing parseable to show. */
+function endpointHost(url: string | null | undefined): string {
+  const raw = String(url || '').trim()
+
+  if (!raw) {
+    return ''
+  }
+
+  try {
+    return new URL(raw).host
+  } catch {
+    // Not an absolute URL (a bare `127.0.0.1:8081`) — take the authority slice.
+    return raw.replace(/^[a-z]+:\/\//i, '').split('/')[0] ?? ''
+  }
 }

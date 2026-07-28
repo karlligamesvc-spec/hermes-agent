@@ -13,23 +13,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/i18n'
+import { nearestSupportedEffort, type ReasoningEffort, supportedReasoningEfforts } from '@/lib/reasoning-efforts'
 import { normalize } from '@/lib/text'
 import { setModelPreset } from '@/store/model-presets'
 import { notifyError } from '@/store/notifications'
 import { markComposerSelectionManual, setCurrentFastMode, setCurrentReasoningEffort } from '@/store/session'
 import { sessionTileDelegate } from '@/store/session-states'
-
-// Hermes' real reasoning levels (see VALID_REASONING_EFFORTS); `none` is owned
-// by the Thinking toggle, not the radio.
-const EFFORT_OPTIONS = [
-  { value: 'minimal', labelKey: 'minimal' },
-  { value: 'low', labelKey: 'low' },
-  { value: 'medium', labelKey: 'medium' },
-  { value: 'high', labelKey: 'high' },
-  { value: 'xhigh', labelKey: 'xhigh' },
-  { value: 'max', labelKey: 'max' },
-  { value: 'ultra', labelKey: 'ultra' }
-] as const
 
 /** How "fast" is achieved for a given model — two different mechanisms:
  *  - `param`: the Anthropic/OpenAI `speed=fast` request parameter.
@@ -90,6 +79,9 @@ interface ModelEditSubmenuProps {
   onSelectModel: (model: string) => Promise<boolean> | void
   /** This row's provider slug — edits persist as its global preset. */
   provider: string
+  /** Display name of this row's provider — the fallback vendor hint when the
+   *  model id itself is anonymous (see supportedReasoningEfforts). */
+  providerName?: string
   /** Whether this model supports reasoning effort. */
   reasoning: boolean
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
@@ -102,6 +94,7 @@ export function ModelEditSubmenu({
   model,
   onSelectModel,
   provider,
+  providerName,
   reasoning,
   requestGateway
 }: ModelEditSubmenuProps) {
@@ -111,7 +104,11 @@ export function ModelEditSubmenu({
   const activeSessionId = useStore(view.$runtimeId)
   const touchesPrimary = view.kind === 'primary'
 
-  const effortValue = normalizeEffort(effort)
+  // hc-598: only the levels THIS model actually offers. Rendering all seven of
+  // Hermes' levels for every model made most of them decoys — the backend either
+  // folds them onto a level already on the list or rejects them outright.
+  const effortOptions = supportedReasoningEfforts(model, providerName || provider)
+  const effortValue = normalizeEffort(effort, effortOptions)
   const thinkingOn = isThinkingEnabled(effort)
 
   // Editing always records the model's global preset (keyed by provider::model,
@@ -224,7 +221,9 @@ export function ModelEditSubmenu({
               <Switch
                 checked={thinkingOn}
                 className="ml-auto"
-                onCheckedChange={checked => void patchReasoning(checked ? effortValue || 'medium' : 'none')}
+                onCheckedChange={checked =>
+                  void patchReasoning(checked ? effortValue || nearestSupportedEffort('medium', effortOptions) : 'none')
+                }
                 size="xs"
               />
             </DropdownMenuItem>
@@ -240,14 +239,14 @@ export function ModelEditSubmenu({
               <DropdownMenuSeparator className="mx-0" />
               <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.effort}</DropdownMenuLabel>
               <DropdownMenuRadioGroup onValueChange={value => void patchReasoning(value)} value={effortValue}>
-                {EFFORT_OPTIONS.map(option => (
+                {effortOptions.map(option => (
                   <DropdownMenuRadioItem
                     className={dropdownMenuRow}
-                    key={option.value}
+                    key={option}
                     onSelect={event => event.preventDefault()}
-                    value={option.value}
+                    value={option}
                   >
-                    {copy[option.labelKey]}
+                    {copy[option]}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -264,7 +263,7 @@ function isThinkingEnabled(effort: string): boolean {
   return normalize(effort || 'medium') !== 'none'
 }
 
-function normalizeEffort(effort: string): string {
+function normalizeEffort(effort: string, supported: readonly ReasoningEffort[]): string {
   const value = normalize(effort || 'medium')
 
   // Thinking off → no effort selected in the radio group.
@@ -272,5 +271,9 @@ function normalizeEffort(effort: string): string {
     return ''
   }
 
-  return EFFORT_OPTIONS.some(option => option.value === value) ? value : 'medium'
+  // A saved level this model doesn't offer (picked while another model was
+  // active, or carried over from before the list was narrowed) shows as the
+  // closest level it does — never blank, never silently dropped. The stored
+  // preset keeps the user's original choice for models that can honor it.
+  return nearestSupportedEffort(value, supported)
 }
