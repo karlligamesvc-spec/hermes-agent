@@ -421,6 +421,38 @@ test('MoA presets reference the relay but hold no key — derived, not an anchor
   )
 })
 
+test('a missing api_key is inserted after the IDENTITY field, never into a nested block', () => {
+  // The shipped `model:` block really does carry a nested `disabled_providers:`
+  // (hc-392's Copilot cut). Splicing the new key after the map's LAST field puts
+  // it between that header and its first item — invalid YAML, i.e. a config the
+  // runtime refuses to load at all, which is a strictly worse outcome than the
+  // stale key being fixed. Anchoring to the identity scalar is what prevents it.
+  const missing =
+    'model:\n' +
+    `  base_url: ${RELAY_BASE}\n` +
+    '  provider: custom\n' +
+    '  disabled_providers:\n    - copilot\n' +
+    'custom_providers:\n' +
+    `  - name: ${MANAGED_PROVIDER_NAME}\n    base_url: ${RELAY_BASE}\n    models:\n      ${MODEL_ID}:\n        context_length: 128000\n`
+
+  const sync = syncManagedRelayKeyYaml(missing, RELAY_BASE, ACTIVE)
+
+  assert.equal(sync.changed, true)
+  assert.deepEqual(
+    sync.anchors.map(anchor => anchor.status),
+    ['inserted', 'inserted']
+  )
+  // Well-formed: the nested blocks are still intact and still nested.
+  assert.match(sync.next, /model:\n {2}base_url: [^\n]+\n {2}api_key: "[^"]+"\n {2}provider: custom\n {2}disabled_providers:\n {4}- copilot/)
+  assert.match(sync.next, /- name: [^\n]+\n {4}base_url: [^\n]+\n {4}api_key: "[^"]+"\n {4}models:\n {6}\S+:\n {8}context_length: 128000/)
+  // And re-reading the result finds both keys exactly where they were written.
+  assert.equal(valueAt(sync.next, 'model'), ACTIVE)
+  assert.equal(valueAt(sync.next, 'custom_providers[0]'), ACTIVE)
+  assert.equal(auditManagedRelayKeyAnchors(sync.next, RELAY_BASE, ACTIVE).clean, true)
+  // Idempotent — the inserted lines are addressable on the next pass.
+  assert.equal(syncManagedRelayKeyYaml(sync.next, RELAY_BASE, ACTIVE).changed, false)
+})
+
 test('the walker reads the shipped config.yaml layout without tripping over it', () => {
   // A compressed version of a real install: block scalars, deep nesting, empty
   // maps, scalar sequences, a trailing top-level key. The whole point of the

@@ -344,7 +344,18 @@ export interface LocatedAnchor {
   path: string
   /** Line holding `api_key:`, or -1 when the key line is missing entirely. */
   keyLine: number
-  /** Line after which a missing `api_key:` is inserted. */
+  /**
+   * Line after which a missing `api_key:` is inserted — always the IDENTITY
+   * field (`base_url` / `api` / `name`), never simply the map's last line.
+   *
+   * The last field of a map may be one that opens a nested block
+   * (`model.disabled_providers:`, which the shipped config.yaml really has), and
+   * splicing a sibling key between that header and its first item produces
+   * invalid YAML — a config.yaml the runtime then refuses to load at all, which
+   * is a considerably worse outcome than the stale key we were fixing. The
+   * identity field is guaranteed present (it is what `matches` keyed on) and
+   * guaranteed a scalar, so inserting after it is always well-formed.
+   */
   insertAfter: number
   /** Column at which the inserted key is written. */
   indent: number
@@ -363,11 +374,16 @@ export function locateManagedKeyAnchors(raw: string, baseUrl: string): LocatedAn
 
     if (!kind) {continue}
     const field = map.fields.api_key
+    // See LocatedAnchor.insertAfter: anchor the insertion to the scalar this
+    // map was IDENTIFIED by, so a nested block elsewhere in the map cannot
+    // swallow the new line.
+    const identity = map.fields.base_url ?? map.fields.api ?? map.fields.name
+
     found.push({
       kind: kind.id,
       path: map.path,
       keyLine: field ? field.line : -1,
-      insertAfter: field ? field.line : map.lastLine,
+      insertAfter: field ? field.line : (identity?.line ?? map.lastLine),
       indent: map.indent,
       value: field ? field.value : ''
     })
