@@ -92,13 +92,29 @@ export const Thread: FC<{
     // Scroll-safe centering: the greeting alone centers as before, but the
     // hc-554 scenario shelf can make the block taller than the viewport — the
     // outer scroll + min-h-full inner center-if-fits/scroll-if-not pattern keeps
-    // the top reachable (a plain justify-center flex clips it). Symmetric
-    // composer-height padding clears the floating composer top and bottom.
+    // the top reachable (a plain justify-center flex clips it).
+    //
+    // Centred on what the user can SEE, not on the scroller (Kael, hc-590
+    // review). Exactly one edge is covered: `--thread-viewport-height` already
+    // stops this viewport above the composer's outer padding, so what overlaps
+    // it is the composer SURFACE (plus any status stack riding on top of it) —
+    // not the composer's full measured height. Pad that edge only and
+    // `justify-center` lands the block in the middle of the visible band.
+    //
+    // Nothing overlaps the top: the channel banner and the connection guide are
+    // flow siblings ABOVE this surface, so the scroller already starts below
+    // them. Padding the top as well (as it used to) re-centres on the raw box
+    // and drops the block, and on a short window it turns into dead space the
+    // user has to scroll past before reaching the greeting.
+    //
+    // Both vars are measured and go to 0 when the composer pops out, so the
+    // block re-centres on the whole surface by itself.
+    //
     // The bar itself stays hidden (Kael, hc-590 review): the zero state should
     // read as a calm landing surface, not a scrolling document — content still
     // scrolls when the window is short, same idiom as the terminal rail.
     <div className="min-h-0 w-full overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="flex min-h-full w-full flex-col items-center justify-center py-[var(--composer-measured-height)]">
+      <div className="flex min-h-full w-full flex-col items-center justify-center pb-[calc(var(--composer-surface-measured-height)+var(--status-stack-measured-height))]">
         <Intro {...intro} />
       </div>
     </div>

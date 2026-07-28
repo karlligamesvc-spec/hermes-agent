@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
@@ -92,11 +95,6 @@ describe('thread zero state', () => {
     ).not.toContain('min-h-0')
     expect(centeringBox?.className).toContain('justify-center')
 
-    // Symmetric composer-height padding: the floating composer overlaps both
-    // ends, so `pt-` alone leaves the last shelf row unreachable.
-    expect(centeringBox?.className).toContain('py-[var(--composer-measured-height)]')
-    expect(centeringBox?.className).not.toContain('pt-[var(--composer-measured-height)]')
-
     // …and something has to actually scroll once it outgrows the row.
     expect(
       scroller?.className,
@@ -113,5 +111,64 @@ describe('thread zero state', () => {
     ).toContain('[scrollbar-width:none]')
     expect(scroller?.className).toContain('[&::-webkit-scrollbar]:hidden')
     expect(scroller?.className).toContain('[-ms-overflow-style:none]')
+  })
+
+  // Kael, hc-590 review: the block did not read as centred. It was centred —
+  // on the scroller, whose bottom slice is hidden under the floating composer.
+  // Centring has to happen inside the band the user can actually see.
+  //
+  // Measured on a real engine (three window sizes, harness in the hc-590 PR
+  // notes): the block's centre sat 8.5px above the visible band's centre before
+  // and 11.5px after — but on a window too short for the shelf the dead space
+  // above the greeting went from 119px to 57px, which is the case Kael was
+  // looking at.
+  it('centres on the visible band, not on the scroller', () => {
+    const { container } = renderEmptyThread()
+
+    const centeringBox = container.querySelector('[data-slot="aui_intro"]')?.parentElement
+    const padding = centeringBox?.className.match(/\bp[btye]?-\[[^\]]*\]/gu) ?? []
+
+    // Exactly one padding utility, on the one covered edge, and every term in
+    // it is a measured variable — never a hard-coded height. `--composer-
+    // surface-measured-height` and not `--composer-measured-height`: the
+    // viewport already stops above the composer's outer padding, so only the
+    // surface actually covers it.
+    expect(padding).toHaveLength(1)
+
+    const allowance = padding[0] ?? ''
+
+    expect(allowance).toMatch(/^pb-\[/u)
+    expect(allowance, 'the bottom allowance stopped tracking the measured composer surface').toContain(
+      'var(--composer-surface-measured-height)'
+    )
+    expect(
+      allowance.replace(/var\(--[a-z-]+\)/gu, ''),
+      'the allowance grew a hard-coded length — it has to follow the measured composer'
+    ).not.toMatch(/\d/u)
+
+    // Padding the top as well re-centres on the raw box and, on a short window,
+    // becomes dead space above the greeting. Nothing covers the top of this
+    // surface: the channel banner and connection guide are flow siblings above.
+    expect(
+      centeringBox?.className,
+      'a top allowance is back — the block will sit low again (nothing overlaps the top here)'
+    ).not.toMatch(/\b(pt|py)-\[/u)
+  })
+
+  // The clearance is a wrapper concern now. Upstream also carries it on the
+  // intro element itself, and with both in play the block is pushed off centre
+  // by half a composer in the other direction — the bug this pair replaced.
+  it('counts the composer clearance exactly once', () => {
+    const styles = readFileSync(resolve(__dirname, '../../../styles.css'), 'utf-8')
+    const introRule = /\[data-slot='aui_intro'\]\s*\{[^}]*\}/u.exec(styles)?.[0]
+
+    expect(
+      introRule,
+      "the [data-slot='aui_intro'] rule vanished — re-check where the intro gets its layout"
+    ).toBeTruthy()
+    expect(
+      introRule,
+      'the intro carries composer clearance again; the zero-state wrapper already adds it, and two of them break the centring'
+    ).not.toContain('--composer-measured-height')
   })
 })
