@@ -10545,7 +10545,11 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
   const configPath = path.join(HERMES_HOME, 'config.yaml')
   const result = persistRelayKeyToConfigYaml({
     read: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
-    write: next => writeFileAtomic(configPath, next, { encoding: 'utf8' }),
+    // In place, NOT writeFileAtomic: watchConfigYamlProductBlocks holds an
+    // fs.watch on this path, and a rename-over swaps the inode out from under
+    // it. Every other config.yaml writer here writes in place for the same
+    // reason; the read-back verification is what guards a torn write.
+    write: next => fs.writeFileSync(configPath, next, { encoding: 'utf8' }),
     baseUrl: managed.baseUrl,
     key: managed.key
   })
@@ -12545,7 +12549,9 @@ async function selfHealManagedKeyOn401() {
       lastAttemptAt: attemptAt,
       now: Date.now(),
       readConfig: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
-      writeConfig: next => writeFileAtomic(configPath, next, { encoding: 'utf8' }),
+      // In place (same reason as syncManagedRelayKeyToConfig): the product-block
+      // watcher's fs.watch would lose the file to a rename-over.
+      writeConfig: next => fs.writeFileSync(configPath, next, { encoding: 'utf8' }),
       probeRelay: key => apexRelayGetModels(managed.baseUrl, key),
       provisionKey: async () => {
         // Mark the attempt before the network call so a hung provision still
