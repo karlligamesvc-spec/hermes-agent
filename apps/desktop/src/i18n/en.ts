@@ -2784,7 +2784,8 @@ export const en: Translations = {
       attachingFile: 'Attaching…',
       compacting: 'Summarizing thread',
       steered: 'steered',
-      processOutput: 'output'
+      processOutput: 'output',
+      timeline: 'Conversation timeline'
     },
     approval: {
       gatewayDisconnected: 'APEX gateway is not connected',
@@ -3050,8 +3051,7 @@ export const en: Translations = {
       }
 
       return `heartbeat ${Math.floor(seconds / 3600)}h ago`
-    },
-    guideTitle: 'Connect a channel so your agent reaches you everywhere'
+    }
   },
 
   imEntry: {

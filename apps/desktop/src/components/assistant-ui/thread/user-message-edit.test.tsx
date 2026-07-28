@@ -6,7 +6,7 @@ import { ExportedMessageRepository } from '@assistant-ui/react'
 // Note: this covers the React/runtime wiring only. The Electron-level failure
 // mode (titlebar -webkit-app-region:drag swallowing clicks on *stuck* sticky
 // bubbles) is not reproducible in jsdom — see USER_BUBBLE_BASE_CLASS's no-drag
-// carve-out in thread.tsx.
+// carve-out in thread/user-message.tsx.
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

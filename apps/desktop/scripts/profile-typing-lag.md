@@ -239,7 +239,7 @@ of the top 30 entirely; total work per 5 s window halves.
 
 ### Fix landed: `FadeText` memo
 
-`FadeText` is used in `tool-fallback.tsx` (110 instances on a tool-heavy
+`FadeText` is used in `tool/fallback.tsx` (110 instances on a tool-heavy
 thread). Before: each parent re-render during streaming triggered a
 `useEffect([children])` that forced a `scrollWidth` layout read — even
 when the title text was unchanged. The `useResizeObserver` already covers

@@ -30,12 +30,14 @@ const StatusRow: FC<{ children: ReactNode; label: string } & React.ComponentProp
   </div>
 )
 
-// Fixed label while auto-compaction runs — decoupled from backend status text.
-const COMPACTION_LABEL = 'Summarizing thread'
+// Fixed label while auto-compaction runs — decoupled from backend status text,
+// but still localized: the backend text is what we refuse to echo, not the
+// user's language.
+const CompactionHint: FC = () => {
+  const { t } = useI18n()
 
-const CompactionHint: FC = () => (
-  <span className="shimmer min-w-0 truncate text-muted-foreground/55">{COMPACTION_LABEL}</span>
-)
+  return <span className="shimmer min-w-0 truncate text-muted-foreground/55">{t.assistant.thread.compacting}</span>
+}
 
 function useActiveTurnTimerKey(): string | undefined {
   const activeSessionId = useStore($activeSessionId)
@@ -74,7 +76,7 @@ export const ResponseLoadingIndicator: FC = () => {
   return (
     <StatusRow
       data-slot="aui_response-loading"
-      label={compacting ? COMPACTION_LABEL : t.assistant.thread.loadingResponse}
+      label={compacting ? t.assistant.thread.compacting : t.assistant.thread.loadingResponse}
     >
       <span aria-hidden="true" className="dither inline-block size-3 rounded-[2px] text-midground/80 animate-pulse" />
       {compacting && <CompactionHint />}
@@ -169,7 +171,7 @@ export const StreamStallIndicator: FC = () => {
     <StatusRow
       className="mt-1.5"
       data-slot="aui_stream-stall"
-      label={compacting ? COMPACTION_LABEL : t.assistant.thread.loadingResponse}
+      label={compacting ? t.assistant.thread.compacting : t.assistant.thread.loadingResponse}
     >
       <span aria-hidden="true" className="dither inline-block size-3 rounded-[2px] text-midground/80 animate-pulse" />
       {compacting && <CompactionHint />}

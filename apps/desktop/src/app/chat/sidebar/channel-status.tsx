@@ -5,7 +5,6 @@ import { useI18n } from '@/i18n'
 
 import { IM_ENTRY_ROUTE, SETTINGS_ROUTE } from '../../routes'
 import { useChannelStatus } from '../scenarios/use-channel-status'
-import { useImOnboardingGuideVisible } from '../scenarios/use-im-onboarding-guide-visible'
 
 /**
  * hc-554 显化 — "渠道 · 分身在哪": a compact channel-presence group above the
@@ -14,18 +13,19 @@ import { useImOnboardingGuideVisible } from '../scenarios/use-im-onboarding-guid
  * its connect surface. Self-gates to nothing when no channel bridge exists
  * (web build / older main), matching the footer's other self-gating pills.
  *
- * Also self-gates while ConnectionGuide's first-run banner is showing (zero
- * channels bound yet) — same three channels + 扫码绑定 CTA, so showing both at
- * once would be a duplicate. See useImOnboardingGuideVisible for the shared
- * gate; once any channel is bound the banner disappears and this block takes
- * over showing the real connection status.
+ * Permanent whether or not anything is bound (hc-590). It used to suppress
+ * itself while the first-run ConnectionGuide banner was up, so one screen would
+ * not list the same three channels twice. That banner is gone — it squatted on
+ * the main content of every unconnected user — so this block is back to being
+ * what it always was: the standing answer to "where does my assistant live, and
+ * how do I put it somewhere else". Suppressing it now would leave a first-run
+ * user with one entry point instead of two; channel-reach.test.tsx pins both.
  */
 export function SidebarChannelStatus() {
   const { t } = useI18n()
   const s = t.scenarios
   const status = useChannelStatus()
   const navigate = useNavigate()
-  const guideVisible = useImOnboardingGuideVisible(status)
 
   const legs = [
     {
@@ -54,7 +54,7 @@ export function SidebarChannelStatus() {
     }
   ].filter(entry => entry.leg.available)
 
-  if (guideVisible || legs.length === 0) {
+  if (legs.length === 0) {
     return null
   }
 

@@ -58,7 +58,7 @@ interface ThreadMessageListProps {
 
 // Group each user message with the assistant turn(s) that follow it so the
 // human bubble can `position: sticky` against the scroller across its whole
-// turn (see StickyHumanMessageContainer in thread.tsx).
+// turn (see StickyHumanMessageContainer in thread/user-message.tsx).
 export function buildGroups(signature: string): MessageGroup[] {
   if (!signature) {
     return []
@@ -331,8 +331,14 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
           className="absolute inset-x-0 top-0 z-10 h-(--titlebar-height) bg-background [-webkit-app-region:drag]"
         />
       )}
+      {/* Scrolls, but never shows a bar (Kael, hc-590 review): the whole centre
+          column reads as a conversation, not a scrolling document. The hiding is
+          purely visual — scrollTop/scrollHeight are untouched, so stick-to-
+          bottom, the jump-to-bottom button and keyboard scrolling behave exactly
+          as before. All three engines' idioms are load-bearing; drop one and
+          that platform's bar comes back on its own. */}
       <div
-        className="size-full overflow-x-hidden overflow-y-auto overscroll-contain"
+        className="size-full overflow-x-hidden overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         data-following={isAtBottom ? 'true' : 'false'}
         data-slot="aui_thread-viewport"
         ref={scrollRef as React.RefCallback<HTMLDivElement>}

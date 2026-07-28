@@ -121,7 +121,7 @@ export function usePreviewRouting({
 
       // Only refresh an already-open live preview when a file changes; never
       // open one unprompted. (Preview links are surfaced from the tool row into
-      // the status stack — see tool-fallback.tsx.)
+      // the status stack — see assistant-ui/tool/fallback.tsx.)
       if ($previewTarget.get()?.kind === 'url' && gatewayEventCompletedFileDiff(event)) {
         requestPreviewReload()
       }
