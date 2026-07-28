@@ -11,6 +11,7 @@ import { coerceGatewayText, coerceThinkingText, normalizePersonalityValue } from
 import { playCompletionSound } from '@/lib/completion-sound'
 import { resolveGatewayEventSessionId } from '@/lib/gateway-events'
 import { triggerHaptic } from '@/lib/haptics'
+import { advisoryBlockHeader } from '@/lib/moa-compose'
 import { isOperationTool, operationInfo } from '@/lib/operation-tool'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { clearActiveOperation, setActiveOperation } from '@/store/active-operation'
@@ -446,17 +447,18 @@ export function useGatewayEventHandler(deps: GatewayEventDeps) {
           setPetActivity({ reasoning: true })
         }
       } else if (event.type === 'moa.reference') {
-        // MoA reference-model output — surface as a labelled thinking chunk
-        // (tagged with the source model) before the aggregator's response, so
-        // the mixture-of-agents process is visible. Reuses the reasoning
-        // disclosure rather than introducing a parallel surface.
+        // One selected model's answer, streamed ahead of the acting model's
+        // reply as a labelled thinking chunk so a multi-model turn isn't a
+        // silent pause. Reuses the reasoning disclosure rather than introducing
+        // a parallel surface. The header goes through advisoryBlockHeader:
+        // upstream labels these blocks "Reference i/n — <slot>", which is the
+        // 参考模型 vocabulary MOA-INVISIBLE-DESIGN keeps off user surfaces.
         if (sessionId) {
-          const label = coerceGatewayText(payload?.label) || 'reference'
+          const label = coerceGatewayText(payload?.label)
           const idx = typeof payload?.index === 'number' ? payload.index : undefined
           const cnt = typeof payload?.count === 'number' ? payload.count : undefined
-          const header = idx && cnt ? `◇ Reference ${idx}/${cnt} — ${label}` : `◇ Reference — ${label}`
           const body = coerceThinkingText(payload?.text)
-          appendReasoningDelta(sessionId, `${header}\n${body}\n\n`, true)
+          appendReasoningDelta(sessionId, `${advisoryBlockHeader(label, idx, cnt)}\n${body}\n\n`, true)
         }
 
         if (isActiveEvent) {

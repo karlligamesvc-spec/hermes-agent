@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch'
 import type { HermesGateway } from '@/hermes'
 import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { isMoaProviderSlug, SHOW_EXPLICIT_MOA_UI } from '@/lib/moa-compose'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { normalize } from '@/lib/text'
@@ -58,10 +59,24 @@ export function ModelVisibilityDialog({
     enabled: open
   })
 
-  const providers = useMemo(
-    () => (modelOptions.data?.providers ?? []).filter(provider => (provider.models ?? []).length > 0),
-    [modelOptions.data]
-  )
+  // The catalog ships MoA presets as a virtual `moa` provider row, which this
+  // dialog used to render like any other: a "MIXTURE OF AGENTS" heading over
+  // `default` / `apex-moa` / `__auto__`, each with its own visibility switch.
+  // That names the mechanism MOA-INVISIBLE-DESIGN exists to hide (and offers a
+  // toggle for the reserved preset the silent multi-select synthesizes), so the
+  // row is held shut behind the same SHOW_EXPLICIT_MOA_UI as the settings
+  // editor and the composer menu (hc-589 leg 6). Gated rather than dropped
+  // outright, so upstream's row returns with the flag — and so the guard test
+  // has something to go red on.
+  const providers = useMemo(() => {
+    const rows = (modelOptions.data?.providers ?? []).filter(provider => (provider.models ?? []).length > 0)
+
+    if (SHOW_EXPLICIT_MOA_UI) {
+      return rows
+    }
+
+    return rows.filter(provider => !isMoaProviderSlug(provider.slug))
+  }, [modelOptions.data])
 
   const visible = effectiveVisibleKeys(stored, providers)
 

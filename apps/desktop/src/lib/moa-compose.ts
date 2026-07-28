@@ -27,6 +27,46 @@ export const AUTO_PRESET_NAME = '__auto__'
  */
 export const SHOW_EXPLICIT_MOA_UI: boolean = false
 
+/** Slug of the catalog's VIRTUAL Mixture-of-Agents provider row. The runtime
+ *  synthesizes it from `config["moa"].presets` (hermes_cli/inventory.py
+ *  `_moa_provider_row`) and every `model.options` payload carries it, so each
+ *  surface that renders the catalog has to decide about it explicitly. Its
+ *  "models" are preset NAMES — including the reserved `__auto__` the silent
+ *  multi-select writes — so listing the row leaks both the mechanism and the
+ *  preset vocabulary. */
+export const MOA_PROVIDER_SLUG = 'moa'
+
+/** True when a catalog provider row is that virtual MoA row. */
+export const isMoaProviderSlug = (slug: string | null | undefined): boolean =>
+  String(slug || '')
+    .trim()
+    .toLowerCase() === MOA_PROVIDER_SLUG
+
+/** Header for one selected model's advisory block in the reasoning disclosure.
+ *
+ *  A composed multi-model turn streams each advisor's answer ahead of the
+ *  acting model's reply (runtime event `moa.reference`), and upstream labels
+ *  those blocks "Reference i/n — <slot>" — the exact 参考模型 vocabulary
+ *  MOA-INVISIBLE-DESIGN §UI bans from every user surface. The user picked these
+ *  models by name, so the neutral form keeps the transparency (which model
+ *  spoke, and where it sits in the run) and drops only the mechanism word.
+ *  Upstream's wording stays reachable behind {@link SHOW_EXPLICIT_MOA_UI}. */
+export function advisoryBlockHeader(label: string, index?: number, count?: number): string {
+  const position = index && count ? `${index}/${count}` : ''
+
+  if (SHOW_EXPLICIT_MOA_UI) {
+    const name = label || 'reference'
+
+    return position ? `◇ Reference ${position} — ${name}` : `◇ Reference — ${name}`
+  }
+
+  if (!label) {
+    return position ? `◇ ${position}` : '◇'
+  }
+
+  return position ? `◇ ${label} · ${position}` : `◇ ${label}`
+}
+
 /** Aggregator priority — best quality-per-cost first (MOA-INVISIBLE-DESIGN §3).
  *  The aggregator is the ACTING model (holds the tools, takes every turn), so
  *  its discipline/speed/cost dominate; the strongest-cheapest domestic model
