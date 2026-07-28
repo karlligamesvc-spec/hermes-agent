@@ -92,7 +92,15 @@ function unquote(value: string): string {
  * wholesale so their free text can never be mistaken for keys.
  */
 export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] } {
-  const lines = String(raw ?? '').split('\n')
+  // CRLF-tolerant. The runtime saves config.yaml with
+  // `os.fdopen(fd, "w", encoding="utf-8")` (utils.py::atomic_yaml_write) — text
+  // mode with no `newline=`, so on WINDOWS every line ends `\r\n`. A trailing
+  // `\r` is a line terminator to JS regex, so `(.*)$` cannot match past it and a
+  // naive `split('\n')` finds NO fields at all: on Windows the entire relay-key
+  // sync silently degrades to `no-managed-anchor`. Splitting on `/\r?\n/` here
+  // (and restoring the file's own ending on write) is what makes this the same
+  // code path on all three platforms.
+  const lines = String(raw ?? '').split(/\r?\n/)
   const root: YamlMap = { path: '', indent: 0, fields: {}, lastLine: -1 }
   const maps: YamlMap[] = [root]
 
@@ -531,7 +539,12 @@ export function syncManagedRelayKeyYaml(raw: string, baseUrl: string, key: strin
 
   if (located.length === 0) {return idle}
 
-  const lines = source.split('\n')
+  // Parse and rejoin with the file's OWN line ending, so a Windows config.yaml
+  // (CRLF — see parseYamlMaps) comes back out as CRLF rather than being quietly
+  // converted. `lines` is already \r-free, which is also what lets the rewrite
+  // below match: `(.*)$` cannot see past a trailing \r.
+  const { lines } = parseYamlMaps(source)
+  const eol = source.includes('\r\n') ? '\r\n' : '\n'
   const anchors: AnchorWriteResult[] = []
 
   // Back-to-front so an inserted line cannot shift a line number we have not
@@ -564,7 +577,7 @@ export function syncManagedRelayKeyYaml(raw: string, baseUrl: string, key: strin
 
   return {
     changed,
-    next: changed ? lines.join('\n') : source,
+    next: changed ? lines.join(eol) : source,
     matched: true,
     model: modelAnchor ? (modelAnchor.status === 'in-sync' ? 'in-sync' : 'updated') : 'absent',
     entries: {

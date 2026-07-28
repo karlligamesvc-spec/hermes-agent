@@ -421,6 +421,29 @@ test('MoA presets reference the relay but hold no key — derived, not an anchor
   )
 })
 
+test('a CRLF config.yaml heals identically, and stays CRLF', () => {
+  // Windows really does get CRLF: the runtime saves config.yaml with
+  // `os.fdopen(fd, "w", encoding="utf-8")` (utils.py::atomic_yaml_write) —
+  // text mode, no `newline=`, so Python translates every \n. A trailing \r is a
+  // line terminator to JS regex, so `(.*)$` cannot match past it and a naive
+  // split finds NO fields: the whole sync degrades to `no-managed-anchor` on one
+  // of the three platforms we ship. Same fact, different shape — the class this
+  // ticket is about, so it gets an assertion rather than a shrug.
+  const crlf = configWithEveryAnchor(ROTATED).replace(/\n/g, '\r\n')
+
+  const sync = syncManagedRelayKeyYaml(crlf, RELAY_BASE, ACTIVE)
+
+  assert.equal(sync.anchors.length, MANAGED_KEY_ANCHORS.length)
+  assert.equal(auditManagedRelayKeyAnchors(sync.next, RELAY_BASE, ACTIVE).clean, true)
+  // The file's own ending survives: rewriting a Windows config to LF would be a
+  // whole-file diff and would fight every other writer that touches it.
+  assert.equal(sync.next.includes('\r\n'), true)
+  assert.equal(/[^\r]\n/.test(sync.next), false, 'no bare LF may be introduced into a CRLF file')
+  // Byte-for-byte the same outcome as the LF path, modulo the endings.
+  const lf = syncManagedRelayKeyYaml(configWithEveryAnchor(ROTATED), RELAY_BASE, ACTIVE)
+  assert.equal(sync.next.replace(/\r\n/g, '\n'), lf.next)
+})
+
 test('a missing api_key is inserted after the IDENTITY field, never into a nested block', () => {
   // The shipped `model:` block really does carry a nested `disabled_providers:`
   // (hc-392's Copilot cut). Splicing the new key after the map's LAST field puts
