@@ -2560,7 +2560,8 @@ export const zhHant = defineLocale({
       attachingFile: '正在附加…',
       compacting: '正在整理對話',
       steered: '已引導',
-      processOutput: '輸出'
+      processOutput: '輸出',
+      timeline: '對話時間軸'
     },
     approval: {
       gatewayDisconnected: 'APEX 閘道未連線',
@@ -2816,8 +2817,7 @@ export const zhHant = defineLocale({
       }
 
       return `心跳 ${Math.floor(seconds / 3600)} 小時前`
-    },
-    guideTitle: '連接一個管道,分身隨處可達'
+    }
   },
 
   imEntry: {

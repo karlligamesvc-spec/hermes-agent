@@ -11,7 +11,7 @@ export interface TimelineEntry {
   preview: string
 }
 
-// Injected as user messages for alternation; not human prompts (thread.tsx).
+// Injected as user messages for alternation; not human prompts (user-message.tsx).
 const PROCESS_NOTIFICATION_RE = /^\[IMPORTANT: Background process [\s\S]*\]$/
 
 const PREVIEW_MAX = 120

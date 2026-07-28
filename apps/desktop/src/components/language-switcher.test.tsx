@@ -8,7 +8,7 @@ import { LanguageSwitcher } from './language-switcher'
 
 // cmdk (the searchable list) wires a ResizeObserver and scrolls the active
 // item into view — neither exists in jsdom. Stub them, matching the polyfill
-// idiom in tool-approval-group.test.tsx.
+// idiom in assistant-ui/tool/approval-group.test.tsx.
 class TestResizeObserver {
   observe() {}
   unobserve() {}

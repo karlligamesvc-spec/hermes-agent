@@ -4,18 +4,23 @@ import {
   useAuiState,
   useMessagePartReasoning
 } from '@assistant-ui/react'
+import { useStore } from '@nanostores/react'
 import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useState } from 'react'
 
+import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
 import { ToolFallback, ToolGroupSlot } from '@/components/assistant-ui/tool/fallback'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { DisclosureRow } from '@/components/chat/disclosure-row'
+import { GenLadderCard } from '@/components/chat/gen-ladder-card'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
 import { useI18n } from '@/i18n'
+import { genLadderCardFromResult } from '@/lib/gen-ladder'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
+import { $gatewayState } from '@/store/session'
 
 const ImageGenerateTool: FC<ToolCallMessagePartProps> = ({ args, result }) => {
   const aspectRatio = typeof args?.aspect_ratio === 'string' ? args.aspect_ratio : undefined
@@ -27,6 +32,27 @@ const ImageGenerateTool: FC<ToolCallMessagePartProps> = ({ args, result }) => {
   )
 }
 
+// The generation-ladder tool (`gen_ladder`) returns a `gen-ladder/1` card as its
+// result; the desktop draws it inline and forwards any control tap back to the
+// agent as a fresh user turn. Envelope `directive`/`internal` fields are dropped
+// by `genLadderCardFromResult` — the render layer only ever consumes `card`.
+const GenLadderTool: FC<ToolCallMessagePartProps> = ({ result }) => {
+  const gatewayState = useStore($gatewayState)
+  const card = genLadderCardFromResult(result)
+
+  if (!card) {
+    return null
+  }
+
+  return (
+    <GenLadderCard
+      card={card}
+      disabled={gatewayState !== 'open'}
+      onEvent={event => requestComposerSubmit(event.message)}
+    />
+  )
+}
+
 const ChainToolFallback: FC<ToolCallMessagePartProps> = props => {
   // todo parts are hoisted to a dedicated panel above the message content.
   if (props.toolName === 'todo') {
@@ -35,6 +61,10 @@ const ChainToolFallback: FC<ToolCallMessagePartProps> = props => {
 
   if (props.toolName === 'image_generate') {
     return <ImageGenerateTool {...props} />
+  }
+
+  if (props.toolName === 'gen_ladder') {
+    return <GenLadderTool {...props} />
   }
 
   if (props.toolName === 'clarify') {

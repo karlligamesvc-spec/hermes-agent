@@ -1139,10 +1139,14 @@ text-* variant utilities. */ .btn-arc {
   padding-inline: 1.5rem;
 }
 
+/* No composer clearance here. Upstream put `padding-bottom:
+   var(--composer-measured-height)` on the intro itself, back when it was
+   dropped straight into the viewport. The zero-state wrapper in
+   assistant-ui/thread/index.tsx owns that clearance now, and counting it twice
+   is what threw the block off-centre (hc-590). Keep it counted once. */
 [data-slot='aui_intro'] {
   align-items: center;
   justify-content: center;
-  padding-bottom: var(--composer-measured-height);
   text-align: center;
 }
 
