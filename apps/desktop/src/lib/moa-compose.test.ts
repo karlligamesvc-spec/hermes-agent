@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest'
 import type { MoaConfigResponse, MoaModelSlot } from '@/types/hermes'
 
 import {
+  advisoryBlockHeader,
   AUTO_PRESET_NAME,
   buildAutoMoaConfig,
   composeAutoMoa,
   composedMemberCount,
   expandMoaPresetMembers,
+  isMoaProviderSlug,
   pickAggregator,
   routedModelId
 } from './moa-compose'
@@ -153,5 +155,48 @@ describe('expandMoaPresetMembers', () => {
   it('returns an empty array when the preset key is missing', () => {
     expect(expandMoaPresetMembers(null, AUTO_PRESET_NAME, directory)).toEqual([])
     expect(expandMoaPresetMembers({ presets: {} } as unknown as MoaConfigResponse, AUTO_PRESET_NAME, directory)).toEqual([])
+  })
+})
+
+describe('isMoaProviderSlug', () => {
+  it.each([
+    ['moa', true],
+    ['MOA', true], // the row is matched case-insensitively everywhere else too
+    [' moa ', true],
+    ['custom:apex-nodes.com', false],
+    ['moana', false], // substring must not match — a BYO provider named "moana"
+    ['', false],
+    [null, false],
+    [undefined, false]
+  ])('%s -> %s', (slug, expected) => {
+    expect(isMoaProviderSlug(slug as string)).toBe(expected)
+  })
+})
+
+describe('advisoryBlockHeader', () => {
+  // MOA-INVISIBLE-DESIGN §UI: the reasoning disclosure may name the models the
+  // user picked, never the mechanism. These pin the exact rendered strings —
+  // flipping SHOW_EXPLICIT_MOA_UI restores upstream's "Reference" wording and
+  // turns the vocabulary assertion below red.
+  it.each([
+    ['custom:apex-nodes.com:kimi-k3', 1, 3, '◇ custom:apex-nodes.com:kimi-k3 · 1/3'],
+    ['glm-5.2', undefined, undefined, '◇ glm-5.2'],
+    ['glm-5.2', 2, undefined, '◇ glm-5.2'], // a count without the other half is not a position
+    ['', 1, 2, '◇ 1/2'], // no label to name: position only, never "reference"
+    ['', undefined, undefined, '◇']
+  ])('%s (%s/%s) -> %s', (label, index, count, expected) => {
+    expect(advisoryBlockHeader(label, index, count)).toBe(expected)
+  })
+
+  it('never says reference / aggregator / MoA', () => {
+    const headers = [
+      advisoryBlockHeader('custom:apex-nodes.com:kimi-k3', 1, 3),
+      advisoryBlockHeader('glm-5.2'),
+      advisoryBlockHeader('')
+    ]
+
+    for (const header of headers) {
+      expect(header).not.toMatch(/reference|aggregator|mixture|\bmoa\b/i)
+    }
   })
 })
