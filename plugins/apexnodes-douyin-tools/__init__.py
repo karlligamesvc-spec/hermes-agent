@@ -47,7 +47,23 @@ def _api_base() -> str:
 
 
 def _agent_api_key() -> str:
+    """凭据解析只有一份实现:共用网关客户端(env 链 + config.yaml 兜底副本)。
+
+    hc-604:此处原先自持一份 ``API_SERVER_KEY or MODEL_API_KEY`` 的 env 链,于是
+    桌面端注入的 ``TOOLS_GATEWAY_KEY`` 对 legacy 路径完全不可见——同一个进程里
+    两条路走两把不同的凭据。委托给共用解析器后,「第 N 份持有者」不再存在。
+    裸拷贝部署(网关模块缺失)才回落到本地 env 链。
+    """
+    if _gateway is not None:
+        return _gateway.agent_api_key()
     return (os.getenv("API_SERVER_KEY") or os.getenv("MODEL_API_KEY") or "").strip()
+
+
+def _missing_credential_message() -> str:
+    """凭据缺失的人话文案(与网关路径同一句),绝不说「过期/请重新登录」。"""
+    if _gateway is not None:
+        return str(_gateway.missing_credential_error())
+    return "本环境没有平台凭据,平台工具不可用:请注入 TOOLS_GATEWAY_KEY 后重启。"
 
 
 # hc-340: media_transcribe holds the master connection for the whole ASR poll,
@@ -62,7 +78,7 @@ _MEDIA_TRANSCRIBE_TIMEOUT_SECONDS = 2 * 60 * 60 + 10 * 60  # 2h10m
 def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str, Any]:
     api_key = _agent_api_key()
     if not api_key:
-        raise RuntimeError("Agent API key is missing")
+        raise RuntimeError(_missing_credential_message())
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         f"{_api_base()}{path}",
@@ -102,7 +118,7 @@ def _post(path: str, payload: dict[str, Any], *, timeout: int = 600) -> dict[str
 def _get(path: str, *, timeout: int = 60) -> dict[str, Any]:
     api_key = _agent_api_key()
     if not api_key:
-        raise RuntimeError("Agent API key is missing")
+        raise RuntimeError(_missing_credential_message())
     request = urllib.request.Request(
         f"{_api_base()}{path}",
         headers={"Authorization": f"Bearer {api_key}"},

@@ -269,6 +269,7 @@ import {
   stripFeishuEnvOverrides
 } from './apex-im-entry'
 import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
+import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
 import {
   DAEMON_STATUS,
   bridgeResultUrl,
@@ -7217,6 +7218,9 @@ async function spawnPoolBackend(profile, entry) {
         // wins the FEISHU_* keys → only one Feishu app credential reaches the
         // runtime (the dual-app WS collision the spike warned about can't happen).
         ...desktopImEntrySpawnEnv(),
+        // hc-604: the platform-tool credential + endpoints (图片/视频生成、
+        // 图片 OCR、媒体转写、社媒数据). {} when signed out.
+        ...desktopPlatformToolSpawnEnv(),
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
@@ -7481,6 +7485,8 @@ async function startHermes() {
           // wins the FEISHU_* keys → only one Feishu app credential reaches the
           // runtime (the dual-app WS collision the spike warned about can't happen).
           ...desktopImEntrySpawnEnv(),
+          // hc-604: platform-tool credential + endpoints (see the pool spawn).
+          ...desktopPlatformToolSpawnEnv(),
           TERMINAL_CWD: hermesCwd,
           HERMES_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -11166,6 +11172,36 @@ function desktopImEntrySpawnEnv() {
   return fragment
 }
 
+// hc-604: the PLATFORM TOOL credential fragment (图片/视频生成、图片 OCR、媒体
+// 转写、社媒数据). Until this existed the desktop injected NOTHING for these
+// tools — the cloud container has injected the equivalent env since day one and
+// has a dedicated gate alerting when it goes missing, while `apps/desktop` had
+// zero occurrences of any of these keys — so every one of those capabilities
+// failed on a real desktop, and the plugins' only fallback was to scrape the
+// managed key out of config.yaml themselves.
+//
+// The credential comes from resolveManagedConfig() — the SAME stored value
+// hc-602's anchor writer renders into config.yaml — so this is not a new
+// holder: config.yaml and the spawn env are two renderings of one source,
+// refreshed together (the 401 self-heal rewrites config.yaml and then re-homes
+// the backend via reloadBackendForRelayKey, which re-runs this builder).
+//
+// Read at spawn time, never cached, so a sign-in / sign-out / key rotation
+// takes effect on the next backend (re)start. Returns {} when signed out, which
+// is what makes the tools say「尚未登录」instead of 401-ing on a stale key.
+function desktopPlatformToolSpawnEnv() {
+  const managed = resolveManagedConfig()
+  const { apiBase } = resolveApexEndpoints(process.env)
+  const fragment = buildPlatformToolSpawnEnv({ apiBase, currentEnv: process.env, key: managed.key })
+
+  // One line per spawn saying whether the tools will have a credential and where
+  // they will point — the diagnostic whose absence made hc-604 invisible for as
+  // long as it was. Never carries the key (describe… only reports endpoints).
+  rememberLog(describePlatformToolSpawnEnv(fragment))
+
+  return fragment
+}
+
 // Display-only view of the IM 入口 bindings for the renderer — NO secret ever
 // crosses the bridge (only channel id, bound timestamp, non-secret domain).
 function imEntryBoundList() {
@@ -12805,6 +12841,11 @@ async function startMessagingGateway(profile) {
           // guarantee as the dashboard spawn.
           ...desktopFeishuSpawnEnv(),
           ...desktopImEntrySpawnEnv(),
+          // hc-604: an IM message handled here runs the SAME tools as the
+          // dashboard, so it needs the same platform credential — a fragment
+          // injected in only one of the two spawns is exactly how a capability
+          // ends up "works in the app, silently broken from 飞书".
+          ...desktopPlatformToolSpawnEnv(),
           TERMINAL_CWD: hermesCwd
         },
         shell: backend.shell,
