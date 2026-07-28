@@ -148,7 +148,7 @@ describe('thread zero state', () => {
 
     // Padding the top as well re-centres on the raw box and, on a short window,
     // becomes dead space above the greeting. Nothing covers the top of this
-    // surface: the channel banner and connection guide are flow siblings above.
+    // surface — what can sit above it is a flow sibling, not an overlay.
     expect(
       centeringBox?.className,
       'a top allowance is back — the block will sit low again (nothing overlaps the top here)'

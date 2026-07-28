@@ -2588,7 +2588,6 @@ export interface Translations {
     taskStatus: { running: string; done: string; failed: string; queued: string }
     /** Relative "heartbeat N ago" for a task card. */
     heartbeatAgo: (seconds: number) => string
-    guideTitle: string
   }
 
   // hc-417 "IM 入口" — consumer page to connect the local agent to an IM

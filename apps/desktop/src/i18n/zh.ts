@@ -3176,8 +3176,7 @@ export const zh: Translations = {
       }
 
       return `心跳 ${Math.floor(seconds / 3600)} 小时前`
-    },
-    guideTitle: '连接一个渠道,分身随处可达'
+    }
   },
 
   imEntry: {

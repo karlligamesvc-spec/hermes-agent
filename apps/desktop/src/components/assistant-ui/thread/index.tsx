@@ -101,9 +101,10 @@ export const Thread: FC<{
     // not the composer's full measured height. Pad that edge only and
     // `justify-center` lands the block in the middle of the visible band.
     //
-    // Nothing overlaps the top: the channel banner and the connection guide are
-    // flow siblings ABOVE this surface, so the scroller already starts below
-    // them. Padding the top as well (as it used to) re-centres on the raw box
+    // Nothing overlaps the top: the one strip that can still appear above this
+    // surface (the phone-remote live banner) is a flow sibling, so the scroller
+    // already starts below it. Padding the top as well (as it used to)
+    // re-centres on the raw box
     // and drops the block, and on a short window it turns into dead space the
     // user has to scroll past before reaching the greeting.
     //

@@ -2923,8 +2923,7 @@ export const ja = defineLocale({
       }
 
       return `ハートビート ${Math.floor(seconds / 3600)}時間前`
-    },
-    guideTitle: 'チャネルを接続すれば、分身がどこでも届く'
+    }
   },
 
   imEntry: {

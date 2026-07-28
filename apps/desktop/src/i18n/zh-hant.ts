@@ -2817,8 +2817,7 @@ export const zhHant = defineLocale({
       }
 
       return `心跳 ${Math.floor(seconds / 3600)} 小時前`
-    },
-    guideTitle: '連接一個管道,分身隨處可達'
+    }
   },
 
   imEntry: {

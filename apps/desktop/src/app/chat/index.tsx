@@ -51,7 +51,6 @@ import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
 import { useComposerScope } from './composer/scope'
 import type { ChatBarState } from './composer/types'
-import { ConnectionGuide } from './connection-guide'
 import { DirectConnectBanner } from './direct-connect-banner'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
@@ -452,18 +451,23 @@ export function ChatView({
           stalling to timeout. */}
       <PromptOverlays sessionId={activeSessionId} />
 
-      {/* hc-555 显化: the phone-remote (/cc) live banner and the first-run
-          connection guidance. Machine-wide, not session-scoped — so they ride
-          with the primary surface only, like the header, rather than repeating
-          in every tile. Both self-gate to null on the common path (no daemon
-          online / a channel already connected), which means an ordinary
-          conversation gains zero chrome. */}
-      {isPrimary && (
-        <>
-          <DirectConnectBanner />
-          <ConnectionGuide />
-        </>
-      )}
+      {/* hc-555 显化: the phone-remote (/cc) live strip. Machine-wide, not
+          session-scoped — so it rides with the primary surface only, like the
+          header, rather than repeating in every tile.
+
+          This is the ONE thing allowed to take a row of the main content, and
+          only while a phone is actively driving this machine: it is the only
+          place that says so, and an awareness signal that can be missed is not
+          one. Every other state (daemon merely enabled, a channel bound or not)
+          self-gates to null, so an ordinary conversation gains zero chrome.
+
+          The first-run "connect a channel" guidance used to sit here too and was
+          removed in hc-590 — Kael's call: it squatted on the main content of
+          every unconnected user, in the live conversation as much as the zero
+          state. Connecting a channel is reachable from the sidebar's
+          "渠道 · 分身在哪" block and the zero state's connect strip; see
+          channel-reach.test.tsx, which pins both. */}
+      {isPrimary && <DirectConnectBanner />}
 
       <ChatRuntimeBoundary
         busy={busy}

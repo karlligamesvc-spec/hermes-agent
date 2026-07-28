@@ -8,8 +8,9 @@ import { SidebarChannelStatus } from './channel-status'
 
 type ImChannel = { channelId: string }
 
-// Same bridge-stubbing approach as connection-guide.test.tsx (the two surfaces
-// share useChannelStatus + useImOnboardingGuideVisible, so they must agree).
+// Bridge stubbing mirrors the zero-state connect strip's suite — the two
+// surfaces are the two ways to reach channel binding, so they read the same
+// useChannelStatus and must agree.
 function setBridges(imChannels: ImChannel[] | undefined, daemonStatus = 'offline') {
   const hermesDesktop: Record<string, unknown> = {}
 
@@ -48,13 +49,19 @@ describe('SidebarChannelStatus', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('state ①: hides in favor of the ConnectionGuide banner when zero channels are bound', async () => {
+  it('state ①: stays put with nothing bound, so a first-run user has a way in', async () => {
+    // It used to suppress itself here, deferring to the ConnectionGuide banner
+    // at the top of the chat. hc-590 removed that banner from the main content,
+    // so hiding now would strand a first-run user: this block and the zero
+    // state's connect strip are the only two ways to reach binding.
     setBridges([], 'offline')
-    const { container } = renderStatus(<SidebarChannelStatus />)
-    // Let the async imEntry.list()/daemon.status() reads resolve — feishu +
-    // weixin become available, none bound, so guideVisible flips true and this
-    // block must stay suppressed (ConnectionGuide owns the screen instead).
-    await waitFor(() => expect(container.firstChild).toBeNull())
+    renderStatus(<SidebarChannelStatus />)
+
+    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3))
+
+    for (const row of screen.getAllByRole('button')) {
+      expect(row.querySelector('[aria-hidden="true"]')?.className).toContain('bg-muted-foreground')
+    }
   })
 
   it('state ②: shows the real connection status once any channel is bound', async () => {
