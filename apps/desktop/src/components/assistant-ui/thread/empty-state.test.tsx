@@ -102,5 +102,16 @@ describe('thread zero state', () => {
       scroller?.className,
       'the zero state lost its own scroll container — overflow is clipped, not scrollable'
     ).toContain('overflow-y-auto')
+
+    // Kael, hc-590 review: the zero state scrolls but never SHOWS a bar — it
+    // should read as a calm landing surface, not a scrolling document. All
+    // three engines' hiding idioms must stay (drop one and that platform's
+    // bar reappears silently).
+    expect(
+      scroller?.className,
+      'the zero-state scrollbar became visible again — keep all three hiding idioms'
+    ).toContain('[scrollbar-width:none]')
+    expect(scroller?.className).toContain('[&::-webkit-scrollbar]:hidden')
+    expect(scroller?.className).toContain('[-ms-overflow-style:none]')
   })
 })

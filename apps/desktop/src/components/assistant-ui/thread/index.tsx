@@ -94,7 +94,10 @@ export const Thread: FC<{
     // outer scroll + min-h-full inner center-if-fits/scroll-if-not pattern keeps
     // the top reachable (a plain justify-center flex clips it). Symmetric
     // composer-height padding clears the floating composer top and bottom.
-    <div className="min-h-0 w-full overflow-y-auto">
+    // The bar itself stays hidden (Kael, hc-590 review): the zero state should
+    // read as a calm landing surface, not a scrolling document — content still
+    // scrolls when the window is short, same idiom as the terminal rail.
+    <div className="min-h-0 w-full overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex min-h-full w-full flex-col items-center justify-center py-[var(--composer-measured-height)]">
         <Intro {...intro} />
       </div>
