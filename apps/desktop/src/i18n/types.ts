@@ -2045,6 +2045,9 @@ export interface Translations {
       refreshModels: string
       fast: string
       medium: string
+      /** Group label for a custom endpoint with neither a name nor a
+       *  resolvable address — never the implementation word "custom". */
+      unnamedEndpoint: string
     }
     modelOptions: {
       noOptions: string

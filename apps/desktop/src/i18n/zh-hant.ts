@@ -2244,7 +2244,8 @@ export const zhHant = defineLocale({
       editModels: '編輯模型…',
       refreshModels: '重新整理模型',
       fast: '快速',
-      medium: '中'
+      medium: '中',
+      unnamedEndpoint: '自有接入點'
     },
     modelOptions: {
       noOptions: '此模型沒有可用選項',

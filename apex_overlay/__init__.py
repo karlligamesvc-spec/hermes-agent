@@ -28,6 +28,8 @@ Layout
   ``custom`` with an empty ``base_url``).
 - ``custom_base_url_guard`` — stop a custom-family model switch from erasing
   ``model.base_url``, and heal configs already stranded that way.
+- ``custom_row_dedupe`` — hc-598 model-directory dedupe: never list one custom
+  endpoint twice (its own name plus an anonymous "Custom endpoint" alias).
 - ``models_dev_fast``   — non-blocking models.dev catalog fetch (CN first paint).
 - ``region``            — CN-mode detection (read side of the install-time choice).
 - ``gateway_bootstrap`` — hc-384/385 non-blocking platform startup.
@@ -47,6 +49,7 @@ __all__ = [
     "model_catalog_dedupe",
     "picker_probe_widening",
     "custom_base_url_guard",
+    "custom_row_dedupe",
     "models_dev_fast",
     "region",
     "gateway_bootstrap",

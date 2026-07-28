@@ -115,27 +115,32 @@ describe('ModelSettings', () => {
     expect(screen.queryByText(/MiniMax/)).toBeNull()
   })
 
-  it.each(['custom', 'local', 'custom:lab'])(
-    'opens local endpoint setup when %s has no inventory row',
-    async provider => {
-      getGlobalModelInfo.mockResolvedValueOnce({ provider, model: '' })
-      getGlobalModelOptions.mockResolvedValueOnce({ providers: [] })
+  // hc-598: the label is the product name for the row, not its slug — the bare
+  // `custom` slug is an implementation word and never reaches the user, so it
+  // renders as the neutral "your endpoint" instead. Named/self-describing slugs
+  // still show themselves.
+  it.each([
+    ['custom', 'Your endpoint'],
+    ['local', 'local'],
+    ['custom:lab', 'custom:lab']
+  ])('opens local endpoint setup when %s has no inventory row', async (provider, label) => {
+    getGlobalModelInfo.mockResolvedValueOnce({ provider, model: '' })
+    getGlobalModelOptions.mockResolvedValueOnce({ providers: [] })
 
-      await renderModelSettings()
+    await renderModelSettings()
 
-      const providerSelect = (await screen.findAllByRole('combobox'))[0]
+    const providerSelect = (await screen.findAllByRole('combobox'))[0]
 
-      expect(providerSelect.textContent).toContain(provider)
-      expect(screen.queryByText(/undefined/)).toBeNull()
-      expect(screen.queryByText(/signs in through your browser/)).toBeNull()
+    expect(providerSelect.textContent).toContain(label)
+    expect(screen.queryByText(/undefined/)).toBeNull()
+    expect(screen.queryByText(/signs in through your browser/)).toBeNull()
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Set up provider' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up provider' }))
 
-      expect(startManualLocalEndpoint).toHaveBeenCalledOnce()
-      expect(startManualOnboarding).not.toHaveBeenCalled()
-      expect(startManualProviderOAuth).not.toHaveBeenCalled()
-    }
-  )
+    expect(startManualLocalEndpoint).toHaveBeenCalledOnce()
+    expect(startManualOnboarding).not.toHaveBeenCalled()
+    expect(startManualProviderOAuth).not.toHaveBeenCalled()
+  })
 
   it('opens the generic provider picker for an unknown provider with no inventory row', async () => {
     getGlobalModelInfo.mockResolvedValueOnce({ provider: 'retired-provider', model: '' })
@@ -314,7 +319,6 @@ describe('ModelSettings', () => {
     expect(await screen.findByText(/still run on/)).toBeTruthy()
   })
 })
-
 
 // hc-578 / MOA-INVISIBLE-DESIGN: picking a second platform model composes a
 // hidden `__auto__` Mixture-of-Agents preset. These guard the two halves of the

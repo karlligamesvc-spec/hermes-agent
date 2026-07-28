@@ -48,17 +48,23 @@ afterEach(() => {
 })
 
 // Render the submenu inside an open menu/sub so its content (switches) mounts.
-function renderSubmenu(opts: { fastControl: FastControl; reasoning: boolean; requestGateway: () => Promise<unknown> }) {
+function renderSubmenu(opts: {
+  effort?: string
+  fastControl: FastControl
+  model?: string
+  reasoning: boolean
+  requestGateway: () => Promise<unknown>
+}) {
   return render(
     <DropdownMenu open>
       <DropdownMenuContent>
         <DropdownMenuSub open>
           <DropdownMenuSubTrigger>edit</DropdownMenuSubTrigger>
           <ModelEditSubmenu
-            effort="medium"
+            effort={opts.effort ?? 'medium'}
             fastControl={opts.fastControl}
             isActive
-            model="m1"
+            model={opts.model ?? 'm1'}
             onSelectModel={vi.fn()}
             provider="p1"
             reasoning={opts.reasoning}
@@ -68,6 +74,18 @@ function renderSubmenu(opts: { fastControl: FastControl; reasoning: boolean; req
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+/** The effort radio's options, in rendered order. */
+function effortChoices(): string[] {
+  return screen.getAllByRole('menuitemradio').map(item => item.textContent?.trim() ?? '')
+}
+
+/** The single checked effort option, or '' when the radio has none. */
+function checkedEffort(): string {
+  const checked = screen.getAllByRole('menuitemradio').find(item => item.getAttribute('aria-checked') === 'true')
+
+  return checked?.textContent?.trim() ?? ''
 }
 
 // Regression: editing the active row before a live session exists must stay
@@ -108,5 +126,83 @@ describe('ModelEditSubmenu no-session guard', () => {
     fireEvent.click(screen.getByRole('switch'))
 
     expect(requestGateway).toHaveBeenCalledWith('config.set', { key: 'fast', session_id: 'sess1', value: 'fast' })
+  })
+})
+
+// hc-598: the radio used to render all seven of Hermes' levels for every model.
+// Vendors publish two to four; the rest were choices the backend either folds
+// onto a level already on the list or rejects outright.
+describe('ModelEditSubmenu effort levels follow the model', () => {
+  const requestGateway = () => Promise.resolve({})
+
+  it.each([
+    // plugins/model-providers/deepseek: low/medium/high through, top three → max.
+    ['deepseek-v4-pro', ['Low', 'Medium', 'High', 'Max']],
+    // plugins/model-providers/zai: GLM-5.2 has exactly two enabled levels.
+    ['glm-5.2', ['High', 'Max']],
+    // No profile evidence → the conservative default.
+    ['qwen3.7-max', ['Low', 'Medium', 'High']]
+  ])('offers %s only the levels it has', (model, expected) => {
+    renderSubmenu({ fastControl: { kind: 'none' }, model, reasoning: true, requestGateway })
+
+    expect(effortChoices()).toEqual(expected)
+  })
+
+  it('never offers a level the model cannot honor', () => {
+    renderSubmenu({ fastControl: { kind: 'none' }, model: 'glm-5.2', reasoning: true, requestGateway })
+
+    // The four GLM-5.2 does not distinguish. Rendering them made three of the
+    // seven rows land on `high` and one on `max` without saying so.
+    for (const decoy of ['Minimal', 'Low', 'Medium', 'Extra High', 'Ultra']) {
+      expect(effortChoices()).not.toContain(decoy)
+    }
+  })
+
+  it('falls a saved level the model lacks back to the closest one it has', () => {
+    // `ultra` was picked while a model that supports it was active. GLM-5.2
+    // tops out at `max` — show `max`, not a blank radio and not an error.
+    renderSubmenu({ effort: 'ultra', fastControl: { kind: 'none' }, model: 'glm-5.2', reasoning: true, requestGateway })
+
+    expect(checkedEffort()).toBe('Max')
+  })
+
+  it('falls a saved level BELOW the model floor up to that floor', () => {
+    // GLM-5.2's minimum enabled level is `high` — `minimal` cannot be honored.
+    renderSubmenu({
+      effort: 'minimal',
+      fastControl: { kind: 'none' },
+      model: 'glm-5.2',
+      reasoning: true,
+      requestGateway
+    })
+
+    expect(checkedEffort()).toBe('High')
+  })
+
+  it('leaves the saved preset alone — the fallback is display, not a rewrite', () => {
+    renderSubmenu({ effort: 'ultra', fastControl: { kind: 'none' }, model: 'glm-5.2', reasoning: true, requestGateway })
+
+    // Nothing was clicked, so nothing may be written: the user's `ultra` still
+    // applies on models that can honor it.
+    expect(getModelPreset('p1', 'glm-5.2').effort).toBeUndefined()
+  })
+
+  it('turns Thinking back on at a level the model actually has', () => {
+    // The generic default is `medium`; GLM-5.2 has no such level, so re-enabling
+    // must not persist one the backend would silently reinterpret.
+    renderSubmenu({ effort: 'none', fastControl: { kind: 'none' }, model: 'glm-5.2', reasoning: true, requestGateway })
+
+    fireEvent.click(screen.getByRole('switch'))
+
+    expect(getModelPreset('p1', 'glm-5.2').effort).toBe('high')
+  })
+
+  it('still persists an explicit pick verbatim', () => {
+    renderSubmenu({ fastControl: { kind: 'none' }, model: 'deepseek-v4-pro', reasoning: true, requestGateway })
+
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Max' }))
+
+    expect(getModelPreset('p1', 'deepseek-v4-pro').effort).toBe('max')
+    expect($currentReasoningEffort.get()).toBe('max')
   })
 })

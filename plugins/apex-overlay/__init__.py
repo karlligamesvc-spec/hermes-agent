@@ -91,6 +91,22 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         )
 
     try:
+        from apex_overlay import custom_row_dedupe
+
+        if not custom_row_dedupe.apply():
+            logger.warning(
+                "apex-overlay: hc-598 custom row dedupe seam did not fully "
+                "apply (see prior error). The model directory will list the "
+                "managed endpoint twice — once under its own name and once as "
+                "the implementation word 'Custom endpoint', the second copy "
+                "falsely marked 'not authenticated'."
+            )
+    except Exception:
+        logger.warning(
+            "apex-overlay: custom_row_dedupe seam failed to load", exc_info=True
+        )
+
+    try:
         from apex_overlay import models_dev_fast
 
         if not models_dev_fast.apply():

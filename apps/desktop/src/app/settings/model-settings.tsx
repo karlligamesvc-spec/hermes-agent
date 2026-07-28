@@ -34,7 +34,7 @@ import {
   SHOW_EXPLICIT_MOA_UI
 } from '@/lib/moa-compose'
 import { displayModelName } from '@/lib/model-status-label'
-import { filterPickerProviders, isManagedProviderSlug } from '@/lib/provider-allowlist'
+import { filterPickerProviders, isManagedProviderSlug, providerDisplayName } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
 import { startManualLocalEndpoint, startManualOnboarding, startManualProviderOAuth } from '@/store/onboarding'
@@ -215,7 +215,11 @@ function ChipButton({ active, label, onClick }: ChipButtonProps) {
       onClick={onClick}
       type="button"
     >
-      {active && <span aria-hidden className="text-primary">✓</span>}
+      {active && (
+        <span aria-hidden className="text-primary">
+          ✓
+        </span>
+      )}
       {label}
     </button>
   )
@@ -338,7 +342,11 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       // model=`__auto__` — precisely the vocabulary MOA-INVISIBLE-DESIGN hides.
       // It must never seed the single-model selectors; the chips above already
       // show the real member set.
-      const composedActive = String(modelInfo.provider || '').trim().toLowerCase() === 'moa'
+      const composedActive =
+        String(modelInfo.provider || '')
+          .trim()
+          .toLowerCase() === 'moa'
+
       const seedProvider = composedActive ? '' : modelInfo.provider
       const seedModel = composedActive ? '' : modelInfo.model
 
@@ -824,6 +832,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   const togglePlatformModel = useCallback(
     (chip: ModelChip) => {
       const key = routedKey(chip.raw)
+
       const next = platformSelSet.has(key)
         ? platformSel.filter(raw => routedKey(raw) !== key)
         : [...platformSel, chip.raw]
@@ -969,7 +978,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
             <SelectContent>
               {mainProviderOptions.map(provider => (
                 <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>
-                  {provider.name}
+                  {providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1152,7 +1161,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
                           <SelectContent>
                             {providerOptions.map(provider => (
                               <SelectItem key={provider.slug || 'none'} value={provider.slug || 'none'}>
-                                {provider.name}
+                                {providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
                               </SelectItem>
                             ))}
                           </SelectContent>

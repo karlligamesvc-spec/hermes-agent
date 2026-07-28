@@ -2602,7 +2602,8 @@ export const zh: Translations = {
       editModels: '编辑模型…',
       refreshModels: '刷新模型',
       fast: '快速',
-      medium: '中'
+      medium: '中',
+      unnamedEndpoint: '自有接入点'
     },
     modelOptions: {
       noOptions: '此模型没有可用选项',

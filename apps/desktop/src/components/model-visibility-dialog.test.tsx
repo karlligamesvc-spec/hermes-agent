@@ -89,11 +89,7 @@ describe('ModelVisibilityDialog invisible MoA (hc-596)', () => {
     // endpoint has two real endpoints, and both must keep their own section
     // even when they serve an identically-named model.
     getGlobalModelOptions.mockResolvedValue({
-      providers: [
-        MOA_PROVIDER,
-        MANAGED_PROVIDER,
-        { models: ['glm-5.2'], name: 'My proxy', slug: 'custom:my-proxy' }
-      ]
+      providers: [MOA_PROVIDER, MANAGED_PROVIDER, { models: ['glm-5.2'], name: 'My proxy', slug: 'custom:my-proxy' }]
     })
 
     renderDialog()
@@ -153,5 +149,56 @@ describe('ModelVisibilityDialog visibility toggles', () => {
 
     fireEvent.click(glmSwitch)
     expect($visibleModels.get()!.has(modelVisibilityKey(MANAGED, 'glm-5.2'))).toBe(true)
+  })
+})
+
+// hc-598: the managed relay is registered under the BARE `custom` slug with a
+// named `custom_providers` entry beside it, so the runtime lists the endpoint
+// once as `custom:apex-nodes.com` and then synthesizes a second, anonymous row
+// for the "missing" bare slug (hermes_cli/inventory.py
+// `_append_unconfigured_rows`). Here that opened a whole extra "CUSTOM
+// ENDPOINT" section, with its own visibility switches, for an endpoint already
+// listed above under its real name.
+describe('ModelVisibilityDialog one endpoint one section (hc-598)', () => {
+  const RELAY_ALIAS_ROW = {
+    authenticated: false,
+    models: ['deepseek-v4-pro-APEX'],
+    name: 'Custom endpoint',
+    slug: 'custom',
+    warning: 'Configured provider is not authenticated; run `hermes model` to reactivate.'
+  }
+
+  it('drops the anonymous alias of an endpoint already listed by name', async () => {
+    getGlobalModelOptions.mockResolvedValue({
+      providers: [MOA_PROVIDER, MANAGED_PROVIDER, RELAY_ALIAS_ROW, DEEPSEEK_PROVIDER]
+    })
+
+    renderDialog()
+    await screen.findByText('Apex-nodes.com')
+
+    // eslint-disable-next-line no-restricted-globals
+    expect(document.body.textContent).not.toMatch(/custom endpoint/i)
+    // The relay's default model appears once for the relay and once for the
+    // BYO DeepSeek row — the alias would have made it three.
+    expect(screen.getAllByText('DeepSeek V4 Pro')).toHaveLength(2)
+  })
+
+  it('keeps a bare custom row that is the only face of a real endpoint', async () => {
+    // A user's own OpenAI-compatible endpoint with no named entry: this row IS
+    // the endpoint, so it must keep its section — named by its address.
+    getGlobalModelOptions.mockResolvedValue({
+      providers: [
+        MOA_PROVIDER,
+        DEEPSEEK_PROVIDER,
+        { api_url: 'http://127.0.0.1:11434/v1', models: ['qwen3'], name: 'Custom endpoint', slug: 'custom' }
+      ]
+    })
+
+    renderDialog()
+    await screen.findByText('127.0.0.1:11434')
+
+    expect(screen.getByText('Qwen3')).toBeTruthy()
+    // eslint-disable-next-line no-restricted-globals
+    expect(document.body.textContent).not.toMatch(/custom endpoint/i)
   })
 })
