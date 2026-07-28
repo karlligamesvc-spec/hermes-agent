@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getMoaModels, type HermesGateway, saveMoaModels, setModelAssignment } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown, ChevronRight } from '@/lib/icons'
+import { managedCatalogCollapsed } from '@/lib/managed-catalog'
 import {
   AUTO_PRESET_NAME,
   buildAutoMoaConfig,
@@ -40,6 +41,7 @@ import { filterPickerProviders, isManagedProviderSlug, providerDisplayName } fro
 import { nearestSupportedEffort, supportedReasoningEfforts } from '@/lib/reasoning-efforts'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
+import { recoverManagedCatalogAuth } from '@/store/managed-recovery'
 import { $modelPresets, applyModelPreset, modelPresetKey } from '@/store/model-presets'
 import {
   $visibleModels,
@@ -226,6 +228,33 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     setSelection([])
   }, [modelOptions.isSuccess, moaOptions.isSuccess, moaOptions.data, optionsProvider, optionsModel, managedProvider])
 
+  // hc-602: a collapsed managed catalog is a rotated relay key until proven
+  // otherwise. The runtime's live `GET /v1/models` probe uses
+  // `custom_providers[].api_key` and fails SILENTLY on a 401 — the row just
+  // shrinks to the one model config.yaml names. hc-592 filed this path as "a
+  // different mechanism, not fixed"; it is the same dead credential arriving
+  // through a second exit, and it is the exit that survived hc-595.
+  //
+  // So: probe once per menu open when (and only when) the list looks collapsed,
+  // and re-query on a heal. Dedupe and the re-provision cooldown live inside the
+  // shared recovery, so a repeated open cannot storm the relay; this ref only
+  // stops the effect re-firing as the query settles.
+  const catalogHealAttempted = useRef(false)
+
+  useEffect(() => {
+    if (catalogHealAttempted.current || !modelOptions.isSuccess || !managedCatalogCollapsed(managedProvider)) {
+      return
+    }
+
+    catalogHealAttempted.current = true
+
+    void recoverManagedCatalogAuth().then(healed => {
+      if (healed) {
+        void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+      }
+    })
+  }, [modelOptions.isSuccess, managedProvider, queryClient])
+
   const pickerProviders = useMemo(
     () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
     [providers]
@@ -257,6 +286,15 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
     try {
       const queryKey = ['model-options', activeSessionId || 'global']
+
+      // hc-602: an explicit refresh on a collapsed managed row is the user
+      // saying "my models are missing". Heal the relay key BEFORE re-querying —
+      // otherwise the refresh faithfully re-fetches the same collapsed list and
+      // the button appears to do nothing, which is what a week of "刷新也没用"
+      // looked like.
+      if (managedCatalogCollapsed(managedProvider)) {
+        await recoverManagedCatalogAuth()
+      }
 
       const next = await requestModelOptions({ gateway, refresh: true, sessionId: activeSessionId })
 

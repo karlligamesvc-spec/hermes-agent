@@ -45,13 +45,24 @@
  * falls back to the BYOK onboarding (no regression).
  */
 
-// The one sibling this module leans on: config.yaml scalar line surgery, shared
+// The two siblings this module leans on: config.yaml scalar line surgery (shared
 // with the platform client-config apply so both writers treat the file the same
-// way. Still electron-free and unit-testable (apex-client-config.ts imports
-// nothing at all, so there is no cycle).
-import { createHash } from 'node:crypto'
-
+// way) and the relay-key anchor registry (hc-602 — the single source of truth for
+// where a managed relay key lives, plus its independent auditor). Both are
+// electron-free and unit-testable, and neither imports this module, so there is
+// no cycle.
 import { applyConfigYamlKeys } from './apex-client-config'
+import {
+  auditManagedRelayKeyAnchors,
+  locateManagedKeyAnchors,
+  MANAGED_KEY_ANCHORS,
+  MANAGED_PROVIDER_NAME,
+  managedCustomProviderEntryYaml,
+  maskRelayKey,
+  parseYamlMaps,
+  persistRelayKeyToConfigYaml,
+  syncManagedRelayKeyYaml
+} from './apex-relay-key-anchors'
 
 // ── ApexNodes default endpoints ─────────────────────────────────────────────
 // All overridable via env so a staging build can retarget without a code change
@@ -128,7 +139,9 @@ const MANAGED_PROVIDER = 'custom'
 // `provider: custom:<slug>`, which only resolves when the named entry exists).
 // The collision fix itself is the non-colliding model id above; this entry is
 // the native-format hardening that goes with it.
-const MANAGED_PROVIDER_NAME = 'Apex-nodes.com'
+//
+// Defined in apex-relay-key-anchors.ts (it is part of how an anchor is
+// IDENTIFIED, so it has to live with the registry) and re-exported here.
 
 // ── ApexNodes China default profile (hc-392) ───────────────────────────────
 // The desktop pre-seeds config.yaml BEFORE install.sh can copy
@@ -962,14 +975,10 @@ function managedModelConfigYaml(block, opts: any = {}) {
   }
   const entries = Array.isArray(block.custom_providers) ? block.custom_providers : []
   if (entries.length) {
-    yaml += 'custom_providers:\n'
-    for (const entry of entries) {
-      yaml +=
-        `  - name: ${q(entry.name)}\n` +
-        `    base_url: ${q(entry.base_url)}\n` +
-        `    api_key: ${q(entry.api_key)}\n` +
-        `    model: ${entry.model}\n`
-    }
+    // hc-602: the ONE renderer of this entry, shared with main.ts's boot healer.
+    // Two hand-written copies is how the seed came to emit an indented list lead
+    // and the healer a column-0 one.
+    yaml += 'custom_providers:\n' + entries.map(entry => managedCustomProviderEntryYaml(entry)).join('')
   }
   return yaml
 }
@@ -1079,240 +1088,11 @@ function shouldAttemptReprovision(state: any = {}) {
   return now - last >= cooldown
 }
 
-/**
- * Rewrite EVERY managed relay `api_key` anchor in config.yaml to `key` — pure
- * YAML line surgery, no yaml dep.
- *
- * There are TWO anchors, and hc-595 proved that fixing only one is the same as
- * fixing none:
- *
- *   1. `model.api_key` — what the runtime hands to the OpenAI client for a chat
- *      turn (`model.api_key` outranks the environment at client construction).
- *      A rotated value here is the permanent `AuthenticationError [HTTP 401]
- *      {"detail":"Invalid Agent API key"}` the user sees on every send.
- *   2. `custom_providers[].api_key` — the registered endpoint the model picker's
- *      live `GET /v1/models` listing runs on. The runtime's own bookkeeping
- *      (_save_custom_provider) dedups by base_url and refreshes model/api_mode
- *      but NEVER api_key, so it can only ever go stale.
- *
- * Matching (both anchors, trailing slashes ignored, quotes tolerated):
- *   - the `model:` block matches when its `base_url` is the managed relay —
- *     which is exactly what a BYOK `model:` block is not, so a user who moved
- *     to their own provider is never stomped;
- *   - a `custom_providers` entry matches on `base_url` OR on the seeded
- *     `name:` (MANAGED_PROVIDER_NAME). The name fallback matters because a
- *     PyYAML re-dump that drops/rewrites base_url would otherwise make our own
- *     entry unrecognizable and turn the whole sync into a silent no-op.
- * A matched anchor with no `api_key` line gets one inserted (a dropped key line
- * silently falls through to env resolution — same dead end, harder to see).
- *
- * `matched` is the load-bearing bit the caller can't get from `changed`:
- * `changed:false` means EITHER "already correct" OR "found nothing to write",
- * and those two need opposite responses (do nothing vs. shout + don't mint a
- * key we can't persist).
- *
- * @param {string} raw      config.yaml contents
- * @param {string} baseUrl  the managed relay base_url to match
- * @param {string} key      the current (fresh) relay key
- * @returns {{
- *   changed: boolean, next: string, matched: boolean,
- *   model: 'updated' | 'in-sync' | 'absent',
- *   entries: { matched: number, updated: number }
- * }}
- */
-function syncManagedRelayKeyYaml(raw, baseUrl, key) {
-  const source = String(raw || '')
-  const targetBase = String(baseUrl || '').trim().replace(/\/+$/, '')
-  const freshKey = String(key || '').trim()
-  const nothing: any = { changed: false, next: source, matched: false, model: 'absent', entries: { matched: 0, updated: 0 } }
-  if (!source || !targetBase || !freshKey) return nothing
-
-  const lines = source.split('\n')
-  const unquote = value => value.trim().replace(/^(["'])(.*)\1$/, '$2')
-  const readValue = line => unquote(line.replace(/^.*?(api_key|base_url|name):\s*/, ''))
-
-  // Rewrite an existing `api_key:` line in place (keeping its indent/`- ` lead),
-  // or insert one right after `anchorLine` at the indent of that line's SIBLING
-  // keys — which for a `- key: value` list lead is two columns further in.
-  const setKey = (keyLine, anchorLine) => {
-    if (keyLine >= 0) {
-      if (readValue(lines[keyLine]) === freshKey) return false
-      lines[keyLine] = lines[keyLine].replace(/(api_key:\s*).*$/, `$1${freshKey}`)
-      return true
-    }
-    const lead = lines[anchorLine].match(/^(\s*)(- )?/) || ['', '', '']
-    const indent = lead[2] ? `${lead[1]}  ` : lead[1]
-    lines.splice(anchorLine + 1, 0, `${indent}api_key: ${JSON.stringify(freshKey)}`)
-    return true
-  }
-
-  // Host of a URL, for the name-based entry match below. Regex rather than
-  // `new URL` so a half-written value degrades to '' instead of throwing.
-  const hostOf = url => (String(url || '').match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i) || ['', ''])[1].toLowerCase()
-  const targetHost = hostOf(targetBase)
-
-  // ── anchor 1: the top-level `model:` block ────────────────────────────────
-  let model = 'absent'
-  const modelStart = lines.findIndex(line => /^model:\s*$/.test(line))
-  if (modelStart >= 0) {
-    let modelEnd = lines.length
-    for (let i = modelStart + 1; i < lines.length; i++) {
-      if (/^\S/.test(lines[i])) {
-        modelEnd = i
-        break
-      }
-    }
-    let baseLine = -1
-    let keyLine = -1
-    for (let i = modelStart + 1; i < modelEnd; i++) {
-      const m = lines[i].match(/^\s+(api_key|base_url):\s*/)
-      if (!m) continue
-      if (m[1] === 'base_url' && baseLine < 0 && readValue(lines[i]).replace(/\/+$/, '') === targetBase) baseLine = i
-      if (m[1] === 'api_key' && keyLine < 0) keyLine = i
-    }
-    if (baseLine >= 0) model = setKey(keyLine, baseLine) ? 'updated' : 'in-sync'
-  }
-
-  // ── anchor 2: the `custom_providers:` list ────────────────────────────────
-  // Collect [start, end) line ranges of each list entry.
-  const entryRanges: number[][] = []
-  let inList = false
-  let entryStart = -1
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (/^custom_providers:\s*$/.test(line)) {
-      inList = true
-      continue
-    }
-    if (!inList) continue
-    if (/^- /.test(line)) {
-      if (entryStart >= 0) entryRanges.push([entryStart, i])
-      entryStart = i
-      continue
-    }
-    if (/^\S/.test(line)) {
-      // Next top-level key — list is over.
-      if (entryStart >= 0) entryRanges.push([entryStart, i])
-      entryStart = -1
-      inList = false
-    }
-  }
-  if (entryStart >= 0) entryRanges.push([entryStart, lines.length])
-
-  const entries = { matched: 0, updated: 0 }
-  // Ranges are rewritten back-to-front so an inserted api_key line can't shift
-  // the line numbers of a range we have not visited yet.
-  for (const [start, end] of [...entryRanges].reverse()) {
-    let baseLine = -1
-    let nameLine = -1
-    let entryHost = ''
-    let keyLine = -1
-    for (let i = start; i < end; i++) {
-      const m = lines[i].match(/^(?:- |\s+)(api_key|base_url|name):\s*/)
-      if (!m) continue
-      if (m[1] === 'base_url') {
-        entryHost = hostOf(readValue(lines[i]))
-        if (readValue(lines[i]).replace(/\/+$/, '') === targetBase) baseLine = i
-      }
-      if (m[1] === 'name' && readValue(lines[i]).toLowerCase() === MANAGED_PROVIDER_NAME.toLowerCase()) nameLine = i
-      if (m[1] === 'api_key' && keyLine < 0) keyLine = i
-    }
-    // The seeded name is derived from the relay host, so it identifies OUR
-    // entry even when a re-dump rewrote the path (`…/relay` vs `…/relay/v1`) —
-    // but only on the same host, so a genuinely different endpoint that happens
-    // to carry the name is never handed a relay key.
-    const identityLine = baseLine >= 0 ? baseLine : nameLine >= 0 && (!entryHost || entryHost === targetHost) ? nameLine : -1
-    if (identityLine < 0) continue
-    entries.matched += 1
-    if (setKey(keyLine, identityLine)) entries.updated += 1
-  }
-
-  const matched = model !== 'absent' || entries.matched > 0
-  const changed = model === 'updated' || entries.updated > 0
-  return { changed, next: changed ? lines.join('\n') : source, matched, model, entries }
-}
-
-/**
- * Write `key` into every managed anchor of config.yaml and PROVE it landed by
- * reading the file back — the hc-595 lesson is that a write nobody verifies is
- * indistinguishable from no write at all (eight relay keys were minted against
- * a config.yaml that never changed).
- *
- * Verification is the sync re-run on the read-back: `matched && !changed` means
- * every managed anchor now literally holds `key`. A read-only file, a rename
- * that lost the race, or a shape we cannot address all surface here as ok=false
- * with a reason instead of a silent success.
- *
- * IO is injected (`read`/`write`) so the whole persist+verify contract is
- * unit-testable without electron; main.ts passes fs against HERMES_HOME.
- *
- * @param {{
- *   read: () => string | null, write: (next: string) => void,
- *   baseUrl: string, key: string
- * }} io
- * @returns {{ ok: boolean, changed: boolean, reason: string, model: string,
- *   entries: { matched: number, updated: number } }}
- */
-function persistRelayKeyToConfigYaml({ read, write, baseUrl, key }: any) {
-  const fail = (reason, extra: any = {}) => ({
-    ok: false,
-    changed: false,
-    reason,
-    model: 'absent',
-    entries: { matched: 0, updated: 0 },
-    ...extra
-  })
-  if (!String(key || '').trim() || !String(baseUrl || '').trim()) return fail('no-credential')
-
-  let raw
-  try {
-    raw = read()
-  } catch (error: any) {
-    return fail(`config-unreadable: ${error && error.message ? error.message : error}`)
-  }
-  if (typeof raw !== 'string') return fail('config-missing')
-
-  const sync = syncManagedRelayKeyYaml(raw, baseUrl, key)
-  // Nothing in this config.yaml is addressable as the managed relay. Writing is
-  // pointless and (per the caller's pre-flight) minting a new key would be worse.
-  if (!sync.matched) return fail('no-managed-anchor')
-
-  if (sync.changed) {
-    try {
-      write(sync.next)
-    } catch (error: any) {
-      return fail(`config-unwritable: ${error && error.message ? error.message : error}`, { model: sync.model, entries: sync.entries })
-    }
-  }
-
-  let after
-  try {
-    after = read()
-  } catch (error: any) {
-    return fail(`verify-unreadable: ${error && error.message ? error.message : error}`, { changed: sync.changed })
-  }
-  const check = typeof after === 'string' ? syncManagedRelayKeyYaml(after, baseUrl, key) : null
-  if (!check || !check.matched || check.changed) {
-    return fail('verify-failed', { changed: sync.changed })
-  }
-  return { ok: true, changed: sync.changed, reason: '', model: sync.model, entries: sync.entries }
-}
-
-/**
- * A relay key rendered safe for a log line / test assertion: the scheme prefix
- * plus a truncated digest. Never emit the raw key — config.yaml surgery and the
- * self-heal both log a lot, and desktop logs travel (support bundles, screen
- * shots, this repo's public PRs).
- *
- * @param {string} key
- * @returns {string}
- */
-function maskRelayKey(key) {
-  const value = String(key || '').trim()
-  if (!value) return '(none)'
-  const digest = createHash('sha256').update(value).digest('hex').slice(0, 16)
-  return `${value.slice(0, 3)}…#${digest}`
-}
+// The relay-key anchor machinery (where the key lives, how it is written, how a
+// write is independently verified, and the one renderer of the registered
+// endpoint entry) lives in apex-relay-key-anchors.ts — see its header for why
+// hc-595's two-anchor patch still missed an anchor. Re-exported here so every
+// existing caller keeps its import path.
 
 /**
  * The whole managed-relay-key reconciliation, as one pure(-ish) policy with its
@@ -1385,7 +1165,12 @@ async function reconcileManagedRelayKey(deps: any) {
   if (preSync.ok && preSync.changed) {
     log(
       `[apexnodes] config.yaml relay key was out of sync with the stored credential; ` +
-        `rewrote it to ${maskRelayKey(storedKey)} (model=${preSync.model}, entries=${preSync.entries.updated}/${preSync.entries.matched})`
+        `rewrote it to ${maskRelayKey(storedKey)} — ` +
+        // hc-602: per anchor, by path. The old summary counted `entries` and
+        // read "0/0" on every real install — indistinguishable from "nothing to
+        // do" when what it actually meant was "I cannot see the entry I wrote
+        // myself". A log line that names each place leaves nowhere for that to hide.
+        (preSync.anchors.map(anchor => `${anchor.path}:${anchor.status}`).join(' ') || 'no anchors')
     )
     await deps.applyToBackend('key-drift')
     backendApplied = true
@@ -1629,5 +1414,13 @@ export {
   relayKeyFromResponse,
   resolveApexEndpoints,
   shouldAttemptReprovision,
-  syncManagedRelayKeyYaml
+  syncManagedRelayKeyYaml,
+  // hc-602 anchor registry — re-exported so callers have one import for the
+  // managed-relay surface, and so the invariant test can reach the registry and
+  // the auditor without importing two modules.
+  auditManagedRelayKeyAnchors,
+  locateManagedKeyAnchors,
+  MANAGED_KEY_ANCHORS,
+  managedCustomProviderEntryYaml,
+  parseYamlMaps
 }
