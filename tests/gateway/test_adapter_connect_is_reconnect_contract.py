@@ -262,6 +262,43 @@ def test_discovery_covers_adapters_outside_the_platform_dirs():
         )
 
 
+def test_structural_discovery_agrees_with_an_independent_signal():
+    """Cross-check the walker against a signal it does not share.
+
+    Hierarchy resolution links a subclass to its base *by name*, so it has
+    one residual blind spot: a base imported under an alias
+    (``import BasePlatformAdapter as Base``) would make an adapter
+    invisible, and every other test here would keep passing — the checker
+    would be issuing its own clean bill of health.
+
+    So probe with something that shares none of that logic: any class
+    literally named ``*Adapter`` that defines ``async def connect``. Today
+    the two sets agree exactly. If the lexical probe ever finds a class
+    the structural walker missed, the walker has a hole.
+    """
+    structural = {_id(p, c) for p, c, _f in ADAPTER_CONNECTS}
+
+    lexical = set()
+    for path in _python_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name.endswith("Adapter"):
+                if _own_connect(node) is not None:
+                    lexical.add(_id(path, node))
+
+    missed = lexical - structural
+    assert not missed, (
+        f"These classes look like adapters with their own connect() but "
+        f"were NOT resolved as BasePlatformAdapter subclasses: "
+        f"{sorted(missed)}. Either the class hierarchy walker has a blind "
+        f"spot (aliased base import? dynamically built base?) or these are "
+        f"genuinely not gateway adapters — confirm which before excluding."
+    )
+
+
 def test_no_adapter_relies_on_kwargs_to_swallow_is_reconnect():
     """No adapter may satisfy the contract via a ``**kwargs`` catch-all.
 
