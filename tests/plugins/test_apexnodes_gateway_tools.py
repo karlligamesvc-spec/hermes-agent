@@ -911,10 +911,14 @@ class TestAudioCompressionFallbackChain:
 
 
 class TestExplicitErrorDegradation:
+    # hc-604:401 的 marker 从「重新登录」改为「被服务端拒绝」。文案按**凭据来源**
+    # 分档后,「重新登录」只在桌面已登录那一档才是有效指引;这里的 fixture 是云
+    # 形态(env 有 key、无桌面标记),它该说的是「请管理员重新下发 Agent Key」。
+    # 三档各自的措辞由 tests/plugins/test_desktop_platform_tool_credentials.py 钉住。
     @pytest.mark.parametrize(
         ("status", "marker"),
         [
-            (401, "重新登录"),
+            (401, "被服务端拒绝"),
             (402, "额度不足"),
             (503, "平台能力暂不可用"),
         ],
@@ -953,7 +957,11 @@ class TestExplicitErrorDegradation:
         result = _parse(
             social_mod._handler("search")({"platform": "douyin", "query": "x"})
         )
-        assert "缺少平台密钥" in result["error"]
+        # hc-604:仍然显式、仍然不出网,但措辞必须是「没有凭据」而非「已过期」——
+        # 对一个从未配置过的环境说「请重新登录」是必然无效的指引。
+        assert "没有平台凭据" in result["error"]
+        assert "过期" not in result["error"]
+        assert "重新登录" not in result["error"]
         assert not fake_httpx.requests
 
 
@@ -999,8 +1007,21 @@ class TestGatewayDisabledFallback:
     ):
         social_mod._handler("search")({"platform": "douyin", "query": "x"})
         assert fake_urlopen[0].full_url == "http://master.test/api/v1/data/social/search"
-        assert fake_urlopen[0].get_header("Authorization") == "Bearer legacy-key"
+        # hc-604:回退路径带的是**同一把**凭据,不是插件自持的另一条 env 链。
+        # 该 fixture 同时设了 TOOLS_GATEWAY_KEY 与 API_SERVER_KEY,共用解析器按
+        # 既定优先级取前者;云容器不设 TOOLS_GATEWAY_KEY,行为与迁移前一致
+        # (下面 test_legacy_key_still_wins_without_gateway_key 钉住这一点)。
+        assert fake_urlopen[0].get_header("Authorization") == f"Bearer {GATEWAY_KEY}"
         assert not fake_httpx.requests  # 一个字节都不走网关
+
+    def test_legacy_key_still_wins_without_gateway_key(
+        self, legacy_env, monkeypatch, fake_urlopen, fake_httpx, social_mod
+    ):
+        """云容器形态(只有 API_SERVER_KEY)的回退路径必须一字未变。"""
+        monkeypatch.delenv("TOOLS_GATEWAY_KEY", raising=False)
+        social_mod._handler("search")({"platform": "douyin", "query": "x"})
+        assert fake_urlopen[0].get_header("Authorization") == "Bearer legacy-key"
+        assert not fake_httpx.requests
 
     def test_social_download_falls_back_to_master_endpoint(
         self, legacy_env, fake_urlopen, fake_httpx, douyin_mod

@@ -82,12 +82,17 @@ import httpx
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DESKTOP_SPAWN_ENV_CONTRACT",
     "SOCIAL_PLATFORMS",
+    "SOURCE_CONFIG",
+    "SOURCE_ENV",
+    "SOURCE_NONE",
     "GATEWAY_PUBLIC_BASE",
     "GatewayError",
     "agent_api_key",
     "asr_direct_upload_threshold_bytes",
     "capability_version",
+    "credential_source",
     "detect_platform",
     "download_media",
     "extract_audio_for_asr",
@@ -95,7 +100,10 @@ __all__ = [
     "gateway_disabled",
     "guess_media_content_type",
     "media_cache_dir",
+    "missing_credential_error",
     "request_json",
+    "resolve_agent_api_key",
+    "stale_credential_message",
     "transcribe_upload",
     "unwrap",
     "use_gateway",
@@ -107,6 +115,29 @@ TOOLS_PREFIX = "/tools/v1"
 ENV_BASE = "TOOLS_GATEWAY_BASE"
 ENV_KEY = "TOOLS_GATEWAY_KEY"
 ENV_DISABLED = "TOOLS_GATEWAY_DISABLED"
+# 各插件 legacy 直连路径的 Scheduler base(桌面注入公网值,云容器注入内网值)。
+ENV_LEGACY_BASE = "HERMES_PLATFORM_API_BASE"
+
+# hc-604:桌面端 spawn 必须注入的 env —— 唯一声明处。
+#
+# 两个消费者,两条独立路径,谁也不引用谁的实现:
+#   - apps/desktop/electron/apex-platform-tools.ts 的 buildPlatformToolSpawnEnv
+#     负责发出这三个键;它的单测直接从本文件读这个字面量做比对,漏一个即红。
+#   - tests/plugins/test_desktop_platform_tool_credentials.py 只把这三个键设进
+#     环境,然后枚举磁盘上每一个 plugins/apexnodes-* 目录,断言它们都能解析出
+#     凭据与公网 base。新增平台工具插件被 glob 自动纳管,无需登记。
+#
+# 为什么是 TOOLS_GATEWAY_KEY 而不是 API_SERVER_KEY:后者是 runtime 自身
+# OpenAI 兼容 API server 的 bearer(hermes_cli/config.py:"Required whenever the
+# API server is enabled"),把两种互不相干的凭据塞进同一个变量名,是下一次三天
+# 排查的起点。TOOLS_GATEWAY_KEY 只被本客户端读。
+DESKTOP_SPAWN_ENV_CONTRACT = (ENV_KEY, ENV_BASE, ENV_LEGACY_BASE)
+
+# 凭据来源(credential_source() 的取值)——错误文案据此给出**真正有用**的下一步,
+# 而不是一句放之四海皆无效的「请重新登录」。
+SOURCE_NONE = "none"  # 哪儿都没有:从未配置 / 未登录
+SOURCE_ENV = "env"  # 桌面 spawn 注入 / 云容器 env
+SOURCE_CONFIG = "config"  # config.yaml custom_providers 兜底副本(可能是陈的)
 
 # 10 平台白名单(PD §2 目标 3;新平台=网关配置变更,本端零改动)。
 SOCIAL_PLATFORMS = (
@@ -219,15 +250,86 @@ def use_gateway() -> bool:
     return gateway_base() is not None
 
 
-def agent_api_key() -> str:
+def resolve_agent_api_key() -> tuple[str, str]:
+    """凭据 + **来源**(SOURCE_ENV / SOURCE_CONFIG / SOURCE_NONE)。
+
+    来源是错误文案的输入,不是装饰:同样一个 401,来自注入 env 与来自 config.yaml
+    副本,用户该做的事完全不同(前者=换发凭据,后者=那份副本已陈,重启/更新桌面端
+    让它重新同步)。hc-604 之前只有一句「已过期,请重新登录」,在「压根没配过」和
+    「副本陈了」两种情形下都是必然无效的指引。
+    """
     for env_name in (ENV_KEY, "API_SERVER_KEY", "MODEL_API_KEY"):
         value = (os.getenv(env_name) or "").strip()
         if value:
-            return value
+            return value, SOURCE_ENV
     entry = _managed_provider_entry()
     if entry is not None:
-        return str(entry.get("api_key") or "").strip()
-    return ""
+        value = str(entry.get("api_key") or "").strip()
+        if value:
+            return value, SOURCE_CONFIG
+    return "", SOURCE_NONE
+
+
+def agent_api_key() -> str:
+    return resolve_agent_api_key()[0]
+
+
+def credential_source() -> str:
+    return resolve_agent_api_key()[1]
+
+
+def _is_desktop() -> bool:
+    """桌面端形态判定——只影响文案措辞,不影响任何链路选择。
+
+    ``HERMES_DESKTOP`` 是既有的桌面标记(apexnodes-doc-file-write 同款),但只在
+    dashboard spawn 上;messaging gateway 子进程没有它。config.yaml 里存在托管
+    provider 条目本身就是「这台是登录过的桌面」的充分判据(云容器不会有),两者
+    取或,避免同一个错误在两个子进程里说出两种话。
+    """
+    if (os.getenv("HERMES_DESKTOP") or "").strip():
+        return True
+    return _managed_provider_entry() is not None
+
+
+def missing_credential_error() -> GatewayError:
+    """「从未配置」——注意:**不是**过期,所以绝不说「重新登录」。
+
+    重新登录的前提是登录过;对一个没登录过的桌面用户,那条指引只会让他在账户页
+    反复点击而毫无变化(hc-604 现场:agent 把「缺失」转述成「过期+请重新登录」)。
+    """
+    if _is_desktop():
+        message = (
+            "尚未登录 ApexNodes 账号,平台工具(图片/视频生成、图片 OCR、媒体转写)不可用。"
+            "请打开 设置 → 账户 完成登录;登录后本对话直接重试即可,无需其他配置。"
+        )
+    else:
+        message = (
+            "本环境没有平台凭据,平台工具不可用。"
+            f"请为容器注入 {ENV_KEY}(或 API_SERVER_KEY),再重启 Agent 容器。"
+        )
+    return GatewayError(message, status=None, code="credential_missing")
+
+
+def stale_credential_message(source: str) -> str:
+    """「有凭据但服务端不认」——按来源给出真正能解决问题的下一步。"""
+    if source == SOURCE_CONFIG:
+        # env 没注入,读到的是 config.yaml 里的副本。桌面端 0.17.1 及更早只同步
+        # model.api_key、漏掉 custom_providers 条目(hc-595 盲区),于是聊天正常
+        # 而工具 401——此时「重新登录」并不会修好那份副本,更新/重启才会。
+        return (
+            "平台凭据被服务端拒绝(401);当前用的是 config.yaml 里的备用副本,"
+            "它可能已经过期。请先把 APEX 更新到最新版并重启(桌面端会在启动时自动换发凭据);"
+            "若更新后仍然如此,再到 设置 → 账户 重新登录一次。"
+        )
+    if _is_desktop():
+        return (
+            "平台凭据被服务端拒绝(401)。请到 设置 → 账户 重新登录一次以换发凭据;"
+            "若刚登录过仍然如此,请重启 APEX(启动时会自动换发)。"
+        )
+    return (
+        "平台凭据被服务端拒绝(401):该 Agent Key 可能已轮换或被停用,"
+        "请管理员重新下发 Agent Key 后重启容器。"
+    )
 
 
 _capability_version_cache: str | None = None
@@ -278,14 +380,13 @@ def _server_detail(response: httpx.Response) -> str:
     return str(detail or "").strip()[:300]
 
 
-def _error_from_response(response: httpx.Response) -> GatewayError:
+def _error_from_response(response: httpx.Response, source: str = SOURCE_ENV) -> GatewayError:
     status = response.status_code
     detail = _server_detail(response)
     if status == 401:
-        message = (
-            "平台密钥无效或已过期(401):请重新登录 ApexNodes 账号后重试"
-            "(桌面端:设置 → 账户 重新登录;云端:请管理员轮换 Agent Key)。"
-        )
+        # hc-604:按凭据来源分流。此前无论来源一律「请重新登录」,而现场最常见的
+        # 一种(env 未注入 → 读到 config.yaml 里的陈副本)恰恰是重新登录修不好的。
+        message = stale_credential_message(source)
     elif status == 402:
         message = "平台工具额度不足(402):套餐配额已用尽或余额不足,请升级套餐/充值后再试。"
     elif status == 413:
@@ -330,14 +431,15 @@ def request_json(
     失败一律抛 :class:`GatewayError`,message 即给用户看的降级文案。
     """
     base = gateway_base()
+    key, source = resolve_agent_api_key()
+    # 「没配过」优先于「没 base」:两者在桌面端总是一起缺失,而对用户有意义的那句
+    # 是「去登录」,不是「缺 TOOLS_GATEWAY_BASE」。
+    if not key:
+        raise missing_credential_error()
     if not base:
         raise GatewayError(
-            "平台工具网关未配置(缺 TOOLS_GATEWAY_BASE,亦未检测到桌面登录凭证),无法调用平台能力。"
-        )
-    key = agent_api_key()
-    if not key:
-        raise GatewayError(
-            "缺少平台密钥:请先登录 ApexNodes 账号(桌面端),或配置 TOOLS_GATEWAY_KEY/API_SERVER_KEY(云端)。"
+            f"平台工具网关未配置(缺 {ENV_BASE},亦未检测到桌面登录凭证),无法调用平台能力。",
+            code="gateway_unconfigured",
         )
     headers = {
         "Authorization": f"Bearer {key}",
@@ -357,7 +459,12 @@ def request_json(
                     headers=headers,
                 )
         except httpx.HTTPError as exc:
-            raise GatewayError(f"无法连接平台工具网关: {exc}") from exc
+            # 第三类:网络失败。既不是「没配过」也不是「凭据失效」——绝不在这里
+            # 提登录,否则用户会为一次断网去反复重登。
+            raise GatewayError(
+                f"无法连接平台服务(网络错误):{exc}。请检查网络/代理后重试;凭据本身没有问题。",
+                code="network_unreachable",
+            ) from exc
         if response.status_code == 429 and attempt < _MAX_429_RETRIES:
             delay = _retry_after_seconds(response, attempt)
             attempt += 1
@@ -365,7 +472,7 @@ def request_json(
             time.sleep(delay)
             continue
         if response.status_code >= 400:
-            raise _error_from_response(response)
+            raise _error_from_response(response, source)
         try:
             body = response.json()
         except Exception as exc:  # noqa: BLE001
