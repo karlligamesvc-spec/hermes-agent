@@ -1801,6 +1801,24 @@ export const ja = defineLocale({
       ageDay: '日',
       ageHour: '時間',
       ageMin: '分'
+    },
+    // hc-605: サイドバー下部の 2 つの更新カプセル。ここが未翻訳だと日本語 UI の
+    // まま英語が出る(defineLocale は en にフォールバックする)ため、4 言語すべて
+    // に実文を置く。
+    engineUpdate: {
+      found: '新しいエンジンがあります',
+      updating: 'エンジンを更新中…',
+      failedRolledBack: '更新に失敗しました。ロールバック済みです'
+    },
+    shellUpdate: {
+      foundTitle: version => (version ? `新しいバージョン ${version} が見つかりました` : '新しいバージョンが見つかりました'),
+      downloadingTitle: version => (version ? `${version} をダウンロード中` : '新しいバージョンをダウンロード中'),
+      downloadingInBackground: 'バックグラウンドでダウンロード中…',
+      downloadedPercent: percent => `${percent}% ダウンロード済み`,
+      readyTitle: version => (version ? `${version} のダウンロードが完了しました` : '新しいバージョンのダウンロードが完了しました'),
+      installsOnQuit: 'アプリを終了しないとインストールされません',
+      restartNow: '今すぐ再起動して更新',
+      restarting: '再起動しています…'
     }
   },
 

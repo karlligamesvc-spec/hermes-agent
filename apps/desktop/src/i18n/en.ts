@@ -1921,7 +1921,14 @@ export const en: Translations = {
       failedRolledBack: 'Update failed, rolled back'
     },
     shellUpdate: {
-      restartToUpdate: version => (version ? `Restart to update ${version}` : 'Restart to update')
+      foundTitle: version => (version ? `New version ${version} found` : 'New version found'),
+      downloadingTitle: version => (version ? `Downloading ${version}` : 'Downloading the new version'),
+      downloadingInBackground: 'Downloading in the background…',
+      downloadedPercent: percent => `${percent}% downloaded`,
+      readyTitle: version => (version ? `${version} is ready to install` : 'New version is ready to install'),
+      installsOnQuit: 'It only installs after you quit the app',
+      restartNow: 'Restart now to update',
+      restarting: 'Restarting…'
     }
   },
 

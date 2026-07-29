@@ -1733,6 +1733,23 @@ export const zhHant = defineLocale({
       ageDay: '天',
       ageHour: '時',
       ageMin: '分'
+    },
+    // hc-605:側邊欄底部的兩個更新膠囊。此處未翻譯時 defineLocale 會退回 en,
+    // 繁中介面裡會冒出英文,因此四種語言都放實際文案。
+    engineUpdate: {
+      found: '發現新引擎',
+      updating: '正在更新引擎…',
+      failedRolledBack: '更新失敗,已復原'
+    },
+    shellUpdate: {
+      foundTitle: version => (version ? `發現新版本 ${version}` : '發現新版本'),
+      downloadingTitle: version => (version ? `正在下載 ${version}` : '正在下載新版本'),
+      downloadingInBackground: '正在背景下載…',
+      downloadedPercent: percent => `已下載 ${percent}%`,
+      readyTitle: version => (version ? `${version} 已下載完成` : '新版本已下載完成'),
+      installsOnQuit: '結束應用程式後才會安裝',
+      restartNow: '立即重新啟動更新',
+      restarting: '正在重新啟動…'
     }
   },
 
