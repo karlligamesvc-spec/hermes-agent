@@ -169,15 +169,21 @@ ADAPTER_CONNECTS = _adapter_connect_overrides()
 def _accepts_is_reconnect(func: ast.AsyncFunctionDef) -> bool:
     """True iff ``connect`` declares a parameter *named* ``is_reconnect``.
 
-    A ``**kwargs`` catch-all deliberately does NOT count. Swallowing the
-    kwarg would turn the next instance of this bug from a loud TypeError
-    into a silently-ignored flag — an adapter that quietly treats every
-    reconnect as a cold boot (dropping the platform's server-side update
-    queue, #46621) is worse than one that crashes visibly.
+    Two forms deliberately do NOT count:
+
+    - ``**kwargs`` catch-all. Swallowing the kwarg turns the next instance
+      of this bug from a loud TypeError into a silently-ignored flag — an
+      adapter that quietly treats every reconnect as a cold boot (dropping
+      the platform's server-side update queue, #46621) is worse than one
+      that crashes visibly.
+    - **Positional-only** ``is_reconnect`` (``def connect(self, x, /)``).
+      The name is there but ``connect(is_reconnect=True)`` still raises
+      TypeError — positional-only parameters cannot be passed by keyword.
+      Matching on the name alone would hand out a false pass.
     """
     args = func.args
-    named = args.args + args.posonlyargs + args.kwonlyargs
-    return any(a.arg == "is_reconnect" for a in named)
+    callable_by_keyword = args.args + args.kwonlyargs
+    return any(a.arg == "is_reconnect" for a in callable_by_keyword)
 
 
 def _id(path: Path, cls: ast.ClassDef) -> str:
