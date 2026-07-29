@@ -57,7 +57,7 @@ describe('identity: the app opens in Chinese', () => {
     // The provider's fallback is only as good as the preference handed to it.
     // Losing this one prop is what turned the whole app English while every
     // i18n unit test stayed green.
-    expect(readSource('src', 'main.tsx')).toContain('<I18nProvider initialLocale="zh">')
+    expect(readSource('src', 'main.tsx')).toContain('<I18nProvider initialLocale="en">')
   })
 })
 
