@@ -2437,15 +2437,49 @@ text-* variant utilities. */ .btn-arc {
   background: var(--p5-card-bg);
   box-shadow: var(--shadow-xs);
   text-align: left;
-  cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+/* hc-605: the shell pill's available/downloading states are pure status —
+   rendered as a <div>, never clickable — so the pointer affordance and the
+   hover feedback below are scoped to the <button> form (the engine pill, and
+   the shell pill's CTA-bearing ready card carries its own button instead). A
+   card that looks clickable but isn't is exactly the confusion this ticket is
+   fixing. */
+button.p5-update-pill {
+  cursor: pointer;
 }
 
 /* Hover feedback stays a whisper — hairline darkens a touch, fill picks up a
    hint of base — matching the account row's restraint underneath it. */
-.p5-update-pill:not(:disabled):hover {
+button.p5-update-pill:not(:disabled):hover {
   border-color: color-mix(in srgb, var(--ui-base) 15%, transparent);
   background: color-mix(in srgb, var(--ui-base) 4%, var(--p5-card-bg));
+}
+
+/* hc-605: stacked variant — a header row plus one full-width element beneath
+   it (the download progress bar, or the ready state's restart CTA). Modifier
+   class rather than a data-state selector on purpose: the engine pill shares
+   .p5-update-pill and reuses the 'applying'/'idle' state values, so keying
+   layout off data-state would reach into it. */
+.p5-update-pill--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.p5-update-pill-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5625rem;
+}
+
+/* Ready state: the one state that asks the user for something. The hairline
+   picks up the brand primary so the card reads as actionable at a glance,
+   without shouting. */
+.p5-update-pill[data-state='ready'] {
+  border-color: color-mix(in srgb, var(--dt-primary) 30%, transparent);
 }
 
 /* Applying: the pill stays put (spinner + progress copy) but stops inviting
@@ -2519,6 +2553,65 @@ text-* variant utilities. */ .btn-arc {
 .p5-update-pill-chevron {
   flex: none;
   color: var(--ui-text-tertiary);
+}
+
+/* hc-605: the "it only installs after you quit" line. Deliberately louder
+   than the tertiary notes/version lines beneath it — this is the sentence
+   whose absence made a real user report the same fixed bug twice — but still
+   secondary to the title so the card stays a whisper, not an alert. */
+.p5-update-pill-hint {
+  overflow: hidden;
+  color: var(--ui-text-secondary);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ready-state icon flips from the neutral status blue chip to a green
+   "downloaded, sitting there" cue. */
+.p5-update-pill-icon--ready {
+  background: color-mix(in srgb, var(--ui-green) 14%, transparent);
+  color: var(--ui-green);
+}
+
+/* The ready state's restart CTA is the <Button> primitive (w-full), not a
+   bespoke pill class — it brings the shared focus ring, disabled handling and
+   radius for free. It is the ONLY click target on the ready card: quitting the
+   app must never fall out of a stray click on the capsule body. */
+
+/* Download progress. Determinate whenever electron-updater has reported a
+   tick; before the first one it pulses rather than claiming a fake 0%. */
+.p5-update-pill-progress {
+  overflow: hidden;
+  width: 100%;
+  height: 0.1875rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ui-base) 10%, transparent);
+}
+
+.p5-update-pill-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--ui-blue);
+  transition: width 200ms ease-out;
+}
+
+.p5-update-pill-progress[data-indeterminate='true'] .p5-update-pill-progress-fill {
+  width: 35%;
+  animation: p5-update-pill-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes p5-update-pill-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(285%);
+  }
 }
 }
 /* ===== end P5 Settings ===== */

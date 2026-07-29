@@ -1645,9 +1645,19 @@ export interface Translations {
       updating: string
       failedRolledBack: string
     }
-    // 壳(应用本体)更新胶囊:downloaded 后的「重启以更新 vX.Y.Z」。
+    // 壳(应用本体)更新胶囊,三态各自可辨(hc-605):发现新版本 → 正在下载 →
+    // 已就绪。installsOnQuit 是这组文案的要害:electron-updater 下载完只是把安装
+    // 包放进 pending/,真正的安装发生在进程退出时——应用一直开着就永远装不上。
+    // 不说这一句,用户会反复报「更新了还是老样子」(0728 连撞两次的真实事故)。
     shellUpdate: {
-      restartToUpdate: (version: string) => string
+      foundTitle: (version: string) => string
+      downloadingTitle: (version: string) => string
+      downloadingInBackground: string
+      downloadedPercent: (percent: number) => string
+      readyTitle: (version: string) => string
+      installsOnQuit: string
+      restartNow: string
+      restarting: string
     }
   }
 

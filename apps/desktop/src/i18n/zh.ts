@@ -2080,7 +2080,14 @@ export const zh: Translations = {
       failedRolledBack: '更新失败,已回滚'
     },
     shellUpdate: {
-      restartToUpdate: version => (version ? `重启以更新 ${version}` : '重启以更新')
+      foundTitle: version => (version ? `发现新版本 ${version}` : '发现新版本'),
+      downloadingTitle: version => (version ? `正在下载 ${version}` : '正在下载新版本'),
+      downloadingInBackground: '正在后台下载…',
+      downloadedPercent: percent => `已下载 ${percent}%`,
+      readyTitle: version => (version ? `${version} 已下载完成` : '新版本已下载完成'),
+      installsOnQuit: '退出应用后才会安装',
+      restartNow: '立即重启更新',
+      restarting: '正在重启…'
     }
   },
 
