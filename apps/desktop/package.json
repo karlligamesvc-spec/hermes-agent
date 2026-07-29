@@ -50,9 +50,10 @@
     "fix": "npm run lint:fix && npm run fmt",
     "test:ui": "vitest run --project ui",
     "test:desktop:platforms": "vitest run --project electron",
+    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/before-pack.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs",
     "test": "vitest run",
     "preview": "node scripts/assert-root-install.mjs && vite preview --host 127.0.0.1 --port 4174",
-    "check": "npm run typecheck && npm run test:desktop:platforms && npm run build"
+    "check": "npm run typecheck && npm run test && npm run test:release-gates && npm run build"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.23",

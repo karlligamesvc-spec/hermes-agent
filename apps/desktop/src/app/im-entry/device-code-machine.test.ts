@@ -75,9 +75,7 @@ describe('deviceCodeReduce — stop conditions', () => {
     expect(deviceCodeReduce(issuing, { type: 'ISSUE_FAILED', reason: 'service_unavailable' }).errorReason).toBe(
       'service_unavailable'
     )
-    expect(deviceCodeReduce(issuing, { type: 'ISSUE_FAILED', reason: 'rate_limited' }).errorReason).toBe(
-      'rate_limited'
-    )
+    expect(deviceCodeReduce(issuing, { type: 'ISSUE_FAILED', reason: 'rate_limited' }).errorReason).toBe('rate_limited')
   })
 
   it('treats sign_in / service_unavailable poll failures as immediately terminal', () => {
@@ -127,11 +125,7 @@ describe('deviceCodeReduce — guards & lifecycle', () => {
   })
 
   it('can be restarted from an error state but not mid-flight', () => {
-    const errored = run(
-      initialDeviceCodeState(),
-      { type: 'START' },
-      { type: 'ISSUE_FAILED', reason: 'request_failed' }
-    )
+    const errored = run(initialDeviceCodeState(), { type: 'START' }, { type: 'ISSUE_FAILED', reason: 'request_failed' })
 
     expect(errored.phase).toBe('error')
     expect(deviceCodeReduce(errored, { type: 'START' }).phase).toBe('issuing')
@@ -154,16 +148,22 @@ describe('deviceCodeReduce — guards & lifecycle', () => {
 })
 
 describe('IM 入口 channel catalog', () => {
-  it('ships feishu as the only available channel (first in order)', () => {
+  // Rollout state (see src/lib/im-entry-catalog.ts): 飞书 went live with hc-417,
+  // 个人微信 with hc-538 (iLink device-code flow) — both wired end-to-end. The
+  // cards render available channels first, in rollout order: feishu → weixin.
+  it('ships feishu (hc-417) and weixin (hc-538) as the available channels, feishu first', () => {
     expect(IM_ENTRY_CHANNELS[0].id).toBe('feishu')
     expect(isImEntryChannelAvailable('feishu')).toBe(true)
+    expect(isImEntryChannelAvailable('weixin')).toBe(true)
     const available = IM_ENTRY_CHANNELS.filter(c => c.available).map(c => c.id)
-    expect(available).toEqual(['feishu'])
+    expect(available).toEqual(['feishu', 'weixin'])
   })
 
-  it('queues dingtalk as the next (coming-soon) candidate', () => {
-    expect(IM_ENTRY_CHANNELS[1].id).toBe('dingtalk')
+  it('queues dingtalk as the first coming-soon candidate, right after the available channels', () => {
+    expect(IM_ENTRY_CHANNELS[2].id).toBe('dingtalk')
     expect(isImEntryChannelAvailable('dingtalk')).toBe(false)
+    // Every channel after the available block is still coming-soon (即将支持).
+    expect(IM_ENTRY_CHANNELS.slice(2).every(c => !c.available)).toBe(true)
   })
 
   it('feishu uses the device-code template; every id is unique', () => {
