@@ -39,9 +39,11 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
 
         if not provider_filter.apply():
             logger.warning(
-                "apex-overlay: hc-392 provider denylist seam did not fully "
-                "apply (see prior error). Disabled providers may still be "
-                "probed/fetched at startup."
+                "apex-overlay: hc-392/hc-621 provider denylist seam did not "
+                "fully apply (see prior error). Disabled providers may still "
+                "be probed/fetched at startup, and their auth-status polls "
+                "may keep resolving tokens / spawning `gh auth token` "
+                "(hc-621 warning storm)."
             )
     except Exception:
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
