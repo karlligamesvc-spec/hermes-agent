@@ -104,8 +104,14 @@ describe('refreshOnboarding', () => {
     expect(ready).toBe(false)
     expect(api).toHaveBeenCalledTimes(1)
     expect($desktopOnboarding.get().providers?.map(p => p.id)).toEqual(['fresh'])
-    expect($desktopOnboarding.get().reason).toContain('Selected runtime is not available.')
-    expect($desktopOnboarding.get().reason).toContain('setup.status reports configured credentials')
+    // hc-386 D2: setup.status configured + runtime check failed (checksDisagree)
+    // means a provider is already selected but its credential is missing or
+    // unusable — the DeepSeek seed with no key yet. That lands on the API-key
+    // form with the raw "runtime resolution still failed" banner suppressed,
+    // instead of surfacing the runtime error as a reason wall.
+    expect($desktopOnboarding.get().needsCredential).toBe(true)
+    expect($desktopOnboarding.get().reason).toBeNull()
+    expect($desktopOnboarding.get().mode).toBe('apikey')
   })
 
   it('keeps cached providers when onboarding was not re-requested', async () => {

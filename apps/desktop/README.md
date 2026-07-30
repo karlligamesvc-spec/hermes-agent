@@ -153,9 +153,14 @@ Run before opening a PR (lint may surface pre-existing warnings but must exit cl
 npm run fix
 npm run typecheck
 npm run lint
-npm run test:ui
-npm run test:desktop:platforms
+npm run test               # both vitest projects: ui (jsdom) + electron (node)
+npm run test:release-gates # node:test suites for the packaging/release-gate scripts
 ```
+
+`npm run check` — what CI (js-tests.yml) runs for this workspace — covers
+typecheck + both vitest projects + the release-gate suites + a full build
+(hc-594; the `ui` project and the release-gate suites had fallen out of every
+gate during the hc-589 vitest migration).
 
 Run `npm run test:desktop:all` for install, boot, update, packaging, or other
 release-path changes.

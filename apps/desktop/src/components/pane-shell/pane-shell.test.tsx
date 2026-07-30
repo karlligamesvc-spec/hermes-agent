@@ -147,7 +147,27 @@ describe('PaneShell composition', () => {
     expect($paneStates.get().files?.open).toBe(true)
   })
 
-  it('uses widthOverride from the store when set', () => {
+  // widthOverride is the persisted resize-drag width; its only writers are the
+  // resize handle / split dividers, which exist solely on resizable panes. The
+  // shell therefore honors it only for `resizable` panes (trackForPane), so a
+  // fixed-width pane can never be distorted by a stale persisted override.
+  it('uses widthOverride from the store when the pane is resizable', () => {
+    setPaneOpen('files', true)
+    setPaneWidthOverride('files', 320)
+
+    const rendered = render(
+      <PaneShell>
+        <Pane id="files" resizable side="left" width="240px">
+          files
+        </Pane>
+        <PaneMain>main</PaneMain>
+      </PaneShell>
+    )
+
+    expect(getColumnTemplate(gridContainer(rendered))).toEqual(['320px', 'minmax(0,1fr)'])
+  })
+
+  it('ignores a stale widthOverride on a non-resizable pane', () => {
     setPaneOpen('files', true)
     setPaneWidthOverride('files', 320)
 
@@ -160,7 +180,7 @@ describe('PaneShell composition', () => {
       </PaneShell>
     )
 
-    expect(getColumnTemplate(gridContainer(rendered))).toEqual(['320px', 'minmax(0,1fr)'])
+    expect(getColumnTemplate(gridContainer(rendered))).toEqual(['240px', 'minmax(0,1fr)'])
   })
 
   it('preserves CSS-string widths verbatim (clamp, var, etc.)', () => {
