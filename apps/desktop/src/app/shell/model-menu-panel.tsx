@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getMoaModels, type HermesGateway, saveMoaModels, setModelAssignment } from '@/hermes'
+import { getMoaModels, type HermesGateway, saveMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown, ChevronRight } from '@/lib/icons'
 import { managedCatalogCollapsed } from '@/lib/managed-catalog'
@@ -182,6 +182,18 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     setPlatformSel(next)
   }
 
+  /** Order-insensitive set equality over routed ids — "did the user change
+   *  anything?", not "is this the same array". */
+  const sameSelection = (a: readonly string[], b: readonly string[]) => {
+    if (a.length !== b.length) {
+      return false
+    }
+
+    const left = new Set(a.map(routedKey))
+
+    return b.every(id => left.has(routedKey(id)))
+  }
+
   // SEED "what is currently multi-selected" from whatever is actually active:
   // an active provider === 'moa' preset expands back to its member set, a
   // single managed pick seeds a 1-element array, anything else (BYO / none)
@@ -201,9 +213,13 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // multi-selection and collapses it every time it runs.
   //
   // So it seeds instead of mirrors: once the catalog and the saved presets have
-  // both settled, and never after the user has touched the set. Writes are
-  // serialized separately (flushSelection), which is what keeps the SERVER's
-  // final state equal to the last intent.
+  // both settled, and never after the user has touched the set.
+  //
+  // hc-637 removed the other half of that race outright — nothing is written
+  // while the menu is open, so there is no mid-write snapshot to seed from. And
+  // because the composition is now assigned at SESSION scope, the live agent
+  // holds `__auto__`/`moa` itself, which is what finally lets the first branch
+  // below expand a real multi-selection instead of collapsing to one id.
   useEffect(() => {
     if (selectionSeededRef.current || !modelOptions.isSuccess || !moaOptions.isSuccess) {
       return
@@ -211,8 +227,17 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
 
     selectionSeededRef.current = true
 
+    // hc-637: the seed is ALSO the baseline the unmount commit diffs against,
+    // so record it here — this is the only moment we know what the server
+    // holds. Without it, opening and closing the menu would write.
+    const seed = (next: string[]) => {
+      setSelection(next)
+      committedRef.current = next
+      commitProviderRef.current = managedProvider
+    }
+
     if (optionsProvider === 'moa') {
-      setSelection(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
+      seed(expandMoaPresetMembers(moaOptions.data, optionsModel, managedProvider?.models ?? []))
 
       return
     }
@@ -220,12 +245,12 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     // Compare against the resolved managed row's own slug, not a fuzzy name
     // check — optionsProvider is a bare slug here.
     if (optionsModel && managedProvider && optionsProvider === managedProvider.slug) {
-      setSelection([optionsModel])
+      seed([optionsModel])
 
       return
     }
 
-    setSelection([])
+    seed([])
   }, [modelOptions.isSuccess, moaOptions.isSuccess, moaOptions.data, optionsProvider, optionsModel, managedProvider])
 
   // hc-602: a collapsed managed catalog is a rotated relay key until proven
@@ -352,51 +377,42 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     return [...ids].sort((a, b) => (order.get(routedKey(a)) ?? 0) - (order.get(routedKey(b)) ?? 0))
   }
 
-  // hc-599: writes are SERIALIZED on this chain and each one persists the
-  // selection as it stands when the chain reaches it. Two saves racing could
-  // otherwise land out of order and leave the server holding an older subset
-  // than the checkmarks show.
-  const writeChainRef = useRef<Promise<void>>(Promise.resolve())
-  // Toggles the server hasn't been told about yet. A write claims the whole
-  // list, which is what coalesces a burst of clicks into ONE save — and is also
-  // exactly the set to undo if that save fails.
-  const unwrittenTogglesRef = useRef<{ added: boolean; model: string }[]>([])
+  // hc-637: the panel is a STAGING AREA. Clicks move local state only; the
+  // single write happens when the panel goes away.
+  //
+  // Writing on every click meant three things ran against each other — the
+  // user's clicks, a serialized write chain, and the seed effect reading a
+  // server snapshot taken mid-write. hc-599 patched the worst symptom of that
+  // ("selecting a third model unchecks the second") with a write chain, an
+  // unwritten-toggle ledger and a per-toggle undo; none of that is needed once
+  // there is nothing in flight to race. One dismissal = one intent = one write.
+  //
+  // committedRef is what the server currently holds, so the commit can tell a
+  // real change from a menu that was merely opened and closed.
+  const committedRef = useRef<string[] | null>(null)
+  const commitProviderRef = useRef<ModelOptionProvider | null>(null)
 
-  const undoToggle = ({ added, model }: { added: boolean; model: string }, provider: ModelOptionProvider) => {
-    const key = routedKey(model)
-    const live = selectionRef.current
-    const present = live.some(id => routedKey(id) === key)
+  /** Persist the staged selection. Called once, when the panel goes away. */
+  const commitSelection = async () => {
+    const provider = commitProviderRef.current
+    const ids = selectionRef.current
+    const committed = committedRef.current
 
-    if (added && present) {
-      setSelection(live.filter(id => routedKey(id) !== key))
-    } else if (!added && !present) {
-      setSelection(inDirectoryOrder([...live, model], provider))
-    }
-  }
-
-  const flushSelection = async (provider: ModelOptionProvider) => {
-    const owned = unwrittenTogglesRef.current
-
-    if (owned.length === 0) {
-      // An earlier write in this burst already carried these clicks.
+    // Nothing staged (menu never seeded) or nothing changed: opening and
+    // closing the menu must not write.
+    if (!provider || committed === null || sameSelection(ids, committed)) {
       return
     }
 
-    unwrittenTogglesRef.current = []
+    // Deselecting everything is a no-op — a main model can't be "none", so the
+    // previous selection stays active until another is picked.
+    if (ids.length === 0) {
+      return
+    }
 
-    // Read through the ref, never this render's `platformSel`: a burst of
-    // clicks shares one render closure, so the state copy is a snapshot from
-    // before the later clicks and would persist a stale subset.
-    const ids = selectionRef.current
+    committedRef.current = ids
 
     try {
-      if (ids.length === 0) {
-        // Deselecting the last platform model is a no-op — a main model can't
-        // be "none", so the previous selection stays active until another is
-        // picked.
-        return
-      }
-
       if (ids.length === 1) {
         const sole = collapseModelFamilies(provider.models ?? []).find(f => routedKey(f.id) === routedKey(ids[0]))
 
@@ -413,27 +429,59 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
         return
       }
 
-      // Read the presets from the cache, not from this render's
-      // `moaOptions.data` — a queued write runs after earlier ones updated it.
       const existing = queryClient.getQueryData<MoaConfigResponse>(['moa-presets']) ?? null
       const saved = await saveMoaModels(buildAutoMoaConfig(existing, composed))
 
       queryClient.setQueryData(['moa-presets'], saved)
-      await setModelAssignment({ model: AUTO_PRESET_NAME, provider: 'moa', scope: 'main' })
+
+      // hc-637: SESSION-scoped, through the same path a single pick takes.
+      //
+      // This used to be setModelAssignment({ scope: 'main' }) — the profile
+      // default — while a single pick wrote a session override. A session
+      // override shadows the profile default, so on any session that had ever
+      // had a model picked (i.e. the normal case), composing several models
+      // wrote successfully and changed nothing: the pill kept showing the old
+      // single model, and reopening the menu collapsed back to one checkmark
+      // because `model.options` answers from the live agent, which still held
+      // that single id (tui_gateway/server.py `model.options` → with_overrides).
+      // Three symptoms, one cause: the two paths wrote to different layers and
+      // one shadowed the other. Neither call failed, so nothing was reported.
+      //
+      // Session scope also repairs the reopen: the agent now genuinely holds
+      // `__auto__`/`moa`, so the seed below can read the composition back out.
+      // hermes_cli/model_switch.py resolves a preset name under provider `moa`,
+      // which is what makes the session path able to carry a composition at all.
+      await switchTo(AUTO_PRESET_NAME, 'moa')
       void queryClient.invalidateQueries({ queryKey: ['model-options'] })
     } catch (err) {
-      // Undo the toggles THIS write carried, against the live selection —
-      // never by restoring an array captured at click time, which would erase
-      // every choice made while the failed write was in flight. Clicks that
-      // arrived after this write claimed its batch are not ours to touch; the
-      // next queued write persists them on top of the corrected set.
-      for (const toggle of owned) {
-        undoToggle(toggle, provider)
-      }
-
+      // The panel is already gone, so there are no checkmarks left to roll
+      // back — surface the failure and let the next open re-seed from whatever
+      // the server actually kept.
+      committedRef.current = committed
       notifyError(err, t.shell.modelOptions.updateFailed)
     }
   }
+
+  // The single commit point. Radix unmounts the dropdown's children on close,
+  // so this one hook covers every way the panel can go away: click-outside,
+  // Esc, re-clicking the pill, the session tile being destroyed, navigating
+  // elsewhere. Counted rather than assumed — 3 mount sites (desktop-controller,
+  // session-tile, contrib/surfaces) and 4 open entry points (pill, keybind,
+  // slash command, overlay) all funnel through the same unmount.
+  //
+  // NOT covered: a hard app kill, where React cleanup never runs. That loses a
+  // staged-but-uncommitted selection, which is the one regression this design
+  // can have versus writing on every click. Accepted knowingly: the window is
+  // the few seconds a menu is open, and the previous behavior traded it for the
+  // race that produced hc-599 and the bug above.
+  useEffect(() => {
+    return () => {
+      void commitSelection()
+    }
+    // Deliberately empty: this must run on unmount only, reading refs (never
+    // this render's closure) so it sees the LAST staged state, not the first.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // hc-578 (MOA-INVISIBLE-DESIGN): toggle a managed-relay row in/out of the
   // platform multi-selection. The picker never shows "MoA" — just checked model
@@ -452,9 +500,9 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     const nextIds = added ? [...current, family.id] : current.filter(id => routedKey(id) !== key)
 
     setSelection(inDirectoryOrder(nextIds, provider))
-    unwrittenTogglesRef.current = [...unwrittenTogglesRef.current, { added, model: family.id }]
-
-    writeChainRef.current = writeChainRef.current.then(() => flushSelection(provider))
+    // Remember which provider owns the staged set so the unmount commit can
+    // resolve model families without a render closure.
+    commitProviderRef.current = provider
   }
 
   // Selecting a MoA preset switches the session to it PERSISTENTLY, using the

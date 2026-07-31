@@ -19,6 +19,11 @@ const getGlobalModelOptions = vi.fn()
 const getMoaModels = vi.fn()
 const saveMoaModels = vi.fn()
 const setModelAssignment = vi.fn()
+const notifyError = vi.fn()
+
+vi.mock('@/store/notifications', () => ({
+  notifyError: (...args: unknown[]) => notifyError(...args)
+}))
 
 vi.mock('@/hermes', () => ({
   getGlobalModelOptions: (...args: unknown[]) => getGlobalModelOptions(...args),
@@ -56,6 +61,7 @@ beforeEach(() => {
   getMoaModels.mockResolvedValue(null)
   saveMoaModels.mockImplementation((config: unknown) => Promise.resolve({ ...(config as object), ok: true }))
   setModelAssignment.mockResolvedValue({ ok: true })
+  notifyError.mockReset()
 })
 
 afterEach(() => {
@@ -330,13 +336,13 @@ function lastSavedMembers(): string[] {
   return [preset.aggregator.model, ...preset.reference_models.map(slot => slot.model)].sort()
 }
 
-describe('ModelMenuPanel multi-select under rapid clicks', () => {
+describe('ModelMenuPanel multi-select commits on dismiss (hc-637)', () => {
   beforeEach(() => {
     getGlobalModelOptions.mockResolvedValue({ providers: [RELAY_PROVIDER, MOA_PROVIDER] })
   })
 
-  async function openWithRelayRows() {
-    const rendered = renderPanel()
+  async function openWithRelayRows(onSelectModel = vi.fn()) {
+    const rendered = renderPanel(onSelectModel)
 
     await rendered.content.findByText('Apex-nodes.com')
     await rendered.content.findByText('GLM 5.2')
@@ -344,104 +350,137 @@ describe('ModelMenuPanel multi-select under rapid clicks', () => {
     return rendered
   }
 
-  /** Let the queued write chain advance past its pending microtasks. */
+  /** Let queued microtasks drain. */
   const settle = () => act(async () => undefined)
 
-  it('keeps the earlier model checked when the next is clicked mid-save', async () => {
-    // The bug: every click wrote the saved MoA config into the query cache and
-    // invalidated the catalog, which re-ran the selection backfill and replaced
-    // the local set with a SERVER snapshot taken mid-write — so clicking the
-    // third model unchecked the second.
-    const held = deferred<unknown>()
-    saveMoaModels
-      .mockImplementationOnce(config => held.promise.then(() => ({ ...(config as object), ok: true })))
-      .mockImplementation(config => Promise.resolve({ ...(config as object), ok: true }))
+  /** Dismissing the menu unmounts the panel — that IS the commit. */
+  const dismiss = async (content: ReturnType<typeof renderPanel>['content']) => {
+    content.unmount()
+    await settle()
+  }
 
+  it('writes nothing while the menu is open', async () => {
+    // The core of hc-637. Writing per click put three things in contention —
+    // the user's clicks, a serialized write chain, and a seed effect reading a
+    // server snapshot taken mid-write. Staging removes the contention by
+    // removing the in-flight write.
     const { content } = await openWithRelayRows()
 
     fireEvent.click(content.getByText('DeepSeek V4 Pro'))
     await settle()
     fireEvent.click(content.getByText('GLM 5.2'))
     await settle()
-    // Third click lands while the second's save is still open.
     fireEvent.click(content.getByText('Qwen3.7 Max'))
     await settle()
 
-    expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'GLM 5.2', 'Qwen3.7 Max'])
-
-    held.resolve(null)
-
-    await vi.waitFor(() => expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'glm-5.2', 'qwen3.7-max']))
+    expect(saveMoaModels).not.toHaveBeenCalled()
     expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'GLM 5.2', 'Qwen3.7 Max'])
   })
 
-  it('coalesces a burst into one write carrying the final set', async () => {
+  it('commits once on dismiss, carrying the final set', async () => {
     const { content } = await openWithRelayRows()
 
-    // Three clicks with no chance for the queue to drain between them.
     fireEvent.click(content.getByText('DeepSeek V4 Pro'))
     fireEvent.click(content.getByText('GLM 5.2'))
     fireEvent.click(content.getByText('Qwen3.7 Max'))
+    await settle()
+
+    await dismiss(content)
 
     await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
     expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'glm-5.2', 'qwen3.7-max'])
-    expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'GLM 5.2', 'Qwen3.7 Max'])
   })
 
-  it('serializes the writes so the server ends up holding the last intent', async () => {
-    const first = deferred<unknown>()
-    saveMoaModels
-      .mockImplementationOnce(config => first.promise.then(() => ({ ...(config as object), ok: true })))
-      .mockImplementation(config => Promise.resolve({ ...(config as object), ok: true }))
-
+  it('toggling a model back off before dismissing leaves it out of the write', async () => {
+    // Staging means intermediate states never reach the server: only what the
+    // user is looking at when the menu closes does.
     const { content } = await openWithRelayRows()
 
     fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-    await settle()
+    fireEvent.click(content.getByText('GLM 5.2'))
+    fireEvent.click(content.getByText('Qwen3.7 Max'))
     fireEvent.click(content.getByText('GLM 5.2'))
     await settle()
-    fireEvent.click(content.getByText('Qwen3.7 Max'))
-    await settle()
 
-    // The held write is still the only one that has started — the second is
-    // queued behind it rather than racing it.
-    expect(saveMoaModels).toHaveBeenCalledTimes(1)
+    await dismiss(content)
 
-    first.resolve(null)
-
-    await vi.waitFor(() => expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'glm-5.2', 'qwen3.7-max']))
+    await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
+    expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'qwen3.7-max'])
   })
 
-  it('rolls back only the failed write, not the selection made while it was open', async () => {
-    const failing = deferred<unknown>()
-    saveMoaModels
-      .mockImplementationOnce(() => failing.promise)
-      .mockImplementation(config => Promise.resolve({ ...(config as object), ok: true }))
+  it('opening and closing without touching anything writes nothing', async () => {
+    // Committing on dismiss must not turn every glance at the menu into a
+    // model switch — the commit diffs against what was seeded.
+    const { content, onSelectModel } = await openWithRelayRows()
 
-    const { content } = await openWithRelayRows()
+    await dismiss(content)
 
-    fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-    await settle()
-    // This click's write is the one that fails.
+    expect(saveMoaModels).not.toHaveBeenCalled()
+    expect(onSelectModel).not.toHaveBeenCalled()
+  })
+
+  it('reopening an existing composition and closing it writes nothing', async () => {
+    // The empty-seed case above cannot reach the "did anything change?" guard —
+    // it returns earlier, on the empty set. This is the case that needs it: a
+    // real selection is seeded, the user only looks, and dismissing must not
+    // re-write (which would churn the profile and the agent on every glance).
+    getMoaModels.mockResolvedValue({
+      active_preset: '__auto__',
+      default_preset: '__auto__',
+      presets: {
+        __auto__: {
+          aggregator: { model: 'qwen3.7-max', provider: 'custom:apex-nodes.com' },
+          reference_models: [{ model: 'glm-5.2', provider: 'custom:apex-nodes.com' }]
+        }
+      }
+    })
+    $currentProvider.set('moa')
+    $currentModel.set('__auto__')
+
+    const { content, onSelectModel } = await openWithRelayRows()
+
+    await vi.waitFor(() => expect(checkedRows()).toEqual(['GLM 5.2', 'Qwen3.7 Max']))
+    await dismiss(content)
+
+    expect(saveMoaModels).not.toHaveBeenCalled()
+    expect(onSelectModel).not.toHaveBeenCalled()
+  })
+
+  it('a single staged model commits through the session path, not a profile write', async () => {
+    const { content, onSelectModel } = await openWithRelayRows()
+
     fireEvent.click(content.getByText('GLM 5.2'))
     await settle()
-    // …and this one arrives while that write is open, so it is NOT its to undo.
+    await dismiss(content)
+
+    await vi.waitFor(() => expect(onSelectModel).toHaveBeenCalled())
+    expect(saveMoaModels).not.toHaveBeenCalled()
+    expect(setModelAssignment).not.toHaveBeenCalled()
+  })
+
+  it('a composition is assigned at SESSION scope, like a single pick', async () => {
+    // The bug this fixes: the composition was written with
+    // setModelAssignment({ scope: 'main' }) — the profile default — while a
+    // single pick wrote a session override. A session override shadows the
+    // profile default, so on any session that had ever had a model picked the
+    // composition was stored and had no effect: the pill kept the old single
+    // model and reopening collapsed back to one checkmark, with no error
+    // anywhere because neither write failed.
+    const { content, onSelectModel } = await openWithRelayRows()
+
+    fireEvent.click(content.getByText('GLM 5.2'))
     fireEvent.click(content.getByText('Qwen3.7 Max'))
     await settle()
+    await dismiss(content)
 
-    failing.reject(new Error('relay rejected the preset'))
-
-    // GLM comes back off; DeepSeek (already persisted) and Qwen (a later
-    // intent) both survive, and the corrected set is what gets written next.
-    await vi.waitFor(() => expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'Qwen3.7 Max']))
-    await vi.waitFor(() => expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'qwen3.7-max']))
+    await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
+    expect(setModelAssignment).not.toHaveBeenCalled()
+    expect(onSelectModel).toHaveBeenCalledWith(expect.objectContaining({ model: '__auto__', provider: 'moa' }))
   })
 
   it('seeds from the saved preset when the menu opens, then leaves it alone', async () => {
-    // The composed selection lives in the profile's `__auto__` preset, but the
-    // gateway answers model.options with the AGENT's single live model — so a
-    // mirror of the server would collapse the set every time the catalog
-    // refreshed, which every write triggers.
+    // Unchanged contract: the composed selection lives in the profile's
+    // `__auto__` preset, and the menu must show it back on open.
     getMoaModels.mockResolvedValue({
       active_preset: '__auto__',
       default_preset: '__auto__',
@@ -460,10 +499,23 @@ describe('ModelMenuPanel multi-select under rapid clicks', () => {
     await vi.waitFor(() => expect(checkedRows()).toEqual(['GLM 5.2', 'Qwen3.7 Max']))
 
     fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-
-    // The write's cache update + catalog invalidation must not re-seed over it.
-    await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalled())
     await settle()
+
     expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'GLM 5.2', 'Qwen3.7 Max'])
+  })
+
+  it('a failed commit surfaces the error instead of failing silently', async () => {
+    // The panel is gone by the time the write runs, so there are no checkmarks
+    // to roll back — the user must at least be told.
+    saveMoaModels.mockRejectedValue(new Error('relay rejected the preset'))
+
+    const { content } = await openWithRelayRows()
+
+    fireEvent.click(content.getByText('GLM 5.2'))
+    fireEvent.click(content.getByText('Qwen3.7 Max'))
+    await settle()
+    await dismiss(content)
+
+    await vi.waitFor(() => expect(notifyError).toHaveBeenCalled())
   })
 })
