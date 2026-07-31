@@ -1425,7 +1425,7 @@ function Install-SystemPackages {
 
     $description = $descParts -join " and "
 
-    # ── hc-632: these two are OPTIONAL and must never block a first install ──
+    # -- hc-632: these two are OPTIONAL and must never block a first install --
     # 2026-07-31, real first install on a mainland-China Windows box: every
     # mandatory stage finished fast (uv 3.7s / python 12s / git 1.4s / node
     # 0.1s -- all served by the CN mirror seam), then this stage hung for 18+
