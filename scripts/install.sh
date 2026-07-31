@@ -1716,6 +1716,74 @@ _uv_sync_locked() {
         UV_PROJECT_ENVIRONMENT="$INSTALL_DIR/venv" $UV_CMD sync --extra all --locked "$@"
 }
 
+# hc-636: the hash-verified tier and the CN mirror were mutually exclusive, and
+# nobody noticed because neither one FAILS — one is just slow.
+#
+# _uv_sync_locked above strips the index env (see its note) because uv.lock
+# records `registry = "https://pypi.org/simple"` and a mismatched index makes
+# `--locked` refuse outright. But a locked sync then downloads the LITERAL
+# files.pythonhosted.org URLs recorded in the lock — so on a mainland machine
+# tier 0 is hash-verified and glacial (measured 2026-07-31: 26+ minutes and
+# still going), while every faster tier below is `uv pip install`, which
+# re-resolves from the mirror with NO hash verification at all. Users were being
+# offered speed or integrity, never both.
+#
+# There is a third option the ladder never had: export the lock to a
+# requirements file — uv writes every recorded sha256 into it — and install THAT
+# from the mirror under --require-hashes. Same hashes, same bytes, just fetched
+# from a route that works. Verified end to end 2026-07-31: 115 packages / 1279
+# hashes from TUNA in 4.4s, and corrupting one recorded hash makes uv abort with
+# "Hash mismatch", so the verification is real and not decorative.
+#
+# CN-only by construction: with HERMES_CN_MIRRORS unset/0 this returns non-zero
+# immediately and the ladder is byte-identical to before. Any failure here is
+# non-fatal — the caller falls through to the existing tier 0, so the worst case
+# is today's behavior, never worse.
+# Twin of Invoke-UvMirrorHashedInstall in install.ps1 — keep the two in step.
+_uv_mirror_hashed() {
+    [ "${HERMES_CN_MIRRORS:-}" = "1" ] || return 1
+    [ -f "uv.lock" ] || return 1
+
+    local req rc=0
+    req="$(mktemp)" || return 1
+
+    log_info "Trying tier: hash-verified via CN mirror (uv.lock -> --require-hashes) ..."
+    # --no-emit-project: the local package is on no index; it is built from this
+    # directory in the second step. --extra all matches _uv_sync_locked's flag
+    # choice (NOT --all-extras — see its note).
+    # The export runs with the index env STRIPPED, for the same reason
+    # _uv_sync_locked does: `--locked` compares the configured index against the
+    # registry recorded in uv.lock and refuses on a mismatch. Leaving the mirror
+    # set here makes export fail with "The lockfile needs to be updated" — which
+    # is non-fatal, so the whole tier would silently degrade back to the slow
+    # upstream sync and the fix would look like it did nothing. Verified: with
+    # UV_DEFAULT_INDEX=TUNA set, export exits 2 and writes a 0-byte file.
+    # The export needs no index anyway — it only reads the lock.
+    if ! env -u UV_DEFAULT_INDEX -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INDEX \
+        -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL \
+        $UV_CMD export --format requirements-txt --no-emit-project --extra all --locked -o "$req" >/dev/null 2>&1; then
+        log_warn "uv export failed — falling back to the upstream locked sync"
+        rm -f "$req"
+        return 1
+    fi
+
+    # The index env is INTENTIONALLY left in place here: unlike `--locked`,
+    # `uv pip install` resolves from the configured index, which is the whole
+    # point. Integrity does not depend on the index — --require-hashes rejects
+    # any file whose sha256 is not the one recorded in the lock.
+    if ! $UV_CMD pip install --require-hashes -r "$req"; then
+        log_warn "mirror hash-verified install failed — falling back to the upstream locked sync"
+        rc=1
+    elif ! $UV_CMD pip install --no-deps .; then
+        # The project itself: a local build, no network, deps already satisfied.
+        log_warn "local package install failed — falling back to the upstream locked sync"
+        rc=1
+    fi
+
+    rm -f "$req"
+    return $rc
+}
+
 # ----------------------------------------------------------------------------
 # hc-569 fast-update channel: python-deps fingerprint short-circuit
 # ----------------------------------------------------------------------------
@@ -1932,6 +2000,19 @@ install_deps() {
     # hash verification — they exist to keep installs working when the
     # lockfile is stale, missing, or out-of-sync with the current
     # extras spec, NOT because they're equivalent in posture.
+    # hc-636: on a CN install, try the mirror-served hash-verified route FIRST.
+    # It has to come BEFORE tier 0, not after it: tier 0 does not FAIL on a
+    # mainland machine, it just takes half an hour, so a fallback would never be
+    # reached. Non-CN installs return non-zero here and drop straight through.
+    if _uv_mirror_hashed; then
+        log_success "Main package installed (hash-verified via CN mirror)"
+        # Same lock-verified posture as the tier below, so the same fingerprint
+        # short-circuit applies: every file was checked against uv.lock's sha256.
+        python_deps_mark_installed "$INSTALL_DIR"
+        log_success "All dependencies installed"
+        return 0
+    fi
+
     if [ -f "uv.lock" ]; then
         log_info "Trying tier: hash-verified (uv.lock) ..."
         log_info "(this resolves + downloads the curated [all] set — first run on a"

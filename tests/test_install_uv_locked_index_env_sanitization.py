@@ -88,21 +88,33 @@ def test_install_sh_uv_sync_locked_helper_strips_every_index_env_var() -> None:
 
 
 def test_install_ps1_invoke_uv_sync_locked_helper_strips_every_index_env_var() -> None:
-    body = _extract_install_ps1_function("Invoke-UvSyncLocked")
+    """The clearing moved into a shared helper (hc-636); the contract did not.
+
+    A second caller appeared -- `uv export --locked` refuses on an index/lock
+    mismatch exactly like `uv sync --locked` -- so the save/clear/restore lives
+    in Invoke-WithoutIndexEnv now instead of being copied. This test follows the
+    extraction and still asserts the same two things: every index var is cleared
+    before the locked call, and every one is restored afterwards (the later
+    non-locked tiers still want the CN mirror).
+    """
+    sync = _extract_install_ps1_function("Invoke-UvSyncLocked")
+    assert "Invoke-WithoutIndexEnv" in sync, (
+        "Invoke-UvSyncLocked must route through the shared sanitation helper"
+    )
+    assert "--locked" in sync
+
+    helper = _extract_install_ps1_function("Invoke-WithoutIndexEnv")
     for var in _INDEX_ENV_VARS:
-        assert f"$env:{var} = $null" in body, (
-            f"Invoke-UvSyncLocked must clear $env:{var} before the --locked "
-            "uv sync, or a CN mirror default index re-keys the lock's "
-            "recorded registry and --locked always refuses"
+        assert f"'{var}'" in helper, (
+            f"the shared helper must clear {var} before a --locked uv call, or a "
+            "CN mirror default index re-keys the lock's recorded registry and "
+            "--locked always refuses"
         )
-        # Must also be RESTORED afterward (finally) -- other CN-mirror
-        # consumers later in Install-Dependencies still need it.
-        assert f"$env:{var} = $savedIndexEnv.{var}" in body, (
-            f"Invoke-UvSyncLocked must restore {var} in its finally block "
-            "so later non-locked tiers keep the CN mirror"
-        )
-    assert "finally" in body
-    assert "--locked" in body
+    # Cleared before, restored after -- the restore is what keeps the CN mirror
+    # available to the non-locked tiers that genuinely want it.
+    assert "SetEnvironmentVariable($n, $null)" in helper, "must clear"
+    assert "SetEnvironmentVariable($n, $saved[$n])" in helper, "must restore"
+    assert "finally" in helper
 
 
 # ---------------------------------------------------------------------------

@@ -2215,38 +2215,115 @@ function Install-Venv {
 # want the CN mirror (they re-resolve fresh from an index, so the mirror
 # genuinely buys speed there); this helper deliberately does not touch those.
 # Mirrors scripts/install.sh::_uv_sync_locked -- keep the two in step.
+# Run $Body with every index env var cleared, then restore them. Extracted
+# (hc-636) because a second caller appeared: `uv export --locked` refuses on an
+# index/lock mismatch exactly like `uv sync --locked` does, so both need the
+# same sanitation and neither should carry its own copy of the list.
+function Invoke-WithoutIndexEnv {
+    param([Parameter(Mandatory)][scriptblock] $Body)
+
+    $names = @(
+        'UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'UV_EXTRA_INDEX_URL', 'UV_INDEX',
+        'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL'
+    )
+    $saved = @{}
+    foreach ($n in $names) {
+        $saved[$n] = [Environment]::GetEnvironmentVariable($n)
+        [Environment]::SetEnvironmentVariable($n, $null)
+    }
+    try {
+        & $Body
+    } finally {
+        foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $saved[$n]) }
+    }
+}
+
 function Invoke-UvSyncLocked {
     param([switch]$Check)
 
-    $savedIndexEnv = @{
-        UV_DEFAULT_INDEX    = $env:UV_DEFAULT_INDEX
-        UV_INDEX_URL        = $env:UV_INDEX_URL
-        UV_EXTRA_INDEX_URL  = $env:UV_EXTRA_INDEX_URL
-        UV_INDEX            = $env:UV_INDEX
-        PIP_INDEX_URL       = $env:PIP_INDEX_URL
-        PIP_EXTRA_INDEX_URL = $env:PIP_EXTRA_INDEX_URL
-    }
-    $env:UV_DEFAULT_INDEX = $null
-    $env:UV_INDEX_URL = $null
-    $env:UV_EXTRA_INDEX_URL = $null
-    $env:UV_INDEX = $null
-    $env:PIP_INDEX_URL = $null
-    $env:PIP_EXTRA_INDEX_URL = $null
-
-    try {
+    Invoke-WithoutIndexEnv {
         $env:UV_PROJECT_ENVIRONMENT = "$InstallDir\venv"
         if ($Check) {
             Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked --check *> $null }
         } else {
             Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked }
         }
+    }
+}
+
+# hc-636: the hash-verified tier and the CN mirror were mutually exclusive, and
+# nobody noticed because neither one FAILS -- one is just slow.
+#
+# Invoke-UvSyncLocked deliberately strips the index env (see its note) because
+# uv.lock records `registry = "https://pypi.org/simple"` and a mismatched index
+# makes `--locked` refuse outright. But a locked sync then downloads the LITERAL
+# files.pythonhosted.org URLs recorded in the lock -- so on a mainland machine
+# tier 0 is hash-verified and glacial (measured 2026-07-31: 26+ minutes and
+# still going), while every faster tier below is `uv pip install`, which
+# re-resolves from the mirror with NO hash verification at all. Users were being
+# offered speed or integrity, never both.
+#
+# There is a third option the ladder never had: export the lock to a
+# requirements file -- uv writes every recorded sha256 into it -- and install
+# THAT from the mirror under --require-hashes. Same hashes, same bytes, just
+# fetched from a route that works. Verified end to end 2026-07-31: 115 packages
+# / 1279 hashes from TUNA in 4.4s, and corrupting one recorded hash makes uv
+# abort with "Hash mismatch", so the verification is real and not decorative.
+#
+# CN-only by construction: with HERMES_CN_MIRRORS unset/0 this returns $false
+# immediately and the ladder below is byte-identical to before. Any failure here
+# is non-fatal -- we fall through to the existing tier 0, so the worst case is
+# today's behavior, never worse. Mirrors scripts/install.sh::_uv_mirror_hashed.
+function Invoke-UvMirrorHashedInstall {
+    if (-not (Get-Command Test-CnEnabled -ErrorAction SilentlyContinue)) { return $false }
+    if (-not (Test-CnEnabled)) { return $false }
+    if (-not (Test-Path "uv.lock")) { return $false }
+
+    $req = Join-Path $env:TEMP ("hermes-locked-reqs-" + [System.Guid]::NewGuid().ToString("N") + ".txt")
+    try {
+        Write-Info "Trying tier: hash-verified via CN mirror (uv.lock -> --require-hashes) ..."
+        # --no-emit-project: the local package is not on any index; it is built
+        # from this directory in the second step below.
+        # --extra all: the curated extra, matching Invoke-UvSyncLocked's flag
+        # choice (NOT --all-extras -- see its note about python-olm on Windows).
+        # The export runs with the index env STRIPPED, for the same reason
+        # Invoke-UvSyncLocked does: `--locked` compares the configured index
+        # against the registry recorded in uv.lock and refuses on a mismatch.
+        # Leaving the mirror set here makes export fail with "The lockfile needs
+        # to be updated" -- which is non-fatal, so the whole tier would silently
+        # degrade back to the slow upstream sync and the fix would look like it
+        # did nothing. Verified: with UV_DEFAULT_INDEX=TUNA set, export exits 2
+        # and writes a 0-byte file. The export needs no index anyway -- it only
+        # reads the lock.
+        Invoke-WithoutIndexEnv {
+            Invoke-NativeWithRelaxedErrorAction {
+                & $UvCmd export --format requirements-txt --no-emit-project --extra all --locked -o $req *> $null
+            }
+        }
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $req)) {
+            Write-Warn "uv export failed -- falling back to the upstream locked sync"
+            return $false
+        }
+
+        # The index env is INTENTIONALLY left in place here: unlike `--locked`,
+        # `uv pip install` resolves from the configured index, which is the
+        # whole point. Integrity does not depend on the index -- --require-hashes
+        # rejects any file whose sha256 is not the one in the lock.
+        Invoke-NativeWithRelaxedErrorAction { & $UvCmd pip install --require-hashes -r $req }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "mirror hash-verified install failed -- falling back to the upstream locked sync"
+            return $false
+        }
+
+        # The project itself: a local build, no network, deps already satisfied.
+        Invoke-NativeWithRelaxedErrorAction { & $UvCmd pip install --no-deps . }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "local package install failed -- falling back to the upstream locked sync"
+            return $false
+        }
+        return $true
     } finally {
-        $env:UV_DEFAULT_INDEX = $savedIndexEnv.UV_DEFAULT_INDEX
-        $env:UV_INDEX_URL = $savedIndexEnv.UV_INDEX_URL
-        $env:UV_EXTRA_INDEX_URL = $savedIndexEnv.UV_EXTRA_INDEX_URL
-        $env:UV_INDEX = $savedIndexEnv.UV_INDEX
-        $env:PIP_INDEX_URL = $savedIndexEnv.PIP_INDEX_URL
-        $env:PIP_EXTRA_INDEX_URL = $savedIndexEnv.PIP_EXTRA_INDEX_URL
+        Remove-Item -Force $req -ErrorAction SilentlyContinue
     }
 }
 
@@ -2304,7 +2381,16 @@ function Install-Dependencies {
     # without any hash verification -- they exist to keep installs working
     # when the lockfile is stale, missing, or out-of-sync with the
     # current extras spec, NOT because they're equivalent in posture.
-    if (Test-Path "uv.lock") {
+    # hc-636: on a CN install, try the mirror-served hash-verified route FIRST.
+    # It has to come BEFORE tier 0, not after it: tier 0 does not FAIL on a
+    # mainland machine, it just takes half an hour, so a fallback would never
+    # be reached. Non-CN installs return $false here and drop straight through.
+    $skipPipFallback = $false
+    if (Invoke-UvMirrorHashedInstall) {
+        Write-Success "Main package installed (hash-verified via CN mirror)"
+        $script:InstalledTier = "hash-verified (CN mirror)"
+        $skipPipFallback = $true
+    } elseif (Test-Path "uv.lock") {
         Write-Info "Trying tier: hash-verified (uv.lock) ..."
         # Critical flag choice: `--extra all`, NOT `--all-extras`.
         #   --all-extras = every [project.optional-dependencies] key,

@@ -94,9 +94,21 @@ def test_install_deps_consults_fingerprint_before_uv_check() -> None:
 def test_install_deps_marks_fingerprint_only_on_lock_verified_paths() -> None:
     fn = _extract_function("install_deps")
     marks = [m.start() for m in re.finditer(re.escape('python_deps_mark_installed "$INSTALL_DIR"'), fn)]
-    assert len(marks) == 2, (
-        "expected exactly two fingerprint writes: after the uv --check pass and "
-        f"after the locked sync success (found {len(marks)})"
+    # One write per LOCK-VERIFIED success. hc-636 added the third: the CN mirror
+    # tier installs from a uv-exported requirements file under --require-hashes,
+    # so every file is checked against the same uv.lock sha256 the locked sync
+    # would have used. It differs only in which host served the bytes, which is
+    # not what the fingerprint attests to.
+    lock_verified_sites = [
+        '_uv_mirror_hashed; then',      # CN mirror, hash-enforced
+        'if _uv_sync_locked --check',   # env already matches the lock
+        'if _uv_sync_locked; then',     # upstream locked sync
+    ]
+    for site in lock_verified_sites:
+        assert site in fn, f"expected a lock-verified success path at {site!r}"
+    assert len(marks) == len(lock_verified_sites), (
+        f"expected one fingerprint write per lock-verified path "
+        f"({len(lock_verified_sites)}), found {len(marks)}"
     )
     idx_tiers = fn.find("Multi-tier fallback")
     assert idx_tiers != -1

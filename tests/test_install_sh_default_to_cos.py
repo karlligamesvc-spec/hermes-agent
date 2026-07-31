@@ -129,15 +129,27 @@ apexnodes_install_uv_from_cos;      echo "UV_RC=$?"
 # 2. Region cache has no behavioral effect on resolve (write-only telemetry)
 # ---------------------------------------------------------------------------
 
-def _resolve_with(tmp_path, cache_value, github_unreachable, domestic_reachable):
+def _resolve_with(tmp_path, cache_value, *, upstream_ms, mirror_ms):
+    """Drive the region decision with a stubbed latency table.
+
+    hc-636 replaced the github-reachability proxy with a direct measurement of
+    the two PyPI routes, so the stub is now "how fast did each host answer"
+    ("" = no answer at all) rather than "is github blocked".
+    """
     home = tmp_path / "home"
     home.mkdir(parents=True, exist_ok=True)
     (home / ".apexnodes-region").write_text(cache_value + "\n")
+    def emit(v):
+        return f"echo {v}" if v else "return 1"
     script = f"""
 set -u
 source "{LIB_SH}"
-_an_github_unreachable() {{ return {0 if github_unreachable else 1}; }}
-_an_domestic_reachable() {{ return {0 if domestic_reachable else 1}; }}
+_an_probe_ms() {{
+    case "$1" in
+        *pythonhosted*) {emit(upstream_ms)} ;;
+        *tuna*)         {emit(mirror_ms)} ;;
+    esac
+}}
 apexnodes_resolve_region
 echo "CN=${{HERMES_CN_MIRRORS:-unset}}"
 cat "{home}/.apexnodes-region"
@@ -146,7 +158,7 @@ cat "{home}/.apexnodes-region"
 
 
 def test_cached_cn_is_ignored_when_probe_says_global(tmp_path):
-    r, home = _resolve_with(tmp_path, "cn", github_unreachable=False, domestic_reachable=True)
+    r, home = _resolve_with(tmp_path, "cn", upstream_ms=50, mirror_ms=900)
     assert "CN=0" in r.stdout, (
         "a stale 'cn' cache must not pin CN mode when the fresh probe says "
         f"global (F2 class): {r.stdout} {r.stderr}"
@@ -155,7 +167,7 @@ def test_cached_cn_is_ignored_when_probe_says_global(tmp_path):
 
 
 def test_cached_global_is_ignored_when_probe_says_cn(tmp_path):
-    r, home = _resolve_with(tmp_path, "global", github_unreachable=True, domestic_reachable=True)
+    r, home = _resolve_with(tmp_path, "global", upstream_ms="", mirror_ms=50)
     assert "CN=1" in r.stdout, (
         "a stale 'global' cache must not suppress CN mirrors when the fresh "
         f"probe says CN: {r.stdout} {r.stderr}"
@@ -163,9 +175,18 @@ def test_cached_global_is_ignored_when_probe_says_cn(tmp_path):
     assert (home / ".apexnodes-region").read_text().strip() == "cn"
 
 
-def test_offline_box_stays_global(tmp_path):
-    r, _ = _resolve_with(tmp_path, "cn", github_unreachable=True, domestic_reachable=False)
-    assert "CN=0" in r.stdout, "github down + domestic down = offline, never CN"
+def test_offline_box_now_favours_the_mirror(tmp_path):
+    """hc-636 deliberately REVERSED this: an offline box lands on cn, not global.
+
+    The old rule ("nothing reachable = global") read as conservative but had the
+    asymmetry backwards. Nothing is installable on a box with no network either
+    way, so the answer only matters for the run where connectivity returns — and
+    there, guessing upstream costs a mainland user tens of minutes while
+    guessing the mirror costs a foreign user some download speed. The cheap
+    error is the one to make by default.
+    """
+    r, _ = _resolve_with(tmp_path, "cn", upstream_ms="", mirror_ms="")
+    assert "CN=1" in r.stdout, "no signal at all must resolve to the cheap-error side"
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +198,7 @@ def test_rule1_env_skips_probes(tmp_path):
     script = f"""
 set -u
 source "{LIB_SH}"
-_an_github_unreachable() {{ echo g >> "{probes}"; return 0; }}
-_an_domestic_reachable() {{ echo d >> "{probes}"; return 0; }}
+_an_probe_ms() {{ echo p >> "{probes}"; echo 1; }}
 apexnodes_resolve_region
 echo "CN=${{HERMES_CN_MIRRORS:-unset}}"
 """
