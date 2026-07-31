@@ -30,10 +30,11 @@ DEFAULT = {
     "npm_lock": True,
     "mcp_catalog": False,
     "ci_review": True,
+    "installers": True,
 }
 
 
-def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, npm_lock=False, mcp_catalog=False, docker_meta=False, ci_review=False) -> dict[str, bool]:
+def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, npm_lock=False, mcp_catalog=False, docker_meta=False, ci_review=False, installers=False) -> dict[str, bool]:
     return {
         "python": python,
         "frontend": frontend,
@@ -44,6 +45,7 @@ def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, npm
         "npm_lock": npm_lock,
         "mcp_catalog": mcp_catalog,
         "ci_review": ci_review,
+        "installers": installers,
     }
 
 
@@ -118,6 +120,27 @@ CASES = {
     "desktop src → no ci_review": (
         ["apps/desktop/src/app.tsx"],
         _lanes(frontend=True),
+    ),
+    # hc-632: the installer syntax gate used to sit behind docker_meta, which
+    # is on only for docker paths or any .github/ change -- so a PR touching
+    # ONLY an installer skipped the one gate that exists for it. These cases
+    # pin the lane that fixes that. install.sh is Python-relevant (the suite
+    # reads it), install.ps1 is not; both must light `installers`.
+    "install.sh → installers": (
+        ["scripts/install.sh"],
+        _lanes(python=True, installers=True),
+    ),
+    "install.ps1 alone → installers": (
+        ["scripts/install.ps1"],
+        _lanes(python=True, installers=True),
+    ),
+    "dot-sourced lib → installers": (
+        ["scripts/lib/apexnodes-region-detect.ps1"],
+        _lanes(python=True, installers=True),
+    ),
+    "unrelated script → no installers": (
+        ["scripts/publish-runtime-tarball.sh"],
+        _lanes(python=True),
     ),
     # Fail open: CI-config / empty / blank diffs run everything.
     ".github change → all": ([".github/workflows/tests.yml"], DEFAULT),

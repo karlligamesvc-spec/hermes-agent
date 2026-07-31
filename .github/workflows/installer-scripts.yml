@@ -1,0 +1,61 @@
+name: Installer scripts
+
+# hc-632. Both installer scripts SHIP TO EVERY USER -- install.ps1 is bundled
+# into the desktop app under resources/, and both are copied into the PyPI
+# wheel -- yet nothing gated their syntax. A parse error there does not fail a
+# build; it fails every fresh install, on the user's machine, after they have
+# already downloaded.
+#
+# This lives in its own workflow rather than inside docker-lint.yml because
+# that one is gated on `docker_meta`, which is true only for docker paths or
+# for any .github/ change. A PR touching only scripts/install.ps1 skipped it --
+# precisely the PR it exists for. It first ran only because the PR that added
+# it also edited a workflow file. A gate that cannot fire on its own trigger is
+# not a gate (AGENTS.md #14).
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-scripts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax:
+    name: install.ps1 + install.sh parse
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          $failed = $false
+          # The lib is dot-sourced by install.ps1, so a parse error in it lands
+          # in the same parser during the same install -- check both.
+          foreach ($file in @('scripts/install.ps1', 'scripts/lib/apexnodes-region-detect.ps1')) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object {
+                Write-Host "::error file=$file,line=$($_.Extent.StartLineNumber)::$($_.Message)"
+              }
+            } else {
+              Write-Host "${file}: no parse errors"
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: install.sh parses
+        shell: bash
+        run: |
+          bash -n scripts/install.sh
+          bash -n scripts/lib/apexnodes-region-detect.sh
+          echo "shell installers have no parse errors"

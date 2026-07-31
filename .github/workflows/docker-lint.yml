@@ -53,36 +53,3 @@ jobs:
           SHELLCHECK_OPTS: --severity=error
         with:
           scandir: ./docker
-
-  # hc-632: both installer scripts ship to every user (install.ps1 is bundled
-  # into the desktop app at resources/, and both are copied into the PyPI
-  # wheel), yet nothing gated their syntax. A parse error there does not fail
-  # a build -- it fails every fresh install, on the user's machine, after they
-  # already downloaded. This job is cheap and catches exactly that.
-  install-script-syntax:
-    name: Installer scripts parse (PowerShell + bash)
-    runs-on: windows-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: install.ps1 parses
-        shell: pwsh
-        run: |
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path scripts/install.ps1), [ref]$null, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object {
-              Write-Host "::error file=scripts/install.ps1,line=$($_.Extent.StartLineNumber)::$($_.Message)"
-            }
-            exit 1
-          }
-          Write-Host "install.ps1: no parse errors"
-
-      - name: install.sh parses
-        shell: bash
-        run: |
-          bash -n scripts/install.sh
-          echo "install.sh has no parse errors"

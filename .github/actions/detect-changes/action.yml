@@ -21,6 +21,9 @@ outputs:
   docker_meta:
     description: Docker setup and meta files have changed.
     value: ${{ steps.classify.outputs.docker_meta }}
+  installers:
+    description: install.sh / install.ps1 or a lib they source has changed.
+    value: ${{ steps.classify.outputs.installers }}
   site:
     description: Build the Docusaurus docs site.
     value: ${{ steps.classify.outputs.site }}
