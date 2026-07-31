@@ -641,8 +641,27 @@ function hermesManagedNodePathEntries() {
   return entries.filter(directoryExists)
 }
 
+// hc-632: third-party CLIs we install from our COS mirror (ripgrep, ffmpeg +
+// ffprobe) land here. install.ps1 also persists this on the User PATH, but that
+// is a registry write: THIS Electron process started before the install ran, so
+// its PATH — and every child's, including the gateway — still predates it until
+// the app is restarted. The runtime resolves both tools with shutil.which(), so
+// without this entry a fresh install has them on disk and invisible for the
+// whole first session. Resolved per call like the node dirs, so the directory
+// created mid-session is picked up by the next spawn.
+function hermesManagedToolsPathEntries() {
+  return [path.join(HERMES_HOME, 'tools')].filter(directoryExists)
+}
+
 function pathWithHermesManagedNode(...entries) {
-  return [...hermesManagedNodePathEntries(), ...entries, process.env.PATH].filter(Boolean).join(path.delimiter)
+  return [
+    ...hermesManagedNodePathEntries(),
+    ...hermesManagedToolsPathEntries(),
+    ...entries,
+    process.env.PATH,
+  ]
+    .filter(Boolean)
+    .join(path.delimiter)
 }
 
 // ACTIVE_HERMES_ROOT — the canonical mutable Hermes install. Same path

@@ -223,6 +223,36 @@ def test_integrity_gate_rejects_the_archives_that_would_hurt_users():
         module.verify(good, "ffmpeg.exe")  # right zip, wrong contents
 
 
+# --------------------------------------------------------------------------
+# 4. The desktop shell must expose the tools dir to the processes it spawns
+# --------------------------------------------------------------------------
+
+
+def test_desktop_puts_the_tools_dir_on_the_child_process_path():
+    """install.ps1's User-PATH write does not reach the already-running shell.
+
+    That write goes to the registry. The Electron main process started BEFORE
+    the install ran, so its PATH -- and every child's, including the gateway --
+    still predates it until the app restarts. Without the tools dir in the
+    shell's own PATH composition, a fresh install leaves ripgrep and ffmpeg on
+    disk and invisible to shutil.which() for the entire first session, which is
+    the same "installed but not really" failure the PATH re-check in
+    Install-SystemPackages exists to prevent.
+    """
+    main_ts = (REPO_ROOT / "apps" / "desktop" / "electron" / "main.ts").read_text(encoding="utf-8")
+
+    assert "function hermesManagedToolsPathEntries" in main_ts
+    assert "hermesManagedToolsPathEntries()" in main_ts.split("function pathWithHermesManagedNode", 1)[1], (
+        "the tools dir must be composed into pathWithHermesManagedNode, which is "
+        "what every spawned child (gateway, backend, updater) actually inherits"
+    )
+    entries = main_ts.split("function hermesManagedToolsPathEntries", 1)[1].split("}", 1)[0]
+    assert "filter(directoryExists)" in entries, (
+        "resolve per call like the node dirs -- a directory created mid-session "
+        "must be picked up by the next spawn, not only after a restart"
+    )
+
+
 def test_pinned_versions_are_concrete():
     module = _load_publisher()
     for value in (module.RIPGREP_VERSION, module.FFMPEG_VERSION):
