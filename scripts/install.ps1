@@ -1329,6 +1329,56 @@ function Update-ProcessPathForPackages {
     $env:Path = [string]::Join(';', $ordered)
 }
 
+function Invoke-BoundedPackageInstall {
+    <#
+    .SYNOPSIS
+    Run one optional-package install command under a hard wall-clock budget.
+
+    .DESCRIPTION
+    hc-632: the optional-package stage must never be able to stall a first
+    install. Package managers here reach registries we do not mirror, and a
+    slow or unreachable source otherwise hangs forever -- `winget install`
+    took 18+ minutes on a real mainland-China first run with no timeout to
+    stop it.
+
+    The child runs detached so we can kill the whole tree on timeout (winget
+    spawns helpers; stopping only the parent leaves them downloading). Output
+    is captured to $LogPath either way, so a timeout leaves the same
+    breadcrumb a failure would.
+
+    Returns the exit code, or $null when the budget was exhausted (caller
+    treats $null exactly like a failure: report, do not block).
+    #>
+    param(
+        [Parameter(Mandatory)][string] $FilePath,
+        [Parameter(Mandatory)][string[]] $ArgumentList,
+        [Parameter(Mandatory)][string] $LogPath,
+        [int] $TimeoutSec = 120
+    )
+
+    $errLog = "$LogPath.err"
+    $proc = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -PassThru -NoNewWindow `
+        -RedirectStandardOutput $LogPath -RedirectStandardError $errLog
+    if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+        "hc-632: timed out after ${TimeoutSec}s -- killed, install continues without this package" |
+            Out-File -FilePath $LogPath -Encoding utf8 -Append
+        try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
+        # Kill the tree: winget/choco spawn helper processes that keep the
+        # download alive (and the CPU busy) after the parent is gone.
+        try {
+            Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        } catch { }
+        Write-Warn "  timed out after ${TimeoutSec}s -- skipping (optional; see $LogPath)"
+        return $null
+    }
+    if (Test-Path $errLog) {
+        Get-Content $errLog -ErrorAction SilentlyContinue | Out-File -FilePath $LogPath -Encoding utf8 -Append
+        Remove-Item $errLog -Force -ErrorAction SilentlyContinue
+    }
+    return $proc.ExitCode
+}
+
 function Install-SystemPackages {
     $script:HasRipgrep = $false
     $script:HasFfmpeg = $false
@@ -1374,6 +1424,34 @@ function Install-SystemPackages {
     }
 
     $description = $descParts -join " and "
+
+    # ── hc-632: these two are OPTIONAL and must never block a first install ──
+    # 2026-07-31, real first install on a mainland-China Windows box: every
+    # mandatory stage finished fast (uv 3.7s / python 12s / git 1.4s / node
+    # 0.1s -- all served by the CN mirror seam), then this stage hung for 18+
+    # minutes on `winget install --source winget`. That source is GitHub- and
+    # Microsoft-CDN-backed, has NO China mirror, and nothing here bounded it,
+    # so a first-run install stopped dead on two convenience tools: ripgrep
+    # only makes file search faster, ffmpeg is only for TTS voice messages.
+    # The user just sees the progress bar stuck with no hint what it waits on.
+    #
+    # Two rules now hold:
+    #   1. every attempt is time-boxed (Invoke-BoundedPackageInstall below);
+    #      on timeout we kill the process tree and move on.
+    #   2. in CN region we do not try the unmirrored sources at all -- we
+    #      print the one-line manual command instead of burning the user's
+    #      time on a download that is not coming.
+    $script:OptionalPkgTimeoutSec =
+        if ($env:HERMES_OPTIONAL_PKG_TIMEOUT) { [int]$env:HERMES_OPTIONAL_PKG_TIMEOUT } else { 120 }
+
+    if ($env:HERMES_CN_MIRRORS -eq "1") {
+        Write-Warn "Skipping $description -- winget/choco/scoop have no China mirror and would stall this install (hc-632)."
+        Write-Info "Both are optional; the agent works without them. To add them later:"
+        if ($needRipgrep) { Write-Info "  winget install --exact --id BurntSushi.ripgrep.MSVC --source winget" }
+        if ($needFfmpeg)  { Write-Info "  winget install --exact --id Gyan.FFmpeg --source winget" }
+        return
+    }
+
     $hasWinget = Get-Command winget -ErrorAction SilentlyContinue
     $hasChoco = Get-Command choco -ErrorAction SilentlyContinue
     $hasScoop = Get-Command scoop -ErrorAction SilentlyContinue
@@ -1396,10 +1474,12 @@ function Install-SystemPackages {
             # install -- and it exits 0, so the surrounding try/catch never fires.
             # We don't ship anything from msstore, so pinning is safe.
             try {
-                $output = winget install --exact --id $pkg --source winget --silent `
-                    --accept-package-agreements --accept-source-agreements 2>&1
-                $code = $LASTEXITCODE
-                $output | Out-File -FilePath $log -Encoding utf8
+                # hc-632: time-boxed. A stalled source used to hang here forever.
+                $code = Invoke-BoundedPackageInstall -FilePath "winget" -LogPath $log `
+                    -TimeoutSec $script:OptionalPkgTimeoutSec -ArgumentList @(
+                        'install','--exact','--id',$pkg,'--source','winget','--silent',
+                        '--accept-package-agreements','--accept-source-agreements')
+                if ($null -eq $code) { continue }   # timed out; next package
                 "winget exit: $code" | Out-File -FilePath $log -Encoding utf8 -Append
                 # 0x8A15002B (-1978335189) = APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE.
                 # winget treats `install` on a package it already has registered as
@@ -1411,10 +1491,11 @@ function Install-SystemPackages {
                 # the shim reappears.
                 if ($code -eq -1978335189) {
                     "-> already-installed/no-upgrade; retrying with --force" | Out-File -FilePath $log -Encoding utf8 -Append
-                    $output = winget install --exact --id $pkg --source winget --silent --force `
-                        --accept-package-agreements --accept-source-agreements 2>&1
-                    $output | Out-File -FilePath $log -Encoding utf8 -Append
-                    "winget exit (force): $LASTEXITCODE" | Out-File -FilePath $log -Encoding utf8 -Append
+                    $forceCode = Invoke-BoundedPackageInstall -FilePath "winget" -LogPath $log `
+                        -TimeoutSec $script:OptionalPkgTimeoutSec -ArgumentList @(
+                            'install','--exact','--id',$pkg,'--source','winget','--silent','--force',
+                            '--accept-package-agreements','--accept-source-agreements')
+                    "winget exit (force): $forceCode" | Out-File -FilePath $log -Encoding utf8 -Append
                 }
             } catch {
                 $_ | Out-File -FilePath $log -Encoding utf8 -Append
@@ -1448,7 +1529,13 @@ function Install-SystemPackages {
     if ($hasChoco -and ($needRipgrep -or $needFfmpeg)) {
         Write-Info "Trying Chocolatey..."
         foreach ($pkg in $chocoPkgs) {
-            try { choco install $pkg -y 2>&1 | Out-Null } catch { }
+            # hc-632: same budget as winget -- a fallback that can hang forever
+            # is not a fallback, it is a second way to stall the install.
+            $chocoLog = "$env:TEMP\hermes-choco-$($pkg -replace '[^A-Za-z0-9]','_')-$(Get-Random).log"
+            try {
+                Invoke-BoundedPackageInstall -FilePath "choco" -LogPath $chocoLog `
+                    -TimeoutSec $script:OptionalPkgTimeoutSec -ArgumentList @('install',$pkg,'-y') | Out-Null
+            } catch { }
         }
         Update-ProcessPathForPackages
         if ($needRipgrep -and (Get-Command rg -ErrorAction SilentlyContinue)) {
@@ -1467,7 +1554,12 @@ function Install-SystemPackages {
     if ($hasScoop -and ($needRipgrep -or $needFfmpeg)) {
         Write-Info "Trying Scoop..."
         foreach ($pkg in $scoopPkgs) {
-            try { scoop install $pkg 2>&1 | Out-Null } catch { }
+            # hc-632: budgeted, same reason as winget/choco above.
+            $scoopLog = "$env:TEMP\hermes-scoop-$($pkg -replace '[^A-Za-z0-9]','_')-$(Get-Random).log"
+            try {
+                Invoke-BoundedPackageInstall -FilePath "scoop" -LogPath $scoopLog `
+                    -TimeoutSec $script:OptionalPkgTimeoutSec -ArgumentList @('install',$pkg) | Out-Null
+            } catch { }
         }
         Update-ProcessPathForPackages
         if ($needRipgrep -and (Get-Command rg -ErrorAction SilentlyContinue)) {

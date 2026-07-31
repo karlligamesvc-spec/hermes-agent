@@ -1178,11 +1178,37 @@ install_system_packages() {
     local description
     description=$(IFS=" and "; echo "${desc_parts[*]}")
 
+    # ── hc-632: optional packages must never block a first install ──────────
+    # Twin of the same guard in install.ps1. On 2026-07-31 a mainland-China
+    # Windows first run hung 18+ minutes here (winget, no China mirror, no
+    # timeout) while every mandatory stage had finished in seconds. ripgrep
+    # only speeds up file search, ffmpeg is only for TTS voice messages --
+    # neither is worth stalling an install. brew/apt/dnf reach registries we
+    # do not mirror either, so they get the same wall-clock budget.
+    local opt_pkg_timeout="${HERMES_OPTIONAL_PKG_TIMEOUT:-120}"
+    apexnodes_bounded_pkg_install() {
+        # Prefer coreutils `timeout`; fall back to a watchdog when it is
+        # absent -- macOS ships without it, and macOS is exactly where brew
+        # may be the thing hanging.
+        if command -v timeout &> /dev/null; then
+            timeout "$opt_pkg_timeout" "$@"
+            return $?
+        fi
+        "$@" &
+        local pid=$!
+        ( sleep "$opt_pkg_timeout"; kill -TERM "$pid" 2>/dev/null ) &
+        local watchdog=$!
+        wait "$pid" 2>/dev/null
+        local rc=$?
+        kill "$watchdog" 2>/dev/null
+        return $rc
+    }
+
     # ── macOS: brew ──
     if [ "$OS" = "macos" ]; then
         if command -v brew &> /dev/null; then
-            log_info "Installing ${pkgs[*]} via Homebrew..."
-            if brew install "${pkgs[@]}"; then
+            log_info "Installing ${pkgs[*]} via Homebrew (up to ${opt_pkg_timeout}s; optional)..."
+            if apexnodes_bounded_pkg_install brew install "${pkgs[@]}"; then
                 [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                 [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
                 return 0
@@ -1211,21 +1237,27 @@ install_system_packages() {
 
         # Already root — just install
         if [ "$(id -u)" -eq 0 ]; then
-            log_info "Installing ${pkgs[*]}..."
-            if $install_cmd; then
+            log_info "Installing ${pkgs[*]} (up to ${opt_pkg_timeout}s; optional)..."
+            if apexnodes_bounded_pkg_install $install_cmd; then
                 [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                 [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
                 return 0
             fi
         # Passwordless sudo — just install
         elif command -v sudo &> /dev/null && sudo -n true 2>/dev/null; then
-            log_info "Installing ${pkgs[*]}..."
-            if sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $install_cmd; then
+            log_info "Installing ${pkgs[*]} (up to ${opt_pkg_timeout}s; optional)..."
+            if apexnodes_bounded_pkg_install sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $install_cmd; then
                 [ "$need_ripgrep" = true ] && HAS_RIPGREP=true && log_success "ripgrep installed"
                 [ "$need_ffmpeg" = true ]  && HAS_FFMPEG=true  && log_success "ffmpeg installed"
                 return 0
             fi
         # sudo needs password — ask once for everything
+        #
+        # hc-632: the two branches below are deliberately NOT time-boxed, and
+        # that is not an oversight. They are gated on IS_INTERACTIVE (`[ -t 0 ]`),
+        # so they only run with a real human at a terminal who can Ctrl-C —
+        # the desktop bootstrap pipes stdio, so its first install never reaches
+        # here. A timeout on a password prompt would kill the user mid-typing.
         elif command -v sudo &> /dev/null; then
             if [ "$IS_INTERACTIVE" = true ]; then
                 echo ""
