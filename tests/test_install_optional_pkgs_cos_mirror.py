@@ -199,28 +199,103 @@ def test_published_object_names_match_the_url_the_installer_builds():
     assert reachable <= published, f"installer can request unpublished objects: {reachable - published}"
 
 
+def _sample_archive(*members: str) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name in members:
+            zf.writestr(name, b"MZ" + name.encode() + b"\x00" * 4096)
+    return buf.getvalue()
+
+
 def test_integrity_gate_rejects_the_archives_that_would_hurt_users():
     """Reverse validation (AGENTS.md #14): make the failure, see the gate fire."""
     module = _load_publisher()
+    good = _sample_archive("ripgrep-x/rg.exe")
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("ripgrep-x/rg.exe", b"MZ" + b"\x00" * 4096)
-    good = buf.getvalue()
-
-    # Baseline: a sound archive passes, so a green result below means something.
-    assert module.verify(good, "rg.exe") == "ripgrep-x/rg.exe"
+    # Baseline: a sound archive passes, so a red result below means something.
+    assert module.verify(good, ("rg.exe",)) == ["ripgrep-x/rg.exe"]
 
     with pytest.raises(zipfile.BadZipFile):
-        module.verify(good[: len(good) // 4], "rg.exe")  # truncated, the real-world case
+        module.verify(good[: len(good) // 4], ("rg.exe",))  # truncated, the real-world case
 
     half = len(good) // 2
     corrupt = good[:half] + bytes([good[half] ^ 0xFF]) + good[half + 1 :]
     with pytest.raises((ValueError, zipfile.BadZipFile)):
-        module.verify(corrupt, "rg.exe")  # CRC mismatch
+        module.verify(corrupt, ("rg.exe",))  # CRC mismatch
 
     with pytest.raises(ValueError):
-        module.verify(good, "ffmpeg.exe")  # right zip, wrong contents
+        module.verify(good, ("ffmpeg.exe",))  # right zip, wrong contents
+
+
+def test_every_required_member_must_be_present_not_just_the_first():
+    """ffmpeg without ffprobe is a half install, and the gate must say so.
+
+    Written after `verify` grew from one required name to several: checking only
+    the first would have let a ffprobe-less archive through, and the caller does
+    not look again.
+    """
+    module = _load_publisher()
+    required = ("ffmpeg.exe", "ffprobe.exe")
+
+    assert module.verify(_sample_archive("bin/ffmpeg.exe", "bin/ffprobe.exe"), required) == [
+        "bin/ffmpeg.exe",
+        "bin/ffprobe.exe",
+    ]
+    with pytest.raises(ValueError, match="ffprobe.exe"):
+        module.verify(_sample_archive("bin/ffmpeg.exe"), required)
+
+
+def test_repack_keeps_exactly_the_required_binaries():
+    """The published ffmpeg zip is trimmed; the trim must not lose a binary.
+
+    Upstream's essentials build is 104.6MB / 303.8MB expanded, a third of which
+    is ffplay.exe -- a media player we never invoke -- plus ~10MB of HTML docs.
+    Shipping that through the stage whose stall started this ticket would be
+    answering the complaint with a smaller version of itself.
+    """
+    module = _load_publisher()
+    required = ("ffmpeg.exe", "ffprobe.exe")
+    fat = _sample_archive("b/ffmpeg.exe", "b/ffprobe.exe", "b/ffplay.exe", "doc/ffmpeg-all.html")
+
+    trimmed = module.repack(fat, required)
+
+    assert sorted(zipfile.ZipFile(io.BytesIO(trimmed)).namelist()) == ["ffmpeg.exe", "ffprobe.exe"]
+    assert module.verify(trimmed, required) == ["ffmpeg.exe", "ffprobe.exe"]
+    assert len(trimmed) < len(fat)
+
+
+def test_prepare_refuses_to_publish_a_repack_that_lost_a_binary():
+    """The re-verify after repacking must be real, not decorative.
+
+    This assertion used to be unreachable: it lived inside publish(), behind a
+    network fetch and COS credentials, so deleting it changed nothing any test
+    could see (AGENTS.md #14 -- a check the verifier cannot reach is not a
+    check). prepare() exists so this is exercised. Here repack is sabotaged to
+    drop ffprobe; prepare must refuse rather than upload a half archive.
+    """
+    module = _load_publisher()
+    art = next(a for a in module.ARTIFACTS if a.repack)
+    fat = _sample_archive("b/ffmpeg.exe", "b/ffprobe.exe", "b/ffplay.exe")
+    quiet = lambda *_a, **_k: None  # noqa: E731 -- keep the test output clean
+
+    # Baseline: with repack intact, prepare returns a trimmed, complete archive.
+    ok = module.prepare(fat, art, log=quiet)
+    assert sorted(zipfile.ZipFile(io.BytesIO(ok)).namelist()) == ["ffmpeg.exe", "ffprobe.exe"]
+
+    original_repack = module.repack
+    try:
+        module.repack = lambda blob, keep: original_repack(blob, keep[:1])
+        with pytest.raises(ValueError, match="ffprobe.exe"):
+            module.prepare(fat, art, log=quiet)
+    finally:
+        module.repack = original_repack
+
+
+def test_only_ffmpeg_is_repacked():
+    """ripgrep is 1.7MB whole -- repacking it would be churn with no payoff."""
+    module = _load_publisher()
+    repacked = {art.object_name for art in module.ARTIFACTS if art.repack}
+    assert repacked == {"ffmpeg-x86_64-pc-windows-msvc.zip"}
 
 
 # --------------------------------------------------------------------------
