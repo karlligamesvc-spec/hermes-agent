@@ -65,49 +65,87 @@ class Artifact:
 
     object_name is what Install-OptionalPkgFromCos builds its URL from, so it
     must stay `<package>-<triple>.zip` -- the same convention as uv-<triple>.zip.
-    must_contain is the file whose presence makes the archive worth serving.
+    must_contain lists the files whose presence makes the archive worth serving;
+    when `repack` is set, the published zip is trimmed to exactly those files.
     """
 
     object_name: str
     source_url: str
-    must_contain: str
+    must_contain: tuple[str, ...]
+    repack: bool = False
 
 
 ARTIFACTS = [
+    # ripgrep ships 1.7MB total -- nothing to trim, so it is mirrored verbatim.
     Artifact(
         "ripgrep-x86_64-pc-windows-msvc.zip",
         f"https://github.com/BurntSushi/ripgrep/releases/download/{RIPGREP_VERSION}"
         f"/ripgrep-{RIPGREP_VERSION}-x86_64-pc-windows-msvc.zip",
-        "rg.exe",
+        ("rg.exe",),
     ),
     Artifact(
         "ripgrep-aarch64-pc-windows-msvc.zip",
         f"https://github.com/BurntSushi/ripgrep/releases/download/{RIPGREP_VERSION}"
         f"/ripgrep-{RIPGREP_VERSION}-aarch64-pc-windows-msvc.zip",
-        "rg.exe",
+        ("rg.exe",),
     ),
     # gyan.dev publishes x64 only. Windows-on-ARM runs it under x64 emulation,
     # which is also exactly what `winget install Gyan.FFmpeg` lands there, so
     # the COS path and the fallback path agree on that machine too.
+    #
+    # REPACKED, and this one earns it. The upstream "essentials" build is 104.6MB
+    # compressed / 303.8MB expanded, and a third of that is ffplay.exe (34.6MB /
+    # 98.6MB) -- a media PLAYER we never invoke -- plus ~10MB of HTML docs. Both
+    # halves of that matter here: the download, and Expand-Archive, which on
+    # Windows PowerShell 5.1 is slow enough that 300MB is felt. This whole ticket
+    # exists because the prerequisites stage stalled, so shipping 110MB we never
+    # read would be answering the complaint with a smaller version of itself.
+    # Trimmed to the two binaries we actually shell out to.
     Artifact(
         "ffmpeg-x86_64-pc-windows-msvc.zip",
         f"https://github.com/GyanD/codexffmpeg/releases/download/{FFMPEG_VERSION}"
         f"/ffmpeg-{FFMPEG_VERSION}-essentials_build.zip",
-        "ffmpeg.exe",
+        ("ffmpeg.exe", "ffprobe.exe"),
+        repack=True,
     ),
 ]
 
 
-def verify(blob: bytes, must_contain: str) -> str:
-    """Return the path of `must_contain` inside the archive, or raise."""
+def verify(blob: bytes, must_contain: tuple[str, ...] | str) -> list[str]:
+    """Return the paths of every `must_contain` entry in the archive, or raise.
+
+    Every required name must be present: a half-populated archive is exactly
+    the failure this gate exists to stop.
+    """
+    wanted = (must_contain,) if isinstance(must_contain, str) else must_contain
     archive = zipfile.ZipFile(io.BytesIO(blob))
     bad = archive.testzip()
     if bad is not None:
         raise ValueError(f"CRC check failed on {bad}")
-    hits = [n for n in archive.namelist() if n.rsplit("/", 1)[-1] == must_contain]
-    if not hits:
-        raise ValueError(f"{must_contain} is not in the archive")
-    return hits[0]
+
+    found = []
+    for name in wanted:
+        hits = [n for n in archive.namelist() if n.rsplit("/", 1)[-1] == name]
+        if not hits:
+            raise ValueError(f"{name} is not in the archive")
+        found.append(hits[0])
+    return found
+
+
+def repack(blob: bytes, keep: tuple[str, ...]) -> bytes:
+    """Rebuild the archive with only `keep`, flattened to the zip root.
+
+    Flattened because the consumer finds binaries with a recursive filter, so
+    the directory prefix carries no information -- and a flat archive makes what
+    we publish self-evident.
+    """
+    source = zipfile.ZipFile(io.BytesIO(blob))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dest:
+        for name in keep:
+            member = next(n for n in source.namelist() if n.rsplit("/", 1)[-1] == name)
+            dest.writestr(name, source.read(member))
+    return out.getvalue()
 
 
 def check_live() -> int:
@@ -118,13 +156,45 @@ def check_live() -> int:
         try:
             with urllib.request.urlopen(url, timeout=300) as resp:
                 blob = resp.read()
-            member = verify(blob, art.must_contain)
+            members = verify(blob, art.must_contain)
         except (urllib.error.URLError, ValueError, zipfile.BadZipFile) as exc:
             print(f"FAIL {art.object_name}: {exc}")
             failures += 1
             continue
-        print(f"ok   {art.object_name}  {len(blob) / 1048576:.1f}MB  {member}")
+        expanded = sum(i.file_size for i in zipfile.ZipFile(io.BytesIO(blob)).infolist())
+        print(
+            f"ok   {art.object_name}  {len(blob) / 1048576:.1f}MB download / "
+            f"{expanded / 1048576:.1f}MB expanded  {', '.join(members)}"
+        )
     return 1 if failures else 0
+
+
+def prepare(blob: bytes, art: Artifact, *, log=print) -> bytes:
+    """Turn a freshly downloaded archive into the bytes we are willing to publish.
+
+    Separate from publish() so it is reachable from a test. Inside publish() this
+    logic sat behind a network call and COS credentials, which meant the
+    re-verify below -- a line that only matters when something has gone wrong --
+    could not be exercised at all. That is the shape AGENTS.md #14 warns about:
+    a check the verifier is structurally unable to reach is not a check.
+
+    Raises on anything that must not be uploaded.
+    """
+    # Verify BEFORE repacking. repack() reads members out of this same archive,
+    # so a corrupt download has to be caught here, not inferred from whatever
+    # the repack happened to produce.
+    members = verify(blob, art.must_contain)
+    log(f"   integrity ok, contains {', '.join(members)}")
+    if not art.repack:
+        return blob
+
+    original = len(blob)
+    trimmed = repack(blob, art.must_contain)
+    # Re-verify what we are ACTUALLY publishing: the archive we checked above is
+    # no longer the archive we ship.
+    verify(trimmed, art.must_contain)
+    log(f"   repacked {original / 1048576:.1f}MB -> {len(trimmed) / 1048576:.1f}MB")
+    return trimmed
 
 
 def publish() -> int:
@@ -141,14 +211,15 @@ def publish() -> int:
         print(f"-> {art.object_name}")
         with urllib.request.urlopen(art.source_url, timeout=600) as resp:
             blob = resp.read()
+        # Record the UPSTREAM digest even when we repack: it is the provenance
+        # anchor for whatever ends up on COS.
         digest = hashlib.sha256(blob).hexdigest()
-        print(f"   fetched {len(blob) / 1048576:.1f}MB  sha256={digest}")
+        print(f"   fetched {len(blob) / 1048576:.1f}MB  upstream sha256={digest}")
         try:
-            member = verify(blob, art.must_contain)
-        except (ValueError, zipfile.BadZipFile) as exc:
+            blob = prepare(blob, art)
+        except (ValueError, zipfile.BadZipFile, StopIteration) as exc:
             print(f"   REFUSING TO UPLOAD: {exc}", file=sys.stderr)
             return 1
-        print(f"   integrity ok, contains {member}")
         client.put_object(Bucket=BUCKET, Key=f"{PREFIX}/{art.object_name}", Body=blob)
         print(f"   uploaded {PREFIX}/{art.object_name}")
     return 0
