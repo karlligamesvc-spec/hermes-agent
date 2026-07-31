@@ -16,6 +16,7 @@ Lanes:
 * ``deps``        — pyproject.toml dependency bounds check.
 * ``npm_lock``    — semantic package-lock.json diff PR comment.
 * ``mcp_catalog`` — bundled MCP catalog / installer review.
+* ``installers``  — install.sh / install.ps1 and their libs parse cleanly.
 
 Docker is not a lane — it builds on push-to-main and release only,
 never per-PR.
@@ -38,6 +39,14 @@ import sys
 _FRONTEND = ("ui-tui/", "web/", "apps/")  # TS typecheck-matrix packages
 _ROOT_NPM = {"package.json", "package-lock.json"}  # shifts every package's tree
 _DOCKER_META = ("docker/", ".hadolint.yml", "Dockerfile") # docker setup
+# The two installer scripts and the libs they source. They ship to every user
+# (install.ps1 is bundled into the desktop app; both go into the PyPI wheel),
+# so a parse error there fails no build -- it fails every fresh install, on the
+# user's machine, after they already downloaded. hc-632: the syntax gate used to
+# live behind docker_meta, which is on only for docker paths or any .github/
+# change, so a PR touching ONLY an installer skipped it -- exactly the PR it
+# exists for. It had never once run on its own trigger.
+_INSTALLERS = ("scripts/install.", "scripts/lib/")
 _SITE = ("website/", "skills/", "optional-skills/")  # docs site + skill pages
 # Prose/frontend trees that can't touch Python. skills/ is excluded on purpose.
 _PY_SKIP = ("docs/", "website/") + _FRONTEND
@@ -101,6 +110,7 @@ def classify(files: list[str]) -> dict[str, bool]:
         "deps": any(f == "pyproject.toml" for f in files),
         "npm_lock": any(f.split("/")[-1] == "package-lock.json" for f in files),
         "mcp_catalog": any(_is_mcp_catalog(f) for f in files),
+        "installers": any(f.startswith(_INSTALLERS) for f in files),
         "ci_review": any(_is_ci_review(f) for f in files),
     }
     if not files or any(f.startswith(".github/") for f in files):
@@ -112,6 +122,7 @@ def classify(files: list[str]) -> dict[str, bool]:
         ret["deps"] = True
         ret["npm_lock"] = True
         ret["ci_review"] = True
+        ret["installers"] = True
 
         # explicitly skip mcp catalog here. it's not needed unless those files are modified.
     return ret
