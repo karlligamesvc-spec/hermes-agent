@@ -1910,44 +1910,75 @@ function Install-Repository {
         }
     }
 
-    # Set per-repo config (harmless if it fails)
-    Push-Location $InstallDir
-    git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
-    # Pin autocrlf=false on the managed clone so git never renormalizes the
-    # repo's LF text files to CRLF in the working tree. Without this, the very
-    # next `hermes update` checkout aborts on a "dirty" tree the user never
-    # touched (see the update path above).
-    git -c windows.appendAtomically=false config core.autocrlf false 2>$null
+    # hc-632: everything below is repo-scoped git, and the COS source tarball
+    # produces a directory with NO .git -- it is a plain source tree, already
+    # built from the pinned commit (Install-RuntimeFromCos keys its URL on
+    # $Commit). `git config <key> <value>` at repo scope in such a directory is
+    # `fatal: not in a git directory`, and under this script's EAP=Stop that
+    # stderr line TERMINATES the stage rather than being the no-op the old
+    # "harmless if it fails" comment assumed. Every mainland install takes the
+    # COS path, so this failed 100% of them:
+    #
+    #     [OK] Runtime source ready from COS mirror (8ca1d63b...)
+    #     -> Configuring git for Windows compatibility...
+    #     failed: fatal: not in a git directory
+    #
+    # It stayed hidden until now only because the system-packages stage used to
+    # hang ahead of it (the original hc-632 report) -- fixing that stall is what
+    # let the install reach this line at all.
+    #
+    # install.sh's twin already guards this (`[ -d "$INSTALL_DIR/.git" ]` on its
+    # pin block, with the same reasoning in its comment). This side never did:
+    # one behavior, two implementations, only one of them fixed (AGENTS.md #12).
+    $hasGitDir = Test-Path (Join-Path $InstallDir ".git")
 
-    # Post-clone pin: when a clone (or ZIP-fallback init) just landed us on
-    # $Branch's tip, honour the higher-precedence $Commit / $Tag by checking
-    # the exact ref out as a detached HEAD.  Skipped for the in-place update
-    # path (above) since that already routed via the same precedence.
-    if (-not $didUpdate) {
-        # Same EAP=Continue wrap as the update path -- git fetch's 'From <url>'
-        # info line goes to stderr and would terminate the script under the
-        # global EAP=Stop otherwise.  We check $LASTEXITCODE for real errors.
-        $prevEAP = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        try {
-            if ($Commit) {
-                Write-Info "Pinning to commit $Commit..."
-                git -c windows.appendAtomically=false fetch origin $Commit
-                git -c windows.appendAtomically=false checkout --detach $Commit
-                if ($LASTEXITCODE -ne 0) {
-                    throw "git checkout $Commit failed (exit $LASTEXITCODE)"
-                }
-            } elseif ($Tag) {
-                Write-Info "Pinning to tag $Tag..."
-                git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
-                git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
-                if ($LASTEXITCODE -ne 0) {
-                    throw "git checkout tag $Tag failed (exit $LASTEXITCODE)"
-                }
-            }
-        } finally {
-            $ErrorActionPreference = $prevEAP
+    Push-Location $InstallDir
+    try {
+        if ($hasGitDir) {
+            # Set per-repo config (harmless if it fails)
+            git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
+            # Pin autocrlf=false on the managed clone so git never renormalizes the
+            # repo's LF text files to CRLF in the working tree. Without this, the very
+            # next `hermes update` checkout aborts on a "dirty" tree the user never
+            # touched (see the update path above).
+            git -c windows.appendAtomically=false config core.autocrlf false 2>$null
         }
+
+        # Post-clone pin: when a clone (or ZIP-fallback init) just landed us on
+        # $Branch's tip, honour the higher-precedence $Commit / $Tag by checking
+        # the exact ref out as a detached HEAD.  Skipped for the in-place update
+        # path (above) since that already routed via the same precedence, and for a
+        # COS tarball, which carries no .git and is already the pinned commit.
+        if (-not $didUpdate -and $hasGitDir) {
+            # Same EAP=Continue wrap as the update path -- git fetch's 'From <url>'
+            # info line goes to stderr and would terminate the script under the
+            # global EAP=Stop otherwise.  We check $LASTEXITCODE for real errors.
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                if ($Commit) {
+                    Write-Info "Pinning to commit $Commit..."
+                    git -c windows.appendAtomically=false fetch origin $Commit
+                    git -c windows.appendAtomically=false checkout --detach $Commit
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "git checkout $Commit failed (exit $LASTEXITCODE)"
+                    }
+                } elseif ($Tag) {
+                    Write-Info "Pinning to tag $Tag..."
+                    git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
+                    git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "git checkout tag $Tag failed (exit $LASTEXITCODE)"
+                    }
+                }
+            } finally {
+                $ErrorActionPreference = $prevEAP
+            }
+        }
+    } finally {
+        # The old code pushed and never popped, leaking $InstallDir onto the
+        # location stack for every later stage.
+        Pop-Location
     }
 
     Write-Success "Repository ready"
