@@ -2,11 +2,11 @@
 # scripts/lib/apexnodes-region-detect.ps1
 # ---------------------------------------------------------------------------
 # Sourceable ApexNodes overlay: COS-first artifact sourcing + CN mirror env.
-# Windows twin of scripts/lib/apexnodes-region-detect.sh — keep the two in step
+# Windows twin of scripts/lib/apexnodes-region-detect.sh -- keep the two in step
 # (probe, precedence rules, env-var names, COS layout are identical).
 #
 # hc-474 (default-to-COS): the COS download helpers below are region-
-# independent — every install with HERMES_RUNTIME_COS_BASE configured tries our
+# independent -- every install with HERMES_RUNTIME_COS_BASE configured tries our
 # public-read COS bucket FIRST and falls back to the official foreign source
 # only when COS fails. Region detection no longer gates any make-or-break
 # install path; it only tunes the third-party package mirrors, where a wrong
@@ -35,7 +35,7 @@
 #
 # install.ps1 provides Write-Info / Write-Warn / Write-Success and Get-WindowsArch
 # before these run. When this lib is dot-sourced standalone (e.g. a unit test)
-# those may be absent, so define no-op-safe fallbacks here — only if missing.
+# those may be absent, so define no-op-safe fallbacks here -- only if missing.
 # ===========================================================================
 
 if (-not (Get-Command Write-Info -ErrorAction SilentlyContinue)) {
@@ -53,7 +53,7 @@ if (-not (Get-Command Write-Success -ErrorAction SilentlyContinue)) {
 # ===========================================================================
 # OFF by default: with the flag unset Set-ApexCnMirrorEnv does nothing and the
 # third-party package sources stay byte-for-byte upstream. Since hc-474 this
-# flag governs ONLY the third-party mirror env below — the COS artifact helpers
+# flag governs ONLY the third-party mirror env below -- the COS artifact helpers
 # are region-independent and keyed solely on HERMES_RUNTIME_COS_BASE (see
 # Test-CosConfigured). The split is deliberate:
 #   * Our runtime source + uv + PortableGit come from our own public-read COS
@@ -341,5 +341,113 @@ function Install-GitFromCos {
         return $false
     } finally {
         Remove-Item -Force $tmpFile -ErrorAction SilentlyContinue
+    }
+}
+
+# Where COS-mirrored third-party CLIs land. Separate from $HermesHome\bin on
+# purpose -- see the note on Install-OptionalPkgFromCos below.
+function Get-ApexToolsDir { return (Join-Path $HermesHome "tools") }
+
+# Put the tools dir on PATH for (a) this process, so the caller's post-install
+# Get-Command verification actually sees what we just installed, and (b) the
+# User scope, so it survives into the shells the agent spawns later.
+#
+# User-scope persistence is best-effort via Set-UserEnvSafe when install.ps1 has
+# dot-sourced us (group-policy-locked HKCU\Environment killed an install once
+# already, 2026-07-05). The process-scope half always works and is what the
+# desktop shell inherits, so a locked registry costs a future shell, not this
+# install.
+function Register-ApexToolsPath {
+    $toolsDir = Get-ApexToolsDir
+    if (-not (Test-Path $toolsDir)) { return }
+
+    $current = $env:PATH -split ';'
+    if ($current -notcontains $toolsDir) { $env:PATH = "$toolsDir;$env:PATH" }
+
+    try {
+        $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        $userPathItems = if ($userPath) { $userPath -split ";" } else { @() }
+        if ($userPathItems -notcontains $toolsDir) {
+            $userPathItems += $toolsDir
+            if (Get-Command Set-UserEnvSafe -ErrorAction SilentlyContinue) {
+                Set-UserEnvSafe "Path" ($userPathItems -join ";") | Out-Null
+            } else {
+                [Environment]::SetEnvironmentVariable("Path", ($userPathItems -join ";"), "User")
+            }
+        }
+    } catch {
+        Write-Warn "Could not persist $toolsDir to the User PATH: $($_.Exception.Message)"
+    }
+}
+
+# COS-first for the two OPTIONAL system packages (hc-632). Same shape as
+# Install-UvFromCos / Install-GitFromCos above: fetch our own mirrored copy of
+# the exact upstream artifact and extract the binary.
+#
+# Target is $HermesHome\tools, NOT $HermesHome\bin. Both runtime lookups are
+# shutil.which() -- tools/tts_tool.py:_has_ffmpeg and tools/file_operations.py's
+# rg invocation -- so unlike uv (always called by absolute path) these two must
+# be ON PATH to count as installed. $HermesHome\bin holds our managed uv, and
+# putting that on the user's PATH would shadow a system uv they never asked us
+# to touch. A separate dir keeps the PATH entry to exactly what we mean by it.
+#
+# WHY THIS EXISTS AT ALL. 2026-07-31, a real first install on a mainland-China
+# Windows box: every mandatory stage finished in ~17s total because each one
+# already had a China route (uv/git/runtime -> COS, PyPI -> TUNA, CPython/node/
+# npm/Electron/Playwright -> npmmirror). Then the install sat for 18+ minutes on
+# `winget install --source winget` for ripgrep and ffmpeg -- the one download in
+# the whole chain with no China mirror. The first patch only time-boxed and
+# skipped it; Kael's call was the right one: mirror the files instead, so a CN
+# install gets the same complete result as everyone else rather than a degraded
+# one. A timeout is a seatbelt, not a road.
+#
+# Objects are published by scripts/mirror-optional-packages.py (integrity-gated:
+# a zip that fails CRC or lacks the expected .exe is never uploaded).
+# ffmpeg ships x64 only upstream; Windows-on-ARM runs it under emulation, which
+# is exactly what `winget install Gyan.FFmpeg` lands there too.
+function Install-OptionalPkgFromCos {
+    param(
+        [Parameter(Mandatory)][ValidateSet('ripgrep', 'ffmpeg')][string] $Package
+    )
+    if (-not (Test-CosConfigured)) { return $false }
+
+    $arch = Get-WindowsArch
+    if ($Package -eq 'ripgrep') {
+        $triple = if ($arch -eq 'arm64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+        $exeName = 'rg.exe'
+    } else {
+        $triple = 'x86_64-pc-windows-msvc'
+        $exeName = 'ffmpeg.exe'
+    }
+
+    $base = $env:HERMES_RUNTIME_COS_BASE.TrimEnd('/')
+    $url = "$base/$Package-$triple.zip"
+    $toolsDir = Get-ApexToolsDir
+    New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
+    $tmp = Join-Path $env:TEMP ("hermes-$Package-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    try {
+        Write-Info "Fetching $Package from COS mirror: $url"
+        Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp "$Package.zip") -UseBasicParsing
+        Expand-Archive -Path (Join-Path $tmp "$Package.zip") -DestinationPath $tmp -Force
+        $exe = Get-ChildItem -Path $tmp -Recurse -Filter $exeName | Select-Object -First 1
+        if (-not $exe) {
+            Write-Warn "$exeName not found inside COS archive -- falling back to the package managers"
+            return $false
+        }
+        Copy-Item $exe.FullName (Join-Path $toolsDir $exeName) -Force
+        # ffmpeg's own probe tool ships in the same archive and several skills
+        # shell out to it; installing one without the other is a half install.
+        if ($Package -eq 'ffmpeg') {
+            $probe = Get-ChildItem -Path $tmp -Recurse -Filter 'ffprobe.exe' | Select-Object -First 1
+            if ($probe) { Copy-Item $probe.FullName (Join-Path $toolsDir 'ffprobe.exe') -Force }
+        }
+        Write-Success "$Package installed from COS mirror"
+        return $true
+    } catch {
+        Write-Warn "COS $Package install failed ($_) -- falling back to the package managers"
+        return $false
+    } finally {
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
 }
