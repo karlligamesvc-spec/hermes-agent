@@ -95,15 +95,74 @@ function Test-CosConfigured { return (-not [string]::IsNullOrWhiteSpace($env:HER
 # Diagnostics use Write-Info/Write-Warn (information stream, never stdout) so
 # the manifest / stage JSON frames the bootstrap runner parses stay clean.
 
-# Probe github.com itself -- THE canonical GFW block (hc-463). $true when
-# github is UNREACHABLE.
-function Test-GithubUnreachable {
-    try { Invoke-WebRequest -Uri "https://github.com/" -Method Head -TimeoutSec 6 -UseBasicParsing | Out-Null; return $false } catch { return $true }
+# hc-636: measure the route we actually care about, not a proxy for geography.
+#
+# This used to ask "is github.com reachable?" and treat NO as "in China". That
+# is a proxy signal, and mainland access to github is INTERMITTENT: on
+# 2026-07-31 the same physical machine answered cn on one run and global on the
+# next, 90 minutes apart. The costs of the two errors are wildly unequal --
+# mirrors used from abroad are merely slower, upstream used from the mainland is
+# tens of minutes or a failure -- so a coin-flip signal is the wrong shape.
+#
+# Instead: time both PyPI routes and take the faster one. That is the quantity
+# the answer is FOR, so it cannot be right about geography and wrong about
+# outcome. Probe hosts are the ones the bytes come from (files.pythonhosted.org
+# vs the mirror), not the index hosts.
+$script:PypiUpstreamProbe = "https://files.pythonhosted.org/packages/"
+$script:PypiMirrorProbe = "https://pypi.tuna.tsinghua.edu.cn/packages/"
+# How much faster upstream must be before we abandon the mirror. Both real
+# cases clear 3x by a wide margin; the band it governs is where both routes
+# work, so landing on the mirror there costs nothing.
+$script:UpstreamMargin = 3
+
+# Elapsed ms for a HEAD against $Url, or $null when the host gave no answer at
+# all. ANY http status counts as an answer -- 403/404 from a live host is a
+# perfectly good latency sample. Measuring the HOST rather than an object means
+# the probe cannot rot when a path is renamed.
+function Measure-HostResponse {
+    param([Parameter(Mandatory)][string] $Url, [int] $TimeoutSec = 5)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        Invoke-WebRequest -Uri $Url -Method Head -TimeoutSec $TimeoutSec -UseBasicParsing | Out-Null
+        return [int]$sw.ElapsedMilliseconds
+    } catch {
+        # An HTTP error status carries a Response -- the host answered, and the
+        # timing is valid. A timeout or DNS/socket failure carries none.
+        if ($_.Exception.Response) { return [int]$sw.ElapsedMilliseconds }
+        return $null
+    }
 }
-# Domestic-reachability guard: only pair the github-unreachable signal with a
-# confirmed-up domestic mirror, so a fully-offline box is never classified CN.
-function Test-DomesticReachable {
-    try { Invoke-WebRequest -Uri "https://registry.npmmirror.com/" -Method Head -TimeoutSec 5 -UseBasicParsing | Out-Null; return $true } catch { return $false }
+
+# $true when the domestic mirror is the better PyPI route from here.
+function Test-PypiRouteIsDomestic {
+    $upstream = Measure-HostResponse -Url $script:PypiUpstreamProbe
+    $mirror = Measure-HostResponse -Url $script:PypiMirrorProbe
+
+    # Best-of-2 for the MIRROR only, and the asymmetry is why. A mirror spike
+    # makes us abandon the mirror -> a mainland install pays tens of minutes. An
+    # upstream spike makes us keep the mirror -> nobody is hurt. So re-sample
+    # exactly the side whose noise causes the expensive error, and do not pay a
+    # second upstream probe (which is the one that times out where it matters).
+    if ($null -ne $mirror) {
+        $second = Measure-HostResponse -Url $script:PypiMirrorProbe
+        if (($null -ne $second) -and ($second -lt $mirror)) { $mirror = $second }
+    }
+
+    # Order matters, and encodes the asymmetry: every ambiguous case resolves
+    # toward the mirror. Upstream silent (including a box with no network at
+    # all) -> mirror; only a demonstrably-working upstream beside a silent
+    # mirror picks global.
+    if ($null -eq $upstream) { return $true }
+    if ($null -eq $mirror) { return $false }
+
+    # Global requires upstream to be DECISIVELY faster (>= 3x), not merely
+    # ahead. A bare `<` makes near-parity a coin flip -- the same defect being
+    # fixed here, one threshold down: a host measured 135 vs 158 ms on one
+    # sample and 376 vs 190 on the next. Both real cases clear this margin
+    # easily (mainland: upstream times out; abroad: the mirror is far away), so
+    # the margin only governs the parity band, and there both routes work --
+    # which makes the mirror the safe side to land on.
+    return ($mirror -le ($upstream * $script:UpstreamMargin))
 }
 
 function Resolve-ApexRegion {
@@ -129,14 +188,11 @@ function Resolve-ApexRegion {
         }
     }
 
-    # Rule 3: fresh decisive probe. github.com unreachable WHILE a domestic
-    # mirror is up = a network that blocks github but not domestic = CN.
-    # Everything ambiguous = global: upstream sources work there, and since
-    # hc-474 the COS-first artifact path no longer depends on this answer.
-    $detected = 'global'
-    if ((Test-GithubUnreachable) -and (Test-DomesticReachable)) {
-        $detected = 'cn'
-    }
+    # Rule 3: fresh decisive probe -- whichever PyPI route is actually faster
+    # from this machine wins. See Test-PypiRouteIsDomestic for why this replaced
+    # the old github-reachability proxy (hc-636) and why ambiguity now resolves
+    # toward the mirror instead of away from it.
+    $detected = if (Test-PypiRouteIsDomestic) { 'cn' } else { 'global' }
 
     # Telemetry write (best-effort; never fail the install). Install-time code
     # never reads this back -- the runtime region signal (apex_overlay/region.py)

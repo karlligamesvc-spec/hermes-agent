@@ -93,22 +93,74 @@ _an_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 # the runner forwards stderr as ordinary log lines, so the user still sees this.
 _an_log() { echo "$1" >&2; }
 
-# Probe github.com itself — it is THE canonical GFW block (hc-463). Returns 0
-# (true) when github is UNREACHABLE; a conservative 1 when we cannot probe
-# (no curl), so absence of proof never biases toward CN.
-_an_github_unreachable() {
+# hc-636: measure the route we actually care about, not a proxy for geography.
+# Twin of Measure-HostResponse / Test-PypiRouteIsDomestic in the .ps1 lib — keep
+# the two in step.
+#
+# This used to ask "is github.com reachable?" and treat NO as "in China". That
+# is a proxy signal, and mainland access to github is INTERMITTENT: on
+# 2026-07-31 the same physical machine answered cn on one run and global on the
+# next, 90 minutes apart. The costs of the two errors are wildly unequal —
+# mirrors used from abroad are merely slower, upstream used from the mainland is
+# tens of minutes or a failure — so a coin-flip signal is the wrong shape.
+#
+# Instead: time both PyPI routes and take the faster one. That is the quantity
+# the answer is FOR, so it cannot be right about geography and wrong about
+# outcome. Probe hosts are the ones the bytes come from, not the index hosts.
+_AN_PYPI_UPSTREAM_PROBE="https://files.pythonhosted.org/packages/"
+_AN_PYPI_MIRROR_PROBE="https://pypi.tuna.tsinghua.edu.cn/packages/"
+# How much faster upstream must be before we abandon the mirror. Both real
+# cases clear 3x by a wide margin; the band it governs is where both routes
+# work, so landing on the mirror there costs nothing.
+_AN_UPSTREAM_MARGIN=3
+
+# Echo elapsed milliseconds for a HEAD against $1; return non-zero when the host
+# gave no answer at all. ANY http status counts as an answer — 403/404 from a
+# live host is a perfectly good latency sample, and measuring the HOST rather
+# than an object means the probe cannot rot when a path is renamed.
+_an_probe_ms() {
     command -v curl >/dev/null 2>&1 || return 1
-    curl -fsS -I --max-time 6 "https://github.com/" >/dev/null 2>&1 && return 1
-    return 0
+    local out code secs
+    out="$(curl -sS -o /dev/null -I --max-time "${_AN_PROBE_TIMEOUT:-5}" \
+        -w '%{http_code} %{time_total}' "$1" 2>/dev/null)" || return 1
+    code="${out%% *}"
+    secs="${out##* }"
+    # curl reports 000 when it never got a response line.
+    [ "${code:-000}" = "000" ] && return 1
+    awk -v t="${secs:-0}" 'BEGIN { printf "%d", t * 1000 }'
 }
 
-# Domestic-reachability guard: only pair the github-unreachable signal with a
-# confirmed-up domestic mirror, so a fully-offline box is never classified as CN.
-# Returns 0 (true) when the domestic mirror is REACHABLE.
-_an_domestic_reachable() {
-    command -v curl >/dev/null 2>&1 || return 1
-    curl -fsS -I --max-time 5 "https://registry.npmmirror.com/" >/dev/null 2>&1 && return 0
-    return 1
+# Return 0 (true) when the domestic mirror is the better PyPI route from here.
+_an_pypi_route_is_domestic() {
+    local up mirror mirror2
+    up="$(_an_probe_ms "$_AN_PYPI_UPSTREAM_PROBE")" || up=""
+    mirror="$(_an_probe_ms "$_AN_PYPI_MIRROR_PROBE")" || mirror=""
+
+    # Best-of-2 for the MIRROR only, and the asymmetry is why. A mirror spike
+    # makes us abandon the mirror -> a mainland install pays tens of minutes. An
+    # upstream spike makes us keep the mirror -> nobody is hurt. So re-sample
+    # exactly the side whose noise causes the expensive error, and do not pay a
+    # second upstream probe (which is the one that times out where it matters).
+    if [ -n "$mirror" ]; then
+        mirror2="$(_an_probe_ms "$_AN_PYPI_MIRROR_PROBE")" || mirror2=""
+        if [ -n "$mirror2" ] && [ "$mirror2" -lt "$mirror" ]; then mirror="$mirror2"; fi
+    fi
+
+    # Order encodes the asymmetry: every ambiguous case resolves toward the
+    # mirror. Upstream silent (including a box with no network at all, and a box
+    # with no curl) -> mirror; only a demonstrably-working upstream beside a
+    # silent mirror picks global.
+    [ -z "$up" ] && return 0
+    [ -z "$mirror" ] && return 1
+
+    # Global requires upstream to be DECISIVELY faster (>= 3x), not merely
+    # ahead. A bare `-lt` makes near-parity a coin flip — the same defect being
+    # fixed here, one threshold down: a host measured 135 vs 158 ms on one
+    # sample and 376 vs 190 on the next. Both real cases clear this margin
+    # easily (mainland: upstream times out; abroad: the mirror is far away), so
+    # the margin only governs the parity band, and there both routes work —
+    # which makes the mirror the safe side to land on.
+    [ "$mirror" -le "$(( up * _AN_UPSTREAM_MARGIN ))" ]
 }
 
 # Resolve the region into HERMES_CN_MIRRORS. No-op when HERMES_CN_MIRRORS is
@@ -137,15 +189,12 @@ apexnodes_resolve_region() {
             _an_log "⚠ Unknown APEXNODES_REGION='${APEXNODES_REGION}' (expected cn|global) — auto-detecting" ;;
     esac
 
-    # Rule 3: fresh decisive probe. github.com unreachable WHILE a domestic
-    # mirror is up = a network that blocks github but not domestic = CN.
-    # Requiring domestic-reachable keeps a fully-offline box on "global".
-    # Everything ambiguous (github reachable, or nothing reachable) = global:
-    # upstream sources work there, and since hc-474 the COS-first artifact
-    # path no longer depends on this answer, so we no longer need the old
-    # timezone/npmjs heuristics to rescue edge cases.
+    # Rule 3: fresh decisive probe — whichever PyPI route is actually faster
+    # from this machine wins. See _an_pypi_route_is_domestic for why this
+    # replaced the old github-reachability proxy (hc-636) and why ambiguity now
+    # resolves toward the mirror instead of away from it.
     local detected="global"
-    if _an_github_unreachable && _an_domestic_reachable; then
+    if _an_pypi_route_is_domestic; then
         detected="cn"
     fi
 
