@@ -236,22 +236,45 @@ function requestStatus(method, url, { timeoutMs = 15000, redirectsLeft = 3 } = {
   })
 }
 
+// 3 attempts with linear backoff — absorb a transient hiccup so a network blip
+// doesn't spuriously block a release, but a genuine outage still fails closed.
+//
+// hc-634: this used to be inlined in fetchLatest() only, and the tarball HEAD
+// below called requestStatus() bare. Two network probes in one file, one of them
+// hardened. On 2026-07-31 the unhardened one took down the whole 0.17.5 release
+// with `tarball-head: ... -> no response`, while the object was in fact fine
+// (HEAD 200, 74.7MB, unchanged since the previous day) -- a US-hosted GitHub
+// runner blipping on its way to COS ap-guangzhou. Note which one was left bare:
+// the LONGER, flakier path of the two. Now both go through here.
+async function withRetry(attempt) {
+  for (let i = 1; i <= 3; i++) {
+    const result = await attempt()
+    if (result !== null && result !== undefined) return result
+    if (i < 3) await new Promise(r => setTimeout(r, i * 1000))
+  }
+  return null
+}
+
 async function fetchLatest(apiBase) {
   const url = apiBase.replace(/\/+$/, '') + LATEST_PATH
-  // 3 attempts with linear backoff — absorb a transient prod hiccup so a network
-  // blip doesn't spuriously block a release, but a genuine outage still fails closed.
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  return withRetry(async () => {
     const { status, body } = await requestStatus('GET', url)
     if (status === 200 && body) {
       try {
         return JSON.parse(body)
       } catch {
-        /* fall through to retry */
+        /* unparseable body -- treat as a failed attempt */
       }
     }
-    if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 1000))
-  }
-  return null
+    return null
+  })
+}
+
+async function headStatus(url) {
+  // Retries only while there is NO response at all (timeout / socket error).
+  // A real HTTP status -- 403, 404 -- is an answer, and answers are not retried:
+  // a genuinely missing tarball must still fail closed on the first attempt.
+  return withRetry(async () => (await requestStatus('HEAD', url)).status)
 }
 
 function readPackage() {
@@ -283,8 +306,7 @@ async function main() {
   const latest = await fetchLatest(apiBase)
   let tarballStatus = null
   if (latest && typeof latest.cos_tarball_url === 'string' && latest.cos_tarball_url) {
-    const head = await requestStatus('HEAD', latest.cos_tarball_url)
-    tarballStatus = head.status
+    tarballStatus = await headStatus(latest.cos_tarball_url)
   }
 
   const { ok, checks } = evaluatePreflight({ latest, minEngineVersion, shellVersion, tarballStatus })
@@ -297,7 +319,7 @@ async function main() {
   console.log('\nrelease preflight OK — shell↔engine contract holds against live prod.')
 }
 
-module.exports = { evaluatePreflight, DEFAULT_API_BASE, LATEST_PATH, parseSemver, compareSemver }
+module.exports = { evaluatePreflight, withRetry, DEFAULT_API_BASE, LATEST_PATH, parseSemver, compareSemver }
 
 if (require.main === module) {
   main().catch(err => {
