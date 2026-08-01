@@ -44,6 +44,9 @@ _gateway_lock_handle = None
 # while another process holds the mutual-exclusion lock.
 _WINDOWS_LOCK_OFFSET = 1024 * 1024
 _GATEWAY_RUNNING_PID_CACHE_TTL_SECONDS = 1.0
+# Platform states that mean "this adapter is NOT carrying traffic and is not
+# expected to start on its own". See _record_platform_failure_streak.
+_PLATFORM_FAILING_STATES = frozenset({"retrying", "fatal"})
 _gateway_running_pid_cache_lock = threading.Lock()
 _gateway_running_pid_cache: dict[tuple[str, bool, bool], tuple[float, tuple[Any, ...], Optional[int]]] = {}
 
@@ -873,6 +876,63 @@ def write_pid_file() -> None:
         raise
 
 
+def _record_platform_failure_streak(
+    platform_payload: dict[str, Any], platform_state: Any
+) -> None:
+    """Persist how LONG and how OFTEN a platform has been failing.
+
+    ``updated_at`` cannot answer either question: the reconnect watcher rewrites
+    the platform entry on every failed retry, so a permanently broken adapter's
+    timestamp looks perpetually fresh (a QQ adapter retried every 300s for 13h
+    and the file never once looked stale). The only durable failure signal used
+    to be ``_failed_platforms[p]["attempts"]``, which lives in gateway memory
+    and dies with the process — nothing off-host could see it.
+
+    So the streak is derived here, at the single choke point every platform
+    status write funnels through (``GatewayRunner._update_platform_runtime_status``
+    and ``BasePlatformAdapter._write_runtime_status_safe`` both land here), and
+    written next to ``state``:
+
+      ``attempts``      consecutive failing status WRITES since the platform was
+                        last connected (1 on the write that opens the streak).
+                        Writes, not reconnect attempts: a failing adapter
+                        usually writes its own ``fatal`` (``_set_fatal_error``)
+                        and then the watcher writes ``retrying``, so one retry
+                        can advance this by more than one. That is deliberate —
+                        both writers feed one counter, so no failure path is
+                        invisible — but it means the counter is a churn
+                        measure, and ``failing_since`` is the wall clock.
+      ``failing_since`` UTC ISO timestamp of the write that opened the streak;
+                        ``None`` while connected.
+
+    Only ``connected`` clears a streak. ``connecting`` / ``paused`` /
+    ``disabled`` / ``disconnected`` are deliberately neutral: they are
+    bookkeeping or operator states, and a gateway restart mid-outage writes
+    ``connecting`` before it writes the next ``retrying`` — resetting there
+    would let a crash-looping gateway hide an adapter that never comes back.
+
+    "Is a streak open" is therefore read off ``failing_since``, NOT off the
+    previous ``state``: the previous state is whatever bookkeeping value landed
+    last, while ``failing_since`` is set only by this function and cleared only
+    by ``connected``. A platform entry left behind by an older runtime has no
+    ``failing_since``, so the first failing write after an upgrade opens a fresh
+    streak instead of silently counting forever with no start time.
+    """
+    if platform_state in _PLATFORM_FAILING_STATES:
+        if platform_payload.get("failing_since"):
+            try:
+                attempts = int(platform_payload.get("attempts") or 0)
+            except (TypeError, ValueError):
+                attempts = 0
+            platform_payload["attempts"] = max(0, attempts) + 1
+        else:
+            platform_payload["attempts"] = 1
+            platform_payload["failing_since"] = _utc_now_iso()
+    elif platform_state == "connected":
+        platform_payload["attempts"] = 0
+        platform_payload["failing_since"] = None
+
+
 def write_runtime_status(
     *,
     gateway_state: Any = _UNSET,
@@ -913,6 +973,7 @@ def write_runtime_status(
     if platform is not _UNSET:
         platform_payload = payload["platforms"].get(platform, {})
         if platform_state is not _UNSET:
+            _record_platform_failure_streak(platform_payload, platform_state)
             platform_payload["state"] = platform_state
         if error_code is not _UNSET:
             platform_payload["error_code"] = error_code

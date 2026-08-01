@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from gateway import status
 
 
@@ -669,6 +671,158 @@ class TestGatewayRuntimeStatus:
         assert payload["platforms"]["discord"]["state"] == "connected"
         assert payload["platforms"]["discord"]["error_code"] is None
         assert payload["platforms"]["discord"]["error_message"] is None
+
+
+class TestPlatformFailureStreak:
+    """``attempts`` / ``failing_since`` on the persisted platform entry.
+
+    An adapter that fails forever is indistinguishable from a healthy one in
+    this file without them: every failed retry rewrites ``updated_at``, so the
+    entry never looks stale no matter how long the outage runs. These tests pin
+    the two fields that DO carry the outage, and — critically — the fact that
+    ``updated_at`` alone cannot.
+    """
+
+    def _write(self, platform_state, **kwargs):
+        status.write_runtime_status(
+            gateway_state=kwargs.pop("gateway_state", "running"),
+            platform="qqbot",
+            platform_state=platform_state,
+            **kwargs,
+        )
+        return status.read_runtime_status()["platforms"]["qqbot"]
+
+    def test_first_failing_write_opens_the_streak(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        entry = self._write("retrying", error_code=None, error_message="dns")
+
+        assert entry["attempts"] == 1
+        assert entry["failing_since"] is not None
+
+    def test_consecutive_failing_writes_accumulate_and_pin_the_start(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        first = self._write("retrying", error_message="attempt 1")
+        opened_at = first["failing_since"]
+        for _ in range(4):
+            entry = self._write("retrying", error_message="still failing")
+
+        assert entry["attempts"] == 5
+        # The streak start must NOT move — it is the only field that says how
+        # long the outage has run. updated_at moved on every one of these writes.
+        assert entry["failing_since"] == opened_at
+        assert entry["updated_at"] >= opened_at
+
+    def test_updated_at_alone_cannot_detect_the_outage(self, tmp_path, monkeypatch):
+        """The reason this ticket exists (hc-617 / hc-615 QQ, 13h undetected).
+
+        A "status != connected AND updated_at older than N minutes" sentinel is
+        structurally unable to fire: the retry loop refreshes updated_at itself.
+        """
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        opened = self._write("retrying", error_message="down")["failing_since"]
+        for _ in range(20):
+            entry = self._write("retrying", error_message="down")
+
+        assert entry["updated_at"] > opened, (
+            "updated_at is refreshed by the retry itself — a freshness-based "
+            "sentinel can never see this outage"
+        )
+        assert entry["attempts"] == 21
+        assert entry["failing_since"] == opened
+
+    def test_fatal_continues_the_same_streak_as_retrying(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        opened = self._write("retrying", error_message="down")["failing_since"]
+        entry = self._write("fatal", error_code="bad_auth", error_message="401")
+
+        assert entry["attempts"] == 2
+        assert entry["failing_since"] == opened
+
+    def test_connected_clears_the_streak(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        self._write("retrying", error_message="down")
+        self._write("retrying", error_message="down")
+        entry = self._write("connected", error_code=None, error_message=None)
+
+        assert entry["attempts"] == 0
+        assert entry["failing_since"] is None
+
+    @pytest.mark.parametrize("neutral_state", ["connecting", "paused", "disabled", "disconnected"])
+    def test_neutral_states_neither_open_nor_clear_a_streak(
+        self, tmp_path, monkeypatch, neutral_state
+    ):
+        """A gateway restart mid-outage writes ``connecting`` before the next
+        ``retrying``; ``/platform pause`` writes ``paused``. Neither may erase
+        an outage that is still running, and neither may invent one."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        opened = self._write("retrying", error_message="down")["failing_since"]
+        after_neutral = self._write(neutral_state, error_message=None)
+        assert after_neutral["attempts"] == 1
+        assert after_neutral["failing_since"] == opened
+
+        resumed = self._write("retrying", error_message="down")
+        assert resumed["attempts"] == 2
+        assert resumed["failing_since"] == opened
+
+    def test_streak_survives_a_pre_existing_file_without_the_fields(
+        self, tmp_path, monkeypatch
+    ):
+        """Upgrade path: a gateway_state.json written by an older runtime has a
+        platform entry with no ``attempts`` key. The first failing write after
+        the upgrade must not crash and must open a streak."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        (tmp_path / "gateway_state.json").write_text(
+            json.dumps(
+                {
+                    "gateway_state": "running",
+                    "platforms": {"qqbot": {"state": "retrying", "updated_at": "2026-07-29T04:48:00+00:00"}},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        entry = self._write("retrying", error_message="down")
+
+        assert entry["attempts"] == 1
+        assert entry["failing_since"] is not None
+
+    def test_garbage_attempts_value_does_not_raise(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        (tmp_path / "gateway_state.json").write_text(
+            json.dumps(
+                {
+                    "gateway_state": "running",
+                    "platforms": {"qqbot": {"state": "retrying", "attempts": "many"}},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        entry = self._write("retrying", error_message="down")
+
+        assert entry["attempts"] == 1
+
+    def test_platform_entry_untouched_when_no_state_is_written(
+        self, tmp_path, monkeypatch
+    ):
+        """``write_runtime_status`` is also called with only error fields; a
+        write that does not carry a state must not move the streak."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+        opened = self._write("retrying", error_message="down")["failing_since"]
+        status.write_runtime_status(platform="qqbot", error_message="late detail")
+        entry = status.read_runtime_status()["platforms"]["qqbot"]
+
+        assert entry["attempts"] == 1
+        assert entry["failing_since"] == opened
 
 
 class TestGetProcessStartTime:
