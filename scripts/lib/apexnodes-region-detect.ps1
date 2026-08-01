@@ -284,7 +284,8 @@ function Install-UvFromCos {
 # Pure-.NET .tar.gz extractor, used ONLY when tar.exe cannot be launched
 # (hc-642). Some endpoint-security products deny execution of System32 binaries
 # from a script host: a mainland Windows first install was observed failing with
-#   程序"tar.exe"无法运行: 拒绝访问
+#   cheng-xu "tar.exe" wu-fa yun-xing: ju-jue fang-wen
+#   ("the program tar.exe cannot be run: access denied")
 # which, because this script runs with EAP=Stop, turned into a terminating error
 # that took down the whole COS fast path. The install then fell back to
 # git-over-SSH -> git-over-HTTPS -> ZIP and sat in `repository` for 3h50m before
@@ -426,7 +427,7 @@ function Expand-TarGzManaged {
             }
 
             if ($typeflag -ne '0' -and $typeflag -ne [char]0) {
-                # Symlink/hardlink/device/fifo — not something we can fabricate
+                # Symlink/hardlink/device/fifo -- not something we can fabricate
                 # faithfully here. Bail so the caller clones instead.
                 Write-Warn "tar: entry type '$typeflag' unsupported ('$name') -- falling back"
                 return $false
@@ -496,7 +497,7 @@ function Install-RuntimeFromCos {
         } catch {
             # hc-642: tar.exe is PRESENT but cannot be launched -- endpoint
             # security denying execution of System32 binaries from a script host
-            # ("程序\"tar.exe\"无法运行: 拒绝访问"). With EAP=Stop that is a
+            # ("access denied" launching tar.exe). With EAP=Stop that is a
             # terminating error, which used to take the whole COS path down and
             # send the install into the hours-long git/ZIP fallback chain. The
             # tarball is already on disk; unpack it ourselves instead.

@@ -39,7 +39,7 @@ function New-Workspace {
     return $w
 }
 
-# ── 1. round-trip: files, nesting, deep path, UTF-8 name ──────────────────
+# -- 1. round-trip: files, nesting, deep path, UTF-8 name ------------------
 Write-Host "test: round-trips a git-archive-shaped tarball"
 $ws = New-Workspace
 try {
@@ -51,8 +51,13 @@ try {
     Set-Content -LiteralPath (Join-Path $src 'pyproject.toml') -Value "[project]`nname = 'hermes-agent'`n" -NoNewline
     Set-Content -LiteralPath (Join-Path $src 'README.md') -Value "hello" -NoNewline
     Set-Content -LiteralPath (Join-Path $deep 'deep.txt') -Value "deep-content" -NoNewline
+    # A non-ASCII filename is exactly what tar encodes via a pax 'x' header, so
+    # this case must survive -- but built from code points, because this .ps1
+    # must stay pure ASCII (Windows PowerShell 5.1 reads a BOM-less script in
+    # the system ANSI code page and a stray byte desyncs the parser).
+    $cjkName = [string][char]0x8BF4 + [string][char]0x660E + '.txt'   # U+8BF4 U+660E
     # Non-ASCII name: the header is decoded as UTF-8, not the OEM code page.
-    Set-Content -LiteralPath (Join-Path $src '说明.txt') -Value "zh" -NoNewline
+    Set-Content -LiteralPath (Join-Path $src $cjkName) -Value "zh" -NoNewline
 
     $tgz = Join-Path $ws 'runtime.tar.gz'
     Push-Location $ws
@@ -66,7 +71,7 @@ try {
     Assert-True $ok 'extractor reports success'
     Assert-True (Test-Path (Join-Path $dest 'pyproject.toml')) 'pyproject.toml extracted (the caller gates on this)'
     Assert-Eq (Get-Content -Raw -LiteralPath (Join-Path $dest 'README.md')) 'hello' 'file content preserved'
-    Assert-Eq (Get-Content -Raw -LiteralPath (Join-Path $dest '说明.txt')) 'zh' 'UTF-8 filename preserved'
+    Assert-Eq (Get-Content -Raw -LiteralPath (Join-Path $dest $cjkName)) 'zh' 'UTF-8 filename preserved'
     $deepOut = Join-Path $dest ('a/' + ('nested-directory-with-a-long-name/' * 4) + 'deep.txt')
     Assert-True (Test-Path -LiteralPath $deepOut) 'long (>100 char) path extracted'
     Assert-Eq (Get-Content -Raw -LiteralPath $deepOut) 'deep-content' 'long-path file content preserved'
@@ -83,7 +88,7 @@ try {
     Assert-Eq (($mine -join '|')) (($theirs -join '|')) 'file set identical to tar -xzf'
 } finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
 
-# ── 2. unsupported entry type must BAIL, not half-extract ─────────────────
+# -- 2. unsupported entry type must BAIL, not half-extract -----------------
 Write-Host "test: bails on an entry type it cannot reproduce"
 $ws = New-Workspace
 try {
@@ -130,7 +135,7 @@ try {
     Assert-True (-not $ok) 'returns $false on an unsupported entry (caller then clones)'
 } finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
 
-# ── 3. tar-slip: a path escaping the destination must be refused ──────────
+# -- 3. tar-slip: a path escaping the destination must be refused ----------
 Write-Host "test: refuses an entry that escapes the destination"
 $ws = New-Workspace
 try {
@@ -154,7 +159,7 @@ try {
     Assert-True (-not (Test-Path (Join-Path $ws 'escaped.txt'))) 'nothing written outside the destination'
 } finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
 
-# ── 4. THE point of hc-642: tar cannot be launched, COS path still works ──
+# -- 4. THE point of hc-642: tar cannot be launched, COS path still works --
 # The extractor being correct proves nothing on its own -- what broke the real
 # install was the WIRING: `& $sysTar` throwing (EAP=Stop) took down the whole
 # COS branch and sent it into the hours-long git/ZIP fallback. Reproduce that
