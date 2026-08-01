@@ -81,23 +81,29 @@ try {
     # Cross-check the file set against tar's own output, so the reader cannot
     # pass by merely agreeing with itself.
     #
-    # ASCII-named entries ONLY, and that scoping is the point: tar is the oracle
-    # for structure, not for encoding. bsdtar on an English-locale Windows
-    # (CP1252) writes the pax-encoded CJK name as '__.txt', while this extractor
-    # decodes the header as UTF-8 and gets it right -- so a whole-set comparison
-    # would fail on a runner for being MORE correct than the reference. The CJK
-    # entry is asserted directly above (name + content), which is the stronger
-    # check anyway.
+    # Restricted to an EXPLICIT list of the ASCII fixture names, and that
+    # scoping is the point: tar is the oracle for structure, not for encoding.
+    # bsdtar on an English-locale Windows (CP1252) writes the pax-encoded CJK
+    # name as '__.txt' while this extractor decodes the header as UTF-8 and
+    # gets it right -- so comparing whole sets fails the reader for being MORE
+    # correct than the reference. Filtering "non-ASCII names" is not enough
+    # either: tar's mangled '__.txt' IS ASCII, so it survives on tar's side
+    # while the real name is dropped on ours. An explicit allow-list is the
+    # only form that cannot go asymmetric. The CJK entry is asserted directly
+    # above (name + content), which is the stronger check anyway.
     $ref = Join-Path $ws 'ref'
     New-Item -ItemType Directory -Force -Path $ref | Out-Null
     & tar -xzf $tgz -C $ref --strip-components=1
-    $asciiOnly = { param($root) Get-ChildItem -Recurse -File -LiteralPath $root |
-        ForEach-Object { $_.FullName.Substring($root.Length).Replace('\','/') } |
-        Where-Object { $_ -notmatch '[^\x20-\x7e]' } | Sort-Object }
-    $mine = & $asciiOnly $dest
-    $theirs = & $asciiOnly $ref
-    Assert-Eq (($mine -join '|')) (($theirs -join '|')) 'ASCII-named file set identical to tar -xzf'
-    Assert-True ($mine.Count -ge 3) 'the cross-check actually compared a non-trivial set'
+    $expected = @('pyproject.toml', 'README.md', 'deep.txt')
+    $listAscii = { param($root) Get-ChildItem -Recurse -File -LiteralPath $root |
+        Where-Object { $expected -contains $_.Name } |
+        ForEach-Object { $_.FullName.Substring($root.Length).Replace('\','/') } | Sort-Object }
+    $mine = @(& $listAscii $dest)
+    $theirs = @(& $listAscii $ref)
+    Assert-Eq (($mine -join '|')) (($theirs -join '|')) 'ASCII fixture set identical to tar -xzf'
+    # A filter bug that emptied both sides would make the line above pass
+    # vacuously -- pin the count so an always-equal assertion cannot hide.
+    Assert-Eq $mine.Count $expected.Count 'the cross-check compared every ASCII fixture'
 } finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
 
 # -- 2. unsupported entry type must BAIL, not half-extract -----------------
