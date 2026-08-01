@@ -1,6 +1,7 @@
 """Tests for the gateway platform reconnection watcher."""
 
 import asyncio
+import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -405,6 +406,124 @@ class TestPlatformReconnectWatcher:
 
         assert Platform.TELEGRAM in runner._failed_platforms
         assert runner._failed_platforms[Platform.TELEGRAM]["attempts"] == 2
+
+    @pytest.mark.asyncio
+    async def test_retry_loop_persists_the_outage_to_gateway_state(
+        self, tmp_path, monkeypatch
+    ):
+        """hc-617: the watcher's failures must land in ``gateway_state.json``.
+
+        This is the fault-injection leg (AGENTS.md #14): an adapter configured
+        to always fail is run through the REAL watcher with the REAL status
+        writer (no patch on ``write_runtime_status``), then the file is read
+        back off disk. Everything a platform-side observer can ever see about a
+        permanently broken adapter has to be in that file — ``attempts`` and
+        ``failing_since`` are the only two fields that carry the outage, since
+        ``updated_at`` is refreshed by each failed retry itself.
+        """
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        runner = _make_runner()
+
+        runner._failed_platforms[Platform.TELEGRAM] = {
+            "config": PlatformConfig(enabled=True, token="test"),
+            "attempts": 0,
+            "next_retry": time.monotonic() - 1,
+        }
+        fail_adapter = StubAdapter(
+            succeed=False, fatal_error="DNS failure", fatal_retryable=True
+        )
+        real_sleep = asyncio.sleep
+
+        async def run_one_tick():
+            runner._running = True
+            call_count = 0
+
+            async def fake_sleep(n):
+                nonlocal call_count
+                call_count += 1
+                if call_count > 1:
+                    runner._running = False
+                await real_sleep(0)
+
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                await runner._platform_reconnect_watcher()
+
+        with patch.object(runner, "_create_adapter", return_value=fail_adapter):
+            await run_one_tick()
+            first = json.loads((tmp_path / "gateway_state.json").read_text())
+            first_entry = first["platforms"]["telegram"]
+
+            # Second tick: force the backoff open again so the watcher retries.
+            runner._failed_platforms[Platform.TELEGRAM]["next_retry"] = time.monotonic() - 1
+            await run_one_tick()
+
+        entry = json.loads((tmp_path / "gateway_state.json").read_text())["platforms"]["telegram"]
+
+        # Two writes per retry, and that is the point: the adapter writes its
+        # own `fatal` from _set_fatal_error and the watcher then writes
+        # `retrying`. Both writers feed ONE streak — neither failure path is
+        # invisible to an off-host observer (AGENTS.md #12: count the exits).
+        assert first_entry["attempts"] == 2
+        assert first_entry["failing_since"] is not None
+        assert entry["state"] == "retrying"
+        assert entry["attempts"] == 4, (
+            "each failed retry must advance the persisted attempt count"
+        )
+        assert entry["failing_since"] == first_entry["failing_since"], (
+            "failing_since must pin the START of the outage, not the last retry"
+        )
+        assert entry["updated_at"] > entry["failing_since"], (
+            "updated_at moves with every retry — this is exactly why a "
+            "freshness-based sentinel could not see the hc-615 QQ outage"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reconnect_clears_the_outage_on_success(self, tmp_path, monkeypatch):
+        """The recovery leg: a successful reconnect must zero the streak, or the
+        cloud-side alarm would keep paging after the platform came back."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        runner = _make_runner()
+        runner._sync_voice_mode_state_to_adapter = MagicMock()
+
+        runner._failed_platforms[Platform.TELEGRAM] = {
+            "config": PlatformConfig(enabled=True, token="test"),
+            "attempts": 0,
+            "next_retry": time.monotonic() - 1,
+        }
+        real_sleep = asyncio.sleep
+
+        async def run_one_tick():
+            runner._running = True
+            call_count = 0
+
+            async def fake_sleep(n):
+                nonlocal call_count
+                call_count += 1
+                if call_count > 1:
+                    runner._running = False
+                await real_sleep(0)
+
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                await runner._platform_reconnect_watcher()
+
+        fail_adapter = StubAdapter(
+            succeed=False, fatal_error="DNS failure", fatal_retryable=True
+        )
+        with patch.object(runner, "_create_adapter", return_value=fail_adapter):
+            await run_one_tick()
+        assert json.loads((tmp_path / "gateway_state.json").read_text())[
+            "platforms"
+        ]["telegram"]["attempts"] == 2
+
+        runner._failed_platforms[Platform.TELEGRAM]["next_retry"] = time.monotonic() - 1
+        with patch.object(runner, "_create_adapter", return_value=StubAdapter(succeed=True)):
+            with patch("gateway.run.build_channel_directory", create=True):
+                await run_one_tick()
+
+        entry = json.loads((tmp_path / "gateway_state.json").read_text())["platforms"]["telegram"]
+        assert entry["state"] == "connected"
+        assert entry["attempts"] == 0
+        assert entry["failing_since"] is None
 
     @pytest.mark.asyncio
     async def test_reconnect_never_auto_pauses_retryable_failures(self):
