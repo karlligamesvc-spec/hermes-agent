@@ -5,6 +5,7 @@ import type { ModelOptionProvider } from '@/types/hermes'
 import {
   dropAliasedCustomRow,
   filterPickerProviders,
+  isPickerVisibleModelProvider,
   isPickerVisibleProvider,
   providerDisplayName
 } from './provider-allowlist'
@@ -86,7 +87,31 @@ describe('provider-allowlist', () => {
       provider('anthropic')
     ]
 
-    expect(filterPickerProviders(input).map(p => p.slug)).toEqual(['deepseek', 'custom:apex-nodes.com', 'zai'])
+    // hc-638: built-in vendor rows no longer reach the picker — only the managed
+    // relay and the user's own endpoints do. Order among survivors is preserved.
+    expect(filterPickerProviders(input).map(p => p.slug)).toEqual(['custom:apex-nodes.com'])
+  })
+
+  it('keeps the user\'s own custom endpoints beside the managed relay', () => {
+    // The escape hatch: dropping the built-in rows must not drop a BYO endpoint
+    // the user configured themselves. That is the whole shape of hc-638 —
+    // "we chose it for you" rows go, "you chose it" rows stay.
+    const input = [provider('deepseek'), provider('custom:my-ollama'), provider('custom:apex-nodes.com')]
+
+    expect(filterPickerProviders(input).map(p => p.slug)).toEqual(['custom:my-ollama', 'custom:apex-nodes.com'])
+  })
+
+  it('leaves the SHARED predicate alone — settings still sees domestic vendors', () => {
+    // isPickerVisibleProvider answers a different question and has two other
+    // consumers: providers-settings.tsx renders OAuth sign-in rows from it, and
+    // pairs it with DOMESTIC_PROVIDER_SLUGS to decide which vendors get a
+    // key-entry card. Narrowing it would have removed the ability to CONFIGURE
+    // or SIGN IN TO DeepSeek, not just to pick its models. Three questions,
+    // one name — this pins them apart.
+    expect(isPickerVisibleProvider('deepseek')).toBe(true)
+    expect(isPickerVisibleModelProvider('deepseek')).toBe(false)
+    expect(isPickerVisibleProvider('openai')).toBe(false)
+    expect(isPickerVisibleModelProvider('openai')).toBe(false)
   })
 })
 
@@ -137,8 +162,7 @@ describe('dropAliasedCustomRow', () => {
 
   it('is applied by filterPickerProviders, so no picker surface sees the alias', () => {
     expect(filterPickerProviders([provider('copilot'), relay, alias, provider('deepseek')]).map(p => p.slug)).toEqual([
-      'custom:apex-nodes.com',
-      'deepseek'
+      'custom:apex-nodes.com'
     ])
   })
 })

@@ -54,12 +54,12 @@ vi.mock('../hooks/use-on-profile-switch', () => ({
 }))
 
 beforeEach(() => {
-  getGlobalModelInfo.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-v4-pro' })
+  getGlobalModelInfo.mockResolvedValue({ provider: 'custom:deepseek', model: 'deepseek-v4-pro' })
   getGlobalModelOptions.mockResolvedValue({
     providers: [
       {
         name: 'DeepSeek',
-        slug: 'deepseek',
+        slug: 'custom:deepseek',
         models: ['deepseek-v4-pro', 'deepseek-chat'],
         authenticated: true,
         capabilities: { 'deepseek-v4-pro': { reasoning: true, fast: true } }
@@ -67,12 +67,12 @@ beforeEach(() => {
     ]
   })
   getAuxiliaryModels.mockResolvedValue({
-    main: { provider: 'deepseek', model: 'deepseek-v4-pro' },
+    main: { provider: 'custom:deepseek', model: 'deepseek-v4-pro' },
     tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
   })
   getMoaModels.mockResolvedValue(null)
-  setModelAssignment.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-v4-pro', gateway_tools: [] })
-  getRecommendedDefaultModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-v4-pro', free_tier: null })
+  setModelAssignment.mockResolvedValue({ provider: 'custom:deepseek', model: 'deepseek-v4-pro', gateway_tools: [] })
+  getRecommendedDefaultModel.mockResolvedValue({ provider: 'custom:deepseek', model: 'deepseek-v4-pro', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
   getHermesConfigRecord.mockResolvedValue({ agent: { reasoning_effort: 'medium', service_tier: 'normal' } })
   saveHermesConfig.mockResolvedValue({ ok: true })
@@ -99,6 +99,12 @@ async function renderModelSettings() {
   )
 }
 
+// hc-638: Settings -> Models lists the same set the chat picker does — the
+// managed relay plus endpoints the user configured themselves. Built-in vendor
+// rows were dropped from BOTH surfaces together: being able to set DeepSeek as
+// the main model here while it is unselectable in chat would be incoherent.
+// These fixtures therefore name custom endpoints; what each test asserts (which
+// row renders, deep-links, warns) is unchanged.
 describe('ModelSettings', () => {
   it('loads the current main model and lists configured providers only', async () => {
     await renderModelSettings()
@@ -156,6 +162,11 @@ describe('ModelSettings', () => {
   })
 
   it('deep-links a known OAuth provider row into its setup flow', async () => {
+    // Kept on a REAL vendor slug on purpose. hc-638 removed built-in vendors
+    // from the model LISTS, not from sign-in: providers-settings still renders
+    // OAuth rows from isPickerVisibleProvider, and this deep-link is that flow.
+    // Renaming it to a `custom:` slug would have quietly changed what the test
+    // covers — custom endpoints do not do OAuth.
     getGlobalModelInfo.mockResolvedValueOnce({ provider: 'qwen-oauth', model: '' })
     getGlobalModelOptions.mockResolvedValueOnce({
       providers: [
@@ -181,7 +192,7 @@ describe('ModelSettings', () => {
   it('replaces the selected provider and model when the active profile changes', async () => {
     getGlobalModelInfo
       .mockResolvedValueOnce({ provider: 'custom', model: 'local-a' })
-      .mockResolvedValueOnce({ provider: 'deepseek', model: 'deepseek-v4-pro' })
+      .mockResolvedValueOnce({ provider: 'custom:deepseek', model: 'deepseek-v4-pro' })
     getGlobalModelOptions
       .mockResolvedValueOnce({
         providers: [
@@ -197,7 +208,7 @@ describe('ModelSettings', () => {
         providers: [
           {
             name: 'DeepSeek',
-            slug: 'deepseek',
+            slug: 'custom:deepseek',
             models: ['deepseek-v4-pro'],
             authenticated: true,
             capabilities: { 'deepseek-v4-pro': { reasoning: true, fast: true } }
@@ -236,7 +247,7 @@ describe('ModelSettings', () => {
       providers: [
         {
           name: 'DeepSeek',
-          slug: 'deepseek',
+          slug: 'custom:deepseek',
           models: ['deepseek-v4-pro'],
           authenticated: true,
           capabilities: { 'deepseek-v4-pro': { reasoning: false, fast: false } }
@@ -267,7 +278,7 @@ describe('ModelSettings', () => {
     await waitFor(() =>
       expect(setModelAssignment).toHaveBeenCalledWith({
         model: 'deepseek-v4-pro',
-        provider: 'deepseek',
+        provider: 'custom:deepseek',
         scope: 'auxiliary',
         task: 'vision'
       })
@@ -279,7 +290,7 @@ describe('ModelSettings', () => {
       provider: 'zai',
       model: 'glm-5.2',
       gateway_tools: [],
-      stale_aux: [{ task: 'compression', provider: 'deepseek', model: 'deepseek-v4-pro' }]
+      stale_aux: [{ task: 'compression', provider: 'custom:deepseek', model: 'deepseek-v4-pro' }]
     })
 
     await renderModelSettings()
@@ -290,12 +301,12 @@ describe('ModelSettings', () => {
 
     // The switch-time notice names the pinned provider and offers a reset.
     expect(await screen.findByText(/still run on/)).toBeTruthy()
-    expect(screen.getByText('deepseek')).toBeTruthy()
+    expect(screen.getByText('custom:deepseek')).toBeTruthy()
   })
 
   it('shows a persistent banner when a loaded aux slot mismatches the main provider', async () => {
     getAuxiliaryModels.mockResolvedValueOnce({
-      main: { provider: 'deepseek', model: 'deepseek-v4-pro' },
+      main: { provider: 'custom:deepseek', model: 'deepseek-v4-pro' },
       tasks: [{ task: 'curator', provider: 'zai', model: 'glm-5.2', base_url: '' }]
     })
 
@@ -320,7 +331,7 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
     // would silently revert the chips, hiding exactly the regression these
     // tests exist to catch.
     // Main model starts on a BYO provider, so no platform chip is preselected.
-    let applied = { model: 'minimax-m2', provider: 'minimax' }
+    let applied = { model: 'minimax-m2', provider: 'custom:minimax' }
     let savedMoa: unknown = null
 
     getGlobalModelInfo.mockImplementation(() => Promise.resolve(applied))
@@ -347,13 +358,13 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
           models: ['deepseek-v4-pro-APEX', 'glm-5.2', 'qwen3.7-max']
         },
         // A domestic BYO provider (the user's own key) — survives the filter.
-        { name: 'MiniMax', slug: 'minimax', authenticated: true, models: ['minimax-m2'] },
+        { name: 'MiniMax', slug: 'custom:minimax', authenticated: true, models: ['minimax-m2'] },
         // Foreign — the China-first filter must keep it out of every selector.
         { name: 'OpenAI', slug: 'openai-codex', authenticated: true, models: ['gpt-5.5'] }
       ]
     })
     getAuxiliaryModels.mockResolvedValue({
-      main: { provider: 'minimax', model: 'minimax-m2' },
+      main: { provider: 'custom:minimax', model: 'minimax-m2' },
       tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
     })
   })

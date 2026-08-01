@@ -95,11 +95,37 @@ export function isPickerVisibleProvider(slug: string): boolean {
   return isCustomOrManagedSlug(normalized) || DOMESTIC_PROVIDER_SLUGS.has(normalized)
 }
 
-/** Keep only the providers the China-first picker should show (APEX-NODES.COM +
- *  custom BYOK + domestic), with the anonymous bare-`custom` alias removed.
+/** Whether a provider's MODELS should be listed in the model picker.
+ *
+ *  hc-638: narrower than isPickerVisibleProvider on purpose. Built-in vendor
+ *  rows (DeepSeek, Zhipu, Moonshot, …) used to appear in the picker one section
+ *  below the managed relay, with confusingly similar names — "DeepSeek V4 Flash"
+ *  (managed, billed to the platform quota) directly above "DeepSeek Chat" (the
+ *  vendor direct, billed to the user's own key). Same word, different route,
+ *  different wallet, no visual distinction. Kael's call: drop the built-in rows
+ *  from the picker; a user who wants a vendor direct adds it as a custom
+ *  endpoint, which is explicit about being theirs.
+ *
+ *  This is a SEPARATE predicate rather than a change to isPickerVisibleProvider
+ *  because that one has two other consumers with a different question:
+ *  providers-settings.tsx uses it to decide which OAuth sign-in rows to render
+ *  (:386/:401), and DOMESTIC_PROVIDER_SLUGS to decide which vendors get a
+ *  key-entry card. Narrowing the shared predicate would have removed the ability
+ *  to CONFIGURE or SIGN IN TO a vendor, not just the ability to pick its models
+ *  — three questions wearing one name. */
+export function isPickerVisibleModelProvider(slug: string): boolean {
+  const normalized = String(slug || '')
+    .trim()
+    .toLowerCase()
+
+  return normalized ? isCustomOrManagedSlug(normalized) : false
+}
+
+/** Keep only the providers whose models the picker should show (APEX-NODES.COM +
+ *  custom endpoints), with the anonymous bare-`custom` alias removed.
  *  Order is preserved. */
 export function filterPickerProviders(providers: ModelOptionProvider[]): ModelOptionProvider[] {
-  return dropAliasedCustomRow(providers.filter(provider => isPickerVisibleProvider(provider.slug)))
+  return dropAliasedCustomRow(providers.filter(provider => isPickerVisibleModelProvider(provider.slug)))
 }
 
 const normalizeSlug = (slug: string | null | undefined): string =>

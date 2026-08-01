@@ -38,10 +38,16 @@ vi.mock('@/hermes', () => ({
 // REST config.
 const MOA_PROVIDER = { models: ['default', 'BeastMode'], name: 'Mixture of Agents', slug: 'moa' }
 
+// hc-638: the picker now lists ONLY the managed relay and endpoints the user
+// configured themselves. These fixtures keep their original roles — a provider
+// whose rows are visible, and one that must be filtered out — but the visible
+// one is now a user's own custom endpoint rather than a built-in vendor row.
+// The behaviors under test (collapse, expand, search, keyboard) are unchanged;
+// only which provider is allowed to be on screen moved.
 const DEEPSEEK_PROVIDER = {
   models: ['deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
   name: 'DeepSeek',
-  slug: 'deepseek'
+  slug: 'custom:deepseek'
 }
 
 const GOOGLE_PROVIDER = {
@@ -146,7 +152,7 @@ describe('ModelMenuPanel provider collapse', () => {
   })
 
   it('auto-expands the active provider even when collapsed', async () => {
-    $currentProvider.set('deepseek')
+    $currentProvider.set('custom:deepseek')
     $currentModel.set('deepseek-v4-pro')
     const { content } = renderPanel()
 
