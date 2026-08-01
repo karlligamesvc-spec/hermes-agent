@@ -16,7 +16,11 @@ Lanes:
 * ``deps``        — pyproject.toml dependency bounds check.
 * ``npm_lock``    — semantic package-lock.json diff PR comment.
 * ``mcp_catalog`` — bundled MCP catalog / installer review.
-* ``installers``  — install.sh / install.ps1 and their libs parse cleanly.
+* ``installers``  — shell scripts nothing else compiles: the installers and
+  their libs, plus ``scripts/release/`` (hc-657). Broader than the name reads,
+  and deliberately so — the shared property is "a syntax error here is caught
+  by no build, only by a user's install or by a release that has already spent
+  twenty minutes building".
 
 Docker is not a lane — it builds on push-to-main and release only,
 never per-PR.
@@ -46,7 +50,10 @@ _DOCKER_META = ("docker/", ".hadolint.yml", "Dockerfile") # docker setup
 # live behind docker_meta, which is on only for docker paths or any .github/
 # change, so a PR touching ONLY an installer skipped it -- exactly the PR it
 # exists for. It had never once run on its own trigger.
-_INSTALLERS = ("scripts/install.", "scripts/lib/")
+# hc-657 added scripts/release/: without it, a PR touching only the COS publish
+# script would skip the lane that parses and unit-tests it -- the same shape as
+# the hc-632 miss described just above.
+_INSTALLERS = ("scripts/install.", "scripts/lib/", "scripts/release/")
 _SITE = ("website/", "skills/", "optional-skills/")  # docs site + skill pages
 # Prose/frontend trees that can't touch Python. skills/ is excluded on purpose.
 _PY_SKIP = ("docs/", "website/") + _FRONTEND

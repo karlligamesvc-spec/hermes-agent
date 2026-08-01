@@ -142,6 +142,18 @@ CASES = {
         ["scripts/publish-runtime-tarball.sh"],
         _lanes(python=True),
     ),
+    # hc-657: the COS publish script is parsed and unit-tested by the same lane.
+    # A PR touching only it must light that lane, or the gate written to guard
+    # it cannot fire on the PRs it exists for (AGENTS.md #14 -- exactly how the
+    # installer gate went unfired in hc-632).
+    "release publish script alone → installers": (
+        ["scripts/release/publish-desktop-cos.ps1"],
+        _lanes(python=True, installers=True),
+    ),
+    "release publish tests alone → installers": (
+        ["scripts/release/publish-desktop-cos.Tests.ps1"],
+        _lanes(python=True, installers=True),
+    ),
     # Fail open: CI-config / empty / blank diffs run everything.
     ".github change → all": ([".github/workflows/tests.yml"], DEFAULT),
     "action change → all": ([".github/actions/detect-changes/action.yml"], DEFAULT),
