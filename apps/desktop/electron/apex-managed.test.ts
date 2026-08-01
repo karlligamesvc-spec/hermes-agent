@@ -1270,3 +1270,171 @@ test('shouldAttemptReprovision treats a never-attempted state (0 / missing) as a
 test('REPROVISION_COOLDOWN_MS is a sane positive default (10 minutes)', () => {
   assert.equal(REPROVISION_COOLDOWN_MS, 10 * 60 * 1000)
 })
+
+// ── hc-643: duplicated list key inside one block ───────────────────────────
+// Shape taken from a real 0.17.7 Windows install (config.yaml _config_version
+// 33): `skills:` held `disabled:` twice and `plugins:` held `enabled:` twice,
+// adjacent, each with the full managed list. A YAML loader honours the LAST
+// copy while this module read the FIRST, so the two disagreed about what was
+// configured — and because the first copy looked complete, the healer kept
+// returning "unchanged" and the file never recovered.
+
+test('hc-643: collapses a doubled skills.disabled into one key', () => {
+  const raw =
+    'skills:\n' +
+    '  disabled:\n' +
+    SEED_DISABLED_SKILLS.map(n => `    - ${n}\n`).join('') +
+    '  disabled:\n' +
+    SEED_DISABLED_SKILLS.map(n => `    - ${n}\n`).join('') +
+    "timezone: ''\n"
+
+  const r = ensureSkillsDisabledYaml(raw)
+  assert.equal(r.changed, true, 'a doubled key must be reported as a change')
+  // Exactly one `disabled:` key survives, and it is inside skills:.
+  assert.equal((r.next.match(/^ {2}disabled:$/gm) || []).length, 1)
+  // Every managed name is present exactly once — nothing dropped, nothing doubled.
+  for (const name of SEED_DISABLED_SKILLS) {
+    assert.equal(
+      (r.next.match(new RegExp(`^ {4}- ${name}$`, 'gm')) || []).length,
+      1,
+      `expected exactly one entry for ${name}`,
+    )
+  }
+  // The trailing top-level key is untouched.
+  assert.ok(r.next.includes("timezone: ''"))
+  // Idempotent: a second pass has nothing left to repair.
+  const again = ensureSkillsDisabledYaml(r.next)
+  assert.equal(again.changed, false)
+  assert.equal(again.next, r.next)
+})
+
+test('hc-643: collapses a doubled plugins.enabled into one key', () => {
+  const raw =
+    'plugins:\n' +
+    '  enabled:\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
+    '  enabled:\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
+    'model:\n  default: x\n'
+
+  const r = ensurePluginsEnabledYaml(raw)
+  assert.equal(r.changed, true)
+  assert.equal((r.next.match(/^ {2}enabled:$/gm) || []).length, 1)
+  for (const name of MANAGED_PLUGIN_NAMES) {
+    assert.equal((r.next.match(new RegExp(`^ {4}- ${name}$`, 'gm')) || []).length, 1)
+  }
+  assert.ok(r.next.includes('model:\n  default: x'))
+})
+
+test('hc-643: a user entry living only in the SECOND copy survives the collapse', () => {
+  // The add-only contract has to hold across the merge, not just within one
+  // list — the copy a YAML loader was actually honouring is the second one, so
+  // dropping its entries would silently disable a plugin the user turned on.
+  const raw =
+    'plugins:\n' +
+    '  enabled:\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
+    '  enabled:\n' +
+    '    - my-own-plugin\n' +
+    'model:\n  default: x\n'
+
+  const r = ensurePluginsEnabledYaml(raw)
+  assert.equal(r.changed, true)
+  assert.equal((r.next.match(/^ {2}enabled:$/gm) || []).length, 1)
+  assert.equal((r.next.match(/- my-own-plugin/g) || []).length, 1, 'user entry must be carried over')
+  // `added` keeps its existing meaning — managed names THIS healer put in. A
+  // name rescued from the discarded copy was already the user's, so it rides
+  // along silently instead of being reported as something we added.
+  assert.deepEqual(r.added, [])
+  // Still inside the plugins block, before the next top-level key.
+  assert.ok(r.next.indexOf('- my-own-plugin') < r.next.indexOf('model:'))
+})
+
+test('hc-643: a duplicate carrying an inline value is left alone', () => {
+  // `enabled: []` is a shape this module does not rewrite in a merge; bail out
+  // rather than half-merge a file we do not understand.
+  const raw =
+    'plugins:\n' +
+    '  enabled:\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
+    '  enabled: []\n' +
+    'model:\n  default: x\n'
+
+  const r = ensurePluginsEnabledYaml(raw)
+  assert.equal(r.changed, false)
+  assert.equal(r.next, raw)
+})
+
+test('hc-643: a single (healthy) list key is untouched by the collapse pass', () => {
+  // Regression guard: the repair must not perturb the overwhelmingly common
+  // shape — one key, already complete.
+  const healthy =
+    'plugins:\n' +
+    '  enabled:\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
+    'model:\n  default: x\n'
+
+  const r = ensurePluginsEnabledYaml(healthy)
+  assert.equal(r.changed, false)
+  assert.equal(r.next, healthy)
+  assert.deepEqual(r.added, [])
+})
+
+// ── hc-643 root cause: CRLF line endings ───────────────────────────────────
+// config.yaml has two writers (this shell emits \n, the Python runtime emits
+// \r\n on Windows) and real files carry both. JS `.` does not match \r, so a
+// `$`-anchored `^\s+key:(.*)$` FAILS on a CRLF line — the scan then reported
+// "list key missing" and inserted a second one, which is how the doubled
+// blocks above got created in the first place. These pin the read side.
+
+test('hc-643: a CRLF config.yaml is read, not doubled (root cause)', () => {
+  const crlf =
+    'plugins:\r\n' +
+    '  enabled:\r\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\r\n`).join('') +
+    'model:\r\n  default: x\r\n'
+
+  const r = ensurePluginsEnabledYaml(crlf)
+  // Every managed name is already there — on a CRLF file that has to read as
+  // "nothing to do", not as "the key is missing, insert another one".
+  assert.equal(r.changed, false, 'CRLF file must not be treated as missing the list key')
+  assert.equal(r.next, crlf)
+  assert.equal((r.next.match(/enabled:/g) || []).length, 1)
+})
+
+test('hc-643: a CRLF config.yaml still unions in a genuinely missing name', () => {
+  const crlf =
+    'plugins:\r\n' +
+    '  enabled:\r\n' +
+    MANAGED_PLUGIN_NAMES.slice(0, -1).map(n => `    - ${n}\r\n`).join('') +
+    'model:\r\n  default: x\r\n'
+
+  const r = ensurePluginsEnabledYaml(crlf)
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.added, [MANAGED_PLUGIN_NAMES[MANAGED_PLUGIN_NAMES.length - 1]])
+  // Appended into the EXISTING list, not a second one.
+  assert.equal((r.next.match(/enabled:/g) || []).length, 1)
+  assert.ok(r.next.indexOf(MANAGED_PLUGIN_NAMES[MANAGED_PLUGIN_NAMES.length - 1]) < r.next.indexOf('model:'))
+})
+
+test('hc-643: mixed CRLF/LF endings — the real-world shape — collapse and read both work', () => {
+  // Exactly how the observed file was laid out: an LF block inserted by this
+  // shell sitting above the original CRLF block written by the Python side.
+  const mixed =
+    'plugins:\r\n' +
+    '  enabled:\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
+    '  enabled:\r\n' +
+    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\r\n`).join('') +
+    "timezone: ''\r\n"
+
+  const r = ensurePluginsEnabledYaml(mixed)
+  assert.equal(r.changed, true)
+  assert.equal((r.next.match(/enabled:/g) || []).length, 1, 'collapsed to one key')
+  for (const name of MANAGED_PLUGIN_NAMES) {
+    assert.equal((r.next.match(new RegExp(`- ${name}(\\r?)$`, 'gm')) || []).length, 1)
+  }
+  assert.ok(r.next.includes("timezone: ''"))
+  // Idempotent on the repaired file.
+  assert.equal(ensurePluginsEnabledYaml(r.next).changed, false)
+})

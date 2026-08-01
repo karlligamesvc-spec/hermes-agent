@@ -519,6 +519,108 @@ function ensureProductDefaultsYaml(raw, defaults: any = APEX_PRODUCT_DEFAULTS) {
 }
 
 /**
+ * Drop a trailing CR so a `$`-anchored match can see the end of the line
+ * (hc-643). config.yaml is written by TWO writers — this shell emits `\n`, the
+ * Python runtime side emits `\r\n` on Windows — so one file routinely carries
+ * BOTH endings (observed in the wild: 163 CRLF + 62 LF in the same file).
+ *
+ * This matters more than it looks: JavaScript's `.` does not match `\r`, so
+ * `^\s+key:(.*)$` silently FAILS on a CRLF line. That failure is what produced
+ * the duplicate keys `collapseDuplicateListKeyYaml` now repairs — the scan
+ * below could not see the existing `disabled:` sitting on its CRLF line,
+ * concluded the key was missing, and inserted a second one at the top of the
+ * block. Every `$`-anchored line match in this pair of functions goes through
+ * here; matching on the bare text and keeping the raw line for output leaves
+ * the file's own endings untouched.
+ */
+const bareLine = (line: string) => String(line).replace(/\r$/, '')
+
+/**
+ * Collapse a `${listKey}:` that appears MORE THAN ONCE inside one block,
+ * unioning the later copies into the first (hc-643).
+ *
+ * A raw-line writer that inserts a list key it failed to find (the
+ * `listLine < 0` branch in ensureListBlockYaml) leaves the block holding the
+ * same key twice. YAML calls a duplicate key undefined — PyYAML and js-yaml
+ * both keep the LAST one — so every entry in the first copy silently stops
+ * applying. It is self-perpetuating: ensureListBlockYaml reads only the FIRST
+ * copy, sees a complete list, returns "unchanged", and the file stays broken
+ * forever. Observed in the wild on a 0.17.7 Windows install — `skills.disabled`
+ * and `plugins.enabled` each present twice, 51 / 10 identical entries.
+ *
+ * Conservative on purpose: only the plain block-list shape (a bare
+ * `${listKey}:` followed by `- item` lines) is collapsed. A copy carrying an
+ * inline value (`[]`, a flow list, `null`) aborts the whole collapse rather
+ * than half-merging a file we do not understand — same "structurally
+ * unexpected → no change" rule the rest of this module follows. ADD-ONLY:
+ * names union in first-seen order, nothing is ever dropped.
+ *
+ * Mutates `lines` in place.
+ *
+ * @param {string[]} lines
+ * @param {number} blockLine index of the owning `${blockKey}:` line
+ * @param {string} listKey
+ * @param {(text: string) => string} itemName
+ * @returns {{ collapsed: boolean, recovered: string[] }}
+ */
+function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
+  const none = { collapsed: false, recovered: [] }
+
+  let blockEnd = lines.length
+  for (let i = blockLine + 1; i < lines.length; i++) {
+    if (/^\S/.test(lines[i])) { blockEnd = i; break }
+  }
+
+  const keyRe = new RegExp(`^(\\s+)${listKey}:(.*)$`)
+  const copies: any[] = []
+  for (let i = blockLine + 1; i < blockEnd; i++) {
+    const key = bareLine(lines[i]).match(keyRe)
+    if (!key) continue
+    const rest = key[2].trim()
+    if (rest && !rest.startsWith('#')) return none // inline value → not ours to merge
+    copies.push({ line: i, indent: key[1] })
+  }
+  if (copies.length < 2) return none
+
+  // Walk each copy's item run so removal takes exactly its own lines.
+  for (const copy of copies) {
+    const items: string[] = []
+    let itemIndent = ''
+    let end = copy.line + 1
+    for (; end < blockEnd; end++) {
+      const line = bareLine(lines[end])
+      if (!line.trim() || /^\s*#/.test(line)) continue
+      const item = line.match(/^(\s*)-\s+(.*)$/)
+      if (item && item[1].length >= copy.indent.length) {
+        items.push(itemName(item[2]))
+        if (!itemIndent) itemIndent = item[1]
+        continue
+      }
+      break // a sibling key (the next copy, or anything else) ends this run
+    }
+    copy.items = items
+    copy.itemIndent = itemIndent
+    copy.end = end // exclusive
+  }
+
+  const first = copies[0]
+  const seen = new Set(first.items)
+  const recovered: string[] = []
+  // Bottom-up so the earlier indices (including first.end) stay valid.
+  for (let c = copies.length - 1; c >= 1; c--) {
+    for (const name of copies[c].items) {
+      if (!seen.has(name)) { seen.add(name); recovered.unshift(name) }
+    }
+    lines.splice(copies[c].line, copies[c].end - copies[c].line)
+  }
+  if (recovered.length) {
+    const indent = first.itemIndent || `${first.indent}  `
+    lines.splice(first.end, 0, ...recovered.map(name => `${indent}- ${name}`))
+  }
+  return { collapsed: true, recovered }
+}
+
+/**
  * Generic add-only union of `wanted` names into a top-level `${blockKey}:` →
  * `${listKey}:` YAML list, by pure line surgery (no YAML round-trip — comments
  * and formatting survive). Backs both ensurePluginsEnabledYaml and
@@ -570,13 +672,26 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
     return { changed: true, next: lines.join('\n'), added: wanted.slice() }
   }
 
+  // ── hc-643: repair a duplicated list key BEFORE reading the list ────────
+  // The scan below takes the first `${listKey}:` it meets, while a YAML loader
+  // honours the last — so on a doubled block the two disagree about what is
+  // configured, and every later pass reads a list that is already "complete".
+  // Collapse first, then read, so the rest of this function sees one list.
+  const dedupe = collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName)
+  // Every early-out below still has to report the collapse: the file changed
+  // even when no managed name needed adding.
+  const repaired = (added: string[] = []) =>
+    dedupe.collapsed || added.length
+      ? { changed: true, next: lines.join('\n'), added }
+      : unchanged
+
   // ── find the end of the block and its `${listKey}:` key ─────────────────
   let blockEnd = lines.length
   let listLine = -1
   let listIndent = ''
   let childIndent = ''
   for (let i = blockLine + 1; i < lines.length; i++) {
-    const line = lines[i]
+    const line = bareLine(lines[i])
     if (/^\S/.test(line)) { blockEnd = i; break } // next top-level key
     const key = line.match(/^(\s+)([A-Za-z0-9_-]+):(.*)$/)
     if (key && !childIndent) childIndent = key[1]
@@ -596,7 +711,7 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
     return { changed: true, next: lines.join('\n'), added: wanted.slice() }
   }
 
-  const listMatch = lines[listLine].match(new RegExp(`^\\s+${listKey}:(.*)$`))
+  const listMatch = bareLine(lines[listLine]).match(new RegExp(`^\\s+${listKey}:(.*)$`))
   const listRest = (listMatch ? listMatch[1] : '').trim()
   if (listRest && !listRest.startsWith('#')) {
     // Inline value: [] / null / a flow list. Rewrite as a block list keeping
@@ -607,10 +722,10 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
     } else if (/^\[.*\]$/.test(listRest)) {
       existing = listRest.slice(1, -1).split(',').map(itemName).filter(Boolean)
     } else {
-      return unchanged
+      return repaired()
     }
     const missing = wanted.filter(name => !existing.includes(name))
-    if (!missing.length) return unchanged
+    if (!missing.length) return repaired()
     const replacement = [`${listIndent}${listKey}:`]
     for (const name of existing.concat(missing)) replacement.push(`${listIndent}  - ${name}`)
     lines.splice(listLine, 1, ...replacement)
@@ -622,7 +737,7 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   let lastItemLine = -1
   let itemIndent = ''
   for (let i = listLine + 1; i < blockEnd; i++) {
-    const line = lines[i]
+    const line = bareLine(lines[i])
     if (!line.trim() || /^\s*#/.test(line)) continue // blanks/comments inside the list
     const item = line.match(/^(\s*)-\s+(.*)$/)
     if (item && item[1].length >= listIndent.length) {
@@ -635,7 +750,7 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   }
 
   const missing = wanted.filter(name => !existing.includes(name))
-  if (!missing.length) return unchanged
+  if (!missing.length) return repaired()
   const indent = itemIndent || `${listIndent}  `
   const insertAt = lastItemLine >= 0 ? lastItemLine + 1 : listLine + 1
   lines.splice(insertAt, 0, ...missing.map(name => `${indent}- ${name}`))
