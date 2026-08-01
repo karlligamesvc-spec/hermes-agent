@@ -12,6 +12,7 @@ import {
   bundledInstallScript,
   cachedScriptPath,
   cnInstallEnv,
+  describeCnMirrorMode,
   commitKeysMatch,
   evaluateTreeIntegrity,
   hasExistingGitCheckout,
@@ -860,3 +861,33 @@ testManifestFlow(
     }
   }
 )
+
+// ── hc-642: the bootstrap log's cn= field ──────────────────────────────────
+// HERMES_CN_MIRRORS has three states and the old renderer collapsed two of
+// them: an UNSET flag printed `cn=off`, i.e. "China mirrors disabled", when it
+// actually means "not forced — the installer auto-detects". cnInstallEnv omits
+// the flag on purpose (see its rule #2), so UNSET is the DEFAULT state for a
+// packaged build: the log lied on every ordinary install. It said cn=off on a
+// mainland machine whose installer was printing "region: cn (auto-detected)".
+
+test('hc-642: unset HERMES_CN_MIRRORS renders as auto, not off', () => {
+  assert.equal(describeCnMirrorMode(undefined), 'auto')
+  // The default packaged path really does leave it unset — guard the pairing so
+  // the renderer and the env builder cannot drift apart.
+  assert.equal(cnInstallEnv().HERMES_CN_MIRRORS, undefined)
+  assert.equal(describeCnMirrorMode(cnInstallEnv().HERMES_CN_MIRRORS), 'auto')
+})
+
+test('hc-642: forced states stay distinguishable from auto', () => {
+  assert.equal(describeCnMirrorMode('1'), 'forced-on')
+  assert.equal(describeCnMirrorMode('0'), 'forced-off(0)')
+  // Whatever it renders, a forced value must never read as "auto".
+  for (const v of ['1', '0', 'true', '']) {
+    assert.notEqual(describeCnMirrorMode(v), 'auto', `forced ${JSON.stringify(v)} must not read as auto`)
+  }
+})
+
+test('hc-642: cnMirrors:true forces on and renders as forced-on', () => {
+  assert.equal(cnInstallEnv({ cnMirrors: true }).HERMES_CN_MIRRORS, '1')
+  assert.equal(describeCnMirrorMode(cnInstallEnv({ cnMirrors: true }).HERMES_CN_MIRRORS), 'forced-on')
+})

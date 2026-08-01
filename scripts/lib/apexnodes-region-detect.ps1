@@ -281,6 +281,178 @@ function Install-UvFromCos {
     }
 }
 
+# Pure-.NET .tar.gz extractor, used ONLY when tar.exe cannot be launched
+# (hc-642). Some endpoint-security products deny execution of System32 binaries
+# from a script host: a mainland Windows first install was observed failing with
+#   cheng-xu "tar.exe" wu-fa yun-xing: ju-jue fang-wen
+#   ("the program tar.exe cannot be run: access denied")
+# which, because this script runs with EAP=Stop, turned into a terminating error
+# that took down the whole COS fast path. The install then fell back to
+# git-over-SSH -> git-over-HTTPS -> ZIP and sat in `repository` for 3h50m before
+# the user cancelled. The download had already succeeded; only the unpack failed.
+#
+# Deliberately narrow. Regular files, directories, and the two long-name
+# mechanisms (GNU 'L' and pax 'x' path=) are handled because that is what
+# `git archive` emits. ANY other entry type returns $false so the caller keeps
+# its existing git fallback rather than silently materialising a partial tree --
+# a half-extracted runtime would fail much later and much more confusingly than
+# a clone.
+#
+# .NET's TarFile (System.Formats.Tar) would do this in one line but it is .NET 7+;
+# the installer runs under Windows PowerShell 5.1 / .NET Framework, so the 512-byte
+# header walk below is the portable option.
+function Expand-TarGzManaged {
+    param(
+        [Parameter(Mandatory)][string] $Tarball,
+        [Parameter(Mandatory)][string] $Destination,
+        [int] $StripComponents = 0
+    )
+
+    $BLOCK = 512
+    $gz = $null; $tar = $null
+    try {
+        $gz = [System.IO.File]::OpenRead($Tarball)
+        $tar = New-Object System.IO.Compression.GZipStream($gz, [System.IO.Compression.CompressionMode]::Decompress)
+
+        $header = New-Object byte[] $BLOCK
+        $pendingName = $null   # set by a preceding 'L' or 'x' entry
+        $zeroBlocks = 0
+
+        # Read exactly $count bytes; $false when the stream ends early.
+        $readFull = {
+            param($buf, $count)
+            $got = 0
+            while ($got -lt $count) {
+                $n = $tar.Read($buf, $got, $count - $got)
+                if ($n -le 0) { return $false }
+                $got += $n
+            }
+            return $true
+        }
+
+        while ($true) {
+            if (-not (& $readFull $header $BLOCK)) { break }
+
+            # Two consecutive all-zero blocks terminate the archive.
+            $isZero = $true
+            foreach ($b in $header) { if ($b -ne 0) { $isZero = $false; break } }
+            if ($isZero) {
+                $zeroBlocks++
+                if ($zeroBlocks -ge 2) { break }
+                continue
+            }
+            $zeroBlocks = 0
+
+            $str = {
+                param($off, $len)
+                $s = [System.Text.Encoding]::UTF8.GetString($header, $off, $len)
+                $nul = $s.IndexOf([char]0)
+                if ($nul -ge 0) { $s = $s.Substring(0, $nul) }
+                return $s.Trim()
+            }
+
+            $name = & $str 0 100
+            $prefix = & $str 345 155
+            if ($prefix) { $name = "$prefix/$name" }
+            $typeflag = [char]$header[156]
+
+            $sizeOct = & $str 124 12
+            if ([string]::IsNullOrWhiteSpace($sizeOct)) { $size = 0 }
+            else {
+                try { $size = [Convert]::ToInt64($sizeOct, 8) }
+                catch { Write-Warn "tar: unreadable size field for '$name'"; return $false }
+            }
+            $padded = [int][Math]::Ceiling($size / [double]$BLOCK) * $BLOCK
+
+            # Entry payload (only read when we need it or must skip it).
+            $readPayload = {
+                $buf = New-Object byte[] $padded
+                if ($padded -gt 0 -and -not (& $readFull $buf $padded)) { return $null }
+                return $buf
+            }
+
+            # if/elseif, NOT switch: in PowerShell `continue` inside a switch
+            # continues the SWITCH, not the enclosing loop, so a `continue` here
+            # would fall through to the type check below and reject the very
+            # headers it just consumed. (Caught by the round-trip test: tar
+            # encodes a non-ASCII filename as a pax 'x' header, which turned
+            # into "entry type 'x' unsupported".)
+            if ($typeflag -eq 'L') {
+                # GNU long name: payload IS the next entry's name
+                $buf = & $readPayload
+                if ($null -eq $buf) { return $false }
+                $s = [System.Text.Encoding]::UTF8.GetString($buf, 0, [int]$size)
+                $pendingName = $s.TrimEnd([char]0).Trim()
+                continue
+            }
+            elseif ($typeflag -eq 'x') {
+                # pax extended header: take `path=` if present. git archive uses
+                # this for long paths AND for any name that is not plain ASCII.
+                $buf = & $readPayload
+                if ($null -eq $buf) { return $false }
+                $text = [System.Text.Encoding]::UTF8.GetString($buf, 0, [int]$size)
+                foreach ($line in $text -split "`n") {
+                    # records are "<len> key=value"
+                    $m = [regex]::Match($line, '^\d+\s+path=(.*)$')
+                    if ($m.Success) { $pendingName = $m.Groups[1].Value.Trim() }
+                }
+                continue
+            }
+            elseif ($typeflag -eq 'g') {
+                # global pax header: metadata for the whole archive, ignore it
+                if ($null -eq (& $readPayload)) { return $false }
+                continue
+            }
+
+            if ($pendingName) { $name = $pendingName; $pendingName = $null }
+
+            # Strip leading path components (the archive is --prefix=hermes-agent/).
+            $rel = $name -replace '\\', '/'
+            if ($StripComponents -gt 0) {
+                $parts = $rel.Split('/') | Where-Object { $_ -ne '' }
+                if ($parts.Count -le $StripComponents) { $rel = '' }
+                else { $rel = ($parts[$StripComponents..($parts.Count - 1)]) -join '/' }
+            }
+
+            # Refuse anything that would escape $Destination (tar-slip).
+            if ($rel -match '(^|/)\.\.(/|$)' -or $rel -match '^([A-Za-z]:|/)') {
+                Write-Warn "tar: refusing unsafe entry path '$name'"
+                return $false
+            }
+
+            if ($typeflag -eq '5') {
+                if ($rel) { New-Item -ItemType Directory -Force -Path (Join-Path $Destination $rel) | Out-Null }
+                if ($padded -gt 0 -and $null -eq (& $readPayload)) { return $false }
+                continue
+            }
+
+            if ($typeflag -ne '0' -and $typeflag -ne [char]0) {
+                # Symlink/hardlink/device/fifo -- not something we can fabricate
+                # faithfully here. Bail so the caller clones instead.
+                Write-Warn "tar: entry type '$typeflag' unsupported ('$name') -- falling back"
+                return $false
+            }
+
+            $buf = & $readPayload
+            if ($null -eq $buf) { return $false }
+            if (-not $rel) { continue }
+
+            $target = Join-Path $Destination $rel
+            $parent = Split-Path -Parent $target
+            if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+            $fs = [System.IO.File]::Create($target)
+            try { $fs.Write($buf, 0, [int]$size) } finally { $fs.Dispose() }
+        }
+        return $true
+    } catch {
+        Write-Warn "tar: managed extraction failed ($_)"
+        return $false
+    } finally {
+        if ($tar) { $tar.Dispose() }
+        if ($gz) { $gz.Dispose() }
+    }
+}
+
 # COS-first: download the pinned runtime source tarball from our public-read
 # COS bucket before any git clone of github.com (blocked/slow in mainland
 # China). Mirrors install.sh's apexnodes_download_runtime_tarball -- the tarball
@@ -311,13 +483,34 @@ function Install-RuntimeFromCos {
         # -> "tar (child): Cannot connect to C: resolve failed" (the observed COS-extract
         # failure that fell back to a github clone). GNU tar needs --force-local; bsdtar
         # does not, so prefer bsdtar by full path and only fall back to GNU tar.
+        $extracted = $false
         $sysTar = Join-Path $env:SystemRoot "System32\tar.exe"
-        if (Test-Path $sysTar) {
-            & $sysTar -xzf $tarball -C $InstallDir --strip-components=1
-        } else {
-            & tar --force-local -xzf $tarball -C $InstallDir --strip-components=1
+        try {
+            $global:LASTEXITCODE = 0
+            if (Test-Path $sysTar) {
+                & $sysTar -xzf $tarball -C $InstallDir --strip-components=1
+            } else {
+                & tar --force-local -xzf $tarball -C $InstallDir --strip-components=1
+            }
+            $extracted = ($LASTEXITCODE -eq 0)
+            if (-not $extracted) { Write-Warn "tar exited $LASTEXITCODE -- retrying with the managed extractor" }
+        } catch {
+            # hc-642: tar.exe is PRESENT but cannot be launched -- endpoint
+            # security denying execution of System32 binaries from a script host
+            # ("access denied" launching tar.exe). With EAP=Stop that is a
+            # terminating error, which used to take the whole COS path down and
+            # send the install into the hours-long git/ZIP fallback chain. The
+            # tarball is already on disk; unpack it ourselves instead.
+            Write-Warn "tar could not be run ($_) -- using the managed extractor"
         }
-        if ($LASTEXITCODE -ne 0) {
+        if (-not $extracted) {
+            # A partial tar run may have left files behind; start clean so the
+            # pyproject.toml check below cannot pass on a half-written tree.
+            Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+            $extracted = Expand-TarGzManaged -Tarball $tarball -Destination $InstallDir -StripComponents 1
+        }
+        if (-not $extracted) {
             Write-Warn "COS runtime tarball could not be extracted -- falling back to git clone"
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
             return $false

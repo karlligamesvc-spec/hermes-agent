@@ -59,3 +59,16 @@ jobs:
           bash -n scripts/install.sh
           bash -n scripts/lib/apexnodes-region-detect.sh
           echo "shell installers have no parse errors"
+
+      # hc-642. A parse gate proves the file loads, not that it works. The
+      # managed .tar.gz extractor is a hand-written format reader sitting on the
+      # COS fast path's only failure branch (tar.exe present but not
+      # launchable), so nothing else in this repo would ever execute it -- the
+      # AGENTS.md #14 shape. `shell: powershell` is Windows PowerShell 5.1,
+      # which is what the installer actually runs under; pwsh 7 would exercise
+      # a different .NET and miss 5.1-only behaviour.
+      - name: Managed tar.gz extractor behaves (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          .\scripts\lib\apexnodes-tar-extract.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
