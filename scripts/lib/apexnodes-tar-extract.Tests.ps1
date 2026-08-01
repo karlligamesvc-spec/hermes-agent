@@ -78,14 +78,26 @@ try {
     # StripComponents=1 must have removed the --prefix dir, not kept it.
     Assert-True (-not (Test-Path (Join-Path $dest 'hermes-agent'))) 'strip-components=1 removed the archive prefix'
 
-    # Byte-for-byte against tar's own output, so the reader cannot pass by
-    # agreeing with itself.
+    # Cross-check the file set against tar's own output, so the reader cannot
+    # pass by merely agreeing with itself.
+    #
+    # ASCII-named entries ONLY, and that scoping is the point: tar is the oracle
+    # for structure, not for encoding. bsdtar on an English-locale Windows
+    # (CP1252) writes the pax-encoded CJK name as '__.txt', while this extractor
+    # decodes the header as UTF-8 and gets it right -- so a whole-set comparison
+    # would fail on a runner for being MORE correct than the reference. The CJK
+    # entry is asserted directly above (name + content), which is the stronger
+    # check anyway.
     $ref = Join-Path $ws 'ref'
     New-Item -ItemType Directory -Force -Path $ref | Out-Null
     & tar -xzf $tgz -C $ref --strip-components=1
-    $mine = Get-ChildItem -Recurse -File -LiteralPath $dest | ForEach-Object { $_.FullName.Substring($dest.Length).Replace('\','/') } | Sort-Object
-    $theirs = Get-ChildItem -Recurse -File -LiteralPath $ref | ForEach-Object { $_.FullName.Substring($ref.Length).Replace('\','/') } | Sort-Object
-    Assert-Eq (($mine -join '|')) (($theirs -join '|')) 'file set identical to tar -xzf'
+    $asciiOnly = { param($root) Get-ChildItem -Recurse -File -LiteralPath $root |
+        ForEach-Object { $_.FullName.Substring($root.Length).Replace('\','/') } |
+        Where-Object { $_ -notmatch '[^\x20-\x7e]' } | Sort-Object }
+    $mine = & $asciiOnly $dest
+    $theirs = & $asciiOnly $ref
+    Assert-Eq (($mine -join '|')) (($theirs -join '|')) 'ASCII-named file set identical to tar -xzf'
+    Assert-True ($mine.Count -ge 3) 'the cross-check actually compared a non-trivial set'
 } finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
 
 # -- 2. unsupported entry type must BAIL, not half-extract -----------------
