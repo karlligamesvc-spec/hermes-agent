@@ -2783,12 +2783,43 @@ def _persist_live_session_system_prompt(session: dict | None) -> None:
         logger.debug("failed to persist live session system prompt", exc_info=True)
 
 
-def _append_model_switch_marker(session: dict | None, *, model: str, provider: str) -> None:
-    """Record a real system-history pivot after a live model switch."""
+def _append_model_switch_marker(
+    session: dict | None,
+    *,
+    model: str,
+    provider: str,
+    previous_model: str = "",
+    previous_provider: str = "",
+) -> None:
+    """Record a real system-history pivot after a live model switch.
+
+    A switch that lands on the model and provider already in use is not a
+    pivot, and this marker states in so many words that the active model *has
+    changed* -- appending it then writes something untrue into the history, as
+    a ``user`` turn the model re-reads on every later request of the session.
+
+    hc-652, from a real desktop session: 5 messages the user actually typed,
+    14 of these markers. Three came from consecutive no-op switches
+    (``deepseek-v4-flash -> deepseek-v4-flash`` on the same provider -- the
+    runtime logged them that way too) fired by clicking around the model
+    picker. The guard lives here rather than at the call site so a second
+    caller cannot reintroduce the noise.
+
+    ``previous_*`` default to empty so a caller that does not know the prior
+    state keeps today's unconditional behavior instead of silently suppressing.
+    """
     if not session:
         return
     session_key = str(session.get("session_key") or "").strip()
     if not session_key:
+        return
+
+    prev_model = str(previous_model or "").strip()
+    if (
+        prev_model
+        and prev_model == str(model or "").strip()
+        and str(previous_provider or "").strip() == str(provider or "").strip()
+    ):
         return
 
     provider_part = f" via provider {provider}" if provider else ""
@@ -3400,7 +3431,13 @@ def _apply_model_switch(
         _persist_live_session_runtime(session)
         _persist_live_session_system_prompt(session)
         _append_model_switch_marker(
-            session, model=result.new_model, provider=result.target_provider
+            session,
+            model=result.new_model,
+            provider=result.target_provider,
+            # hc-652: what the agent was on BEFORE switch_model mutated it, so
+            # the marker can tell a real pivot from a picker re-click.
+            previous_model=current_model,
+            previous_provider=current_provider,
         )
         _emit("session.info", sid, _session_info(agent, session))
         if one_turn:

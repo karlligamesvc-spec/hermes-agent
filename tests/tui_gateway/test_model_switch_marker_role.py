@@ -103,3 +103,86 @@ class TestAppendModelSwitchMarkerRole:
             role="user",
             content=marker["content"],
         )
+
+
+class TestNoOpSwitchIsNotAPivot:
+    """hc-652: a re-click on the model already in use must not append a marker.
+
+    The marker's own text says the active model *has changed*. Emitting it when
+    it did not makes the history state something untrue, and it does so in a
+    ``user`` turn the model re-reads on every subsequent request of that
+    session. A real desktop session carried 14 markers against 5 messages the
+    user actually typed; three came from consecutive
+    ``deepseek-v4-flash -> deepseek-v4-flash`` switches on one provider.
+    """
+
+    def test_same_model_and_provider_appends_nothing(self) -> None:
+        session: dict = {"session_key": "s", "history": []}
+        _append_model_switch_marker(
+            session,
+            model="deepseek-v4-flash",
+            provider="custom:apex-nodes.com",
+            previous_model="deepseek-v4-flash",
+            previous_provider="custom:apex-nodes.com",
+        )
+        assert session["history"] == []
+
+    def test_repeated_no_op_switches_do_not_accumulate(self) -> None:
+        """The observed shape: three picker re-clicks in ~10 seconds."""
+        session: dict = {"session_key": "s", "history": []}
+        for _ in range(3):
+            _append_model_switch_marker(
+                session,
+                model="deepseek-v4-flash",
+                provider="custom:apex-nodes.com",
+                previous_model="deepseek-v4-flash",
+                previous_provider="custom:apex-nodes.com",
+            )
+        assert session["history"] == []
+
+    def test_same_model_different_provider_still_marks(self) -> None:
+        """The first switch in the real session WAS a pivot: custom -> custom:apex-nodes.com."""
+        session: dict = {"session_key": "s", "history": []}
+        _append_model_switch_marker(
+            session,
+            model="deepseek-v4-flash",
+            provider="custom:apex-nodes.com",
+            previous_model="deepseek-v4-flash",
+            previous_provider="custom",
+        )
+        assert len(session["history"]) == 1
+        assert "custom:apex-nodes.com" in session["history"][0]["content"]
+
+    def test_different_model_same_provider_still_marks(self) -> None:
+        session: dict = {"session_key": "s", "history": []}
+        _append_model_switch_marker(
+            session,
+            model="kimi-k2.6",
+            provider="custom:apex-nodes.com",
+            previous_model="deepseek-v4-flash",
+            previous_provider="custom:apex-nodes.com",
+        )
+        assert len(session["history"]) == 1
+        assert "kimi-k2.6" in session["history"][0]["content"]
+
+    def test_unknown_previous_state_keeps_marking(self) -> None:
+        """Fail OPEN: a caller that cannot say what it was on gets the marker.
+
+        Suppressing on an unknown prior state would silently drop real pivots,
+        which is the worse failure -- the model would answer "what model are
+        you?" from stale metadata.
+        """
+        session: dict = {"session_key": "s", "history": []}
+        _append_model_switch_marker(session, model="gpt-4o", provider="openai")
+        assert len(session["history"]) == 1
+
+    def test_whitespace_and_none_do_not_defeat_the_guard(self) -> None:
+        session: dict = {"session_key": "s", "history": []}
+        _append_model_switch_marker(
+            session,
+            model=" deepseek-v4-flash ",
+            provider=None,
+            previous_model="deepseek-v4-flash",
+            previous_provider=None,
+        )
+        assert session["history"] == []
