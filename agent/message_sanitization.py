@@ -273,10 +273,54 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     # crash the entire session.
     logger.warning(
         "Unrepairable tool_call arguments for %s — "
-        "replaced with empty object (was: %s)",
-        tool_name, raw_stripped[:80],
+        "replaced with empty object (%s)",
+        tool_name, _describe_unrepairable(raw_stripped),
     )
     return "{}"
+
+
+# Excerpt budget for the diagnostic below. Long enough to show a truncation
+# point, short enough that a log line stays a log line.
+_EXCERPT = 120
+
+
+def _describe_unrepairable(raw: str) -> str:
+    """Summarise WHY a tool_call argument blob could not be repaired (hc-644).
+
+    The old line logged ``raw[:80]`` and nothing else, which is the one part of
+    a truncated payload that always looks fine -- every real sample opened with
+    a perfectly good ``{"content": "<!DOCTYPE html>...``. With only the head
+    there is no way to tell a mid-stream truncation from a model that emitted
+    bad JSON from the start, so the three failures observed in a single desktop
+    session (xlsx_file_write / execute_code / write_file, all large payloads)
+    could not be attributed to anything.
+
+    What actually discriminates: the total length, the TAIL (a truncation ends
+    mid-token, a malformed-from-the-start blob usually does not), and the JSON
+    decoder's own complaint with its offset. ``unterminated`` in particular is
+    the signature of a payload cut off inside a string -- the case the repair
+    ladder above structurally cannot fix, because appending brackets cannot
+    close a string.
+
+    Content-bearing, by necessity -- you cannot diagnose a malformed blob
+    without looking at it -- so both excerpts are capped and this stays at
+    WARNING in the local agent log, which already carries tool arguments.
+    """
+    try:
+        json.loads(raw)
+    except json.JSONDecodeError as exc:
+        reason = f"{exc.msg} at pos {exc.pos}"
+    except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+        reason = str(exc)
+    else:  # pragma: no cover - unreachable; caller already failed to parse
+        reason = "parses now (raced?)"
+
+    head = raw[:_EXCERPT]
+    tail = raw[-_EXCERPT:] if len(raw) > _EXCERPT else ""
+    parts = [f"len={len(raw)}", f"error={reason}", f"head={head!r}"]
+    if tail:
+        parts.append(f"tail={tail!r}")
+    return ", ".join(parts)
 
 
 def close_interrupted_tool_sequence(messages: list, final_response: Any = None) -> bool:

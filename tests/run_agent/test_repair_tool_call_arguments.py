@@ -140,3 +140,58 @@ class TestRepairToolCallArguments:
         parsed = json.loads(result)
         assert "line" in parsed["msg"]
 
+
+
+class TestUnrepairableDiagnostics:
+    """hc-644: the give-up log has to say enough to find the cause.
+
+    It used to log ``raw[:80]`` alone -- the one part of a truncated payload
+    that always looks fine. Three unrepairable blobs in a single real desktop
+    session (xlsx_file_write / execute_code / write_file, all large) each
+    opened with perfectly valid JSON, so nothing in the log distinguished
+    "the stream was cut" from "the model emitted garbage".
+    """
+
+    @staticmethod
+    def _warn_for(raw: str, caplog) -> str:
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            assert _repair_tool_call_arguments(raw, "write_file") == "{}"
+        unrepairable = [r for r in caplog.records if "Unrepairable" in r.getMessage()]
+        assert len(unrepairable) == 1, "expected exactly one give-up warning"
+        return unrepairable[0].getMessage()
+
+    def test_truncated_mid_string_is_identifiable(self, caplog):
+        """The real shape: a long payload cut off inside a JSON string.
+
+        Appending brackets cannot close a string, so this is precisely the
+        case the repair ladder cannot fix -- the log must let you SEE that.
+        """
+        raw = '{"content": "<!DOCTYPE html>' + "<p>filler</p>" * 200
+        msg = self._warn_for(raw, caplog)
+        assert "unterminated" in msg.lower(), msg
+        assert f"len={len(raw)}" in msg, msg
+
+    def test_tail_is_logged_not_just_head(self, caplog):
+        """Where a truncation actually shows."""
+        raw = '{"code": "' + "x" * 500 + "UNIQUE_TAIL_MARKER"
+        msg = self._warn_for(raw, caplog)
+        assert "UNIQUE_TAIL_MARKER" in msg, "the tail is the diagnostic part"
+
+    def test_head_still_logged_for_garbage_from_the_start(self, caplog):
+        raw = "not json at all, from byte zero"
+        msg = self._warn_for(raw, caplog)
+        assert "not json at all" in msg
+
+    def test_excerpts_are_bounded(self, caplog):
+        """A log line must stay a log line even for a megabyte of HTML."""
+        raw = '{"content": "' + "y" * 1_000_000
+        msg = self._warn_for(raw, caplog)
+        assert len(msg) < 1000, f"log line grew to {len(msg)} chars"
+        assert "len=1000013" in msg, "the true size is still reported"
+
+    def test_decoder_offset_is_reported(self, caplog):
+        raw = '{"a": 1,, "b": 2'
+        msg = self._warn_for(raw, caplog)
+        assert "pos " in msg, msg
