@@ -347,6 +347,24 @@ function cnInstallEnv({ cnMirrors = false, runtimeCosBase = '' }: any = {}) {
   return env
 }
 
+/**
+ * Render HERMES_CN_MIRRORS for the bootstrap log's opening line (hc-642).
+ *
+ * The flag has THREE states, and the old `=== '1' ? 'on' : 'off'` collapsed two
+ * of them into a lie: an UNSET flag printed `cn=off`, which reads as "China
+ * mirrors are disabled" when it actually means the opposite of a decision —
+ * cnInstallEnv deliberately omits the flag so install.sh/install.ps1 run their
+ * own region auto-detection (see rule #2 above). On the machine that motivated
+ * this ticket the log said `cn=off` on every line while the installer was
+ * printing "ApexNodes region: cn (auto-detected) -- using China mirrors", and
+ * the log is the first thing anyone reads when an install goes wrong.
+ */
+function describeCnMirrorMode(value: string | undefined) {
+  if (value === '1') return 'forced-on'
+  if (value != null) return `forced-off(${value})`
+  return 'auto'
+}
+
 function hasExistingGitCheckout(activeRoot) {
   if (!activeRoot) {
     return false
@@ -1168,7 +1186,7 @@ async function runBootstrap(opts) {
       `[bootstrap] starting at ${new Date().toISOString()}; ` +
       `activeRoot=${activeRoot}; ` +
       `stamp=${installStamp ? installStamp.commit.slice(0, 12) : '<none>'}; ` +
-      `cn=${extraEnv.HERMES_CN_MIRRORS === '1' ? 'on' : 'off'}; ` +
+      `cn=${describeCnMirrorMode(extraEnv.HERMES_CN_MIRRORS)}; ` +
       `runLog=${runLog.path}`
   })
 
@@ -1361,6 +1379,7 @@ export {
   cachedScriptPath,
   cnInstallEnv,
   commitKeysMatch,
+  describeCnMirrorMode,
   // hc-543: update-integrity primitives (also consumed by main.ts for the
   // truthful engine-version IPC).
   evaluateTreeIntegrity,
