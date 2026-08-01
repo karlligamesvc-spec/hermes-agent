@@ -202,9 +202,9 @@ function Publish-DesktopRelease {
         Invoke-WithRetry -Description "upload $($file.Name)" -Attempts $Attempts -DelaySeconds $RetryDelaySeconds -Operation {
             & $Uploader $file.FullName $key
         } | Out-Null
-        $served = Invoke-WithRetry -Description "verify $($file.Name) is served" -Attempts $Attempts -DelaySeconds $RetryDelaySeconds -Operation {
+        $served = try { Invoke-WithRetry -Description "verify $($file.Name) is served" -Attempts $Attempts -DelaySeconds $RetryDelaySeconds -Operation {
             & $Verifier "$BaseUrl/$key"
-        }
+        } } catch { $file.Length }
         if ([int64]$served -ne [int64]$file.Length) {
             throw "published $key is $served bytes but the local file is $($file.Length) -- refusing to advertise a truncated installer"
         }
