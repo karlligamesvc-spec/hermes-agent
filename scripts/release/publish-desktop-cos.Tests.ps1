@@ -144,6 +144,24 @@ Assert-That -Name 'nothing at all was uploaded' -Condition ($rec.Uploads.Count -
     -Detail ("uploads=" + ($rec.Uploads -join ','))
 Remove-Item -Recurse -Force $dir
 
+# --- 5b. the Content-Length shape, per PowerShell major version ---------------
+# The first real release under this script uploaded 115 MB in 7.7s and then
+# failed verification on all three attempts: under pwsh 7 the header comes back
+# as a String[], and [int64] on an array throws. Every case above injects a fake
+# -Verifier, so nothing ever executed the real one -- the seam that made the
+# ordering testable is precisely what left this untested (AGENTS.md #14, from
+# the inside).
+Write-Host 'case: Content-Length parses on both PowerShell header shapes'
+Assert-That -Name 'pwsh 7 String[] header' -Condition ((ConvertTo-ContentLength -HeaderValue @('120671920')) -eq 120671920)
+Assert-That -Name 'Windows PowerShell 5.1 scalar header' -Condition ((ConvertTo-ContentLength -HeaderValue '120671920') -eq 120671920)
+Assert-That -Name 'multi-valued header takes the first' -Condition ((ConvertTo-ContentLength -HeaderValue @('42', '99')) -eq 42)
+Assert-That -Name 'whitespace tolerated' -Condition ((ConvertTo-ContentLength -HeaderValue @(' 7 ')) -eq 7)
+foreach ($bad in @(@{ v = $null; n = 'null' }, @{ v = @(); n = 'empty array' }, @{ v = ''; n = 'empty string' })) {
+    $threw = $null
+    try { ConvertTo-ContentLength -HeaderValue $bad.v | Out-Null } catch { $threw = $_ }
+    Assert-That -Name "missing header ($($bad.n)) throws rather than reading as 0" -Condition ($null -ne $threw)
+}
+
 # --- 6. the stall bound itself ------------------------------------------------
 Write-Host 'case: a process that never returns is killed and reported as a stall'
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
