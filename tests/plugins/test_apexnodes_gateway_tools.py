@@ -48,6 +48,12 @@ EXPECTED_TOOLS = {
         "social_posts",
         "social_captions",
         "creator_top_posts",
+        # hc-600 洞察族(本仓随 hc-659 的成对 PR 补齐):它们与上面几个走同一条网关腿,
+        # 所以桌面「只有网关 env」的冒烟同样必须能注册出来。
+        "social_keyword_insight",
+        "social_audience",
+        "social_creator_discovery",
+        "social_product",
     },
     "apexnodes-video-tools": {"generate_video"},
 }

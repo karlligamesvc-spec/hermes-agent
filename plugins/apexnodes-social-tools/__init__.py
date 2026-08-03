@@ -24,7 +24,21 @@ except Exception:  # pragma: no cover - 仅在裸拷贝部署等异常形态出�
     _gateway = None  # type: ignore[assignment]
 
 
-CAPABILITIES = ("content", "search", "profile", "comments", "trending", "posts", "captions")
+CAPABILITIES = (
+    "content",
+    "search",
+    "profile",
+    "comments",
+    "trending",
+    "posts",
+    "captions",
+    # hc-600: 抖音官方洞察族(巨量算数)+ 在售商品。这四个是 cloud 侧 hc-600 就已加上、
+    # fork 侧一直没跟的那批——契约 v2→v4 里差的就是它们(v3 也从未同步到本仓)。
+    "keyword_insight",
+    "audience",
+    "creator_discovery",
+    "product",
+)
 
 
 def _use_gateway() -> bool:
@@ -140,6 +154,86 @@ SCHEMAS = {
     "social_captions": _schema("social_captions", "Fetch a YouTube video's official subtitle/caption text by URL or video id — a transcript with no ASR cost.", ["platform"]),
 }
 
+# hc-600: the insight tools take a keyword / a date window / a sub-intent rather
+# than one object id, so they get their own schema instead of the id-shaped one.
+# Kept byte-for-byte in step with hermes-cloud's copy — the shared contract locks
+# the parameter projection (names/types/required/enum), so a one-sided edit here
+# turns BOTH repos' contract tests red.
+INSIGHT_SCHEMAS: dict[str, dict[str, Any]] = {
+    "social_keyword_insight": {
+        "name": "social_keyword_insight",
+        "description": (
+            "抖音官方（巨量算数）关键词洞察：一个题材/关键词现在热不热、趋势往哪走、有哪些关联长尾词、"
+            "当前有哪些实时热点。找选题、判断题材热度时用这个，而不是用 social_search 抓几条样本去猜。"
+            "focus 选择要哪一面：trend=热度日趋势(默认)｜overview=一句话水位概览｜related=关联词/长尾选题｜"
+            "hot_topics=实时热点榜(不传关键词时的默认)｜topic=某个热点的详情(topic 必须逐字来自 hot_topics)。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "目前仅 douyin（巨量算数是抖音官方数据）。"},
+                "keyword": {"type": "string", "description": "要看的关键词，例如「猫粮」。"},
+                "keyword_list": {"type": "string", "description": "多个关键词做对比，英文逗号分隔，例如「猫粮,狗粮」。"},
+                "focus": {"type": "string", "description": "trend | overview | related | hot_topics | topic"},
+                "topic": {"type": "string", "description": "focus=topic 时的热点名，必须与 hot_topics 返回的名字逐字一致。"},
+                "start_date": {"type": "string", "description": "可选，YYYYMMDD 或 YYYY-MM-DD。不传则自动取最近一个有效的 30 天窗口。"},
+                "end_date": {"type": "string", "description": "可选，同上。数据有约两天延迟，不传即可，别自己顶到今天。"},
+            },
+            "required": ["platform"],
+        },
+    },
+    "social_audience": {
+        "name": "social_audience",
+        "description": (
+            "抖音官方（巨量算数）人群画像：某个题材/关键词的受众是谁 —— 年龄、性别、地域、兴趣等维度的"
+            "占比与 TGI 偏好强度。回答「谁在看/谁在买」时用。注意这是**题材的人群**，不是某个账号的粉丝。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "目前仅 douyin。"},
+                "keyword": {"type": "string", "description": "要看受众的关键词/题材，例如「猫粮」。"},
+                "start_date": {"type": "string", "description": "可选 YYYYMMDD；不传自动取最近有效窗口。"},
+                "end_date": {"type": "string", "description": "可选 YYYYMMDD。"},
+            },
+            "required": ["platform", "keyword"],
+        },
+    },
+    "social_creator_discovery": {
+        "name": "social_creator_discovery",
+        "description": (
+            "按关键词找达人/对标账号（抖音官方达人库）：返回候选达人的名字、粉丝数、点赞总数、作品数、"
+            "垂类标签与主页链接。用户说「帮我找几个对标账号」「这个品类谁在做」但**给不出链接**时用这个；"
+            "已经有账号链接/ID 时用 social_profile 或 social_posts。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "目前仅 douyin。"},
+                "keyword": {"type": "string", "description": "品类/题材关键词，例如「猫粮」「美妆」。"},
+                "count": {"type": "integer", "description": "候选数量，默认 20，最多 50。"},
+            },
+            "required": ["platform", "keyword"],
+        },
+    },
+    "social_product": {
+        "name": "social_product",
+        "description": (
+            "按关键词查平台在售商品：标题、价格、销量、评分、评价数、店铺。做爆品/选品分析时用来看"
+            "「同类商品在卖什么、什么价位、卖得怎样」。注意这是**商品**，不是讲商品的视频（那是 social_search）。"
+            "目前仅 TikTok Shop（platform=tiktok）。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string", "description": "目前仅 tiktok（TikTok Shop）。"},
+                "keyword": {"type": "string", "description": "商品关键词。"},
+            },
+            "required": ["platform", "keyword"],
+        },
+    },
+}
+
 # hc-346: enumerate a creator's works and rank them by interaction volume — the
 # batch-pipeline selector. The master pages the creator's posts feed (bounded by a
 # scan cap), filters by like/collect/comment threshold + time range, and returns a
@@ -198,6 +292,55 @@ def _gateway_platform_or_error(platform: str) -> str | None:
         return None
     supported = "、".join(_gateway.SOCIAL_PLATFORMS)
     return f"不支持的平台「{platform}」(当前支持: {supported})"
+
+
+def _insight_payload(args: dict) -> dict[str, Any]:
+    """hc-600: the insight tools speak keywords / windows / a sub-intent. ``topic``
+    is renamed to the gateway's ``topic_name`` here so the agent-facing name stays
+    plain while the wire contract stays explicit."""
+    if not isinstance(args, dict):
+        raise RuntimeError("tool expects a JSON object argument")
+    platform = str(args.get("platform") or "").strip().lower()
+    if not platform:
+        raise RuntimeError("请提供 platform")
+    payload: dict[str, Any] = {"platform": platform}
+    for key in ("keyword", "keyword_list", "focus", "start_date", "end_date", "count"):
+        value = args.get(key)
+        if value not in (None, ""):
+            payload[key] = value
+    if args.get("topic") not in (None, ""):
+        payload["topic_name"] = args["topic"]
+    return payload
+
+
+def _insight_handler(capability: str):
+    """Same two legs as :func:`_handler` — the insight family only differs in how the
+    payload is shaped, not in how it travels. Keeping the transport identical is what
+    lets the shared contract assert one endpoint family per tool across both repos."""
+
+    def handle(args: dict, **_kwargs) -> str:
+        try:
+            payload = _insight_payload(args)
+        except RuntimeError as exc:
+            return tool_error(f"跨平台数据查询失败: {exc}")
+        if _use_gateway():
+            platform = payload["platform"]
+            invalid = _gateway_platform_or_error(platform)
+            if invalid:
+                return tool_error(f"跨平台数据查询失败: {invalid}")
+            try:
+                response = _gateway.request_json(
+                    "POST", f"/tools/v1/social/{platform}/{capability}", payload, timeout=90
+                )
+            except _gateway.GatewayError as exc:
+                return tool_error(f"跨平台数据查询失败: {exc}")
+            return tool_result(**_gateway.unwrap(response))
+        try:
+            return tool_result(**_request("POST", f"/data/social/{capability}", payload))
+        except RuntimeError as exc:
+            return tool_error(f"跨平台数据查询失败: {exc}")
+
+    return handle
 
 
 def _handler(capability: str):
@@ -297,6 +440,22 @@ def register(ctx):
             check_fn=_check,
             requires_env=[],
             description=SCHEMAS[tool_name]["description"],
+            emoji="🔎",
+        )
+    for tool_name, capability in {
+        "social_keyword_insight": "keyword_insight",
+        "social_audience": "audience",
+        "social_creator_discovery": "creator_discovery",
+        "social_product": "product",
+    }.items():
+        ctx.register_tool(
+            name=tool_name,
+            toolset="skills",
+            schema=INSIGHT_SCHEMAS[tool_name],
+            handler=_insight_handler(capability),
+            check_fn=_check,
+            requires_env=[],
+            description=INSIGHT_SCHEMAS[tool_name]["description"],
             emoji="🔎",
         )
     ctx.register_tool(

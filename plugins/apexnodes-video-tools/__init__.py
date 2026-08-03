@@ -141,6 +141,17 @@ GENERATE_VIDEO_SCHEMA = {
                 "type": "integer",
                 "description": "Optional clip length in seconds. Leave empty to use the platform default; longer clips take longer to render.",
             },
+            "provider": {
+                "type": "string",
+                "enum": ["agnes", "chinaapi"],
+                "description": (
+                    "Optional rendering engine. Leave empty for the platform default (free tier). "
+                    "'chinaapi' is the paid higher-quality tier billed per second — only pass it when "
+                    "the user explicitly asked for the paid/HD tier, or a generation-ladder directive "
+                    "told you to. It may be unavailable, in which case the tool says so; do not retry "
+                    "with it and do not silently fall back."
+                ),
+            },
         },
         "required": ["prompt"],
     },
@@ -183,6 +194,9 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         "aspect_ratio": str(args.get("aspect_ratio") or "landscape").strip() or "landscape",
         "size": str(args.get("size") or "").strip() or None,
         "seconds": args.get("seconds"),
+        # hc-659: forwarded verbatim; the master picks/validates the leg (the plugin
+        # never learns which engines exist, and never holds a vendor key).
+        "provider": str(args.get("provider") or "").strip() or None,
     }
     if _use_gateway():
         try:

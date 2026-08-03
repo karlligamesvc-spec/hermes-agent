@@ -37,8 +37,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 
 # 与 cloud 侧 tests/test_hc563_plugin_tools_contract.py 内嵌的是同一个值。
-EXPECTED_CONTRACT_SHA256 = "5a8baea40ac0b0bcc3d0604de39842ec2f09529e14ddab3143bdf81671962c73"
-EXPECTED_CONTRACT_VERSION = 2
+EXPECTED_CONTRACT_SHA256 = "4154dd9ea8e07a54864c6a2a761da37153c20a92ef2b01d04e820548a0a8d636"
+EXPECTED_CONTRACT_VERSION = 4
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -63,6 +63,11 @@ PROBES: dict[str, dict] = {
     "social_posts": {"platform": "douyin", "user_id": "u1"},
     "social_captions": {"platform": "youtube", "url": "https://youtu.be/x"},
     "creator_top_posts": {"url": SHARE_URL, "min_likes": 100000},
+    # hc-600 洞察族:入参是关键词/窗口/子意图,不是单个对象 id。
+    "social_keyword_insight": {"platform": "douyin", "keyword": "猫粮"},
+    "social_audience": {"platform": "douyin", "keyword": "猫粮"},
+    "social_creator_discovery": {"platform": "douyin", "keyword": "猫粮"},
+    "social_product": {"platform": "tiktok", "keyword": "cat food"},
     "generate_video": {"prompt": "一只猫在弹钢琴"},
 }
 
@@ -339,7 +344,9 @@ def test_contract_covers_exactly_the_shared_tool_surface():
     contract_tools = set(CONTRACT["tools"])
     assert contract_tools == set(REGISTRY)
     assert contract_tools == {t for tools in CONTRACT["plugins"].values() for t in tools}
-    assert len(contract_tools) == 14
+    # hc-563 冻结在 14;hc-600 有意加入四个洞察工具(contract_version 3)。这个数字是
+    # 漂移绊线,只能与 contract_version 一起动 —— 与 cloud 侧同一断言保持一致。
+    assert len(contract_tools) == 18
     assert set(PROBES) == contract_tools
 
 
