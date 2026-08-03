@@ -103,6 +103,37 @@ function Invoke-BoundedProcess {
     }
 }
 
+function ConvertTo-ContentLength {
+    <#
+    .SYNOPSIS
+      Normalise a Content-Length response header into an Int64.
+    .DESCRIPTION
+      Split out from Get-RemoteContentLength so it can be tested without a
+      network, because the shape of this value differs by PowerShell major
+      version and that difference broke the first real release:
+
+        Windows PowerShell 5.1 -> $resp.Headers['Content-Length'] is a String
+        PowerShell 7           -> it is a String[] (one entry per header line)
+
+      `[int64]` on a String[] throws "Cannot convert the System.String[] value
+      ... to type System.Int64". The publish step runs under pwsh 7, so every
+      verification failed there while the tests -- which injected a fake
+      verifier and therefore never executed this function -- stayed green.
+      That is the AGENTS.md #14 shape from the inside: making the seam
+      injectable made the thing behind the seam untested.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowNull()]$HeaderValue)
+    # Unwrap the pwsh 7 array shape; an empty array means the header was absent.
+    if ($HeaderValue -is [array]) {
+        if ($HeaderValue.Count -eq 0) { $HeaderValue = $null } else { $HeaderValue = $HeaderValue[0] }
+    }
+    if ($null -eq $HeaderValue -or "$HeaderValue".Trim() -eq '') {
+        throw "response carried no Content-Length header (object is not being served)"
+    }
+    return [int64]("$HeaderValue".Trim())
+}
+
 function Get-RemoteContentLength {
     <#
     .SYNOPSIS
@@ -111,7 +142,7 @@ function Get-RemoteContentLength {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Url, [int]$TimeoutSeconds = 60)
     $resp = Invoke-WebRequest -Uri $Url -Method Head -TimeoutSec $TimeoutSeconds -UseBasicParsing
-    return [int64]$resp.Headers['Content-Length']
+    return ConvertTo-ContentLength -HeaderValue $resp.Headers['Content-Length']
 }
 
 function Get-FeedReferencedNames {
