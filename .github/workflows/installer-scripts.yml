@@ -38,7 +38,14 @@ jobs:
           $failed = $false
           # The lib is dot-sourced by install.ps1, so a parse error in it lands
           # in the same parser during the same install -- check both.
-          foreach ($file in @('scripts/install.ps1', 'scripts/lib/apexnodes-region-detect.ps1')) {
+          # hc-657 adds the release publish script. It ships to nobody, but it
+          # runs at the very END of a release, after the build has already been
+          # paid for -- the most expensive place to discover a typo.
+          foreach ($file in @(
+            'scripts/install.ps1',
+            'scripts/lib/apexnodes-region-detect.ps1',
+            'scripts/release/publish-desktop-cos.ps1',
+            'scripts/release/publish-desktop-cos.Tests.ps1')) {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile(
               (Resolve-Path $file), [ref]$null, [ref]$errors) | Out-Null
@@ -52,6 +59,17 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+
+      # hc-657: parsing proves the publish script compiles, not that it retries
+      # a stalled upload or refuses to flip the feed ahead of its binaries.
+      # Those are failure-only paths, so the tests inject the failures. Running
+      # them here means the release path is exercised on every PR that touches
+      # it, instead of only during a release.
+      - name: COS publish script behaviour (injected failures)
+        shell: pwsh
+        run: |
+          ./scripts/release/publish-desktop-cos.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: install.sh parses
         shell: bash

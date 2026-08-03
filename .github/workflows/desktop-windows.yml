@@ -44,7 +44,11 @@ jobs:
     name: ApexNodes Windows installer (x64, unsigned)
     needs: preflight
     runs-on: windows-latest
-    timeout-minutes: 75
+    # hc-657: was 75, which only ever needed to be that large because the COS
+    # upload lived in this job and could hang. The build itself runs in about
+    # five minutes; 30 leaves generous margin while making a genuinely wedged
+    # build visible instead of letting it idle for over an hour.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -95,6 +99,11 @@ jobs:
         working-directory: apps/desktop
         run: Get-ChildItem release
 
+      # hc-657: the feed and blockmaps are part of the artifact now. They were
+      # not, which quietly made the documented "artifact is still produced as a
+      # fallback" untrue: you cannot restore an updater feed from a bundle that
+      # contains no latest.yml. This is also what lets `publish` below be a
+      # separate, re-runnable job -- it publishes from here, not from a rebuild.
       - name: Upload installer artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -102,35 +111,72 @@ jobs:
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.msi
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest.yml
           if-no-files-found: error
 
-      # Publish the installer + electron-updater feed straight to Tencent COS
-      # from the runner (fast GH -> COS link), so we never pull the ~235 MB
-      # artifact down a slow link. Gated on the COS_* repo secrets: skips
-      # cleanly when unset (the artifact above is still produced as a
-      # fallback). 0.16.1+: original electron-builder names (no lowercasing —
-      # latest.yml references the exe by its exact name) under desktop/win-x64/,
-      # mirroring the per-arch mac prefixes (desktop/mac-<arch>/); the shell
-      # updater polls this prefix (electron/shell-updater.cjs).
-      #
-      # hc-435: the ROOT desktop/latest.yml is INTENTIONALLY empty (404). The
-      # installed shell reads desktop/win-x64/ via runtime setFeedURL, not the
-      # root — do not add a root copy to "fix" the 404 (it would just mirror the
-      # per-arch mac clobber hazard). Verified the shipped win-x64 feed + exe
-      # both resolve (HTTP 200).
+  # hc-657: publish is its own job.
+  #
+  # It used to be the last step of `build`, sharing that job's timeout budget.
+  # Three of the last twelve releases stalled inside the COS upload and were
+  # killed at exactly 75 minutes, which threw away a build that had already
+  # succeeded twenty minutes earlier. Separating them means a stalled publish
+  # costs a publish retry ("Re-run failed jobs" reuses the artifact), never a
+  # rebuild -- and the build's own budget no longer has to cover a network
+  # transfer whose duration we do not control.
+  #
+  # Still windows-latest: coscli is the Windows binary this pipeline has always
+  # used, and the point of this change is to stop the transfer from hanging, not
+  # to swap the transport underneath it at the same time.
+  #
+  # 0.16.1+: original electron-builder names (no lowercasing -- latest.yml
+  # references the exe by its exact name) under desktop/win-x64/, mirroring the
+  # per-arch mac prefixes (desktop/mac-<arch>/); the shell updater polls this
+  # prefix (electron/shell-updater.cjs).
+  #
+  # hc-435: the ROOT desktop/latest.yml is INTENTIONALLY empty (404). The
+  # installed shell reads desktop/win-x64/ via runtime setFeedURL, not the root
+  # -- do not add a root copy to "fix" the 404 (it would just mirror the per-arch
+  # mac clobber hazard).
+  publish:
+    name: Publish to Tencent COS
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Download installer artifact
+        # The pair tests.yml already runs against upload-artifact v7.0.1 above.
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: apexnodes-desktop-windows
+          path: apps/desktop/release
+
       - name: Publish installer + updater feed to Tencent COS
-        if: success()
         shell: pwsh
         env:
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
         run: |
+          $ErrorActionPreference = "Stop"
           if (-not $env:COS_SECRET_ID -or -not $env:COS_SECRET_KEY) {
             Write-Host "COS_SECRET_ID/COS_SECRET_KEY not set; skipping COS publish (artifact still uploaded)."
             exit 0
           }
-          $ErrorActionPreference = "Stop"
-          Invoke-WebRequest -Uri "https://github.com/tencentyun/coscli/releases/download/v1.0.8/coscli-v1.0.8-windows-amd64.exe" -OutFile coscli.exe
+          . ./scripts/release/publish-desktop-cos.ps1
+
+          $bucket = "apexnodes-runtime-202606250443-1300912302"
+          $baseUrl = "https://$bucket.cos.ap-guangzhou.myqcloud.com"
+
+          # hc-657: this download had no retry either -- the same class of miss
+          # as hc-655, where one of two release probes was hardened and the
+          # unhardened one vetoed a whole release.
+          Invoke-WithRetry -Description "download coscli" -Attempts 3 -DelaySeconds 5 -Operation {
+            Invoke-WebRequest -Uri "https://github.com/tencentyun/coscli/releases/download/v1.0.8/coscli-v1.0.8-windows-amd64.exe" -OutFile coscli.exe -TimeoutSec 120 -UseBasicParsing
+          } | Out-Null
+
           $cfg = @(
             "cos:",
             "  base:",
@@ -138,21 +184,27 @@ jobs:
             "    secretid: $env:COS_SECRET_ID",
             "    secretkey: $env:COS_SECRET_KEY",
             "  buckets:",
-            "  - name: apexnodes-runtime-202606250443-1300912302",
+            "  - name: $bucket",
             "    alias: apexnodes-runtime",
             "    region: ap-guangzhou",
             "    endpoint: cos.ap-guangzhou.myqcloud.com"
           )
           Set-Content -Path (Join-Path $env:USERPROFILE ".cos.yaml") -Value $cfg -Encoding ascii
-          $release = "apps/desktop/release"
-          $files = @(Get-ChildItem "$release/*.exe") +
-                   @(Get-ChildItem "$release/*.blockmap" -ErrorAction SilentlyContinue) +
-                   @(Get-ChildItem "$release/latest.yml" -ErrorAction SilentlyContinue)
-          if (-not ($files | Where-Object { $_.Extension -eq ".exe" })) { throw "no .exe found under $release" }
-          if (-not ($files | Where-Object { $_.Name -eq "latest.yml" })) { throw "latest.yml missing under $release (updater feed would be dead)" }
-          $prefix = "desktop/win-x64"
-          foreach ($f in $files) {
-            ./coscli.exe cp $f.FullName "cos://apexnodes-runtime-202606250443-1300912302/$prefix/$($f.Name)"
-            Write-Host "COS publish OK: $prefix/$($f.Name)"
+          try {
+            $coscli = (Resolve-Path ./coscli.exe).Path
+            # 15 minutes is far above any healthy transfer here (a whole
+            # successful job, build included, has run in 8) and far below the
+            # job wall, so a stall is caught with retries still left.
+            $uploader = {
+              param($LocalPath, $Key)
+              Invoke-BoundedProcess -FilePath $coscli -TimeoutSeconds 900 `
+                -ArgumentList @("cp", $LocalPath, "cos://$bucket/$Key")
+            }.GetNewClosure()
+            $verifier = { param($Url) Get-RemoteContentLength -Url $Url }
+
+            Publish-DesktopRelease -ReleaseDir "apps/desktop/release" -Prefix "desktop/win-x64" `
+              -BaseUrl $baseUrl -Uploader $uploader -Verifier $verifier `
+              -Attempts 3 -RetryDelaySeconds 15 | Out-Null
+          } finally {
+            Remove-Item (Join-Path $env:USERPROFILE ".cos.yaml") -Force -ErrorAction SilentlyContinue
           }
-          Remove-Item (Join-Path $env:USERPROFILE ".cos.yaml") -Force
