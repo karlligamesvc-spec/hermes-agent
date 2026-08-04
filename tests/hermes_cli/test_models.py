@@ -58,6 +58,31 @@ class TestOpenRouterModels:
 
 
 class TestFetchOpenRouterModels:
+    """
+    These tests pin the CURATED list as well as the live catalog.
+
+    `fetch_openrouter_models` returns `curated_ids INTERSECT live_payload`, and
+    the curated half comes from `get_curated_openrouter_models()` -- a REMOTE,
+    mutable manifest. Mocking only `_urlopen_model_catalog_request` plugged one
+    network hole and left the other open, so the outcome silently depended on
+    whatever upstream happened to be publishing that day.
+
+    It duly went off: upstream dropped `qwen/qwen3.7-max` from the curated
+    manifest, and these two began failing everywhere the manifest is reachable
+    -- surfacing on an unrelated installer PR, which is where it was noticed.
+    A test that reaches the network to decide its own expected value is not
+    testing the filtering logic it claims to test.
+    """
+
+    @staticmethod
+    def _pin_curated(monkeypatch, ids):
+        """Freeze the curated half so only the live payload is under test."""
+        import hermes_cli.model_catalog as _catalog
+        monkeypatch.setattr(
+            _catalog, "get_curated_openrouter_models",
+            lambda: [(mid, "") for mid in ids],
+        )
+
     def test_live_fetch_recomputes_free_tags(self, monkeypatch):
         class _Resp:
             def __enter__(self):
@@ -69,6 +94,11 @@ class TestFetchOpenRouterModels:
             def read(self):
                 return b'{"data":[{"id":"anthropic/claude-opus-4.8","pricing":{"prompt":"0.000015","completion":"0.000075"}},{"id":"qwen/qwen3.7-max","pricing":{"prompt":"0.000000325","completion":"0.00000195"}},{"id":"nvidia/nemotron-3-super-120b-a12b:free","pricing":{"prompt":"0","completion":"0"}}]}'
 
+        self._pin_curated(monkeypatch, [
+            "anthropic/claude-opus-4.8",
+            "qwen/qwen3.7-max",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+        ])
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
         with patch("hermes_cli.models._urlopen_model_catalog_request", return_value=_Resp()):
             models = fetch_openrouter_models(force_refresh=True)
@@ -166,6 +196,7 @@ class TestFetchOpenRouterModels:
                     b']}'
                 )
 
+        self._pin_curated(monkeypatch, ["anthropic/claude-opus-4.8", "qwen/qwen3.7-max"])
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
         with patch("hermes_cli.models._urlopen_model_catalog_request", return_value=_Resp()):
             models = fetch_openrouter_models(force_refresh=True)
