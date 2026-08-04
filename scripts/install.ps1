@@ -1792,11 +1792,29 @@ function Install-Repository {
         # Try SSH first, then HTTPS, with -c flag for atomic write fix.
         # Guard on $cloneSuccess so CN installs (source already fetched from COS)
         # never try to git-clone over a populated $InstallDir.
+        #
+        # hc-678: `clone --config core.autocrlf=false` -- NOT a later
+        # `git config`. The boundary that matters is the CLONE, not the
+        # checkout. Git for Windows ships core.autocrlf=true at SYSTEM scope
+        # (C:\Program Files\Git\etc\gitconfig), so a bare `git clone` writes
+        # the repo's LF text files to the working tree as CRLF. Turning
+        # normalization off afterwards does not rewrite that tree -- it only
+        # stops git converting on the way back in, so every CRLF file is now
+        # unequal to its LF blob and `git status` reports the whole checkout
+        # modified (1199 files on a real 0.17.8 first install; a sampled file
+        # diffed 726 insertions / 726 deletions, all line ends). The $Commit
+        # pin below then aborts with "Your local changes to the following
+        # files would be overwritten by checkout" and the repository stage
+        # exits 1 -- and when it is not fatal it is worse, leaving the engine
+        # running on the clone's branch tip instead of the pinned commit.
+        # `clone --config` is applied after init but BEFORE any file is
+        # checked out, so the tree lands as LF in the first place; it also
+        # persists into .git/config for every later update.
         if (-not $cloneSuccess) {
             Write-Info "Trying SSH clone..."
             $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=5"
             try {
-                Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlSsh $InstallDir }
+                Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --config core.autocrlf=false --depth 1 --branch $Branch $RepoUrlSsh $InstallDir }
                 if ($LASTEXITCODE -eq 0) { $cloneSuccess = $true }
             } catch { }
             $env:GIT_SSH_COMMAND = $null
@@ -1806,7 +1824,7 @@ function Install-Repository {
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
             Write-Info "SSH failed, trying HTTPS..."
             try {
-                Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlHttps $InstallDir }
+                Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --config core.autocrlf=false --depth 1 --branch $Branch $RepoUrlHttps $InstallDir }
                 if ($LASTEXITCODE -eq 0) { $cloneSuccess = $true }
             } catch { }
         }
@@ -1857,8 +1875,18 @@ function Install-Repository {
                     # `checkout -f FETCH_HEAD` -- leaving this freshly-created
                     # managed checkout dirty vs HEAD and aborting the next
                     # `hermes update` (see the notes at the shared clone-path
-                    # config below and install.ps1:1461-1469). The later pin on
-                    # the shared path is idempotent and still covers git clones.
+                    # config below and install.ps1:1461-1469).
+                    #
+                    # This route is correct because `git init` creates an EMPTY
+                    # tree: nothing is on disk from git's point of view yet, so
+                    # the pin still lands ahead of the first checkout. hc-678:
+                    # the line that used to sit here claimed "the later pin on
+                    # the shared path is idempotent and still covers git
+                    # clones" -- it does not, and that sentence is what kept
+                    # the bug alive. `git clone` checks the tree out as part of
+                    # the clone, so by the time the shared pin runs the CRLF
+                    # working tree already exists. The clone calls above now
+                    # pass `--config core.autocrlf=false` themselves.
                     git -c windows.appendAtomically=false config core.autocrlf false 2>$null
                     git remote add origin $RepoUrlHttps 2>$null
                     $fetchRef = if ($Commit) { $Commit } elseif ($Tag) { "refs/tags/$Tag" } else { $Branch }
@@ -1937,10 +1965,15 @@ function Install-Repository {
         if ($hasGitDir) {
             # Set per-repo config (harmless if it fails)
             git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
-            # Pin autocrlf=false on the managed clone so git never renormalizes the
-            # repo's LF text files to CRLF in the working tree. Without this, the very
-            # next `hermes update` checkout aborts on a "dirty" tree the user never
-            # touched (see the update path above).
+            # Re-assert autocrlf=false on the managed checkout. hc-678: this is a
+            # BACKSTOP, not the fix -- by the time it runs the working tree is
+            # already on disk, and `git config` never rewrites an existing tree.
+            # It still earns its place for checkouts this run did not create
+            # (a repo cloned by an older installer, or by hand), where flipping
+            # the setting at least stops the churn from growing. The routes that
+            # actually create a tree pin it before the first checkout: the two
+            # `git clone --config core.autocrlf=false` calls above, and the ZIP
+            # fallback's `git config` between its `git init` and its `checkout`.
             git -c windows.appendAtomically=false config core.autocrlf false 2>$null
         }
 

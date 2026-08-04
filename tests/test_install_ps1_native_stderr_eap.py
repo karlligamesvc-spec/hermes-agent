@@ -37,14 +37,24 @@ def _assert_relaxed_call(text: str, command_pattern: str) -> None:
 def test_repository_stage_relieves_eap_for_ssh_and_https_git_clone() -> None:
     text = _install_ps1()
     assert "function Invoke-NativeWithRelaxedErrorAction" in text
+    # hc-678 loosened the middle of these patterns from a frozen literal to
+    # `[^{}]*`. What this test is about is that the clone runs with EAP relaxed,
+    # not which flags it carries -- and pinning the exact flag list made an
+    # unrelated flag addition (`--config core.autocrlf=false`) read as "the EAP
+    # wrapper disappeared". The endpoints still anchor it to the right command:
+    # `git ... clone` on the left, the specific remote + $InstallDir on the
+    # right, so a clone of some OTHER url/dir cannot satisfy it.
     _assert_relaxed_call(
         text,
-        r"git -c windows\.appendAtomically=false clone --depth 1 --branch \$Branch \$RepoUrlSsh \$InstallDir",
+        r"git -c windows\.appendAtomically=false clone [^{}]*\$RepoUrlSsh \$InstallDir",
     )
     _assert_relaxed_call(
         text,
-        r"git -c windows\.appendAtomically=false clone --depth 1 --branch \$Branch \$RepoUrlHttps \$InstallDir",
+        r"git -c windows\.appendAtomically=false clone [^{}]*\$RepoUrlHttps \$InstallDir",
     )
+    # The flags that must survive any future edit are asserted where they
+    # belong: tests/test_install_autocrlf_pinned_on_the_clone.py replays the
+    # real clone command lines under core.autocrlf=true.
 
 
 def test_uv_venv_and_dependency_installs_relax_eap() -> None:

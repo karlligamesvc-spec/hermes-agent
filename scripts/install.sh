@@ -1591,14 +1591,27 @@ EOF
         # Try SSH first (for private repo access), fall back to HTTPS
         # GIT_SSH_COMMAND disables interactive prompts and sets a short timeout
         # so SSH fails fast instead of hanging when no key is configured.
+        #
+        # hc-678, twin of install.ps1's clone block (AGENTS.md #12). This side
+        # never mentioned core.autocrlf at all, so it was not broken the way
+        # install.ps1 was -- but only by luck of the platform: false is git's
+        # own default on POSIX, and detect_os() refuses to run under
+        # MSYS/MINGW/CYGWIN where Git for Windows sets true at system scope.
+        # A user who put `core.autocrlf = true` in ~/.gitconfig (or an
+        # /etc/gitconfig that does) still reproduces install.ps1's failure
+        # exactly: the clone lands CRLF, and the `git checkout --detach
+        # "$INSTALL_COMMIT"` pin below aborts with "Your local changes ...
+        # would be overwritten by checkout". Pin it on the clone -- a no-op for
+        # every user already on the default, and it keeps the two installers
+        # one behavior instead of one behavior and one accident.
         log_info "Trying SSH clone..."
         if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
-           git clone --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
+           git clone --config core.autocrlf=false --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
             log_success "Cloned via SSH"
         else
             rm -rf "$INSTALL_DIR" 2>/dev/null  # Clean up partial SSH clone
             log_info "SSH failed, trying HTTPS..."
-            if git clone --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+            if git clone --config core.autocrlf=false --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
                 log_success "Cloned via HTTPS"
             else
                 log_error "Failed to clone repository"
