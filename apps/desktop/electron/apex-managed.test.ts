@@ -726,6 +726,41 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
   assert.equal(ensureProductDefaultsYaml(seeded).changed, false)
 })
 
+test('Desktop leaves parent and child iteration budgets to the runtime schema', () => {
+  // v0.20 intentionally raises the parent default because complex agentic
+  // tasks routinely exceeded 90 tool calls. Product-default reconciliation
+  // must not make an old schema default sticky; explicit user values remain
+  // supported by the runtime and are preserved by the add-only writer.
+  const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n').next
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+  const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
+
+  assert.ok(!Object.hasOwn(APEX_PRODUCT_DEFAULTS, 'agent.max_turns'))
+  assert.ok(!Object.hasOwn(APEX_PRODUCT_DEFAULTS, 'delegation.max_iterations'))
+  assert.ok(!reconciled.includes('max_turns:'))
+  assert.ok(!reconciled.includes('max_iterations:'))
+  assert.ok(!seedBlocks.includes('max_turns:'))
+  assert.ok(!seedBlocks.includes('max_iterations:'))
+})
+
+test('managed sign-in creates an anchor before syncing the freshly rotated relay key', () => {
+  // hc-646: on a signed-out first boot the existing file is the BYOK seed and
+  // contains no managed anchor. Calling sync first can only return
+  // `no-managed-anchor`; the add-only product guard must run after the managed
+  // credential is stored and before the writer attempts to persist it.
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+  const start = main.indexOf('async function provisionManagedFromAccessToken')
+  const end = main.indexOf('\n/**\n * Sign in to ApexNodes', start)
+  const body = main.slice(start, end)
+  const stored = body.indexOf('writeManagedConfig({ ...provisioned')
+  const anchored = body.indexOf("guardConfigYamlProductBlocks('sign-in-provision')")
+  const synced = body.indexOf("syncManagedRelayKeyToConfig('sign-in')")
+
+  assert.ok(stored >= 0, 'provision result is not stored')
+  assert.ok(anchored > stored, 'managed anchor must be created after the new key is stored')
+  assert.ok(synced > anchored, 'relay key sync must run only after the managed anchor exists')
+})
+
 test('ensureProductDefaultsYaml preserves comments and unrelated blocks', () => {
   // Line surgery, not a YAML round-trip: the seed's explanatory comments and
   // the relay registration have to come out the other side byte-identical.

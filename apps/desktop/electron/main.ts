@@ -12697,6 +12697,12 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
     // Persist the login JWT (encrypted) alongside the fresh relay key so the boot
     // 401-self-heal can silently re-provision if this key is later rotated out.
     writeManagedConfig({ ...provisioned, account: account2, accessToken: token })
+    // A signed-out first boot seeds a BYOK config, which has no managed relay
+    // anchor. The key writer correctly refuses that shape (`no-managed-anchor`),
+    // so create the managed custom-provider anchor before attempting the write.
+    // The renderer still applies the model assignment through /api/model/set;
+    // this guard is add-only and never overwrites an existing BYOK selection.
+    guardConfigYamlProductBlocks('sign-in-provision')
     // A re-login just ROTATED the relay key — refresh both config.yaml anchors
     // immediately so neither the chat path (model.api_key) nor the picker's live
     // listing (custom_providers) runs on the dead key until the next restart.
