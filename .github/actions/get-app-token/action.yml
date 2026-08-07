@@ -45,8 +45,12 @@ runs:
       shell: bash
       env:
         CLIENT_ID: ${{ inputs.client-id }}
+        PRIVATE_KEY: ${{ inputs.private-key }}
       run: |
-        if [ -n "$CLIENT_ID" ]; then
+        # The token action needs the credential pair. A partially configured
+        # environment must take the same safe fallback as an empty one; testing
+        # only CLIENT_ID made the documented missing-key fallback unreachable.
+        if [ -n "$CLIENT_ID" ] && [ -n "$PRIVATE_KEY" ]; then
           echo "has_app=true" >> "$GITHUB_OUTPUT"
         else
           echo "has_app=false" >> "$GITHUB_OUTPUT"
