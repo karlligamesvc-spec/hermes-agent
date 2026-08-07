@@ -23,14 +23,11 @@ import { DEFAULT_TIMEOUT_MS, generateState, startLoopbackLogin } from './apex-lo
 // server's handle release cleanly between tests).
 function hitLoopback(port, pathAndQuery): Promise<any> {
   return new Promise((resolve, reject) => {
-    const req = http.request(
-      { host: '127.0.0.1', port, path: pathAndQuery, method: 'GET', agent: false },
-      res => {
-        const chunks = []
-        res.on('data', c => chunks.push(c))
-        res.on('end', () => resolve({ statusCode: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }))
-      }
-    )
+    const req = http.request({ host: '127.0.0.1', port, path: pathAndQuery, method: 'GET', agent: false }, res => {
+      const chunks = []
+      res.on('data', c => chunks.push(c))
+      res.on('end', () => resolve({ statusCode: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }))
+    })
 
     req.on('error', reject)
     req.end()

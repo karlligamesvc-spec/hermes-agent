@@ -57,7 +57,10 @@ test('mode predicates classify what each mode removes', () => {
 
 test('resolveRemovableAppPath finds the .app bundle on macOS', () => {
   // Current bundle name (APEX brand rename)…
-  assert.equal(resolveRemovableAppPath('/Applications/APEX.app/Contents/MacOS/APEX', 'darwin'), '/Applications/APEX.app')
+  assert.equal(
+    resolveRemovableAppPath('/Applications/APEX.app/Contents/MacOS/APEX', 'darwin'),
+    '/Applications/APEX.app'
+  )
   // …and every name an older install could still be sitting under.
   assert.equal(
     resolveRemovableAppPath('/Applications/ApexNodes.app/Contents/MacOS/ApexNodes', 'darwin'),

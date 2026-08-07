@@ -109,7 +109,4 @@ async function createProjectDirForIpc(parentDir, name, options: any = {}) {
   return { ok: true, path: target, error: null, code: null }
 }
 
-export {
-  createProjectDirForIpc,
-  validateProjectName
-}
+export { createProjectDirForIpc, validateProjectName }

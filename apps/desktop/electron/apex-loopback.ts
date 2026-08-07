@@ -120,7 +120,9 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     }
 
     const fail = reason => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       cleanup()
       const err: any = new Error(`Loopback login failed: ${reason}`)
@@ -129,7 +131,9 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     }
 
     const succeed = token => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       cleanup()
       resolveResult({ token })
@@ -211,8 +215,4 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
   })
 }
 
-export {
-  DEFAULT_TIMEOUT_MS,
-  generateState,
-  startLoopbackLogin
-}
+export { DEFAULT_TIMEOUT_MS, generateState, startLoopbackLogin }

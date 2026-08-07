@@ -184,12 +184,7 @@ export function scenarioMatchesQuery(item: ScenarioItem, query: string): boolean
 // Built-in fallback (mirrors the cloud master content — hc-552 SECTIONS).
 // ---------------------------------------------------------------------------
 
-const live = (
-  key: string,
-  name: string,
-  sample_ref: string,
-  param_prompt?: string
-): ScenarioItem => ({
+const live = (key: string, name: string, sample_ref: string, param_prompt?: string): ScenarioItem => ({
   key,
   name,
   status: 'live',
@@ -290,13 +285,7 @@ export const FALLBACK_CATALOG: ScenarioCatalog = {
     {
       key: 'more',
       title: '更多',
-      items: [
-        live(
-          'skill_list',
-          '现成 SKILL 列表',
-          '查看本助手已内置的常用能力清单,直接说需求即可触发,无需记指令。'
-        )
-      ]
+      items: [live('skill_list', '现成 SKILL 列表', '查看本助手已内置的常用能力清单,直接说需求即可触发,无需记指令。')]
     }
   ]
 }

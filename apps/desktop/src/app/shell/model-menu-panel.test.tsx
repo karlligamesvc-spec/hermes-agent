@@ -324,8 +324,7 @@ function deferred<T>() {
 /** Member model ids of the last composed preset handed to saveMoaModels. */
 function lastSavedMembers(): string[] {
   const config = saveMoaModels.mock.calls.at(-1)?.[0] as
-    | { presets: Record<string, { aggregator: { model: string }; reference_models: { model: string }[] }> }
-    | undefined
+    { presets: Record<string, { aggregator: { model: string }; reference_models: { model: string }[] }> } | undefined
 
   const preset = config?.presets?.__auto__
 

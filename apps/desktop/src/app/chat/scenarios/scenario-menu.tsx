@@ -20,13 +20,7 @@ import {
  * calls onPick; coming-soon items render muted with a badge and aren't
  * selectable. Renders inside a PopoverContent, so it styles only its innards.
  */
-export function ScenarioMenu({
-  catalog,
-  onPick
-}: {
-  catalog: ScenarioCatalog
-  onPick: (item: ScenarioItem) => void
-}) {
+export function ScenarioMenu({ catalog, onPick }: { catalog: ScenarioCatalog; onPick: (item: ScenarioItem) => void }) {
   const { t } = useI18n()
   const s = t.scenarios
   const sections = useMemo(() => menuSections(catalog), [catalog])

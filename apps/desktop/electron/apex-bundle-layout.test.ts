@@ -85,7 +85,9 @@ test('pointer: atomic write leaves no temp turd and last-writer-wins', () => {
     layout.writePointerAtomic(home, { key: 'two', previous: 'one' })
     assert.equal(layout.readPointer(home).key, 'two')
     // No `.NNN.tmp` sibling left behind.
-    const leftovers = fs.readdirSync(home).filter(n => n.startsWith(layout.POINTER_BASENAME) && n !== layout.POINTER_BASENAME)
+    const leftovers = fs
+      .readdirSync(home)
+      .filter(n => n.startsWith(layout.POINTER_BASENAME) && n !== layout.POINTER_BASENAME)
     assert.deepEqual(leftovers, [])
   } finally {
     rm(home)
@@ -297,7 +299,9 @@ test('garbageCollect: keeps current+previous, removes others and staging', () =>
   const home = mkHome()
 
   try {
-    for (const k of ['AAA', 'BBB', 'CCC', 'DDD']) {seedVersion(home, k)}
+    for (const k of ['AAA', 'BBB', 'CCC', 'DDD']) {
+      seedVersion(home, k)
+    }
     seedStaging(home, 'CCC') // orphan half-install
     seedStaging(home, 'ZZZ')
     layout.writePointerAtomic(home, { key: 'CCC', previous: 'BBB' })
@@ -319,7 +323,9 @@ test('garbageCollect: honors extra keep[] and isLocked skip', () => {
   const home = mkHome()
 
   try {
-    for (const k of ['AAA', 'BBB', 'CCC']) {seedVersion(home, k)}
+    for (const k of ['AAA', 'BBB', 'CCC']) {
+      seedVersion(home, k)
+    }
     layout.writePointerAtomic(home, { key: 'CCC', previous: null })
     // Keep BBB explicitly; force-skip AAA as if a handle were open.
     const r = layout.garbageCollect(home, { keep: ['BBB'], isLocked: name => name === 'AAA' })
@@ -336,7 +342,9 @@ test('garbageCollect: dropPrevious sheds previous too (C2 disk-pressure path)', 
   const home = mkHome()
 
   try {
-    for (const k of ['AAA', 'BBB', 'CCC']) {seedVersion(home, k)}
+    for (const k of ['AAA', 'BBB', 'CCC']) {
+      seedVersion(home, k)
+    }
     layout.writePointerAtomic(home, { key: 'CCC', previous: 'BBB' })
     const r = layout.garbageCollect(home, { dropPrevious: true })
     assert.equal(r.droppedPrevious, true)
@@ -354,7 +362,14 @@ test('garbageCollect: empty / no-versions home is a safe no-op', () => {
 
   try {
     const r = layout.garbageCollect(home)
-    assert.deepEqual(r, { kept: [], removed: [], skipped: [], orphansRemoved: [], orphansSkipped: [], droppedPrevious: false })
+    assert.deepEqual(r, {
+      kept: [],
+      removed: [],
+      skipped: [],
+      orphansRemoved: [],
+      orphansSkipped: [],
+      droppedPrevious: false
+    })
   } finally {
     rm(home)
   }

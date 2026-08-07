@@ -15,7 +15,9 @@ vi.mock('@/store/gateway', () => ({
   $gateway: { get: () => ({ request: (...args: unknown[]) => gatewayRequest(...args) }) }
 }))
 vi.mock('@/store/notifications', () => ({ notify: (...args: unknown[]) => notify(...args) }))
-vi.mock('@/store/onboarding', () => ({ requestManagedReSignIn: (...args: unknown[]) => requestManagedReSignIn(...args) }))
+vi.mock('@/store/onboarding', () => ({
+  requestManagedReSignIn: (...args: unknown[]) => requestManagedReSignIn(...args)
+}))
 vi.mock('@/store/auth', () => ({
   handleRelayAuthExpired: (...args: unknown[]) => handleRelayAuthExpired(...args),
   clearRelayAuthExpiry: (...args: unknown[]) => clearRelayAuthExpiry(...args)
@@ -74,7 +76,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   })
 
   it('declines when the relay accepted the key (not a managed-relay auth problem)', async () => {
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null })
+    )
     expect(await recoverFromManagedRelayAuthError({ sessionId: 's1', isActive: true })).toBe(false)
     expect(setModelAssignment).not.toHaveBeenCalled()
     expect(requestManagedReSignIn).not.toHaveBeenCalled()
@@ -83,7 +87,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   it('applies the fresh key and retries once when healed on the active turn', async () => {
     const resend = vi.fn(() => Promise.resolve())
     registerActiveTurnResend(resend)
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT })
+    )
 
     expect(await recoverFromManagedRelayAuthError({ sessionId: 's1', isActive: true })).toBe(true)
     expect(setModelAssignment).toHaveBeenCalledWith(ASSIGNMENT)
@@ -98,7 +104,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   it('heals but does not auto-resend a background (non-active) turn', async () => {
     const resend = vi.fn(() => Promise.resolve())
     registerActiveTurnResend(resend)
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT })
+    )
 
     expect(await recoverFromManagedRelayAuthError({ sessionId: 's2', isActive: false })).toBe(true)
     expect(setModelAssignment).toHaveBeenCalledWith(ASSIGNMENT)
@@ -106,7 +114,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   })
 
   it('routes to re-sign-in AND degrades the global state when recovery is impossible', async () => {
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null })
+    )
 
     expect(await recoverFromManagedRelayAuthError({ sessionId: 's1', isActive: true })).toBe(true)
     // hc-519: the account card degrades AND the send path pops the sign-in flow.
@@ -124,7 +134,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   it('silently heals on reconcile: restores state, no toast, no resend', async () => {
     const resend = vi.fn(() => Promise.resolve())
     registerActiveTurnResend(resend)
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT })
+    )
 
     expect(await recoverFromManagedRelayAuthError({ sessionId: null, isActive: false, silentHeal: true })).toBe(true)
     expect(setModelAssignment).toHaveBeenCalledWith(ASSIGNMENT)
@@ -134,7 +146,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   })
 
   it('degrades quietly on reconcile when unhealable — card guides, no modal/toast', async () => {
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null })
+    )
 
     expect(await recoverFromManagedRelayAuthError({ sessionId: null, isActive: false, silentHeal: true })).toBe(true)
     expect(handleRelayAuthExpired).toHaveBeenCalledTimes(1)
@@ -144,7 +158,9 @@ describe('recoverFromManagedRelayAuthError', () => {
   })
 
   it('reconcileRelayAuthState is a no-op when the relay still accepts the key', async () => {
-    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null }))
+    setSelfHeal(() =>
+      Promise.resolve({ ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null })
+    )
 
     await reconcileRelayAuthState()
 

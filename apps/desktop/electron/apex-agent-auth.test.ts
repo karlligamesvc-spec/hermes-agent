@@ -69,7 +69,9 @@ test('extractEmail: pulls an email from free text; empty when none', () => {
 // --- claude auth status parsing --------------------------------------------
 
 test('parseClaudeAuthStatus: JSON logged in with email + plan', () => {
-  const out = parseClaudeAuthStatus('{"loggedIn":true,"authMethod":"claude.ai","email":"a@b.com","subscriptionType":"max"}')
+  const out = parseClaudeAuthStatus(
+    '{"loggedIn":true,"authMethod":"claude.ai","email":"a@b.com","subscriptionType":"max"}'
+  )
   assert.equal(out.loggedIn, true)
   assert.equal(out.email, 'a@b.com')
   assert.equal(out.plan, 'max')
@@ -102,9 +104,13 @@ test('parseClaudeAuthStatus: gibberish → indeterminate (null)', () => {
 
 test('parseCodexAuthJson: OAuth tokens → logged in + email from id_token', () => {
   // id_token payload {"email":"cx@e.com"} → base64url
-  const payload = Buffer.from(JSON.stringify({ email: 'cx@e.com' })).toString('base64').replace(/=+$/, '')
+  const payload = Buffer.from(JSON.stringify({ email: 'cx@e.com' }))
+    .toString('base64')
+    .replace(/=+$/, '')
   const idToken = `h.${payload}.s`
-  const out = parseCodexAuthJson(JSON.stringify({ tokens: { access_token: 'tok', id_token: idToken }, auth_mode: 'chatgpt' }))
+  const out = parseCodexAuthJson(
+    JSON.stringify({ tokens: { access_token: 'tok', id_token: idToken }, auth_mode: 'chatgpt' })
+  )
   assert.equal(out.loggedIn, true)
   assert.equal(out.mode, 'chatgpt')
   assert.equal(out.email, 'cx@e.com')
@@ -132,7 +138,9 @@ test('parseCodexLoginStatus: logged in / out / indeterminate', () => {
 })
 
 test('decodeJwtEmail: extracts email from a JWT payload; empty on junk', () => {
-  const payload = Buffer.from(JSON.stringify({ preferred_username: 'u@v.com' })).toString('base64').replace(/=+$/, '')
+  const payload = Buffer.from(JSON.stringify({ preferred_username: 'u@v.com' }))
+    .toString('base64')
+    .replace(/=+$/, '')
   assert.equal(decodeJwtEmail(`a.${payload}.c`), 'u@v.com')
   assert.equal(decodeJwtEmail('nope'), '')
   assert.equal(decodeJwtEmail(''), '')
@@ -182,7 +190,9 @@ function fakeSocketFactory(script) {
     socket.write = data => {
       socket.written.push(data)
 
-      if (script.onWrite) {setImmediate(() => script.onWrite(socket))}
+      if (script.onWrite) {
+        setImmediate(() => script.onWrite(socket))
+      }
     }
 
     setImmediate(() => script.start(socket))

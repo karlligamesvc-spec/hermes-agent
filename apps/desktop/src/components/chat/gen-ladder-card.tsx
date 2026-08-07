@@ -127,14 +127,14 @@ export const GenLadderCard: FC<GenLadderCardProps> = ({ card, onEvent, disabled 
   // blank frame.
   const hasContent = Boolean(
     title ||
-      body ||
-      card.fields?.length ||
-      card.media?.length ||
-      card.selected ||
-      card.bill ||
-      card.gate?.status === 'blocked' ||
-      card.type === 'reference_gate' ||
-      card.actions?.length
+    body ||
+    card.fields?.length ||
+    card.media?.length ||
+    card.selected ||
+    card.bill ||
+    card.gate?.status === 'blocked' ||
+    card.type === 'reference_gate' ||
+    card.actions?.length
   )
 
   return (
@@ -144,7 +144,11 @@ export const GenLadderCard: FC<GenLadderCardProps> = ({ card, onEvent, disabled 
       {title && (
         <h4 className="mt-1.5 flex items-center gap-2 font-medium text-(--ui-text-primary)">
           {generating ? (
-            <GlyphSpinner ariaLabel={copy.generating} className="size-3.5 text-(--ui-text-tertiary)" spinner="breathe" />
+            <GlyphSpinner
+              ariaLabel={copy.generating}
+              className="size-3.5 text-(--ui-text-tertiary)"
+              spinner="breathe"
+            />
           ) : (
             <Sparkles className="size-3.5 shrink-0 text-primary" />
           )}
@@ -177,7 +181,9 @@ export const GenLadderCard: FC<GenLadderCardProps> = ({ card, onEvent, disabled 
           copy={copy}
           current={card.language_override.current ?? card.language}
           disabled={locked}
-          onPick={language => emit({ callback: genLadderSetLanguageCallback(language), message: copy.setLanguageMessage(language) })}
+          onPick={language =>
+            emit({ callback: genLadderSetLanguageCallback(language), message: copy.setLanguageMessage(language) })
+          }
           options={card.language_override.options}
         />
       )}
@@ -187,10 +193,17 @@ export const GenLadderCard: FC<GenLadderCardProps> = ({ card, onEvent, disabled 
 
 function Stepper({ copy, steps }: { copy: GenLadderCopy; steps: GenLadderStep[] }) {
   return (
-    <ol className="flex flex-wrap items-center gap-1 text-[0.6875rem] text-(--ui-text-tertiary)" data-slot="gen-ladder-stepper">
+    <ol
+      className="flex flex-wrap items-center gap-1 text-[0.6875rem] text-(--ui-text-tertiary)"
+      data-slot="gen-ladder-stepper"
+    >
       {steps.map((step, index) => (
         <li className="flex items-center gap-1" key={step.key}>
-          {index > 0 && <span aria-hidden className="text-(--ui-text-tertiary)/60">›</span>}
+          {index > 0 && (
+            <span aria-hidden className="text-(--ui-text-tertiary)/60">
+              ›
+            </span>
+          )}
           <span
             className={cn(
               'rounded-full border border-(--ui-stroke-tertiary) px-2 py-0.5',
@@ -229,7 +242,10 @@ function PromptFields({ fields }: { fields: NonNullable<GenLadderCardModel['fiel
 
 function ReferenceFlag({ copy, on }: { copy: GenLadderCopy; on: boolean }) {
   return (
-    <p className="mt-2 flex items-center gap-1.5 text-[0.6875rem] text-(--ui-text-tertiary)" data-slot="gen-ladder-reference">
+    <p
+      className="mt-2 flex items-center gap-1.5 text-[0.6875rem] text-(--ui-text-tertiary)"
+      data-slot="gen-ladder-reference"
+    >
       <span
         aria-hidden
         className={cn('inline-block size-2 rounded-full', on ? 'bg-primary' : 'bg-(--ui-stroke-secondary)')}
@@ -341,8 +357,10 @@ function EntryChoices({
           onClick={() => onEvent(genLadderEvent(action, copy))}
           type="button"
         >
-          <span className="block text-[0.8125rem] font-medium text-(--ui-text-primary)">{actionLabel(action, copy)}</span>
-          {copy.entryDesc[action.id] ?? action.desc ? (
+          <span className="block text-[0.8125rem] font-medium text-(--ui-text-primary)">
+            {actionLabel(action, copy)}
+          </span>
+          {(copy.entryDesc[action.id] ?? action.desc) ? (
             <span className="mt-0.5 block text-[0.6875rem] text-(--ui-text-tertiary)">
               {copy.entryDesc[action.id] ?? action.desc}
             </span>
@@ -581,7 +599,10 @@ function LanguageSwitch({
   }
 
   return (
-    <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-(--ui-stroke-tertiary) pt-2" data-slot="gen-ladder-language">
+    <div
+      className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-(--ui-stroke-tertiary) pt-2"
+      data-slot="gen-ladder-language"
+    >
       <Globe aria-hidden className="size-3 text-(--ui-text-tertiary)" />
       <span className="text-[0.6875rem] text-(--ui-text-tertiary)">{copy.languageLabel}</span>
       {langs.map(lang => (

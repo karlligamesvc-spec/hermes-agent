@@ -74,13 +74,23 @@ describe('isGenLadderProtocol', () => {
 
 describe('genLadderCallback — matches the cloud state-machine action contract', () => {
   it('spend → confirm with target_stage (the priced-button spend confirmation)', () => {
-    const a = action({ id: 'confirm_draft', kind: 'spend', target_stage: 'draft', price: { display: '≈¥0.40 示意', estimated: true } })
+    const a = action({
+      id: 'confirm_draft',
+      kind: 'spend',
+      target_stage: 'draft',
+      price: { display: '≈¥0.40 示意', estimated: true }
+    })
 
     expect(genLadderCallback(a)).toEqual({ action: 'confirm', payload: { target_stage: 'draft' } })
   })
 
   it('spend → confirm carries the picked model when supplied', () => {
-    const a = action({ id: 'confirm_final_video', kind: 'spend', target_stage: 'final_video', model_options: ['Seedance 2.0', 'Kling V3'] })
+    const a = action({
+      id: 'confirm_final_video',
+      kind: 'spend',
+      target_stage: 'final_video',
+      model_options: ['Seedance 2.0', 'Kling V3']
+    })
 
     expect(genLadderCallback(a, { model: 'Kling V3' })).toEqual({
       action: 'confirm',
@@ -113,7 +123,10 @@ describe('genLadderCallback — matches the cloud state-machine action contract'
   })
 
   it('free → the action id itself; back carries its target_stage', () => {
-    expect(genLadderCallback(action({ id: 'edit_prompt', kind: 'free' }))).toEqual({ action: 'edit_prompt', payload: {} })
+    expect(genLadderCallback(action({ id: 'edit_prompt', kind: 'free' }))).toEqual({
+      action: 'edit_prompt',
+      payload: {}
+    })
     expect(genLadderCallback(action({ id: 'back', kind: 'free', target_stage: 'prompt' }))).toEqual({
       action: 'back',
       payload: { target_stage: 'prompt' }

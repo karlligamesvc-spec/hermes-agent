@@ -24,8 +24,14 @@ import {
 } from './apex-announcements'
 
 test('announcementsListUrl appends the account route and trims a trailing slash', () => {
-  assert.equal(announcementsListUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}`)
-  assert.equal(announcementsListUrl('https://api.apex-nodes.com/'), `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}`)
+  assert.equal(
+    announcementsListUrl('https://api.apex-nodes.com'),
+    `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}`
+  )
+  assert.equal(
+    announcementsListUrl('https://api.apex-nodes.com/'),
+    `https://api.apex-nodes.com${ANNOUNCEMENTS_LIST_PATH}`
+  )
 })
 
 test('announcementReadUrl appends /{id}/read and URL-encodes the id', () => {

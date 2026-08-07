@@ -79,7 +79,11 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
   // Consumer landing view is 个性化 (Personalization) — config:model is
   // consumer-hidden and would strand a first-open user on an empty nav row.
-  const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:personalization' as SettingsViewId)
+  const [activeView, setActiveView] = useRouteEnumParam(
+    'tab',
+    SETTINGS_VIEWS,
+    'config:personalization' as SettingsViewId
+  )
   // Providers subnav (Accounts vs API keys) lives in its own param so each
   // sub-view is deep-linkable and survives a refresh.
   const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')

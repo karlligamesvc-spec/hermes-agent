@@ -292,9 +292,7 @@ describe('every real producer of managed config is syncable', () => {
           provider: 'custom',
           base_url: RELAY_BASE,
           api_key: key,
-          custom_providers: [
-            { name: MANAGED_PROVIDER_NAME, base_url: RELAY_BASE, api_key: key, model: MODEL_ID }
-          ]
+          custom_providers: [{ name: MANAGED_PROVIDER_NAME, base_url: RELAY_BASE, api_key: key, model: MODEL_ID }]
         })
     ],
     [
@@ -330,7 +328,8 @@ describe('every real producer of managed config is syncable', () => {
     ],
     [
       'the v12 providers dict (custom_providers migrated away)',
-      key => `model:\n  api_key: ${key}\n  base_url: ${RELAY_BASE}\n  provider: custom\n` + ANCHOR_FIXTURES.providers(key)
+      key =>
+        `model:\n  api_key: ${key}\n  base_url: ${RELAY_BASE}\n  provider: custom\n` + ANCHOR_FIXTURES.providers(key)
     ]
   ]
 
@@ -466,8 +465,14 @@ test('a missing api_key is inserted after the IDENTITY field, never into a neste
     ['inserted', 'inserted']
   )
   // Well-formed: the nested blocks are still intact and still nested.
-  assert.match(sync.next, /model:\n {2}base_url: [^\n]+\n {2}api_key: "[^"]+"\n {2}provider: custom\n {2}disabled_providers:\n {4}- copilot/)
-  assert.match(sync.next, /- name: [^\n]+\n {4}base_url: [^\n]+\n {4}api_key: "[^"]+"\n {4}models:\n {6}\S+:\n {8}context_length: 128000/)
+  assert.match(
+    sync.next,
+    /model:\n {2}base_url: [^\n]+\n {2}api_key: "[^"]+"\n {2}provider: custom\n {2}disabled_providers:\n {4}- copilot/
+  )
+  assert.match(
+    sync.next,
+    /- name: [^\n]+\n {4}base_url: [^\n]+\n {4}api_key: "[^"]+"\n {4}models:\n {6}\S+:\n {8}context_length: 128000/
+  )
   // And re-reading the result finds both keys exactly where they were written.
   assert.equal(valueAt(sync.next, 'model'), ACTIVE)
   assert.equal(valueAt(sync.next, 'custom_providers[0]'), ACTIVE)
@@ -488,8 +493,8 @@ test('the walker reads the shipped config.yaml layout without tripping over it',
     '  provider: custom\n' +
     'fallback_providers: []\n' +
     'agent:\n  environment_hint: |\n    model: not-a-key\n    api_key: not-a-key-either\n  max_turns: 90\n' +
-    'auxiliary:\n  vision:\n    base_url: \'\'\n    api_key: \'\'\n' +
-    'web:\n  backend: \'\'\n' +
+    "auxiliary:\n  vision:\n    base_url: ''\n    api_key: ''\n" +
+    "web:\n  backend: ''\n" +
     '_config_version: 30\n' +
     'custom_providers:\n' +
     managedCustomProviderEntryYaml({
@@ -596,12 +601,7 @@ describe("Kael's install heals without a manual re-login", () => {
     assert.equal(auditManagedRelayKeyAnchors(config, RELAY_BASE, ACTIVE).clean, true)
     assert.equal(valueAt(config, 'model'), ACTIVE)
     assert.equal(valueAt(config, 'custom_providers[0]'), ACTIVE)
-    assert.deepEqual(pickerModels(config, relay), [
-      'deepseek-v4-pro',
-      'qwen3.7-max',
-      'kimi-k2.7-code',
-      'glm-5.2'
-    ])
+    assert.deepEqual(pickerModels(config, relay), ['deepseek-v4-pro', 'qwen3.7-max', 'kimi-k2.7-code', 'glm-5.2'])
   })
 
   test('both anchors dead: one mint heals both, and the catalog returns', async () => {
@@ -626,12 +626,7 @@ describe("Kael's install heals without a manual re-login", () => {
     assert.equal(outcome.healed, true)
     assert.equal(relay.mints, 1, 'exactly one mint')
     assert.equal(auditManagedRelayKeyAnchors(config, RELAY_BASE, relay.active).clean, true)
-    assert.deepEqual(pickerModels(config, relay), [
-      'deepseek-v4-pro',
-      'qwen3.7-max',
-      'kimi-k2.7-code',
-      'glm-5.2'
-    ])
+    assert.deepEqual(pickerModels(config, relay), ['deepseek-v4-pro', 'qwen3.7-max', 'kimi-k2.7-code', 'glm-5.2'])
   })
 })
 

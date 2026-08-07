@@ -80,8 +80,18 @@ export function SkillBrowseDialog({
         </DialogHeader>
 
         <div className="flex gap-1.5">
-          <ScopeTab active={enabledScope} count={catalog.enabled.length} label={c.enabledLabel} onClick={() => changeScope('enabled')} />
-          <ScopeTab active={!enabledScope} count={catalog.disabled.length} label={c.unused} onClick={() => changeScope('disabled')} />
+          <ScopeTab
+            active={enabledScope}
+            count={catalog.enabled.length}
+            label={c.enabledLabel}
+            onClick={() => changeScope('enabled')}
+          />
+          <ScopeTab
+            active={!enabledScope}
+            count={catalog.disabled.length}
+            label={c.unused}
+            onClick={() => changeScope('disabled')}
+          />
         </div>
 
         <label className="flex items-center gap-2 rounded-md border border-(--ui-stroke-tertiary) px-2.5 py-1.5 text-sm focus-within:border-(--ui-stroke-secondary)">

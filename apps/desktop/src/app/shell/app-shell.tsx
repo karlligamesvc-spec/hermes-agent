@@ -164,9 +164,7 @@ export function AppShell({
         } as CSSProperties
       }
     >
-      {!hideTitlebarControls && (
-        <TitlebarControls leftTools={leftTitlebarTools} tools={titlebarTools} />
-      )}
+      {!hideTitlebarControls && <TitlebarControls leftTools={leftTitlebarTools} tools={titlebarTools} />}
 
       <main className="relative z-3 flex min-h-0 w-full flex-1 flex-col overflow-hidden transition-none">
         <PaneShell className="min-h-0 flex-1">

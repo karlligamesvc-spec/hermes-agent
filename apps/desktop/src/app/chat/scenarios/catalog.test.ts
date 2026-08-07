@@ -139,9 +139,14 @@ describe('normalizeScenarioCatalog', () => {
   })
 
   it('defaults enabled to true unless explicitly false', () => {
-    expect(normalizeScenarioCatalog({ sections: [{ key: 's', title: 'S', items: [{ key: 'a', name: 'A' }] }] })?.enabled).toBe(true)
     expect(
-      normalizeScenarioCatalog({ enabled: false, sections: [{ key: 's', title: 'S', items: [{ key: 'a', name: 'A' }] }] })?.enabled
+      normalizeScenarioCatalog({ sections: [{ key: 's', title: 'S', items: [{ key: 'a', name: 'A' }] }] })?.enabled
+    ).toBe(true)
+    expect(
+      normalizeScenarioCatalog({
+        enabled: false,
+        sections: [{ key: 's', title: 'S', items: [{ key: 'a', name: 'A' }] }]
+      })?.enabled
     ).toBe(false)
   })
 })

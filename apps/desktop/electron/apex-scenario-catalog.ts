@@ -91,10 +91,4 @@ async function loadScenarioCatalog({
   }
 }
 
-export {
-  DEFAULT_TTL_MS,
-  isFresh,
-  loadScenarioCatalog,
-  SCENARIO_CATALOG_PATH,
-  scenarioCatalogUrl
-}
+export { DEFAULT_TTL_MS, isFresh, loadScenarioCatalog, SCENARIO_CATALOG_PATH, scenarioCatalogUrl }

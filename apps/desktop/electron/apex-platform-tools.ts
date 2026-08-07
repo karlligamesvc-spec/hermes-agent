@@ -168,7 +168,10 @@ export const PLATFORM_TOOL_ENV_KEYS = Object.freeze([
 /** Path segment that turns the API host into the Scheduler's versioned base. */
 const SCHEDULER_API_PATH = '/api/v1'
 
-const trimSlashes = (value: unknown) => String(value ?? '').trim().replace(/\/+$/, '')
+const trimSlashes = (value: unknown) =>
+  String(value ?? '')
+    .trim()
+    .replace(/\/+$/, '')
 
 export interface PlatformToolSpawnEnvInput {
   /** The managed relay key (`resolveManagedConfig().key`); '' when signed out. */
@@ -202,7 +205,9 @@ export function buildPlatformToolSpawnEnv({
   const credential = String(key ?? '').trim()
   const host = trimSlashes(apiBase)
 
-  if (!credential || !host) {return {}}
+  if (!credential || !host) {
+    return {}
+  }
 
   const env: Record<string, string> = {
     TOOLS_GATEWAY_KEY: credential,
@@ -213,7 +218,9 @@ export function buildPlatformToolSpawnEnv({
   for (const name of PLATFORM_TOOL_ENV_KEYS) {
     const inherited = String(currentEnv?.[name] ?? '').trim()
 
-    if (inherited) {env[name] = inherited}
+    if (inherited) {
+      env[name] = inherited
+    }
   }
 
   return env
@@ -296,11 +303,15 @@ function envNamesIn(body: string, constants: Record<string, string>): string[] {
   const push = (raw: string) => {
     const name = constants[raw] ?? raw
 
-    if (/^[A-Z][A-Z0-9_]*$/.test(name) && !names.includes(name)) {names.push(name)}
+    if (/^[A-Z][A-Z0-9_]*$/.test(name) && !names.includes(name)) {
+      names.push(name)
+    }
   }
 
   // Literal + constant-arg os.getenv / os.environ.get calls.
-  for (const match of body.matchAll(/os\.(?:getenv|environ\.get)\(\s*(?:(["'])([A-Za-z0-9_]+)\1|([A-Za-z_][A-Za-z0-9_]*))/g)) {
+  for (const match of body.matchAll(
+    /os\.(?:getenv|environ\.get)\(\s*(?:(["'])([A-Za-z0-9_]+)\1|([A-Za-z_][A-Za-z0-9_]*))/g
+  )) {
     push(match[2] ?? match[3])
   }
 
@@ -309,7 +320,9 @@ function envNamesIn(body: string, constants: Record<string, string>): string[] {
     for (const part of match[1].split(',')) {
       const token = part.trim().replace(/^(["'])([\s\S]*)\1$/, '$2')
 
-      if (token) {push(token)}
+      if (token) {
+        push(token)
+      }
     }
   }
 
@@ -330,13 +343,17 @@ function topLevelFunctions(source: string): { name: string; body: string }[] {
     const def = line.match(/^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/)
 
     if (def) {
-      if (current) {out.push({ body: current.body.join('\n'), name: current.name })}
+      if (current) {
+        out.push({ body: current.body.join('\n'), name: current.name })
+      }
       current = { body: [], name: def[1] }
 
       continue
     }
 
-    if (!current) {continue}
+    if (!current) {
+      continue
+    }
 
     // A non-indented, non-blank line ends the function body.
     if (line.trim() && !/^\s/.test(line)) {
@@ -349,7 +366,9 @@ function topLevelFunctions(source: string): { name: string; body: string }[] {
     current.body.push(line)
   }
 
-  if (current) {out.push({ body: current.body.join('\n'), name: current.name })}
+  if (current) {
+    out.push({ body: current.body.join('\n'), name: current.name })
+  }
 
   return out
 }
@@ -362,17 +381,23 @@ export function resolverChainsIn(source: string): ResolverChain[] {
   for (const line of raw.split(/\r?\n/)) {
     const match = line.match(CONSTANT_RE)
 
-    if (match) {constants[match[1]] = match[3]}
+    if (match) {
+      constants[match[1]] = match[3]
+    }
   }
 
   const chains: ResolverChain[] = []
 
   for (const fn of topLevelFunctions(raw)) {
-    if (!RESOLVER_NAME_RE.test(fn.name)) {continue}
+    if (!RESOLVER_NAME_RE.test(fn.name)) {
+      continue
+    }
     const envs = envNamesIn(fn.body, constants)
     const delegates = DELEGATION_RE.test(fn.body)
 
-    if (envs.length === 0 && !delegates) {continue}
+    if (envs.length === 0 && !delegates) {
+      continue
+    }
     chains.push({ delegates, envs, fn: fn.name })
   }
 
@@ -414,13 +439,13 @@ export function auditPlatformToolPluginEnv(
     const id = String(entry?.id ?? '')
     const source = String(entry?.source ?? '')
 
-    if (!isPlatformAuthenticatingSource(source)) {continue}
+    if (!isPlatformAuthenticatingSource(source)) {
+      continue
+    }
 
     const chains = resolverChainsIn(source)
 
-    const uncovered = chains.filter(
-      chain => !chain.delegates && !chain.envs.some(name => injectedSet.has(name))
-    )
+    const uncovered = chains.filter(chain => !chain.delegates && !chain.envs.some(name => injectedSet.has(name)))
 
     plugins.push({
       id,

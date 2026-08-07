@@ -80,7 +80,9 @@ function trimTrailingSlash(value) {
  * @returns {boolean}
  */
 function isPlatformPluginsEnabled(env) {
-  const raw = String((env && env.APEXNODES_PLATFORM_PLUGINS) || '').trim().toLowerCase()
+  const raw = String((env && env.APEXNODES_PLATFORM_PLUGINS) || '')
+    .trim()
+    .toLowerCase()
 
   return raw === '1' || raw === 'true' || raw === 'on' || raw === 'yes'
 }
@@ -104,11 +106,17 @@ function isSafePluginName(name) {
  * @returns {boolean}
  */
 function isSafeRelPath(relPath) {
-  if (typeof relPath !== 'string' || !relPath) {return false}
+  if (typeof relPath !== 'string' || !relPath) {
+    return false
+  }
 
-  if (relPath.startsWith('/') || relPath.includes('\\') || relPath.includes('\0')) {return false}
+  if (relPath.startsWith('/') || relPath.includes('\\') || relPath.includes('\0')) {
+    return false
+  }
 
-  return relPath.split('/').every(segment => segment !== '' && /^[A-Za-z0-9._-]+$/.test(segment) && segment !== '.' && segment !== '..')
+  return relPath
+    .split('/')
+    .every(segment => segment !== '' && /^[A-Za-z0-9._-]+$/.test(segment) && segment !== '.' && segment !== '..')
 }
 
 /**
@@ -137,7 +145,9 @@ function platformPluginsUrl(apiBase, knownHash?) {
  * @returns {string | null}
  */
 function platformPluginPackageUrl(apiBase, name) {
-  if (!isSafePluginName(name)) {return null}
+  if (!isSafePluginName(name)) {
+    return null
+  }
   const base = trimTrailingSlash(apiBase)
 
   return `${base}${PLATFORM_PLUGINS_PATH}/${encodeURIComponent(name)}/package`
@@ -153,18 +163,26 @@ function platformPluginPackageUrl(apiBase, name) {
  * @returns {null | { name: string, version: string, sha256: string, size: number, files: string[] }}
  */
 function normalizePluginEntry(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return null}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null
+  }
   const name = typeof raw.name === 'string' ? raw.name.trim() : ''
 
-  if (!isSafePluginName(name)) {return null}
+  if (!isSafePluginName(name)) {
+    return null
+  }
 
   const sha256 = typeof raw.sha256 === 'string' ? raw.sha256.trim().toLowerCase() : ''
 
-  if (!/^[0-9a-f]{64}$/.test(sha256)) {return null}
+  if (!/^[0-9a-f]{64}$/.test(sha256)) {
+    return null
+  }
 
   const size = raw.size
 
-  if (typeof size !== 'number' || !Number.isInteger(size) || size <= 0 || size > MAX_PACKAGE_BYTES) {return null}
+  if (typeof size !== 'number' || !Number.isInteger(size) || size <= 0 || size > MAX_PACKAGE_BYTES) {
+    return null
+  }
 
   const rawFiles = Array.isArray(raw.files) ? raw.files : []
   const files = []
@@ -172,11 +190,15 @@ function normalizePluginEntry(raw) {
   for (const entry of rawFiles) {
     const relPath = typeof entry === 'string' ? entry.trim() : ''
 
-    if (!isSafeRelPath(relPath)) {continue}
+    if (!isSafeRelPath(relPath)) {
+      continue
+    }
     files.push(relPath)
   }
 
-  if (!files.includes('plugin.yaml')) {return null}
+  if (!files.includes('plugin.yaml')) {
+    return null
+  }
 
   const version = typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : '0'
 
@@ -198,22 +220,30 @@ function normalizePluginEntry(raw) {
  *   plugins: ReturnType<typeof normalizePluginEntry>[] | null }}
  */
 function parsePlatformPluginsManifest(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {return null}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null
+  }
   const manifestHash = typeof body.manifest_hash === 'string' ? body.manifest_hash.trim() : ''
 
-  if (!manifestHash) {return null}
+  if (!manifestHash) {
+    return null
+  }
 
   if (body.unchanged === true) {
     return { manifestHash, plugins: null, unchanged: true }
   }
 
-  if (!Array.isArray(body.plugins)) {return null}
+  if (!Array.isArray(body.plugins)) {
+    return null
+  }
   const plugins = []
 
   for (const raw of body.plugins) {
     const entry = normalizePluginEntry(raw)
 
-    if (entry) {plugins.push(entry)}
+    if (entry) {
+      plugins.push(entry)
+    }
   }
 
   return { manifestHash, plugins, unchanged: false }
@@ -229,21 +259,29 @@ function parsePlatformPluginsManifest(body) {
 function normalizeStoredPluginsState(raw) {
   const empty = { installedAt: null, manifestHash: '', plugins: {} }
 
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return empty}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return empty
+  }
   const manifestHash = typeof raw.manifestHash === 'string' ? raw.manifestHash.trim() : ''
   const installedAt = typeof raw.installedAt === 'number' && Number.isFinite(raw.installedAt) ? raw.installedAt : null
   const plugins = {}
   const rawPlugins = raw.plugins && typeof raw.plugins === 'object' && !Array.isArray(raw.plugins) ? raw.plugins : {}
 
   for (const [name, sha] of Object.entries(rawPlugins)) {
-    if (!isSafePluginName(name)) {continue}
+    if (!isSafePluginName(name)) {
+      continue
+    }
 
-    if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha.trim().toLowerCase())) {continue}
+    if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha.trim().toLowerCase())) {
+      continue
+    }
     plugins[name] = sha.trim().toLowerCase()
   }
 
   // A state with neither a manifest hash nor any per-plugin record is empty.
-  if (!manifestHash && Object.keys(plugins).length === 0) {return empty}
+  if (!manifestHash && Object.keys(plugins).length === 0) {
+    return empty
+  }
 
   return { installedAt, manifestHash, plugins }
 }
@@ -283,11 +321,19 @@ function planPluginSync({ plugins, storedPlugins, pluginsRoot }: any) {
 }
 
 function parseOctal(buffer, start, length) {
-  const text = buffer.slice(start, start + length).toString('latin1').replace(/\0/g, ' ').trim()
+  const text = buffer
+    .slice(start, start + length)
+    .toString('latin1')
+    .replace(/\0/g, ' ')
+    .trim()
 
-  if (!text) {return 0}
+  if (!text) {
+    return 0
+  }
 
-  if (!/^[0-7]+$/.test(text)) {return NaN}
+  if (!/^[0-7]+$/.test(text)) {
+    return NaN
+  }
 
   return parseInt(text, 8)
 }
@@ -299,7 +345,9 @@ function tarEntryName(block) {
   if (magic === 'ustar') {
     const prefix = block.slice(345, 500).toString('utf8').replace(/\0+$/, '')
 
-    if (prefix) {return `${prefix}/${name}`}
+    if (prefix) {
+      return `${prefix}/${name}`
+    }
   }
 
   return name
@@ -308,7 +356,9 @@ function tarEntryName(block) {
 function tarChecksumValid(block) {
   const recorded = parseOctal(block, 148, 8)
 
-  if (Number.isNaN(recorded)) {return false}
+  if (Number.isNaN(recorded)) {
+    return false
+  }
   let sum = 0
 
   for (let i = 0; i < TAR_BLOCK; i += 1) {
@@ -335,7 +385,10 @@ function tarChecksumValid(block) {
  * @param {number} [caps.maxFiles]
  * @returns {{ path: string, data: Buffer }[]}
  */
-function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxFiles = MAX_FILES_PER_PLUGIN }: any = {}) {
+function extractTarGz(
+  packageBuffer,
+  { maxTotalBytes = MAX_EXTRACTED_BYTES, maxFiles = MAX_FILES_PER_PLUGIN }: any = {}
+) {
   const tar = zlib.gunzipSync(packageBuffer, { maxOutputLength: maxTotalBytes + 4 * TAR_BLOCK })
   const files = []
   let totalBytes = 0
@@ -344,33 +397,51 @@ function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxF
   while (offset + TAR_BLOCK <= tar.length) {
     const block = tar.slice(offset, offset + TAR_BLOCK)
 
-    if (block.every(byte => byte === 0)) {break} // end-of-archive marker
+    if (block.every(byte => byte === 0)) {
+      break
+    } // end-of-archive marker
 
-    if (!tarChecksumValid(block)) {throw new Error(`tar header checksum mismatch at offset ${offset}`)}
+    if (!tarChecksumValid(block)) {
+      throw new Error(`tar header checksum mismatch at offset ${offset}`)
+    }
 
     const name = tarEntryName(block)
     const size = parseOctal(block, 124, 12)
 
-    if (Number.isNaN(size) || size < 0) {throw new Error(`tar entry has invalid size: ${name}`)}
+    if (Number.isNaN(size) || size < 0) {
+      throw new Error(`tar entry has invalid size: ${name}`)
+    }
     const typeflag = String.fromCharCode(block[156])
 
     const dataStart = offset + TAR_BLOCK
     const dataEnd = dataStart + size
 
-    if (dataEnd > tar.length) {throw new Error(`tar entry truncated: ${name}`)}
+    if (dataEnd > tar.length) {
+      throw new Error(`tar entry truncated: ${name}`)
+    }
 
     if (typeflag === '5') {
       // Directory — tolerated, skipped (must still be a safe path).
-      if (!isSafeRelPath(name.replace(/\/+$/, ''))) {throw new Error(`unsafe tar directory path: ${name}`)}
+      if (!isSafeRelPath(name.replace(/\/+$/, ''))) {
+        throw new Error(`unsafe tar directory path: ${name}`)
+      }
 
-      if (size !== 0) {throw new Error(`tar directory entry with payload: ${name}`)}
+      if (size !== 0) {
+        throw new Error(`tar directory entry with payload: ${name}`)
+      }
     } else if (typeflag === '0' || typeflag === '\0') {
-      if (!isSafeRelPath(name)) {throw new Error(`unsafe tar entry path: ${name}`)}
+      if (!isSafeRelPath(name)) {
+        throw new Error(`unsafe tar entry path: ${name}`)
+      }
       totalBytes += size
 
-      if (files.length + 1 > maxFiles) {throw new Error(`tar exceeds max file count (${maxFiles})`)}
+      if (files.length + 1 > maxFiles) {
+        throw new Error(`tar exceeds max file count (${maxFiles})`)
+      }
 
-      if (totalBytes > maxTotalBytes) {throw new Error(`tar exceeds max extracted size (${maxTotalBytes})`)}
+      if (totalBytes > maxTotalBytes) {
+        throw new Error(`tar exceeds max extracted size (${maxTotalBytes})`)
+      }
       files.push({ data: Buffer.from(tar.slice(dataStart, dataEnd)), path: name })
     } else {
       // Symlink / hardlink / device / FIFO / PAX / GNU special → reject wholesale.
@@ -380,7 +451,9 @@ function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxF
     offset = dataStart + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK
   }
 
-  if (files.length === 0) {throw new Error('tar archive contains no files')}
+  if (files.length === 0) {
+    throw new Error('tar archive contains no files')
+  }
 
   return files
 }
@@ -412,11 +485,17 @@ function extractTarGz(packageBuffer, { maxTotalBytes = MAX_EXTRACTED_BYTES, maxF
  * @returns {{ targetDir: string, fileCount: number }}
  */
 function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () => {} }: any) {
-  if (!isSafePluginName(name)) {throw new Error(`unsafe plugin name: ${name}`)}
+  if (!isSafePluginName(name)) {
+    throw new Error(`unsafe plugin name: ${name}`)
+  }
 
-  if (!Array.isArray(files) || files.length === 0) {throw new Error(`no files to install for ${name}`)}
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error(`no files to install for ${name}`)
+  }
 
-  if (!files.some(file => file.path === 'plugin.yaml')) {throw new Error(`plugin package missing plugin.yaml: ${name}`)}
+  if (!files.some(file => file.path === 'plugin.yaml')) {
+    throw new Error(`plugin package missing plugin.yaml: ${name}`)
+  }
 
   const pluginsRootResolved = path.resolve(pluginsRoot)
   const stagingRootResolved = path.resolve(stagingRoot)
@@ -437,7 +516,9 @@ function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () =
     for (const file of files) {
       const relPath = file && typeof file.path === 'string' ? file.path : ''
 
-      if (!isSafeRelPath(relPath) || !Buffer.isBuffer(file.data)) {throw new Error(`unsafe plugin file entry: ${name}/${relPath || '<nopath>'}`)}
+      if (!isSafeRelPath(relPath) || !Buffer.isBuffer(file.data)) {
+        throw new Error(`unsafe plugin file entry: ${name}/${relPath || '<nopath>'}`)
+      }
       const abs = path.resolve(stagingDirResolved, relPath)
 
       // Belt-and-braces containment: refuse anything resolving outside staging.
@@ -452,7 +533,9 @@ function applyPlatformPlugin({ pluginsRoot, stagingRoot, name, files, log = () =
     fs.mkdirSync(pluginsRootResolved, { recursive: true })
     const hadPrevious = fs.existsSync(targetDir)
 
-    if (hadPrevious) {fs.renameSync(targetDir, backupDir)}
+    if (hadPrevious) {
+      fs.renameSync(targetDir, backupDir)
+    }
 
     try {
       fs.renameSync(stagingDir, targetDir)
@@ -524,7 +607,9 @@ async function syncPlatformPlugins({
 
   if (!isPlatformPluginsEnabled(env)) {
     if (state.manifestHash || Object.keys(state.plugins).length) {
-      log('[platform-plugins] disabled via APEXNODES_PLATFORM_PLUGINS; previously installed plugins left in place (v1 keeps files; remove manually if needed)')
+      log(
+        '[platform-plugins] disabled via APEXNODES_PLATFORM_PLUGINS; previously installed plugins left in place (v1 keeps files; remove manually if needed)'
+      )
     }
 
     return { status: 'disabled' }
@@ -563,7 +648,9 @@ async function syncPlatformPlugins({
   const plan = planPluginSync({ plugins: manifest.plugins, pluginsRoot, storedPlugins: state.plugins })
   const installedMap = {}
 
-  for (const name of plan.upToDate) {installedMap[name] = state.plugins[name]}
+  for (const name of plan.upToDate) {
+    installedMap[name] = state.plugins[name]
+  }
 
   // Plugins that vanished from the manifest: v1 keeps their files (no
   // auto-recycle — same policy as the OFF switch) but drops them from state.
@@ -589,7 +676,9 @@ async function syncPlatformPlugins({
       const packageBuffer = await fetchBuffer(url, { bearer: token, maxBytes: MAX_PACKAGE_BYTES, timeoutMs })
 
       if (!Buffer.isBuffer(packageBuffer) || packageBuffer.length !== entry.size) {
-        throw new Error(`size mismatch (${packageBuffer ? packageBuffer.length : 'no'} bytes, manifest says ${entry.size})`)
+        throw new Error(
+          `size mismatch (${packageBuffer ? packageBuffer.length : 'no'} bytes, manifest says ${entry.size})`
+        )
       }
 
       const digest = sha256Hex(packageBuffer)

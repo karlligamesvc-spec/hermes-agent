@@ -30,7 +30,10 @@ export function DirectConnectBanner() {
     }
 
     if (bridge?.status) {
-      void bridge.status().then(apply).catch(() => undefined)
+      void bridge
+        .status()
+        .then(apply)
+        .catch(() => undefined)
     }
 
     const unsubscribe = bridge?.onStatus?.(apply)

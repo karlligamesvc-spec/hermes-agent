@@ -60,7 +60,9 @@ afterEach(() => {
 
 describe('refreshAuthStatus', () => {
   it('signs the user in and surfaces the account when the relay key is on disk', async () => {
-    installManagedMock({ status: vi.fn().mockResolvedValue(status({ signedIn: true, email: 'jane@apex-nodes.com', plan: 'pro' })) })
+    installManagedMock({
+      status: vi.fn().mockResolvedValue(status({ signedIn: true, email: 'jane@apex-nodes.com', plan: 'pro' }))
+    })
 
     await refreshAuthStatus()
 

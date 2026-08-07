@@ -84,8 +84,7 @@ export function parseRecentProjects(raw: null | string): RecentProject[] {
     const lastUsedAt =
       typeof record.lastUsedAt === 'number' && Number.isFinite(record.lastUsedAt) ? record.lastUsedAt : 0
 
-    const name =
-      typeof record.name === 'string' && record.name.trim() ? record.name.trim() : projectDisplayName(path)
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : projectDisplayName(path)
 
     seen.add(path)
     out.push({ path, name, lastUsedAt })
@@ -100,12 +99,7 @@ function sortRecentProjects(list: RecentProject[]): RecentProject[] {
 }
 
 /** Upsert a project (bump to `now`, dedupe by path), capped to the MRU limit. */
-export function upsertRecentProject(
-  list: RecentProject[],
-  path: string,
-  now: number,
-  name?: string
-): RecentProject[] {
+export function upsertRecentProject(list: RecentProject[], path: string, now: number, name?: string): RecentProject[] {
   const normalized = normalizeProjectPath(path)
 
   if (!normalized) {

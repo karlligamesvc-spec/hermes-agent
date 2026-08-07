@@ -90,9 +90,7 @@ export async function recoverFromManagedRelayAuthError(args: ManagedRelayRecover
 // WAS a fresh key applied. The model catalog has to know, because a heal is the
 // signal to re-query the (previously 401ing) live model list — the boolean above
 // conflates "healed" with "routed to re-sign-in", and both are `owned`.
-export async function runManagedRelayRecovery(
-  args: ManagedRelayRecoveryArgs
-): Promise<ManagedRelayRecoveryOutcome> {
+export async function runManagedRelayRecovery(args: ManagedRelayRecoveryArgs): Promise<ManagedRelayRecoveryOutcome> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
   // No desktop bridge (web dashboard / dev preview) or an older main process

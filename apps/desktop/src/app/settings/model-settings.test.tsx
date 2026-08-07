@@ -543,5 +543,4 @@ describe('ModelSettings platform multi-select (invisible MoA)', () => {
     // the raw `moa` / `__auto__` pair.
     expect(screen.queryByText(/__auto__/)).toBeNull()
   })
-
 })

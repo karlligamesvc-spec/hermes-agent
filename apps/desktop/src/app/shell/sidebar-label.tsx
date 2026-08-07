@@ -6,7 +6,12 @@ interface SidebarPanelLabelProps extends React.ComponentProps<'span'> {
   dotClassName?: string
 }
 
-export function SidebarPanelLabel({ children, className, dotClassName: _dotClassName, ...props }: SidebarPanelLabelProps) {
+export function SidebarPanelLabel({
+  children,
+  className,
+  dotClassName: _dotClassName,
+  ...props
+}: SidebarPanelLabelProps) {
   // Claude-style group header: a plain, quiet gray caption (置顶 / 项目 / 对话) —
   // no uppercase, no wide tracking, no colored accent dot. Just a low-contrast
   // label that lets the rows beneath it carry the eye.

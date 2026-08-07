@@ -63,10 +63,7 @@ export function ProjectPicker({ cwd, disabled, onChangeCwd }: ProjectPickerProps
   const desktop = typeof window === 'undefined' ? undefined : window.hermesDesktop
   const canCreateBlank = typeof desktop?.createProjectDir === 'function'
 
-  const projects = useMemo(
-    () => mergeRecentProjects(persisted, sessionProjectEntries(sessions)),
-    [persisted, sessions]
-  )
+  const projects = useMemo(() => mergeRecentProjects(persisted, sessionProjectEntries(sessions)), [persisted, sessions])
 
   const filtered = useMemo(() => filterRecentProjects(projects, query), [projects, query])
 
@@ -336,7 +333,12 @@ export function ProjectPicker({ cwd, disabled, onChangeCwd }: ProjectPickerProps
                 <Button onClick={() => setView('list')} size="sm" type="button" variant="ghost">
                   {t.common.cancel}
                 </Button>
-                <Button disabled={!createValid || busy} onClick={() => void createBlankProject()} size="sm" type="button">
+                <Button
+                  disabled={!createValid || busy}
+                  onClick={() => void createBlankProject()}
+                  size="sm"
+                  type="button"
+                >
                   {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
                   <span>{copy.create}</span>
                 </Button>

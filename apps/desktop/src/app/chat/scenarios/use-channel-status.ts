@@ -73,7 +73,10 @@ export function useChannelStatus(): ChannelStatus {
     }
 
     if (daemonBridge?.status) {
-      void daemonBridge.status().then(applyDaemon).catch(() => undefined)
+      void daemonBridge
+        .status()
+        .then(applyDaemon)
+        .catch(() => undefined)
     }
 
     const unsubscribe = daemonBridge?.onStatus?.(applyDaemon)

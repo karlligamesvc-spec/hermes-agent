@@ -51,7 +51,7 @@ describe('insertScenarioPrefill', () => {
     expect(onInsert).toHaveBeenCalledWith({ mode: 'inline', target: 'main', text: '抖音热榜' })
   })
 
-  it('requests a session even when the scenario name is blank (name-missing degradation is the subscriber\'s job)', () => {
+  it("requests a session even when the scenario name is blank (name-missing degradation is the subscriber's job)", () => {
     const onSession = vi.fn()
 
     unsubscribers.push(onScenarioSessionRequest(onSession))

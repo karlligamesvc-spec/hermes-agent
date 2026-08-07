@@ -2,18 +2,19 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import {
-  DEFAULT_TTL_MS,
-  isFresh,
-  loadScenarioCatalog,
-  scenarioCatalogUrl
-} from './apex-scenario-catalog'
+import { DEFAULT_TTL_MS, isFresh, loadScenarioCatalog, scenarioCatalogUrl } from './apex-scenario-catalog'
 
 const CATALOG = { enabled: true, version: 'hc552-v1', sections: [{ key: 'social', title: '社媒', items: [] }] }
 
 test('scenarioCatalogUrl builds the /media path and tolerates trailing slashes', () => {
-  assert.equal(scenarioCatalogUrl('https://api.apex-nodes.com'), 'https://api.apex-nodes.com/api/v1/media/scenario-catalog')
-  assert.equal(scenarioCatalogUrl('https://api.apex-nodes.com/'), 'https://api.apex-nodes.com/api/v1/media/scenario-catalog')
+  assert.equal(
+    scenarioCatalogUrl('https://api.apex-nodes.com'),
+    'https://api.apex-nodes.com/api/v1/media/scenario-catalog'
+  )
+  assert.equal(
+    scenarioCatalogUrl('https://api.apex-nodes.com/'),
+    'https://api.apex-nodes.com/api/v1/media/scenario-catalog'
+  )
   assert.equal(scenarioCatalogUrl(''), '')
   assert.equal(scenarioCatalogUrl(undefined), '')
 })
@@ -74,10 +75,7 @@ test('loadScenarioCatalog fails open — a fetch error serves the stale cache, e
   }
 
   // No prior cache → null.
-  assert.equal(
-    await loadScenarioCatalog({ apiBase: 'https://x', apiKey: 'k', fetchJson: throwing, cache: {} }),
-    null
-  )
+  assert.equal(await loadScenarioCatalog({ apiBase: 'https://x', apiKey: 'k', fetchJson: throwing, cache: {} }), null)
 
   // Prior cache → stale-served on error.
   const cache = { value: CATALOG, fetchedAt: 0 }

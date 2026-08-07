@@ -93,13 +93,7 @@ function ScenarioGroup({
   )
 }
 
-function ScenarioCard({
-  item,
-  onOpenDetail
-}: {
-  item: ScenarioItem
-  onOpenDetail: (item: ScenarioItem) => void
-}) {
+function ScenarioCard({ item, onOpenDetail }: { item: ScenarioItem; onOpenDetail: (item: ScenarioItem) => void }) {
   const { t } = useI18n()
   const Icon = scenarioIcon(item)
   const pickable = isScenarioPickable(item)
@@ -264,8 +258,20 @@ function ConnectStrip() {
   const navigate = useNavigate()
 
   const legs = [
-    { boundLabel: t.imEntry.liveState.connected, key: 'feishu', leg: status.feishu, name: t.imEntry.channels.feishu?.name ?? '飞书', route: IM_ENTRY_ROUTE },
-    { boundLabel: t.imEntry.liveState.connected, key: 'weixin', leg: status.weixin, name: t.imEntry.channels.weixin?.name ?? '微信', route: IM_ENTRY_ROUTE },
+    {
+      boundLabel: t.imEntry.liveState.connected,
+      key: 'feishu',
+      leg: status.feishu,
+      name: t.imEntry.channels.feishu?.name ?? '飞书',
+      route: IM_ENTRY_ROUTE
+    },
+    {
+      boundLabel: t.imEntry.liveState.connected,
+      key: 'weixin',
+      leg: status.weixin,
+      name: t.imEntry.channels.weixin?.name ?? '微信',
+      route: IM_ENTRY_ROUTE
+    },
     { boundLabel: s.remoteOn, key: 'phone', leg: status.phoneRemote, name: s.phoneRemote, route: SETTINGS_ROUTE }
   ].filter(entry => entry.leg.available)
 

@@ -110,11 +110,7 @@ import {
   SKILLS_ROUTE,
   TASKS_ROUTE
 } from '../../routes'
-import {
-  SIDEBAR_BLANK_STATE_PITCH,
-  SIDEBAR_PROJECTS_SECTION,
-  SIDEBAR_SEARCH_FIELD
-} from '../../shell/chrome-gates'
+import { SIDEBAR_BLANK_STATE_PITCH, SIDEBAR_PROJECTS_SECTION, SIDEBAR_SEARCH_FIELD } from '../../shell/chrome-gates'
 import type { SidebarNavItem } from '../../types'
 
 import { AccountPanel } from './account-panel'

@@ -98,7 +98,9 @@ function trimTrailingSlash(value) {
 }
 
 function normalizeFeishuDomain(value) {
-  const raw = String(value == null ? '' : value).trim().toLowerCase()
+  const raw = String(value == null ? '' : value)
+    .trim()
+    .toLowerCase()
 
   return VALID_FEISHU_DOMAINS.has(raw) ? raw : DEFAULT_FEISHU_DOMAIN
 }
@@ -150,8 +152,7 @@ function shapeBinding(channelId, credential, opts: any = {}): any {
     }
   }
 
-  const boundAt =
-    typeof opts.boundAt === 'number' && Number.isFinite(opts.boundAt) ? opts.boundAt : Date.now()
+  const boundAt = typeof opts.boundAt === 'number' && Number.isFinite(opts.boundAt) ? opts.boundAt : Date.now()
 
   return { channelId, fields, boundAt }
 }
@@ -398,7 +399,9 @@ function parseFeishuProvisionStatusResponse(body) {
     return { status: 'pending', agentName: '' }
   }
 
-  const rawStatus = String(body.status || '').trim().toLowerCase()
+  const rawStatus = String(body.status || '')
+    .trim()
+    .toLowerCase()
 
   return {
     status: FEISHU_POLL_STATES.has(rawStatus) ? rawStatus : 'pending',

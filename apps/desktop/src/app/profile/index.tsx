@@ -167,14 +167,25 @@ export function ProfileStatsView({ onClose }: ProfileStatsViewProps) {
   )
 }
 
-function UsageBody({ locale, t, usage }: { locale: Locale; t: ReturnType<typeof useI18n>['t']; usage: AnalyticsResponse }) {
+function UsageBody({
+  locale,
+  t,
+  usage
+}: {
+  locale: Locale
+  t: ReturnType<typeof useI18n>['t']
+  usage: AnalyticsResponse
+}) {
   const p = t.profileStats
   const intlTag = INTL_TAGS[locale]
   const totals = usage.totals
   const daily = usage.daily
   const topSkills = usage.skills?.top_skills ?? []
 
-  const dateFormat = useMemo(() => new Intl.DateTimeFormat(intlTag, { day: 'numeric', month: 'short', timeZone: 'UTC' }), [intlTag])
+  const dateFormat = useMemo(
+    () => new Intl.DateTimeFormat(intlTag, { day: 'numeric', month: 'short', timeZone: 'UTC' }),
+    [intlTag]
+  )
 
   // Per-day token totals (input + output; cache reads and reasoning tokens are
   // deliberately excluded so the heatmap tracks what the user actually spent).
@@ -194,9 +205,10 @@ function UsageBody({ locale, t, usage }: { locale: Locale; t: ReturnType<typeof 
 
   const activeDays = useMemo(() => [...tokensByDay.values()].filter(v => v > 0).length, [tokensByDay])
 
-  const totalTokens = totals.total_input == null && totals.total_output == null
-    ? null
-    : (totals.total_input || 0) + (totals.total_output || 0)
+  const totalTokens =
+    totals.total_input == null && totals.total_output == null
+      ? null
+      : (totals.total_input || 0) + (totals.total_output || 0)
 
   // Nothing recorded at all → one honest empty state, not a wall of zeros.
   if (!totals.total_sessions) {
@@ -323,7 +335,9 @@ function UsageBody({ locale, t, usage }: { locale: Locale; t: ReturnType<typeof 
                       <Package className="size-3.5" />
                     </span>
                     <span className="min-w-0 flex-1 truncate">{entry.skill}</span>
-                    <span className="p5-profile-kv-label shrink-0">{p.topSkills.uses(formatInteger(entry.total_count))}</span>
+                    <span className="p5-profile-kv-label shrink-0">
+                      {p.topSkills.uses(formatInteger(entry.total_count))}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -381,7 +395,10 @@ function TokenHeatmap({
     [intlTag]
   )
 
-  const weekdayFormat = useMemo(() => new Intl.DateTimeFormat(intlTag, { timeZone: 'UTC', weekday: 'narrow' }), [intlTag])
+  const weekdayFormat = useMemo(
+    () => new Intl.DateTimeFormat(intlTag, { timeZone: 'UTC', weekday: 'narrow' }),
+    [intlTag]
+  )
 
   // Sunday-started columns covering the trailing HEATMAP_WEEKS, current week
   // last (GitHub layout). Cells run column-major, which is also chronological
@@ -409,7 +426,7 @@ function TokenHeatmap({
       for (let row = 0; row < 7; row += 1) {
         const dayIndex = gridStart + week * 7 + row
         const future = dayIndex > todayIndex
-        const dayTokens = future ? 0 : tokensByDay.get(dayIndex) ?? 0
+        const dayTokens = future ? 0 : (tokensByDay.get(dayIndex) ?? 0)
         running += dayTokens
 
         const value = mode === 'daily' ? dayTokens : mode === 'weekly' ? weekTotal : running
@@ -481,9 +498,7 @@ function TokenHeatmap({
         <div className="p5-profile-heatmap">
           <div aria-hidden className="p5-profile-weekdays">
             {Array.from({ length: 7 }, (_, row) => (
-              <span key={row}>
-                {row % 2 === 1 ? weekdayFormat.format(new Date(Date.UTC(2024, 0, 7 + row))) : ''}
-              </span>
+              <span key={row}>{row % 2 === 1 ? weekdayFormat.format(new Date(Date.UTC(2024, 0, 7 + row))) : ''}</span>
             ))}
           </div>
 

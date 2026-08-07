@@ -128,7 +128,9 @@ function buildPayload(event) {
   for (const field of ANON_FIELDS) {
     const value = event ? event[field] : undefined
 
-    if (value === undefined || value === null || value === '') {continue}
+    if (value === undefined || value === null || value === '') {
+      continue
+    }
     const str = String(value)
     const max = FIELD_MAX_LENGTHS[field]
     payload[field] = max && str.length > max ? str.slice(0, max) : str
@@ -146,11 +148,17 @@ function buildPayload(event) {
  * @param {string} rawPlatform e.g. process.platform, or an already-normalized 'win'/'mac'
  */
 function normalizeDesktopPlatform(rawPlatform) {
-  if (rawPlatform === 'darwin') {return 'mac'}
+  if (rawPlatform === 'darwin') {
+    return 'mac'
+  }
 
-  if (rawPlatform === 'win32') {return 'win'}
+  if (rawPlatform === 'win32') {
+    return 'win'
+  }
 
-  if (rawPlatform === 'mac' || rawPlatform === 'win' || rawPlatform === 'linux') {return rawPlatform}
+  if (rawPlatform === 'mac' || rawPlatform === 'win' || rawPlatform === 'linux') {
+    return rawPlatform
+  }
 
   return rawPlatform || 'linux'
 }
@@ -165,25 +173,45 @@ function normalizeDesktopPlatform(rawPlatform) {
 function classifyErrorCategory(err) {
   const message = String((err && err.message) || err || '').toLowerCase()
 
-  if (!message) {return 'unknown'}
+  if (!message) {
+    return 'unknown'
+  }
 
-  if (/cancelled|canceled|aborted/.test(message)) {return 'cancelled'}
+  if (/cancelled|canceled|aborted/.test(message)) {
+    return 'cancelled'
+  }
 
-  if (/timed out|timeout|etimedout/.test(message)) {return 'timeout'}
+  if (/timed out|timeout|etimedout/.test(message)) {
+    return 'timeout'
+  }
 
-  if (/sha256|sha mismatch|checksum|hash mismatch/.test(message)) {return 'checksum_mismatch'}
+  if (/sha256|sha mismatch|checksum|hash mismatch/.test(message)) {
+    return 'checksum_mismatch'
+  }
 
-  if (/enoent|not found|no such file|missing/.test(message)) {return 'not_found'}
+  if (/enoent|not found|no such file|missing/.test(message)) {
+    return 'not_found'
+  }
 
-  if (/eacces|eperm|permission denied/.test(message)) {return 'permission'}
+  if (/eacces|eperm|permission denied/.test(message)) {
+    return 'permission'
+  }
 
-  if (/econnrefused|econnreset|enotfound|getaddrinfo|network|socket/.test(message)) {return 'network'}
+  if (/econnrefused|econnreset|enotfound|getaddrinfo|network|socket/.test(message)) {
+    return 'network'
+  }
 
-  if (/no json result frame|no parseable json|unexpected args/.test(message)) {return 'protocol'}
+  if (/no json result frame|no parseable json|unexpected args/.test(message)) {
+    return 'protocol'
+  }
 
-  if (/platform_mismatch|key_mismatch|min_desktop_version|bad_manifest/.test(message)) {return 'incompatible'}
+  if (/platform_mismatch|key_mismatch|min_desktop_version|bad_manifest/.test(message)) {
+    return 'incompatible'
+  }
 
-  if (/exit code|exit \d|non-zero/.test(message)) {return 'exit_nonzero'}
+  if (/exit code|exit \d|non-zero/.test(message)) {
+    return 'exit_nonzero'
+  }
 
   return 'unknown'
 }
@@ -240,7 +268,9 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
     let settled = false
 
     const finish = result => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       resolve(result)
     }
@@ -306,7 +336,9 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
 function sendDesktopTelemetry(event, opts: any = {}) {
   const env = opts.env || process.env
 
-  if (isTelemetryDisabled(env)) {return Promise.resolve({ ok: false, skipped: 'disabled' })}
+  if (isTelemetryDisabled(env)) {
+    return Promise.resolve({ ok: false, skipped: 'disabled' })
+  }
 
   if (!event || typeof event.stage !== 'string' || !event.stage.trim()) {
     return Promise.resolve({ ok: false, skipped: 'invalid_stage' })
@@ -350,7 +382,9 @@ function fireTelemetry(sendFn, event) {
   try {
     const result = typeof sendFn === 'function' ? sendFn(event) : null
 
-    if (result && typeof result.catch === 'function') {result.catch(() => {})}
+    if (result && typeof result.catch === 'function') {
+      result.catch(() => {})
+    }
   } catch {
     // Telemetry must never affect the real install/update flow (hc-473).
     void 0

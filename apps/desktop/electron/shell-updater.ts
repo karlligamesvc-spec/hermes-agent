@@ -51,11 +51,17 @@ const SHELL_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 // 的 GenericProvider 会取 `<这里的URL>/latest-mac.yml`,所以只要这里塌回根基址
 // (os/arch 缺失被拼成空段),updater 就会去读 404 的根 feed → 自更新静默失效。
 // 因此空 os/arch 直接抛,绝不让 feed 退化成根目录。
-function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.platform, arch = process.arch }: any = {}) {
+function shellUpdateFeedUrl({
+  base = SHELL_UPDATE_FEED_BASE,
+  platform = process.platform,
+  arch = process.arch
+}: any = {}) {
   const os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : 'linux'
 
   if (!arch) {
-    throw new Error(`shellUpdateFeedUrl: missing arch (platform=${platform}) — feed would collapse to the empty root desktop/ prefix`)
+    throw new Error(
+      `shellUpdateFeedUrl: missing arch (platform=${platform}) — feed would collapse to the empty root desktop/ prefix`
+    )
   }
 
   return `${base}/${os}-${arch}`
@@ -89,9 +95,7 @@ function normalizeReleaseNotes(value) {
   }
 
   if (Array.isArray(value)) {
-    const notes = value
-      .map(entry => (entry && typeof entry.note === 'string' ? entry.note.trim() : ''))
-      .filter(Boolean)
+    const notes = value.map(entry => (entry && typeof entry.note === 'string' ? entry.note.trim() : '')).filter(Boolean)
 
     return notes.length ? notes.join('\n\n') : null
   }
@@ -253,7 +257,10 @@ function createShellUpdater(options) {
         // 静默下载:只记状态(renderer 胶囊对 downloading 不渲染),不打扰。
         // hc-473: per-tick progress is deliberately NOT telemetered (would
         // flood the beacon with many events per download for no signal).
-        setState({ phase: 'downloading', percent: progress && typeof progress.percent === 'number' ? progress.percent : null })
+        setState({
+          phase: 'downloading',
+          percent: progress && typeof progress.percent === 'number' ? progress.percent : null
+        })
       }
     ],
     [
@@ -315,10 +322,14 @@ function createShellUpdater(options) {
   // 的 30s 静默检查同思路)。定时器 unref,不影响进程退出,也免得测试挂住。
   const initialTimer = setTimeout(() => void checkNow(), initialDelayMs)
 
-  if (typeof initialTimer.unref === 'function') {initialTimer.unref()}
+  if (typeof initialTimer.unref === 'function') {
+    initialTimer.unref()
+  }
   const recheckTimer = setInterval(() => void checkNow(), recheckIntervalMs)
 
-  if (typeof recheckTimer.unref === 'function') {recheckTimer.unref()}
+  if (typeof recheckTimer.unref === 'function') {
+    recheckTimer.unref()
+  }
 
   function dispose() {
     clearTimeout(initialTimer)

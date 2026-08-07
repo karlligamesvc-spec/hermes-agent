@@ -80,7 +80,13 @@ describe('FeishuSettings', () => {
 
   it('shows the connected agent and re-syncs on demand', async () => {
     status.mockResolvedValue(
-      makeStatus({ connected: true, signedIn: true, agentName: '我的飞书助手', domain: 'feishu', credentialStatus: 'ok' })
+      makeStatus({
+        connected: true,
+        signedIn: true,
+        agentName: '我的飞书助手',
+        domain: 'feishu',
+        credentialStatus: 'ok'
+      })
     )
     await renderCard()
 

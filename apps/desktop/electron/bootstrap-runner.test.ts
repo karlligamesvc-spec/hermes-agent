@@ -753,10 +753,7 @@ testManifestFlow(
         events.some(ev => ev.type === 'failed' && ev.stage === 'verify'),
         'a verify-stage failed event must be emitted'
       )
-      assert.ok(
-        !events.some(ev => ev.type === 'complete'),
-        'no complete event on a refused update'
-      )
+      assert.ok(!events.some(ev => ev.type === 'complete'), 'no complete event on a refused update')
     } finally {
       fs.rmSync(home, { recursive: true, force: true })
     }

@@ -92,11 +92,17 @@ function isSafeSkillName(name) {
  * @returns {boolean}
  */
 function isSafeRelPath(relPath) {
-  if (typeof relPath !== 'string' || !relPath) {return false}
+  if (typeof relPath !== 'string' || !relPath) {
+    return false
+  }
 
-  if (relPath.startsWith('/') || relPath.includes('\\') || relPath.includes('\0')) {return false}
+  if (relPath.startsWith('/') || relPath.includes('\\') || relPath.includes('\0')) {
+    return false
+  }
 
-  return relPath.split('/').every(segment => segment !== '' && /^[A-Za-z0-9._-]+$/.test(segment) && segment !== '.' && segment !== '..')
+  return relPath
+    .split('/')
+    .every(segment => segment !== '' && /^[A-Za-z0-9._-]+$/.test(segment) && segment !== '.' && segment !== '..')
 }
 
 /**
@@ -109,10 +115,14 @@ function isSafeRelPath(relPath) {
  *   files: { path: string, content: string }[] }}
  */
 function normalizeSkill(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return null}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null
+  }
   const name = typeof raw.name === 'string' ? raw.name.trim() : ''
 
-  if (!isSafeSkillName(name)) {return null}
+  if (!isSafeSkillName(name)) {
+    return null
+  }
 
   const version = typeof raw.version === 'string' && raw.version.trim() ? raw.version.trim() : '0'
   const hash = typeof raw.hash === 'string' ? raw.hash.trim() : ''
@@ -121,14 +131,20 @@ function normalizeSkill(raw) {
   const files = []
 
   for (const entry of rawFiles) {
-    if (!entry || typeof entry !== 'object') {continue}
+    if (!entry || typeof entry !== 'object') {
+      continue
+    }
     const filePath = typeof entry.path === 'string' ? entry.path.trim() : ''
 
-    if (!isSafeRelPath(filePath) || typeof entry.content !== 'string') {continue}
+    if (!isSafeRelPath(filePath) || typeof entry.content !== 'string') {
+      continue
+    }
     files.push({ content: entry.content, path: filePath })
   }
 
-  if (!files.some(file => file.path === 'SKILL.md')) {return null}
+  if (!files.some(file => file.path === 'SKILL.md')) {
+    return null
+  }
 
   return { files, hash, name, version }
 }
@@ -149,22 +165,30 @@ function normalizeSkill(raw) {
  *     files: { path: string, content: string }[] }[] | null }}
  */
 function parsePlatformSkillsResponse(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {return null}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null
+  }
   const manifestHash = typeof body.manifest_hash === 'string' ? body.manifest_hash.trim() : ''
 
-  if (!manifestHash) {return null}
+  if (!manifestHash) {
+    return null
+  }
 
   if (body.unchanged === true) {
     return { manifestHash, skills: null, unchanged: true }
   }
 
-  if (!Array.isArray(body.skills)) {return null}
+  if (!Array.isArray(body.skills)) {
+    return null
+  }
   const skills = []
 
   for (const raw of body.skills) {
     const skill = normalizeSkill(raw)
 
-    if (skill) {skills.push(skill)}
+    if (skill) {
+      skills.push(skill)
+    }
   }
 
   return { manifestHash, skills, unchanged: false }
@@ -183,7 +207,9 @@ function parsePlatformSkillsResponse(body) {
 function shouldApplyManifest(fetchedHash, appliedHash) {
   const fetched = typeof fetchedHash === 'string' ? fetchedHash.trim() : ''
 
-  if (!fetched) {return false}
+  if (!fetched) {
+    return false
+  }
   const applied = typeof appliedHash === 'string' ? appliedHash.trim() : ''
 
   return fetched !== applied
@@ -199,10 +225,14 @@ function shouldApplyManifest(fetchedHash, appliedHash) {
 function normalizeStoredManifest(raw) {
   const empty = { count: 0, installedAt: null, manifestHash: '' }
 
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return empty}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return empty
+  }
   const manifestHash = typeof raw.manifestHash === 'string' ? raw.manifestHash.trim() : ''
 
-  if (!manifestHash) {return empty}
+  if (!manifestHash) {
+    return empty
+  }
   const installedAt = typeof raw.installedAt === 'number' && Number.isFinite(raw.installedAt) ? raw.installedAt : null
   const count = typeof raw.count === 'number' && Number.isInteger(raw.count) && raw.count >= 0 ? raw.count : 0
 
@@ -218,7 +248,9 @@ function normalizeStoredManifest(raw) {
  * @returns {boolean}
  */
 function isPlatformSkillsEnabled(env) {
-  const raw = String((env && env.APEXNODES_PLATFORM_SKILLS) || '').trim().toLowerCase()
+  const raw = String((env && env.APEXNODES_PLATFORM_SKILLS) || '')
+    .trim()
+    .toLowerCase()
 
   return !(raw === '0' || raw === 'false' || raw === 'off' || raw === 'no')
 }
@@ -246,7 +278,9 @@ function platformSkillsCategoryDir(skillsRoot) {
  * @returns {Promise<null | ReturnType<typeof parsePlatformSkillsResponse>>}
  */
 async function fetchPlatformSkills({ apiBase, token, fetchJson, knownHash, timeoutMs = 12_000, log = () => {} }: any) {
-  if (!apiBase || !token || typeof fetchJson !== 'function') {return null}
+  if (!apiBase || !token || typeof fetchJson !== 'function') {
+    return null
+  }
   const url = platformSkillsUrl(apiBase, knownHash)
   let body
 
@@ -329,7 +363,9 @@ function applyPlatformSkills({ skillsRoot, skills, log = () => {} }: any) {
       wroteAny = true
     }
 
-    if (wroteAny) {installed.push(name)}
+    if (wroteAny) {
+      installed.push(name)
+    }
   }
 
   log(`[platform-skills] installed ${installed.length} skill(s) under ${categoryDir}`)
@@ -352,7 +388,9 @@ function removePlatformSkills({ skillsRoot, log = () => {} }: any) {
   const existed = fs.existsSync(categoryDir)
   fs.rmSync(categoryDir, { force: true, recursive: true })
 
-  if (existed) {log(`[platform-skills] removed platform skill category ${categoryDir}`)}
+  if (existed) {
+    log(`[platform-skills] removed platform skill category ${categoryDir}`)
+  }
 
   return { categoryDir, removed: existed }
 }

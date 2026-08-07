@@ -70,7 +70,9 @@ function sha256File(file) {
   try {
     let n
 
-    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {h.update(buf.subarray(0, n))}
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      h.update(buf.subarray(0, n))
+    }
   } finally {
     fs.closeSync(fd)
   }
@@ -108,7 +110,9 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
     const client = parsed.protocol === 'https:' ? https : http
     const reqHeaders = { ...(headers || {}) }
 
-    if (fromOffset > 0) {reqHeaders.Range = `bytes=${fromOffset}-`}
+    if (fromOffset > 0) {
+      reqHeaders.Range = `bytes=${fromOffset}-`
+    }
 
     let settled = false
     let out = null
@@ -124,9 +128,15 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
         }
       }
 
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
-      reject(err instanceof BundleDownloadError ? err : new BundleDownloadError(String(err && err.message || err), 'network_error'))
+      reject(
+        err instanceof BundleDownloadError
+          ? err
+          : new BundleDownloadError(String((err && err.message) || err), 'network_error')
+      )
     }
 
     const req = client.request(parsed, { method: 'GET', headers: reqHeaders }, res => {
@@ -136,7 +146,9 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
       if (status === 416) {
         res.resume()
 
-        if (settled) {return}
+        if (settled) {
+          return
+        }
         settled = true
         resolve({ status, bytesWritten: 0, restarted: true, rangeUnsatisfiable: true })
 
@@ -145,7 +157,12 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
 
       if (status !== 200 && status !== 206) {
         res.resume()
-        fail(new BundleDownloadError(`unexpected status ${status} for ${url}`, status >= 400 && status < 500 ? 'http_client_error' : 'http_server_error'))
+        fail(
+          new BundleDownloadError(
+            `unexpected status ${status} for ${url}`,
+            status >= 400 && status < 500 ? 'http_client_error' : 'http_server_error'
+          )
+        )
 
         return
       }
@@ -161,7 +178,9 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
       res.on('error', fail)
       out.on('error', fail)
       out.on('finish', () => {
-        if (settled) {return}
+        if (settled) {
+          return
+        }
         settled = true
         resolve({ status, bytesWritten, restarted })
       })
@@ -213,9 +232,13 @@ async function downloadWithResume(o) {
     log = () => {}
   } = o || {}
 
-  if (!url) {throw new BundleDownloadError('url is required', 'invalid_url')}
+  if (!url) {
+    throw new BundleDownloadError('url is required', 'invalid_url')
+  }
 
-  if (!dest) {throw new BundleDownloadError('dest is required', 'invalid_dest')}
+  if (!dest) {
+    throw new BundleDownloadError('dest is required', 'invalid_dest')
+  }
 
   const partPath = `${dest}.part`
   fs.mkdirSync(path.dirname(dest), { recursive: true })
@@ -236,7 +259,9 @@ async function downloadWithResume(o) {
 
     try {
       if (!alreadyComplete) {
-        log(`[bundle-download] attempt ${attempt}/${maxAttempts} from byte ${have}${expectedSize ? `/${expectedSize}` : ''}`)
+        log(
+          `[bundle-download] attempt ${attempt}/${maxAttempts} from byte ${have}${expectedSize ? `/${expectedSize}` : ''}`
+        )
         const res = await fetchRange({ url, partPath, fromOffset: have, headers, timeoutMs })
 
         if (res.rangeUnsatisfiable) {
@@ -283,7 +308,10 @@ async function downloadWithResume(o) {
 
       return { ok: true, path: dest, bytes: gotSize, sha256: finalSha, attempts: attempt }
     } catch (err: any) {
-      lastErr = err instanceof BundleDownloadError ? err : new BundleDownloadError(String(err && err.message || err), 'download_failed')
+      lastErr =
+        err instanceof BundleDownloadError
+          ? err
+          : new BundleDownloadError(String((err && err.message) || err), 'download_failed')
       log(`[bundle-download] attempt ${attempt} failed: ${lastErr.code} — ${lastErr.message}`)
 
       // A 4xx (object genuinely absent / gone) will not fix itself on retry.

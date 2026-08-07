@@ -187,9 +187,7 @@ export function formatModelStatusLabel(
   // Always surface the effort (empty = Hermes default of medium) so the
   // current reasoning level is visible at a glance, not just when non-default.
   parts.push(
-    options?.effortLabel ||
-      reasoningEffortLabel(options?.reasoningEffort || options?.defaultEffort || '') ||
-      'Med'
+    options?.effortLabel || reasoningEffortLabel(options?.reasoningEffort || options?.defaultEffort || '') || 'Med'
   )
 
   return `${name} · ${parts.join(' ')}`

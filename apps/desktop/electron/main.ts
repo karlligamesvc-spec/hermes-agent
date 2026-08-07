@@ -33,8 +33,8 @@ import nodePty from 'node-pty'
 
 import {
   AGENT_STATE,
-  detectClaude as  detectClaudeAuth,
-  detectCodex as  detectCodexAuth,
+  detectClaude as detectClaudeAuth,
+  detectCodex as detectCodexAuth,
   extractOAuthUrl
 } from './apex-agent-auth'
 import {
@@ -44,20 +44,16 @@ import {
   resolveAgentProxyEnv,
   systemProxyToUrls
 } from './apex-agent-proxy'
-import {
-  announcementReadUrl,
-  announcementsListUrl,
-  parseAnnouncementsResponse
-} from './apex-announcements'
+import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
-import { applyBundleUpdate as  applyRuntimeBundleUpdate } from './apex-bundle-install'
+import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-install'
 import * as bundleMigrate from './apex-bundle-migrate'
 import {
   applyConfigYamlKeys,
   fetchClientConfig,
   normalizeStoredClientConfig,
-  shouldApply as  shouldApplyClientConfig
+  shouldApply as shouldApplyClientConfig
 } from './apex-client-config'
 import { guardConfigYamlOnArrival } from './apex-config-arrival'
 import {
@@ -65,8 +61,8 @@ import {
   buildInvalidTaskResult,
   buildRegisterBody,
   buildResultSubmitBody,
-  defaultDeviceName as  daemonDefaultDeviceName,
-  nextBackoffMs as  daemonNextBackoffMs,
+  defaultDeviceName as daemonDefaultDeviceName,
+  nextBackoffMs as daemonNextBackoffMs,
   deriveDaemonStatus,
   isAllowedDaemonUrl,
   normalizeStoredDaemon,
@@ -76,7 +72,7 @@ import {
   parseRegisterResponse,
   parseTaskEnvelope,
   resolveDaemonEndpoints,
-  sanitizeDeviceName as  sanitizeDaemonDeviceName
+  sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
 import {
   buildFeishuBackendEnv,
@@ -88,9 +84,9 @@ import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
 import {
   buildImEntrySpawnEnv,
   feishuProvisionPollUrl,
-  secretFieldsFor as  imEntrySecretFieldsFor,
+  secretFieldsFor as imEntrySecretFieldsFor,
   isAllowedFeishuProvisionUrl,
-  isKnownChannel as  isKnownImEntryChannel,
+  isKnownChannel as isKnownImEntryChannel,
   normalizeStoredImEntry,
   parseFeishuCredentialsV2Response,
   parseFeishuProvisionResponse,
@@ -98,7 +94,7 @@ import {
   parseWeixinCredentialsResponse,
   resolveFeishuProvisionEndpoints,
   resolveWeixinProvisionEndpoints,
-  shapeBinding as  shapeImEntryBinding,
+  shapeBinding as shapeImEntryBinding,
   stripFeishuEnvOverrides
 } from './apex-im-entry'
 import { startLoopbackLogin } from './apex-loopback'
@@ -129,10 +125,7 @@ import {
   seedPluginsBlockYaml,
   seedSkillsBlockYaml
 } from './apex-managed'
-import {
-  normalizeStoredPluginsState,
-  syncPlatformPlugins
-} from './apex-platform-plugins'
+import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
   fetchPlatformSkills,
@@ -159,11 +152,7 @@ import {
   resolvePreBootstrapDecision
 } from './apex-runtime-select'
 import { loadScenarioCatalog } from './apex-scenario-catalog'
-import {
-  loginShellPathProbeArgs,
-  parseLoginShellPath,
-  resolveAugmentedPath
-} from './apex-shell-path'
+import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
@@ -666,12 +655,7 @@ function hermesManagedToolsPathEntries() {
 }
 
 function pathWithHermesManagedNode(...entries) {
-  return [
-    ...hermesManagedNodePathEntries(),
-    ...hermesManagedToolsPathEntries(),
-    ...entries,
-    process.env.PATH,
-  ]
+  return [...hermesManagedNodePathEntries(), ...hermesManagedToolsPathEntries(), ...entries, process.env.PATH]
     .filter(Boolean)
     .join(path.delimiter)
 }
@@ -10691,12 +10675,18 @@ const RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION = 1
 function readRuntimePinOverride() {
   const parsed = readJson(RUNTIME_PIN_OVERRIDE_PATH)
 
-  if (!parsed || typeof parsed !== 'object') {return null}
+  if (!parsed || typeof parsed !== 'object') {
+    return null
+  }
 
-  if (parsed.schemaVersion !== RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION) {return null}
+  if (parsed.schemaVersion !== RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION) {
+    return null
+  }
 
   // Must carry at least one usable pin field, else it's meaningless.
-  if (!parsed.commit && !parsed.branch) {return null}
+  if (!parsed.commit && !parsed.branch) {
+    return null
+  }
 
   return parsed
 }
@@ -10839,7 +10829,9 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
     let settled = false
 
     const done = value => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       resolve(value)
     }
@@ -10871,17 +10863,15 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
 function rollbackRuntimePinOverride(reason) {
   const override = readRuntimePinOverride()
 
-  if (!override) {return false}
+  if (!override) {
+    return false
+  }
   rememberLog(`[runtime-update] rolling back opt-in update (${reason || 'failed'})`)
 
   try {
     if (override.previousMarker && typeof override.previousMarker === 'object') {
       fs.mkdirSync(path.dirname(BOOTSTRAP_COMPLETE_MARKER), { recursive: true })
-      writeFileAtomic(
-        BOOTSTRAP_COMPLETE_MARKER,
-        JSON.stringify(override.previousMarker, null, 2) + '\n',
-        'utf8'
-      )
+      writeFileAtomic(BOOTSTRAP_COMPLETE_MARKER, JSON.stringify(override.previousMarker, null, 2) + '\n', 'utf8')
       rememberLog('[runtime-update] restored previous bootstrap marker (old runtime remains active)')
     }
   } catch (error: any) {
@@ -10894,7 +10884,9 @@ function rollbackRuntimePinOverride(reason) {
 }
 
 function bundleModeEnabled() {
-  const v = String(process.env.HERMES_BUNDLE_MODE || '').trim().toLowerCase()
+  const v = String(process.env.HERMES_BUNDLE_MODE || '')
+    .trim()
+    .toLowerCase()
 
   return v === '1' || v === 'true' || v === 'on' || v === 'yes'
 }
@@ -10902,9 +10894,13 @@ function bundleModeEnabled() {
 // This machine's bundle (os, arch). P1 ships win-x64; mac legs arrive with P2.
 // null = unsupported platform (caller falls back to the legacy chain).
 function desktopBundleTarget() {
-  if (IS_WINDOWS) {return process.arch === 'x64' ? { os: 'win', arch: 'x64' } : null}
+  if (IS_WINDOWS) {
+    return process.arch === 'x64' ? { os: 'win', arch: 'x64' } : null
+  }
 
-  if (IS_MAC) {return { os: 'mac', arch: process.arch === 'arm64' ? 'arm64' : 'x64' }}
+  if (IS_MAC) {
+    return { os: 'mac', arch: process.arch === 'arm64' ? 'arm64' : 'x64' }
+  }
 
   return null
 }
@@ -10915,11 +10911,13 @@ function desktopBundleTarget() {
 // Async spawn so a multi-minute extract never freezes the electron main thread.
 function extractBundleArchive(archivePath, destDir) {
   return new Promise<void>((resolve, reject) => {
-    const tarExe = IS_WINDOWS
-      ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
-      : 'tar'
+    const tarExe = IS_WINDOWS ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
 
-    const child = spawn(tarExe, ['-xzf', archivePath, '-C', destDir], hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] }))
+    const child = spawn(
+      tarExe,
+      ['-xzf', archivePath, '-C', destDir],
+      hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] })
+    )
     let stderr = ''
     child.stderr.on('data', d => {
       stderr = (stderr + String(d)).slice(-2000)
@@ -10944,7 +10942,9 @@ function runBundledTool(exe, argv, label) {
     child.stdout.on('data', cap)
     child.stderr.on('data', cap)
     child.on('error', reject)
-    child.on('close', code => (code === 0 ? resolve() : reject(new Error(`bundle ${label} exited ${code}: ${tail.slice(-400)}`))))
+    child.on('close', code =>
+      code === 0 ? resolve() : reject(new Error(`bundle ${label} exited ${code}: ${tail.slice(-400)}`))
+    )
   })
 }
 
@@ -10959,12 +10959,16 @@ function bundleRuntimeDownload({ url, dest, sha256, size }: any) {
 // longer a rollback target (D1). Runs before any runtime child is spawned
 // (nothing holds a handle on an old venv), and is fully fail-soft.
 function reconcileAndGcBundleRuntime() {
-  if (!bundleModeEnabled()) {return}
+  if (!bundleModeEnabled()) {
+    return
+  }
 
   try {
     const rec = bundleMigrate.reconcileMigration(HERMES_HOME)
 
-    if (rec.reconciled) {rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)}
+    if (rec.reconciled) {
+      rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)
+    }
     // Watermark-aware GC: normal keep current+previous, or drop previous when
     // versions/ blew past its disk budget. One pass (the watermark check runs GC).
     const water = bundleDiskspace.enforceVersionsWatermark(HERMES_HOME)
@@ -10977,11 +10981,15 @@ function reconcileAndGcBundleRuntime() {
       )
     }
 
-    if (water.warning) {rememberLog(`[bundle] ${water.warning}`)}
+    if (water.warning) {
+      rememberLog(`[bundle] ${water.warning}`)
+    }
     // Reap the legacy in-place fallback once the sentinel has left the pointer.
     const asideGc = bundleMigrate.gcLegacyAside(HERMES_HOME)
 
-    if (asideGc.removed) {rememberLog(`[bundle] reaped legacy in-place fallback ${asideGc.path}`)}
+    if (asideGc.removed) {
+      rememberLog(`[bundle] reaped legacy in-place fallback ${asideGc.path}`)
+    }
   } catch (error: any) {
     rememberLog(`[bundle] reconcile/GC errored (ignored): ${error && error.message}`)
   }
@@ -10993,9 +11001,13 @@ function reconcileAndGcBundleRuntime() {
 async function applyRuntimeBundleUpdateFlow(pin): Promise<any> {
   const target = desktopBundleTarget()
 
-  if (!target) {return { ok: false, code: 'unsupported_platform' }}
+  if (!target) {
+    return { ok: false, code: 'unsupported_platform' }
+  }
 
-  if (!pin || !pin.key) {return { ok: false, code: 'no_pin_key' }}
+  if (!pin || !pin.key) {
+    return { ok: false, code: 'no_pin_key' }
+  }
 
   return applyRuntimeBundleUpdate({
     hermesHome: HERMES_HOME,
@@ -11046,7 +11058,7 @@ const SEED_DISPLAY_BLOCK =
 const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision;\n' +
   '# Desktop relay budgets pinned at main=90 / child=50; empty timezone =\n' +
-  "# follow the OS (server-local) clock.\n" +
+  '# follow the OS (server-local) clock.\n' +
   'agent:\n' +
   '  image_input_mode: auto\n' +
   '  max_turns: 90\n' +
@@ -11124,7 +11136,9 @@ function seedDefaultModelConfig() {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
-    if (fs.existsSync(configPath)) {return}
+    if (fs.existsSync(configPath)) {
+      return
+    }
     fs.mkdirSync(HERMES_HOME, { recursive: true })
 
     const managed = resolveManagedConfig()
@@ -11243,7 +11257,9 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
 // No-op when no backend is live (the boot self-heal usually lands here — the
 // spawn that follows already reads the corrected file).
 async function reloadBackendForRelayKey(reason) {
-  if (!backendConnectionState.getProcess()) {return false}
+  if (!backendConnectionState.getProcess()) {
+    return false
+  }
 
   try {
     rememberLog(`[apexnodes] reloading the local backend so it picks up the refreshed relay key (${reason})…`)
@@ -11252,7 +11268,9 @@ async function reloadBackendForRelayKey(reason) {
 
     return true
   } catch (error: any) {
-    rememberLog(`[apexnodes] backend reload after relay-key refresh failed: ${error && error.message ? error.message : error}`)
+    rememberLog(
+      `[apexnodes] backend reload after relay-key refresh failed: ${error && error.message ? error.message : error}`
+    )
 
     return false
   }
@@ -11373,10 +11391,14 @@ function isDirectorySync(dir) {
 let _loginShellPathProbe // undefined = not yet probed; string | null afterwards
 
 function probeLoginShellPath() {
-  if (_loginShellPathProbe !== undefined) {return _loginShellPathProbe}
+  if (_loginShellPathProbe !== undefined) {
+    return _loginShellPathProbe
+  }
   _loginShellPathProbe = null
 
-  if (IS_WINDOWS) {return _loginShellPathProbe}
+  if (IS_WINDOWS) {
+    return _loginShellPathProbe
+  }
   const shell = String(process.env.SHELL || '').trim() || '/bin/zsh'
 
   try {
@@ -11403,7 +11425,9 @@ function probeLoginShellPath() {
 // (append-only + de-duplicated) and fail-soft. Returns the count of dirs added,
 // for a one-line boot log.
 function augmentDesktopProcessPath() {
-  if (IS_WINDOWS) {return 0}
+  if (IS_WINDOWS) {
+    return 0
+  }
   const before = String(process.env.PATH || '')
   let after = before
 
@@ -11450,8 +11474,7 @@ function writeAgentProxyConfig(patch) {
 
   const next = {
     mode: normalizeProxyMode(patch && patch.mode !== undefined ? patch.mode : current.mode),
-    customUrl:
-      patch && typeof patch.customUrl === 'string' ? patch.customUrl : current.customUrl
+    customUrl: patch && typeof patch.customUrl === 'string' ? patch.customUrl : current.customUrl
   }
 
   try {
@@ -11504,9 +11527,7 @@ function buildAgentCliEnv(proxyFragment?) {
 
   const pathKey = process.platform === 'win32' ? 'Path' : 'PATH'
 
-  const augmentedPath = [localBin, base[pathKey] || process.env[pathKey] || '']
-    .filter(Boolean)
-    .join(path.delimiter)
+  const augmentedPath = [localBin, base[pathKey] || process.env[pathKey] || ''].filter(Boolean).join(path.delimiter)
 
   return { ...process.env, ...base, [pathKey]: augmentedPath, HOME: home }
 }
@@ -11624,12 +11645,18 @@ function persistRenewedLoginToken(token) {
   try {
     const next = String(token || '').trim()
 
-    if (!next) {return false}
+    if (!next) {
+      return false
+    }
     const managed = resolveManagedConfig()
 
-    if (!managed.key || !managed.accessToken) {return false}
+    if (!managed.key || !managed.accessToken) {
+      return false
+    }
 
-    if (next === managed.accessToken) {return false}
+    if (next === managed.accessToken) {
+      return false
+    }
     writeManagedConfig({
       apiKey: managed.key,
       baseUrl: managed.baseUrl,
@@ -11867,9 +11894,7 @@ function cleanFeishuPlaintextEnvOverrides() {
     try {
       writeFileAtomic(envPath, text, { mode: 0o600 })
     } catch (error: any) {
-      rememberLog(
-        `[im-entry] failed to rewrite ${envPath}: ${error && error.message ? error.message : error}`
-      )
+      rememberLog(`[im-entry] failed to rewrite ${envPath}: ${error && error.message ? error.message : error}`)
     }
   }
 }
@@ -12240,7 +12265,9 @@ async function submitDaemonTaskResult(taskId, resultBody) {
       return true // already recorded
     }
 
-    rememberLog(`[daemon] result submit failed for ${taskId}: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    rememberLog(
+      `[daemon] result submit failed for ${taskId}: ${error && error.statusCode ? error.statusCode : 'network'}`
+    )
 
     return false
   }
@@ -12264,11 +12291,15 @@ function runLocalAgentJob(job) {
     let child
 
     try {
-      child = spawn(pythonExe, ['-m', 'agent.coding_agents.run_once'], hiddenWindowsChildOptions({
-        cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
-      }))
+      child = spawn(
+        pythonExe,
+        ['-m', 'agent.coding_agents.run_once'],
+        hiddenWindowsChildOptions({
+          cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env }
+        })
+      )
     } catch (error: any) {
       rememberLog(`[daemon] runner spawn failed: ${error && error.message ? error.message : error}`)
       resolve(null)
@@ -12280,7 +12311,9 @@ function runLocalAgentJob(job) {
     let settled = false
 
     const finish = value => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       clearTimeout(killTimer)
       resolve(value)
@@ -12443,7 +12476,9 @@ async function daemonPollTick() {
 }
 
 function scheduleDaemonConnection(delay) {
-  if (!daemonRuntime.started) {return}
+  if (!daemonRuntime.started) {
+    return
+  }
   clearTimeout(daemonRuntime.connLoopTimer)
   daemonRuntime.connLoopTimer = setTimeout(() => {
     void daemonConnectionTick()
@@ -12451,7 +12486,9 @@ function scheduleDaemonConnection(delay) {
 }
 
 function scheduleDaemonPoll(delay) {
-  if (!daemonRuntime.started) {return}
+  if (!daemonRuntime.started) {
+    return
+  }
   clearTimeout(daemonRuntime.pollLoopTimer)
   daemonRuntime.pollLoopTimer = setTimeout(() => {
     void daemonPollTick()
@@ -12668,7 +12705,9 @@ async function refreshClientConfigFromPlatform(reason) {
       log: msg => rememberLog(msg)
     })
 
-    if (!fetched) {return} // offline / 404 no-active-config / garbage → cache stands
+    if (!fetched) {
+      return
+    } // offline / 404 no-active-config / garbage → cache stands
 
     if (fetched.unchanged) {
       rememberLog(`[client-config] v${fetched.version} unchanged (${reason})`)
@@ -12753,7 +12792,9 @@ async function refreshPlatformSkillsFromPlatform(reason) {
       token
     })
 
-    if (!fetched) {return} // offline / 401 / garbage → installed set stands
+    if (!fetched) {
+      return
+    } // offline / 401 / garbage → installed set stands
 
     if (fetched.unchanged) {
       rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
@@ -12768,13 +12809,19 @@ async function refreshPlatformSkillsFromPlatform(reason) {
     }
 
     const result = applyPlatformSkills({ log: msg => rememberLog(msg), skills: fetched.skills, skillsRoot })
-    writePlatformSkillsState({ count: result.installed.length, installedAt: Date.now(), manifestHash: fetched.manifestHash })
+    writePlatformSkillsState({
+      count: result.installed.length,
+      installedAt: Date.now(),
+      manifestHash: fetched.manifestHash
+    })
     rememberLog(
       `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
     )
 
     if (result.skippedUnsafe.length) {
-      rememberLog(`[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`)
+      rememberLog(
+        `[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`
+      )
     }
   } catch (error: any) {
     rememberLog(`[platform-skills] refresh failed (ignored): ${error && error.message ? error.message : error}`)
@@ -12847,7 +12894,9 @@ function guardConfigYamlProductBlocks(reason) {
   // losses in a row means a writer is hammering the file, and the live watcher
   // will pick the heal back up on its next event.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (healConfigYamlProductBlocks(reason) !== 'stale') {return}
+    if (healConfigYamlProductBlocks(reason) !== 'stale') {
+      return
+    }
   }
 
   rememberLog(`[config-guard] deferred to the watcher after 3 racing passes (${reason})`)
@@ -12857,7 +12906,9 @@ function healConfigYamlProductBlocks(reason) {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
-    if (!fs.existsSync(configPath)) {return 'absent'}
+    if (!fs.existsSync(configPath)) {
+      return 'absent'
+    }
     let raw = fs.readFileSync(configPath, 'utf8')
     // What we based this pass on. The runtime saves config.yaml atomically
     // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
@@ -12962,7 +13013,9 @@ function healConfigYamlProductBlocks(reason) {
       fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
     }
 
-    if (!fixed.length) {return 'clean'}
+    if (!fixed.length) {
+      return 'clean'
+    }
 
     // Compare-and-swap against what we read: a file that changed under us makes
     // `raw` stale, so drop this pass rather than overwrite whatever just
@@ -12993,7 +13046,9 @@ function watchConfigYamlProductBlocks() {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
-    if (!fs.existsSync(configPath)) {return}
+    if (!fs.existsSync(configPath)) {
+      return
+    }
     fs.watch(configPath, { persistent: false }, () => {
       clearTimeout(configGuardTimer)
       configGuardTimer = setTimeout(() => guardConfigYamlProductBlocks('watch'), 2_000)
@@ -13017,14 +13072,18 @@ function watchConfigYamlProductBlocks() {
 let configArrivalWaiter = null
 
 function guardConfigYamlWhenItArrives() {
-  if (configArrivalWaiter) {return}
+  if (configArrivalWaiter) {
+    return
+  }
 
   const configPath = path.join(HERMES_HOME, 'config.yaml')
 
   // Already there → the boot guard just reconciled it and the watcher is
   // armed; arming a second watcher on the same file would only double every
   // future heal.
-  if (fs.existsSync(configPath)) {return}
+  if (fs.existsSync(configPath)) {
+    return
+  }
 
   configArrivalWaiter = guardConfigYamlOnArrival({
     configPath,
@@ -13043,10 +13102,14 @@ function applyClientConfigToRuntime(reason) {
   try {
     const stored = readClientConfigState()
 
-    if (!stored.version || stored.version <= (stored.appliedVersion || 0)) {return}
+    if (!stored.version || stored.version <= (stored.appliedVersion || 0)) {
+      return
+    }
 
     const entries =
-      stored.payload && typeof stored.payload === 'object' && stored.payload.config_yaml &&
+      stored.payload &&
+      typeof stored.payload === 'object' &&
+      stored.payload.config_yaml &&
       typeof stored.payload.config_yaml === 'object'
         ? stored.payload.config_yaml
         : null
@@ -13065,7 +13128,9 @@ function applyClientConfigToRuntime(reason) {
       const raw = fs.readFileSync(configPath, 'utf8')
       const { changed, next, applied, skipped } = applyConfigYamlKeys(raw, entries)
 
-      if (changed) {fs.writeFileSync(configPath, next, { encoding: 'utf8' })}
+      if (changed) {
+        fs.writeFileSync(configPath, next, { encoding: 'utf8' })
+      }
       rememberLog(
         `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
           (skipped.length ? `; skipped: ${skipped.join(', ')}` : '')
@@ -13076,7 +13141,9 @@ function applyClientConfigToRuntime(reason) {
 
     writeClientConfigState({ ...stored, appliedVersion: stored.version })
   } catch (error: any) {
-    rememberLog(`[client-config] apply failed (will retry next boot): ${error && error.message ? error.message : error}`)
+    rememberLog(
+      `[client-config] apply failed (will retry next boot): ${error && error.message ? error.message : error}`
+    )
   }
 }
 
@@ -13129,7 +13196,9 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
       const chunks = []
       res.on('data', chunk => chunks.push(Buffer.from(chunk)))
       res.on('end', () => {
-        if (timedOut) {return}
+        if (timedOut) {
+          return
+        }
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -13160,12 +13229,16 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
       })
     })
     request.on('error', error => {
-      if (timedOut) {return}
+      if (timedOut) {
+        return
+      }
       clearTimeout(timer)
       reject(error)
     })
 
-    if (payload) {request.write(payload)}
+    if (payload) {
+      request.write(payload)
+    }
     request.end()
   })
 }
@@ -13218,7 +13291,9 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       const chunks = []
       res.on('data', chunk => chunks.push(Buffer.from(chunk)))
       res.on('end', () => {
-        if (timedOut) {return}
+        if (timedOut) {
+          return
+        }
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -13249,7 +13324,9 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       })
     })
     request.on('error', error => {
-      if (timedOut) {return}
+      if (timedOut) {
+        return
+      }
       clearTimeout(timer)
       reject(error)
     })
@@ -13301,7 +13378,9 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
     let settled = false
 
     const fail = error => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       clearTimeout(timer)
       reject(error)
@@ -13338,7 +13417,9 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
         chunks.push(Buffer.from(chunk))
       })
       res.on('end', () => {
-        if (settled) {return}
+        if (settled) {
+          return
+        }
         settled = true
         clearTimeout(timer)
         const statusCode = res.statusCode || 500
@@ -13374,7 +13455,9 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
 // so the listing path is `${base_url}/models`.
 function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Promise<any> {
   return new Promise(resolve => {
-    const base = String(baseUrl || '').trim().replace(/\/+$/, '')
+    const base = String(baseUrl || '')
+      .trim()
+      .replace(/\/+$/, '')
     const relayKey = String(key || '').trim()
 
     if (!base || !relayKey) {
@@ -13403,7 +13486,9 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
     let settled = false
 
     const done = result => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       clearTimeout(timer)
       resolve(result)
@@ -13505,9 +13590,13 @@ async function selfHealManagedKeyOn401() {
   try {
     const managed = resolveManagedConfig()
 
-    if (!isManagedEnabled(process.env)) {return { ok: true, relayUnauthorized: false }}
+    if (!isManagedEnabled(process.env)) {
+      return { ok: true, relayUnauthorized: false }
+    }
 
-    if (!managed.key || !managed.baseUrl) {return { ok: true, relayUnauthorized: false }}
+    if (!managed.key || !managed.baseUrl) {
+      return { ok: true, relayUnauthorized: false }
+    }
 
     const configPath = path.join(HERMES_HOME, 'config.yaml')
     const attemptAt = lastManagedReprovisionAttemptAt
@@ -13773,9 +13862,7 @@ async function startMessagingGateway(profile) {
   try {
     const backend = await ensureRuntime(resolveHermesBackend(buildGatewayRunArgs(profile)))
     const hermesCwd = resolveHermesCwd()
-    rememberLog(
-      `Starting Hermes messaging gateway${profile ? ` for profile "${profile}"` : ''} via ${backend.label}`
-    )
+    rememberLog(`Starting Hermes messaging gateway${profile ? ` for profile "${profile}"` : ''} via ${backend.label}`)
 
     const child = spawn(
       backend.command,
@@ -14675,7 +14762,9 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
     // Transient — report a failed poll; the machine re-polls, the flow is
     // already terminal 'success' cloud-side, and the next tick retries this
     // fetch. NEVER log the body (it would carry the secret on a partial read).
-    rememberLog(`[im-entry] feishu credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    rememberLog(
+      `[im-entry] feishu credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`
+    )
 
     return { ok: false, message: 'REQUEST_FAILED' }
   }
@@ -14857,7 +14946,9 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
 
     // Transient — the flow is already terminal 'success' cloud-side; the next
     // tick retries this fetch. NEVER log the body (it carries the token).
-    rememberLog(`[im-entry] weixin credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+    rememberLog(
+      `[im-entry] weixin credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`
+    )
 
     return { ok: false, message: 'REQUEST_FAILED' }
   }
@@ -14902,7 +14993,9 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
     await teardownPrimaryBackendAndWait()
     mainWindow?.reload()
   } catch (error: any) {
-    rememberLog(`[im-entry] backend restart after weixin bind failed: ${error && error.message ? error.message : error}`)
+    rememberLog(
+      `[im-entry] backend restart after weixin bind failed: ${error && error.message ? error.message : error}`
+    )
 
     return { ok: true, status: 'success', restartFailed: true }
   }
@@ -15064,7 +15157,10 @@ ipcMain.handle('hermes:agentAuth:status', async () => {
 
   const [claude, codex] = await Promise.all([
     detectClaudeAuth({ env, proxyUrl }).catch(() => ({ family: 'claude', state: AGENT_STATE.UNKNOWN })),
-    detectCodexAuth({ env, homeDir: app.getPath('home'), proxyUrl }).catch(() => ({ family: 'codex', state: AGENT_STATE.UNKNOWN }))
+    detectCodexAuth({ env, homeDir: app.getPath('home'), proxyUrl }).catch(() => ({
+      family: 'codex',
+      state: AGENT_STATE.UNKNOWN
+    }))
   ])
 
   const sanitize = result => ({
@@ -15101,10 +15197,14 @@ const AGENT_LOGIN_ABANDON_MS = 180_000
 async function connectAgentAccount(family) {
   const spec = CODING_AGENT_LOGIN[family]
 
-  if (!spec) {return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }}
+  if (!spec) {
+    return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }
+  }
 
   try {
-    if (activeAgentLogin[family]) {activeAgentLogin[family].kill()}
+    if (activeAgentLogin[family]) {
+      activeAgentLogin[family].kill()
+    }
   } catch {
     // ignore
   }
@@ -15128,7 +15228,9 @@ async function connectAgentAccount(family) {
     let settled = false
 
     const finish = result => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
       resolve({ ...result, guideCommand: spec.guide })
     }
@@ -15147,15 +15249,23 @@ async function connectAgentAccount(family) {
       }
     }
 
-    if (child.stdout) {child.stdout.on('data', onChunk)}
+    if (child.stdout) {
+      child.stdout.on('data', onChunk)
+    }
 
-    if (child.stderr) {child.stderr.on('data', onChunk)}
+    if (child.stderr) {
+      child.stderr.on('data', onChunk)
+    }
     child.on('error', err => {
-      if (activeAgentLogin[family] === child) {activeAgentLogin[family] = null}
+      if (activeAgentLogin[family] === child) {
+        activeAgentLogin[family] = null
+      }
       finish({ ok: false, mode: err && err.code === 'ENOENT' ? 'no_cli' : 'guide', reason: 'spawn_error' })
     })
     child.on('exit', code => {
-      if (activeAgentLogin[family] === child) {activeAgentLogin[family] = null}
+      if (activeAgentLogin[family] === child) {
+        activeAgentLogin[family] = null
+      }
       // Exited before we saw/opened a URL: 0 = already completed; else degrade.
       finish(code === 0 ? { ok: true, mode: 'completed' } : { ok: false, mode: 'guide', reason: 'exited' })
     })
@@ -15163,7 +15273,9 @@ async function connectAgentAccount(family) {
     // URL. If it's still running, report 'started' so the renderer polls status
     // (and shows the guide as a backup) rather than us aborting a live login.
     setTimeout(() => {
-      if (!settled && child.exitCode === null) {finish({ ok: true, mode: 'started', url: openedUrl })}
+      if (!settled && child.exitCode === null) {
+        finish({ ok: true, mode: 'started', url: openedUrl })
+      }
     }, AGENT_LOGIN_GRACE_MS).unref?.()
     // Reap an abandoned login so a never-completed flow can't leak a child.
     setTimeout(() => {
@@ -15183,7 +15295,9 @@ async function connectAgentAccount(family) {
 ipcMain.handle('hermes:agentAuth:connect', async (_event, family) => {
   const normalized = family === 'codex' ? 'codex' : family === 'claude' ? 'claude' : ''
 
-  if (!normalized) {return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }}
+  if (!normalized) {
+    return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }
+  }
 
   return connectAgentAccount(normalized)
 })
@@ -15285,9 +15399,7 @@ function broadcastAuthGate(error) {
 // hc-517 — create a new empty project folder <parentDir>/<name> for the desktop
 // project picker's "New blank project" action. Validation + no-clobber live in
 // workspace-create.cjs; this just adapts it to IPC.
-ipcMain.handle('hermes:workspace:createDir', async (_event, parentDir, name) =>
-  createProjectDirForIpc(parentDir, name)
-)
+ipcMain.handle('hermes:workspace:createDir', async (_event, parentDir, name) => createProjectDirForIpc(parentDir, name))
 
 ipcMain.handle('hermes:fs:worktrees', async (_event, cwds) => worktreesForIpc(cwds))
 

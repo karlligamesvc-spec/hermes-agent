@@ -203,11 +203,7 @@ test('buildManagedModelConfig model id is never the catalog-colliding raw routed
 })
 
 test('buildManagedModelConfig custom_providers entry mirrors model.default/base_url/api_key', () => {
-  const block = buildManagedModelConfig(
-    'sk-x',
-    {},
-    { baseUrl: 'https://relay.example.com/v1/' }
-  )
+  const block = buildManagedModelConfig('sk-x', {}, { baseUrl: 'https://relay.example.com/v1/' })
 
   // The entry must use the SAME resolved endpoint/model/key as the model block,
   // with the trailing slash stripped, so both anchors point at one place.
@@ -263,11 +259,7 @@ test('buildManagedModelConfig honors an explicit APEXNODES_MANAGED_MODEL_DISPLAY
 })
 
 test('buildManagedModelConfig prefers a provision-key base_url override over env defaults', () => {
-  const block = buildManagedModelConfig(
-    'sk-x',
-    {},
-    { baseUrl: 'https://relay.example.com/v1/' }
-  )
+  const block = buildManagedModelConfig('sk-x', {}, { baseUrl: 'https://relay.example.com/v1/' })
 
   // overrides win, and the trailing slash is stripped.
   assert.equal(block.base_url, 'https://relay.example.com/v1')
@@ -353,10 +345,7 @@ test('managedModelConfigYaml omits custom_providers when the block has none', ()
 // --- hc-392 China default profile seed helpers ---
 
 test('managedModelConfigYaml nests disabled_providers INSIDE the model block when given', () => {
-  const yaml = managedModelConfigYaml(
-    buildManagedModelConfig('sk-x', {}),
-    { disabledProviders: ['copilot'] }
-  )
+  const yaml = managedModelConfigYaml(buildManagedModelConfig('sk-x', {}), { disabledProviders: ['copilot'] })
 
   // disabled_providers is indented 2 spaces (under model:) and appears before
   // the top-level custom_providers: key — never as a second top-level model:.
@@ -395,12 +384,26 @@ test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 50 v0
 
   // The four frontmatter-name (≠ folder) skills must be present by their
   // frontmatter name, or the runtime toggle won't match them.
-  for (const n of ['serving-llms-vllm', 'evaluating-llms-harness', 'segment-anything-model', 'audiocraft-audio-generation']) {
+  for (const n of [
+    'serving-llms-vllm',
+    'evaluating-llms-harness',
+    'segment-anything-model',
+    'audiocraft-audio-generation'
+  ]) {
     assert.ok(SEED_DISABLED_SKILLS.includes(n), `name-mismatch skill not seeded: ${n}`)
   }
 
   // The hard-cut (D) walled/geo/competitor skills are all in the disabled set.
-  for (const n of ['google-workspace', 'xurl', 'youtube-content', 'polymarket', 'teams-meeting-pipeline', 'claude-code', 'codex', 'gif-search']) {
+  for (const n of [
+    'google-workspace',
+    'xurl',
+    'youtube-content',
+    'polymarket',
+    'teams-meeting-pipeline',
+    'claude-code',
+    'codex',
+    'gif-search'
+  ]) {
     assert.ok(SEED_DISABLED_SKILLS.includes(n), `cut skill not seeded: ${n}`)
   }
 
@@ -415,7 +418,18 @@ test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 50 v0
   }
 
   // hc-406: newly-bundled A/B skills we KEEP ACTIVE must NOT be disabled.
-  for (const n of ['computer-use', 'powerpoint', 'obsidian', 'ocr-and-documents', 'baoyu-infographic', 'yuanbao', 'apple-notes', 'imessage', 'llm-wiki', 'blogwatcher']) {
+  for (const n of [
+    'computer-use',
+    'powerpoint',
+    'obsidian',
+    'ocr-and-documents',
+    'baoyu-infographic',
+    'yuanbao',
+    'apple-notes',
+    'imessage',
+    'llm-wiki',
+    'blogwatcher'
+  ]) {
     assert.ok(!SEED_DISABLED_SKILLS.includes(n), `A/B skill must stay active: ${n}`)
   }
 
@@ -486,12 +500,7 @@ test('ensurePluginsEnabledYaml appends the full block when plugins: is missing (
 
 test('ensurePluginsEnabledYaml unions missing managed names and preserves user entries', () => {
   const raw =
-    'plugins:\n' +
-    '  enabled:\n' +
-    '    - my-own-plugin\n' +
-    '    - apex-overlay\n' +
-    'model:\n' +
-    '  default: x\n'
+    'plugins:\n' + '  enabled:\n' + '    - my-own-plugin\n' + '    - apex-overlay\n' + 'model:\n' + '  default: x\n'
 
   const r = ensurePluginsEnabledYaml(raw)
   assert.equal(r.changed, true)
@@ -544,7 +553,10 @@ test('ensurePluginsEnabledYaml handles PyYAML re-dump shapes (2-space items, flo
   assert.equal(r.changed, true)
   assert.deepEqual(r.added, MANAGED_PLUGIN_NAMES.slice(1))
   // Missing names appended after the last item, at the SAME 2-space indent.
-  assert.match(r.next, /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\n {2}- apexnodes-image-tools\n {2}- apexnodes-xlsx-file-write\n {2}- apexnodes-pptx-file-write\n {2}- apexnodes-doc-file-write\n {2}- apexnodes-feishu-doc-write\n {2}- apexnodes-feishu-bitable-write\nmodel:/)
+  assert.match(
+    r.next,
+    /- user-extra\n {2}- apexnodes-douyin-tools\n {2}- apexnodes-social-tools\n {2}- apexnodes-video-tools\n {2}- apexnodes-image-tools\n {2}- apexnodes-xlsx-file-write\n {2}- apexnodes-pptx-file-write\n {2}- apexnodes-doc-file-write\n {2}- apexnodes-feishu-doc-write\n {2}- apexnodes-feishu-bitable-write\nmodel:/
+  )
 
   // Flow list: rewritten as a block list, existing entries + order kept.
   const flow = 'plugins:\n  enabled: [apex-overlay, user-extra]\nmodel:\n  default: x\n'
@@ -790,9 +802,7 @@ test('Desktop pins relay-safe parent and child budgets without overwriting expli
   assert.ok(seedBlocks.includes("'  max_turns: 90\\n'"))
   assert.ok(seedBlocks.includes("'  max_iterations: 50\\n'"))
 
-  const explicit = ensureProductDefaultsYaml(
-    'agent:\n  max_turns: 140\ndelegation:\n  max_iterations: 20\n'
-  )
+  const explicit = ensureProductDefaultsYaml('agent:\n  max_turns: 140\ndelegation:\n  max_iterations: 20\n')
 
   assert.equal(explicit.changed, true)
   assert.match(explicit.next, /^ {2}max_turns: 140$/m)
@@ -862,10 +872,7 @@ test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks
   for (const [dotted, value] of Object.entries(APEX_PRODUCT_DEFAULTS)) {
     const key = dotted.split('.').pop()
     const rendered = value === '' ? "''" : String(value)
-    assert.ok(
-      seedBlocks.includes(`${key}: ${rendered}`),
-      `seed blocks do not carry ${dotted}: ${rendered}`
-    )
+    assert.ok(seedBlocks.includes(`${key}: ${rendered}`), `seed blocks do not carry ${dotted}: ${rendered}`)
   }
 })
 
@@ -1272,7 +1279,12 @@ test('persistRelayKeyToConfigYaml reports a write that did not land instead of c
   assert.equal(throwing.ok, false)
   assert.match(throwing.reason, /^config-unwritable: /)
 
-  const missing = persistRelayKeyToConfigYaml({ read: () => null, write: () => {}, baseUrl: RELAY_BASE, key: 'sk-fresh' })
+  const missing = persistRelayKeyToConfigYaml({
+    read: () => null,
+    write: () => {},
+    baseUrl: RELAY_BASE,
+    key: 'sk-fresh'
+  })
   assert.equal(missing.ok, false)
   assert.equal(missing.reason, 'config-missing')
 
@@ -1299,14 +1311,20 @@ test('isRelayUnauthorized is true only for 401 / 403', () => {
 
 test('isRelayUnauthorized is false for success / server errors / no-response', () => {
   // A healthy listing must NOT trigger a re-provision.
-  for (const ok of [200, 204, 301, 302]) {assert.equal(isRelayUnauthorized(ok), false)}
+  for (const ok of [200, 204, 301, 302]) {
+    assert.equal(isRelayUnauthorized(ok), false)
+  }
 
   // A relay outage / 5xx / rate-limit is transient, NOT an auth failure — we must
   // not burn the single re-provision attempt on a key that is actually valid.
-  for (const transient of [429, 500, 502, 503, 504]) {assert.equal(isRelayUnauthorized(transient), false)}
+  for (const transient of [429, 500, 502, 503, 504]) {
+    assert.equal(isRelayUnauthorized(transient), false)
+  }
 
   // 0 / undefined / NaN = timeout / offline / no response → not actionable.
-  for (const none of [0, undefined, NaN, null]) {assert.equal(isRelayUnauthorized(none), false)}
+  for (const none of [0, undefined, NaN, null]) {
+    assert.equal(isRelayUnauthorized(none), false)
+  }
 })
 
 // --- relayCatalogStatusFromProbe (hc-512 model-menu catalog state) ---
@@ -1354,10 +1372,7 @@ test('shouldAttemptReprovision enforces the cooldown between attempts', () => {
     false
   )
   // Exactly one cooldown later → allowed again (>= boundary).
-  assert.equal(
-    shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last + REPROVISION_COOLDOWN_MS }),
-    true
-  )
+  assert.equal(shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last + REPROVISION_COOLDOWN_MS }), true)
   // Well past the cooldown → allowed.
   assert.equal(
     shouldAttemptReprovision({ ...gate, lastAttemptAt: last, now: last + REPROVISION_COOLDOWN_MS * 3 }),
@@ -1405,7 +1420,7 @@ test('hc-643: collapses a doubled skills.disabled into one key', () => {
     assert.equal(
       (r.next.match(new RegExp(`^ {4}- ${name}$`, 'gm')) || []).length,
       1,
-      `expected exactly one entry for ${name}`,
+      `expected exactly one entry for ${name}`
     )
   }
 
@@ -1480,10 +1495,7 @@ test('hc-643: a single (healthy) list key is untouched by the collapse pass', ()
   // Regression guard: the repair must not perturb the overwhelmingly common
   // shape — one key, already complete.
   const healthy =
-    'plugins:\n' +
-    '  enabled:\n' +
-    MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') +
-    'model:\n  default: x\n'
+    'plugins:\n' + '  enabled:\n' + MANAGED_PLUGIN_NAMES.map(n => `    - ${n}\n`).join('') + 'model:\n  default: x\n'
 
   const r = ensurePluginsEnabledYaml(healthy)
   assert.equal(r.changed, false)
@@ -1517,7 +1529,9 @@ test('hc-643: a CRLF config.yaml still unions in a genuinely missing name', () =
   const crlf =
     'plugins:\r\n' +
     '  enabled:\r\n' +
-    MANAGED_PLUGIN_NAMES.slice(0, -1).map(n => `    - ${n}\r\n`).join('') +
+    MANAGED_PLUGIN_NAMES.slice(0, -1)
+      .map(n => `    - ${n}\r\n`)
+      .join('') +
     'model:\r\n  default: x\r\n'
 
   const r = ensurePluginsEnabledYaml(crlf)

@@ -255,7 +255,15 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     }
 
     seed([])
-  }, [managedProvider, moaOptions.data, moaOptions.isSuccess, modelOptions.isSuccess, optionsModel, optionsProvider, selectionSeeded])
+  }, [
+    managedProvider,
+    moaOptions.data,
+    moaOptions.isSuccess,
+    modelOptions.isSuccess,
+    optionsModel,
+    optionsProvider,
+    selectionSeeded
+  ])
 
   // hc-602: a collapsed managed catalog is a rotated relay key until proven
   // otherwise. The runtime's live `GET /v1/models` probe uses

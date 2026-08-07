@@ -12,11 +12,7 @@ import { notify } from '@/store/notifications'
 
 import { PlatformAvatar } from '../messaging/platform-icon'
 
-import {
-  type DeviceCodeErrorReason,
-  deviceCodeReduce,
-  initialDeviceCodeState
-} from './device-code-machine'
+import { type DeviceCodeErrorReason, deviceCodeReduce, initialDeviceCodeState } from './device-code-machine'
 
 // The main-process IM 入口 bridge; absent on the web build / an older shell.
 function imEntryBridge() {
@@ -295,15 +291,7 @@ function ComingSoonBody() {
 }
 
 // ── Template A: device-code (scan slot) ─────────────────────────────────────
-function DeviceCodeTemplate({
-  channelId,
-  open,
-  onDone
-}: {
-  channelId: string
-  open: boolean
-  onDone: () => void
-}) {
+function DeviceCodeTemplate({ channelId, open, onDone }: { channelId: string; open: boolean; onDone: () => void }) {
   const { t } = useI18n()
   const copy = t.imEntry.dialog
   const { state, start } = useDeviceCodeFlow(open, channelId)

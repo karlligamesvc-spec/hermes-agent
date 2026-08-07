@@ -37,7 +37,9 @@ const LEGACY_USER_DATA_DIRNAME = 'ApexNodes'
 function resolveUserDataDir(appDataDir, override) {
   const trimmed = typeof override === 'string' ? override.trim() : ''
 
-  if (trimmed) {return path.resolve(trimmed)}
+  if (trimmed) {
+    return path.resolve(trimmed)
+  }
 
   return path.join(appDataDir, LEGACY_USER_DATA_DIRNAME)
 }
