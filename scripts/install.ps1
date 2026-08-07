@@ -113,6 +113,16 @@ if ((-not $Manifest) -and (Get-Command Resolve-ApexRegion -ErrorAction SilentlyC
 # automatically when the script exits.
 $ProgressPreference = "SilentlyContinue"
 
+function Set-ManagedUvCache {
+    # Keep the cache with the Hermes-managed uv instead of inheriting a stale
+    # or unavailable user cache location. Preserve explicit operator policy.
+    if (-not $env:UV_CACHE_DIR) {
+        $env:UV_CACHE_DIR = Join-Path $HermesHome "cache\uv"
+    }
+}
+
+Set-ManagedUvCache
+
 # Force the console to UTF-8 so non-ASCII output from native commands
 # (e.g. playwright's box-drawing progress bars and download banners,
 # git's bullet glyphs, npm's check marks) renders correctly instead of
