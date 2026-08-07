@@ -307,6 +307,12 @@ youtube = [
 # starlette==1.3.1 pinned for CVE-2026-48710 (BadHost) — fastapi pulls Starlette
 # transitively and pre-1.0.1 is the vulnerable range. See the mcp extra above.
 web = ["fastapi==0.133.1", "uvicorn[standard]==0.41.0", "starlette==1.3.1", "python-multipart==0.0.32"]
+# ApexNodes managed cloud search. The production Dockerfile opts into this
+# extra so the CN-safe DuckDuckGo backend is available without a cold-start
+# install. Keep it separate from [all]: desktop/source installs should retain
+# upstream's lazy provider policy. The v0.20 merge dropped this fork-only
+# declaration while preserving the Dockerfile consumer and lockfile entry.
+cloud-search = ["ddgs"]
 all = [
   # Policy (2026-05-12): `[all]` includes only extras that genuinely
   # CAN'T be lazy-installed via `tools/lazy_deps.py` — i.e. things every
