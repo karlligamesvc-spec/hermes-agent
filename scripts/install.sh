@@ -613,12 +613,22 @@ detect_os() {
 # Dependency checks
 # ============================================================================
 
+configure_managed_uv_cache() {
+    # A managed uv binary should not inherit an unrelated or stale user cache.
+    # In particular, a dangling ~/.cache/uv symlink makes every uv command fail
+    # before it can install Python. Keep the cache with the Hermes-managed uv,
+    # while preserving an explicit operator override.
+    export UV_CACHE_DIR="${UV_CACHE_DIR:-$HERMES_HOME/cache/uv}"
+}
+
 install_uv() {
     if [ "$DISTRO" = "termux" ]; then
         log_info "Termux detected — using Python's stdlib venv + pip instead of uv"
         UV_CMD=""
         return 0
     fi
+
+    configure_managed_uv_cache
 
     # Hermes owns its own uv at $HERMES_HOME/bin/uv.  Always install there —
     # no PATH probing, no conda guards, no multi-location resolution chains.
