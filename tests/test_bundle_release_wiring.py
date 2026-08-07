@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -89,13 +91,52 @@ def test_bundle_workflow_uses_supported_intel_mac_runner(bundle_wf_text):
     assert '"runner": "macos-13"' not in executable
 
 
-def test_manual_bundle_dispatch_can_select_one_platform(bundle_wf_text):
-    # A repair run for one platform must not rebuild and re-upload the other
-    # two large archives merely to fill one missing registry row.
-    assert "SELECTED_PLATFORM: ${{ inputs.platform || 'all' }}" in bundle_wf_text
-    assert 'elif selected in platforms:' in bundle_wf_text
-    assert 'include = [platforms[selected]]' in bundle_wf_text
-    assert "matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}" in bundle_wf_text
+def _matrix_plan_script(bundle_wf_text):
+    lines = bundle_wf_text.splitlines()
+    matrix_id = next(i for i, line in enumerate(lines) if line.strip() == "id: matrix")
+    run_line = next(i for i in range(matrix_id + 1, len(lines)) if lines[i] == "        run: |")
+    body = []
+    for line in lines[run_line + 1 :]:
+        if line and not line.startswith("          "):
+            break
+        body.append(line[10:] if line else "")
+    assert body, "matrix plan run block not found"
+    return "\n".join(body) + "\n"
+
+
+@pytest.mark.parametrize(
+    ("selected", "expected"),
+    [
+        ("all", {"win-x64", "mac-arm64", "mac-x64"}),
+        ("win-x64", {"win-x64"}),
+        ("mac-arm64", {"mac-arm64"}),
+        ("mac-x64", {"mac-x64"}),
+    ],
+)
+def test_manual_bundle_dispatch_selects_exact_platform(bundle_wf_text, tmp_path, selected, expected):
+    # Execute the exact embedded workflow script. String-presence assertions
+    # missed a branch inversion during reverse validation and certified an
+    # `mac-x64` dispatch that expanded all three jobs.
+    output = tmp_path / "github-output"
+    env = {**os.environ, "SELECTED_PLATFORM": selected, "GITHUB_OUTPUT": str(output)}
+    subprocess.run(["bash", "-euo", "pipefail", "-c", _matrix_plan_script(bundle_wf_text)], env=env, check=True)
+    line = output.read_text(encoding="utf-8").strip()
+    matrix = json.loads(line.removeprefix("matrix="))
+    actual = {f'{item["os"]}-{item["arch"]}' for item in matrix["include"]}
+    assert actual == expected
+
+
+def test_manual_bundle_dispatch_rejects_unknown_platform(bundle_wf_text, tmp_path):
+    output = tmp_path / "github-output"
+    env = {**os.environ, "SELECTED_PLATFORM": "mac-ppc", "GITHUB_OUTPUT": str(output)}
+    result = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", _matrix_plan_script(bundle_wf_text)],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode != 0
+    assert "unsupported platform: mac-ppc" in result.stderr
 
 
 def test_bundle_leg_is_independent_of_tarball_train():
