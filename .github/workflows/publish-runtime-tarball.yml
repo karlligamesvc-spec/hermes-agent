@@ -6,9 +6,10 @@ name: Publish runtime source tarball to COS
 # the fork + the COS_* repo secrets desktop-windows/macos already use). Reuses
 # scripts/publish-runtime-tarball.sh — the same script CI/ops runs by hand.
 #
-# uv binaries are version-pinned and already on COS (uv-<triple>.zip for windows,
-# .tar.gz for mac/linux), so default no_uv=true and this only ships the per-commit
-# source tarball.
+# uv and PortableGit binaries are version-pinned and already on COS, so the
+# release workflow only ships the per-commit source tarball. Re-uploading the
+# fixed toolchain assets consumes a runner slot for up to hours and delays the
+# per-platform bundle matrix without changing their contents.
 
 on:
   workflow_dispatch:
@@ -80,7 +81,7 @@ jobs:
             --commit "${{ inputs.commit }}" \
             --bucket apexnodes-runtime-202606250443-1300912302 \
             --region ap-guangzhou --prefix runtime \
-            $UVFLAG --upload
+            $UVFLAG --no-git --upload
 
       - name: Scrub coscli creds
         if: always()
