@@ -353,6 +353,51 @@ class TestExplicitPathNoAutoDownload:
 
 
 # ---------------------------------------------------------------------------
+# Download retry behavior
+# ---------------------------------------------------------------------------
+
+class TestDownloadRetry:
+    @patch("tools.tirith_security.time.sleep")
+    @patch("tools.tirith_security.urllib.request.urlopen")
+    def test_transient_disconnect_is_retried(self, mock_urlopen, mock_sleep, tmp_path):
+        """A one-off GitHub disconnect must not fail the immutable image bake."""
+        import http.client
+        import io
+
+        from tools.tirith_security import _download_file
+
+        mock_urlopen.side_effect = [
+            http.client.RemoteDisconnected("remote closed connection"),
+            io.BytesIO(b"verified payload"),
+        ]
+        destination = tmp_path / "tirith.tar.gz"
+
+        _download_file("https://example.test/tirith.tar.gz", str(destination))
+
+        assert destination.read_bytes() == b"verified payload"
+        assert mock_urlopen.call_count == 2
+        mock_sleep.assert_called_once()
+
+    @patch("tools.tirith_security.time.sleep")
+    @patch("tools.tirith_security.urllib.request.urlopen")
+    def test_non_retryable_http_error_fails_immediately(self, mock_urlopen, mock_sleep, tmp_path):
+        """Permanent 4xx responses should not be hidden behind pointless retries."""
+        import urllib.error
+
+        from tools.tirith_security import _download_file
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.test/missing", 404, "Not Found", {}, None
+        )
+
+        with pytest.raises(urllib.error.HTTPError):
+            _download_file("https://example.test/missing", str(tmp_path / "missing"))
+
+        assert mock_urlopen.call_count == 1
+        mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Cosign provenance verification (P1)
 # ---------------------------------------------------------------------------
 
