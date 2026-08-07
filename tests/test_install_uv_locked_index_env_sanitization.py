@@ -34,6 +34,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
 INSTALL_PS1 = REPO_ROOT / "scripts" / "install.ps1"
 BUILD_BUNDLE = REPO_ROOT / "scripts" / "build-runtime-bundle.mjs"
+VERIFY_ENVIRONMENT = REPO_ROOT / "scripts" / "verify-environment.py"
 
 # The env vars that select/redirect uv's package index. Must match the set
 # scripts/build-runtime-bundle.mjs already strips for its own --locked sync.
@@ -163,6 +165,23 @@ def test_install_ps1_call_sites_route_through_invoke_uv_sync_locked() -> None:
         "Install-Dependencies must not call uv sync --locked directly -- "
         "route through Invoke-UvSyncLocked so the index env is sanitized"
     )
+
+
+def test_release_environment_guard_accepts_shared_powershell_sanitizer() -> None:
+    """The pre-default-flip guard must follow the hc-636 helper extraction.
+
+    This is deliberately a check of the release gate itself, in addition to
+    the installer behavior tests above: before hc-684 the gate kept searching
+    for the deleted one-off assignment and falsely rejected a correct build.
+    """
+    spec = importlib.util.spec_from_file_location("verify_environment", VERIFY_ENVIRONMENT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    checks = {name: ok for name, ok, _detail in module.static_source_checks(REPO_ROOT / "apexnodes-environment.yaml")}
+
+    assert checks["install.ps1 sanitizes mirror index env for uv sync --locked"] is True
 
 
 def test_build_runtime_bundle_and_installers_agree_on_the_index_env_list() -> None:

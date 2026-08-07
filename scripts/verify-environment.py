@@ -17,6 +17,17 @@ import urllib.error
 import urllib.request
 
 
+LOCKED_PROJECT_ENV_VARS = (
+    "UV_DEFAULT_INDEX",
+    "UV_INDEX_URL",
+    "UV_EXTRA_INDEX_URL",
+    "UV_INDEX",
+    "PIP_INDEX_URL",
+    "PIP_EXTRA_INDEX_URL",
+    "UV_NO_CONFIG",
+)
+
+
 def head(url, timeout=10):
     try:
         with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=timeout) as r:
@@ -103,12 +114,30 @@ def static_source_checks(manifest_path):
     install_ps1 = os.path.join(repo_root, "scripts", "install.ps1")
     try:
         src = open(install_ps1, encoding="utf-8").read()
+        # hc-636 extracted save/clear/restore into a shared helper because
+        # both `uv sync --locked` and `uv export --locked` need it. Inspect the
+        # executable function bodies instead of looking for the superseded
+        # one-off `$env:UV_DEFAULT_INDEX = $null` spelling. That literal-only
+        # guard falsely blocked the hc-684 release even though the current
+        # implementation clears a strictly larger, tested set via .NET.
+        helper_body = src.split("function Invoke-WithoutIndexEnv {", 1)[1].split(
+            "function Invoke-UvSyncLocked {", 1
+        )[0]
+        sync_body = src.split("function Invoke-UvSyncLocked {", 1)[1].split(
+            "function Invoke-UvMirrorHashedInstall {", 1
+        )[0]
+        helper_code = "\n".join(line.split("#", 1)[0] for line in helper_body.splitlines())
+        sync_code = "\n".join(line.split("#", 1)[0] for line in sync_body.splitlines())
         ok = (
-            "function Invoke-UvSyncLocked" in src
-            and '$env:UV_DEFAULT_INDEX = $null' in src
+            all(f"'{name}'" in helper_code for name in LOCKED_PROJECT_ENV_VARS)
+            and "SetEnvironmentVariable($n, $null)" in helper_code
+            and "finally" in helper_code
+            and "SetEnvironmentVariable($n, $saved[$n])" in helper_code
+            and "Invoke-WithoutIndexEnv {" in sync_code
+            and "sync --extra all --locked" in sync_code
             and "Invoke-UvSyncLocked -Check" in src
         )
-    except OSError as e:
+    except (OSError, IndexError) as e:
         ok = False
         install_ps1 = f"{install_ps1} ({e})"
     checks.append(("install.ps1 sanitizes mirror index env for uv sync --locked", ok, install_ps1))
