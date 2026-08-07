@@ -58,24 +58,31 @@ function tarHeader(name, size, typeflag) {
   block.write('ustar\0', 257, 'latin1')
   block.write('00', 263, 'latin1')
   let sum = 0
-  for (let i = 0; i < 512; i += 1) sum += block[i]
+
+  for (let i = 0; i < 512; i += 1) {sum += block[i]}
   block.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148, 'latin1')
+
   return block
 }
 
 /** files: [{ path, content, typeflag? }] → tar.gz Buffer */
 function makeTarGz(files) {
   const chunks = []
+
   for (const file of files) {
     const data = Buffer.from(file.content || '', 'utf8')
     chunks.push(tarHeader(file.path, data.length, file.typeflag || '0'))
+
     if (data.length) {
       chunks.push(data)
       const pad = (512 - (data.length % 512)) % 512
-      if (pad) chunks.push(Buffer.alloc(pad))
+
+      if (pad) {chunks.push(Buffer.alloc(pad))}
     }
   }
+
   chunks.push(Buffer.alloc(1024))
+
   return zlib.gzipSync(Buffer.concat(chunks), { level: 9 })
 }
 
@@ -101,6 +108,7 @@ test('P0 guard: switch off (default env) → syncPlatformPlugins does zero netwo
   const pluginsRoot = path.join(root, 'plugins') // deliberately never created
   const stagingRoot = path.join(root, 'staging')
   const calls = []
+
   const result = await syncPlatformPlugins({
     apiBase: 'https://api.apex-nodes.com',
     env: {}, // unset — the shipped default
@@ -118,6 +126,7 @@ test('P0 guard: switch off (default env) → syncPlatformPlugins does zero netwo
     stored: null,
     token: 'jwt'
   })
+
   assert.equal(result.status, 'disabled')
   assert.deepEqual(calls, []) // no fetch, and (empty prior state) not even a log line
   assert.equal(fs.existsSync(pluginsRoot), false)
@@ -127,6 +136,7 @@ test('P0 guard: switch off (default env) → syncPlatformPlugins does zero netwo
 test('P0 guard: explicit off values and garbage all stay disabled', async () => {
   for (const value of ['0', 'false', 'off', 'no', '', '  ', 'enable-me', 'TRUE-ish']) {
     const calls = []
+
     const result = await syncPlatformPlugins({
       apiBase: 'https://x',
       env: { APEXNODES_PLATFORM_PLUGINS: value },
@@ -137,6 +147,7 @@ test('P0 guard: explicit off values and garbage all stay disabled', async () => 
       stored: null,
       token: 'jwt'
     })
+
     assert.equal(result.status, 'disabled', `value=${JSON.stringify(value)}`)
     assert.deepEqual(calls, [])
   }
@@ -145,6 +156,7 @@ test('P0 guard: explicit off values and garbage all stay disabled', async () => 
 test('switch flipped off after installs: files stay, hint logged, still zero network/fs', async () => {
   const logs = []
   const fetches = []
+
   const result = await syncPlatformPlugins({
     apiBase: 'https://x',
     env: { APEXNODES_PLATFORM_PLUGINS: 'off' },
@@ -156,6 +168,7 @@ test('switch flipped off after installs: files stay, hint logged, still zero net
     stored: { installedAt: 1, manifestHash: 'aa'.repeat(32), plugins: { 'apexnodes-social-tools': 'ab'.repeat(32) } },
     token: 'jwt'
   })
+
   assert.equal(result.status, 'disabled')
   assert.deepEqual(fetches, [])
   assert.equal(logs.length, 1)
@@ -200,6 +213,7 @@ test('platformPluginPackageUrl: derived from apiBase + validated name only', () 
     platformPluginPackageUrl('https://api.apex-nodes.com/', 'apexnodes-social-tools'),
     `https://api.apex-nodes.com${PLATFORM_PLUGINS_PATH}/apexnodes-social-tools/package`
   )
+
   // Unsafe names never build a URL — no way for a manifest to steer the path.
   for (const name of ['../evil', 'a/b', '', '.hidden', 'https://evil.example/x']) {
     assert.equal(platformPluginPackageUrl('https://api.apex-nodes.com', name), null, name)
@@ -249,6 +263,7 @@ test('normalizePluginEntry: valid entry passes, hostile/broken entries are dropp
     size: 1234,
     version: '0.3.0'
   }
+
   const normalized = normalizePluginEntry(good)
   assert.ok(normalized)
   assert.equal(normalized.sha256, 'ab'.repeat(32)) // lowercased
@@ -270,11 +285,13 @@ test('parsePlatformPluginsManifest: garbage → null; unchanged + full shapes pa
   for (const garbage of [null, [], 'x', {}, { manifest_hash: '' }, { manifest_hash: 'h' }, { manifest_hash: 'h', plugins: 'nope' }]) {
     assert.equal(parsePlatformPluginsManifest(garbage), null)
   }
+
   assert.deepEqual(parsePlatformPluginsManifest({ manifest_hash: 'h1', unchanged: true }), {
     manifestHash: 'h1',
     plugins: null,
     unchanged: true
   })
+
   const full = parsePlatformPluginsManifest({
     extra_field: 'ignored',
     manifest_hash: 'h2',
@@ -283,6 +300,7 @@ test('parsePlatformPluginsManifest: garbage → null; unchanged + full shapes pa
       { files: ['plugin.yaml'], name: '../evil', sha256: 'ab'.repeat(32), size: 10 } // dropped
     ]
   })
+
   assert.equal(full.unchanged, false)
   assert.equal(full.manifestHash, 'h2')
   assert.equal(full.plugins.length, 1)
@@ -291,9 +309,11 @@ test('parsePlatformPluginsManifest: garbage → null; unchanged + full shapes pa
 
 test('normalizeStoredPluginsState: garbage degrades to empty; bad names/hashes dropped', () => {
   const empty = { installedAt: null, manifestHash: '', plugins: {} }
+
   for (const garbage of [null, 'x', [], {}, { manifestHash: '' }, { manifestHash: 42 }]) {
     assert.deepEqual(normalizeStoredPluginsState(garbage), empty)
   }
+
   const state = normalizeStoredPluginsState({
     installedAt: 1700000000000,
     manifestHash: 'h1',
@@ -303,6 +323,7 @@ test('normalizeStoredPluginsState: garbage degrades to empty; bad names/hashes d
       'bad-hash': 'nope'
     }
   })
+
   assert.equal(state.manifestHash, 'h1')
   assert.equal(state.installedAt, 1700000000000)
   assert.deepEqual(state.plugins, { 'apexnodes-social-tools': 'ab'.repeat(32) })
@@ -318,6 +339,7 @@ test('planPluginSync: reinstall on sha change OR missing dir; skip only when bot
 
   const sha = 'aa'.repeat(32)
   const changed = 'bb'.repeat(32)
+
   const plan = planPluginSync({
     plugins: [
       { name: 'present-same', sha256: sha },
@@ -327,6 +349,7 @@ test('planPluginSync: reinstall on sha change OR missing dir; skip only when bot
     pluginsRoot,
     storedPlugins: { 'missing-dir': sha, 'present-changed': sha, 'present-same': sha }
   })
+
   assert.deepEqual(plan.upToDate, ['present-same'])
   assert.deepEqual(plan.toInstall.map(entry => entry.name), ['present-changed', 'missing-dir'])
 })
@@ -351,6 +374,7 @@ test('extractTarGz: tolerates directory entries, keeps nested files', () => {
       { content: 'name: x\n', path: 'plugin.yaml' }
     ])
   )
+
   assert.deepEqual(files.map(file => file.path), ['sub/mod.py', 'plugin.yaml'])
 })
 
@@ -369,7 +393,8 @@ test('extractTarGz: rejects traversal paths, symlinks, corrupt headers, non-gzip
 
 test('extractTarGz: enforces file-count and total-size caps', () => {
   const many = []
-  for (let i = 0; i < MAX_FILES_PER_PLUGIN + 1; i += 1) many.push({ content: 'x', path: `f${i}.py` })
+
+  for (let i = 0; i < MAX_FILES_PER_PLUGIN + 1; i += 1) {many.push({ content: 'x', path: `f${i}.py` })}
   assert.throws(() => extractTarGz(makeTarGz(many)), /max file count/)
 
   // The size cap fires on either surface: gunzip's maxOutputLength (a
@@ -388,12 +413,14 @@ test('applyPlatformPlugin: installs into pluginsRoot/<name>, staging cleaned', (
   const root = tmpRoot()
   const pluginsRoot = path.join(root, 'plugins')
   const stagingRoot = path.join(root, '.staging')
+
   const result = applyPlatformPlugin({
     files: extracted(PLUGIN_FILES),
     name: 'apexnodes-social-tools',
     pluginsRoot,
     stagingRoot
   })
+
   assert.equal(result.targetDir, path.join(pluginsRoot, 'apexnodes-social-tools'))
   assert.equal(
     fs.readFileSync(path.join(pluginsRoot, 'apexnodes-social-tools', 'plugin.yaml'), 'utf8'),
@@ -495,10 +522,12 @@ test('syncPlatformPlugins: happy path — downloads, verifies, installs, records
     env: enabledEnv(),
     fetchBuffer: async url => {
       fetched.buffers.push(url)
+
       return packageBuffer
     },
     fetchJson: async url => {
       fetched.jsons.push(url)
+
       return { manifest_hash: 'mh1', plugins: [entry] }
     },
     pluginsRoot,
@@ -531,6 +560,7 @@ test('syncPlatformPlugins: sha256 mismatch → nothing lands on disk, manifestHa
   tampered[tampered.length - 1] ^= 0xff
 
   const logs = []
+
   const result = await syncPlatformPlugins({
     apiBase: 'https://x',
     env: enabledEnv(),
@@ -568,6 +598,7 @@ test('syncPlatformPlugins: size mismatch vs manifest → rejected before hashing
     stored: null,
     token: 'jwt'
   })
+
   assert.equal(result.status, 'partial')
   assert.deepEqual(result.failed, ['apexnodes-social-tools'])
 })
@@ -586,6 +617,7 @@ test('syncPlatformPlugins: unchanged fast-path and up-to-date plan both skip dow
     fetchBuffer: async () => bufferCalls.push('nope'),
     fetchJson: async url => {
       assert.match(url, /known_hash=mh4/)
+
       return { manifest_hash: 'mh4', unchanged: true }
     },
     pluginsRoot,
@@ -593,10 +625,12 @@ test('syncPlatformPlugins: unchanged fast-path and up-to-date plan both skip dow
     stored: { installedAt: 1, manifestHash: 'mh4', plugins: {} },
     token: 'jwt'
   })
+
   assert.equal(unchanged.status, 'unchanged')
 
   // Full manifest but sha+dir already match → zero package downloads.
   fs.mkdirSync(path.join(pluginsRoot, 'apexnodes-social-tools'), { recursive: true })
+
   const upToDate = await syncPlatformPlugins({
     apiBase: 'https://x',
     env: enabledEnv(),
@@ -607,6 +641,7 @@ test('syncPlatformPlugins: unchanged fast-path and up-to-date plan both skip dow
     stored: { installedAt: 1, manifestHash: 'mh4', plugins: { 'apexnodes-social-tools': entry.sha256 } },
     token: 'jwt'
   })
+
   assert.equal(upToDate.status, 'up-to-date')
   assert.equal(upToDate.newStored.manifestHash, 'mh5')
   assert.deepEqual(bufferCalls, [])
@@ -614,6 +649,7 @@ test('syncPlatformPlugins: unchanged fast-path and up-to-date plan both skip dow
 
 test('syncPlatformPlugins: offline/garbage manifest → fail-soft, installed set stands', async () => {
   const root = tmpRoot()
+
   for (const fetchJson of [
     async () => {
       throw new Error('offline')
@@ -630,12 +666,14 @@ test('syncPlatformPlugins: offline/garbage manifest → fail-soft, installed set
       stored: null,
       token: 'jwt'
     })
+
     assert.equal(result.status, 'unavailable')
   }
 })
 
 test('syncPlatformPlugins: enabled but signed out (no token) → skip, no fetch', async () => {
   const calls = []
+
   const result = await syncPlatformPlugins({
     apiBase: 'https://x',
     env: enabledEnv(),
@@ -646,6 +684,7 @@ test('syncPlatformPlugins: enabled but signed out (no token) → skip, no fetch'
     stored: null,
     token: ''
   })
+
   assert.equal(result.status, 'skipped')
   assert.deepEqual(calls, [])
 })

@@ -13,15 +13,16 @@ import { test } from 'vitest'
 // sendTelemetry, which always takes priority over this env var.
 process.env.APEXNODES_TELEMETRY = 'off'
 
+import * as install from './apex-bundle-install'
 import * as layout from './apex-bundle-layout'
 import * as migrate from './apex-bundle-migrate'
-import * as install from './apex-bundle-install'
 
 // A manifest faithful to scripts/build-runtime-bundle.mjs output (sibling
 // manifest.json shape, incl. the `archive` block). The key/os/arch match the
 // REAL published win-x64 bundle noted in the ticket:
 //   COS bundle/hermes-agent/c2ba29f37c67/win-x64/
 const REAL_KEY = 'c2ba29f37c67'
+
 function winManifest(overrides: any = {}) {
   return {
     schema: 1,
@@ -44,6 +45,7 @@ function winManifest(overrides: any = {}) {
 function mkHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hb-install-'))
 }
+
 function rm(d) {
   fs.rmSync(d, { recursive: true, force: true })
 }
@@ -67,6 +69,7 @@ test('parseBundleManifest: rejects wrong schema/kind/framework/missing fields', 
     ['os', () => install.parseBundleManifest(winManifest({ os: 'linux' }))],
     ['no archive', () => install.parseBundleManifest(winManifest({ archive: undefined }))]
   ]
+
   for (const [label, fn] of bad) {
     assert.throws(fn, (err: any) => err.code === 'bad_manifest', `expected bad_manifest for ${label}`)
   }
@@ -92,6 +95,7 @@ test('checkMinDesktopVersion: gates by semver', () => {
     ['0.17.0', null, false], // unknown shell version → fail closed
     ['0.17.0', 'garbage', false]
   ]
+
   for (const [required, current, wantOk] of cases) {
     const r = install.checkMinDesktopVersion(winManifest({ min_desktop_version: required }), current)
     assert.equal(r.ok, wantOk, `min=${required} desktop=${current} → ${r.reason}`)
@@ -166,8 +170,10 @@ function fakeExtract(key) {
 
 test('stageAndCommitBundle: extracts to .tmp, verifies, atomically commits', async () => {
   const home = mkHome()
+
   try {
     const calls = []
+
     const res = await install.stageAndCommitBundle({
       hermesHome: home,
       key: REAL_KEY,
@@ -176,6 +182,7 @@ test('stageAndCommitBundle: extracts to .tmp, verifies, atomically commits', asy
       extract: fakeExtract(REAL_KEY),
       runTool: (_exe, _argv, label) => calls.push(label)
     })
+
     assert.equal(res.ok, true)
     const finalDir = layout.bundlePaths(home).versionDir(REAL_KEY)
     assert.equal(res.versionDir, finalDir)
@@ -190,6 +197,7 @@ test('stageAndCommitBundle: extracts to .tmp, verifies, atomically commits', asy
 
 test('stageAndCommitBundle: verify failure leaves NO committed version, cleans .tmp', async () => {
   const home = mkHome()
+
   try {
     await assert.rejects(
       install.stageAndCommitBundle({
@@ -199,7 +207,7 @@ test('stageAndCommitBundle: verify failure leaves NO committed version, cleans .
         manifest: winManifest(),
         extract: fakeExtract(REAL_KEY),
         runTool: (_exe, _argv, label) => {
-          if (label === 'verify') throw new Error('sha mismatch on 3 files')
+          if (label === 'verify') {throw new Error('sha mismatch on 3 files')}
         }
       }),
       (err: any) => err.code === 'stage_failed' || err.stage === 'stage'
@@ -214,6 +222,7 @@ test('stageAndCommitBundle: verify failure leaves NO committed version, cleans .
 
 test('stageAndCommitBundle: mismatched embedded key is rejected before commit', async () => {
   const home = mkHome()
+
   try {
     await assert.rejects(
       install.stageAndCommitBundle({
@@ -234,11 +243,13 @@ test('stageAndCommitBundle: mismatched embedded key is rejected before commit', 
 
 test('stageAndCommitBundle: an already-committed version is reused (idempotent)', async () => {
   const home = mkHome()
+
   try {
     const finalDir = layout.bundlePaths(home).versionDir(REAL_KEY)
     fs.mkdirSync(finalDir, { recursive: true })
     fs.writeFileSync(path.join(finalDir, 'sentinel'), 'kept')
     let extracted = false
+
     const res = await install.stageAndCommitBundle({
       hermesHome: home,
       key: REAL_KEY,
@@ -249,6 +260,7 @@ test('stageAndCommitBundle: an already-committed version is reused (idempotent)'
       },
       runTool: () => {}
     })
+
     assert.equal(res.reused, true)
     assert.equal(extracted, false, 'never re-extracts over a committed immutable version')
     assert.ok(fs.existsSync(path.join(finalDir, 'sentinel')))
@@ -263,6 +275,7 @@ test('stageAndCommitBundle: an already-committed version is reused (idempotent)'
 
 function baseDeps(home, key = REAL_KEY, manifest = winManifest()): any {
   const seen = { download: 0, extract: 0 }
+
   return {
     seen,
     hermesHome: home,
@@ -281,6 +294,7 @@ function baseDeps(home, key = REAL_KEY, manifest = winManifest()): any {
       seen.download += 1
       fs.mkdirSync(path.dirname(dest), { recursive: true })
       fs.writeFileSync(dest, 'archive-bytes')
+
       return { path: dest }
     },
     extract: (archivePath, destDir) => {
@@ -293,6 +307,7 @@ function baseDeps(home, key = REAL_KEY, manifest = winManifest()): any {
 
 test('applyBundleUpdate: full success downloads, commits, switches, GCs', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     const r = await install.applyBundleUpdate(baseDeps(home))
     assert.equal(r.ok, true)
@@ -310,6 +325,7 @@ test('applyBundleUpdate: full success downloads, commits, switches, GCs', { skip
 
 test('applyBundleUpdate: min_desktop_version too-new rejects BEFORE downloading', async () => {
   const home = mkHome()
+
   try {
     const deps = baseDeps(home, REAL_KEY, winManifest({ min_desktop_version: '9.9.9' }))
     const r = await install.applyBundleUpdate(deps)
@@ -325,6 +341,7 @@ test('applyBundleUpdate: min_desktop_version too-new rejects BEFORE downloading'
 
 test('applyBundleUpdate: platform / key mismatch is caught at the manifest gate', async () => {
   const home = mkHome()
+
   try {
     const wrongOs = await install.applyBundleUpdate(baseDeps(home, REAL_KEY, winManifest({ os: 'mac', arch: 'arm64' })))
     assert.equal(wrongOs.ok, false)
@@ -340,11 +357,14 @@ test('applyBundleUpdate: platform / key mismatch is caught at the manifest gate'
 
 test('applyBundleUpdate: a verify failure returns {ok:false} and commits nothing', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     const deps = baseDeps(home)
+
     deps.runTool = (_e, _a, label) => {
-      if (label === 'verify') throw new Error('files.tsv mismatch')
+      if (label === 'verify') {throw new Error('files.tsv mismatch')}
     }
+
     const r = await install.applyBundleUpdate(deps)
     assert.equal(r.ok, false)
     assert.equal(r.stage, 'stage')
@@ -362,6 +382,7 @@ test('applyBundleUpdate: a verify failure returns {ok:false} and commits nothing
 
 test('applyBundleUpdate: refuses BEFORE downloading when free disk < required', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     const deps = baseDeps(home)
     deps.freeBytesOf = () => 100 * 1024 * 1024 // 100 MiB — far below a bundle install
@@ -379,15 +400,18 @@ test('applyBundleUpdate: refuses BEFORE downloading when free disk < required', 
 
 test('applyBundleUpdate: low disk first drops `previous` to reclaim, then proceeds', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     // Seed a current+previous catalog with a live link at current.
     const older = 'aaaaaaaaaaaa'
     const current = 'bbbbbbbbbbbb'
+
     for (const k of [older, current]) {
       const dir = layout.bundlePaths(home).versionDir(k)
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(path.join(dir, 'id.txt'), k)
     }
+
     layout.writePointerAtomic(home, { key: current, previous: older })
     layout.repointActiveLink(home, current, { platform: process.platform })
 
@@ -415,15 +439,18 @@ function seedLegacyInPlace(home, extra: any = {}) {
   fs.mkdirSync(path.join(dir, 'venv', 'bin'), { recursive: true })
   fs.writeFileSync(path.join(dir, 'venv', 'bin', 'python'), '#!/legacy/abs/venv/bin/python')
   fs.writeFileSync(path.join(dir, '.hermes-bootstrap-complete'), '{}')
+
   for (const [rel, body] of Object.entries<any>(extra)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
     fs.writeFileSync(path.join(dir, rel), body)
   }
+
   return dir
 }
 
 test('applyBundleUpdate: migrates a legacy in-place install side-by-side', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     seedLegacyInPlace(home)
     const r = await install.applyBundleUpdate(baseDeps(home))
@@ -453,6 +480,7 @@ const TELEMETRY_BASE = { platform: 'win', arch: 'x64', app_version: '0.18.2', ru
 
 test('applyBundleUpdate: full success fires download/verify/switch start+success beacons in order', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     const telemetryEvents = []
     const deps = baseDeps(home)
@@ -476,6 +504,7 @@ test('applyBundleUpdate: full success fires download/verify/switch start+success
 
 test('applyBundleUpdate: refuses migration when user data lives in the runtime dir', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     seedLegacyInPlace(home, { '.env': 'RELAY_KEY=secret' })
     const r = await install.applyBundleUpdate(baseDeps(home))
@@ -493,6 +522,7 @@ test('applyBundleUpdate: refuses migration when user data lives in the runtime d
 
 test('applyBundleUpdate: a manifest-gate rejection (min_desktop_version) fires no telemetry at all', async () => {
   const home = mkHome()
+
   try {
     const telemetryEvents = []
     const deps = baseDeps(home, REAL_KEY, winManifest({ min_desktop_version: '9.9.9' }))
@@ -511,6 +541,7 @@ test('applyBundleUpdate: a manifest-gate rejection (min_desktop_version) fires n
 
 test('applyBundleUpdate: a C2 disk-preflight refusal fires no telemetry at all', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     const telemetryEvents = []
     const deps = baseDeps(home)
@@ -530,12 +561,15 @@ test('applyBundleUpdate: a C2 disk-preflight refusal fires no telemetry at all',
 
 test('applyBundleUpdate: a download failure fires download start+failure, no verify/switch beacons', async () => {
   const home = mkHome()
+
   try {
     const telemetryEvents = []
     const deps = baseDeps(home)
+
     deps.download = async () => {
       throw new Error('getaddrinfo ENOTFOUND cos.example.com')
     }
+
     deps.sendTelemetry = ev => telemetryEvents.push(ev)
 
     const r = await install.applyBundleUpdate(deps)
@@ -551,12 +585,15 @@ test('applyBundleUpdate: a download failure fires download start+failure, no ver
 
 test('applyBundleUpdate: a verify failure fires download success + verify start/failure, no switch beacons', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     const telemetryEvents = []
     const deps = baseDeps(home)
+
     deps.runTool = (_e, _a, label) => {
-      if (label === 'verify') throw new Error('sha256 mismatch on 3 files')
+      if (label === 'verify') {throw new Error('sha256 mismatch on 3 files')}
     }
+
     deps.sendTelemetry = ev => telemetryEvents.push(ev)
 
     const r = await install.applyBundleUpdate(deps)
@@ -580,6 +617,7 @@ test('applyBundleUpdate: a verify failure fires download success + verify start/
 // drives; a companion test pins the migration-success case to the same stage.
 test('applyBundleUpdate: a switch failure (D1 migration refused) fires switch start+failure after a clean download+verify', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     seedLegacyInPlace(home, { '.env': 'RELAY_KEY=secret' })
     const telemetryEvents = []
@@ -604,6 +642,7 @@ test('applyBundleUpdate: a switch failure (D1 migration refused) fires switch st
 
 test('applyBundleUpdate: a D1 legacy migration reports as switch success (rides inside the switch stage)', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
+
   try {
     seedLegacyInPlace(home)
     const telemetryEvents = []

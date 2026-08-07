@@ -9,6 +9,7 @@ import { formatEngineDisplayVersion } from './engine-display'
 // legitimately share the identical characters ("引擎"; neither 引 nor 擎 has a
 // distinct traditional form), so this cannot be a "must all be distinct" check.
 const EXPECTED_ENGINE_PREFIX: Record<(typeof LOCALE_OPTIONS)[number]['id'], string> = {
+  ar: 'Engine',
   en: 'Engine',
   zh: '引擎',
   'zh-hant': '引擎',

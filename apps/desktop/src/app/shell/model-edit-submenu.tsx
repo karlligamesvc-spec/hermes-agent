@@ -66,6 +66,7 @@ export function resolveFastControl(
 }
 
 interface ModelEditSubmenuProps {
+  defaultEffort?: string
   /** This row's effective reasoning effort (live for the active model, else its
    *  preset) — the submenu shows and edits from this, never the raw session. */
   effort: string
@@ -76,7 +77,8 @@ interface ModelEditSubmenuProps {
   /** This row's model id — edits persist as its global preset. */
   model: string
   /** Switch to a specific model id (used to swap base ⇄ -fast variant). */
-  onSelectModel: (model: string) => Promise<boolean> | void
+  onSelectModel: (model: string) => Promise<boolean | void> | void
+  onSetOptions?: (patch: { effort?: string; fast?: boolean }) => void
   /** This row's provider slug — edits persist as its global preset. */
   provider: string
   /** Display name of this row's provider — the fallback vendor hint when the
@@ -84,7 +86,7 @@ interface ModelEditSubmenuProps {
   providerName?: string
   /** Whether this model supports reasoning effort. */
   reasoning: boolean
-  requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
+  requestGateway?: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
 export function ModelEditSubmenu({
@@ -93,6 +95,7 @@ export function ModelEditSubmenu({
   isActive,
   model,
   onSelectModel,
+  onSetOptions,
   provider,
   providerName,
   reasoning,
@@ -116,6 +119,12 @@ export function ModelEditSubmenu({
   // active model also gets it pushed onto its OWN session (primary → globals,
   // tile → its slice). Non-active edits stay preset-only — no model switch.
   const patchReasoning = async (next: string) => {
+    if (onSetOptions) {
+      onSetOptions({ effort: next })
+
+      return
+    }
+
     setModelPreset(provider, model, { effort: next })
 
     if (!isActive) {
@@ -138,7 +147,7 @@ export function ModelEditSubmenu({
     }
 
     try {
-      await requestGateway('config.set', { key: 'reasoning', session_id: activeSessionId, value: next })
+      await requestGateway?.('config.set', { key: 'reasoning', session_id: activeSessionId, value: next })
     } catch (err) {
       if (touchesPrimary) {
         setCurrentReasoningEffort(effort)
@@ -152,6 +161,16 @@ export function ModelEditSubmenu({
   }
 
   const toggleFast = (enabled: boolean) => {
+    if (onSetOptions) {
+      onSetOptions({ fast: enabled })
+
+      if (fastControl.kind === 'variant' && isActive) {
+        void onSelectModel(enabled ? fastControl.fastId : fastControl.baseId)
+      }
+
+      return
+    }
+
     if (fastControl.kind === 'variant') {
       // Fast is a separate model id. Record the choice on the base model's
       // preset (selectFamily picks the `-fast` sibling later when set), and
@@ -186,7 +205,7 @@ export function ModelEditSubmenu({
       }
       void (async () => {
         try {
-          await requestGateway('config.set', {
+          await requestGateway?.('config.set', {
             key: 'fast',
             session_id: activeSessionId,
             value: enabled ? 'fast' : 'normal'

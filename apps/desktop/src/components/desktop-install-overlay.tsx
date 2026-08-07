@@ -169,6 +169,7 @@ const EMPTY_STATE: DesktopBootstrapState = {
   log: [],
   startedAt: null,
   completedAt: null,
+  setupChoice: null,
   unsupportedPlatform: null
 }
 

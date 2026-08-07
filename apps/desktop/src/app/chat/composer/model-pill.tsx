@@ -1,12 +1,13 @@
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
+import { releaseTypingFocus } from '@/components/ui/keyboard-first'
 import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Tip } from '@/components/ui/tooltip'
 import { getMoaModels } from '@/hermes'
@@ -16,9 +17,11 @@ import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
-import { $currentModelSource, setModelPickerOpen } from '@/store/session'
+import { $currentModelSource, $defaultReasoningEffort, setModelPickerOpen } from '@/store/session'
 import type { MoaConfigResponse } from '@/types/hermes'
 
+import { onComposerModelMenuRequest } from './focus'
+import { useComposerScope } from './scope'
 import type { ChatBarState } from './types'
 
 const PILL = cn(
@@ -56,8 +59,31 @@ export function ModelPill({
   const fastMode = useStore(view.$fast)
   const reasoningEffort = useStore(view.$reasoningEffort)
   const modelSource = useStore($currentModelSource)
+  const defaultEffort = useStore($defaultReasoningEffort)
   const runtimeId = useStore(view.$runtimeId)
   const [open, setOpen] = useState(false)
+  const scope = useComposerScope()
+  const hasLiveMenu = Boolean(model.modelMenuContent)
+
+  // The `composer.modelPicker` hotkey, routed to exactly one surface (the pane
+  // under the pointer, else the active composer — see requestModelMenuToggle).
+  // Toggles the live dropdown; with no live menu (gateway closed) it opens the
+  // full picker dialog, same as clicking the pill.
+  useEffect(
+    () =>
+      onComposerModelMenuRequest(target => {
+        if (target !== scope.target || disabled) {
+          return
+        }
+
+        if (hasLiveMenu) {
+          setOpen(prev => !prev)
+        } else {
+          setModelPickerOpen(true)
+        }
+      }),
+    [scope.target, disabled, hasLiveMenu]
+  )
 
   // The composer pick is sticky: a manual selection is pinned and every NEW
   // chat uses it instead of the Settings → Model default — silently, which has
@@ -92,7 +118,7 @@ export function ModelPill({
     xhigh: modelOptionsCopy.max
   }
 
-  const effortLabel = effortLabels[reasoningEffort.trim().toLowerCase()]
+  const effortLabel = effortLabels[(reasoningEffort || defaultEffort).trim().toLowerCase()]
 
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text
@@ -108,6 +134,7 @@ export function ModelPill({
           <ProviderIcon size={12} vendor={modelVendor(currentModel, currentProvider)} />
           <span className="truncate">
             {formatModelStatusLabel(currentModel, {
+              defaultEffort,
               effortLabel,
               fastLabel: modelOptionsCopy.fast,
               fastMode,
@@ -167,8 +194,19 @@ export function ModelPill({
     )
   }
 
+  // Closing the menu ends its claim on the keyboard: Radix restores focus to
+  // this pill (a toolbar button), so without the release the Enter that
+  // committed a model also swallows whatever you type next.
+  const setMenuOpen = (next: boolean) => {
+    setOpen(next)
+
+    if (!next) {
+      releaseTypingFocus()
+    }
+  }
+
   return (
-    <DropdownMenu onOpenChange={setOpen} open={open}>
+    <DropdownMenu onOpenChange={setMenuOpen} open={open}>
       <Tip label={title} side="top">
         <DropdownMenuTrigger asChild>
           <Button aria-label={title} className={pillClass} disabled={disabled} type="button" variant="ghost">
@@ -177,7 +215,7 @@ export function ModelPill({
         </DropdownMenuTrigger>
       </Tip>
       <DropdownMenuContent align="end" className="w-64 p-0" side="top" sideOffset={8}>
-        <ModelMenuCloseContext.Provider value={() => setOpen(false)}>
+        <ModelMenuCloseContext.Provider value={() => setMenuOpen(false)}>
           {model.modelMenuContent}
         </ModelMenuCloseContext.Provider>
       </DropdownMenuContent>

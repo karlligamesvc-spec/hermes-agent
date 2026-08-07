@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { StatusDot } from '@/components/status-dot'
 import { useI18n } from '@/i18n'

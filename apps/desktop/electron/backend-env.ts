@@ -73,6 +73,23 @@ function appendUniquePathEntries(entries, { delimiter = path.delimiter } = {}) {
   return ordered.join(delimiter)
 }
 
+/** Both managed Node layouts are valid: Windows installs node.exe at the
+ * managed root, while POSIX installs under node/bin. Prefer the native layout
+ * but keep the migrated layout reachable on every platform. */
+function hermesManagedNodePathEntries(
+  hermesHome,
+  { platform = process.platform, pathModule = pathModuleForPlatform(platform) }: any = {}
+) {
+  if (!hermesHome) {
+    return []
+  }
+
+  const root = pathModule.join(hermesHome, 'node')
+  const bin = pathModule.join(root, 'bin')
+
+  return platform === 'win32' ? [root, bin] : [bin, root]
+}
+
 function buildDesktopBackendPath({
   hermesHome,
   venvRoot,
@@ -81,11 +98,11 @@ function buildDesktopBackendPath({
   pathModule = pathModuleForPlatform(platform)
 }: any = {}) {
   const delimiter = delimiterForPlatform(platform)
-  const hermesNodeBin = hermesHome ? pathModule.join(hermesHome, 'node', 'bin') : null
+  const hermesNodeDirs = hermesManagedNodePathEntries(hermesHome, { platform, pathModule })
   const venvBin = venvRoot ? pathModule.join(venvRoot, platform === 'win32' ? 'Scripts' : 'bin') : null
   const saneEntries = platform === 'win32' ? [] : POSIX_SANE_PATH_ENTRIES
 
-  return appendUniquePathEntries([hermesNodeBin, venvBin, currentPath, saneEntries], { delimiter })
+  return appendUniquePathEntries([hermesNodeDirs, venvBin, currentPath, saneEntries], { delimiter })
 }
 
 function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
@@ -118,6 +135,7 @@ function buildDesktopBackendEnv({
 
   const env: any = {
     PYTHONPATH: appendUniquePathEntries([...pythonPathEntries, currentPythonPath], { delimiter }),
+    PYTHONUTF8: currentEnv?.PYTHONUTF8 ?? '1',
     [key]: buildDesktopBackendPath({
       hermesHome,
       venvRoot,
@@ -136,7 +154,7 @@ function buildDesktopBackendEnv({
   // spread here is safe; an empty fragment (OFF / no system proxy) is a no-op.
   if (proxyEnv && typeof proxyEnv === 'object') {
     for (const [proxyKey, proxyValue] of Object.entries(proxyEnv)) {
-      if (proxyValue) env[proxyKey] = proxyValue
+      if (proxyValue) {env[proxyKey] = proxyValue}
     }
   }
 
@@ -157,6 +175,7 @@ export {
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
   delimiterForPlatform,
+  hermesManagedNodePathEntries,
   HF_MIRROR_ENDPOINT,
   normalizeHermesHomeRoot,
   pathEnvKey,

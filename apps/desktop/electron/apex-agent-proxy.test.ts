@@ -15,19 +15,19 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
+  buildNoProxyValue,
+  buildProxyEnvFragment,
+  describeAgentProxy,
   NO_PROXY_WHITELIST,
+  normalizeCustomProxyUrl,
+  normalizeProxyMode,
+  parseScutilProxy,
   PROXY_MODE_AUTO,
   PROXY_MODE_CUSTOM,
   PROXY_MODE_OFF,
-  normalizeProxyMode,
-  parseScutilProxy,
-  systemProxyToUrls,
-  normalizeCustomProxyUrl,
-  buildNoProxyValue,
-  buildProxyEnvFragment,
   readSystemProxy,
   resolveAgentProxyEnv,
-  describeAgentProxy
+  systemProxyToUrls
 } from './apex-agent-proxy'
 
 // A representative `scutil --proxy` dump for a Clash-style local proxy on 1081.
@@ -126,6 +126,7 @@ test('AUTO fragment injects proxy + NO_PROXY when system proxy present', () => {
     systemUrls: { httpUrl: 'http://127.0.0.1:1081', httpsUrl: 'http://127.0.0.1:1081', allUrl: '' },
     currentEnv: {}
   })
+
   assert.equal(frag.HTTPS_PROXY, 'http://127.0.0.1:1081')
   assert.equal(frag.https_proxy, 'http://127.0.0.1:1081')
   assert.equal(frag.HTTP_PROXY, 'http://127.0.0.1:1081')
@@ -139,6 +140,7 @@ test('AUTO is add-only: an existing parent HTTPS_PROXY is not clobbered', () => 
     systemUrls: { httpUrl: 'http://127.0.0.1:1081', httpsUrl: 'http://127.0.0.1:1081', allUrl: '' },
     currentEnv: { HTTPS_PROXY: 'http://parent:9', HTTP_PROXY: 'http://parent:9' }
   })
+
   // Neither HTTPS_PROXY nor HTTP_PROXY re-emitted (both already set) → no proxy
   // injected → no NO_PROXY either.
   assert.equal(frag.HTTPS_PROXY, undefined)
@@ -152,6 +154,7 @@ test('AUTO with no system proxy injects nothing', () => {
     systemUrls: { httpUrl: '', httpsUrl: '', allUrl: '' },
     currentEnv: {}
   })
+
   assert.deepEqual(frag, {})
 })
 
@@ -161,6 +164,7 @@ test('CUSTOM overrides an existing parent proxy', () => {
     customUrl: '127.0.0.1:7890',
     currentEnv: { HTTPS_PROXY: 'http://parent:9' }
   })
+
   assert.equal(frag.HTTPS_PROXY, 'http://127.0.0.1:7890') // user's explicit choice wins
   assert.equal(frag.HTTP_PROXY, 'http://127.0.0.1:7890')
   assert.ok(frag.NO_PROXY.includes('apex-nodes.com'))
@@ -172,6 +176,7 @@ test('CUSTOM socks maps to ALL_PROXY only', () => {
     customUrl: 'socks5://127.0.0.1:1080',
     currentEnv: {}
   })
+
   assert.equal(frag.ALL_PROXY, 'socks5://127.0.0.1:1080')
   assert.equal(frag.HTTPS_PROXY, undefined)
   assert.ok(frag.NO_PROXY)
@@ -187,6 +192,7 @@ test('OFF injects nothing even with a system proxy', () => {
     systemUrls: { httpUrl: 'http://127.0.0.1:1081', httpsUrl: 'http://127.0.0.1:1081', allUrl: '' },
     currentEnv: {}
   })
+
   assert.deepEqual(frag, {})
 })
 
@@ -204,10 +210,13 @@ test('readSystemProxy uses injected exec on darwin, empty off-darwin', () => {
   assert.equal(parsed.httpsPort, 1081)
   // Non-darwin never execs.
   let called = false
+
   const spyExec = () => {
     called = true
+
     return SCUTIL_ENABLED
   }
+
   const off = readSystemProxy({ platform: 'win32', exec: spyExec })
   assert.equal(off.httpEnable, 0)
   assert.equal(called, false)
@@ -217,6 +226,7 @@ test('readSystemProxy swallows exec failure', () => {
   const throwingExec = () => {
     throw new Error('scutil boom')
   }
+
   const parsed = readSystemProxy({ platform: 'darwin', exec: throwingExec })
   assert.equal(parsed.httpEnable, 0)
 })
@@ -228,12 +238,14 @@ test('resolveAgentProxyEnv AUTO end-to-end through fake scutil', () => {
     platform: 'darwin',
     exec: () => SCUTIL_ENABLED
   })
+
   assert.equal(frag.HTTPS_PROXY, 'http://127.0.0.1:1081')
   assert.ok(frag.NO_PROXY.includes('weixin.qq.com'))
 })
 
 test('resolveAgentProxyEnv CUSTOM never reads scutil', () => {
   let called = false
+
   const frag = resolveAgentProxyEnv({
     mode: PROXY_MODE_CUSTOM,
     customUrl: '127.0.0.1:2080',
@@ -241,9 +253,11 @@ test('resolveAgentProxyEnv CUSTOM never reads scutil', () => {
     platform: 'darwin',
     exec: () => {
       called = true
+
       return SCUTIL_ENABLED
     }
   })
+
   assert.equal(frag.HTTPS_PROXY, 'http://127.0.0.1:2080')
   assert.equal(called, false)
 })

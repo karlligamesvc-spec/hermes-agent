@@ -99,6 +99,7 @@ function trimTrailingSlash(value) {
 
 function normalizeFeishuDomain(value) {
   const raw = String(value == null ? '' : value).trim().toLowerCase()
+
   return VALID_FEISHU_DOMAINS.has(raw) ? raw : DEFAULT_FEISHU_DOMAIN
 }
 
@@ -135,10 +136,12 @@ function shapeBinding(channelId, credential, opts: any = {}): any {
 
   for (const field of descriptor.fields) {
     let value = trimStr(credential[field.from])
+
     if (field.key === 'FEISHU_DOMAIN') {
       // Only emit a domain when one was supplied; the runtime defaults it.
       value = trimStr(credential[field.from]) ? normalizeFeishuDomain(credential[field.from]) : ''
     }
+
     if (value) {
       fields[field.from] = value
     } else if (field.required) {
@@ -165,6 +168,7 @@ function shapeBinding(channelId, credential, opts: any = {}): any {
 function normalizeStoredImEntry(raw): any {
   const out = {}
   const bindings = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw.bindings : null
+
   if (!bindings || typeof bindings !== 'object') {
     return out
   }
@@ -173,6 +177,7 @@ function normalizeStoredImEntry(raw): any {
     if (!isKnownChannel(channelId) || !record || typeof record !== 'object') {
       continue
     }
+
     // Re-shape through the same required-field gate used on write, so a decrypt
     // failure that blanked a secret drops the binding instead of half-enabling.
     const shaped = shapeBinding(
@@ -180,6 +185,7 @@ function normalizeStoredImEntry(raw): any {
       record.fields && typeof record.fields === 'object' ? record.fields : record,
       { boundAt: record.boundAt }
     )
+
     if (shaped) {
       out[channelId] = shaped
     }
@@ -200,6 +206,7 @@ function normalizeStoredImEntry(raw): any {
  */
 function buildImEntrySpawnEnv(store) {
   const env: any = {}
+
   if (!store || typeof store !== 'object') {
     return env
   }
@@ -208,8 +215,10 @@ function buildImEntrySpawnEnv(store) {
     if (!isKnownChannel(channelId) || !binding || typeof binding.fields !== 'object') {
       continue
     }
+
     for (const field of CHANNEL_ENV_DESCRIPTORS[channelId].fields) {
       const value = trimStr(binding.fields[field.from])
+
       if (value) {
         env[field.key] = value
       }
@@ -231,6 +240,7 @@ function secretFieldsFor(channelId) {
   if (!isKnownChannel(channelId)) {
     return []
   }
+
   return CHANNEL_ENV_DESCRIPTORS[channelId].fields.filter(field => field.secret).map(field => field.from)
 }
 
@@ -282,18 +292,23 @@ const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
  */
 function isAllowedFeishuProvisionUrl(url) {
   let parsed
+
   try {
     parsed = new URL(String(url))
   } catch {
     return false
   }
+
   const hostname = parsed.hostname.toLowerCase()
+
   if (LOOPBACK_HOSTNAMES.has(hostname)) {
     return parsed.protocol === 'http:' || parsed.protocol === 'https:'
   }
+
   if (parsed.protocol !== 'https:') {
     return false
   }
+
   return hostname === ALLOWED_PROVISION_APEX_DOMAIN || hostname.endsWith(`.${ALLOWED_PROVISION_APEX_DOMAIN}`)
 }
 
@@ -313,6 +328,7 @@ function resolveFeishuProvisionEndpoints(apiBase, env = process.env) {
   const provisionOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_PROVISION_URL)
   const credentialsOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_CREDENTIALS_URL)
   const entryOverride = trimStr(env && env.HERMES_DESKTOP_IM_FEISHU_ENTRY_URL)
+
   return {
     provisionUrl: provisionOverride || `${base}${FEISHU_PROVISION_PATH}`,
     credentialsUrl: credentialsOverride || `${base}${FEISHU_PROVISION_CREDENTIALS_PATH}`,
@@ -344,13 +360,17 @@ function parseFeishuProvisionResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const provisionId = trimStr(body.provision_id)
   const qrUrl = trimStr(body.qr_url)
+
   if (!provisionId || !qrUrl) {
     return null
   }
+
   const intervalSec = Number(body.interval)
   const expiresSec = Number(body.expires_in)
+
   return {
     provisionId,
     qrUrl,
@@ -377,7 +397,9 @@ function parseFeishuProvisionStatusResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { status: 'pending', agentName: '' }
   }
+
   const rawStatus = String(body.status || '').trim().toLowerCase()
+
   return {
     status: FEISHU_POLL_STATES.has(rawStatus) ? rawStatus : 'pending',
     agentName: trimStr(body.agent_name)
@@ -402,11 +424,14 @@ function parseFeishuCredentialsV2Response(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const appId = trimStr(body.app_id)
   const appSecret = trimStr(body.app_secret)
+
   if (!appId || !appSecret) {
     return null
   }
+
   return {
     appId,
     appSecret,
@@ -453,6 +478,7 @@ function resolveWeixinProvisionEndpoints(apiBase, env = process.env) {
   const provisionOverride = trimStr(env && env.HERMES_DESKTOP_IM_WEIXIN_PROVISION_URL)
   const credentialsOverride = trimStr(env && env.HERMES_DESKTOP_IM_WEIXIN_CREDENTIALS_URL)
   const entryOverride = trimStr(env && env.HERMES_DESKTOP_IM_WEIXIN_ENTRY_URL)
+
   return {
     provisionUrl: provisionOverride || `${base}${WEIXIN_PROVISION_PATH}`,
     credentialsUrl: credentialsOverride || `${base}${WEIXIN_PROVISION_CREDENTIALS_PATH}`,
@@ -476,11 +502,14 @@ function parseWeixinCredentialsResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const accountId = trimStr(body.account_id)
   const token = trimStr(body.token)
+
   if (!accountId || !token) {
     return null
   }
+
   return {
     accountId,
     token,
@@ -519,38 +548,40 @@ const FEISHU_ENV_LINE_RE = /^\s*(?:export\s+)?(FEISHU_[A-Za-z0-9_]*)\s*=/
  */
 function stripFeishuEnvOverrides(envText) {
   const raw = typeof envText === 'string' ? envText : ''
+
   if (!raw) {
     return { text: raw, removed: [] }
   }
 
   const removed = []
   const kept = []
+
   for (const line of raw.split('\n')) {
     const match = FEISHU_ENV_LINE_RE.exec(line)
+
     if (match) {
       removed.push(match[1])
+
       continue
     }
+
     kept.push(line)
   }
 
   if (removed.length === 0) {
     return { text: raw, removed: [] }
   }
+
   return { text: kept.join('\n'), removed }
 }
 
 export {
+  buildImEntrySpawnEnv,
   CHANNEL_ENV_DESCRIPTORS,
   DEFAULT_FEISHU_DOMAIN,
   FEISHU_PROVISION_CREDENTIALS_PATH,
   FEISHU_PROVISION_ENTRY_PATH,
   FEISHU_PROVISION_PATH,
-  VALID_FEISHU_DOMAINS,
-  WEIXIN_PROVISION_CREDENTIALS_PATH,
-  WEIXIN_PROVISION_ENTRY_PATH,
-  WEIXIN_PROVISION_PATH,
-  buildImEntrySpawnEnv,
   feishuProvisionPollUrl,
   isAllowedFeishuProvisionUrl,
   isKnownChannel,
@@ -564,5 +595,9 @@ export {
   resolveWeixinProvisionEndpoints,
   secretFieldsFor,
   shapeBinding,
-  stripFeishuEnvOverrides
+  stripFeishuEnvOverrides,
+  VALID_FEISHU_DOMAINS,
+  WEIXIN_PROVISION_CREDENTIALS_PATH,
+  WEIXIN_PROVISION_ENTRY_PATH,
+  WEIXIN_PROVISION_PATH
 }

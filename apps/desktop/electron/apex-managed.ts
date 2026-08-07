@@ -186,7 +186,15 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 //   timezone              ''   — empty = server-local clock, which on a desktop
 //     IS the OS timezone, i.e. follow-the-OS. Also pinned, not corrected.
 //
-// Scalars only, and deliberately only these four. The seed's other blocks are
+// Scalars only, and deliberately only these six. The two iteration budgets pin
+// APEX Desktop's relay-cost envelope against upstream schema drift: v0.20
+// raised the generic parent default from 90 to 500 because complex local runs
+// routinely exceeded 90 tool calls, while each child retained an independent
+// 50-call budget. That is a reasonable generic runtime default but would
+// silently multiply managed relay exposure. We therefore seed parent=90 and
+// child=50 on Desktop; an explicit value already present in config.yaml remains
+// the user's answer under the add-only reconciliation contract below.
+// The seed's other blocks are
 // either already reconciled elsewhere in guardConfigYamlProductBlocks
 // (custom_providers, skills.disabled, plugins.enabled, model.disabled_providers)
 // or must NOT be: back-filling `model:` would overwrite a BYOK user's chosen
@@ -196,6 +204,8 @@ const APEX_PRODUCT_DEFAULTS = {
   'display.language': 'zh',
   'display.show_reasoning': true,
   'agent.image_input_mode': 'auto',
+  'agent.max_turns': 90,
+  'delegation.max_iterations': 50,
   timezone: ''
 }
 
@@ -338,9 +348,12 @@ const SEED_DISABLED_SKILLS = [
  */
 function modelDisabledProvidersYaml(providers = MODEL_DISABLED_PROVIDERS) {
   const list = Array.isArray(providers) ? providers.filter(p => String(p || '').trim()) : []
-  if (!list.length) return ''
+
+  if (!list.length) {return ''}
   let yaml = '  disabled_providers:\n'
-  for (const p of list) yaml += `    - ${String(p).trim()}\n`
+
+  for (const p of list) {yaml += `    - ${String(p).trim()}\n`}
+
   return yaml
 }
 
@@ -354,14 +367,18 @@ function modelDisabledProvidersYaml(providers = MODEL_DISABLED_PROVIDERS) {
  */
 function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
   const list = Array.isArray(skills) ? skills.filter(s => String(s || '').trim()) : []
-  if (!list.length) return ''
+
+  if (!list.length) {return ''}
+
   let yaml =
     '# ApexNodes China default profile (hc-392): skills shipped but OFF by\n' +
     '# default. Toggle any on in Settings → Skills. Files are kept (not\n' +
     '# deleted) so upstream merges stay clean.\n' +
     'skills:\n' +
     '  disabled:\n'
-  for (const s of list) yaml += `    - ${String(s).trim()}\n`
+
+  for (const s of list) {yaml += `    - ${String(s).trim()}\n`}
+
   return yaml
 }
 
@@ -378,14 +395,18 @@ function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
  */
 function seedPluginsBlockYaml(plugins = MANAGED_PLUGIN_NAMES) {
   const list = Array.isArray(plugins) ? plugins.filter(p => String(p || '').trim()) : []
-  if (!list.length) return ''
+
+  if (!list.length) {return ''}
+
   let yaml =
     '# Standalone runtime plugins are opt-in: only names listed here load.\n' +
     '# apex-overlay carries the ApexNodes seams (incl. the provider denylist\n' +
     '# above); the apexnodes-* tools ride the platform tools gateway.\n' +
     'plugins:\n' +
     '  enabled:\n'
-  for (const p of list) yaml += `    - ${String(p).trim()}\n`
+
+  for (const p of list) {yaml += `    - ${String(p).trim()}\n`}
+
   return yaml
 }
 
@@ -567,37 +588,51 @@ function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
   const none = { collapsed: false, recovered: [] }
 
   let blockEnd = lines.length
+
   for (let i = blockLine + 1; i < lines.length; i++) {
-    if (/^\S/.test(lines[i])) { blockEnd = i; break }
+    if (/^\S/.test(lines[i])) { blockEnd = i;
+
+ break }
   }
 
   const keyRe = new RegExp(`^(\\s+)${listKey}:(.*)$`)
   const copies: any[] = []
+
   for (let i = blockLine + 1; i < blockEnd; i++) {
     const key = bareLine(lines[i]).match(keyRe)
-    if (!key) continue
+
+    if (!key) {continue}
     const rest = key[2].trim()
-    if (rest && !rest.startsWith('#')) return none // inline value → not ours to merge
+
+    if (rest && !rest.startsWith('#')) {return none} // inline value → not ours to merge
     copies.push({ line: i, indent: key[1] })
   }
-  if (copies.length < 2) return none
+
+  if (copies.length < 2) {return none}
 
   // Walk each copy's item run so removal takes exactly its own lines.
   for (const copy of copies) {
     const items: string[] = []
     let itemIndent = ''
     let end = copy.line + 1
+
     for (; end < blockEnd; end++) {
       const line = bareLine(lines[end])
-      if (!line.trim() || /^\s*#/.test(line)) continue
+
+      if (!line.trim() || /^\s*#/.test(line)) {continue}
       const item = line.match(/^(\s*)-\s+(.*)$/)
+
       if (item && item[1].length >= copy.indent.length) {
         items.push(itemName(item[2]))
-        if (!itemIndent) itemIndent = item[1]
+
+        if (!itemIndent) {itemIndent = item[1]}
+
         continue
       }
+
       break // a sibling key (the next copy, or anything else) ends this run
     }
+
     copy.items = items
     copy.itemIndent = itemIndent
     copy.end = end // exclusive
@@ -606,17 +641,21 @@ function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
   const first = copies[0]
   const seen = new Set(first.items)
   const recovered: string[] = []
+
   // Bottom-up so the earlier indices (including first.end) stay valid.
   for (let c = copies.length - 1; c >= 1; c--) {
     for (const name of copies[c].items) {
       if (!seen.has(name)) { seen.add(name); recovered.unshift(name) }
     }
+
     lines.splice(copies[c].line, copies[c].end - copies[c].line)
   }
+
   if (recovered.length) {
     const indent = first.itemIndent || `${first.indent}  `
     lines.splice(first.end, 0, ...recovered.map(name => `${indent}- ${name}`))
   }
+
   return { collapsed: true, recovered }
 }
 
@@ -642,7 +681,8 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   const source = String(raw || '')
   const wanted = (Array.isArray(wantedRaw) ? wantedRaw : []).map(p => String(p || '').trim()).filter(Boolean)
   const unchanged = { changed: false, next: source, added: [] }
-  if (!wanted.length) return unchanged
+
+  if (!wanted.length) {return unchanged}
 
   const unquote = value => String(value || '').trim().replace(/^(["'])(.*)\1$/, '$2')
   // `- name  # comment` → name (a trailing comment needs whitespace before #).
@@ -651,24 +691,31 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
 
   const lines = source.split('\n')
   let blockLine = -1
+
   for (let i = 0; i < lines.length; i++) {
-    if (blockRe.test(lines[i])) { blockLine = i; break }
+    if (blockRe.test(lines[i])) { blockLine = i;
+
+ break }
   }
 
   // ── no top-level block: key at all → append the full seed block ─────────
   if (blockLine < 0) {
     const next = source.replace(/\n*$/, '\n') + seedBlock(wanted)
+
     return { changed: true, next, added: wanted.slice() }
   }
 
   const blockRest = lines[blockLine].slice(`${blockKey}:`.length).trim()
+
   if (blockRest && !blockRest.startsWith('#')) {
     // Inline value. `${blockKey}: {}` (PyYAML's empty-map dump) is safely
     // replaceable with the block form; any other inline shape is unexpected.
-    if (!/^\{\s*\}(\s*#.*)?$/.test(blockRest)) return unchanged
+    if (!/^\{\s*\}(\s*#.*)?$/.test(blockRest)) {return unchanged}
     const replacement = [`${blockKey}:`, `  ${listKey}:`]
-    for (const name of wanted) replacement.push(`    - ${name}`)
+
+    for (const name of wanted) {replacement.push(`    - ${name}`)}
     lines.splice(blockLine, 1, ...replacement)
+
     return { changed: true, next: lines.join('\n'), added: wanted.slice() }
   }
 
@@ -678,6 +725,7 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   // configured, and every later pass reads a list that is already "complete".
   // Collapse first, then read, so the rest of this function sees one list.
   const dedupe = collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName)
+
   // Every early-out below still has to report the collapse: the file changed
   // even when no managed name needed adding.
   const repaired = (added: string[] = []) =>
@@ -690,11 +738,18 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   let listLine = -1
   let listIndent = ''
   let childIndent = ''
+
   for (let i = blockLine + 1; i < lines.length; i++) {
     const line = bareLine(lines[i])
-    if (/^\S/.test(line)) { blockEnd = i; break } // next top-level key
+
+    if (/^\S/.test(line)) { blockEnd = i;
+
+ break } // next top-level key
+
     const key = line.match(/^(\s+)([A-Za-z0-9_-]+):(.*)$/)
-    if (key && !childIndent) childIndent = key[1]
+
+    if (key && !childIndent) {childIndent = key[1]}
+
     if (key && key[2] === listKey && listLine < 0) {
       listLine = i
       listIndent = key[1]
@@ -706,17 +761,21 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
     // block, matching the block's child indent when it has one.
     const indent = childIndent || '  '
     const insert = [`${indent}${listKey}:`]
-    for (const name of wanted) insert.push(`${indent}  - ${name}`)
+
+    for (const name of wanted) {insert.push(`${indent}  - ${name}`)}
     lines.splice(blockLine + 1, 0, ...insert)
+
     return { changed: true, next: lines.join('\n'), added: wanted.slice() }
   }
 
   const listMatch = bareLine(lines[listLine]).match(new RegExp(`^\\s+${listKey}:(.*)$`))
   const listRest = (listMatch ? listMatch[1] : '').trim()
+
   if (listRest && !listRest.startsWith('#')) {
     // Inline value: [] / null / a flow list. Rewrite as a block list keeping
     // existing entries + order; anything else unexpected → no change.
     let existing
+
     if (/^\[\s*\]$/.test(listRest) || /^(~|null)$/i.test(listRest)) {
       existing = []
     } else if (/^\[.*\]$/.test(listRest)) {
@@ -724,11 +783,15 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
     } else {
       return repaired()
     }
+
     const missing = wanted.filter(name => !existing.includes(name))
-    if (!missing.length) return repaired()
+
+    if (!missing.length) {return repaired()}
     const replacement = [`${listIndent}${listKey}:`]
-    for (const name of existing.concat(missing)) replacement.push(`${listIndent}  - ${name}`)
+
+    for (const name of existing.concat(missing)) {replacement.push(`${listIndent}  - ${name}`)}
     lines.splice(listLine, 1, ...replacement)
+
     return { changed: true, next: lines.join('\n'), added: missing }
   }
 
@@ -736,24 +799,32 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   const existing = []
   let lastItemLine = -1
   let itemIndent = ''
+
   for (let i = listLine + 1; i < blockEnd; i++) {
     const line = bareLine(lines[i])
-    if (!line.trim() || /^\s*#/.test(line)) continue // blanks/comments inside the list
+
+    if (!line.trim() || /^\s*#/.test(line)) {continue} // blanks/comments inside the list
     const item = line.match(/^(\s*)-\s+(.*)$/)
+
     if (item && item[1].length >= listIndent.length) {
       existing.push(itemName(item[2]))
       lastItemLine = i
-      if (!itemIndent) itemIndent = item[1]
+
+      if (!itemIndent) {itemIndent = item[1]}
+
       continue
     }
+
     break // a sibling key (or anything else) ends the list
   }
 
   const missing = wanted.filter(name => !existing.includes(name))
-  if (!missing.length) return repaired()
+
+  if (!missing.length) {return repaired()}
   const indent = itemIndent || `${listIndent}  `
   const insertAt = lastItemLine >= 0 ? lastItemLine + 1 : listLine + 1
   lines.splice(insertAt, 0, ...missing.map(name => `${indent}- ${name}`))
+
   return { changed: true, next: lines.join('\n'), added: missing }
 }
 
@@ -802,6 +873,7 @@ function resolveApexEndpoints(env: any = {}) {
   //      collision-free id by appending the `-APEX` brand suffix to it
   //   3. the prod default display name
   const explicitDisplay = String(env.APEXNODES_MANAGED_MODEL_DISPLAY || '').trim()
+
   const modelDisplay =
     explicitDisplay ||
     (env.APEXNODES_MANAGED_MODEL ? `${model}-APEX` : MANAGED_MODEL_DISPLAY)
@@ -836,6 +908,7 @@ function googleStartUrl(redirectUri, state, env: any = {}) {
   const u = new URL(`${apiBase}${GOOGLE_START_PATH}`)
   u.searchParams.set('redirect_uri', String(redirectUri || ''))
   u.searchParams.set('state', String(state || ''))
+
   return u.toString()
 }
 
@@ -855,6 +928,7 @@ function apexWebLoginUrl(redirectUri, state, env: any = {}) {
   const u = new URL(`${authBase}${WEB_LOGIN_PATH}`)
   u.searchParams.set('desktop_cb', String(redirectUri || ''))
   u.searchParams.set('state', String(state || ''))
+
   return u.toString()
 }
 
@@ -874,34 +948,44 @@ function apexWebLoginUrl(redirectUri, state, env: any = {}) {
  */
 function parseLoopbackCallback(requestUrl, expectedState) {
   let parsed
+
   try {
     // req.url is path-relative; a dummy origin lets URL parse the query.
     parsed = new URL(String(requestUrl || ''), 'http://127.0.0.1')
   } catch {
     return { ok: false, reason: 'invalid_request', isCallback: false }
   }
+
   // Only the /cb path is the OAuth callback. Other paths (e.g. /favicon.ico the
   // browser auto-requests) must be ignored, not treated as a failed login.
   const isCallback = parsed.pathname === '/cb'
+
   if (!isCallback) {
     return { ok: false, reason: 'not_callback', isCallback: false }
   }
+
   const error = parsed.searchParams.get('error')
+
   if (error) {
     return { ok: false, reason: error, isCallback: true }
   }
+
   const state = parsed.searchParams.get('state') || ''
   const expected = String(expectedState || '')
+
   // Constant-ish comparison; states are random opaque tokens, lengths usually
   // equal, so a plain !== is acceptable here (no secret-dependent branch leak of
   // value, only of equality — same as the rest of the OAuth state checks).
   if (!expected || state !== expected) {
     return { ok: false, reason: 'state_mismatch', isCallback: true }
   }
+
   const token = (parsed.searchParams.get('token') || '').trim()
+
   if (!token) {
     return { ok: false, reason: 'missing_token', isCallback: true }
   }
+
   return { ok: true, token }
 }
 
@@ -916,15 +1000,18 @@ function parseLoopbackCallback(requestUrl, expectedState) {
  */
 function isLoopbackUrl(url) {
   let parsed
+
   try {
     parsed = new URL(String(url || ''))
   } catch {
     return false
   }
-  if (parsed.protocol !== 'http:') return false
+
+  if (parsed.protocol !== 'http:') {return false}
   // URL normalizes an IPv6 host to its bracketed form ("[::1]"); strip the
   // brackets so the bare-address comparison matches.
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+
   return host === '127.0.0.1' || host === '::1' || host === 'localhost'
 }
 
@@ -943,6 +1030,7 @@ function isLoopbackUrl(url) {
  */
 function isManagedEnabled(env: any = {}) {
   const raw = String(env.APEXNODES_MANAGED ?? '').trim().toLowerCase()
+
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
 
@@ -955,6 +1043,7 @@ function isManagedEnabled(env: any = {}) {
 // untouched). Mirrors isManagedEnabled's parsing so the two read the same way.
 function isLoginStateTruthEnabled(env: any = {}) {
   const raw = String(env.APEXNODES_LOGIN_STATE_TRUTH ?? '').trim().toLowerCase()
+
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
 
@@ -996,9 +1085,11 @@ function isLoginStateTruthEnabled(env: any = {}) {
  */
 function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
   const key = String(relayKey || '').trim()
+
   if (!key) {
     throw new Error('buildManagedModelConfig: a relay key is required.')
   }
+
   const endpoints = resolveApexEndpoints(env)
   // The model id WRITTEN to config must be collision-free with the built-in
   // catalogs (see MANAGED_MODEL_DISPLAY). The relay ignores the model id (routes
@@ -1010,6 +1101,7 @@ function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
   const overrideModel = String(overrides.model || '').trim()
   const model = /-APEX$/i.test(overrideModel) ? overrideModel : endpoints.modelDisplay
   const baseUrl = trimTrailingSlash(overrides.baseUrl || '') || endpoints.relayBaseUrl
+
   return {
     default: model,
     provider: MANAGED_PROVIDER,
@@ -1044,12 +1136,14 @@ function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
  */
 function parseProvisionResponse(body, env: any = {}) {
   const key = relayKeyFromResponse(body)
-  if (!key) return null
+
+  if (!key) {return null}
   const endpoints = resolveApexEndpoints(env)
   const obj = body && typeof body === 'object' ? body : {}
   const str = value => (typeof value === 'string' ? value.trim() : '')
   const baseUrl = typeof obj.base_url === 'string' ? trimTrailingSlash(obj.base_url) : ''
   const model = typeof obj.model === 'string' ? obj.model.trim() : ''
+
   return {
     apiKey: key,
     baseUrl: baseUrl || endpoints.relayBaseUrl,
@@ -1079,22 +1173,27 @@ function parseProvisionResponse(body, env: any = {}) {
  */
 function managedModelConfigYaml(block, opts: any = {}) {
   const q = v => JSON.stringify(String(v)) // JSON string == valid YAML double-quoted scalar
+
   let yaml =
     'model:\n' +
     `  default: ${block.default}\n` +
     `  provider: ${block.provider}\n` +
     `  base_url: ${q(block.base_url)}\n` +
     `  api_key: ${q(block.api_key)}\n`
+
   if (opts && opts.disabledProviders) {
     yaml += modelDisabledProvidersYaml(opts.disabledProviders)
   }
+
   const entries = Array.isArray(block.custom_providers) ? block.custom_providers : []
+
   if (entries.length) {
     // hc-602: the ONE renderer of this entry, shared with main.ts's boot healer.
     // Two hand-written copies is how the seed came to emit an indented list lead
     // and the healer a column-0 one.
     yaml += 'custom_providers:\n' + entries.map(entry => managedCustomProviderEntryYaml(entry)).join('')
   }
+
   return yaml
 }
 
@@ -1138,6 +1237,7 @@ function defaultModelPath(state) {
  */
 function isRelayUnauthorized(statusCode) {
   const code = Number(statusCode)
+
   return code === 401 || code === 403
 }
 
@@ -1161,8 +1261,11 @@ function isRelayUnauthorized(statusCode) {
  */
 function relayCatalogStatusFromProbe(probe) {
   const statusCode = Number(probe && probe.statusCode) || 0
-  if (isRelayUnauthorized(statusCode)) return 'unauthorized'
-  if (probe && probe.ok) return 'ok'
+
+  if (isRelayUnauthorized(statusCode)) {return 'unauthorized'}
+
+  if (probe && probe.ok) {return 'ok'}
+
   return 'unreachable'
 }
 
@@ -1195,11 +1298,13 @@ const REPROVISION_COOLDOWN_MS = 10 * 60 * 1000
  * @returns {boolean}
  */
 function shouldAttemptReprovision(state: any = {}) {
-  if (!state.enabled || !state.hasKey || !state.hasToken) return false
+  if (!state.enabled || !state.hasKey || !state.hasToken) {return false}
   const now = Number.isFinite(state.now) ? state.now : Date.now()
   const last = Number.isFinite(state.lastAttemptAt) ? state.lastAttemptAt : 0
   const cooldown = Number.isFinite(state.cooldownMs) ? state.cooldownMs : REPROVISION_COOLDOWN_MS
-  if (last <= 0) return true
+
+  if (last <= 0) {return true}
+
   return now - last >= cooldown
 }
 
@@ -1257,6 +1362,7 @@ async function reconcileManagedRelayKey(deps: any) {
   const baseUrl = String(deps.baseUrl || '').trim()
   const storedKey = String(deps.storedKey || '').trim()
   const hasToken = Boolean(deps.hasToken)
+
   const idle = {
     ok: true,
     relayUnauthorized: false,
@@ -1269,7 +1375,8 @@ async function reconcileManagedRelayKey(deps: any) {
     attempted: false,
     reason: ''
   }
-  if (!deps.enabled || !storedKey || !baseUrl) return idle
+
+  if (!deps.enabled || !storedKey || !baseUrl) {return idle}
 
   const persist = key =>
     persistRelayKeyToConfigYaml({ read: deps.readConfig, write: deps.writeConfig, baseUrl, key })
@@ -1277,6 +1384,7 @@ async function reconcileManagedRelayKey(deps: any) {
   // 1. Reconcile config.yaml against the key we already hold.
   const preSync = persist(storedKey)
   let backendApplied = false
+
   if (preSync.ok && preSync.changed) {
     log(
       `[apexnodes] config.yaml relay key was out of sync with the stored credential; ` +
@@ -1296,6 +1404,7 @@ async function reconcileManagedRelayKey(deps: any) {
   // 2. Probe the relay with the stored key.
   const probe = await deps.probeRelay(storedKey)
   const probeStatus = relayCatalogStatusFromProbe(probe)
+
   if (probeStatus !== 'unauthorized') {
     return { ...idle, probeStatus, backendApplied, persisted: preSync.ok && preSync.changed }
   }
@@ -1317,6 +1426,7 @@ async function reconcileManagedRelayKey(deps: any) {
           'sign in again to refresh (self-heal skipped).'
       )
     }
+
     return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, reason: hasToken ? 'cooldown' : 'no-token' }
   }
 
@@ -1326,6 +1436,7 @@ async function reconcileManagedRelayKey(deps: any) {
       `[apexnodes] relay key rejected (401) but config.yaml is not writable as managed (${preSync.reason}) — ` +
         'skipping re-provision so we do not strand another unused key.'
     )
+
     return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, reason: `persist-blocked: ${preSync.reason}` }
   }
 
@@ -1333,20 +1444,24 @@ async function reconcileManagedRelayKey(deps: any) {
   log('[apexnodes] relay key rejected (401); auto re-provisioning with stored login token…')
   const provisioned = await deps.provisionKey()
   const freshKey = String((provisioned && provisioned.apiKey) || '').trim()
+
   if (!freshKey) {
     log(
       '[apexnodes] relay key self-heal could not re-provision (login token likely expired); ' +
         'sign in again to refresh.'
     )
+
     return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, attempted: true, reason: 'provision-failed' }
   }
 
   const written = persist(freshKey)
+
   if (!written.ok) {
     log(
       `[apexnodes] relay key self-heal minted ${maskRelayKey(freshKey)} but could NOT persist it to config.yaml ` +
         `(${written.reason}); the key is stored and the next reconcile will retry the write without minting again.`
     )
+
     return {
       ...idle,
       relayUnauthorized: true,
@@ -1360,6 +1475,7 @@ async function reconcileManagedRelayKey(deps: any) {
 
   await deps.applyToBackend('key-rotation')
   log(`[apexnodes] relay key self-heal succeeded; config.yaml now holds ${maskRelayKey(freshKey)} and the backend was reloaded.`)
+
   return {
     ok: true,
     relayUnauthorized: true,
@@ -1383,10 +1499,13 @@ async function reconcileManagedRelayKey(deps: any) {
  * @returns {string | null}
  */
 function relayKeyFromResponse(body) {
-  if (!body || typeof body !== 'object') return null
+  if (!body || typeof body !== 'object') {return null}
+
   const candidate =
     body.relay_key ?? body.api_key ?? body.key ?? (body.item && (body.item.key ?? body.item.api_key))
+
   const key = typeof candidate === 'string' ? candidate.trim() : ''
+
   return key || null
 }
 
@@ -1398,8 +1517,9 @@ function relayKeyFromResponse(body) {
  * @returns {string | null}
  */
 function accessTokenFromLogin(body) {
-  if (!body || typeof body !== 'object') return null
+  if (!body || typeof body !== 'object') {return null}
   const token = typeof body.access_token === 'string' ? body.access_token.trim() : ''
+
   return token || null
 }
 
@@ -1423,13 +1543,16 @@ const RENEWED_TOKEN_HEADER = 'x-apex-renewed-token'
  * @returns {string}
  */
 function renewedTokenFromHeaders(headers) {
-  if (!headers || typeof headers !== 'object') return ''
+  if (!headers || typeof headers !== 'object') {return ''}
   let value = headers[RENEWED_TOKEN_HEADER]
+
   if (value === undefined) {
     const key = Object.keys(headers).find(k => k.toLowerCase() === RENEWED_TOKEN_HEADER)
     value = key ? headers[key] : undefined
   }
-  if (Array.isArray(value)) value = value[0]
+
+  if (Array.isArray(value)) {value = value[0]}
+
   return typeof value === 'string' ? value.trim() : ''
 }
 
@@ -1447,12 +1570,15 @@ function renewedTokenFromHeaders(headers) {
 function decodeJwtClaims(token) {
   const raw = String(token || '').trim()
   const parts = raw.split('.')
-  if (parts.length < 2 || !parts[1]) return {}
+
+  if (parts.length < 2 || !parts[1]) {return {}}
+
   try {
     // base64url → base64, then decode. Buffer tolerates missing padding.
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const json = Buffer.from(b64, 'base64').toString('utf8')
     const claims = JSON.parse(json)
+
     return claims && typeof claims === 'object' ? claims : {}
   } catch {
     return {}
@@ -1479,63 +1605,64 @@ function accountFromLogin(loginBody, accessToken = '') {
   const email = str(body.email) || str(claims.email) || str(claims.sub && String(claims.sub).includes('@') ? claims.sub : '')
   const name = str(body.name) || str(body.display_name) || str(claims.name)
   const plan = str(body.plan) || str(body.tier) || str(claims.plan) || str(claims.tier)
+
   return { email, name, plan }
 }
 
 export {
+  accessTokenFromLogin,
+  accountFromLogin,
   APEX_PRODUCT_DEFAULTS,
-  DEFAULT_AUTH_BASE,
+  apexWebLoginUrl,
+  // hc-602 anchor registry — re-exported so callers have one import for the
+  // managed-relay surface, and so the invariant test can reach the registry and
+  // the auditor without importing two modules.
+  auditManagedRelayKeyAnchors,
+  buildManagedModelConfig,
+  decodeJwtClaims,
   DEFAULT_API_BASE,
-  DEFAULT_RELAY_BASE_URL,
+  DEFAULT_AUTH_BASE,
   DEFAULT_MANAGED_MODEL,
-  MANAGED_MODEL_DISPLAY,
-  MANAGED_PROVIDER,
-  MANAGED_PROVIDER_NAME,
-  MODEL_DISABLED_PROVIDERS,
-  SEED_DISABLED_SKILLS,
-  MANAGED_PLUGIN_NAMES,
-  REPROVISION_COOLDOWN_MS,
-  modelDisabledProvidersYaml,
-  seedSkillsBlockYaml,
-  seedPluginsBlockYaml,
+  DEFAULT_RELAY_BASE_URL,
+  defaultModelPath,
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
-  LOGIN_PATH,
-  REGISTER_PATH,
-  PROVISION_KEY_PATH,
   GOOGLE_START_PATH,
-  WEB_LOGIN_PATH,
-  accessTokenFromLogin,
-  RENEWED_TOKEN_HEADER,
-  renewedTokenFromHeaders,
-  accountFromLogin,
-  apexWebLoginUrl,
-  buildManagedModelConfig,
-  decodeJwtClaims,
-  defaultModelPath,
   googleStartUrl,
   isLoginStateTruthEnabled,
   isLoopbackUrl,
   isManagedEnabled,
   isRelayUnauthorized,
+  locateManagedKeyAnchors,
+  LOGIN_PATH,
+  MANAGED_KEY_ANCHORS,
+  MANAGED_MODEL_DISPLAY,
+  MANAGED_PLUGIN_NAMES,
+  MANAGED_PROVIDER,
+  MANAGED_PROVIDER_NAME,
+  managedCustomProviderEntryYaml,
   managedModelConfigYaml,
   maskRelayKey,
+  MODEL_DISABLED_PROVIDERS,
+  modelDisabledProvidersYaml,
   parseLoopbackCallback,
   parseProvisionResponse,
+  parseYamlMaps,
   persistRelayKeyToConfigYaml,
+  PROVISION_KEY_PATH,
   reconcileManagedRelayKey,
+  REGISTER_PATH,
   relayCatalogStatusFromProbe,
   relayKeyFromResponse,
+  RENEWED_TOKEN_HEADER,
+  renewedTokenFromHeaders,
+  REPROVISION_COOLDOWN_MS,
   resolveApexEndpoints,
+  SEED_DISABLED_SKILLS,
+  seedPluginsBlockYaml,
+  seedSkillsBlockYaml,
   shouldAttemptReprovision,
   syncManagedRelayKeyYaml,
-  // hc-602 anchor registry — re-exported so callers have one import for the
-  // managed-relay surface, and so the invariant test can reach the registry and
-  // the auditor without importing two modules.
-  auditManagedRelayKeyAnchors,
-  locateManagedKeyAnchors,
-  MANAGED_KEY_ANCHORS,
-  managedCustomProviderEntryYaml,
-  parseYamlMaps
+  WEB_LOGIN_PATH
 }

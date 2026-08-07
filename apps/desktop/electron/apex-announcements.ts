@@ -74,13 +74,14 @@ function announcementReadUrl(apiBase, announcementId) {
  * @returns {null | { id: string, title: string, body: string, level: 'major'|'normal', publishedAt: string|null, read: boolean }}
  */
 function normalizeAnnouncement(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return null}
 
   const str = value => (typeof value === 'string' ? value.trim() : '')
   const id = str(raw.id)
   const title = str(raw.title)
   const body = str(raw.body)
-  if (!id || !title || !body) return null
+
+  if (!id || !title || !body) {return null}
 
   return {
     id,
@@ -105,12 +106,13 @@ function parseAnnouncementsResponse(body) {
   if (!body || typeof body !== 'object' || !Array.isArray(body.items)) {
     return []
   }
+
   return body.items.map(normalizeAnnouncement).filter(Boolean)
 }
 
 export {
-  ANNOUNCEMENTS_LIST_PATH,
   announcementReadUrl,
+  ANNOUNCEMENTS_LIST_PATH,
   announcementsListUrl,
   normalizeAnnouncement,
   parseAnnouncementsResponse

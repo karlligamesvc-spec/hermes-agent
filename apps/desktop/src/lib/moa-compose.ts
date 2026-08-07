@@ -181,6 +181,9 @@ const AUTO_MAX_TOKENS = 4096
  *  flattened compatibility fields mirror the active preset; the backend
  *  re-normalizes from `presets` regardless. */
 export function buildAutoMoaConfig(existing: MoaConfigResponse | null, composed: ComposedMoa): MoaConfigResponse {
+  const degradedReferencePolicy = existing?.degraded_reference_policy ?? 'loud'
+  const referenceTimeout = existing?.reference_timeout ?? null
+
   const preset = {
     reference_models: composed.reference_models,
     aggregator: composed.aggregator,
@@ -188,7 +191,9 @@ export function buildAutoMoaConfig(existing: MoaConfigResponse | null, composed:
     aggregator_temperature: AUTO_AGGREGATOR_TEMPERATURE,
     enabled: true,
     max_tokens: AUTO_MAX_TOKENS,
-    fanout: composed.fanout
+    fanout: composed.fanout,
+    degraded_reference_policy: degradedReferencePolicy,
+    reference_timeout: referenceTimeout
   }
 
   return {
@@ -201,7 +206,9 @@ export function buildAutoMoaConfig(existing: MoaConfigResponse | null, composed:
     aggregator_temperature: AUTO_AGGREGATOR_TEMPERATURE,
     enabled: true,
     max_tokens: AUTO_MAX_TOKENS,
-    fanout: composed.fanout
+    fanout: composed.fanout,
+    degraded_reference_policy: degradedReferencePolicy,
+    reference_timeout: referenceTimeout
   }
 }
 

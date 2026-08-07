@@ -29,10 +29,17 @@ def test_install_ps1_defines_ensure_node_exe_on_path_helper() -> None:
 
 def test_test_node_prepends_node_dir_before_success() -> None:
     text = _install_ps1()
-    assert re.search(
-        r"if \(Test-NodeVersionOk \$version\) \{[\s\S]{0,200}?Ensure-NodeExeOnPath",
-        text,
-    ), "Test-Node must call Ensure-NodeExeOnPath when a system Node passes the version floor"
+    body = text[
+        text.index("function Test-Node {"):
+        text.index("function Get-NodeDepsFingerprint {")
+    ]
+    accepted = body.index("Test-NodeVersionOk $version")
+    path_fix = body.index("Ensure-NodeExeOnPath", accepted)
+    success = body.index('Write-Success "Node.js $version found"', accepted)
+    assert accepted < path_fix < success, (
+        "Test-Node must prepend node.exe's directory before reporting a valid "
+        "system Node/npm pair as usable"
+    )
 
 
 def test_install_node_deps_prepends_node_dir_before_npm() -> None:

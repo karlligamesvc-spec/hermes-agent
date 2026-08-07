@@ -76,12 +76,41 @@ def test_codex_success_flushes_and_reports_persisted():
     assert result["agent_persisted"] is True
 
 
+def test_codex_user_interrupt_is_reported_and_cleared():
+    agent = _make_agent(session_db=None)
+    turn = _make_turn()
+    turn.interrupted = True
+    turn.final_text = ""
+    agent._codex_session.run_turn.return_value = turn
+    agent._interrupt_requested = True
+    agent._interrupt_message = "new correction"
+
+    def clear_interrupt():
+        agent._interrupt_requested = False
+        agent._interrupt_message = None
+
+    agent.clear_interrupt.side_effect = clear_interrupt
+    result = run_codex_app_server_turn(
+        agent,
+        user_message="hello",
+        original_user_message="hello",
+        messages=[{"role": "user", "content": "hello"}],
+        effective_task_id="task-1",
+    )
+
+    assert result["interrupted"] is True
+    assert result["interrupt_message"] == "new correction"
+    agent.clear_interrupt.assert_called_once_with()
+    assert agent._interrupt_requested is False
+
+
 def test_codex_turn_persists_each_message_exactly_once():
     """The user turn (flushed at turn start) must not be duplicated; the
     projected assistant message must land once.  Uses a real SessionDB and the
     real AIAgent._flush_messages_to_session_db to prove no #860/#42039
     duplicate-write regression on the codex path."""
     tmp = tempfile.mkdtemp(prefix="codex_persist_")
+    db = None
     try:
         db = SessionDB(Path(tmp) / "state.db")
         sid = "sess-codex-once"
@@ -130,6 +159,12 @@ def test_codex_turn_persists_each_message_exactly_once():
     finally:
         import shutil
 
+        # Close the real SQLite connection before removing its directory.
+        # Otherwise macOS can race an open WAL/SHM handle recreating a sidecar
+        # while rmtree is walking the directory, making this regression test
+        # flaky even though all persistence assertions have already passed.
+        if db is not None:
+            db.close()
         shutil.rmtree(tmp)
 
 

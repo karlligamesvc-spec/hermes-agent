@@ -15,9 +15,9 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
+  buildFeishuBackendEnv,
   DEFAULT_FEISHU_DOMAIN,
   FEISHU_CREDENTIALS_PATH,
-  buildFeishuBackendEnv,
   feishuCredentialsUrl,
   normalizeFeishuDomain,
   normalizeStoredFeishu,
@@ -55,6 +55,7 @@ test('parseFeishuCredentialsResponse returns a full credential when bound', () =
     agent_name: '我的飞书助手',
     credential_status: 'ok'
   })
+
   assert.deepEqual(parsed, {
     hasEntry: true,
     appId: 'cli_abc',
@@ -106,6 +107,7 @@ test('normalizeStoredFeishu round-trips a connected record', () => {
     credentialStatus: 'ok',
     syncedAt: 1720000000000
   })
+
   assert.equal(stored.connected, true)
   assert.equal(stored.appId, 'cli_abc')
   assert.equal(stored.appSecret, 'shhh')

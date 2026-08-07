@@ -76,6 +76,7 @@ test('parseClientConfigResponse normalizes a good full response', () => {
     payload: { config_yaml: { 'display.show_reasoning': true } },
     updated_at: '2026-07-03T00:00:00Z'
   })
+
   assert.deepEqual(parsed, {
     version: 3,
     payload: { config_yaml: { 'display.show_reasoning': true } },
@@ -95,6 +96,7 @@ test('parseClientConfigResponse preserves unknown fields inside payload (forward
     payload: { config_yaml: { 'a.b': 1 }, future_field: { anything: true } },
     some_new_top_level: 'ignored'
   })
+
   assert.ok(parsed)
   assert.equal(parsed.version, 2)
   // The payload rides along verbatim; consumers only read the keys they know.
@@ -165,6 +167,7 @@ test('normalizeStoredClientConfig round-trips a good persisted state', () => {
     fetchedAt: 1_750_000_000_000,
     appliedVersion: 3
   }
+
   assert.deepEqual(normalizeStoredClientConfig(state), state)
 })
 
@@ -187,6 +190,7 @@ test('normalizeStoredClientConfig cleans partial fields on a usable state', () =
     fetchedAt: 'not-a-number',
     appliedVersion: -9
   })
+
   assert.deepEqual(normalized, {
     version: 6,
     payload: { config_yaml: {} },
@@ -199,16 +203,20 @@ test('normalizeStoredClientConfig cleans partial fields on a usable state', () =
 
 test('fetchClientConfig resolves the parsed config and passes known_version', async () => {
   const calls = []
+
   const fetchJson = async (url, options) => {
     calls.push({ url, options })
+
     return { version: 2, payload: { config_yaml: { 'a.b': 'x' } } }
   }
+
   const result = await fetchClientConfig({
     apiBase: 'https://api.apex-nodes.com/',
     fetchJson,
     knownVersion: 1,
     timeoutMs: 1234
   })
+
   assert.deepEqual(result, {
     version: 2,
     payload: { config_yaml: { 'a.b': 'x' } },
@@ -222,6 +230,7 @@ test('fetchClientConfig resolves the parsed config and passes known_version', as
 
 test('fetchClientConfig returns null on a rejected fetch (404 / offline) and logs', async () => {
   const logs = []
+
   const result = await fetchClientConfig({
     apiBase: 'https://api.apex-nodes.com',
     fetchJson: async () => {
@@ -229,6 +238,7 @@ test('fetchClientConfig returns null on a rejected fetch (404 / offline) and log
     },
     log: msg => logs.push(msg)
   })
+
   assert.equal(result, null)
   assert.ok(logs.some(line => line.includes('404')))
 })
@@ -238,6 +248,7 @@ test('fetchClientConfig returns null on a malformed body', async () => {
     apiBase: 'https://api.apex-nodes.com',
     fetchJson: async () => ({ nonsense: true })
   })
+
   assert.equal(result, null)
 })
 
@@ -246,6 +257,7 @@ test('fetchClientConfig surfaces the unchanged short-circuit', async () => {
     apiBase: 'https://api.apex-nodes.com',
     fetchJson: async () => ({ version: 5, unchanged: true })
   })
+
   assert.deepEqual(result, { version: 5, payload: null, unchanged: true, updatedAt: null })
 })
 
@@ -278,6 +290,7 @@ test('applyConfigYamlKeys rewrites nested + top-level scalars without touching o
     'agent.image_input_mode': 'auto',
     timezone: ''
   })
+
   assert.equal(changed, true)
   assert.deepEqual(skipped, [])
   assert.deepEqual(applied.sort(), ['agent.image_input_mode', 'display.show_reasoning', 'timezone'])
@@ -307,6 +320,7 @@ test('applyConfigYamlKeys skips non-scalars, deep paths, and block-clobbering wr
     skills: 'would-clobber-a-block',
     'display.show_reasoning': true
   })
+
   assert.deepEqual(applied, ['display.show_reasoning'])
   assert.deepEqual(skipped.sort(), ['a.b.c', 'moa.presets.apex', 'skills'])
 })

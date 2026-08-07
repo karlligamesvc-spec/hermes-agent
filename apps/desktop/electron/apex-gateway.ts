@@ -69,9 +69,11 @@
 function buildGatewayRunArgs(profile?) {
   const args = ['gateway', 'run', '--replace']
   const name = typeof profile === 'string' ? profile.trim() : ''
+
   if (name) {
     args.unshift('--profile', name)
   }
+
   return args
 }
 
@@ -92,6 +94,7 @@ function imEntryStoreHasBinding(store) {
   if (!store || typeof store !== 'object') {
     return false
   }
+
   return Object.values<any>(store).some(
     binding =>
       binding &&

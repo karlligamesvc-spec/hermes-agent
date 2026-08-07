@@ -485,10 +485,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
   // Mirror of `moa` so inline edits compute the next state purely (outside the
   // setState updater) and hand it straight to the debounced autosave.
   const moaRef = useRef<MoaConfigResponse | null>(null)
-
-  useEffect(() => {
-    moaRef.current = moa
-  }, [moa])
+  moaRef.current = moa
 
   const moaSaveTimer = useRef<number | null>(null)
 
@@ -759,7 +756,12 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     setError('')
 
     try {
-      const result = await setModelAssignment({ model: selectedModel, provider: selectedProvider, scope: 'main' })
+      const result = await setModelAssignment({
+        model: selectedModel,
+        provider: selectedProvider,
+        scope: 'main',
+        ...(selectedProviderRow?.api_url ? { base_url: selectedProviderRow.api_url } : {})
+      })
 
       if (profileEpoch.current !== epoch) {
         return
@@ -776,7 +778,19 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
     } finally {
       setApplying(false)
     }
-  }, [onMainModelChanged, refresh, selectedModel, selectedProvider])
+  }, [onMainModelChanged, refresh, selectedModel, selectedProvider, selectedProviderRow])
+
+  // User-defined providers have no registry endpoint. Carry their URL with
+  // every assignment so an auxiliary slot cannot silently fall back to the
+  // main provider's (possibly different) base_url.
+  const endpointForProvider = useCallback(
+    (provider: string) => {
+      const row = providers.find(entry => entry.slug === provider)
+
+      return row?.api_url ? { base_url: row.api_url } : {}
+    },
+    [providers]
+  )
 
   // Apply a platform selection. <=1 model keeps the plain single-model path
   // (setModelAssignment scope:main) UNCHANGED — regression red line; 2+ models
@@ -864,7 +878,13 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setError('')
 
       try {
-        await setModelAssignment({ model: mainModel.model, provider: mainModel.provider, scope: 'auxiliary', task })
+        await setModelAssignment({
+          model: mainModel.model,
+          provider: mainModel.provider,
+          scope: 'auxiliary',
+          task,
+          ...endpointForProvider(mainModel.provider)
+        })
         await refresh()
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
@@ -872,7 +892,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         setApplying(false)
       }
     },
-    [mainModel, refresh]
+    [endpointForProvider, mainModel, refresh]
   )
 
   const applyAuxiliaryDraft = useCallback(
@@ -885,7 +905,13 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
       setError('')
 
       try {
-        await setModelAssignment({ model: auxDraft.model, provider: auxDraft.provider, scope: 'auxiliary', task })
+        await setModelAssignment({
+          model: auxDraft.model,
+          provider: auxDraft.provider,
+          scope: 'auxiliary',
+          task,
+          ...endpointForProvider(auxDraft.provider)
+        })
         setEditingAuxTask(null)
         await refresh()
       } catch (err) {
@@ -894,7 +920,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
         setApplying(false)
       }
     },
-    [auxDraft, refresh]
+    [auxDraft, endpointForProvider, refresh]
   )
 
   const beginAuxiliaryEdit = useCallback(

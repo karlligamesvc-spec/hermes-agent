@@ -5,21 +5,24 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
-import * as layout from './apex-bundle-layout'
 import * as disk from './apex-bundle-diskspace'
+import * as layout from './apex-bundle-layout'
 
 const GIB = disk.GIB
 
 function mkHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hb-disk-'))
 }
+
 function rm(home) {
   fs.rmSync(home, { recursive: true, force: true })
 }
+
 function seedVersion(home, key) {
   const dir = layout.bundlePaths(home).versionDir(key)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'id.txt'), key)
+
   return dir
 }
 
@@ -29,6 +32,7 @@ function seedVersion(home, key) {
 
 test('dirSize: sums nested file bytes; missing dir is 0', () => {
   const home = mkHome()
+
   try {
     const d = path.join(home, 'tree')
     fs.mkdirSync(path.join(d, 'sub'), { recursive: true })
@@ -43,6 +47,7 @@ test('dirSize: sums nested file bytes; missing dir is 0', () => {
 
 test('versionsUsage: totals committed + staging via injected sizer', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'aaaaaaaaaaaa')
     seedVersion(home, 'bbbbbbbbbbbb')
@@ -62,6 +67,7 @@ test('versionsUsage: totals committed + staging via injected sizer', () => {
 
 test('resolveVersionsBudget: opts > env > default', () => {
   const prev = process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES
+
   try {
     delete process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES
     assert.equal(disk.resolveVersionsBudget(), disk.DEFAULT_VERSIONS_BUDGET_BYTES)
@@ -69,8 +75,8 @@ test('resolveVersionsBudget: opts > env > default', () => {
     assert.equal(disk.resolveVersionsBudget(), 5000)
     assert.equal(disk.resolveVersionsBudget({ budgetBytes: 9000 }), 9000) // opts wins
   } finally {
-    if (prev === undefined) delete process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES
-    else process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES = prev
+    if (prev === undefined) {delete process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES}
+    else {process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES = prev}
   }
 })
 
@@ -92,6 +98,7 @@ test('resolveInstallMinFree: takes the larger of the floor and (archive + extrac
 
 test('enforceVersionsWatermark: under budget keeps current+previous', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'aaaaaaaaaaaa')
     seedVersion(home, 'bbbbbbbbbbbb')
@@ -110,6 +117,7 @@ test('enforceVersionsWatermark: under budget keeps current+previous', () => {
 
 test('enforceVersionsWatermark: over budget drops previous + warns', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'aaaaaaaaaaaa') // previous
     seedVersion(home, 'bbbbbbbbbbbb') // current

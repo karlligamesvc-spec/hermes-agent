@@ -43,8 +43,9 @@ const DEFAULT_INSTALL_MIN_FREE_BYTES = Math.round(2.5 * SINGLE_BUNDLE_EXTRACTED_
 const INSTALL_SAFETY_MARGIN_BYTES = Math.round(0.5 * GIB)
 
 function parseEnvBytes(v) {
-  if (v == null) return null
+  if (v == null) {return null}
   const n = Number.parseInt(String(v).trim(), 10)
+
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
@@ -56,13 +57,16 @@ function currentPlatform(opts) {
 function dirSize(dir) {
   let total = 0
   let entries
+
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true })
   } catch {
     return 0
   }
+
   for (const e of entries) {
     const p = path.join(dir, e.name)
+
     if (e.isDirectory()) {
       total += dirSize(p)
     } else {
@@ -73,6 +77,7 @@ function dirSize(dir) {
       }
     }
   }
+
   return total
 }
 
@@ -83,11 +88,13 @@ function versionsUsage(hermesHome, opts: any = {}) {
   const { versions, staging } = layout.listVersions(hermesHome)
   const byDir = {}
   let total = 0
+
   for (const name of [...versions, ...staging]) {
     const bytes = sizeOf(path.join(versionsDir, name))
     byDir[name] = bytes
     total += bytes
   }
+
   return { total, byDir, count: versions.length, staging: staging.length }
 }
 
@@ -95,6 +102,7 @@ function versionsUsage(hermesHome, opts: any = {}) {
 function freeBytesAt(p) {
   try {
     const st = fs.statfsSync(p)
+
     return st.bavail * st.bsize
   } catch {
     return 0
@@ -102,16 +110,19 @@ function freeBytesAt(p) {
 }
 
 function resolveVersionsBudget(opts: any = {}) {
-  if (Number.isFinite(opts.budgetBytes) && opts.budgetBytes > 0) return opts.budgetBytes
+  if (Number.isFinite(opts.budgetBytes) && opts.budgetBytes > 0) {return opts.budgetBytes}
+
   return parseEnvBytes(process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES) || DEFAULT_VERSIONS_BUDGET_BYTES
 }
 
 function resolveInstallMinFree(opts: any = {}, archiveSize?) {
-  if (Number.isFinite(opts.minFreeBytes) && opts.minFreeBytes > 0) return opts.minFreeBytes
+  if (Number.isFinite(opts.minFreeBytes) && opts.minFreeBytes > 0) {return opts.minFreeBytes}
   const floor = parseEnvBytes(process.env.HERMES_BUNDLE_MIN_FREE_BYTES) || DEFAULT_INSTALL_MIN_FREE_BYTES
+
   if (Number.isFinite(archiveSize) && archiveSize > 0) {
     return Math.max(floor, archiveSize + SINGLE_BUNDLE_EXTRACTED_BYTES + INSTALL_SAFETY_MARGIN_BYTES)
   }
+
   return floor
 }
 
@@ -124,15 +135,19 @@ function enforceVersionsWatermark(hermesHome, opts: any = {}) {
   const budget = resolveVersionsBudget(opts)
   const before = versionsUsage(hermesHome, opts).total
   const overBudget = before > budget
+
   const gc = layout.garbageCollect(hermesHome, {
     platform: currentPlatform(opts),
     dropPrevious: overBudget,
     isLocked: opts.isLocked
   })
+
   const after = versionsUsage(hermesHome, opts).total
+
   const warning = overBudget
     ? `versions/ at ${before} bytes exceeds budget ${budget}; dropped previous to reclaim (now ${after})`
     : null
+
   return { overBudget, tightened: overBudget, budget, before, after, gc, warning }
 }
 
@@ -146,8 +161,10 @@ function preflightDiskSpace(o: any = {}) {
   const freeOf = typeof o.freeBytesOf === 'function' ? o.freeBytesOf : freeBytesAt
   const requiredBytes = resolveInstallMinFree(o, archiveSize)
   const freeBytes = freeOf(hermesHome)
-  if (freeBytes >= requiredBytes) return { ok: true, freeBytes, requiredBytes }
+
+  if (freeBytes >= requiredBytes) {return { ok: true, freeBytes, requiredBytes }}
   const gib = n => (n / GIB).toFixed(2)
+
   return {
     ok: false,
     reason: 'insufficient_disk',
@@ -161,16 +178,16 @@ function preflightDiskSpace(o: any = {}) {
 }
 
 export {
-  GIB,
-  SINGLE_BUNDLE_EXTRACTED_BYTES,
-  DEFAULT_VERSIONS_BUDGET_BYTES,
   DEFAULT_INSTALL_MIN_FREE_BYTES,
-  INSTALL_SAFETY_MARGIN_BYTES,
+  DEFAULT_VERSIONS_BUDGET_BYTES,
   dirSize,
-  versionsUsage,
-  freeBytesAt,
-  resolveVersionsBudget,
-  resolveInstallMinFree,
   enforceVersionsWatermark,
-  preflightDiskSpace
+  freeBytesAt,
+  GIB,
+  INSTALL_SAFETY_MARGIN_BYTES,
+  preflightDiskSpace,
+  resolveInstallMinFree,
+  resolveVersionsBudget,
+  SINGLE_BUNDLE_EXTRACTED_BYTES,
+  versionsUsage
 }

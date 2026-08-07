@@ -18,15 +18,14 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
-  DAEMON_BRIDGE_TYPE,
-  DAEMON_HEARTBEAT_PATH,
-  DAEMON_REGISTER_PATH,
-  DAEMON_STATUS,
-  SUPPORTED_AGENT_FAMILIES,
   bridgeResultUrl,
   buildInvalidTaskResult,
   buildRegisterBody,
   buildResultSubmitBody,
+  DAEMON_BRIDGE_TYPE,
+  DAEMON_HEARTBEAT_PATH,
+  DAEMON_REGISTER_PATH,
+  DAEMON_STATUS,
   defaultDeviceName,
   deriveDaemonStatus,
   isAllowedDaemonUrl,
@@ -39,7 +38,8 @@ import {
   parseRegisterResponse,
   parseTaskEnvelope,
   resolveDaemonEndpoints,
-  sanitizeDeviceName
+  sanitizeDeviceName,
+  SUPPORTED_AGENT_FAMILIES
 } from './apex-daemon'
 
 // ── Host allowlist (JWT + device token must not leak off-host) ───────────────
@@ -85,6 +85,7 @@ test('resolveDaemonEndpoints honors env overrides', () => {
   const eps = resolveDaemonEndpoints('https://apex-nodes.com', {
     HERMES_DESKTOP_DAEMON_REGISTER_URL: 'http://localhost:8000/reg'
   })
+
   assert.equal(eps.registerUrl, 'http://localhost:8000/reg')
   // unrelated endpoints still composed off the base
   assert.equal(eps.heartbeatUrl, `https://apex-nodes.com${DAEMON_HEARTBEAT_PATH}`)
@@ -197,6 +198,7 @@ test('parseLocalAgentRunPayload rejects bad kind / family / prompt with a reason
     [{ kind: 'local_agent_run', prompt: 'x' }, 'missing agent_family'],
     ['nope', 'payload not an object']
   ]
+
   for (const [payload, fragment] of cases as any[]) {
     const out = parseLocalAgentRunPayload(payload)
     assert.equal(out.ok, false)
@@ -220,6 +222,7 @@ test('buildResultSubmitBody: permission gate → failed + permission_required, n
     permission_summary: 'rm -rf build/',
     output: 'about to delete'
   })
+
   assert.equal(body.status, 'failed')
   assert.equal(body.result.permission_required, true)
   assert.equal(body.result.permission_summary, 'rm -rf build/')

@@ -5,16 +5,16 @@ import path from 'node:path'
 import { test } from 'vitest'
 
 import {
-  parseCosTarballKey,
-  derivePinFromLatest,
-  parseSemver,
+  checkForRuntimeUpdate,
   compareSemver,
+  derivePinFromLatest,
   desktopMeetsMinVersion,
   engineMeetsMinVersion,
   latestUrl,
-  resolveLatestRuntimePin,
-  checkForRuntimeUpdate,
-  overlayStampWithPin
+  overlayStampWithPin,
+  parseCosTarballKey,
+  parseSemver,
+  resolveLatestRuntimePin
 } from './apex-runtime-latest'
 
 const SHA = '87740e8021390455962caa3ad2c16d522c0d306a'
@@ -53,6 +53,7 @@ test('derivePinFromLatest: published SHA URL -> commit pin (COS key = SHA)', () 
     cos_tarball_url: `${COS_BASE}/hermes-agent-${SHA}.tar.gz`,
     cos_publish_status: 'published'
   })
+
   assert.ok(pin)
   assert.equal(pin.key, SHA)
   assert.equal(pin.commit, SHA) // install.sh keys COS by --commit
@@ -67,6 +68,7 @@ test('derivePinFromLatest: published tag-keyed URL -> branch pin (no SHA)', () =
     cos_tarball_url: `${COS_BASE}/hermes-agent-v2026.6.25.tar.gz`,
     cos_publish_status: 'published'
   })
+
   assert.ok(pin)
   assert.equal(pin.key, 'v2026.6.25')
   assert.equal(pin.commit, null) // tag, not a SHA
@@ -82,6 +84,7 @@ test('derivePinFromLatest: unpublished COS status falls back to structured key, 
     cos_tarball_url: `${COS_BASE}/hermes-agent-deadbeef.tar.gz`,
     cos_publish_status: 'pending'
   })
+
   assert.ok(pin)
   assert.equal(pin.key, SHA)
   assert.equal(pin.commit, SHA)
@@ -120,6 +123,7 @@ test('derivePinFromLatest: case-insensitive publish status', () => {
     cos_tarball_url: `${COS_BASE}/hermes-agent-${SHA}.tar.gz`,
     cos_publish_status: 'PUBLISHED'
   })
+
   assert.ok(pin)
   assert.equal(pin.key, SHA)
 })
@@ -146,6 +150,7 @@ test('resolveLatestRuntimePin returns null when fetch throws (offline) — never
       throw new Error('ENOTFOUND api.apex-nodes.com')
     }
   })
+
   assert.equal(pin, null)
 })
 
@@ -156,18 +161,21 @@ test('resolveLatestRuntimePin returns null on 404 no-default', async () => {
       throw new Error('404: {"detail":"no_default_runtime_version"}')
     }
   })
+
   assert.equal(pin, null)
 })
 
 test('resolveLatestRuntimePin resolves a real body and passes timeout through', async () => {
   let seenUrl = null
   let seenOpts = null
+
   const pin = await resolveLatestRuntimePin({
     apiBase: 'https://api.apex-nodes.com',
     timeoutMs: 5000,
     fetchJson: async (url, opts) => {
       seenUrl = url
       seenOpts = opts
+
       return {
         version: '0.17.0-moa',
         cos_tarball_url: `${COS_BASE}/hermes-agent-${SHA}.tar.gz`,
@@ -175,6 +183,7 @@ test('resolveLatestRuntimePin resolves a real body and passes timeout through', 
       }
     }
   })
+
   assert.ok(pin)
   assert.equal(pin.commit, SHA)
   assert.equal(seenUrl, 'https://api.apex-nodes.com/api/v1/runtime/latest?framework=hermes-agent')
@@ -204,6 +213,7 @@ test('checkForRuntimeUpdate: different key -> updateAvailable true', async () =>
     marker: { pinnedCommit: 'aaaaaaa', pinnedBranch: 'v1' },
     fetchJson: async () => publishedBody(SHA, 'new')
   })
+
   assert.equal(res.updateAvailable, true)
   assert.equal(res.current.key, 'aaaaaaa')
   assert.equal(res.latest.key, SHA)
@@ -215,6 +225,7 @@ test('checkForRuntimeUpdate: same key -> updateAvailable false', async () => {
     marker: { pinnedCommit: SHA, pinnedBranch: 'v1' },
     fetchJson: async () => publishedBody(SHA, 'same')
   })
+
   assert.equal(res.updateAvailable, false)
 })
 
@@ -224,6 +235,7 @@ test('checkForRuntimeUpdate: same commit key but bumped version -> updateAvailab
     marker: { pinnedCommit: SHA, version: '0.17.0' },
     fetchJson: async () => publishedBody(SHA, '0.18.0')
   })
+
   assert.equal(res.updateAvailable, true)
 })
 
@@ -235,6 +247,7 @@ test('checkForRuntimeUpdate: offline -> updateAvailable false, no throw', async 
       throw new Error('network down')
     }
   })
+
   assert.equal(res.updateAvailable, false)
   assert.equal(res.latest, null)
 })
@@ -245,6 +258,7 @@ test('checkForRuntimeUpdate: missing installed key -> no nag, still exposes late
     marker: {},
     fetchJson: async () => publishedBody(SHA, 'v')
   })
+
   assert.equal(res.updateAvailable, false)
   assert.ok(res.latest)
   assert.equal(res.latest.key, SHA)
@@ -256,6 +270,7 @@ test('checkForRuntimeUpdate: installed via branch key compares against branch', 
     marker: { pinnedBranch: 'v2026.6.19' },
     fetchJson: async () => publishedBody('v2026.6.25', 'newer')
   })
+
   assert.equal(res.current.key, 'v2026.6.19')
   assert.equal(res.updateAvailable, true)
 })
@@ -342,6 +357,7 @@ test('checkForRuntimeUpdate: gated (shell too old) -> updateAvailable false + de
     desktopVersion: '0.16.9',
     fetchJson: async () => ({ ...publishedBody(SHA, 'newer'), min_desktop_version: '0.16.10' })
   })
+
   assert.equal(res.updateAvailable, false)
   assert.ok(res.desktopUpgradeRequired)
   assert.equal(res.desktopUpgradeRequired.minDesktopVersion, '0.16.10')
@@ -357,6 +373,7 @@ test('checkForRuntimeUpdate: shell satisfies gate -> normal update, no desktopUp
     desktopVersion: '0.16.10',
     fetchJson: async () => ({ ...publishedBody(SHA, 'newer'), min_desktop_version: '0.16.10' })
   })
+
   assert.equal(res.updateAvailable, true)
   assert.equal(res.desktopUpgradeRequired, undefined)
   assert.equal(res.latest.minDesktopVersion, '0.16.10')
@@ -369,6 +386,7 @@ test('checkForRuntimeUpdate: no min_desktop_version -> gate is a no-op', async (
     desktopVersion: '0.1.0',
     fetchJson: async () => publishedBody(SHA, 'newer')
   })
+
   assert.equal(res.updateAvailable, true)
   assert.equal(res.desktopUpgradeRequired, undefined)
 })

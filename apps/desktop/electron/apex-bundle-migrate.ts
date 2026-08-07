@@ -76,11 +76,13 @@ function legacyAsidePath(hermesHome) {
 /** Non-empty = exists AND (a dir with entries | a file with bytes). */
 function existsNonEmpty(p) {
   let st
+
   try {
     st = fs.statSync(p)
   } catch {
     return false
   }
+
   if (st.isDirectory()) {
     try {
       return fs.readdirSync(p).length > 0
@@ -88,6 +90,7 @@ function existsNonEmpty(p) {
       return false
     }
   }
+
   return st.size > 0
 }
 
@@ -100,6 +103,7 @@ function detectLegacyInPlace(hermesHome) {
   const { activeLink } = layout.bundlePaths(hermesHome)
   const activeKind = layout.linkStatus(activeLink).kind
   const hasVersions = layout.listVersions(hermesHome).versions.length > 0
+
   return { legacy: activeKind === 'dir' && !hasVersions, activeKind, hasVersions }
 }
 
@@ -107,19 +111,24 @@ function detectLegacyInPlace(hermesHome) {
 function assertNoUserDataInLegacy(legacyDir, opts: any = {}) {
   const markers = opts.markers || DEFAULT_USER_DATA_MARKERS
   const found = []
+
   for (const m of markers) {
-    if (existsNonEmpty(path.join(legacyDir, m))) found.push(m)
+    if (existsNonEmpty(path.join(legacyDir, m))) {found.push(m)}
   }
+
   return { safe: found.length === 0, found }
 }
 
 /** Point the active link at an ARBITRARY target dir, replacing any prior LINK. */
 function relinkTo(activeLink, targetDir, opts?) {
   const status = layout.linkStatus(activeLink)
-  if (status.kind === 'dir') return { ok: false, reason: 'active-path-occupied-by-real-dir' }
+
+  if (status.kind === 'dir') {return { ok: false, reason: 'active-path-occupied-by-real-dir' }}
+
   if (status.kind === 'link') {
-    if (layout.linkResolvesTo(activeLink, targetDir)) return { ok: true, changed: false }
-    if (!layout.removeLinkOnly(activeLink)) return { ok: false, reason: 'could-not-remove-old-link' }
+    if (layout.linkResolvesTo(activeLink, targetDir)) {return { ok: true, changed: false }}
+
+    if (!layout.removeLinkOnly(activeLink)) {return { ok: false, reason: 'could-not-remove-old-link' }}
   } else if (status.kind === 'file' || status.kind === 'other') {
     try {
       fs.unlinkSync(activeLink)
@@ -127,7 +136,9 @@ function relinkTo(activeLink, targetDir, opts?) {
       return { ok: false, reason: 'active-path-occupied' }
     }
   }
+
   layout.createActiveLink(activeLink, targetDir, opts)
+
   return { ok: true, changed: true }
 }
 
@@ -141,21 +152,27 @@ function relinkTo(activeLink, targetDir, opts?) {
 function moveLegacyAside(hermesHome, opts: any = {}) {
   const { activeLink } = layout.bundlePaths(hermesHome)
   const aside = legacyAsidePath(hermesHome)
+
   if (layout.linkStatus(activeLink).kind !== 'dir') {
     return { ok: true, moved: false, asideDir: aside, reason: 'not-a-real-dir' }
   }
+
   if (fs.existsSync(aside)) {
     return { ok: false, moved: false, asideDir: aside, reason: 'aside-exists' }
   }
+
   const data = assertNoUserDataInLegacy(activeLink, opts)
+
   if (!data.safe) {
     return { ok: false, moved: false, asideDir: aside, reason: 'user-data-in-runtime-dir', found: data.found }
   }
+
   try {
     fs.renameSync(activeLink, aside)
   } catch (err: any) {
     return { ok: false, moved: false, asideDir: aside, reason: 'aside-move-failed', error: String((err && err.message) || err) }
   }
+
   return { ok: true, moved: true, asideDir: aside }
 }
 
@@ -174,36 +191,50 @@ function moveLegacyAside(hermesHome, opts: any = {}) {
  */
 function migrateLegacyInPlace(hermesHome, newKey, opts: any = {}): any {
   const { versionDir, activeLink } = layout.bundlePaths(hermesHome)
+
   const log = typeof opts.log === 'function' ? opts.log : () => {}
-  if (!fs.existsSync(versionDir(newKey))) return { ok: false, reason: 'version-missing', key: newKey }
+
+  if (!fs.existsSync(versionDir(newKey))) {return { ok: false, reason: 'version-missing', key: newKey }}
+
   if (layout.linkStatus(activeLink).kind !== 'dir') {
     // Not a legacy in-place state after all — the normal switch applies.
     return layout.switchToVersion(hermesHome, newKey, opts)
   }
+
   // 1. Assert BEFORE advancing the pointer so a data-unsafe home changes nothing.
   const data = assertNoUserDataInLegacy(activeLink, opts)
+
   if (!data.safe) {
     log(`[bundle-migrate] refusing migration: user data in runtime dir (${data.found.join(', ')})`)
+
     return { ok: false, reason: 'user-data-in-runtime-dir', found: data.found, key: newKey }
   }
+
   // 2. Truth first.
   layout.writePointerAtomic(hermesHome, { key: newKey, previous: LEGACY_SENTINEL })
   // 3. Move aside.
   const moved = moveLegacyAside(hermesHome, opts)
+
   if (!moved.ok) {
     // Pointer already advanced; a held handle refused the move. Do NOT roll the
     // pointer back (that would strand a committed version) — the running runtime
     // keeps using the in-place dir until restart, then reconcile finishes it.
     log(`[bundle-migrate] aside deferred (${moved.reason}); reconcile finishes it on next launch`)
+
     return { ok: true, key: newKey, previous: LEGACY_SENTINEL, linkPending: true, reason: moved.reason }
   }
+
   // 4. Link (active path is now free).
   const linkRes = layout.repointActiveLink(hermesHome, newKey, opts)
+
   if (!linkRes.ok) {
     log(`[bundle-migrate] link deferred (${linkRes.reason}); reconcile finishes it on next launch`)
+
     return { ok: true, key: newKey, previous: LEGACY_SENTINEL, linkPending: true, reason: linkRes.reason }
   }
+
   log(`[bundle-migrate] migrated legacy in-place -> versions/${newKey} (fallback kept at ${LEGACY_ASIDE_BASENAME})`)
+
   return { ok: true, key: newKey, previous: LEGACY_SENTINEL, linkPending: false, migrated: true }
 }
 
@@ -215,9 +246,11 @@ function migrateLegacyInPlace(hermesHome, newKey, opts: any = {}): any {
  */
 function switchToVersionOrMigrate(hermesHome, newKey, opts: any = {}): any {
   const { activeLink } = layout.bundlePaths(hermesHome)
+
   if (layout.linkStatus(activeLink).kind === 'dir') {
     return migrateLegacyInPlace(hermesHome, newKey, opts)
   }
+
   return layout.switchToVersion(hermesHome, newKey, opts)
 }
 
@@ -233,12 +266,17 @@ function rollbackToLegacyInPlace(hermesHome, opts: any = {}) {
   const { activeLink } = layout.bundlePaths(hermesHome)
   const aside = legacyAsidePath(hermesHome)
   const pointer = layout.readPointer(hermesHome)
-  if (!pointer) return { ok: false, reason: 'no-pointer' }
-  if (pointer.previous !== LEGACY_SENTINEL) return { ok: false, reason: 'previous-not-legacy' }
-  if (!fs.existsSync(aside)) return { ok: false, reason: 'legacy-aside-missing' }
+
+  if (!pointer) {return { ok: false, reason: 'no-pointer' }}
+
+  if (pointer.previous !== LEGACY_SENTINEL) {return { ok: false, reason: 'previous-not-legacy' }}
+
+  if (!fs.existsSync(aside)) {return { ok: false, reason: 'legacy-aside-missing' }}
   layout.writePointerAtomic(hermesHome, { key: LEGACY_SENTINEL, previous: pointer.key })
   const res = relinkTo(activeLink, aside, opts)
-  if (!res.ok) return { ok: false, reason: res.reason, key: LEGACY_SENTINEL }
+
+  if (!res.ok) {return { ok: false, reason: res.reason, key: LEGACY_SENTINEL }}
+
   return { ok: true, key: LEGACY_SENTINEL, previous: pointer.key }
 }
 
@@ -256,14 +294,18 @@ function reconcileMigration(hermesHome, opts: any = {}) {
   const { activeLink, versionDir } = layout.bundlePaths(hermesHome)
   const aside = legacyAsidePath(hermesHome)
   const pointer = layout.readPointer(hermesHome)
-  if (!pointer) return { reconciled: false, reason: 'no-pointer' }
+
+  if (!pointer) {return { reconciled: false, reason: 'no-pointer' }}
 
   // Rolled back to the legacy in-place dir: the link must resolve to the aside.
   if (pointer.key === LEGACY_SENTINEL) {
-    if (!fs.existsSync(aside)) return { reconciled: false, reason: 'legacy-aside-missing' }
-    if (layout.linkResolvesTo(activeLink, aside)) return { reconciled: false, reason: 'already-consistent' }
+    if (!fs.existsSync(aside)) {return { reconciled: false, reason: 'legacy-aside-missing' }}
+
+    if (layout.linkResolvesTo(activeLink, aside)) {return { reconciled: false, reason: 'already-consistent' }}
     const res = relinkTo(activeLink, aside, opts)
-    if (!res.ok) return { reconciled: false, reason: res.reason }
+
+    if (!res.ok) {return { reconciled: false, reason: res.reason }}
+
     return { reconciled: true, action: 'relink-legacy', key: LEGACY_SENTINEL }
   }
 
@@ -271,11 +313,15 @@ function reconcileMigration(hermesHome, opts: any = {}) {
   // path → an interrupted migration; finish its move-aside first.
   if (layout.linkStatus(activeLink).kind === 'dir' && fs.existsSync(versionDir(pointer.key))) {
     const moved = moveLegacyAside(hermesHome, opts)
-    if (!moved.ok) return { reconciled: false, reason: moved.reason, key: pointer.key }
+
+    if (!moved.ok) {return { reconciled: false, reason: moved.reason, key: pointer.key }}
   }
+
   // Then the plain link heal covers create/repair to versions/<key>.
   const rec = layout.reconcileActiveLink(hermesHome, opts)
-  if (rec.reconciled) return { reconciled: true, action: 'migrate-relink', key: rec.key }
+
+  if (rec.reconciled) {return { reconciled: true, action: 'migrate-relink', key: rec.key }}
+
   return { reconciled: false, reason: rec.reason, key: pointer.key }
 }
 
@@ -288,16 +334,23 @@ function reconcileMigration(hermesHome, opts: any = {}) {
  */
 function gcLegacyAside(hermesHome, opts: any = {}) {
   const aside = legacyAsidePath(hermesHome)
-  if (!fs.existsSync(aside)) return { removed: false, reason: 'no-aside' }
+
+  if (!fs.existsSync(aside)) {return { removed: false, reason: 'no-aside' }}
   const pointer = layout.readPointer(hermesHome)
-  if (!pointer) return { removed: false, reason: 'no-pointer' }
+
+  if (!pointer) {return { removed: false, reason: 'no-pointer' }}
+
   if (pointer.key === LEGACY_SENTINEL || pointer.previous === LEGACY_SENTINEL) {
     return { removed: false, reason: 'still-rollback-target' }
   }
+
   const isLocked = typeof opts.isLocked === 'function' ? opts.isLocked : () => false
-  if (isLocked(LEGACY_ASIDE_BASENAME, aside)) return { removed: false, reason: 'locked' }
+
+  if (isLocked(LEGACY_ASIDE_BASENAME, aside)) {return { removed: false, reason: 'locked' }}
+
   try {
     fs.rmSync(aside, { recursive: true, force: true })
+
     return { removed: true, path: aside }
   } catch (err: any) {
     return { removed: false, reason: 'rm-failed', error: String((err && err.message) || err) }
@@ -309,6 +362,7 @@ function migrationState(hermesHome) {
   const aside = legacyAsidePath(hermesHome)
   const det = detectLegacyInPlace(hermesHome)
   const pointer = layout.readPointer(hermesHome)
+
   return {
     legacyInPlace: det.legacy,
     activeKind: det.activeKind,
@@ -319,17 +373,17 @@ function migrationState(hermesHome) {
 }
 
 export {
+  assertNoUserDataInLegacy,
+  DEFAULT_USER_DATA_MARKERS,
+  detectLegacyInPlace,
+  gcLegacyAside,
   LEGACY_ASIDE_BASENAME,
   LEGACY_SENTINEL,
-  DEFAULT_USER_DATA_MARKERS,
   legacyAsidePath,
-  detectLegacyInPlace,
-  assertNoUserDataInLegacy,
-  moveLegacyAside,
   migrateLegacyInPlace,
-  switchToVersionOrMigrate,
-  rollbackToLegacyInPlace,
+  migrationState,
+  moveLegacyAside,
   reconcileMigration,
-  gcLegacyAside,
-  migrationState
+  rollbackToLegacyInPlace,
+  switchToVersionOrMigrate
 }

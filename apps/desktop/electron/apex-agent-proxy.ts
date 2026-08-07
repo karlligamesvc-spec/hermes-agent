@@ -81,8 +81,10 @@ function normalizeProxyMode(mode) {
 function firstEnvValue(env, keys) {
   for (const key of keys) {
     const value = env && env[key]
-    if (value) return String(value)
+
+    if (value) {return String(value)}
   }
+
   return ''
 }
 
@@ -104,44 +106,67 @@ function parseScutilProxy(text) {
     socksProxy: '',
     socksPort: 0
   }
-  if (typeof text !== 'string') return out
+
+  if (typeof text !== 'string') {return out}
+
   for (const line of text.split('\n')) {
     const match = line.match(/^\s*([A-Za-z]+)\s*:\s*(.+?)\s*$/)
-    if (!match) continue
+
+    if (!match) {continue}
     const key = match[1]
     const value = match[2]
+
     switch (key) {
       case 'HTTPEnable':
         out.httpEnable = Number(value) || 0
+
         break
+
       case 'HTTPProxy':
         out.httpProxy = value
+
         break
+
       case 'HTTPPort':
         out.httpPort = Number(value) || 0
+
         break
+
       case 'HTTPSEnable':
         out.httpsEnable = Number(value) || 0
+
         break
+
       case 'HTTPSProxy':
         out.httpsProxy = value
+
         break
+
       case 'HTTPSPort':
         out.httpsPort = Number(value) || 0
+
         break
+
       case 'SOCKSEnable':
         out.socksEnable = Number(value) || 0
+
         break
+
       case 'SOCKSProxy':
         out.socksProxy = value
+
         break
+
       case 'SOCKSPort':
         out.socksPort = Number(value) || 0
+
         break
+
       default:
         break
     }
   }
+
   return out
 }
 
@@ -152,18 +177,25 @@ function parseScutilProxy(text) {
  */
 function systemProxyToUrls(parsed) {
   const urls = { httpUrl: '', httpsUrl: '', allUrl: '' }
-  if (!parsed) return urls
+
+  if (!parsed) {return urls}
+
   if (parsed.httpEnable === 1 && parsed.httpProxy) {
     urls.httpUrl = `http://${parsed.httpProxy}${parsed.httpPort ? `:${parsed.httpPort}` : ''}`
   }
+
   if (parsed.httpsEnable === 1 && parsed.httpsProxy) {
     urls.httpsUrl = `http://${parsed.httpsProxy}${parsed.httpsPort ? `:${parsed.httpsPort}` : ''}`
   }
+
   if (parsed.socksEnable === 1 && parsed.socksProxy) {
     urls.allUrl = `socks5://${parsed.socksProxy}${parsed.socksPort ? `:${parsed.socksPort}` : ''}`
   }
-  if (!urls.httpsUrl && urls.httpUrl) urls.httpsUrl = urls.httpUrl
-  if (!urls.httpUrl && urls.httpsUrl) urls.httpUrl = urls.httpsUrl
+
+  if (!urls.httpsUrl && urls.httpUrl) {urls.httpsUrl = urls.httpUrl}
+
+  if (!urls.httpUrl && urls.httpsUrl) {urls.httpUrl = urls.httpsUrl}
+
   return urls
 }
 
@@ -174,12 +206,17 @@ function systemProxyToUrls(parsed) {
  */
 function normalizeCustomProxyUrl(raw) {
   const value = String(raw || '').trim()
-  if (!value) return ''
+
+  if (!value) {return ''}
   const candidate = /^[a-z0-9]+:\/\//i.test(value) ? value : `http://${value}`
+
   try {
     const url = new URL(candidate)
-    if (!/^(https?|socks5?|socks5h):$/i.test(url.protocol)) return ''
-    if (!url.hostname) return ''
+
+    if (!/^(https?|socks5?|socks5h):$/i.test(url.protocol)) {return ''}
+
+    if (!url.hostname) {return ''}
+
     return url.href.replace(/\/+$/, '')
   } catch {
     return ''
@@ -193,18 +230,23 @@ function normalizeCustomProxyUrl(raw) {
 function buildNoProxyValue(existing) {
   const seen = new Set()
   const ordered = []
+
   const push = raw => {
     const entry = String(raw || '').trim()
-    if (!entry) return
+
+    if (!entry) {return}
     const key = entry.toLowerCase()
-    if (seen.has(key)) return
+
+    if (seen.has(key)) {return}
     seen.add(key)
     ordered.push(entry)
   }
+
   String(existing || '')
     .split(',')
     .forEach(push)
   NO_PROXY_WHITELIST.forEach(push)
+
   return ordered.join(',')
 }
 
@@ -218,14 +260,18 @@ function buildNoProxyValue(existing) {
  */
 function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
-  if (resolvedMode === PROXY_MODE_OFF) return {}
+
+  if (resolvedMode === PROXY_MODE_OFF) {return {}}
 
   let httpUrl = ''
   let httpsUrl = ''
   let allUrl = ''
+
   if (resolvedMode === PROXY_MODE_CUSTOM) {
     const normalized = normalizeCustomProxyUrl(customUrl)
-    if (!normalized) return {}
+
+    if (!normalized) {return {}}
+
     if (/^socks/i.test(normalized)) {
       allUrl = normalized
     } else {
@@ -236,7 +282,8 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
     httpUrl = systemUrls?.httpUrl || ''
     httpsUrl = systemUrls?.httpsUrl || ''
     allUrl = systemUrls?.allUrl || ''
-    if (!httpUrl && !httpsUrl && !allUrl) return {}
+
+    if (!httpUrl && !httpsUrl && !allUrl) {return {}}
   }
 
   const override = resolvedMode === PROXY_MODE_CUSTOM
@@ -245,14 +292,17 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
   const existingAll = firstEnvValue(currentEnv, ['ALL_PROXY', 'all_proxy'])
 
   const fragment: any = {}
+
   if (httpsUrl && (override || !existingHttps)) {
     fragment.HTTPS_PROXY = httpsUrl
     fragment.https_proxy = httpsUrl
   }
+
   if (httpUrl && (override || !existingHttp)) {
     fragment.HTTP_PROXY = httpUrl
     fragment.http_proxy = httpUrl
   }
+
   if (allUrl && (override || !existingAll)) {
     fragment.ALL_PROXY = allUrl
     fragment.all_proxy = allUrl
@@ -263,6 +313,7 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
     fragment.NO_PROXY = noProxy
     fragment.no_proxy = noProxy
   }
+
   return fragment
 }
 
@@ -271,9 +322,11 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
  * any failure yields an empty descriptor — the caller then injects nothing.
  */
 function readSystemProxy({ platform = process.platform, exec = execFileSync }: any = {}) {
-  if (platform !== 'darwin') return parseScutilProxy('')
+  if (platform !== 'darwin') {return parseScutilProxy('')}
+
   try {
     const out = exec('scutil', ['--proxy'], { timeout: 3000, encoding: 'utf8', windowsHide: true })
+
     return parseScutilProxy(out)
   } catch {
     return parseScutilProxy('')
@@ -293,10 +346,12 @@ function resolveAgentProxyEnv({
   exec = execFileSync
 }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
+
   const systemUrls =
     resolvedMode === PROXY_MODE_AUTO
       ? systemProxyToUrls(readSystemProxy({ platform, exec }))
       : { httpUrl: '', httpsUrl: '', allUrl: '' }
+
   return buildProxyEnvFragment({ mode: resolvedMode, customUrl, systemUrls, currentEnv })
 }
 
@@ -306,39 +361,47 @@ function resolveAgentProxyEnv({
  */
 function describeAgentProxy({ mode, customUrl, systemUrls }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
+
   const strip = url => {
-    if (!url) return ''
+    if (!url) {return ''}
+
     try {
       const parsed = new URL(url)
       parsed.username = ''
       parsed.password = ''
+
       return parsed.href.replace(/\/+$/, '')
     } catch {
       return ''
     }
   }
-  if (resolvedMode === PROXY_MODE_OFF) return { mode: resolvedMode, active: false, url: '' }
+
+  if (resolvedMode === PROXY_MODE_OFF) {return { mode: resolvedMode, active: false, url: '' }}
+
   if (resolvedMode === PROXY_MODE_CUSTOM) {
     const url = strip(normalizeCustomProxyUrl(customUrl))
+
     return { mode: resolvedMode, active: Boolean(url), url }
   }
+
   const url = strip(systemUrls?.httpsUrl || systemUrls?.httpUrl || systemUrls?.allUrl || '')
+
   return { mode: resolvedMode, active: Boolean(url), url }
 }
 
 export {
+  buildNoProxyValue,
+  buildProxyEnvFragment,
+  describeAgentProxy,
   NO_PROXY_WHITELIST,
+  normalizeCustomProxyUrl,
+  normalizeProxyMode,
+  parseScutilProxy,
   PROXY_MODE_AUTO,
   PROXY_MODE_CUSTOM,
   PROXY_MODE_OFF,
   PROXY_MODES,
-  normalizeProxyMode,
-  parseScutilProxy,
-  systemProxyToUrls,
-  normalizeCustomProxyUrl,
-  buildNoProxyValue,
-  buildProxyEnvFragment,
   readSystemProxy,
   resolveAgentProxyEnv,
-  describeAgentProxy
+  systemProxyToUrls
 }

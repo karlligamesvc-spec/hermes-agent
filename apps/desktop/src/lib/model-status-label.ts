@@ -162,7 +162,13 @@ export function displayModelName(model: string): string {
  *  dropping the parameters is what put `Fast Med` in front of Chinese users. */
 export function formatModelStatusLabel(
   model: string,
-  options?: { fastMode?: boolean; reasoningEffort?: string; effortLabel?: string; fastLabel?: string }
+  options?: {
+    defaultEffort?: string
+    effortLabel?: string
+    fastLabel?: string
+    fastMode?: boolean
+    reasoningEffort?: string
+  }
 ): string {
   const name = displayModelName(model)
 
@@ -180,7 +186,11 @@ export function formatModelStatusLabel(
 
   // Always surface the effort (empty = Hermes default of medium) so the
   // current reasoning level is visible at a glance, not just when non-default.
-  parts.push(options?.effortLabel || reasoningEffortLabel(options?.reasoningEffort ?? '') || 'Med')
+  parts.push(
+    options?.effortLabel ||
+      reasoningEffortLabel(options?.reasoningEffort || options?.defaultEffort || '') ||
+      'Med'
+  )
 
   return `${name} · ${parts.join(' ')}`
 }

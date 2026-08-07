@@ -30,11 +30,11 @@
  * Range semantics; only the backoff `sleep` is injected so retries don't wait.
  */
 
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
-import path from 'node:path'
 import http from 'node:http'
 import https from 'node:https'
-import { createHash } from 'node:crypto'
+import path from 'node:path'
 
 const DEFAULT_MAX_ATTEMPTS = 5
 const DEFAULT_TIMEOUT_MS = 900_000 // 15 min: a whole bundle over a slow CN link
@@ -66,12 +66,15 @@ function sha256File(file) {
   const h = createHash('sha256')
   const fd = fs.openSync(file, 'r')
   const buf = Buffer.alloc(4 * 1024 * 1024)
+
   try {
     let n
-    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n))
+
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {h.update(buf.subarray(0, n))}
   } finally {
     fs.closeSync(fd)
   }
+
   return h.digest('hex')
 }
 
@@ -87,22 +90,29 @@ function sha256File(file) {
 function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
+
     try {
       parsed = new URL(url)
     } catch {
       reject(new BundleDownloadError(`invalid url: ${url}`, 'invalid_url'))
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       reject(new BundleDownloadError(`unsupported protocol: ${parsed.protocol}`, 'invalid_url'))
+
       return
     }
+
     const client = parsed.protocol === 'https:' ? https : http
     const reqHeaders = { ...(headers || {}) }
-    if (fromOffset > 0) reqHeaders.Range = `bytes=${fromOffset}-`
+
+    if (fromOffset > 0) {reqHeaders.Range = `bytes=${fromOffset}-`}
 
     let settled = false
     let out = null
+
     const fail = err => {
       // Release the write stream so its fd is closed and its flushed size is the
       // exact resume offset for the next attempt (no gap, no stuck handle).
@@ -113,26 +123,33 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
           void 0
         }
       }
-      if (settled) return
+
+      if (settled) {return}
       settled = true
       reject(err instanceof BundleDownloadError ? err : new BundleDownloadError(String(err && err.message || err), 'network_error'))
     }
 
     const req = client.request(parsed, { method: 'GET', headers: reqHeaders }, res => {
       const status = res.statusCode || 0
+
       // 416: our partial is already >= the object; caller resets and re-checks.
       if (status === 416) {
         res.resume()
-        if (settled) return
+
+        if (settled) {return}
         settled = true
         resolve({ status, bytesWritten: 0, restarted: true, rangeUnsatisfiable: true })
+
         return
       }
+
       if (status !== 200 && status !== 206) {
         res.resume()
         fail(new BundleDownloadError(`unexpected status ${status} for ${url}`, status >= 400 && status < 500 ? 'http_client_error' : 'http_server_error'))
+
         return
       }
+
       // Range requested but server ignored it → full body from 0: truncate.
       const restarted = fromOffset > 0 && status === 200
       const flags = restarted || fromOffset === 0 ? 'w' : 'a'
@@ -144,12 +161,13 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
       res.on('error', fail)
       out.on('error', fail)
       out.on('finish', () => {
-        if (settled) return
+        if (settled) {return}
         settled = true
         resolve({ status, bytesWritten, restarted })
       })
       res.pipe(out)
     })
+
     req.on('error', fail)
     req.setTimeout(timeoutMs || DEFAULT_TIMEOUT_MS, () => {
       try {
@@ -195,20 +213,24 @@ async function downloadWithResume(o) {
     log = () => {}
   } = o || {}
 
-  if (!url) throw new BundleDownloadError('url is required', 'invalid_url')
-  if (!dest) throw new BundleDownloadError('dest is required', 'invalid_dest')
+  if (!url) {throw new BundleDownloadError('url is required', 'invalid_url')}
+
+  if (!dest) {throw new BundleDownloadError('dest is required', 'invalid_dest')}
 
   const partPath = `${dest}.part`
   fs.mkdirSync(path.dirname(dest), { recursive: true })
 
   let lastErr = null
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let have = fileSizeOr0(partPath)
+
     // A partial larger than the known full size can only be corruption — reset.
     if (expectedSize && have > expectedSize) {
       fs.rmSync(partPath, { force: true })
       have = 0
     }
+
     // Already fully downloaded on disk → skip straight to the integrity gate.
     const alreadyComplete = expectedSize && have === expectedSize
 
@@ -216,6 +238,7 @@ async function downloadWithResume(o) {
       if (!alreadyComplete) {
         log(`[bundle-download] attempt ${attempt}/${maxAttempts} from byte ${have}${expectedSize ? `/${expectedSize}` : ''}`)
         const res = await fetchRange({ url, partPath, fromOffset: have, headers, timeoutMs })
+
         if (res.rangeUnsatisfiable) {
           // 416 = our offset is at/after EOF, i.e. the part is already (at least)
           // complete. KEEP it and let the size+sha gate below decide — never
@@ -223,6 +246,7 @@ async function downloadWithResume(o) {
           // file). A part LARGER than expected is reset at the top of the loop.
           void 0
         }
+
         if (onProgress) {
           const received = fileSizeOr0(partPath)
           onProgress({ received, total: expectedSize || null, attempt })
@@ -231,38 +255,48 @@ async function downloadWithResume(o) {
 
       // ── integrity gate ────────────────────────────────────────────────────
       const gotSize = fileSizeOr0(partPath)
+
       if (expectedSize && gotSize !== expectedSize) {
         throw new BundleDownloadError(`size mismatch: got ${gotSize}, expected ${expectedSize}`, 'size_mismatch')
       }
+
       if (expectedSha) {
         const gotSha = sha256File(partPath)
+
         if (gotSha.toLowerCase() !== String(expectedSha).toLowerCase()) {
           // A corrupt whole file — a resumed append went wrong. Discard so the
           // next attempt re-fetches from scratch instead of resuming garbage.
           fs.rmSync(partPath, { force: true })
           throw new BundleDownloadError(`sha256 mismatch: got ${gotSha}, expected ${expectedSha}`, 'sha_mismatch')
         }
+
         fs.renameSync(partPath, dest)
         log(`[bundle-download] complete: ${gotSize} bytes, sha256 verified`)
+
         return { ok: true, path: dest, bytes: gotSize, sha256: gotSha, attempts: attempt }
       }
+
       // No expected sha (caller will verify per-file post-extract): accept bytes.
       const finalSha = sha256File(partPath)
       fs.renameSync(partPath, dest)
       log(`[bundle-download] complete: ${gotSize} bytes (no expected sha to gate on)`)
+
       return { ok: true, path: dest, bytes: gotSize, sha256: finalSha, attempts: attempt }
     } catch (err: any) {
       lastErr = err instanceof BundleDownloadError ? err : new BundleDownloadError(String(err && err.message || err), 'download_failed')
       log(`[bundle-download] attempt ${attempt} failed: ${lastErr.code} — ${lastErr.message}`)
+
       // A 4xx (object genuinely absent / gone) will not fix itself on retry.
       if (lastErr.code === 'http_client_error' || lastErr.code === 'invalid_url' || lastErr.code === 'invalid_dest') {
         throw lastErr
       }
+
       if (attempt < maxAttempts) {
         await sleep(backoffMs * attempt)
       }
     }
   }
+
   throw lastErr || new BundleDownloadError('download failed after retries', 'download_failed')
 }
 
@@ -270,7 +304,7 @@ export {
   BundleDownloadError,
   DEFAULT_MAX_ATTEMPTS,
   downloadWithResume,
-  sha256File,
   // exported for focused tests
-  fetchRange
+  fetchRange,
+  sha256File
 }

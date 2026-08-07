@@ -27,12 +27,15 @@ test('isFresh honors the TTL window', () => {
 
 test('loadScenarioCatalog fetches, caches, and serves the cache within TTL', async () => {
   let calls = 0
+
   const fetchJson = async (url, opts) => {
     calls += 1
     assert.equal(url, 'https://api.apex-nodes.com/api/v1/media/scenario-catalog')
     assert.equal(opts.bearer, 'relay-key')
+
     return CATALOG
   }
+
   const cache = {}
 
   const first = await loadScenarioCatalog({
@@ -42,6 +45,7 @@ test('loadScenarioCatalog fetches, caches, and serves the cache within TTL', asy
     now: 1000,
     cache
   })
+
   assert.deepEqual(first, CATALOG)
   assert.equal(calls, 1)
 
@@ -53,6 +57,7 @@ test('loadScenarioCatalog fetches, caches, and serves the cache within TTL', asy
     now: 1000 + 60_000,
     cache
   })
+
   assert.deepEqual(second, CATALOG)
   assert.equal(calls, 1)
 })
@@ -76,6 +81,7 @@ test('loadScenarioCatalog fails open — a fetch error serves the stale cache, e
 
   // Prior cache → stale-served on error.
   const cache = { value: CATALOG, fetchedAt: 0 }
+
   const served = await loadScenarioCatalog({
     apiBase: 'https://x',
     apiKey: 'k',
@@ -83,5 +89,6 @@ test('loadScenarioCatalog fails open — a fetch error serves the stale cache, e
     now: DEFAULT_TTL_MS + 1,
     cache
   })
+
   assert.deepEqual(served, CATALOG)
 })

@@ -12,10 +12,10 @@ import { test } from 'vitest'
 process.env.APEXNODES_TELEMETRY = 'off'
 
 import {
-  SHELL_UPDATE_EVENT_CHANNEL,
-  SHELL_UPDATE_FEED_BASE,
   createShellUpdater,
   normalizeReleaseNotes,
+  SHELL_UPDATE_EVENT_CHANNEL,
+  SHELL_UPDATE_FEED_BASE,
   shellUpdateFeedUrl
 } from './shell-updater'
 
@@ -25,11 +25,14 @@ import {
 
 function fakeIpcMain() {
   const handlers = new Map()
+
   return {
     handle: (channel, fn) => handlers.set(channel, fn),
     invoke: (channel, ...args) => {
       const fn = handlers.get(channel)
-      if (!fn) throw new Error(`no handler for ${channel}`)
+
+      if (!fn) {throw new Error(`no handler for ${channel}`)}
+
       return fn({}, ...args)
     },
     handlers
@@ -44,15 +47,19 @@ function fakeAutoUpdater() {
   updater.feed = null
   updater.checkCalls = 0
   updater.installCalls = []
+
   updater.setFeedURL = options => {
     updater.feed = options
   }
+
   updater.checkForUpdates = async () => {
     updater.checkCalls += 1
   }
+
   updater.quitAndInstall = (...args) => {
     updater.installCalls.push(args)
   }
+
   return updater
 }
 
@@ -60,6 +67,7 @@ function harness({ isPackaged = true, autoUpdater = fakeAutoUpdater(), ...rest }
   const ipcMain = fakeIpcMain()
   const broadcasts = []
   const logs = []
+
   const updater = createShellUpdater({
     autoUpdater,
     ipcMain,
@@ -73,6 +81,7 @@ function harness({ isPackaged = true, autoUpdater = fakeAutoUpdater(), ...rest }
     recheckIntervalMs: 60_000,
     ...rest
   })
+
   return { updater, ipcMain, broadcasts, logs, autoUpdater }
 }
 
@@ -80,8 +89,9 @@ const flushImmediate = () => new Promise(resolve => setImmediate(resolve))
 
 async function waitUntil(predicate, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs
+
   while (!predicate()) {
-    if (Date.now() > deadline) throw new Error('waitUntil timed out')
+    if (Date.now() > deadline) {throw new Error('waitUntil timed out')}
     await new Promise(resolve => setTimeout(resolve, 5))
   }
 }
@@ -238,6 +248,7 @@ test('normalizeReleaseNotes joins a multi-version { version, note } array (elect
     { version: '0.16.15', note: 'Fixed a crash on launch.' },
     { version: '0.16.16', note: 'Faster startup.' }
   ])
+
   assert.equal(joined, 'Fixed a crash on launch.\n\nFaster startup.')
 })
 
@@ -337,6 +348,7 @@ test('install IPC refuses before downloaded and installs (silent+relaunch) after
 
 test('a throwing quitAndInstall is caught and surfaced as error state, not a crash', async () => {
   const { updater, ipcMain, logs, autoUpdater } = harness()
+
   autoUpdater.quitAndInstall = () => {
     throw new Error('spawn failed')
   }
@@ -366,6 +378,7 @@ test('schedules the delayed initial check and periodic rechecks; dispose stops t
 
 test('a rejecting checkForUpdates is swallowed and logged (no unhandled rejection)', async () => {
   const { updater, logs, autoUpdater } = harness()
+
   autoUpdater.checkForUpdates = async () => {
     throw new Error('feed unreachable')
   }
@@ -382,6 +395,7 @@ test('a rejecting checkForUpdates is swallowed and logged (no unhandled rejectio
 function telemetryHarness(extra: any = {}) {
   const telemetryEvents = []
   const h = harness({ appVersion: '0.16.7', sendTelemetry: ev => telemetryEvents.push(ev), ...extra })
+
   return { ...h, telemetryEvents }
 }
 
@@ -450,6 +464,7 @@ test('quitAndInstall requested fires a shell_update_apply start beacon (no succe
 
 test('a throwing quitAndInstall ALSO fires a shell_update_apply failure beacon', async () => {
   const { ipcMain, autoUpdater, telemetryEvents } = telemetryHarness()
+
   autoUpdater.quitAndInstall = () => {
     throw new Error('spawn failed')
   }

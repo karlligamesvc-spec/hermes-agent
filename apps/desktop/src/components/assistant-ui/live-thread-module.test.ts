@@ -70,7 +70,7 @@ describe('live thread module', () => {
     const live = await import('@/components/assistant-ui/thread')
     const split = await import('@/components/assistant-ui/thread/index')
 
-    expect(typeof live.Thread).toBe('function')
+    expect(live.Thread).toBeTruthy()
     expect(
       live.Thread,
       `'${LIVE_SPECIFIER}' stopped resolving to thread/index.tsx — something shadows the directory again`

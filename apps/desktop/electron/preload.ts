@@ -6,7 +6,19 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   touchBackend: profile => ipcRenderer.invoke('hermes:backend:touch', profile),
   getGatewayWsUrl: profile => ipcRenderer.invoke('hermes:gateway:ws-url', profile),
   openSessionWindow: (sessionId, opts) => ipcRenderer.invoke('hermes:window:openSession', sessionId, opts),
+  openWindow: () => ipcRenderer.invoke('hermes:window:openInstance'),
+  claimAmbientCue: key => ipcRenderer.invoke('hermes:ambient:claim', key),
   openNewSessionWindow: () => ipcRenderer.invoke('hermes:window:openNewSession'),
+  wakeIndicator: {
+    getState: () => ipcRenderer.invoke('hermes:wake-indicator:get'),
+    setState: state => ipcRenderer.send('hermes:wake-indicator:set', state),
+    onState: callback => {
+      const listener = (_event, state) => callback(state)
+      ipcRenderer.on('hermes:wake-indicator:state', listener)
+
+      return () => ipcRenderer.removeListener('hermes:wake-indicator:state', listener)
+    }
+  },
   petOverlay: {
     // Main renderer → main process: window lifecycle + drag. `request` is
     // `{ bounds, screen }`; resolves with the screen bounds it actually used.
@@ -35,11 +47,38 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
       return () => ipcRenderer.removeListener('hermes:pet-overlay:control', listener)
     }
   },
+  quickEntry: {
+    getSettings: () => ipcRenderer.invoke('hermes:quick-entry:settings:get'),
+    setSettings: patch => ipcRenderer.invoke('hermes:quick-entry:settings:set', patch),
+    submit: payload => ipcRenderer.send('hermes:quick-entry:submit', payload),
+    dismiss: () => ipcRenderer.send('hermes:quick-entry:dismiss'),
+    pushState: payload => ipcRenderer.send('hermes:quick-entry:state', payload),
+    onState: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:quick-entry:state', listener)
+
+      return () => ipcRenderer.removeListener('hermes:quick-entry:state', listener)
+    },
+    onSubmit: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:quick-entry:submit', listener)
+
+      return () => ipcRenderer.removeListener('hermes:quick-entry:submit', listener)
+    },
+    onShown: callback => {
+      const listener = () => callback()
+      ipcRenderer.on('hermes:quick-entry:shown', listener)
+
+      return () => ipcRenderer.removeListener('hermes:quick-entry:shown', listener)
+    }
+  },
   getBootProgress: () => ipcRenderer.invoke('hermes:boot-progress:get'),
   getConnectionConfig: profile => ipcRenderer.invoke('hermes:connection-config:get', profile),
   saveConnectionConfig: payload => ipcRenderer.invoke('hermes:connection-config:save', payload),
   applyConnectionConfig: payload => ipcRenderer.invoke('hermes:connection-config:apply', payload),
   testConnectionConfig: payload => ipcRenderer.invoke('hermes:connection-config:test', payload),
+  sshConfigHosts: () => ipcRenderer.invoke('hermes:ssh-config:hosts'),
+  sshResolveHost: host => ipcRenderer.invoke('hermes:ssh-config:resolve', host),
   probeConnectionConfig: remoteUrl => ipcRenderer.invoke('hermes:connection-config:probe', remoteUrl),
   oauthLoginConnectionConfig: remoteUrl => ipcRenderer.invoke('hermes:connection-config:oauth-login', remoteUrl),
   oauthLogoutConnectionConfig: remoteUrl => ipcRenderer.invoke('hermes:connection-config:oauth-logout', remoteUrl),
@@ -120,6 +159,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     onStatus: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:daemon:status', listener)
+
       return () => ipcRenderer.removeListener('hermes:daemon:status', listener)
     }
   },
@@ -151,6 +191,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   onAuthGate: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('hermes:auth-gate', listener)
+
     return () => ipcRenderer.removeListener('hermes:auth-gate', listener)
   },
   // Runtime 3-end consistency — desktop opt-in engine update (R5). checkUpdate
@@ -173,6 +214,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     onEvent: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:shell-update:event', listener)
+
       return () => ipcRenderer.removeListener('hermes:shell-update:event', listener)
     }
   },
@@ -180,9 +222,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   notify: payload => ipcRenderer.invoke('hermes:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
   readFileDataUrl: filePath => ipcRenderer.invoke('hermes:readFileDataUrl', filePath),
+  readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
+  dataUrlReadMax: {
+    get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),
+    set: maxMb => ipcRenderer.invoke('hermes:data-url-read-max:set', maxMb)
+  },
   readFileText: filePath => ipcRenderer.invoke('hermes:readFileText', filePath),
   selectPaths: options => ipcRenderer.invoke('hermes:selectPaths', options),
   writeClipboard: text => ipcRenderer.invoke('hermes:writeClipboard', text),
+  readClipboard: () => ipcRenderer.invoke('hermes:readClipboard'),
   saveImageFromUrl: url => ipcRenderer.invoke('hermes:saveImageFromUrl', url),
   saveImageBuffer: (data, ext) => ipcRenderer.invoke('hermes:saveImageBuffer', { data, ext }),
   saveClipboardImage: () => ipcRenderer.invoke('hermes:saveClipboardImage'),
@@ -195,10 +243,13 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   normalizePreviewTarget: (target, baseDir) => ipcRenderer.invoke('hermes:normalizePreviewTarget', target, baseDir),
   watchPreviewFile: url => ipcRenderer.invoke('hermes:watchPreviewFile', url),
+  watchDirectory: dir => ipcRenderer.invoke('hermes:watchDirectory', dir),
   stopPreviewFileWatch: id => ipcRenderer.invoke('hermes:stopPreviewFileWatch', id),
+  setActiveWork: payload => ipcRenderer.send('hermes:active-work', payload),
   setTitleBarTheme: payload => ipcRenderer.send('hermes:titlebar-theme', payload),
   setNativeTheme: mode => ipcRenderer.send('hermes:native-theme', mode),
   setTranslucency: payload => ipcRenderer.send('hermes:translucency', payload),
+  setKeepAwake: on => ipcRenderer.send('hermes:keep-awake', on),
   setPreviewShortcutActive: active => ipcRenderer.send('hermes:previewShortcutActive', Boolean(active)),
   openExternal: url => ipcRenderer.invoke('hermes:openExternal', url),
   openPreviewInBrowser: url => ipcRenderer.invoke('hermes:openPreviewInBrowser', url),
@@ -230,6 +281,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   worktrees: cwds => ipcRenderer.invoke('hermes:fs:worktrees', cwds),
   revealPath: targetPath => ipcRenderer.invoke('hermes:fs:reveal', targetPath),
   openDir: dirPath => ipcRenderer.invoke('hermes:fs:openDir', dirPath),
+  desktopPluginsRoot: () => ipcRenderer.invoke('hermes:fs:desktopPluginsRoot'),
   renamePath: (targetPath, newName) => ipcRenderer.invoke('hermes:fs:rename', targetPath, newName),
   writeTextFile: (filePath, content) => ipcRenderer.invoke('hermes:fs:writeText', filePath, content),
   trashPath: targetPath => ipcRenderer.invoke('hermes:fs:trash', targetPath),
@@ -343,6 +395,13 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
 
     return () => ipcRenderer.removeListener('hermes:power-resume', listener)
   },
+  getOnBattery: () => ipcRenderer.invoke('hermes:power-battery:get'),
+  onBatteryChanged: callback => {
+    const listener = (_event, onBattery) => callback(Boolean(onBattery))
+    ipcRenderer.on('hermes:power-battery', listener)
+
+    return () => ipcRenderer.removeListener('hermes:power-battery', listener)
+  },
   onBootProgress: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('hermes:boot-progress', listener)
@@ -355,6 +414,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // current snapshot via getBootstrapState() to recover after a devtools
   // reload mid-bootstrap.
   getBootstrapState: () => ipcRenderer.invoke('hermes:bootstrap:get'),
+  continueBootstrapLocal: () => ipcRenderer.invoke('hermes:bootstrap:continue-local'),
   resetBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:reset'),
   repairBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:repair'),
   cancelBootstrap: () => ipcRenderer.invoke('hermes:bootstrap:cancel'),
@@ -385,6 +445,14 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
     searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)
+  },
+  findInPage: (query, options) => ipcRenderer.invoke('hermes:find-in-page', query, options),
+  stopFindInPage: () => ipcRenderer.invoke('hermes:stop-find-in-page'),
+  onFoundInPage: callback => {
+    const listener = (_event, result) => callback(result)
+    ipcRenderer.on('hermes:found-in-page', listener)
+
+    return () => ipcRenderer.removeListener('hermes:found-in-page', listener)
   },
   // hc-554 场景目录 — the desktop scenario shelf + ✦ menu read the shared catalog
   // (cloud GET /media/scenario-catalog, agent-key auth + TTL) via main, which

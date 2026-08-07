@@ -19,6 +19,7 @@ const PATH_SEPARATOR = /[/\\]/
 function nameError(message) {
   const error: any = new Error(message)
   error.code = 'invalid-name'
+
   return error
 }
 
@@ -57,6 +58,7 @@ async function createProjectDirForIpc(parentDir, name, options: any = {}) {
   const fsImpl = options.fs || fs
 
   let validName
+
   try {
     validName = validateProjectName(name)
   } catch (error: any) {
@@ -64,6 +66,7 @@ async function createProjectDirForIpc(parentDir, name, options: any = {}) {
   }
 
   let parent
+
   try {
     parent = resolveRequestedPathForIpc(parentDir, { purpose: 'Create project' })
   } catch (error: any) {
@@ -85,6 +88,7 @@ async function createProjectDirForIpc(parentDir, name, options: any = {}) {
   // Refuse to reuse an existing file/folder — creating "blank" must never adopt
   // someone else's directory (or silently succeed onto a stale one).
   let exists = false
+
   try {
     await fsImpl.promises.stat(target)
     exists = true

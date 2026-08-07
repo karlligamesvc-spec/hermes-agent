@@ -18,13 +18,10 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
+  buildImEntrySpawnEnv,
   FEISHU_PROVISION_CREDENTIALS_PATH,
   FEISHU_PROVISION_ENTRY_PATH,
   FEISHU_PROVISION_PATH,
-  WEIXIN_PROVISION_CREDENTIALS_PATH,
-  WEIXIN_PROVISION_ENTRY_PATH,
-  WEIXIN_PROVISION_PATH,
-  buildImEntrySpawnEnv,
   feishuProvisionPollUrl,
   isAllowedFeishuProvisionUrl,
   isKnownChannel,
@@ -38,7 +35,10 @@ import {
   resolveWeixinProvisionEndpoints,
   secretFieldsFor,
   shapeBinding,
-  stripFeishuEnvOverrides
+  stripFeishuEnvOverrides,
+  WEIXIN_PROVISION_CREDENTIALS_PATH,
+  WEIXIN_PROVISION_ENTRY_PATH,
+  WEIXIN_PROVISION_PATH
 } from './apex-im-entry'
 
 test('isKnownChannel accepts feishu + weixin and rejects unknown / non-string ids', () => {
@@ -56,6 +56,7 @@ test('shapeBinding requires both app id + secret, normalizes domain, stamps boun
     appSecret: ' s3cret ',
     domain: 'LARK'
   })
+
   assert.ok(shaped)
   assert.equal(shaped.channelId, 'feishu')
   assert.deepEqual(shaped.fields, { appId: 'cli_abc', appSecret: 's3cret', domain: 'lark' })
@@ -98,6 +99,7 @@ test('normalizeStoredImEntry drops garbage, unknown channels + partial records',
       dingtalk: { fields: {} } // unknown here → dropped
     }
   })
+
   assert.deepEqual(Object.keys(store), ['feishu'])
   assert.equal(store.feishu.boundAt, 999)
   assert.equal(store.feishu.fields.appId, 'cli_x')
@@ -107,6 +109,7 @@ test('normalizeStoredImEntry drops a feishu record whose secret was lost (decryp
   const store = normalizeStoredImEntry({
     bindings: { feishu: { fields: { appId: 'cli_x', appSecret: '' }, boundAt: 1 } }
   })
+
   assert.deepEqual(store, {})
 })
 
@@ -130,6 +133,7 @@ test('buildImEntrySpawnEnv emits descriptor keys and is empty when unbound', () 
       }
     }
   })
+
   assert.deepEqual(buildImEntrySpawnEnv(store), {
     FEISHU_APP_ID: 'cli_x',
     FEISHU_APP_SECRET: 'sec',
@@ -143,6 +147,7 @@ test('buildImEntrySpawnEnv omits absent optional feishu keys entirely', () => {
   const store = normalizeStoredImEntry({
     bindings: { feishu: { fields: { appId: 'cli_x', appSecret: 'sec' } } }
   })
+
   const env = buildImEntrySpawnEnv(store)
   assert.equal(env.FEISHU_APP_ID, 'cli_x')
   assert.equal(env.FEISHU_APP_SECRET, 'sec')
@@ -169,6 +174,7 @@ test('resolveFeishuProvisionEndpoints composes the cloud v2 paths from apiBase',
     HERMES_DESKTOP_IM_FEISHU_CREDENTIALS_URL: 'https://staging.apex-nodes.com/credentials',
     HERMES_DESKTOP_IM_FEISHU_ENTRY_URL: 'https://staging.apex-nodes.com/entry'
   })
+
   assert.equal(overridden.provisionUrl, 'https://staging.apex-nodes.com/provision')
   assert.equal(overridden.credentialsUrl, 'https://staging.apex-nodes.com/credentials')
   assert.equal(overridden.entryUrl, 'https://staging.apex-nodes.com/entry')
@@ -210,6 +216,7 @@ test('parseFeishuProvisionResponse shapes a valid body + defaults interval/expir
     interval: 5,
     expires_in: 600
   })
+
   assert.deepEqual(parsed, {
     provisionId: 'p_1',
     qrUrl: 'https://applink.feishu.cn/xyz?from=sdk',
@@ -319,6 +326,7 @@ test('shapeBinding shapes the weixin credential, gating on account id + token', 
     allowedUsers: 'ou_owner',
     homeChannel: 'ou_owner'
   })
+
   assert.ok(shaped)
   assert.equal(shaped.channelId, 'weixin')
   assert.deepEqual(shaped.fields, {
@@ -356,6 +364,7 @@ test('buildImEntrySpawnEnv emits the WEIXIN_* adapter keys from a bound weixin s
       }
     }
   })
+
   // A real weixin record survives normalization (round-trips through the gate).
   assert.deepEqual(Object.keys(store), ['weixin'])
   assert.deepEqual(buildImEntrySpawnEnv(store), {
@@ -371,6 +380,7 @@ test('buildImEntrySpawnEnv emits the WEIXIN_* adapter keys from a bound weixin s
   const minimal = buildImEntrySpawnEnv(
     normalizeStoredImEntry({ bindings: { weixin: { fields: { accountId: 'wx_a', token: 't' } } } })
   )
+
   assert.deepEqual(minimal, { WEIXIN_ACCOUNT_ID: 'wx_a', WEIXIN_TOKEN: 't' })
 })
 
@@ -390,6 +400,7 @@ test('resolveWeixinProvisionEndpoints composes the cloud weixin paths from apiBa
     HERMES_DESKTOP_IM_WEIXIN_CREDENTIALS_URL: 'https://staging.apex-nodes.com/wx/credentials',
     HERMES_DESKTOP_IM_WEIXIN_ENTRY_URL: 'https://staging.apex-nodes.com/wx/entry'
   })
+
   assert.equal(overridden.provisionUrl, 'https://staging.apex-nodes.com/wx/provision')
   assert.equal(overridden.credentialsUrl, 'https://staging.apex-nodes.com/wx/credentials')
   assert.equal(overridden.entryUrl, 'https://staging.apex-nodes.com/wx/entry')

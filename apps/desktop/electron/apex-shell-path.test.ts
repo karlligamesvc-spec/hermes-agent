@@ -26,6 +26,7 @@ test('parseLoginShellPath ignores rc-file noise on other lines', () => {
     `${LOGIN_SHELL_PATH_SENTINEL}/opt/homebrew/bin:/usr/bin`,
     'trailing prompt $ '
   ].join('\n')
+
   assert.equal(parseLoginShellPath(out), '/opt/homebrew/bin:/usr/bin')
 })
 
@@ -69,6 +70,7 @@ test('mergePathEntries keeps base verbatim then appends missing, de-duplicated',
   const out = mergePathEntries('/usr/bin:/bin', ['/usr/bin:/opt/homebrew/bin', ['/Users/u/.local/bin']], {
     delimiter: ':'
   })
+
   assert.equal(out, '/usr/bin:/bin:/opt/homebrew/bin:/Users/u/.local/bin')
 })
 
@@ -98,6 +100,7 @@ test('resolveAugmentedPath appends login-shell PATH then the static floor', () =
     '/opt/homebrew/bin',
     '/Users/u/.nvm/versions/node/v20.3.0/bin'
   ])
+
   const out = resolveAugmentedPath({
     currentPath: '/usr/bin:/bin',
     home: '/Users/u',
@@ -106,6 +109,7 @@ test('resolveAugmentedPath appends login-shell PATH then the static floor', () =
     isDir: dir => existing.has(dir),
     pathModule: path.posix
   })
+
   const entries = out.split(':')
   // Inherited entries keep precedence.
   assert.equal(entries[0], '/usr/bin')
@@ -124,6 +128,7 @@ test('resolveAugmentedPath appends login-shell PATH then the static floor', () =
 
 test('resolveAugmentedPath falls back to the static floor when the probe fails', () => {
   const existing = new Set(['/Users/u/.local/bin', '/usr/local/bin'])
+
   const out = resolveAugmentedPath({
     currentPath: '/usr/bin:/bin',
     home: '/Users/u',
@@ -132,6 +137,7 @@ test('resolveAugmentedPath falls back to the static floor when the probe fails',
     isDir: dir => existing.has(dir),
     pathModule: path.posix
   })
+
   assert.equal(out, '/usr/bin:/bin:/Users/u/.local/bin:/usr/local/bin')
 })
 
@@ -144,6 +150,7 @@ test('resolveAugmentedPath does not duplicate a dir already on PATH', () => {
     isDir: dir => dir === '/opt/homebrew/bin',
     pathModule: path.posix
   })
+
   const entries = out.split(':')
   assert.equal(entries.filter(e => e === '/opt/homebrew/bin').length, 1)
   assert.equal(entries[0], '/opt/homebrew/bin')
@@ -151,6 +158,7 @@ test('resolveAugmentedPath does not duplicate a dir already on PATH', () => {
 
 test('resolveAugmentedPath is idempotent', () => {
   const existing = new Set(['/Users/u/.local/bin', '/opt/homebrew/bin'])
+
   const opts = {
     home: '/Users/u',
     loginShellPath: '/opt/homebrew/bin',
@@ -158,6 +166,7 @@ test('resolveAugmentedPath is idempotent', () => {
     isDir: dir => existing.has(dir),
     pathModule: path.posix
   }
+
   const once = resolveAugmentedPath({ ...opts, currentPath: '/usr/bin' })
   const twice = resolveAugmentedPath({ ...opts, currentPath: once })
   assert.equal(once, twice)
@@ -174,5 +183,6 @@ test('resolveAugmentedPath with empty home only adds home-independent existing d
     isDir: () => true,
     pathModule: path.posix
   })
+
   assert.equal(out, '/usr/bin:/some/tool/bin')
 })

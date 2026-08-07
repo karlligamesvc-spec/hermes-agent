@@ -14,22 +14,28 @@ import * as layout from './apex-bundle-layout'
 function mkHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hb-layout-'))
 }
+
 function rm(home) {
   fs.rmSync(home, { recursive: true, force: true })
 }
+
 /** Materialize a committed version dir with a recognizable file inside. */
 function seedVersion(home, key, marker?) {
   const dir = layout.bundlePaths(home).versionDir(key)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'id.txt'), marker || key)
+
   return dir
 }
+
 function seedStaging(home, key) {
   const dir = layout.bundlePaths(home).stagingDir(key)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'half.txt'), 'partial')
+
   return dir
 }
+
 // The active-link branch under test is posix symlinks. The Windows junction
 // branch (createActiveLink win32) is asserted structurally in the module and
 // flagged WIN-VERIFY; it can only be exercised on a real Windows machine.
@@ -41,6 +47,7 @@ const POSIX = process.platform !== 'win32'
 
 test('pointer: write then read round-trips key+previous', () => {
   const home = mkHome()
+
   try {
     layout.writePointerAtomic(home, { key: 'aaaa', previous: 'bbbb' })
     const p = layout.readPointer(home)
@@ -55,6 +62,7 @@ test('pointer: write then read round-trips key+previous', () => {
 
 test('pointer: missing / malformed / wrong-schema all read as null', () => {
   const home = mkHome()
+
   try {
     assert.equal(layout.readPointer(home), null)
     const { pointerPath } = layout.bundlePaths(home)
@@ -71,6 +79,7 @@ test('pointer: missing / malformed / wrong-schema all read as null', () => {
 
 test('pointer: atomic write leaves no temp turd and last-writer-wins', () => {
   const home = mkHome()
+
   try {
     layout.writePointerAtomic(home, { key: 'one' })
     layout.writePointerAtomic(home, { key: 'two', previous: 'one' })
@@ -89,6 +98,7 @@ test('pointer: atomic write leaves no temp turd and last-writer-wins', () => {
 
 test('switchToVersion: fresh switch sets pointer + creates link (posix)', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     const res = layout.switchToVersion(home, 'AAA')
@@ -106,6 +116,7 @@ test('switchToVersion: fresh switch sets pointer + creates link (posix)', { skip
 
 test('switchToVersion: second switch records previous and repoints link', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     seedVersion(home, 'BBB')
@@ -125,6 +136,7 @@ test('switchToVersion: second switch records previous and repoints link', { skip
 
 test('switchToVersion: missing version dir refuses without writing pointer', () => {
   const home = mkHome()
+
   try {
     const res = layout.switchToVersion(home, 'GHOST')
     assert.equal(res.ok, false)
@@ -137,6 +149,7 @@ test('switchToVersion: missing version dir refuses without writing pointer', () 
 
 test('switchToVersion: refuses (and does NOT advance pointer) over a legacy real dir', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     // A legacy in-place install occupies hermes-agent as a REAL directory.
@@ -156,6 +169,7 @@ test('switchToVersion: refuses (and does NOT advance pointer) over a legacy real
 
 test('rollbackToPrevious: swaps key<->previous and repoints link', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     seedVersion(home, 'BBB')
@@ -179,6 +193,7 @@ test('rollbackToPrevious: swaps key<->previous and repoints link', { skip: !POSI
 
 test('rollbackToPrevious: no previous / missing previous dir refuses', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     layout.switchToVersion(home, 'AAA')
@@ -198,6 +213,7 @@ test('rollbackToPrevious: no previous / missing previous dir refuses', () => {
 
 test('reconcileActiveLink: rebuilds a deleted link from the pointer', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     layout.switchToVersion(home, 'AAA')
@@ -215,6 +231,7 @@ test('reconcileActiveLink: rebuilds a deleted link from the pointer', { skip: !P
 
 test('reconcileActiveLink: repoints a link aimed at the wrong version', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     seedVersion(home, 'BBB')
@@ -233,6 +250,7 @@ test('reconcileActiveLink: repoints a link aimed at the wrong version', { skip: 
 
 test('reconcileActiveLink: already-consistent link is a no-op', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     layout.switchToVersion(home, 'AAA')
@@ -246,6 +264,7 @@ test('reconcileActiveLink: already-consistent link is a no-op', { skip: !POSIX }
 
 test('reconcileActiveLink: no pointer / missing version dir are non-fatal', () => {
   const home = mkHome()
+
   try {
     assert.equal(layout.reconcileActiveLink(home).reason, 'no-pointer')
     layout.writePointerAtomic(home, { key: 'NOPE' })
@@ -257,6 +276,7 @@ test('reconcileActiveLink: no pointer / missing version dir are non-fatal', () =
 
 test('reconcileActiveLink: refuses to touch a legacy real dir', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     layout.writePointerAtomic(home, { key: 'AAA' })
@@ -275,8 +295,9 @@ test('reconcileActiveLink: refuses to touch a legacy real dir', () => {
 
 test('garbageCollect: keeps current+previous, removes others and staging', () => {
   const home = mkHome()
+
   try {
-    for (const k of ['AAA', 'BBB', 'CCC', 'DDD']) seedVersion(home, k)
+    for (const k of ['AAA', 'BBB', 'CCC', 'DDD']) {seedVersion(home, k)}
     seedStaging(home, 'CCC') // orphan half-install
     seedStaging(home, 'ZZZ')
     layout.writePointerAtomic(home, { key: 'CCC', previous: 'BBB' })
@@ -296,8 +317,9 @@ test('garbageCollect: keeps current+previous, removes others and staging', () =>
 
 test('garbageCollect: honors extra keep[] and isLocked skip', () => {
   const home = mkHome()
+
   try {
-    for (const k of ['AAA', 'BBB', 'CCC']) seedVersion(home, k)
+    for (const k of ['AAA', 'BBB', 'CCC']) {seedVersion(home, k)}
     layout.writePointerAtomic(home, { key: 'CCC', previous: null })
     // Keep BBB explicitly; force-skip AAA as if a handle were open.
     const r = layout.garbageCollect(home, { keep: ['BBB'], isLocked: name => name === 'AAA' })
@@ -312,8 +334,9 @@ test('garbageCollect: honors extra keep[] and isLocked skip', () => {
 
 test('garbageCollect: dropPrevious sheds previous too (C2 disk-pressure path)', () => {
   const home = mkHome()
+
   try {
-    for (const k of ['AAA', 'BBB', 'CCC']) seedVersion(home, k)
+    for (const k of ['AAA', 'BBB', 'CCC']) {seedVersion(home, k)}
     layout.writePointerAtomic(home, { key: 'CCC', previous: 'BBB' })
     const r = layout.garbageCollect(home, { dropPrevious: true })
     assert.equal(r.droppedPrevious, true)
@@ -328,6 +351,7 @@ test('garbageCollect: dropPrevious sheds previous too (C2 disk-pressure path)', 
 
 test('garbageCollect: empty / no-versions home is a safe no-op', () => {
   const home = mkHome()
+
   try {
     const r = layout.garbageCollect(home)
     assert.deepEqual(r, { kept: [], removed: [], skipped: [], orphansRemoved: [], orphansSkipped: [], droppedPrevious: false })
@@ -342,6 +366,7 @@ test('garbageCollect: empty / no-versions home is a safe no-op', () => {
 
 test('listVersions: splits committed dirs from .tmp staging', () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     seedVersion(home, 'BBB')
@@ -356,6 +381,7 @@ test('listVersions: splits committed dirs from .tmp staging', () => {
 
 test('layoutState: reports pointer, versions and active link resolution', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedVersion(home, 'AAA')
     layout.switchToVersion(home, 'AAA')

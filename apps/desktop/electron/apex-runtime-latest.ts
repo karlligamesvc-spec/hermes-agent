@@ -79,11 +79,13 @@ function trimTrailingSlash(value) {
  */
 function parseCosTarballKey(url) {
   const clean = String(url || '').trim()
-  if (!clean) return ''
+
+  if (!clean) {return ''}
   // Drop query/fragment, take the last path segment.
   const noQuery = clean.split(/[?#]/)[0]
   const base = noQuery.split('/').filter(Boolean).pop() || ''
   const m = /^hermes-agent-(.+)\.tar\.gz$/i.exec(base)
+
   return m ? m[1] : ''
 }
 
@@ -114,15 +116,17 @@ function parseCosTarballKey(url) {
  *   key: string}}
  */
 function derivePinFromLatest(body) {
-  if (!body || typeof body !== 'object') return null
+  if (!body || typeof body !== 'object') {return null}
 
   const cosTarballUrl = String(body.cos_tarball_url || '').trim()
   const cosPublishStatus = body.cos_publish_status == null ? null : String(body.cos_publish_status)
   const upstreamCommit = String(body.upstream_commit || '').trim()
   const upstreamTag = String(body.upstream_release_tag || '').trim()
   const version = String(body.version || '').trim()
+
   const compatibilityNotes =
     body.compatibility_notes == null ? null : String(body.compatibility_notes)
+
   // hc-475 (F4): version-level shell↔runtime compat gate. null/absent = no gate.
   const minDesktopVersion = String(body.min_desktop_version || '').trim() || null
 
@@ -137,6 +141,7 @@ function derivePinFromLatest(body) {
     : false
 
   let key = ''
+
   if (cosUsable && keyFromUrl) {
     key = keyFromUrl
   } else if (upstreamCommit) {
@@ -147,7 +152,7 @@ function derivePinFromLatest(body) {
     key = version
   }
 
-  if (!key) return null
+  if (!key) {return null}
 
   const keyIsSha = COMMIT_RE.test(key)
   // commit drives install.sh's COS key (and the git-checkout --commit). When the
@@ -181,7 +186,9 @@ function derivePinFromLatest(body) {
  */
 function parseSemver(value) {
   const m = /^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(value || ''))
-  if (!m) return null
+
+  if (!m) {return null}
+
   return [Number(m[1]), Number(m[2] || 0), Number(m[3] || 0)]
 }
 
@@ -196,10 +203,13 @@ function parseSemver(value) {
 function compareSemver(a, b) {
   const pa = parseSemver(a)
   const pb = parseSemver(b)
-  if (!pa || !pb) return null
+
+  if (!pa || !pb) {return null}
+
   for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1
+    if (pa[i] !== pb[i]) {return pa[i] < pb[i] ? -1 : 1}
   }
+
   return 0
 }
 
@@ -218,9 +228,12 @@ function compareSemver(a, b) {
  */
 function desktopMeetsMinVersion(desktopVersion, minDesktopVersion) {
   const min = String(minDesktopVersion || '').trim()
-  if (!min) return true
+
+  if (!min) {return true}
   const cmp = compareSemver(desktopVersion, min)
-  if (cmp === null) return true
+
+  if (cmp === null) {return true}
+
   return cmp >= 0
 }
 
@@ -248,9 +261,12 @@ function desktopMeetsMinVersion(desktopVersion, minDesktopVersion) {
  */
 function engineMeetsMinVersion(engineVersion, minEngineVersion) {
   const min = String(minEngineVersion || '').trim()
-  if (!min) return true
+
+  if (!min) {return true}
   const cmp = compareSemver(engineVersion, min)
-  if (cmp === null) return true
+
+  if (cmp === null) {return true}
+
   return cmp >= 0
 }
 
@@ -262,6 +278,7 @@ function engineMeetsMinVersion(engineVersion, minEngineVersion) {
 function latestUrl(apiBase, frameworkId = DEFAULT_FRAMEWORK_ID) {
   const base = trimTrailingSlash(apiBase)
   const q = frameworkId ? `?framework=${encodeURIComponent(frameworkId)}` : ''
+
   return `${base}/api/v1/runtime/latest${q}`
 }
 
@@ -286,26 +303,33 @@ async function resolveLatestRuntimePin({
   timeoutMs = 10_000,
   log = () => {}
 }: any) {
-  if (!apiBase || typeof fetchJson !== 'function') return null
+  if (!apiBase || typeof fetchJson !== 'function') {return null}
   const url = latestUrl(apiBase, frameworkId)
   let body
+
   try {
     body = await fetchJson(url, { timeoutMs })
   } catch (err: any) {
     // 404 (no default), network error, HTML, etc. -> treat as "no managed
     // latest available"; the baked pin stands.
     log(`[runtime-latest] /latest unavailable (${(err && err.message) || err}); using baked pin`)
+
     return null
   }
+
   const pin = derivePinFromLatest(body)
+
   if (!pin) {
     log('[runtime-latest] /latest returned no installable pin; using baked pin')
+
     return null
   }
+
   log(
     `[runtime-latest] resolved admin latest: version=${pin.version || '?'} key=${pin.key} ` +
       `(commit=${pin.commit ? pin.commit.slice(0, 12) : '-'}, branch=${pin.branch || '-'})`
   )
+
   return pin
 }
 
@@ -341,12 +365,14 @@ async function checkForRuntimeUpdate({
   const current = { commit: installedCommit, branch: installedBranch, version: installedVersion, key: installedKey }
 
   let pin
+
   try {
     pin = await resolveLatestRuntimePin({ apiBase, fetchJson, frameworkId, log })
   } catch (err: any) {
     // resolveLatestRuntimePin already swallows, but be defensive.
     return { updateAvailable: false, current, latest: null, error: (err && err.message) || String(err) }
   }
+
   if (!pin) {
     return { updateAvailable: false, current, latest: null }
   }
@@ -409,7 +435,7 @@ async function checkForRuntimeUpdate({
  * @returns {object|null}
  */
 function overlayStampWithPin(bakedStamp, pin, source = 'api-latest') {
-  if (!pin) return bakedStamp || null
+  if (!pin) {return bakedStamp || null}
   const base = bakedStamp && typeof bakedStamp === 'object' ? bakedStamp : {}
   // install.sh requires a commit for the gitless COS path and the git-checkout
   // --commit; when the pin is tag-only we keep the baked commit as a last-resort
@@ -417,6 +443,7 @@ function overlayStampWithPin(bakedStamp, pin, source = 'api-latest') {
   // on it. (The CN COS path keys by branch in that case.)
   const commit = pin.commit || base.commit || null
   const branch = pin.branch || base.branch || null
+
   return {
     ...base,
     commit,
@@ -427,17 +454,17 @@ function overlayStampWithPin(bakedStamp, pin, source = 'api-latest') {
 }
 
 export {
+  checkForRuntimeUpdate,
   COMMIT_RE,
-  DEFAULT_FRAMEWORK_ID,
-  INSTALLABLE_COS_STATUSES,
-  parseCosTarballKey,
-  derivePinFromLatest,
-  parseSemver,
   compareSemver,
+  DEFAULT_FRAMEWORK_ID,
+  derivePinFromLatest,
   desktopMeetsMinVersion,
   engineMeetsMinVersion,
+  INSTALLABLE_COS_STATUSES,
   latestUrl,
-  resolveLatestRuntimePin,
-  checkForRuntimeUpdate,
-  overlayStampWithPin
+  overlayStampWithPin,
+  parseCosTarballKey,
+  parseSemver,
+  resolveLatestRuntimePin
 }

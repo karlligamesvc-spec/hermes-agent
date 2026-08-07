@@ -74,6 +74,7 @@ export interface ModelSelection {
 interface ModelMenuPanelProps {
   gateway?: HermesGateway
   onSelectModel: (selection: ModelSelection) => Promise<boolean> | void
+  profile?: string
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
@@ -82,7 +83,7 @@ interface ProviderGroup {
   provider: ModelOptionProvider
 }
 
-export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: ModelMenuPanelProps) {
+export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', requestGateway }: ModelMenuPanelProps) {
   const { t } = useI18n()
   const copy = t.shell.modelMenu
   const closeMenu = useContext(ModelMenuCloseContext)
@@ -175,7 +176,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   const selectionRef = useRef<string[]>(platformSel)
   // Seeded once from the server, then owned by the user until the menu is
   // reopened (this panel remounts on every open). See the effect below.
-  const selectionSeededRef = useRef(false)
+  const [selectionSeeded, setSelectionSeeded] = useState(false)
 
   const setSelection = (next: string[]) => {
     selectionRef.current = next
@@ -220,12 +221,15 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // because the composition is now assigned at SESSION scope, the live agent
   // holds `__auto__`/`moa` itself, which is what finally lets the first branch
   // below expand a real multi-selection instead of collapsing to one id.
+  // This effect records an immutable server baseline for the unmount commit;
+  // it is not a reactive atom mirror, and the refs prevent stale cleanup data.
+  // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (selectionSeededRef.current || !modelOptions.isSuccess || !moaOptions.isSuccess) {
+    if (selectionSeeded || !modelOptions.isSuccess || !moaOptions.isSuccess) {
       return
     }
 
-    selectionSeededRef.current = true
+    setSelectionSeeded(true)
 
     // hc-637: the seed is ALSO the baseline the unmount commit diffs against,
     // so record it here — this is the only moment we know what the server
@@ -251,7 +255,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     }
 
     seed([])
-  }, [modelOptions.isSuccess, moaOptions.isSuccess, moaOptions.data, optionsProvider, optionsModel, managedProvider])
+  }, [managedProvider, moaOptions.data, moaOptions.isSuccess, modelOptions.isSuccess, optionsModel, optionsProvider, selectionSeeded])
 
   // hc-602: a collapsed managed catalog is a rotated relay key until proven
   // otherwise. The runtime's live `GET /v1/models` probe uses
@@ -264,21 +268,21 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // and re-query on a heal. Dedupe and the re-provision cooldown live inside the
   // shared recovery, so a repeated open cannot storm the relay; this ref only
   // stops the effect re-firing as the query settles.
-  const catalogHealAttempted = useRef(false)
+  const [catalogHealAttempted, setCatalogHealAttempted] = useState(false)
 
   useEffect(() => {
-    if (catalogHealAttempted.current || !modelOptions.isSuccess || !managedCatalogCollapsed(managedProvider)) {
+    if (catalogHealAttempted || !modelOptions.isSuccess || !managedCatalogCollapsed(managedProvider)) {
       return
     }
 
-    catalogHealAttempted.current = true
+    setCatalogHealAttempted(true)
 
     void recoverManagedCatalogAuth().then(healed => {
       if (healed) {
         void queryClient.invalidateQueries({ queryKey: ['model-options'] })
       }
     })
-  }, [modelOptions.isSuccess, managedProvider, queryClient])
+  }, [catalogHealAttempted, managedProvider, modelOptions.isSuccess, queryClient])
 
   const pickerProviders = useMemo(
     () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
@@ -492,7 +496,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
   // which is the billing red line (§2.2/§7).
   const togglePlatformModel = (family: ModelFamily, provider: ModelOptionProvider) => {
     // The user now owns the set — no server snapshot may seed over it.
-    selectionSeededRef.current = true
+    setSelectionSeeded(true)
 
     const key = routedKey(family.id)
     const current = selectionRef.current

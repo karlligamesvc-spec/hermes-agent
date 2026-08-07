@@ -28,13 +28,13 @@
 // (高频 + 无操作性,不在 dispatch 的四项清单里)。
 
 import {
-  sendDesktopTelemetry,
-  fireTelemetry,
   classifyErrorCategory,
+  fireTelemetry,
   normalizeDesktopPlatform,
+  sendDesktopTelemetry,
+  STATUS_FAILURE,
   STATUS_START,
-  STATUS_SUCCESS,
-  STATUS_FAILURE
+  STATUS_SUCCESS
 } from './apexnodes-telemetry'
 
 const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
@@ -53,9 +53,11 @@ const SHELL_UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 // 因此空 os/arch 直接抛,绝不让 feed 退化成根目录。
 function shellUpdateFeedUrl({ base = SHELL_UPDATE_FEED_BASE, platform = process.platform, arch = process.arch }: any = {}) {
   const os = platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : 'linux'
+
   if (!arch) {
     throw new Error(`shellUpdateFeedUrl: missing arch (platform=${platform}) — feed would collapse to the empty root desktop/ prefix`)
   }
+
   return `${base}/${os}-${arch}`
 }
 
@@ -82,14 +84,18 @@ function initialState(disabled) {
 function normalizeReleaseNotes(value) {
   if (typeof value === 'string') {
     const trimmed = value.trim()
+
     return trimmed || null
   }
+
   if (Array.isArray(value)) {
     const notes = value
       .map(entry => (entry && typeof entry.note === 'string' ? entry.note.trim() : ''))
       .filter(Boolean)
+
     return notes.length ? notes.join('\n\n') : null
   }
+
   return null
 }
 
@@ -137,6 +143,7 @@ function createShellUpdater(options) {
 
   function setState(patch) {
     Object.assign(state, patch)
+
     try {
       broadcast(SHELL_UPDATE_EVENT_CHANNEL, { ...state })
     } catch (error: any) {
@@ -151,6 +158,7 @@ function createShellUpdater(options) {
     if (disabled || state.phase !== 'downloaded') {
       return { ok: false, error: disabled ? 'disabled' : 'not_downloaded' }
     }
+
     log(`[shell-update] quitAndInstall requested (version=${state.version || '?'})`)
     // hc-473: 'start' only, by design — a successful quitAndInstall quits
     // this very process to relaunch the updated one, so there is no code
@@ -174,11 +182,13 @@ function createShellUpdater(options) {
         })
       }
     })
+
     return { ok: true }
   })
 
   if (disabled) {
     log('[shell-update] disabled (dev / unpackaged build)')
+
     return { getState: () => ({ ...state }), checkNow: async () => {}, dispose: () => {} }
   }
 
@@ -186,13 +196,16 @@ function createShellUpdater(options) {
   // os/arch 会抛;这里兜住,宁可整体停用(状态=disabled,胶囊不出)也不去读
   // 404 的根 feed、更不因一个异常 arch 把主进程启动带崩。
   let feedUrl
+
   try {
     feedUrl = shellUpdateFeedUrl({ base: feedBase, platform, arch })
   } catch (error: any) {
     log(`[shell-update] disabled: cannot resolve per-arch feed URL: ${error && error.message}`)
     setState({ phase: 'disabled' })
+
     return { getState: () => ({ ...state }), checkNow: async () => {}, dispose: () => {} }
   }
+
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowDowngrade = false
@@ -283,6 +296,7 @@ function createShellUpdater(options) {
       }
     ]
   ]
+
   for (const [event, handler] of listeners) {
     autoUpdater.on(event, handler)
   }
@@ -300,13 +314,16 @@ function createShellUpdater(options) {
   // 首查延迟 60s:避开 app 启动的 gateway 拉起/会话 hydrate 高峰(和引擎胶囊
   // 的 30s 静默检查同思路)。定时器 unref,不影响进程退出,也免得测试挂住。
   const initialTimer = setTimeout(() => void checkNow(), initialDelayMs)
-  if (typeof initialTimer.unref === 'function') initialTimer.unref()
+
+  if (typeof initialTimer.unref === 'function') {initialTimer.unref()}
   const recheckTimer = setInterval(() => void checkNow(), recheckIntervalMs)
-  if (typeof recheckTimer.unref === 'function') recheckTimer.unref()
+
+  if (typeof recheckTimer.unref === 'function') {recheckTimer.unref()}
 
   function dispose() {
     clearTimeout(initialTimer)
     clearInterval(recheckTimer)
+
     for (const [event, handler] of listeners) {
       autoUpdater.removeListener(event, handler)
     }
@@ -316,11 +333,11 @@ function createShellUpdater(options) {
 }
 
 export {
+  createShellUpdater,
+  normalizeReleaseNotes,
   SHELL_UPDATE_EVENT_CHANNEL,
   SHELL_UPDATE_FEED_BASE,
   SHELL_UPDATE_INITIAL_DELAY_MS,
   SHELL_UPDATE_RECHECK_INTERVAL_MS,
-  createShellUpdater,
-  normalizeReleaseNotes,
   shellUpdateFeedUrl
 }

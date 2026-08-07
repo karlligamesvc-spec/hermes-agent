@@ -57,6 +57,7 @@ function isWin(platform) {
 function bundlePaths(hermesHome) {
   const home = path.resolve(hermesHome)
   const versionsDir = path.join(home, VERSIONS_DIRNAME)
+
   return {
     home,
     versionsDir,
@@ -79,9 +80,13 @@ function readJson(file) {
 function readPointer(hermesHome) {
   const { pointerPath } = bundlePaths(hermesHome)
   const parsed = readJson(pointerPath)
-  if (!parsed || typeof parsed !== 'object') return null
-  if (parsed.schemaVersion !== POINTER_SCHEMA_VERSION) return null
-  if (!parsed.key || typeof parsed.key !== 'string') return null
+
+  if (!parsed || typeof parsed !== 'object') {return null}
+
+  if (parsed.schemaVersion !== POINTER_SCHEMA_VERSION) {return null}
+
+  if (!parsed.key || typeof parsed.key !== 'string') {return null}
+
   return {
     schemaVersion: POINTER_SCHEMA_VERSION,
     key: parsed.key,
@@ -98,15 +103,18 @@ function readPointer(hermesHome) {
 function writePointerAtomic(hermesHome, pointer) {
   const { home, pointerPath } = bundlePaths(hermesHome)
   fs.mkdirSync(home, { recursive: true })
+
   const payload = {
     schemaVersion: POINTER_SCHEMA_VERSION,
     key: pointer.key,
     previous: pointer.previous || null,
     switchedAt: pointer.switchedAt || new Date().toISOString()
   }
+
   const tmp = `${pointerPath}.${process.pid}.tmp`
   fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', 'utf8')
   fs.renameSync(tmp, pointerPath)
+
   return payload
 }
 
@@ -122,22 +130,29 @@ function writePointerAtomic(hermesHome, pointer) {
  */
 function linkStatus(p) {
   let st
+
   try {
     st = fs.lstatSync(p)
   } catch {
     return { kind: 'missing' }
   }
+
   if (st.isSymbolicLink()) {
     let target = null
+
     try {
       target = fs.readlinkSync(p)
     } catch {
       target = null
     }
+
     return { kind: 'link', target }
   }
-  if (st.isDirectory()) return { kind: 'dir' }
-  if (st.isFile()) return { kind: 'file' }
+
+  if (st.isDirectory()) {return { kind: 'dir' }}
+
+  if (st.isFile()) {return { kind: 'file' }}
+
   return { kind: 'other' }
 }
 
@@ -151,10 +166,12 @@ function linkStatus(p) {
 function removeLinkOnly(p) {
   try {
     fs.unlinkSync(p)
+
     return true
   } catch {
     try {
       fs.rmdirSync(p)
+
       return true
     } catch {
       return false
@@ -171,6 +188,7 @@ function removeLinkOnly(p) {
  */
 function createActiveLink(linkPath, targetDir, opts?) {
   const platform = currentPlatform(opts)
+
   if (isWin(platform)) {
     fs.symlinkSync(path.resolve(targetDir), linkPath, 'junction')
   } else {
@@ -186,7 +204,9 @@ function createActiveLink(linkPath, targetDir, opts?) {
  */
 function linkResolvesTo(activeLink, targetDir) {
   const status = linkStatus(activeLink)
-  if (status.kind !== 'link') return false
+
+  if (status.kind !== 'link') {return false}
+
   try {
     return fs.realpathSync(activeLink) === fs.realpathSync(targetDir)
   } catch {
@@ -204,16 +224,21 @@ function linkResolvesTo(activeLink, targetDir) {
 function repointActiveLink(hermesHome, key, opts?) {
   const { activeLink, versionDir } = bundlePaths(hermesHome)
   const target = versionDir(key)
+
   if (!fs.existsSync(target)) {
     return { ok: false, reason: 'version-missing', key }
   }
+
   const status = linkStatus(activeLink)
+
   if (status.kind === 'dir') {
     return { ok: false, reason: 'active-path-occupied-by-real-dir', key }
   }
+
   if (status.kind === 'link') {
-    if (linkResolvesTo(activeLink, target)) return { ok: true, key, changed: false }
-    if (!removeLinkOnly(activeLink)) return { ok: false, reason: 'could-not-remove-old-link', key }
+    if (linkResolvesTo(activeLink, target)) {return { ok: true, key, changed: false }}
+
+    if (!removeLinkOnly(activeLink)) {return { ok: false, reason: 'could-not-remove-old-link', key }}
   } else if (status.kind === 'file' || status.kind === 'other') {
     // A stray file where the link belongs — remove just it (not recursive).
     try {
@@ -222,7 +247,9 @@ function repointActiveLink(hermesHome, key, opts?) {
       return { ok: false, reason: 'active-path-occupied', key }
     }
   }
+
   createActiveLink(activeLink, target, opts)
+
   return { ok: true, key, changed: true }
 }
 
@@ -237,19 +264,24 @@ function repointActiveLink(hermesHome, key, opts?) {
  */
 function switchToVersion(hermesHome, newKey, opts?) {
   const { versionDir, activeLink } = bundlePaths(hermesHome)
+
   if (!fs.existsSync(versionDir(newKey))) {
     return { ok: false, reason: 'version-missing', key: newKey }
   }
+
   // Pre-check: never advance the truth pointer when the active path is a legacy
   // REAL dir we're not allowed to replace (converting it is §5/D1, out of scope).
   if (linkStatus(activeLink).kind === 'dir') {
     return { ok: false, reason: 'active-path-occupied-by-real-dir', key: newKey }
   }
+
   const prior = readPointer(hermesHome)
   const previous = prior && prior.key && prior.key !== newKey ? prior.key : prior ? prior.previous : null
   writePointerAtomic(hermesHome, { key: newKey, previous })
   const linkRes = repointActiveLink(hermesHome, newKey, opts)
-  if (!linkRes.ok) return { ok: false, reason: linkRes.reason, key: newKey, previous }
+
+  if (!linkRes.ok) {return { ok: false, reason: linkRes.reason, key: newKey, previous }}
+
   return { ok: true, key: newKey, previous, linkChanged: linkRes.changed }
 }
 
@@ -262,14 +294,20 @@ function switchToVersion(hermesHome, newKey, opts?) {
 function rollbackToPrevious(hermesHome, opts?) {
   const { versionDir, activeLink } = bundlePaths(hermesHome)
   const pointer = readPointer(hermesHome)
-  if (!pointer) return { ok: false, reason: 'no-pointer' }
-  if (!pointer.previous) return { ok: false, reason: 'no-previous' }
-  if (!fs.existsSync(versionDir(pointer.previous))) return { ok: false, reason: 'previous-missing', key: pointer.previous }
-  if (linkStatus(activeLink).kind === 'dir') return { ok: false, reason: 'active-path-occupied-by-real-dir', key: pointer.previous }
+
+  if (!pointer) {return { ok: false, reason: 'no-pointer' }}
+
+  if (!pointer.previous) {return { ok: false, reason: 'no-previous' }}
+
+  if (!fs.existsSync(versionDir(pointer.previous))) {return { ok: false, reason: 'previous-missing', key: pointer.previous }}
+
+  if (linkStatus(activeLink).kind === 'dir') {return { ok: false, reason: 'active-path-occupied-by-real-dir', key: pointer.previous }}
   // Swap so the just-abandoned version becomes the new `previous` (redo-able).
   writePointerAtomic(hermesHome, { key: pointer.previous, previous: pointer.key })
   const linkRes = repointActiveLink(hermesHome, pointer.previous, opts)
-  if (!linkRes.ok) return { ok: false, reason: linkRes.reason, key: pointer.previous }
+
+  if (!linkRes.ok) {return { ok: false, reason: linkRes.reason, key: pointer.previous }}
+
   return { ok: true, key: pointer.previous, previous: pointer.key }
 }
 
@@ -281,16 +319,23 @@ function rollbackToPrevious(hermesHome, opts?) {
 function reconcileActiveLink(hermesHome, opts?) {
   const { activeLink, versionDir } = bundlePaths(hermesHome)
   const pointer = readPointer(hermesHome)
-  if (!pointer) return { reconciled: false, reason: 'no-pointer' }
+
+  if (!pointer) {return { reconciled: false, reason: 'no-pointer' }}
   const target = versionDir(pointer.key)
-  if (!fs.existsSync(target)) return { reconciled: false, reason: 'version-missing', key: pointer.key }
+
+  if (!fs.existsSync(target)) {return { reconciled: false, reason: 'version-missing', key: pointer.key }}
   const status = linkStatus(activeLink)
-  if (status.kind === 'dir') return { reconciled: false, reason: 'active-path-occupied-by-real-dir', key: pointer.key }
+
+  if (status.kind === 'dir') {return { reconciled: false, reason: 'active-path-occupied-by-real-dir', key: pointer.key }}
+
   if (status.kind === 'link' && linkResolvesTo(activeLink, target)) {
     return { reconciled: false, reason: 'already-consistent', key: pointer.key }
   }
+
   const res = repointActiveLink(hermesHome, pointer.key, opts)
-  if (!res.ok) return { reconciled: false, reason: res.reason, key: pointer.key }
+
+  if (!res.ok) {return { reconciled: false, reason: res.reason, key: pointer.key }}
+
   return { reconciled: true, key: pointer.key }
 }
 
@@ -302,18 +347,23 @@ function listVersions(hermesHome) {
   const { versionsDir } = bundlePaths(hermesHome)
   const out = { versions: [], staging: [] }
   let entries
+
   try {
     entries = fs.readdirSync(versionsDir, { withFileTypes: true })
   } catch {
     return out
   }
+
   for (const e of entries) {
-    if (!e.isDirectory()) continue
-    if (e.name.endsWith(TMP_SUFFIX)) out.staging.push(e.name)
-    else out.versions.push(e.name)
+    if (!e.isDirectory()) {continue}
+
+    if (e.name.endsWith(TMP_SUFFIX)) {out.staging.push(e.name)}
+    else {out.versions.push(e.name)}
   }
+
   out.versions.sort()
   out.staging.sort()
+
   return out
 }
 
@@ -338,21 +388,26 @@ function listVersions(hermesHome) {
 function removeVersionDir(absDir, platform?) {
   if (isWin(platform)) {
     const detached = `${absDir}.gc${TMP_SUFFIX}`
+
     try {
       fs.rmSync(detached, { recursive: true, force: true }) // clear any prior probe residue
       fs.renameSync(absDir, detached)
     } catch {
       return false // a held handle refused the rename — leave the dir fully intact
     }
+
     try {
       fs.rmSync(detached, { recursive: true, force: true })
     } catch {
       // Detached + unreferenced (ends in .tmp) — next startup GC reaps it.
     }
+
     return true
   }
+
   try {
     fs.rmSync(absDir, { recursive: true, force: true })
+
     return true
   } catch {
     return false
@@ -382,34 +437,44 @@ function garbageCollect(hermesHome, opts: any = {}) {
   const isLocked = typeof opts.isLocked === 'function' ? opts.isLocked : () => false
   const pointer = readPointer(hermesHome)
   const protectedKeys = new Set()
-  if (pointer && pointer.key) protectedKeys.add(pointer.key)
-  if (!opts.dropPrevious && pointer && pointer.previous) protectedKeys.add(pointer.previous)
-  for (const k of opts.keep || []) if (k) protectedKeys.add(k)
+
+  if (pointer && pointer.key) {protectedKeys.add(pointer.key)}
+
+  if (!opts.dropPrevious && pointer && pointer.previous) {protectedKeys.add(pointer.previous)}
+
+  for (const k of opts.keep || []) {if (k) {protectedKeys.add(k)}}
 
   const { versions, staging } = listVersions(hermesHome)
   const result = { kept: [], removed: [], skipped: [], orphansRemoved: [], orphansSkipped: [], droppedPrevious: Boolean(opts.dropPrevious) }
 
   const tryRemove = (name, bucketRemoved, bucketSkipped) => {
     const abs = path.join(versionsDir, name)
+
     if (isLocked(name, abs)) {
       bucketSkipped.push(name)
+
       return
     }
-    if (removeVersionDir(abs, platform)) bucketRemoved.push(name)
-    else bucketSkipped.push(name) // held handle / permission — next startup retries
+
+    if (removeVersionDir(abs, platform)) {bucketRemoved.push(name)}
+    else {bucketSkipped.push(name)} // held handle / permission — next startup retries
   }
 
   for (const name of versions) {
     if (protectedKeys.has(name)) {
       result.kept.push(name)
+
       continue
     }
+
     tryRemove(name, result.removed, result.skipped)
   }
+
   // Staging dirs are half-installs by definition — never referenced, always GC.
   for (const name of staging) {
     tryRemove(name, result.orphansRemoved, result.orphansSkipped)
   }
+
   return result
 }
 
@@ -420,6 +485,7 @@ function layoutState(hermesHome) {
   const { versions, staging } = listVersions(hermesHome)
   const link = linkStatus(activeLink)
   let activeResolvesTo = null
+
   if (link.kind === 'link') {
     try {
       activeResolvesTo = fs.realpathSync(activeLink)
@@ -427,6 +493,7 @@ function layoutState(hermesHome) {
       activeResolvesTo = null
     }
   }
+
   return {
     pointer,
     versions,
@@ -436,24 +503,24 @@ function layoutState(hermesHome) {
 }
 
 export {
+  ACTIVE_LINK_BASENAME,
+  bundlePaths,
+  createActiveLink,
+  garbageCollect,
+  layoutState,
+  linkResolvesTo,
+  linkStatus,
+  listVersions,
   POINTER_BASENAME,
   POINTER_SCHEMA_VERSION,
-  VERSIONS_DIRNAME,
-  ACTIVE_LINK_BASENAME,
-  TMP_SUFFIX,
-  bundlePaths,
   readPointer,
-  writePointerAtomic,
-  linkStatus,
-  removeLinkOnly,
-  createActiveLink,
-  linkResolvesTo,
-  repointActiveLink,
-  switchToVersion,
-  rollbackToPrevious,
   reconcileActiveLink,
-  listVersions,
+  removeLinkOnly,
   removeVersionDir,
-  garbageCollect,
-  layoutState
+  repointActiveLink,
+  rollbackToPrevious,
+  switchToVersion,
+  TMP_SUFFIX,
+  VERSIONS_DIRNAME,
+  writePointerAtomic
 }

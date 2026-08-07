@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
@@ -697,16 +697,16 @@ export function DesktopController() {
   // A profile switch/create drops to a fresh new-session draft so the previously
   // open session doesn't bleed across contexts. Skip the initial value.
   const freshSessionRequest = useStore($freshSessionRequest)
-  const lastFreshRef = useRef(freshSessionRequest)
+  const [lastFreshSessionRequest, setLastFreshSessionRequest] = useState(freshSessionRequest)
 
   useEffect(() => {
-    if (freshSessionRequest === lastFreshRef.current) {
+    if (freshSessionRequest === lastFreshSessionRequest) {
       return
     }
 
-    lastFreshRef.current = freshSessionRequest
+    setLastFreshSessionRequest(freshSessionRequest)
     startFreshSessionDraft()
-  }, [freshSessionRequest, startFreshSessionDraft])
+  }, [freshSessionRequest, lastFreshSessionRequest, startFreshSessionDraft])
 
   // A scenario pick (zero-state shelf or the ✦ menu) asks for its session via
   // this bus — the picker components have no access to session lifecycle. See
@@ -723,19 +723,19 @@ export function DesktopController() {
   // (the "forgets the LLM setting" report). gatewayState stays 'open' across a
   // swap (background sockets persist), so the open→open effect won't re-run.
   const activeGatewayProfile = useStore($activeGatewayProfile)
-  const lastGatewayProfileRef = useRef(activeGatewayProfile)
+  const [lastGatewayProfile, setLastGatewayProfile] = useState(activeGatewayProfile)
 
   useEffect(() => {
-    if (activeGatewayProfile === lastGatewayProfileRef.current) {
+    if (activeGatewayProfile === lastGatewayProfile) {
       return
     }
 
-    lastGatewayProfileRef.current = activeGatewayProfile
+    setLastGatewayProfile(activeGatewayProfile)
     // Force: the new profile has its own default, so reseed even if the composer
     // already shows the previous profile's model.
     void refreshCurrentModel(true)
     void refreshActiveProfile()
-  }, [activeGatewayProfile, refreshCurrentModel])
+  }, [activeGatewayProfile, lastGatewayProfile, refreshCurrentModel])
 
   const composer = useComposerActions({
     activeSessionId,

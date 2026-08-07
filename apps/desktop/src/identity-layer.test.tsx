@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Intro } from '@/components/chat/intro'
@@ -136,6 +136,51 @@ describe('identity: brand assets and chrome', () => {
 
     expect(brandMark).toContain("assetPath('apple-touch-icon.png')")
     expect(brandMark).not.toContain("assetPath('nous-girl.jpg')")
+  })
+
+  it('keeps every packaged-app lookup on the APEX artifact name', () => {
+    // The visible package was renamed before every updater/install/E2E lookup
+    // was migrated. electron-builder correctly emitted APEX.app/APEX.exe while
+    // those callers still searched only for Hermes.*, so builds went green and
+    // the update/first-run chain failed after packaging. Keep all six exits
+    // pinned; legacy Hermes candidates may remain only as upgrade fallbacks.
+    const pkg = JSON.parse(readSource('package.json'))
+    const main = readSource('electron', 'main.ts')
+    const packageProbe = readSource('scripts', 'test-desktop.mjs')
+    const e2e = readSource('e2e', 'fixtures.ts')
+    const installSh = readSource('..', '..', 'scripts', 'install.sh')
+    const installPs1 = readSource('..', '..', 'scripts', 'install.ps1')
+    const cli = readSource('..', '..', 'hermes_cli', 'main.py')
+
+    expect(pkg.productName).toBe('APEX')
+    expect(pkg.build.productName).toBe('APEX')
+    expect(pkg.build.executableName).toBe('APEX')
+    expect(packageProbe).toContain('`${PRODUCT_NAME}.app`')
+    expect(packageProbe).toContain('`${EXECUTABLE_NAME}.exe`')
+    expect(e2e).toContain('`${PACKAGED_PRODUCT_NAME}.app`')
+    expect(e2e).toContain('`${PACKAGED_EXECUTABLE_NAME}.exe`')
+    expect(main).toContain("'mac-arm64', 'APEX.app'")
+    expect(installSh).toContain('/mac-arm64/APEX.app')
+    expect(installPs1).toContain('\\release\\win-unpacked\\APEX.exe')
+    expect(cli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
+    expect(cli).toContain('"APEX.exe"')
+  })
+
+  it('uses the APEX name for every native window and default notification', () => {
+    const main = readSource('electron', 'main.ts')
+    const bootE2e = readSource('e2e', 'boot.spec.ts')
+    const onboarding = readSource('src', 'store', 'onboarding.ts')
+    const gatewayEvents = readSource('src', 'app', 'session', 'hooks', 'use-message-stream', 'gateway-event.ts')
+    const reactions = readSource('src', 'components', 'assistant-ui', 'thread', 'message-reactions.tsx')
+
+    expect((main.match(/title: APP_NAME/g) || []).length).toBeGreaterThanOrEqual(3)
+    expect(main).not.toMatch(/title: (?:payload\?\.title \|\| )?['"]Hermes['"]/)
+    expect(main).toContain("title: silent ? 'Connecting to APEX Cloud agent…' : 'Sign in to APEX'")
+    expect(main).toContain("title: 'Sign in to APEX Cloud'")
+    expect(bootE2e).toContain("expect(title).toContain('APEX')")
+    expect(onboarding).toContain("title: 'APEX is ready'")
+    expect(gatewayEvents).toContain("title: 'APEX error'")
+    expect(reactions).toContain('title="Reacted by APEX"')
   })
 })
 
