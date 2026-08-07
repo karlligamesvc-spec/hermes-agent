@@ -1,7 +1,8 @@
 """Regression tests for packaging metadata in pyproject.toml."""
 
-from pathlib import Path
+import re
 import tomllib
+from pathlib import Path
 
 def _load_optional_dependencies():
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
@@ -15,6 +16,19 @@ def _load_package_data():
     with pyproject_path.open("rb") as handle:
         tool = tomllib.load(handle)["tool"]
     return tool["setuptools"]["package-data"]
+
+
+def test_dockerfile_only_requests_declared_optional_extras():
+    """Every production image extra must resolve before a real Docker build."""
+    root = Path(__file__).resolve().parents[1]
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    docker_extras = set(re.findall(r"--extra\s+([\w-]+)", dockerfile))
+    declared_extras = set(_load_optional_dependencies())
+
+    assert docker_extras <= declared_extras, (
+        "Dockerfile requests undefined pyproject extras: "
+        f"{sorted(docker_extras - declared_extras)}"
+    )
 
 
 def test_matrix_extra_not_in_all():
