@@ -21,6 +21,7 @@ never blocks.
 """
 
 import hashlib
+import http.client
 import json
 import logging
 import os
@@ -32,6 +33,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 
 from hermes_constants import get_hermes_home
@@ -280,15 +282,54 @@ def is_platform_supported() -> bool:
     return _detect_target() is not None
 
 
+_DOWNLOAD_ATTEMPTS = 3
+_DOWNLOAD_RETRY_DELAY_SECONDS = 1
+
+
 def _download_file(url: str, dest: str, timeout: int = 10):
-    """Download a URL to a local file."""
+    """Download a URL, retrying bounded transient transport failures."""
     req = urllib.request.Request(url)
     from agent.secret_scope import get_secret
     token = get_secret("GITHUB_TOKEN")
     if token:
         req.add_header("Authorization", f"token {token}")
-    with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as f:
-        shutil.copyfileobj(resp, f)
+
+    for attempt in range(1, _DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as f:
+                shutil.copyfileobj(resp, f)
+            return
+        except urllib.error.HTTPError as exc:
+            # Retry rate limits, request timeouts, and server failures. Other
+            # client errors are permanent for this URL and should fail fast.
+            if 400 <= exc.code < 500 and exc.code not in {408, 429}:
+                raise
+            error = exc
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.HTTPException,
+        ) as exc:
+            error = exc
+
+        try:
+            os.unlink(dest)
+        except FileNotFoundError:
+            pass
+
+        if attempt == _DOWNLOAD_ATTEMPTS:
+            raise error
+
+        delay = _DOWNLOAD_RETRY_DELAY_SECONDS * attempt
+        logger.warning(
+            "tirith download attempt %d/%d failed; retrying in %ds: %s",
+            attempt,
+            _DOWNLOAD_ATTEMPTS,
+            delay,
+            error,
+        )
+        time.sleep(delay)
 
 
 def _verify_cosign(checksums_path: str, sig_path: str, cert_path: str) -> bool | None:
