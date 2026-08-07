@@ -43,7 +43,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0 # need history for the merge base
+          # Do not fetch every branch and tag in this large fork. The next
+          # step fetches only the two histories needed for the merge base.
+          fetch-depth: 1
+
+      - name: Fetch comparison refs
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          BASE_SPEC="+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          HEAD_SPEC="+refs/pull/${PR_NUMBER}/head:refs/remotes/pull/${PR_NUMBER}/head"
+          git fetch --no-tags --prune --depth=256 origin "$BASE_SPEC" "$HEAD_SPEC"
+          HEAD_REF="refs/remotes/pull/${PR_NUMBER}/head"
+
+          # Old branches can predate the shallow window. Deepen only these two
+          # refs; never regress to actions/checkout fetch-depth:0, which fetches
+          # every branch + tag and repeatedly hit this job's five-minute cap.
+          if ! git merge-base "origin/${BASE_REF}" "$HEAD_REF" >/dev/null; then
+            git fetch --no-tags --prune --deepen=2048 origin "$BASE_SPEC" "$HEAD_SPEC"
+          fi
+          if ! git merge-base "origin/${BASE_REF}" "$HEAD_REF" >/dev/null; then
+            git fetch --no-tags --prune --unshallow origin "$BASE_SPEC" "$HEAD_SPEC"
+          fi
+          git merge-base "origin/${BASE_REF}" "$HEAD_REF" >/dev/null
 
       - name: Generate semantic lockfile diff
         id: diff
@@ -52,11 +76,12 @@ jobs:
           # Three-dot semantics by hand: diff from the merge base with the
           # target branch to the PR head, so changes that landed on main
           # after the branch point don't show up as this PR's doing.
-          BASE_SHA=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          HEAD_REF="refs/remotes/pull/${{ github.event.pull_request.number }}/head"
+          BASE_SHA=$(git merge-base "origin/${{ github.base_ref }}" "$HEAD_REF")
           echo "Merge base: ${BASE_SHA}"
           python3 scripts/ci/lockfile_diff.py \
             --base "$BASE_SHA" \
-            --head HEAD \
+            --head "$HEAD_REF" \
             --output /tmp/lockfile-diff.md
           if [ -s /tmp/lockfile-diff.md ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"

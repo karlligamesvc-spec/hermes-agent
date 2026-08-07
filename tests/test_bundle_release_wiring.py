@@ -77,8 +77,25 @@ def test_workflow_emits_registration_payload(bundle_wf_text):
 def test_win_is_gate_mac_is_experimental(bundle_wf_text):
     # win-x64 is the acceptance gate (fails the workflow); mac legs are
     # experimental (their failure does not).
-    assert "os: win, arch: x64, experimental: false" in bundle_wf_text
-    assert "experimental: true" in bundle_wf_text
+    assert '"win-x64": {"runner": "windows-latest", "os": "win", "arch": "x64", "experimental": False}' in bundle_wf_text
+    assert bundle_wf_text.count('"experimental": True') == 2
+
+
+def test_bundle_workflow_uses_supported_intel_mac_runner(bundle_wf_text):
+    # GitHub retired macos-13 on 2025-12-04. A queued job on that label can
+    # never validate or publish the Intel Mac bundle.
+    executable = "\n".join(line.split("#", 1)[0] for line in bundle_wf_text.splitlines())
+    assert '"mac-x64": {"runner": "macos-15-intel"' in bundle_wf_text
+    assert '"runner": "macos-13"' not in executable
+
+
+def test_manual_bundle_dispatch_can_select_one_platform(bundle_wf_text):
+    # A repair run for one platform must not rebuild and re-upload the other
+    # two large archives merely to fill one missing registry row.
+    assert "SELECTED_PLATFORM: ${{ inputs.platform || 'all' }}" in bundle_wf_text
+    assert 'elif selected in platforms:' in bundle_wf_text
+    assert 'include = [platforms[selected]]' in bundle_wf_text
+    assert "matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}" in bundle_wf_text
 
 
 def test_bundle_leg_is_independent_of_tarball_train():
