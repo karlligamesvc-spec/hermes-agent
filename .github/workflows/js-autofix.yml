@@ -140,7 +140,13 @@ jobs:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Skip publishing without GitHub App credentials
+        if: steps.app-token.outputs.using-app-token != 'true'
+        run: |
+          echo "::warning::Autofix patch was generated but cannot be published automatically: the protected GitHub App credential pair is unavailable. Download the js-fix-patch artifact and apply it through a reviewed PR."
+
       - name: Download patch
+        if: steps.app-token.outputs.using-app-token == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: js-fix-patch
@@ -151,6 +157,7 @@ jobs:
           path: ${{ runner.temp }}
 
       - name: Apply patch and push to bot branch
+        if: steps.app-token.outputs.using-app-token == 'true'
         env:
           BOT_BRANCH: bot/js-autofix
         run: |
@@ -181,6 +188,7 @@ jobs:
           git push --force origin HEAD:"$BOT_BRANCH"
 
       - name: Create/update PR and enable auto-merge
+        if: steps.app-token.outputs.using-app-token == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BOT_BRANCH: bot/js-autofix
@@ -204,6 +212,7 @@ jobs:
           gh pr merge "$PR_NUM" --auto --squash || true
 
       - name: Wait for merge, auto-close on failure or stale
+        if: steps.app-token.outputs.using-app-token == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           START_SHA: ${{ github.sha }}
