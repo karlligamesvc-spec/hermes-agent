@@ -4,7 +4,7 @@ import asyncio
 import base64
 import json
 import os
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import pytest
 
@@ -675,6 +675,69 @@ class TestIsStaleSessionRet:
         assert weixin._is_stale_session_ret(-14, None, "session expired") is False
 
 
+class TestWeixinPollRuntimeState:
+    @pytest.mark.asyncio
+    async def test_session_expired_is_not_reported_as_connected(self, monkeypatch):
+        adapter = _make_adapter()
+        adapter._running = True
+        adapter._poll_session = object()
+        adapter._write_runtime_status_safe = Mock()
+
+        get_updates = AsyncMock(return_value={"ret": weixin.SESSION_EXPIRED_ERRCODE})
+
+        async def cancel_sleep(_seconds):
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(weixin, "_get_updates", get_updates)
+        monkeypatch.setattr(weixin, "_load_sync_buf", lambda *_args: "")
+        monkeypatch.setattr(weixin.asyncio, "sleep", cancel_sleep)
+
+        await adapter._poll_loop()
+
+        adapter._write_runtime_status_safe.assert_called_once_with(
+            "session_expired",
+            platform_state="retrying",
+            error_code="weixin_session_expired",
+            error_message="Weixin session expired; re-login may be required",
+        )
+
+    @pytest.mark.asyncio
+    async def test_successful_poll_clears_session_expired_state(self, monkeypatch):
+        adapter = _make_adapter()
+        adapter._running = True
+        adapter._poll_session = object()
+        adapter._write_runtime_status_safe = Mock()
+
+        get_updates = AsyncMock(
+            side_effect=[
+                {"ret": weixin.SESSION_EXPIRED_ERRCODE},
+                {"ret": 0, "msgs": [], "get_updates_buf": "fresh"},
+                asyncio.CancelledError(),
+            ]
+        )
+        monkeypatch.setattr(weixin, "_get_updates", get_updates)
+        monkeypatch.setattr(weixin, "_load_sync_buf", lambda *_args: "")
+        monkeypatch.setattr(weixin, "_save_sync_buf", lambda *_args: None)
+        monkeypatch.setattr(weixin.asyncio, "sleep", AsyncMock())
+
+        await adapter._poll_loop()
+
+        assert adapter._write_runtime_status_safe.call_args_list == [
+            call(
+                "session_expired",
+                platform_state="retrying",
+                error_code="weixin_session_expired",
+                error_message="Weixin session expired; re-login may be required",
+            ),
+            call(
+                "connected",
+                platform_state="connected",
+                error_code=None,
+                error_message=None,
+            ),
+        ]
+
+
 class TestWeixinContentDedup:
     """Regression tests for Issue #16182 — upstream API sends duplicate content
     with different message_ids, bypassing message_id deduplication.
@@ -991,4 +1054,3 @@ class TestWeixinVoiceGatewayHandoff:
             "VOICE event body leaked Tencent's STT text — runner would trust "
             "the wrong transcript instead of re-transcribing (#27300)."
         )
-

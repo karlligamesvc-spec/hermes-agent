@@ -1451,6 +1451,7 @@ class WeixinAdapter(BasePlatformAdapter):
         sync_buf = _load_sync_buf(self._hermes_home, self._account_id)
         timeout_ms = LONG_POLL_TIMEOUT_MS
         consecutive_failures = 0
+        session_expired = False
 
         while self._running:
             try:
@@ -1471,6 +1472,23 @@ class WeixinAdapter(BasePlatformAdapter):
                     if (ret == SESSION_EXPIRED_ERRCODE or errcode == SESSION_EXPIRED_ERRCODE
                             or _is_stale_session_ret(ret, errcode, response.get("errmsg"))):
                         logger.error("[%s] Session expired; pausing for 10 minutes", self.name)
+                        # connect() can only validate that credentials exist; it
+                        # starts this poller in the background and therefore
+                        # used to publish ``connected`` before getUpdates had
+                        # accepted the session.  On an expired session the
+                        # poller then slept for ten minutes while
+                        # gateway_state.json continued to claim connected.
+                        # Deployment/readiness gates consequently certified a
+                        # dead inbound channel.  Keep the retry behaviour, but
+                        # make the observable platform state honest until a
+                        # successful poll proves recovery.
+                        self._write_runtime_status_safe(
+                            "session_expired",
+                            platform_state="retrying",
+                            error_code="weixin_session_expired",
+                            error_message="Weixin session expired; re-login may be required",
+                        )
+                        session_expired = True
                         await asyncio.sleep(600)
                         consecutive_failures = 0
                         continue
@@ -1490,6 +1508,9 @@ class WeixinAdapter(BasePlatformAdapter):
                     continue
 
                 consecutive_failures = 0
+                if session_expired:
+                    self._mark_connected()
+                    session_expired = False
                 new_sync_buf = str(response.get("get_updates_buf") or "")
                 if new_sync_buf:
                     sync_buf = new_sync_buf
