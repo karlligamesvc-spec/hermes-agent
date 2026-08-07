@@ -48,6 +48,15 @@ on:
         description: "pin a uv release tag (default: latest)"
         required: false
         default: ""
+      platform:
+        description: "platform to build (all, win-x64, mac-arm64, or mac-x64)"
+        type: choice
+        options:
+          - all
+          - win-x64
+          - mac-arm64
+          - mac-x64
+        default: all
   # Engine release-train wiring: the release ritual tags the runtime commit
   # `runtime-<sha8>` before flipping default, so pushing that tag auto-fires this
   # per-OS bundle matrix — bundles get built + published alongside the
@@ -67,18 +76,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: select bundle platform
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Build selected-platform matrix
+        id: matrix
+        shell: bash
+        env:
+          SELECTED_PLATFORM: ${{ inputs.platform || 'all' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          platforms = {
+              "win-x64": {"runner": "windows-latest", "os": "win", "arch": "x64", "experimental": False},
+              "mac-arm64": {"runner": "macos-14", "os": "mac", "arch": "arm64", "experimental": True},
+              # macos-13 was retired on 2025-12-04. macos-15-intel is the
+              # standard GitHub-hosted replacement for x86_64 macOS jobs.
+              "mac-x64": {"runner": "macos-15-intel", "os": "mac", "arch": "x64", "experimental": True},
+          }
+          selected = os.environ["SELECTED_PLATFORM"]
+          if selected == "all":
+              include = [platforms[selected]]
+          elif selected in platforms:
+              include = list(platforms.values())
+          else:
+              raise SystemExit(f"unsupported platform: {selected}")
+          print("matrix=" + json.dumps({"include": include}, separators=(",", ":")))
+          PY
+
   bundle:
     name: runtime bundle (${{ matrix.os }}-${{ matrix.arch }})
+    needs: plan
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.experimental }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { runner: windows-latest, os: win, arch: x64, experimental: false }
-          - { runner: macos-14, os: mac, arch: arm64, experimental: true }
-          - { runner: macos-13, os: mac, arch: x64, experimental: true }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     steps:
       - name: Checkout
