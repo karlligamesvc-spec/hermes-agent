@@ -185,7 +185,6 @@ export const zhHant = defineLocale({
     search: '搜尋',
     searchTitle: '搜尋工作階段、檢視和動作',
     swapSidebarSides: '交換側邊欄位置',
-    swapSidebarSidesTitle: '交換工作階段欄和檔案瀏覽器的位置',
     hideRightSidebar: '隱藏右側邊欄',
     showRightSidebar: '顯示右側邊欄',
     muteHaptics: '靜音觸感回饋',
@@ -662,8 +661,7 @@ export const zhHant = defineLocale({
       saving: '儲存中'
     },
     envActions: {
-      actionsFor: label => `${label} 的動作`,
-      credentialActions: '憑證動作',
+      actions: '動作',
       manageInKeys: '在 API 金鑰中管理',
       docs: '文件',
       hideValue: '隱藏值',
@@ -1151,7 +1149,7 @@ export const zhHant = defineLocale({
       installed: '已安裝',
       generatedTag: '生成',
       adoptFailed: '無法領養該寵物。',
-      toggleFailed: '無法切換寵物顯示。',
+      toggleFailed: () => '無法切換寵物顯示。',
       noneAvailable: '尚無可用寵物——請在下方選擇一個安裝。'
     },
     generatePet: {
@@ -1395,9 +1393,9 @@ export const zhHant = defineLocale({
     showAllProfiles: '顯示全部設定檔',
     switchToProfile: name => `切換至 ${name}`,
     manageProfiles: '管理設定檔…',
-    actionsFor: name => `${name} 的動作`,
+    actions: '設定檔動作',
     color: '顏色…',
-    colorFor: name => `${name} 的顏色`,
+    colorFor: '設定檔顏色',
     setColor: color => `設定顏色 ${color}`,
     autoColor: '自動',
     noProfiles: '找不到設定檔。',
@@ -1530,7 +1528,6 @@ export const zhHant = defineLocale({
     showRuns: '顯示執行記錄',
     hideRuns: '隱藏執行記錄',
     runHistory: '執行記錄',
-    actionsFor: title => `${title} 的動作`,
     actionsTitle: '排程工作動作',
     resume: '繼續',
     pause: '暫停',
@@ -1638,7 +1635,6 @@ export const zhHant = defineLocale({
     allPinned: '這裡的全部已釘選。取消釘選某個聊天即可在最近中顯示。',
     shiftClickHint: 'Shift + 點擊聊天以釘選 · 拖曳以重新排序',
     noWorkspace: '無工作區',
-    noProject: '無專案',
     projectEmpty: '尚無工作階段',
     noSessions: '尚無工作階段',
     projects: {
@@ -1714,7 +1710,6 @@ export const zhHant = defineLocale({
       archive: '封存',
       newWindow: '新視窗',
       copyIdFailed: '無法複製工作階段 ID',
-      actionsFor: title => `${title} 的動作`,
       sessionActions: '工作階段動作',
       sessionRunning: '工作階段執行中',
       needsInput: '需要您的輸入',
@@ -2511,12 +2506,6 @@ export const zhHant = defineLocale({
     closeOthers: '關閉其他',
     closeToRight: '關閉右側',
     closeAll: '全部關閉',
-    split: dir => `向${dir}分割`,
-    move: dir => `向${dir}移動`,
-    dirUp: '上',
-    dirDown: '下',
-    dirLeft: '左',
-    dirRight: '右',
     pluginDisabled: pluginId => `外掛「${pluginId}」已停用`,
     pluginDisabledBody: '在 設定 → 外掛 中重新啟用即可恢復面板。',
     missingPane: paneId => `缺少面板：${paneId}`,
@@ -2608,7 +2597,6 @@ export const zhHant = defineLocale({
       continueLabel: '繼續'
     },
     tool: {
-      code: '程式碼',
       copyCode: '複製程式碼',
       renderingImage: '正在渲染圖片',
       copyOutput: '複製輸出',
@@ -2793,7 +2781,7 @@ export const zhHant = defineLocale({
     sidebar: {
       title: '側邊欄',
       description: '顯示行動裝置側邊欄。',
-      toggle: '切換側邊欄'
+      toggle: () => '切換側邊欄'
     }
   },
 

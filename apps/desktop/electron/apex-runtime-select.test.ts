@@ -4,8 +4,8 @@ import { test } from 'vitest'
 
 import {
   canUseOnDiskRuntime,
-  resolvePreBootstrapDecision,
-  resolveBootstrapFailureFallback
+  resolveBootstrapFailureFallback,
+  resolvePreBootstrapDecision
 } from './apex-runtime-select'
 
 // ---------------------------------------------------------------------------

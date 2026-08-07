@@ -3,21 +3,21 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
+  buildErrorCode,
+  buildPayload,
+  classifyErrorCategory,
+  DEFAULT_API_BASE,
+  FIELD_MAX_LENGTHS,
+  fireTelemetry,
+  isTelemetryDisabled,
+  normalizeDesktopPlatform,
+  sendDesktopTelemetry,
+  STATUS_FAILURE,
   STATUS_START,
   STATUS_SUCCESS,
-  STATUS_FAILURE,
-  VALID_STATUSES,
-  DEFAULT_API_BASE,
   TELEMETRY_PATH,
-  FIELD_MAX_LENGTHS,
-  isTelemetryDisabled,
   telemetryEndpoint,
-  buildPayload,
-  normalizeDesktopPlatform,
-  classifyErrorCategory,
-  buildErrorCode,
-  sendDesktopTelemetry,
-  fireTelemetry
+  VALID_STATUSES
 } from './apexnodes-telemetry'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,7 @@ test('buildPayload: only the seven anonymous fields ever survive', () => {
     session_token: 'secret',
     path: '/Users/kael/.hermes'
   })
+
   assert.deepEqual(payload, {
     platform: 'win',
     arch: 'x64',
@@ -126,6 +127,7 @@ test('classifyErrorCategory: buckets common Node/install error shapes, never ech
     [null, 'unknown'],
     ['', 'unknown']
   ]
+
   for (const [err, want] of cases as any[]) {
     assert.equal(classifyErrorCategory(err), want, `expected ${want} for ${err && err.message}`)
   }
@@ -155,13 +157,16 @@ function baseEvent(overrides: any = {}) {
 
 test('sendDesktopTelemetry: kill switch short-circuits before any transport call', async () => {
   let called = false
+
   const result = await sendDesktopTelemetry(baseEvent(), {
     env: { APEXNODES_TELEMETRY: 'off' },
     _post: async () => {
       called = true
+
       return { ok: true }
     }
   })
+
   assert.equal(result.ok, false)
   assert.equal(result.skipped, 'disabled')
   assert.equal(called, false, 'the transport must never be invoked once disabled')
@@ -170,6 +175,7 @@ test('sendDesktopTelemetry: kill switch short-circuits before any transport call
 test('sendDesktopTelemetry: fake-fetch success path resolves ok:true and posts the allow-listed body', async () => {
   let seenUrl = null
   let seenPayload = null
+
   const result = await sendDesktopTelemetry(
     baseEvent({ error_code: null, runtime_key: 'v2026.7.1', extra_field: 'must-not-appear' }),
     {
@@ -177,10 +183,12 @@ test('sendDesktopTelemetry: fake-fetch success path resolves ok:true and posts t
       _post: async (url, payload) => {
         seenUrl = url
         seenPayload = payload
+
         return { ok: true, status: 201 }
       }
     }
   )
+
   assert.equal(result.ok, true)
   assert.equal(seenUrl, `${DEFAULT_API_BASE}${TELEMETRY_PATH}`)
   assert.deepEqual(seenPayload, {
@@ -197,6 +205,7 @@ test('sendDesktopTelemetry: fake-fetch timeout resolves ok:false, never rejects'
     env: {},
     _post: async () => ({ ok: false, error: 'timeout' })
   })
+
   assert.equal(result.ok, false)
   assert.equal(result.error, 'timeout')
 })
@@ -209,6 +218,7 @@ test('sendDesktopTelemetry: fake-fetch offline (rejecting transport) still resol
         throw new Error('getaddrinfo ENOTFOUND api.apex-nodes.com')
       }
     })
+
     assert.equal(result.ok, false)
     assert.match(result.error, /ENOTFOUND/)
   })
@@ -221,16 +231,20 @@ test('sendDesktopTelemetry: a synchronously-throwing transport still resolves, n
       throw new Error('boom')
     }
   })
+
   assert.equal(result.ok, false)
   assert.equal(result.error, 'boom')
 })
 
 test('sendDesktopTelemetry: rejects invalid event shapes without ever calling the transport', async () => {
   let called = false
+
   const post = async () => {
     called = true
+
     return { ok: true }
   }
+
   const missingStage = await sendDesktopTelemetry({ platform: 'win', status: STATUS_START }, { env: {}, _post: post })
   const badStatus = await sendDesktopTelemetry(baseEvent({ status: 'bogus' }), { env: {}, _post: post })
   const missingPlatform = await sendDesktopTelemetry({ stage: 'x', status: STATUS_START }, { env: {}, _post: post })
@@ -250,6 +264,7 @@ test('VALID_STATUSES matches the tri-state vocabulary the cloud Pydantic validat
 
 test('fireTelemetry: does not block (returns before an async sendFn settles)', () => {
   let resolved = false
+
   const slowSend = () =>
     new Promise(resolve => {
       setTimeout(() => {
@@ -257,6 +272,7 @@ test('fireTelemetry: does not block (returns before an async sendFn settles)', (
         resolve({ ok: true })
       }, 50)
     })
+
   const before = Date.now()
   fireTelemetry(slowSend, { stage: 'x' })
   const elapsedMs = Date.now() - before

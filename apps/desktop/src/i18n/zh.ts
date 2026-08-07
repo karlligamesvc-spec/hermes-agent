@@ -1,8 +1,8 @@
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
-import type { Translations } from './types'
+import { defineLocale } from './define-locale'
 
-export const zh: Translations = {
+export const zh = defineLocale({
   common: {
     apply: '应用',
     back: '返回',
@@ -185,7 +185,6 @@ export const zh: Translations = {
     search: '搜索',
     searchTitle: '搜索会话、视图与操作',
     swapSidebarSides: '交换侧边栏位置',
-    swapSidebarSidesTitle: '交换会话栏和文件浏览器的位置',
     hideRightSidebar: '隐藏右侧栏',
     showRightSidebar: '显示右侧栏',
     muteHaptics: '关闭触感反馈',
@@ -773,8 +772,7 @@ export const zh: Translations = {
       saving: '保存中'
     },
     envActions: {
-      actionsFor: label => `${label} 的操作`,
-      credentialActions: '凭据操作',
+      actions: '操作',
       manageInKeys: '在 API 密钥中管理',
       docs: '文档',
       hideValue: '隐藏值',
@@ -1432,7 +1430,7 @@ export const zh: Translations = {
       installed: '已安装',
       generatedTag: '生成',
       adoptFailed: '无法领养该宠物。',
-      toggleFailed: '无法切换宠物显示。',
+      toggleFailed: () => '无法切换宠物显示。',
       noneAvailable: '暂无可用宠物——请在下方选择一个安装。'
     },
     generatePet: {
@@ -1729,9 +1727,9 @@ export const zh: Translations = {
     showAllProfiles: '显示全部配置档案',
     switchToProfile: name => `切换到 ${name}`,
     manageProfiles: '管理配置档案…',
-    actionsFor: name => `${name} 的操作`,
+    actions: '配置档案操作',
     color: '颜色…',
-    colorFor: name => `${name} 的颜色`,
+    colorFor: '配置档案颜色',
     setColor: color => `设置颜色 ${color}`,
     autoColor: '自动',
     noProfiles: '暂无配置档案。',
@@ -1864,7 +1862,6 @@ export const zh: Translations = {
     showRuns: '显示运行记录',
     hideRuns: '隐藏运行记录',
     runHistory: '运行记录',
-    actionsFor: title => `${title} 的操作`,
     actionsTitle: '定时任务操作',
     resume: '恢复定时任务',
     pause: '暂停定时任务',
@@ -1972,7 +1969,6 @@ export const zh: Translations = {
     allPinned: '这里的全部已置顶。取消置顶某个对话即可在最近中显示。',
     shiftClickHint: 'Shift+ 单击对话以置顶 · 拖动以重新排序',
     noWorkspace: '无工作区',
-    noProject: '无项目',
     projectEmpty: '暂无会话',
     noSessions: '暂无会话',
     projects: {
@@ -2054,7 +2050,6 @@ export const zh: Translations = {
       openInNewTab: '在新标签页中打开',
       openInSplit: '在分屏中打开',
       copyIdFailed: '无法复制会话 ID',
-      actionsFor: title => `${title} 的操作`,
       sessionActions: '会话操作',
       sessionRunning: '会话运行中',
       needsInput: '需要你输入',
@@ -2862,12 +2857,6 @@ export const zh: Translations = {
     closeOthers: '关闭其他',
     closeToRight: '关闭右侧',
     closeAll: '全部关闭',
-    split: dir => `向${dir}拆分`,
-    move: dir => `向${dir}移动`,
-    dirUp: '上',
-    dirDown: '下',
-    dirLeft: '左',
-    dirRight: '右',
     pluginDisabled: pluginId => `插件“${pluginId}”已禁用`,
     pluginDisabledBody: '在 设置 → 插件 中重新启用即可恢复面板。',
     missingPane: paneId => `缺少面板：${paneId}`,
@@ -2961,7 +2950,6 @@ export const zh: Translations = {
       continueLabel: '继续'
     },
     tool: {
-      code: '代码',
       copyCode: '复制代码',
       renderingImage: '正在渲染图片',
       copyOutput: '复制输出',
@@ -3142,7 +3130,7 @@ export const zh: Translations = {
     sidebar: {
       title: '侧边栏',
       description: '显示移动端侧边栏。',
-      toggle: '切换侧边栏'
+      toggle: () => '切换侧边栏'
     }
   },
 
@@ -3382,4 +3370,4 @@ export const zh: Translations = {
     running: '运行中',
     stop: '停止'
   }
-}
+})

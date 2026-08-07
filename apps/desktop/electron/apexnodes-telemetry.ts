@@ -87,6 +87,7 @@ const FIELD_MAX_LENGTHS = {
   status: 16,
   error_code: 120
 }
+
 const ANON_FIELDS = Object.keys(FIELD_MAX_LENGTHS)
 
 function trimTrailingSlash(value) {
@@ -103,12 +104,14 @@ function isTelemetryDisabled(env = process.env) {
   const raw = String((env && env.APEXNODES_TELEMETRY) || '')
     .trim()
     .toLowerCase()
+
   return raw === 'off' || raw === '0' || raw === 'false' || raw === 'disabled'
 }
 
 /** @param {Record<string,string|undefined>} [env] */
 function telemetryEndpoint(env = process.env) {
   const base = trimTrailingSlash((env && env.APEXNODES_API_BASE) || DEFAULT_API_BASE)
+
   return `${base}${TELEMETRY_PATH}`
 }
 
@@ -121,13 +124,16 @@ function telemetryEndpoint(env = process.env) {
  */
 function buildPayload(event) {
   const payload: any = {}
+
   for (const field of ANON_FIELDS) {
     const value = event ? event[field] : undefined
-    if (value === undefined || value === null || value === '') continue
+
+    if (value === undefined || value === null || value === '') {continue}
     const str = String(value)
     const max = FIELD_MAX_LENGTHS[field]
     payload[field] = max && str.length > max ? str.slice(0, max) : str
   }
+
   return payload
 }
 
@@ -140,9 +146,12 @@ function buildPayload(event) {
  * @param {string} rawPlatform e.g. process.platform, or an already-normalized 'win'/'mac'
  */
 function normalizeDesktopPlatform(rawPlatform) {
-  if (rawPlatform === 'darwin') return 'mac'
-  if (rawPlatform === 'win32') return 'win'
-  if (rawPlatform === 'mac' || rawPlatform === 'win' || rawPlatform === 'linux') return rawPlatform
+  if (rawPlatform === 'darwin') {return 'mac'}
+
+  if (rawPlatform === 'win32') {return 'win'}
+
+  if (rawPlatform === 'mac' || rawPlatform === 'win' || rawPlatform === 'linux') {return rawPlatform}
+
   return rawPlatform || 'linux'
 }
 
@@ -155,16 +164,27 @@ function normalizeDesktopPlatform(rawPlatform) {
  */
 function classifyErrorCategory(err) {
   const message = String((err && err.message) || err || '').toLowerCase()
-  if (!message) return 'unknown'
-  if (/cancelled|canceled|aborted/.test(message)) return 'cancelled'
-  if (/timed out|timeout|etimedout/.test(message)) return 'timeout'
-  if (/sha256|sha mismatch|checksum|hash mismatch/.test(message)) return 'checksum_mismatch'
-  if (/enoent|not found|no such file|missing/.test(message)) return 'not_found'
-  if (/eacces|eperm|permission denied/.test(message)) return 'permission'
-  if (/econnrefused|econnreset|enotfound|getaddrinfo|network|socket/.test(message)) return 'network'
-  if (/no json result frame|no parseable json|unexpected args/.test(message)) return 'protocol'
-  if (/platform_mismatch|key_mismatch|min_desktop_version|bad_manifest/.test(message)) return 'incompatible'
-  if (/exit code|exit \d|non-zero/.test(message)) return 'exit_nonzero'
+
+  if (!message) {return 'unknown'}
+
+  if (/cancelled|canceled|aborted/.test(message)) {return 'cancelled'}
+
+  if (/timed out|timeout|etimedout/.test(message)) {return 'timeout'}
+
+  if (/sha256|sha mismatch|checksum|hash mismatch/.test(message)) {return 'checksum_mismatch'}
+
+  if (/enoent|not found|no such file|missing/.test(message)) {return 'not_found'}
+
+  if (/eacces|eperm|permission denied/.test(message)) {return 'permission'}
+
+  if (/econnrefused|econnreset|enotfound|getaddrinfo|network|socket/.test(message)) {return 'network'}
+
+  if (/no json result frame|no parseable json|unexpected args/.test(message)) {return 'protocol'}
+
+  if (/platform_mismatch|key_mismatch|min_desktop_version|bad_manifest/.test(message)) {return 'incompatible'}
+
+  if (/exit code|exit \d|non-zero/.test(message)) {return 'exit_nonzero'}
+
   return 'unknown'
 }
 
@@ -177,6 +197,7 @@ function classifyErrorCategory(err) {
  */
 function buildErrorCode(stage, err) {
   const code = `${stage}:${classifyErrorCategory(err)}`
+
   return code.length > FIELD_MAX_LENGTHS.error_code ? code.slice(0, FIELD_MAX_LENGTHS.error_code) : code
 }
 
@@ -198,27 +219,34 @@ function buildErrorCode(stage, err) {
 function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
   return new Promise(resolve => {
     let parsed
+
     try {
       parsed = new URL(url)
     } catch (err: any) {
       resolve({ ok: false, error: `invalid_url: ${(err && err.message) || err}` })
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       resolve({ ok: false, error: `unsupported_protocol: ${parsed.protocol}` })
+
       return
     }
+
     const client = parsed.protocol === 'https:' ? https : http
     const body = Buffer.from(JSON.stringify(payload || {}))
 
     let settled = false
+
     const finish = result => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       resolve(result)
     }
 
     let req
+
     try {
       req = client.request(parsed, {
         method: 'POST',
@@ -226,6 +254,7 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
       })
     } catch (err: any) {
       finish({ ok: false, error: (err && err.message) || 'request_failed' })
+
       return
     }
 
@@ -276,13 +305,17 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
  */
 function sendDesktopTelemetry(event, opts: any = {}) {
   const env = opts.env || process.env
-  if (isTelemetryDisabled(env)) return Promise.resolve({ ok: false, skipped: 'disabled' })
+
+  if (isTelemetryDisabled(env)) {return Promise.resolve({ ok: false, skipped: 'disabled' })}
+
   if (!event || typeof event.stage !== 'string' || !event.stage.trim()) {
     return Promise.resolve({ ok: false, skipped: 'invalid_stage' })
   }
+
   if (!VALID_STATUSES.has(event.status)) {
     return Promise.resolve({ ok: false, skipped: 'invalid_status' })
   }
+
   if (!event.platform || typeof event.platform !== 'string') {
     return Promise.resolve({ ok: false, skipped: 'missing_platform' })
   }
@@ -292,11 +325,13 @@ function sendDesktopTelemetry(event, opts: any = {}) {
   const timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT_MS
 
   let result
+
   try {
     result = post(telemetryEndpoint(env), payload, { timeoutMs })
   } catch (err: any) {
     return Promise.resolve({ ok: false, error: (err && err.message) || 'post_threw' })
   }
+
   return Promise.resolve(result).catch(err => ({ ok: false, error: (err && err.message) || 'post_rejected' }))
 }
 
@@ -314,7 +349,8 @@ function sendDesktopTelemetry(event, opts: any = {}) {
 function fireTelemetry(sendFn, event) {
   try {
     const result = typeof sendFn === 'function' ? sendFn(event) : null
-    if (result && typeof result.catch === 'function') result.catch(() => {})
+
+    if (result && typeof result.catch === 'function') {result.catch(() => {})}
   } catch {
     // Telemetry must never affect the real install/update flow (hc-473).
     void 0
@@ -322,22 +358,22 @@ function fireTelemetry(sendFn, event) {
 }
 
 export {
-  STATUS_START,
-  STATUS_SUCCESS,
-  STATUS_FAILURE,
-  VALID_STATUSES,
+  ANON_FIELDS,
+  buildErrorCode,
+  buildPayload,
+  classifyErrorCategory,
   DEFAULT_API_BASE,
-  TELEMETRY_PATH,
   DEFAULT_TIMEOUT_MS,
   FIELD_MAX_LENGTHS,
-  ANON_FIELDS,
+  fireTelemetry,
   isTelemetryDisabled,
-  telemetryEndpoint,
-  buildPayload,
   normalizeDesktopPlatform,
-  classifyErrorCategory,
-  buildErrorCode,
   postJson,
   sendDesktopTelemetry,
-  fireTelemetry
+  STATUS_FAILURE,
+  STATUS_START,
+  STATUS_SUCCESS,
+  TELEMETRY_PATH,
+  telemetryEndpoint,
+  VALID_STATUSES
 }

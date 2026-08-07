@@ -85,6 +85,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     let settled = false
     let resolveResult
     let rejectResult
+
     const result = new Promise((res, rej) => {
       resolveResult = res
       rejectResult = rej
@@ -97,6 +98,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
         clearTimeout(watchdog)
         watchdog = null
       }
+
       // Force-drop any lingering keep-alive sockets first so close() can release
       // the handle immediately (a browser may hold the connection open after the
       // redirect; without this the listener — and a test runner's event loop —
@@ -109,6 +111,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
       } catch {
         // best effort
       }
+
       try {
         server.close()
       } catch {
@@ -117,7 +120,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     }
 
     const fail = reason => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       cleanup()
       const err: any = new Error(`Loopback login failed: ${reason}`)
@@ -126,7 +129,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     }
 
     const succeed = token => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       cleanup()
       resolveResult({ token })
@@ -139,6 +142,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end(SUCCESS_HTML)
         succeed(outcome.token)
+
         return
       }
 
@@ -147,6 +151,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
       if (!outcome.isCallback) {
         res.statusCode = 204
         res.end()
+
         return
       }
 
@@ -162,8 +167,10 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
         // A bind error before we ever started → reject the *start* promise.
         if (!server.listening) {
           rejectStart(error)
+
           return
         }
+
         fail(error && error.message ? error.message : String(error))
       }
     })
@@ -172,17 +179,21 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     server.listen(0, host, () => {
       const address = server.address()
       const port = typeof address === 'object' && address ? address.port : 0
+
       if (!port) {
         try {
           server.close()
         } catch {
           // ignore
         }
+
         rejectStart(new Error('Loopback server did not bind a port.'))
+
         return
       }
 
       watchdog = setTimeout(() => fail('timeout'), timeoutMs)
+
       // Don't let the watchdog keep the event loop / app alive.
       if (typeof watchdog.unref === 'function') {
         watchdog.unref()

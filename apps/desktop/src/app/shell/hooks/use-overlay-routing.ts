@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useCallback, useMemo, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 
 import { type CommandCenterSection } from '@/app/command-center'
 import {
@@ -27,6 +27,7 @@ export function useOverlayRouting() {
   // 个人资料 (PROFILE_STATS_ROUTE) — the ApexNodes account/usage card. Distinct
   // from `profilesOpen`, the multi-profile (配置档案) manager.
   const profileStatsOpen = currentView === 'profile'
+  const webhooksOpen = currentView === 'webhooks'
   const chatOpen = currentView === 'chat'
   const overlayOpen = isOverlayView(currentView)
 
@@ -34,11 +35,9 @@ export function useOverlayRouting() {
   // so closing them returns there instead of bouncing to /.
   const returnPathRef = useRef(NEW_CHAT_ROUTE)
 
-  useEffect(() => {
-    if (!overlayOpen) {
-      returnPathRef.current = `${location.pathname}${location.search}${location.hash}`
-    }
-  }, [location.hash, location.pathname, location.search, overlayOpen])
+  if (!overlayOpen) {
+    returnPathRef.current = `${location.pathname}${location.search}${location.hash}`
+  }
 
   const commandCenterInitialSection = useMemo<CommandCenterSection | undefined>(
     () => SECTIONS.find(value => value === new URLSearchParams(location.search).get('section')),
@@ -54,6 +53,10 @@ export function useOverlayRouting() {
     () => navigate(returnPathRef.current || NEW_CHAT_ROUTE, { replace: true }),
     [navigate]
   )
+
+  const resetOverlayReturnRoute = useCallback(() => {
+    returnPathRef.current = NEW_CHAT_ROUTE
+  }, [])
 
   const toggleCommandCenter = useCallback(() => {
     if (commandCenterOpen) {
@@ -79,8 +82,10 @@ export function useOverlayRouting() {
     openStarmap,
     profilesOpen,
     profileStatsOpen,
+    resetOverlayReturnRoute,
     settingsOpen,
     starmapOpen,
-    toggleCommandCenter
+    toggleCommandCenter,
+    webhooksOpen
   }
 }

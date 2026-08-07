@@ -17,25 +17,31 @@ const PLAT = { platform: process.platform }
 function mkHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'hb-migrate-'))
 }
+
 function rm(home) {
   fs.rmSync(home, { recursive: true, force: true })
 }
+
 /** A legacy in-place install: a REAL hermes-agent/ dir with an abs-path venv. */
 function seedLegacy(home, extra: any = {}) {
   const dir = layout.bundlePaths(home).activeLink
   fs.mkdirSync(path.join(dir, 'venv', 'bin'), { recursive: true })
   fs.writeFileSync(path.join(dir, 'venv', 'bin', 'python'), '#!/legacy/abs/venv/bin/python')
+
   for (const [rel, body] of Object.entries<any>(extra)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
     fs.writeFileSync(path.join(dir, rel), body)
   }
+
   return dir
 }
+
 /** A committed version dir with a recognizable payload. */
 function seedVersion(home, key) {
   const dir = layout.bundlePaths(home).versionDir(key)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'payload.txt'), `runtime ${key}`)
+
   return dir
 }
 
@@ -45,6 +51,7 @@ function seedVersion(home, key) {
 
 test('detectLegacyInPlace: real dir + no versions is legacy; link or versions is not', () => {
   const home = mkHome()
+
   try {
     assert.equal(migrate.detectLegacyInPlace(home).legacy, false) // nothing there
     seedLegacy(home)
@@ -59,6 +66,7 @@ test('detectLegacyInPlace: real dir + no versions is legacy; link or versions is
 
 test('assertNoUserDataInLegacy: clean is safe; any user-data marker is not', () => {
   const home = mkHome()
+
   try {
     const dir = seedLegacy(home)
     assert.equal(migrate.assertNoUserDataInLegacy(dir).safe, true)
@@ -83,6 +91,7 @@ test('assertNoUserDataInLegacy: clean is safe; any user-data marker is not', () 
 
 test('migrateLegacyInPlace: pointer→sentinel, dir aside, link to versions/<key>', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedLegacy(home)
     const key = 'cccccccccccc'
@@ -107,6 +116,7 @@ test('migrateLegacyInPlace: pointer→sentinel, dir aside, link to versions/<key
 
 test('migrateLegacyInPlace: refuses (no state change) when user data is inside', () => {
   const home = mkHome()
+
   try {
     seedLegacy(home, { '.env': 'SECRET=1' })
     const key = 'cccccccccccc'
@@ -125,6 +135,7 @@ test('migrateLegacyInPlace: refuses (no state change) when user data is inside',
 
 test('rollbackToLegacyInPlace: link points back at the aside; legacy venv resolves through it', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedLegacy(home)
     const key = 'cccccccccccc'
@@ -145,6 +156,7 @@ test('rollbackToLegacyInPlace: link points back at the aside; legacy venv resolv
 
 test('rollbackToLegacyInPlace: refuses when previous is not the sentinel', () => {
   const home = mkHome()
+
   try {
     layout.writePointerAtomic(home, { key: 'bbbbbbbbbbbb', previous: 'aaaaaaaaaaaa' })
     const r = migrate.rollbackToLegacyInPlace(home, PLAT)
@@ -161,6 +173,7 @@ test('rollbackToLegacyInPlace: refuses when previous is not the sentinel', () =>
 
 test('reconcileMigration: finishes a migration interrupted after pointer-write, before move', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedLegacy(home)
     const key = 'cccccccccccc'
@@ -183,6 +196,7 @@ test('reconcileMigration: finishes a migration interrupted after pointer-write, 
 
 test('reconcileMigration: finishes a migration interrupted after move, before link', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     const legacy = seedLegacy(home)
     const key = 'cccccccccccc'
@@ -203,6 +217,7 @@ test('reconcileMigration: finishes a migration interrupted after move, before li
 
 test('reconcileMigration: heals the link after a rollback to the legacy aside', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedLegacy(home)
     const key = 'cccccccccccc'
@@ -230,6 +245,7 @@ test('reconcileMigration: heals the link after a rollback to the legacy aside', 
 
 test('gcLegacyAside: kept while sentinel is the fallback; reaped after the next update drops it', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedLegacy(home)
     const first = 'cccccccccccc'
@@ -258,6 +274,7 @@ test('gcLegacyAside: kept while sentinel is the fallback; reaped after the next 
 
 test('gcLegacyAside: respects an injected lock (skips, retries next startup)', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     // A migrated-then-superseded state where the aside would normally be reaped.
     fs.mkdirSync(migrate.legacyAsidePath(home), { recursive: true })
@@ -273,6 +290,7 @@ test('gcLegacyAside: respects an injected lock (skips, retries next startup)', {
 
 test('switchToVersionOrMigrate: a non-legacy (link/missing) active path takes the normal switch', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     const key = 'cccccccccccc'
     seedVersion(home, key)
@@ -288,6 +306,7 @@ test('switchToVersionOrMigrate: a non-legacy (link/missing) active path takes th
 
 test('migrateLegacyInPlace: idempotent re-run does not create a second aside', { skip: !POSIX }, () => {
   const home = mkHome()
+
   try {
     seedLegacy(home)
     const key = 'cccccccccccc'

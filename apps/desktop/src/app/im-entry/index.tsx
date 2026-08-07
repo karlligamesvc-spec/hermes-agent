@@ -34,7 +34,9 @@ function liveStatus(state: string | undefined, copy: Translations['imEntry']): {
       return { tone: 'good', label: copy.liveState.connected }
 
     case 'error':
+
     case 'fatal':
+
     case 'startup_failed':
       return { tone: 'bad', label: copy.liveState.error }
 

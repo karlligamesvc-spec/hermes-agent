@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { useI18n } from '@/i18n'
-import { requestModelOptions } from '@/lib/model-options'
+import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { currentPickerSelection, managedModelDisplayName } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders } from '@/lib/provider-allowlist'
@@ -28,6 +28,7 @@ interface ModelPickerDialogProps {
   currentModel: string
   currentProvider: string
   onSelect: (selection: { provider: string; model: string }) => void
+  profile?: string
   /**
    * Optional class to apply to DialogContent. Use to override z-index when
    * stacking the picker on top of another fixed overlay (e.g. the desktop
@@ -45,6 +46,7 @@ export function ModelPickerDialog({
   currentModel,
   currentProvider,
   onSelect,
+  profile = 'default',
   contentClassName
 }: ModelPickerDialogProps) {
   const { t } = useI18n()
@@ -57,7 +59,7 @@ export function ModelPickerDialog({
   const [search, setSearch] = useState('')
 
   const modelOptions = useQuery({
-    queryKey: ['model-options', sessionId || 'global'],
+    queryKey: modelOptionsQueryKey(profile, sessionId),
     queryFn: () => requestModelOptions({ gateway: gw, sessionId }),
     enabled: open
   })

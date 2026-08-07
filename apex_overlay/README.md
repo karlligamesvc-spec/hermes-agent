@@ -1,9 +1,9 @@
-# apex_overlay — the ApexNodes overlay seam pattern (PILOT)
+# apex_overlay — the ApexNodes overlay seam pattern
 
-> Status: **pilot**. One seam shipped (hc-392 provider denylist). This README is
-> the template later phases (`gateway/run.py`, `gateway/platforms/feishu.py`,
-> `scripts/install.sh`) copy. Discipline + audit: `OVERLAY-SEAM-AUDIT.md` in the
-> hermes-cloud repo.
+> Status: **production**. The bundled `apex-overlay` plugin currently applies
+> 15 independently tested seams. Each seam keeps ApexNodes behavior outside
+> hot upstream files so version upgrades remain reviewable. Discipline and the
+> original audit live in `OVERLAY-SEAM-AUDIT.md` in the hermes-cloud repo.
 
 ## The problem this solves
 
@@ -62,7 +62,31 @@ the seam. The seam-test (`tests/apex_overlay/test_*_seam.py`) asserts the target
 function/attribute still exists and its signature is unchanged — turning a silent
 disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 
-## The pilot: hc-392 provider denylist
+## Current seam inventory
+
+| Seam | Contract |
+|---|---|
+| `provider_filter` | Do not probe or show disabled providers (hc-392/hc-621). |
+| `model_catalog_dedupe` | Collapse managed-sentinel and live bare model IDs into one picker row (hc-512). |
+| `picker_probe_widening` | Preserve the full platform catalog for virtual/custom main providers. |
+| `custom_base_url_guard` | Preserve the managed relay address while switching custom-provider models. |
+| `custom_row_dedupe` | Remove the duplicate unauthenticated “Custom endpoint” row (hc-598). |
+| `models_dev_fast` | Keep the model picker responsive while the large models.dev catalog refreshes. |
+| `gateway_bootstrap` | Start slow platform adapters in the background without delaying conversation readiness (hc-384/hc-385). |
+| `feishu_supervisor` | Reconnect Feishu after failures instead of relying on the SDK's single-shot path (hc-384). |
+| `web_tools_extract` | Gate extraction by extraction capability, not the broader web-search key check (hc-401). |
+| `stt_no_lazy_install` | Prevent managed containers from OOMing on an in-request STT dependency install (hc-401). |
+| `first_turn_ack` | Acknowledge long first turns on the native China IM channels (hc-401). |
+| `cn_im_messages` | Localize gateway control/status messages for China IM channels (hc-401). |
+| `cn_mirror_env` | Route runtime dependency downloads through China mirrors when configured (hc-476). |
+| `im_passthrough` | Route `/cc` and `/codex` into direct coding-agent sessions (hc-539). |
+| `region` | Provide the shared region-policy helpers used by the China-specific seams. |
+
+`plugins/apex-overlay/__init__.py` is the authoritative registration order.
+Every behavioral seam has a matching test under `tests/apex_overlay/` that
+pins the upstream symbol or contract it depends on.
+
+## Example: hc-392 provider denylist
 
 `apex_overlay/provider_filter.py`. Contract: disabled providers (e.g. GitHub
 Copilot) make **no** startup network call and never appear in the `/model`
@@ -80,7 +104,7 @@ empty** → on a box with nothing disabled, behavior is identical to upstream.
 
 Seam-test: `tests/apex_overlay/test_provider_filter_seam.py`.
 
-## Checklist for the next seam
+## Checklist for a new seam
 
 - [ ] Move behavior into `apex_overlay/<thing>.py` with `apply()` (idempotent, fail-safe).
 - [ ] Find the narrowest patch point that gives the required behavior/timing.

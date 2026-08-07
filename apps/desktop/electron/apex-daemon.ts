@@ -90,18 +90,23 @@ function trimTrailingSlash(value) {
  */
 function isAllowedDaemonUrl(url) {
   let parsed
+
   try {
     parsed = new URL(String(url))
   } catch {
     return false
   }
+
   const hostname = parsed.hostname.toLowerCase()
+
   if (LOOPBACK_HOSTNAMES.has(hostname)) {
     return parsed.protocol === 'http:' || parsed.protocol === 'https:'
   }
+
   if (parsed.protocol !== 'https:') {
     return false
   }
+
   return hostname === ALLOWED_DAEMON_APEX_DOMAIN || hostname.endsWith(`.${ALLOWED_DAEMON_APEX_DOMAIN}`)
 }
 
@@ -119,6 +124,7 @@ function isAllowedDaemonUrl(url) {
 function resolveDaemonEndpoints(apiBase, env = process.env) {
   const base = trimTrailingSlash(apiBase)
   const e = env || {}
+
   return {
     registerUrl: trimStr(e.HERMES_DESKTOP_DAEMON_REGISTER_URL) || `${base}${DAEMON_REGISTER_PATH}`,
     heartbeatUrl: trimStr(e.HERMES_DESKTOP_DAEMON_HEARTBEAT_URL) || `${base}${DAEMON_HEARTBEAT_PATH}`,
@@ -138,6 +144,7 @@ function resolveDaemonEndpoints(apiBase, env = process.env) {
  */
 function bridgeResultUrl(apiBase, taskId, env = process.env) {
   const base = trimStr((env || {}).HERMES_DESKTOP_DAEMON_TASKS_URL) || `${trimTrailingSlash(apiBase)}${BRIDGE_TASKS_PATH}`
+
   return `${trimTrailingSlash(base)}/${encodeURIComponent(String(taskId || ''))}/result`
 }
 
@@ -153,9 +160,11 @@ function bridgeResultUrl(apiBase, taskId, env = process.env) {
  */
 function defaultDeviceName(hostname) {
   const raw = trimStr(hostname).replace(/\.local$/i, '').trim()
+
   if (!raw) {
     return FALLBACK_DEVICE_NAME
   }
+
   return raw.slice(0, DEVICE_NAME_MAX)
 }
 
@@ -169,6 +178,7 @@ function defaultDeviceName(hostname) {
  */
 function sanitizeDeviceName(raw, hostname) {
   const trimmed = trimStr(raw).slice(0, DEVICE_NAME_MAX).trim()
+
   return trimmed || defaultDeviceName(hostname)
 }
 
@@ -198,10 +208,13 @@ function buildRegisterBody({ deviceId, deviceName }: any = {}) {
     device_id: normalizeDeviceId(deviceId),
     capabilities: { source: 'apex-desktop-daemon', agent_families: [...SUPPORTED_AGENT_FAMILIES] }
   }
+
   const name = trimStr(deviceName)
+
   if (name) {
     body.name = name.slice(0, DEVICE_NAME_MAX)
   }
+
   return body
 }
 
@@ -220,11 +233,15 @@ function parseRegisterResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const token = trimStr(body.token)
+
   if (!token) {
     return null
   }
+
   const device = body.device && typeof body.device === 'object' ? body.device : {}
+
   return {
     token,
     serverId: trimStr(device.id),
@@ -244,7 +261,9 @@ function parseHeartbeatResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { online: false }
   }
+
   const device = body.device && typeof body.device === 'object' ? body.device : body
+
   return { online: device.online === true }
 }
 
@@ -259,7 +278,9 @@ function parsePollResponse(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const task = body.task
+
   return task && typeof task === 'object' && !Array.isArray(task) ? task : null
 }
 
@@ -275,17 +296,23 @@ function parseTaskEnvelope(task) {
   if (!task || typeof task !== 'object') {
     return null
   }
+
   const taskId = trimStr(task.id)
+
   if (!taskId) {
     return null
   }
+
   if (trimStr(task.bridge_type) !== DAEMON_BRIDGE_TYPE) {
     return null
   }
+
   const payload = task.payload && typeof task.payload === 'object' && !Array.isArray(task.payload) ? task.payload : null
+
   if (!payload) {
     return null
   }
+
   return { taskId, payload }
 }
 
@@ -303,25 +330,34 @@ function parseLocalAgentRunPayload(payload?: any) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return { ok: false, reason: 'payload not an object' }
   }
+
   if (trimStr(payload.kind) !== LOCAL_AGENT_RUN_KIND) {
     return { ok: false, reason: `unsupported kind ${trimStr(payload.kind) || '(none)'}` }
   }
+
   const family = trimStr(payload.agent_family)
+
   if (!family) {
     return { ok: false, reason: 'missing agent_family' }
   }
+
   if (!SUPPORTED_AGENT_FAMILIES.includes(family)) {
     return { ok: false, reason: `unsupported agent_family ${family}` }
   }
+
   const prompt = typeof payload.prompt === 'string' ? payload.prompt : ''
+
   if (!prompt.trim()) {
     return { ok: false, reason: 'missing prompt' }
   }
+
   const job: any = { family, prompt }
   const cwd = trimStr(payload.cwd)
+
   if (cwd) {
     job.cwd = cwd
   }
+
   return { ok: true, job }
 }
 
@@ -345,33 +381,41 @@ function buildResultSubmitBody(runnerResult) {
   if (!runnerResult || typeof runnerResult !== 'object' || Array.isArray(runnerResult)) {
     return { status: 'failed', result: { error: 'runner_no_result' } }
   }
+
   const output = typeof runnerResult.output === 'string' ? runnerResult.output : ''
 
   if (runnerResult.permission_required === true) {
     const result: any = { permission_required: true, permission_summary: trimStr(runnerResult.permission_summary) }
+
     if (output) {
       result.output = output
     }
+
     return { status: 'failed', result }
   }
 
   if (runnerResult.status === 'failed') {
     const result: any = { error: trimStr(runnerResult.error) || 'run_failed' }
     const detail = trimStr(runnerResult.detail)
+
     if (detail) {
       result.detail = detail
     }
+
     if (output) {
       result.output = output
     }
+
     return { status: 'failed', result }
   }
 
   const result: any = { output }
   const sessionId = trimStr(runnerResult.session_id)
+
   if (sessionId) {
     result.session_id = sessionId
   }
+
   return { status: 'done', result }
 }
 
@@ -402,6 +446,7 @@ function nextBackoffMs(attempt, { baseMs = 2000, capMs = 60000 }: any = {}) {
   const n = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0
   // Cap the exponent so 2**n cannot overflow before the min() clamps it.
   const exponent = Math.min(n, 30)
+
   return Math.min(capMs, baseMs * 2 ** exponent)
 }
 
@@ -429,12 +474,15 @@ function deriveDaemonStatus(state: any = {}) {
   if (!state.enabled) {
     return DAEMON_STATUS.DORMANT
   }
+
   if (trimStr(state.lastError)) {
     return DAEMON_STATUS.ERROR
   }
+
   if (!state.registered) {
     return DAEMON_STATUS.CONNECTING
   }
+
   return state.connected ? DAEMON_STATUS.ONLINE : DAEMON_STATUS.OFFLINE
 }
 
@@ -450,6 +498,7 @@ function deriveDaemonStatus(state: any = {}) {
  */
 function normalizeStoredDaemon(raw) {
   const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+
   return {
     enabled: obj.enabled === true,
     deviceId: normalizeDeviceId(obj.deviceId),
@@ -461,20 +510,19 @@ function normalizeStoredDaemon(raw) {
 export {
   BRIDGE_POLL_PATH,
   BRIDGE_TASKS_PATH,
-  DAEMON_BRIDGE_TYPE,
-  DAEMON_HEARTBEAT_PATH,
-  DAEMON_REGISTER_PATH,
-  DAEMON_STATUS,
-  DEVICE_ID_MAX,
-  LOCAL_AGENT_RUN_KIND,
-  SUPPORTED_AGENT_FAMILIES,
   bridgeResultUrl,
   buildInvalidTaskResult,
   buildRegisterBody,
   buildResultSubmitBody,
+  DAEMON_BRIDGE_TYPE,
+  DAEMON_HEARTBEAT_PATH,
+  DAEMON_REGISTER_PATH,
+  DAEMON_STATUS,
   defaultDeviceName,
   deriveDaemonStatus,
+  DEVICE_ID_MAX,
   isAllowedDaemonUrl,
+  LOCAL_AGENT_RUN_KIND,
   nextBackoffMs,
   normalizeDeviceId,
   normalizeStoredDaemon,
@@ -484,5 +532,6 @@ export {
   parseRegisterResponse,
   parseTaskEnvelope,
   resolveDaemonEndpoints,
-  sanitizeDeviceName
+  sanitizeDeviceName,
+  SUPPORTED_AGENT_FAMILIES
 }

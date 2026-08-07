@@ -11,6 +11,7 @@ import type { HermesGateway } from '@/hermes'
 import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { isMoaProviderSlug, SHOW_EXPLICIT_MOA_UI } from '@/lib/moa-compose'
+import { modelOptionsQueryKey } from '@/lib/model-options'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { dropAliasedCustomRow, providerDisplayName } from '@/lib/provider-allowlist'
@@ -30,6 +31,7 @@ interface ModelVisibilityDialogProps {
   onOpenChange: (open: boolean) => void
   onOpenProviders: () => void
   open: boolean
+  profile?: string
   sessionId?: string | null
 }
 
@@ -38,6 +40,7 @@ export function ModelVisibilityDialog({
   onOpenChange,
   onOpenProviders,
   open,
+  profile = 'default',
   sessionId
 }: ModelVisibilityDialogProps) {
   const { t } = useI18n()
@@ -46,7 +49,7 @@ export function ModelVisibilityDialog({
   const stored = useStore($visibleModels)
 
   const modelOptions = useQuery({
-    queryKey: ['model-options', sessionId || 'global'],
+    queryKey: modelOptionsQueryKey(profile, sessionId),
     queryFn: (): Promise<ModelOptionsResponse> => {
       if (gw && sessionId) {
         return gw.request<ModelOptionsResponse>('model.options', {

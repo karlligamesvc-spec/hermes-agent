@@ -18,6 +18,32 @@ def test_runtime_image_bakes_feishu_and_edge_tts_extras() -> None:
 
     assert "--extra feishu" in df
     assert "--extra edge-tts" in df
+    assert "--extra cloud-search" in df
+    assert "--extra dingtalk" in df
+
+
+def test_runtime_image_keeps_managed_export_and_document_seams() -> None:
+    df = _dockerfile_text()
+
+    assert "ARG HERMES_MANAGED_RUNTIME=" in df
+    assert "ENV HERMES_MANAGED_RUNTIME=${HERMES_MANAGED_RUNTIME}" in df
+    for dependency in (
+        "libcairo2",
+        "libpango-1.0-0",
+        "libgdk-pixbuf-2.0-0",
+        "fonts-noto-cjk",
+    ):
+        assert dependency in df
+
+
+def test_runtime_image_keeps_v020_sqlite_otlp_and_node_toolchain() -> None:
+    df = _dockerfile_text()
+
+    assert "FROM debian:13.4 AS sqlite_build" in df
+    assert "SQLITE_ENABLE_FTS5" in df
+    assert "FROM node:26-bookworm-slim" in df
+    assert "--extra otlp" in df
+    assert "libatomic1" in df
 
 
 def test_runtime_image_bakes_tirith_binary() -> None:

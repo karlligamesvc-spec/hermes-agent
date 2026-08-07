@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { Codicon } from '@/components/ui/codicon'
 import {

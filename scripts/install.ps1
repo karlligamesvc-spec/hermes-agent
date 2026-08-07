@@ -22,6 +22,9 @@ param(
     # cloning the full default-branch history) and then `git checkout`s the
     # exact ref.  Precedence: Commit > Tag > Branch.
     [string]$Commit = "",
+    # Apply -Commit even when it would roll an existing install backwards.
+    # The default protects current installs from stale desktop build pins.
+    [switch]$ForceCommit,
     [string]$Tag = "",
     [string]$HermesHome = $(if ($env:HERMES_HOME) { $env:HERMES_HOME } else { "$env:LOCALAPPDATA\hermes" }),
     [string]$InstallDir = $(if ($env:HERMES_HOME) { "$env:HERMES_HOME\hermes-agent" } else { "$env:LOCALAPPDATA\hermes\hermes-agent" }),
@@ -1139,11 +1142,9 @@ function Set-GitBashEnvVar {
     Write-Info "If needed, set HERMES_GIT_BASH_PATH manually to your bash.exe path."
 }
 
-# The desktop build runs Vite ^8, which refuses to start on Node outside
-# `^20.19 || >=22.12` -- older Node lacks node:util.styleText, so `vite build`
-# crashes with a SyntaxError that surfaces only as the opaque "Build desktop
-# app ... exit code 1" install failure. Returns $true when a `node --version`
-# string clears that floor.
+# react-router 8.3 sets the dependency tree's real floor at Node >=22.22.0.
+# Keep this aligned with root package.json so npm ci cannot fail later with
+# EBADENGINE after the installer accepted an older toolchain.
 function Test-NodeVersionOk {
     param([string]$Version)
     try {
@@ -1151,9 +1152,18 @@ function Test-NodeVersionOk {
     } catch {
         return $false
     }
-    if ($v.Major -eq 20 -and $v.Minor -ge 19) { return $true }
-    if ($v.Major -ge 22 -and ($v.Major -gt 22 -or $v.Minor -ge 12)) { return $true }
-    return $false
+    if ($v.Major -eq 22) { return ($v.Minor -ge 22) }
+    return ($v.Major -gt 22)
+}
+
+function Test-NpmVersionOk {
+    param([string]$Version)
+    try {
+        $v = [version]($Version -replace '^v', '' -replace '-.*$', '')
+    } catch {
+        return $false
+    }
+    return -not ($v.Major -eq 11 -and $v.Minor -ge 10 -and $v.Minor -le 16)
 }
 
 function Test-Node {
@@ -1161,18 +1171,21 @@ function Test-Node {
 
     if (Get-Command node -ErrorAction SilentlyContinue) {
         $version = node --version
-        if (Test-NodeVersionOk $version) {
+        $npmVersion = if (Get-Command npm -ErrorAction SilentlyContinue) { npm --version } else { "" }
+        if ((Test-NodeVersionOk $version) -and $npmVersion -and (Test-NpmVersionOk $npmVersion)) {
             Ensure-NodeExeOnPath | Out-Null
             Write-Success "Node.js $version found"
             $script:HasNode = $true
             return $true
         }
-        Write-Warn "Node.js $version is too old for the desktop build (need ^20.19 or >=22.12)"
+        Write-Warn "Node.js/npm $version/$npmVersion cannot build Hermes (need Node >=22.22; npm 11.10-11.16 is unsupported)"
     }
 
     # Prefer a Hermes-managed Node from a previous run over a too-old system one.
     $managedNode = "$HermesHome\node\node.exe"
-    if ((Test-Path $managedNode) -and (Test-NodeVersionOk (& $managedNode --version))) {
+    $managedNpm = "$HermesHome\node\npm.cmd"
+    $managedNpmOk = (Test-Path $managedNpm) -and (Test-NpmVersionOk (& $managedNpm --version))
+    if ((Test-Path $managedNode) -and (Test-NodeVersionOk (& $managedNode --version)) -and $managedNpmOk) {
         $version = & $managedNode --version
         $env:Path = "$HermesHome\node;$env:Path"
         Write-Success "Node.js $version found (Hermes-managed)"
@@ -1641,8 +1654,23 @@ function Install-Repository {
                     # Make sure we have the commit locally (a tag-less commit
                     # SHA isn't always reachable from any one branch fetch).
                     git -c windows.appendAtomically=false fetch origin $Commit
-                    git -c windows.appendAtomically=false checkout --detach $Commit
-                    if ($LASTEXITCODE -ne 0) { throw "git checkout $Commit failed (exit $LASTEXITCODE)" }
+                    # Never let a stale build-time pin move an existing managed
+                    # checkout backwards unless the caller explicitly opts in.
+                    $skipRollback = $false
+                    if (-not $ForceCommit) {
+                        git -c windows.appendAtomically=false merge-base --is-ancestor $Commit HEAD 2>$null
+                        $isAncestor = ($LASTEXITCODE -eq 0)
+                        $pinnedSha = (& git -c windows.appendAtomically=false rev-parse "$Commit^{commit}" 2>$null)
+                        $headSha = (& git -c windows.appendAtomically=false rev-parse HEAD 2>$null)
+                        $skipRollback = $isAncestor -and ($pinnedSha -ne $headSha)
+                    }
+                    if ($skipRollback) {
+                        Write-Warn "Ignoring -Commit $Commit`: the checkout is already newer."
+                        Write-Warn "Pinning to it would roll this install back. Pass -ForceCommit to override."
+                    } else {
+                        git -c windows.appendAtomically=false checkout --detach $Commit
+                        if ($LASTEXITCODE -ne 0) { throw "git checkout $Commit failed (exit $LASTEXITCODE)" }
+                    }
                 } elseif ($Tag) {
                     git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
                     git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
@@ -3342,7 +3370,7 @@ function Install-Desktop {
 
     # Always re-resolve Node here. Stages run in separate PowerShell processes,
     # so $script:HasNode from Stage-Node isn't visible; more importantly Test-Node
-    # enforces the build floor (^20.19 || >=22.12) and prepends the Hermes-managed
+    # enforces the build floor (>=22.22) and prepends the Hermes-managed
     # Node to PATH, so the build never runs on a too-old system Node -- the cause
     # of the opaque "Build desktop app ... exit code 1" failure (Vite crashes on
     # old Node).
@@ -3564,6 +3592,8 @@ function Install-Desktop {
     # 3. Sanity-check the produced binary. Probe both arches so this works
     # on x64 and arm64 build machines.
     $exeCandidates = @(
+        "$desktopDir\release\win-unpacked\APEX.exe",
+        "$desktopDir\release\win-arm64-unpacked\APEX.exe",
         "$desktopDir\release\win-unpacked\Hermes.exe",
         "$desktopDir\release\win-arm64-unpacked\Hermes.exe"
     )
@@ -3578,7 +3608,7 @@ function Install-Desktop {
         }
     }
     if (-not $found) {
-        throw "Desktop build completed but no Hermes.exe was found under $desktopDir\release\*-unpacked\"
+        throw "Desktop build completed but no APEX.exe (or legacy Hermes.exe) was found under $desktopDir\release\*-unpacked\"
     }
 
     # 3b. The Hermes icon + identity are stamped onto Hermes.exe by the
@@ -3638,8 +3668,8 @@ function New-DesktopShortcuts {
         }
 
         $targets = @(
-            (Join-Path ([Environment]::GetFolderPath('Programs')) 'Hermes.lnk'),
-            (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Hermes.lnk')
+            (Join-Path ([Environment]::GetFolderPath('Programs')) 'APEX.lnk'),
+            (Join-Path ([Environment]::GetFolderPath('Desktop')) 'APEX.lnk')
         )
 
         foreach ($lnkPath in $targets) {
@@ -3652,7 +3682,7 @@ function New-DesktopShortcuts {
                 $sc.TargetPath = $TargetExe
                 $sc.WorkingDirectory = $workDir
                 $sc.IconLocation = $iconLocation
-                $sc.Description = 'Hermes Agent'
+                $sc.Description = 'APEX'
                 $sc.Save()
                 Write-Success "Shortcut created: $lnkPath"
             } catch {

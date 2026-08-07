@@ -19,17 +19,17 @@ import { test } from 'vitest'
 import {
   AGENT_STATE,
   classifyAgentState,
+  decodeJwtEmail,
+  detectClaude,
+  detectCodex,
   extractEmail,
+  extractOAuthUrl,
   parseClaudeAuthStatus,
   parseCodexAuthJson,
   parseCodexLoginStatus,
-  decodeJwtEmail,
-  extractOAuthUrl,
   parseConnectStatus,
-  proxyEndpoint,
   probeReachable,
-  detectClaude,
-  detectCodex
+  proxyEndpoint
 } from './apex-agent-auth'
 
 // --- classifier: the anti-conflation matrix --------------------------------
@@ -174,13 +174,19 @@ function fakeSocketFactory(script) {
   return () => {
     const socket: any = new EventEmitter()
     socket.written = []
+
     socket.setTimeout = () => {}
+
     socket.destroy = () => {}
+
     socket.write = data => {
       socket.written.push(data)
-      if (script.onWrite) setImmediate(() => script.onWrite(socket))
+
+      if (script.onWrite) {setImmediate(() => script.onWrite(socket))}
     }
+
     setImmediate(() => script.start(socket))
+
     return socket
   }
 }
@@ -200,6 +206,7 @@ test('probeReachable: via proxy, CONNECT 200 → true', async () => {
     start: s => s.emit('connect'),
     onWrite: s => s.emit('data', Buffer.from('HTTP/1.1 200 Connection established\r\n\r\n'))
   })
+
   assert.equal(await probeReachable({ host: 'api.anthropic.com', proxyUrl: 'http://127.0.0.1:1081', connect }), true)
 })
 
@@ -208,6 +215,7 @@ test('probeReachable: via proxy, CONNECT 403 → false', async () => {
     start: s => s.emit('connect'),
     onWrite: s => s.emit('data', Buffer.from('HTTP/1.1 403 Forbidden\r\n\r\n'))
   })
+
   assert.equal(await probeReachable({ host: 'api.anthropic.com', proxyUrl: 'http://127.0.0.1:1081', connect }), false)
 })
 
@@ -221,6 +229,7 @@ function fakeExecFile(handler) {
       const { error, stdout, stderr } = handler(command, args)
       cb(error || null, stdout || '', stderr || '')
     })
+
     return emitter
   }
 }
@@ -243,14 +252,17 @@ test('detectClaude: logged in + reachable → READY with email', async () => {
 test('detectClaude: logged in but unreachable → UNREACHABLE (the PM trap)', async () => {
   const execFile = fakeExecFile(() => ({ stdout: '{"loggedIn":true,"email":"k@l.com"}' }))
   let probed = false
+
   const out = await detectClaude({
     env: {},
     execFile,
     probe: async () => {
       probed = true
+
       return false
     }
   })
+
   assert.equal(out.state, AGENT_STATE.UNREACHABLE)
   assert.equal(probed, true) // reachability only probed once logged in
 })
@@ -258,14 +270,17 @@ test('detectClaude: logged in but unreachable → UNREACHABLE (the PM trap)', as
 test('detectClaude: logged out → LOGGED_OUT and never probes the network', async () => {
   const execFile = fakeExecFile(() => ({ stdout: '{"loggedIn":false}' }))
   let probed = false
+
   const out = await detectClaude({
     env: {},
     execFile,
     probe: async () => {
       probed = true
+
       return true
     }
   })
+
   assert.equal(out.state, AGENT_STATE.LOGGED_OUT)
   assert.equal(probed, false)
 })
@@ -273,10 +288,13 @@ test('detectClaude: logged out → LOGGED_OUT and never probes the network', asy
 test('detectCodex: auth.json with tokens → READY (no exec needed)', async () => {
   const readFile = () => JSON.stringify({ tokens: { access_token: 'x', id_token: '' }, auth_mode: 'chatgpt' })
   let execCalled = false
+
   const execFile = fakeExecFile(() => {
     execCalled = true
+
     return {}
   })
+
   const out = await detectCodex({ env: {}, homeDir: '/home/x', readFile, execFile, probe: async () => true })
   assert.equal(out.state, AGENT_STATE.READY)
   assert.equal(execCalled, false) // file signal short-circuits the CLI
@@ -286,6 +304,7 @@ test('detectCodex: no auth.json → falls back to `codex login status`', async (
   const readFile = () => {
     throw new Error('ENOENT')
   }
+
   const execFile = fakeExecFile(() => ({ stdout: 'Logged in using ChatGPT' }))
   const out = await detectCodex({ env: {}, homeDir: '/home/x', readFile, execFile, probe: async () => true })
   assert.equal(out.state, AGENT_STATE.READY)
@@ -295,6 +314,7 @@ test('detectCodex: no auth.json + codex missing → NO_CLI', async () => {
   const readFile = () => {
     throw new Error('ENOENT')
   }
+
   const execFile = fakeExecFile(() => ({ error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) }))
   const out = await detectCodex({ env: {}, homeDir: '/home/x', readFile, execFile, probe: async () => true })
   assert.equal(out.state, AGENT_STATE.NO_CLI)

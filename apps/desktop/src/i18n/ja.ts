@@ -191,7 +191,6 @@ export const ja = defineLocale({
     search: '検索',
     searchTitle: 'セッション、ビュー、アクションを検索',
     swapSidebarSides: 'サイドバーの向きを切り替え',
-    swapSidebarSidesTitle: 'セッションとファイルブラウザーの位置を入れ替える',
     hideRightSidebar: '右サイドバーを非表示',
     showRightSidebar: '右サイドバーを表示',
     muteHaptics: '触覚フィードバックをオフ',
@@ -679,8 +678,7 @@ export const ja = defineLocale({
       saving: '保存中'
     },
     envActions: {
-      actionsFor: label => `${label} のアクション`,
-      credentialActions: '認証情報のアクション',
+      actions: 'アクション',
       manageInKeys: 'API キーで管理',
       docs: 'ドキュメント',
       hideValue: '値を非表示',
@@ -1197,7 +1195,7 @@ export const ja = defineLocale({
       installed: 'インストール済み',
       generatedTag: '生成',
       adoptFailed: 'ペットを採用できませんでした。',
-      toggleFailed: 'ペットを切り替えできませんでした。',
+      toggleFailed: () => 'ペットを切り替えできませんでした。',
       noneAvailable: '利用可能なペットがありません。'
     },
     generatePet: {
@@ -1457,9 +1455,9 @@ export const ja = defineLocale({
     showAllProfiles: 'すべてのプロファイルを表示',
     switchToProfile: name => `${name} に切り替え`,
     manageProfiles: 'プロファイルを管理…',
-    actionsFor: name => `${name} のアクション`,
+    actions: 'プロファイルアクション',
     color: 'カラー…',
-    colorFor: name => `${name} のカラー`,
+    colorFor: 'プロファイルカラー',
     setColor: color => `カラー ${color} に設定`,
     autoColor: '自動',
     noProfiles: 'プロファイルが見つかりません。',
@@ -1594,7 +1592,6 @@ export const ja = defineLocale({
     showRuns: '実行履歴を表示',
     hideRuns: '実行履歴を隠す',
     runHistory: '実行履歴',
-    actionsFor: title => `${title} のアクション`,
     actionsTitle: 'Cron ジョブのアクション',
     resume: '再開',
     pause: '一時停止',
@@ -1703,7 +1700,6 @@ export const ja = defineLocale({
     allPinned: 'ここにあるものはすべてピン留めされています。チャットのピン留めを解除すると最近のものに表示されます。',
     shiftClickHint: 'Shift クリックでピン留め · ドラッグで並べ替え',
     noWorkspace: 'ワークスペースなし',
-    noProject: 'プロジェクトなし',
     projectEmpty: 'セッションはまだありません',
     noSessions: 'セッションはまだありません',
     projects: {
@@ -1782,7 +1778,6 @@ export const ja = defineLocale({
       archive: 'アーカイブ',
       newWindow: '新しいウィンドウ',
       copyIdFailed: 'セッション ID をコピーできませんでした',
-      actionsFor: title => `${title} のアクション`,
       sessionActions: 'セッションアクション',
       sessionRunning: 'セッション実行中',
       needsInput: '入力が必要です',
@@ -2589,12 +2584,6 @@ export const ja = defineLocale({
     closeOthers: '他を閉じる',
     closeToRight: '右側を閉じる',
     closeAll: 'すべて閉じる',
-    split: dir => `${dir}に分割`,
-    move: dir => `${dir}へ移動`,
-    dirUp: '上',
-    dirDown: '下',
-    dirLeft: '左',
-    dirRight: '右',
     pluginDisabled: pluginId => `プラグイン「${pluginId}」を無効化しました`,
     pluginDisabledBody: '設定 → プラグイン で再有効化するとペインが戻ります。',
     missingPane: paneId => `ペインが見つかりません: ${paneId}`,
@@ -2688,7 +2677,6 @@ export const ja = defineLocale({
       continueLabel: '続行'
     },
     tool: {
-      code: 'コード',
       copyCode: 'コードをコピー',
       renderingImage: '画像をレンダリング中',
       copyOutput: '出力をコピー',
@@ -2900,7 +2888,7 @@ export const ja = defineLocale({
     sidebar: {
       title: 'サイドバー',
       description: 'モバイルサイドバーを表示します。',
-      toggle: 'サイドバーを切り替え'
+      toggle: () => 'サイドバーを切り替え'
     }
   },
 

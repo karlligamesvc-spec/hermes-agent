@@ -49,7 +49,7 @@ function dateOfDayIndex(index: number): Date {
 }
 
 // BCP-47 tags for Intl date/month/weekday labels per app locale.
-const INTL_TAGS: Record<Locale, string> = { en: 'en-US', ja: 'ja-JP', zh: 'zh-CN', 'zh-hant': 'zh-TW' }
+const INTL_TAGS: Record<Locale, string> = { ar: 'ar', en: 'en-US', ja: 'ja-JP', zh: 'zh-CN', 'zh-hant': 'zh-TW' }
 
 // Same display semantics as the command center's usage panel.
 function formatTokens(value: null | number | undefined): string {

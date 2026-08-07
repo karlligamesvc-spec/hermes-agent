@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { asText, includesQuery, prettyName } from '@/app/settings/helpers'
 import { getSkills, toggleSkill } from '@/hermes'
@@ -146,44 +146,44 @@ export function useSkillCatalog(active: boolean, toasts: SkillCatalogToasts): Sk
   const [skills, setSkills] = useState<SkillInfo[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
-  const loadedRef = useRef(false)
-  const toastsRef = useRef(toasts)
-  toastsRef.current = toasts
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    if (!active || loadedRef.current) {
+    if (!active || loaded) {
       return
     }
 
-    loadedRef.current = true
+    setLoaded(true)
     setLoading(true)
     getSkills()
       .then(setSkills)
       .catch(err => {
-        loadedRef.current = false
-        notifyError(err, toastsRef.current.loadFailed)
+        setLoaded(false)
+        notifyError(err, toasts.loadFailed)
       })
       .finally(() => setLoading(false))
-  }, [active])
+  }, [active, loaded, toasts.loadFailed])
 
-  const setEnabled = useCallback(async (skill: SkillInfo, enabled: boolean) => {
-    setSaving(skill.name)
+  const setEnabled = useCallback(
+    async (skill: SkillInfo, enabled: boolean) => {
+      setSaving(skill.name)
 
-    try {
-      await toggleSkill(skill.name, enabled)
-      setSkills(current => current?.map(row => (row.name === skill.name ? { ...row, enabled } : row)) ?? current)
-      const t = toastsRef.current
-      notify({
-        kind: 'success',
-        title: enabled ? t.enabled : t.disabled,
-        message: t.appliesToNewSessions(skill.name)
-      })
-    } catch (err) {
-      notifyError(err, toastsRef.current.failedToUpdate(skill.name))
-    } finally {
-      setSaving(null)
-    }
-  }, [])
+      try {
+        await toggleSkill(skill.name, enabled)
+        setSkills(current => current?.map(row => (row.name === skill.name ? { ...row, enabled } : row)) ?? current)
+        notify({
+          kind: 'success',
+          title: enabled ? toasts.enabled : toasts.disabled,
+          message: toasts.appliesToNewSessions(skill.name)
+        })
+      } catch (err) {
+        notifyError(err, toasts.failedToUpdate(skill.name))
+      } finally {
+        setSaving(null)
+      }
+    },
+    [toasts]
+  )
 
   return {
     skills,

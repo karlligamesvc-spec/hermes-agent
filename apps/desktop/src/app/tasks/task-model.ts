@@ -1,4 +1,4 @@
-import { chatMessageText, type ChatMessage, toChatMessages } from '@/lib/chat-messages'
+import { type ChatMessage, chatMessageText, toChatMessages } from '@/lib/chat-messages'
 import { latestSessionTodos, type TodoItem } from '@/lib/todos'
 import type { CronJob, SessionInfo, SessionMessage } from '@/types/hermes'
 
@@ -175,8 +175,10 @@ export function scheduleStringForWhen(when: TaskWhen): string {
     case 'now':
       // The scheduler ticks every 60s; "1m" makes it due on the next tick.
       return '1m'
+
     case 'in':
       return when.value.trim()
+
     case 'at':
       return when.value.trim()
   }

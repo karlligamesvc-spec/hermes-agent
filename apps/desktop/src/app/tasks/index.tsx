@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -18,13 +18,13 @@ import { TextTab } from '@/components/ui/text-tab'
 import { Textarea } from '@/components/ui/textarea'
 import {
   createCronJob,
+  type CronJob,
   deleteCronJob,
   getCronJobRuns,
   getSessionMessages,
-  triggerCronJob,
-  type CronJob,
   type SessionInfo,
-  type SessionMessage
+  type SessionMessage,
+  triggerCronJob
 } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
 import { AlertTriangle, Clock, Sparkles } from '@/lib/icons'
@@ -435,11 +435,9 @@ function TaskProgressPanel({
 }) {
   const [runs, setRuns] = useState<null | SessionInfo[]>(null)
   const [progress, setProgress] = useState<null | TaskProgress>(null)
-  const seenRunRef = useRef<null | string>(null)
 
   useEffect(() => {
     let cancelled = false
-    seenRunRef.current = null
     setRuns(null)
     setProgress(null)
 
@@ -467,7 +465,6 @@ function TaskProgressPanel({
 
         if (!cancelled) {
           setProgress(deriveProgress(messages as SessionMessage[]))
-          seenRunRef.current = run.id
         }
       } catch {
         if (!cancelled) {

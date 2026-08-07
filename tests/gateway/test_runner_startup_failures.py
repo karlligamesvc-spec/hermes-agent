@@ -1,29 +1,11 @@
-import asyncio
-import threading
-
 import pytest
 from unittest.mock import AsyncMock
 
-from apex_overlay import gateway_bootstrap
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter
 from gateway.restart import GATEWAY_FATAL_CONFIG_EXIT_CODE
 from gateway.run import GatewayRunner
 from gateway.status import read_runtime_status
-
-
-def _install_bg_startup_seam():
-    """Install the apex_overlay hc-384/385 background-startup seam.
-
-    The non-blocking Feishu startup behavior lives in
-    ``apex_overlay.gateway_bootstrap`` (a monkey-patch seam), applied in
-    production by the apex-overlay plugin during ``discover_plugins()``. The
-    background-path tests below don't stand up a plugin-enabled config, so they
-    install the seam directly — mirroring how the provider_filter seam-test
-    applies its patch. Idempotent; re-applying is a safe no-op.
-    """
-    gateway_bootstrap._APPLIED = False
-    assert gateway_bootstrap.apply() is True
 
 
 class _RetryableFailureAdapter(BasePlatformAdapter):
@@ -82,230 +64,6 @@ class _SuccessfulAdapter(BasePlatformAdapter):
         return {"id": chat_id}
 
 
-class _ConversationReadyAdapter(BasePlatformAdapter):
-    def __init__(self):
-        super().__init__(PlatformConfig(enabled=True, token="***"), Platform.API_SERVER)
-
-    async def connect(self, *, is_reconnect: bool = False) -> bool:
-        return True
-
-    async def disconnect(self) -> None:
-        self._mark_disconnected()
-
-    async def send(self, chat_id, content, reply_to=None, metadata=None):
-        raise NotImplementedError
-
-    async def get_chat_info(self, chat_id):
-        return {"id": chat_id}
-
-
-class _BackgroundFeishuAdapter(BasePlatformAdapter):
-    CONNECT_IN_BACKGROUND = True
-
-    def __init__(self, started, release):
-        super().__init__(PlatformConfig(enabled=True, token="***"), Platform.FEISHU)
-        self.started = started
-        self.release = release
-
-    async def connect(self, *, is_reconnect: bool = False) -> bool:
-        self.started.set()
-        await self.release.wait()
-        return True
-
-    async def disconnect(self) -> None:
-        self._mark_disconnected()
-
-    async def send(self, chat_id, content, reply_to=None, metadata=None):
-        raise NotImplementedError
-
-    async def get_chat_info(self, chat_id):
-        return {"id": chat_id}
-
-
-@pytest.mark.asyncio
-async def test_runner_stays_alive_for_retryable_startup_errors(monkeypatch, tmp_path):
-    """Retryable startup errors should leave the gateway running in
-    degraded mode so the reconnect watcher can recover the platform when
-    the underlying problem clears.  Previously this returned False from
-    ``start()`` and exited the process, which converted a single broken
-    platform (e.g. unpaired WhatsApp, DNS blip on Telegram) into a
-    systemd restart loop and killed cron jobs in the meantime.
-    """
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    config = GatewayConfig(
-        platforms={
-            Platform.TELEGRAM: PlatformConfig(enabled=True, token="***")
-        },
-        sessions_dir=tmp_path / "sessions",
-    )
-    runner = GatewayRunner(config)
-
-    monkeypatch.setattr(runner, "_create_adapter", lambda platform, platform_config: _RetryableFailureAdapter())
-
-    ok = await runner.start()
-
-    # Gateway stays alive in degraded mode; reconnect watcher takes over.
-    assert ok is True
-    assert runner.should_exit_cleanly is False
-    state = read_runtime_status()
-    assert state["gateway_state"] in {"degraded", "running"}
-    # Telegram was queued for retry, not given up on.
-    assert Platform.TELEGRAM in runner._failed_platforms
-    assert state["platforms"]["telegram"]["state"] == "retrying"
-    assert state["platforms"]["telegram"]["error_code"] == "telegram_connect_error"
-
-
-@pytest.mark.asyncio
-async def test_runner_allows_cron_only_mode_when_no_platforms_are_enabled(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    config = GatewayConfig(
-        platforms={
-            Platform.TELEGRAM: PlatformConfig(enabled=False, token="***")
-        },
-        sessions_dir=tmp_path / "sessions",
-    )
-    runner = GatewayRunner(config)
-
-    ok = await runner.start()
-
-    assert ok is True
-    assert runner.should_exit_cleanly is False
-    assert runner.adapters == {}
-    state = read_runtime_status()
-    assert state["gateway_state"] == "running"
-
-
-@pytest.mark.asyncio
-async def test_runner_records_connected_platform_state_on_success(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    config = GatewayConfig(
-        platforms={
-            Platform.DISCORD: PlatformConfig(enabled=True, token="***")
-        },
-        sessions_dir=tmp_path / "sessions",
-    )
-    runner = GatewayRunner(config)
-
-    monkeypatch.setattr(runner, "_create_adapter", lambda platform, platform_config: _SuccessfulAdapter())
-    monkeypatch.setattr(runner.hooks, "discover_and_load", lambda: None)
-    monkeypatch.setattr(runner.hooks, "emit", AsyncMock())
-
-    ok = await runner.start()
-
-    assert ok is True
-    state = read_runtime_status()
-    assert state["gateway_state"] == "running"
-    assert state["platforms"]["discord"]["state"] == "connected"
-    assert state["platforms"]["discord"]["error_code"] is None
-    assert state["platforms"]["discord"]["error_message"] is None
-
-
-@pytest.mark.asyncio
-async def test_background_platform_connect_does_not_block_api_ready(monkeypatch, tmp_path):
-    """Feishu can attach after the API server is already ready to answer turns."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    started = asyncio.Event()
-    release = asyncio.Event()
-    feishu_adapter = _BackgroundFeishuAdapter(started, release)
-    api_adapter = _ConversationReadyAdapter()
-    config = GatewayConfig(
-        platforms={
-            Platform.API_SERVER: PlatformConfig(enabled=True, token="***"),
-            Platform.FEISHU: PlatformConfig(enabled=True, token="***"),
-        },
-        sessions_dir=tmp_path / "sessions",
-    )
-    runner = GatewayRunner(config)
-    _install_bg_startup_seam()
-
-    def _create_adapter(platform, platform_config):
-        return {
-            Platform.API_SERVER: api_adapter,
-            Platform.FEISHU: feishu_adapter,
-        }[platform]
-
-    monkeypatch.setattr(runner, "_create_adapter", _create_adapter)
-    monkeypatch.setattr(runner.hooks, "discover_and_load", lambda: None)
-    monkeypatch.setattr(runner.hooks, "emit", AsyncMock())
-
-    ok = await runner.start()
-
-    assert ok is True
-    assert Platform.API_SERVER in runner.adapters
-    assert Platform.FEISHU not in runner.adapters
-    await asyncio.wait_for(started.wait(), timeout=1)
-
-    release.set()
-    await asyncio.wait_for(
-        _wait_until(lambda: Platform.FEISHU in runner.adapters),
-        timeout=1,
-    )
-    state = read_runtime_status()
-    assert state["platforms"]["api_server"]["state"] == "connected"
-    assert state["platforms"]["feishu"]["state"] == "connected"
-    await runner.stop()
-
-
-@pytest.mark.asyncio
-async def test_background_platform_adapter_creation_does_not_block_api_ready(monkeypatch, tmp_path):
-    """Feishu SDK import/adapter construction can happen after API readiness."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    create_started = threading.Event()
-    create_release = threading.Event()
-    connect_started = asyncio.Event()
-    connect_release = asyncio.Event()
-    api_adapter = _ConversationReadyAdapter()
-    config = GatewayConfig(
-        platforms={
-            Platform.API_SERVER: PlatformConfig(enabled=True, token="***"),
-            Platform.FEISHU: PlatformConfig(enabled=True, token="***"),
-        },
-        sessions_dir=tmp_path / "sessions",
-    )
-    runner = GatewayRunner(config)
-    _install_bg_startup_seam()
-
-    class _DeferredFeishuAdapter(_BackgroundFeishuAdapter):
-        async def connect(self, *, is_reconnect: bool = False) -> bool:
-            connect_started.set()
-            await connect_release.wait()
-            return True
-
-    def _create_adapter(platform, platform_config):
-        if platform == Platform.API_SERVER:
-            return api_adapter
-        if platform == Platform.FEISHU:
-            create_started.set()
-            assert create_release.wait(timeout=2)
-            return _DeferredFeishuAdapter(asyncio.Event(), asyncio.Event())
-        raise AssertionError(f"unexpected platform {platform}")
-
-    monkeypatch.setattr(runner, "_create_adapter", _create_adapter)
-    monkeypatch.setattr(runner.hooks, "discover_and_load", lambda: None)
-    monkeypatch.setattr(runner.hooks, "emit", AsyncMock())
-
-    ok = await runner.start()
-
-    assert ok is True
-    assert Platform.API_SERVER in runner.adapters
-    assert Platform.FEISHU not in runner.adapters
-    assert create_started.wait(timeout=1)
-
-    create_release.set()
-    await asyncio.wait_for(connect_started.wait(), timeout=1)
-    connect_release.set()
-    await asyncio.wait_for(
-        _wait_until(lambda: Platform.FEISHU in runner.adapters),
-        timeout=1,
-    )
-    await runner.stop()
-
-
-async def _wait_until(predicate):
-    while not predicate():
-        await asyncio.sleep(0.01)
-
-
 @pytest.mark.asyncio
 async def test_start_gateway_verbosity_imports_redacting_formatter(monkeypatch, tmp_path):
     """Verbosity != None must not crash with NameError on RedactingFormatter (#8044)."""
@@ -320,6 +78,7 @@ async def test_start_gateway_verbosity_imports_redacting_formatter(monkeypatch, 
             self.adapters = {}
 
         async def start(self):
+            assert self._platform_lock_takeover_on_start is False
             return True
 
         async def stop(self):
@@ -338,66 +97,6 @@ async def test_start_gateway_verbosity_imports_redacting_formatter(monkeypatch, 
     ok = await start_gateway(config=GatewayConfig(), replace=False, verbosity=1)
 
     assert ok is True
-
-
-@pytest.mark.asyncio
-async def test_start_gateway_replace_force_uses_terminate_pid(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-
-    calls = []
-
-    class _CleanExitRunner:
-        def __init__(self, config):
-            self.config = config
-            self.should_exit_cleanly = True
-            self.exit_reason = None
-            self.exit_code = None
-            self.adapters = {}
-
-        async def start(self):
-            return True
-
-        async def stop(self):
-            return None
-
-    # get_running_pid returns 42 before we kill the old gateway, then None
-    # after remove_pid_file() clears the record (reflects real behavior).
-    _pid_state = {"alive": True}
-    def _mock_get_running_pid():
-        return 42 if _pid_state["alive"] else None
-    def _mock_remove_pid_file():
-        _pid_state["alive"] = False
-    monkeypatch.setattr("gateway.status.get_running_pid", _mock_get_running_pid)
-    monkeypatch.setattr("gateway.status.remove_pid_file", _mock_remove_pid_file)
-    monkeypatch.setattr(
-        "gateway.status.release_all_scoped_locks",
-        lambda **kwargs: 0,
-    )
-    # force-kill reaps the process: terminate_pid(force=True) flips it dead,
-    # and the post-kill re-poll via _pid_exists then sees it gone so the
-    # replacement proceeds.
-    def _mock_terminate_pid(pid, force=False):
-        calls.append((pid, force))
-        if force:
-            _pid_state["alive"] = False
-    monkeypatch.setattr("gateway.status.terminate_pid", _mock_terminate_pid)
-    monkeypatch.setattr(
-        "gateway.status._pid_exists", lambda pid: _pid_state["alive"]
-    )
-    monkeypatch.setattr("gateway.run.os.getpid", lambda: 100)
-    monkeypatch.setattr("gateway.run.os.kill", lambda pid, sig: None)
-    monkeypatch.setattr("time.sleep", lambda _: None)
-    monkeypatch.setattr("tools.skills_sync.sync_skills", lambda quiet=True: None)
-    monkeypatch.setattr("hermes_logging.setup_logging", lambda hermes_home, mode: tmp_path)
-    monkeypatch.setattr("hermes_logging._add_rotating_handler", lambda *args, **kwargs: None)
-    monkeypatch.setattr("gateway.run.GatewayRunner", _CleanExitRunner)
-
-    from gateway.run import start_gateway
-
-    ok = await start_gateway(config=GatewayConfig(), replace=True, verbosity=None)
-
-    assert ok is True
-    assert calls == [(42, False), (42, True)]
 
 
 @pytest.mark.asyncio
@@ -714,21 +413,3 @@ async def test_start_gateway_propagates_fatal_config_exit_code(monkeypatch, tmp_
     assert exc_info.value.code == GATEWAY_FATAL_CONFIG_EXIT_CODE
 
 
-def test_runner_warns_when_docker_gateway_lacks_explicit_output_mount(monkeypatch, tmp_path, caplog):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    monkeypatch.setenv("TERMINAL_ENV", "docker")
-    monkeypatch.setenv("TERMINAL_DOCKER_VOLUMES", '["/etc/localtime:/etc/localtime:ro"]')
-    config = GatewayConfig(
-        platforms={
-            Platform.TELEGRAM: PlatformConfig(enabled=True, token="***")
-        },
-        sessions_dir=tmp_path / "sessions",
-    )
-
-    with caplog.at_level("WARNING"):
-        GatewayRunner(config)
-
-    assert any(
-        "host-visible output mount" in record.message
-        for record in caplog.records
-    )

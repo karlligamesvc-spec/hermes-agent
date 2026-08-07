@@ -1,9 +1,8 @@
 import { computed } from 'nanostores'
 
+import { isOneShotJob, jobTitleShort, type TaskPhase, taskPhase } from '@/app/tasks/task-model'
 import { translateNow } from '@/i18n'
 import type { CronJob } from '@/types/hermes'
-
-import { isOneShotJob, jobTitleShort, type TaskPhase, taskPhase } from '@/app/tasks/task-model'
 
 import { $cronJobs } from './cron'
 import { dispatchNativeNotification } from './native-notifications'

@@ -58,16 +58,21 @@ const STATUS_TIMEOUT_MS = 8000
  * a flaky probe never masquerades as a login problem.
  */
 function classifyAgentState({ cliPresent, loggedIn, reachable }: any = {}) {
-  if (!cliPresent) return AGENT_STATE.NO_CLI
-  if (loggedIn === false) return AGENT_STATE.LOGGED_OUT
-  if (loggedIn !== true) return AGENT_STATE.UNKNOWN
-  if (reachable === false) return AGENT_STATE.UNREACHABLE
+  if (!cliPresent) {return AGENT_STATE.NO_CLI}
+
+  if (loggedIn === false) {return AGENT_STATE.LOGGED_OUT}
+
+  if (loggedIn !== true) {return AGENT_STATE.UNKNOWN}
+
+  if (reachable === false) {return AGENT_STATE.UNREACHABLE}
+
   return AGENT_STATE.READY
 }
 
 /** Extract an email-shaped token from free text. Pure. */
 function extractEmail(text) {
   const match = String(text || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+
   return match ? match[0] : ''
 }
 
@@ -81,9 +86,11 @@ function extractEmail(text) {
 function parseClaudeAuthStatus(stdout) {
   const text = String(stdout || '').trim()
   const braceAt = text.indexOf('{')
+
   if (braceAt >= 0) {
     try {
       const data = JSON.parse(text.slice(braceAt))
+
       if (typeof data.loggedIn === 'boolean') {
         return {
           loggedIn: data.loggedIn,
@@ -96,29 +103,37 @@ function parseClaudeAuthStatus(stdout) {
       // fall through to text scan
     }
   }
+
   if (/not\s+logged\s+in|logged\s+out|not\s+authenticated|no\s+(?:active\s+)?(?:account|auth|credential)/i.test(text)) {
     return { loggedIn: false, email: '', plan: '', authMethod: '' }
   }
+
   if (/logged\s+in|authenticated|signed\s+in/i.test(text)) {
     return { loggedIn: true, email: extractEmail(text), plan: '', authMethod: '' }
   }
+
   return { loggedIn: null, email: '', plan: '', authMethod: '' }
 }
 
 /** Best-effort decode of an OAuth id_token's `email`/`preferred_username`. Pure. */
 function decodeJwtEmail(idToken) {
   const parts = String(idToken || '').split('.')
-  if (parts.length < 2) return ''
+
+  if (parts.length < 2) {return ''}
+
   try {
     const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const json = Buffer.from(payload, 'base64').toString('utf8')
     const claims = JSON.parse(json)
     const email = claims.email || claims.preferred_username || ''
-    if (typeof email === 'string') return email
+
+    if (typeof email === 'string') {return email}
+
     // Codex nests some claims under an auth namespace object.
     for (const value of Object.values<any>(claims)) {
-      if (value && typeof value === 'object' && typeof value.email === 'string') return value.email
+      if (value && typeof value === 'object' && typeof value.email === 'string') {return value.email}
     }
+
     return ''
   } catch {
     return ''
@@ -133,27 +148,35 @@ function decodeJwtEmail(idToken) {
  */
 function parseCodexAuthJson(text) {
   let data
+
   try {
     data = JSON.parse(String(text || ''))
   } catch {
     return { loggedIn: null, email: '', mode: '' }
   }
-  if (!data || typeof data !== 'object') return { loggedIn: null, email: '', mode: '' }
+
+  if (!data || typeof data !== 'object') {return { loggedIn: null, email: '', mode: '' }}
   const tokens = data.tokens && typeof data.tokens === 'object' ? data.tokens : null
   const hasOAuth = Boolean(tokens && String(tokens.access_token || '').trim())
   const hasApiKey = Boolean(String(data.OPENAI_API_KEY || '').trim())
+
   if (hasOAuth || hasApiKey) {
     const mode = typeof data.auth_mode === 'string' && data.auth_mode ? data.auth_mode : hasApiKey ? 'apikey' : 'chatgpt'
+
     return { loggedIn: true, email: tokens ? decodeJwtEmail(tokens.id_token) : '', mode }
   }
+
   return { loggedIn: false, email: '', mode: '' }
 }
 
 /** Parse `codex login status` output. Pure. */
 function parseCodexLoginStatus(stdout) {
   const text = String(stdout || '').trim()
-  if (/not\s+logged\s+in|logged\s+out|no\s+credential/i.test(text)) return { loggedIn: false, email: '' }
-  if (/logged\s+in|authenticated/i.test(text)) return { loggedIn: true, email: extractEmail(text) }
+
+  if (/not\s+logged\s+in|logged\s+out|no\s+credential/i.test(text)) {return { loggedIn: false, email: '' }}
+
+  if (/logged\s+in|authenticated/i.test(text)) {return { loggedIn: true, email: extractEmail(text) }}
+
   return { loggedIn: null, email: '' }
 }
 
@@ -167,13 +190,17 @@ function extractOAuthUrl(text) {
   const regex = /(https:\/\/[^\s'"<>]+)/g
   let match
   let firstUrl = ''
+
   while ((match = regex.exec(source)) !== null) {
     const url = match[1].replace(/[.,);:]+$/, '')
+
     if (/(oauth|authorize|\/activate|\/auth\b|auth\.|callback|claude\.ai|anthropic\.com|openai\.com|chatgpt\.com)/i.test(url)) {
       return url
     }
-    if (!firstUrl) firstUrl = url
+
+    if (!firstUrl) {firstUrl = url}
   }
+
   return firstUrl
 }
 
@@ -181,15 +208,19 @@ function extractOAuthUrl(text) {
 function parseConnectStatus(text) {
   const match = String(text || '').match(/^HTTP\/\d(?:\.\d)?\s+(\d{3})/i)
   const statusCode = match ? Number(match[1]) : 0
+
   return { statusCode, ok: statusCode >= 200 && statusCode < 300 }
 }
 
 /** Parse a proxy URL into `{ host, port }` for the CONNECT socket. Pure. */
 function proxyEndpoint(proxyUrl) {
-  if (!proxyUrl) return null
+  if (!proxyUrl) {return null}
+
   try {
     const url = new URL(proxyUrl)
-    if (!/^https?:$/i.test(url.protocol)) return null // CONNECT only over an HTTP proxy
+
+    if (!/^https?:$/i.test(url.protocol)) {return null} // CONNECT only over an HTTP proxy
+
     return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
   } catch {
     return null
@@ -205,39 +236,50 @@ function proxyEndpoint(proxyUrl) {
 function probeReachable({ host, port = REACH_PORT, proxyUrl = '', timeoutMs = REACH_TIMEOUT_MS, connect = net.connect }: any = {}) {
   return new Promise(resolve => {
     let settled = false
+
     const done = value => {
-      if (settled) return
+      if (settled) {return}
       settled = true
+
       try {
         socket.destroy()
       } catch {
         // ignore
       }
+
       resolve(value)
     }
+
     const endpoint = proxyEndpoint(proxyUrl)
     const target = endpoint || { host, port }
     let socket
+
     try {
       socket = connect({ host: target.host, port: target.port })
     } catch {
       resolve(false)
+
       return
     }
+
     socket.setTimeout(timeoutMs)
     socket.once('timeout', () => done(false))
     socket.once('error', () => done(false))
     socket.once('connect', () => {
       if (!endpoint) {
         done(true) // direct TCP reached the provider
+
         return
       }
+
       socket.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`)
     })
+
     if (endpoint) {
       let buffer = ''
       socket.on('data', chunk => {
         buffer += chunk.toString('utf8')
+
         if (buffer.includes('\r\n') || buffer.length > 256) {
           done(parseConnectStatus(buffer).ok)
         }
@@ -253,8 +295,10 @@ function probeReachable({ host, port = REACH_PORT, proxyUrl = '', timeoutMs = RE
  */
 function runCli(command, args, { env, cwd, timeoutMs = STATUS_TIMEOUT_MS, execFile }: any = {}): Promise<any> {
   const runner = execFile || execFileNode
+
   return new Promise(resolve => {
     let child
+
     try {
       child = runner(
         command,
@@ -272,8 +316,10 @@ function runCli(command, args, { env, cwd, timeoutMs = STATUS_TIMEOUT_MS, execFi
       )
     } catch {
       resolve({ code: 1, stdout: '', stderr: '', spawnError: 'ENOENT' })
+
       return
     }
+
     child.on('error', () => {
       /* handled by the callback's error arg */
     })
@@ -289,14 +335,18 @@ function runCli(command, args, { env, cwd, timeoutMs = STATUS_TIMEOUT_MS, execFi
  */
 async function detectClaude({ env, execFile, probe = probeReachable, proxyUrl = '' }: any = {}) {
   const result = await runCli('claude', ['auth', 'status', '--json'], { env, execFile })
+
   if (result.spawnError === 'ENOENT') {
     return { family: 'claude', state: AGENT_STATE.NO_CLI, cliPresent: false, loggedIn: null, reachable: null, email: '', plan: '' }
   }
+
   const parsed = parseClaudeAuthStatus(result.stdout || result.stderr)
   let reachable = null
+
   if (parsed.loggedIn === true) {
     reachable = await probe({ host: CLAUDE_REACH_HOST, proxyUrl })
   }
+
   return {
     family: 'claude',
     state: classifyAgentState({ cliPresent: true, loggedIn: parsed.loggedIn, reachable }),
@@ -319,23 +369,30 @@ async function detectCodex({ env, homeDir, execFile, readFile, probe = probeReac
 
   let parsed = { loggedIn: null, email: '', mode: '' }
   let cliPresent = true
+
   try {
     parsed = parseCodexAuthJson(reader(pathNode.join(home, '.codex', 'auth.json')))
   } catch {
     parsed = { loggedIn: null, email: '', mode: '' }
   }
+
   if (parsed.loggedIn === null) {
     const result = await runCli('codex', ['login', 'status'], { env, execFile })
+
     if (result.spawnError === 'ENOENT') {
       return { family: 'codex', state: AGENT_STATE.NO_CLI, cliPresent: false, loggedIn: null, reachable: null, email: '', plan: '' }
     }
+
     const status = parseCodexLoginStatus(result.stdout || result.stderr)
     parsed = { loggedIn: status.loggedIn, email: status.email, mode: '' }
   }
+
   let reachable = null
+
   if (parsed.loggedIn === true) {
     reachable = await probe({ host: CODEX_REACH_HOST, proxyUrl })
   }
+
   return {
     family: 'codex',
     state: classifyAgentState({ cliPresent, loggedIn: parsed.loggedIn, reachable }),
@@ -349,19 +406,19 @@ async function detectCodex({ env, homeDir, execFile, readFile, probe = probeReac
 
 export {
   AGENT_STATE,
+  classifyAgentState,
   CLAUDE_REACH_HOST,
   CODEX_REACH_HOST,
-  classifyAgentState,
+  decodeJwtEmail,
+  detectClaude,
+  detectCodex,
   extractEmail,
+  extractOAuthUrl,
   parseClaudeAuthStatus,
   parseCodexAuthJson,
   parseCodexLoginStatus,
-  decodeJwtEmail,
-  extractOAuthUrl,
   parseConnectStatus,
-  proxyEndpoint,
   probeReachable,
-  runCli,
-  detectClaude,
-  detectCodex
+  proxyEndpoint,
+  runCli
 }

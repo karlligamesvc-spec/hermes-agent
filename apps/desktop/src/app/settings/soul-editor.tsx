@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
@@ -21,10 +21,8 @@ export function SoulEditor({ profileName }: { profileName: string }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<null | string>(null)
-  const requestRef = useRef<string>(profileName)
-
   useEffect(() => {
-    requestRef.current = profileName
+    let cancelled = false
     setLoading(true)
     setError(null)
     setContent('')
@@ -34,21 +32,25 @@ export function SoulEditor({ profileName }: { profileName: string }) {
       try {
         const soul = await getProfileSoul(profileName)
 
-        if (requestRef.current === profileName) {
+        if (!cancelled) {
           setContent(soul.content)
           setOriginal(soul.content)
         }
       } catch (err) {
-        if (requestRef.current === profileName) {
+        if (!cancelled) {
           setError(err instanceof Error ? err.message : p.failedLoadSoul)
         }
       } finally {
-        if (requestRef.current === profileName) {
+        if (!cancelled) {
           setLoading(false)
         }
       }
     })()
-  }, [p, profileName])
+
+    return () => {
+      cancelled = true
+    }
+  }, [p.failedLoadSoul, profileName])
 
   const dirty = content !== original
   const isEmpty = !content.trim()

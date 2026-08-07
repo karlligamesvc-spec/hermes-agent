@@ -12,8 +12,8 @@ import {
   bundledInstallScript,
   cachedScriptPath,
   cnInstallEnv,
-  describeCnMirrorMode,
   commitKeysMatch,
+  describeCnMirrorMode,
   evaluateTreeIntegrity,
   hasExistingGitCheckout,
   installedAgentInstallScript,
@@ -881,6 +881,7 @@ test('hc-642: unset HERMES_CN_MIRRORS renders as auto, not off', () => {
 test('hc-642: forced states stay distinguishable from auto', () => {
   assert.equal(describeCnMirrorMode('1'), 'forced-on')
   assert.equal(describeCnMirrorMode('0'), 'forced-off(0)')
+
   // Whatever it renders, a forced value must never read as "auto".
   for (const v of ['1', '0', 'true', '']) {
     assert.notEqual(describeCnMirrorMode(v), 'auto', `forced ${JSON.stringify(v)} must not read as auto`)

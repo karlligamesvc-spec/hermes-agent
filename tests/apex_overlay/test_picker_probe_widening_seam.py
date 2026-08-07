@@ -300,7 +300,7 @@ def _managed_models(list_providers, current_provider, current_base_url, current_
     """Run the picker assembly and return the APEX row's models + probe calls."""
     probed: list[str] = []
 
-    def fake_fetch(api_key, api_url, headers=None):
+    def fake_fetch(api_key, api_url, headers=None, timeout=None):
         probed.append(api_url)
         return list(LIVE_CATALOG)
 

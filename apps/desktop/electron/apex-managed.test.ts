@@ -16,48 +16,48 @@ import { join } from 'node:path'
 import { test } from 'vitest'
 
 import {
-  APEX_PRODUCT_DEFAULTS,
-  DEFAULT_AUTH_BASE,
-  DEFAULT_API_BASE,
-  DEFAULT_RELAY_BASE_URL,
-  DEFAULT_MANAGED_MODEL,
-  MANAGED_MODEL_DISPLAY,
-  MANAGED_PROVIDER,
-  MANAGED_PROVIDER_NAME,
   accessTokenFromLogin,
-  RENEWED_TOKEN_HEADER,
-  renewedTokenFromHeaders,
   accountFromLogin,
+  APEX_PRODUCT_DEFAULTS,
   apexWebLoginUrl,
   buildManagedModelConfig,
   decodeJwtClaims,
+  DEFAULT_API_BASE,
+  DEFAULT_AUTH_BASE,
+  DEFAULT_MANAGED_MODEL,
+  DEFAULT_RELAY_BASE_URL,
   defaultModelPath,
+  ensurePluginsEnabledYaml,
+  ensureProductDefaultsYaml,
+  ensureSkillsDisabledYaml,
   googleStartUrl,
   isLoginStateTruthEnabled,
   isLoopbackUrl,
   isManagedEnabled,
   isRelayUnauthorized,
-  managedModelConfigYaml,
-  ensurePluginsEnabledYaml,
-  ensureProductDefaultsYaml,
-  ensureSkillsDisabledYaml,
-  modelDisabledProvidersYaml,
-  seedSkillsBlockYaml,
-  seedPluginsBlockYaml,
-  MODEL_DISABLED_PROVIDERS,
-  SEED_DISABLED_SKILLS,
+  MANAGED_MODEL_DISPLAY,
   MANAGED_PLUGIN_NAMES,
-  REPROVISION_COOLDOWN_MS,
+  MANAGED_PROVIDER,
+  MANAGED_PROVIDER_NAME,
+  managedModelConfigYaml,
+  maskRelayKey,
+  MODEL_DISABLED_PROVIDERS,
+  modelDisabledProvidersYaml,
   parseLoopbackCallback,
   parseProvisionResponse,
+  parseYamlMaps,
+  persistRelayKeyToConfigYaml,
   relayCatalogStatusFromProbe,
   relayKeyFromResponse,
+  RENEWED_TOKEN_HEADER,
+  renewedTokenFromHeaders,
+  REPROVISION_COOLDOWN_MS,
   resolveApexEndpoints,
+  SEED_DISABLED_SKILLS,
+  seedPluginsBlockYaml,
+  seedSkillsBlockYaml,
   shouldAttemptReprovision,
-  maskRelayKey,
-  persistRelayKeyToConfigYaml,
-  syncManagedRelayKeyYaml,
-  parseYamlMaps
+  syncManagedRelayKeyYaml
 } from './apex-managed'
 
 /**
@@ -72,6 +72,7 @@ import {
  */
 function anchorValue(raw: string, path: string): string {
   const map = parseYamlMaps(raw).maps.find(node => node.path === path)
+
   return map?.fields.api_key?.value ?? ''
 }
 
@@ -101,6 +102,7 @@ test('resolveApexEndpoints honors env overrides and strips trailing slashes', ()
     APEXNODES_RELAY_BASE_URL: 'https://staging.apex-nodes.com/relay/v1/',
     APEXNODES_MANAGED_MODEL: 'deepseek-v4-flash'
   })
+
   assert.equal(e.authBase, 'https://staging.apex-nodes.com')
   assert.equal(e.apiBase, 'https://api.staging.apex-nodes.com')
   assert.equal(e.relayBaseUrl, 'https://staging.apex-nodes.com/relay/v1')
@@ -141,9 +143,11 @@ test('relay base_url + /chat/completions reaches the relay route after nginx str
 test('isManagedEnabled is ON by default and accepts common falsy spellings to disable', () => {
   assert.equal(isManagedEnabled({}), true)
   assert.equal(isManagedEnabled({ APEXNODES_MANAGED: '' }), true)
+
   for (const v of ['0', 'false', 'no', 'off', 'OFF']) {
     assert.equal(isManagedEnabled({ APEXNODES_MANAGED: v }), false, v)
   }
+
   for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
     assert.equal(isManagedEnabled({ APEXNODES_MANAGED: v }), true, v)
   }
@@ -154,9 +158,11 @@ test('isManagedEnabled is ON by default and accepts common falsy spellings to di
 test('isLoginStateTruthEnabled is ON by default and disables on the same falsy spellings', () => {
   assert.equal(isLoginStateTruthEnabled({}), true)
   assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: '' }), true)
+
   for (const v of ['0', 'false', 'no', 'off', 'OFF']) {
     assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: v }), false, v)
   }
+
   for (const v of ['1', 'true', 'TRUE', 'yes', 'on']) {
     assert.equal(isLoginStateTruthEnabled({ APEXNODES_LOGIN_STATE_TRUTH: v }), true, v)
   }
@@ -202,6 +208,7 @@ test('buildManagedModelConfig custom_providers entry mirrors model.default/base_
     {},
     { baseUrl: 'https://relay.example.com/v1/' }
   )
+
   // The entry must use the SAME resolved endpoint/model/key as the model block,
   // with the trailing slash stripped, so both anchors point at one place.
   assert.deepEqual(block.custom_providers, [
@@ -239,6 +246,7 @@ test('buildManagedModelConfig respects env overrides (model id derives the colli
     APEXNODES_RELAY_BASE_URL: 'https://staging.apex-nodes.com/relay/v1',
     APEXNODES_MANAGED_MODEL: 'deepseek-v4-flash'
   })
+
   assert.equal(block.base_url, 'https://staging.apex-nodes.com/relay/v1')
   // A staging routed-model override yields the branded, collision-free written id.
   assert.equal(block.default, 'deepseek-v4-flash-APEX')
@@ -249,6 +257,7 @@ test('buildManagedModelConfig honors an explicit APEXNODES_MANAGED_MODEL_DISPLAY
     APEXNODES_MANAGED_MODEL: 'deepseek-v4-flash',
     APEXNODES_MANAGED_MODEL_DISPLAY: 'flash-APEX'
   })
+
   assert.equal(block.default, 'flash-APEX')
   assert.equal(block.custom_providers[0].model, 'flash-APEX')
 })
@@ -259,6 +268,7 @@ test('buildManagedModelConfig prefers a provision-key base_url override over env
     {},
     { baseUrl: 'https://relay.example.com/v1/' }
   )
+
   // overrides win, and the trailing slash is stripped.
   assert.equal(block.base_url, 'https://relay.example.com/v1')
   assert.equal(block.provider, 'custom')
@@ -271,6 +281,7 @@ test('parseProvisionResponse extracts key + base_url + model from the contract s
     { api_key: 'sk-relay', base_url: 'https://apex-nodes.com/relay/v1', model: 'deepseek-v4-pro' },
     {}
   )
+
   assert.deepEqual(out, {
     apiKey: 'sk-relay',
     baseUrl: 'https://apex-nodes.com/relay/v1',
@@ -286,6 +297,7 @@ test('parseProvisionResponse captures the display-only identity (email/name/plan
     { api_key: 'sk-relay', email: '  user@apex-nodes.com  ', name: 'Kael', plan: 'pro' },
     {}
   )
+
   assert.equal(out.email, 'user@apex-nodes.com')
   assert.equal(out.name, 'Kael')
   assert.equal(out.plan, 'pro')
@@ -333,6 +345,7 @@ test('managedModelConfigYaml omits custom_providers when the block has none', ()
     base_url: 'https://apex-nodes.com/relay/v1',
     api_key: 'sk-x'
   })
+
   assert.match(yaml, /^model:\n/)
   assert.doesNotMatch(yaml, /custom_providers:/)
 })
@@ -344,6 +357,7 @@ test('managedModelConfigYaml nests disabled_providers INSIDE the model block whe
     buildManagedModelConfig('sk-x', {}),
     { disabledProviders: ['copilot'] }
   )
+
   // disabled_providers is indented 2 spaces (under model:) and appears before
   // the top-level custom_providers: key — never as a second top-level model:.
   assert.match(yaml, /\n {2}disabled_providers:\n {4}- copilot\n/)
@@ -373,31 +387,38 @@ test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 50 v0
   // +huggingface-hub/maps/plan, −dead kanban-orchestrator/kanban-worker).
   assert.equal(SEED_DISABLED_SKILLS.length, 50)
   assert.equal(new Set(SEED_DISABLED_SKILLS).size, 50) // no dupes
+
   // Every name is rendered as a 4-space-indented list item.
   for (const name of SEED_DISABLED_SKILLS) {
     assert.ok(yaml.includes(`\n    - ${name}\n`), `missing seeded skill: ${name}`)
   }
+
   // The four frontmatter-name (≠ folder) skills must be present by their
   // frontmatter name, or the runtime toggle won't match them.
   for (const n of ['serving-llms-vllm', 'evaluating-llms-harness', 'segment-anything-model', 'audiocraft-audio-generation']) {
     assert.ok(SEED_DISABLED_SKILLS.includes(n), `name-mismatch skill not seeded: ${n}`)
   }
+
   // The hard-cut (D) walled/geo/competitor skills are all in the disabled set.
   for (const n of ['google-workspace', 'xurl', 'youtube-content', 'polymarket', 'teams-meeting-pipeline', 'claude-code', 'codex', 'gif-search']) {
     assert.ok(SEED_DISABLED_SKILLS.includes(n), `cut skill not seeded: ${n}`)
   }
+
   // hc-406: the three newly-bundled skills graded OFF must be present.
   for (const n of ['huggingface-hub', 'maps', 'plan']) {
     assert.ok(SEED_DISABLED_SKILLS.includes(n), `new-v0.18 disabled skill not seeded: ${n}`)
   }
+
   // hc-406: the dead kanban orphans (no matching bundled skill anymore) are gone.
   for (const n of ['kanban-orchestrator', 'kanban-worker']) {
     assert.ok(!SEED_DISABLED_SKILLS.includes(n), `dead orphan should be dropped: ${n}`)
   }
+
   // hc-406: newly-bundled A/B skills we KEEP ACTIVE must NOT be disabled.
   for (const n of ['computer-use', 'powerpoint', 'obsidian', 'ocr-and-documents', 'baoyu-infographic', 'yuanbao', 'apple-notes', 'imessage', 'llm-wiki', 'blogwatcher']) {
     assert.ok(!SEED_DISABLED_SKILLS.includes(n), `A/B skill must stay active: ${n}`)
   }
+
   assert.equal(seedSkillsBlockYaml([]), '')
 })
 
@@ -424,11 +445,13 @@ test('MANAGED_PLUGIN_NAMES carries apex-overlay + the gateway tool plugins + the
 test('seedPluginsBlockYaml emits a top-level plugins.enabled block with all managed plugins', () => {
   const yaml = seedPluginsBlockYaml()
   assert.match(yaml, /^plugins:\n {2}enabled:\n/m)
+
   // Every name rendered exactly once, as a 4-space-indented list item (the
   // cli-config.yaml.example shape).
   for (const name of MANAGED_PLUGIN_NAMES) {
     assert.ok(yaml.includes(`\n    - ${name}\n`), `missing seeded plugin: ${name}`)
   }
+
   assert.equal(yaml.split('\n').filter(l => /^ {4}- /.test(l)).length, MANAGED_PLUGIN_NAMES.length)
   assert.equal(seedPluginsBlockYaml([]), '')
 })
@@ -440,6 +463,7 @@ test('a fresh desktop seed already satisfies the plugins guard (fresh install = 
     modelDisabledProvidersYaml() +
     seedSkillsBlockYaml() +
     seedPluginsBlockYaml()
+
   const r = ensurePluginsEnabledYaml(seed)
   assert.equal(r.changed, false)
   assert.equal(r.next, seed)
@@ -454,6 +478,7 @@ test('ensurePluginsEnabledYaml appends the full block when plugins: is missing (
   // Append-only: the original text is untouched, one plugins: block added.
   assert.ok(r.next.startsWith(raw))
   assert.equal((r.next.match(/^plugins:/gm) || []).length, 1)
+
   for (const name of MANAGED_PLUGIN_NAMES) {
     assert.ok(r.next.includes(`\n    - ${name}\n`), `missing healed plugin: ${name}`)
   }
@@ -467,6 +492,7 @@ test('ensurePluginsEnabledYaml unions missing managed names and preserves user e
     '    - apex-overlay\n' +
     'model:\n' +
     '  default: x\n'
+
   const r = ensurePluginsEnabledYaml(raw)
   assert.equal(r.changed, true)
   // apex-overlay already present ⇒ added = every other managed name.
@@ -484,6 +510,7 @@ test('ensurePluginsEnabledYaml is idempotent (re-run is a no-op, no duplicates)'
   const second = ensurePluginsEnabledYaml(first.next)
   assert.equal(second.changed, false)
   assert.equal(second.next, first.next)
+
   for (const name of MANAGED_PLUGIN_NAMES) {
     assert.equal((first.next.match(new RegExp(`- ${name}`, 'g')) || []).length, 1, `duplicated: ${name}`)
   }
@@ -537,6 +564,7 @@ test('ensurePluginsEnabledYaml tolerates comments/quotes in the list (example-co
     '\n' +
     'model:\n' +
     '  default: x\n'
+
   const r = ensurePluginsEnabledYaml(raw)
   assert.equal(r.changed, true)
   // Quoted + commented entry recognized: apex-overlay NOT re-added.
@@ -574,17 +602,21 @@ test('ensureSkillsDisabledYaml unions the v0.18-new disabled names into a v0.17 
     '    - kanban-worker\n' +
     'model:\n' +
     '  default: x\n'
+
   const r = ensureSkillsDisabledYaml(v017)
   assert.equal(r.changed, true)
+
   // The three new bundled-OFF skills are added…
   for (const n of ['huggingface-hub', 'maps', 'plan']) {
     assert.ok(r.added.includes(n), `should add ${n}`)
     assert.ok(r.next.includes(`\n    - ${n}\n`), `should list ${n}`)
   }
+
   // …existing entries (incl. the dead orphans) are preserved, not removed…
   assert.match(r.next, /- kanban-orchestrator\n {4}- kanban-worker/)
   // …inserted INSIDE the skills block, before the next top-level key.
   assert.ok(r.next.indexOf('- plan') < r.next.indexOf('model:'))
+
   // …and no duplicates.
   for (const n of ['huggingface-hub', 'maps', 'plan', 'google-workspace']) {
     assert.equal((r.next.match(new RegExp(`- ${n}\\b`, 'g')) || []).length, 1, `duplicated: ${n}`)
@@ -635,6 +667,7 @@ test('ensureSkillsDisabledYaml handles PyYAML re-dump shapes (2-space items, [],
     assert.equal(r2.changed, true, `shape: ${JSON.stringify(shape)}`)
     assert.deepEqual(r2.added, ['maps', 'plan'])
   }
+
   // Empty managed list → no-op.
   assert.equal(ensureSkillsDisabledYaml('skills:\n  disabled: []\n', []).changed, false)
 })
@@ -659,6 +692,8 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.equal(r.changed, true)
   assert.deepEqual(r.added.sort(), [
     'agent.image_input_mode',
+    'agent.max_turns',
+    'delegation.max_iterations',
     'display.language',
     'display.show_reasoning',
     'timezone'
@@ -669,7 +704,9 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.match(r.next, /^display:\n(?: {2}\S+: \S+\n){2}\S/m)
   assert.match(r.next, /^ {2}language: zh$/m)
   assert.match(r.next, /^ {2}show_reasoning: true$/m)
-  assert.match(r.next, /^agent:\n {2}image_input_mode: auto$/m)
+  assert.match(r.next, /^agent:\n(?: {2}\S+: \S+\n){2}\S/m)
+  assert.match(r.next, /^ {2}max_turns: 90$/m)
+  assert.match(r.next, /^delegation:\n {2}max_iterations: 50$/m)
   assert.match(r.next, /^timezone: ''$/m)
   // Append-only: the pre-existing model block survives verbatim.
   assert.ok(r.next.startsWith(raw))
@@ -685,7 +722,11 @@ test('ensureProductDefaultsYaml never overrules a value the user set', () => {
     '  skin: mono\n' +
     'agent:\n' +
     '  image_input_mode: text\n' +
+    '  max_turns: 120\n' +
+    'delegation:\n' +
+    '  max_iterations: 25\n' +
     "timezone: 'Asia/Shanghai'\n"
+
   const r = ensureProductDefaultsYaml(raw)
 
   assert.equal(r.changed, false)
@@ -701,7 +742,12 @@ test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', 
   const r = ensureProductDefaultsYaml(raw)
 
   assert.equal(r.changed, true)
-  assert.deepEqual(r.added.sort(), ['agent.image_input_mode', 'display.language'])
+  assert.deepEqual(r.added.sort(), [
+    'agent.image_input_mode',
+    'agent.max_turns',
+    'delegation.max_iterations',
+    'display.language'
+  ])
   // Written INSIDE the existing display block, and the user's two keys stand.
   assert.match(r.next, /^display:\n {2}language: zh\n {2}show_reasoning: false\n {2}skin: mono$/m)
   assert.match(r.next, /^timezone: UTC$/m)
@@ -721,26 +767,36 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
   // it: the reconcile is a catch-up path, never a second opinion.
   const seeded =
     'display:\n  language: zh\n  show_reasoning: true\n' +
-    'agent:\n  image_input_mode: auto\n' +
+    'agent:\n  image_input_mode: auto\n  max_turns: 90\n' +
+    'delegation:\n  max_iterations: 50\n' +
     "timezone: ''\n"
+
   assert.equal(ensureProductDefaultsYaml(seeded).changed, false)
 })
 
-test('Desktop leaves parent and child iteration budgets to the runtime schema', () => {
-  // v0.20 intentionally raises the parent default because complex agentic
-  // tasks routinely exceeded 90 tool calls. Product-default reconciliation
-  // must not make an old schema default sticky; explicit user values remain
-  // supported by the runtime and are preserved by the add-only writer.
+test('Desktop pins relay-safe parent and child budgets without overwriting explicit values', () => {
+  // v0.20 raises the generic parent default to 500 because complex local tasks
+  // routinely exceeded 90 tool calls. Desktop uses the managed relay, so its
+  // missing-value policy is explicitly parent=90 / child=50. The add-only
+  // writer still preserves any value a user deliberately put on disk.
   const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n').next
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
   const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
 
-  assert.ok(!Object.hasOwn(APEX_PRODUCT_DEFAULTS, 'agent.max_turns'))
-  assert.ok(!Object.hasOwn(APEX_PRODUCT_DEFAULTS, 'delegation.max_iterations'))
-  assert.ok(!reconciled.includes('max_turns:'))
-  assert.ok(!reconciled.includes('max_iterations:'))
-  assert.ok(!seedBlocks.includes('max_turns:'))
-  assert.ok(!seedBlocks.includes('max_iterations:'))
+  assert.equal(APEX_PRODUCT_DEFAULTS['agent.max_turns'], 90)
+  assert.equal(APEX_PRODUCT_DEFAULTS['delegation.max_iterations'], 50)
+  assert.match(reconciled, /^ {2}max_turns: 90$/m)
+  assert.match(reconciled, /^ {2}max_iterations: 50$/m)
+  assert.ok(seedBlocks.includes("'  max_turns: 90\\n'"))
+  assert.ok(seedBlocks.includes("'  max_iterations: 50\\n'"))
+
+  const explicit = ensureProductDefaultsYaml(
+    'agent:\n  max_turns: 140\ndelegation:\n  max_iterations: 20\n'
+  )
+
+  assert.equal(explicit.changed, true)
+  assert.match(explicit.next, /^ {2}max_turns: 140$/m)
+  assert.match(explicit.next, /^ {2}max_iterations: 20$/m)
 })
 
 test('managed sign-in creates an anchor before syncing the freshly rotated relay key', () => {
@@ -772,6 +828,7 @@ test('ensureProductDefaultsYaml preserves comments and unrelated blocks', () => 
     '- api_key: sk-relay\n' +
     '  name: Apex-nodes.com\n' +
     '# trailing note\n'
+
   const r = ensureProductDefaultsYaml(raw)
 
   assert.equal(r.changed, true)
@@ -787,7 +844,7 @@ test('ensureProductDefaultsYaml refuses to write a child under an inline mapping
   const raw = 'display: {}\nagent: null\n'
   const r = ensureProductDefaultsYaml(raw)
 
-  assert.deepEqual(r.added, ['timezone'])
+  assert.deepEqual(r.added.sort(), ['delegation.max_iterations', 'timezone'])
   assert.ok(!r.next.includes('language: zh'))
   assert.match(r.next, /^display: \{\}$/m)
 })
@@ -801,6 +858,7 @@ test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks
   const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
 
   assert.ok(seedBlocks.length > 0, 'seed blocks not found in main.ts')
+
   for (const [dotted, value] of Object.entries(APEX_PRODUCT_DEFAULTS)) {
     const key = dotted.split('.').pop()
     const rendered = value === '' ? "''" : String(value)
@@ -888,6 +946,7 @@ test('googleStartUrl honors APEXNODES_API_BASE override', () => {
   const url = googleStartUrl('http://127.0.0.1:1/cb', 's', {
     APEXNODES_API_BASE: 'https://api.staging.apex-nodes.com/'
   })
+
   assert.equal(new URL(url).origin, 'https://api.staging.apex-nodes.com')
 })
 
@@ -904,6 +963,7 @@ test('apexWebLoginUrl honors APEXNODES_AUTH_BASE override', () => {
   const url = apexWebLoginUrl('http://127.0.0.1:1/cb', 's', {
     APEXNODES_AUTH_BASE: 'https://staging.apex-nodes.com'
   })
+
   assert.equal(new URL(url).origin, 'https://staging.apex-nodes.com')
 })
 
@@ -973,6 +1033,7 @@ function makeJwt(claims) {
     .replace(/=+$/, '')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
+
   return `header.${payload}.sig`
 }
 
@@ -1086,6 +1147,7 @@ test('syncManagedRelayKeyYaml leaves a BYOK model block alone', () => {
     '  name: Apex-nodes.com',
     ''
   ].join('\n')
+
   const result = syncManagedRelayKeyYaml(byok, RELAY_BASE, 'sk-fresh')
   assert.equal(result.model, 'absent')
   assert.match(result.next, /model:\n {2}api_key: sk-users-own-deepseek-key/)
@@ -1104,6 +1166,7 @@ test('syncManagedRelayKeyYaml only touches the matching entry in a multi-entry l
     '  name: Apex-nodes.com',
     ''
   ].join('\n')
+
   const { changed, next, entries } = syncManagedRelayKeyYaml(multi, RELAY_BASE, 'sk-fresh')
   assert.equal(changed, true)
   assert.deepEqual(entries, { matched: 1, updated: 1 })
@@ -1121,6 +1184,7 @@ test('syncManagedRelayKeyYaml recognizes our entry by name when base_url drifted
     '  name: Apex-nodes.com',
     ''
   ].join('\n')
+
   const { changed, next, entries } = syncManagedRelayKeyYaml(drifted, RELAY_BASE, 'sk-fresh')
   assert.equal(changed, true)
   assert.deepEqual(entries, { matched: 1, updated: 1 })
@@ -1137,6 +1201,7 @@ test('syncManagedRelayKeyYaml inserts a missing api_key line on a matched anchor
     '  name: Apex-nodes.com',
     ''
   ].join('\n')
+
   const { changed, next, model, entries } = syncManagedRelayKeyYaml(missing, RELAY_BASE, 'sk-fresh')
   assert.equal(changed, true)
   assert.equal(model, 'updated')
@@ -1163,6 +1228,7 @@ test('maskRelayKey never emits the raw key', () => {
 
 test('persistRelayKeyToConfigYaml writes both anchors and verifies by read-back', () => {
   let file = ROTATED_CONFIG
+
   const result = persistRelayKeyToConfigYaml({
     read: () => file,
     write: next => {
@@ -1171,6 +1237,7 @@ test('persistRelayKeyToConfigYaml writes both anchors and verifies by read-back'
     baseUrl: RELAY_BASE,
     key: 'sk-fresh'
   })
+
   assert.equal(result.ok, true)
   assert.equal(result.changed, true)
   assert.equal(anchorValue(file, 'model'), 'sk-fresh')
@@ -1187,6 +1254,7 @@ test('persistRelayKeyToConfigYaml reports a write that did not land instead of c
     baseUrl: RELAY_BASE,
     key: 'sk-fresh'
   })
+
   assert.equal(swallowed.ok, false)
   // hc-602: the reason now NAMES the anchors still holding the old key, so a
   // support log says which place lost the write instead of just that one did.
@@ -1200,6 +1268,7 @@ test('persistRelayKeyToConfigYaml reports a write that did not land instead of c
     baseUrl: RELAY_BASE,
     key: 'sk-fresh'
   })
+
   assert.equal(throwing.ok, false)
   assert.match(throwing.reason, /^config-unwritable: /)
 
@@ -1213,6 +1282,7 @@ test('persistRelayKeyToConfigYaml reports a write that did not land instead of c
     baseUrl: RELAY_BASE,
     key: 'sk-fresh'
   })
+
   assert.equal(foreign.ok, false)
   assert.equal(foreign.reason, 'no-managed-anchor')
 })
@@ -1229,12 +1299,14 @@ test('isRelayUnauthorized is true only for 401 / 403', () => {
 
 test('isRelayUnauthorized is false for success / server errors / no-response', () => {
   // A healthy listing must NOT trigger a re-provision.
-  for (const ok of [200, 204, 301, 302]) assert.equal(isRelayUnauthorized(ok), false)
+  for (const ok of [200, 204, 301, 302]) {assert.equal(isRelayUnauthorized(ok), false)}
+
   // A relay outage / 5xx / rate-limit is transient, NOT an auth failure — we must
   // not burn the single re-provision attempt on a key that is actually valid.
-  for (const transient of [429, 500, 502, 503, 504]) assert.equal(isRelayUnauthorized(transient), false)
+  for (const transient of [429, 500, 502, 503, 504]) {assert.equal(isRelayUnauthorized(transient), false)}
+
   // 0 / undefined / NaN = timeout / offline / no response → not actionable.
-  for (const none of [0, undefined, NaN, null]) assert.equal(isRelayUnauthorized(none), false)
+  for (const none of [0, undefined, NaN, null]) {assert.equal(isRelayUnauthorized(none), false)}
 })
 
 // --- relayCatalogStatusFromProbe (hc-512 model-menu catalog state) ---
@@ -1327,6 +1399,7 @@ test('hc-643: collapses a doubled skills.disabled into one key', () => {
   assert.equal(r.changed, true, 'a doubled key must be reported as a change')
   // Exactly one `disabled:` key survives, and it is inside skills:.
   assert.equal((r.next.match(/^ {2}disabled:$/gm) || []).length, 1)
+
   // Every managed name is present exactly once — nothing dropped, nothing doubled.
   for (const name of SEED_DISABLED_SKILLS) {
     assert.equal(
@@ -1335,6 +1408,7 @@ test('hc-643: collapses a doubled skills.disabled into one key', () => {
       `expected exactly one entry for ${name}`,
     )
   }
+
   // The trailing top-level key is untouched.
   assert.ok(r.next.includes("timezone: ''"))
   // Idempotent: a second pass has nothing left to repair.
@@ -1355,9 +1429,11 @@ test('hc-643: collapses a doubled plugins.enabled into one key', () => {
   const r = ensurePluginsEnabledYaml(raw)
   assert.equal(r.changed, true)
   assert.equal((r.next.match(/^ {2}enabled:$/gm) || []).length, 1)
+
   for (const name of MANAGED_PLUGIN_NAMES) {
     assert.equal((r.next.match(new RegExp(`^ {4}- ${name}$`, 'gm')) || []).length, 1)
   }
+
   assert.ok(r.next.includes('model:\n  default: x'))
 })
 
@@ -1466,9 +1542,11 @@ test('hc-643: mixed CRLF/LF endings — the real-world shape — collapse and re
   const r = ensurePluginsEnabledYaml(mixed)
   assert.equal(r.changed, true)
   assert.equal((r.next.match(/enabled:/g) || []).length, 1, 'collapsed to one key')
+
   for (const name of MANAGED_PLUGIN_NAMES) {
     assert.equal((r.next.match(new RegExp(`- ${name}(\\r?)$`, 'gm')) || []).length, 1)
   }
+
   assert.ok(r.next.includes("timezone: ''"))
   // Idempotent on the repaired file.
   assert.equal(ensurePluginsEnabledYaml(r.next).changed, false)

@@ -50,6 +50,12 @@
   // onManageCronJob / onTriggerCronJob). Restoring this shell is about a day's
   // work, not a rewrite — the reason we run the contribution controller instead
   // is that hc-564's plugin delivery channel rides on its registry.
-  "exclude": ["src/app/desktop-controller.tsx", "src/app/shell/app-shell.tsx"],
+  "exclude": [
+    "e2e",
+    "electron",
+    "playwright.config.ts",
+    "src/app/desktop-controller.tsx",
+    "src/app/shell/app-shell.tsx"
+  ],
   "references": [{ "path": "./tsconfig.electron.json" }]
 }

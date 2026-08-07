@@ -66,11 +66,15 @@ function seedConfigYaml(key: string) {
 function chatKeyFromConfig(raw: string): string {
   const lines = raw.split('\n')
   const start = lines.findIndex(line => /^model:\s*$/.test(line))
-  if (start < 0) return ''
+
+  if (start < 0) {return ''}
+
   for (let i = start + 1; i < lines.length && !/^\S/.test(lines[i]); i++) {
     const m = lines[i].match(/^\s+api_key:\s*(.*)$/)
-    if (m) return m[1].trim().replace(/^(["'])(.*)\1$/, '$2')
+
+    if (m) {return m[1].trim().replace(/^(["'])(.*)\1$/, '$2')}
   }
+
   return ''
 }
 
@@ -95,6 +99,7 @@ class FakeRelay {
     this.mints += 1
     this.rotated.push(this.activeKey)
     this.activeKey = `sk-minted-${this.mints}`
+
     return this.activeKey
   }
 }
@@ -119,15 +124,17 @@ class FakeBackend {
   /** A chat turn. Throws the runtime's terminal auth error on a dead key. */
   chat() {
     const probe = this.relay.probe(this.key)
+
     if (!probe.ok) {
       throw new Error(`AuthenticationError [HTTP ${probe.statusCode}] {"detail":"Invalid Agent API key"}`)
     }
+
     return 'ok'
   }
 
   /** What `reloadBackendForRelayKey` does in main.ts: soft re-home + respawn. */
   reload() {
-    if (!this.running) return
+    if (!this.running) {return}
     this.start()
   }
 }
@@ -311,6 +318,7 @@ test('BYOK / signed-out / healthy installs never touch config.yaml or the relay'
     provisionKey: async () => assert.fail('a disabled managed path must not mint'),
     applyToBackend: () => assert.fail('a disabled managed path must not reload the backend')
   })
+
   assert.deepEqual(
     { relayUnauthorized: disabled.relayUnauthorized, healed: disabled.healed },
     { relayUnauthorized: false, healed: false }
@@ -360,9 +368,11 @@ test('nothing logged during a heal contains a raw key', async () => {
   })
 
   assert.ok(logged.length > 0, 'a heal must leave a trace')
+
   for (const line of logged) {
     assert.equal(line.includes('sk-active'), false, `raw key leaked: ${line}`)
     assert.equal(line.includes('sk-rotated'), false, `raw key leaked: ${line}`)
   }
+
   assert.ok(logged.some(line => line.includes(maskRelayKey('sk-active'))))
 })

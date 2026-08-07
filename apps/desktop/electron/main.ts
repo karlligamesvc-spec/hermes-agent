@@ -3,7 +3,6 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
-import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import tls from 'node:tls'
@@ -15,12 +14,14 @@ import {
   clipboard,
   dialog,
   net as electronNet,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
   nativeTheme,
   Notification,
   powerMonitor,
+  powerSaveBlocker,
   protocol,
   safeStorage,
   screen,
@@ -30,6 +31,139 @@ import {
 } from 'electron'
 import nodePty from 'node-pty'
 
+import {
+  AGENT_STATE,
+  detectClaude as  detectClaudeAuth,
+  detectCodex as  detectCodexAuth,
+  extractOAuthUrl
+} from './apex-agent-auth'
+import {
+  describeAgentProxy,
+  normalizeProxyMode,
+  readSystemProxy,
+  resolveAgentProxyEnv,
+  systemProxyToUrls
+} from './apex-agent-proxy'
+import {
+  announcementReadUrl,
+  announcementsListUrl,
+  parseAnnouncementsResponse
+} from './apex-announcements'
+import * as bundleDiskspace from './apex-bundle-diskspace'
+import { downloadWithResume } from './apex-bundle-download'
+import { applyBundleUpdate as  applyRuntimeBundleUpdate } from './apex-bundle-install'
+import * as bundleMigrate from './apex-bundle-migrate'
+import {
+  applyConfigYamlKeys,
+  fetchClientConfig,
+  normalizeStoredClientConfig,
+  shouldApply as  shouldApplyClientConfig
+} from './apex-client-config'
+import { guardConfigYamlOnArrival } from './apex-config-arrival'
+import {
+  bridgeResultUrl,
+  buildInvalidTaskResult,
+  buildRegisterBody,
+  buildResultSubmitBody,
+  defaultDeviceName as  daemonDefaultDeviceName,
+  nextBackoffMs as  daemonNextBackoffMs,
+  deriveDaemonStatus,
+  isAllowedDaemonUrl,
+  normalizeStoredDaemon,
+  parseHeartbeatResponse,
+  parseLocalAgentRunPayload,
+  parsePollResponse,
+  parseRegisterResponse,
+  parseTaskEnvelope,
+  resolveDaemonEndpoints,
+  sanitizeDeviceName as  sanitizeDaemonDeviceName
+} from './apex-daemon'
+import {
+  buildFeishuBackendEnv,
+  feishuCredentialsUrl,
+  normalizeStoredFeishu,
+  parseFeishuCredentialsResponse
+} from './apex-feishu'
+import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
+import {
+  buildImEntrySpawnEnv,
+  feishuProvisionPollUrl,
+  secretFieldsFor as  imEntrySecretFieldsFor,
+  isAllowedFeishuProvisionUrl,
+  isKnownChannel as  isKnownImEntryChannel,
+  normalizeStoredImEntry,
+  parseFeishuCredentialsV2Response,
+  parseFeishuProvisionResponse,
+  parseFeishuProvisionStatusResponse,
+  parseWeixinCredentialsResponse,
+  resolveFeishuProvisionEndpoints,
+  resolveWeixinProvisionEndpoints,
+  shapeBinding as  shapeImEntryBinding,
+  stripFeishuEnvOverrides
+} from './apex-im-entry'
+import { startLoopbackLogin } from './apex-loopback'
+import {
+  accessTokenFromLogin,
+  accountFromLogin,
+  apexWebLoginUrl,
+  buildManagedModelConfig,
+  defaultModelPath,
+  ensurePluginsEnabledYaml,
+  ensureProductDefaultsYaml,
+  ensureSkillsDisabledYaml,
+  googleStartUrl,
+  isLoginStateTruthEnabled,
+  isManagedEnabled,
+  MANAGED_PROVIDER_NAME,
+  managedCustomProviderEntryYaml,
+  managedModelConfigYaml,
+  maskRelayKey,
+  MODEL_DISABLED_PROVIDERS,
+  modelDisabledProvidersYaml,
+  parseProvisionResponse,
+  persistRelayKeyToConfigYaml,
+  reconcileManagedRelayKey,
+  relayCatalogStatusFromProbe,
+  renewedTokenFromHeaders,
+  resolveApexEndpoints,
+  seedPluginsBlockYaml,
+  seedSkillsBlockYaml
+} from './apex-managed'
+import {
+  normalizeStoredPluginsState,
+  syncPlatformPlugins
+} from './apex-platform-plugins'
+import {
+  applyPlatformSkills,
+  fetchPlatformSkills,
+  isPlatformSkillsEnabled,
+  normalizeStoredManifest,
+  removePlatformSkills,
+  shouldApplyManifest
+} from './apex-platform-skills'
+import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
+// ── ApexNodes platform modules ──────────────────────────────────────────────
+// The fork's own main-process modules: managed sign-in, the IM/A2A channel
+// stack, the versioned runtime bundle, platform config/SKILL/PLUGIN
+// distribution, and the shell self-updater.
+import {
+  checkForRuntimeUpdate,
+  desktopMeetsMinVersion,
+  engineMeetsMinVersion,
+  overlayStampWithPin,
+  resolveLatestRuntimePin
+} from './apex-runtime-latest'
+import {
+  canUseOnDiskRuntime,
+  resolveBootstrapFailureFallback,
+  resolvePreBootstrapDecision
+} from './apex-runtime-select'
+import { loadScenarioCatalog } from './apex-scenario-catalog'
+import {
+  loginShellPathProbeArgs,
+  parseLoginShellPath,
+  resolveAugmentedPath
+} from './apex-shell-path'
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
@@ -67,6 +201,8 @@ import {
   uninstallArgsForMode
 } from './desktop-uninstall'
 import { installEmbedReferer } from './embed-referer'
+import { createEventDeduper } from './event-dedupe'
+import { installFoundInPageForwarder, performFind, stopFind } from './find-in-page'
 import { readDirForIpc } from './fs-read-dir'
 import { probeGatewayWebSocket } from './gateway-ws-probe'
 import { scanGitRepos } from './git-repo-scan'
@@ -94,10 +230,15 @@ import {
   removeWorktree,
   switchBranch
 } from './git-worktree-ops'
+import { worktreesForIpc } from './git-worktrees'
 import {
-  DATA_URL_READ_MAX_BYTES,
+  ATTACHMENT_UPLOAD_DEFAULT_MAX_BYTES,
+  clampDataUrlReadMaxMb,
+  DATA_URL_READ_DEFAULT_MAX_MB,
+  dataUrlReadMaxBytesFromMb,
   DEFAULT_FETCH_TIMEOUT_MS,
   encryptDesktopSecret as encryptDesktopSecretStrict,
+  readFileDataUrlForIpc,
   resolveReadableFileForIpc,
   resolveRequestedPathForIpc,
   resolveTimeoutMs,
@@ -106,15 +247,22 @@ import {
 import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
 import { ensureMainWindow } from './main-window-lifecycle'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
+import { createKeepAwake } from './power-save'
 import { decideProfileDeleteAction, profileNameFromDeleteRequest, resolveRouteProfile } from './profile-delete-routing'
+import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
+import { type ActiveWork, mergeActiveWork, normalizeActiveWork } from './quit-guard'
 import {
   buildSessionWindowUrl,
   chatWindowWebPreferences,
   createSessionWindowRegistry,
+  instanceWindowBounds,
   SESSION_WINDOW_MIN_HEIGHT,
   SESSION_WINDOW_MIN_WIDTH
 } from './session-windows'
+import { createShellUpdater } from './shell-updater'
 import { ensureSpawnHelperExecutable } from './spawn-helper-perms'
+import { collectSshConfigHosts, parseSshGOutput } from './ssh-config'
+import { createStreamThrottle } from './stream-throttle'
 import { nativeOverlayWidth as computeNativeOverlayWidth, macTitleBarOverlayHeight } from './titlebar-overlay-width'
 import { resolveBehindCount, shouldCountCommits } from './update-count'
 import { readLiveUpdateMarker, writeUpdateMarker } from './update-marker'
@@ -130,7 +278,9 @@ import {
 } from './update-relaunch'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
 import { spawnUpdaterProcess } from './updater-process'
+import { resolveUserDataDir } from './user-data-dir'
 import { fetchMarketplaceThemes, searchMarketplaceThemes } from './vscode-marketplace'
+import { createWakeIndicatorWindowController } from './wake-indicator-window'
 import {
   computeWindowOptions,
   debounce,
@@ -160,149 +310,11 @@ import {
   writeSandboxMarker
 } from './windows-sandbox-fallback'
 import { installWindowsSystemCaTrust } from './windows-system-ca'
-import { resolveUserDataDir } from './user-data-dir'
 import { readWindowsUserEnvVar } from './windows-user-env'
+import { createProjectDirForIpc } from './workspace-create'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath } from './wsl-path-bridge'
-
-// ── ApexNodes platform modules ──────────────────────────────────────────────
-// The fork's own main-process modules: managed sign-in, the IM/A2A channel
-// stack, the versioned runtime bundle, platform config/SKILL/PLUGIN
-// distribution, and the shell self-updater.
-import {
-  resolveLatestRuntimePin,
-  checkForRuntimeUpdate,
-  overlayStampWithPin,
-  desktopMeetsMinVersion,
-  engineMeetsMinVersion
-} from './apex-runtime-latest'
-import {
-  canUseOnDiskRuntime,
-  resolvePreBootstrapDecision,
-  resolveBootstrapFailureFallback
-} from './apex-runtime-select'
-import * as bundleMigrate from './apex-bundle-migrate'
-import * as bundleDiskspace from './apex-bundle-diskspace'
-import { downloadWithResume } from './apex-bundle-download'
-import { applyBundleUpdate as  applyRuntimeBundleUpdate } from './apex-bundle-install'
-import { createShellUpdater } from './shell-updater'
-import {
-  applyConfigYamlKeys,
-  fetchClientConfig,
-  normalizeStoredClientConfig,
-  shouldApply as  shouldApplyClientConfig
-} from './apex-client-config'
-import {
-  applyPlatformSkills,
-  fetchPlatformSkills,
-  isPlatformSkillsEnabled,
-  normalizeStoredManifest,
-  removePlatformSkills,
-  shouldApplyManifest
-} from './apex-platform-skills'
-import {
-  normalizeStoredPluginsState,
-  syncPlatformPlugins
-} from './apex-platform-plugins'
-import { loadScenarioCatalog } from './apex-scenario-catalog'
-import {
-  loginShellPathProbeArgs,
-  parseLoginShellPath,
-  resolveAugmentedPath
-} from './apex-shell-path'
-import { worktreesForIpc } from './git-worktrees'
-import { createProjectDirForIpc } from './workspace-create'
-import {
-  accessTokenFromLogin,
-  renewedTokenFromHeaders,
-  accountFromLogin,
-  apexWebLoginUrl,
-  buildManagedModelConfig,
-  defaultModelPath,
-  googleStartUrl,
-  isLoginStateTruthEnabled,
-  isManagedEnabled,
-  managedModelConfigYaml,
-  ensurePluginsEnabledYaml,
-  ensureProductDefaultsYaml,
-  ensureSkillsDisabledYaml,
-  modelDisabledProvidersYaml,
-  seedSkillsBlockYaml,
-  seedPluginsBlockYaml,
-  MANAGED_PROVIDER_NAME,
-  managedCustomProviderEntryYaml,
-  MODEL_DISABLED_PROVIDERS,
-  maskRelayKey,
-  parseProvisionResponse,
-  persistRelayKeyToConfigYaml,
-  reconcileManagedRelayKey,
-  relayCatalogStatusFromProbe,
-  resolveApexEndpoints
-} from './apex-managed'
-import { guardConfigYamlOnArrival } from './apex-config-arrival'
-import {
-  buildFeishuBackendEnv,
-  feishuCredentialsUrl,
-  normalizeStoredFeishu,
-  parseFeishuCredentialsResponse
-} from './apex-feishu'
-import {
-  announcementReadUrl,
-  announcementsListUrl,
-  parseAnnouncementsResponse
-} from './apex-announcements'
-import {
-  buildImEntrySpawnEnv,
-  feishuProvisionPollUrl,
-  isAllowedFeishuProvisionUrl,
-  isKnownChannel as  isKnownImEntryChannel,
-  normalizeStoredImEntry,
-  parseFeishuCredentialsV2Response,
-  parseFeishuProvisionResponse,
-  parseFeishuProvisionStatusResponse,
-  parseWeixinCredentialsResponse,
-  resolveFeishuProvisionEndpoints,
-  resolveWeixinProvisionEndpoints,
-  secretFieldsFor as  imEntrySecretFieldsFor,
-  shapeBinding as  shapeImEntryBinding,
-  stripFeishuEnvOverrides
-} from './apex-im-entry'
-import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
-import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-platform-tools'
-import {
-  DAEMON_STATUS,
-  bridgeResultUrl,
-  buildInvalidTaskResult,
-  buildRegisterBody,
-  buildResultSubmitBody,
-  defaultDeviceName as  daemonDefaultDeviceName,
-  deriveDaemonStatus,
-  isAllowedDaemonUrl,
-  nextBackoffMs as  daemonNextBackoffMs,
-  normalizeStoredDaemon,
-  parseHeartbeatResponse,
-  parseLocalAgentRunPayload,
-  parsePollResponse,
-  parseRegisterResponse,
-  parseTaskEnvelope,
-  resolveDaemonEndpoints,
-  sanitizeDeviceName as  sanitizeDaemonDeviceName
-} from './apex-daemon'
-import {
-  normalizeProxyMode,
-  resolveAgentProxyEnv,
-  readSystemProxy,
-  systemProxyToUrls,
-  describeAgentProxy
-} from './apex-agent-proxy'
-import {
-  AGENT_STATE,
-  detectClaude as  detectClaudeAuth,
-  detectCodex as  detectCodexAuth,
-  extractOAuthUrl
-} from './apex-agent-auth'
-import { startLoopbackLogin } from './apex-loopback'
 
 // Data continuity across the APEX brand rename: Electron derives the DEFAULT
 // userData dir from productName, so renaming "ApexNodes" -> "APEX" would move
@@ -1543,6 +1555,7 @@ let bootstrapState = {
   log: [],
   startedAt: null,
   completedAt: null,
+  setupChoice: null,
   unsupportedPlatform: null
 }
 
@@ -3258,6 +3271,8 @@ async function applyUpdatesPosixInApp(opts: any) {
   }
 
   const rebuiltApp = [
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'APEX.app'),
+    path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'APEX.app'),
     path.join(updateRoot, 'apps', 'desktop', 'release', 'mac-arm64', 'Hermes.app'),
     path.join(updateRoot, 'apps', 'desktop', 'release', 'mac', 'Hermes.app')
   ].find(directoryExists)
@@ -3914,6 +3929,7 @@ async function ensureRuntime(backend) {
     // override.previousMarker (persisted by hermes:runtime:apply-update right
     // before it drops the marker) carries the version being replaced.
     const runtimeUpdateOverride = readRuntimePinOverride()
+
     const bootstrapUpdateInfoEarly = runtimeUpdateOverride
       ? {
           isUpdate: true,
@@ -4966,6 +4982,43 @@ function closePreviewWatchers() {
   }
 }
 
+/** Watch a directory for entry churn (folders appearing/vanishing). Runtime
+ * plugin discovery uses the same debounced change channel and watcher registry
+ * as preview files, so the existing stop/close paths own cleanup on every OS. */
+function watchDirectory(rawDir) {
+  const watchDir = path.resolve(String(rawDir || ''))
+
+  if (!fs.existsSync(watchDir) || !fs.statSync(watchDir).isDirectory()) {
+    throw new Error(`Not a directory: ${watchDir}`)
+  }
+
+  const id = crypto.randomBytes(12).toString('base64url')
+  let timer = null
+
+  const watcher = fs.watch(watchDir, () => {
+    if (timer) {
+      clearTimeout(timer)
+    }
+
+    timer = setTimeout(() => {
+      timer = null
+      sendPreviewFileChanged({ id, path: watchDir, url: pathToFileURL(watchDir).toString() })
+    }, PREVIEW_WATCH_DEBOUNCE_MS)
+  })
+
+  previewWatchers.set(id, {
+    close: () => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+
+      watcher.close()
+    }
+  })
+
+  return { id, path: watchDir }
+}
+
 async function waitForHermes(baseUrl, token) {
   const deadline = Date.now() + 45_000
   let lastError = null
@@ -4984,23 +5037,23 @@ async function waitForHermes(baseUrl, token) {
   throw new Error(`Hermes backend did not become ready: ${lastError?.message || 'timeout'}`)
 }
 
-function getWindowButtonPosition() {
+function getWindowButtonPosition(win = mainWindow) {
   if (!IS_MAC) {
     return null
   }
 
-  return mainWindow?.getWindowButtonPosition?.() || WINDOW_BUTTON_POSITION
+  return win?.getWindowButtonPosition?.() || WINDOW_BUTTON_POSITION
 }
 
 function getNativeOverlayWidth() {
   return computeNativeOverlayWidth({ isWindows: IS_WINDOWS, isWsl: IS_WSL, isMac: IS_MAC })
 }
 
-function getWindowState() {
+function getWindowState(win = mainWindow) {
   return {
-    isFullscreen: Boolean(mainWindow?.isFullScreen?.()),
+    isFullscreen: Boolean(win?.isFullScreen?.()),
     nativeOverlayWidth: getNativeOverlayWidth(),
-    windowButtonPosition: getWindowButtonPosition()
+    windowButtonPosition: getWindowButtonPosition(win)
   }
 }
 
@@ -5057,6 +5110,28 @@ function sendPowerResume() {
 
 let powerResumeRegistered = false
 
+// Seed and broadcast the host's AC/battery state so renderer backstop polls can
+// slow down on battery without each window inventing its own OS probe.
+let onBatteryPower: boolean | null = null
+
+ipcMain.handle('hermes:power-battery:get', () => onBatteryPower === true)
+
+function broadcastBatteryState(next: boolean) {
+  if (onBatteryPower === next) {
+    return
+  }
+
+  onBatteryPower = next
+
+  for (const win of BrowserWindow.getAllWindows()) {
+    const { webContents } = win
+
+    if (webContents && !webContents.isDestroyed()) {
+      webContents.send('hermes:power-battery', next)
+    }
+  }
+}
+
 function registerPowerResumeListeners() {
   if (powerResumeRegistered) {
     return
@@ -5069,6 +5144,9 @@ function registerPowerResumeListeners() {
     // full suspend. Either can drop an idle socket.
     powerMonitor.on('resume', sendPowerResume)
     powerMonitor.on('unlock-screen', sendPowerResume)
+    powerMonitor.on('on-battery', () => broadcastBatteryState(true))
+    powerMonitor.on('on-ac', () => broadcastBatteryState(false))
+    onBatteryPower = powerMonitor.isOnBatteryPower()
   } catch {
     // powerMonitor is unavailable before app 'ready' on some platforms; the
     // caller registers after 'ready', so this should not normally throw.
@@ -5099,18 +5177,18 @@ function sendOpenUpdatesRequested() {
   mainWindow.focus()
 }
 
-function sendWindowStateChanged(nextIsFullscreen?: boolean) {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+function sendWindowStateChanged(nextIsFullscreen?: boolean, targetWindow = mainWindow) {
+  if (!targetWindow || targetWindow.isDestroyed()) {
     return
   }
 
-  const { webContents } = mainWindow
+  const { webContents } = targetWindow
 
   if (!webContents || webContents.isDestroyed()) {
     return
   }
 
-  const state = getWindowState()
+  const state = getWindowState(targetWindow)
 
   if (typeof nextIsFullscreen === 'boolean') {
     state.isFullscreen = nextIsFullscreen
@@ -5834,7 +5912,7 @@ function openOauthLoginWindow(baseUrl, { silent = false } = {}) {
       win = new BrowserWindow({
         width: 520,
         height: 720,
-        title: silent ? 'Connecting to Hermes Cloud agent…' : 'Sign in to Hermes gateway',
+        title: silent ? 'Connecting to APEX Cloud agent…' : 'Sign in to APEX',
         autoHideMenuBar: true,
         // Silent cascade: start HIDDEN. The auto-SSO 302 chain completes in
         // well under a second, so the window normally never needs to show. We
@@ -6183,7 +6261,7 @@ function openPortalLoginWindow() {
       win = new BrowserWindow({
         width: 520,
         height: 720,
-        title: 'Sign in to Hermes Cloud',
+        title: 'Sign in to APEX Cloud',
         autoHideMenuBar: true,
         webPreferences: {
           contextIsolation: true,
@@ -7747,7 +7825,7 @@ function spawnSecondaryWindow({
     height: SESSION_WINDOW_MIN_HEIGHT,
     minWidth: SESSION_WINDOW_MIN_WIDTH,
     minHeight: SESSION_WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -7779,6 +7857,7 @@ function spawnSecondaryWindow({
   win.on('leave-full-screen', () => sendWindowStateChanged(false))
 
   wireCommonWindowHandlers(win, zoomWiringForWindowKind('chat'))
+  streamThrottle.register(win)
 
   win.loadURL(
     buildSessionWindowUrl(sessionId, {
@@ -7803,6 +7882,66 @@ function createSessionWindow(sessionId, { watch = false } = {}) {
 function createNewSessionWindow() {
   return spawnSecondaryWindow({ newSession: true })
 }
+
+// Full application peer windows (Cmd/Ctrl+Shift+N). They share the backend and
+// security wiring but never replace mainWindow, which remains the deep-link,
+// notification and overlay anchor.
+const instanceWindows = new Set<any>()
+
+function createInstanceWindow() {
+  const source = BrowserWindow.getFocusedWindow() || mainWindow
+  const fallback = computeWindowOptions(readWindowState(), screen.getAllDisplays())
+  const base = source && !source.isDestroyed() ? source.getBounds() : null
+  const icon = getAppIconPath()
+
+  const win = new BrowserWindow({
+    ...instanceWindowBounds(base, fallback),
+    minWidth: WINDOW_MIN_WIDTH,
+    minHeight: WINDOW_MIN_HEIGHT,
+    title: APP_NAME,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: getTitleBarOverlayOptions(),
+    trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
+    vibrancy: IS_MAC ? 'sidebar' : undefined,
+    opacity: windowOpacity(),
+    icon,
+    show: false,
+    backgroundColor: getWindowBackgroundColor(),
+    webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
+  })
+
+  instanceWindows.add(win)
+
+  if (IS_MAC) {
+    win.setWindowButtonPosition?.(WINDOW_BUTTON_POSITION)
+  }
+
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) {
+      win.show()
+    }
+  })
+  win.on('enter-full-screen', () => sendWindowStateChanged(true, win))
+  win.on('leave-full-screen', () => sendWindowStateChanged(false, win))
+  win.on('closed', () => instanceWindows.delete(win))
+
+  wireCommonWindowHandlers(win)
+  streamThrottle.register(win)
+  win.loadURL(DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString())
+
+  return win
+}
+
+const wakeIndicatorController = createWakeIndicatorWindowController({
+  devServer: DEV_SERVER,
+  isMac: IS_MAC,
+  loadWindowUrl: (win, url, label) => {
+    win.loadURL(url).catch(error => rememberLog(`[window] ${label} load failed: ${error.message}`))
+  },
+  preloadPath: PRELOAD_PATH,
+  rendererIndex: resolveRendererIndex,
+  wireWindow: win => wireCommonWindowHandlers(win, { zoom: false })
+})
 
 // The pet overlay: a single transparent, frameless, always-on-top window that
 // hosts ONLY the floating mascot. Shift-clicking the in-window pet "pops it out"
@@ -7945,6 +8084,171 @@ function closePetOverlay() {
   petOverlayWindow = null
 }
 
+// Quick Entry is wired but ships disabled in ApexNodes until it is explicitly
+// enabled in Settings. This preserves the user's global shortcuts while still
+// making the v0.20 capability available for opt-in evaluation.
+const QUICK_ENTRY_CONFIG_PATH = path.join(app.getPath('userData'), 'quick-entry.json')
+let quickEntryWindow = null
+let quickEntryLastState = null
+
+function readQuickEntrySettings() {
+  try {
+    return sanitizeQuickEntrySettings(JSON.parse(fs.readFileSync(QUICK_ENTRY_CONFIG_PATH, 'utf8')))
+  } catch {
+    return sanitizeQuickEntrySettings({ enabled: false })
+  }
+}
+
+function writeQuickEntrySettings(settings) {
+  try {
+    fs.mkdirSync(path.dirname(QUICK_ENTRY_CONFIG_PATH), { recursive: true })
+    fs.writeFileSync(QUICK_ENTRY_CONFIG_PATH, JSON.stringify(settings, null, 2), 'utf8')
+  } catch (error) {
+    rememberLog(`[quick-entry] write failed: ${error.message}`)
+  }
+}
+
+function quickEntryUrl() {
+  if (DEV_SERVER) {
+    return `${DEV_SERVER.endsWith('/') ? DEV_SERVER.slice(0, -1) : DEV_SERVER}/?win=quick#/`
+  }
+
+  return `${pathToFileURL(resolveRendererIndex()).toString()}?win=quick#/`
+}
+
+function spawnQuickEntryWindow() {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+
+  const win = new BrowserWindow({
+    ...quickEntryWindowBounds(display?.workArea),
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: !IS_MAC,
+    hasShadow: true,
+    alwaysOnTop: true,
+    type: IS_MAC ? 'panel' : undefined,
+    hiddenInMissionControl: IS_MAC,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: PRELOAD_PATH,
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      devTools: true
+    }
+  })
+
+  win.setAlwaysOnTop(true, IS_MAC ? 'floating' : 'screen-saver')
+  win.setHiddenInMissionControl?.(true)
+
+  try {
+    win.setVisibleOnAllWorkspaces(
+      true,
+      IS_MAC ? { visibleOnFullScreen: true, skipTransformProcessType: true } : undefined
+    )
+  } catch {
+    // Best effort across Electron/OS combinations.
+  }
+
+  wireCommonWindowHandlers(win, { zoom: false })
+  win.on('blur', () => {
+    if (!win.isDestroyed()) {
+      win.hide()
+    }
+  })
+  win.on('closed', () => {
+    if (quickEntryWindow === win) {
+      quickEntryWindow = null
+    }
+  })
+  win.webContents.on('did-finish-load', () => {
+    if (!win.isDestroyed() && quickEntryLastState) {
+      win.webContents.send('hermes:quick-entry:state', quickEntryLastState)
+    }
+  })
+  win.loadURL(quickEntryUrl()).catch(error => rememberLog(`[quick-entry] load failed: ${error.message}`))
+
+  return win
+}
+
+function repositionQuickEntryWindow(win) {
+  try {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    win.setBounds(quickEntryWindowBounds(display?.workArea))
+  } catch (error) {
+    rememberLog(`[quick-entry] reposition failed: ${error.message}`)
+  }
+}
+
+function showQuickEntryWindow() {
+  if (!quickEntryWindow || quickEntryWindow.isDestroyed()) {
+    quickEntryWindow = spawnQuickEntryWindow()
+    quickEntryWindow.once('ready-to-show', () => {
+      if (!quickEntryWindow?.isDestroyed()) {
+        quickEntryWindow.show()
+        quickEntryWindow.focus()
+      }
+    })
+
+    return
+  }
+
+  repositionQuickEntryWindow(quickEntryWindow)
+  quickEntryWindow.show()
+  quickEntryWindow.focus()
+  quickEntryWindow.webContents.send('hermes:quick-entry:shown')
+}
+
+function hideQuickEntryWindow() {
+  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
+    quickEntryWindow.hide()
+  }
+}
+
+function toggleQuickEntryWindow() {
+  if (quickEntryWindow && !quickEntryWindow.isDestroyed() && quickEntryWindow.isVisible()) {
+    hideQuickEntryWindow()
+  } else {
+    showQuickEntryWindow()
+  }
+}
+
+const quickEntryShortcut = createQuickEntryShortcut(globalShortcut, toggleQuickEntryWindow)
+
+function applyQuickEntrySettings(settings) {
+  const state = quickEntryShortcut.apply(settings)
+
+  if (!settings.enabled) {
+    if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
+      quickEntryWindow.close()
+    }
+
+    quickEntryWindow = null
+  }
+
+  if (state.error) {
+    rememberLog(`[quick-entry] shortcut ${state.shortcut} registration failed: ${state.error}`)
+  }
+
+  return { ...state, enabled: settings.enabled }
+}
+
+function closeQuickEntryWindow() {
+  quickEntryShortcut.dispose()
+
+  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
+    quickEntryWindow.close()
+  }
+
+  quickEntryWindow = null
+}
+
 function createWindow() {
   const icon = getAppIconPath()
   const savedWindowState = readWindowState()
@@ -7952,7 +8256,7 @@ function createWindow() {
     ...computeWindowOptions(savedWindowState, screen.getAllDisplays()),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
+    title: APP_NAME,
     // Frameless title bar on every platform so the renderer can paint the
     // "hide sidebar" button (and other left-side titlebar tools) flush with
     // the top edge — matching the macOS layout where the traffic lights sit
@@ -8053,6 +8357,7 @@ function createWindow() {
   })
 
   wireCommonWindowHandlers(mainWindow, zoomWiringForWindowKind('chat'))
+  streamThrottle.register(mainWindow)
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     rememberLog(`[renderer] render-process-gone reason=${details?.reason} exitCode=${details?.exitCode}`)
@@ -8227,6 +8532,15 @@ ipcMain.handle('hermes:window:openNewSession', async () => {
 
   return { ok: true }
 })
+ipcMain.handle('hermes:window:openInstance', async () => {
+  createInstanceWindow()
+
+  return { ok: true }
+})
+ipcMain.handle('hermes:wake-indicator:get', () => wakeIndicatorController.getState())
+ipcMain.on('hermes:wake-indicator:set', (_event, state) => {
+  wakeIndicatorController.setState(state)
+})
 
 // --- Text size (zoom) -------------------------------------------------------
 // The settings UI drives the same clamped zoom scale as the Ctrl/Cmd
@@ -8386,6 +8700,7 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
     log: [],
     startedAt: null,
     completedAt: null,
+    setupChoice: null,
     unsupportedPlatform: null
   }
 
@@ -8412,6 +8727,11 @@ ipcMain.handle('hermes:bootstrap:repair', async () => {
 
   return { ok: true }
 })
+// The upstream first-run local-vs-remote chooser intentionally remains dormant
+// in ApexNodes: our signed-in managed setup owns first launch and the existing
+// bootstrap continues locally without waiting. Keep the bridge compatible so a
+// renderer built from v0.20 can safely issue the action during skewed updates.
+ipcMain.handle('hermes:bootstrap:continue-local', async () => ({ ok: true }))
 ipcMain.handle('hermes:bootstrap:cancel', async () => {
   // Renderer's Cancel button during first-launch install. Abort the running
   // install script (SIGTERM via the runner's abortSignal). runBootstrap
@@ -8433,6 +8753,50 @@ ipcMain.handle('hermes:bootstrap:get', async () => getBootstrapState())
 ipcMain.handle('hermes:connection-config:get', async (_event, profile) =>
   sanitizeDesktopConnectionConfig(readDesktopConnectionConfig(), profile)
 )
+ipcMain.handle('hermes:ssh-config:hosts', async () => ({ hosts: collectSshConfigHosts() }))
+ipcMain.handle('hermes:ssh-config:resolve', async (_event, host) => {
+  const value = String(host || '').trim()
+
+  if (!value) {
+    throw new Error('SSH host is required.')
+  }
+
+  const ssh =
+    process.platform === 'win32'
+      ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'OpenSSH', 'ssh.exe')
+      : 'ssh'
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(ssh, ['-G', '--', value], hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
+    let stdout = ''
+    let stderr = ''
+
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('SSH config resolution timed out.'))
+    }, 10_000)
+
+    child.stdout.on('data', chunk => {
+      stdout += String(chunk)
+    })
+    child.stderr.on('data', chunk => {
+      stderr += String(chunk)
+    })
+    child.once('error', error => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.once('close', code => {
+      clearTimeout(timer)
+
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || 'Could not resolve SSH host.'))
+      } else {
+        resolve(parseSshGOutput(stdout))
+      }
+    })
+  })
+})
 ipcMain.handle('hermes:connection-config:test', async (_event, payload) => testDesktopConnectionConfig(payload))
 ipcMain.handle('hermes:connection-config:probe', async (_event, rawUrl) => probeRemoteAuthMode(rawUrl))
 ipcMain.handle('hermes:connection-config:oauth-login', async (_event, rawUrl) => {
@@ -8844,9 +9208,20 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   }
 })
 
+// Main is the one choke point shared by every renderer window. Deduplicate
+// notification and ambient audio claims here so peer windows cannot double-fire.
+const isDuplicateNotification = createEventDeduper()
+const claimedAmbientCue = createEventDeduper()
+
+ipcMain.handle('hermes:ambient:claim', (_event, key) => !claimedAmbientCue(String(key ?? '')))
+
 ipcMain.handle('hermes:notify', (_event, payload) => {
   if (!Notification.isSupported()) {
     return false
+  }
+
+  if (isDuplicateNotification(`${payload?.kind ?? ''}:${payload?.sessionId ?? ''}`)) {
+    return true
   }
 
   // Action buttons render only on signed macOS builds; elsewhere they're dropped
@@ -8854,7 +9229,7 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
   const actions = Array.isArray(payload?.actions) ? payload.actions : []
 
   const notification = new Notification({
-    title: payload?.title || 'Hermes',
+    title: payload?.title || APP_NAME,
     body: payload?.body || '',
     silent: Boolean(payload?.silent),
     actions: actions.map(action => ({ type: 'button', text: String(action?.text || '') }))
@@ -8887,15 +9262,62 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
   return true
 })
 
+const DATA_URL_READ_MAX_CONFIG_PATH = path.join(app.getPath('userData'), 'data-url-read-max.json')
+
+function readPersistedDataUrlReadMaxMb() {
+  try {
+    return clampDataUrlReadMaxMb(JSON.parse(fs.readFileSync(DATA_URL_READ_MAX_CONFIG_PATH, 'utf8')).maxMb)
+  } catch {
+    return DATA_URL_READ_DEFAULT_MAX_MB
+  }
+}
+
+let dataUrlReadMaxMb = readPersistedDataUrlReadMaxMb()
+
+function persistDataUrlReadMaxMb(maxMb) {
+  const next = clampDataUrlReadMaxMb(maxMb)
+  dataUrlReadMaxMb = next
+
+  try {
+    fs.mkdirSync(path.dirname(DATA_URL_READ_MAX_CONFIG_PATH), { recursive: true })
+    fs.writeFileSync(DATA_URL_READ_MAX_CONFIG_PATH, JSON.stringify({ maxMb: next }, null, 2), 'utf8')
+  } catch (error) {
+    rememberLog(`[data-url-read-max] write failed: ${error.message}`)
+  }
+
+  return next
+}
+
+ipcMain.handle('hermes:data-url-read-max:get', () => ({
+  defaultMaxMb: DATA_URL_READ_DEFAULT_MAX_MB,
+  maxBytes: dataUrlReadMaxBytesFromMb(dataUrlReadMaxMb),
+  maxMb: dataUrlReadMaxMb
+}))
+
+ipcMain.handle('hermes:data-url-read-max:set', (_event, maxMb) => {
+  const next = persistDataUrlReadMaxMb(maxMb)
+
+  return {
+    defaultMaxMb: DATA_URL_READ_DEFAULT_MAX_MB,
+    maxBytes: dataUrlReadMaxBytesFromMb(next),
+    maxMb: next
+  }
+})
+
 ipcMain.handle('hermes:readFileDataUrl', async (_event, filePath) => {
-  const { resolvedPath } = await resolveReadableFileForIpc(filePath, {
-    maxBytes: DATA_URL_READ_MAX_BYTES,
+  return readFileDataUrlForIpc(filePath, {
+    maxBytes: dataUrlReadMaxBytesFromMb(dataUrlReadMaxMb),
+    mimeType: mimeTypeForPath(resolveRequestedPathForIpc(filePath, { purpose: 'File preview' })),
     purpose: 'File preview'
   })
+})
 
-  const data = await fs.promises.readFile(resolvedPath)
-
-  return `data:${mimeTypeForPath(resolvedPath)};base64,${data.toString('base64')}`
+ipcMain.handle('hermes:readFileDataUrlForAttach', async (_event, filePath) => {
+  return readFileDataUrlForIpc(filePath, {
+    maxBytes: ATTACHMENT_UPLOAD_DEFAULT_MAX_BYTES,
+    mimeType: mimeTypeForPath(resolveRequestedPathForIpc(filePath, { purpose: 'Attachment upload' })),
+    purpose: 'Attachment upload'
+  })
 })
 
 ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
@@ -8966,6 +9388,8 @@ ipcMain.handle('hermes:writeClipboard', (_event, text) => {
   return true
 })
 
+ipcMain.handle('hermes:readClipboard', () => clipboard.readText())
+
 ipcMain.handle('hermes:saveImageFromUrl', (_event, url) => saveImageFromUrl(String(url || '')))
 
 ipcMain.handle('hermes:saveImageBuffer', async (_event, payload) => {
@@ -9007,7 +9431,30 @@ ipcMain.handle('hermes:normalizePreviewTarget', (_event, target, baseDir) =>
 
 ipcMain.handle('hermes:watchPreviewFile', (_event, url) => watchPreviewFile(String(url || '')))
 
+ipcMain.handle('hermes:watchDirectory', (_event, dir) => watchDirectory(String(dir || '')))
+
 ipcMain.handle('hermes:stopPreviewFileWatch', (_event, id) => stopPreviewFileWatch(String(id || '')))
+
+const activeWorkByWebContents = new Map<number, ActiveWork>()
+const streamThrottle = createStreamThrottle()
+
+function updateStreamThrottleFromActiveWork() {
+  streamThrottle.update(mergeActiveWork(activeWorkByWebContents.values()).count > 0)
+}
+
+ipcMain.on('hermes:active-work', (event, payload) => {
+  const id = event.sender.id
+
+  if (!activeWorkByWebContents.has(id)) {
+    event.sender.once('destroyed', () => {
+      activeWorkByWebContents.delete(id)
+      updateStreamThrottleFromActiveWork()
+    })
+  }
+
+  activeWorkByWebContents.set(id, normalizeActiveWork(payload))
+  updateStreamThrottleFromActiveWork()
+})
 
 ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
   if (!payload || !isHexColor(payload.background) || !isHexColor(payload.foreground)) {
@@ -9048,6 +9495,117 @@ ipcMain.on('hermes:translucency', (_event, payload) => {
   for (const win of BrowserWindow.getAllWindows()) {
     applyWindowTranslucency(win)
   }
+})
+
+const KEEP_AWAKE_CONFIG_PATH = path.join(app.getPath('userData'), 'keep-awake.json')
+const keepAwake = createKeepAwake(powerSaveBlocker)
+
+function readPersistedKeepAwake() {
+  try {
+    return JSON.parse(fs.readFileSync(KEEP_AWAKE_CONFIG_PATH, 'utf8')).on === true
+  } catch {
+    return false
+  }
+}
+
+ipcMain.on('hermes:keep-awake', (_event, on) => {
+  const enabled = Boolean(on)
+  keepAwake.set(enabled)
+
+  try {
+    fs.mkdirSync(path.dirname(KEEP_AWAKE_CONFIG_PATH), { recursive: true })
+    fs.writeFileSync(KEEP_AWAKE_CONFIG_PATH, JSON.stringify({ on: enabled }, null, 2), 'utf8')
+  } catch (error) {
+    rememberLog(`[keep-awake] write failed: ${error.message}`)
+  }
+})
+
+ipcMain.handle('hermes:quick-entry:settings:get', async () => {
+  const settings = readQuickEntrySettings()
+  const state = quickEntryShortcut.current()
+
+  return {
+    enabled: settings.enabled,
+    error: state.error,
+    registered: state.registered,
+    shortcut: settings.enabled ? state.shortcut : settings.shortcut
+  }
+})
+
+ipcMain.handle('hermes:quick-entry:settings:set', async (_event, patch) => {
+  const current = readQuickEntrySettings()
+
+  const next = sanitizeQuickEntrySettings({
+    enabled: patch?.enabled === undefined ? current.enabled : patch.enabled === true,
+    shortcut: typeof patch?.shortcut === 'string' && patch.shortcut.trim() ? patch.shortcut : current.shortcut
+  })
+
+  writeQuickEntrySettings(next)
+
+  return applyQuickEntrySettings(next)
+})
+
+ipcMain.on('hermes:quick-entry:submit', (_event, payload) => {
+  hideQuickEntryWindow()
+  const text = typeof payload?.text === 'string' ? payload.text.trim() : ''
+
+  if (!text || !mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  mainWindow.webContents.send('hermes:quick-entry:submit', {
+    target: typeof payload?.target === 'string' && payload.target ? payload.target : 'current',
+    text
+  })
+})
+
+ipcMain.on('hermes:quick-entry:state', (_event, payload) => {
+  quickEntryLastState = payload ?? null
+
+  if (quickEntryWindow && !quickEntryWindow.isDestroyed()) {
+    quickEntryWindow.webContents.send('hermes:quick-entry:state', payload)
+  }
+})
+
+ipcMain.on('hermes:quick-entry:dismiss', () => hideQuickEntryWindow())
+
+const foundInPageForwarders = new Map<number, () => void>()
+
+function ensureFoundInPageForwarder(sender: Electron.WebContents): void {
+  if (foundInPageForwarders.has(sender.id)) {
+    return
+  }
+
+  const uninstall = installFoundInPageForwarder(sender)
+  foundInPageForwarders.set(sender.id, uninstall)
+
+  sender.once('destroyed', () => {
+    foundInPageForwarders.get(sender.id)?.()
+    foundInPageForwarders.delete(sender.id)
+  })
+}
+
+ipcMain.handle('hermes:find-in-page', (event, query, options) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+
+  if (!win || win.isDestroyed()) {
+    return { count: 0 }
+  }
+
+  ensureFoundInPageForwarder(event.sender)
+  performFind(win.webContents, query, options)
+
+  return { count: 0 }
+})
+
+ipcMain.handle('hermes:stop-find-in-page', event => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+
+  if (!win || win.isDestroyed()) {
+    return
+  }
+
+  stopFind(win.webContents)
 })
 
 ipcMain.handle('hermes:openExternal', (_event, url) => {
@@ -9360,6 +9918,24 @@ ipcMain.handle('hermes:fs:openDir', async (_event, dirPath) => {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
+})
+
+// Resolve the LOCAL desktop plugin root from this Electron process. A remote
+// backend's hermes_home points at another machine and must never leak into this
+// path; named profiles remain isolated exactly like their local runtime homes.
+ipcMain.handle('hermes:fs:desktopPluginsRoot', async () => {
+  const profile = readActiveDesktopProfile()
+  const base = profile && profile !== 'default' ? path.join(HERMES_HOME, 'profiles', profile) : HERMES_HOME
+  const dir = path.join(base, 'desktop-plugins')
+
+  try {
+    await fs.promises.mkdir(dir, { recursive: true })
+  } catch {
+    // Best effort: callers still receive the real path and can surface a useful
+    // open/scan error instead of silently falling back to a remote path.
+  }
+
+  return dir
 })
 
 // Rename a file/folder in place. The renderer passes the existing path + a new
@@ -10114,15 +10690,20 @@ const RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION = 1
 
 function readRuntimePinOverride() {
   const parsed = readJson(RUNTIME_PIN_OVERRIDE_PATH)
-  if (!parsed || typeof parsed !== 'object') return null
-  if (parsed.schemaVersion !== RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION) return null
+
+  if (!parsed || typeof parsed !== 'object') {return null}
+
+  if (parsed.schemaVersion !== RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION) {return null}
+
   // Must carry at least one usable pin field, else it's meaningless.
-  if (!parsed.commit && !parsed.branch) return null
+  if (!parsed.commit && !parsed.branch) {return null}
+
   return parsed
 }
 
 function writeRuntimePinOverride(payload) {
   fs.mkdirSync(path.dirname(RUNTIME_PIN_OVERRIDE_PATH), { recursive: true })
+
   const merged = {
     schemaVersion: RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION,
     commit: payload.commit || null,
@@ -10131,7 +10712,9 @@ function writeRuntimePinOverride(payload) {
     requestedAt: new Date().toISOString(),
     previousMarker: payload.previousMarker || null
   }
+
   writeFileAtomic(RUNTIME_PIN_OVERRIDE_PATH, JSON.stringify(merged, null, 2) + '\n', 'utf8')
+
   return merged
 }
 
@@ -10169,22 +10752,26 @@ function apexApiBase() {
 async function resolveBootstrapStamp(bakedStamp) {
   // (1) Persisted override takes precedence and short-circuits the network.
   const override = readRuntimePinOverride()
+
   if (override) {
     const merged = overlayStampWithPin(
       bakedStamp || INSTALL_STAMP,
       { commit: override.commit, branch: override.branch, version: override.version },
       'opt-in-update'
     )
+
     rememberLog(
       `[runtime-update] using persisted opt-in pin override: version=${override.version || '?'} ` +
         `commit=${override.commit ? String(override.commit).slice(0, 12) : '-'} branch=${override.branch || '-'}`
     )
+
     return merged
   }
 
   // (2) R4: live admin-latest overlay. Bounded, best-effort, never fatal.
   const apiBase = apexApiBase()
   let pin = null
+
   try {
     pin = await resolveLatestRuntimePin({
       apiBase,
@@ -10201,6 +10788,7 @@ async function resolveBootstrapStamp(bakedStamp) {
 
   if (!pin) {
     rememberLog('[runtime-update] no admin latest available; installing the build-time pin')
+
     return bakedStamp || INSTALL_STAMP
   }
 
@@ -10210,6 +10798,7 @@ async function resolveBootstrapStamp(bakedStamp) {
     `[runtime-update] first-install pinning to admin latest: version=${pin.version || '?'} ` +
       `commit=${pin.commit ? pin.commit.slice(0, 12) : '-'} branch=${pin.branch || '-'}`
   )
+
   return merged
 }
 
@@ -10223,33 +10812,44 @@ async function resolveBootstrapStamp(bakedStamp) {
 function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
   return new Promise(resolve => {
     const clean = String(url || '').trim()
+
     if (!clean) {
       resolve(true)
+
       return
     }
+
     let parsed
+
     try {
       parsed = new URL(clean)
     } catch {
       resolve(false)
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       resolve(false)
+
       return
     }
+
     const client = parsed.protocol === 'https:' ? https : http
     let settled = false
+
     const done = value => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       resolve(value)
     }
+
     const req = client.request(parsed, { method: 'HEAD' }, res => {
       const code = res.statusCode || 0
       res.resume() // drain
       done(code >= 200 && code < 400)
     })
+
     req.on('error', () => done(false))
     req.setTimeout(timeoutMs, () => {
       try {
@@ -10257,6 +10857,7 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
       } catch {
         void 0
       }
+
       done(false)
     })
     req.end()
@@ -10269,8 +10870,10 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
 // pin. Called from the bootstrap-failure path. Idempotent / best-effort.
 function rollbackRuntimePinOverride(reason) {
   const override = readRuntimePinOverride()
-  if (!override) return false
+
+  if (!override) {return false}
   rememberLog(`[runtime-update] rolling back opt-in update (${reason || 'failed'})`)
+
   try {
     if (override.previousMarker && typeof override.previousMarker === 'object') {
       fs.mkdirSync(path.dirname(BOOTSTRAP_COMPLETE_MARKER), { recursive: true })
@@ -10284,20 +10887,25 @@ function rollbackRuntimePinOverride(reason) {
   } catch (error: any) {
     rememberLog(`[runtime-update] failed to restore previous marker on rollback: ${error && error.message}`)
   }
+
   clearRuntimePinOverride()
+
   return true
 }
 
 function bundleModeEnabled() {
   const v = String(process.env.HERMES_BUNDLE_MODE || '').trim().toLowerCase()
+
   return v === '1' || v === 'true' || v === 'on' || v === 'yes'
 }
 
 // This machine's bundle (os, arch). P1 ships win-x64; mac legs arrive with P2.
 // null = unsupported platform (caller falls back to the legacy chain).
 function desktopBundleTarget() {
-  if (IS_WINDOWS) return process.arch === 'x64' ? { os: 'win', arch: 'x64' } : null
-  if (IS_MAC) return { os: 'mac', arch: process.arch === 'arm64' ? 'arm64' : 'x64' }
+  if (IS_WINDOWS) {return process.arch === 'x64' ? { os: 'win', arch: 'x64' } : null}
+
+  if (IS_MAC) {return { os: 'mac', arch: process.arch === 'arm64' ? 'arm64' : 'x64' }}
+
   return null
 }
 
@@ -10310,6 +10918,7 @@ function extractBundleArchive(archivePath, destDir) {
     const tarExe = IS_WINDOWS
       ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
       : 'tar'
+
     const child = spawn(tarExe, ['-xzf', archivePath, '-C', destDir], hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] }))
     let stderr = ''
     child.stderr.on('data', d => {
@@ -10327,9 +10936,11 @@ function runBundledTool(exe, argv, label) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(exe, argv, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
     let tail = ''
+
     const cap = d => {
       tail = (tail + String(d)).slice(-2000)
     }
+
     child.stdout.on('data', cap)
     child.stderr.on('data', cap)
     child.on('error', reject)
@@ -10348,24 +10959,29 @@ function bundleRuntimeDownload({ url, dest, sha256, size }: any) {
 // longer a rollback target (D1). Runs before any runtime child is spawned
 // (nothing holds a handle on an old venv), and is fully fail-soft.
 function reconcileAndGcBundleRuntime() {
-  if (!bundleModeEnabled()) return
+  if (!bundleModeEnabled()) {return}
+
   try {
     const rec = bundleMigrate.reconcileMigration(HERMES_HOME)
-    if (rec.reconciled) rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)
+
+    if (rec.reconciled) {rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)}
     // Watermark-aware GC: normal keep current+previous, or drop previous when
     // versions/ blew past its disk budget. One pass (the watermark check runs GC).
     const water = bundleDiskspace.enforceVersionsWatermark(HERMES_HOME)
     const gc = water.gc
+
     if (gc && (gc.removed.length || gc.orphansRemoved.length || gc.skipped.length)) {
       rememberLog(
         `[bundle] GC removed=${JSON.stringify(gc.removed)} staging=${JSON.stringify(gc.orphansRemoved)} ` +
           `skipped=${JSON.stringify(gc.skipped)}`
       )
     }
-    if (water.warning) rememberLog(`[bundle] ${water.warning}`)
+
+    if (water.warning) {rememberLog(`[bundle] ${water.warning}`)}
     // Reap the legacy in-place fallback once the sentinel has left the pointer.
     const asideGc = bundleMigrate.gcLegacyAside(HERMES_HOME)
-    if (asideGc.removed) rememberLog(`[bundle] reaped legacy in-place fallback ${asideGc.path}`)
+
+    if (asideGc.removed) {rememberLog(`[bundle] reaped legacy in-place fallback ${asideGc.path}`)}
   } catch (error: any) {
     rememberLog(`[bundle] reconcile/GC errored (ignored): ${error && error.message}`)
   }
@@ -10376,8 +10992,11 @@ function reconcileAndGcBundleRuntime() {
 // the legacy marker-drop re-bootstrap. Never throws.
 async function applyRuntimeBundleUpdateFlow(pin): Promise<any> {
   const target = desktopBundleTarget()
-  if (!target) return { ok: false, code: 'unsupported_platform' }
-  if (!pin || !pin.key) return { ok: false, code: 'no_pin_key' }
+
+  if (!target) {return { ok: false, code: 'unsupported_platform' }}
+
+  if (!pin || !pin.key) {return { ok: false, code: 'no_pin_key' }}
+
   return applyRuntimeBundleUpdate({
     hermesHome: HERMES_HOME,
     os: target.os,
@@ -10411,21 +11030,28 @@ const SEED_DISPLAY_BLOCK =
   '  show_reasoning: true\n'
 
 // APEX product defaults appended to every seed alongside SEED_DISPLAY_BLOCK.
-// Both keys exist in the runtime schema (hermes_cli/config.py) and both values
-// MATCH today's runtime defaults — seeded explicitly to pin the product
-// behavior against upstream default drift:
+// All keys exist in the runtime schema. Image/timezone match today's runtime
+// defaults; the iteration budgets intentionally differ from v0.20's generic
+// parent=500 default to pin Desktop's managed-relay cost envelope:
 //   agent.image_input_mode: auto — image attachments go native only to
 //     vision-capable models, otherwise text pre-analysis (config.py agent block).
 //   timezone: '' — empty means "server-local time" (config.py top-level
 //     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
+//   agent.max_turns: 90 — main agent per-turn tool-call budget.
+//   delegation.max_iterations: 50 — independent per-child budget (same as
+//     upstream v0.20, made explicit so it cannot drift silently).
 // Top-level keys here (agent:, timezone:) must not collide with the other seed
 // blocks (model:/custom_providers:/display:/skills:/plugins: — see
 // seedDefaultModelConfig).
 const SEED_PRODUCT_DEFAULTS_BLOCK =
-  '# APEX product defaults: image attachments auto-routed by model vision\n' +
-  "# support; empty timezone = follow the OS (server-local) clock.\n" +
+  '# APEX product defaults: image attachments auto-routed by model vision;\n' +
+  '# Desktop relay budgets pinned at main=90 / child=50; empty timezone =\n' +
+  "# follow the OS (server-local) clock.\n" +
   'agent:\n' +
   '  image_input_mode: auto\n' +
+  '  max_turns: 90\n' +
+  'delegation:\n' +
+  '  max_iterations: 50\n' +
   "timezone: ''\n"
 
 // Curated domestic MoA preset (managed seed only — every slot routes through
@@ -10497,7 +11123,8 @@ const SEED_MOA_BLOCK =
 function seedDefaultModelConfig() {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
-    if (fs.existsSync(configPath)) return
+
+    if (fs.existsSync(configPath)) {return}
     fs.mkdirSync(HERMES_HOME, { recursive: true })
 
     const managed = resolveManagedConfig()
@@ -10514,11 +11141,13 @@ function seedDefaultModelConfig() {
     const skillsBlock = seedSkillsBlockYaml()
     const pluginsBlock = seedPluginsBlockYaml()
     let seed
+
     if (defaultModelPath({ enabled: isManagedEnabled(process.env), key: managed.key }) === 'managed') {
       const block = managedModelConfigYaml(
         buildManagedModelConfig(managed.key, process.env, { baseUrl: managed.baseUrl, model: managed.model }),
         { disabledProviders: MODEL_DISABLED_PROVIDERS }
       )
+
       seed =
         '# Seeded by ApexNodes Desktop (V0.2 — managed).\n' +
         '# Inference is routed through the ApexNodes relay using your signed-in\n' +
@@ -10546,6 +11175,7 @@ function seedDefaultModelConfig() {
         pluginsBlock
       rememberLog(`[apexnodes] seeded default DeepSeek (BYOK) config at ${configPath}`)
     }
+
     fs.writeFileSync(configPath, seed, { encoding: 'utf8' })
   } catch (err: any) {
     rememberLog(`[apexnodes] could not seed default config: ${err && err.message ? err.message : err}`)
@@ -10565,10 +11195,13 @@ function seedDefaultModelConfig() {
 // a failure is logged loudly (never silently swallowed) with a masked key.
 function syncManagedRelayKeyToConfig(reason = 'sync') {
   const managed = resolveManagedConfig()
+
   if (!managed.key || !managed.baseUrl) {
     return { ok: false, changed: false, reason: 'signed-out', model: 'absent', entries: { matched: 0, updated: 0 } }
   }
+
   const configPath = path.join(HERMES_HOME, 'config.yaml')
+
   const result = persistRelayKeyToConfigYaml({
     read: () => (fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null),
     // In place, NOT writeFileAtomic: watchConfigYamlProductBlocks holds an
@@ -10579,6 +11212,7 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
     baseUrl: managed.baseUrl,
     key: managed.key
   })
+
   if (result.ok && result.changed) {
     // Per-anchor, by path — "custom_providers=0/0" was true on every one of
     // Kael's boots and read as "nothing to do" rather than "I cannot see the
@@ -10593,6 +11227,7 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
         'chat will keep failing with 401 until this is resolved.'
     )
   }
+
   return result
 }
 
@@ -10608,14 +11243,17 @@ function syncManagedRelayKeyToConfig(reason = 'sync') {
 // No-op when no backend is live (the boot self-heal usually lands here — the
 // spawn that follows already reads the corrected file).
 async function reloadBackendForRelayKey(reason) {
-  if (!backendConnectionState.getProcess()) return false
+  if (!backendConnectionState.getProcess()) {return false}
+
   try {
     rememberLog(`[apexnodes] reloading the local backend so it picks up the refreshed relay key (${reason})…`)
     await teardownPrimaryBackendAndWait({ soft: true })
     sendConnectionApplied()
+
     return true
   } catch (error: any) {
     rememberLog(`[apexnodes] backend reload after relay-key refresh failed: ${error && error.message ? error.message : error}`)
+
     return false
   }
 }
@@ -10698,6 +11336,7 @@ const DESKTOP_AGENT_PROXY_CONFIG_PATH = path.join(app.getPath('userData'), 'apex
 function readDeclaredMinEngineVersion() {
   const pkg = readJson(path.join(APP_ROOT, 'package.json'))
   const value = pkg && pkg.apexnodes && pkg.apexnodes.minEngineVersion
+
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
@@ -10734,10 +11373,12 @@ function isDirectorySync(dir) {
 let _loginShellPathProbe // undefined = not yet probed; string | null afterwards
 
 function probeLoginShellPath() {
-  if (_loginShellPathProbe !== undefined) return _loginShellPathProbe
+  if (_loginShellPathProbe !== undefined) {return _loginShellPathProbe}
   _loginShellPathProbe = null
-  if (IS_WINDOWS) return _loginShellPathProbe
+
+  if (IS_WINDOWS) {return _loginShellPathProbe}
   const shell = String(process.env.SHELL || '').trim() || '/bin/zsh'
+
   try {
     const out = execFileSync(shell, loginShellPathProbeArgs(), {
       timeout: 3000,
@@ -10745,11 +11386,13 @@ function probeLoginShellPath() {
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true
     })
+
     _loginShellPathProbe = parseLoginShellPath(out)
   } catch {
     // Swallow — a slow/broken login shell must never block or crash boot; the
     // static floor in resolveAugmentedPath still repairs ~/.local/bin et al.
   }
+
   return _loginShellPathProbe
 }
 
@@ -10760,9 +11403,10 @@ function probeLoginShellPath() {
 // (append-only + de-duplicated) and fail-soft. Returns the count of dirs added,
 // for a one-line boot log.
 function augmentDesktopProcessPath() {
-  if (IS_WINDOWS) return 0
+  if (IS_WINDOWS) {return 0}
   const before = String(process.env.PATH || '')
   let after = before
+
   try {
     after = resolveAugmentedPath({
       currentPath: before,
@@ -10775,8 +11419,10 @@ function augmentDesktopProcessPath() {
   } catch {
     return 0
   }
+
   const beforeCount = before ? before.split(path.delimiter).filter(Boolean).length : 0
   const afterCount = after ? after.split(path.delimiter).filter(Boolean).length : 0
+
   return Math.max(0, afterCount - beforeCount)
 }
 
@@ -10785,30 +11431,36 @@ function augmentDesktopProcessPath() {
 // falls back to the AUTO default. Never throws.
 function readAgentProxyConfig() {
   let raw
+
   try {
     raw = JSON.parse(fs.readFileSync(DESKTOP_AGENT_PROXY_CONFIG_PATH, 'utf8'))
   } catch {
     raw = null
   }
+
   const mode = normalizeProxyMode(raw && typeof raw === 'object' ? raw.mode : undefined)
   const customUrl = raw && typeof raw === 'object' && typeof raw.customUrl === 'string' ? raw.customUrl : ''
+
   return { mode, customUrl }
 }
 
 // Merge-persist apex-agent-proxy.json (0o600, owner-only — no secret, but tidy).
 function writeAgentProxyConfig(patch) {
   const current = readAgentProxyConfig()
+
   const next = {
     mode: normalizeProxyMode(patch && patch.mode !== undefined ? patch.mode : current.mode),
     customUrl:
       patch && typeof patch.customUrl === 'string' ? patch.customUrl : current.customUrl
   }
+
   try {
     fs.mkdirSync(path.dirname(DESKTOP_AGENT_PROXY_CONFIG_PATH), { recursive: true })
     fs.writeFileSync(DESKTOP_AGENT_PROXY_CONFIG_PATH, JSON.stringify(next, null, 2), { mode: 0o600 })
   } catch (error: any) {
     rememberLog(`[agent-proxy] persist failed: ${error && error.message ? error.message : error}`)
   }
+
   return next
 }
 
@@ -10817,9 +11469,11 @@ function writeAgentProxyConfig(patch) {
 function resolveAgentProxyEnvFragment() {
   try {
     const { mode, customUrl } = readAgentProxyConfig()
+
     return resolveAgentProxyEnv({ mode, customUrl, currentEnv: process.env })
   } catch (error: any) {
     rememberLog(`[agent-proxy] resolve failed: ${error && error.message ? error.message : error}`)
+
     return {}
   }
 }
@@ -10828,6 +11482,7 @@ function resolveAgentProxyEnvFragment() {
 // reachability probe so it tests the SAME path the agent travels.
 function activeAgentProxyUrl(fragment) {
   const frag = fragment || resolveAgentProxyEnvFragment()
+
   return frag.HTTPS_PROXY || frag.https_proxy || frag.HTTP_PROXY || frag.http_proxy || ''
 }
 
@@ -10840,15 +11495,19 @@ function buildAgentCliEnv(proxyFragment?) {
   const frag = proxyFragment || resolveAgentProxyEnvFragment()
   const home = app.getPath('home')
   const localBin = path.join(home, '.local', 'bin')
+
   const base = buildDesktopBackendEnv({
     hermesHome: HERMES_HOME,
     venvRoot: VENV_ROOT,
     proxyEnv: frag
   })
+
   const pathKey = process.platform === 'win32' ? 'Path' : 'PATH'
+
   const augmentedPath = [localBin, base[pathKey] || process.env[pathKey] || '']
     .filter(Boolean)
     .join(path.delimiter)
+
   return { ...process.env, ...base, [pathKey]: augmentedPath, HOME: home }
 }
 
@@ -10856,6 +11515,7 @@ function readManagedConfig() {
   try {
     const raw = fs.readFileSync(DESKTOP_MANAGED_CONFIG_PATH, 'utf8')
     const parsed = JSON.parse(raw)
+
     return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
     return {}
@@ -10867,6 +11527,7 @@ function readManagedConfig() {
 function readManagedAccount(stored) {
   const account = stored && typeof stored.account === 'object' && stored.account ? stored.account : {}
   const str = value => (typeof value === 'string' ? value.trim() : '')
+
   return { email: str(account.email), name: str(account.name), plan: str(account.plan) }
 }
 
@@ -10883,6 +11544,7 @@ function resolveManagedConfig() {
   if (!isManagedEnabled(process.env)) {
     return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' }, accessToken: '' }
   }
+
   const endpoints = resolveApexEndpoints(process.env)
   const stored = readManagedConfig()
   const account = readManagedAccount(stored)
@@ -10891,9 +11553,11 @@ function resolveManagedConfig() {
   // in this path — an env key is managed out-of-band, so self-heal stays off
   // (shouldAttemptReprovision gates on hasToken).
   const fromEnv = String(process.env.APEXNODES_RELAY_KEY || '').trim()
+
   if (fromEnv) {
     return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account, accessToken: '' }
   }
+
   return {
     key: decryptDesktopSecret(stored.relayKey),
     baseUrl: String(stored.baseUrl || '').trim() || endpoints.relayBaseUrl,
@@ -10925,6 +11589,7 @@ function writeManagedConfig(provisioned) {
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
   const account = provisioned && provisioned.account ? readManagedAccount({ account: provisioned.account }) : null
   const accessToken = provisioned && typeof provisioned.accessToken === 'string' ? provisioned.accessToken.trim() : ''
+
   const next = key
     ? {
         relayKey: encryptDesktopSecret(key),
@@ -10935,6 +11600,7 @@ function writeManagedConfig(provisioned) {
         savedAt: Date.now()
       }
     : {}
+
   writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
 }
 
@@ -10957,10 +11623,13 @@ function clearManagedRelayCredential() {
 function persistRenewedLoginToken(token) {
   try {
     const next = String(token || '').trim()
-    if (!next) return false
+
+    if (!next) {return false}
     const managed = resolveManagedConfig()
-    if (!managed.key || !managed.accessToken) return false
-    if (next === managed.accessToken) return false
+
+    if (!managed.key || !managed.accessToken) {return false}
+
+    if (next === managed.accessToken) {return false}
     writeManagedConfig({
       apiKey: managed.key,
       baseUrl: managed.baseUrl,
@@ -10969,9 +11638,11 @@ function persistRenewedLoginToken(token) {
       accessToken: next
     })
     rememberLog('[managed] login token renewed via sliding-window header (hc-529)')
+
     return true
   } catch (error: any) {
     rememberLog(`[managed] renewed-token persist failed (non-fatal): ${error && error.message ? error.message : error}`)
+
     return false
   }
 }
@@ -10982,12 +11653,15 @@ function persistRenewedLoginToken(token) {
 // secret, which normalizeStoredFeishu degrades to `connected:false`.
 function resolveFeishuConfig() {
   let raw
+
   try {
     raw = JSON.parse(fs.readFileSync(DESKTOP_FEISHU_CONFIG_PATH, 'utf8'))
   } catch {
     return normalizeStoredFeishu(null)
   }
+
   const appSecret = raw && typeof raw === 'object' ? decryptDesktopSecret(raw.appSecret) : ''
+
   // Hand normalizeStoredFeishu the record with the secret already decrypted; the
   // stored `appSecret` is ciphertext, so replace it with the plaintext (or '').
   return normalizeStoredFeishu(raw && typeof raw === 'object' ? { ...raw, appSecret } : null)
@@ -11002,6 +11676,7 @@ function writeFeishuConfig(credential) {
   fs.mkdirSync(path.dirname(DESKTOP_FEISHU_CONFIG_PATH), { recursive: true })
   const appId = credential && typeof credential.appId === 'string' ? credential.appId.trim() : ''
   const appSecret = credential && typeof credential.appSecret === 'string' ? credential.appSecret.trim() : ''
+
   const next =
     appId && appSecret
       ? {
@@ -11013,6 +11688,7 @@ function writeFeishuConfig(credential) {
           syncedAt: Date.now()
         }
       : {}
+
   writeFileAtomic(DESKTOP_FEISHU_CONFIG_PATH, JSON.stringify(next, null, 2))
 }
 
@@ -11036,6 +11712,7 @@ function desktopFeishuSpawnEnv() {
   if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
     return {}
   }
+
   return buildFeishuBackendEnv(resolveFeishuConfig())
 }
 
@@ -11045,28 +11722,36 @@ function desktopFeishuSpawnEnv() {
 // normalizeStoredImEntry then drops as an unusable binding.
 function resolveImEntryStore(): any {
   let raw
+
   try {
     raw = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
   } catch {
     return {}
   }
+
   if (!raw || typeof raw !== 'object' || !raw.bindings || typeof raw.bindings !== 'object') {
     return {}
   }
+
   // Decrypt every secret-valued field in place before normalization; non-secret
   // fields (app id, domain) are stored + read in clear.
   const decryptedBindings: any = {}
+
   for (const [channelId, record] of Object.entries<any>(raw.bindings)) {
     if (!record || typeof record !== 'object' || !record.fields || typeof record.fields !== 'object') {
       continue
     }
+
     const secretKeys = new Set(imEntrySecretFieldsFor(channelId))
     const fields = {}
+
     for (const [fieldKey, value] of Object.entries(record.fields)) {
       fields[fieldKey] = secretKeys.has(fieldKey) ? decryptDesktopSecret(value) : String(value ?? '')
     }
+
     decryptedBindings[channelId] = { fields, boundAt: record.boundAt }
   }
+
   return normalizeStoredImEntry({ bindings: decryptedBindings })
 }
 
@@ -11079,22 +11764,28 @@ function writeImEntryBinding(binding) {
   if (!binding || !isKnownImEntryChannel(binding.channelId)) {
     return
   }
+
   fs.mkdirSync(path.dirname(DESKTOP_IM_ENTRY_CONFIG_PATH), { recursive: true })
   let existing
+
   try {
     existing = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
   } catch {
     existing = null
   }
+
   const bindings =
     existing && typeof existing === 'object' && existing.bindings && typeof existing.bindings === 'object'
       ? { ...existing.bindings }
       : {}
+
   const secretKeys = new Set(imEntrySecretFieldsFor(binding.channelId))
   const storedFields = {}
+
   for (const [fieldKey, value] of Object.entries(binding.fields)) {
     storedFields[fieldKey] = secretKeys.has(fieldKey) ? encryptDesktopSecret(String(value)) : String(value)
   }
+
   bindings[binding.channelId] = { fields: storedFields, boundAt: binding.boundAt }
   // 0o600: the store carries (encrypted) credentials — owner-only on disk.
   writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2), { mode: 0o600 })
@@ -11104,24 +11795,30 @@ function writeImEntryBinding(binding) {
 // the file entirely when nothing remains.
 function clearImEntryBinding(channelId) {
   let existing
+
   try {
     existing = JSON.parse(fs.readFileSync(DESKTOP_IM_ENTRY_CONFIG_PATH, 'utf8'))
   } catch {
     return
   }
+
   if (!existing || typeof existing !== 'object' || !existing.bindings) {
     return
   }
+
   const bindings = { ...existing.bindings }
   delete bindings[channelId]
+
   if (Object.keys(bindings).length === 0) {
     try {
       fs.rmSync(DESKTOP_IM_ENTRY_CONFIG_PATH, { force: true })
     } catch {
       // Best effort.
     }
+
     return
   }
+
   writeFileAtomic(DESKTOP_IM_ENTRY_CONFIG_PATH, JSON.stringify({ bindings }, null, 2), { mode: 0o600 })
 }
 
@@ -11140,6 +11837,7 @@ function clearImEntryBinding(channelId) {
 function cleanFeishuPlaintextEnvOverrides() {
   const homes = [HERMES_HOME]
   const profile = readActiveDesktopProfile()
+
   if (profile && profile !== 'default') {
     homes.push(path.join(HERMES_HOME, 'profiles', profile))
   }
@@ -11147,20 +11845,25 @@ function cleanFeishuPlaintextEnvOverrides() {
   for (const home of homes) {
     const envPath = path.join(home, '.env')
     let raw
+
     try {
       raw = fs.readFileSync(envPath, 'utf8')
     } catch {
       continue // no .env → nothing to clean
     }
+
     const { text, removed } = stripFeishuEnvOverrides(raw)
+
     if (removed.length === 0) {
       continue
     }
+
     rememberLog(
       `[im-entry] WARNING: removing plaintext ${removed.join(', ')} from ${envPath} — ` +
         'the runtime loads .env with override=True, which would shadow the Feishu app ' +
         'provisioned for this desktop. The desktop-injected credential is now the only Feishu source.'
     )
+
     try {
       writeFileAtomic(envPath, text, { mode: 0o600 })
     } catch (error: any) {
@@ -11178,6 +11881,7 @@ function cleanFeishuPlaintextEnvOverrides() {
 // site so an hc-417 feishu binding wins the FEISHU_* keys over the hc-444 bridge.
 function desktopImEntrySpawnEnv() {
   const fragment = buildImEntrySpawnEnv(resolveImEntryStore())
+
   if (String(process.env.FEISHU_APP_ID || '').trim() && String(process.env.FEISHU_APP_SECRET || '').trim()) {
     // A parent-env Feishu app wins ENTIRELY — drop every hc-417 FEISHU_* key so
     // the injected binding never partially overlays a different out-of-band app
@@ -11188,6 +11892,7 @@ function desktopImEntrySpawnEnv() {
     delete fragment.FEISHU_ALLOWED_USERS
     delete fragment.FEISHU_HOME_CHANNEL
   }
+
   return fragment
 }
 
@@ -11272,13 +11977,16 @@ let daemonToken = '' // decrypted abr-… device token, in memory only
 // a garbage Bearer. Never throws.
 function readDaemonConfig(): any {
   let raw
+
   try {
     raw = JSON.parse(fs.readFileSync(DESKTOP_DAEMON_CONFIG_PATH, 'utf8'))
   } catch {
     raw = null
   }
+
   const base = normalizeStoredDaemon(raw)
   let token = ''
+
   if (raw && typeof raw === 'object' && raw.token) {
     try {
       token = decryptDesktopSecret(raw.token)
@@ -11286,6 +11994,7 @@ function readDaemonConfig(): any {
       token = ''
     }
   }
+
   return { ...base, token }
 }
 
@@ -11296,17 +12005,22 @@ function writeDaemonConfig(patch) {
   const current = readDaemonConfig()
   const next = { ...current, ...patch }
   fs.mkdirSync(path.dirname(DESKTOP_DAEMON_CONFIG_PATH), { recursive: true })
+
   const onDisk = {
     enabled: next.enabled === true,
     deviceId: String(next.deviceId || ''),
     deviceName: String(next.deviceName || ''),
     serverId: String(next.serverId || '')
   } as any
+
   const token = String(next.token || '')
+
   if (token) {
     onDisk.token = encryptDesktopSecret(token) // strict — throws without keychain
   }
+
   writeFileAtomic(DESKTOP_DAEMON_CONFIG_PATH, JSON.stringify(onDisk, null, 2), { mode: 0o600 })
+
   return next
 }
 
@@ -11317,17 +12031,21 @@ function ensureDaemonIdentity() {
   let deviceId = config.deviceId
   let deviceName = config.deviceName
   const patch: any = {}
+
   if (!deviceId) {
     deviceId = crypto.randomUUID()
     patch.deviceId = deviceId
   }
+
   if (!deviceName) {
     deviceName = daemonDefaultDeviceName(safeHostname())
     patch.deviceName = deviceName
   }
+
   if (Object.keys(patch).length) {
     writeDaemonConfig(patch)
   }
+
   return { deviceId, deviceName }
 }
 
@@ -11343,6 +12061,7 @@ function safeHostname() {
 // Derives the single label via the pure helper; never leaks the token.
 function daemonStatusSnapshot() {
   const config = readDaemonConfig()
+
   return {
     status: deriveDaemonStatus({
       enabled: config.enabled,
@@ -11373,7 +12092,9 @@ function guardedDaemonUrl(url) {
   if (isAllowedDaemonUrl(url)) {
     return url
   }
+
   rememberLog(`[daemon] refusing call to non-allowlisted URL: ${url}`)
+
   return null
 }
 
@@ -11382,36 +12103,51 @@ function guardedDaemonUrl(url) {
 async function daemonRegister() {
   const managed = resolveManagedConfig()
   const jwt = String(managed.accessToken || '').trim()
+
   if (!jwt) {
     daemonRuntime.lastError = 'NOT_SIGNED_IN'
+
     return { ok: false, needsSignIn: true }
   }
+
   const { deviceId, deviceName } = ensureDaemonIdentity()
   const endpoints = resolveApexEndpoints(process.env)
   const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).registerUrl)
+
   if (!url) {
     daemonRuntime.lastError = 'REQUEST_FAILED'
+
     return { ok: false }
   }
+
   let body
+
   try {
     body = await apexAuthPostJson(url, { body: buildRegisterBody({ deviceId, deviceName }), bearer: jwt })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       daemonRuntime.lastError = 'SESSION_EXPIRED'
+
       return { ok: false, needsSignIn: true }
     }
+
     rememberLog(`[daemon] register failed: ${error && error.message ? error.message : error}`)
     daemonRuntime.lastError = 'REQUEST_FAILED'
+
     return { ok: false }
   }
+
   const parsed = parseRegisterResponse(body)
+
   if (!parsed) {
     rememberLog('[daemon] register response malformed')
     daemonRuntime.lastError = 'REQUEST_FAILED'
+
     return { ok: false }
   }
+
   daemonToken = parsed.token
+
   try {
     writeDaemonConfig({ token: parsed.token, serverId: parsed.serverId })
   } catch (error: any) {
@@ -11419,9 +12155,11 @@ async function daemonRegister() {
     // still works this session; a restart re-registers.
     rememberLog(`[daemon] token not persisted (keychain): ${error && error.message ? error.message : 'unavailable'}`)
   }
+
   daemonRuntime.registered = true
   daemonRuntime.lastError = ''
   rememberLog('[daemon] device registered (token rotated)')
+
   return { ok: true }
 }
 
@@ -11431,20 +12169,26 @@ async function daemonHeartbeatOnce() {
   if (!daemonToken) {
     return { ok: false, tokenDead: true }
   }
+
   const endpoints = resolveApexEndpoints(process.env)
   const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).heartbeatUrl)
+
   if (!url) {
     return { ok: false }
   }
+
   let body
+
   try {
     body = await apexAuthPostJson(url, { body: {}, bearer: daemonToken })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, tokenDead: true }
     }
+
     return { ok: false }
   }
+
   return { ok: parseHeartbeatResponse(body).online === true }
 }
 
@@ -11454,20 +12198,26 @@ async function daemonPollOnce() {
   if (!daemonToken) {
     return { task: null, tokenDead: true }
   }
+
   const endpoints = resolveApexEndpoints(process.env)
   const url = guardedDaemonUrl(resolveDaemonEndpoints(endpoints.apiBase, process.env).pollUrl)
+
   if (!url) {
     return { task: null }
   }
+
   let body
+
   try {
     body = await apexAuthPostJson(url, { body: {}, bearer: daemonToken })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { task: null, tokenDead: true }
     }
+
     return { task: null, error: true }
   }
+
   return { task: parsePollResponse(body) }
 }
 
@@ -11476,17 +12226,22 @@ async function daemonPollOnce() {
 async function submitDaemonTaskResult(taskId, resultBody) {
   const endpoints = resolveApexEndpoints(process.env)
   const url = guardedDaemonUrl(bridgeResultUrl(endpoints.apiBase, taskId, process.env))
+
   if (!url) {
     return false
   }
+
   try {
     await apexAuthPostJson(url, { body: resultBody, bearer: daemonToken })
+
     return true
   } catch (error: any) {
     if (error && error.statusCode === 409) {
       return true // already recorded
     }
+
     rememberLog(`[daemon] result submit failed for ${taskId}: ${error && error.statusCode ? error.statusCode : 'network'}`)
+
     return false
   }
 }
@@ -11498,12 +12253,16 @@ function runLocalAgentJob(job) {
   return new Promise(resolve => {
     const venvPython = getVenvPython(VENV_ROOT)
     const pythonExe = fileExists(venvPython) ? venvPython : findSystemPython()
+
     if (!pythonExe) {
       rememberLog('[daemon] no python to run the local agent')
       resolve(null)
+
       return
     }
+
     let child
+
     try {
       child = spawn(pythonExe, ['-m', 'agent.coding_agents.run_once'], hiddenWindowsChildOptions({
         cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
@@ -11513,25 +12272,31 @@ function runLocalAgentJob(job) {
     } catch (error: any) {
       rememberLog(`[daemon] runner spawn failed: ${error && error.message ? error.message : error}`)
       resolve(null)
+
       return
     }
+
     let stdout = ''
     let settled = false
+
     const finish = value => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       clearTimeout(killTimer)
       resolve(value)
     }
+
     const killTimer = setTimeout(() => {
       try {
         child.kill('SIGKILL')
       } catch {
         /* already gone */
       }
+
       rememberLog('[daemon] runner timed out')
       finish(null)
     }, DAEMON_RUNNER_TIMEOUT_MS)
+
     child.stdout.on('data', chunk => {
       stdout += chunk.toString()
     })
@@ -11543,6 +12308,7 @@ function runLocalAgentJob(job) {
         finish(null)
       }
     })
+
     try {
       child.stdin.write(JSON.stringify(job))
       child.stdin.end()
@@ -11558,17 +12324,23 @@ function runLocalAgentJob(job) {
 // a Feishu notice; the daemon NEVER auto-approves.
 async function handleDaemonTask(rawTask) {
   const envelope = parseTaskEnvelope(rawTask)
+
   if (!envelope) {
     rememberLog('[daemon] skipping malformed task envelope')
+
     return
   }
+
   const { taskId, payload } = envelope
   const parsed = parseLocalAgentRunPayload(payload)
+
   if (!parsed.ok) {
     rememberLog(`[daemon] rejecting task ${taskId}: ${parsed.reason}`)
     await submitDaemonTaskResult(taskId, buildInvalidTaskResult(parsed.reason))
+
     return
   }
+
   rememberLog(`[daemon] running task ${taskId} (family=${parsed.job.family})`)
   const runnerResult = await runLocalAgentJob(parsed.job)
   const resultBody = buildResultSubmitBody(runnerResult)
@@ -11583,9 +12355,12 @@ async function daemonConnectionTick() {
   if (!daemonRuntime.started) {
     return
   }
+
   let delay = DAEMON_HEARTBEAT_INTERVAL_MS
+
   if (!daemonToken) {
     const reg = await daemonRegister()
+
     if (!reg.ok) {
       if (reg.needsSignIn) {
         // No usable JWT — stop hammering; the user must sign in. Timers idle
@@ -11593,24 +12368,31 @@ async function daemonConnectionTick() {
         daemonRuntime.connected = false
         pushDaemonStatus()
         stopDaemonTimers()
+
         return
       }
+
       daemonRuntime.connected = false
       pushDaemonStatus()
       delay = daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 })
       scheduleDaemonConnection(delay)
+
       return
     }
   }
+
   const hb = await daemonHeartbeatOnce()
+
   if (hb.tokenDead) {
     daemonToken = ''
     daemonRuntime.registered = false
     daemonRuntime.connected = false
     pushDaemonStatus()
     scheduleDaemonConnection(daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 }))
+
     return
   }
+
   if (hb.ok) {
     daemonRuntime.connected = true
     daemonRuntime.connAttempt = 0
@@ -11619,6 +12401,7 @@ async function daemonConnectionTick() {
     daemonRuntime.connected = false
     delay = daemonNextBackoffMs(daemonRuntime.connAttempt++, { baseMs: 2000, capMs: 60000 })
   }
+
   pushDaemonStatus()
   scheduleDaemonConnection(delay)
 }
@@ -11628,9 +12411,12 @@ async function daemonPollTick() {
   if (!daemonRuntime.started) {
     return
   }
+
   let delay = DAEMON_POLL_INTERVAL_MS
+
   if (daemonRuntime.connected && daemonToken && !daemonRuntime.busy) {
     const { task, tokenDead, error } = await daemonPollOnce()
+
     if (tokenDead) {
       // The connection loop re-registers; just back off polling briefly.
       delay = DAEMON_POLL_INTERVAL_MS
@@ -11638,8 +12424,10 @@ async function daemonPollTick() {
       delay = daemonNextBackoffMs(daemonRuntime.pollAttempt++, { baseMs: 2000, capMs: 30000 })
     } else {
       daemonRuntime.pollAttempt = 0
+
       if (task) {
         daemonRuntime.busy = true
+
         try {
           await handleDaemonTask(task)
         } catch (err: any) {
@@ -11650,11 +12438,12 @@ async function daemonPollTick() {
       }
     }
   }
+
   scheduleDaemonPoll(delay)
 }
 
 function scheduleDaemonConnection(delay) {
-  if (!daemonRuntime.started) return
+  if (!daemonRuntime.started) {return}
   clearTimeout(daemonRuntime.connLoopTimer)
   daemonRuntime.connLoopTimer = setTimeout(() => {
     void daemonConnectionTick()
@@ -11662,7 +12451,7 @@ function scheduleDaemonConnection(delay) {
 }
 
 function scheduleDaemonPoll(delay) {
-  if (!daemonRuntime.started) return
+  if (!daemonRuntime.started) {return}
   clearTimeout(daemonRuntime.pollLoopTimer)
   daemonRuntime.pollLoopTimer = setTimeout(() => {
     void daemonPollTick()
@@ -11680,12 +12469,15 @@ function stopDaemonTimers() {
 // loops immediately. No-op unless enabled.
 function startLocalAgentDaemon() {
   const config = readDaemonConfig()
+
   if (!config.enabled) {
     return
   }
+
   if (daemonRuntime.started) {
     return
   }
+
   daemonRuntime.started = true
   daemonRuntime.connAttempt = 0
   daemonRuntime.pollAttempt = 0
@@ -11726,6 +12518,7 @@ function startLocalAgentDaemonOnBoot() {
 async function fetchAndStoreFeishuCredentials() {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
+
   if (!token) {
     // No stored JWT → the user must sign in (managed) first; the renderer opens
     // the sign-in / web flow. Not an error — an expected pre-condition.
@@ -11734,6 +12527,7 @@ async function fetchAndStoreFeishuCredentials() {
 
   const endpoints = resolveApexEndpoints(process.env)
   let body
+
   try {
     body = await apexAuthGetJson(feishuCredentialsUrl(endpoints.apiBase), { bearer: token })
   } catch (error: any) {
@@ -11742,13 +12536,17 @@ async function fetchAndStoreFeishuCredentials() {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, hasEntry: false, message: 'SESSION_EXPIRED' }
     }
+
     rememberLog(`[feishu-bridge] credential fetch failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, hasEntry: false, message: 'FETCH_FAILED' }
   }
 
   const parsed = parseFeishuCredentialsResponse(body)
+
   if (!parsed) {
     rememberLog('[feishu-bridge] credential response malformed')
+
     return { ok: false, hasEntry: false, message: 'FETCH_FAILED' }
   }
 
@@ -11757,6 +12555,7 @@ async function fetchAndStoreFeishuCredentials() {
     // local credential and tell the renderer to guide them into the web flow.
     clearFeishuConfig()
     rememberLog('[feishu-bridge] no cloud Feishu entry for this user; guiding to web binding')
+
     return { ok: true, hasEntry: false, credentialStatus: parsed.credentialStatus }
   }
 
@@ -11764,6 +12563,7 @@ async function fetchAndStoreFeishuCredentials() {
   rememberLog(
     `[feishu-bridge] synced Feishu credential (app ${parsed.appId}, domain ${parsed.domain}, status ${parsed.credentialStatus || 'unknown'})`
   )
+
   return {
     ok: true,
     hasEntry: true,
@@ -11785,6 +12585,7 @@ async function fetchAndStoreFeishuCredentials() {
 async function fetchAnnouncements() {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
+
   if (!token) {
     // No stored JWT → the panel prompts sign-in. Not an error — an expected
     // pre-condition for a user who hasn't signed in to managed yet.
@@ -11793,13 +12594,16 @@ async function fetchAnnouncements() {
 
   const endpoints = resolveApexEndpoints(process.env)
   let body
+
   try {
     body = await apexAuthGetJson(announcementsListUrl(endpoints.apiBase), { bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, items: [], message: 'SESSION_EXPIRED' }
     }
+
     rememberLog(`[announcements] list fetch failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, items: [], message: 'FETCH_FAILED' }
   }
 
@@ -11816,16 +12620,20 @@ async function markAnnouncementRead(announcementId) {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
   const id = String(announcementId || '').trim()
+
   if (!token || !id) {
     return { ok: false }
   }
 
   const endpoints = resolveApexEndpoints(process.env)
+
   try {
     await apexAuthPostJson(announcementReadUrl(endpoints.apiBase, id), { body: {}, bearer: token })
+
     return { ok: true }
   } catch (error: any) {
     rememberLog(`[announcements] mark-read failed (ignored): ${error && error.message ? error.message : error}`)
+
     return { ok: false }
   }
 }
@@ -11833,6 +12641,7 @@ async function markAnnouncementRead(announcementId) {
 function readClientConfigState() {
   try {
     const raw = fs.readFileSync(DESKTOP_CLIENT_CONFIG_PATH, 'utf8')
+
     return normalizeStoredClientConfig(JSON.parse(raw))
   } catch {
     return normalizeStoredClientConfig(null)
@@ -11850,6 +12659,7 @@ function writeClientConfigState(next) {
 async function refreshClientConfigFromPlatform(reason) {
   try {
     const stored = readClientConfigState()
+
     const fetched = await fetchClientConfig({
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
@@ -11857,17 +12667,23 @@ async function refreshClientConfigFromPlatform(reason) {
       timeoutMs: 5_000,
       log: msg => rememberLog(msg)
     })
-    if (!fetched) return // offline / 404 no-active-config / garbage → cache stands
+
+    if (!fetched) {return} // offline / 404 no-active-config / garbage → cache stands
+
     if (fetched.unchanged) {
       rememberLog(`[client-config] v${fetched.version} unchanged (${reason})`)
+
       return
     }
+
     if (!shouldApplyClientConfig(fetched.version, stored.version)) {
       rememberLog(
         `[client-config] fetched v${fetched.version} is not newer than cached v${stored.version}; ignoring (${reason})`
       )
+
       return
     }
+
     writeClientConfigState({
       version: fetched.version,
       payload: fetched.payload,
@@ -11885,6 +12701,7 @@ async function refreshClientConfigFromPlatform(reason) {
 function readPlatformSkillsState() {
   try {
     const raw = fs.readFileSync(DESKTOP_PLATFORM_SKILLS_PATH, 'utf8')
+
     return normalizeStoredManifest(JSON.parse(raw))
   } catch {
     return normalizeStoredManifest(null)
@@ -11907,20 +12724,26 @@ async function refreshPlatformSkillsFromPlatform(reason) {
     // and clear the cache so a later re-enable re-pulls from scratch.
     if (!isPlatformSkillsEnabled(process.env)) {
       const { removed } = removePlatformSkills({ log: msg => rememberLog(msg), skillsRoot })
+
       if (removed || readPlatformSkillsState().manifestHash) {
         writePlatformSkillsState({ count: 0, installedAt: Date.now(), manifestHash: '' })
       }
+
       rememberLog(`[platform-skills] disabled via APEXNODES_PLATFORM_SKILLS; reverted (${reason})`)
+
       return
     }
 
     const token = String(resolveManagedConfig().accessToken || '').trim()
+
     if (!token) {
       rememberLog(`[platform-skills] no login JWT on hand; skipping (${reason})`)
+
       return
     }
 
     const stored = readPlatformSkillsState()
+
     const fetched = await fetchPlatformSkills({
       apiBase: apexApiBase(),
       fetchJson: apexAuthGetJson,
@@ -11929,13 +12752,18 @@ async function refreshPlatformSkillsFromPlatform(reason) {
       timeoutMs: 12_000,
       token
     })
-    if (!fetched) return // offline / 401 / garbage → installed set stands
+
+    if (!fetched) {return} // offline / 401 / garbage → installed set stands
+
     if (fetched.unchanged) {
       rememberLog(`[platform-skills] manifest ${fetched.manifestHash.slice(0, 12)} unchanged (${reason})`)
+
       return
     }
+
     if (!shouldApplyManifest(fetched.manifestHash, stored.manifestHash)) {
       rememberLog(`[platform-skills] manifest matches installed; no re-apply (${reason})`)
+
       return
     }
 
@@ -11944,6 +12772,7 @@ async function refreshPlatformSkillsFromPlatform(reason) {
     rememberLog(
       `[platform-skills] installed ${result.installed.length} skill(s) manifest=${fetched.manifestHash.slice(0, 12)} (${reason})`
     )
+
     if (result.skippedUnsafe.length) {
       rememberLog(`[platform-skills] skipped ${result.skippedUnsafe.length} unsafe entr(ies): ${result.skippedUnsafe.slice(0, 5).join(', ')}`)
     }
@@ -11955,6 +12784,7 @@ async function refreshPlatformSkillsFromPlatform(reason) {
 function readPlatformPluginsState() {
   try {
     const raw = fs.readFileSync(DESKTOP_PLATFORM_PLUGINS_PATH, 'utf8')
+
     return normalizeStoredPluginsState(JSON.parse(raw))
   } catch {
     return normalizeStoredPluginsState(null)
@@ -11984,6 +12814,7 @@ async function refreshPlatformPluginsFromPlatform(reason) {
       stored: readPlatformPluginsState(),
       token: String(resolveManagedConfig().accessToken || '').trim()
     })
+
     if (result && result.newStored) {
       writePlatformPluginsState(result.newStored)
     }
@@ -12016,7 +12847,7 @@ function guardConfigYamlProductBlocks(reason) {
   // losses in a row means a writer is hammering the file, and the live watcher
   // will pick the heal back up on its next event.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (healConfigYamlProductBlocks(reason) !== 'stale') return
+    if (healConfigYamlProductBlocks(reason) !== 'stale') {return}
   }
 
   rememberLog(`[config-guard] deferred to the watcher after 3 racing passes (${reason})`)
@@ -12025,7 +12856,8 @@ function guardConfigYamlProductBlocks(reason) {
 function healConfigYamlProductBlocks(reason) {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
-    if (!fs.existsSync(configPath)) return 'absent'
+
+    if (!fs.existsSync(configPath)) {return 'absent'}
     let raw = fs.readFileSync(configPath, 'utf8')
     // What we based this pass on. The runtime saves config.yaml atomically
     // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
@@ -12037,6 +12869,7 @@ function healConfigYamlProductBlocks(reason) {
 
     const managed = resolveManagedConfig()
     const endpoints = resolveApexEndpoints(process.env)
+
     // hc-602: rendered by the SAME producer the first-run seed uses. This healer
     // used to hand-roll a column-0 list lead while the seed emitted a two-space
     // one — both valid YAML, and the relay-key patcher understood only one of
@@ -12084,6 +12917,7 @@ function healConfigYamlProductBlocks(reason) {
     // ACTIVE without this reconcile. seedSkillsBlockYaml is the append when the
     // block is wholly absent (ensureSkillsDisabledYaml delegates to it).
     const skillsHeal = ensureSkillsDisabledYaml(raw)
+
     if (skillsHeal.changed) {
       raw = skillsHeal.next
       fixed.push(`skills.disabled(+${skillsHeal.added.length})`)
@@ -12122,12 +12956,13 @@ function healConfigYamlProductBlocks(reason) {
     // boot-time pass is also the UPGRADE path for installs seeded before the
     // plugins block existed.
     const pluginsHeal = ensurePluginsEnabledYaml(raw)
+
     if (pluginsHeal.changed) {
       raw = pluginsHeal.next
       fixed.push(`plugins.enabled(+${pluginsHeal.added.length})`)
     }
 
-    if (!fixed.length) return 'clean'
+    if (!fixed.length) {return 'clean'}
 
     // Compare-and-swap against what we read: a file that changed under us makes
     // `raw` stale, so drop this pass rather than overwrite whatever just
@@ -12157,7 +12992,8 @@ let configGuardTimer = null
 function watchConfigYamlProductBlocks() {
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
-    if (!fs.existsSync(configPath)) return
+
+    if (!fs.existsSync(configPath)) {return}
     fs.watch(configPath, { persistent: false }, () => {
       clearTimeout(configGuardTimer)
       configGuardTimer = setTimeout(() => guardConfigYamlProductBlocks('watch'), 2_000)
@@ -12181,13 +13017,14 @@ function watchConfigYamlProductBlocks() {
 let configArrivalWaiter = null
 
 function guardConfigYamlWhenItArrives() {
-  if (configArrivalWaiter) return
+  if (configArrivalWaiter) {return}
 
   const configPath = path.join(HERMES_HOME, 'config.yaml')
+
   // Already there → the boot guard just reconciled it and the watcher is
   // armed; arming a second watcher on the same file would only double every
   // future heal.
-  if (fs.existsSync(configPath)) return
+  if (fs.existsSync(configPath)) {return}
 
   configArrivalWaiter = guardConfigYamlOnArrival({
     configPath,
@@ -12205,23 +13042,30 @@ function guardConfigYamlWhenItArrives() {
 function applyClientConfigToRuntime(reason) {
   try {
     const stored = readClientConfigState()
-    if (!stored.version || stored.version <= (stored.appliedVersion || 0)) return
+
+    if (!stored.version || stored.version <= (stored.appliedVersion || 0)) {return}
+
     const entries =
       stored.payload && typeof stored.payload === 'object' && stored.payload.config_yaml &&
       typeof stored.payload.config_yaml === 'object'
         ? stored.payload.config_yaml
         : null
+
     const configPath = path.join(HERMES_HOME, 'config.yaml')
+
     if (entries && Object.keys(entries).length > 0) {
       if (!fs.existsSync(configPath)) {
         // Seed hasn't produced a config yet (ultra-fresh install) — retry on
         // the next boot rather than inventing a file the seed would then skip.
         rememberLog(`[client-config] config.yaml absent; deferring v${stored.version} apply (${reason})`)
+
         return
       }
+
       const raw = fs.readFileSync(configPath, 'utf8')
       const { changed, next, applied, skipped } = applyConfigYamlKeys(raw, entries)
-      if (changed) fs.writeFileSync(configPath, next, { encoding: 'utf8' })
+
+      if (changed) {fs.writeFileSync(configPath, next, { encoding: 'utf8' })}
       rememberLog(
         `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
           (skipped.length ? `; skipped: ${skipped.join(', ')}` : '')
@@ -12229,6 +13073,7 @@ function applyClientConfigToRuntime(reason) {
     } else {
       rememberLog(`[client-config] v${stored.version} carries no config_yaml keys (${reason})`)
     }
+
     writeClientConfigState({ ...stored, appliedVersion: stored.version })
   } catch (error: any) {
     rememberLog(`[client-config] apply failed (will retry next boot): ${error && error.message ? error.message : error}`)
@@ -12243,32 +13088,40 @@ function applyClientConfigToRuntime(reason) {
 function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
+
     try {
       parsed = new URL(url)
     } catch (error: any) {
       reject(new Error(`Invalid ApexNodes URL: ${error.message}`))
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       reject(new Error(`Unsupported ApexNodes URL protocol: ${parsed.protocol}`))
+
       return
     }
 
     const payload = serializeJsonBody(body)
     const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
     setJsonRequestHeaders(request)
+
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)
     }
 
     let timedOut = false
+
     const timer = setTimeout(() => {
       timedOut = true
+
       try {
         request.abort()
       } catch {
         // already finished
       }
+
       reject(new Error(`Timed out connecting to ApexNodes after ${timeoutMs}ms`))
     }, timeoutMs)
 
@@ -12276,23 +13129,29 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
       const chunks = []
       res.on('data', chunk => chunks.push(Buffer.from(chunk)))
       res.on('end', () => {
-        if (timedOut) return
+        if (timedOut) {return}
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
+
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${text || ''}`)
           err.statusCode = statusCode
           reject(err)
+
           return
         }
+
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
         persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+
         if (!text) {
           resolve(null)
+
           return
         }
+
         try {
           resolve(JSON.parse(text))
         } catch {
@@ -12301,11 +13160,12 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
       })
     })
     request.on('error', error => {
-      if (timedOut) return
+      if (timedOut) {return}
       clearTimeout(timer)
       reject(error)
     })
-    if (payload) request.write(payload)
+
+    if (payload) {request.write(payload)}
     request.end()
   })
 }
@@ -12318,31 +13178,39 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
 function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
+
     try {
       parsed = new URL(url)
     } catch (error: any) {
       reject(new Error(`Invalid ApexNodes URL: ${error.message}`))
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       reject(new Error(`Unsupported ApexNodes URL protocol: ${parsed.protocol}`))
+
       return
     }
 
     const request = electronNet.request({ method, url, redirect: 'follow' })
     request.setHeader('Accept', 'application/json')
+
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)
     }
 
     let timedOut = false
+
     const timer = setTimeout(() => {
       timedOut = true
+
       try {
         request.abort()
       } catch {
         // already finished
       }
+
       reject(new Error(`Timed out connecting to ApexNodes after ${timeoutMs}ms`))
     }, timeoutMs)
 
@@ -12350,23 +13218,29 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       const chunks = []
       res.on('data', chunk => chunks.push(Buffer.from(chunk)))
       res.on('end', () => {
-        if (timedOut) return
+        if (timedOut) {return}
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
+
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${text || ''}`)
           err.statusCode = statusCode
           reject(err)
+
           return
         }
+
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
         persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+
         if (!text) {
           resolve(null)
+
           return
         }
+
         try {
           resolve(JSON.parse(text))
         } catch {
@@ -12375,7 +13249,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       })
     })
     request.on('error', error => {
-      if (timedOut) return
+      if (timedOut) {return}
       clearTimeout(timer)
       reject(error)
     })
@@ -12402,36 +13276,44 @@ function apexAuthDeleteJson(url, opts) {
 function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 1024 * 1024 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
+
     try {
       parsed = new URL(url)
     } catch (error: any) {
       reject(new Error(`Invalid ApexNodes URL: ${error.message}`))
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       reject(new Error(`Unsupported ApexNodes URL protocol: ${parsed.protocol}`))
+
       return
     }
 
     const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
     request.setHeader('Accept', 'application/gzip, application/octet-stream')
+
     if (bearer) {
       request.setHeader('Authorization', `Bearer ${bearer}`)
     }
 
     let settled = false
+
     const fail = error => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       clearTimeout(timer)
       reject(error)
     }
+
     const timer = setTimeout(() => {
       try {
         request.abort()
       } catch {
         // already finished
       }
+
       fail(new Error(`Timed out downloading from ApexNodes after ${timeoutMs}ms`))
     }, timeoutMs)
 
@@ -12440,29 +13322,36 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
       let received = 0
       res.on('data', chunk => {
         received += chunk.length
+
         if (received > maxBytes) {
           try {
             request.abort()
           } catch {
             // already finished
           }
+
           fail(new Error(`Response exceeds ${maxBytes} bytes; aborted`))
+
           return
         }
+
         chunks.push(Buffer.from(chunk))
       })
       res.on('end', () => {
-        if (settled) return
+        if (settled) {return}
         settled = true
         clearTimeout(timer)
         const statusCode = res.statusCode || 500
         const body = Buffer.concat(chunks)
+
         if (statusCode >= 400) {
           const err: any = new Error(`${statusCode}: ${body.toString('utf8').slice(0, 200)}`)
           err.statusCode = statusCode
           reject(err)
+
           return
         }
+
         persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
         resolve(body)
       })
@@ -12487,30 +13376,39 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
   return new Promise(resolve => {
     const base = String(baseUrl || '').trim().replace(/\/+$/, '')
     const relayKey = String(key || '').trim()
+
     if (!base || !relayKey) {
       resolve({ ok: false, statusCode: 0 })
+
       return
     }
+
     const url = `${base}/models`
     let parsed
+
     try {
       parsed = new URL(url)
     } catch {
       resolve({ ok: false, statusCode: 0 })
+
       return
     }
+
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       resolve({ ok: false, statusCode: 0 })
+
       return
     }
 
     let settled = false
+
     const done = result => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       clearTimeout(timer)
       resolve(result)
     }
+
     const request = electronNet.request({ method: 'GET', url, redirect: 'follow' })
     request.setHeader('Authorization', `Bearer ${relayKey}`)
     request.setHeader('Accept', 'application/json')
@@ -12521,6 +13419,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
       } catch {
         // already finished
       }
+
       done({ ok: false, statusCode: 0 })
     }, timeoutMs)
 
@@ -12557,12 +13456,16 @@ let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
 // no key → 'unknown' (BYOK installs never probe).
 async function probeRelayCatalogState() {
   const managed = resolveManagedConfig()
+
   if (!isManagedEnabled(process.env) || !managed.key || !managed.baseUrl) {
     lastRelayCatalogState = { status: 'unknown', checkedAt: Date.now() }
+
     return lastRelayCatalogState
   }
+
   const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
   lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
+
   return lastRelayCatalogState
 }
 
@@ -12601,11 +13504,14 @@ async function probeRelayCatalogState() {
 async function selfHealManagedKeyOn401() {
   try {
     const managed = resolveManagedConfig()
-    if (!isManagedEnabled(process.env)) return { ok: true, relayUnauthorized: false }
-    if (!managed.key || !managed.baseUrl) return { ok: true, relayUnauthorized: false }
+
+    if (!isManagedEnabled(process.env)) {return { ok: true, relayUnauthorized: false }}
+
+    if (!managed.key || !managed.baseUrl) {return { ok: true, relayUnauthorized: false }}
 
     const configPath = path.join(HERMES_HOME, 'config.yaml')
     const attemptAt = lastManagedReprovisionAttemptAt
+
     const outcome = await reconcileManagedRelayKey({
       enabled: true,
       storedKey: managed.key,
@@ -12626,6 +13532,7 @@ async function selfHealManagedKeyOn401() {
         // relay key (server rotates), persists it (+ the — possibly unchanged —
         // JWT). A stored account keeps the account panel intact.
         const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
+
         return result && result.hasRelayKey ? { apiKey: resolveManagedConfig().key } : null
       },
       applyToBackend: reason => reloadBackendForRelayKey(reason),
@@ -12644,6 +13551,7 @@ async function selfHealManagedKeyOn401() {
     }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay key self-heal skipped: ${error && error.message ? error.message : error}`)
+
     return { ok: false, relayUnauthorized: false, healed: false, hasToken: false }
   }
 }
@@ -12661,6 +13569,7 @@ async function selfHealManagedKeyOn401() {
 //     caller falls back to BYOK.
 async function provisionManagedFromAccessToken(accessToken, account = null) {
   const token = String(accessToken || '').trim()
+
   if (!token) {
     throw new Error('ApexNodes sign-in did not return an access token.')
   }
@@ -12672,11 +13581,13 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   const resolvedAccount = accountFromLogin(account || {}, token)
 
   let provisioned = null
+
   try {
     const body = await apexAuthPostJson(endpoints.provisionKeyUrl, {
       bearer: token,
       body: {}
     })
+
     provisioned = parseProvisionResponse(body, process.env)
   } catch (error: any) {
     rememberLog(
@@ -12694,6 +13605,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
       name: provisioned.name || resolvedAccount.name,
       plan: provisioned.plan || resolvedAccount.plan
     }
+
     // Persist the login JWT (encrypted) alongside the fresh relay key so the boot
     // 401-self-heal can silently re-provision if this key is later rotated out.
     writeManagedConfig({ ...provisioned, account: account2, accessToken: token })
@@ -12717,8 +13629,10 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
     // Platform PLUGIN sync (hc-564) shares the trigger points; no-op unless
     // APEXNODES_PLATFORM_PLUGINS is explicitly enabled (default OFF).
     void refreshPlatformPluginsFromPlatform('sign-in')
+
     return { ok: true, hasRelayKey: true }
   }
+
   // Sign-in itself succeeded (valid token) even though provisioning fell back
   // to BYOK — still a sync point for the platform client config.
   void refreshClientConfigFromPlatform('sign-in')
@@ -12727,6 +13641,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   void refreshPlatformSkillsFromPlatform('sign-in')
   // Platform PLUGIN sync (hc-564): same reasoning, same opt-in gate (default OFF).
   void refreshPlatformPluginsFromPlatform('sign-in')
+
   return { ok: true, hasRelayKey: false }
 }
 
@@ -12752,10 +13667,12 @@ async function apexManagedSignIn({ email, password }: any) {
   // The auth-response body (login or register) is the best source of the user's
   // email/plan for the account panel; keep it to fold into the stored account.
   let authBody = null
+
   try {
     const loginBody = await apexAuthPostJson(endpoints.loginUrl, {
       body: { email: cleanEmail, password: cleanPassword }
     })
+
     authBody = loginBody
     accessToken = accessTokenFromLogin(loginBody) || ''
   } catch (error: any) {
@@ -12773,8 +13690,10 @@ async function apexManagedSignIn({ email, password }: any) {
         wrongCreds.code = 'INVALID_CREDENTIALS'
         throw wrongCreds
       })
+
       authBody = registerBody
       accessToken = accessTokenFromLogin(registerBody) || ''
+
       if (!accessToken) {
         // register returned 2xx but no token (e.g. 202 magic-link path) → treat
         // as invalid credentials, same as the web flow's 202 branch.
@@ -12789,6 +13708,7 @@ async function apexManagedSignIn({ email, password }: any) {
 
   // The typed email is always a valid identity fallback even if the body omits it.
   const account = { email: cleanEmail, ...(authBody && typeof authBody === 'object' ? authBody : {}) }
+
   return provisionManagedFromAccessToken(accessToken, account)
 }
 
@@ -12814,6 +13734,7 @@ const messagingGatewayRuntime = { process: null, profile: null, starting: false 
 
 function messagingGatewayChildAlive() {
   const child = messagingGatewayRuntime.process
+
   return Boolean(child && child.exitCode === null && !child.killed)
 }
 
@@ -12823,14 +13744,17 @@ async function stopMessagingGateway() {
   const child = messagingGatewayChildAlive() ? messagingGatewayRuntime.process : null
   messagingGatewayRuntime.process = null
   messagingGatewayRuntime.profile = null
+
   if (!child) {
     return
   }
+
   try {
     child.kill('SIGTERM')
   } catch {
     // Already gone.
   }
+
   await waitForBackendExit(child)
 }
 
@@ -12843,13 +13767,16 @@ async function startMessagingGateway(profile) {
   if (messagingGatewayRuntime.starting) {
     return
   }
+
   messagingGatewayRuntime.starting = true
+
   try {
     const backend = await ensureRuntime(resolveHermesBackend(buildGatewayRunArgs(profile)))
     const hermesCwd = resolveHermesCwd()
     rememberLog(
       `Starting Hermes messaging gateway${profile ? ` for profile "${profile}"` : ''} via ${backend.label}`
     )
+
     const child = spawn(
       backend.command,
       backend.args,
@@ -12877,12 +13804,14 @@ async function startMessagingGateway(profile) {
         stdio: ['ignore', 'pipe', 'pipe']
       })
     )
+
     messagingGatewayRuntime.process = child
     messagingGatewayRuntime.profile = profile || null
     child.stdout.on('data', rememberLog)
     child.stderr.on('data', rememberLog)
     child.once('exit', (code, signal) => {
       rememberLog(`Hermes messaging gateway exited (${signal || code})`)
+
       if (messagingGatewayRuntime.process === child) {
         messagingGatewayRuntime.process = null
         messagingGatewayRuntime.profile = null
@@ -12890,6 +13819,7 @@ async function startMessagingGateway(profile) {
     })
     child.once('error', error => {
       rememberLog(`Hermes messaging gateway failed to start: ${error && error.message ? error.message : error}`)
+
       if (messagingGatewayRuntime.process === child) {
         messagingGatewayRuntime.process = null
         messagingGatewayRuntime.profile = null
@@ -12912,14 +13842,18 @@ async function restartMessagingGateway() {
   try {
     if (!imEntryStoreHasBinding(resolveImEntryStore())) {
       await stopMessagingGateway()
+
       return
     }
+
     const backendChild = backendConnectionState.getProcess()
 
     if (!backendChild || backendChild.killed) {
       await stopMessagingGateway()
+
       return
     }
+
     await stopMessagingGateway()
     await startMessagingGateway(readActiveDesktopProfile())
   } catch (error: any) {
@@ -12936,17 +13870,22 @@ async function reconcileMessagingGateway() {
   try {
     if (!imEntryStoreHasBinding(resolveImEntryStore())) {
       await stopMessagingGateway()
+
       return
     }
+
     const backendChild = backendConnectionState.getProcess()
 
     if (!backendChild || backendChild.killed) {
       return
     }
+
     const activeProfile = readActiveDesktopProfile() || null
+
     if (messagingGatewayChildAlive() && messagingGatewayRuntime.profile === activeProfile) {
       return
     }
+
     await stopMessagingGateway()
     await startMessagingGateway(activeProfile)
   } catch (error: any) {
@@ -12982,9 +13921,11 @@ ipcMain.handle('hermes:runtime:version', async () => {
     //   treeMatchesMarker === null  -> no stamp (git / legacy tree): unknown, don't alarm
     const treeCommit = readSourceCommitStamp(ACTIVE_HERMES_ROOT)
     let treeMatchesMarker = null
+
     if (treeCommit && commit) {
       treeMatchesMarker = commitKeysMatch(treeCommit, commit)
     }
+
     return {
       ok: true,
       version,
@@ -12998,6 +13939,7 @@ ipcMain.handle('hermes:runtime:version', async () => {
     }
   } catch (error: any) {
     rememberLog(`[runtime-update] version read errored: ${error && error.message}`)
+
     // Fail open on the gate too: an unexpected read error must not nag.
     return {
       ok: false,
@@ -13026,10 +13968,12 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
       desktopVersion: app.getVersion(),
       log: msg => rememberLog(msg)
     })
+
     return { ok: true, ...result }
   } catch (error: any) {
     // checkForRuntimeUpdate already swallows; defensive only.
     rememberLog(`[runtime-update] check-update errored: ${error && error.message}`)
+
     return { ok: false, updateAvailable: false, error: (error && error.message) || String(error) }
   }
 })
@@ -13043,6 +13987,7 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
 ipcMain.handle('hermes:runtime:apply-update', async () => {
   // 1. Resolve the target pin. No managed latest / offline -> nothing to do.
   let pin = null
+
   try {
     pin = await resolveLatestRuntimePin({
       apiBase: apexApiBase(),
@@ -13052,6 +13997,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
   } catch (error: any) {
     return { ok: false, error: (error && error.message) || String(error) }
   }
+
   if (!pin) {
     return { ok: false, error: 'no_admin_latest_available' }
   }
@@ -13059,8 +14005,10 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
   // 2. Skip if already on this pin (compare against the installed marker key).
   const marker = readBootstrapMarker()
   const installedKey = (marker && (marker.pinnedCommit || marker.pinnedBranch)) || null
+
   if (installedKey && String(installedKey) === String(pin.key)) {
     const versionMoved = Boolean(marker && marker.version && pin.version && marker.version !== pin.version)
+
     if (!versionMoved) {
       return { ok: true, applied: false, alreadyCurrent: true, latest: { version: pin.version, key: pin.key } }
     }
@@ -13075,11 +14023,13 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
   //     per-bundle manifest gate the bundle flow also enforces. No gate /
   //     satisfied / unparseable version -> proceed unchanged (fail open).
   const shellVersion = app.getVersion()
+
   if (!desktopMeetsMinVersion(shellVersion, pin.minDesktopVersion)) {
     rememberLog(
       `[runtime-update] refusing apply: engine ${pin.version || pin.key} requires desktop >= ` +
         `${pin.minDesktopVersion}, shell is ${shellVersion}`
     )
+
     return {
       ok: false,
       error: 'min_desktop_version',
@@ -13098,6 +14048,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
   if (bundleModeEnabled()) {
     rememberLog(`[bundle] apply-update via bundle set: key=${pin.key} version=${pin.version || '?'}`)
     const result = await applyRuntimeBundleUpdateFlow(pin)
+
     if (result.ok) {
       // Stamp the bootstrap-complete marker into the freshly-activated version
       // (design §4 step 4) so the next boot treats the switched runtime as good
@@ -13111,8 +14062,10 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
       } catch (error: any) {
         rememberLog(`[bundle] switched but failed to stamp marker: ${error && error.message}`)
       }
+
       bootstrapFailure = null
       resetHermesConnection()
+
       return {
         ok: true,
         applied: true,
@@ -13121,8 +14074,10 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
         latest: { version: pin.version, key: pin.key, compatibilityNotes: pin.compatibilityNotes }
       }
     }
+
     if (result.code === 'min_desktop_version') {
       rememberLog(`[bundle] refusing update: ${result.error}`)
+
       return {
         ok: false,
         error: 'min_desktop_version',
@@ -13131,11 +14086,13 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
         latest: { version: pin.version, key: pin.key }
       }
     }
+
     if (result.code === 'insufficient_disk') {
       // Hard stop: the legacy chain re-bootstraps IN PLACE and needs even more
       // disk, so falling back would only fail worse (and mutate a working
       // runtime). Surface the readable precheck message (C2, design §8).
       rememberLog(`[bundle] refusing update: ${result.error}`)
+
       return {
         ok: false,
         error: 'insufficient_disk',
@@ -13145,6 +14102,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
         latest: { version: pin.version, key: pin.key }
       }
     }
+
     rememberLog(`[bundle] apply failed (${result.code}@${result.stage || '?'}); falling back to legacy install chain`)
     // fall through to the legacy steps 3-4 below
   }
@@ -13152,11 +14110,13 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
   //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
   const reachable = await isUpdateArtifactReachable(pin.cosTarballUrl)
+
   if (!reachable) {
     rememberLog(
       `[runtime-update] aborting apply: update artifact not reachable (${pin.cosTarballUrl || 'n/a'}); ` +
         'keeping current runtime'
     )
+
     return { ok: false, error: 'update_artifact_unreachable', latest: { version: pin.version, key: pin.key } }
   }
 
@@ -13179,6 +14139,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
     `[runtime-update] opt-in update armed: version=${pin.version || '?'} key=${pin.key}; ` +
       'dropping marker and re-running bootstrap'
   )
+
   try {
     if (fileExists(BOOTSTRAP_COMPLETE_MARKER)) {
       fs.rmSync(BOOTSTRAP_COMPLETE_MARKER, { force: true })
@@ -13187,10 +14148,13 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
     // If we can't drop the marker the update won't trigger; roll back so we
     // don't leave a dangling override that fights the installed runtime.
     rollbackRuntimePinOverride('failed to drop marker')
+
     return { ok: false, error: `failed_to_clear_marker: ${(error && error.message) || error}` }
   }
+
   bootstrapFailure = null
   resetHermesConnection()
+
   return {
     ok: true,
     applied: true,
@@ -13207,6 +14171,7 @@ ipcMain.handle('hermes:managed:status', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const managed = resolveManagedConfig()
   const account = managed.account || { email: '', name: '', plan: '' }
+
   return {
     enabled: isManagedEnabled(process.env),
     // hc-519 rollback switch (default on): whether relay-auth loss drives the
@@ -13247,8 +14212,10 @@ ipcMain.handle('hermes:managed:status', async () => {
 ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
   try {
     const refresh = Boolean(opts && opts.refresh)
+
     if (refresh || !lastRelayCatalogState.checkedAt) {
       await probeRelayCatalogState()
+
       if (lastRelayCatalogState.status === 'unauthorized') {
         // Same chain as boot: re-provision with the stored JWT when allowed
         // (shouldAttemptReprovision gates + cools down inside), which flips
@@ -13259,6 +14226,7 @@ ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
   } catch (error: any) {
     rememberLog(`[apexnodes] relay catalog probe failed: ${error && error.message ? error.message : error}`)
   }
+
   return { status: lastRelayCatalogState.status, checkedAt: lastRelayCatalogState.checkedAt }
 })
 
@@ -13270,11 +14238,14 @@ function managedSignInResultPayload(result) {
   if (!result.hasRelayKey) {
     return { ok: true, hasRelayKey: false, assignment: null }
   }
+
   const managed = resolveManagedConfig()
+
   const block = buildManagedModelConfig(managed.key, process.env, {
     baseUrl: managed.baseUrl,
     model: managed.model
   })
+
   return {
     ok: true,
     hasRelayKey: true,
@@ -13295,6 +14266,7 @@ function managedSignInErrorMessage(error) {
   if (error && error.code === 'INVALID_CREDENTIALS') {
     return 'INVALID_CREDENTIALS'
   }
+
   return error && error.message ? error.message : String(error)
 }
 
@@ -13307,12 +14279,15 @@ function managedSignInErrorMessage(error) {
 ipcMain.handle('hermes:managed:signIn', async (_event, payload) => {
   const email = String(payload?.email || '').trim()
   const password = String(payload?.password || '')
+
   if (!email || !password) {
     // EMPTY_FIELDS marker → renderer shows the Chinese "请输入邮箱和密码".
     return { ok: false, message: 'EMPTY_FIELDS' }
   }
+
   try {
     const result = await apexManagedSignIn({ email, password })
+
     return managedSignInResultPayload(result)
   } catch (error: any) {
     return { ok: false, message: managedSignInErrorMessage(error) }
@@ -13327,11 +14302,13 @@ ipcMain.handle('hermes:managed:signIn', async (_event, payload) => {
 // 127.0.0.1 only; the backend MUST also validate redirect_uri/desktop_cb.
 ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
   const provider = String(payload?.provider || '').trim()
+
   if (provider !== 'google' && provider !== 'apex') {
     return { ok: false, message: `Unknown browser sign-in provider: ${provider}` }
   }
 
   let loopback = null
+
   try {
     loopback = await startLoopbackLogin()
   } catch (error: any) {
@@ -13346,15 +14323,18 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
 
     if (!openExternalUrl(startUrl)) {
       loopback.close()
+
       return { ok: false, message: 'Could not open the system browser for sign-in.' }
     }
 
     // Block until the browser redirects back (or the watchdog/abort fires).
     const { token } = await loopback.result
     const result = await provisionManagedFromAccessToken(token)
+
     return managedSignInResultPayload(result)
   } catch (error: any) {
     loopback.close()
+
     return { ok: false, message: managedSignInErrorMessage(error) }
   }
 })
@@ -13365,15 +14345,19 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
 // shared provision path. Unauthenticated by design: the code IS the credential.
 async function exchangeHandoffCodeForToken(code) {
   const trimmed = String(code || '').trim()
+
   if (!trimmed) {
     throw new Error('Desktop handoff code missing.')
   }
+
   const endpoints = resolveApexEndpoints(process.env)
   const body = await apexAuthPostJson(endpoints.handoffExchangeUrl, { body: { code: trimmed } })
   const token = body && typeof body.access_token === 'string' ? body.access_token.trim() : ''
+
   if (!token) {
     throw new Error('Desktop handoff exchange did not return an access token.')
   }
+
   return token
 }
 
@@ -13383,13 +14367,16 @@ async function exchangeHandoffCodeForToken(code) {
 // email/password and browser flows (no separate auth system).
 ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   const code = String(payload?.code || '').trim()
+
   if (!code) {
     // EMPTY_FIELDS marker → renderer keeps it on the login screen silently.
     return { ok: false, message: 'EMPTY_FIELDS' }
   }
+
   try {
     const token = await exchangeHandoffCodeForToken(code)
     const result = await provisionManagedFromAccessToken(token)
+
     return managedSignInResultPayload(result)
   } catch (error: any) {
     return { ok: false, message: managedSignInErrorMessage(error) }
@@ -13400,6 +14387,7 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
 // model at a BYOK provider if the user wants to keep chatting.
 ipcMain.handle('hermes:managed:signOut', async () => {
   clearManagedRelayCredential()
+
   return { ok: true }
 })
 
@@ -13411,11 +14399,13 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 // — turning a silent 401 loop into a visible, actionable state. Never throws.
 ipcMain.handle('hermes:managed:selfHeal', async () => {
   const outcome = await selfHealManagedKeyOn401()
+
   // Relay accepted the key (or managed off / no key): not a managed-relay auth
   // problem — let the renderer's generic error path surface it.
   if (!outcome || !outcome.relayUnauthorized) {
     return { ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null }
   }
+
   if (outcome.healed) {
     // Fresh key on disk + config.yaml re-synced; hand back the assignment so the
     // renderer applies it via /api/model/set (same path as sign-in) and retries.
@@ -13427,6 +14417,7 @@ ipcMain.handle('hermes:managed:selfHeal', async () => {
       assignment: managedSignInResultPayload({ hasRelayKey: true }).assignment
     }
   }
+
   // Could not heal (no token, or the stored JWT is itself expired) → the user
   // must sign in again. Honest, visible state instead of a silent 401 loop.
   return { ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null }
@@ -13440,6 +14431,7 @@ ipcMain.handle('hermes:managed:selfHeal', async () => {
 ipcMain.handle('hermes:feishu:status', async () => {
   const stored = resolveFeishuConfig()
   const managed = resolveManagedConfig()
+
   return {
     connected: stored.connected,
     signedIn: Boolean(String(managed.accessToken || '').trim()),
@@ -13459,12 +14451,14 @@ ipcMain.handle('hermes:feishu:status', async () => {
 // the runtime.
 ipcMain.handle('hermes:feishu:sync', async () => {
   const result = await fetchAndStoreFeishuCredentials()
+
   if (result.ok && result.hasEntry) {
     // Re-home the local backend (same teardown+reload path as a profile switch)
     // so the freshly-injected FEISHU_* env takes effect immediately.
     await teardownPrimaryBackendAndWait()
     mainWindow?.reload()
   }
+
   return result
 })
 
@@ -13476,6 +14470,7 @@ ipcMain.handle('hermes:feishu:disconnect', async () => {
   clearFeishuConfig()
   await teardownPrimaryBackendAndWait()
   mainWindow?.reload()
+
   return { ok: true }
 })
 
@@ -13488,6 +14483,7 @@ ipcMain.handle('hermes:feishu:openBind', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const url = `${endpoints.authBase}/zh/createbot`
   const opened = openExternalUrl(url)
+
   return { ok: opened, url }
 })
 
@@ -13536,7 +14532,9 @@ function guardedFeishuProvisionUrl(url) {
   if (isAllowedFeishuProvisionUrl(url)) {
     return url
   }
+
   rememberLog(`[im-entry] refusing feishu provisioning call to non-allowlisted URL: ${url}`)
+
   return null
 }
 
@@ -13550,6 +14548,7 @@ function guardedFeishuProvisionUrl(url) {
 ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
+
   if (!token) {
     return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
   }
@@ -13557,33 +14556,43 @@ ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const { provisionUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
   const guardedUrl = guardedFeishuProvisionUrl(provisionUrl)
+
   if (!guardedUrl) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   let body
+
   try {
     body = await apexAuthPostJson(guardedUrl, { body: {}, bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
+
     if (error && error.statusCode === 404) {
       // The cloud provisioning endpoint isn't deployed → friendly "coming soon".
       return { ok: false, message: 'SERVICE_UNAVAILABLE' }
     }
+
     if (error && error.statusCode === 429) {
       // a2a audit P2-9: the cloud caps in-flight flows per user.
       return { ok: false, message: 'RATE_LIMITED' }
     }
+
     rememberLog(`[im-entry] feishu provision failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const parsed = parseFeishuProvisionResponse(body)
+
   if (!parsed) {
     rememberLog('[im-entry] feishu provision response malformed')
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   return { ok: true, ...parsed }
 })
 
@@ -13601,10 +14610,13 @@ ipcMain.handle('hermes:imEntry:feishuIssue', async () => {
 ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
+
   if (!token) {
     return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
   }
+
   const id = typeof provisionId === 'string' ? provisionId.trim() : ''
+
   if (!id) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
@@ -13612,26 +14624,33 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
   const endpoints = resolveApexEndpoints(process.env)
   const { provisionUrl, credentialsUrl } = resolveFeishuProvisionEndpoints(endpoints.apiBase, process.env)
   const pollUrl = guardedFeishuProvisionUrl(feishuProvisionPollUrl(provisionUrl, id))
+
   if (!pollUrl) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   let body
+
   try {
     body = await apexAuthGetJson(pollUrl, { bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
+
     if (error && error.statusCode === 404) {
       // The flow is unknown/lost (scheduler restart, TTL sweep) — terminal for
       // THIS flow; let the user start a fresh one instead of polling a ghost.
       return { ok: true, status: 'expired' }
     }
+
     rememberLog(`[im-entry] feishu provision poll failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const { status } = parseFeishuProvisionStatusResponse(body)
+
   if (status !== 'success') {
     return { ok: true, status }
   }
@@ -13639,38 +14658,48 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
   // success → the credential is persisted cloud-side; fetch it (separate call —
   // the poll response never carries it) and store it encrypted.
   const guardedCredentialsUrl = guardedFeishuProvisionUrl(credentialsUrl)
+
   if (!guardedCredentialsUrl) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   let credentialsBody
+
   try {
     credentialsBody = await apexAuthGetJson(guardedCredentialsUrl, { bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
+
     // Transient — report a failed poll; the machine re-polls, the flow is
     // already terminal 'success' cloud-side, and the next tick retries this
     // fetch. NEVER log the body (it would carry the secret on a partial read).
     rememberLog(`[im-entry] feishu credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const credential = parseFeishuCredentialsV2Response(credentialsBody)
+
   if (!credential) {
     rememberLog('[im-entry] feishu credentials response malformed')
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const binding = shapeImEntryBinding('feishu', credential)
+
   if (!binding) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   try {
     writeImEntryBinding(binding)
   } catch (error: any) {
     // encryptDesktopSecret is strict — no keychain → no plaintext write.
     rememberLog(`[im-entry] feishu credential not stored: ${error && error.message ? error.message : 'keychain'}`)
+
     return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
   }
 
@@ -13698,8 +14727,10 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
     mainWindow?.reload()
   } catch (error: any) {
     rememberLog(`[im-entry] backend restart after bind failed: ${error && error.message ? error.message : error}`)
+
     return { ok: true, status: 'success', restartFailed: true }
   }
+
   return { ok: true, status: 'success' }
 })
 
@@ -13712,6 +14743,7 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
 ipcMain.handle('hermes:imEntry:weixinIssue', async () => {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
+
   if (!token) {
     return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
   }
@@ -13719,42 +14751,55 @@ ipcMain.handle('hermes:imEntry:weixinIssue', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const { provisionUrl } = resolveWeixinProvisionEndpoints(endpoints.apiBase, process.env)
   const guardedUrl = guardedFeishuProvisionUrl(provisionUrl)
+
   if (!guardedUrl) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   let body
+
   try {
     body = await apexAuthPostJson(guardedUrl, { body: {}, bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
+
     if (error && error.statusCode === 404) {
       return { ok: false, message: 'SERVICE_UNAVAILABLE' }
     }
+
     if (error && error.statusCode === 429) {
       return { ok: false, message: 'RATE_LIMITED' }
     }
+
     rememberLog(`[im-entry] weixin provision failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   // Provision START shares the feishu shape (provision_id/qr_url/interval/expires_in).
   const parsed = parseFeishuProvisionResponse(body)
+
   if (!parsed) {
     rememberLog('[im-entry] weixin provision response malformed')
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   return { ok: true, ...parsed }
 })
 
 ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
   const managed = resolveManagedConfig()
   const token = String(managed.accessToken || '').trim()
+
   if (!token) {
     return { ok: false, needsSignIn: true, message: 'NOT_SIGNED_IN' }
   }
+
   const id = typeof provisionId === 'string' ? provisionId.trim() : ''
+
   if (!id) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
@@ -13762,26 +14807,33 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
   const endpoints = resolveApexEndpoints(process.env)
   const { provisionUrl, credentialsUrl } = resolveWeixinProvisionEndpoints(endpoints.apiBase, process.env)
   const pollUrl = guardedFeishuProvisionUrl(feishuProvisionPollUrl(provisionUrl, id))
+
   if (!pollUrl) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   let body
+
   try {
     body = await apexAuthGetJson(pollUrl, { bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
+
     if (error && error.statusCode === 404) {
       // The flow is unknown/lost — terminal for THIS flow; start a fresh one.
       return { ok: true, status: 'expired' }
     }
+
     rememberLog(`[im-entry] weixin provision poll failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   // Poll STATUS shares the feishu shape (status/agent_name).
   const { status } = parseFeishuProvisionStatusResponse(body)
+
   if (status !== 'success') {
     return { ok: true, status }
   }
@@ -13789,37 +14841,47 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
   // success → the bot credential is persisted cloud-side; fetch it (separate
   // call — the poll response never carries it) and store it encrypted.
   const guardedCredentialsUrl = guardedFeishuProvisionUrl(credentialsUrl)
+
   if (!guardedCredentialsUrl) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   let credentialsBody
+
   try {
     credentialsBody = await apexAuthGetJson(guardedCredentialsUrl, { bearer: token })
   } catch (error: any) {
     if (error && error.statusCode === 401) {
       return { ok: false, needsSignIn: true, message: 'SESSION_EXPIRED' }
     }
+
     // Transient — the flow is already terminal 'success' cloud-side; the next
     // tick retries this fetch. NEVER log the body (it carries the token).
     rememberLog(`[im-entry] weixin credentials fetch failed: ${error && error.statusCode ? error.statusCode : 'network'}`)
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const credential = parseWeixinCredentialsResponse(credentialsBody)
+
   if (!credential) {
     rememberLog('[im-entry] weixin credentials response malformed')
+
     return { ok: false, message: 'REQUEST_FAILED' }
   }
 
   const binding = shapeImEntryBinding('weixin', credential)
+
   if (!binding) {
     return { ok: false, message: 'REQUEST_FAILED' }
   }
+
   try {
     writeImEntryBinding(binding)
   } catch (error: any) {
     // encryptDesktopSecret is strict — no keychain → no plaintext write.
     rememberLog(`[im-entry] weixin credential not stored: ${error && error.message ? error.message : 'keychain'}`)
+
     return { ok: false, message: 'KEYCHAIN_UNAVAILABLE' }
   }
 
@@ -13841,8 +14903,10 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
     mainWindow?.reload()
   } catch (error: any) {
     rememberLog(`[im-entry] backend restart after weixin bind failed: ${error && error.message ? error.message : error}`)
+
     return { ok: true, status: 'success', restartFailed: true }
   }
+
   return { ok: true, status: 'success' }
 })
 
@@ -13860,18 +14924,22 @@ const CLOUD_UNBIND_ENDPOINT_RESOLVERS = {
 
 ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   const id = typeof channelId === 'string' ? channelId.trim() : ''
+
   if (!isKnownImEntryChannel(id)) {
     return { ok: false }
   }
 
   const resolveEndpoints = CLOUD_UNBIND_ENDPOINT_RESOLVERS[id]
+
   if (resolveEndpoints) {
     const managed = resolveManagedConfig()
     const token = String(managed.accessToken || '').trim()
+
     if (token) {
       const endpoints = resolveApexEndpoints(process.env)
       const { entryUrl } = resolveEndpoints(endpoints.apiBase, process.env)
       const guardedEntryUrl = guardedFeishuProvisionUrl(entryUrl)
+
       if (guardedEntryUrl) {
         try {
           await apexAuthDeleteJson(guardedEntryUrl, { bearer: token })
@@ -13893,6 +14961,7 @@ ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   // when nothing is bound (the just-unbound adapter goes dark immediately), or
   // restarts it so a still-bound sibling channel drops the removed one's env.
   await restartMessagingGateway()
+
   try {
     await teardownPrimaryBackendAndWait()
     mainWindow?.reload()
@@ -13901,6 +14970,7 @@ ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
     // dashboard re-home is only for its outbound-send env + the UI reload.
     rememberLog(`[im-entry] backend restart after unbind failed: ${error && error.message ? error.message : error}`)
   }
+
   return { ok: true }
 })
 
@@ -13913,20 +14983,25 @@ ipcMain.handle('hermes:daemon:status', async () => daemonStatusSnapshot())
 // loops (dormant) but KEEPS the registration/token so re-enabling is instant.
 ipcMain.handle('hermes:daemon:setEnabled', async (_event, enabled) => {
   const want = enabled === true
+
   try {
     if (want) {
       ensureDaemonIdentity()
     }
+
     writeDaemonConfig({ enabled: want })
   } catch (error: any) {
     rememberLog(`[daemon] setEnabled persist failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, message: 'KEYCHAIN_UNAVAILABLE', snapshot: daemonStatusSnapshot() }
   }
+
   if (want) {
     startLocalAgentDaemon()
   } else {
     stopLocalAgentDaemon()
   }
+
   return { ok: true, snapshot: daemonStatusSnapshot() }
 })
 
@@ -13935,16 +15010,21 @@ ipcMain.handle('hermes:daemon:setEnabled', async (_event, enabled) => {
 // a failed re-register does not lose the local rename).
 ipcMain.handle('hermes:daemon:setDeviceName', async (_event, name) => {
   const cleaned = sanitizeDaemonDeviceName(name, safeHostname())
+
   try {
     writeDaemonConfig({ deviceName: cleaned })
   } catch (error: any) {
     rememberLog(`[daemon] setDeviceName persist failed: ${error && error.message ? error.message : error}`)
+
     return { ok: false, snapshot: daemonStatusSnapshot() }
   }
+
   if (daemonRuntime.started && daemonToken) {
     void daemonRegister().then(() => pushDaemonStatus())
   }
+
   pushDaemonStatus()
+
   return { ok: true, snapshot: daemonStatusSnapshot() }
 })
 
@@ -13959,14 +15039,17 @@ ipcMain.handle('hermes:daemon:unregister', async () => {
   daemonRuntime.registered = false
   daemonRuntime.connected = false
   daemonRuntime.lastError = ''
+
   try {
     writeDaemonConfig({ enabled: false, token: '', serverId: '' })
   } catch (error: any) {
     rememberLog(`[daemon] unregister persist failed: ${error && error.message ? error.message : error}`)
   }
+
   // Belt-and-suspenders: even if the merge above kept a stale token, drop the
   // file's token by rewriting without it (writeDaemonConfig omits an empty token).
   pushDaemonStatus()
+
   return { ok: true, snapshot: daemonStatusSnapshot() }
 })
 
@@ -13978,16 +15061,19 @@ ipcMain.handle('hermes:agentAuth:status', async () => {
   const proxyFragment = resolveAgentProxyEnvFragment()
   const env = buildAgentCliEnv(proxyFragment)
   const proxyUrl = activeAgentProxyUrl(proxyFragment)
+
   const [claude, codex] = await Promise.all([
     detectClaudeAuth({ env, proxyUrl }).catch(() => ({ family: 'claude', state: AGENT_STATE.UNKNOWN })),
     detectCodexAuth({ env, homeDir: app.getPath('home'), proxyUrl }).catch(() => ({ family: 'codex', state: AGENT_STATE.UNKNOWN }))
   ])
+
   const sanitize = result => ({
     family: result.family,
     state: result.state,
     email: typeof result.email === 'string' ? result.email : '',
     plan: typeof result.plan === 'string' ? result.plan : ''
   })
+
   return { ok: true, claude: sanitize(claude), codex: sanitize(codex) }
 })
 
@@ -14014,37 +15100,45 @@ const AGENT_LOGIN_ABANDON_MS = 180_000
 // (never a fake "connected"). The renderer always gets guideCommand as a backup.
 async function connectAgentAccount(family) {
   const spec = CODING_AGENT_LOGIN[family]
-  if (!spec) return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }
+
+  if (!spec) {return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }}
 
   try {
-    if (activeAgentLogin[family]) activeAgentLogin[family].kill()
+    if (activeAgentLogin[family]) {activeAgentLogin[family].kill()}
   } catch {
     // ignore
   }
+
   activeAgentLogin[family] = null
 
   const env = buildAgentCliEnv()
   let child
+
   try {
     child = spawn(spec.command, spec.args, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'], env }))
   } catch {
     return { ok: false, mode: 'guide', reason: 'spawn_failed', guideCommand: spec.guide }
   }
+
   activeAgentLogin[family] = child
 
   return await new Promise(resolve => {
     let output = ''
     let openedUrl = ''
     let settled = false
+
     const finish = result => {
-      if (settled) return
+      if (settled) {return}
       settled = true
       resolve({ ...result, guideCommand: spec.guide })
     }
+
     const onChunk = data => {
       output += data.toString('utf8')
+
       if (!openedUrl) {
         const url = extractOAuthUrl(output)
+
         if (url) {
           openedUrl = url
           openExternalUrl(url)
@@ -14052,14 +15146,16 @@ async function connectAgentAccount(family) {
         }
       }
     }
-    if (child.stdout) child.stdout.on('data', onChunk)
-    if (child.stderr) child.stderr.on('data', onChunk)
+
+    if (child.stdout) {child.stdout.on('data', onChunk)}
+
+    if (child.stderr) {child.stderr.on('data', onChunk)}
     child.on('error', err => {
-      if (activeAgentLogin[family] === child) activeAgentLogin[family] = null
+      if (activeAgentLogin[family] === child) {activeAgentLogin[family] = null}
       finish({ ok: false, mode: err && err.code === 'ENOENT' ? 'no_cli' : 'guide', reason: 'spawn_error' })
     })
     child.on('exit', code => {
-      if (activeAgentLogin[family] === child) activeAgentLogin[family] = null
+      if (activeAgentLogin[family] === child) {activeAgentLogin[family] = null}
       // Exited before we saw/opened a URL: 0 = already completed; else degrade.
       finish(code === 0 ? { ok: true, mode: 'completed' } : { ok: false, mode: 'guide', reason: 'exited' })
     })
@@ -14067,7 +15163,7 @@ async function connectAgentAccount(family) {
     // URL. If it's still running, report 'started' so the renderer polls status
     // (and shows the guide as a backup) rather than us aborting a live login.
     setTimeout(() => {
-      if (!settled && child.exitCode === null) finish({ ok: true, mode: 'started', url: openedUrl })
+      if (!settled && child.exitCode === null) {finish({ ok: true, mode: 'started', url: openedUrl })}
     }, AGENT_LOGIN_GRACE_MS).unref?.()
     // Reap an abandoned login so a never-completed flow can't leak a child.
     setTimeout(() => {
@@ -14077,6 +15173,7 @@ async function connectAgentAccount(family) {
         } catch {
           // ignore
         }
+
         activeAgentLogin[family] = null
       }
     }, AGENT_LOGIN_ABANDON_MS).unref?.()
@@ -14085,7 +15182,9 @@ async function connectAgentAccount(family) {
 
 ipcMain.handle('hermes:agentAuth:connect', async (_event, family) => {
   const normalized = family === 'codex' ? 'codex' : family === 'claude' ? 'claude' : ''
-  if (!normalized) return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }
+
+  if (!normalized) {return { ok: false, mode: 'guide', reason: 'unknown_family', guideCommand: '' }}
+
   return connectAgentAccount(normalized)
 })
 
@@ -14094,12 +15193,14 @@ ipcMain.handle('hermes:agentAuth:connect', async (_event, family) => {
 ipcMain.handle('hermes:agentProxy:get', async () => {
   const config = readAgentProxyConfig()
   let detected = { active: false, url: '' }
+
   try {
     const systemUrls = systemProxyToUrls(readSystemProxy({}))
     detected = describeAgentProxy({ mode: config.mode, customUrl: config.customUrl, systemUrls })
   } catch {
     // ignore — detection is best-effort
   }
+
   return { ok: true, mode: config.mode, customUrl: config.customUrl, detected }
 })
 
@@ -14110,12 +15211,14 @@ ipcMain.handle('hermes:agentProxy:set', async (_event, payload) => {
   const customUrl = payload && typeof payload.customUrl === 'string' ? payload.customUrl : ''
   const next = writeAgentProxyConfig({ mode, customUrl })
   let detected = { active: false, url: '' }
+
   try {
     const systemUrls = systemProxyToUrls(readSystemProxy({}))
     detected = describeAgentProxy({ mode: next.mode, customUrl: next.customUrl, systemUrls })
   } catch {
     // ignore
   }
+
   return { ok: true, mode: next.mode, customUrl: next.customUrl, detected }
 })
 
@@ -14125,6 +15228,7 @@ ipcMain.handle('hermes:agentProxy:set', async (_event, payload) => {
 // the renderer neither applies nor records versions anymore.
 ipcMain.handle('hermes:clientConfig:get', async () => {
   const state = readClientConfigState()
+
   return { version: state.version, payload: state.payload, appliedVersion: state.appliedVersion }
 })
 
@@ -14135,8 +15239,10 @@ function httpStatusFromError(error) {
   if (error && typeof error.statusCode === 'number') {
     return error.statusCode
   }
+
   const message = error && error.message ? String(error.message) : ''
   const match = /^(\d{3}):/.exec(message)
+
   return match ? Number(match[1]) : null
 }
 
@@ -14149,18 +15255,23 @@ function httpStatusFromError(error) {
 function broadcastAuthGate(error) {
   try {
     const statusCode = httpStatusFromError(error)
+
     if (statusCode !== 401 && statusCode !== 403) {
       return
     }
+
     const message = error && error.message ? String(error.message) : ''
     const body = message.replace(/^\d{3}:\s*/, '')
     const disabled = /account_disabled/i.test(body)
+
     // A 403 that is NOT an account-disabled signal is a routine authorization
     // error, not a login-lost event — leave the session intact.
     if (statusCode === 403 && !disabled) {
       return
     }
+
     const reason = statusCode === 403 ? 'account_disabled' : 'unauthorized'
+
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
         win.webContents.send('hermes:auth-gate', { statusCode, reason })
@@ -14229,6 +15340,16 @@ app.whenReady().then(() => {
   ensureWslWindowsFonts()
   configureSpellChecker()
   registerPowerResumeListeners()
+  keepAwake.set(readPersistedKeepAwake())
+  applyQuickEntrySettings(readQuickEntrySettings())
+
+  if (IS_MAC) {
+    const repositionWakeIndicator = () => wakeIndicatorController.reposition()
+    screen.on('display-added', repositionWakeIndicator)
+    screen.on('display-metrics-changed', repositionWakeIndicator)
+    screen.on('display-removed', repositionWakeIndicator)
+  }
+
   createWindow()
 
   // Platform client-config sync: non-blocking boot check (contract: every boot
@@ -14319,6 +15440,8 @@ app.on('before-quit', () => {
   // The always-on-top overlay isn't a "real" app window; close it so a stray
   // pet can't keep the process alive or float over a quit app.
   closePetOverlay()
+  wakeIndicatorController.close()
+  closeQuickEntryWindow()
 
   // Quitting mid-install should stop the installer, not orphan it.
   if (bootstrapAbortController) {

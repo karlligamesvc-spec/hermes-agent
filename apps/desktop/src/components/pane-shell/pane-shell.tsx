@@ -250,7 +250,6 @@ export function Pane({
 }: PaneProps) {
   const ctx = useContext(PaneShellContext)
   const paneStates = useStore($paneStates)
-  const registered = useRef(false)
   const paneRef = useRef<HTMLDivElement | null>(null)
   // Keyboard (mod+b / mod+j) pins the reveal open while collapsed; hover is CSS.
   const [forced, setForced] = useState(false)
@@ -265,11 +264,6 @@ export function Pane({
   const overlayWidth = override !== undefined ? `${override}px` : widthToCss(width, DEFAULT_WIDTH)
 
   useEffect(() => {
-    if (registered.current) {
-      return
-    }
-
-    registered.current = true
     ensurePaneRegistered(id, { open: defaultOpen })
   }, [defaultOpen, id])
 

@@ -75,6 +75,8 @@ test('a config.yaml created AFTER boot still gets the product defaults', async (
   assert.match(healed, /^ {2}language: zh$/m)
   assert.match(healed, /^ {2}show_reasoning: true$/m)
   assert.match(healed, /^ {2}image_input_mode: auto$/m)
+  assert.match(healed, /^ {2}max_turns: 90$/m)
+  assert.match(healed, /^ {2}max_iterations: 50$/m)
   assert.match(healed, /^timezone: ''$/m)
   // The other writer's content survives — this is a fill, not a replacement.
   assert.match(healed, /^ {2}default: hermes-4$/m)

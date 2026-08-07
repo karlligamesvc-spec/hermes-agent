@@ -73,6 +73,7 @@ SKIP_BROWSER=false
 NO_SKILLS=false
 BRANCH="main"
 INSTALL_COMMIT=""
+FORCE_COMMIT=false
 ENSURE_DEPS=""
 POSTINSTALL_MODE=false
 MANIFEST_MODE=false
@@ -116,6 +117,10 @@ while [[ $# -gt 0 ]]; do
         --commit|-Commit)
             INSTALL_COMMIT="$2"
             shift 2
+            ;;
+        --force-commit|-ForceCommit)
+            FORCE_COMMIT=true
+            shift
             ;;
         --manifest|-Manifest)
             MANIFEST_MODE=true
@@ -168,11 +173,13 @@ while [[ $# -gt 0 ]]; do
             echo "                   'hermes update' runs never inject bundled skills either"
             echo "  --branch NAME  Git branch to install (default: main)"
             echo "  --commit SHA   Pin checkout to a specific commit after clone/update"
+            echo "                   (ignored when it would roll an existing install back)"
+            echo "  --force-commit Apply --commit even if it rolls the install backwards"
             echo "  --manifest     Print desktop bootstrap stage manifest as JSON"
             echo "  --stage NAME   Run one desktop bootstrap stage"
             echo "  --json         Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
-            echo "  --include-desktop  Also build the desktop app (apps/desktop -> Hermes.app)"
+            echo "  --include-desktop  Also build the desktop app (apps/desktop -> APEX.app)"
             echo "  --dir PATH     Installation directory"
             echo "                   default (non-root):  ~/.hermes/hermes-agent"
             echo "                   default (root, Linux): /usr/local/lib/hermes-agent"
@@ -848,21 +855,28 @@ check_git() {
     exit 1
 }
 
-# The desktop build runs Vite ^8, which refuses to start on Node outside
-# `^20.19 || >=22.12` — older Node lacks `node:util.styleText`, so `vite build`
-# crashes with a SyntaxError that surfaces only as the opaque "Build desktop
-# app … exit code 1" install failure. Returns 0 when the given `node --version`
-# string clears that floor; anything below it is replaced with the Hermes-
-# managed Node $NODE_VERSION LTS.
+# react-router 8.3 sets the dependency tree's real floor at Node >=22.22.0.
+# Keep this gate aligned with root package.json so a desktop install does not
+# get as far as npm ci only to die with EBADENGINE.
 node_satisfies_build() {
     local ver="${1#v}"
     local major="${ver%%.*}"
     local minor="${ver#*.}"; minor="${minor%%.*}"
     case "$major" in ''|*[!0-9]*) return 1 ;; esac
     case "$minor" in ''|*[!0-9]*) minor=0 ;; esac
-    if [ "$major" -eq 20 ] && [ "$minor" -ge 19 ]; then return 0; fi
-    if [ "$major" -ge 22 ] && { [ "$major" -gt 22 ] || [ "$minor" -ge 12 ]; }; then return 0; fi
+    if [ "$major" -ge 22 ] && { [ "$major" -gt 22 ] || [ "$minor" -ge 22 ]; }; then return 0; fi
     return 1
+}
+
+# npm 11.10-11.16 implements min-release-age but ignores our exclusion list,
+# turning deliberate dependency exceptions into ETARGET failures.
+npm_supports_npmrc() {
+    local ver="${1#v}"
+    local major="${ver%%.*}"
+    local minor="${ver#*.}"; minor="${minor%%.*}"
+    case "$major" in ''|*[!0-9]*) return 1 ;; esac
+    case "$minor" in ''|*[!0-9]*) minor=0 ;; esac
+    ! { [ "$major" -eq 11 ] && [ "$minor" -ge 10 ] && [ "$minor" -le 16 ]; }
 }
 
 check_node() {
@@ -874,13 +888,19 @@ check_node() {
     configure_managed_node_npm_prefix
 
     if command -v node &> /dev/null && node_satisfies_build "$(node --version)"; then
-        log_success "Node.js $(node --version) found"
-        HAS_NODE=true
-        return 0
+        if command -v npm &> /dev/null && npm_supports_npmrc "$(npm --version 2>/dev/null)"; then
+            log_success "Node.js $(node --version) found"
+            HAS_NODE=true
+            return 0
+        fi
+        log_warn "npm $(npm --version) is incompatible with this repo's .npmrc; installing Hermes-managed Node $NODE_VERSION..."
+        install_node
+        return
     fi
 
     # Prefer a Hermes-managed Node from a previous run over a too-old system one.
-    if [ -x "$HERMES_HOME/node/bin/node" ] && node_satisfies_build "$("$HERMES_HOME/node/bin/node" --version)"; then
+    if [ -x "$HERMES_HOME/node/bin/node" ] && node_satisfies_build "$("$HERMES_HOME/node/bin/node" --version)" && \
+       [ -x "$HERMES_HOME/node/bin/npm" ] && npm_supports_npmrc "$("$HERMES_HOME/node/bin/npm" --version 2>/dev/null)"; then
         export PATH="$HERMES_HOME/node/bin:$PATH"
         log_success "Node.js $("$HERMES_HOME/node/bin/node" --version) found (Hermes-managed)"
         HAS_NODE=true
@@ -888,7 +908,7 @@ check_node() {
     fi
 
     if command -v node &> /dev/null; then
-        log_warn "Node.js $(node --version) is too old for the desktop build (need ^20.19 or >=22.12) — installing Hermes-managed Node $NODE_VERSION LTS..."
+        log_warn "Node.js $(node --version) is too old (need >=22.22) — installing Hermes-managed Node $NODE_VERSION LTS..."
     elif [ "$DISTRO" = "termux" ]; then
         log_info "Node.js not found — installing Node.js via pkg..."
     else
@@ -1625,11 +1645,28 @@ EOF
     # Pin only matters for git checkouts; a COS source tarball is already built
     # from the pinned commit and has no .git to check out against.
     if [ -n "$INSTALL_COMMIT" ] && [ -d "$INSTALL_DIR/.git" ]; then
-        log_info "Pinning checkout to commit $INSTALL_COMMIT..."
+        # A commit pin must never move an existing install BACKWARDS. The
+        # bootstrap installer bakes its build-time commit into the binary and
+        # passes it on every install-mode run, including desktop retries. A
+        # stale installer would otherwise rewind a current checkout to ancient
+        # source while leaving its current venv in place.
         if ! git cat-file -e "$INSTALL_COMMIT^{commit}" 2>/dev/null; then
             git fetch origin "$INSTALL_COMMIT" || true
         fi
-        git checkout --detach "$INSTALL_COMMIT"
+        if git rev-parse --verify --quiet HEAD >/dev/null 2>&1 \
+           && git merge-base --is-ancestor "$INSTALL_COMMIT" HEAD 2>/dev/null \
+           && [ "$(git rev-parse "$INSTALL_COMMIT^{commit}" 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then
+            if [ "$FORCE_COMMIT" = true ]; then
+                log_warn "--force-commit: rolling this install back to $INSTALL_COMMIT."
+                git checkout --detach "$INSTALL_COMMIT"
+            else
+                log_warn "Ignoring --commit $INSTALL_COMMIT: the checkout is already newer."
+                log_warn "Pinning to it would roll this install back. Pass --force-commit to override."
+            fi
+        else
+            log_info "Pinning checkout to commit $INSTALL_COMMIT..."
+            git checkout --detach "$INSTALL_COMMIT"
+        fi
     fi
 
     log_success "Repository ready"
@@ -2183,7 +2220,8 @@ setup_path() {
     log_info "Setting up hermes command..."
 
     if [ "$USE_VENV" = true ]; then
-        HERMES_BIN="$INSTALL_DIR/venv/bin/hermes"
+        HERMES_BIN="$INSTALL_DIR/venv/bin/python"
+        HERMES_ENTRYPOINT="$INSTALL_DIR/hermes"
     else
         HERMES_BIN="$(which hermes 2>/dev/null || echo "")"
         if [ -z "$HERMES_BIN" ]; then
@@ -2192,10 +2230,10 @@ setup_path() {
         fi
     fi
 
-    # Verify the entry point script was actually generated
-    if [ ! -x "$HERMES_BIN" ]; then
-        log_warn "hermes entry point not found at $HERMES_BIN"
-        log_info "This usually means the pip install didn't complete successfully."
+    # Verify the interpreter and checked-in entrypoint needed by the launcher.
+    if [ ! -x "$HERMES_BIN" ] || { [ "$USE_VENV" = true ] && [ ! -f "$HERMES_ENTRYPOINT" ]; }; then
+        log_warn "Hermes launcher prerequisites not found"
+        log_info "This usually means the Python package install didn't complete successfully."
         if [ "$DISTRO" = "termux" ]; then
             log_info "Try: cd $INSTALL_DIR && python -m pip install -e '.[termux-all]' -c constraints-termux.txt"
         else
@@ -2217,14 +2255,67 @@ setup_path() {
     # the rm, `cat >` follows the symlink and overwrites the venv pip entry
     # point with this shim — making `exec "$HERMES_BIN"` self-recurse. (#21454)
     rm -f "$command_link_dir/hermes"
-    cat > "$command_link_dir/hermes" <<EOF
+    if [ "$USE_VENV" = true ]; then
+        # uv-generated console scripts resolve themselves through `realpath`,
+        # which stock macOS does not provide. Run the checked-in entrypoint
+        # with the venv interpreter instead.
+        cat > "$command_link_dir/hermes" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$HERMES_BIN" "$HERMES_ENTRYPOINT" "\$@"
+EOF
+    else
+        cat > "$command_link_dir/hermes" <<EOF
 #!/usr/bin/env bash
 unset PYTHONPATH
 unset PYTHONHOME
 exec "$HERMES_BIN" "\$@"
 EOF
+    fi
     chmod +x "$command_link_dir/hermes"
     log_success "Installed hermes launcher → $command_link_display_dir/hermes"
+
+    # Expose the direct agent entrypoint outside the venv as well.
+    rm -f "$command_link_dir/hermes-agent"
+    if [ "$USE_VENV" = true ]; then
+        cat > "$command_link_dir/hermes-agent" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$HERMES_BIN" "$INSTALL_DIR/run_agent.py" "\$@"
+EOF
+    else
+        cat > "$command_link_dir/hermes-agent" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$HERMES_BIN" run_agent.py "\$@"
+EOF
+    fi
+    chmod +x "$command_link_dir/hermes-agent"
+    log_success "Installed hermes-agent launcher → $command_link_display_dir/hermes-agent"
+
+    # ACP hosts resolve this name on the login-shell PATH. Remove any legacy
+    # symlink first so redirecting the shim cannot overwrite a venv script.
+    rm -f "$command_link_dir/hermes-acp"
+    if [ "$USE_VENV" = true ]; then
+        cat > "$command_link_dir/hermes-acp" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$HERMES_BIN" "$HERMES_ENTRYPOINT" acp "\$@"
+EOF
+    else
+        cat > "$command_link_dir/hermes-acp" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$HERMES_BIN" acp "\$@"
+EOF
+    fi
+    chmod +x "$command_link_dir/hermes-acp"
+    log_success "Installed hermes-acp launcher → $command_link_display_dir/hermes-acp"
 
     if [ "$DISTRO" = "termux" ]; then
         export PATH="$command_link_dir:$PATH"
@@ -3112,6 +3203,31 @@ maybe_start_gateway() {
     fi
 }
 
+write_bootstrap_marker() {
+    # Keep this schema aligned with install.ps1 and the desktop validator.
+    if [ ! -d "$INSTALL_DIR" ]; then
+        log_warn "Skipping bootstrap marker: $INSTALL_DIR doesn't exist"
+        return 0
+    fi
+
+    local pinned_commit="$INSTALL_COMMIT"
+    if [ -z "$pinned_commit" ]; then
+        pinned_commit=$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null) || pinned_commit=""
+    fi
+    if [ -z "$pinned_commit" ]; then
+        log_warn "Skipping bootstrap marker: could not resolve HEAD in $INSTALL_DIR"
+        return 0
+    fi
+
+    local marker_path="$INSTALL_DIR/.hermes-bootstrap-complete"
+    local tmp_path="$marker_path.tmp"
+    printf '{\n  "schemaVersion": 1,\n  "pinnedCommit": "%s",\n  "pinnedBranch": "%s",\n  "completedAt": "%s"\n}\n' \
+        "$pinned_commit" \
+        "$BRANCH" \
+        "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > "$tmp_path"
+    mv -f "$tmp_path" "$marker_path"
+}
+
 print_success() {
     echo ""
     echo -e "${GREEN}${BOLD}"
@@ -3489,7 +3605,7 @@ install_desktop() {
     # with no app and a confusing "couldn't find a built desktop" at launch.
     # Always re-resolve Node here. Stages run in separate processes, so we can't
     # trust an earlier check; more importantly check_node now enforces the build
-    # floor (^20.19 || >=22.12) and prepends the Hermes-managed Node to PATH, so
+    # floor (>=22.22) and prepends the Hermes-managed Node to PATH, so
     # the build never runs on a too-old system Node — the cause of the opaque
     # "Build desktop app … exit code 1" failure (Vite crashes on old Node).
     check_node
@@ -3615,6 +3731,8 @@ install_desktop() {
     else
         local cand
         for cand in \
+            "$desktop_dir/release/mac-arm64/APEX.app" \
+            "$desktop_dir/release/mac/APEX.app" \
             "$desktop_dir/release/mac-arm64/Hermes.app" \
             "$desktop_dir/release/mac/Hermes.app"; do
             if [ -d "$cand" ]; then
@@ -3776,6 +3894,7 @@ run_stage_body() {
             detect_os
             resolve_install_layout
             print_success
+            write_bootstrap_marker
             # Code-scoped stamp: write next to the install tree, not into
             # $HERMES_HOME. $HERMES_HOME is a shared data dir (it can be
             # bind-mounted into a Docker gateway too), so a stamp there gets
@@ -3907,6 +4026,7 @@ main() {
     fi
 
     print_success
+    write_bootstrap_marker
 
     # Code-scoped stamp: write next to the install tree, not into $HERMES_HOME.
     # $HERMES_HOME is a shared data dir (it can be bind-mounted into a Docker

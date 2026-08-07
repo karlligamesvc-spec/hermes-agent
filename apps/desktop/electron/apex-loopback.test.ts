@@ -15,7 +15,7 @@ import http from 'node:http'
 
 import { test } from 'vitest'
 
-import { generateState, startLoopbackLogin, DEFAULT_TIMEOUT_MS } from './apex-loopback'
+import { DEFAULT_TIMEOUT_MS, generateState, startLoopbackLogin } from './apex-loopback'
 
 // Fire a GET at the loopback callback and resolve with { statusCode, body }.
 // agent:false → no keep-alive pooling, so the client socket closes right after
@@ -31,6 +31,7 @@ function hitLoopback(port, pathAndQuery): Promise<any> {
         res.on('end', () => resolve({ statusCode: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }))
       }
     )
+
     req.on('error', reject)
     req.end()
   })
@@ -46,6 +47,7 @@ test('generateState returns a long, URL-safe, unique token', () => {
 
 test('startLoopbackLogin binds 127.0.0.1 with a /cb redirect_uri and a state', async () => {
   const lb = await startLoopbackLogin()
+
   try {
     assert.ok(lb.port > 0)
     assert.equal(lb.redirectUri, `http://127.0.0.1:${lb.port}/cb`)

@@ -19,9 +19,11 @@ if _spec is None or _spec.loader is None:
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 classify = _mod.classify
+ci_review_files = _mod.ci_review_files
 
 DEFAULT = {
     "python": True,
+    "python_prod": True,
     "frontend": True,
     "docker_meta": True,
     "site": True,
@@ -29,14 +31,17 @@ DEFAULT = {
     "deps": True,
     "npm_lock": True,
     "mcp_catalog": False,
-    "ci_review": True,
     "installers": True,
+    "ci_review": True,
 }
 
 
-def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, npm_lock=False, mcp_catalog=False, docker_meta=False, ci_review=False, installers=False) -> dict[str, bool]:
+def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, npm_lock=False, mcp_catalog=False, docker_meta=False, installers=False, ci_review=False, python_prod=None) -> dict[str, bool]:
+    # python_prod tracks python except for tests-only diffs; default it to
+    # python so the majority of cases don't need to spell it out.
     return {
         "python": python,
+        "python_prod": python if python_prod is None else python_prod,
         "frontend": frontend,
         "docker_meta": docker_meta,
         "site": site,
@@ -44,8 +49,8 @@ def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, npm
         "deps": deps,
         "npm_lock": npm_lock,
         "mcp_catalog": mcp_catalog,
-        "ci_review": ci_review,
         "installers": installers,
+        "ci_review": ci_review,
     }
 
 
@@ -64,10 +69,42 @@ CASES = {
     # skill edit must still run Python.
     "skill md → python + site": (["skills/github/SKILL.md"], _lanes(python=True, site=True)),
     "dockerfile → docker meta": (["Dockerfile"], _lanes(docker_meta=True)),
+    "POSIX installer → installers": (
+        ["scripts/install.sh"],
+        _lanes(python=True, installers=True),
+    ),
+    "PowerShell installer → installers": (
+        ["scripts/install.ps1"],
+        _lanes(python=True, installers=True),
+    ),
+    "installer library → installers": (
+        ["scripts/lib/native-runtime.sh"],
+        _lanes(python=True, installers=True),
+    ),
+    "release script → installers": (
+        ["scripts/release/publish-runtime-bundle.sh"],
+        _lanes(python=True, installers=True),
+    ),
     # Unknown top-level file keeps Python on rather than risk a silent skip.
     "unknown toplevel → python": (["Makefile"], _lanes(python=True)),
     "mixed docs+python → python": (["README.md", "agent/x.py"], _lanes(python=True, scan=True)),
     "mixed docs+frontend → frontend": (["README.md", "apps/x.tsx"], _lanes(frontend=True)),
+    # tests-only diffs: pytest lanes stay ON, product jobs (Desktop E2E,
+    # Docker) gate on python_prod and skip.
+    "tests-only → python without python_prod": (
+        ["tests/agent/test_foo.py", "tests/conftest.py"],
+        _lanes(python=True, python_prod=False, scan=True),
+    ),
+    "tests + prod source → both lanes": (
+        ["tests/agent/test_foo.py", "agent/x.py"],
+        _lanes(python=True, scan=True),
+    ),
+    # Runner infrastructure is NOT tests-only — a bad runner edit can mask
+    # real failures, so it keeps the conservative full lane set.
+    "test runner script → python_prod stays on": (
+        ["scripts/run_tests_parallel.py"],
+        _lanes(python=True, scan=True),
+    ),
     # Supply-chain lanes
     ".pth file → scan": (["evil.pth"], _lanes(python=True, scan=True)),
     "setup.py → scan": (["setup.py"], _lanes(python=True, scan=True)),
@@ -121,39 +158,6 @@ CASES = {
         ["apps/desktop/src/app.tsx"],
         _lanes(frontend=True),
     ),
-    # hc-632: the installer syntax gate used to sit behind docker_meta, which
-    # is on only for docker paths or any .github/ change -- so a PR touching
-    # ONLY an installer skipped the one gate that exists for it. These cases
-    # pin the lane that fixes that. install.sh is Python-relevant (the suite
-    # reads it), install.ps1 is not; both must light `installers`.
-    "install.sh → installers": (
-        ["scripts/install.sh"],
-        _lanes(python=True, installers=True),
-    ),
-    "install.ps1 alone → installers": (
-        ["scripts/install.ps1"],
-        _lanes(python=True, installers=True),
-    ),
-    "dot-sourced lib → installers": (
-        ["scripts/lib/apexnodes-region-detect.ps1"],
-        _lanes(python=True, installers=True),
-    ),
-    "unrelated script → no installers": (
-        ["scripts/publish-runtime-tarball.sh"],
-        _lanes(python=True),
-    ),
-    # hc-657: the COS publish script is parsed and unit-tested by the same lane.
-    # A PR touching only it must light that lane, or the gate written to guard
-    # it cannot fire on the PRs it exists for (AGENTS.md #14 -- exactly how the
-    # installer gate went unfired in hc-632).
-    "release publish script alone → installers": (
-        ["scripts/release/publish-desktop-cos.ps1"],
-        _lanes(python=True, installers=True),
-    ),
-    "release publish tests alone → installers": (
-        ["scripts/release/publish-desktop-cos.Tests.ps1"],
-        _lanes(python=True, installers=True),
-    ),
     # Fail open: CI-config / empty / blank diffs run everything.
     ".github change → all": ([".github/workflows/tests.yml"], DEFAULT),
     "action change → all": ([".github/actions/detect-changes/action.yml"], DEFAULT),
@@ -165,3 +169,15 @@ CASES = {
 @pytest.mark.parametrize("files,expected", CASES.values(), ids=CASES.keys())
 def test_classify(files, expected):
     assert classify(files) == expected
+
+
+def test_ci_review_files_returns_only_sensitive_paths_sorted_and_unique():
+    assert ci_review_files([
+        "apps/desktop/src/app.tsx",
+        ".github/workflows/ci.yml",
+        "apps/desktop/eslint.config.mjs",
+        ".github/workflows/ci.yml",
+    ]) == [
+        ".github/workflows/ci.yml",
+        "apps/desktop/eslint.config.mjs",
+    ]

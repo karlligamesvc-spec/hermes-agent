@@ -18,7 +18,7 @@ import { EmptyState, ListRow, LoadingState } from './primitives'
 // GET — so an empty feed is a normal, expected state today (nothing published
 // yet) and renders the same friendly "no announcements yet" copy it would once
 // the flag flips on and content starts flowing. No error, no dead end.
-const INTL_TAGS: Record<Locale, string> = { en: 'en-US', ja: 'ja-JP', zh: 'zh-CN', 'zh-hant': 'zh-TW' }
+const INTL_TAGS: Record<Locale, string> = { ar: 'ar', en: 'en-US', ja: 'ja-JP', zh: 'zh-CN', 'zh-hant': 'zh-TW' }
 
 export function ChangelogSection() {
   const { locale, t } = useI18n()

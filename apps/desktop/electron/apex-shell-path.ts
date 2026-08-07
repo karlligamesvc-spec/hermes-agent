@@ -57,14 +57,18 @@ function loginShellPathProbeArgs() {
  * @returns {string | null}
  */
 function parseLoginShellPath(stdout) {
-  if (!stdout) return null
+  if (!stdout) {return null}
+
   for (const line of String(stdout).split('\n')) {
     const idx = line.indexOf(LOGIN_SHELL_PATH_SENTINEL)
+
     if (idx !== -1) {
       const value = line.slice(idx + LOGIN_SHELL_PATH_SENTINEL.length).trim()
+
       return value || null
     }
   }
+
   return null
 }
 
@@ -78,8 +82,9 @@ function parseLoginShellPath(stdout) {
  * @returns {string[]}
  */
 function posixUserBinDirCandidates(home, { pathModule = path.posix }: any = {}) {
-  if (!home) return []
+  if (!home) {return []}
   const j = (...parts) => pathModule.join(home, ...parts)
+
   return [
     j('.local', 'bin'), // claude/codex installer, pipx, npm prefix=~/.local
     j('.npm-global', 'bin'), // `npm config set prefix ~/.npm-global`
@@ -104,16 +109,21 @@ function posixUserBinDirCandidates(home, { pathModule = path.posix }: any = {}) 
 function mergePathEntries(base, sources, { delimiter = ':' }: any = {}) {
   const seen = new Set()
   const ordered = []
+
   const push = entry => {
-    if (!entry || seen.has(entry)) return
+    if (!entry || seen.has(entry)) {return}
     seen.add(entry)
     ordered.push(entry)
   }
-  for (const entry of String(base || '').split(delimiter)) push(entry)
+
+  for (const entry of String(base || '').split(delimiter)) {push(entry)}
+
   for (const src of sources || []) {
     const parts = Array.isArray(src) ? src : String(src || '').split(delimiter)
-    for (const part of parts) push(part)
+
+    for (const part of parts) {push(part)}
   }
+
   return ordered.join(delimiter)
 }
 
@@ -144,12 +154,14 @@ function resolveAugmentedPath({
   isDir = () => true,
   pathModule = platform === 'win32' ? path.win32 : path.posix
 }: any = {}) {
-  if (platform === 'win32') return currentPath
+  if (platform === 'win32') {return currentPath}
   const delimiter = path.posix.delimiter
   const staticFloor = posixUserBinDirCandidates(home, { pathModule }).filter(isDir)
   const sources = []
-  if (loginShellPath) sources.push(loginShellPath) // trusted user PATH, verbatim
+
+  if (loginShellPath) {sources.push(loginShellPath)} // trusted user PATH, verbatim
   sources.push(staticFloor) // existence-filtered fallback floor
+
   return mergePathEntries(currentPath, sources, { delimiter })
 }
 

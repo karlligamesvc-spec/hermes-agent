@@ -113,11 +113,13 @@ test('normalizeSkill: drops unsafe name, missing SKILL.md, unsafe/non-string fil
   assert.equal(normalizeSkill({ files: [{ content: 'x', path: 'README.md' }], name: 'demo' }), null)
   // unsafe file path dropped; with no SKILL.md left → whole skill rejected
   assert.equal(normalizeSkill({ files: [{ content: 'x', path: '../escape' }], name: 'demo' }), null)
+
   // non-string content dropped; SKILL.md still present so skill survives w/o it
   const mixed = normalizeSkill({
     files: [{ content: 'ok', path: 'SKILL.md' }, { content: 123, path: 'bad.md' }],
     name: 'demo'
   })
+
   assert.deepEqual(mixed.files, [{ content: 'ok', path: 'SKILL.md' }])
 })
 
@@ -147,6 +149,7 @@ test('parsePlatformSkillsResponse: drops individual bad skills, keeps good', () 
     manifest_hash: 'm1',
     skills: [DOUYIN, { files: [], name: '../evil' }, { name: 'demo' }]
   })
+
   assert.deepEqual(parsed.skills.map(s => s.name), ['douyin-video-transcript'])
 })
 
@@ -193,6 +196,7 @@ for (const [value, expected] of [
 
 test('applyPlatformSkills: writes under skills/apexnodes/<name>/, agent-visible layout', () => {
   const root = tmpSkillsRoot()
+
   try {
     const result = applyPlatformSkills({ skills: [DOUYIN], skillsRoot: root })
     assert.deepEqual(result.installed, ['douyin-video-transcript'])
@@ -207,6 +211,7 @@ test('applyPlatformSkills: writes under skills/apexnodes/<name>/, agent-visible 
 
 test('applyPlatformSkills: clean replace drops a skill the cloud removed', () => {
   const root = tmpSkillsRoot()
+
   try {
     applyPlatformSkills({
       skills: [DOUYIN, { files: [{ content: 'x', path: 'SKILL.md' }], name: 'old-skill' }],
@@ -224,6 +229,7 @@ test('applyPlatformSkills: clean replace drops a skill the cloud removed', () =>
 
 test('applyPlatformSkills: SECURITY — a traversal path never escapes the category dir', () => {
   const root = tmpSkillsRoot()
+
   try {
     // Hand-built hostile skill (bypasses normalizeSkill by calling apply directly).
     const evil = {
@@ -234,6 +240,7 @@ test('applyPlatformSkills: SECURITY — a traversal path never escapes the categ
       ],
       name: 'evil'
     }
+
     const result = applyPlatformSkills({ skills: [evil], skillsRoot: root })
     // The two hostile paths are skipped + reported; only SKILL.md lands.
     assert.ok(result.skippedUnsafe.length >= 2, result.skippedUnsafe.join(','))
@@ -248,11 +255,13 @@ test('applyPlatformSkills: SECURITY — a traversal path never escapes the categ
 
 test('applyPlatformSkills: unsafe skill NAME is skipped', () => {
   const root = tmpSkillsRoot()
+
   try {
     const result = applyPlatformSkills({
       skills: [{ files: [{ content: 'x', path: 'SKILL.md' }], name: '../evil' }],
       skillsRoot: root
     })
+
     assert.deepEqual(result.installed, [])
     assert.ok(result.skippedUnsafe.includes('../evil'))
   } finally {
@@ -262,6 +271,7 @@ test('applyPlatformSkills: unsafe skill NAME is skipped', () => {
 
 test('removePlatformSkills: idempotent category removal', () => {
   const root = tmpSkillsRoot()
+
   try {
     applyPlatformSkills({ skills: [DOUYIN], skillsRoot: root })
     assert.equal(removePlatformSkills({ skillsRoot: root }).removed, true)
@@ -277,17 +287,21 @@ test('removePlatformSkills: idempotent category removal', () => {
 
 test('fetchPlatformSkills: success → parsed, forwards bearer + known_hash', async () => {
   const seen: any = {}
+
   const fetchJson = async (url, options) => {
     seen.url = url
     seen.options = options
+
     return { manifest_hash: 'm1', skills: [DOUYIN], total: 1 }
   }
+
   const parsed = await fetchPlatformSkills({
     apiBase: 'https://api.apex-nodes.com',
     fetchJson,
     knownHash: 'prev',
     token: 'jwt-123'
   })
+
   assert.equal(parsed.manifestHash, 'm1')
   assert.equal(seen.options.bearer, 'jwt-123')
   assert.match(seen.url, /\?known_hash=prev$/)
@@ -299,16 +313,20 @@ test('fetchPlatformSkills: fetch throws (e.g. 401) → null, fail-soft', async (
     err.statusCode = 401
     throw err
   }
+
   const out = await fetchPlatformSkills({ apiBase: 'https://x', fetchJson, token: 'jwt' })
   assert.equal(out, null)
 })
 
 test('fetchPlatformSkills: missing token/apiBase/fetchJson → null (no call)', async () => {
   let called = false
+
   const fetchJson = async () => {
     called = true
+
     return {}
   }
+
   assert.equal(await fetchPlatformSkills({ apiBase: '', fetchJson, token: 'jwt' }), null)
   assert.equal(await fetchPlatformSkills({ apiBase: 'https://x', fetchJson, token: '' }), null)
   assert.equal(await fetchPlatformSkills({ apiBase: 'https://x', fetchJson: null, token: 'jwt' }), null)

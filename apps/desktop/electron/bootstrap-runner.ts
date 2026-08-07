@@ -66,9 +66,11 @@ const SOURCE_COMMIT_STAMP = '.hermes-source-commit'
 
 /** The commit stamped into an installed tree, or null when unstamped. */
 function readSourceCommitStamp(activeRoot) {
-  if (!activeRoot) return null
+  if (!activeRoot) {return null}
+
   try {
     const raw = fs.readFileSync(path.join(activeRoot, SOURCE_COMMIT_STAMP), 'utf8').trim()
+
     return raw || null
   } catch {
     return null
@@ -77,14 +79,18 @@ function readSourceCommitStamp(activeRoot) {
 
 /** Do two commit keys name the same commit, allowing an abbreviated form? */
 function commitKeysMatch(a, b) {
-  if (!a || !b) return false
+  if (!a || !b) {return false}
   const x = String(a).trim().toLowerCase()
   const y = String(b).trim().toLowerCase()
-  if (!x || !y) return false
-  if (x === y) return true
+
+  if (!x || !y) {return false}
+
+  if (x === y) {return true}
   const shorter = x.length <= y.length ? x : y
   const longer = x.length <= y.length ? y : x
-  if (shorter.length < 7 || !STAMP_COMMIT_RE.test(shorter)) return false
+
+  if (shorter.length < 7 || !STAMP_COMMIT_RE.test(shorter)) {return false}
+
   return longer.startsWith(shorter)
 }
 
@@ -108,9 +114,11 @@ function commitKeysMatch(a, b) {
 function evaluateTreeIntegrity({ treeCommit = null, targetCommit = null }: any = {}) {
   const base = { treeCommit: treeCommit || null, targetCommit: targetCommit || null }
 
-  if (!targetCommit) return { ok: true, reason: 'no_target', ...base }
-  if (!treeCommit) return { ok: true, reason: 'unverifiable', ...base }
-  if (commitKeysMatch(treeCommit, targetCommit)) return { ok: true, reason: 'match', ...base }
+  if (!targetCommit) {return { ok: true, reason: 'no_target', ...base }}
+
+  if (!treeCommit) {return { ok: true, reason: 'unverifiable', ...base }}
+
+  if (commitKeysMatch(treeCommit, targetCommit)) {return { ok: true, reason: 'match', ...base }}
 
   return { ok: false, reason: 'commit_mismatch', ...base }
 }
@@ -360,8 +368,10 @@ function cnInstallEnv({ cnMirrors = false, runtimeCosBase = '' }: any = {}) {
  * the log is the first thing anyone reads when an install goes wrong.
  */
 function describeCnMirrorMode(value: string | undefined) {
-  if (value === '1') return 'forced-on'
-  if (value != null) return `forced-off(${value})`
+  if (value === '1') {return 'forced-on'}
+
+  if (value != null) {return `forced-off(${value})`}
+
   return 'auto'
 }
 
@@ -1211,6 +1221,7 @@ async function runBootstrap(opts) {
       hermesHome,
       emit
     })
+
     const installerKind = scriptInfo.kind || 'powershell'
 
     // 2. Fetch manifest
@@ -1301,6 +1312,7 @@ async function runBootstrap(opts) {
         `on-disk source is '${treeCommit || 'unknown'}' but the update targets ` +
         `'${targetCommit}' — the repository stage did not replace the tree. ` +
         'Not stamping the complete marker; keeping the previous runtime.'
+
       emit({ type: 'failed', stage: 'verify', error: detail })
       fireTelemetry(sendTelemetry, {
         ...telemetryBase,
@@ -1389,11 +1401,11 @@ export {
   isPinnedCommit,
   // Exposed for testability
   parseStageResult,
+  readSourceCommitStamp,
   resolveCheckoutHead,
   resolveInstallScript,
   resolveLocalInstallScript,
   resolveMarkerPinnedCommit,
-  readSourceCommitStamp,
   runBootstrap,
   runtimeKeyFromStamp,
   SOURCE_COMMIT_STAMP

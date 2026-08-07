@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { IM_ENTRY_ROUTE } from '@/app/routes'
 import { composerPanelCard } from '@/components/chat/composer-dock'

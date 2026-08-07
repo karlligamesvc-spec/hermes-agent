@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { useI18n } from '@/i18n'
@@ -27,7 +27,7 @@ interface DesktopAuthGateProps {
 export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: DesktopAuthGateProps) {
   const { t } = useI18n()
   const { enabled: managedEnabled, gateReason, loginTruth, status } = useStore($authState)
-  const startupReconcileDone = useRef(false)
+  const [startupReconcileDone, setStartupReconcileDone] = useState(false)
 
   // Continuous auth gate: subscribe once to the main-process broadcast so a lost
   // login / disabled account anywhere in the app returns the user here. Mounted
@@ -60,13 +60,13 @@ export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: Desktop
       return
     }
 
-    if (startupReconcileDone.current) {
+    if (startupReconcileDone) {
       return
     }
 
-    startupReconcileDone.current = true
+    setStartupReconcileDone(true)
     void reconcileRelayAuthState()
-  }, [enabled, managedEnabled, status, loginTruth])
+  }, [enabled, loginTruth, managedEnabled, startupReconcileDone, status])
 
   // Env not ready yet, already signed in, or in the hc-519 'expired' soft-degrade
   // (the sidebar account card + model menu carry that state; a managed-only relay

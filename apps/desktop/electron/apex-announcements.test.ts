@@ -16,8 +16,8 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
-  ANNOUNCEMENTS_LIST_PATH,
   announcementReadUrl,
+  ANNOUNCEMENTS_LIST_PATH,
   announcementsListUrl,
   normalizeAnnouncement,
   parseAnnouncementsResponse
@@ -53,6 +53,7 @@ test('normalizeAnnouncement maps a well-formed row', () => {
     updated_at: '2026-07-20T00:00:00Z',
     read: false
   })
+
   assert.deepEqual(parsed, {
     id: 'ann-1',
     title: '现在可以查看更新日志了',
@@ -99,6 +100,7 @@ test('parseAnnouncementsResponse maps every well-formed item, newest-first order
     ],
     total: 2
   })
+
   assert.equal(items.length, 2)
   assert.equal(items[0].id, '2')
   assert.equal(items[1].id, '1')
@@ -109,6 +111,7 @@ test('parseAnnouncementsResponse drops malformed rows but keeps the well-formed 
     items: [{ id: '1', title: 't', body: 'b' }, { id: '2' }, null, 'garbage'],
     total: 4
   })
+
   assert.equal(items.length, 1)
   assert.equal(items[0].id, '1')
 })

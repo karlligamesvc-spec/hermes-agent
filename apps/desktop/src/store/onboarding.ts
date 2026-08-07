@@ -111,6 +111,7 @@ export interface DesktopOnboardingState {
 
 export interface OnboardingContext {
   onCompleted?: () => void
+  profile?: string
   requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
 }
 
@@ -281,7 +282,7 @@ function shouldPreserveConfiguredOnFallback(runtime: RuntimeReadinessResult, sta
 }
 
 function notifyReady(provider: string) {
-  notify({ kind: 'success', title: 'Hermes is ready', message: `${provider} connected.` })
+  notify({ kind: 'success', title: 'APEX is ready', message: `${provider} connected.` })
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
@@ -477,6 +478,16 @@ async function refreshProviders() {
 
 export function requestDesktopOnboarding(reason = DEFAULT_ONBOARDING_REASON) {
   patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
+}
+
+/** Only the runtime's exact main-provider warning should reopen setup. Auxiliary
+ * provider warnings use shorter "ENV_KEY not set" text and must stay passive. */
+export function requestDesktopOnboardingForCredentialWarning(warning?: string | null) {
+  const detail = warning?.trim() ?? ''
+
+  if (/^No API key configured for provider '.+'\. First message will fail\.$/.test(detail)) {
+    requestDesktopOnboarding(detail)
+  }
 }
 
 // hc-511: a signed-in managed session lost its relay auth and can't self-heal
