@@ -101,9 +101,9 @@ jobs:
           }
           selected = os.environ["SELECTED_PLATFORM"]
           if selected == "all":
-              include = [platforms[selected]]
-          elif selected in platforms:
               include = list(platforms.values())
+          elif selected in platforms:
+              include = [platforms[selected]]
           else:
               raise SystemExit(f"unsupported platform: {selected}")
           print("matrix=" + json.dumps({"include": include}, separators=(",", ":")))
