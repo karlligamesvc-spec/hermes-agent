@@ -21,6 +21,11 @@ def _credential_check_step() -> dict:
     )
 
 
+def test_action_exposes_whether_the_fallback_token_is_in_use() -> None:
+    action = yaml.safe_load(ACTION_PATH.read_text(encoding="utf-8"))
+    assert action["outputs"]["using-app-token"]["value"] == "${{ steps.check.outputs.has_app }}"
+
+
 @pytest.mark.parametrize(
     ("client_id", "private_key", "expected"),
     [
