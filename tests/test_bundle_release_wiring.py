@@ -90,6 +90,16 @@ def test_bundle_leg_is_independent_of_tarball_train():
         assert marker not in tarball
 
 
+def test_source_tarball_workflow_does_not_republish_fixed_toolchains():
+    tarball = TARBALL_WF.read_text(encoding="utf-8")
+    publish_step = tarball.split("- name: Publish runtime source tarball", 1)[1]
+    # This train is keyed by the runtime commit. uv and PortableGit have their
+    # own version-pinned publishing lifecycle and must not occupy a runner slot
+    # on every source-only release.
+    assert 'default: true' in tarball  # no_uv workflow input stays on by default
+    assert '$UVFLAG --no-git --upload' in publish_step
+
+
 def test_release_runbook_documents_registration_and_gray_toggle():
     doc = (REPO / "docs" / "runtime-bundle-release.md").read_text(encoding="utf-8")
     assert "HERMES_BUNDLE_MODE" in doc  # gray-release toggle
