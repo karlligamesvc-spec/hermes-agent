@@ -31,6 +31,26 @@ def test_dockerfile_only_requests_declared_optional_extras():
     )
 
 
+def test_apexnodes_file_export_dependencies_are_in_all():
+    """Desktop installers and the cloud image both sync the ``all`` extra.
+
+    The four ApexNodes file-write plugins fail closed when their renderer is
+    missing, so dropping this fork-only extra produces a healthy-looking image
+    with DOCX/XLSX/PPTX/PDF silently absent. Keep both the exact dependency set
+    and its transitive inclusion in ``all`` under one packaging guard.
+    """
+    optional_dependencies = _load_optional_dependencies()
+
+    assert set(optional_dependencies["file-export"]) == {
+        "python-docx==1.1.2",
+        "XlsxWriter==3.2.0",
+        "python-pptx==1.0.2",
+        "weasyprint==62.3",
+        "pydyf==0.10.0",
+    }
+    assert "hermes-agent[file-export]" in optional_dependencies["all"]
+
+
 def test_matrix_extra_not_in_all():
     """The [matrix] extra pulls `mautrix[encryption]` -> `python-olm`,
     which has Linux-only wheels and no native build path on Windows or
