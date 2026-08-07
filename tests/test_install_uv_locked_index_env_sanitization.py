@@ -23,8 +23,8 @@ scripts/build-runtime-bundle.mjs already discovered and fixed this for the
 *bundle build* path (it deletes the index-selecting env before its own
 ``uv sync --locked``). This test pins the same fix applied to the actual
 *installer* consumption path: ``_uv_sync_locked`` (install.sh) /
-``Invoke-UvSyncLocked`` (install.ps1) strip ONLY the package-index-selecting
-env for the ``--locked`` calls specifically, leaving every other CN mirror
+``Invoke-UvSyncLocked`` (install.ps1) strip the package-index-selecting env and
+``UV_NO_CONFIG`` for the ``--locked`` calls specifically, leaving every other CN mirror
 (npm/node/electron/playwright, and the unlocked pip-fallback tiers, which
 DO benefit from a mirror since they re-resolve fresh) untouched.
 """
@@ -53,6 +53,7 @@ _INDEX_ENV_VARS = (
     "PIP_INDEX_URL",
     "PIP_EXTRA_INDEX_URL",
 )
+_LOCKED_PROJECT_ENV_VARS = (*_INDEX_ENV_VARS, "UV_NO_CONFIG")
 
 
 def _extract_install_sh_function(name: str) -> str:
@@ -77,7 +78,7 @@ def _extract_install_ps1_function(name: str) -> str:
 
 def test_install_sh_uv_sync_locked_helper_strips_every_index_env_var() -> None:
     body = _extract_install_sh_function("_uv_sync_locked")
-    for var in _INDEX_ENV_VARS:
+    for var in _LOCKED_PROJECT_ENV_VARS:
         assert f"-u {var}" in body, (
             f"_uv_sync_locked must strip {var} (env -u {var}) before the "
             "--locked uv sync, or a CN mirror default index re-keys the "
@@ -93,7 +94,8 @@ def test_install_ps1_invoke_uv_sync_locked_helper_strips_every_index_env_var() -
     A second caller appeared -- `uv export --locked` refuses on an index/lock
     mismatch exactly like `uv sync --locked` -- so the save/clear/restore lives
     in Invoke-WithoutIndexEnv now instead of being copied. This test follows the
-    extraction and still asserts the same two things: every index var is cleared
+    extraction and still asserts the same two things: every locked-project
+    override is cleared
     before the locked call, and every one is restored afterwards (the later
     non-locked tiers still want the CN mirror).
     """
@@ -104,7 +106,7 @@ def test_install_ps1_invoke_uv_sync_locked_helper_strips_every_index_env_var() -
     assert "--locked" in sync
 
     helper = _extract_install_ps1_function("Invoke-WithoutIndexEnv")
-    for var in _INDEX_ENV_VARS:
+    for var in _LOCKED_PROJECT_ENV_VARS:
         assert f"'{var}'" in helper, (
             f"the shared helper must clear {var} before a --locked uv call, or a "
             "CN mirror default index re-keys the lock's recorded registry and "
@@ -167,7 +169,7 @@ def test_build_runtime_bundle_and_installers_agree_on_the_index_env_list() -> No
     """Keep the env-var list in step with the bundle-build fix that first
     discovered this (scripts/build-runtime-bundle.mjs)."""
     bundle_src = BUILD_BUNDLE.read_text()
-    for var in _INDEX_ENV_VARS:
+    for var in _LOCKED_PROJECT_ENV_VARS:
         assert f"'{var}'" in bundle_src, (
             f"build-runtime-bundle.mjs no longer strips {var} -- update "
             "_uv_sync_locked / Invoke-UvSyncLocked (and this test) to match, "
@@ -199,6 +201,7 @@ def test_uv_sync_locked_strips_index_env_but_preserves_other_mirrors_and_args(
         'echo "UV_INDEX=${UV_INDEX-<unset>}"\n'
         'echo "PIP_INDEX_URL=${PIP_INDEX_URL-<unset>}"\n'
         'echo "PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL-<unset>}"\n'
+        'echo "UV_NO_CONFIG=${UV_NO_CONFIG-<unset>}"\n'
         'echo "UV_PROJECT_ENVIRONMENT=${UV_PROJECT_ENVIRONMENT-<unset>}"\n'
         'echo "npm_config_registry=${npm_config_registry-<unset>}"\n'
         "exit 0\n"
@@ -217,6 +220,10 @@ def test_uv_sync_locked_strips_index_env_but_preserves_other_mirrors_and_args(
         'export UV_INDEX="pypi=$UV_DEFAULT_INDEX"\n'
         'export PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"\n'
         'export PIP_EXTRA_INDEX_URL="https://example.invalid/extra/simple"\n'
+        # install.sh intentionally sets this globally to ignore config inherited
+        # from the invoking user's home. Project-level locked operations must
+        # temporarily clear it so pyproject.toml's exclude-newer remains visible.
+        'export UV_NO_CONFIG="1"\n'
         # A DIFFERENT class of CN-mirror env (non-index) that other tiers
         # still need -- must NOT be touched by this helper.
         'export npm_config_registry="https://registry.npmmirror.com"\n'
@@ -231,7 +238,7 @@ def test_uv_sync_locked_strips_index_env_but_preserves_other_mirrors_and_args(
         f"expected the fixed 'sync --extra all --locked' plus the forwarded "
         f"--check arg, got: {out!r}"
     )
-    for var in _INDEX_ENV_VARS:
+    for var in _LOCKED_PROJECT_ENV_VARS:
         assert f"{var}=<unset>" in out, (
             f"{var} leaked into the --locked uv invocation: {out}"
         )
