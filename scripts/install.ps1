@@ -2286,16 +2286,18 @@ function Install-Venv {
 # want the CN mirror (they re-resolve fresh from an index, so the mirror
 # genuinely buys speed there); this helper deliberately does not touch those.
 # Mirrors scripts/install.sh::_uv_sync_locked -- keep the two in step.
-# Run $Body with every index env var cleared, then restore them. Extracted
+# Run $Body with every locked-project override cleared, then restore them. Extracted
 # (hc-636) because a second caller appeared: `uv export --locked` refuses on an
 # index/lock mismatch exactly like `uv sync --locked` does, so both need the
-# same sanitation and neither should carry its own copy of the list.
+# same sanitation and neither should carry its own copy of the list. UV_NO_CONFIG
+# belongs here too: it hides this project's [tool.uv] exclude-newer policy, so
+# uv 0.12+ correctly rejects the otherwise-current lock as stale.
 function Invoke-WithoutIndexEnv {
     param([Parameter(Mandatory)][scriptblock] $Body)
 
     $names = @(
         'UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'UV_EXTRA_INDEX_URL', 'UV_INDEX',
-        'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL'
+        'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL', 'UV_NO_CONFIG'
     )
     $saved = @{}
     foreach ($n in $names) {

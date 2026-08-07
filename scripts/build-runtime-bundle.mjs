@@ -356,6 +356,8 @@ async function cmdBuild(args) {
   //       re-keys package sources and makes --locked fail "lockfile needs to
   //       be updated" (verified with uv 0.11.28) — a bundle must always be
   //       resolved against the lock's recorded registry, host env be damned.
+  //       UV_NO_CONFIG is sanitized too: it hides project [tool.uv]
+  //       exclude-newer, which makes uv 0.12+ reject the current lock.
   //       --dev-unlocked (local validation ONLY): keeps host index env, drops
   //       --locked, and stamps dev_unlocked into the manifest so such a
   //       bundle is tamper-evident and can never ship silently. ──────────────
@@ -367,7 +369,7 @@ async function cmdBuild(args) {
   if (devUnlocked) {
     warn('--dev-unlocked: NOT hash-verified against uv.lock; manifest will carry dev_unlocked=true')
   } else {
-    for (const k of ['UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'UV_EXTRA_INDEX_URL', 'UV_INDEX', 'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL']) delete syncEnv[k]
+    for (const k of ['UV_DEFAULT_INDEX', 'UV_INDEX_URL', 'UV_EXTRA_INDEX_URL', 'UV_INDEX', 'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL', 'UV_NO_CONFIG']) delete syncEnv[k]
   }
   run(uvHost, ['sync', '--extra', 'all', ...(devUnlocked ? [] : ['--locked'])], { cwd: stage, env: syncEnv })
 

@@ -1768,11 +1768,14 @@ setup_venv() {
 # verification. Only the unlocked `uv pip install` fallback tiers below
 # still want the CN mirror (they re-resolve fresh from an index, so the
 # mirror genuinely buys speed there); this helper deliberately does not
-# touch those. Mirrors build-runtime-bundle.mjs's identical sanitization for
-# the bundle build path — keep the env-var list in step with that file.
+# touch those. UV_NO_CONFIG is also cleared only for project-locked commands:
+# the installer exports it globally to ignore the invoking user's config, but
+# leaving it here hides this project's [tool.uv] exclude-newer and makes uv
+# 0.12+ reject a current lock as stale. Mirrors build-runtime-bundle.mjs's
+# identical sanitization — keep the env-var list in step with that file.
 _uv_sync_locked() {
     env -u UV_DEFAULT_INDEX -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INDEX \
-        -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL \
+        -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u UV_NO_CONFIG \
         UV_PROJECT_ENVIRONMENT="$INSTALL_DIR/venv" $UV_CMD sync --extra all --locked "$@"
 }
 
@@ -1818,9 +1821,10 @@ _uv_mirror_hashed() {
     # is non-fatal, so the whole tier would silently degrade back to the slow
     # upstream sync and the fix would look like it did nothing. Verified: with
     # UV_DEFAULT_INDEX=TUNA set, export exits 2 and writes a 0-byte file.
-    # The export needs no index anyway — it only reads the lock.
+    # The export needs no index anyway — it only reads the lock. It does need
+    # project config, so clear the installer's global UV_NO_CONFIG here too.
     if ! env -u UV_DEFAULT_INDEX -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INDEX \
-        -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL \
+        -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u UV_NO_CONFIG \
         $UV_CMD export --format requirements-txt --no-emit-project --extra all --locked -o "$req" >/dev/null 2>&1; then
         log_warn "uv export failed — falling back to the upstream locked sync"
         rm -f "$req"
