@@ -318,7 +318,55 @@ function seedWebGatewayBlockYaml() {
 }
 
 function ensureWebGatewayYaml(raw) {
-  return ensureProductDefaultsYaml(raw, SEED_WEB_GATEWAY)
+  const addedMissingKey = ensureProductDefaultsYaml(raw, SEED_WEB_GATEWAY)
+
+  if (addedMissingKey.changed) {return addedMissingKey}
+
+  // v0.20's runtime default already writes `web.search_backend: ''`. That is
+  // semantically "unset" (the runtime falls through to credential detection),
+  // not a user-selected provider. Treat only YAML's empty/null scalar shapes as
+  // absent so upgrades receive the managed SearXNG default too. Any non-empty
+  // value remains the user's answer and is preserved byte-for-byte.
+  const source = String(raw || '')
+  const lines = source.split('\n')
+
+  const webBlocks = lines
+    .map((line, index) => (/^web:\s*(?:#.*)?\r?$/.test(line) ? index : -1))
+    .filter(index => index >= 0)
+
+  // Duplicate/inline/otherwise surprising structures are deliberately left
+  // alone. Never "repair" an ambiguous config by guessing which block wins.
+  if (webBlocks.length !== 1) {return addedMissingKey}
+  const blockStart = webBlocks[0]
+  let blockEnd = lines.length
+
+  for (let i = blockStart + 1; i < lines.length; i++) {
+    if (/^\S/.test(bareLine(lines[i]))) {
+      blockEnd = i
+
+      break
+    }
+  }
+
+  const matches = []
+
+  for (let i = blockStart + 1; i < blockEnd; i++) {
+    const match = bareLine(lines[i]).match(/^(\s{2}search_backend:\s*)([^#]*?)(\s*(?:#.*)?)$/)
+
+    if (match) {matches.push({ index: i, match })}
+  }
+
+  if (matches.length !== 1) {return addedMissingKey}
+  const { index, match } = matches[0]
+  const value = match[2].trim().toLowerCase()
+  const unsetScalars = new Set(['', "''", '""', 'null', '~'])
+
+  if (!unsetScalars.has(value)) {return addedMissingKey}
+  const cr = lines[index].endsWith('\r') ? '\r' : ''
+
+  lines[index] = `${match[1]}searxng${match[3]}${cr}`
+
+  return { changed: true, next: lines.join('\n'), added: ['web.search_backend'] }
 }
 
 /**

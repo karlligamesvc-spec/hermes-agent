@@ -93,6 +93,38 @@ test('hc-645 upgrade guard preserves an explicit user search backend', () => {
   assert.equal(result.next, raw)
 })
 
+test('hc-645 upgrade guard treats runtime-default empty search backends as unset', () => {
+  for (const empty of ['', "''", '""', 'null', '~']) {
+    const raw = `web:\n  backend: ''\n  search_backend: ${empty}\n  extract_backend: ''\nmodel:\n  default: existing\n`
+    const result = ensureWebGatewayYaml(raw)
+
+    assert.equal(result.changed, true, `empty scalar ${JSON.stringify(empty)}`)
+    assert.deepEqual(result.added, ['web.search_backend'])
+    assert.match(result.next, /^ {2}search_backend: searxng$/m)
+    assert.match(result.next, /^ {2}extract_backend: ''$/m)
+    assert.match(result.next, /^model:\n {2}default: existing$/m)
+
+    const second = ensureWebGatewayYaml(result.next)
+    assert.equal(second.changed, false)
+    assert.equal(second.next, result.next)
+  }
+})
+
+test('hc-645 empty-backend upgrade preserves CRLF and refuses duplicate keys', () => {
+  const crlf = "web:\r\n  search_backend: '' # runtime default\r\nmodel:\r\n  default: existing\r\n"
+  const healed = ensureWebGatewayYaml(crlf)
+
+  assert.equal(healed.changed, true)
+  assert.match(healed.next, /search_backend: searxng # runtime default\r\n/)
+  assert.equal((healed.next.match(/\r\n/g) || []).length, 4)
+
+  const duplicate = "web:\n  search_backend: ''\n  search_backend: brave-free\n"
+  const refused = ensureWebGatewayYaml(duplicate)
+
+  assert.equal(refused.changed, false)
+  assert.equal(refused.next, duplicate)
+})
+
 test('hc-645 desktop boot wires the web gateway into both seed and upgrade paths', () => {
   const mainSource = readFileSync(join(import.meta.dirname, 'main.ts'), 'utf8')
 
