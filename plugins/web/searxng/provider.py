@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 from agent.web_search_provider import WebSearchProvider
 
@@ -44,6 +45,30 @@ def _searxng_url() -> str:
     return (val or "").strip()
 
 
+def _searxng_api_key() -> str:
+    """Return the optional SearXNG gateway key through the config-aware path."""
+    try:
+        from hermes_cli.config import get_env_value
+
+        val = get_env_value("SEARXNG_API_KEY")
+    except Exception:
+        val = None
+    if val is None:
+        val = os.getenv("SEARXNG_API_KEY", "")
+    return (val or "").strip()
+
+
+def _requires_platform_key(url: str) -> bool:
+    """Platform gateway URLs require auth; self-hosted SearXNG stays keyless."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower().rstrip(".")
+    path = (parsed.path or "").lower().rstrip("/")
+    return host == "apex-nodes.com" or host.endswith(".apex-nodes.com") or "/api/v1/search/searxng" in path
+
+
 class SearXNGWebSearchProvider(WebSearchProvider):
     """Search via a user-hosted SearXNG instance."""
 
@@ -56,8 +81,9 @@ class SearXNGWebSearchProvider(WebSearchProvider):
         return "SearXNG"
 
     def is_available(self) -> bool:
-        """Return True when ``SEARXNG_URL`` is set."""
-        return bool(_searxng_url())
+        """Require a key only for the authenticated ApexNodes gateway."""
+        url = _searxng_url()
+        return bool(url) and (not _requires_platform_key(url) or bool(_searxng_api_key()))
 
     def supports_search(self) -> bool:
         return True
@@ -72,6 +98,12 @@ class SearXNGWebSearchProvider(WebSearchProvider):
         base_url = _searxng_url().rstrip("/")
         if not base_url:
             return {"success": False, "error": "SEARXNG_URL is not set"}
+        api_key = _searxng_api_key()
+        if _requires_platform_key(base_url) and not api_key:
+            return {
+                "success": False,
+                "error": "ApexNodes 搜索凭据缺失，请重新登录后再试",
+            }
 
         params: Dict[str, Any] = {
             "q": query,
@@ -80,19 +112,25 @@ class SearXNGWebSearchProvider(WebSearchProvider):
         }
 
         try:
+            headers = {"Accept": "application/json"}
+            if api_key:
+                headers["X-API-Key"] = api_key
             resp = httpx.get(
                 f"{base_url}/search",
                 params=params,
                 timeout=15,
-                headers={"Accept": "application/json"},
+                headers=headers,
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.warning("SearXNG HTTP error: %s", exc)
-            return {
-                "success": False,
-                "error": f"SearXNG returned HTTP {exc.response.status_code}",
+            status = exc.response.status_code
+            messages = {
+                401: "ApexNodes 搜索凭据无效或已过期，请重新登录",
+                403: "ApexNodes 账号尚未激活，暂时无法使用联网搜索",
+                429: "联网搜索超过频率上限，请稍后再试",
             }
+            return {"success": False, "error": messages.get(status, f"SearXNG returned HTTP {status}")}
         except httpx.RequestError as exc:
             logger.warning("SearXNG request error: %s", exc)
             return {

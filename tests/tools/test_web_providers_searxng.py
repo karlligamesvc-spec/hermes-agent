@@ -30,6 +30,18 @@ class TestSearXNGSearchProviderIsConfigured:
         from plugins.web.searxng.provider import SearXNGWebSearchProvider
         assert SearXNGWebSearchProvider().is_available() is True
 
+    def test_platform_gateway_requires_credential(self, monkeypatch):
+        monkeypatch.setenv("SEARXNG_URL", "https://api.apex-nodes.com/api/v1/search/searxng")
+        monkeypatch.delenv("SEARXNG_API_KEY", raising=False)
+        from plugins.web.searxng.provider import SearXNGWebSearchProvider
+        assert SearXNGWebSearchProvider().is_available() is False
+
+    def test_platform_gateway_available_with_credential(self, monkeypatch):
+        monkeypatch.setenv("SEARXNG_URL", "https://api.apex-nodes.com/api/v1/search/searxng")
+        monkeypatch.setenv("SEARXNG_API_KEY", "sk-desktop")
+        from plugins.web.searxng.provider import SearXNGWebSearchProvider
+        assert SearXNGWebSearchProvider().is_available() is True
+
 
     def test_implements_web_search_provider(self):
         from agent.web_search_provider import WebSearchProvider
@@ -70,6 +82,53 @@ class TestSearXNGSearchProviderSearch:
         assert web[0]["url"] == "https://a.example.com"
         assert web[0]["description"] == "Desc A"
         assert web[0]["position"] == 1
+
+    def test_self_hosted_request_headers_remain_byte_for_byte_keyless(self, monkeypatch):
+        monkeypatch.setenv("SEARXNG_URL", "http://localhost:8080")
+        monkeypatch.delenv("SEARXNG_API_KEY", raising=False)
+        from plugins.web.searxng.provider import SearXNGWebSearchProvider
+        mock_resp = self._make_mock_response({"results": []})
+
+        with patch("httpx.get", return_value=mock_resp) as get:
+            SearXNGWebSearchProvider().search("query")
+
+        assert get.call_args.kwargs["headers"] == {"Accept": "application/json"}
+
+    def test_platform_request_sends_credential_in_header_not_query(self, monkeypatch):
+        monkeypatch.setenv("SEARXNG_URL", "https://api.apex-nodes.com/api/v1/search/searxng")
+        monkeypatch.setenv("SEARXNG_API_KEY", "sk-desktop")
+        from plugins.web.searxng.provider import SearXNGWebSearchProvider
+        mock_resp = self._make_mock_response({"results": []})
+
+        with patch("httpx.get", return_value=mock_resp) as get:
+            SearXNGWebSearchProvider().search("query")
+
+        assert get.call_args.kwargs["headers"] == {
+            "Accept": "application/json",
+            "X-API-Key": "sk-desktop",
+        }
+        assert "sk-desktop" not in get.call_args.args[0]
+        assert "sk-desktop" not in str(get.call_args.kwargs["params"])
+
+    @pytest.mark.parametrize(
+        ("status", "message"),
+        [(401, "凭据无效"), (403, "尚未激活"), (429, "频率上限")],
+    )
+    def test_platform_http_errors_are_actionable(self, monkeypatch, status, message):
+        import httpx
+
+        monkeypatch.setenv("SEARXNG_URL", "https://api.apex-nodes.com/api/v1/search/searxng")
+        monkeypatch.setenv("SEARXNG_API_KEY", "sk-desktop")
+        from plugins.web.searxng.provider import SearXNGWebSearchProvider
+        request = httpx.Request("GET", "https://api.apex-nodes.com/api/v1/search/searxng/search")
+        response = httpx.Response(status, request=request)
+        error = httpx.HTTPStatusError("failed", request=request, response=response)
+
+        with patch("httpx.get", side_effect=error):
+            result = SearXNGWebSearchProvider().search("query")
+
+        assert result["success"] is False
+        assert message in result["error"]
 
     def test_results_sorted_by_score_descending(self, monkeypatch):
         """Results should be sorted by score before limit is applied."""

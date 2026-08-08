@@ -30,6 +30,7 @@ import {
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
+  ensureWebGatewayYaml,
   googleStartUrl,
   isLoginStateTruthEnabled,
   isLoopbackUrl,
@@ -54,11 +55,52 @@ import {
   REPROVISION_COOLDOWN_MS,
   resolveApexEndpoints,
   SEED_DISABLED_SKILLS,
+  SEED_WEB_GATEWAY,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
+  seedWebGatewayBlockYaml,
   shouldAttemptReprovision,
   syncManagedRelayKeyYaml
 } from './apex-managed'
+
+test('hc-645 fresh seed configures only the SearXNG search leg', () => {
+  const yaml = seedWebGatewayBlockYaml()
+
+  assert.deepEqual(SEED_WEB_GATEWAY, { 'web.search_backend': 'searxng' })
+  assert.match(yaml, /^web:\n {2}search_backend: searxng$/m)
+  assert.doesNotMatch(yaml, /extract_backend|firecrawl/)
+})
+
+test('hc-645 upgrade guard adds search_backend to an existing config and is idempotent', () => {
+  const raw = 'model:\n  default: existing\ndisplay:\n  language: zh\n'
+  const first = ensureWebGatewayYaml(raw)
+
+  assert.equal(first.changed, true)
+  assert.deepEqual(first.added, ['web.search_backend'])
+  assert.match(first.next, /^web:\n {2}search_backend: searxng$/m)
+  assert.ok(first.next.startsWith(raw), 'unrelated existing config is preserved')
+
+  const second = ensureWebGatewayYaml(first.next)
+  assert.equal(second.changed, false)
+  assert.equal(second.next, first.next)
+})
+
+test('hc-645 upgrade guard preserves an explicit user search backend', () => {
+  const raw = 'web:\n  search_backend: brave-free\nmodel:\n  default: existing\n'
+  const result = ensureWebGatewayYaml(raw)
+
+  assert.equal(result.changed, false)
+  assert.equal(result.next, raw)
+})
+
+test('hc-645 desktop boot wires the web gateway into both seed and upgrade paths', () => {
+  const mainSource = readFileSync(join(import.meta.dirname, 'main.ts'), 'utf8')
+
+  assert.match(mainSource, /const webGatewayBlock = seedWebGatewayBlockYaml\(\)/)
+  assert.equal((mainSource.match(/webGatewayBlock \+/g) || []).length, 2, 'managed and BYOK seeds both carry the block')
+  assert.match(mainSource, /const webHeal = ensureWebGatewayYaml\(raw\)/)
+  assert.match(mainSource, /fixed\.push\('web\.search_backend'\)/)
+})
 
 /**
  * The value an anchor actually holds, read back structurally.

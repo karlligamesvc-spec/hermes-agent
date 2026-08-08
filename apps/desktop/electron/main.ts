@@ -111,6 +111,7 @@ import {
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
+  ensureWebGatewayYaml,
   googleStartUrl,
   isLoginStateTruthEnabled,
   isManagedEnabled,
@@ -127,7 +128,8 @@ import {
   renewedTokenFromHeaders,
   resolveApexEndpoints,
   seedPluginsBlockYaml,
-  seedSkillsBlockYaml
+  seedSkillsBlockYaml,
+  seedWebGatewayBlockYaml
 } from './apex-managed'
 import {
   normalizeStoredPluginsState,
@@ -3617,6 +3619,7 @@ function createPythonBackend(root, label, backendArgs, options: any = {}) {
       hermesHome: HERMES_HOME,
       pythonPathEntries: [root, ...getVenvSitePackagesEntries(venvRoot)],
       venvRoot,
+      webSearchApiKey: resolveManagedConfig().key,
       proxyEnv: resolveAgentProxyEnvFragment()
     }),
     root,
@@ -3642,6 +3645,7 @@ function createActiveBackend(backendArgs) {
       hermesHome: HERMES_HOME,
       pythonPathEntries: [ACTIVE_HERMES_ROOT, ...getVenvSitePackagesEntries(VENV_ROOT)],
       venvRoot: VENV_ROOT,
+      webSearchApiKey: resolveManagedConfig().key,
       proxyEnv: resolveAgentProxyEnvFragment()
     }),
     root: ACTIVE_HERMES_ROOT,
@@ -11140,6 +11144,7 @@ function seedDefaultModelConfig() {
     // tool plugins disabled on every fresh install (see MANAGED_PLUGIN_NAMES).
     const skillsBlock = seedSkillsBlockYaml()
     const pluginsBlock = seedPluginsBlockYaml()
+    const webGatewayBlock = seedWebGatewayBlockYaml()
     let seed
 
     if (defaultModelPath({ enabled: isManagedEnabled(process.env), key: managed.key }) === 'managed') {
@@ -11157,6 +11162,7 @@ function seedDefaultModelConfig() {
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
         SEED_MOA_BLOCK +
+        webGatewayBlock +
         skillsBlock +
         pluginsBlock
       rememberLog(`[apexnodes] seeded managed relay config at ${configPath}`)
@@ -11171,6 +11177,7 @@ function seedDefaultModelConfig() {
         modelDisabledProvidersYaml() +
         SEED_DISPLAY_BLOCK +
         SEED_PRODUCT_DEFAULTS_BLOCK +
+        webGatewayBlock +
         skillsBlock +
         pluginsBlock
       rememberLog(`[apexnodes] seeded default DeepSeek (BYOK) config at ${configPath}`)
@@ -12938,6 +12945,13 @@ function healConfigYamlProductBlocks(reason) {
     if (defaultsHeal.changed) {
       raw = defaultsHeal.next
       fixed.push(`product-defaults(${defaultsHeal.added.join(' ')})`)
+    }
+
+    const webHeal = ensureWebGatewayYaml(raw)
+
+    if (webHeal.changed) {
+      raw = webHeal.next
+      fixed.push('web.search_backend')
     }
 
     // hc-392 China profile: losing model.disabled_providers silently re-enables

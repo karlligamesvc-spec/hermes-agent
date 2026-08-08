@@ -304,38 +304,22 @@ const SEED_DISABLED_SKILLS = [
   'dogfood'
 ]
 
-// ── hc-406: platform search / extraction gateway seed (待 S2/S3 上线) ─────────
-// The China desktop epic replaces the walled ddgs web-search (hc-408) and adds a
-// self-hosted Firecrawl web_extract leg (hc-414). Both are桌面-side config-only
-//接入 (zero overlay) — the runtime reads a top-level `web:` block + two env
-// vars. S2/S3's WORK-NOTES now pin the EXACT shape (hermes-cloud
-// docs/work-notes/WORK-NOTES-hc408.md ⭐ + WORK-NOTES-hc414.md §4):
-//
-//   web:
-//     search_backend: searxng      # hc-408 — only overrides search
-//     extract_backend: firecrawl   # hc-414 — only overrides extract
-//   env: SEARXNG_URL=https://api.apex-nodes.com/api/v1/search/searxng
-//        FIRECRAWL_API_URL=<公网 Firecrawl 走向 — 待定>
-//   (SEARXNG_URL has NO trailing /search — the fork provider appends it.)
-//
-// NOT emitted into the seed yet — two prerequisites are unmet, and seeding a
-// backend whose endpoint is absent would break desktop search/extract on every
-// fresh install:
-//   1. hc-408 (feat/hc408-relay-search) is NOT merged to cloud main → the
-//      `/api/v1/search/searxng/search` route is not on prod yet.
-//   2. hc-414 explicitly leaves the *public* Firecrawl URL undecided (§4: cloud
-//      Firecrawl binds 127.0.0.1 only; a nginx-fronted public走向 is a Kael/PM
-//      decision) → there is no FIRECRAWL_API_URL to write, and web_extract for
-//      desktop is opt-in ("若桌面暂不开 web_extract,S6 可跳过").
-//
-// TODO(hc408/hc414 seed activation): once both endpoints are live on prod, lift
-// the block above into a SEED_WEB_GATEWAY constant + a seedWebGatewayBlockYaml()
-// helper (top-level `web:` key, same pattern as seedSkillsBlockYaml), fold it
-// into seedDefaultModelConfig's composition, add the two env vars to the desktop
-// shell env (SEARXNG_URL alongside HF_ENDPOINT in backend-env.ts), and add a
-// guard/heal pass in main.ts guardConfigYamlProductBlocks (union the `web:`
-// keys, mirroring ensureSkillsDisabledYaml) so the upgrade path covers it too.
-// The env vars ride the same spawn merge (`{...process.env, ...backend.env}`).
+// hc-645 activates only the search leg of the platform web gateway. Extraction
+// remains intentionally absent until hc-414 has a public Firecrawl endpoint.
+const SEED_WEB_GATEWAY = Object.freeze({ 'web.search_backend': 'searxng' })
+
+function seedWebGatewayBlockYaml() {
+  return (
+    '# ApexNodes authenticated web-search gateway (hc-645). Extraction is not\n' +
+    '# configured here; web_extract remains honestly unavailable.\n' +
+    'web:\n' +
+    '  search_backend: searxng\n'
+  )
+}
+
+function ensureWebGatewayYaml(raw) {
+  return ensureProductDefaultsYaml(raw, SEED_WEB_GATEWAY)
+}
 
 /**
  * Render the `model.disabled_providers` YAML lines (indented to sit INSIDE the
@@ -1628,6 +1612,7 @@ export {
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
+  ensureWebGatewayYaml,
   GOOGLE_START_PATH,
   googleStartUrl,
   isLoginStateTruthEnabled,
@@ -1660,8 +1645,10 @@ export {
   REPROVISION_COOLDOWN_MS,
   resolveApexEndpoints,
   SEED_DISABLED_SKILLS,
+  SEED_WEB_GATEWAY,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
+  seedWebGatewayBlockYaml,
   shouldAttemptReprovision,
   syncManagedRelayKeyYaml,
   WEB_LOGIN_PATH
