@@ -20,6 +20,7 @@ import {
   accountFromLogin,
   APEX_PRODUCT_DEFAULTS,
   apexWebLoginUrl,
+  applyClientConfigYamlRespectingPreferences,
   buildManagedModelConfig,
   decodeJwtClaims,
   DEFAULT_API_BASE,
@@ -930,6 +931,52 @@ test('hc-687 Desktop defaults preserve deep-work output while closing optional b
   assert.match(reconciled.next, /^memory:\n {2}nudge_interval: 0$/m)
   assert.match(reconciled.next, /^skills:\n {2}creation_nudge_interval: 0$/m)
   assert.match(reconciled.next, /^proxy:\n {2}enabled: false$/m)
+})
+
+test('hc-687 live client-config preserves explicit product preferences while controlled keys still update', () => {
+  const raw =
+    'display:\n  language: en\n  show_reasoning: false\n' +
+    'agent:\n  image_input_mode: never\n  max_turns: 140\n' +
+    'timezone: UTC\n' +
+    'web:\n  search_backend: brave\n'
+
+  const result = applyClientConfigYamlRespectingPreferences(raw, {
+    'display.show_reasoning': true,
+    'agent.image_input_mode': 'auto',
+    timezone: '',
+    'web.search_backend': 'searxng'
+  })
+
+  assert.equal(result.changed, true)
+  assert.match(result.next, /^ {2}show_reasoning: false$/m)
+  assert.match(result.next, /^ {2}image_input_mode: never$/m)
+  assert.match(result.next, /^timezone: UTC$/m)
+  assert.match(result.next, /^ {2}search_backend: searxng$/m)
+  assert.deepEqual(result.applied, ['web.search_backend'])
+  assert.deepEqual(result.preserved, [
+    'display.show_reasoning',
+    'agent.image_input_mode',
+    'timezone'
+  ])
+})
+
+test('hc-687 live client-config still fills missing product preferences', () => {
+  const result = applyClientConfigYamlRespectingPreferences('display:\n  language: en\n', {
+    'display.show_reasoning': true,
+    'agent.image_input_mode': 'auto',
+    timezone: ''
+  })
+
+  assert.equal(result.changed, true)
+  assert.match(result.next, /^ {2}show_reasoning: true$/m)
+  assert.match(result.next, /^agent:\n {2}image_input_mode: auto$/m)
+  assert.match(result.next, /^timezone: ''$/m)
+  assert.deepEqual(result.applied, [
+    'display.show_reasoning',
+    'agent.image_input_mode',
+    'timezone'
+  ])
+  assert.deepEqual(result.preserved, [])
 })
 
 test('managed sign-in creates an anchor before syncing the freshly rotated relay key', () => {
