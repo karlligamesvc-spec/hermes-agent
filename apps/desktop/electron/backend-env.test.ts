@@ -4,6 +4,7 @@ import path from 'node:path'
 import { test } from 'vitest'
 
 import {
+  APEX_SEARXNG_GATEWAY_URL,
   appendUniquePathEntries,
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
@@ -154,4 +155,44 @@ test('buildDesktopBackendEnv ignores a blank inherited HF_ENDPOINT and falls bac
   })
 
   assert.equal(env.HF_ENDPOINT, HF_MIRROR_ENDPOINT)
+})
+
+// hc-645: URL + credential are one capability. The platform URL must never be
+// injected alone (that registers a tool whose first call is guaranteed 401).
+test('managed desktop search injects the platform SearXNG URL and the same relay credential', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    webSearchApiKey: 'sk-managed',
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.SEARXNG_URL, APEX_SEARXNG_GATEWAY_URL)
+  assert.equal(env.SEARXNG_API_KEY, 'sk-managed')
+})
+
+test('signed-out desktop does not advertise the authenticated platform search gateway', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.SEARXNG_URL, undefined)
+  assert.equal(env.SEARXNG_API_KEY, undefined)
+})
+
+test('an explicit self-hosted SearXNG URL remains keyless and is never overwritten', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin', SEARXNG_URL: 'http://localhost:8080' },
+    webSearchApiKey: 'sk-managed',
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.SEARXNG_URL, 'http://localhost:8080')
+  assert.equal(env.SEARXNG_API_KEY, undefined)
 })

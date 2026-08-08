@@ -26,6 +26,7 @@ const POSIX_SANE_PATH_ENTRIES = Object.freeze([
 // ModelScope or the real Hub). The runtime never reads HF_ENDPOINT itself; this
 // is purely for the Python libs it shells into.
 const HF_MIRROR_ENDPOINT = 'https://hf-mirror.com'
+const APEX_SEARXNG_GATEWAY_URL = 'https://api.apex-nodes.com/api/v1/search/searxng'
 
 function delimiterForPlatform(platform = process.platform) {
   return platform === 'win32' ? ';' : ':'
@@ -125,6 +126,7 @@ function buildDesktopBackendEnv({
   pythonPathEntries = [],
   venvRoot,
   currentEnv = process.env,
+  webSearchApiKey = '',
   platform = process.platform,
   pathModule = pathModuleForPlatform(platform),
   proxyEnv = {}
@@ -167,10 +169,30 @@ function buildDesktopBackendEnv({
   const existingHfEndpoint = String(currentEnv?.HF_ENDPOINT || '').trim()
   env.HF_ENDPOINT = existingHfEndpoint || HF_MIRROR_ENDPOINT
 
+  // hc-645: the runtime registers web_search only when the configured provider
+  // is actually usable. The ApexNodes SearXNG gateway is authenticated, so URL
+  // and the already-provisioned desktop relay key must travel together. A
+  // parent-env URL/key remains authoritative for staging and self-hosted users;
+  // signed-out installs receive neither platform value and stay honestly
+  // unavailable instead of advertising a tool that will return 401.
+  const existingSearchUrl = String(currentEnv?.SEARXNG_URL || '').trim()
+  const existingSearchKey = String(currentEnv?.SEARXNG_API_KEY || '').trim()
+  const managedSearchKey = String(webSearchApiKey || '').trim()
+
+  if (existingSearchUrl) {
+    env.SEARXNG_URL = existingSearchUrl
+
+    if (existingSearchKey) {env.SEARXNG_API_KEY = existingSearchKey}
+  } else if (managedSearchKey) {
+    env.SEARXNG_URL = APEX_SEARXNG_GATEWAY_URL
+    env.SEARXNG_API_KEY = managedSearchKey
+  }
+
   return env
 }
 
 export {
+  APEX_SEARXNG_GATEWAY_URL,
   appendUniquePathEntries,
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
