@@ -54,7 +54,6 @@ import { downloadWithResume } from './apex-bundle-download'
 import { applyBundleUpdate as  applyRuntimeBundleUpdate } from './apex-bundle-install'
 import * as bundleMigrate from './apex-bundle-migrate'
 import {
-  applyConfigYamlKeys,
   fetchClientConfig,
   normalizeStoredClientConfig,
   shouldApply as  shouldApplyClientConfig
@@ -106,6 +105,7 @@ import {
   accessTokenFromLogin,
   accountFromLogin,
   apexWebLoginUrl,
+  applyClientConfigYamlRespectingPreferences,
   buildManagedModelConfig,
   defaultModelPath,
   ensurePluginsEnabledYaml,
@@ -13063,7 +13063,9 @@ function guardConfigYamlWhenItArrives() {
 
 // Apply the cached platform config to config.yaml — main-process line surgery,
 // run BEFORE the gateway spawns so the runtime loads the result fresh. Only
-// scalar dotted keys are written (see applyConfigYamlKeys); all-or-nothing:
+// scalar dotted keys are written by the preference-aware client-config path;
+// product-default keys are add-only while other platform keys retain their
+// overwrite semantics. All-or-nothing:
 // appliedVersion advances only after a successful write, so a failure retries
 // next boot. Fail-soft — a broken payload can never block booting.
 function applyClientConfigToRuntime(reason) {
@@ -13090,11 +13092,12 @@ function applyClientConfigToRuntime(reason) {
       }
 
       const raw = fs.readFileSync(configPath, 'utf8')
-      const { changed, next, applied, skipped } = applyConfigYamlKeys(raw, entries)
+      const { changed, next, applied, skipped, preserved } = applyClientConfigYamlRespectingPreferences(raw, entries)
 
       if (changed) {fs.writeFileSync(configPath, next, { encoding: 'utf8' })}
       rememberLog(
         `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
+          (preserved.length ? `; preserved user preferences: ${preserved.join(', ')}` : '') +
           (skipped.length ? `; skipped: ${skipped.join(', ')}` : '')
       )
     } else {

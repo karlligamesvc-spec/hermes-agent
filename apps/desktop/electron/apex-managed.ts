@@ -586,6 +586,46 @@ function ensureProductDefaultsYaml(raw, defaults: any = APEX_PRODUCT_DEFAULTS) {
 }
 
 /**
+ * Apply a platform client-config payload without turning product defaults into
+ * remote mandates. Keys represented by APEX_PRODUCT_DEFAULTS are user-facing
+ * preferences/defaults: the platform may fill them when absent, but an
+ * existing config.yaml value is the user's answer and must survive upgrades.
+ * Every other client-config key retains the existing overwrite semantics.
+ *
+ * This split belongs on the actual client-config path. Protecting only
+ * ensureProductDefaultsYaml is insufficient because applyConfigYamlKeys used
+ * to run first and overwrite the same three live v2 keys on both Mac and
+ * Windows (show_reasoning, image_input_mode, timezone).
+ */
+function applyClientConfigYamlRespectingPreferences(raw, entries) {
+  const preferenceEntries = {}
+  const controlledEntries = {}
+
+  for (const [dotted, value] of Object.entries(entries || {})) {
+    if (Object.prototype.hasOwnProperty.call(APEX_PRODUCT_DEFAULTS, dotted)) {
+      preferenceEntries[dotted] = value
+    } else {
+      controlledEntries[dotted] = value
+    }
+  }
+
+  const controlled = applyConfigYamlKeys(raw, controlledEntries)
+  const defaulted = ensureProductDefaultsYaml(controlled.next, preferenceEntries)
+  const defaultedSet = new Set(defaulted.added)
+  const protectedPreferences = Object.keys(preferenceEntries)
+  const preserved = protectedPreferences.filter(dotted => !defaultedSet.has(dotted))
+
+  return {
+    changed: controlled.changed || defaulted.changed,
+    next: defaulted.next,
+    applied: [...controlled.applied, ...defaulted.added],
+    skipped: controlled.skipped,
+    preserved,
+    protected: protectedPreferences
+  }
+}
+
+/**
  * Drop a trailing CR so a `$`-anchored match can see the end of the line
  * (hc-643). config.yaml is written by TWO writers — this shell emits `\n`, the
  * Python runtime side emits `\r\n` on Windows — so one file routinely carries
@@ -1660,6 +1700,7 @@ export {
   accountFromLogin,
   APEX_PRODUCT_DEFAULTS,
   apexWebLoginUrl,
+  applyClientConfigYamlRespectingPreferences,
   // hc-602 anchor registry — re-exported so callers have one import for the
   // managed-relay surface, and so the invariant test can reach the registry and
   // the auditor without importing two modules.
