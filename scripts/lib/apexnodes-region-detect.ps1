@@ -520,6 +520,25 @@ function Install-RuntimeFromCos {
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
             return $false
         }
+        # hc-543: provenance belongs to the tree, not to Desktop's separate
+        # bootstrap marker.  A later update compares this stamp with its target
+        # commit before deciding whether a .git-less COS tree is reusable.
+        # Write only after the extraction + pyproject gate passed, so a partial
+        # tree can never receive a valid-looking stamp.  Windows PowerShell 5.1
+        # must use an explicit BOM-less UTF-8 writer here.
+        try {
+            $stampPath = Join-Path $InstallDir ".hermes-source-commit"
+            [System.IO.File]::WriteAllText(
+                $stampPath,
+                "$key`n",
+                (New-Object System.Text.UTF8Encoding($false))
+            )
+        } catch {
+            # Match install.sh: old/locked filesystems remain installable, but
+            # the integrity check will treat the unstamped tree as stale next
+            # time instead of trusting it.
+            Write-Warn "Could not write source-commit stamp to $InstallDir (update-integrity check will retry next time)"
+        }
         Write-Success "Runtime source ready from COS mirror ($key)"
         return $true
     } catch {
@@ -529,6 +548,46 @@ function Install-RuntimeFromCos {
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
+}
+
+# hc-543 Windows twin of install.sh's .git-less COS update guard.  A directory
+# being present proves only that some source was extracted once; it does not
+# prove that source is the commit requested by this bootstrap.  Missing stamps
+# (all pre-hc-543 installs) and mismatches both force a COS re-extract.  Kept as
+# a small pure-decision wrapper so the failure-only update path can be exercised
+# directly under Windows PowerShell 5.1 without running the whole installer.
+function Ensure-CosRuntimeSourceCurrent {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDir,
+        [string]$Commit,
+        [string]$Branch
+    )
+
+    $stampPath = Join-Path $InstallDir ".hermes-source-commit"
+    $installedCommit = ""
+    try {
+        if (Test-Path -LiteralPath $stampPath) {
+            $installedCommit = (Get-Content -Raw -LiteralPath $stampPath).Trim()
+        }
+    } catch {
+        $installedCommit = ""
+    }
+
+    if ($Commit -and $installedCommit -eq $Commit) {
+        Write-Info "Existing COS-mirror checkout already at $Commit, reusing"
+        return $true
+    }
+
+    if (Install-RuntimeFromCos) {
+        $target = if ($Commit) { $Commit } else { $Branch }
+        $previous = if ($installedCommit) { $installedCommit } else { "unknown" }
+        Write-Success "Repository re-extracted from COS mirror (was '$previous' -> '$target')"
+        return $true
+    }
+
+    $wanted = if ($Commit) { $Commit } else { $Branch }
+    Write-Warn "Existing checkout at $InstallDir is stale (source '$installedCommit' != target '$wanted') and the COS re-download failed."
+    return $false
 }
 
 # COS-first: fetch PortableGit from our public-read COS bucket before the

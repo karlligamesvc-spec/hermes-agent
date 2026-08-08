@@ -15,6 +15,21 @@ name: Installer scripts
 
 on:
   workflow_call:
+  # hc-645 audit: this file originally advertised itself as the dedicated
+  # installer gate, but no workflow called it.  A PR that changed only
+  # install.ps1 therefore skipped every PowerShell 5.1 behavioural test.  Keep
+  # workflow_call for future composition and also make the guarded files invoke
+  # the gate directly.
+  pull_request:
+    paths:
+      - 'scripts/install.ps1'
+      - 'scripts/install.sh'
+      - 'scripts/lib/apexnodes-region-detect.ps1'
+      - 'scripts/lib/apexnodes-region-detect.sh'
+      - 'scripts/lib/apexnodes-tar-extract.Tests.ps1'
+      - 'scripts/release/publish-desktop-cos.ps1'
+      - 'scripts/release/publish-desktop-cos.Tests.ps1'
+      - '.github/workflows/installer-scripts.yml'
 
 permissions:
   contents: read
