@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import types
 from pathlib import Path
@@ -161,6 +162,22 @@ def _parse(result: str) -> dict:
 
 
 class TestImageGatewayLeg:
+    @pytest.mark.parametrize(
+        ("prompt", "ratio"),
+        [
+            ("做一张竖版 3:4 的抖音文章封面", "3:4"),
+            ("做一张 2:3 的通用活动海报", "2:3"),
+            ("生成 9:16 的小红书首图", "9:16"),
+        ],
+    )
+    def test_gateway_forwards_explicit_ratio_literal(self, desktop_env, fake_httpx, image_mod, prompt, ratio):
+        fake_httpx.responses.append(FakeResponse(200, {"data": {"ok": True}}))
+
+        result = _parse(image_mod._handle_generate_image({"prompt": prompt, "aspect_ratio": ratio}))
+
+        assert result["ok"] is True
+        assert fake_httpx.requests[0].json["aspect_ratio"] == ratio
+
     def test_gateway_lands_image_locally_and_forwards_params(
         self, desktop_env, fake_httpx, image_mod, monkeypatch, tmp_path
     ):
@@ -339,6 +356,11 @@ def test_image_plugin_registers_generate_image():
     tools = _register("apexnodes-image-tools").tools
     assert set(tools) == {"generate_image"}
     assert tools["generate_image"]["schema"]["name"] == "generate_image"
+    aspect = tools["generate_image"]["schema"]["parameters"]["properties"]["aspect_ratio"]
+    assert aspect["enum"] == ["landscape", "square", "portrait", "2:3", "3:4", "4:3", "9:16", "16:9"]
+    assert "即使它和场景默认冲突" in aspect["description"]
+    assert "不支持的比例先说明并询问，禁止静默换比例" in aspect["description"]
+    assert not re.search(r"\d+x\d+", aspect["description"])
 
 
 @pytest.mark.parametrize(
