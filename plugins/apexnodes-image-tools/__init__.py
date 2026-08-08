@@ -128,8 +128,16 @@ GENERATE_IMAGE_SCHEMA = {
             },
             "aspect_ratio": {
                 "type": "string",
-                "enum": ["landscape", "square", "portrait"],
-                "description": "landscape=1152x768, square=1024x1024, portrait=768x1152.",
+                "enum": ["landscape", "square", "portrait", "2:3", "3:4", "4:3", "9:16", "16:9"],
+                "description": (
+                    "landscape/square/portrait = 横/方/竖，用引擎自己的原生尺寸(比例随引擎而定). "
+                    "比例优先级:用户明确写了 2:3/3:4/4:3/9:16/16:9 时，必须把该字面值原样传入，"
+                    "即使它和场景默认冲突；只有用户没写比例时才按场景默认:小红书封面 3:4、"
+                    "抖音竖版封面 9:16、公众号头图 16:9、通用竖版海报 2:3、横版文章配图 4:3，"
+                    "无明确场景用 square。不支持的比例先说明并询问，禁止静默换比例。"
+                    "Exact pixels depend on the engine; the response reports the delivered "
+                    "aspect_ratio/size_delivered and says so when it had to approximate."
+                ),
                 "default": "square",
             },
             "size": {
