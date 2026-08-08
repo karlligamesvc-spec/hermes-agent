@@ -149,6 +149,17 @@ test('unpackaged build: disabled state, install refused, autoUpdater untouched',
 
   const install = await ipcMain.invoke('hermes:shell-update:install')
   assert.deepEqual(install, { ok: false, error: 'disabled' })
+  assert.deepEqual(await ipcMain.invoke('hermes:shell-update:check'), {
+    ok: false,
+    error: 'disabled',
+    state: {
+      phase: 'disabled',
+      version: null,
+      percent: null,
+      error: null,
+      releaseNotes: null
+    }
+  })
   await flushImmediate()
   assert.equal(autoUpdater.installCalls.length, 0)
   // 停用态没配置过 updater,也不该有任何状态广播。
@@ -174,6 +185,16 @@ test('packaged build wires silent-download config and the per-arch generic feed'
   assert.equal(autoUpdater.autoInstallOnAppQuit, true)
   assert.equal(autoUpdater.allowDowngrade, false)
   assert.deepEqual(autoUpdater.feed, { provider: 'generic', url: `${SHELL_UPDATE_FEED_BASE}/mac-arm64` })
+})
+
+test('manual check IPC reuses the updater check and returns the latest snapshot', async () => {
+  const { ipcMain, autoUpdater } = harness()
+
+  const result = await ipcMain.invoke('hermes:shell-update:check')
+
+  assert.equal(autoUpdater.checkCalls, 1)
+  assert.equal(result.ok, true)
+  assert.equal(result.state.phase, 'idle')
 })
 
 // hc-435:packaged 但 arch 拿不到时,宁可整体停用也不 setFeedURL 到根 feed,
@@ -383,9 +404,24 @@ test('a rejecting checkForUpdates is swallowed and logged (no unhandled rejectio
     throw new Error('feed unreachable')
   }
 
-  await updater.checkNow()
+  assert.deepEqual(await updater.checkNow(), { ok: false, error: 'feed unreachable' })
 
   assert.ok(logs.some(line => line.includes('[shell-update] check failed (silent): feed unreachable')))
+  assert.equal(updater.getState().phase, 'error')
+})
+
+test('manual check IPC reports a rejected feed instead of claiming the app is current', async () => {
+  const { ipcMain, autoUpdater } = harness()
+
+  autoUpdater.checkForUpdates = async () => {
+    throw new Error('latest.yml unavailable')
+  }
+
+  const result = await ipcMain.invoke('hermes:shell-update:check')
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error, 'latest.yml unavailable')
+  assert.equal(result.state.phase, 'error')
 })
 
 // ---------------------------------------------------------------------------

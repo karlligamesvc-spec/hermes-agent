@@ -182,6 +182,32 @@ describe('identity: brand assets and chrome', () => {
     expect(gatewayEvents).toContain("title: 'APEX error'")
     expect(reactions).toContain('title="Reacted by APEX"')
   })
+
+  it('keeps shell and AI engine updates behind one desktop update path (hc-690)', () => {
+    // v0.20 made the shell and runtime independently updatable, but exposing
+    // their old actions together made users install and restart twice. Pin the
+    // three production surfaces to the shared orchestrator so a future rebase
+    // cannot silently wire one of them back to a component-specific updater.
+    const sidebar = readSource('src', 'app', 'chat', 'sidebar', 'index.tsx')
+    const about = readSource('src', 'app', 'settings', 'about-settings.tsx')
+    const commandCenter = readSource('src', 'app', 'command-center', 'index.tsx')
+    const commandPalette = readSource('src', 'app', 'command-palette', 'index.tsx')
+
+    expect((sidebar.match(/<DesktopUpdatePill/g) || []).length).toBe(1)
+    expect(sidebar).not.toContain('<ShellUpdatePill')
+    expect(sidebar).not.toContain('<RuntimeUpdatePill')
+
+    for (const surface of [about, commandCenter]) {
+      expect(surface).toContain('applyDesktopUpdates')
+      expect(surface).not.toContain('applyRuntimeUpdate')
+      expect(surface).not.toContain('installShellUpdate')
+    }
+
+    expect(commandCenter).toContain('checkDesktopUpdates')
+    expect(commandCenter).not.toContain('updateHermes')
+    expect(commandPalette).toContain("run: go(`${COMMAND_CENTER_ROUTE}?section=system`)")
+    expect(commandPalette).not.toContain('requestActiveUpdate')
+  })
 })
 
 // hc-589 leg 8c — zero-setup first run.

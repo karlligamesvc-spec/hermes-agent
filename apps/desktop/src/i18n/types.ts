@@ -1305,7 +1305,13 @@ export interface Translations {
     hermesActiveSessions: (version: string, count: number) => string
     restartGateway: string
     gatewayRestartFailed: string
-    updateHermes: string
+    checkDesktopUpdate: string
+    checkingDesktopUpdate: string
+    desktopUpdateReady: string
+    desktopUpdatePreparing: string
+    desktopUpdateNeedsShell: string
+    desktopUpdateCheckFailed: string
+    desktopUpToDate: string
     actionRunning: string
     actionDone: string
     actionFailed: string
@@ -1862,6 +1868,19 @@ export interface Translations {
       installsOnQuit: string
       restartNow: string
       restarting: string
+    }
+    desktopUpdate: {
+      preparingTitle: (version: string) => string
+      downloadedPercent: (percent: number) => string
+      readyTitle: string
+      appAndEngine: (appVersion: string, engineVersion: string) => string
+      appOnly: (version: string) => string
+      engineOnly: (version: string) => string
+      installRestart: string
+      installing: string
+      confirmTitle: string
+      confirmBody: string
+      confirmApply: string
     }
     dateDivider: {
       today: string
