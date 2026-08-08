@@ -168,9 +168,7 @@ export function FeishuSettings() {
           <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
             {status?.agentName ? copy.connectedTo(status.agentName) : copy.connectedGeneric}
           </p>
-          {staleCredential && (
-            <p className="text-[0.68rem] leading-5 text-destructive/80">{copy.statusStale}</p>
-          )}
+          {staleCredential && <p className="text-[0.68rem] leading-5 text-destructive/80">{copy.statusStale}</p>}
           <div className="flex flex-wrap gap-2 pt-1">
             <Button disabled={busy} onClick={() => void handleSync()} size="sm" type="button" variant="outline">
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
@@ -192,7 +190,9 @@ export function FeishuSettings() {
       ) : !signedIn ? (
         <div className="grid gap-1.5 rounded-[8px] border border-border/40 p-3">
           <div className="text-[length:var(--conversation-text-font-size)] font-medium">{copy.signInFirstTitle}</div>
-          <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.signInFirst}</p>
+          <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+            {copy.signInFirst}
+          </p>
         </div>
       ) : (
         <div className="grid gap-2 rounded-[8px] border border-border/40 p-3">

@@ -491,10 +491,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // its session over this bus — the picker components sit far from session
   // lifecycle. See chat/scenarios/pick.ts + scenario-session-bridge.ts; this
   // wiring is the sole subscriber, as DesktopController was before it.
-  useEffect(
-    () => onScenarioSessionRequest(handleScenarioSessionRequest),
-    [handleScenarioSessionRequest]
-  )
+  useEffect(() => onScenarioSessionRequest(handleScenarioSessionRequest), [handleScenarioSessionRequest])
 
   // Swapping the live gateway to another profile must re-pull that profile's
   // global model + active-profile pill (both are nanostores — the blanket

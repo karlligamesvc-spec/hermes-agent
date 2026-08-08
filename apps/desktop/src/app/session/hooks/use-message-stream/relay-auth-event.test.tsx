@@ -113,7 +113,9 @@ describe('useMessageStream relay-auth recovery', () => {
     await mountStream()
     emitError({ message: 'Insufficient balance' })
 
-    await waitFor(() => expect($notifications.get().some(n => n.id === 'gateway-error:Insufficient balance')).toBe(true))
+    await waitFor(() =>
+      expect($notifications.get().some(n => n.id === 'gateway-error:Insufficient balance')).toBe(true)
+    )
     expect(recover).not.toHaveBeenCalled()
   })
 })

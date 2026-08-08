@@ -128,11 +128,7 @@ export function SearchView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
         ) : (
           <ul className="flex flex-col gap-px">
             {results.map(session => (
-              <SearchResultRow
-                key={session.id}
-                onOpen={() => navigate(sessionRoute(session.id))}
-                session={session}
-              />
+              <SearchResultRow key={session.id} onOpen={() => navigate(sessionRoute(session.id))} session={session} />
             ))}
           </ul>
         )}

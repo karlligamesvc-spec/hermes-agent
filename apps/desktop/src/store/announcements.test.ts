@@ -102,7 +102,11 @@ describe('loadAnnouncements', () => {
   it('fires a best-effort read receipt for every unread item and none for already-read ones', async () => {
     list.mockResolvedValue({
       ok: true,
-      items: [item({ id: 'unread-1', read: false }), item({ id: 'already-read', read: true }), item({ id: 'unread-2', read: false })]
+      items: [
+        item({ id: 'unread-1', read: false }),
+        item({ id: 'already-read', read: true }),
+        item({ id: 'unread-2', read: false })
+      ]
     })
 
     await loadAnnouncements()

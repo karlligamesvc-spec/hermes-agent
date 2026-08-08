@@ -154,7 +154,9 @@ describe('expandMoaPresetMembers', () => {
 
   it('returns an empty array when the preset key is missing', () => {
     expect(expandMoaPresetMembers(null, AUTO_PRESET_NAME, directory)).toEqual([])
-    expect(expandMoaPresetMembers({ presets: {} } as unknown as MoaConfigResponse, AUTO_PRESET_NAME, directory)).toEqual([])
+    expect(
+      expandMoaPresetMembers({ presets: {} } as unknown as MoaConfigResponse, AUTO_PRESET_NAME, directory)
+    ).toEqual([])
   })
 })
 

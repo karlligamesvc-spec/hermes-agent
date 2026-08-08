@@ -65,7 +65,9 @@
  * @returns {boolean}
  */
 function canUseOnDiskRuntime(probe) {
-  if (!probe || typeof probe !== 'object') {return false}
+  if (!probe || typeof probe !== 'object') {
+    return false
+  }
 
   return Boolean(probe.sourcePresent) && Boolean(probe.pythonPresent)
 }
@@ -91,16 +93,22 @@ function canUseOnDiskRuntime(probe) {
 function resolvePreBootstrapDecision({ markerComplete, onDiskUsable, updatePending }: any = {}) {
   // An explicit opt-in update must drive the bootstrap so the new pin installs;
   // adopting the on-disk (old) runtime here would no-op the user's request.
-  if (updatePending) {return 'bootstrap'}
+  if (updatePending) {
+    return 'bootstrap'
+  }
 
   // Marker already attests a good install — the caller's normal fast path
   // handles it; we don't second-guess it here.
-  if (markerComplete) {return 'bootstrap'}
+  if (markerComplete) {
+    return 'bootstrap'
+  }
 
   // The heart of the fix: usable runtime on disk, but no marker -> adopt it
   // rather than re-running a network resolve + installer that a wrong/ahead
   // server answer (unpublished version) can turn into a brick.
-  if (onDiskUsable) {return 'use-installed'}
+  if (onDiskUsable) {
+    return 'use-installed'
+  }
 
   // Nothing usable on disk -> we genuinely must bootstrap.
   return 'bootstrap'
@@ -122,18 +130,18 @@ function resolvePreBootstrapDecision({ markerComplete, onDiskUsable, updatePendi
 function resolveBootstrapFailureFallback({ onDiskUsable, updatePending }: any = {}) {
   // Opt-in update failures go through rollbackRuntimePinOverride() in the caller,
   // which re-points at the previous marker; don't short-circuit that here.
-  if (updatePending) {return 'fatal'}
+  if (updatePending) {
+    return 'fatal'
+  }
 
   // First-install / marker-repair bootstrap failed, but a usable runtime is on
   // disk (e.g. a prior good extract, or the download 404'd on an unpublished
   // version) -> start the gateway with what we have instead of bricking.
-  if (onDiskUsable) {return 'fallback-to-disk'}
+  if (onDiskUsable) {
+    return 'fallback-to-disk'
+  }
 
   return 'fatal'
 }
 
-export {
-  canUseOnDiskRuntime,
-  resolveBootstrapFailureFallback,
-  resolvePreBootstrapDecision
-}
+export { canUseOnDiskRuntime, resolveBootstrapFailureFallback, resolvePreBootstrapDecision }

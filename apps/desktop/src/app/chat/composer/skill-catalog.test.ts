@@ -63,8 +63,18 @@ describe('scopedCategoryCounts', () => {
   })
 
   it('is empty when the scope has nothing in it', () => {
-    expect(scopedCategoryCounts(CATALOG.map(s => ({ ...s, enabled: true })), 'disabled')).toEqual([])
-    expect(scopedCategoryCounts(CATALOG.map(s => ({ ...s, enabled: false })), 'enabled')).toEqual([])
+    expect(
+      scopedCategoryCounts(
+        CATALOG.map(s => ({ ...s, enabled: true })),
+        'disabled'
+      )
+    ).toEqual([])
+    expect(
+      scopedCategoryCounts(
+        CATALOG.map(s => ({ ...s, enabled: false })),
+        'enabled'
+      )
+    ).toEqual([])
   })
 })
 
@@ -114,9 +124,9 @@ describe('skillMatchesQuery', () => {
     ['office', true],
     ['nomatch', false]
   ])('query %j → %s', (query, expected) => {
-    expect(skillMatchesQuery(skill({ name: 'alpha', description: 'does alpha things', category: 'office' }), query, false)).toBe(
-      expected
-    )
+    expect(
+      skillMatchesQuery(skill({ name: 'alpha', description: 'does alpha things', category: 'office' }), query, false)
+    ).toBe(expected)
   })
 })
 

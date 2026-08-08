@@ -31,7 +31,9 @@ function fakeIpcMain() {
     invoke: (channel, ...args) => {
       const fn = handlers.get(channel)
 
-      if (!fn) {throw new Error(`no handler for ${channel}`)}
+      if (!fn) {
+        throw new Error(`no handler for ${channel}`)
+      }
 
       return fn({}, ...args)
     },
@@ -91,7 +93,9 @@ async function waitUntil(predicate, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs
 
   while (!predicate()) {
-    if (Date.now() > deadline) {throw new Error('waitUntil timed out')}
+    if (Date.now() > deadline) {
+      throw new Error('waitUntil timed out')
+    }
     await new Promise(resolve => setTimeout(resolve, 5))
   }
 }
@@ -105,7 +109,10 @@ test('shellUpdateFeedUrl keys the feed by platform-arch under the COS base', () 
   assert.equal(shellUpdateFeedUrl({ platform: 'darwin', arch: 'x64' }), `${SHELL_UPDATE_FEED_BASE}/mac-x64`)
   assert.equal(shellUpdateFeedUrl({ platform: 'win32', arch: 'x64' }), `${SHELL_UPDATE_FEED_BASE}/win-x64`)
   assert.equal(shellUpdateFeedUrl({ platform: 'linux', arch: 'x64' }), `${SHELL_UPDATE_FEED_BASE}/linux-x64`)
-  assert.equal(shellUpdateFeedUrl({ base: 'https://cdn.example/d', platform: 'win32', arch: 'arm64' }), 'https://cdn.example/d/win-arm64')
+  assert.equal(
+    shellUpdateFeedUrl({ base: 'https://cdn.example/d', platform: 'win32', arch: 'arm64' }),
+    'https://cdn.example/d/win-arm64'
+  )
 })
 
 // hc-435 命门:feed 必须落在 <base>/<os>-<arch> 子目录,永远比 base 深一层。
@@ -198,14 +205,26 @@ test('autoUpdater event flow drives the state machine and broadcasts each transi
   assert.equal(updater.getState().phase, 'checking')
 
   autoUpdater.emit('update-available', { version: '0.16.1' })
-  assert.deepEqual(updater.getState(), { phase: 'available', version: '0.16.1', percent: null, error: null, releaseNotes: null })
+  assert.deepEqual(updater.getState(), {
+    phase: 'available',
+    version: '0.16.1',
+    percent: null,
+    error: null,
+    releaseNotes: null
+  })
 
   autoUpdater.emit('download-progress', { percent: 42.5 })
   assert.equal(updater.getState().phase, 'downloading')
   assert.equal(updater.getState().percent, 42.5)
 
   autoUpdater.emit('update-downloaded', { version: '0.16.1' })
-  assert.deepEqual(updater.getState(), { phase: 'downloaded', version: '0.16.1', percent: 100, error: null, releaseNotes: null })
+  assert.deepEqual(updater.getState(), {
+    phase: 'downloaded',
+    version: '0.16.1',
+    percent: 100,
+    error: null,
+    releaseNotes: null
+  })
 
   // 每次迁移都推 renderer;载荷是快照不是引用。
   assert.deepEqual(
@@ -243,7 +262,7 @@ test('normalizeReleaseNotes collapses an empty/whitespace-only string to null', 
   assert.equal(normalizeReleaseNotes('   '), null)
 })
 
-test('normalizeReleaseNotes joins a multi-version { version, note } array (electron-updater\'s multi-hop shape)', () => {
+test("normalizeReleaseNotes joins a multi-version { version, note } array (electron-updater's multi-hop shape)", () => {
   const joined = normalizeReleaseNotes([
     { version: '0.16.15', note: 'Fixed a crash on launch.' },
     { version: '0.16.16', note: 'Faster startup.' }
@@ -258,7 +277,10 @@ test('normalizeReleaseNotes drops empty/garbage entries from a multi-version arr
     null
   )
   assert.equal(
-    normalizeReleaseNotes([{ version: '0.16.15', note: '' }, { version: '0.16.16', note: 'Faster startup.' }]),
+    normalizeReleaseNotes([
+      { version: '0.16.15', note: '' },
+      { version: '0.16.16', note: 'Faster startup.' }
+    ]),
     'Faster startup.'
   )
 })
@@ -272,7 +294,10 @@ test('normalizeReleaseNotes degrades null/undefined/garbage to null (a release w
 test('update-available carries hand-authored releaseNotes from latest.yml through to state', () => {
   const { updater, autoUpdater } = harness()
 
-  autoUpdater.emit('update-available', { version: '0.16.16', releaseNotes: 'You can now see human-readable release notes.' })
+  autoUpdater.emit('update-available', {
+    version: '0.16.16',
+    releaseNotes: 'You can now see human-readable release notes.'
+  })
 
   assert.equal(updater.getState().releaseNotes, 'You can now see human-readable release notes.')
 })

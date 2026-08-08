@@ -52,7 +52,13 @@ describe('DelegatedTaskCard', () => {
   it('renders a source-channel avatar only when a source channel is given', () => {
     // WeChat resolves to a brand glyph (an <svg>); the card otherwise has none.
     const withSource = render(
-      <DelegatedTaskCard sourceChannelId="weixin" sourceChannelName="WeChat" status="running" target="local" title="from wechat" />
+      <DelegatedTaskCard
+        sourceChannelId="weixin"
+        sourceChannelName="WeChat"
+        status="running"
+        target="local"
+        title="from wechat"
+      />
     )
 
     expect(withSource.container.querySelector('svg')).toBeTruthy()

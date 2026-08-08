@@ -4,12 +4,7 @@ import { Button } from '@/components/ui/button'
 import { writeClipboardText } from '@/components/ui/copy-button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type {
-  DesktopAgentAuthResult,
-  DesktopAgentAuthState,
-  DesktopAgentFamily,
-  DesktopAgentProxyMode
-} from '@/global'
+import type { DesktopAgentAuthResult, DesktopAgentAuthState, DesktopAgentFamily, DesktopAgentProxyMode } from '@/global'
 import { useI18n } from '@/i18n'
 import { AlertCircle, CheckCircle2, Copy, Globe, KeyRound, Loader2, LogIn, RefreshCw } from '@/lib/icons'
 import { notify } from '@/store/notifications'
@@ -327,8 +322,14 @@ export function AgentAuthSettings() {
               <div className="flex items-center justify-between gap-3">
                 <div className="grid gap-0.5">
                   <div className="text-[length:var(--conversation-text-font-size)] font-medium">{family.name}</div>
-                  <div className={`flex items-center gap-1.5 text-[length:var(--conversation-caption-font-size)] ${tone}`}>
-                    {statuses ? <Icon className="size-3.5 shrink-0" /> : <Loader2 className="size-3.5 shrink-0 animate-spin" />}
+                  <div
+                    className={`flex items-center gap-1.5 text-[length:var(--conversation-caption-font-size)] ${tone}`}
+                  >
+                    {statuses ? (
+                      <Icon className="size-3.5 shrink-0" />
+                    ) : (
+                      <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                    )}
                     <span>{statuses ? stateLabel(result as DesktopAgentAuthResult) : copy.checking}</span>
                   </div>
                 </div>
@@ -339,7 +340,13 @@ export function AgentAuthSettings() {
                     {copy.fixNetwork}
                   </Button>
                 ) : state === 'no_cli' ? null : showConnect ? (
-                  <Button disabled={isConnecting} onClick={() => void handleConnect(family.id)} size="sm" type="button" variant="outline">
+                  <Button
+                    disabled={isConnecting}
+                    onClick={() => void handleConnect(family.id)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     {isConnecting ? <Loader2 className="size-3.5 animate-spin" /> : <LogIn className="size-3.5" />}
                     {copy.connect}
                   </Button>
@@ -359,7 +366,9 @@ export function AgentAuthSettings() {
 
               {state === 'no_cli' ? (
                 <div className="flex items-center justify-between gap-2 rounded-[6px] bg-muted/40 px-2.5 py-1.5">
-                  <code className="truncate text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{family.install}</code>
+                  <code className="truncate text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+                    {family.install}
+                  </code>
                   <Button onClick={() => void copyCommand(family.install)} size="xs" type="button" variant="ghost">
                     <Copy className="size-3" />
                     {copy.copyCommand}
@@ -368,14 +377,20 @@ export function AgentAuthSettings() {
               ) : null}
 
               {isWaiting ? (
-                <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.waitingBrowser}</p>
+                <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+                  {copy.waitingBrowser}
+                </p>
               ) : null}
 
               {guide && guide.family === family.id ? (
                 <div className="grid gap-1 rounded-[6px] border border-border/40 p-2">
-                  <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.guideIntro}</p>
+                  <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+                    {copy.guideIntro}
+                  </p>
                   <div className="flex items-center justify-between gap-2 rounded-[4px] bg-muted/40 px-2.5 py-1.5">
-                    <code className="truncate text-[length:var(--conversation-caption-font-size)]">{guide.command}</code>
+                    <code className="truncate text-[length:var(--conversation-caption-font-size)]">
+                      {guide.command}
+                    </code>
                     <Button onClick={() => void copyCommand(guide.command)} size="xs" type="button" variant="ghost">
                       <Copy className="size-3" />
                       {copy.copyCommand}
@@ -396,7 +411,11 @@ export function AgentAuthSettings() {
           <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.proxyIntro}</p>
 
           <div className="flex items-center gap-2">
-            <Select disabled={proxyBusy} onValueChange={value => handleModeChange(value as DesktopAgentProxyMode)} value={proxyMode}>
+            <Select
+              disabled={proxyBusy}
+              onValueChange={value => handleModeChange(value as DesktopAgentProxyMode)}
+              value={proxyMode}
+            >
               <SelectTrigger className="w-40" size="sm">
                 <SelectValue />
               </SelectTrigger>
@@ -407,28 +426,39 @@ export function AgentAuthSettings() {
               </SelectContent>
             </Select>
             {proxyMode === 'auto' ? (
-              <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.proxyModeAutoHint}</span>
+              <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+                {copy.proxyModeAutoHint}
+              </span>
             ) : null}
           </div>
 
           {proxyMode === 'custom' ? (
             <div className="flex items-end gap-2">
               <label className="grid flex-1 gap-1">
-                <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{copy.proxyCustomLabel}</span>
+                <span className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+                  {copy.proxyCustomLabel}
+                </span>
                 <Input
                   onChange={event => setCustomUrl(event.target.value)}
                   placeholder={copy.proxyCustomPlaceholder}
                   value={customUrl}
                 />
               </label>
-              <Button disabled={proxyBusy || !customUrl.trim()} onClick={() => void persistProxy('custom', customUrl)} size="sm" type="button">
+              <Button
+                disabled={proxyBusy || !customUrl.trim()}
+                onClick={() => void persistProxy('custom', customUrl)}
+                size="sm"
+                type="button"
+              >
                 {proxyBusy ? <Loader2 className="size-3.5 animate-spin" /> : null}
                 {copy.save}
               </Button>
             </div>
           ) : null}
 
-          <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">{proxyDetectedLine}</p>
+          <p className="text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+            {proxyDetectedLine}
+          </p>
         </div>
       </div>
     </section>

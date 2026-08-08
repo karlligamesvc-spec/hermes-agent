@@ -154,7 +154,9 @@ function buildDesktopBackendEnv({
   // spread here is safe; an empty fragment (OFF / no system proxy) is a no-op.
   if (proxyEnv && typeof proxyEnv === 'object') {
     for (const [proxyKey, proxyValue] of Object.entries(proxyEnv)) {
-      if (proxyValue) {env[proxyKey] = proxyValue}
+      if (proxyValue) {
+        env[proxyKey] = proxyValue
+      }
     }
   }
 

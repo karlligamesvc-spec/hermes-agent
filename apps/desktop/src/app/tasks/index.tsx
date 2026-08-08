@@ -173,10 +173,7 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
   const [editorOpen, setEditorOpen] = useState(false)
 
   return (
-    <section
-      {...props}
-      className="flex h-full min-w-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)"
-    >
+    <section {...props} className="flex h-full min-w-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)">
       <OverlaySplitLayout>
         <OverlaySidebar>
           <OverlayNewButton icon="rocket" label={c.newTask} onClick={() => setEditorOpen(true)} />
@@ -303,11 +300,7 @@ function TaskListRow({
     >
       <span
         aria-hidden="true"
-        className={cn(
-          'size-3 shrink-0 rounded-full',
-          PHASE_DOT[phase],
-          running && 'motion-safe:animate-pulse'
-        )}
+        className={cn('size-3 shrink-0 rounded-full', PHASE_DOT[phase], running && 'motion-safe:animate-pulse')}
       />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="min-w-0 truncate text-sm font-medium leading-tight">{jobTitle(job)}</span>
@@ -597,7 +590,9 @@ function TaskRuns({
               type="button"
             >
               <span className="inline-flex min-w-0 items-center gap-1.5">
-                {run.is_active && <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />}
+                {run.is_active && (
+                  <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />
+                )}
                 <span className="truncate text-foreground">{run.title?.trim() || run.preview?.trim() || run.id}</span>
               </span>
               <span className="shrink-0 text-[0.62rem] text-muted-foreground tabular-nums">

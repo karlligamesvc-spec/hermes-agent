@@ -105,7 +105,4 @@ function imEntryStoreHasBinding(store) {
   )
 }
 
-export {
-  buildGatewayRunArgs,
-  imEntryStoreHasBinding
-}
+export { buildGatewayRunArgs, imEntryStoreHasBinding }

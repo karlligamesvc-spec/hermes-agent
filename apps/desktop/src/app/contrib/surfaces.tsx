@@ -177,7 +177,9 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
           channel strip, and Settings → 提供方. */}
       <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
       <Route
-        element={page(<TasksView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />)}
+        element={page(
+          <TasksView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
+        )}
         path="tasks"
       />
       <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />

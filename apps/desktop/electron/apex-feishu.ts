@@ -69,7 +69,9 @@ function feishuCredentialsUrl(apiBase) {
  * @returns {'feishu' | 'lark'}
  */
 function normalizeFeishuDomain(value) {
-  const raw = String(value == null ? '' : value).trim().toLowerCase()
+  const raw = String(value == null ? '' : value)
+    .trim()
+    .toLowerCase()
 
   return VALID_FEISHU_DOMAINS.has(raw) ? raw : DEFAULT_FEISHU_DOMAIN
 }
@@ -88,7 +90,9 @@ function normalizeFeishuDomain(value) {
  * }}
  */
 function parseFeishuCredentialsResponse(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {return null}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null
+  }
 
   const str = value => (typeof value === 'string' ? value.trim() : '')
   const appId = str(body.app_id)
@@ -142,7 +146,9 @@ function normalizeStoredFeishu(raw) {
     syncedAt: null
   }
 
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return empty}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return empty
+  }
 
   const str = value => (typeof value === 'string' ? value.trim() : '')
   const appId = str(raw.appId)
@@ -150,7 +156,9 @@ function normalizeStoredFeishu(raw) {
 
   // Both halves are required to be "connected"; a record missing either (e.g. a
   // decrypt failure blanked the secret) is unusable → empty.
-  if (!appId || !appSecret) {return empty}
+  if (!appId || !appSecret) {
+    return empty
+  }
 
   const syncedAt = typeof raw.syncedAt === 'number' && Number.isFinite(raw.syncedAt) ? raw.syncedAt : null
 
@@ -193,7 +201,9 @@ function shouldInjectFeishu(cred) {
  * @returns {Record<string, string>}
  */
 function buildFeishuBackendEnv(cred) {
-  if (!shouldInjectFeishu(cred)) {return {}}
+  if (!shouldInjectFeishu(cred)) {
+    return {}
+  }
 
   return {
     FEISHU_APP_ID: String(cred.appId).trim(),

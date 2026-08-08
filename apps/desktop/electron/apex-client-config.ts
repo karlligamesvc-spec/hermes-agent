@@ -89,10 +89,14 @@ function clientConfigUrl(apiBase, knownVersion?) {
  *   unchanged: boolean, updatedAt: string | null }}
  */
 function parseClientConfigResponse(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {return null}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return null
+  }
   const version = normalizeVersion(body.version)
 
-  if (!version) {return null}
+  if (!version) {
+    return null
+  }
 
   // Short-circuit shape: the server confirmed our known_version is current.
   // No payload accompanies it (and none is needed — we already hold it).
@@ -102,7 +106,9 @@ function parseClientConfigResponse(body) {
 
   const payload = body.payload
 
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {return null}
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null
+  }
 
   const updatedAt = typeof body.updated_at === 'string' && body.updated_at.trim() ? body.updated_at : null
 
@@ -124,7 +130,9 @@ function parseClientConfigResponse(body) {
 function shouldApply(fetchedVersion, appliedVersion) {
   const fetched = normalizeVersion(fetchedVersion)
 
-  if (!fetched) {return false}
+  if (!fetched) {
+    return false
+  }
 
   return fetched > normalizeVersion(appliedVersion)
 }
@@ -141,15 +149,18 @@ function shouldApply(fetchedVersion, appliedVersion) {
 function normalizeStoredClientConfig(raw) {
   const empty = { version: 0, payload: null, fetchedAt: null, appliedVersion: 0 }
 
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {return empty}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return empty
+  }
   const version = normalizeVersion(raw.version)
 
-  const payload =
-    raw.payload && typeof raw.payload === 'object' && !Array.isArray(raw.payload) ? raw.payload : null
+  const payload = raw.payload && typeof raw.payload === 'object' && !Array.isArray(raw.payload) ? raw.payload : null
 
   // A version without its payload is unusable — treat as empty so the next
   // fetch re-stores both.
-  if (!version || !payload) {return empty}
+  if (!version || !payload) {
+    return empty
+  }
   const fetchedAt = typeof raw.fetchedAt === 'number' && Number.isFinite(raw.fetchedAt) ? raw.fetchedAt : null
 
   return { version, payload, fetchedAt, appliedVersion: normalizeVersion(raw.appliedVersion) }
@@ -172,7 +183,9 @@ function normalizeStoredClientConfig(raw) {
  * @returns {Promise<null | ReturnType<typeof parseClientConfigResponse>>}
  */
 async function fetchClientConfig({ apiBase, fetchJson, knownVersion, timeoutMs = 5_000, log = () => {} }: any) {
-  if (!apiBase || typeof fetchJson !== 'function') {return null}
+  if (!apiBase || typeof fetchJson !== 'function') {
+    return null
+  }
   const url = clientConfigUrl(apiBase, knownVersion)
   let body
 
@@ -222,13 +235,16 @@ function applyConfigYamlKeys(raw, entries) {
   const applied = []
   const skipped = []
 
-  const isScalar = value =>
-    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+  const isScalar = value => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
 
   const yamlScalar = value => {
-    if (typeof value === 'boolean') {return value ? 'true' : 'false'}
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false'
+    }
 
-    if (typeof value === 'number') {return Number.isFinite(value) ? String(value) : null}
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : null
+    }
     const text = String(value)
 
     // Quote anything YAML could misread; plain identifiers stay bare.
@@ -242,10 +258,14 @@ function applyConfigYamlKeys(raw, entries) {
     const headRe = new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`)
 
     for (let i = 0; i < lines.length; i++) {
-      if (!headRe.test(lines[i])) {continue}
+      if (!headRe.test(lines[i])) {
+        continue
+      }
       let end = i + 1
 
-      while (end < lines.length && !/^\S/.test(lines[end])) {end += 1}
+      while (end < lines.length && !/^\S/.test(lines[end])) {
+        end += 1
+      }
 
       return [i, end]
     }
@@ -254,7 +274,9 @@ function applyConfigYamlKeys(raw, entries) {
   }
 
   const ensureTrailingNewline = () => {
-    if (lines.length === 0 || lines[lines.length - 1] !== '') {lines.push('')}
+    if (lines.length === 0 || lines[lines.length - 1] !== '') {
+      lines.push('')
+    }
   }
 
   for (const [dotted, value] of Object.entries(entries || {})) {
@@ -320,15 +342,21 @@ function applyConfigYamlKeys(raw, entries) {
     let found = false
 
     for (let i = range[0] + 1; i < range[1]; i++) {
-      if (!childRe.test(lines[i])) {continue}
+      if (!childRe.test(lines[i])) {
+        continue
+      }
 
-      if (lines[i] !== childLine) {lines[i] = childLine}
+      if (lines[i] !== childLine) {
+        lines[i] = childLine
+      }
       found = true
 
       break
     }
 
-    if (!found) {lines.splice(range[0] + 1, 0, childLine)}
+    if (!found) {
+      lines.splice(range[0] + 1, 0, childLine)
+    }
     applied.push(dotted)
   }
 

@@ -1183,7 +1183,7 @@ export function ChatBar({
                 onDoubleClick={handleComposerToggle}
               />
             )}
-          {/* hc-517 — new-conversation project picker chip, above the composer.
+            {/* hc-517 — new-conversation project picker chip, above the composer.
               Only for a fresh draft (no session id yet); the chosen folder
               becomes the new session's cwd. Renders nothing when the feature is
               off / not on a local desktop backend. */}

@@ -66,7 +66,9 @@ describe('GenLadderCard — stepper + chrome', () => {
   })
 
   it('never renders an action for edit_action_slot while implemented:false', () => {
-    renderCard(base({ type: 'prompt', title: 'x', actions: [{ id: 'edit_prompt', kind: 'free', label: '继续改提示词' }] }))
+    renderCard(
+      base({ type: 'prompt', title: 'x', actions: [{ id: 'edit_prompt', kind: 'free', label: '继续改提示词' }] })
+    )
 
     // The only free control is "Keep editing the prompt"; the edit-region slot
     // stays a protocol placeholder with no button.
@@ -116,7 +118,14 @@ describe('GenLadderCard — prompt card (priced button)', () => {
         kind: 'spend',
         label: '出 4 张草稿',
         target_stage: 'draft',
-        price: { kind: 'draft', amount_cents: 40, currency: 'CNY', estimated: true, display: '≈¥0.40 示意', unit: 'per_batch' }
+        price: {
+          kind: 'draft',
+          amount_cents: 40,
+          currency: 'CNY',
+          estimated: true,
+          display: '≈¥0.40 示意',
+          unit: 'per_batch'
+        }
       },
       { id: 'edit_prompt', kind: 'free', label: '继续改提示词' }
     ]
@@ -219,9 +228,27 @@ describe('GenLadderCard — fork card', () => {
         title: '构图已锁定',
         selected: { ref: 'r1', url: 'https://x/1.png', label: '草稿 2' },
         actions: [
-          { id: 'confirm_hd_image', kind: 'spend', label: '出高清成品图', target_stage: 'hd_image', price: { display: '≈¥0.50 示意', estimated: true } },
-          { id: 'confirm_video_preview', kind: 'spend', label: '🎬 让它动起来', target_stage: 'video_preview', price: { display: '≈¥1.50 示意', estimated: true } },
-          { id: 'confirm_refine', kind: 'spend', label: '先精修细节', target_stage: 'refine', price: { display: '≈¥0.10 示意', estimated: true } },
+          {
+            id: 'confirm_hd_image',
+            kind: 'spend',
+            label: '出高清成品图',
+            target_stage: 'hd_image',
+            price: { display: '≈¥0.50 示意', estimated: true }
+          },
+          {
+            id: 'confirm_video_preview',
+            kind: 'spend',
+            label: '🎬 让它动起来',
+            target_stage: 'video_preview',
+            price: { display: '≈¥1.50 示意', estimated: true }
+          },
+          {
+            id: 'confirm_refine',
+            kind: 'spend',
+            label: '先精修细节',
+            target_stage: 'refine',
+            price: { display: '≈¥0.10 示意', estimated: true }
+          },
           { id: 'back', kind: 'free', label: '回上一档改提示词(便宜)', target_stage: 'prompt' }
         ]
       })
@@ -250,7 +277,13 @@ describe('GenLadderCard — video preview with model picker', () => {
         price: { display: '≈¥6 示意', estimated: true },
         model_options: ['Seedance 2.0', 'Kling V3', 'Hailuo 2.3']
       },
-      { id: 'confirm_video_preview', kind: 'spend', label: '改分镜再预览', target_stage: 'video_preview', price: { display: '≈¥1.5 示意', estimated: true } },
+      {
+        id: 'confirm_video_preview',
+        kind: 'spend',
+        label: '改分镜再预览',
+        target_stage: 'video_preview',
+        price: { display: '≈¥1.5 示意', estimated: true }
+      },
       { id: 'back', kind: 'free', label: '回分叉重选(便宜)', target_stage: 'fork' }
     ]
   })
@@ -305,7 +338,12 @@ describe('GenLadderCard — reference gate (real-person guardrail)', () => {
         gate: { status: 'blocked', severity: 'high' },
         actions: [
           { id: 'edit_prompt', kind: 'free', label: '改成虚构人物 / 泛化描述' },
-          { id: 'acknowledge_rights', kind: 'confirm_sensitive', label: '我拥有授权,继续', hint: '仅在你确认拥有授权时' }
+          {
+            id: 'acknowledge_rights',
+            kind: 'confirm_sensitive',
+            label: '我拥有授权,继续',
+            hint: '仅在你确认拥有授权时'
+          }
         ]
       })
     )
@@ -365,7 +403,13 @@ describe('GenLadderCard — forward-compat graceful degradation', () => {
         title: 'A brand new card',
         body: 'Something the desktop has never seen.',
         actions: [
-          { id: 'confirm_future', kind: 'spend', label: 'Do the new thing', target_stage: 'future_stage', price: { display: '≈¥9', estimated: false } }
+          {
+            id: 'confirm_future',
+            kind: 'spend',
+            label: 'Do the new thing',
+            target_stage: 'future_stage',
+            price: { display: '≈¥9', estimated: false }
+          }
         ]
       })
     )
@@ -390,7 +434,9 @@ describe('GenLadderCard — forward-compat graceful degradation', () => {
       base({
         type: 'super_new_card',
         title: 'x',
-        actions: [{ id: 'c', kind: 'spend', label: 'Buy', target_stage: 's', price: { display: '¥9.00', estimated: false } }]
+        actions: [
+          { id: 'c', kind: 'spend', label: 'Buy', target_stage: 's', price: { display: '¥9.00', estimated: false } }
+        ]
       })
     )
 
@@ -405,7 +451,19 @@ describe('GenLadderCard — disabled (gateway offline)', () => {
     const onEvent = vi.fn<(event: GenLadderEvent) => void>()
     render(
       <GenLadderCard
-        card={base({ type: 'prompt', title: 'x', actions: [{ id: 'go_now', kind: 'spend', label: 'Go', target_stage: 'draft', price: { display: '¥1', estimated: false } }] })}
+        card={base({
+          type: 'prompt',
+          title: 'x',
+          actions: [
+            {
+              id: 'go_now',
+              kind: 'spend',
+              label: 'Go',
+              target_stage: 'draft',
+              price: { display: '¥1', estimated: false }
+            }
+          ]
+        })}
         disabled
         onEvent={onEvent}
       />
@@ -419,7 +477,10 @@ describe('GenLadderCard — disabled (gateway offline)', () => {
 
 describe('genLadderEvent — localized messages follow the card language', () => {
   it('builds a Japanese confirm message from the ja copy bundle', () => {
-    const event = genLadderEvent({ id: 'confirm_draft', kind: 'spend', label: '出 4 张草稿', target_stage: 'draft' }, genLadderCopy('ja'))
+    const event = genLadderEvent(
+      { id: 'confirm_draft', kind: 'spend', label: '出 4 张草稿', target_stage: 'draft' },
+      genLadderCopy('ja')
+    )
 
     expect(event.callback.action).toBe('confirm')
     expect(event.message.startsWith('確認:')).toBe(true)

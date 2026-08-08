@@ -28,12 +28,7 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, test } from 'vitest'
 
-import {
-  managedModelConfigYaml,
-  maskRelayKey,
-  reconcileManagedRelayKey,
-  syncManagedRelayKeyYaml
-} from './apex-managed'
+import { managedModelConfigYaml, maskRelayKey, reconcileManagedRelayKey, syncManagedRelayKeyYaml } from './apex-managed'
 
 const RELAY_BASE = 'https://apex-nodes.com/relay/v1'
 
@@ -55,9 +50,7 @@ function seedConfigYaml(key: string) {
       provider: 'custom',
       base_url: RELAY_BASE,
       api_key: key,
-      custom_providers: [
-        { name: 'Apex-nodes.com', base_url: RELAY_BASE, api_key: key, model: 'deepseek-v4-pro-APEX' }
-      ]
+      custom_providers: [{ name: 'Apex-nodes.com', base_url: RELAY_BASE, api_key: key, model: 'deepseek-v4-pro-APEX' }]
     }) + 'skills:\n  disabled: []\n'
   )
 }
@@ -67,12 +60,16 @@ function chatKeyFromConfig(raw: string): string {
   const lines = raw.split('\n')
   const start = lines.findIndex(line => /^model:\s*$/.test(line))
 
-  if (start < 0) {return ''}
+  if (start < 0) {
+    return ''
+  }
 
   for (let i = start + 1; i < lines.length && !/^\S/.test(lines[i]); i++) {
     const m = lines[i].match(/^\s+api_key:\s*(.*)$/)
 
-    if (m) {return m[1].trim().replace(/^(["'])(.*)\1$/, '$2')}
+    if (m) {
+      return m[1].trim().replace(/^(["'])(.*)\1$/, '$2')
+    }
   }
 
   return ''
@@ -134,7 +131,9 @@ class FakeBackend {
 
   /** What `reloadBackendForRelayKey` does in main.ts: soft re-home + respawn. */
   reload() {
-    if (!this.running) {return}
+    if (!this.running) {
+      return
+    }
     this.start()
   }
 }

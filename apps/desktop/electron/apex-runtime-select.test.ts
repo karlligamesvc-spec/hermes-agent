@@ -84,27 +84,18 @@ test('preBootstrap: update pending wins over marker-complete too', () => {
 // ---------------------------------------------------------------------------
 
 test('failureFallback: usable on disk, no update -> fallback-to-disk (do not brick)', () => {
-  assert.equal(
-    resolveBootstrapFailureFallback({ onDiskUsable: true, updatePending: false }),
-    'fallback-to-disk'
-  )
+  assert.equal(resolveBootstrapFailureFallback({ onDiskUsable: true, updatePending: false }), 'fallback-to-disk')
 })
 
 test('failureFallback: nothing usable on disk -> fatal (genuinely cannot start)', () => {
-  assert.equal(
-    resolveBootstrapFailureFallback({ onDiskUsable: false, updatePending: false }),
-    'fatal'
-  )
+  assert.equal(resolveBootstrapFailureFallback({ onDiskUsable: false, updatePending: false }), 'fatal')
 })
 
 test('failureFallback: opt-in update pending -> fatal (caller rolls the override back)', () => {
   // A failed opt-in re-bootstrap must go through rollbackRuntimePinOverride(),
   // which restores the previous marker so the OLD runtime boots next launch —
   // not a silent same-launch adoption here.
-  assert.equal(
-    resolveBootstrapFailureFallback({ onDiskUsable: true, updatePending: true }),
-    'fatal'
-  )
+  assert.equal(resolveBootstrapFailureFallback({ onDiskUsable: true, updatePending: true }), 'fatal')
 })
 
 test('failureFallback: bad input is safe (fatal, never a spurious fallback)', () => {

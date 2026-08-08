@@ -58,13 +58,21 @@ const STATUS_TIMEOUT_MS = 8000
  * a flaky probe never masquerades as a login problem.
  */
 function classifyAgentState({ cliPresent, loggedIn, reachable }: any = {}) {
-  if (!cliPresent) {return AGENT_STATE.NO_CLI}
+  if (!cliPresent) {
+    return AGENT_STATE.NO_CLI
+  }
 
-  if (loggedIn === false) {return AGENT_STATE.LOGGED_OUT}
+  if (loggedIn === false) {
+    return AGENT_STATE.LOGGED_OUT
+  }
 
-  if (loggedIn !== true) {return AGENT_STATE.UNKNOWN}
+  if (loggedIn !== true) {
+    return AGENT_STATE.UNKNOWN
+  }
 
-  if (reachable === false) {return AGENT_STATE.UNREACHABLE}
+  if (reachable === false) {
+    return AGENT_STATE.UNREACHABLE
+  }
 
   return AGENT_STATE.READY
 }
@@ -119,7 +127,9 @@ function parseClaudeAuthStatus(stdout) {
 function decodeJwtEmail(idToken) {
   const parts = String(idToken || '').split('.')
 
-  if (parts.length < 2) {return ''}
+  if (parts.length < 2) {
+    return ''
+  }
 
   try {
     const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
@@ -127,11 +137,15 @@ function decodeJwtEmail(idToken) {
     const claims = JSON.parse(json)
     const email = claims.email || claims.preferred_username || ''
 
-    if (typeof email === 'string') {return email}
+    if (typeof email === 'string') {
+      return email
+    }
 
     // Codex nests some claims under an auth namespace object.
     for (const value of Object.values<any>(claims)) {
-      if (value && typeof value === 'object' && typeof value.email === 'string') {return value.email}
+      if (value && typeof value === 'object' && typeof value.email === 'string') {
+        return value.email
+      }
     }
 
     return ''
@@ -155,13 +169,16 @@ function parseCodexAuthJson(text) {
     return { loggedIn: null, email: '', mode: '' }
   }
 
-  if (!data || typeof data !== 'object') {return { loggedIn: null, email: '', mode: '' }}
+  if (!data || typeof data !== 'object') {
+    return { loggedIn: null, email: '', mode: '' }
+  }
   const tokens = data.tokens && typeof data.tokens === 'object' ? data.tokens : null
   const hasOAuth = Boolean(tokens && String(tokens.access_token || '').trim())
   const hasApiKey = Boolean(String(data.OPENAI_API_KEY || '').trim())
 
   if (hasOAuth || hasApiKey) {
-    const mode = typeof data.auth_mode === 'string' && data.auth_mode ? data.auth_mode : hasApiKey ? 'apikey' : 'chatgpt'
+    const mode =
+      typeof data.auth_mode === 'string' && data.auth_mode ? data.auth_mode : hasApiKey ? 'apikey' : 'chatgpt'
 
     return { loggedIn: true, email: tokens ? decodeJwtEmail(tokens.id_token) : '', mode }
   }
@@ -173,9 +190,13 @@ function parseCodexAuthJson(text) {
 function parseCodexLoginStatus(stdout) {
   const text = String(stdout || '').trim()
 
-  if (/not\s+logged\s+in|logged\s+out|no\s+credential/i.test(text)) {return { loggedIn: false, email: '' }}
+  if (/not\s+logged\s+in|logged\s+out|no\s+credential/i.test(text)) {
+    return { loggedIn: false, email: '' }
+  }
 
-  if (/logged\s+in|authenticated/i.test(text)) {return { loggedIn: true, email: extractEmail(text) }}
+  if (/logged\s+in|authenticated/i.test(text)) {
+    return { loggedIn: true, email: extractEmail(text) }
+  }
 
   return { loggedIn: null, email: '' }
 }
@@ -194,11 +215,17 @@ function extractOAuthUrl(text) {
   while ((match = regex.exec(source)) !== null) {
     const url = match[1].replace(/[.,);:]+$/, '')
 
-    if (/(oauth|authorize|\/activate|\/auth\b|auth\.|callback|claude\.ai|anthropic\.com|openai\.com|chatgpt\.com)/i.test(url)) {
+    if (
+      /(oauth|authorize|\/activate|\/auth\b|auth\.|callback|claude\.ai|anthropic\.com|openai\.com|chatgpt\.com)/i.test(
+        url
+      )
+    ) {
       return url
     }
 
-    if (!firstUrl) {firstUrl = url}
+    if (!firstUrl) {
+      firstUrl = url
+    }
   }
 
   return firstUrl
@@ -214,12 +241,16 @@ function parseConnectStatus(text) {
 
 /** Parse a proxy URL into `{ host, port }` for the CONNECT socket. Pure. */
 function proxyEndpoint(proxyUrl) {
-  if (!proxyUrl) {return null}
+  if (!proxyUrl) {
+    return null
+  }
 
   try {
     const url = new URL(proxyUrl)
 
-    if (!/^https?:$/i.test(url.protocol)) {return null} // CONNECT only over an HTTP proxy
+    if (!/^https?:$/i.test(url.protocol)) {
+      return null
+    } // CONNECT only over an HTTP proxy
 
     return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
   } catch {
@@ -233,12 +264,20 @@ function proxyEndpoint(proxyUrl) {
  * provider. Without a proxy: a plain TCP connect to <host>:443. Any transport
  * failure/timeout resolves `false`. Never rejects.
  */
-function probeReachable({ host, port = REACH_PORT, proxyUrl = '', timeoutMs = REACH_TIMEOUT_MS, connect = net.connect }: any = {}) {
+function probeReachable({
+  host,
+  port = REACH_PORT,
+  proxyUrl = '',
+  timeoutMs = REACH_TIMEOUT_MS,
+  connect = net.connect
+}: any = {}) {
   return new Promise(resolve => {
     let settled = false
 
     const done = value => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
       settled = true
 
       try {
@@ -337,7 +376,15 @@ async function detectClaude({ env, execFile, probe = probeReachable, proxyUrl = 
   const result = await runCli('claude', ['auth', 'status', '--json'], { env, execFile })
 
   if (result.spawnError === 'ENOENT') {
-    return { family: 'claude', state: AGENT_STATE.NO_CLI, cliPresent: false, loggedIn: null, reachable: null, email: '', plan: '' }
+    return {
+      family: 'claude',
+      state: AGENT_STATE.NO_CLI,
+      cliPresent: false,
+      loggedIn: null,
+      reachable: null,
+      email: '',
+      plan: ''
+    }
   }
 
   const parsed = parseClaudeAuthStatus(result.stdout || result.stderr)
@@ -380,7 +427,15 @@ async function detectCodex({ env, homeDir, execFile, readFile, probe = probeReac
     const result = await runCli('codex', ['login', 'status'], { env, execFile })
 
     if (result.spawnError === 'ENOENT') {
-      return { family: 'codex', state: AGENT_STATE.NO_CLI, cliPresent: false, loggedIn: null, reachable: null, email: '', plan: '' }
+      return {
+        family: 'codex',
+        state: AGENT_STATE.NO_CLI,
+        cliPresent: false,
+        loggedIn: null,
+        reachable: null,
+        email: '',
+        plan: ''
+      }
     }
 
     const status = parseCodexLoginStatus(result.stdout || result.stderr)

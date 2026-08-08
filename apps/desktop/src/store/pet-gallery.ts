@@ -147,7 +147,6 @@ export function loadPetGallery(request: GatewayRequest, options: { force?: boole
         $petGalleryError.set(null)
         localOk = true
       }
-
     } catch (e) {
       if (isMissingMethod(e)) {
         $petGalleryStatus.set('stale')

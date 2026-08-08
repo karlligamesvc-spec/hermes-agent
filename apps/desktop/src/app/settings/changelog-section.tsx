@@ -79,7 +79,12 @@ function ChangelogDialogBody({ locale }: { locale: Locale }) {
   }
 
   if (state.status === 'error') {
-    return <EmptyState description={state.needsSignIn ? c.changelogNeedsSignIn : c.changelogLoadError} title={c.changelogTitle} />
+    return (
+      <EmptyState
+        description={state.needsSignIn ? c.changelogNeedsSignIn : c.changelogLoadError}
+        title={c.changelogTitle}
+      />
+    )
   }
 
   if (state.items.length === 0) {
@@ -95,7 +100,9 @@ function ChangelogDialogBody({ locale }: { locale: Locale }) {
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-sm font-medium text-foreground">{announcement.title}</p>
             {announcement.publishedAt && (
-              <p className="shrink-0 text-xs text-muted-foreground">{dateFormat.format(new Date(announcement.publishedAt))}</p>
+              <p className="shrink-0 text-xs text-muted-foreground">
+                {dateFormat.format(new Date(announcement.publishedAt))}
+              </p>
             )}
           </div>
           <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{announcement.body}</p>

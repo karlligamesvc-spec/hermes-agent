@@ -63,10 +63,14 @@ function readPluginSources() {
   const sources: { id: string; source: string }[] = []
 
   for (const entry of fs.readdirSync(PLUGINS_ROOT, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {continue}
+    if (!entry.isDirectory()) {
+      continue
+    }
     const init = path.join(PLUGINS_ROOT, entry.name, '__init__.py')
 
-    if (!fs.existsSync(init)) {continue}
+    if (!fs.existsSync(init)) {
+      continue
+    }
     sources.push({ id: entry.name, source: fs.readFileSync(init, 'utf8') })
   }
 
@@ -83,7 +87,9 @@ function readPythonContract() {
   for (const line of source.split('\n')) {
     const match = line.match(/^([A-Z][A-Z0-9_]*)\s*=\s*(["'])([A-Za-z0-9_]+)\2\s*$/)
 
-    if (match) {constants[match[1]] = match[3]}
+    if (match) {
+      constants[match[1]] = match[3]
+    }
   }
 
   const declaration = source.match(/^DESKTOP_SPAWN_ENV_CONTRACT\s*=\s*\(([^)]*)\)/m)
@@ -177,9 +183,7 @@ describe('resolver-chain extraction', () => {
       'def _agent_api_key() -> str:\n    return (os.getenv("API_SERVER_KEY") or os.getenv("MODEL_API_KEY") or "").strip()\n'
     )
 
-    expect(chains).toEqual([
-      { delegates: false, envs: ['API_SERVER_KEY', 'MODEL_API_KEY'], fn: '_agent_api_key' }
-    ])
+    expect(chains).toEqual([{ delegates: false, envs: ['API_SERVER_KEY', 'MODEL_API_KEY'], fn: '_agent_api_key' }])
   })
 
   test('reads a tuple-of-constants fall-through', () => {
@@ -203,9 +207,7 @@ describe('resolver-chain extraction', () => {
   })
 
   test('ignores functions that are not credential/endpoint resolvers', () => {
-    expect(
-      resolverChainsIn('def _document_cache_dir():\n    home = os.getenv("HERMES_HOME")\n')
-    ).toEqual([])
+    expect(resolverChainsIn('def _document_cache_dir():\n    home = os.getenv("HERMES_HOME")\n')).toEqual([])
   })
 })
 

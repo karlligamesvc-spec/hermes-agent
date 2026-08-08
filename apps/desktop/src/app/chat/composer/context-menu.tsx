@@ -143,7 +143,9 @@ export function ContextMenu({ state }: ContextMenuProps) {
             <DropdownMenuItem
               className={CAPABILITY_ROW}
               key={provider.key}
-              onSelect={() => void provider.run({ insertText: text => requestComposerInsert(text, { target: 'main' }) })}
+              onSelect={() =>
+                void provider.run({ insertText: text => requestComposerInsert(text, { target: 'main' }) })
+              }
             >
               <Codicon name={provider.icon ?? 'plug'} size="0.875rem" />
               <span>{provider.label}</span>

@@ -62,9 +62,7 @@ function asRecord(value: unknown): Record<string, unknown> {
     try {
       const parsed = JSON.parse(value)
 
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : {}
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
     } catch {
       return {}
     }
@@ -164,16 +162,16 @@ function browserAction(toolName: string): string {
   return toolName.slice(BROWSER_PREFIX.length) || 'navigate'
 }
 
-function browserTarget(action: string, args: Record<string, unknown>, result: Record<string, unknown>): {
+function browserTarget(
+  action: string,
+  args: Record<string, unknown>,
+  result: Record<string, unknown>
+): {
   target: string
   url: string
 } {
   if (action === 'navigate' || action === 'vision' || action === 'get_images' || action === 'back') {
-    const url =
-      str(args, ['url', 'target']) ||
-      str(result, ['url']) ||
-      str(args, ['url']).match(URL_RE)?.[0] ||
-      ''
+    const url = str(args, ['url', 'target']) || str(result, ['url']) || str(args, ['url']).match(URL_RE)?.[0] || ''
 
     return { target: url ? hostname(url) : '', url }
   }
@@ -263,7 +261,10 @@ export function operationInfo(
   const surface = operationSurface(toolName)
 
   if (surface === 'computer') {
-    const action = String(argsRecord.action || 'capture').trim().toLowerCase() || 'capture'
+    const action =
+      String(argsRecord.action || 'capture')
+        .trim()
+        .toLowerCase() || 'capture'
 
     return {
       surface,

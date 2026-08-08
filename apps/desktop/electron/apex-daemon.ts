@@ -143,7 +143,8 @@ function resolveDaemonEndpoints(apiBase, env = process.env) {
  * @returns {string}
  */
 function bridgeResultUrl(apiBase, taskId, env = process.env) {
-  const base = trimStr((env || {}).HERMES_DESKTOP_DAEMON_TASKS_URL) || `${trimTrailingSlash(apiBase)}${BRIDGE_TASKS_PATH}`
+  const base =
+    trimStr((env || {}).HERMES_DESKTOP_DAEMON_TASKS_URL) || `${trimTrailingSlash(apiBase)}${BRIDGE_TASKS_PATH}`
 
   return `${trimTrailingSlash(base)}/${encodeURIComponent(String(taskId || ''))}/result`
 }
@@ -159,7 +160,9 @@ function bridgeResultUrl(apiBase, taskId, env = process.env) {
  * @returns {string}
  */
 function defaultDeviceName(hostname) {
-  const raw = trimStr(hostname).replace(/\.local$/i, '').trim()
+  const raw = trimStr(hostname)
+    .replace(/\.local$/i, '')
+    .trim()
 
   if (!raw) {
     return FALLBACK_DEVICE_NAME

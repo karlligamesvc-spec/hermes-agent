@@ -133,26 +133,33 @@ test('migrateLegacyInPlace: refuses (no state change) when user data is inside',
   }
 })
 
-test('rollbackToLegacyInPlace: link points back at the aside; legacy venv resolves through it', { skip: !POSIX }, () => {
-  const home = mkHome()
+test(
+  'rollbackToLegacyInPlace: link points back at the aside; legacy venv resolves through it',
+  { skip: !POSIX },
+  () => {
+    const home = mkHome()
 
-  try {
-    seedLegacy(home)
-    const key = 'cccccccccccc'
-    seedVersion(home, key)
-    migrate.migrateLegacyInPlace(home, key, PLAT)
-    const r = migrate.rollbackToLegacyInPlace(home, PLAT)
-    assert.equal(r.ok, true)
-    const p = layout.readPointer(home)
-    assert.equal(p.key, migrate.LEGACY_SENTINEL)
-    assert.equal(p.previous, key)
-    const { activeLink } = layout.bundlePaths(home)
-    // The legacy venv's absolute self-reference resolves correctly THROUGH the link.
-    assert.equal(fs.readFileSync(path.join(activeLink, 'venv', 'bin', 'python'), 'utf8'), '#!/legacy/abs/venv/bin/python')
-  } finally {
-    rm(home)
+    try {
+      seedLegacy(home)
+      const key = 'cccccccccccc'
+      seedVersion(home, key)
+      migrate.migrateLegacyInPlace(home, key, PLAT)
+      const r = migrate.rollbackToLegacyInPlace(home, PLAT)
+      assert.equal(r.ok, true)
+      const p = layout.readPointer(home)
+      assert.equal(p.key, migrate.LEGACY_SENTINEL)
+      assert.equal(p.previous, key)
+      const { activeLink } = layout.bundlePaths(home)
+      // The legacy venv's absolute self-reference resolves correctly THROUGH the link.
+      assert.equal(
+        fs.readFileSync(path.join(activeLink, 'venv', 'bin', 'python'), 'utf8'),
+        '#!/legacy/abs/venv/bin/python'
+      )
+    } finally {
+      rm(home)
+    }
   }
-})
+)
 
 test('rollbackToLegacyInPlace: refuses when previous is not the sentinel', () => {
   const home = mkHome()
@@ -232,7 +239,10 @@ test('reconcileMigration: heals the link after a rollback to the legacy aside', 
     const rec = migrate.reconcileMigration(home, PLAT)
     assert.equal(rec.reconciled, true)
     assert.equal(rec.action, 'relink-legacy')
-    assert.equal(fs.readFileSync(path.join(activeLink, 'venv', 'bin', 'python'), 'utf8'), '#!/legacy/abs/venv/bin/python')
+    assert.equal(
+      fs.readFileSync(path.join(activeLink, 'venv', 'bin', 'python'), 'utf8'),
+      '#!/legacy/abs/venv/bin/python'
+    )
   } finally {
     rm(home)
   }
@@ -243,34 +253,38 @@ test('reconcileMigration: heals the link after a rollback to the legacy aside', 
 // falls out of the pointer (the second successful update)
 // ---------------------------------------------------------------------------
 
-test('gcLegacyAside: kept while sentinel is the fallback; reaped after the next update drops it', { skip: !POSIX }, () => {
-  const home = mkHome()
+test(
+  'gcLegacyAside: kept while sentinel is the fallback; reaped after the next update drops it',
+  { skip: !POSIX },
+  () => {
+    const home = mkHome()
 
-  try {
-    seedLegacy(home)
-    const first = 'cccccccccccc'
-    seedVersion(home, first)
-    migrate.migrateLegacyInPlace(home, first, PLAT)
-    // Sentinel is pointer.previous → aside is still the rollback target: keep it.
-    assert.equal(migrate.gcLegacyAside(home).reason, 'still-rollback-target')
-    assert.equal(fs.existsSync(migrate.legacyAsidePath(home)), true)
+    try {
+      seedLegacy(home)
+      const first = 'cccccccccccc'
+      seedVersion(home, first)
+      migrate.migrateLegacyInPlace(home, first, PLAT)
+      // Sentinel is pointer.previous → aside is still the rollback target: keep it.
+      assert.equal(migrate.gcLegacyAside(home).reason, 'still-rollback-target')
+      assert.equal(fs.existsSync(migrate.legacyAsidePath(home)), true)
 
-    // A SECOND update: active path is now a link, so the normal switch applies and
-    // sets previous=<first>, dropping the sentinel from the pointer.
-    const second = 'dddddddddddd'
-    seedVersion(home, second)
-    const sw = migrate.switchToVersionOrMigrate(home, second, PLAT)
-    assert.equal(sw.ok, true)
-    assert.equal(layout.readPointer(home).previous, first)
+      // A SECOND update: active path is now a link, so the normal switch applies and
+      // sets previous=<first>, dropping the sentinel from the pointer.
+      const second = 'dddddddddddd'
+      seedVersion(home, second)
+      const sw = migrate.switchToVersionOrMigrate(home, second, PLAT)
+      assert.equal(sw.ok, true)
+      assert.equal(layout.readPointer(home).previous, first)
 
-    // Now the aside is no longer referenced → reaped.
-    const gc = migrate.gcLegacyAside(home)
-    assert.equal(gc.removed, true)
-    assert.equal(fs.existsSync(migrate.legacyAsidePath(home)), false)
-  } finally {
-    rm(home)
+      // Now the aside is no longer referenced → reaped.
+      const gc = migrate.gcLegacyAside(home)
+      assert.equal(gc.removed, true)
+      assert.equal(fs.existsSync(migrate.legacyAsidePath(home)), false)
+    } finally {
+      rm(home)
+    }
   }
-})
+)
 
 test('gcLegacyAside: respects an injected lock (skips, retries next startup)', { skip: !POSIX }, () => {
   const home = mkHome()
@@ -288,21 +302,25 @@ test('gcLegacyAside: respects an injected lock (skips, retries next startup)', {
   }
 })
 
-test('switchToVersionOrMigrate: a non-legacy (link/missing) active path takes the normal switch', { skip: !POSIX }, () => {
-  const home = mkHome()
+test(
+  'switchToVersionOrMigrate: a non-legacy (link/missing) active path takes the normal switch',
+  { skip: !POSIX },
+  () => {
+    const home = mkHome()
 
-  try {
-    const key = 'cccccccccccc'
-    seedVersion(home, key)
-    // No hermes-agent dir at all → missing → normal switchToVersion, no sentinel.
-    const r = migrate.switchToVersionOrMigrate(home, key, PLAT)
-    assert.equal(r.ok, true)
-    assert.equal(layout.readPointer(home).previous, null)
-    assert.equal(fs.existsSync(migrate.legacyAsidePath(home)), false)
-  } finally {
-    rm(home)
+    try {
+      const key = 'cccccccccccc'
+      seedVersion(home, key)
+      // No hermes-agent dir at all → missing → normal switchToVersion, no sentinel.
+      const r = migrate.switchToVersionOrMigrate(home, key, PLAT)
+      assert.equal(r.ok, true)
+      assert.equal(layout.readPointer(home).previous, null)
+      assert.equal(fs.existsSync(migrate.legacyAsidePath(home)), false)
+    } finally {
+      rm(home)
+    }
   }
-})
+)
 
 test('migrateLegacyInPlace: idempotent re-run does not create a second aside', { skip: !POSIX }, () => {
   const home = mkHome()

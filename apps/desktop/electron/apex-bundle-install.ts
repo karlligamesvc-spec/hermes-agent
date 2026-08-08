@@ -59,7 +59,9 @@ class BundleInstallError extends Error {
     this.name = 'BundleInstallError'
     this.code = code || 'install_failed'
 
-    if (stage) {this.stage = stage}
+    if (stage) {
+      this.stage = stage
+    }
   }
 }
 
@@ -84,25 +86,45 @@ function parseBundleManifest(input, { requireArchive = true }: any = {}) {
     }
   }
 
-  if (!m || typeof m !== 'object') {throw new BundleInstallError('manifest is not an object', 'bad_manifest')}
+  if (!m || typeof m !== 'object') {
+    throw new BundleInstallError('manifest is not an object', 'bad_manifest')
+  }
 
-  if (m.schema !== MANIFEST_SCHEMA) {throw new BundleInstallError(`unsupported manifest schema ${m.schema} (need ${MANIFEST_SCHEMA})`, 'bad_manifest')}
+  if (m.schema !== MANIFEST_SCHEMA) {
+    throw new BundleInstallError(`unsupported manifest schema ${m.schema} (need ${MANIFEST_SCHEMA})`, 'bad_manifest')
+  }
 
-  if (m.kind !== BUNDLE_KIND) {throw new BundleInstallError(`unexpected manifest kind ${m.kind}`, 'bad_manifest')}
+  if (m.kind !== BUNDLE_KIND) {
+    throw new BundleInstallError(`unexpected manifest kind ${m.kind}`, 'bad_manifest')
+  }
 
-  if (m.framework !== FRAMEWORK) {throw new BundleInstallError(`unexpected framework ${m.framework}`, 'bad_manifest')}
+  if (m.framework !== FRAMEWORK) {
+    throw new BundleInstallError(`unexpected framework ${m.framework}`, 'bad_manifest')
+  }
 
-  if (!m.key || typeof m.key !== 'string') {throw new BundleInstallError('manifest missing key', 'bad_manifest')}
+  if (!m.key || typeof m.key !== 'string') {
+    throw new BundleInstallError('manifest missing key', 'bad_manifest')
+  }
 
-  if (m.os !== 'win' && m.os !== 'mac') {throw new BundleInstallError(`unexpected os ${m.os}`, 'bad_manifest')}
+  if (m.os !== 'win' && m.os !== 'mac') {
+    throw new BundleInstallError(`unexpected os ${m.os}`, 'bad_manifest')
+  }
 
-  if (!m.arch) {throw new BundleInstallError('manifest missing arch', 'bad_manifest')}
+  if (!m.arch) {
+    throw new BundleInstallError('manifest missing arch', 'bad_manifest')
+  }
 
-  if (!m.components || !m.components.node || !m.components.node.path) {throw new BundleInstallError('manifest missing components.node.path', 'bad_manifest')}
+  if (!m.components || !m.components.node || !m.components.node.path) {
+    throw new BundleInstallError('manifest missing components.node.path', 'bad_manifest')
+  }
 
-  if (!m.fixup || !m.fixup.script) {throw new BundleInstallError('manifest missing fixup.script', 'bad_manifest')}
+  if (!m.fixup || !m.fixup.script) {
+    throw new BundleInstallError('manifest missing fixup.script', 'bad_manifest')
+  }
 
-  if (!m.files_index || !m.files_index.sha256) {throw new BundleInstallError('manifest missing files_index', 'bad_manifest')}
+  if (!m.files_index || !m.files_index.sha256) {
+    throw new BundleInstallError('manifest missing files_index', 'bad_manifest')
+  }
 
   if (requireArchive) {
     if (!m.archive || !m.archive.name || !m.archive.sha256) {
@@ -115,12 +137,18 @@ function parseBundleManifest(input, { requireArchive = true }: any = {}) {
 
 /** Parse "1.2.3" (ignoring any -prerelease/+build suffix) → [1,2,3]. */
 function parseSemver(v) {
-  const core = String(v || '').trim().split(/[-+]/)[0]
+  const core = String(v || '')
+    .trim()
+    .split(/[-+]/)[0]
   const parts = core.split('.').map(n => Number.parseInt(n, 10))
 
-  if (parts.length === 0 || parts.some(n => Number.isNaN(n))) {return null}
+  if (parts.length === 0 || parts.some(n => Number.isNaN(n))) {
+    return null
+  }
 
-  while (parts.length < 3) {parts.push(0)}
+  while (parts.length < 3) {
+    parts.push(0)
+  }
 
   return parts.slice(0, 3)
 }
@@ -131,9 +159,13 @@ function compareSemver(a, b) {
   const pb = parseSemver(b) || [0, 0, 0]
 
   for (let i = 0; i < 3; i++) {
-    if (pa[i] < pb[i]) {return -1}
+    if (pa[i] < pb[i]) {
+      return -1
+    }
 
-    if (pa[i] > pb[i]) {return 1}
+    if (pa[i] > pb[i]) {
+      return 1
+    }
   }
 
   return 0
@@ -177,7 +209,9 @@ function trimTrailingSlash(v) {
 function deriveCosHost(cosBase) {
   const clean = trimTrailingSlash(cosBase || '')
 
-  if (!clean) {return DEFAULT_COS_HOST}
+  if (!clean) {
+    return DEFAULT_COS_HOST
+  }
 
   return clean.replace(/\/runtime$/i, '')
 }
@@ -275,10 +309,14 @@ async function stageAndCommitBundle(o) {
     // Confirm the staged tree is actually a bundle for THIS key before trusting.
     const embedded = path.join(stagingDir, '.bundle-manifest.json')
 
-    if (!fs.existsSync(embedded)) {throw new BundleInstallError('staged tree has no .bundle-manifest.json', 'extract_incomplete', 'extract')}
+    if (!fs.existsSync(embedded)) {
+      throw new BundleInstallError('staged tree has no .bundle-manifest.json', 'extract_incomplete', 'extract')
+    }
     const staged = parseBundleManifest(fs.readFileSync(embedded, 'utf8'), { requireArchive: false })
 
-    if (staged.key !== key) {throw new BundleInstallError(`staged key ${staged.key} != expected ${key}`, 'key_mismatch', 'extract')}
+    if (staged.key !== key) {
+      throw new BundleInstallError(`staged key ${staged.key} != expected ${key}`, 'key_mismatch', 'extract')
+    }
 
     log('[bundle-install] fixup (stamp for this location)')
     await runTool(bundledNodeExe(stagingDir, manifest), fixupArgv(stagingDir, manifest), 'fixup')
@@ -298,8 +336,10 @@ async function stageAndCommitBundle(o) {
     // trees. (A hard crash instead leaves it for startup GC — same invariant.)
     fs.rmSync(stagingDir, { recursive: true, force: true })
 
-    if (err instanceof BundleInstallError) {throw err}
-    throw new BundleInstallError(String(err && err.message || err), 'stage_failed', 'stage')
+    if (err instanceof BundleInstallError) {
+      throw err
+    }
+    throw new BundleInstallError(String((err && err.message) || err), 'stage_failed', 'stage')
   }
 }
 
@@ -382,11 +422,21 @@ async function applyBundleUpdate(o) {
     const manifest = parseBundleManifest(raw)
 
     if (manifest.os !== os || manifest.arch !== arch) {
-      return { ok: false, code: 'platform_mismatch', stage: 'manifest', error: `manifest is ${manifest.os}-${manifest.arch}, need ${os}-${arch}` }
+      return {
+        ok: false,
+        code: 'platform_mismatch',
+        stage: 'manifest',
+        error: `manifest is ${manifest.os}-${manifest.arch}, need ${os}-${arch}`
+      }
     }
 
     if (manifest.key !== key) {
-      return { ok: false, code: 'key_mismatch', stage: 'manifest', error: `manifest key ${manifest.key} != requested ${key}` }
+      return {
+        ok: false,
+        code: 'key_mismatch',
+        stage: 'manifest',
+        error: `manifest key ${manifest.key} != requested ${key}`
+      }
     }
 
     const compat = checkMinDesktopVersion(manifest, desktopVersion)
@@ -411,7 +461,9 @@ async function applyBundleUpdate(o) {
     let disk = diskspace.preflightDiskSpace(preflightArgs)
 
     if (!disk.ok) {
-      log(`[bundle-install] low disk (free=${disk.freeBytes} < need=${disk.requiredBytes}); dropping previous to reclaim`)
+      log(
+        `[bundle-install] low disk (free=${disk.freeBytes} < need=${disk.requiredBytes}); dropping previous to reclaim`
+      )
 
       try {
         layout.garbageCollect(hermesHome, { platform, dropPrevious: true })
@@ -424,7 +476,14 @@ async function applyBundleUpdate(o) {
     }
 
     if (!disk.ok) {
-      return { ok: false, code: 'insufficient_disk', stage: 'preflight', error: disk.message, freeBytes: disk.freeBytes, requiredBytes: disk.requiredBytes }
+      return {
+        ok: false,
+        code: 'insufficient_disk',
+        stage: 'preflight',
+        error: disk.message,
+        freeBytes: disk.freeBytes,
+        requiredBytes: disk.requiredBytes
+      }
     }
 
     // 2. Download the archive with Range resume, gated on the manifest's sha256.
@@ -460,7 +519,16 @@ async function applyBundleUpdate(o) {
     let staged
 
     try {
-      staged = await stageAndCommitBundle({ hermesHome, key, archivePath, manifest, extract, runTool, opts: platformOpts, log })
+      staged = await stageAndCommitBundle({
+        hermesHome,
+        key,
+        archivePath,
+        manifest,
+        extract,
+        runTool,
+        opts: platformOpts,
+        log
+      })
     } catch (err: any) {
       fireTelemetry(sendTelemetry, {
         ...telemetryBase,
@@ -492,7 +560,14 @@ async function applyBundleUpdate(o) {
       })
       const code = sw.reason === 'user-data-in-runtime-dir' ? 'migration_refused' : 'switch_failed'
 
-      return { ok: false, code, stage: 'switch', error: `could not activate versions/${key}: ${sw.reason}`, reason: sw.reason, found: sw.found }
+      return {
+        ok: false,
+        code,
+        stage: 'switch',
+        error: `could not activate versions/${key}: ${sw.reason}`,
+        reason: sw.reason,
+        found: sw.found
+      }
     }
 
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_SUCCESS })
@@ -513,7 +588,14 @@ async function applyBundleUpdate(o) {
       gc = null
     }
 
-    return { ok: true, key, versionDir: staged.versionDir, runtimeCommit: manifest.runtime_commit || null, switched: sw, gc }
+    return {
+      ok: true,
+      key,
+      versionDir: staged.versionDir,
+      runtimeCommit: manifest.runtime_commit || null,
+      switched: sw,
+      gc
+    }
   } catch (err: any) {
     const code = (err && err.code) || 'install_failed'
     const stage = (err && err.stage) || 'unknown'

@@ -267,10 +267,13 @@ test('parseFeishuCredentialsV2Response requires app_id + app_secret, clamps doma
     { appId: 'cli_a', appSecret: 'sec', domain: 'lark', allowedUsers: 'ou_owner', homeChannel: 'ou_owner' }
   )
   // Older cloud without the routing fields → '' (omitted downstream), never undefined.
-  assert.deepEqual(
-    parseFeishuCredentialsV2Response({ app_id: 'cli_a', app_secret: 'sec', domain: 'lark' }),
-    { appId: 'cli_a', appSecret: 'sec', domain: 'lark', allowedUsers: '', homeChannel: '' }
-  )
+  assert.deepEqual(parseFeishuCredentialsV2Response({ app_id: 'cli_a', app_secret: 'sec', domain: 'lark' }), {
+    appId: 'cli_a',
+    appSecret: 'sec',
+    domain: 'lark',
+    allowedUsers: '',
+    homeChannel: ''
+  })
   // Domain garbage/missing → runtime default, never emitted raw.
   assert.equal(parseFeishuCredentialsV2Response({ app_id: 'a', app_secret: 's', domain: 'nope' }).domain, 'feishu')
   assert.equal(parseFeishuCredentialsV2Response({ app_id: 'a', app_secret: 's' }).domain, 'feishu')

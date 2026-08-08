@@ -1155,9 +1155,9 @@ describe('appendLiveSessionProjection', () => {
     expect(assistants[0].parts.some(part => part.type === 'reasoning')).toBe(true)
     expect(assistants[0].parts.some(part => part.type === 'tool-call')).toBe(true)
     // Answer text stays the structured row's text, not the dump.
-    expect(assistants[0].parts.filter(part => part.type === 'text').map(part => ('text' in part ? part.text : ''))).toEqual([
-      'partial'
-    ])
+    expect(
+      assistants[0].parts.filter(part => part.type === 'text').map(part => ('text' in part ? part.text : ''))
+    ).toEqual(['partial'])
   })
 
   it('still projects inflight when only a completed historical tool reply has structure', () => {

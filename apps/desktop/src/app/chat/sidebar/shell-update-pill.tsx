@@ -19,7 +19,12 @@ function firstReleaseNotesLine(notes: string | null): string {
     return ''
   }
 
-  return notes.split('\n').map(line => line.trim()).find(Boolean) ?? ''
+  return (
+    notes
+      .split('\n')
+      .map(line => line.trim())
+      .find(Boolean) ?? ''
+  )
 }
 
 // electron-updater 的 info.version 是裸 semver(0.17.2);展示带 v 前缀,已带的
@@ -124,7 +129,10 @@ export function ShellUpdatePill() {
           data-indeterminate={percent === null ? 'true' : undefined}
           data-testid="shell-update-progress"
         >
-          <span className="p5-update-pill-progress-fill" style={percent === null ? undefined : { width: `${percent}%` }} />
+          <span
+            className="p5-update-pill-progress-fill"
+            style={percent === null ? undefined : { width: `${percent}%` }}
+          />
         </div>
       </div>
     )

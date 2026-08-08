@@ -1806,11 +1806,13 @@ export const ja = defineLocale({
       failedRolledBack: '更新に失敗しました。ロールバック済みです'
     },
     shellUpdate: {
-      foundTitle: version => (version ? `新しいバージョン ${version} が見つかりました` : '新しいバージョンが見つかりました'),
+      foundTitle: version =>
+        version ? `新しいバージョン ${version} が見つかりました` : '新しいバージョンが見つかりました',
       downloadingTitle: version => (version ? `${version} をダウンロード中` : '新しいバージョンをダウンロード中'),
       downloadingInBackground: 'バックグラウンドでダウンロード中…',
       downloadedPercent: percent => `${percent}% ダウンロード済み`,
-      readyTitle: version => (version ? `${version} のダウンロードが完了しました` : '新しいバージョンのダウンロードが完了しました'),
+      readyTitle: version =>
+        version ? `${version} のダウンロードが完了しました` : '新しいバージョンのダウンロードが完了しました',
       installsOnQuit: 'アプリを終了しないとインストールされません',
       restartNow: '今すぐ再起動して更新',
       restarting: '再起動しています…'

@@ -35,13 +35,15 @@ export const DOMESTIC_PLATFORM_IDS: ReadonlySet<string> = new Set([
  *  in the picker (i.e. it is on the domestic allowlist). Matched
  *  case-insensitively on the runtime id. */
 export function isDomesticPlatform(id: string): boolean {
-  return DOMESTIC_PLATFORM_IDS.has(String(id || '').trim().toLowerCase())
+  return DOMESTIC_PLATFORM_IDS.has(
+    String(id || '')
+      .trim()
+      .toLowerCase()
+  )
 }
 
 /** Keep only the messaging platforms the China-first picker should show. Order
  *  is preserved; runtime adapters for hidden platforms remain fully intact. */
-export function filterDomesticPlatforms(
-  platforms: MessagingPlatformInfo[]
-): MessagingPlatformInfo[] {
+export function filterDomesticPlatforms(platforms: MessagingPlatformInfo[]): MessagingPlatformInfo[] {
   return platforms.filter(platform => isDomesticPlatform(platform.id))
 }

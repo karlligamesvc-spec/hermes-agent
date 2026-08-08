@@ -163,10 +163,10 @@ test('parsePollResponse yields the task object or null', () => {
 })
 
 test('parseTaskEnvelope requires id, desktop_daemon bridge_type, object payload', () => {
-  assert.deepEqual(
-    parseTaskEnvelope({ id: 't1', bridge_type: DAEMON_BRIDGE_TYPE, payload: { kind: 'x' } }),
-    { taskId: 't1', payload: { kind: 'x' } }
-  )
+  assert.deepEqual(parseTaskEnvelope({ id: 't1', bridge_type: DAEMON_BRIDGE_TYPE, payload: { kind: 'x' } }), {
+    taskId: 't1',
+    payload: { kind: 'x' }
+  })
   assert.equal(parseTaskEnvelope({ bridge_type: DAEMON_BRIDGE_TYPE, payload: {} }), null) // no id
   assert.equal(parseTaskEnvelope({ id: 't1', bridge_type: 'workbuddy', payload: {} }), null) // not ours
   assert.equal(parseTaskEnvelope({ id: 't1', bridge_type: DAEMON_BRIDGE_TYPE }), null) // no payload
@@ -209,10 +209,10 @@ test('parseLocalAgentRunPayload rejects bad kind / family / prompt with a reason
 // ── Result submit-body shaping ───────────────────────────────────────────────
 
 test('buildResultSubmitBody: done carries output (+ session id)', () => {
-  assert.deepEqual(
-    buildResultSubmitBody({ status: 'done', output: 'All fixed', session_id: 'claude-1' }),
-    { status: 'done', result: { output: 'All fixed', session_id: 'claude-1' } }
-  )
+  assert.deepEqual(buildResultSubmitBody({ status: 'done', output: 'All fixed', session_id: 'claude-1' }), {
+    status: 'done',
+    result: { output: 'All fixed', session_id: 'claude-1' }
+  })
 })
 
 test('buildResultSubmitBody: permission gate → failed + permission_required, never approves', () => {

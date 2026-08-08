@@ -271,35 +271,67 @@ const MANAGED_PLUGIN_NAMES = [
 // absent from this list.
 const SEED_DISABLED_SKILLS = [
   // ── D — walled / geo-blocked / competitor (无 VPN 必超时挂起) ──────────────
-  'google-workspace', 'xurl', 'youtube-content', 'polymarket',
-  'teams-meeting-pipeline', 'claude-code', 'codex', 'gif-search',
+  'google-workspace',
+  'xurl',
+  'youtube-content',
+  'polymarket',
+  'teams-meeting-pipeline',
+  'claude-code',
+  'codex',
+  'gif-search',
   // ── C — CN-slow / needs mirror or 国产源 before it's stable ────────────────
   // Cross-border SaaS (reachable-but-slow / needs foreign account):
-  'notion', 'airtable',
+  'notion',
+  'airtable',
   // github.com reachable-but-slow, raw.githubusercontent.com blocked:
-  'github-auth', 'github-code-review', 'github-issues',
-  'github-pr-workflow', 'github-repo-management',
+  'github-auth',
+  'github-code-review',
+  'github-issues',
+  'github-pr-workflow',
+  'github-repo-management',
   // HuggingFace / heavy-MLOps model discovery (HF blocked/slow; ModelScope
   // route is the V0.2 localization roadmap — HF_ENDPOINT mirror is seeded but
   // these stay off as non-essential for a CN desktop assistant):
-  'huggingface-hub', 'serving-llms-vllm', 'llama-cpp', 'weights-and-biases',
-  'evaluating-llms-harness', 'segment-anything-model', 'comfyui',
-  'audiocraft-audio-generation', 'heartmula',
+  'huggingface-hub',
+  'serving-llms-vllm',
+  'llama-cpp',
+  'weights-and-biases',
+  'evaluating-llms-harness',
+  'segment-anything-model',
+  'comfyui',
+  'audiocraft-audio-generation',
+  'heartmula',
   // OSM/OSRM: CN-slow + GCJ-02 ~500m offset + weak CN routing (AMap needed):
   'maps',
   // arXiv: export.arxiv.org reachable-but-slow/unstable:
   'arxiv',
   // ── DEV-B — capable but dev-niche; product-focus off (toggle on per-need) ──
   // Coding-agent / self-config:
-  'opencode', 'hermes-agent', 'hermes-agent-skill-authoring',
+  'opencode',
+  'hermes-agent',
+  'hermes-agent-skill-authoring',
   // Dev workflow / debug / review:
-  'codebase-inspection', 'simplify-code', 'test-driven-development',
-  'systematic-debugging', 'requesting-code-review', 'node-inspect-debugger',
-  'python-debugpy', 'jupyter-live-kernel', 'plan', 'spike',
+  'codebase-inspection',
+  'simplify-code',
+  'test-driven-development',
+  'systematic-debugging',
+  'requesting-code-review',
+  'node-inspect-debugger',
+  'python-debugpy',
+  'jupyter-live-kernel',
+  'plan',
+  'spike',
   // Niche integrations / creative / research (local but seldom-needed):
-  'himalaya', 'design-md', 'research-paper-writing', 'pretext',
-  'songwriting-and-ai-music', 'songsee', 'manim-video', 'p5js',
-  'touchdesigner-mcp', 'openhue',
+  'himalaya',
+  'design-md',
+  'research-paper-writing',
+  'pretext',
+  'songwriting-and-ai-music',
+  'songsee',
+  'manim-video',
+  'p5js',
+  'touchdesigner-mcp',
+  'openhue',
   // Internal / QA:
   'dogfood'
 ]
@@ -349,10 +381,14 @@ const SEED_DISABLED_SKILLS = [
 function modelDisabledProvidersYaml(providers = MODEL_DISABLED_PROVIDERS) {
   const list = Array.isArray(providers) ? providers.filter(p => String(p || '').trim()) : []
 
-  if (!list.length) {return ''}
+  if (!list.length) {
+    return ''
+  }
   let yaml = '  disabled_providers:\n'
 
-  for (const p of list) {yaml += `    - ${String(p).trim()}\n`}
+  for (const p of list) {
+    yaml += `    - ${String(p).trim()}\n`
+  }
 
   return yaml
 }
@@ -368,7 +404,9 @@ function modelDisabledProvidersYaml(providers = MODEL_DISABLED_PROVIDERS) {
 function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
   const list = Array.isArray(skills) ? skills.filter(s => String(s || '').trim()) : []
 
-  if (!list.length) {return ''}
+  if (!list.length) {
+    return ''
+  }
 
   let yaml =
     '# ApexNodes China default profile (hc-392): skills shipped but OFF by\n' +
@@ -377,7 +415,9 @@ function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
     'skills:\n' +
     '  disabled:\n'
 
-  for (const s of list) {yaml += `    - ${String(s).trim()}\n`}
+  for (const s of list) {
+    yaml += `    - ${String(s).trim()}\n`
+  }
 
   return yaml
 }
@@ -396,7 +436,9 @@ function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
 function seedPluginsBlockYaml(plugins = MANAGED_PLUGIN_NAMES) {
   const list = Array.isArray(plugins) ? plugins.filter(p => String(p || '').trim()) : []
 
-  if (!list.length) {return ''}
+  if (!list.length) {
+    return ''
+  }
 
   let yaml =
     '# Standalone runtime plugins are opt-in: only names listed here load.\n' +
@@ -405,7 +447,9 @@ function seedPluginsBlockYaml(plugins = MANAGED_PLUGIN_NAMES) {
     'plugins:\n' +
     '  enabled:\n'
 
-  for (const p of list) {yaml += `    - ${String(p).trim()}\n`}
+  for (const p of list) {
+    yaml += `    - ${String(p).trim()}\n`
+  }
 
   return yaml
 }
@@ -590,9 +634,11 @@ function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
   let blockEnd = lines.length
 
   for (let i = blockLine + 1; i < lines.length; i++) {
-    if (/^\S/.test(lines[i])) { blockEnd = i;
+    if (/^\S/.test(lines[i])) {
+      blockEnd = i
 
- break }
+      break
+    }
   }
 
   const keyRe = new RegExp(`^(\\s+)${listKey}:(.*)$`)
@@ -601,14 +647,20 @@ function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
   for (let i = blockLine + 1; i < blockEnd; i++) {
     const key = bareLine(lines[i]).match(keyRe)
 
-    if (!key) {continue}
+    if (!key) {
+      continue
+    }
     const rest = key[2].trim()
 
-    if (rest && !rest.startsWith('#')) {return none} // inline value → not ours to merge
+    if (rest && !rest.startsWith('#')) {
+      return none
+    } // inline value → not ours to merge
     copies.push({ line: i, indent: key[1] })
   }
 
-  if (copies.length < 2) {return none}
+  if (copies.length < 2) {
+    return none
+  }
 
   // Walk each copy's item run so removal takes exactly its own lines.
   for (const copy of copies) {
@@ -619,13 +671,17 @@ function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
     for (; end < blockEnd; end++) {
       const line = bareLine(lines[end])
 
-      if (!line.trim() || /^\s*#/.test(line)) {continue}
+      if (!line.trim() || /^\s*#/.test(line)) {
+        continue
+      }
       const item = line.match(/^(\s*)-\s+(.*)$/)
 
       if (item && item[1].length >= copy.indent.length) {
         items.push(itemName(item[2]))
 
-        if (!itemIndent) {itemIndent = item[1]}
+        if (!itemIndent) {
+          itemIndent = item[1]
+        }
 
         continue
       }
@@ -645,7 +701,10 @@ function collapseDuplicateListKeyYaml(lines, blockLine, listKey, itemName) {
   // Bottom-up so the earlier indices (including first.end) stay valid.
   for (let c = copies.length - 1; c >= 1; c--) {
     for (const name of copies[c].items) {
-      if (!seen.has(name)) { seen.add(name); recovered.unshift(name) }
+      if (!seen.has(name)) {
+        seen.add(name)
+        recovered.unshift(name)
+      }
     }
 
     lines.splice(copies[c].line, copies[c].end - copies[c].line)
@@ -682,9 +741,14 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   const wanted = (Array.isArray(wantedRaw) ? wantedRaw : []).map(p => String(p || '').trim()).filter(Boolean)
   const unchanged = { changed: false, next: source, added: [] }
 
-  if (!wanted.length) {return unchanged}
+  if (!wanted.length) {
+    return unchanged
+  }
 
-  const unquote = value => String(value || '').trim().replace(/^(["'])(.*)\1$/, '$2')
+  const unquote = value =>
+    String(value || '')
+      .trim()
+      .replace(/^(["'])(.*)\1$/, '$2')
   // `- name  # comment` → name (a trailing comment needs whitespace before #).
   const itemName = text => unquote(String(text).replace(/\s+#.*$/, ''))
   const blockRe = new RegExp(`^${blockKey}:`)
@@ -693,9 +757,11 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   let blockLine = -1
 
   for (let i = 0; i < lines.length; i++) {
-    if (blockRe.test(lines[i])) { blockLine = i;
+    if (blockRe.test(lines[i])) {
+      blockLine = i
 
- break }
+      break
+    }
   }
 
   // ── no top-level block: key at all → append the full seed block ─────────
@@ -710,10 +776,14 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   if (blockRest && !blockRest.startsWith('#')) {
     // Inline value. `${blockKey}: {}` (PyYAML's empty-map dump) is safely
     // replaceable with the block form; any other inline shape is unexpected.
-    if (!/^\{\s*\}(\s*#.*)?$/.test(blockRest)) {return unchanged}
+    if (!/^\{\s*\}(\s*#.*)?$/.test(blockRest)) {
+      return unchanged
+    }
     const replacement = [`${blockKey}:`, `  ${listKey}:`]
 
-    for (const name of wanted) {replacement.push(`    - ${name}`)}
+    for (const name of wanted) {
+      replacement.push(`    - ${name}`)
+    }
     lines.splice(blockLine, 1, ...replacement)
 
     return { changed: true, next: lines.join('\n'), added: wanted.slice() }
@@ -729,9 +799,7 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   // Every early-out below still has to report the collapse: the file changed
   // even when no managed name needed adding.
   const repaired = (added: string[] = []) =>
-    dedupe.collapsed || added.length
-      ? { changed: true, next: lines.join('\n'), added }
-      : unchanged
+    dedupe.collapsed || added.length ? { changed: true, next: lines.join('\n'), added } : unchanged
 
   // ── find the end of the block and its `${listKey}:` key ─────────────────
   let blockEnd = lines.length
@@ -742,13 +810,17 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   for (let i = blockLine + 1; i < lines.length; i++) {
     const line = bareLine(lines[i])
 
-    if (/^\S/.test(line)) { blockEnd = i;
+    if (/^\S/.test(line)) {
+      blockEnd = i
 
- break } // next top-level key
+      break
+    } // next top-level key
 
     const key = line.match(/^(\s+)([A-Za-z0-9_-]+):(.*)$/)
 
-    if (key && !childIndent) {childIndent = key[1]}
+    if (key && !childIndent) {
+      childIndent = key[1]
+    }
 
     if (key && key[2] === listKey && listLine < 0) {
       listLine = i
@@ -762,7 +834,9 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
     const indent = childIndent || '  '
     const insert = [`${indent}${listKey}:`]
 
-    for (const name of wanted) {insert.push(`${indent}  - ${name}`)}
+    for (const name of wanted) {
+      insert.push(`${indent}  - ${name}`)
+    }
     lines.splice(blockLine + 1, 0, ...insert)
 
     return { changed: true, next: lines.join('\n'), added: wanted.slice() }
@@ -786,10 +860,14 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
 
     const missing = wanted.filter(name => !existing.includes(name))
 
-    if (!missing.length) {return repaired()}
+    if (!missing.length) {
+      return repaired()
+    }
     const replacement = [`${listIndent}${listKey}:`]
 
-    for (const name of existing.concat(missing)) {replacement.push(`${listIndent}  - ${name}`)}
+    for (const name of existing.concat(missing)) {
+      replacement.push(`${listIndent}  - ${name}`)
+    }
     lines.splice(listLine, 1, ...replacement)
 
     return { changed: true, next: lines.join('\n'), added: missing }
@@ -803,14 +881,18 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
   for (let i = listLine + 1; i < blockEnd; i++) {
     const line = bareLine(lines[i])
 
-    if (!line.trim() || /^\s*#/.test(line)) {continue} // blanks/comments inside the list
+    if (!line.trim() || /^\s*#/.test(line)) {
+      continue
+    } // blanks/comments inside the list
     const item = line.match(/^(\s*)-\s+(.*)$/)
 
     if (item && item[1].length >= listIndent.length) {
       existing.push(itemName(item[2]))
       lastItemLine = i
 
-      if (!itemIndent) {itemIndent = item[1]}
+      if (!itemIndent) {
+        itemIndent = item[1]
+      }
 
       continue
     }
@@ -820,7 +902,9 @@ function ensureListBlockYaml(raw, { blockKey, listKey, wanted: wantedRaw, seedBl
 
   const missing = wanted.filter(name => !existing.includes(name))
 
-  if (!missing.length) {return repaired()}
+  if (!missing.length) {
+    return repaired()
+  }
   const indent = itemIndent || `${listIndent}  `
   const insertAt = lastItemLine >= 0 ? lastItemLine + 1 : listLine + 1
   lines.splice(insertAt, 0, ...missing.map(name => `${indent}- ${name}`))
@@ -874,9 +958,7 @@ function resolveApexEndpoints(env: any = {}) {
   //   3. the prod default display name
   const explicitDisplay = String(env.APEXNODES_MANAGED_MODEL_DISPLAY || '').trim()
 
-  const modelDisplay =
-    explicitDisplay ||
-    (env.APEXNODES_MANAGED_MODEL ? `${model}-APEX` : MANAGED_MODEL_DISPLAY)
+  const modelDisplay = explicitDisplay || (env.APEXNODES_MANAGED_MODEL ? `${model}-APEX` : MANAGED_MODEL_DISPLAY)
 
   return {
     authBase,
@@ -1007,7 +1089,9 @@ function isLoopbackUrl(url) {
     return false
   }
 
-  if (parsed.protocol !== 'http:') {return false}
+  if (parsed.protocol !== 'http:') {
+    return false
+  }
   // URL normalizes an IPv6 host to its bracketed form ("[::1]"); strip the
   // brackets so the bare-address comparison matches.
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
@@ -1029,7 +1113,9 @@ function isLoopbackUrl(url) {
  * @param {Record<string, string | undefined>} [env]
  */
 function isManagedEnabled(env: any = {}) {
-  const raw = String(env.APEXNODES_MANAGED ?? '').trim().toLowerCase()
+  const raw = String(env.APEXNODES_MANAGED ?? '')
+    .trim()
+    .toLowerCase()
 
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
@@ -1042,7 +1128,9 @@ function isManagedEnabled(env: any = {}) {
 // is only surfaced on an actual chat send; the account card and startup are
 // untouched). Mirrors isManagedEnabled's parsing so the two read the same way.
 function isLoginStateTruthEnabled(env: any = {}) {
-  const raw = String(env.APEXNODES_LOGIN_STATE_TRUTH ?? '').trim().toLowerCase()
+  const raw = String(env.APEXNODES_LOGIN_STATE_TRUTH ?? '')
+    .trim()
+    .toLowerCase()
 
   return raw !== '0' && raw !== 'false' && raw !== 'no' && raw !== 'off'
 }
@@ -1137,7 +1225,9 @@ function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
 function parseProvisionResponse(body, env: any = {}) {
   const key = relayKeyFromResponse(body)
 
-  if (!key) {return null}
+  if (!key) {
+    return null
+  }
   const endpoints = resolveApexEndpoints(env)
   const obj = body && typeof body === 'object' ? body : {}
   const str = value => (typeof value === 'string' ? value.trim() : '')
@@ -1262,9 +1352,13 @@ function isRelayUnauthorized(statusCode) {
 function relayCatalogStatusFromProbe(probe) {
   const statusCode = Number(probe && probe.statusCode) || 0
 
-  if (isRelayUnauthorized(statusCode)) {return 'unauthorized'}
+  if (isRelayUnauthorized(statusCode)) {
+    return 'unauthorized'
+  }
 
-  if (probe && probe.ok) {return 'ok'}
+  if (probe && probe.ok) {
+    return 'ok'
+  }
 
   return 'unreachable'
 }
@@ -1298,12 +1392,16 @@ const REPROVISION_COOLDOWN_MS = 10 * 60 * 1000
  * @returns {boolean}
  */
 function shouldAttemptReprovision(state: any = {}) {
-  if (!state.enabled || !state.hasKey || !state.hasToken) {return false}
+  if (!state.enabled || !state.hasKey || !state.hasToken) {
+    return false
+  }
   const now = Number.isFinite(state.now) ? state.now : Date.now()
   const last = Number.isFinite(state.lastAttemptAt) ? state.lastAttemptAt : 0
   const cooldown = Number.isFinite(state.cooldownMs) ? state.cooldownMs : REPROVISION_COOLDOWN_MS
 
-  if (last <= 0) {return true}
+  if (last <= 0) {
+    return true
+  }
 
   return now - last >= cooldown
 }
@@ -1376,10 +1474,11 @@ async function reconcileManagedRelayKey(deps: any) {
     reason: ''
   }
 
-  if (!deps.enabled || !storedKey || !baseUrl) {return idle}
+  if (!deps.enabled || !storedKey || !baseUrl) {
+    return idle
+  }
 
-  const persist = key =>
-    persistRelayKeyToConfigYaml({ read: deps.readConfig, write: deps.writeConfig, baseUrl, key })
+  const persist = key => persistRelayKeyToConfigYaml({ read: deps.readConfig, write: deps.writeConfig, baseUrl, key })
 
   // 1. Reconcile config.yaml against the key we already hold.
   const preSync = persist(storedKey)
@@ -1398,7 +1497,9 @@ async function reconcileManagedRelayKey(deps: any) {
     await deps.applyToBackend('key-drift')
     backendApplied = true
   } else if (!preSync.ok) {
-    log(`[apexnodes] could not write the relay key into config.yaml (${preSync.reason}); self-heal cannot close the loop.`)
+    log(
+      `[apexnodes] could not write the relay key into config.yaml (${preSync.reason}); self-heal cannot close the loop.`
+    )
   }
 
   // 2. Probe the relay with the stored key.
@@ -1437,7 +1538,13 @@ async function reconcileManagedRelayKey(deps: any) {
         'skipping re-provision so we do not strand another unused key.'
     )
 
-    return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, reason: `persist-blocked: ${preSync.reason}` }
+    return {
+      ...idle,
+      relayUnauthorized: true,
+      probeStatus,
+      backendApplied,
+      reason: `persist-blocked: ${preSync.reason}`
+    }
   }
 
   // 5. Mint → persist (verified) → apply to the running backend.
@@ -1451,7 +1558,14 @@ async function reconcileManagedRelayKey(deps: any) {
         'sign in again to refresh.'
     )
 
-    return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, attempted: true, reason: 'provision-failed' }
+    return {
+      ...idle,
+      relayUnauthorized: true,
+      probeStatus,
+      backendApplied,
+      attempted: true,
+      reason: 'provision-failed'
+    }
   }
 
   const written = persist(freshKey)
@@ -1474,7 +1588,9 @@ async function reconcileManagedRelayKey(deps: any) {
   }
 
   await deps.applyToBackend('key-rotation')
-  log(`[apexnodes] relay key self-heal succeeded; config.yaml now holds ${maskRelayKey(freshKey)} and the backend was reloaded.`)
+  log(
+    `[apexnodes] relay key self-heal succeeded; config.yaml now holds ${maskRelayKey(freshKey)} and the backend was reloaded.`
+  )
 
   return {
     ok: true,
@@ -1499,10 +1615,11 @@ async function reconcileManagedRelayKey(deps: any) {
  * @returns {string | null}
  */
 function relayKeyFromResponse(body) {
-  if (!body || typeof body !== 'object') {return null}
+  if (!body || typeof body !== 'object') {
+    return null
+  }
 
-  const candidate =
-    body.relay_key ?? body.api_key ?? body.key ?? (body.item && (body.item.key ?? body.item.api_key))
+  const candidate = body.relay_key ?? body.api_key ?? body.key ?? (body.item && (body.item.key ?? body.item.api_key))
 
   const key = typeof candidate === 'string' ? candidate.trim() : ''
 
@@ -1517,7 +1634,9 @@ function relayKeyFromResponse(body) {
  * @returns {string | null}
  */
 function accessTokenFromLogin(body) {
-  if (!body || typeof body !== 'object') {return null}
+  if (!body || typeof body !== 'object') {
+    return null
+  }
   const token = typeof body.access_token === 'string' ? body.access_token.trim() : ''
 
   return token || null
@@ -1543,7 +1662,9 @@ const RENEWED_TOKEN_HEADER = 'x-apex-renewed-token'
  * @returns {string}
  */
 function renewedTokenFromHeaders(headers) {
-  if (!headers || typeof headers !== 'object') {return ''}
+  if (!headers || typeof headers !== 'object') {
+    return ''
+  }
   let value = headers[RENEWED_TOKEN_HEADER]
 
   if (value === undefined) {
@@ -1551,7 +1672,9 @@ function renewedTokenFromHeaders(headers) {
     value = key ? headers[key] : undefined
   }
 
-  if (Array.isArray(value)) {value = value[0]}
+  if (Array.isArray(value)) {
+    value = value[0]
+  }
 
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -1571,7 +1694,9 @@ function decodeJwtClaims(token) {
   const raw = String(token || '').trim()
   const parts = raw.split('.')
 
-  if (parts.length < 2 || !parts[1]) {return {}}
+  if (parts.length < 2 || !parts[1]) {
+    return {}
+  }
 
   try {
     // base64url → base64, then decode. Buffer tolerates missing padding.
@@ -1602,7 +1727,8 @@ function accountFromLogin(loginBody, accessToken = '') {
   const claims = decodeJwtClaims(accessToken)
   const str = value => (typeof value === 'string' ? value.trim() : '')
   // Tolerate the couple of shapes the backend / JWT might use for each field.
-  const email = str(body.email) || str(claims.email) || str(claims.sub && String(claims.sub).includes('@') ? claims.sub : '')
+  const email =
+    str(body.email) || str(claims.email) || str(claims.sub && String(claims.sub).includes('@') ? claims.sub : '')
   const name = str(body.name) || str(body.display_name) || str(claims.name)
   const plan = str(body.plan) || str(body.tier) || str(claims.plan) || str(claims.tier)
 

@@ -711,10 +711,7 @@ export function DesktopController() {
   // A scenario pick (zero-state shelf or the ✦ menu) asks for its session via
   // this bus — the picker components have no access to session lifecycle. See
   // chat/scenarios/pick.ts + scenario-session-bridge.ts.
-  useEffect(
-    () => onScenarioSessionRequest(handleScenarioSessionRequest),
-    [handleScenarioSessionRequest]
-  )
+  useEffect(() => onScenarioSessionRequest(handleScenarioSessionRequest), [handleScenarioSessionRequest])
 
   // Swapping the live gateway to another profile must re-pull that profile's
   // global model + active-profile pill. Both are nanostores, so the blanket

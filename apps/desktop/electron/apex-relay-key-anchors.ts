@@ -124,7 +124,9 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i]
 
-    if (!line.trim() || /^\s*#/.test(line)) {continue}
+    if (!line.trim() || /^\s*#/.test(line)) {
+      continue
+    }
 
     const lead = line.match(/^(\s*)(-\s+)?/) as RegExpMatchArray
     const markerIndent = lead[1].length
@@ -132,7 +134,9 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
     const contentIndent = markerIndent + (lead[2] ? lead[2].length : 0)
 
     if (blockScalarIndent >= 0) {
-      if (markerIndent > blockScalarIndent) {continue}
+      if (markerIndent > blockScalarIndent) {
+        continue
+      }
       blockScalarIndent = -1
     }
 
@@ -141,7 +145,9 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
     for (;;) {
       const top = stack[stack.length - 1]
 
-      if (!top || stack.length === 1) {break}
+      if (!top || stack.length === 1) {
+        break
+      }
 
       if (top.kind === 'pending') {
         const isChild = isItem ? markerIndent >= top.openerIndent : markerIndent > top.openerIndent
@@ -190,7 +196,9 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
       top.count += 1
 
       // A scalar item (`- copilot`) holds no fields — nothing to address.
-      if (!/^[A-Za-z0-9_.$-]+:(\s|$)/.test(rest)) {continue}
+      if (!/^[A-Za-z0-9_.$-]+:(\s|$)/.test(rest)) {
+        continue
+      }
 
       const itemMap: YamlMap = {
         path: `${top.path}[${index}]`,
@@ -212,11 +220,15 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
 
     const scope = stack[stack.length - 1]
 
-    if (scope.kind !== 'map' || !scope.map) {continue}
+    if (scope.kind !== 'map' || !scope.map) {
+      continue
+    }
 
     const entry = line.slice(contentIndent).match(/^([A-Za-z0-9_.$-]+):\s*(.*)$/)
 
-    if (!entry) {continue}
+    if (!entry) {
+      continue
+    }
 
     const name = entry[1]
     const rawValue = entry[2].trim()
@@ -247,7 +259,10 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
 
 // ── Relay identity helpers ──────────────────────────────────────────────────
 
-const trimSlashes = (value: string) => String(value ?? '').trim().replace(/\/+$/, '')
+const trimSlashes = (value: string) =>
+  String(value ?? '')
+    .trim()
+    .replace(/\/+$/, '')
 
 const hostOf = (url: string) =>
   (String(url ?? '').match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i) || ['', ''])[1].toLowerCase()
@@ -267,10 +282,14 @@ function endpointUrl(map: YamlMap): string {
 function pointsAtRelay(map: YamlMap, baseUrl: string): boolean {
   const url = endpointUrl(map)
 
-  if (url && trimSlashes(url) === trimSlashes(baseUrl)) {return true}
+  if (url && trimSlashes(url) === trimSlashes(baseUrl)) {
+    return true
+  }
   const name = map.fields.name?.value ?? ''
 
-  if (name.toLowerCase() !== MANAGED_PROVIDER_NAME.toLowerCase()) {return false}
+  if (name.toLowerCase() !== MANAGED_PROVIDER_NAME.toLowerCase()) {
+    return false
+  }
   const host = hostOf(url)
 
   return !host || host === hostOf(baseUrl)
@@ -285,7 +304,9 @@ function pointsAtRelay(map: YamlMap, baseUrl: string): boolean {
 export function maskRelayKey(key: string): string {
   const value = String(key ?? '').trim()
 
-  if (!value) {return '(none)'}
+  if (!value) {
+    return '(none)'
+  }
   const digest = createHash('sha256').update(value).digest('hex').slice(0, 16)
 
   return `${value.slice(0, 3)}…#${digest}`
@@ -373,14 +394,18 @@ export interface LocatedAnchor {
 
 /** Every registered anchor present in `raw`, in document order. */
 export function locateManagedKeyAnchors(raw: string, baseUrl: string): LocatedAnchor[] {
-  if (!trimSlashes(baseUrl)) {return []}
+  if (!trimSlashes(baseUrl)) {
+    return []
+  }
   const { maps } = parseYamlMaps(raw)
   const found: LocatedAnchor[] = []
 
   for (const map of maps) {
     const kind = MANAGED_KEY_ANCHORS.find(anchor => anchor.matches(map, baseUrl))
 
-    if (!kind) {continue}
+    if (!kind) {
+      continue
+    }
     const field = map.fields.api_key
     // See LocatedAnchor.insertAfter: anchor the insertion to the scalar this
     // map was IDENTIFIED by, so a nested block elsewhere in the map cannot
@@ -438,9 +463,13 @@ export function auditManagedRelayKeyAnchors(raw: string, baseUrl: string, key: s
   for (const map of maps) {
     const field = map.fields.api_key
 
-    if (!field) {continue}
+    if (!field) {
+      continue
+    }
 
-    if (!pointsAtRelay(map, baseUrl)) {continue}
+    if (!pointsAtRelay(map, baseUrl)) {
+      continue
+    }
     holders.push({
       path: map.path,
       ok: field.value === expected,
@@ -533,11 +562,15 @@ export function syncManagedRelayKeyYaml(raw: string, baseUrl: string, key: strin
     anchors: []
   }
 
-  if (!source || !trimSlashes(baseUrl) || !freshKey) {return idle}
+  if (!source || !trimSlashes(baseUrl) || !freshKey) {
+    return idle
+  }
 
   const located = locateManagedKeyAnchors(source, baseUrl)
 
-  if (located.length === 0) {return idle}
+  if (located.length === 0) {
+    return idle
+  }
 
   // Parse and rejoin with the file's OWN line ending, so a Windows config.yaml
   // (CRLF — see parseYamlMaps) comes back out as CRLF rather than being quietly
@@ -557,10 +590,7 @@ export function syncManagedRelayKeyYaml(raw: string, baseUrl: string, key: strin
         continue
       }
 
-      lines[anchor.keyLine] = lines[anchor.keyLine].replace(
-        /(api_key:\s*).*$/,
-        `$1${JSON.stringify(freshKey)}`
-      )
+      lines[anchor.keyLine] = lines[anchor.keyLine].replace(/(api_key:\s*).*$/, `$1${JSON.stringify(freshKey)}`)
       anchors.push({ kind: anchor.kind, path: anchor.path, status: 'updated' })
 
       continue
@@ -628,7 +658,9 @@ export function persistRelayKeyToConfigYaml({ read, write, baseUrl, key }: Persi
     ...extra
   })
 
-  if (!String(key ?? '').trim() || !String(baseUrl ?? '').trim()) {return fail('no-credential')}
+  if (!String(key ?? '').trim() || !String(baseUrl ?? '').trim()) {
+    return fail('no-credential')
+  }
 
   let raw: string | null
 
@@ -638,13 +670,17 @@ export function persistRelayKeyToConfigYaml({ read, write, baseUrl, key }: Persi
     return fail(`config-unreadable: ${error && error.message ? error.message : error}`)
   }
 
-  if (typeof raw !== 'string') {return fail('config-missing')}
+  if (typeof raw !== 'string') {
+    return fail('config-missing')
+  }
 
   const sync = syncManagedRelayKeyYaml(raw, baseUrl, key)
 
   // Nothing here is addressable as the managed relay. Writing is pointless and
   // (per the caller's pre-flight) minting a new key would be strictly worse.
-  if (!sync.matched) {return fail('no-managed-anchor')}
+  if (!sync.matched) {
+    return fail('no-managed-anchor')
+  }
 
   // An unregistered holder means this document keeps the key somewhere the
   // writer does not cover. Writing would leave the file INTERNALLY INCONSISTENT
@@ -690,7 +726,9 @@ export function persistRelayKeyToConfigYaml({ read, write, baseUrl, key }: Persi
     })
   }
 
-  if (typeof after !== 'string') {return fail('verify-unreadable: config-missing', { changed: sync.changed })}
+  if (typeof after !== 'string') {
+    return fail('verify-unreadable: config-missing', { changed: sync.changed })
+  }
 
   const audit = auditManagedRelayKeyAnchors(after, baseUrl, key)
 

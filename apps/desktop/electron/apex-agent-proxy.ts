@@ -82,7 +82,9 @@ function firstEnvValue(env, keys) {
   for (const key of keys) {
     const value = env && env[key]
 
-    if (value) {return String(value)}
+    if (value) {
+      return String(value)
+    }
   }
 
   return ''
@@ -107,12 +109,16 @@ function parseScutilProxy(text) {
     socksPort: 0
   }
 
-  if (typeof text !== 'string') {return out}
+  if (typeof text !== 'string') {
+    return out
+  }
 
   for (const line of text.split('\n')) {
     const match = line.match(/^\s*([A-Za-z]+)\s*:\s*(.+?)\s*$/)
 
-    if (!match) {continue}
+    if (!match) {
+      continue
+    }
     const key = match[1]
     const value = match[2]
 
@@ -178,7 +184,9 @@ function parseScutilProxy(text) {
 function systemProxyToUrls(parsed) {
   const urls = { httpUrl: '', httpsUrl: '', allUrl: '' }
 
-  if (!parsed) {return urls}
+  if (!parsed) {
+    return urls
+  }
 
   if (parsed.httpEnable === 1 && parsed.httpProxy) {
     urls.httpUrl = `http://${parsed.httpProxy}${parsed.httpPort ? `:${parsed.httpPort}` : ''}`
@@ -192,9 +200,13 @@ function systemProxyToUrls(parsed) {
     urls.allUrl = `socks5://${parsed.socksProxy}${parsed.socksPort ? `:${parsed.socksPort}` : ''}`
   }
 
-  if (!urls.httpsUrl && urls.httpUrl) {urls.httpsUrl = urls.httpUrl}
+  if (!urls.httpsUrl && urls.httpUrl) {
+    urls.httpsUrl = urls.httpUrl
+  }
 
-  if (!urls.httpUrl && urls.httpsUrl) {urls.httpUrl = urls.httpsUrl}
+  if (!urls.httpUrl && urls.httpsUrl) {
+    urls.httpUrl = urls.httpsUrl
+  }
 
   return urls
 }
@@ -207,15 +219,21 @@ function systemProxyToUrls(parsed) {
 function normalizeCustomProxyUrl(raw) {
   const value = String(raw || '').trim()
 
-  if (!value) {return ''}
+  if (!value) {
+    return ''
+  }
   const candidate = /^[a-z0-9]+:\/\//i.test(value) ? value : `http://${value}`
 
   try {
     const url = new URL(candidate)
 
-    if (!/^(https?|socks5?|socks5h):$/i.test(url.protocol)) {return ''}
+    if (!/^(https?|socks5?|socks5h):$/i.test(url.protocol)) {
+      return ''
+    }
 
-    if (!url.hostname) {return ''}
+    if (!url.hostname) {
+      return ''
+    }
 
     return url.href.replace(/\/+$/, '')
   } catch {
@@ -234,10 +252,14 @@ function buildNoProxyValue(existing) {
   const push = raw => {
     const entry = String(raw || '').trim()
 
-    if (!entry) {return}
+    if (!entry) {
+      return
+    }
     const key = entry.toLowerCase()
 
-    if (seen.has(key)) {return}
+    if (seen.has(key)) {
+      return
+    }
     seen.add(key)
     ordered.push(entry)
   }
@@ -261,7 +283,9 @@ function buildNoProxyValue(existing) {
 function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
 
-  if (resolvedMode === PROXY_MODE_OFF) {return {}}
+  if (resolvedMode === PROXY_MODE_OFF) {
+    return {}
+  }
 
   let httpUrl = ''
   let httpsUrl = ''
@@ -270,7 +294,9 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
   if (resolvedMode === PROXY_MODE_CUSTOM) {
     const normalized = normalizeCustomProxyUrl(customUrl)
 
-    if (!normalized) {return {}}
+    if (!normalized) {
+      return {}
+    }
 
     if (/^socks/i.test(normalized)) {
       allUrl = normalized
@@ -283,7 +309,9 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
     httpsUrl = systemUrls?.httpsUrl || ''
     allUrl = systemUrls?.allUrl || ''
 
-    if (!httpUrl && !httpsUrl && !allUrl) {return {}}
+    if (!httpUrl && !httpsUrl && !allUrl) {
+      return {}
+    }
   }
 
   const override = resolvedMode === PROXY_MODE_CUSTOM
@@ -322,7 +350,9 @@ function buildProxyEnvFragment({ mode, customUrl, systemUrls, currentEnv = {} }:
  * any failure yields an empty descriptor — the caller then injects nothing.
  */
 function readSystemProxy({ platform = process.platform, exec = execFileSync }: any = {}) {
-  if (platform !== 'darwin') {return parseScutilProxy('')}
+  if (platform !== 'darwin') {
+    return parseScutilProxy('')
+  }
 
   try {
     const out = exec('scutil', ['--proxy'], { timeout: 3000, encoding: 'utf8', windowsHide: true })
@@ -363,7 +393,9 @@ function describeAgentProxy({ mode, customUrl, systemUrls }: any = {}) {
   const resolvedMode = normalizeProxyMode(mode)
 
   const strip = url => {
-    if (!url) {return ''}
+    if (!url) {
+      return ''
+    }
 
     try {
       const parsed = new URL(url)
@@ -376,7 +408,9 @@ function describeAgentProxy({ mode, customUrl, systemUrls }: any = {}) {
     }
   }
 
-  if (resolvedMode === PROXY_MODE_OFF) {return { mode: resolvedMode, active: false, url: '' }}
+  if (resolvedMode === PROXY_MODE_OFF) {
+    return { mode: resolvedMode, active: false, url: '' }
+  }
 
   if (resolvedMode === PROXY_MODE_CUSTOM) {
     const url = strip(normalizeCustomProxyUrl(customUrl))

@@ -75,8 +75,11 @@ test('resolveVersionsBudget: opts > env > default', () => {
     assert.equal(disk.resolveVersionsBudget(), 5000)
     assert.equal(disk.resolveVersionsBudget({ budgetBytes: 9000 }), 9000) // opts wins
   } finally {
-    if (prev === undefined) {delete process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES}
-    else {process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES = prev}
+    if (prev === undefined) {
+      delete process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES
+    } else {
+      process.env.HERMES_BUNDLE_VERSIONS_BUDGET_BYTES = prev
+    }
   }
 })
 
@@ -148,7 +151,11 @@ test('preflightDiskSpace: ok when free >= required', () => {
 })
 
 test('preflightDiskSpace: refuses with a readable message when free < required', () => {
-  const r = disk.preflightDiskSpace({ hermesHome: '/x', archiveSize: 600 * 1024 * 1024, freeBytesOf: () => 200 * 1024 * 1024 })
+  const r = disk.preflightDiskSpace({
+    hermesHome: '/x',
+    archiveSize: 600 * 1024 * 1024,
+    freeBytesOf: () => 200 * 1024 * 1024
+  })
   assert.equal(r.ok, false)
   assert.equal(r.reason, 'insufficient_disk')
   assert.match(r.message, /Not enough disk space/i)

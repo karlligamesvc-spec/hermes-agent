@@ -59,7 +59,9 @@ function tarHeader(name, size, typeflag) {
   block.write('00', 263, 'latin1')
   let sum = 0
 
-  for (let i = 0; i < 512; i += 1) {sum += block[i]}
+  for (let i = 0; i < 512; i += 1) {
+    sum += block[i]
+  }
   block.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148, 'latin1')
 
   return block
@@ -77,7 +79,9 @@ function makeTarGz(files) {
       chunks.push(data)
       const pad = (512 - (data.length % 512)) % 512
 
-      if (pad) {chunks.push(Buffer.alloc(pad))}
+      if (pad) {
+        chunks.push(Buffer.alloc(pad))
+      }
     }
   }
 
@@ -282,7 +286,15 @@ test('normalizePluginEntry: valid entry passes, hostile/broken entries are dropp
 })
 
 test('parsePlatformPluginsManifest: garbage → null; unchanged + full shapes parse', () => {
-  for (const garbage of [null, [], 'x', {}, { manifest_hash: '' }, { manifest_hash: 'h' }, { manifest_hash: 'h', plugins: 'nope' }]) {
+  for (const garbage of [
+    null,
+    [],
+    'x',
+    {},
+    { manifest_hash: '' },
+    { manifest_hash: 'h' },
+    { manifest_hash: 'h', plugins: 'nope' }
+  ]) {
     assert.equal(parsePlatformPluginsManifest(garbage), null)
   }
 
@@ -351,7 +363,10 @@ test('planPluginSync: reinstall on sha change OR missing dir; skip only when bot
   })
 
   assert.deepEqual(plan.upToDate, ['present-same'])
-  assert.deepEqual(plan.toInstall.map(entry => entry.name), ['present-changed', 'missing-dir'])
+  assert.deepEqual(
+    plan.toInstall.map(entry => entry.name),
+    ['present-changed', 'missing-dir']
+  )
 })
 
 // ── tar.gz extraction (strict) ──────────────────────────────────────────────
@@ -375,13 +390,22 @@ test('extractTarGz: tolerates directory entries, keeps nested files', () => {
     ])
   )
 
-  assert.deepEqual(files.map(file => file.path), ['sub/mod.py', 'plugin.yaml'])
+  assert.deepEqual(
+    files.map(file => file.path),
+    ['sub/mod.py', 'plugin.yaml']
+  )
 })
 
 test('extractTarGz: rejects traversal paths, symlinks, corrupt headers, non-gzip, empty', () => {
   assert.throws(() => extractTarGz(makeTarGz([{ content: 'x', path: '../evil.py' }])), /unsafe tar entry path/)
-  assert.throws(() => extractTarGz(makeTarGz([{ content: '', path: 'link', typeflag: '2' }])), /unsupported tar entry type/)
-  assert.throws(() => extractTarGz(makeTarGz([{ content: '', path: 'link', typeflag: '1' }])), /unsupported tar entry type/)
+  assert.throws(
+    () => extractTarGz(makeTarGz([{ content: '', path: 'link', typeflag: '2' }])),
+    /unsupported tar entry type/
+  )
+  assert.throws(
+    () => extractTarGz(makeTarGz([{ content: '', path: 'link', typeflag: '1' }])),
+    /unsupported tar entry type/
+  )
 
   const corrupt = zlib.gunzipSync(makeTarGz(PLUGIN_FILES))
   corrupt[0] ^= 0xff // flip a name byte → checksum mismatch
@@ -394,7 +418,9 @@ test('extractTarGz: rejects traversal paths, symlinks, corrupt headers, non-gzip
 test('extractTarGz: enforces file-count and total-size caps', () => {
   const many = []
 
-  for (let i = 0; i < MAX_FILES_PER_PLUGIN + 1; i += 1) {many.push({ content: 'x', path: `f${i}.py` })}
+  for (let i = 0; i < MAX_FILES_PER_PLUGIN + 1; i += 1) {
+    many.push({ content: 'x', path: `f${i}.py` })
+  }
   assert.throws(() => extractTarGz(makeTarGz(many)), /max file count/)
 
   // The size cap fires on either surface: gunzip's maxOutputLength (a

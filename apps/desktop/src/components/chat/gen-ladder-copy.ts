@@ -184,7 +184,13 @@ const zhHant: GenLadderCopy = {
 
 const en: GenLadderCopy = {
   region: 'Generation ladder card',
-  steps: { prompt: 'Prompt', draft: 'Drafts', refine: 'Refine', fork: 'HD image / video preview', final: 'Final video' },
+  steps: {
+    prompt: 'Prompt',
+    draft: 'Drafts',
+    refine: 'Refine',
+    fork: 'HD image / video preview',
+    final: 'Final video'
+  },
   titles: {
     entry: 'Image or video? Three ways to start',
     prompt: 'Reversed prompt · edit any line, free',

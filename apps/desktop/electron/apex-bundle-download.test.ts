@@ -157,7 +157,14 @@ test('downloadWithResume: sha mismatch discards the file and fails', async () =>
   try {
     const dest = path.join(dir, 'bundle.tar.gz')
     await assert.rejects(
-      downloadWithResume({ url, dest, sha256: 'deadbeef'.repeat(8), size: BODY.length, maxAttempts: 2, sleep: noSleep }),
+      downloadWithResume({
+        url,
+        dest,
+        sha256: 'deadbeef'.repeat(8),
+        size: BODY.length,
+        maxAttempts: 2,
+        sleep: noSleep
+      }),
       (err: any) => {
         assert.ok(err instanceof BundleDownloadError)
         assert.equal(err.code, 'sha_mismatch')

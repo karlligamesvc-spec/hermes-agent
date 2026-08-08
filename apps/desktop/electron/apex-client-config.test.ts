@@ -27,10 +27,7 @@ import {
 // --- clientConfigUrl ---
 
 test('clientConfigUrl builds the public endpoint and strips trailing slashes', () => {
-  assert.equal(
-    clientConfigUrl('https://api.apex-nodes.com'),
-    `https://api.apex-nodes.com${CLIENT_CONFIG_PATH}`
-  )
+  assert.equal(clientConfigUrl('https://api.apex-nodes.com'), `https://api.apex-nodes.com${CLIENT_CONFIG_PATH}`)
   assert.equal(
     clientConfigUrl('https://api.staging.apex-nodes.com///'),
     `https://api.staging.apex-nodes.com${CLIENT_CONFIG_PATH}`
@@ -45,10 +42,7 @@ test('clientConfigUrl advertises known_version only when it is a positive int', 
   // 0 / garbage → no query (a first fetch must get the full payload).
   assert.equal(clientConfigUrl('https://api.apex-nodes.com', 0), `https://api.apex-nodes.com${CLIENT_CONFIG_PATH}`)
   assert.equal(clientConfigUrl('https://api.apex-nodes.com', -3), `https://api.apex-nodes.com${CLIENT_CONFIG_PATH}`)
-  assert.equal(
-    clientConfigUrl('https://api.apex-nodes.com', 'nope'),
-    `https://api.apex-nodes.com${CLIENT_CONFIG_PATH}`
-  )
+  assert.equal(clientConfigUrl('https://api.apex-nodes.com', 'nope'), `https://api.apex-nodes.com${CLIENT_CONFIG_PATH}`)
 })
 
 // --- normalizeVersion ---

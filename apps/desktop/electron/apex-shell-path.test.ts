@@ -95,11 +95,7 @@ test('resolveAugmentedPath is a Windows no-op', () => {
 })
 
 test('resolveAugmentedPath appends login-shell PATH then the static floor', () => {
-  const existing = new Set([
-    '/Users/u/.local/bin',
-    '/opt/homebrew/bin',
-    '/Users/u/.nvm/versions/node/v20.3.0/bin'
-  ])
+  const existing = new Set(['/Users/u/.local/bin', '/opt/homebrew/bin', '/Users/u/.nvm/versions/node/v20.3.0/bin'])
 
   const out = resolveAugmentedPath({
     currentPath: '/usr/bin:/bin',

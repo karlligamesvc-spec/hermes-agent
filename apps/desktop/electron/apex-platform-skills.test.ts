@@ -116,7 +116,10 @@ test('normalizeSkill: drops unsafe name, missing SKILL.md, unsafe/non-string fil
 
   // non-string content dropped; SKILL.md still present so skill survives w/o it
   const mixed = normalizeSkill({
-    files: [{ content: 'ok', path: 'SKILL.md' }, { content: 123, path: 'bad.md' }],
+    files: [
+      { content: 'ok', path: 'SKILL.md' },
+      { content: 123, path: 'bad.md' }
+    ],
     name: 'demo'
   })
 
@@ -150,7 +153,10 @@ test('parsePlatformSkillsResponse: drops individual bad skills, keeps good', () 
     skills: [DOUYIN, { files: [], name: '../evil' }, { name: 'demo' }]
   })
 
-  assert.deepEqual(parsed.skills.map(s => s.name), ['douyin-video-transcript'])
+  assert.deepEqual(
+    parsed.skills.map(s => s.name),
+    ['douyin-video-transcript']
+  )
 })
 
 // ── predicates + persisted state ────────────────────────────────────────────

@@ -167,7 +167,4 @@ async function worktreesForIpc(cwds, options: any = {}) {
   return out
 }
 
-export {
-  resolveWorktree,
-  worktreesForIpc
-}
+export { resolveWorktree, worktreesForIpc }
