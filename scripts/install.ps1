@@ -1784,7 +1784,18 @@ function Install-Repository {
             # the overlay lib; the command guard keeps this a no-op on a remote
             # run where the lib was not dot-sourced. Mirrors install.sh's
             # apexnodes_cos_configured reuse branch.
-            Write-Info "Existing COS-mirror checkout found at $InstallDir, reusing"
+            # hc-543/hc-645: parity with install.sh.  Presence is not version
+            # provenance: the old unconditional reuse left Windows on vPrev
+            # while Desktop stamped the marker as vNext.  Missing/mismatched
+            # source stamps must re-extract the requested COS tarball; a failed
+            # refresh is fatal so the caller can roll back instead of certifying
+            # a stale tree.
+            if (-not (Get-Command Ensure-CosRuntimeSourceCurrent -ErrorAction SilentlyContinue)) {
+                throw "COS runtime integrity helper is unavailable"
+            }
+            if (-not (Ensure-CosRuntimeSourceCurrent -InstallDir $InstallDir -Commit $Commit -Branch $Branch)) {
+                throw "Existing COS runtime is stale and could not be refreshed"
+            }
             $didUpdate = $true
         } else {
             # Directory exists but isn't a usable git repo -- e.g. an

@@ -227,6 +227,48 @@ try {
     Assert-True $ok 'Install-RuntimeFromCos succeeds even though tar could not run'
     Assert-True (Test-Path (Join-Path $dest 'pyproject.toml')) 'runtime source materialised (no git clone needed)'
     Assert-True (Test-Path (Join-Path $dest 'hermes_cli.py')) 'full tree extracted, not just the gated file'
+    Assert-Eq ((Get-Content -Raw -LiteralPath (Join-Path $dest '.hermes-source-commit')).Trim()) $Commit 'successful COS extract stamps its real commit'
+} finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
+
+# -- 5. hc-543/hc-645: a present COS tree is reusable only at the same commit --
+Write-Host "test: stale and unstamped COS trees re-extract; exact stamp reuses"
+$ws = New-Workspace
+try {
+    $dest = Join-Path $ws 'install'
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    Set-Content -LiteralPath (Join-Path $dest 'pyproject.toml') -Value '[project]' -NoNewline
+    $target = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    $script:CosCalls = 0
+    function Install-RuntimeFromCos {
+        $script:CosCalls++
+        Set-Content -LiteralPath (Join-Path $InstallDir '.hermes-source-commit') -Value $Commit -NoNewline
+        return $true
+    }
+
+    # Pre-hc-543 shape: valid tree, no provenance. This is the real-device
+    # failure that previously received a false-success bootstrap marker.
+    $ok = Ensure-CosRuntimeSourceCurrent -InstallDir $dest -Commit $target -Branch 'main'
+    Assert-True $ok 'unstamped legacy tree refresh succeeds'
+    Assert-Eq $script:CosCalls 1 'unstamped legacy tree invokes COS extraction'
+
+    # Exact stamp is the only reusable shape.
+    $ok = Ensure-CosRuntimeSourceCurrent -InstallDir $dest -Commit $target -Branch 'main'
+    Assert-True $ok 'exactly stamped tree is reusable'
+    Assert-Eq $script:CosCalls 1 'exactly stamped tree does not re-download'
+
+    # A different target must refresh again, not trust directory presence.
+    $next = 'cccccccccccccccccccccccccccccccccccccccc'
+    $ok = Ensure-CosRuntimeSourceCurrent -InstallDir $dest -Commit $next -Branch 'main'
+    Assert-True $ok 'mismatched stamped tree refresh succeeds'
+    Assert-Eq $script:CosCalls 2 'mismatched stamped tree invokes COS extraction'
+    Assert-Eq ((Get-Content -Raw -LiteralPath (Join-Path $dest '.hermes-source-commit')).Trim()) $next 'refresh advances provenance stamp'
+
+    # Manufacture the network failure: stale must fail closed, not be blessed.
+    function Install-RuntimeFromCos { $script:CosCalls++; return $false }
+    $failedTarget = 'dddddddddddddddddddddddddddddddddddddddd'
+    $ok = Ensure-CosRuntimeSourceCurrent -InstallDir $dest -Commit $failedTarget -Branch 'main'
+    Assert-True (-not $ok) 'stale tree plus failed COS refresh fails closed'
+    Assert-Eq ((Get-Content -Raw -LiteralPath (Join-Path $dest '.hermes-source-commit')).Trim()) $next 'failed refresh cannot forge the target stamp'
 } finally { Remove-Item -Recurse -Force $ws -ErrorAction SilentlyContinue }
 
 Write-Host ""
