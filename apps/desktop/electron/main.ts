@@ -11044,18 +11044,31 @@ const SEED_DISPLAY_BLOCK =
 //   agent.max_turns: 90 — main agent per-turn tool-call budget.
 //   delegation.max_iterations: 50 — independent per-child budget (same as
 //     upstream v0.20, made explicit so it cannot drift silently).
-// Top-level keys here (agent:, timezone:) must not collide with the other seed
+// Top-level keys here must not collide with the other seed
 // blocks (model:/custom_providers:/display:/skills:/plugins: — see
-// seedDefaultModelConfig).
+// seedDefaultModelConfig). skills.creation_nudge_interval is emitted by
+// seedSkillsBlockYaml so the seed still has exactly one `skills:` mapping.
 const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision;\n' +
-  '# Desktop relay budgets pinned at main=90 / child=50; empty timezone =\n' +
+  '# Desktop relay budgets pinned at main=90 / child=50; durable sessions;\n' +
+  '# manual approvals; periodic memory/Skill nudges and iron-proxy off;\n' +
+  '# full 2,000-line tool output; empty timezone =\n' +
   "# follow the OS (server-local) clock.\n" +
   'agent:\n' +
   '  image_input_mode: auto\n' +
   '  max_turns: 90\n' +
   'delegation:\n' +
   '  max_iterations: 50\n' +
+  'tool_output:\n' +
+  '  max_lines: 2000\n' +
+  'session_reset:\n' +
+  '  mode: none\n' +
+  'approvals:\n' +
+  '  mode: manual\n' +
+  'memory:\n' +
+  '  nudge_interval: 0\n' +
+  'proxy:\n' +
+  '  enabled: false\n' +
   "timezone: ''\n"
 
 // Curated domestic MoA preset (managed seed only — every slot routes through

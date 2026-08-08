@@ -456,7 +456,7 @@ test('modelDisabledProvidersYaml defaults to [copilot], indented under model:', 
 
 test('seedSkillsBlockYaml emits a top-level skills.disabled block with all 50 v0.18 names', () => {
   const yaml = seedSkillsBlockYaml()
-  assert.match(yaml, /^skills:\n {2}disabled:\n/m)
+  assert.match(yaml, /^skills:\n {2}creation_nudge_interval: 0\n {2}disabled:\n/m)
   // hc-406 v0.18 全集重分级: 50 disabled bundled skills (was 49 @ v0.17;
   // +huggingface-hub/maps/plan, −dead kanban-orchestrator/kanban-worker).
   assert.equal(SEED_DISABLED_SKILLS.length, 50)
@@ -717,7 +717,7 @@ test('ensureSkillsDisabledYaml appends the whole block when skills: is absent', 
   assert.equal(r.changed, true)
   assert.deepEqual(r.added, SEED_DISABLED_SKILLS)
   assert.ok(r.next.startsWith(raw)) // append-only
-  assert.match(r.next, /^skills:\n {2}disabled:\n/m)
+  assert.match(r.next, /^skills:\n {2}creation_nudge_interval: 0\n {2}disabled:\n/m)
   assert.equal((r.next.match(/^skills:/gm) || []).length, 1)
 })
 
@@ -767,10 +767,16 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.deepEqual(r.added.sort(), [
     'agent.image_input_mode',
     'agent.max_turns',
+    'approvals.mode',
     'delegation.max_iterations',
     'display.language',
     'display.show_reasoning',
-    'timezone'
+    'memory.nudge_interval',
+    'proxy.enabled',
+    'session_reset.mode',
+    'skills.creation_nudge_interval',
+    'timezone',
+    'tool_output.max_lines'
   ])
   // One display block holding both keys (order inside the block is the
   // writer's business), plus the agent block and the top-level scalar.
@@ -781,6 +787,12 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.match(r.next, /^agent:\n(?: {2}\S+: \S+\n){2}\S/m)
   assert.match(r.next, /^ {2}max_turns: 90$/m)
   assert.match(r.next, /^delegation:\n {2}max_iterations: 50$/m)
+  assert.match(r.next, /^tool_output:\n {2}max_lines: 2000$/m)
+  assert.match(r.next, /^session_reset:\n {2}mode: none$/m)
+  assert.match(r.next, /^approvals:\n {2}mode: manual$/m)
+  assert.match(r.next, /^memory:\n {2}nudge_interval: 0$/m)
+  assert.match(r.next, /^skills:\n {2}creation_nudge_interval: 0$/m)
+  assert.match(r.next, /^proxy:\n {2}enabled: false$/m)
   assert.match(r.next, /^timezone: ''$/m)
   // Append-only: the pre-existing model block survives verbatim.
   assert.ok(r.next.startsWith(raw))
@@ -799,6 +811,18 @@ test('ensureProductDefaultsYaml never overrules a value the user set', () => {
     '  max_turns: 120\n' +
     'delegation:\n' +
     '  max_iterations: 25\n' +
+    'tool_output:\n' +
+    '  max_lines: 800\n' +
+    'session_reset:\n' +
+    '  mode: daily\n' +
+    'approvals:\n' +
+    '  mode: smart\n' +
+    'memory:\n' +
+    '  nudge_interval: 3\n' +
+    'skills:\n' +
+    '  creation_nudge_interval: 4\n' +
+    'proxy:\n' +
+    '  enabled: true\n' +
     "timezone: 'Asia/Shanghai'\n"
 
   const r = ensureProductDefaultsYaml(raw)
@@ -819,8 +843,14 @@ test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', 
   assert.deepEqual(r.added.sort(), [
     'agent.image_input_mode',
     'agent.max_turns',
+    'approvals.mode',
     'delegation.max_iterations',
-    'display.language'
+    'display.language',
+    'memory.nudge_interval',
+    'proxy.enabled',
+    'session_reset.mode',
+    'skills.creation_nudge_interval',
+    'tool_output.max_lines'
   ])
   // Written INSIDE the existing display block, and the user's two keys stand.
   assert.match(r.next, /^display:\n {2}language: zh\n {2}show_reasoning: false\n {2}skin: mono$/m)
@@ -843,6 +873,12 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
     'display:\n  language: zh\n  show_reasoning: true\n' +
     'agent:\n  image_input_mode: auto\n  max_turns: 90\n' +
     'delegation:\n  max_iterations: 50\n' +
+    'tool_output:\n  max_lines: 2000\n' +
+    'session_reset:\n  mode: none\n' +
+    'approvals:\n  mode: manual\n' +
+    'memory:\n  nudge_interval: 0\n' +
+    'skills:\n  creation_nudge_interval: 0\n' +
+    'proxy:\n  enabled: false\n' +
     "timezone: ''\n"
 
   assert.equal(ensureProductDefaultsYaml(seeded).changed, false)
@@ -871,6 +907,29 @@ test('Desktop pins relay-safe parent and child budgets without overwriting expli
   assert.equal(explicit.changed, true)
   assert.match(explicit.next, /^ {2}max_turns: 140$/m)
   assert.match(explicit.next, /^ {2}max_iterations: 20$/m)
+})
+
+test('hc-687 Desktop defaults preserve deep-work output while closing optional background surfaces', () => {
+  const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n')
+
+  assert.equal(APEX_PRODUCT_DEFAULTS['tool_output.max_lines'], 2000)
+  assert.equal(APEX_PRODUCT_DEFAULTS['display.show_reasoning'], true)
+  assert.equal(APEX_PRODUCT_DEFAULTS['session_reset.mode'], 'none')
+  assert.equal(APEX_PRODUCT_DEFAULTS['approvals.mode'], 'manual')
+  assert.equal(APEX_PRODUCT_DEFAULTS['memory.nudge_interval'], 0)
+  assert.equal(APEX_PRODUCT_DEFAULTS['skills.creation_nudge_interval'], 0)
+  assert.equal(APEX_PRODUCT_DEFAULTS['proxy.enabled'], false)
+  assert.doesNotMatch(reconciled.next, /^hooks:/m)
+  assert.doesNotMatch(reconciled.next, /^a2a/m)
+
+  // Reverse-regression anchor: each selected policy must reach the generated
+  // file rather than merely existing as an unused constant.
+  assert.match(reconciled.next, /^ {2}max_lines: 2000$/m)
+  assert.match(reconciled.next, /^session_reset:\n {2}mode: none$/m)
+  assert.match(reconciled.next, /^approvals:\n {2}mode: manual$/m)
+  assert.match(reconciled.next, /^memory:\n {2}nudge_interval: 0$/m)
+  assert.match(reconciled.next, /^skills:\n {2}creation_nudge_interval: 0$/m)
+  assert.match(reconciled.next, /^proxy:\n {2}enabled: false$/m)
 })
 
 test('managed sign-in creates an anchor before syncing the freshly rotated relay key', () => {
@@ -918,7 +977,16 @@ test('ensureProductDefaultsYaml refuses to write a child under an inline mapping
   const raw = 'display: {}\nagent: null\n'
   const r = ensureProductDefaultsYaml(raw)
 
-  assert.deepEqual(r.added.sort(), ['delegation.max_iterations', 'timezone'])
+  assert.deepEqual(r.added.sort(), [
+    'approvals.mode',
+    'delegation.max_iterations',
+    'memory.nudge_interval',
+    'proxy.enabled',
+    'session_reset.mode',
+    'skills.creation_nudge_interval',
+    'timezone',
+    'tool_output.max_lines'
+  ])
   assert.ok(!r.next.includes('language: zh'))
   assert.match(r.next, /^display: \{\}$/m)
 })
@@ -929,7 +997,10 @@ test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks
   // fresh install and an upgraded one end up on different products — and
   // nothing else in the suite would notice.
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
-  const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
+
+  const seedBlocks =
+    main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK')) +
+    seedSkillsBlockYaml()
 
   assert.ok(seedBlocks.length > 0, 'seed blocks not found in main.ts')
 

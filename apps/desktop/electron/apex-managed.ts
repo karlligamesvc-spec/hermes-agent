@@ -186,7 +186,7 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 //   timezone              ''   — empty = server-local clock, which on a desktop
 //     IS the OS timezone, i.e. follow-the-OS. Also pinned, not corrected.
 //
-// Scalars only, and deliberately only these six. The two iteration budgets pin
+// Scalars only. The two iteration budgets pin
 // APEX Desktop's relay-cost envelope against upstream schema drift: v0.20
 // raised the generic parent default from 90 to 500 because complex local runs
 // routinely exceeded 90 tool calls, while each child retained an independent
@@ -206,6 +206,19 @@ const APEX_PRODUCT_DEFAULTS = {
   'agent.image_input_mode': 'auto',
   'agent.max_turns': 90,
   'delegation.max_iterations': 50,
+  // hc-687: Desktop is the deep-work surface, so retain v0.20's full output
+  // allowance while cloud IM uses 500 lines. These remain add-only below.
+  'tool_output.max_lines': 2000,
+  'session_reset.mode': 'none',
+  // Manual approval sits in front of dangerous actions; the runtime's
+  // hardline deny rules remain unconditional even when the user approves.
+  'approvals.mode': 'manual',
+  // Keep storage/manual review, but stop unsolicited periodic prompts until
+  // hc-653 adds visibility, control and attribution.
+  'memory.nudge_interval': 0,
+  'skills.creation_nudge_interval': 0,
+  // Optional v0.20 credential injection stays a deliberate future opt-in.
+  'proxy.enabled': false,
   timezone: ''
 }
 
@@ -407,6 +420,7 @@ function seedSkillsBlockYaml(skills = SEED_DISABLED_SKILLS) {
     '# default. Toggle any on in Settings → Skills. Files are kept (not\n' +
     '# deleted) so upstream merges stay clean.\n' +
     'skills:\n' +
+    '  creation_nudge_interval: 0\n' +
     '  disabled:\n'
 
   for (const s of list) {yaml += `    - ${String(s).trim()}\n`}
