@@ -2,12 +2,12 @@
  * apex-bundle-install.ts — hc-472 P1 · F2 (+ manifest/version/COS glue)
  *
  * The half-state protection that carries the CORE INVARIANT (design §8):
- * NEVER extract in place. A bundle is staged into versions/<key>.tmp/, stamped
- * for its location + verified per-file against the bundle's own sha index using
- * the bundled tool copy, and only THEN atomically renamed into versions/<key>/.
- * If anything fails (or the process is killed) the damage is confined to an
- * unreferenced `.tmp` dir that startup GC reaps; the pointer/link (C1) only ever
- * name a fully-verified version.
+ * NEVER extract in place. A bundle is staged into versions/<key>.tmp/, verified
+ * per-file against the bundle's own sha index using the bundled tool copy, and
+ * atomically renamed into versions/<key>/. Because fixup stamps absolute paths,
+ * it is then repeated at the FINAL path and sealed with a commit marker before
+ * C1 may switch the pointer/link. A crash leaves either an unreferenced `.tmp`
+ * dir that startup GC reaps or an unmarked final tree that the next apply repairs.
  *
  * Also holds the pure glue the wiring needs:
  *   - parseBundleManifest / checkMinDesktopVersion  (schema + F4 compat gate)
@@ -44,6 +44,7 @@ import {
 const MANIFEST_SCHEMA = 1
 const BUNDLE_KIND = 'apexnodes-runtime-bundle'
 const FRAMEWORK = 'hermes-agent'
+const COMMIT_MARKER_BASENAME = '.apexnodes-bundle-committed'
 // Public-read COS host root (bucket apexnodes-runtime). Kept in lockstep with
 // apexnodes-environment.yaml `cos_base` (minus its /runtime suffix) and
 // .github/workflows/desktop-bundle.yml's verify step BASE. Overridable via
@@ -225,14 +226,22 @@ function verifyArgv(root, manifest) {
   return [bundledToolScript(root, manifest), 'verify', '--root', root]
 }
 
+function writeCommitMarkerAtomic(commitMarker) {
+  const tmp = `${commitMarker}.${process.pid}.tmp`
+
+  fs.writeFileSync(tmp, `${new Date().toISOString()}\n`, 'utf8')
+  fs.renameSync(tmp, commitMarker)
+}
+
 // ---------------------------------------------------------------------------
 // F2 — stage → fixup → verify → atomic commit
 // ---------------------------------------------------------------------------
 
 /**
- * Stage an archive into versions/<key>.tmp, stamp+verify it in place, then
- * atomically rename it to versions/<key>. NEVER touches versions/<key> until the
- * staged tree passes verify.
+ * Stage an archive into versions/<key>.tmp, stamp+verify it in place, atomically
+ * rename it to versions/<key>, then stamp+verify the final path and write its
+ * commit marker. NEVER touches versions/<key> until the staged tree passes verify;
+ * the caller cannot switch to it until the final-path marker exists.
  *
  * `extract` / `runTool` may be sync or async — both are awaited, so the real
  * wiring can spawn non-blocking child processes (a multi-minute tar extract must
@@ -254,10 +263,22 @@ async function stageAndCommitBundle(o) {
   const paths = layout.bundlePaths(hermesHome)
   const finalDir = paths.versionDir(key)
   const stagingDir = paths.stagingDir(key)
+  const commitMarker = path.join(finalDir, COMMIT_MARKER_BASENAME)
+  let promotedByThisAttempt = false
 
-  // An existing committed dir is immutable and was verified before its own
-  // commit — reuse it (idempotent re-apply / already-current switch).
+  // A marker proves the tree was fixed up for its FINAL path, not merely for the
+  // temporary staging path. Older shells did not write the marker, so repair
+  // those trees in place once before reusing them.
   if (fs.existsSync(finalDir)) {
+    if (!fs.existsSync(commitMarker)) {
+      log(`[bundle-install] versions/${key} predates final-path commit marker — repairing`)
+      await runTool(bundledNodeExe(finalDir, manifest), fixupArgv(finalDir, manifest), 'fixup-final')
+      await runTool(bundledNodeExe(finalDir, manifest), verifyArgv(finalDir, manifest), 'verify-final')
+      writeCommitMarkerAtomic(commitMarker)
+
+      return { ok: true, versionDir: finalDir, reused: true, repaired: true }
+    }
+
     log(`[bundle-install] versions/${key} already present — reusing`)
 
     return { ok: true, versionDir: finalDir, reused: true }
@@ -286,10 +307,18 @@ async function stageAndCommitBundle(o) {
     log('[bundle-install] verify (per-file sha against files.tsv)')
     await runTool(bundledNodeExe(stagingDir, manifest), verifyArgv(stagingDir, manifest), 'verify')
 
-    // Atomic promote. finalDir does not exist (checked above), so rename is a
-    // single metadata op — the moment versions/<key> becomes referenceable it is
-    // already whole + verified.
+    // Atomic promote. The staging verification above proves the archive is
+    // whole, but fixup writes absolute venv/editable-install paths. Rename first,
+    // then stamp and verify once more at the FINAL path before writing the commit
+    // marker. A crash leaves an unmarked tree that the reuse path repairs; the
+    // switch step only runs after this function returns with the marker present.
     fs.renameSync(stagingDir, finalDir)
+    promotedByThisAttempt = true
+    log('[bundle-install] fixup (stamp for final path)')
+    await runTool(bundledNodeExe(finalDir, manifest), fixupArgv(finalDir, manifest), 'fixup-final')
+    log('[bundle-install] verify (final path)')
+    await runTool(bundledNodeExe(finalDir, manifest), verifyArgv(finalDir, manifest), 'verify-final')
+    writeCommitMarkerAtomic(commitMarker)
     log(`[bundle-install] committed versions/${key}`)
 
     return { ok: true, versionDir: finalDir }
@@ -297,6 +326,12 @@ async function stageAndCommitBundle(o) {
     // Confine the damage: drop the staging dir so we don't accumulate half
     // trees. (A hard crash instead leaves it for startup GC — same invariant.)
     fs.rmSync(stagingDir, { recursive: true, force: true })
+
+    // Only remove a final dir created by THIS failed attempt. Never delete a
+    // pre-existing (possibly active) unmarked tree whose repair failed.
+    if (promotedByThisAttempt && !fs.existsSync(commitMarker)) {
+      fs.rmSync(finalDir, { recursive: true, force: true })
+    }
 
     if (err instanceof BundleInstallError) {throw err}
     throw new BundleInstallError(String(err && err.message || err), 'stage_failed', 'stage')

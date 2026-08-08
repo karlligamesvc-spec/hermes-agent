@@ -168,7 +168,7 @@ function fakeExtract(key) {
   }
 }
 
-test('stageAndCommitBundle: extracts to .tmp, verifies, atomically commits', async () => {
+test('stageAndCommitBundle: verifies staging, then fixes and verifies the final path before commit', async () => {
   const home = mkHome()
 
   try {
@@ -180,15 +180,46 @@ test('stageAndCommitBundle: extracts to .tmp, verifies, atomically commits', asy
       archivePath: '/nope/archive.tar.gz',
       manifest: winManifest(),
       extract: fakeExtract(REAL_KEY),
-      runTool: (_exe, _argv, label) => calls.push(label)
+      runTool: (_exe, argv, label) => calls.push({ label, root: argv.at(-1) })
     })
 
     assert.equal(res.ok, true)
     const finalDir = layout.bundlePaths(home).versionDir(REAL_KEY)
     assert.equal(res.versionDir, finalDir)
     assert.ok(fs.existsSync(path.join(finalDir, 'payload.txt')))
-    assert.deepEqual(calls, ['fixup', 'verify'], 'fixup then verify, both on the staging tree')
+    const stagingDir = layout.bundlePaths(home).stagingDir(REAL_KEY)
+    assert.deepEqual(calls, [
+      { label: 'fixup', root: stagingDir },
+      { label: 'verify', root: stagingDir },
+      { label: 'fixup-final', root: finalDir },
+      { label: 'verify-final', root: finalDir }
+    ])
+    assert.ok(fs.existsSync(path.join(finalDir, '.apexnodes-bundle-committed')))
     // No staging turd left behind.
+    assert.equal(fs.existsSync(layout.bundlePaths(home).stagingDir(REAL_KEY)), false)
+  } finally {
+    rm(home)
+  }
+})
+
+test('stageAndCommitBundle: final-path verify failure leaves no committed version', async () => {
+  const home = mkHome()
+
+  try {
+    await assert.rejects(
+      install.stageAndCommitBundle({
+        hermesHome: home,
+        key: REAL_KEY,
+        archivePath: '/nope/archive.tar.gz',
+        manifest: winManifest(),
+        extract: fakeExtract(REAL_KEY),
+        runTool: (_exe, _argv, label) => {
+          if (label === 'verify-final') {throw new Error('final path still points at .tmp')}
+        }
+      }),
+      (err: any) => err.code === 'stage_failed' || err.stage === 'stage'
+    )
+    assert.equal(fs.existsSync(layout.bundlePaths(home).versionDir(REAL_KEY)), false)
     assert.equal(fs.existsSync(layout.bundlePaths(home).stagingDir(REAL_KEY)), false)
   } finally {
     rm(home)
@@ -248,6 +279,7 @@ test('stageAndCommitBundle: an already-committed version is reused (idempotent)'
     const finalDir = layout.bundlePaths(home).versionDir(REAL_KEY)
     fs.mkdirSync(finalDir, { recursive: true })
     fs.writeFileSync(path.join(finalDir, 'sentinel'), 'kept')
+    fs.writeFileSync(path.join(finalDir, '.apexnodes-bundle-committed'), 'already verified')
     let extracted = false
 
     const res = await install.stageAndCommitBundle({
@@ -264,6 +296,37 @@ test('stageAndCommitBundle: an already-committed version is reused (idempotent)'
     assert.equal(res.reused, true)
     assert.equal(extracted, false, 'never re-extracts over a committed immutable version')
     assert.ok(fs.existsSync(path.join(finalDir, 'sentinel')))
+  } finally {
+    rm(home)
+  }
+})
+
+test('stageAndCommitBundle: repairs an unmarked tree at its final path before reuse', async () => {
+  const home = mkHome()
+
+  try {
+    const finalDir = layout.bundlePaths(home).versionDir(REAL_KEY)
+    fs.mkdirSync(path.join(finalDir, '.runtime', 'node'), { recursive: true })
+    fs.mkdirSync(path.join(finalDir, 'scripts'), { recursive: true })
+    fs.writeFileSync(path.join(finalDir, 'scripts', 'build-runtime-bundle.mjs'), '// tool')
+    const calls = []
+
+    const res = await install.stageAndCommitBundle({
+      hermesHome: home,
+      key: REAL_KEY,
+      archivePath: '/nope',
+      manifest: winManifest(),
+      extract: () => assert.fail('must not extract over an existing version'),
+      runTool: (_exe, argv, label) => calls.push({ label, root: argv.at(-1) })
+    })
+
+    assert.equal(res.reused, true)
+    assert.equal(res.repaired, true)
+    assert.deepEqual(calls, [
+      { label: 'fixup-final', root: finalDir },
+      { label: 'verify-final', root: finalDir }
+    ])
+    assert.ok(fs.existsSync(path.join(finalDir, '.apexnodes-bundle-committed')))
   } finally {
     rm(home)
   }
