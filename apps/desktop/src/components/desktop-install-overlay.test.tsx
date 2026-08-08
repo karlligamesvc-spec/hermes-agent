@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { DesktopBootstrapEvent, DesktopBootstrapStageDescriptor, DesktopBootstrapState } from '@/global'
+import { $desktopUpdateProgress } from '@/store/desktop-update'
 
 import { DesktopInstallOverlay } from './desktop-install-overlay'
 
@@ -62,7 +63,17 @@ function stubDesktop() {
   }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  $desktopUpdateProgress.set({
+    active: false,
+    completedStages: [],
+    currentStage: null,
+    error: null,
+    stages: [],
+    targetVersion: null
+  })
+})
 
 describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restoration)', () => {
   it('shows the update copy -- not the first-install copy -- when the manifest carries updateInfo', async () => {
@@ -84,8 +95,36 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
 
       expect(await screen.findByText('Updating to 0.17.0')).toBeTruthy()
       expect(screen.getByText(/Unchanged dependencies are skipped automatically/)).toBeTruthy()
+      expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0')
       expect(screen.queryByText('Setting up APEX')).toBeNull()
       expect(screen.queryByText(/This is a one-time setup/)).toBeNull()
+    } finally {
+      desktop.restore()
+    }
+  })
+
+  it('reuses the install progress surface for one app + engine update', async () => {
+    const desktop = stubDesktop()
+
+    try {
+      $desktopUpdateProgress.set({
+        active: true,
+        completedStages: ['check', 'shell'],
+        currentStage: 'runtime',
+        error: null,
+        stages: ['check', 'shell', 'runtime', 'restart'],
+        targetVersion: 'v2026.8.8-fork.abc123'
+      })
+
+      render(<DesktopInstallOverlay />)
+      await act(async () => {})
+
+      expect(screen.getByText('Updating to Engine 2026.8.8')).toBeTruthy()
+      expect(screen.getByText('Check updates')).toBeTruthy()
+      expect(screen.getByText('App package')).toBeTruthy()
+      expect(screen.getByText('AI engine')).toBeTruthy()
+      expect(screen.getByText('Restart APEX')).toBeTruthy()
+      expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('63')
     } finally {
       desktop.restore()
     }

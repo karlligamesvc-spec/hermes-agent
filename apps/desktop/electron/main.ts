@@ -202,6 +202,11 @@ import {
   shouldRemoveAppBundle,
   uninstallArgsForMode
 } from './desktop-uninstall'
+import {
+  clearDesktopUpdatePlan,
+  readDesktopUpdatePlan,
+  writeDesktopUpdatePlan
+} from './desktop-update-plan'
 import { installEmbedReferer } from './embed-referer'
 import { createEventDeduper } from './event-dedupe'
 import { installFoundInPageForwarder, performFind, stopFind } from './find-in-page'
@@ -10689,6 +10694,32 @@ function initShellUpdater() {
 //     previousMarker: { ...marker } | null
 //   }
 const RUNTIME_PIN_OVERRIDE_PATH = path.join(HERMES_HOME, '.apexnodes-runtime-override.json')
+const DESKTOP_UPDATE_PLAN_PATH = path.join(HERMES_HOME, '.apexnodes-desktop-update-plan.json')
+
+ipcMain.handle('hermes:update-center:plan:get', async () => readDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH))
+ipcMain.handle('hermes:update-center:plan:set-runtime-after-shell', async (_event, payload = {}) => {
+  try {
+    const plan = writeDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
+      kind: 'runtime-after-shell',
+      targetShellVersion: payload?.targetShellVersion,
+      targetRuntimeVersion: payload?.targetRuntimeVersion
+    })
+
+    rememberLog(
+      `[update-center] armed runtime-after-shell plan: shell=${plan.targetShellVersion || '?'} ` +
+        `runtime=${plan.targetRuntimeVersion || '?'}`
+    )
+
+    return { ok: true, plan }
+  } catch (error: any) {
+    return { ok: false, error: (error && error.message) || String(error) }
+  }
+})
+ipcMain.handle('hermes:update-center:plan:clear', async () => {
+  clearDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH)
+
+  return { ok: true }
+})
 
 const RUNTIME_PIN_OVERRIDE_SCHEMA_VERSION = 1
 

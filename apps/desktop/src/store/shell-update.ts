@@ -51,6 +51,23 @@ export function initShellUpdateSubscription(): void {
     })
 }
 
+export async function checkShellUpdate(): Promise<DesktopShellUpdateState | null> {
+  initShellUpdateSubscription()
+  const bridge = window.hermesDesktop?.shellUpdate
+
+  if (!bridge?.check) {
+    return $shellUpdate.get()
+  }
+
+  const result = await bridge.check()
+
+  if (result.state) {
+    $shellUpdate.set(result.state)
+  }
+
+  return result.state ?? $shellUpdate.get()
+}
+
 /**
  * 触发 quitAndInstall。成功路径上应用直接退出重装,promise 通常没有然后;
  * 失败(极少)时抛错,由胶囊回退成可再点的状态。

@@ -1456,7 +1456,13 @@ export const en: Translations = {
     hermesActiveSessions: (version, count) => `APEX ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     gatewayRestartFailed: 'Gateway restart failed.',
-    updateHermes: 'Update APEX',
+    checkDesktopUpdate: 'Check for APEX updates',
+    checkingDesktopUpdate: 'Checking for updates…',
+    desktopUpdateReady: 'An APEX app or AI engine update is ready.',
+    desktopUpdatePreparing: 'Preparing the APEX update…',
+    desktopUpdateNeedsShell: 'The AI engine update needs a newer APEX app version.',
+    desktopUpdateCheckFailed: 'Could not check for an APEX app update.',
+    desktopUpToDate: 'The APEX app and AI engine are up to date.',
     actionRunning: 'running',
     actionDone: 'done',
     actionFailed: 'failed',
@@ -2159,6 +2165,20 @@ export const en: Translations = {
       restartNow: 'Restart now to update',
       restarting: 'Restarting…'
     },
+    desktopUpdate: {
+      preparingTitle: version => (version ? `Preparing APEX ${version}` : 'Preparing an APEX update'),
+      downloadedPercent: percent => `${percent}% downloaded`,
+      readyTitle: 'APEX update is ready',
+      appAndEngine: (appVersion, engineVersion) => `App ${appVersion} + ${engineVersion}`,
+      appOnly: version => `App ${version}`,
+      engineOnly: version => version,
+      installRestart: 'Install and restart',
+      installing: 'Preparing update…',
+      confirmTitle: 'Install the APEX update?',
+      confirmBody:
+        'APEX will update the app and AI engine together when available, then restart once. Your settings and work stay intact.',
+      confirmApply: 'Install update'
+    },
     dateDivider: {
       today: 'Earlier today',
       yesterday: 'Yesterday',
@@ -2564,6 +2584,10 @@ export const en: Translations = {
     // Keyed by the raw bootstrap stage id (covers both the install.ps1 and
     // install.sh naming schemes). Unknown ids fall back to formatStageName.
     stageLabels: {
+      desktop_update_check: 'Check updates',
+      shell_download: 'App package',
+      runtime_update: 'AI engine',
+      restart: 'Restart APEX',
       // prerequisites (posix single stage + windows sub-stages)
       prerequisites: 'Prerequisites',
       uv: 'Prerequisites',

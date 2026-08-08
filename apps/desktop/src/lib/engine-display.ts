@@ -51,7 +51,11 @@ const ENGINE_CALVER_RE = /^v?(\d{4}\.\d{1,2}\.\d{1,2})(?:-fork\.\S+)?$/
  * `currentVersion ? a.engineVersion(...) : a.engineVersionUnavailable`
  * pattern), mirroring how `version` is typed as a definite `string` here.
  */
-export function formatEngineDisplayVersion(version: string, displayName?: string | null): string {
+export function formatEngineDisplayVersion(
+  version: string,
+  displayName?: string | null,
+  localizedPrefix?: string
+): string {
   if (typeof displayName === 'string' && displayName.trim() !== '') {
     return displayName
   }
@@ -68,5 +72,5 @@ export function formatEngineDisplayVersion(version: string, displayName?: string
     return version
   }
 
-  return `${translateNow('common.engineVersionPrefix')} ${match[1]}`
+  return `${localizedPrefix || translateNow('common.engineVersionPrefix')} ${match[1]}`
 }

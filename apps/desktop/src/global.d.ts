@@ -256,8 +256,17 @@ declare global {
       // 进程没有这个桥。
       shellUpdate?: {
         getState: () => Promise<DesktopShellUpdateState>
+        check: () => Promise<{ ok: boolean; error?: string; state: DesktopShellUpdateState }>
         install: () => Promise<{ ok: boolean; error?: string }>
         onEvent: (callback: (state: DesktopShellUpdateState) => void) => () => void
+      }
+      updateCenter?: {
+        getPlan: () => Promise<DesktopUpdatePlan | null>
+        setRuntimeAfterShell: (payload: {
+          targetShellVersion: string | null
+          targetRuntimeVersion: string | null
+        }) => Promise<{ ok: boolean; error?: string; plan?: DesktopUpdatePlan }>
+        clearPlan: () => Promise<{ ok: boolean }>
       }
       api: <T>(request: HermesApiRequest) => Promise<T>
       notify: (payload: HermesNotification) => Promise<boolean>
@@ -1465,6 +1474,14 @@ export interface DesktopShellUpdateState {
   // with no authored notes — not an error state, the capsule just shows the bare
   // version in that case (same as before hc-447).
   releaseNotes: string | null
+}
+
+export interface DesktopUpdatePlan {
+  schemaVersion: 1
+  kind: 'runtime-after-shell'
+  requestedAt: string
+  targetShellVersion: string | null
+  targetRuntimeVersion: string | null
 }
 
 // hc-452: distinguishes a re-bootstrap for an opt-in runtime version UPDATE

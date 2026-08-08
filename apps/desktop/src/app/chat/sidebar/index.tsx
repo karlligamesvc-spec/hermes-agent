@@ -120,6 +120,7 @@ import type { SidebarNavItem } from '../../types'
 import { AccountPanel } from './account-panel'
 import { SidebarChannelStatus } from './channel-status'
 import { SidebarCronJobsSection } from './cron-jobs-section'
+import { DesktopUpdatePill } from './desktop-update-pill'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
 import { ProjectDialog } from './project-dialog'
@@ -140,11 +141,9 @@ import {
   StartWorkButton,
   useRepoWorktreeMap
 } from './projects'
-import { RuntimeUpdatePill } from './runtime-update-pill'
 import { SidebarBlankState, SidebarPinnedEmptyState, SidebarSessionSkeletons } from './section-states'
 import { buildSessionByAnyId } from './session-index'
 import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section'
-import { ShellUpdatePill } from './shell-update-pill'
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
 import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
 
@@ -1608,15 +1607,10 @@ export function ChatSidebar({
           ))}
 
         <div className="shrink-0 px-0.5 pb-1 pt-0.5">
-          {/* Shell-update pill: invisible until electron-updater has a new shell
-              downloaded, then offers 「重启以更新 vX.Y.Z」 with the release note's
-              first line. Takes precedence over the engine pill below (a shell
-              release usually carries the engine pin bump, so one restart
-              delivers both). */}
-          <ShellUpdatePill />
-          {/* Engine-update pill: invisible until a silent background check finds
-              a newer runtime, then a one-click apply capsule. */}
-          <RuntimeUpdatePill />
+          {/* hc-690: one update entry for the app shell + Hermes Runtime. The
+              underlying artifacts stay independent; discovery, confirmation,
+              progress, restart and post-restart continuation are unified. */}
+          <DesktopUpdatePill />
           {/* hc-554 显化 — 「渠道 · 分身在哪」: channel presence (飞书/微信/手机遥控)
               above the account row. Self-gates to nothing when no channel bridge
               exists. */}

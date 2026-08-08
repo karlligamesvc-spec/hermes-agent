@@ -154,6 +154,15 @@ function createShellUpdater(options) {
   // IPC 面在 dev/packaged 两种模式下都注册,renderer 不需要探测 —— dev 里
   // get 返回 disabled,install 拒绝,胶囊自然不出现。
   ipcMain.handle('hermes:shell-update:get', async () => ({ ...state }))
+  ipcMain.handle('hermes:shell-update:check', async () => {
+    if (disabled) {
+      return { ok: false, error: 'disabled', state: { ...state } }
+    }
+
+    const checked = await checkNow()
+
+    return { ...checked, state: { ...state } }
+  })
   ipcMain.handle('hermes:shell-update:install', async () => {
     if (disabled || state.phase !== 'downloaded') {
       return { ok: false, error: disabled ? 'disabled' : 'not_downloaded' }
@@ -304,10 +313,20 @@ function createShellUpdater(options) {
   async function checkNow() {
     try {
       await autoUpdater.checkForUpdates()
+
+      return { ok: true }
     } catch (error: any) {
       // checkForUpdates 的失败通常也会走 'error' 事件;这里兜同步 throw /
       // rejection,保证后台定时器永远打不出 unhandled rejection。
-      log(`[shell-update] check failed (silent): ${(error && error.message) || error}`)
+      const message = (error && error.message) || String(error)
+
+      log(`[shell-update] check failed (silent): ${message}`)
+
+      if (state.phase !== 'error' || state.error !== message) {
+        setState({ phase: 'error', error: message })
+      }
+
+      return { ok: false, error: message }
     }
   }
 

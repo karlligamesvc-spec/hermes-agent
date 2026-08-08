@@ -1511,7 +1511,13 @@ export const zh = defineLocale({
     hermesActiveSessions: (version, count) => `APEX ${version} · 活跃会话 ${count}`,
     restartGateway: '重启网关',
     gatewayRestartFailed: '网关重启失败。',
-    updateHermes: '更新 APEX',
+    checkDesktopUpdate: '检查 APEX 更新',
+    checkingDesktopUpdate: '正在检查更新…',
+    desktopUpdateReady: 'APEX 应用或 AI 引擎更新已就绪。',
+    desktopUpdatePreparing: '正在准备 APEX 更新…',
+    desktopUpdateNeedsShell: 'AI 引擎更新需要更高版本的 APEX 应用。',
+    desktopUpdateCheckFailed: '无法检查 APEX 应用更新。',
+    desktopUpToDate: 'APEX 应用和 AI 引擎均为最新版本。',
     actionRunning: '运行中',
     actionDone: '完成',
     actionFailed: '失败',
@@ -2083,6 +2089,19 @@ export const zh = defineLocale({
       installsOnQuit: '退出应用后才会安装',
       restartNow: '立即重启更新',
       restarting: '正在重启…'
+    },
+    desktopUpdate: {
+      preparingTitle: version => (version ? `正在准备 APEX ${version}` : '正在准备 APEX 更新'),
+      downloadedPercent: percent => `已下载 ${percent}%`,
+      readyTitle: 'APEX 更新已准备好',
+      appAndEngine: (appVersion, engineVersion) => `应用 ${appVersion} + ${engineVersion}`,
+      appOnly: version => `应用 ${version}`,
+      engineOnly: version => version,
+      installRestart: '安装并重启',
+      installing: '正在准备更新…',
+      confirmTitle: '安装 APEX 更新？',
+      confirmBody: 'APEX 会在可用时一起更新应用与 AI 引擎，并只完整重启一次。你的设置和工作不会丢失。',
+      confirmApply: '安装更新'
     }
   },
 
@@ -2432,6 +2451,10 @@ export const zh = defineLocale({
     copyOutput: '复制输出',
     reloadRetry: '重新加载并重试',
     stageLabels: {
+      desktop_update_check: '检查更新',
+      shell_download: '应用安装包',
+      runtime_update: 'AI 引擎',
+      restart: '重启 APEX',
       prerequisites: '前置环境',
       uv: '前置环境',
       python: '前置环境',
