@@ -129,7 +129,8 @@ import {
   resolveApexEndpoints,
   seedPluginsBlockYaml,
   seedSkillsBlockYaml,
-  seedWebGatewayBlockYaml
+  seedWebGatewayBlockYaml,
+  syncManagedCatalogDiscoveryYaml
 } from './apex-managed'
 import {
   normalizeStoredPluginsState,
@@ -12989,6 +12990,20 @@ function healConfigYamlProductBlocks(reason) {
 
     const managed = resolveManagedConfig()
     const endpoints = resolveApexEndpoints(process.env)
+
+    // hc-705: upgrade/setting-save guard for the Windows 0.17.16 stale shape.
+    // Managed relay discovery is a platform invariant; user-owned endpoints
+    // remain untouched because the helper requires the managed URL + key +
+    // ApexNodes identity. This pass is live, so a settings full-record save
+    // cannot re-persist the collapsed one-model catalog for the rest of the run.
+    if (managed.key && managed.baseUrl) {
+      const discoveryHeal = syncManagedCatalogDiscoveryYaml(raw, managed.baseUrl, managed.key)
+
+      if (discoveryHeal.changed) {
+        raw = discoveryHeal.next
+        fixed.push(`managed-discovery(${discoveryHeal.anchors.map(anchor => anchor.path).join(' ')})`)
+      }
+    }
 
     // hc-602: rendered by the SAME producer the first-run seed uses. This healer
     // used to hand-roll a column-0 list lead while the seed emitted a two-space

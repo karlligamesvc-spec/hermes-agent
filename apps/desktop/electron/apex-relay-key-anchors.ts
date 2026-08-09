@@ -482,8 +482,83 @@ export function managedCustomProviderEntryYaml(entry: ManagedProviderEntry, inde
     `${pad}- name: ${q(entry.name)}\n` +
     `${inner}base_url: ${q(entry.base_url)}\n` +
     `${inner}api_key: ${q(entry.api_key)}\n` +
-    `${inner}model: ${entry.model}\n`
+    `${inner}model: ${entry.model}\n` +
+    `${inner}discover_models: true\n`
   )
+}
+
+export interface CatalogDiscoverySyncResult {
+  changed: boolean
+  next: string
+  anchors: Array<{ path: string; status: 'updated' | 'inserted' | 'in-sync' }>
+}
+
+/**
+ * Force live model discovery only on config maps that are provably the managed
+ * ApexNodes relay.  Older Windows installs can carry an explicit
+ * `discover_models: false` plus a one-model cache; the runtime correctly obeys
+ * that user-facing flag and therefore never calls the healthy relay catalog.
+ *
+ * Identity is intentionally narrower than `pointsAtRelay`: both the relay URL
+ * and the current managed key must match, and registered endpoints must also
+ * carry the ApexNodes name (or its canonical providers.<slug> path).  A user's
+ * own endpoint — including one that explicitly opts out of discovery — is not
+ * rewritten merely because it happens to use the same host.
+ */
+export function syncManagedCatalogDiscoveryYaml(raw: string, baseUrl: string, key: string): CatalogDiscoverySyncResult {
+  const source = String(raw ?? '')
+  const expectedUrl = trimSlashes(baseUrl)
+  const expectedKey = String(key ?? '').trim()
+  const idle: CatalogDiscoverySyncResult = { changed: false, next: source, anchors: [] }
+
+  if (!source || !expectedUrl || !expectedKey) {return idle}
+
+  const parsed = parseYamlMaps(source)
+
+  const targets = parsed.maps.filter(map => {
+    if (trimSlashes(endpointUrl(map)) !== expectedUrl || map.fields.api_key?.value !== expectedKey) {return false}
+
+    if (map.path === 'model') {
+      return (map.fields.provider?.value ?? '').toLowerCase() === 'custom'
+    }
+
+    if (/^custom_providers\[\d+\]$/.test(map.path)) {
+      return (map.fields.name?.value ?? '').toLowerCase() === MANAGED_PROVIDER_NAME.toLowerCase()
+    }
+
+    return /^providers\.apex-nodes(?:-com|\.com)?$/i.test(map.path) ||
+      (/^providers\.[^.[\]]+$/.test(map.path) &&
+        (map.fields.name?.value ?? '').toLowerCase() === MANAGED_PROVIDER_NAME.toLowerCase())
+  })
+
+  if (targets.length === 0) {return idle}
+
+  const eol = source.includes('\r\n') ? '\r\n' : '\n'
+  const anchors: CatalogDiscoverySyncResult['anchors'] = []
+
+  for (const map of [...targets].sort((a, b) => b.lastLine - a.lastLine)) {
+    const field = map.fields.discover_models
+
+    // Missing is already the runtime's documented `true` default. Do not turn
+    // a healthy legacy config into a write + backend reload just to spell out
+    // an equivalent value; all newly rendered managed entries are explicit.
+    if (!field || !/^(false|no|0)$/i.test(field.value)) {
+      anchors.push({ path: map.path, status: 'in-sync' })
+
+      continue
+    }
+
+    parsed.lines[field.line] = parsed.lines[field.line].replace(
+      /(discover_models:\s*).*$/,
+      '$1true'
+    )
+    anchors.push({ path: map.path, status: 'updated' })
+  }
+
+  anchors.reverse()
+  const changed = anchors.some(anchor => anchor.status !== 'in-sync')
+
+  return { changed, next: changed ? parsed.lines.join(eol) : source, anchors }
 }
 
 // ── Writing (registry-driven, all-or-nothing) ───────────────────────────────
@@ -640,11 +715,23 @@ export function persistRelayKeyToConfigYaml({ read, write, baseUrl, key }: Persi
 
   if (typeof raw !== 'string') {return fail('config-missing')}
 
-  const sync = syncManagedRelayKeyYaml(raw, baseUrl, key)
+  const keySync = syncManagedRelayKeyYaml(raw, baseUrl, key)
 
   // Nothing here is addressable as the managed relay. Writing is pointless and
   // (per the caller's pre-flight) minting a new key would be strictly worse.
-  if (!sync.matched) {return fail('no-managed-anchor')}
+  if (!keySync.matched) {return fail('no-managed-anchor')}
+
+  // Once every key anchor carries the expected credential, reconcile the
+  // managed catalog policy too.  This is the upgrade/key-rotation path for the
+  // Windows stale shape; BYO endpoints are excluded by the narrow identity
+  // checks in syncManagedCatalogDiscoveryYaml.
+  const catalogSync = syncManagedCatalogDiscoveryYaml(keySync.next, baseUrl, key)
+
+  const sync = {
+    ...keySync,
+    changed: keySync.changed || catalogSync.changed,
+    next: catalogSync.next
+  }
 
   // An unregistered holder means this document keeps the key somewhere the
   // writer does not cover. Writing would leave the file INTERNALLY INCONSISTENT

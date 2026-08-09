@@ -49,6 +49,7 @@ import {
   parseYamlMaps,
   persistRelayKeyToConfigYaml,
   reconcileManagedRelayKey,
+  syncManagedCatalogDiscoveryYaml,
   syncManagedRelayKeyYaml
 } from './apex-managed'
 
@@ -136,6 +137,17 @@ test('every registered anchor kind has a fixture (a new anchor cannot slip in un
   )
   // And the registry is not empty-by-accident.
   assert.ok(MANAGED_KEY_ANCHORS.length >= 3)
+})
+
+test('hc-705: the sole managed endpoint renderer always enables live catalog discovery', () => {
+  const rendered = managedCustomProviderEntryYaml({
+    name: MANAGED_PROVIDER_NAME,
+    base_url: RELAY_BASE,
+    api_key: ACTIVE,
+    model: MODEL_ID
+  })
+
+  assert.match(rendered, /^ {4}discover_models: true$/m)
 })
 
 // ── The invariant ───────────────────────────────────────────────────────────
@@ -401,6 +413,54 @@ test('a BYOK model block and foreign endpoints are never handed a relay key', ()
   assert.equal(valueAt(sync.next, 'custom_providers[0]'), 'sk-mine')
   assert.equal(valueAt(sync.next, 'custom_providers[1]'), ACTIVE)
   assert.equal(auditManagedRelayKeyAnchors(sync.next, RELAY_BASE, ACTIVE).clean, true)
+})
+
+describe('hc-705 managed relay catalog discovery', () => {
+  test('a Windows CRLF upgrade heals both managed YAML anchors and preserves the 12-model cache', () => {
+    const models = Array.from({ length: 12 }, (_, index) => `relay-model-${index + 1}`)
+
+    const stale = (
+      `model:\n  default: ${models[0]}\n  provider: custom\n  base_url: "${RELAY_BASE}"\n` +
+      `  api_key: "${ACTIVE}"\n  discover_models: false\n` +
+      'custom_providers:\n' +
+      `  - name: "${MANAGED_PROVIDER_NAME}"\n    base_url: "${RELAY_BASE}"\n` +
+      `    api_key: "${ACTIVE}"\n    model: ${models[0]}\n    discover_models: false\n` +
+      '    models:\n' + models.map(model => `      ${model}: {}\n`).join('')
+    ).replace(/\n/g, '\r\n')
+
+    const sync = syncManagedCatalogDiscoveryYaml(stale, RELAY_BASE, ACTIVE)
+
+    assert.equal(sync.changed, true)
+    assert.deepEqual(sync.anchors.map(anchor => anchor.path), ['model', 'custom_providers[0]'])
+    assert.equal((sync.next.match(/discover_models: true/g) || []).length, 2)
+    assert.equal((sync.next.match(/relay-model-\d+: \{\}/g) || []).length, 12)
+    assert.equal(sync.next.replace(/\r\n/g, '').includes('\n'), false, 'Windows CRLF must be preserved')
+    assert.equal(syncManagedCatalogDiscoveryYaml(sync.next, RELAY_BASE, ACTIVE).changed, false)
+  })
+
+  test('the v12 providers dict upgrade is healed when it is the managed ApexNodes entry', () => {
+    const stale =
+      `providers:\n  apex-nodes-com:\n    name: ${MANAGED_PROVIDER_NAME}\n    api: ${RELAY_BASE}\n` +
+      `    api_key: ${ACTIVE}\n    discover_models: false\n    default_model: ${MODEL_ID}\n`
+
+    const sync = syncManagedCatalogDiscoveryYaml(stale, RELAY_BASE, ACTIVE)
+
+    assert.equal(sync.changed, true)
+    assert.deepEqual(sync.anchors, [{ path: 'providers.apex-nodes-com', status: 'updated' }])
+    assert.match(sync.next, /discover_models: true/)
+  })
+
+  test('a user-owned endpoint explicitly disabling discovery is not rewritten', () => {
+    const userOwned =
+      `providers:\n  private-gateway:\n    name: My private gateway\n    base_url: ${RELAY_BASE}\n` +
+      `    api_key: ${ACTIVE}\n    discover_models: false\n    model: private-only\n`
+
+    const sync = syncManagedCatalogDiscoveryYaml(userOwned, RELAY_BASE, ACTIVE)
+
+    assert.equal(sync.changed, false)
+    assert.equal(sync.next, userOwned)
+    assert.match(sync.next, /discover_models: false/)
+  })
 })
 
 test('MoA presets reference the relay but hold no key — derived, not an anchor', () => {
