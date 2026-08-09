@@ -1272,7 +1272,7 @@ export const ja = defineLocale({
     noSessions: 'セッションはまだありません。',
     gatewayRunning: 'メッセージングゲートウェイが実行中',
     gatewayStopped: 'メッセージングゲートウェイが停止中',
-    hermesActiveSessions: (version, count) => `APEX ${version} · アクティブセッション ${count}`,
+    hermesActiveSessions: (version, count) => `AI エンジン ${version} · アクティブセッション ${count}`,
     restartGateway: 'ゲートウェイを再起動',
     gatewayRestartFailed: 'ゲートウェイの再起動に失敗しました。',
     checkDesktopUpdate: 'APEX の更新を確認',

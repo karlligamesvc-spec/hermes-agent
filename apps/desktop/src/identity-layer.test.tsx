@@ -192,6 +192,8 @@ describe('identity: brand assets and chrome', () => {
     const about = readSource('src', 'app', 'settings', 'about-settings.tsx')
     const commandCenter = readSource('src', 'app', 'command-center', 'index.tsx')
     const commandPalette = readSource('src', 'app', 'command-palette', 'index.tsx')
+    const contributionShell = readSource('src', 'app', 'contrib', 'hooks', 'use-desktop-integrations.ts')
+    const legacyShell = readSource('src', 'app', 'desktop-controller.tsx')
 
     expect((sidebar.match(/<DesktopUpdatePill/g) || []).length).toBe(1)
     expect(sidebar).not.toContain('<ShellUpdatePill')
@@ -207,6 +209,15 @@ describe('identity: brand assets and chrome', () => {
     expect(commandCenter).not.toContain('updateHermes')
     expect(commandPalette).toContain("run: go(`${COMMAND_CENTER_ROUTE}?section=system`)")
     expect(commandPalette).not.toContain('requestActiveUpdate')
+
+    // Help > Check for Updates is emitted by the Electron main process. Both
+    // renderer shells must land on the unified update center; the old
+    // openUpdatesWindow path only knows how to update source/git installs.
+    for (const shell of [contributionShell, legacyShell]) {
+      expect(shell).toContain('onOpenUpdatesRequested')
+      expect(shell).toContain('navigate(`${COMMAND_CENTER_ROUTE}?section=system`)')
+      expect(shell).not.toContain('openUpdatesWindow')
+    }
   })
 })
 

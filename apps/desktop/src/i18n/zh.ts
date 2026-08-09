@@ -1508,7 +1508,7 @@ export const zh = defineLocale({
     noSessions: '暂无会话。',
     gatewayRunning: '消息网关运行中',
     gatewayStopped: '消息网关已停止',
-    hermesActiveSessions: (version, count) => `APEX ${version} · 活跃会话 ${count}`,
+    hermesActiveSessions: (version, count) => `AI 引擎 ${version} · 活跃会话 ${count}`,
     restartGateway: '重启网关',
     gatewayRestartFailed: '网关重启失败。',
     checkDesktopUpdate: '检查 APEX 更新',

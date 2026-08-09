@@ -81,7 +81,7 @@ import {
 import { onSessionsChanged } from '../store/session-sync'
 import { startTaskNotifier } from '../store/tasks'
 import { clearSessionTodos, setSessionTodos, todoListActive } from '../store/todos'
-import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '../store/updates'
+import { startUpdatePoller, stopUpdatePoller } from '../store/updates'
 import { isSecondaryWindow } from '../store/windows'
 
 import { ChatView } from './chat'
@@ -106,7 +106,7 @@ import { ModelVisibilityOverlay } from './model-visibility-overlay'
 import { RightSidebarPane } from './right-sidebar'
 import { $terminalTakeover } from './right-sidebar/store'
 import { PersistentTerminal, TerminalSlot } from './right-sidebar/terminal/persistent'
-import { NEW_CHAT_ROUTE, routeSessionId, sessionRoute, SETTINGS_ROUTE } from './routes'
+import { COMMAND_CENTER_ROUTE, NEW_CHAT_ROUTE, routeSessionId, sessionRoute, SETTINGS_ROUTE } from './routes'
 import { SessionPickerOverlay } from './session-picker-overlay'
 import { SessionSwitcher } from './session-switcher'
 import { useContextSuggestions } from './session/hooks/use-context-suggestions'
@@ -274,13 +274,16 @@ export function DesktopController() {
 
   useEffect(() => {
     startUpdatePoller()
-    const unsubscribe = window.hermesDesktop?.onOpenUpdatesRequested?.(() => openUpdatesWindow())
+
+    const unsubscribe = window.hermesDesktop?.onOpenUpdatesRequested?.(() =>
+      navigate(`${COMMAND_CENTER_ROUTE}?section=system`)
+    )
 
     return () => {
       unsubscribe?.()
       stopUpdatePoller()
     }
-  }, [])
+  }, [navigate])
 
   // Notification click: the main process already focused the window; jump to its
   // session. Notifications are tagged with the gateway *runtime* session id, but

@@ -184,7 +184,11 @@ test('packaged build wires silent-download config and the per-arch generic feed'
   assert.equal(autoUpdater.autoDownload, true)
   assert.equal(autoUpdater.autoInstallOnAppQuit, true)
   assert.equal(autoUpdater.allowDowngrade, false)
-  assert.deepEqual(autoUpdater.feed, { provider: 'generic', url: `${SHELL_UPDATE_FEED_BASE}/mac-arm64` })
+  assert.deepEqual(autoUpdater.feed, {
+    provider: 'generic',
+    url: `${SHELL_UPDATE_FEED_BASE}/mac-arm64`,
+    useMultipleRangeRequest: false
+  })
 })
 
 test('manual check IPC reuses the updater check and returns the latest snapshot', async () => {
