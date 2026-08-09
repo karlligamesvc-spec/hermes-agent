@@ -27,10 +27,15 @@ const SHORT_LABELS: Record<string, string> = {
   ultra: 'Ultra'
 }
 
-export function reasoningEffortLabel(effort: string): string {
+/** Localized compact labels supplied by user-facing chrome. Callers may pass
+ *  only the scale entries they render; the English map above remains the
+ *  non-UI/SDK fallback. */
+export type ReasoningEffortLabels = Partial<Record<(typeof REASONING_EFFORT_VALUES)[number], string>>
+
+export function reasoningEffortLabel(effort: string, labels?: ReasoningEffortLabels): string {
   const key = normalize(effort)
 
-  return key ? (SHORT_LABELS[key] ?? effort) : ''
+  return key ? (labels?.[key as keyof ReasoningEffortLabels] ?? SHORT_LABELS[key] ?? effort) : ''
 }
 
 export const isReasoningEffort = (value: string): value is ReasoningEffort =>

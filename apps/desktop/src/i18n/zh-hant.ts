@@ -2279,7 +2279,13 @@ export const zhHant = defineLocale({
       editModels: '編輯模型…',
       refreshModels: '重新整理模型',
       fast: '快速',
+      minimal: '最小',
+      low: '低',
       medium: '中',
+      high: '高',
+      xhigh: '極高',
+      max: '最高',
+      ultra: '超高',
       unnamedEndpoint: '自有接入點'
     },
     modelOptions: {

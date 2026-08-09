@@ -27,6 +27,37 @@ describe('reasoning-effort', () => {
     expect(reasoningEffortLabel('bogus')).toBe('bogus')
   })
 
+  it('uses one localized compact vocabulary without changing the effort value', () => {
+    const zh = {
+      minimal: '最小',
+      low: '低',
+      medium: '中',
+      high: '高',
+      xhigh: '极高',
+      max: '最高',
+      ultra: '超高'
+    }
+
+    expect(REASONING_EFFORTS.map(effort => reasoningEffortLabel(effort, zh))).toEqual([
+      '最小',
+      '低',
+      '中',
+      '高',
+      '极高',
+      '最高',
+      '超高'
+    ])
+    expect(REASONING_EFFORTS.map(effort => reasoningEffortLabel(effort))).toEqual([
+      'Min',
+      'Low',
+      'Med',
+      'High',
+      'XHigh',
+      'Max',
+      'Ultra'
+    ])
+  })
+
   it('recognizes only real scale levels', () => {
     expect(isReasoningEffort(DEFAULT_REASONING_EFFORT)).toBe(true)
     expect(isReasoningEffort('HIGH')).toBe(true)

@@ -38,7 +38,11 @@ import {
 } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
 import { filterPickerProviders, isManagedProviderSlug, providerDisplayName } from '@/lib/provider-allowlist'
-import { nearestSupportedEffort, supportedReasoningEfforts } from '@/lib/reasoning-efforts'
+import {
+  displayedReasoningEffort,
+  nearestSupportedEffort,
+  supportedReasoningEfforts
+} from '@/lib/reasoning-efforts'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { recoverManagedCatalogAuth } from '@/store/managed-recovery'
@@ -613,6 +617,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
                     const preset = modelPresets[modelPresetKey(group.provider.slug, family.id)] ?? {}
                     const effEffort = isCurrent ? currentReasoningEffort : (preset.effort ?? '')
                     const effFast = isCurrent ? currentFastMode : (preset.fast ?? false)
+                    const displayEffort = displayedReasoningEffort(effEffort, family.id, group.provider.name)
 
                     const fastControl = resolveFastControl(
                       activeId ?? family.id,
@@ -623,7 +628,9 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
 
                     const meta = [
                       fastControl.kind !== 'none' && fastControl.on ? copy.fast : null,
-                      (caps?.reasoning ?? true) ? reasoningEffortLabel(effEffort) || copy.medium : null
+                      (caps?.reasoning ?? true)
+                        ? reasoningEffortLabel(displayEffort, copy)
+                        : null
                     ]
                       .filter(Boolean)
                       .join(' ')

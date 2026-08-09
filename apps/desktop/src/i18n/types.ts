@@ -2329,7 +2329,13 @@ export interface Translations {
       editModels: string
       refreshModels: string
       fast: string
+      minimal: string
+      low: string
       medium: string
+      high: string
+      xhigh: string
+      max: string
+      ultra: string
       /** Group label for a custom endpoint with neither a name nor a
        *  resolvable address — never the implementation word "custom". */
       unnamedEndpoint: string
