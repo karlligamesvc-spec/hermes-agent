@@ -117,7 +117,7 @@ export async function applyRuntimeUpdate(): Promise<DesktopRuntimeUpdateApply> {
     const result = await bridge.applyUpdate()
 
     if (!result.ok) {
-      throw new Error(result.error || 'apply_failed')
+      throw new Error(result.message || result.error || 'apply_failed')
     }
 
     return result

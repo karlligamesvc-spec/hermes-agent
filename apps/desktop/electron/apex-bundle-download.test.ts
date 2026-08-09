@@ -91,6 +91,61 @@ test('downloadWithResume: clean download passes the sha256 gate', async () => {
   }
 })
 
+test('downloadWithResume: reports byte progress while the response is still streaming', async () => {
+  const dir = mkTmp()
+  const half = Math.floor(BODY.length / 2)
+  const { url, close } = await startServer((_req, res) => {
+    res.writeHead(200, { 'Content-Length': String(BODY.length) })
+    res.write(BODY.subarray(0, half))
+    setImmediate(() => res.end(BODY.subarray(half)))
+  })
+  const progress: Array<{ attempt: number; received: number; total: number | null }> = []
+
+  try {
+    const dest = path.join(dir, 'bundle.tar.gz')
+    await downloadWithResume({
+      url,
+      dest,
+      sha256: BODY_SHA,
+      size: BODY.length,
+      sleep: noSleep,
+      onProgress: event => progress.push(event)
+    })
+
+    assert.deepEqual(progress[0], { attempt: 1, received: 0, total: BODY.length })
+    assert.ok(progress.some(event => event.received > 0 && event.received < BODY.length), 'emits before the response completes')
+    assert.deepEqual(progress.at(-1), { attempt: 1, received: BODY.length, total: BODY.length })
+  } finally {
+    await close()
+    rm(dir)
+  }
+})
+
+test('downloadWithResume: a failing progress observer cannot abort the integrity path', async () => {
+  const dir = mkTmp()
+  const { url, close } = await startServer((req, res) => serveRange(req, res, BODY))
+
+  try {
+    const dest = path.join(dir, 'bundle.tar.gz')
+    const result = await downloadWithResume({
+      url,
+      dest,
+      sha256: BODY_SHA,
+      size: BODY.length,
+      sleep: noSleep,
+      onProgress: () => {
+        throw new Error('renderer disappeared')
+      }
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.sha256, BODY_SHA)
+  } finally {
+    await close()
+    rm(dir)
+  }
+})
+
 test('downloadWithResume: a mid-stream drop is resumed via Range (partial kept)', async () => {
   const dir = mkTmp()
   const half = Math.floor(BODY.length / 2)

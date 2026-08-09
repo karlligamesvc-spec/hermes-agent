@@ -1,6 +1,6 @@
 import { atom } from 'nanostores'
 
-import type { DesktopRuntimeUpdateCheck, DesktopShellUpdateState } from '@/global'
+import type { DesktopRuntimeUpdateCheck, DesktopRuntimeUpdateProgress, DesktopShellUpdateState } from '@/global'
 
 import {
   $runtimeUpdateCheck,
@@ -17,6 +17,7 @@ export interface DesktopUpdateProgress {
   completedStages: DesktopUpdateStage[]
   currentStage: DesktopUpdateStage | null
   error: string | null
+  runtimeProgress: DesktopRuntimeUpdateProgress | null
   stages: DesktopUpdateStage[]
   targetVersion: string | null
 }
@@ -26,6 +27,7 @@ const EMPTY_PROGRESS: DesktopUpdateProgress = {
   completedStages: [],
   currentStage: null,
   error: null,
+  runtimeProgress: null,
   stages: [],
   targetVersion: null
 }
@@ -33,6 +35,7 @@ const EMPTY_PROGRESS: DesktopUpdateProgress = {
 export const $desktopUpdateProgress = atom<DesktopUpdateProgress>(EMPTY_PROGRESS)
 
 let resumePromise: Promise<void> | null = null
+let runtimeProgressSubscribed = false
 let shellProgressSubscribed = false
 
 function setProgress(patch: Partial<DesktopUpdateProgress>): void {
@@ -40,21 +43,32 @@ function setProgress(patch: Partial<DesktopUpdateProgress>): void {
 }
 
 function initDesktopUpdateProgressSubscription(): void {
-  if (shellProgressSubscribed) {
-    return
+  if (!shellProgressSubscribed) {
+    shellProgressSubscribed = true
+    $shellUpdate.listen(state => {
+      const progress = $desktopUpdateProgress.get()
+
+      // quitAndInstall answers IPC before Electron tears the window down. If the
+      // native hand-off then throws, shell-updater can only report it through its
+      // event stream; translate that late error back into the shared surface.
+      if (state?.phase === 'error' && progress.active && progress.currentStage === 'restart') {
+        setProgress({ active: false, currentStage: null, error: state.error || 'shell_update_apply_failed' })
+      }
+    })
   }
 
-  shellProgressSubscribed = true
-  $shellUpdate.listen(state => {
-    const progress = $desktopUpdateProgress.get()
+  const onRuntimeProgress = window.hermesDesktop?.runtime?.onUpdateProgress
 
-    // quitAndInstall answers IPC before Electron tears the window down. If the
-    // native hand-off then throws, shell-updater can only report it through its
-    // event stream; translate that late error back into the shared surface.
-    if (state?.phase === 'error' && progress.active && progress.currentStage === 'restart') {
-      setProgress({ active: false, currentStage: null, error: state.error || 'shell_update_apply_failed' })
-    }
-  })
+  if (!runtimeProgressSubscribed && onRuntimeProgress) {
+    runtimeProgressSubscribed = true
+    onRuntimeProgress(runtimeProgress => {
+      const progress = $desktopUpdateProgress.get()
+
+      if (progress.active && progress.currentStage === 'runtime') {
+        setProgress({ runtimeProgress })
+      }
+    })
+  }
 }
 
 function comparableVersion(value: string | null | undefined): string {
@@ -136,6 +150,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
     completedStages,
     currentStage: needsRuntime && runtime?.updateAvailable ? 'runtime' : 'restart',
     error: null,
+    runtimeProgress: null,
     stages,
     targetVersion: runtimeTarget(runtime) ?? shell?.version ?? null
   })
@@ -174,7 +189,8 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       runtimeReloadRequired = Boolean(result.reloadRequired)
       setProgress({
         completedStages: [...completedStages, 'runtime'],
-        currentStage: 'restart'
+        currentStage: 'restart',
+        runtimeProgress: null
       })
     }
 
@@ -241,6 +257,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
       completedStages: ['check', 'shell'],
       currentStage: 'runtime',
       error: null,
+      runtimeProgress: null,
       stages: ['check', 'shell', 'runtime', 'restart'],
       targetVersion: plan.targetRuntimeVersion
     })
@@ -272,6 +289,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
           active: false,
           completedStages: ['check', 'shell', 'restart'],
           currentStage: null,
+          runtimeProgress: null,
           stages: ['check', 'shell', 'restart']
         })
 
@@ -306,7 +324,8 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
       await bridge?.clearPlan()
       setProgress({
         completedStages: ['check', 'shell', 'runtime'],
-        currentStage: 'restart'
+        currentStage: 'restart',
+        runtimeProgress: null
       })
 
       if (reloadRequired) {
@@ -363,6 +382,7 @@ export async function retryDesktopUpdate(options: { reload?: () => void } = {}):
           completedStages: ['check', 'shell'],
           currentStage: 'restart',
           error: null,
+          runtimeProgress: null,
           stages: ['check', 'shell', 'restart'],
           targetVersion: plan.targetShellVersion
         })

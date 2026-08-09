@@ -274,6 +274,21 @@ const UPDATE_STAGE_NAMES: Record<DesktopUpdateStage, string> = {
   restart: 'restart'
 }
 
+function formatUpdateBytes(bytes: number): string {
+  if (bytes < 1024) {return `${bytes} B`}
+
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = units[0]
+
+  for (let index = 1; index < units.length && value >= 1024; index += 1) {
+    value /= 1024
+    unit = units[index]
+  }
+
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`
+}
+
 function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: DesktopUpdateProgress }) {
   const { t } = useI18n()
   const copy = t.install
@@ -285,8 +300,22 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
     : null
 
   const completedCount = progress.completedStages.length
-  const progressUnits = completedCount + (!failed && progress.currentStage ? 0.5 : 0)
+  const runtimeDownload =
+    progress.currentStage === 'runtime' &&
+    progress.runtimeProgress?.phase === 'downloading' &&
+    typeof progress.runtimeProgress.total === 'number' &&
+    progress.runtimeProgress.total > 0
+      ? progress.runtimeProgress
+      : null
+  const currentFraction = runtimeDownload
+    ? Math.max(0, Math.min(1, (runtimeDownload.received ?? 0) / runtimeDownload.total!))
+    : 0
+  const progressUnits = completedCount + currentFraction
   const progressPct = progress.stages.length > 0 ? Math.round((progressUnits / progress.stages.length) * 100) : 0
+  const determinate = failed || Boolean(runtimeDownload) || progress.currentStage === null
+  const byteProgress = runtimeDownload
+    ? `${formatUpdateBytes(runtimeDownload.received ?? 0)} / ${formatUpdateBytes(runtimeDownload.total!)}`
+    : null
 
   const stageResult = (stage: DesktopUpdateStage): DesktopBootstrapStageResult => {
     const state: DesktopBootstrapStageState = progress.completedStages.includes(stage)
@@ -325,21 +354,27 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
           <div className="mb-4">
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
               <span>{copy.progress(completedCount, progress.stages.length)}</span>
-              <span className="tabular-nums">{progressPct}%</span>
+              <span className="tabular-nums">{determinate ? `${progressPct}%` : byteProgress}</span>
             </div>
             <div
               aria-label={copy.progress(completedCount, progress.stages.length)}
               aria-valuemax={100}
               aria-valuemin={0}
-              aria-valuenow={progressPct}
+              aria-valuenow={determinate ? progressPct : undefined}
+              aria-valuetext={byteProgress ?? undefined}
               className="h-1.5 w-full overflow-hidden rounded-full bg-(--ui-bg-tertiary)"
               role="progressbar"
             >
               <div
-                className={cn('h-full transition-all duration-300', failed ? 'bg-destructive' : 'bg-primary')}
-                style={{ width: `${progressPct}%` }}
+                className={cn(
+                  'h-full transition-all duration-300',
+                  failed ? 'bg-destructive' : 'bg-primary',
+                  !determinate && 'w-1/3 motion-safe:animate-pulse'
+                )}
+                style={determinate ? { width: `${progressPct}%` } : undefined}
               />
             </div>
+            {byteProgress ? <div className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">{byteProgress}</div> : null}
           </div>
 
           {failed && progress.error ? (
@@ -352,7 +387,7 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
             </div>
           ) : null}
 
-          <ol className="mb-2 space-y-0.5">
+          <ol aria-live="polite" className="mb-2 space-y-0.5">
             {progress.stages.map(stage => (
               <StageRow
                 descriptor={{ name: UPDATE_STAGE_NAMES[stage] }}

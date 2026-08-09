@@ -1,6 +1,6 @@
 # hc-690 — Desktop 统一安装与更新中心
 
-> 状态：第一批已随 APEX 0.17.14 正式发布并完成 Mac/Windows 真机升级验收；第二批可靠性实现中
+> 状态：第一批已随 APEX 0.17.14 正式发布并完成 Mac/Windows 真机升级验收；第二批 durable plan 已合并；第三批真实进度实现中
 > 日期：2026-08-08
 > 产品决策：首次安装、Desktop 壳更新、Hermes Runtime 更新共用一个用户入口、一个进度界面和一条可恢复更新流程；底层产物继续独立发布与回滚。
 > 边界：不修改 hc-685 Desktop vNext 原型。
@@ -26,6 +26,14 @@
 - Shell-only 也在 native install 前持久化计划，新壳启动后用 `app.getVersion()` 与本地 Runtime marker 读回冻结目标，未命中时保留计划并记录失败；
 - 截断 JSON、未知 schema 等损坏计划会原子改名到 `.corrupt-*` 诊断文件并 fail-open，不阻塞 Desktop 启动；
 - 恢复开始/失败 transition 写回主进程 authority，renderer 退出后仍可诊断。
+
+第三批已实现、待合并及下一正式 Desktop 版本发布验收：
+
+- Runtime bundle 下载从“请求结束后才报一次”改为每个网络数据块上报真实 received/total/attempt，断点续传继续从磁盘已有字节起算；
+- 主进程把 preflight、download、verify、activate、complete 阶段推送给统一更新界面；renderer 仅展示，不持有机器更新真值；
+- 有真实字节时展示字节与确定百分比；校验、激活、native install 等没有可信百分比的阶段改为不确定进度，不再伪造“当前阶段完成一半”；
+- Runtime bundle 原有下载前磁盘预检继续作为硬门禁，并把所需/可用空间的可读消息透传到统一错误表面；不足时不进入更危险的 legacy fallback；
+- 进度回调全程 fail-soft：窗口关闭或 IPC 观察者异常不得中断下载、校验或原子切换。
 
 ## 1. 问题与目标
 
@@ -162,7 +170,7 @@ idle
 
 详细信息展开后才展示 bootstrap 十阶段、真实耗时和日志。
 
-目标态进度规则（第一批已补 `progressbar` 语义；字节进度与 `aria-live` 后续完成）：
+目标态进度规则（第三批已完成 Runtime bundle 字节进度、`aria-live` 与不确定进度；shell native install 仍无可信百分比）：
 
 - 有真实 bytes 时按 bytes 展示；
 - 无法取得 native install 百分比时显示不确定进度，不伪造数值；

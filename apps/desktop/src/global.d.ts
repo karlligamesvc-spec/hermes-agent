@@ -248,6 +248,7 @@ declare global {
         getVersion: () => Promise<DesktopRuntimeVersion>
         checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
         applyUpdate: () => Promise<DesktopRuntimeUpdateApply>
+        onUpdateProgress: (callback: (progress: DesktopRuntimeUpdateProgress) => void) => () => void
       }
       // 壳(Electron 应用本体)自更新 — electron-updater 通道,和 runtime(引擎)
       // 更新互不相扰。机制全在主进程(electron/shell-updater.cjs):启动延迟
@@ -1469,6 +1470,18 @@ export interface DesktopRuntimeUpdateApply {
   // desktop version and the current shell version (for the upgrade prompt).
   required?: string | null
   current?: string | null
+  message?: string
+  freeBytes?: number
+  requiredBytes?: number
+}
+
+export type DesktopRuntimeUpdateProgressPhase = 'activating' | 'complete' | 'downloading' | 'preflight' | 'verifying'
+
+export interface DesktopRuntimeUpdateProgress {
+  phase: DesktopRuntimeUpdateProgressPhase
+  received?: number
+  total?: number | null
+  attempt?: number
 }
 
 // 壳自更新状态机快照(electron/shell-updater.cjs 推送/查询的同一形状)。
