@@ -62,6 +62,7 @@ import {
   parseYamlMaps,
   persistRelayKeyToConfigYaml,
   syncManagedCatalogDiscoveryYaml,
+  syncManagedRelayConfigYaml,
   syncManagedRelayKeyYaml
 } from './apex-relay-key-anchors'
 
@@ -1755,6 +1756,7 @@ export {
   seedWebGatewayBlockYaml,
   shouldAttemptReprovision,
   syncManagedCatalogDiscoveryYaml,
+  syncManagedRelayConfigYaml,
   syncManagedRelayKeyYaml,
   WEB_LOGIN_PATH
 }

@@ -499,11 +499,12 @@ export interface CatalogDiscoverySyncResult {
  * `discover_models: false` plus a one-model cache; the runtime correctly obeys
  * that user-facing flag and therefore never calls the healthy relay catalog.
  *
- * Identity is intentionally narrower than `pointsAtRelay`: both the relay URL
- * and the current managed key must match, and registered endpoints must also
- * carry the ApexNodes name (or its canonical providers.<slug> path).  A user's
- * own endpoint — including one that explicitly opts out of discovery — is not
- * rewritten merely because it happens to use the same host.
+ * Identity is intentionally narrower than `pointsAtRelay`: both the exact
+ * managed relay URL and the current managed key must match. The display name
+ * is deliberately NOT part of identity: OneClickSetup historically wrote
+ * `name: APEX`, while Desktop writes `Apex-nodes.com`. Requiring either label
+ * strands the other producer's real installs. A user's endpoint on another URL
+ * remains outside this pass even if it reuses the same display name.
  */
 export function syncManagedCatalogDiscoveryYaml(raw: string, baseUrl: string, key: string): CatalogDiscoverySyncResult {
   const source = String(raw ?? '')
@@ -522,13 +523,7 @@ export function syncManagedCatalogDiscoveryYaml(raw: string, baseUrl: string, ke
       return (map.fields.provider?.value ?? '').toLowerCase() === 'custom'
     }
 
-    if (/^custom_providers\[\d+\]$/.test(map.path)) {
-      return (map.fields.name?.value ?? '').toLowerCase() === MANAGED_PROVIDER_NAME.toLowerCase()
-    }
-
-    return /^providers\.apex-nodes(?:-com|\.com)?$/i.test(map.path) ||
-      (/^providers\.[^.[\]]+$/.test(map.path) &&
-        (map.fields.name?.value ?? '').toLowerCase() === MANAGED_PROVIDER_NAME.toLowerCase())
+    return /^custom_providers\[\d+\]$/.test(map.path) || /^providers\.[^.[\]]+$/.test(map.path)
   })
 
   if (targets.length === 0) {return idle}
@@ -663,6 +658,33 @@ export function syncManagedRelayKeyYaml(raw: string, baseUrl: string, key: strin
   }
 }
 
+export interface ManagedRelayConfigSyncResult extends SyncResult {
+  key: SyncResult
+  catalog: CatalogDiscoverySyncResult
+}
+
+/**
+ * Reconcile the complete managed relay config in dependency order.
+ *
+ * A historical install can have BOTH a stale relay key and
+ * `discover_models: false`. Catalog discovery authenticates with the current
+ * key by design, so running the catalog pass alone cannot recognize that real
+ * upgrade shape. Keeping the order in one helper prevents boot, key rotation
+ * and settings-save paths from drifting into different partial repairs.
+ */
+export function syncManagedRelayConfigYaml(raw: string, baseUrl: string, key: string): ManagedRelayConfigSyncResult {
+  const keySync = syncManagedRelayKeyYaml(raw, baseUrl, key)
+  const catalogSync = syncManagedCatalogDiscoveryYaml(keySync.next, baseUrl, key)
+
+  return {
+    ...keySync,
+    changed: keySync.changed || catalogSync.changed,
+    next: catalogSync.next,
+    key: keySync,
+    catalog: catalogSync
+  }
+}
+
 // ── Persist + verify ────────────────────────────────────────────────────────
 
 export interface PersistResult {
@@ -715,23 +737,11 @@ export function persistRelayKeyToConfigYaml({ read, write, baseUrl, key }: Persi
 
   if (typeof raw !== 'string') {return fail('config-missing')}
 
-  const keySync = syncManagedRelayKeyYaml(raw, baseUrl, key)
+  const sync = syncManagedRelayConfigYaml(raw, baseUrl, key)
 
   // Nothing here is addressable as the managed relay. Writing is pointless and
   // (per the caller's pre-flight) minting a new key would be strictly worse.
-  if (!keySync.matched) {return fail('no-managed-anchor')}
-
-  // Once every key anchor carries the expected credential, reconcile the
-  // managed catalog policy too.  This is the upgrade/key-rotation path for the
-  // Windows stale shape; BYO endpoints are excluded by the narrow identity
-  // checks in syncManagedCatalogDiscoveryYaml.
-  const catalogSync = syncManagedCatalogDiscoveryYaml(keySync.next, baseUrl, key)
-
-  const sync = {
-    ...keySync,
-    changed: keySync.changed || catalogSync.changed,
-    next: catalogSync.next
-  }
+  if (!sync.matched) {return fail('no-managed-anchor')}
 
   // An unregistered holder means this document keeps the key somewhere the
   // writer does not cover. Writing would leave the file INTERNALLY INCONSISTENT

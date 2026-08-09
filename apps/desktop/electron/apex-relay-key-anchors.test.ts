@@ -50,6 +50,7 @@ import {
   persistRelayKeyToConfigYaml,
   reconcileManagedRelayKey,
   syncManagedCatalogDiscoveryYaml,
+  syncManagedRelayConfigYaml,
   syncManagedRelayKeyYaml
 } from './apex-managed'
 
@@ -450,9 +451,42 @@ describe('hc-705 managed relay catalog discovery', () => {
     assert.match(sync.next, /discover_models: true/)
   })
 
+  test('the real OneClickSetup CRLF shape heals its stale key before enabling discovery', () => {
+    const stale = (
+      `model:\n  default: deepseek-v4-flash\n  provider: custom\n  base_url: "${RELAY_BASE}"\n` +
+      `  api_key: "${ROTATED}"\n` +
+      'custom_providers:\n' +
+      '  # oneclicksetup:begin apex-provider\n' +
+      `  - name: "APEX"\n    base_url: "${RELAY_BASE}"\n` +
+      `    api_key: "${ROTATED}"\n    key_env: "APEX_RELAY_KEY"\n` +
+      '    model: "deepseek-v4-flash"\n    discover_models: false\n' +
+      '    models:\n      "deepseek-v4-flash": {}\n' +
+      '  # oneclicksetup:end apex-provider\n'
+    ).replace(/\n/g, '\r\n')
+
+    const sync = syncManagedRelayConfigYaml(stale, RELAY_BASE, ACTIVE)
+
+    assert.equal(sync.changed, true)
+    assert.deepEqual(
+      sync.key.anchors.map(anchor => [anchor.path, anchor.status]),
+      [['model', 'updated'], ['custom_providers[0]', 'updated']]
+    )
+    assert.deepEqual(sync.catalog.anchors, [
+      { path: 'model', status: 'in-sync' },
+      { path: 'custom_providers[0]', status: 'updated' }
+    ])
+    assert.equal(valueAt(sync.next, 'model'), ACTIVE)
+    assert.equal(valueAt(sync.next, 'custom_providers[0]'), ACTIVE)
+    assert.match(sync.next, /name: "APEX"\r\n/)
+    assert.match(sync.next, /discover_models: true\r\n/)
+    assert.equal((sync.next.match(/deepseek-v4-flash/g) || []).length, 3, 'the one-model cache is preserved')
+    assert.equal(/[^\r]\n/.test(sync.next), false, 'Windows CRLF must be preserved')
+    assert.equal(syncManagedRelayConfigYaml(sync.next, RELAY_BASE, ACTIVE).changed, false)
+  })
+
   test('a user-owned endpoint explicitly disabling discovery is not rewritten', () => {
     const userOwned =
-      `providers:\n  private-gateway:\n    name: My private gateway\n    base_url: ${RELAY_BASE}\n` +
+      'providers:\n  private-gateway:\n    name: My private gateway\n    base_url: https://my-endpoint.example/v1\n' +
       `    api_key: ${ACTIVE}\n    discover_models: false\n    model: private-only\n`
 
     const sync = syncManagedCatalogDiscoveryYaml(userOwned, RELAY_BASE, ACTIVE)
