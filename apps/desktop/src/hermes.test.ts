@@ -15,6 +15,7 @@ import {
   getProfiles,
   getSessionMessages,
   getStatus,
+  getUsageAnalytics,
   listAllProfileSessions,
   listSessions,
   listSidebarSessions,
@@ -58,6 +59,20 @@ describe('Hermes REST helpers', () => {
         path: '/api/sessions?limit=50&offset=0&min_messages=1&archived=exclude&order=recent',
         timeoutMs: 60_000
       })
+    )
+  })
+
+  it('keeps analytics requests within the backend day-range contract', async () => {
+    await getUsageAnalytics(370)
+    await getUsageAnalytics(0)
+
+    expect(api).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ path: '/api/analytics/usage?days=365' })
+    )
+    expect(api).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ path: '/api/analytics/usage?days=1' })
     )
   })
 

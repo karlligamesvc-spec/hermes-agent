@@ -1441,9 +1441,11 @@ export function getProfileSetupCommand(name: string): Promise<ProfileSetupComman
 }
 
 export function getUsageAnalytics(days = 30): Promise<AnalyticsResponse> {
+  const boundedDays = Math.min(365, Math.max(1, Math.floor(days)))
+
   return window.hermesDesktop.api<AnalyticsResponse>({
     ...profileScoped(),
-    path: `/api/analytics/usage?days=${Math.max(1, Math.floor(days))}`
+    path: `/api/analytics/usage?days=${boundedDays}`
   })
 }
 
