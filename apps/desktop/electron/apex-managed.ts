@@ -61,6 +61,7 @@ import {
   maskRelayKey,
   parseYamlMaps,
   persistRelayKeyToConfigYaml,
+  syncManagedCatalogDiscoveryYaml,
   syncManagedRelayKeyYaml
 } from './apex-relay-key-anchors'
 
@@ -1753,6 +1754,7 @@ export {
   seedSkillsBlockYaml,
   seedWebGatewayBlockYaml,
   shouldAttemptReprovision,
+  syncManagedCatalogDiscoveryYaml,
   syncManagedRelayKeyYaml,
   WEB_LOGIN_PATH
 }

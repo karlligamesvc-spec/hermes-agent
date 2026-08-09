@@ -21,9 +21,11 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 
 from hermes_cli.inventory import (
     ConfigContext,
+    build_model_options_payload,
     build_models_payload,
     load_picker_context,
 )
@@ -121,6 +123,58 @@ def test_cli_model_picker_forwards_force_refresh_to_probe_flags():
         )
     assert mock_list.call_args.kwargs["probe_custom_providers"] is True
     assert mock_list.call_args.kwargs["probe_current_custom_provider"] is False
+
+
+@pytest.mark.parametrize("refresh", [False, True])
+@pytest.mark.parametrize("explicit_only", [False, True])
+def test_hc705_managed_model_options_keeps_all_12_live_models(monkeypatch, refresh, explicit_only):
+    """The desktop-managed config must drive a live 12-model relay catalog.
+
+    This exercises the shared payload behind both JSON-RPC ``model.options``
+    and REST ``/api/model/options`` in the four combinations captured by the
+    Windows UAT.  The on-disk fallback deliberately contains one model: only a
+    real discovery probe can make this assertion pass.
+    """
+    relay_url = "https://apex-nodes.com/relay/v1"
+    live_models = ["deepseek-v4-flash"] + [f"apex-live-{index}" for index in range(2, 13)]
+    probes = []
+
+    def _fetch(api_key, base_url, **_kwargs):
+        probes.append((api_key, base_url))
+        return live_models
+
+    monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
+    monkeypatch.setattr("hermes_cli.providers.HERMES_OVERLAYS", {})
+    monkeypatch.setattr("hermes_cli.models.fetch_api_models", _fetch)
+    monkeypatch.setattr(
+        "hermes_cli.model_switch._save_discovered_models_to_config",
+        lambda *_args, **_kwargs: None,
+    )
+    ctx = ConfigContext(
+        current_provider="custom:apex-nodes.com",
+        current_model="deepseek-v4-flash",
+        current_base_url=relay_url,
+        user_providers={},
+        custom_providers=[{
+            "name": "Apex-nodes.com",
+            "base_url": relay_url,
+            "api_key": "sk-managed-test",
+            "model": "deepseek-v4-flash",
+            "models": {"deepseek-v4-flash": {}},
+            "discover_models": True,
+        }],
+    )
+
+    payload = build_model_options_payload(
+        ctx,
+        refresh=refresh,
+        explicit_only=explicit_only,
+    )
+    managed = next(row for row in payload["providers"] if row.get("api_url") == relay_url)
+
+    assert managed["models"] == live_models
+    assert managed["total_models"] == 12
+    assert probes == [("sk-managed-test", relay_url)]
 
 
 def test_list_authenticated_providers_force_fresh_is_keyword_only():
@@ -509,7 +563,5 @@ def _apply_featured_with_dates(rows, dates: dict[str, str]):
 
     with patch("agent.models_dev.get_model_info", side_effect=_fake_get_model_info):
         inventory._apply_featured(rows)
-
-
 
 
