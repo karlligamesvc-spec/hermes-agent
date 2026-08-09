@@ -222,6 +222,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   updateCenter: {
     getPlan: () => ipcRenderer.invoke('hermes:update-center:plan:get'),
     setRuntimeAfterShell: payload => ipcRenderer.invoke('hermes:update-center:plan:set-runtime-after-shell', payload),
+    setShellOnly: payload => ipcRenderer.invoke('hermes:update-center:plan:set-shell-only', payload),
+    transitionPlan: payload => ipcRenderer.invoke('hermes:update-center:plan:transition', payload),
     clearPlan: () => ipcRenderer.invoke('hermes:update-center:plan:clear')
   },
   api: request => ipcRenderer.invoke('hermes:api', request),
