@@ -11043,8 +11043,16 @@ function runBundledTool(exe, argv, label) {
   })
 }
 
-function bundleRuntimeDownload({ url, dest, sha256, size }: any) {
-  return downloadWithResume({ url, dest, sha256, size, log: msg => rememberLog(msg) })
+function broadcastRuntimeUpdateProgress(payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('hermes:runtime-update:progress', payload)
+    }
+  }
+}
+
+function bundleRuntimeDownload({ url, dest, sha256, size, onProgress }: any) {
+  return downloadWithResume({ url, dest, sha256, size, onProgress, log: msg => rememberLog(msg) })
 }
 
 // Startup self-heal: rebuild the active link from the truth pointer (a switch or
@@ -11103,6 +11111,7 @@ async function applyRuntimeBundleUpdateFlow(pin): Promise<any> {
     download: bundleRuntimeDownload,
     extract: extractBundleArchive,
     runTool: runBundledTool,
+    onProgress: broadcastRuntimeUpdateProgress,
     log: msg => rememberLog(msg)
   })
 }

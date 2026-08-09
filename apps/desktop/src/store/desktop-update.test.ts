@@ -100,6 +100,43 @@ describe('desktop update orchestration', () => {
     expect($desktopUpdateProgress.get().currentStage).toBe('restart')
   })
 
+  it('mirrors real runtime download bytes while the main-process apply is active', async () => {
+    const controls: {
+      emitProgress?: (progress: { attempt: number; phase: 'downloading'; received: number; total: number }) => void
+      finishApply?: (result: { applied: true; ok: true; reloadRequired: false }) => void
+    } = {}
+    const applyResult = new Promise<{ applied: true; ok: true; reloadRequired: false }>(resolve => {
+      controls.finishApply = resolve
+    })
+
+    $runtimeUpdateCheck.set(RUNTIME_UPDATE)
+    window.hermesDesktop = {
+      runtime: {
+        applyUpdate: vi.fn(() => applyResult),
+        onUpdateProgress: vi.fn(callback => {
+          controls.emitProgress = callback
+
+          return () => {}
+        })
+      }
+    } as unknown as typeof window.hermesDesktop
+
+    const applying = applyDesktopUpdates({ reload: vi.fn() })
+
+    await vi.waitFor(() => expect(window.hermesDesktop.runtime.applyUpdate).toHaveBeenCalledTimes(1))
+    controls.emitProgress?.({ attempt: 2, phase: 'downloading', received: 256, total: 1024 })
+
+    expect($desktopUpdateProgress.get().runtimeProgress).toEqual({
+      attempt: 2,
+      phase: 'downloading',
+      received: 256,
+      total: 1024
+    })
+
+    controls.finishApply?.({ applied: true, ok: true, reloadRequired: false })
+    await applying
+  })
+
   it('persists a continuation before installing a shell required by the runtime', async () => {
     const order: string[] = []
 

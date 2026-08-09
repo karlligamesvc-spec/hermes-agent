@@ -364,6 +364,7 @@ async function stageAndCommitBundle(o) {
  * @param {number} [o.minFreeBytes]    C2 install free-space floor override
  * @param {string[]} [o.migrateMarkers] D1 data-location assertion marker override
  * @param {(msg:string)=>void} [o.log]
+ * @param {(event:{phase:string,received?:number,total?:number|null,attempt?:number})=>void} [o.onProgress]
  * @param {(event:object) => any} [o.sendTelemetry] hc-473 anonymous beacon
  *   emitter, defaults to the real apexnodes-telemetry.ts; tests inject a
  *   fake to capture events without touching the network. Fires around the
@@ -397,6 +398,7 @@ async function applyBundleUpdate(o) {
     minFreeBytes,
     migrateMarkers,
     log = () => {},
+    onProgress = () => {},
     sendTelemetry = sendDesktopTelemetry
   } = o
 
@@ -409,10 +411,20 @@ async function applyBundleUpdate(o) {
   // normalization needed (unlike bootstrap-runner/shell-updater, which start
   // from raw process.platform).
   const telemetryBase = { platform: os, arch, app_version: desktopVersion || null, runtime_key: key }
+  const reportProgress = event => {
+    try {
+      onProgress(event)
+    } catch {
+      // Progress is advisory. A closed renderer must not turn a valid runtime
+      // update into a failed install.
+      void 0
+    }
+  }
 
   try {
     // 1. Manifest first (small): schema + platform match + compat gate BEFORE we
     //    pull ~0.6 GB.
+    reportProgress({ phase: 'preflight' })
     const raw = await fetchManifest(cos.manifestUrl)
     const manifest = parseBundleManifest(raw)
 
@@ -467,6 +479,7 @@ async function applyBundleUpdate(o) {
     const downloadDir = o.downloadDir || path.join(paths.versionsDir, '.downloads')
     const archivePath = path.join(downloadDir, archiveName)
     log(`[bundle-install] downloading ${archiveName}`)
+    reportProgress({ phase: 'downloading', received: 0, total: manifest.archive.size, attempt: 1 })
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'download', status: STATUS_START })
 
     try {
@@ -474,7 +487,8 @@ async function applyBundleUpdate(o) {
         url: cos.objectUrl(archiveName),
         dest: archivePath,
         sha256: manifest.archive.sha256,
-        size: manifest.archive.size
+        size: manifest.archive.size,
+        onProgress: event => reportProgress({ phase: 'downloading', ...event })
       })
     } catch (err: any) {
       fireTelemetry(sendTelemetry, {
@@ -491,6 +505,7 @@ async function applyBundleUpdate(o) {
     // 3. Stage → fixup → verify → atomic commit (F2). Telemetered as one
     //    outer "verify" stage — extract/fixup/verify are its internal
     //    sub-steps, not separately beaconed (see this function's own JSDoc).
+    reportProgress({ phase: 'verifying' })
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'verify', status: STATUS_START })
     let staged
 
@@ -515,6 +530,7 @@ async function applyBundleUpdate(o) {
     //    migrate-or-switch composite is telemetered as the one `switch` stage —
     //    a D1 migration failure surfaces via this beacon's error_code (its
     //    sw.reason, e.g. `switch:user-data-in-runtime-dir`).
+    reportProgress({ phase: 'activating' })
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_START })
     const sw = migrate.switchToVersionOrMigrate(hermesHome, key, { platform, markers: migrateMarkers, log })
 
@@ -547,6 +563,8 @@ async function applyBundleUpdate(o) {
     } catch {
       gc = null
     }
+
+    reportProgress({ phase: 'complete' })
 
     return { ok: true, key, versionDir: staged.versionDir, runtimeCommit: manifest.runtime_commit || null, switched: sw, gc }
   } catch (err: any) {

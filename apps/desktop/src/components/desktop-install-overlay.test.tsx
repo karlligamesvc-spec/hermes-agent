@@ -70,6 +70,7 @@ afterEach(() => {
     completedStages: [],
     currentStage: null,
     error: null,
+    runtimeProgress: null,
     stages: [],
     targetVersion: null
   })
@@ -112,6 +113,7 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
         completedStages: ['check', 'shell'],
         currentStage: 'runtime',
         error: null,
+        runtimeProgress: { attempt: 1, phase: 'downloading', received: 512 * 1024 * 1024, total: 1024 * 1024 * 1024 },
         stages: ['check', 'shell', 'runtime', 'restart'],
         targetVersion: 'v2026.8.8-fork.abc123'
       })
@@ -125,6 +127,31 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
       expect(screen.getByText('AI engine')).toBeTruthy()
       expect(screen.getByText('Restart APEX')).toBeTruthy()
       expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('63')
+      expect(screen.getByText('512 MB / 1.0 GB')).toBeTruthy()
+    } finally {
+      desktop.restore()
+    }
+  })
+
+  it('uses indeterminate progress when verify/activate has no trustworthy percentage', async () => {
+    const desktop = stubDesktop()
+
+    try {
+      $desktopUpdateProgress.set({
+        active: true,
+        completedStages: ['check', 'shell'],
+        currentStage: 'runtime',
+        error: null,
+        runtimeProgress: { phase: 'verifying' },
+        stages: ['check', 'shell', 'runtime', 'restart'],
+        targetVersion: 'v2026.8.8-fork.abc123'
+      })
+
+      render(<DesktopInstallOverlay />)
+      await act(async () => {})
+
+      expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull()
+      expect(screen.queryByText(/%$/)).toBeNull()
     } finally {
       desktop.restore()
     }

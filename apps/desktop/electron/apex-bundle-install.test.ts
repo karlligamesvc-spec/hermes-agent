@@ -386,6 +386,34 @@ test('applyBundleUpdate: full success downloads, commits, switches, GCs', { skip
   }
 })
 
+test('applyBundleUpdate: emits durable stage changes and forwards download bytes', { skip: process.platform === 'win32' }, async () => {
+  const home = mkHome()
+  const progress: any[] = []
+
+  try {
+    const deps = baseDeps(home)
+    const originalDownload = deps.download
+
+    deps.onProgress = event => progress.push(event)
+    deps.download = async options => {
+      options.onProgress({ attempt: 1, received: 512, total: 1024 })
+
+      return originalDownload(options)
+    }
+
+    const result = await install.applyBundleUpdate(deps)
+
+    assert.equal(result.ok, true)
+    assert.deepEqual(
+      progress.map(event => event.phase),
+      ['preflight', 'downloading', 'downloading', 'verifying', 'activating', 'complete']
+    )
+    assert.deepEqual(progress[2], { attempt: 1, phase: 'downloading', received: 512, total: 1024 })
+  } finally {
+    rm(home)
+  }
+})
+
 test('applyBundleUpdate: min_desktop_version too-new rejects BEFORE downloading', async () => {
   const home = mkHome()
 

@@ -203,7 +203,13 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     // No network / no state change — the About panel calls this on open.
     getVersion: () => ipcRenderer.invoke('hermes:runtime:version'),
     checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
-    applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update')
+    applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update'),
+    onUpdateProgress: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:runtime-update:progress', listener)
+
+      return () => ipcRenderer.removeListener('hermes:runtime-update:progress', listener)
+    }
   },
   // 壳(Electron 应用本体)自更新 — electron-updater,和上面的引擎(runtime)
   // 更新是两条通道。机制全在主进程(electron/shell-updater.cjs):静默检查+

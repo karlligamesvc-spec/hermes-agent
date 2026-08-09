@@ -87,7 +87,7 @@ function sha256File(file) {
  *   - rejects (BundleDownloadError) on network/stream/status errors, leaving the
  *     partial file intact for the next resume.
  */
-function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Promise<any> {
+function fetchRange({ url, partPath, fromOffset, headers, timeoutMs, onProgress }: any): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -157,6 +157,16 @@ function fetchRange({ url, partPath, fromOffset, headers, timeoutMs }: any): Pro
       let bytesWritten = 0
       res.on('data', chunk => {
         bytesWritten += chunk.length
+
+        if (onProgress) {
+          try {
+            onProgress({ bytesWritten, restarted })
+          } catch {
+            // Progress is observational. A renderer/window disappearing while
+            // the main process downloads must never abort or corrupt the file.
+            void 0
+          }
+        }
       })
       res.on('error', fail)
       out.on('error', fail)
@@ -219,6 +229,17 @@ async function downloadWithResume(o) {
 
   const partPath = `${dest}.part`
   fs.mkdirSync(path.dirname(dest), { recursive: true })
+  const reportProgress = event => {
+    if (!onProgress) {return}
+
+    try {
+      onProgress(event)
+    } catch {
+      // A UI observer is not part of the integrity path. Never let it abort a
+      // valid transfer or discard resumable bytes.
+      void 0
+    }
+  }
 
   let lastErr = null
 
@@ -237,7 +258,23 @@ async function downloadWithResume(o) {
     try {
       if (!alreadyComplete) {
         log(`[bundle-download] attempt ${attempt}/${maxAttempts} from byte ${have}${expectedSize ? `/${expectedSize}` : ''}`)
-        const res = await fetchRange({ url, partPath, fromOffset: have, headers, timeoutMs })
+
+        reportProgress({ received: have, total: expectedSize || null, attempt })
+
+        const res = await fetchRange({
+          url,
+          partPath,
+          fromOffset: have,
+          headers,
+          timeoutMs,
+          onProgress: ({ bytesWritten, restarted }) => {
+            reportProgress({
+              received: (restarted ? 0 : have) + bytesWritten,
+              total: expectedSize || null,
+              attempt
+            })
+          }
+        })
 
         if (res.rangeUnsatisfiable) {
           // 416 = our offset is at/after EOF, i.e. the part is already (at least)
@@ -247,10 +284,7 @@ async function downloadWithResume(o) {
           void 0
         }
 
-        if (onProgress) {
-          const received = fileSizeOr0(partPath)
-          onProgress({ received, total: expectedSize || null, attempt })
-        }
+        reportProgress({ received: fileSizeOr0(partPath), total: expectedSize || null, attempt })
       }
 
       // ── integrity gate ────────────────────────────────────────────────────
