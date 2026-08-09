@@ -1,6 +1,6 @@
 # hc-690 — Desktop 统一安装与更新中心
 
-> 状态：第一批实现完成，待 PR CI 与 Mac/Windows 正式包真机验收
+> 状态：第一批已随 APEX 0.17.14 正式发布并完成 Mac/Windows 真机升级验收；第二批可靠性实现中
 > 日期：2026-08-08
 > 产品决策：首次安装、Desktop 壳更新、Hermes Runtime 更新共用一个用户入口、一个进度界面和一条可恢复更新流程；底层产物继续独立发布与回滚。
 > 边界：不修改 hc-685 Desktop vNext 原型。
@@ -19,6 +19,13 @@
 - 覆盖英文、简中、繁中、日文、阿拉伯文，并新增入口身份守卫与跨重启编排测试。
 
 下列内容仍是本文件定义的目标架构，不在第一批 PR 冒充完成：完整 durable plan 状态机、真实字节级联合进度、下载取消、磁盘预检、损坏计划隔离、Shell-only 重启后版本读回、全故障矩阵与签名正式包真机验收。真机验收结果必须回填本文件和飞书 PD 后才能把 hc-690 标为完成。
+
+第二批已实现、待下一正式 Desktop 版本发布验收：
+
+- durable plan 新增 plan id、创建/更新时间、当前/目标壳与引擎版本、阶段、恢复次数和有界错误；兼容读取第一批 0.17.14 写出的最小 schema；
+- Shell-only 也在 native install 前持久化计划，新壳启动后用 `app.getVersion()` 与本地 Runtime marker 读回冻结目标，未命中时保留计划并记录失败；
+- 截断 JSON、未知 schema 等损坏计划会原子改名到 `.corrupt-*` 诊断文件并 fail-open，不阻塞 Desktop 启动；
+- 恢复开始/失败 transition 写回主进程 authority，renderer 退出后仍可诊断。
 
 ## 1. 问题与目标
 
@@ -198,7 +205,7 @@ idle
 
 - [ ] 首装只出现统一进度界面，成功后进入应用。
 - [x] Runtime-only 只有一个入口和一次确认（组件与编排测试）。
-- [ ] Shell-only 只有一个入口，退出重启一次后版本读回正确（入口已完成，真机读回待验）。
+- [x] Shell-only 只有一个入口；0.17.13 → 0.17.14 真机均只重启一次且版本读回正确；第二批已补主进程 durable readback，待下一版本验证自动清计划。
 - [x] Shell+Runtime 只有一个入口和一次确认，编排只触发一次完整应用重启（单测）。
 - [x] Runtime 要求新 shell 时先壳后引擎，旧壳不激活不兼容 Runtime（单测）。
 - [ ] Runtime 不要求新 shell 时允许预下载/暂存，重启后快速完成。
@@ -212,17 +219,27 @@ idle
 - [ ] 低磁盘、只读目录、pointer 切换失败。
 - [ ] `quitAndInstall` 抛错。
 - [ ] 下载、staging、重启前、重启后各阶段强杀进程并恢复。
-- [x] durable plan 被截断或 schema 超前会被拒绝，不阻塞启动；损坏文件隔离待补。
+- [x] durable plan 被截断或 schema 超前会被拒绝并隔离为 `.corrupt-*`，不阻塞启动。
 - [x] 撤掉跨重启恢复逻辑后对应编排测试会变红。
 - [x] 撤掉“不兼容 Runtime 不激活”门禁后对应编排测试会变红。
 - [x] 注入旧上游双入口后 identity/入口守卫会变红。
 
 ### 8.3 平台
 
-- [ ] macOS arm64 全新空环境与升级。
-- [ ] macOS x64 构建契约与至少打包 smoke。
-- [ ] Windows x64 全新空环境与升级。
-- [ ] 打包产物验证，不使用预置好状态自证。
+- [x] macOS arm64 正式签名、公证包从 0.17.12 → 0.17.13 → 0.17.14 连续升级，配置与工作数据哈希保持。
+- [x] macOS x64 正式签名、公证、Gatekeeper 与发布 feed 通过（无独立 x64 真机）。
+- [x] Windows x64 正式发布包从 0.17.12 → 0.17.13 → 0.17.14 连续升级，配置与工作数据哈希保持；安装包当前仍未签名。
+- [x] 使用 COS 正式 feed 与已安装打包产物验证，不使用源码/dev server 或预置更新状态自证。
+
+### 8.4 APEX 0.17.14 正式发布验收（2026-08-09）
+
+- fork PR #225 合并提交：`be676eec4188e250132f003ea0508f0b2cb7277f`；
+- macOS workflow `31310234192`：arm64/x64 build、签名、公证、Gatekeeper、GitHub artifact 与 COS feed 全部成功；
+- Windows workflow `31310235831`：x64 build、完整性门禁与 COS feed 成功；安装包未签名，保持为已知发布边界；
+- 三份正式 feed 均为 `0.17.14`：`mac-arm64/latest-mac.yml`、`mac-x64/latest-mac.yml`、`win-x64/latest.yml`；
+- Mac 真机：Help → Check for Updates 实际进入 `#/command-center?section=system`，显示 `AI 引擎 0.20.0`；`codesign --deep --strict` 与 `spctl` 均通过；
+- Windows 真机：0.17.14 asar `package.json` 版本读回正确，统一系统页显示 `AI 引擎 0.20.0`，五项稳定配置哈希与升级前一致；
+- COS 对 multi-range 返回包 MIME 而非 `multipart/byteranges`，因此 0.17.13 → 0.17.14 仍回退完整包；0.17.14 已配置 sequential single-range，必须在下一正式版本的真实升级中闭环，不能提前标记实机通过。
 
 ## 9. 交付与发布
 

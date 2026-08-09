@@ -205,6 +205,7 @@ import {
 import {
   clearDesktopUpdatePlan,
   readDesktopUpdatePlan,
+  transitionDesktopUpdatePlan,
   writeDesktopUpdatePlan
 } from './desktop-update-plan'
 import { installEmbedReferer } from './embed-referer'
@@ -10696,11 +10697,23 @@ function initShellUpdater() {
 const RUNTIME_PIN_OVERRIDE_PATH = path.join(HERMES_HOME, '.apexnodes-runtime-override.json')
 const DESKTOP_UPDATE_PLAN_PATH = path.join(HERMES_HOME, '.apexnodes-desktop-update-plan.json')
 
-ipcMain.handle('hermes:update-center:plan:get', async () => readDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH))
+function readDurableDesktopUpdatePlan() {
+  return readDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
+    quarantineInvalid: true,
+    onQuarantine: (quarantinePath, reason) =>
+      rememberLog(`[update-center] quarantined invalid plan (${reason}): ${quarantinePath}`)
+  })
+}
+
+ipcMain.handle('hermes:update-center:plan:get', async () => readDurableDesktopUpdatePlan())
 ipcMain.handle('hermes:update-center:plan:set-runtime-after-shell', async (_event, payload = {}) => {
   try {
     const plan = writeDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
       kind: 'runtime-after-shell',
+      currentShellVersion: app.getVersion(),
+      currentRuntimeKey: payload?.currentRuntimeKey,
+      currentRuntimeVersion: payload?.currentRuntimeVersion,
+      targetRuntimeKey: payload?.targetRuntimeKey,
       targetShellVersion: payload?.targetShellVersion,
       targetRuntimeVersion: payload?.targetRuntimeVersion
     })
@@ -10711,6 +10724,53 @@ ipcMain.handle('hermes:update-center:plan:set-runtime-after-shell', async (_even
     )
 
     return { ok: true, plan }
+  } catch (error: any) {
+    return { ok: false, error: (error && error.message) || String(error) }
+  }
+})
+ipcMain.handle('hermes:update-center:plan:set-shell-only', async (_event, payload = {}) => {
+  try {
+    const plan = writeDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
+      kind: 'shell-only',
+      currentShellVersion: app.getVersion(),
+      currentRuntimeKey: payload?.currentRuntimeKey,
+      currentRuntimeVersion: payload?.currentRuntimeVersion,
+      targetRuntimeKey: payload?.targetRuntimeKey,
+      targetShellVersion: payload?.targetShellVersion,
+      targetRuntimeVersion: payload?.targetRuntimeVersion
+    })
+
+    rememberLog(
+      `[update-center] armed shell-only plan: shell=${plan.currentShellVersion || '?'} -> ` +
+        `${plan.targetShellVersion || '?'}`
+    )
+
+    return { ok: true, plan }
+  } catch (error: any) {
+    return { ok: false, error: (error && error.message) || String(error) }
+  }
+})
+ipcMain.handle('hermes:update-center:plan:transition', async (_event, payload = {}) => {
+  try {
+    if (!['failed', 'ready-to-restart', 'resuming'].includes(payload?.phase)) {
+      return { ok: false, error: 'invalid_plan_phase' }
+    }
+
+    const plan = transitionDesktopUpdatePlan(
+      DESKTOP_UPDATE_PLAN_PATH,
+      {
+        incrementAttempt: payload?.incrementAttempt === true,
+        lastError: payload?.lastError,
+        phase: payload.phase
+      },
+      {
+        quarantineInvalid: true,
+        onQuarantine: (quarantinePath, reason) =>
+          rememberLog(`[update-center] quarantined invalid plan (${reason}): ${quarantinePath}`)
+      }
+    )
+
+    return plan ? { ok: true, plan } : { ok: false, error: 'plan_not_found' }
   } catch (error: any) {
     return { ok: false, error: (error && error.message) || String(error) }
   }

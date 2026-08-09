@@ -263,8 +263,23 @@ declare global {
       updateCenter?: {
         getPlan: () => Promise<DesktopUpdatePlan | null>
         setRuntimeAfterShell: (payload: {
+          currentRuntimeKey?: string | null
+          currentRuntimeVersion?: string | null
+          targetRuntimeKey?: string | null
           targetShellVersion: string | null
           targetRuntimeVersion: string | null
+        }) => Promise<{ ok: boolean; error?: string; plan?: DesktopUpdatePlan }>
+        setShellOnly: (payload: {
+          currentRuntimeKey?: string | null
+          currentRuntimeVersion?: string | null
+          targetRuntimeKey?: string | null
+          targetShellVersion: string | null
+          targetRuntimeVersion?: string | null
+        }) => Promise<{ ok: boolean; error?: string; plan?: DesktopUpdatePlan }>
+        transitionPlan: (payload: {
+          phase: DesktopUpdatePlanPhase
+          lastError?: string | null
+          incrementAttempt?: boolean
         }) => Promise<{ ok: boolean; error?: string; plan?: DesktopUpdatePlan }>
         clearPlan: () => Promise<{ ok: boolean }>
       }
@@ -1478,11 +1493,24 @@ export interface DesktopShellUpdateState {
 
 export interface DesktopUpdatePlan {
   schemaVersion: 1
-  kind: 'runtime-after-shell'
+  planId: string | null
+  kind: DesktopUpdatePlanKind
+  phase: DesktopUpdatePlanPhase
   requestedAt: string
+  createdAt: string
+  updatedAt: string
+  currentShellVersion: string | null
   targetShellVersion: string | null
+  currentRuntimeKey: string | null
+  currentRuntimeVersion: string | null
+  targetRuntimeKey: string | null
   targetRuntimeVersion: string | null
+  attempts: number
+  lastError: string | null
 }
+
+export type DesktopUpdatePlanKind = 'runtime-after-shell' | 'shell-only'
+export type DesktopUpdatePlanPhase = 'failed' | 'ready-to-restart' | 'resuming'
 
 // hc-452: distinguishes a re-bootstrap for an opt-in runtime version UPDATE
 // (main.cjs's hermes:runtime:apply-update dropped the marker and re-runs the

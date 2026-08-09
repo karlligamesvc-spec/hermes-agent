@@ -65,6 +65,31 @@ function runtimeTarget(check: DesktopRuntimeUpdateCheck | null): string | null {
   return check?.latest?.version ?? check?.latest?.key ?? null
 }
 
+function runtimeCurrent(check: DesktopRuntimeUpdateCheck | null): string | null {
+  return check?.current?.version ?? check?.current?.key ?? null
+}
+
+function runtimeCurrentKey(check: DesktopRuntimeUpdateCheck | null): string | null {
+  return check?.current?.key ?? null
+}
+
+function runtimeTargetKey(check: DesktopRuntimeUpdateCheck | null): string | null {
+  return check?.latest?.key ?? null
+}
+
+async function transitionPlanSafely(payload: {
+  phase: 'failed' | 'ready-to-restart' | 'resuming'
+  lastError?: string | null
+  incrementAttempt?: boolean
+}): Promise<void> {
+  try {
+    await window.hermesDesktop?.updateCenter?.transitionPlan?.(payload)
+  } catch {
+    // The transition is diagnostic state. A broken IPC bridge must not mask
+    // the original update failure or prevent the current app from staying up.
+  }
+}
+
 function shellReady(state: DesktopShellUpdateState | null): boolean {
   return state?.phase === 'downloaded'
 }
@@ -124,6 +149,9 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       }
 
       const result = await window.hermesDesktop?.updateCenter?.setRuntimeAfterShell({
+        currentRuntimeKey: runtimeCurrentKey(runtime),
+        currentRuntimeVersion: runtimeCurrent(runtime),
+        targetRuntimeKey: runtimeTargetKey(runtime),
         targetRuntimeVersion: runtimeTarget(runtime),
         targetShellVersion: shell?.version ?? null
       })
@@ -151,6 +179,18 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
     }
 
     if (needsShell) {
+      const result = await window.hermesDesktop?.updateCenter?.setShellOnly({
+        currentRuntimeKey: runtimeCurrentKey(runtime),
+        currentRuntimeVersion: runtimeCurrent(runtime),
+        targetRuntimeKey: runtime?.updateAvailable ? runtimeTargetKey(runtime) : runtimeCurrentKey(runtime),
+        targetRuntimeVersion: runtime?.updateAvailable ? runtimeTarget(runtime) : runtimeCurrent(runtime),
+        targetShellVersion: shell?.version ?? null
+      })
+
+      if (!result?.ok) {
+        throw new Error(result?.error || 'failed_to_persist_update_plan')
+      }
+
       await installShellUpdate()
 
       return
@@ -164,10 +204,16 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
 
     setProgress({ active: false, completedStages: stages, currentStage: null })
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    await transitionPlanSafely({
+      lastError: message,
+      phase: 'failed'
+    })
     setProgress({
       active: false,
       currentStage: null,
-      error: error instanceof Error ? error.message : String(error)
+      error: message
     })
     throw error
   }
@@ -188,6 +234,8 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
       return
     }
 
+    await transitionPlanSafely({ incrementAttempt: true, phase: 'resuming' })
+
     setProgress({
       active: true,
       completedStages: ['check', 'shell'],
@@ -206,6 +254,28 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
         comparableVersion(runningDesktop.appVersion) !== comparableVersion(plan.targetShellVersion)
       ) {
         throw new Error('shell_target_not_running')
+      }
+
+      if (plan.kind === 'shell-only') {
+        if (plan.targetRuntimeKey || plan.targetRuntimeVersion) {
+          const runningRuntime = await loadRuntimeVersion()
+          const targetRuntime = plan.targetRuntimeKey ?? plan.targetRuntimeVersion
+          const runningRuntimeIdentity = plan.targetRuntimeKey ? runningRuntime.key : runningRuntime.version
+
+          if (comparableVersion(runningRuntimeIdentity) !== comparableVersion(targetRuntime)) {
+            throw new Error('runtime_target_not_active')
+          }
+        }
+
+        await bridge?.clearPlan()
+        setProgress({
+          active: false,
+          completedStages: ['check', 'shell', 'restart'],
+          currentStage: null,
+          stages: ['check', 'shell', 'restart']
+        })
+
+        return
       }
 
       const runtime = await checkRuntimeUpdate()
@@ -245,10 +315,13 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
         setProgress({ active: false, completedStages: ['check', 'shell', 'runtime', 'restart'], currentStage: null })
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
+      await transitionPlanSafely({ lastError: message, phase: 'failed' })
       setProgress({
         active: false,
         currentStage: null,
-        error: error instanceof Error ? error.message : String(error)
+        error: message
       })
     }
   })().finally(() => {
@@ -264,9 +337,41 @@ export function dismissDesktopUpdateError(): void {
 
 export async function retryDesktopUpdate(options: { reload?: () => void } = {}): Promise<void> {
   dismissDesktopUpdateError()
-  const plan = await window.hermesDesktop?.updateCenter?.getPlan()
+  const bridge = window.hermesDesktop?.updateCenter
+  const plan = await bridge?.getPlan()
 
   if (plan) {
+    if (plan.kind === 'shell-only') {
+      const runningDesktop = await window.hermesDesktop?.getVersion?.()
+
+      if (
+        plan.targetShellVersion &&
+        comparableVersion(runningDesktop?.appVersion) !== comparableVersion(plan.targetShellVersion)
+      ) {
+        await checkShellUpdate()
+        const shell = $shellUpdate.get()
+
+        if (!shellReady(shell) || comparableVersion(shell?.version) !== comparableVersion(plan.targetShellVersion)) {
+          await transitionPlanSafely({ lastError: 'shell_update_not_ready', phase: 'failed' })
+          setProgress({ active: false, currentStage: null, error: 'shell_update_not_ready' })
+          throw new Error('shell_update_not_ready')
+        }
+
+        await transitionPlanSafely({ phase: 'ready-to-restart' })
+        setProgress({
+          active: true,
+          completedStages: ['check', 'shell'],
+          currentStage: 'restart',
+          error: null,
+          stages: ['check', 'shell', 'restart'],
+          targetVersion: plan.targetShellVersion
+        })
+        await installShellUpdate()
+
+        return
+      }
+    }
+
     await resumeDesktopUpdatePlan(options)
 
     return
