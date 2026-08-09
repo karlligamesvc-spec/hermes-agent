@@ -1,13 +1,15 @@
+import { useStore } from '@nanostores/react'
 import { type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { LogTail } from '@/components/chat/log-tail'
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SearchField } from '@/components/ui/search-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { ResponsiveTabs } from '@/components/ui/tab-dropdown'
 import { Tip } from '@/components/ui/tooltip'
-import { getActionStatus, getLogs, getStatus, getUsageAnalytics, restartGateway, updateHermes } from '@/hermes'
+import { getActionStatus, getLogs, getStatus, getUsageAnalytics, restartGateway } from '@/hermes'
 import type { ActionStatusResponse, AnalyticsResponse, StatusResponse } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
@@ -28,8 +30,11 @@ import { fmtDateTime } from '@/lib/time'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { upsertDesktopActionTask } from '@/store/activity'
+import { $desktopUpdateProgress, applyDesktopUpdates, checkDesktopUpdates } from '@/store/desktop-update'
 import { $pinnedSessionIds, pinSession, unpinSession } from '@/store/layout'
+import { $runtimeUpdateCheck } from '@/store/runtime-update'
 import { $sessions, sessionPinId } from '@/store/session'
+import { $shellUpdate } from '@/store/shell-update'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -151,11 +156,17 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
   const [systemLoading, setSystemLoading] = useState(false)
   const [systemError, setSystemError] = useState('')
   const [systemAction, setSystemAction] = useState<ActionStatusResponse | null>(null)
+  const [desktopUpdateChecking, setDesktopUpdateChecking] = useState(false)
+  const [desktopUpdateFeedback, setDesktopUpdateFeedback] = useState('')
+  const [desktopUpdateConfirmOpen, setDesktopUpdateConfirmOpen] = useState(false)
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>(30)
   const [usage, setUsage] = useState<AnalyticsResponse | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
   const [usageError, setUsageError] = useState('')
   const usageRequestRef = useRef(0)
+  const desktopUpdateProgress = useStore($desktopUpdateProgress)
+  const runtimeUpdate = useStore($runtimeUpdateCheck)
+  const shellUpdate = useStore($shellUpdate)
 
   const debouncedQuery = useDebouncedValue(query.trim(), 180)
 
@@ -262,11 +273,11 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
   }, [logQuery, logs])
 
   const runSystemAction = useCallback(
-    async (kind: 'restart' | 'update') => {
+    async () => {
       setSystemError('')
 
       try {
-        const started = kind === 'restart' ? await restartGateway() : await updateHermes()
+        const started = await restartGateway()
         let nextStatus: ActionStatusResponse | null = null
 
         for (let attempt = 0; attempt < 18; attempt += 1) {
@@ -301,6 +312,64 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
     },
     [cc, refreshSystem]
   )
+
+  const checkForDesktopUpdate = useCallback(async () => {
+    setDesktopUpdateChecking(true)
+    setDesktopUpdateFeedback('')
+    setSystemError('')
+
+    try {
+      const next = await checkDesktopUpdates()
+      const runtimeReady = Boolean(next.runtime.updateAvailable)
+      const runtimeNeedsNewShell = Boolean(next.runtime.desktopUpgradeRequired)
+      const shellReady = next.shell?.phase === 'downloaded'
+      const shellPreparing = next.shell?.phase === 'available' || next.shell?.phase === 'downloading'
+
+      if (next.shell?.phase === 'error' && !runtimeReady) {
+        setSystemError(next.shell.error || cc.desktopUpdateCheckFailed)
+
+        return
+      }
+
+      setDesktopUpdateFeedback(
+        shellReady || (runtimeReady && !runtimeNeedsNewShell)
+          ? cc.desktopUpdateReady
+          : shellPreparing
+            ? cc.desktopUpdatePreparing
+            : runtimeNeedsNewShell
+              ? cc.desktopUpdateNeedsShell
+              : cc.desktopUpToDate
+      )
+    } catch (error) {
+      setSystemError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setDesktopUpdateChecking(false)
+    }
+  }, [cc])
+
+  const shellUpdateReady = shellUpdate?.phase === 'downloaded'
+  const shellUpdatePreparing = shellUpdate?.phase === 'available' || shellUpdate?.phase === 'downloading'
+  const runtimeUpdateReady = Boolean(runtimeUpdate?.updateAvailable)
+  const runtimeWaitsForShell = Boolean(runtimeUpdate?.desktopUpgradeRequired)
+
+  const desktopUpdateReady =
+    (shellUpdateReady || runtimeUpdateReady) && (!runtimeWaitsForShell || shellUpdateReady)
+
+  const desktopUpdateButtonLabel = desktopUpdateProgress.active
+    ? t.sidebar.desktopUpdate.installing
+    : desktopUpdateReady
+      ? t.sidebar.desktopUpdate.installRestart
+      : desktopUpdateChecking
+        ? cc.checkingDesktopUpdate
+        : shellUpdatePreparing
+          ? cc.desktopUpdatePreparing
+          : cc.checkDesktopUpdate
+
+  const desktopUpdateStatusLine = desktopUpdateReady
+    ? cc.desktopUpdateReady
+    : shellUpdatePreparing
+      ? cc.desktopUpdatePreparing
+      : desktopUpdateFeedback
 
   const navGroups = useMemo(
     () =>
@@ -440,14 +509,29 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap max-[47.5rem]:whitespace-normal">
-                        <Button onClick={() => void runSystemAction('restart')} size="xs" variant="text">
+                        <Button onClick={() => void runSystemAction()} size="xs" variant="text">
                           {cc.restartGateway}
                         </Button>
-                        <Button onClick={() => void runSystemAction('update')} size="xs" variant="textStrong">
-                          {cc.updateHermes}
+                        <Button
+                          aria-busy={desktopUpdateProgress.active || desktopUpdateChecking || undefined}
+                          disabled={desktopUpdateProgress.active || desktopUpdateChecking || shellUpdatePreparing}
+                          onClick={() =>
+                            desktopUpdateReady
+                              ? setDesktopUpdateConfirmOpen(true)
+                              : void checkForDesktopUpdate()
+                          }
+                          size="xs"
+                          variant="textStrong"
+                        >
+                          {desktopUpdateButtonLabel}
                         </Button>
                       </div>
                     </div>
+                    {desktopUpdateStatusLine && (
+                      <div className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                        {desktopUpdateStatusLine}
+                      </div>
+                    )}
                     {systemAction && (
                       <div className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
                         {systemAction.name} ·{' '}
@@ -509,6 +593,17 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
           )}
         </OverlayMain>
       </OverlaySplitLayout>
+
+      <ConfirmDialog
+        busyLabel={t.sidebar.desktopUpdate.installing}
+        cancelLabel={t.common.cancel}
+        confirmLabel={t.sidebar.desktopUpdate.confirmApply}
+        description={t.sidebar.desktopUpdate.confirmBody}
+        onClose={() => setDesktopUpdateConfirmOpen(false)}
+        onConfirm={() => applyDesktopUpdates()}
+        open={desktopUpdateConfirmOpen}
+        title={t.sidebar.desktopUpdate.confirmTitle}
+      />
     </OverlayView>
   )
 }

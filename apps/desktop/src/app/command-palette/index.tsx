@@ -57,7 +57,6 @@ import {
 } from '@/lib/icons'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
-import { resolveVersionStatus } from '@/lib/version-status'
 import { $repoWorktrees } from '@/store/coding-status'
 import {
   $commandPaletteOpen,
@@ -69,16 +68,7 @@ import { $bindings, bindingsFor } from '@/store/keybinds'
 import { $dismissedAutoProjectIds, filterVisibleProjects } from '@/store/layout'
 import { openPetGenerate } from '@/store/pet-generate'
 import { $projectTree, goToProject, openFolderAsProject, requestStartWorkSession } from '@/store/projects'
-import { $connection } from '@/store/session'
 import { runGatewayRestart } from '@/store/system-actions'
-import {
-  $backendUpdateApply,
-  $backendUpdateStatus,
-  $desktopVersion,
-  $updateApply,
-  $updateStatus,
-  requestActiveUpdate
-} from '@/store/updates'
 import { canOpenNewWindow, openNewWindow } from '@/store/windows'
 import { luminance } from '@/themes/color'
 import { type ThemeMode, useTheme } from '@/themes/context'
@@ -480,13 +470,12 @@ function themeSupportsMode(name: string, target: 'light' | 'dark'): boolean {
  * the mounted cost of a CLOSED palette is one store subscription and nothing
  * else.
  *
- * Everything expensive — a dozen store subscriptions (connection, update
- * status/apply, keybinds, worktrees, projects, theme, i18n), three server
+ * Everything expensive — store subscriptions (keybinds, worktrees, projects,
+ * theme, i18n), three server
  * queries, and the group builders that assemble a few hundred rows — lives in
  * `CommandPaletteBody`, which only exists while the palette is on screen.
  * Before this split those hooks ran on every render of the always-mounted
- * component: an in-flight update rewrote `$updateApply` per progress line and
- * rebuilt the entire row set each time, for a surface nobody could see.
+ * component and rebuilt the entire row set for a surface nobody could see.
  *
  * `mounted` lags `open` by the close animation rather than tracking it exactly.
  * Unmounting the body the instant `open` flips false would rip the content out
@@ -545,35 +534,6 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
   const { availableThemes, mode, resolvedMode, setMode, setTheme, themeName } = useTheme()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState<string | null>(null)
-
-  // The Update row names the same install the statusbar names — same target
-  // selection, same resolver. Reduced to the label string: an in-flight apply
-  // rewrites these stores on every progress line, and only a changed string
-  // should rebuild the palette's groups.
-  const connection = useStore($connection)
-  const desktopVersion = useStore($desktopVersion)
-  const clientStatus = useStore($updateStatus)
-  const clientApply = useStore($updateApply)
-  const backendStatus = useStore($backendUpdateStatus)
-  const backendApply = useStore($backendUpdateApply)
-
-  const updateVersionLabel = useMemo(() => {
-    const backend = connection?.mode === 'remote'
-    const apply = backend ? backendApply : clientApply
-    const status = backend ? backendStatus : clientStatus
-
-    return resolveVersionStatus({
-      applying: apply.applying || apply.stage === 'restart',
-      behind: status?.behind ?? 0,
-      copy: t.shell.statusbar,
-      remote: backend,
-      restarting: apply.stage === 'restart',
-      sha: status?.currentSha?.slice(0, 7) ?? null,
-      target: backend ? 'backend' : 'client',
-      updateAvailable: status?.updateAvailable,
-      version: backend ? status?.currentVersion : desktopVersion?.appVersion
-    }).label
-  }, [backendApply, backendStatus, clientApply, clientStatus, connection?.mode, desktopVersion?.appVersion, t])
 
   // cmdk's onSelect doesn't forward the triggering event — keep the last
   // click/keydown modifiers so session rows can honour ⌘-Enter / ⌘-click.
@@ -885,12 +845,11 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             run: () => void runGatewayRestart()
           },
           {
-            detail: updateVersionLabel,
             icon: Download,
-            id: 'cc-update-hermes',
+            id: 'cc-desktop-update',
             keywords: ['update', 'upgrade', 'hermes', 'version', 'system', 'restart'],
-            label: cc.updateHermes,
-            run: () => requestActiveUpdate()
+            label: cc.checkDesktopUpdate,
+            run: go(`${COMMAND_CENTER_ROUTE}?section=system`)
           }
         ]
       },
@@ -961,8 +920,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     projectTree,
     selectTick,
     settingsSectionLabel,
-    t,
-    updateVersionLabel
+    t
   ])
 
   // The long, granular lists (settings fields, API keys, MCP servers, archived

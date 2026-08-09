@@ -1275,7 +1275,13 @@ export const ja = defineLocale({
     hermesActiveSessions: (version, count) => `APEX ${version} · アクティブセッション ${count}`,
     restartGateway: 'ゲートウェイを再起動',
     gatewayRestartFailed: 'ゲートウェイの再起動に失敗しました。',
-    updateHermes: 'APEX を更新',
+    checkDesktopUpdate: 'APEX の更新を確認',
+    checkingDesktopUpdate: '更新を確認中…',
+    desktopUpdateReady: 'APEX アプリまたは AI エンジンの更新を利用できます。',
+    desktopUpdatePreparing: 'APEX の更新を準備中…',
+    desktopUpdateNeedsShell: 'AI エンジンの更新には新しい APEX アプリが必要です。',
+    desktopUpdateCheckFailed: 'APEX アプリの更新を確認できませんでした。',
+    desktopUpToDate: 'APEX アプリと AI エンジンは最新です。',
     actionRunning: '実行中',
     actionDone: '完了',
     actionFailed: '失敗',
@@ -1814,6 +1820,20 @@ export const ja = defineLocale({
       installsOnQuit: 'アプリを終了しないとインストールされません',
       restartNow: '今すぐ再起動して更新',
       restarting: '再起動しています…'
+    },
+    desktopUpdate: {
+      preparingTitle: version => (version ? `APEX ${version} を準備中` : 'APEX アップデートを準備中'),
+      downloadedPercent: percent => `${percent}% ダウンロード済み`,
+      readyTitle: 'APEX アップデートの準備ができました',
+      appAndEngine: (appVersion, engineVersion) => `アプリ ${appVersion} + ${engineVersion}`,
+      appOnly: version => `アプリ ${version}`,
+      engineOnly: version => version,
+      installRestart: 'インストールして再起動',
+      installing: 'アップデートを準備中…',
+      confirmTitle: 'APEX アップデートをインストールしますか？',
+      confirmBody:
+        '利用可能な場合、APEX はアプリと AI エンジンをまとめて更新し、再起動は一度だけ行います。設定と作業内容は保持されます。',
+      confirmApply: 'アップデートをインストール'
     }
   },
 
@@ -2168,6 +2188,10 @@ export const ja = defineLocale({
     copyOutput: '出力をコピー',
     reloadRetry: '再読み込みして再試行',
     stageLabels: {
+      desktop_update_check: 'アップデートを確認',
+      shell_download: 'アプリパッケージ',
+      runtime_update: 'AI エンジン',
+      restart: 'APEX を再起動',
       prerequisites: '前提環境',
       uv: '前提環境',
       python: '前提環境',

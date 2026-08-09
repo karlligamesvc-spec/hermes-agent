@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { BrandMark } from '@/components/brand-mark'
@@ -18,6 +19,13 @@ import { useI18n } from '@/i18n'
 import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { ChevronDown, ChevronRight, iconSize } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import {
+  $desktopUpdateProgress,
+  dismissDesktopUpdateError,
+  resumeDesktopUpdatePlan,
+  retryDesktopUpdate
+} from '@/store/desktop-update'
+import type { DesktopUpdateProgress, DesktopUpdateStage } from '@/store/desktop-update'
 
 import { stageLabel } from './boot-install-format'
 
@@ -259,9 +267,124 @@ function applyEvent(state: DesktopBootstrapState, ev: DesktopBootstrapEvent): De
   return state
 }
 
+const UPDATE_STAGE_NAMES: Record<DesktopUpdateStage, string> = {
+  check: 'desktop_update_check',
+  shell: 'shell_download',
+  runtime: 'runtime_update',
+  restart: 'restart'
+}
+
+function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: DesktopUpdateProgress }) {
+  const { t } = useI18n()
+  const copy = t.install
+  const failed = Boolean(progress.error)
+  const failedStage = progress.stages.find(stage => !progress.completedStages.includes(stage)) ?? null
+
+  const targetVersion = progress.targetVersion
+    ? formatEngineDisplayVersion(progress.targetVersion, null, t.common.engineVersionPrefix)
+    : null
+
+  const completedCount = progress.completedStages.length
+  const progressUnits = completedCount + (!failed && progress.currentStage ? 0.5 : 0)
+  const progressPct = progress.stages.length > 0 ? Math.round((progressUnits / progress.stages.length) * 100) : 0
+
+  const stageResult = (stage: DesktopUpdateStage): DesktopBootstrapStageResult => {
+    const state: DesktopBootstrapStageState = progress.completedStages.includes(stage)
+      ? 'succeeded'
+      : progress.currentStage === stage
+        ? 'running'
+        : failedStage === stage
+          ? 'failed'
+          : 'pending'
+
+    return {
+      state,
+      durationMs: null,
+      startedAt: null,
+      json: null,
+      error: state === 'failed' ? progress.error : null
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-background/90 backdrop-blur-md p-4">
+      <div className="flex w-full max-w-2xl max-h-[90vh] flex-col rounded-xl border border-(--stroke-nous) bg-card shadow-nous">
+        <div className="flex flex-shrink-0 items-start gap-4 p-8 pb-4">
+          {!failed && <BrandMark className="size-11 shrink-0" />}
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold tracking-tight">
+              {failed ? copy.failedTitle : copy.settingUpTitleUpdate(targetVersion)}
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {failed ? copy.failedDesc : copy.activeDescUpdate(targetVersion)}
+            </p>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-6">
+          <div className="mb-4">
+            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{copy.progress(completedCount, progress.stages.length)}</span>
+              <span className="tabular-nums">{progressPct}%</span>
+            </div>
+            <div
+              aria-label={copy.progress(completedCount, progress.stages.length)}
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={progressPct}
+              className="h-1.5 w-full overflow-hidden rounded-full bg-(--ui-bg-tertiary)"
+              role="progressbar"
+            >
+              <div
+                className={cn('h-full transition-all duration-300', failed ? 'bg-destructive' : 'bg-primary')}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+
+          {failed && progress.error ? (
+            <div className="mb-4 flex items-start gap-2 text-sm">
+              <ErrorIcon className="mt-0.5 shrink-0" size="1rem" />
+              <div className="min-w-0">
+                <div className="font-medium text-destructive">{copy.error}</div>
+                <p className="mt-0.5 whitespace-pre-wrap break-words text-foreground/90">{progress.error}</p>
+              </div>
+            </div>
+          ) : null}
+
+          <ol className="mb-2 space-y-0.5">
+            {progress.stages.map(stage => (
+              <StageRow
+                descriptor={{ name: UPDATE_STAGE_NAMES[stage] }}
+                key={stage}
+                now={now}
+                result={stageResult(stage)}
+              />
+            ))}
+          </ol>
+        </div>
+
+        {failed ? (
+          <div className="flex-shrink-0 bg-card p-4">
+            <div className="flex items-center justify-end gap-2">
+              <Button onClick={dismissDesktopUpdateError} size="sm" variant="ghost">
+                {t.common.close}
+              </Button>
+              <Button onClick={() => void retryDesktopUpdate()} size="sm">
+                {copy.reloadRetry}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayProps) {
   const { t } = useI18n()
   const copy = t.install
+  const desktopUpdate = useStore($desktopUpdateProgress)
 
   const [state, setState] = useState<DesktopBootstrapState>(EMPTY_STATE)
   const [logOpen, setLogOpen] = useState(false)
@@ -316,6 +439,12 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
     }
   }, [enabled])
 
+  useEffect(() => {
+    if (enabled) {
+      void resumeDesktopUpdatePlan()
+    }
+  }, [enabled])
+
   // Autoscroll log to bottom when new lines arrive AND the log is open
   useEffect(() => {
     if (logOpen && logEndRef.current) {
@@ -357,6 +486,10 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
   }, [enabled, state.active, state.error, state.unsupportedPlatform])
 
   if (!shouldShow) {
+    if (desktopUpdate.active || desktopUpdate.error) {
+      return <DesktopUpdateProgressCard now={now} progress={desktopUpdate} />
+    }
+
     return null
   }
 
@@ -446,7 +579,9 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
   // to the user. Guarded the same way the two i18n functions themselves guard
   // a null version (still-resolving manifest before the bootstrap stamp
   // lands), so a null toVersion keeps falling through to their "APEX" copy.
-  const toVersionDisplay = updateInfo.toVersion ? formatEngineDisplayVersion(updateInfo.toVersion) : null
+  const toVersionDisplay = updateInfo.toVersion
+    ? formatEngineDisplayVersion(updateInfo.toVersion, null, t.common.engineVersionPrefix)
+    : null
 
   const headerTitle = failed
     ? copy.failedTitle
@@ -486,7 +621,14 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
                 </span>
                 <span className="tabular-nums">{progressPct}%</span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-(--ui-bg-tertiary)">
+              <div
+                aria-label={copy.progress(completedCount, totalCount)}
+                aria-valuemax={100}
+                aria-valuemin={0}
+                aria-valuenow={progressPct}
+                className="h-1.5 w-full overflow-hidden rounded-full bg-(--ui-bg-tertiary)"
+                role="progressbar"
+              >
                 <div
                   className={cn('h-full transition-all duration-300', failed ? 'bg-destructive' : 'bg-primary')}
                   style={{ width: `${progressPct}%` }}

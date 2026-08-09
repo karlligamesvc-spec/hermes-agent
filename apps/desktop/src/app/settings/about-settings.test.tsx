@@ -77,7 +77,7 @@ describe('EngineUpdateSection (hc-591 engine version display)', () => {
 
     const { container } = render(<EngineUpdateSection />)
 
-    expect(screen.getByText('New version Engine 2026.7.25 found.')).toBeTruthy()
+    expect(screen.getByText('Engine 2026.7.25')).toBeTruthy()
     expect(container.textContent).not.toContain('-fork.')
     expect(container.textContent).not.toContain('b0a720a5')
   })
