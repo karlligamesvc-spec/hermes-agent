@@ -32,9 +32,9 @@ import { EmptyState } from '../settings/primitives'
 // empty state instead of a wall of zeros.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The heatmap spans the trailing 52 weeks; fetch a hair more than a year so
-// the oldest visible cells still have data behind them.
-const ANALYTICS_DAYS = 370
+// The heatmap spans the trailing 52 weeks. The analytics API accepts at most
+// 365 days, which still covers the complete 52-week grid plus today.
+const ANALYTICS_DAYS = 365
 const HEATMAP_WEEKS = 52
 const DAY_MS = 86_400_000
 

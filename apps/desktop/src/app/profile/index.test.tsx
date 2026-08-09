@@ -47,7 +47,7 @@ const FULL_USAGE: AnalyticsResponse = {
     }
   ],
   daily: [dailyEntry(isoDaysAgo(2), 400_000, 100_000), dailyEntry(isoDaysAgo(1), 800_000, 200_000)],
-  period_days: 370,
+  period_days: 365,
   skills: {
     summary: { distinct_skills_used: 3, total_skill_actions: 20, total_skill_edits: 2, total_skill_loads: 18 },
     top_skills: [
@@ -72,7 +72,7 @@ const FULL_USAGE: AnalyticsResponse = {
 const SPARSE_USAGE: AnalyticsResponse = {
   by_model: [],
   daily: [],
-  period_days: 370,
+  period_days: 365,
   skills: {
     summary: { distinct_skills_used: 0, total_skill_actions: 0, total_skill_edits: 0, total_skill_loads: 0 },
     top_skills: []
@@ -150,6 +150,7 @@ describe('ProfileStatsView', () => {
     expect(screen.getByText('12 uses')).toBeTruthy()
 
     expect(getUsageAnalytics).toHaveBeenCalledTimes(1)
+    expect(getUsageAnalytics).toHaveBeenCalledWith(365)
   })
 
   it('omits heatmap, insights, plugins and null-metric stat cards when the data is absent', async () => {
