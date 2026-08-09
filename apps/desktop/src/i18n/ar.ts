@@ -1083,7 +1083,7 @@ export const ar = defineLocale({
     noSessions: 'لا توجد جلسات',
     gatewayRunning: 'البوابة تعمل',
     gatewayStopped: 'البوابة متوقفة',
-    hermesActiveSessions: (version, count) => `Hermes ${version} لديه ${count} جلسة نشطة`,
+    hermesActiveSessions: (version, count) => `محرك الذكاء الاصطناعي ${version} · ${count} جلسة نشطة`,
     restartGateway: 'إعادة تشغيل البوابة',
     gatewayRestartFailed: 'فشل إعادة تشغيل البوابة.',
     checkDesktopUpdate: 'التحقق من تحديثات APEX',

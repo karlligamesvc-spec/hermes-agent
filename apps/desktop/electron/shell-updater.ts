@@ -225,7 +225,11 @@ function createShellUpdater(options) {
     error: msg => log(`[shell-update] error: ${msg}`),
     debug: () => {}
   }
-  autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl })
+  // COS serves a multi-range request as the package MIME type instead of
+  // multipart/byteranges. electron-updater then discards the differential
+  // response and downloads the whole installer. Sequential single-range
+  // requests preserve differential updates on both macOS and Windows.
+  autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl, useMultipleRangeRequest: false })
   log(`[shell-update] enabled: feed=${feedUrl}`)
 
   // 事件 → 状态机。'error' 监听必须挂上:EventEmitter 没有 error 监听时 emit

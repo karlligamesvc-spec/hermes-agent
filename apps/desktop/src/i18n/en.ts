@@ -1453,7 +1453,7 @@ export const en: Translations = {
     noSessions: 'No sessions yet.',
     gatewayRunning: 'Messaging gateway running',
     gatewayStopped: 'Messaging gateway stopped',
-    hermesActiveSessions: (version, count) => `APEX ${version} · Active sessions ${count}`,
+    hermesActiveSessions: (version, count) => `AI engine ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     gatewayRestartFailed: 'Gateway restart failed.',
     checkDesktopUpdate: 'Check for APEX updates',
