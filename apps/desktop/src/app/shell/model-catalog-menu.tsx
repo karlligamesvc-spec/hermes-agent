@@ -23,6 +23,7 @@ import { useI18n } from '@/i18n'
 import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
 import { DEFAULT_REASONING_EFFORT, reasoningEffortLabel } from '@/lib/reasoning-effort'
+import { displayedReasoningEffort } from '@/lib/reasoning-efforts'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import {
@@ -400,6 +401,13 @@ export function ModelCatalogMenu({
                     const effEffort = isCurrent ? current.effort : (preset.effort ?? '')
                     const effFast = isCurrent ? current.fast : (preset.fast ?? false)
 
+                    const displayEffort = displayedReasoningEffort(
+                      effEffort,
+                      family.id,
+                      group.provider.name,
+                      defaultEffort
+                    )
+
                     const fastControl: FastControl = resolveFastControl(
                       activeId ?? family.id,
                       group.provider.models ?? [],
@@ -409,7 +417,9 @@ export function ModelCatalogMenu({
 
                     const meta = [
                       fastControl.kind !== 'none' && fastControl.on ? copy.fast : null,
-                      (caps?.reasoning ?? true) ? reasoningEffortLabel(effEffort || defaultEffort) : null
+                      (caps?.reasoning ?? true)
+                        ? reasoningEffortLabel(displayEffort, copy)
+                        : null
                     ]
                       .filter(Boolean)
                       .join(' ')

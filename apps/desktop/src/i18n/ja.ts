@@ -2356,7 +2356,13 @@ export const ja = defineLocale({
       editModels: 'モデルを編集…',
       refreshModels: 'モデルを更新',
       fast: '高速',
+      minimal: '最小',
+      low: '低',
       medium: '中',
+      high: '高',
+      xhigh: '特高',
+      max: '最大',
+      ultra: 'ウルトラ',
       unnamedEndpoint: '自分のエンドポイント'
     },
     modelOptions: {

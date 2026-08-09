@@ -2770,7 +2770,13 @@ export const en: Translations = {
       editModels: 'Edit Models…',
       refreshModels: 'Refresh Models',
       fast: 'Fast',
+      minimal: 'Min',
+      low: 'Low',
       medium: 'Med',
+      high: 'High',
+      xhigh: 'XHigh',
+      max: 'Max',
+      ultra: 'Ultra',
       unnamedEndpoint: 'Your endpoint'
     },
     modelOptions: {

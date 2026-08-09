@@ -115,3 +115,20 @@ export function nearestSupportedEffort(effort: string, supported: readonly Reaso
     return candidateDistance <= bestDistance ? candidate : best
   }, levels[0])
 }
+
+/** Resolve the value a user-facing model row/pill should display. Saved values
+ *  can outlive a model switch or an older seven-rung menu; show the level this
+ *  model will actually honor, while preserving the explicit thinking-off
+ *  state. */
+export function displayedReasoningEffort(
+  effort: string,
+  model: string,
+  providerHint?: string,
+  fallback = 'medium'
+): 'none' | ReasoningEffort {
+  const normalized = effort.trim().toLowerCase() || fallback
+
+  return normalized === 'none'
+    ? 'none'
+    : nearestSupportedEffort(normalized, supportedReasoningEfforts(model, providerHint))
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DEFAULT_REASONING_EFFORTS,
+  displayedReasoningEffort,
   nearestSupportedEffort,
   REASONING_EFFORT_LADDER,
   type ReasoningEffort,
@@ -91,5 +92,17 @@ describe('nearestSupportedEffort', () => {
 
   it('falls back to the conservative default when handed an empty set', () => {
     expect(nearestSupportedEffort('ultra', [])).toBe('high')
+  })
+})
+
+describe('displayedReasoningEffort', () => {
+  it('shows the level each model can actually honor', () => {
+    expect(displayedReasoningEffort('xhigh', 'deepseek-v4-flash')).toBe('max')
+    expect(displayedReasoningEffort('medium', 'glm-5.2')).toBe('high')
+    expect(displayedReasoningEffort('', 'kimi-k2.6', undefined, 'high')).toBe('high')
+  })
+
+  it('preserves an explicit thinking-off state', () => {
+    expect(displayedReasoningEffort('none', 'glm-5.2')).toBe('none')
   })
 })

@@ -423,9 +423,12 @@
     --composer-surface-pad-x: 0.5rem;
     --composer-surface-pad-y: 0.3125rem;
     --composer-input-min-height: 1.625rem;
+    /* Docked composer: two comfortable writing lines, then a fixed toolbar
+       below. The compact popped-out surface keeps the one-line minimum. */
+    --composer-input-roomy-min-height: 4.5rem;
     --composer-input-max-height: 9.375rem;
     --composer-input-inline-min-width: 8rem;
-    --composer-fallback-height: 2.75rem;
+    --composer-fallback-height: 7.625rem;
     --composer-measured-height: calc(0.5rem + var(--composer-shell-pad-block-end) + var(--composer-fallback-height));
     --composer-surface-measured-height: var(--composer-fallback-height);
     --thread-viewport-height: max(

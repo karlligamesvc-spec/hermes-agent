@@ -16,6 +16,8 @@ import { ChevronDown } from '@/lib/icons'
 import { composedMemberCount } from '@/lib/moa-compose'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
+import { reasoningEffortLabel } from '@/lib/reasoning-effort'
+import { displayedReasoningEffort } from '@/lib/reasoning-efforts'
 import { cn } from '@/lib/utils'
 import { $currentModelSource, $defaultReasoningEffort, setModelPickerOpen } from '@/store/session'
 import type { MoaConfigResponse } from '@/types/hermes'
@@ -49,6 +51,7 @@ export function ModelPill({
   const { t } = useI18n()
   const copy = t.shell.statusbar
   const modelOptionsCopy = t.shell.modelOptions
+  const effortCopy = t.shell.modelMenu
   const view = useSessionView()
   // Prefer the chat-bar snapshot (already view-scoped by ChatView); fall back
   // to the live SessionView atoms so a mid-flight session.info still paints.
@@ -108,17 +111,8 @@ export function ModelPill({
   // aggregator/reference split underneath stays invisible everywhere.
   const composedCount = currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
 
-  // Localized effort tag for the pill (低/中/高/超高) — unknown/none efforts fall
-  // back to the lib's compact English labels.
-  const effortLabels: Record<string, string> = {
-    high: modelOptionsCopy.high,
-    low: modelOptionsCopy.low,
-    medium: modelOptionsCopy.medium,
-    minimal: modelOptionsCopy.minimal,
-    xhigh: modelOptionsCopy.max
-  }
-
-  const effortLabel = effortLabels[(reasoningEffort || defaultEffort).trim().toLowerCase()]
+  const displayEffort = displayedReasoningEffort(reasoningEffort, currentModel, currentProvider, defaultEffort)
+  const effortLabel = reasoningEffortLabel(displayEffort, effortCopy)
 
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text

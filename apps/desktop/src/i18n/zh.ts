@@ -2627,7 +2627,13 @@ export const zh = defineLocale({
       editModels: '编辑模型…',
       refreshModels: '刷新模型',
       fast: '快速',
+      minimal: '最小',
+      low: '低',
       medium: '中',
+      high: '高',
+      xhigh: '极高',
+      max: '最高',
+      ultra: '超高',
       unnamedEndpoint: '自有接入点'
     },
     modelOptions: {
