@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 import {
@@ -14,6 +14,9 @@ import {
   runSessionSearchShortcut,
   visibleSidebarNavItems
 } from '@/store/business-workspace'
+import { $cronJobs } from '@/store/cron'
+import { setSessions, setSessionsLoading } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 
 import { ProjectsView, WorkflowsView } from '.'
 
@@ -22,6 +25,19 @@ function LocationProbe() {
 }
 
 describe('hc-685 business workspace identity', () => {
+  beforeEach(() => {
+    setSessions([])
+    setSessionsLoading(false)
+    $sessionStates.set({})
+    $cronJobs.set([])
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: {
+        api: vi.fn(async () => ({ errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 }))
+      }
+    })
+  })
+
   it('exposes the seven outcome-oriented destinations in order', () => {
     expect(BUSINESS_NAV_IDS).toEqual([
       'new-session',
@@ -100,7 +116,7 @@ describe('hc-685 business workspace identity', () => {
     })
   })
 
-  it('keeps the existing v0.20 task surface reachable from Projects', () => {
+  it('keeps the existing v0.20 task surface reachable from the real-work summary', async () => {
     render(
       <MemoryRouter initialEntries={['/projects']}>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -110,7 +126,237 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
+    await waitFor(() => expect(screen.getByRole('button', { name: '查看任务进度' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '查看任务进度' }))
-    expect(screen.getByTestId('location').textContent).toBe('/tasks')
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks'))
+  })
+
+  it('opens the current compressed-session tip from real history, not its lineage root', async () => {
+    setSessions([
+      {
+        id: 'tip-1',
+        _lineage_root_id: 'root-1',
+        ended_at: null,
+        input_tokens: 0,
+        is_active: false,
+        last_active: 10,
+        message_count: 2,
+        model: null,
+        output_tokens: 0,
+        preview: 'Latest projected work',
+        source: 'desktop',
+        started_at: 1,
+        title: 'Compressed conversation',
+        tool_call_count: 1
+      }
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Compressed conversation/ }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tip-1'))
+  })
+
+  it('keeps initial evidence loading distinct from a proven empty workspace', () => {
+    const pending = new Promise(() => undefined)
+    window.hermesDesktop!.api = vi.fn(async () => pending) as never
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Reading evidence from recent conversations…')).toBeTruthy()
+    expect(screen.queryByText('Start with a real business task')).toBeNull()
+  })
+
+  it('shows a hard evidence-read failure instead of claiming the workspace is empty', async () => {
+    window.hermesDesktop!.api = vi.fn(async () => {
+      throw new Error('profile database locked')
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Recent evidence is unavailable')).toBeTruthy())
+    expect(screen.queryByText('Start with a real business task')).toBeNull()
+  })
+
+  it('shows the start-chat empty state only after the real source returns zero data', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Start with a real business task')).toBeTruthy())
+    expect(screen.queryByText('Recent evidence is unavailable')).toBeNull()
+  })
+
+  it('replaces a previously empty snapshot with an explicit hard failure when refresh fails', async () => {
+    window.hermesDesktop!.api = vi
+      .fn()
+      .mockResolvedValueOnce({ errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 })
+      .mockRejectedValueOnce(new Error('refresh failed')) as never
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Start with a real business task')).toBeTruthy())
+
+    act(() => {
+      setSessions([
+        {
+          id: 'unused-empty-row',
+          ended_at: null,
+          input_tokens: 0,
+          is_active: false,
+          last_active: 20,
+          message_count: 0,
+          model: null,
+          output_tokens: 0,
+          preview: null,
+          source: 'desktop',
+          started_at: 20,
+          title: null,
+          tool_call_count: 0
+        }
+      ])
+    })
+
+    await waitFor(() => expect(screen.getByText('Recent evidence is unavailable')).toBeTruthy())
+    expect(screen.queryByText('Start with a real business task')).toBeNull()
+  })
+
+  it('does not claim zero artifacts when a source session transcript is unreadable', async () => {
+    const source = {
+      id: 'source-1',
+      ended_at: null,
+      input_tokens: 0,
+      is_active: false,
+      last_active: 30,
+      message_count: 2,
+      model: null,
+      output_tokens: 0,
+      preview: 'Delivered a report',
+      source: 'desktop',
+      started_at: 20,
+      title: 'Source conversation',
+      tool_call_count: 1
+    }
+
+    window.hermesDesktop!.api = vi.fn(async request => {
+      if (request.path.startsWith('/api/profiles/sessions')) {
+        return { errors: [], has_more_by_profile: {}, offset: 0, sessions: [source], total: 1 }
+      }
+
+      throw new Error('transcript unreadable')
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'Some evidence could not be read. The original conversations, Tasks, and Artifacts views remain available.'
+        ).length
+      ).toBeGreaterThan(0)
+    )
+    expect(screen.queryByText('No file, image, or link deliverables were found in recent conversations.')).toBeNull()
+    expect(screen.queryByText('Start with a real business task')).toBeNull()
+  })
+
+  it('marks the specific task row unavailable when its real run state cannot be read', async () => {
+    $cronJobs.set([{ enabled: true, id: 'job-1', name: 'Competitor report', schedule: { kind: 'once' } }])
+    window.hermesDesktop!.api = vi.fn(async () => {
+      throw new Error('task run unavailable')
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Progress is temporarily unreadable. Open Tasks to retry the authoritative view.')
+      ).toBeTruthy()
+    )
+    expect(
+      screen.queryByText('No plan or latest output has been recorded yet. Open Tasks for the full run state.')
+    ).toBeNull()
+  })
+
+  it('moves a task row from loading to proven no-record only after the real read completes', async () => {
+    $cronJobs.set([{ enabled: true, id: 'job-1', name: 'Competitor report', schedule: { kind: 'once' } }])
+    let resolveRuns!: (value: { runs: [] }) => void
+
+    const pendingRuns = new Promise<{ runs: [] }>(resolve => {
+      resolveRuns = resolve
+    })
+
+    window.hermesDesktop!.api = vi.fn(async request => {
+      if (request.path.startsWith('/api/profiles/sessions')) {
+        return { errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 }
+      }
+
+      return pendingRuns
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Reading task progress…')).toBeTruthy())
+    expect(
+      screen.queryByText('No plan or latest output has been recorded yet. Open Tasks for the full run state.')
+    ).toBeNull()
+
+    await act(async () => {
+      resolveRuns({ runs: [] })
+      await pendingRuns
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('No plan or latest output has been recorded yet. Open Tasks for the full run state.')
+      ).toBeTruthy()
+    )
+    expect(screen.queryByText('Reading task progress…')).toBeNull()
   })
 })

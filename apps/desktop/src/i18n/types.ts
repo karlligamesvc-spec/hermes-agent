@@ -2993,6 +2993,33 @@ export interface Translations {
       emptyDescription: string
       action: string
       tasksAction: string
+      recentConversations: string
+      openHistory: string
+      taskProgress: string
+      openTasks: string
+      deliverables: string
+      openArtifacts: string
+      untitled: string
+      noPreview: string
+      needsInput: string
+      running: string
+      failed: string
+      done: string
+      steps: (completed: number, total: number) => string
+      loadingHistory: string
+      noConversations: string
+      noTasks: string
+      progressUnavailable: string
+      taskProgressUnavailable: string
+      taskProgressLoading: string
+      loadingEvidence: string
+      noArtifacts: string
+      partialEvidence: string
+      evidenceUnavailableTitle: string
+      evidenceUnavailableDescription: string
+      toolActivity: (count: number) => string
+      toolStatusDetail: string
+      latestOutput: string
     }
     workflows: {
       eyebrow: string

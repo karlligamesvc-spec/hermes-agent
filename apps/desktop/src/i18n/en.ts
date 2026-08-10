@@ -3481,14 +3481,66 @@ export const en: Translations = {
 
   businessWorkspace: {
     projects: {
-      eyebrow: 'From goal to delivery', title: 'Projects', description: 'Keep progress, evidence, approvals, and delivered results together around one business goal.',
-      emptyTitle: 'Start with a real business task', emptyDescription: 'Projects will collect real sessions and tasks when data wiring lands. For now, describe the goal in chat.', action: 'Start a goal', tasksAction: 'View task progress'
+      eyebrow: 'From goal to delivery',
+      title: 'Projects',
+      description:
+        'Review recent conversations, real task progress, evidence, and delivered results without creating a separate project record.',
+      emptyTitle: 'Start with a real business task',
+      emptyDescription:
+        'Describe the goal in chat. Recent conversations, real task progress, evidence, and delivered files will appear here.',
+      action: 'Start a goal',
+      tasksAction: 'View task progress',
+      recentConversations: 'Recent conversations',
+      openHistory: 'Open history',
+      taskProgress: 'Task progress',
+      openTasks: 'Open Tasks',
+      deliverables: 'Evidence and deliverables',
+      openArtifacts: 'Open Artifacts',
+      untitled: 'Untitled conversation',
+      noPreview: 'Open the conversation to see its latest work.',
+      needsInput: 'Needs input',
+      running: 'Running',
+      failed: 'Failed',
+      done: 'Done',
+      steps: (completed, total) => `${completed} / ${total} steps`,
+      loadingHistory: 'Loading recent conversations…',
+      noConversations: 'No real conversations yet. Start a chat to create the first one.',
+      noTasks: 'No one-shot tasks yet. Open Tasks to hand off a long-running job.',
+      progressUnavailable: 'No plan or latest output has been recorded yet. Open Tasks for the full run state.',
+      taskProgressUnavailable: 'Progress is temporarily unreadable. Open Tasks to retry the authoritative view.',
+      taskProgressLoading: 'Reading task progress…',
+      loadingEvidence: 'Reading evidence from recent conversations…',
+      noArtifacts: 'No file, image, or link deliverables were found in recent conversations.',
+      partialEvidence:
+        'Some evidence could not be read. The original conversations, Tasks, and Artifacts views remain available.',
+      evidenceUnavailableTitle: 'Recent evidence is unavailable',
+      evidenceUnavailableDescription:
+        'APEX could not read the all-profile history snapshot. Nothing was replaced or deleted; continue in chat or open Artifacts to retry the canonical view.',
+      toolActivity: count => `${count} recorded tool ${count === 1 ? 'call' : 'calls'}`,
+      toolStatusDetail:
+        'Live running and input-needed status comes from session state. Tool-level status and structured evidence remain in the original conversation; open it for the authoritative detail.',
+      latestOutput: 'Latest output'
     },
     workflows: {
-      eyebrow: 'Proven business paths', title: 'Workflows', description: 'Choose an outcome path. APEX clarifies the goal in chat and organizes the work.', use: 'Use this workflow',
-      commerce: { title: 'Market opportunity to launch assets', summary: 'Data, opportunity analysis, positioning, and production', prompt: 'Analyze the US pet supplies market and produce a selection report and launch assets' },
-      insight: { title: 'Data to decision', summary: 'Multi-source evidence, validation, and next actions', prompt: 'Review my business data and recommend evidence-backed growth decisions and next steps' },
-      content: { title: 'Insight to content review', summary: 'Topics, production, publishing prep, and review', prompt: 'Plan this week’s content, create publishable assets, and define review metrics' }
+      eyebrow: 'Proven business paths',
+      title: 'Workflows',
+      description: 'Choose an outcome path. APEX clarifies the goal in chat and organizes the work.',
+      use: 'Use this workflow',
+      commerce: {
+        title: 'Market opportunity to launch assets',
+        summary: 'Data, opportunity analysis, positioning, and production',
+        prompt: 'Analyze the US pet supplies market and produce a selection report and launch assets'
+      },
+      insight: {
+        title: 'Data to decision',
+        summary: 'Multi-source evidence, validation, and next actions',
+        prompt: 'Review my business data and recommend evidence-backed growth decisions and next steps'
+      },
+      content: {
+        title: 'Insight to content review',
+        summary: 'Topics, production, publishing prep, and review',
+        prompt: 'Plan this week’s content, create publishable assets, and define review metrics'
+      }
     }
   },
 
