@@ -72,7 +72,7 @@ describe('thread zero state', () => {
   it('shows the greeting and the hc-554 scenario shelf', () => {
     renderEmptyThread()
 
-    expect(screen.getByRole('heading', { name: '我们该做什么？' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /热榜/ })).toBeTruthy()
   })
 

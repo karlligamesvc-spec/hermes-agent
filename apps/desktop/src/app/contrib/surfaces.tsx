@@ -40,6 +40,8 @@ const ImEntryView = lazy(async () => ({ default: (await import('../im-entry')).I
 const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksView }))
 // 搜索 is a page, not a sidebar field (see SEARCH_ROUTE).
 const SearchView = lazy(async () => ({ default: (await import('../search')).SearchView }))
+const ProjectsView = lazy(async () => ({ default: (await import('../business-workspace')).ProjectsView }))
+const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
 
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
@@ -181,6 +183,9 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         path="tasks"
       />
       <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
+      <Route element={page(<ProjectsView />)} path="projects" />
+      <Route element={page(<WorkflowsView />)} path="workflows" />
+      <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="history" />
       <Route element={null} path="agents" />
       <Route element={null} path="profile" />
       <Route element={null} path="command-center" />

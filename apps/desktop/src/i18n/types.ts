@@ -2981,6 +2981,28 @@ export interface Translations {
 
   home: {
     title: string
+    description: string
+  }
+
+  businessWorkspace: {
+    projects: {
+      eyebrow: string
+      title: string
+      description: string
+      emptyTitle: string
+      emptyDescription: string
+      action: string
+      tasksAction: string
+    }
+    workflows: {
+      eyebrow: string
+      title: string
+      description: string
+      use: string
+      commerce: { title: string; summary: string; prompt: string }
+      insight: { title: string; summary: string; prompt: string }
+      content: { title: string; summary: string; prompt: string }
+    }
   }
 
   /** Desktop auth boot-gate: the full-window login screen + bottom-left account

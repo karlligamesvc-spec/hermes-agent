@@ -1951,12 +1951,16 @@ export const zh = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新对话',
+      'new-session': '开始',
+      projects: '项目',
+      workflows: '工作流',
+      accounts: '业务账号',
+      history: '历史',
       search: '搜索',
-      cron: '已安排',
+      cron: '定时运行',
       tasks: '任务',
       skills: '插件',
-      artifacts: '产物'
+      artifacts: '交付物'
     },
     searchAria: '搜索会话',
     searchPlaceholder: '搜索会话…',
@@ -3276,7 +3280,21 @@ export const zh = defineLocale({
   },
 
   home: {
-    title: '我们该做什么？'
+    title: '今天想推进什么业务？',
+    description: '描述目标，APEX 会组织数据、推进过程并交付结果。'
+  },
+
+  businessWorkspace: {
+    projects: {
+      eyebrow: '从目标到交付', title: '项目', description: '围绕一个业务目标集中查看进度、证据、审批与交付结果。',
+      emptyTitle: '从一次真实业务任务开始', emptyDescription: '项目会在真实会话与任务接入后自动归集；现在可先在对话中描述目标。', action: '开始一个目标', tasksAction: '查看任务进度'
+    },
+    workflows: {
+      eyebrow: '成熟业务路径', title: '工作流', description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。', use: '使用这个工作流',
+      commerce: { title: '从市场机会到上架素材', summary: '数据采集、机会分析、定位与生产', prompt: '分析美国宠物用品市场，并生成选品报告和上架素材' },
+      insight: { title: '从数据到决策建议', summary: '多源证据、交叉验证与行动建议', prompt: '整理我的业务数据，给出有证据支持的增长洞察和下一步决策建议' },
+      content: { title: '从洞察到内容复盘', summary: '选题、生产、发布准备与复盘', prompt: '制定本周内容计划，生成可发布素材，并设计复盘指标' }
+    }
   },
 
   auth: {

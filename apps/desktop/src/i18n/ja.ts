@@ -1682,12 +1682,16 @@ export const ja = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新しいチャット',
+      'new-session': '開始',
+      projects: 'プロジェクト',
+      workflows: 'ワークフロー',
+      accounts: 'ビジネスアカウント',
+      history: '履歴',
       search: '検索',
-      cron: '予定済み',
+      cron: '定期実行',
       tasks: 'タスク',
       skills: 'プラグイン',
-      artifacts: 'アーティファクト'
+      artifacts: '成果物'
     },
     searchAria: 'セッションを検索',
     searchPlaceholder: 'セッションを検索…',
@@ -3035,7 +3039,21 @@ export const ja = defineLocale({
   },
 
   home: {
-    title: '何をしましょうか？'
+    title: '今日はどの業務を前に進めますか？',
+    description: '目標を説明すると、APEX が根拠を整理し、作業を進め、成果を届けます。'
+  },
+
+  businessWorkspace: {
+    projects: {
+      eyebrow: '目標から納品まで', title: 'プロジェクト', description: '一つの業務目標に沿って、進捗、根拠、承認、成果物をまとめます。',
+      emptyTitle: '実際の業務タスクから始める', emptyDescription: '実データ接続後、セッションとタスクが自動でまとまります。今はチャットで目標を説明できます。', action: '目標を始める', tasksAction: 'タスク進捗を見る'
+    },
+    workflows: {
+      eyebrow: '実績ある業務パス', title: 'ワークフロー', description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。', use: 'このワークフローを使う',
+      commerce: { title: '市場機会から販売素材まで', summary: 'データ収集、機会分析、位置付け、制作', prompt: '米国のペット用品市場を分析し、商品選定レポートと販売素材を作成してください' },
+      insight: { title: 'データから意思決定へ', summary: '複数根拠、検証、次のアクション', prompt: '業務データを整理し、根拠のある成長インサイトと次の意思決定を提案してください' },
+      content: { title: '洞察からコンテンツ振り返りへ', summary: '企画、制作、公開準備、振り返り', prompt: '今週のコンテンツ計画と公開素材を作り、振り返り指標を設計してください' }
+    }
   },
 
   auth: {

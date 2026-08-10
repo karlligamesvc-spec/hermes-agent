@@ -21,6 +21,9 @@ export const STARMAP_ROUTE = '/starmap'
 // 搜索 lives on its own main-area page (same shell as 插件/产物) rather than as
 // a field stacked on top of the sidebar, which pushes every conversation down.
 export const SEARCH_ROUTE = '/search'
+export const PROJECTS_ROUTE = '/projects'
+export const WORKFLOWS_ROUTE = '/workflows'
+export const HISTORY_ROUTE = '/history'
 
 // ApexNodes-only destinations, mounted on the contribution shell alongside the
 // upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
@@ -42,6 +45,9 @@ export type AppView =
   | 'command-center'
   | 'cron'
   | 'im-entry'
+  | 'projects'
+  | 'workflows'
+  | 'history'
   | 'profile'
   | 'tasks'
   // A contributed (plugin) full page at its own route — NOT chat. Without this
@@ -63,6 +69,9 @@ export type AppRouteId =
   | 'command-center'
   | 'cron'
   | 'im-entry'
+  | 'projects'
+  | 'workflows'
+  | 'history'
   | 'messaging'
   | 'new'
   | 'profile'
@@ -95,7 +104,10 @@ export const APP_ROUTES = [
   { id: 'im-entry', path: IM_ENTRY_ROUTE, view: 'im-entry' },
   { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },
   { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' },
-  { id: 'search', path: SEARCH_ROUTE, view: 'search' }
+  { id: 'search', path: SEARCH_ROUTE, view: 'search' },
+  { id: 'projects', path: PROJECTS_ROUTE, view: 'projects' },
+  { id: 'workflows', path: WORKFLOWS_ROUTE, view: 'workflows' },
+  { id: 'history', path: HISTORY_ROUTE, view: 'history' }
 ] as const satisfies readonly AppRoute[]
 
 const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))

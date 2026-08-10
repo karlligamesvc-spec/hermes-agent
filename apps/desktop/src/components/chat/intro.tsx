@@ -30,9 +30,12 @@ export function Intro(_props: IntroProps) {
       className="pointer-events-none flex w-full min-w-0 flex-col items-center gap-8 px-4 py-6 text-center sm:px-6 lg:px-8"
       data-slot="aui_intro"
     >
-      <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
-        {t.home.title}
-      </h1>
+      <div>
+        <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
+          {t.home.title}
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
+      </div>
       <ScenarioShelf />
     </div>
   )

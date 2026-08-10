@@ -30,6 +30,7 @@ import { profileColor } from '@/lib/profile-color'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
 import { cn } from '@/lib/utils'
+import { BUSINESS_NAV_IDS, isBusinessNavigationContract, isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { $cronJobs } from '@/store/cron'
 import { $bindings } from '@/store/keybinds'
 import {
@@ -104,11 +105,15 @@ import {
   type AppView,
   ARTIFACTS_ROUTE,
   CRON_ROUTE,
+  HISTORY_ROUTE,
+  IM_ENTRY_ROUTE,
+  PROJECTS_ROUTE,
   SEARCH_ROUTE,
   SIDEBAR_NAV_AREA,
   type SidebarNavContribution,
   SKILLS_ROUTE,
-  TASKS_ROUTE
+  TASKS_ROUTE,
+  WORKFLOWS_ROUTE
 } from '../../routes'
 import {
   SIDEBAR_BLANK_STATE_PITCH,
@@ -156,9 +161,9 @@ const NON_SESSION_LOAD_STEP = 10
 // Our first screen: 新对话 / 搜索 / 已安排 / 任务 / 插件 / 产物. 消息平台 is a
 // per-platform env editor, not a place a consumer starts their day, so it stays
 // off the first screen (reachable from Settings and ⌘K). Icons say what the row
-// does for the user — 新对话 is a pencil ("write a message"), not a robot
+// does for the user — 开始 is a pencil ("write a message"), not a robot
 // ("launch an agent").
-const SIDEBAR_NAV: SidebarNavItem[] = [
+const BUSINESS_SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'new-session',
     label: '',
@@ -167,11 +172,16 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
     keybindActionId: 'session.new'
   },
   {
-    id: 'search',
+    id: 'projects',
     label: '',
-    icon: props => <Codicon name="search" {...props} />,
-    route: SEARCH_ROUTE,
-    keybindActionId: 'session.focusSearch'
+    icon: props => <Codicon name="folder" {...props} />,
+    route: PROJECTS_ROUTE
+  },
+  {
+    id: 'workflows',
+    label: '',
+    icon: props => <Codicon name="list-tree" {...props} />,
+    route: WORKFLOWS_ROUTE
   },
   {
     id: 'cron',
@@ -181,26 +191,41 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
     keybindActionId: 'nav.cron'
   },
   {
-    id: 'tasks',
-    label: '',
-    icon: props => <Codicon name="rocket" {...props} />,
-    route: TASKS_ROUTE
-  },
-  {
-    id: 'skills',
-    label: '',
-    icon: props => <Codicon name="extensions" {...props} />,
-    route: SKILLS_ROUTE,
-    keybindActionId: 'nav.skills'
-  },
-  {
     id: 'artifacts',
     label: '',
     icon: props => <Codicon name="package" {...props} />,
     route: ARTIFACTS_ROUTE,
     keybindActionId: 'nav.artifacts'
+  },
+  {
+    id: 'accounts',
+    label: '',
+    icon: props => <Codicon name="organization" {...props} />,
+    route: IM_ENTRY_ROUTE
+  },
+  {
+    id: 'history',
+    label: '',
+    icon: props => <Codicon name="history" {...props} />,
+    route: HISTORY_ROUTE,
+    keybindActionId: 'session.focusSearch'
   }
 ]
+
+if (!isBusinessNavigationContract(BUSINESS_SIDEBAR_NAV.map(item => item.id))) {
+  throw new Error(`Business navigation drifted from ${BUSINESS_NAV_IDS.join(' / ')}`)
+}
+
+const LEGACY_SIDEBAR_NAV: SidebarNavItem[] = [
+  BUSINESS_SIDEBAR_NAV[0],
+  { id: 'search', label: '', icon: props => <Codicon name="search" {...props} />, route: SEARCH_ROUTE },
+  { id: 'cron', label: '', icon: props => <Codicon name="calendar" {...props} />, route: CRON_ROUTE },
+  { id: 'tasks', label: '', icon: props => <Codicon name="rocket" {...props} />, route: TASKS_ROUTE },
+  { id: 'skills', label: '', icon: props => <Codicon name="extensions" {...props} />, route: SKILLS_ROUTE },
+  { id: 'artifacts', label: '', icon: props => <Codicon name="package" {...props} />, route: ARTIFACTS_ROUTE }
+]
+
+const SIDEBAR_NAV = isBusinessWorkspaceEnabled() ? BUSINESS_SIDEBAR_NAV : LEGACY_SIDEBAR_NAV
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.
