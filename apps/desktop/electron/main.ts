@@ -209,6 +209,7 @@ import {
   transitionDesktopUpdatePlan,
   writeDesktopUpdatePlan
 } from './desktop-update-plan'
+import { configureShellAboutPanel, registerDesktopVersionIpc, showFreshAboutPanel } from './desktop-version'
 import { installEmbedReferer } from './embed-referer'
 import { createEventDeduper } from './event-dedupe'
 import { installFoundInPageForwarder, performFind, stopFind } from './find-in-page'
@@ -1064,13 +1065,12 @@ if (IS_WINDOWS) {
   app.setAppUserModelId('com.apexnodes.desktop')
 }
 
-// Seed the native About panel with the live Hermes version. This is refreshed
-// on every open via the explicit "About" menu handler (refreshAboutPanel), so
-// an in-place `hermes update` mid-session is reflected without an app restart;
-// the seed here just covers the first open and any non-menu invocation path.
-app.setAboutPanelOptions({
+// Seed the native About panel for the first open and non-menu invocation paths.
+// The panel describes this Electron shell; the managed engine has a separate
+// version and may update on a different clock.
+configureShellAboutPanel({
+  app,
   applicationName: APP_NAME,
-  applicationVersion: resolveHermesVersion(),
   copyright: 'Copyright © 2026 ApexNodes'
 })
 
@@ -10221,11 +10221,10 @@ ipcMain.handle('hermes:updates:branch:set', async (_event, name) => {
   return { branch }
 })
 
-// Resolve the canonical Hermes version (the one `release.py` bumps in
-// hermes_cli/__init__.py + pyproject.toml) so the desktop About panel shows the
-// real Hermes version instead of the Electron app's own package.json version,
-// which historically drifted (stuck at 0.0.2). Falls back to app.getVersion()
-// when the source tree can't be read (e.g. a packaged build without the repo).
+// Resolve the managed engine version (the one `release.py` bumps in
+// hermes_cli/__init__.py + pyproject.toml). The Electron shell version is
+// app.getVersion(); these values can legitimately differ during an update.
+// Fall back to the shell version when the engine source tree cannot be read.
 function resolveHermesVersion() {
   try {
     const root = resolveUpdateRoot()
@@ -10246,26 +10245,22 @@ function resolveHermesVersion() {
   return app.getVersion()
 }
 
-// Re-resolve the live Hermes version and push it into the native About panel
-// just before showing it, so an in-place `hermes update` is reflected without
-// an app restart. macOS only — `showAboutPanel()` is a no-op elsewhere, and the
-// other platforms don't use this menu item.
 function showAboutPanelFresh() {
-  app.setAboutPanelOptions({
+  showFreshAboutPanel({
+    app,
     applicationName: APP_NAME,
-    applicationVersion: resolveHermesVersion(),
     copyright: 'Copyright © 2026 ApexNodes'
   })
-  app.showAboutPanel()
 }
 
-ipcMain.handle('hermes:version', async () => ({
-  appVersion: resolveHermesVersion(),
+registerDesktopVersionIpc(ipcMain, {
+  app,
   electronVersion: process.versions.electron,
+  engineVersion: resolveHermesVersion,
+  hermesRoot: resolveUpdateRoot,
   nodeVersion: process.versions.node,
-  platform: process.platform,
-  hermesRoot: resolveUpdateRoot()
-}))
+  platform: process.platform
+})
 
 // ===========================================================================
 // Uninstall — remove the Chat GUI (and optionally the agent / user data).

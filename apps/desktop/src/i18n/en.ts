@@ -2554,7 +2554,7 @@ export const en: Translations = {
     settingUpTitleUpdate: version => (version ? `Updating to ${version}` : 'Updating APEX'),
     finishingTitle: 'Finishing up',
     failedDesc:
-      'One of the install steps failed. On Windows, this can happen if another APEX CLI or desktop instance is running. Stop any running APEX instances, then retry. Check the details below or the desktop log for the full transcript.',
+      'One of the install steps failed. Close any other running APEX CLI or desktop instances, then retry. Check the details below or the desktop log for the full transcript.',
     activeDesc:
       'This is a one-time setup. The APEX installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
     // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
