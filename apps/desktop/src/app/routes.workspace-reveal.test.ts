@@ -19,6 +19,7 @@ import {
   appViewForPath,
   ARTIFACTS_ROUTE,
   CRON_ROUTE,
+  isOverlayView,
   MESSAGING_ROUTE,
   navigateToWorkspacePage,
   NEW_CHAT_ROUTE,
@@ -104,6 +105,15 @@ describe('syncWorkspaceRoute', () => {
     expect(fronted()).toBe(true)
   })
 
+  it('treats scheduled jobs as a workspace page, never a route overlay', () => {
+    syncWorkspaceRoute(CRON_ROUTE)
+
+    expect(appViewForPath(CRON_ROUTE)).toBe('cron')
+    expect(isOverlayView('cron')).toBe(false)
+    expect($workspaceIsPage.get()).toBe(true)
+    expect(fronted()).toBe(true)
+  })
+
   it('fronts on a page route reached with a query', () => {
     syncWorkspaceRoute(`${SKILLS_ROUTE}?tab=mcp`)
 
@@ -140,8 +150,7 @@ describe('syncWorkspaceRoute', () => {
     ['the new-chat route', NEW_CHAT_ROUTE],
     ['an overlay', SETTINGS_ROUTE],
     ['an overlay with a query', `${SETTINGS_ROUTE}?tab=keys`],
-    ['another overlay', CRON_ROUTE],
-    ['yet another overlay', AGENTS_ROUTE]
+    ['another overlay', AGENTS_ROUTE]
   ])('leaves the tab alone on %s', (_label, to) => {
     syncWorkspaceRoute(to)
 

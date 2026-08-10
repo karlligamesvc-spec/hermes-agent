@@ -33,6 +33,7 @@ import type { SidebarActions, WiringActions } from './types'
 // full-page views the workspace route table mounts live here; overlay views
 // (agents/settings/…) are the controller's and stay in wiring.tsx.
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
+const CronView = lazy(async () => ({ default: (await import('../cron')).CronView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
 // ApexNodes full-page views — same lazy split, same workspace pane.
@@ -174,6 +175,10 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
       <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
       <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
+      <Route
+        element={page(<CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />)}
+        path="cron"
+      />
       {/* hc-417 IM 入口 — scan-to-bind this machine's assistant to 飞书/微信/…
           Reached from the composer "+" menu's connectors row, the sidebar's
           channel strip, and Settings → 提供方. */}
@@ -188,7 +193,6 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={null} path="agents" />
       <Route element={null} path="profile" />
       <Route element={null} path="command-center" />
-      <Route element={null} path="cron" />
       <Route element={null} path="profiles" />
       <Route element={null} path="settings" />
       <Route element={null} path="starmap" />
