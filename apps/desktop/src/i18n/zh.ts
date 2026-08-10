@@ -3286,14 +3286,63 @@ export const zh = defineLocale({
 
   businessWorkspace: {
     projects: {
-      eyebrow: '从目标到交付', title: '项目', description: '围绕一个业务目标集中查看进度、证据、审批与交付结果。',
-      emptyTitle: '从一次真实业务任务开始', emptyDescription: '项目会在真实会话与任务接入后自动归集；现在可先在对话中描述目标。', action: '开始一个目标', tasksAction: '查看任务进度'
+      eyebrow: '从目标到交付',
+      title: '项目',
+      description: '查看最近对话、真实任务进度、证据与交付结果，不另建项目记录。',
+      emptyTitle: '从一次真实业务任务开始',
+      emptyDescription: '先在对话中描述目标。最近会话、真实任务进度、证据与交付文件会显示在这里。',
+      action: '开始一个目标',
+      tasksAction: '查看任务进度',
+      recentConversations: '最近对话',
+      openHistory: '打开历史',
+      taskProgress: '任务进度',
+      openTasks: '打开任务',
+      deliverables: '证据与交付物',
+      openArtifacts: '打开交付物',
+      untitled: '未命名对话',
+      noPreview: '打开对话查看最近工作。',
+      needsInput: '等待输入',
+      running: '运行中',
+      failed: '失败',
+      done: '已完成',
+      steps: (completed, total) => `${completed} / ${total} 步`,
+      loadingHistory: '正在读取最近对话…',
+      noConversations: '还没有真实对话。开始聊天即可创建第一条。',
+      noTasks: '还没有一次性任务。可在任务页交付一个长时任务。',
+      progressUnavailable: '尚未记录计划或最新输出。请打开任务页查看完整运行状态。',
+      taskProgressUnavailable: '任务进度暂时无法读取。请打开任务页重试权威视图。',
+      taskProgressLoading: '正在读取任务进度…',
+      loadingEvidence: '正在从最近对话读取证据…',
+      noArtifacts: '最近对话中尚未发现文件、图片或链接交付物。',
+      partialEvidence: '部分证据暂时无法读取。原对话、任务与交付物路径仍可正常使用。',
+      evidenceUnavailableTitle: '最近证据暂时不可用',
+      evidenceUnavailableDescription:
+        'APEX 无法读取全配置历史快照。没有数据被替换或删除；可继续对话，或打开交付物权威页面重试。',
+      toolActivity: count => `已记录 ${count} 次工具调用`,
+      toolStatusDetail:
+        '运行中与等待输入来自实时会话状态。工具级状态和结构化证据仍以原对话为准，请打开对话查看权威详情。',
+      latestOutput: '最新输出'
     },
     workflows: {
-      eyebrow: '成熟业务路径', title: '工作流', description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。', use: '使用这个工作流',
-      commerce: { title: '从市场机会到上架素材', summary: '数据采集、机会分析、定位与生产', prompt: '分析美国宠物用品市场，并生成选品报告和上架素材' },
-      insight: { title: '从数据到决策建议', summary: '多源证据、交叉验证与行动建议', prompt: '整理我的业务数据，给出有证据支持的增长洞察和下一步决策建议' },
-      content: { title: '从洞察到内容复盘', summary: '选题、生产、发布准备与复盘', prompt: '制定本周内容计划，生成可发布素材，并设计复盘指标' }
+      eyebrow: '成熟业务路径',
+      title: '工作流',
+      description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。',
+      use: '使用这个工作流',
+      commerce: {
+        title: '从市场机会到上架素材',
+        summary: '数据采集、机会分析、定位与生产',
+        prompt: '分析美国宠物用品市场，并生成选品报告和上架素材'
+      },
+      insight: {
+        title: '从数据到决策建议',
+        summary: '多源证据、交叉验证与行动建议',
+        prompt: '整理我的业务数据，给出有证据支持的增长洞察和下一步决策建议'
+      },
+      content: {
+        title: '从洞察到内容复盘',
+        summary: '选题、生产、发布准备与复盘',
+        prompt: '制定本周内容计划，生成可发布素材，并设计复盘指标'
+      }
     }
   },
 

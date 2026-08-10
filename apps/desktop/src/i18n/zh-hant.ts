@@ -2937,14 +2937,63 @@ export const zhHant = defineLocale({
 
   businessWorkspace: {
     projects: {
-      eyebrow: '從目標到交付', title: '專案', description: '圍繞一個業務目標集中查看進度、證據、審批與交付結果。',
-      emptyTitle: '從一個真實業務任務開始', emptyDescription: '真實資料接線後，專案會自動歸集工作階段與任務；現在可先在對話中描述目標。', action: '開始一個目標', tasksAction: '查看任務進度'
+      eyebrow: '從目標到交付',
+      title: '專案',
+      description: '查看最近對話、真實任務進度、證據與交付結果，不另建專案記錄。',
+      emptyTitle: '從一個真實業務任務開始',
+      emptyDescription: '先在對話中描述目標。最近對話、真實任務進度、證據與交付檔案會顯示在這裡。',
+      action: '開始一個目標',
+      tasksAction: '查看任務進度',
+      recentConversations: '最近對話',
+      openHistory: '開啟歷史',
+      taskProgress: '任務進度',
+      openTasks: '開啟任務',
+      deliverables: '證據與交付物',
+      openArtifacts: '開啟交付物',
+      untitled: '未命名對話',
+      noPreview: '開啟對話查看最近工作。',
+      needsInput: '等待輸入',
+      running: '執行中',
+      failed: '失敗',
+      done: '已完成',
+      steps: (completed, total) => `${completed} / ${total} 步`,
+      loadingHistory: '正在讀取最近對話…',
+      noConversations: '還沒有真實對話。開始聊天即可建立第一則。',
+      noTasks: '還沒有一次性任務。可在任務頁交付長時間工作。',
+      progressUnavailable: '尚未記錄計畫或最新輸出。請開啟任務頁查看完整執行狀態。',
+      taskProgressUnavailable: '任務進度暫時無法讀取。請開啟任務頁重試權威視圖。',
+      taskProgressLoading: '正在讀取任務進度…',
+      loadingEvidence: '正在從最近對話讀取證據…',
+      noArtifacts: '最近對話中尚未找到檔案、圖片或連結交付物。',
+      partialEvidence: '部分證據暫時無法讀取。原對話、任務與交付物路徑仍可正常使用。',
+      evidenceUnavailableTitle: '最近證據暫時無法使用',
+      evidenceUnavailableDescription:
+        'APEX 無法讀取全設定檔歷史快照。沒有資料被取代或刪除；可繼續對話，或開啟交付物權威頁面重試。',
+      toolActivity: count => `已記錄 ${count} 次工具呼叫`,
+      toolStatusDetail:
+        '執行中與等待輸入來自即時工作階段狀態。工具級狀態和結構化證據仍以原對話為準，請開啟對話查看權威詳情。',
+      latestOutput: '最新輸出'
     },
     workflows: {
-      eyebrow: '成熟業務路徑', title: '工作流程', description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。', use: '使用此工作流程',
-      commerce: { title: '從市場機會到上架素材', summary: '資料採集、機會分析、定位與生產', prompt: '分析美國寵物用品市場，並產出選品報告和上架素材' },
-      insight: { title: '從資料到決策建議', summary: '多源證據、交叉驗證與行動建議', prompt: '整理我的業務資料，提出有證據支持的成長洞察與下一步決策建議' },
-      content: { title: '從洞察到內容復盤', summary: '選題、生產、發布準備與復盤', prompt: '制定本週內容計畫，產出可發布素材，並設計復盤指標' }
+      eyebrow: '成熟業務路徑',
+      title: '工作流程',
+      description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。',
+      use: '使用此工作流程',
+      commerce: {
+        title: '從市場機會到上架素材',
+        summary: '資料採集、機會分析、定位與生產',
+        prompt: '分析美國寵物用品市場，並產出選品報告和上架素材'
+      },
+      insight: {
+        title: '從資料到決策建議',
+        summary: '多源證據、交叉驗證與行動建議',
+        prompt: '整理我的業務資料，提出有證據支持的成長洞察與下一步決策建議'
+      },
+      content: {
+        title: '從洞察到內容復盤',
+        summary: '選題、生產、發布準備與復盤',
+        prompt: '制定本週內容計畫，產出可發布素材，並設計復盤指標'
+      }
     }
   },
 

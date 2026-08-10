@@ -1816,11 +1816,13 @@ export const ja = defineLocale({
       failedRolledBack: '更新に失敗しました。ロールバック済みです'
     },
     shellUpdate: {
-      foundTitle: version => (version ? `新しいバージョン ${version} が見つかりました` : '新しいバージョンが見つかりました'),
+      foundTitle: version =>
+        version ? `新しいバージョン ${version} が見つかりました` : '新しいバージョンが見つかりました',
       downloadingTitle: version => (version ? `${version} をダウンロード中` : '新しいバージョンをダウンロード中'),
       downloadingInBackground: 'バックグラウンドでダウンロード中…',
       downloadedPercent: percent => `${percent}% ダウンロード済み`,
-      readyTitle: version => (version ? `${version} のダウンロードが完了しました` : '新しいバージョンのダウンロードが完了しました'),
+      readyTitle: version =>
+        version ? `${version} のダウンロードが完了しました` : '新しいバージョンのダウンロードが完了しました',
       installsOnQuit: 'アプリを終了しないとインストールされません',
       restartNow: '今すぐ再起動して更新',
       restarting: '再起動しています…'
@@ -3045,14 +3047,64 @@ export const ja = defineLocale({
 
   businessWorkspace: {
     projects: {
-      eyebrow: '目標から納品まで', title: 'プロジェクト', description: '一つの業務目標に沿って、進捗、根拠、承認、成果物をまとめます。',
-      emptyTitle: '実際の業務タスクから始める', emptyDescription: '実データ接続後、セッションとタスクが自動でまとまります。今はチャットで目標を説明できます。', action: '目標を始める', tasksAction: 'タスク進捗を見る'
+      eyebrow: '目標から納品まで',
+      title: 'プロジェクト',
+      description: '別のプロジェクトレコードを作らず、最近の会話、実際のタスク進捗、根拠、成果物を確認します。',
+      emptyTitle: '実際の業務タスクから始める',
+      emptyDescription:
+        'まずチャットで目標を説明してください。最近の会話、実際のタスク進捗、根拠、納品ファイルがここに表示されます。',
+      action: '目標を始める',
+      tasksAction: 'タスク進捗を見る',
+      recentConversations: '最近の会話',
+      openHistory: '履歴を開く',
+      taskProgress: 'タスク進捗',
+      openTasks: 'タスクを開く',
+      deliverables: '根拠と成果物',
+      openArtifacts: '成果物を開く',
+      untitled: '無題の会話',
+      noPreview: '会話を開いて最新の作業を確認してください。',
+      needsInput: '入力待ち',
+      running: '実行中',
+      failed: '失敗',
+      done: '完了',
+      steps: (completed, total) => `${completed} / ${total} ステップ`,
+      loadingHistory: '最近の会話を読み込み中…',
+      noConversations: '実際の会話はまだありません。チャットを始めると最初の会話が作成されます。',
+      noTasks: '単発タスクはまだありません。タスク画面から長時間の作業を依頼できます。',
+      progressUnavailable: '計画や最新出力はまだ記録されていません。タスク画面で完全な実行状態を確認してください。',
+      taskProgressUnavailable: 'タスク進捗を一時的に読み込めません。タスク画面で正規ビューを再試行してください。',
+      taskProgressLoading: 'タスク進捗を読み込み中…',
+      loadingEvidence: '最近の会話から根拠を読み込み中…',
+      noArtifacts: '最近の会話にファイル、画像、リンクの成果物は見つかりませんでした。',
+      partialEvidence: '一部の根拠を読み込めませんでした。元の会話、タスク、成果物画面は引き続き利用できます。',
+      evidenceUnavailableTitle: '最近の根拠を利用できません',
+      evidenceUnavailableDescription:
+        'APEX は全プロファイルの履歴スナップショットを読み込めませんでした。データは置換も削除もされていません。チャットを続けるか、成果物の正規画面を開いて再試行してください。',
+      toolActivity: count => `${count} 件のツール呼び出しを記録`,
+      toolStatusDetail:
+        '実行中と入力待ちはライブセッション状態から取得します。ツール単位の状態と構造化された根拠は元の会話が正です。会話を開いて確認してください。',
+      latestOutput: '最新出力'
     },
     workflows: {
-      eyebrow: '実績ある業務パス', title: 'ワークフロー', description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。', use: 'このワークフローを使う',
-      commerce: { title: '市場機会から販売素材まで', summary: 'データ収集、機会分析、位置付け、制作', prompt: '米国のペット用品市場を分析し、商品選定レポートと販売素材を作成してください' },
-      insight: { title: 'データから意思決定へ', summary: '複数根拠、検証、次のアクション', prompt: '業務データを整理し、根拠のある成長インサイトと次の意思決定を提案してください' },
-      content: { title: '洞察からコンテンツ振り返りへ', summary: '企画、制作、公開準備、振り返り', prompt: '今週のコンテンツ計画と公開素材を作り、振り返り指標を設計してください' }
+      eyebrow: '実績ある業務パス',
+      title: 'ワークフロー',
+      description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。',
+      use: 'このワークフローを使う',
+      commerce: {
+        title: '市場機会から販売素材まで',
+        summary: 'データ収集、機会分析、位置付け、制作',
+        prompt: '米国のペット用品市場を分析し、商品選定レポートと販売素材を作成してください'
+      },
+      insight: {
+        title: 'データから意思決定へ',
+        summary: '複数根拠、検証、次のアクション',
+        prompt: '業務データを整理し、根拠のある成長インサイトと次の意思決定を提案してください'
+      },
+      content: {
+        title: '洞察からコンテンツ振り返りへ',
+        summary: '企画、制作、公開準備、振り返り',
+        prompt: '今週のコンテンツ計画と公開素材を作り、振り返り指標を設計してください'
+      }
     }
   },
 
