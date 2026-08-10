@@ -10,6 +10,7 @@ import { translateNow } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { PAGE_INSET_X } from '../layout-constants'
+
 import { OVERLAY_TOP_CLEARANCE, OverlayView } from './overlay-view'
 
 // Overlay "panel" primitive — the centered, capped card + framed chrome lifted
@@ -77,14 +78,30 @@ export function PanelPage({ children, className, ...props }: ComponentProps<'sec
   )
 }
 
+// Owns every pixel below a page header. Keeping this as an explicit flex item
+// prevents state-specific children (especially empty/error states) from sizing
+// themselves against an unconstrained page or a portal sibling.
+export function PanelPageBody({ children, className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      {...props}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden', className)}
+      data-panel-page-body
+    >
+      {children}
+    </div>
+  )
+}
+
 interface PanelHeaderProps {
   // Right-aligned controls (search, "+ New", segmented control, …).
   actions?: ReactNode
   subtitle?: ReactNode
   title: ReactNode
+  titleId?: string
 }
 
-export function PanelHeader({ actions, subtitle, title }: PanelHeaderProps) {
+export function PanelHeader({ actions, subtitle, title, titleId }: PanelHeaderProps) {
   return (
     // The overlay's close (X) is absolutely positioned at right-3 and costs no
     // layout space, so header actions would otherwise slide right up against it.
@@ -92,7 +109,9 @@ export function PanelHeader({ actions, subtitle, title }: PanelHeaderProps) {
     // the right whenever actions are present.
     <header className={cn('mb-3 flex shrink-0 items-start justify-between gap-3', actions ? 'pr-8' : undefined)}>
       <div className="min-w-0">
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <h2 className="text-sm font-semibold text-foreground" id={titleId}>
+          {title}
+        </h2>
         {subtitle ? <p className="truncate text-xs text-muted-foreground/80">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
@@ -313,7 +332,7 @@ interface PanelEmptyProps {
 
 export function PanelEmpty({ action, description, icon = 'inbox', title }: PanelEmptyProps) {
   return (
-    <div className="grid flex-1 place-items-center px-6 py-10 text-center">
+    <div className="grid min-h-0 min-w-0 w-full flex-1 place-items-center px-6 py-10 text-center" data-panel-empty>
       <div className="flex flex-col items-center gap-2">
         <Codicon className="text-muted-foreground/50" name={icon} size="1.25rem" />
         {title ? <p className="text-sm font-medium text-foreground/90">{title}</p> : null}

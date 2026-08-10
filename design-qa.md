@@ -1,58 +1,62 @@
 # hc-711 Design QA
 
 - Source visual truth: `artifacts/hc711/reference.png`
-- Browser-rendered implementation: `artifacts/hc711/implementation.png`
+- Rendered implementation: `artifacts/hc711/implementation.png`
 - Side-by-side comparison: `artifacts/hc711/side-by-side.png`
-- Source pixels: 2440 × 1660
-- Implementation capture pixels: 2103 × 1676
-- CSS viewport: 2440 × 1676, device scale factor 1
-- Density normalization: implementation was fit to the 2440 × 1660 source canvas only for the side-by-side evidence; the unmodified implementation capture is retained separately.
-- State: Simplified Chinese, light theme, empty scheduled-jobs list, desktop viewport. A 700 × 800 responsive pass and the create-dialog interaction were checked separately.
+- Source pixels: 1172 × 768
+- Implementation pixels: 1172 × 768
+- Side-by-side pixels: 2344 × 768
+- CSS viewport: 1172 × 768 for both full-window captures
+- Device scale / normalization: both app-window captures came from the same macOS display surface at the same native scale; no resize, crop, fit, or density normalization was applied before comparison.
+- State: Simplified Chinese, light theme, empty scheduled-task list. The reference is the installed packaged APEX modal; the implementation is the real contribution shell running the branch renderer against an isolated Desktop mock backend.
 
 ## Findings
 
 No actionable P0/P1/P2 visual differences remain.
 
-- The source's backdrop, floating rounded card, shadow, and top-right X are intentionally absent. This is the required information-architecture change, not visual drift.
-- The implementation keeps the source hierarchy and content: title/count at upper left, centered watch icon, empty-state title and description, and the existing purple primary action.
-- The page uses the existing APEX page background, responsive gutter, typography, button primitive, Codicon icon, and theme tokens. No new visual system or replacement asset was introduced.
-- The main-area viewport is taller than the source modal's inner card, so the empty-state group centers in the available page body rather than the old card body. This is expected and keeps the layout stable at narrow and wide sizes.
+- The rejected capture's empty state sat near the lower-right because the page had no explicit layout owner for the space below `PanelHeader`; it relied on `PanelEmpty` to infer its flex basis in an isolated surface harness. The real page now inserts `PanelPageBody` as a `min-h-0 min-w-0 flex-1 flex-col` child and makes `PanelEmpty` a full-width, flexing centered grid.
+- In the corrected implementation, the empty-state group is horizontally and vertically centered in the main content body below the title. It is no longer near the lower-right.
+- The source backdrop, floating rounded modal card, shadow, top-right X, and dimmed shell are intentionally absent. The implementation keeps the complete shell visible, including Start/new conversation, Search, Scheduled Runs, and the right-hand scheduled-task page.
+- The implementation reuses the existing shell, sidebar, page gutter, typography, Codicon, button, and theme tokens.
 
 ## Required fidelity surfaces
 
-1. **Fonts and typography** — Existing Desktop font stack, weights, sizes, line heights, antialiasing, hierarchy, wrapping, and truncation are unchanged. The visible title/count/empty copy match the source component implementation.
-2. **Spacing and layout rhythm** — Existing responsive `PAGE_INSET_X`, titlebar clearance, panel header/body spacing, empty-state rhythm, and shared button sizing are used. At 700 × 800, document scroll size exactly matched the viewport (700 × 800).
-3. **Colors and visual tokens** — Page background, text hierarchy, icon opacity, and primary button all resolve through existing `--ui-*`/theme tokens; no raw colors, gradient, new shadow, or bespoke border was added.
-4. **Image quality and asset fidelity** — The screen contains no raster art. The existing Codicon watch glyph is preserved; there are no inline/handcrafted SVG or placeholder substitutions.
-5. **Copy and content** — Chinese title, count, empty-state title, explanatory copy, and action label match the reference. Existing i18n catalogs remain authoritative for all locales.
+1. **Fonts and typography** — Existing Desktop font family, optical weights, sizes, line heights, antialiasing, wrapping, and hierarchy are unchanged. Title/count and empty-state copy remain the same components and translations.
+2. **Spacing and layout rhythm** — Both evidence images are exact 1172 × 768 full-window captures. `PanelPageBody` owns all remaining height below the header; `PanelEmpty` owns its full width and centers via grid. The main page retains `PAGE_INSET_X` and titlebar clearance.
+3. **Colors and visual tokens** — Page/sidebar backgrounds, active navigation row, text hierarchy, icon opacity, and primary button resolve through existing Desktop tokens. No new palette, gradient, shadow, or bespoke border was introduced.
+4. **Image quality and asset fidelity** — Both images retain native capture pixels. The existing Codicon watch glyph is used; there are no handmade SVG, CSS-art, or placeholder substitutions.
+5. **Copy and content** — Chinese title, count, empty title, description, and primary action match the reference. The implementation capture visibly includes Start/new conversation (`开始`), Search (`搜索`), and Scheduled Runs (`定时运行`) in the real sidebar.
 
 ## Full-view comparison evidence
 
-`artifacts/hc711/side-by-side.png` shows the source route modal beside the main-area page at the normalized source canvas. The content hierarchy and token styling are preserved while the forbidden modal chrome is removed.
+`artifacts/hc711/side-by-side.png` places the exact-size source and implementation captures together without scaling. The left side shows the old modal/backdrop/X. The right side shows the complete contribution shell and same empty state as a sibling workspace page. The empty-state center aligns with the available page body, not with the whole window or a clipped standalone surface.
 
 ## Focused-region evidence
 
-A separate crop was not needed: at original resolution the full-view evidence keeps the title/count and empty-state typography readable. Browser DOM inspection additionally confirmed one `[data-cron-surface="page"]`, zero route dialogs, and zero dialog overlays before invoking an editor.
+No separate crop is needed: the exact-size full-window comparison keeps the sidebar labels, title/count, empty-state group, modal X, and absence of backdrop/card/X readable. Accessibility inspection additionally reported the real page as a named `定时任务` container and found the create dialog only after the primary action was invoked.
 
 ## Interaction and responsive verification
 
-- Primary action tested: “新建定时任务” opened the existing create dialog; Cancel dismissed it.
-- Initial route state: zero `role=dialog`, zero `[data-slot="dialog-overlay"]`, no close control.
-- Narrow viewport: 700 × 800 CSS px; document scroll width/height remained 700 × 800.
-- Browser console: no page warnings or errors after the clean interaction rerun.
-- Loading, list, create/edit, pause/resume, trigger, delete, empty, and error behavior remain on the existing Cron API/store paths; the page adds a canonical retryable `ErrorState` for an initial-list failure.
+- Desktop full shell: clicked `定时运行`, confirmed route `#/cron`, opened `新建定时任务`, then clicked `取消` and returned to the same page.
+- Narrow shell: resized the Electron content viewport to 700 × 800 (the app-window capture including native frame measured 728 × 833), opened the responsive sidebar, clicked `定时运行`, opened the create dialog, cancelled, and returned to the page.
+- Narrow layout kept the title, empty copy, and primary action visible without horizontal clipping; the responsive sidebar appeared as its existing overlay rail.
+- Initial page state has no route dialog, backdrop, floating card, close control, or top-right X. The create/edit and delete confirmations remain intentional dialogs.
+- No renderer console error appeared during the clean Desktop interaction runs. Electron emitted only its existing dev-only deprecation/sandbox diagnostics outside the renderer.
 
 ## Comparison history
 
-- Initial comparison: no P0/P1/P2 mismatch. The only large-region differences were the explicitly requested removal of modal/backdrop/X and the expected centering change from card body to page body.
-- No visual fixes were required after the first side-by-side pass.
+- **Rejected pass (P1):** `implementation.png` was an isolated 2103 × 1676 surface while the 2440 × 1660 source showed the full app. The empty state appeared around the lower-right and the report incorrectly called it centered.
+- **Fix:** added an explicit flexing `PanelPageBody`, gave `PanelEmpty` full-width/min-size constraints, added a real `CronView` accessible-name/layout test, and discarded the isolated harness evidence.
+- **Corrected pass:** recaptured source and implementation as full app windows at identical 1172 × 768 pixels, same language/theme/empty state, then rebuilt the unscaled 2344 × 768 side-by-side. No actionable P0/P1/P2 mismatch remains.
 
 ## Behavioral guards
 
-- Route classification asserts `isOverlayView('cron') === false` and that `/cron` fronts/publishes the workspace page.
-- `PanelPage` behavior asserts no dialog, backdrop, or close button is rendered.
-- Reverse fault injection re-added `cron` to `OVERLAY_VIEWS`; `routes.workspace-reveal.test.ts` failed at the expected guard (`true` vs `false`). The injected change was then removed.
-- Existing `hermes-cron-scope.test.ts` verifies every list/read/create/update/pause/resume/trigger/delete helper keeps the active gateway profile identity.
+- `CronView` now sets `aria-labelledby="cron-page-title"`, and its real heading owns that ID.
+- The real `CronView` test asserts the named durable region, heading relationship, `PanelPageBody` parentage/flex ownership, empty state, and absence of route-modal chrome.
+- The primitive test asserts `PanelPage > PanelPageBody > PanelEmpty` plus the exact flex/grid relationship required to consume the remaining body.
+- Reverse layout fault injection removed `flex-1` from `PanelPageBody`; both the real CronView test and primitive layout test failed at the missing token. The injection was then reverted and both passed.
+- The existing route fault injection still proves that restoring `cron` to `OVERLAY_VIEWS` fails the page-identity guard.
+- Existing `hermes-cron-scope.test.ts` verifies list/read/create/update/pause/resume/trigger/delete helpers retain active-profile identity.
 
 ## Follow-up polish
 

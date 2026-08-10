@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
-import { ErrorState } from '@/components/ui/error-state'
 import {
   Dialog,
   DialogContent,
@@ -15,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { ErrorState } from '@/components/ui/error-state'
 import { Field, FieldHint } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
@@ -67,6 +67,7 @@ import {
   type PanelMenuItem,
   PanelMeta,
   PanelPage,
+  PanelPageBody,
   PanelPill,
   type PanelPillTone,
   PanelSectionLabel
@@ -472,76 +473,78 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
   }
 
   return (
-    <PanelPage {...props} data-cron-surface="page">
-      <PanelHeader subtitle={c.count(totalCount)} title={c.title} />
+    <PanelPage {...props} aria-labelledby="cron-page-title" data-cron-surface="page">
+      <PanelHeader subtitle={c.count(totalCount)} title={c.title} titleId="cron-page-title" />
 
-      {loading && jobs.length === 0 ? (
-        <PageLoader label={c.loading} />
-      ) : loadError && jobs.length === 0 ? (
-        <div className="grid flex-1 place-items-center px-6 py-10">
-          <ErrorState description={loadError} title={c.failedLoad}>
-            <Button onClick={() => void refresh()} size="sm">
-              {t.common.retry}
-            </Button>
-          </ErrorState>
-        </div>
-      ) : totalCount === 0 ? (
-        <PanelEmpty
-          action={
-            <Button onClick={() => setEditor({ mode: 'create' })} size="sm">
-              {c.newCron}
-            </Button>
-          }
-          description={c.emptyDescNew}
-          icon="watch"
-          title={c.emptyTitleNew}
-        />
-      ) : (
-        <PanelBody>
-          <PanelList
-            onSearchChange={setQuery}
-            searchHints={jobs
-              .map(jobTitle)
-              .filter(Boolean)
-              .slice(0, 5)
-              .map(title => t.common.tryHint(title))}
-            searchLabel={c.search}
-            searchPlaceholder={c.search}
-            searchValue={query}
-          >
-            {visibleJobs.map(job => (
-              <CronJobListRow
-                active={selectedJob?.id === job.id}
-                job={job}
-                key={job.id}
-                menuItems={[
-                  { icon: 'edit', label: c.edit, onSelect: () => setEditor({ mode: 'edit', job }) },
-                  { icon: 'trash', label: t.common.delete, onSelect: () => setPendingDelete(job), tone: 'danger' }
-                ]}
-                menuLabel={c.manage}
-                onSelect={() => setSelectedJobId(job.id)}
+      <PanelPageBody>
+        {loading && jobs.length === 0 ? (
+          <PageLoader label={c.loading} />
+        ) : loadError && jobs.length === 0 ? (
+          <div className="grid min-h-0 min-w-0 w-full flex-1 place-items-center px-6 py-10">
+            <ErrorState description={loadError} title={c.failedLoad}>
+              <Button onClick={() => void refresh()} size="sm">
+                {t.common.retry}
+              </Button>
+            </ErrorState>
+          </div>
+        ) : totalCount === 0 ? (
+          <PanelEmpty
+            action={
+              <Button onClick={() => setEditor({ mode: 'create' })} size="sm">
+                {c.newCron}
+              </Button>
+            }
+            description={c.emptyDescNew}
+            icon="watch"
+            title={c.emptyTitleNew}
+          />
+        ) : (
+          <PanelBody>
+            <PanelList
+              onSearchChange={setQuery}
+              searchHints={jobs
+                .map(jobTitle)
+                .filter(Boolean)
+                .slice(0, 5)
+                .map(title => t.common.tryHint(title))}
+              searchLabel={c.search}
+              searchPlaceholder={c.search}
+              searchValue={query}
+            >
+              {visibleJobs.map(job => (
+                <CronJobListRow
+                  active={selectedJob?.id === job.id}
+                  job={job}
+                  key={job.id}
+                  menuItems={[
+                    { icon: 'edit', label: c.edit, onSelect: () => setEditor({ mode: 'edit', job }) },
+                    { icon: 'trash', label: t.common.delete, onSelect: () => setPendingDelete(job), tone: 'danger' }
+                  ]}
+                  menuLabel={c.manage}
+                  onSelect={() => setSelectedJobId(job.id)}
+                />
+              ))}
+              {visibleJobs.length === 0 && (
+                <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
+              )}
+              <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
+            </PanelList>
+
+            {selectedJob ? (
+              <CronJobDetail
+                busy={busyJobId === selectedJob.id}
+                c={c}
+                job={selectedJob}
+                onOpenSession={onOpenSession}
+                onPauseResume={() => void handlePauseResume(selectedJob)}
+                onTrigger={() => void handleTrigger(selectedJob)}
               />
-            ))}
-            {visibleJobs.length === 0 && (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
+            ) : (
+              <PanelEmpty description={c.emptyDescSearch} icon="search" />
             )}
-            <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
-          </PanelList>
-
-          {selectedJob ? (
-            <CronJobDetail
-              busy={busyJobId === selectedJob.id}
-              c={c}
-              job={selectedJob}
-              onOpenSession={onOpenSession}
-              onPauseResume={() => void handlePauseResume(selectedJob)}
-              onTrigger={() => void handleTrigger(selectedJob)}
-            />
-          ) : (
-            <PanelEmpty description={c.emptyDescSearch} icon="search" />
-          )}
-        </PanelBody>
-      )}
+          </PanelBody>
+        )}
+      </PanelPageBody>
 
       <CronEditorDialog
         editor={editor}
