@@ -185,7 +185,6 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
       <Route element={page(<ProjectsView />)} path="projects" />
       <Route element={page(<WorkflowsView />)} path="workflows" />
-      <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="history" />
       <Route element={null} path="agents" />
       <Route element={null} path="profile" />
       <Route element={null} path="command-center" />

@@ -16,6 +16,7 @@ import { findBarClaimsCombo } from '@/lib/find-in-page'
 import { contributedKeybindHandler, PROFILE_SLOT_COUNT, SESSION_SLOT_COUNT } from '@/lib/keybinds/actions'
 import { comboAllowedInInput, comboFromEvent, isEditableTarget } from '@/lib/keybinds/combo'
 import { composerFocusKeysAllowed, isComposerFocusSoftCombo, typeToFocusChar } from '@/lib/keybinds/composer-focus-keys'
+import { runSessionSearchShortcut } from '@/store/business-workspace'
 import { $repoStatus } from '@/store/coding-status'
 import { toggleCommandPalette } from '@/store/command-palette'
 import {
@@ -68,7 +69,6 @@ import {
   MESSAGING_ROUTE,
   navigateToWorkspacePage,
   PROFILES_ROUTE,
-  SEARCH_ROUTE,
   sessionRoute,
   SETTINGS_ROUTE,
   SKILLS_ROUTE
@@ -179,8 +179,7 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     // 搜索 is its own main-area page: the hotkey routes there, and the focus bus
     // re-focuses the page's input when it is already open.
     'session.focusSearch': () => {
-      navigate(SEARCH_ROUTE)
-      requestSessionSearchFocus()
+      runSessionSearchShortcut(navigate, requestSessionSearchFocus)
     },
     'session.togglePin': deps.toggleSelectedPin,
     // Only meaningful inside a git repo — a no-op otherwise (the key falls

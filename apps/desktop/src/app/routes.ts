@@ -23,7 +23,6 @@ export const STARMAP_ROUTE = '/starmap'
 export const SEARCH_ROUTE = '/search'
 export const PROJECTS_ROUTE = '/projects'
 export const WORKFLOWS_ROUTE = '/workflows'
-export const HISTORY_ROUTE = '/history'
 
 // ApexNodes-only destinations, mounted on the contribution shell alongside the
 // upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
@@ -47,7 +46,6 @@ export type AppView =
   | 'im-entry'
   | 'projects'
   | 'workflows'
-  | 'history'
   | 'profile'
   | 'tasks'
   // A contributed (plugin) full page at its own route — NOT chat. Without this
@@ -71,7 +69,6 @@ export type AppRouteId =
   | 'im-entry'
   | 'projects'
   | 'workflows'
-  | 'history'
   | 'messaging'
   | 'new'
   | 'profile'
@@ -106,8 +103,7 @@ export const APP_ROUTES = [
   { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' },
   { id: 'search', path: SEARCH_ROUTE, view: 'search' },
   { id: 'projects', path: PROJECTS_ROUTE, view: 'projects' },
-  { id: 'workflows', path: WORKFLOWS_ROUTE, view: 'workflows' },
-  { id: 'history', path: HISTORY_ROUTE, view: 'history' }
+  { id: 'workflows', path: WORKFLOWS_ROUTE, view: 'workflows' }
 ] as const satisfies readonly AppRoute[]
 
 const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))

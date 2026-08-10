@@ -20,9 +20,11 @@ test('fresh packaged app exposes the business workspace without implementation v
   const page = fixture!.page
 
   await expect(page.getByRole('button', { name: '开始 ⌘ N' })).toBeAttached({ timeout: 60_000 })
-  const businessLabels = (await page.locator('[data-sidebar="menu-button"]').evaluateAll(buttons =>
-    buttons.slice(0, 7).map(button => button.textContent?.replace(/\s+/g, ' ').trim() ?? ''),
-  )).map(label => label.replace(/\s*⌘\s*N$/, ''))
+  const sidebarButtons = page.locator('[data-sidebar="menu-button"]')
+  await expect(sidebarButtons).toHaveCount(7)
+  const businessLabels = (await sidebarButtons.allTextContents())
+    .map(label => label.replace(/\s+/g, ' ').trim())
+    .map(label => label.replace(/\s*⌘\s*N$/, ''))
 
   expect(businessLabels).toEqual(BUSINESS_NAV_LABELS)
   await expect(page.getByText(/\b(?:MCP|Skill|Skills)\b/)).toHaveCount(0)
