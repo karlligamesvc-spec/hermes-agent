@@ -2083,7 +2083,7 @@ export const zhHant = defineLocale({
     settingUpTitleUpdate: version => (version ? `正在更新至 ${version}` : '正在更新 APEX'),
     finishingTitle: '正在收尾',
     failedDesc:
-      '某個安裝步驟失敗。在 Windows 上，如果另一個 APEX CLI 或桌面執行個體正在執行，可能會出現這種情況。請停止正在執行的 APEX 執行個體後重試。可查看下方的詳細資訊或 desktop 記錄中的完整記錄。',
+      '某個安裝步驟失敗。請先關閉其他正在執行的 APEX CLI 或桌面執行個體，再重試。你也可以查看下方的詳細資訊或 desktop 記錄中的完整記錄。',
     activeDesc: '這是一次性設定。APEX 安裝程式正在下載相依套件並設定您的電腦。之後啟動會略過此步驟。',
     // hc-452: 更新流程對應 activeDesc 的文案。刻意不再重複「一次性」／「之後
     // 啟動會略過此步驟」——Kael 真機報告指出這正是誤導使用者的措辭（更新每次

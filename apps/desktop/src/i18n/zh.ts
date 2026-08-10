@@ -2424,7 +2424,7 @@ export const zh = defineLocale({
     settingUpTitleUpdate: version => (version ? `正在更新到 ${version}` : '正在更新 APEX'),
     finishingTitle: '正在收尾',
     failedDesc:
-      '某个安装步骤失败。在 Windows 上，如果另一个 APEX CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的 APEX 实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
+      '某个安装步骤失败。请先关闭其他正在运行的 APEX CLI 或桌面实例，再重试。你也可以查看下面的详情或 desktop 日志中的完整记录。',
     activeDesc: '这是一次性设置。APEX 安装器正在下载依赖并配置你的机器。之后启动会跳过此步骤。',
     // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
     // repeat "一次性"/"之后启动会跳过此步骤" -- those phrases are what

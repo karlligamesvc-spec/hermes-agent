@@ -524,6 +524,7 @@ export interface HermesTerminalExit {
 
 export interface DesktopVersionInfo {
   appVersion: string
+  engineVersion: string
   electronVersion: string
   nodeVersion: string
   platform: string
