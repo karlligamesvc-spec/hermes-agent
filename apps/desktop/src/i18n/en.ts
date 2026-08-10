@@ -2023,12 +2023,16 @@ export const en: Translations = {
 
   sidebar: {
     nav: {
-      'new-session': 'New chat',
+      'new-session': 'Start',
+      projects: 'Projects',
+      workflows: 'Workflows',
+      accounts: 'Business accounts',
+      history: 'History',
       search: 'Search',
-      cron: 'Scheduled',
+      cron: 'Scheduled runs',
       tasks: 'Tasks',
       skills: 'Plugins',
-      artifacts: 'Artifacts'
+      artifacts: 'Deliverables'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',
@@ -3471,7 +3475,21 @@ export const en: Translations = {
   },
 
   home: {
-    title: 'What should we do?'
+    title: 'What business should we move forward today?',
+    description: 'Describe the goal. APEX organizes the evidence, moves the work forward, and delivers the result.'
+  },
+
+  businessWorkspace: {
+    projects: {
+      eyebrow: 'From goal to delivery', title: 'Projects', description: 'Keep progress, evidence, approvals, and delivered results together around one business goal.',
+      emptyTitle: 'Start with a real business task', emptyDescription: 'Projects will collect real sessions and tasks when data wiring lands. For now, describe the goal in chat.', action: 'Start a goal', tasksAction: 'View task progress'
+    },
+    workflows: {
+      eyebrow: 'Proven business paths', title: 'Workflows', description: 'Choose an outcome path. APEX clarifies the goal in chat and organizes the work.', use: 'Use this workflow',
+      commerce: { title: 'Market opportunity to launch assets', summary: 'Data, opportunity analysis, positioning, and production', prompt: 'Analyze the US pet supplies market and produce a selection report and launch assets' },
+      insight: { title: 'Data to decision', summary: 'Multi-source evidence, validation, and next actions', prompt: 'Review my business data and recommend evidence-backed growth decisions and next steps' },
+      content: { title: 'Insight to content review', summary: 'Topics, production, publishing prep, and review', prompt: 'Plan this week’s content, create publishable assets, and define review metrics' }
+    }
   },
 
   auth: {

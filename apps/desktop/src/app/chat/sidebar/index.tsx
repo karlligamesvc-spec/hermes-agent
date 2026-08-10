@@ -30,6 +30,15 @@ import { profileColor } from '@/lib/profile-color'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
 import { cn } from '@/lib/utils'
+import {
+  BUSINESS_NAV_IDS,
+  BUSINESS_SIDEBAR_NAV_CONTRACT,
+  isBusinessNavigationContract,
+  isBusinessWorkspaceEnabled,
+  LEGACY_SIDEBAR_NAV_CONTRACT,
+  type SidebarNavigationContract,
+  visibleSidebarNavItems
+} from '@/store/business-workspace'
 import { $cronJobs } from '@/store/cron'
 import { $bindings } from '@/store/keybinds'
 import {
@@ -102,13 +111,8 @@ import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/st
 
 import {
   type AppView,
-  ARTIFACTS_ROUTE,
-  CRON_ROUTE,
-  SEARCH_ROUTE,
   SIDEBAR_NAV_AREA,
-  type SidebarNavContribution,
-  SKILLS_ROUTE,
-  TASKS_ROUTE
+  type SidebarNavContribution
 } from '../../routes'
 import {
   SIDEBAR_BLANK_STATE_PITCH,
@@ -153,54 +157,33 @@ import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
 const NON_SESSION_INITIAL_ROWS = 3
 const NON_SESSION_LOAD_STEP = 10
 
-// Our first screen: 新对话 / 搜索 / 已安排 / 任务 / 插件 / 产物. 消息平台 is a
-// per-platform env editor, not a place a consumer starts their day, so it stays
-// off the first screen (reachable from Settings and ⌘K). Icons say what the row
-// does for the user — 新对话 is a pencil ("write a message"), not a robot
-// ("launch an agent").
-const SIDEBAR_NAV: SidebarNavItem[] = [
-  {
-    id: 'new-session',
-    label: '',
-    icon: props => <Codicon name="edit" {...props} />,
-    action: 'new-session',
-    keybindActionId: 'session.new'
-  },
-  {
-    id: 'search',
-    label: '',
-    icon: props => <Codicon name="search" {...props} />,
-    route: SEARCH_ROUTE,
-    keybindActionId: 'session.focusSearch'
-  },
-  {
-    id: 'cron',
-    label: '',
-    icon: props => <Codicon name="calendar" {...props} />,
-    route: CRON_ROUTE,
-    keybindActionId: 'nav.cron'
-  },
-  {
-    id: 'tasks',
-    label: '',
-    icon: props => <Codicon name="rocket" {...props} />,
-    route: TASKS_ROUTE
-  },
-  {
-    id: 'skills',
-    label: '',
-    icon: props => <Codicon name="extensions" {...props} />,
-    route: SKILLS_ROUTE,
-    keybindActionId: 'nav.skills'
-  },
-  {
-    id: 'artifacts',
-    label: '',
-    icon: props => <Codicon name="package" {...props} />,
-    route: ARTIFACTS_ROUTE,
-    keybindActionId: 'nav.artifacts'
-  }
-]
+const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
+  'new-session': props => <Codicon name="edit" {...props} />,
+  projects: props => <Codicon name="folder" {...props} />,
+  workflows: props => <Codicon name="list-tree" {...props} />,
+  cron: props => <Codicon name="calendar" {...props} />,
+  artifacts: props => <Codicon name="package" {...props} />,
+  accounts: props => <Codicon name="organization" {...props} />,
+  history: props => <Codicon name="history" {...props} />,
+  search: props => <Codicon name="search" {...props} />,
+  tasks: props => <Codicon name="rocket" {...props} />,
+  skills: props => <Codicon name="extensions" {...props} />
+}
+
+function renderableNav(contract: readonly SidebarNavigationContract[]): SidebarNavItem[] {
+  return contract.map(item => ({ ...item, icon: SIDEBAR_NAV_ICONS[item.id], label: '' }))
+}
+
+const BUSINESS_SIDEBAR_NAV = renderableNav(BUSINESS_SIDEBAR_NAV_CONTRACT)
+
+if (!isBusinessNavigationContract(BUSINESS_SIDEBAR_NAV.map(item => item.id))) {
+  throw new Error(`Business navigation drifted from ${BUSINESS_NAV_IDS.join(' / ')}`)
+}
+
+const LEGACY_SIDEBAR_NAV = renderableNav(LEGACY_SIDEBAR_NAV_CONTRACT)
+
+const BUSINESS_WORKSPACE_ENABLED = isBusinessWorkspaceEnabled()
+const SIDEBAR_NAV = BUSINESS_WORKSPACE_ENABLED ? BUSINESS_SIDEBAR_NAV : LEGACY_SIDEBAR_NAV
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.
@@ -1182,7 +1165,7 @@ export function ChatSidebar({
         <SidebarGroup className="shrink-0 p-0 pb-2 pt-[calc(var(--titlebar-height)+0.375rem)]">
           <SidebarGroupContent>
             <SidebarMenu className="gap-px">
-              {[...SIDEBAR_NAV, ...contributedNav].map(item => {
+              {visibleSidebarNavItems(SIDEBAR_NAV, contributedNav, BUSINESS_WORKSPACE_ENABLED).map(item => {
                 const isInteractive = Boolean(item.action) || Boolean(item.route)
 
                 const active =

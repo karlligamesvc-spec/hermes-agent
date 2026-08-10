@@ -9,6 +9,7 @@ import { type ChatMessage, preserveLocalAssistantErrors, toChatMessages } from '
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
 import { recoverInFlightTurnJournal } from '@/lib/inflight-turn-journal'
 import { setSessionYolo } from '@/lib/yolo-session'
+import { activateSidebarNavigation } from '@/store/business-workspace'
 import { migrateSessionDraft } from '@/store/composer'
 import { clearQueuedPrompts, migrateQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
@@ -497,15 +498,7 @@ export function useSessionActions({
 
   const selectSidebarItem = useCallback(
     (item: SidebarNavItem) => {
-      if (item.action === 'new-session') {
-        startFreshSessionDraft()
-
-        return
-      }
-
-      if (item.route) {
-        navigateToWorkspacePage(navigate, item.route)
-      }
+      activateSidebarNavigation(item, route => navigateToWorkspacePage(navigate, route), startFreshSessionDraft)
     },
     [navigate, startFreshSessionDraft]
   )

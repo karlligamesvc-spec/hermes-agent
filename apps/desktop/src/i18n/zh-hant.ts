@@ -1617,12 +1617,16 @@ export const zhHant = defineLocale({
 
   sidebar: {
     nav: {
-      'new-session': '新對話',
+      'new-session': '開始',
+      projects: '專案',
+      workflows: '工作流程',
+      accounts: '業務帳號',
+      history: '歷史',
       search: '搜尋',
-      cron: '已安排',
+      cron: '定時執行',
       tasks: '任務',
       skills: '外掛',
-      artifacts: '成品'
+      artifacts: '交付物'
     },
     searchAria: '搜尋工作階段',
     searchPlaceholder: '搜尋工作階段…',
@@ -2927,7 +2931,21 @@ export const zhHant = defineLocale({
   },
 
   home: {
-    title: '我們該做什麼？'
+    title: '今天想推進什麼業務？',
+    description: '描述目標，APEX 會組織資料、推進流程並交付結果。'
+  },
+
+  businessWorkspace: {
+    projects: {
+      eyebrow: '從目標到交付', title: '專案', description: '圍繞一個業務目標集中查看進度、證據、審批與交付結果。',
+      emptyTitle: '從一個真實業務任務開始', emptyDescription: '真實資料接線後，專案會自動歸集工作階段與任務；現在可先在對話中描述目標。', action: '開始一個目標', tasksAction: '查看任務進度'
+    },
+    workflows: {
+      eyebrow: '成熟業務路徑', title: '工作流程', description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。', use: '使用此工作流程',
+      commerce: { title: '從市場機會到上架素材', summary: '資料採集、機會分析、定位與生產', prompt: '分析美國寵物用品市場，並產出選品報告和上架素材' },
+      insight: { title: '從資料到決策建議', summary: '多源證據、交叉驗證與行動建議', prompt: '整理我的業務資料，提出有證據支持的成長洞察與下一步決策建議' },
+      content: { title: '從洞察到內容復盤', summary: '選題、生產、發布準備與復盤', prompt: '制定本週內容計畫，產出可發布素材，並設計復盤指標' }
+    }
   },
 
   auth: {

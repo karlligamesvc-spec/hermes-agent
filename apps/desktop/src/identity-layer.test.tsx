@@ -442,7 +442,7 @@ describe('identity: the home zero-state is ours', () => {
   it('greets in Chinese and offers the scenario shelf', () => {
     renderIntro()
 
-    expect(screen.getByRole('heading', { name: '我们该做什么？' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
     // The shelf resolves to the built-in fallback catalog on first frame, so a
     // hero scenario proves leg 5's wiring is still in place.
     expect(screen.getByRole('button', { name: /热榜/ })).toBeTruthy()
