@@ -22,7 +22,6 @@ export function useOverlayRouting() {
   const commandCenterOpen = currentView === 'command-center'
   const agentsOpen = currentView === 'agents'
   const starmapOpen = currentView === 'starmap'
-  const cronOpen = currentView === 'cron'
   const profilesOpen = currentView === 'profiles'
   // 个人资料 (PROFILE_STATS_ROUTE) — the ApexNodes account/usage card. Distinct
   // from `profilesOpen`, the multi-profile (配置档案) manager.
@@ -75,7 +74,6 @@ export function useOverlayRouting() {
     closeOverlayToPreviousRoute,
     commandCenterInitialSection,
     commandCenterOpen,
-    cronOpen,
     currentView,
     openAgents,
     openCommandCenterSection,

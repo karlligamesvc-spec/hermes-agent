@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 
 import { ActionsContextMenu, ActionsMenu, type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { Button } from '@/components/ui/button'
@@ -9,11 +9,12 @@ import { Tip } from '@/components/ui/tooltip'
 import { translateNow } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import { PAGE_INSET_X } from '../layout-constants'
 import { OVERLAY_TOP_CLEARANCE, OverlayView } from './overlay-view'
 
 // Overlay "panel" primitive — the centered, capped card + framed chrome lifted
-// straight from the trace / agents overlay so every non-settings overlay (cron,
-// profiles, …) speaks the same visual language: tight type scale, muted
+// straight from the trace / agents overlay so overlay and page consumers speak
+// the same visual language: tight type scale, muted
 // opacities, NO container borders (rows separate via the row-hover/active bg
 // vars + gaps, exactly like the trace waterfall labels).
 //
@@ -55,6 +56,24 @@ export function Panel({
     >
       {children}
     </OverlayView>
+  )
+}
+
+// Main-area sibling of Panel. It shares the panel's header/body/list/detail
+// primitives while deliberately owning none of OverlayView's route-modal
+// chrome: no backdrop, floating card, or close button.
+export function PanelPage({ children, className, ...props }: ComponentProps<'section'>) {
+  return (
+    <section
+      {...props}
+      className={cn(
+        'flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-(--ui-chat-surface-background) pb-4 pt-[calc(var(--titlebar-height)+0.75rem)]',
+        PAGE_INSET_X,
+        className
+      )}
+    >
+      {children}
+    </section>
   )
 }
 

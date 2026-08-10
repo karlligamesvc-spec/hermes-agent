@@ -161,7 +161,6 @@ export interface SidebarNavContribution {
 export const OVERLAY_VIEWS: ReadonlySet<AppView> = new Set([
   'agents',
   'command-center',
-  'cron',
   // 个人资料 is a full-screen card over the shell, like profiles/settings — not
   // a workspace page (the chat stays beneath it).
   'profile',
