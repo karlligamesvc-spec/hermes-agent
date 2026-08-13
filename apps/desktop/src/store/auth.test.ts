@@ -4,6 +4,7 @@ import type { DesktopManagedStatus } from '@/global'
 
 import {
   $authState,
+  canMountDesktopOnboarding,
   clearRelayAuthExpiry,
   handleAuthGate,
   handleRelayAuthExpired,
@@ -258,5 +259,19 @@ describe('handleRelayAuthExpired / clearRelayAuthExpiry', () => {
     await refreshAuthStatus()
 
     expect($authState.get().loginTruth).toBe(false)
+  })
+})
+
+describe('canMountDesktopOnboarding', () => {
+  it.each([
+    [{ enabled: false, status: 'signed-out' }, false, true],
+    [{ enabled: true, status: 'signed-in' }, false, true],
+    [{ enabled: true, status: 'expired' }, false, false],
+    [{ enabled: true, status: 'expired' }, true, true],
+    [{ enabled: true, status: 'checking' }, true, false],
+    [{ enabled: true, status: 'signed-out' }, true, false],
+    [{ enabled: true, status: 'disabled' }, true, false]
+  ] as const)('maps account gate state %o and requested=%s to %s', (auth, requested, expected) => {
+    expect(canMountDesktopOnboarding(auth, requested)).toBe(expected)
   })
 })

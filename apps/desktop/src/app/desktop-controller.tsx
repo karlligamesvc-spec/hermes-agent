@@ -16,7 +16,7 @@ import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChat
 import { storedSessionIdForNotification } from '../lib/session-ids'
 import { isMessagingSource, LOCAL_SESSION_SOURCE_IDS, MESSAGING_SESSION_SOURCE_IDS } from '../lib/session-source'
 import { latestSessionTodos } from '../lib/todos'
-import { $authState } from '../store/auth'
+import { $authState, canMountDesktopOnboarding } from '../store/auth'
 import { setCronJobs } from '../store/cron'
 import {
   $panesFlipped,
@@ -35,7 +35,7 @@ import {
 } from '../store/layout'
 import { registerActiveTurnResend } from '../store/managed-recovery'
 import { respondToApprovalAction } from '../store/native-notifications'
-import { $pendingDesktopLoginCode } from '../store/onboarding'
+import { $desktopOnboarding, $pendingDesktopLoginCode } from '../store/onboarding'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -205,6 +205,7 @@ export function DesktopController() {
 
   const gatewayState = useStore($gatewayState)
   const authState = useStore($authState)
+  const onboardingRequested = useStore($desktopOnboarding).requested
   const activeSessionId = useStore($activeSessionId)
   const currentCwd = useStore($currentCwd)
   const freshDraftReady = useStore($freshDraftReady)
@@ -992,11 +993,10 @@ export function DesktopController() {
         />
       )}
       {/* Hold onboarding (BYOK provider config + its own managed panel) until the
-          auth gate has let the user through: on a managed build it mounts only
-          once signed in, so it never races the login screen underneath. On a
-          managed-disabled build the gate reports signed-in immediately, so
-          onboarding behaves exactly as before (BYOK-first). */}
-      {!isSecondaryWindow() && (authState.enabled === false || authState.status === 'signed-in') && (
+          auth gate has let the user through. The one soft-gate exception is an
+          explicit expired-account recovery request: the workspace stays usable
+          until the user clicks, then this surface mounts managed sign-in. */}
+      {!isSecondaryWindow() && canMountDesktopOnboarding(authState, onboardingRequested) && (
         <DesktopOnboardingOverlay
           enabled={gatewayState === 'open'}
           onCompleted={() => {

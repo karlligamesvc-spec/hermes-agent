@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DesktopAuthGate } from '@/app/desktop-auth-gate'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { I18nProvider } from '@/i18n/context'
-import { $authState } from '@/store/auth'
+import { $authState, canMountDesktopOnboarding } from '@/store/auth'
 import { $desktopOnboarding, type OnboardingContext } from '@/store/onboarding'
 
 // hc-589 leg 8c — the first-run route, sampled tick by tick.
@@ -62,11 +62,12 @@ function FirstRunWindow({
   requestGateway: OnboardingContext['requestGateway']
 }) {
   const auth = useStore($authState)
+  const onboarding = useStore($desktopOnboarding)
 
   return (
     <>
       <DesktopAuthGate enabled={gatewayOpen} requestGateway={requestGateway} />
-      {(auth.enabled === false || auth.status === 'signed-in') && (
+      {canMountDesktopOnboarding(auth, onboarding.requested) && (
         <DesktopOnboardingOverlay enabled={gatewayOpen} requestGateway={requestGateway} />
       )}
     </>

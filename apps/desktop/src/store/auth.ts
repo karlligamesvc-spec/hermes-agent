@@ -57,6 +57,19 @@ export interface DesktopAuthState {
   status: AuthStatus
 }
 
+/** Whether the provider/onboarding surface may be mounted past the hard account
+ * gate. An expired managed account deliberately remains a soft degrade (the
+ * workspace stays usable), but its account-card recovery action still needs the
+ * onboarding surface mounted so it can reveal managed sign-in. */
+export function canMountDesktopOnboarding(
+  auth: Pick<DesktopAuthState, 'enabled' | 'status'>,
+  onboardingRequested: boolean
+): boolean {
+  return (
+    auth.enabled === false || auth.status === 'signed-in' || (auth.status === 'expired' && onboardingRequested)
+  )
+}
+
 const EMPTY_ACCOUNT: AuthAccount = { email: '', name: '', plan: '' }
 
 // Seed "signed-in" from localStorage so a returning user goes straight to chat

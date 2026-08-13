@@ -95,9 +95,11 @@ describe('identity: the first screen is ours', () => {
     // being the first thing a managed user sees: the auth gate blocks the
     // window, and onboarding only mounts once the gate has let them through.
     const wiring = readSource('src', 'app', 'contrib', 'wiring.tsx')
+    const legacyController = readSource('src', 'app', 'desktop-controller.tsx')
 
     expect(wiring).toContain('<DesktopAuthGate')
-    expect(wiring).toContain("authState.enabled === false || authState.status === 'signed-in'")
+    expect(wiring).toContain('canMountDesktopOnboarding(authState, onboardingRequested)')
+    expect(legacyController).toContain('canMountDesktopOnboarding(authState, onboardingRequested)')
     expect(wiring.indexOf('<DesktopAuthGate')).toBeLessThan(wiring.indexOf('<DesktopOnboardingOverlay'))
 
     // …and when onboarding does open on a managed build, OUR panel leads it.
