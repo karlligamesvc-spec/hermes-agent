@@ -31,11 +31,12 @@ import { isMessagingSource } from '@/lib/session-source'
 import { latestSessionTodos } from '@/lib/todos'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'
-import { $authState } from '@/store/auth'
+import { $authState, canMountDesktopOnboarding } from '@/store/auth'
 import { $billingSettingsRequest } from '@/store/billing-block'
 import { requestVoiceConversationStart } from '@/store/composer'
 import { setCronFocusJobId } from '@/store/cron'
 import { $pinnedSessionIds, pinSession, restoreWorktree, unpinSession } from '@/store/layout'
+import { $desktopOnboarding } from '@/store/onboarding'
 import { $previewTarget } from '@/store/preview'
 import {
   $activeGatewayProfile,
@@ -163,6 +164,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const actionsRef = useRef<WiringActions | null>(null)
 
   const authState = useStore($authState)
+  const onboardingRequested = useStore($desktopOnboarding).requested
   const gatewayState = useStore($gatewayState)
   const activeSessionId = useStore($activeSessionId)
   const billingSettingsRequest = useStore($billingSettingsRequest)
@@ -1046,11 +1048,11 @@ export function ContribWiring({ children }: { children: ReactNode }) {
           requestGateway={requestGateway}
         />
       )}
-      {/* Onboarding (BYOK provider config) waits for the gate to let the user
-          through: on a managed build it mounts only once signed in, so it never
-          races the login screen underneath. On a managed-disabled build the gate
-          reports signed-in immediately and this behaves exactly as upstream. */}
-      {!isSecondaryWindow() && (authState.enabled === false || authState.status === 'signed-in') && (
+      {/* Onboarding waits for the hard gate to let the user through. The one
+          soft-gate exception is an explicit expired-account recovery request:
+          the workspace stays usable until the user clicks, then this surface
+          mounts managed sign-in. */}
+      {!isSecondaryWindow() && canMountDesktopOnboarding(authState, onboardingRequested) && (
         <DesktopOnboardingOverlay
           enabled={gatewayState === 'open'}
           onCompleted={() => {
