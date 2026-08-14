@@ -2323,15 +2323,41 @@ function Invoke-WithoutIndexEnv {
 }
 
 function Invoke-UvSyncLocked {
-    param([switch]$Check)
+    param([switch]$Check, [switch]$Reinstall)
 
     Invoke-WithoutIndexEnv {
         $env:UV_PROJECT_ENVIRONMENT = "$InstallDir\venv"
         if ($Check) {
             Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked --check *> $null }
+        } elseif ($Reinstall) {
+            Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked --reinstall }
         } else {
             Invoke-NativeWithRelaxedErrorAction { & $UvCmd sync --extra all --locked }
         }
+    }
+}
+
+function Test-HermesRuntimeImports {
+    param([string]$PythonExe)
+    if (-not $PythonExe -or -not (Test-Path $PythonExe)) { return $false }
+
+    $previous = $ErrorActionPreference
+    $previousPythonPath = $env:PYTHONPATH
+    $locationPushed = $false
+    $ErrorActionPreference = "Continue"
+    try {
+        $env:PYTHONPATH = $InstallDir
+        # `python -c` searches its current directory before PYTHONPATH. Probe
+        # from the candidate install root so another checkout cannot shadow it
+        # and turn either a healthy or broken runtime into a false verdict.
+        Push-Location $InstallDir
+        $locationPushed = $true
+        & $PythonExe -c "import yaml; import dotenv; import hermes_cli.config" 2>&1 | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        if ($locationPushed) { Pop-Location }
+        $env:PYTHONPATH = $previousPythonPath
+        $ErrorActionPreference = $previous
     }
 }
 
@@ -2444,14 +2470,19 @@ function Install-Dependencies {
     # Goes through Invoke-UvSyncLocked (see above) so a CN mirror index in the
     # env can't turn this into a permanent no-op.
     $venvPythonExe = Join-Path $InstallDir "venv\Scripts\python.exe"
+    $forceLockedReinstall = $false
     if ((-not $NoVenv) -and (Test-Path "uv.lock") -and (Test-Path $venvPythonExe)) {
         Invoke-UvSyncLocked -Check
         if ($LASTEXITCODE -eq 0) {
-            Pop-Location
-            Write-Success "Python dependencies already satisfied (uv.lock) -- skipping"
-            $script:InstalledTier = "already satisfied (uv.lock)"
-            $script:_StageSkippedReason = "Python dependencies already satisfied (uv.lock)"
-            return
+            if (Test-HermesRuntimeImports $venvPythonExe) {
+                Pop-Location
+                Write-Success "Python dependencies already satisfied (uv.lock) -- skipping"
+                $script:InstalledTier = "already satisfied (uv.lock)"
+                $script:_StageSkippedReason = "Python dependencies already satisfied (uv.lock)"
+                return
+            }
+            Write-Warn "uv.lock metadata is satisfied but runtime imports fail; rebuilding the venv dependencies from locked artifacts"
+            $forceLockedReinstall = $true
         }
     }
 
@@ -2470,11 +2501,17 @@ function Install-Dependencies {
     # mainland machine, it just takes half an hour, so a fallback would never
     # be reached. Non-CN installs return $false here and drop straight through.
     $skipPipFallback = $false
-    if (Invoke-UvMirrorHashedInstall) {
-        Write-Success "Main package installed (hash-verified via CN mirror)"
-        $script:InstalledTier = "hash-verified (CN mirror)"
-        $skipPipFallback = $true
-    } elseif (Test-Path "uv.lock") {
+    if ((-not $forceLockedReinstall) -and (Invoke-UvMirrorHashedInstall)) {
+        if (Test-HermesRuntimeImports $venvPythonExe) {
+            Write-Success "Main package installed (hash-verified via CN mirror)"
+            $script:InstalledTier = "hash-verified (CN mirror)"
+            $skipPipFallback = $true
+        } else {
+            Write-Warn "Mirror install completed but runtime imports still fail; forcing a full locked reinstall"
+            $forceLockedReinstall = $true
+        }
+    }
+    if ((-not $skipPipFallback) -and (Test-Path "uv.lock")) {
         Write-Info "Trying tier: hash-verified (uv.lock) ..."
         # Critical flag choice: `--extra all`, NOT `--all-extras`.
         #   --all-extras = every [project.optional-dependencies] key,
@@ -2493,7 +2530,11 @@ function Install-Dependencies {
         # Invoke-UvSyncLocked (above) sanitizes the CN mirror index env so
         # this tier is actually attempted instead of always refusing under
         # HERMES_CN_MIRRORS=1.
-        Invoke-UvSyncLocked
+        if ($forceLockedReinstall) {
+            Invoke-UvSyncLocked -Reinstall
+        } else {
+            Invoke-UvSyncLocked
+        }
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Main package installed (hash-verified via uv.lock)"
             $script:InstalledTier = "hash-verified (uv.lock)"
@@ -2504,7 +2545,7 @@ function Install-Dependencies {
             Write-Warn "uv.lock sync failed (lockfile may be stale), falling back to PyPI resolve..."
             $skipPipFallback = $false
         }
-    } else {
+    } elseif (-not (Test-Path "uv.lock")) {
         Write-Info "uv.lock not found -- falling back to PyPI resolve (no hash verification)"
         $skipPipFallback = $false
     }
@@ -2602,7 +2643,7 @@ except Exception:
         # regardless of what was written to stderr).
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        & $venvPython -c "import dotenv, openai, rich, prompt_toolkit" 2>&1 | Out-Null
+        & $venvPython -c "import yaml; import dotenv; import hermes_cli.config; import openai; import rich; import prompt_toolkit" 2>&1 | Out-Null
         $importExitCode = $LASTEXITCODE
         $ErrorActionPreference = $prevEAP
         if ($importExitCode -ne 0) {
@@ -2612,7 +2653,7 @@ except Exception:
             } else {
                 "Recover with: cd '$InstallDir'; `$env:UV_PROJECT_ENVIRONMENT='$InstallDir\venv'; uv sync --extra all --locked"
             }
-            throw "Baseline imports failed in $InstallDir\venv (dotenv/openai/rich/prompt_toolkit). The install completed but dependencies are not in the venv. $hint"
+            throw "Baseline imports failed in $InstallDir\venv (yaml/dotenv/hermes_cli.config/openai/rich/prompt_toolkit). The install completed but dependencies are not in the venv. $hint"
         }
         Write-Success "Baseline imports verified in venv"
     }

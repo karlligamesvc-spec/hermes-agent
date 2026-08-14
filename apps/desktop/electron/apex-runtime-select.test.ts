@@ -12,20 +12,20 @@ import {
 // canUseOnDiskRuntime
 // ---------------------------------------------------------------------------
 
-test('canUseOnDiskRuntime: source + python present -> usable', () => {
-  assert.equal(canUseOnDiskRuntime({ sourcePresent: true, pythonPresent: true }), true)
+test('canUseOnDiskRuntime: source + passing runtime import probe -> usable', () => {
+  assert.equal(canUseOnDiskRuntime({ sourcePresent: true, runtimeImportable: true }), true)
 })
 
-test('canUseOnDiskRuntime: missing python -> not usable', () => {
-  assert.equal(canUseOnDiskRuntime({ sourcePresent: true, pythonPresent: false }), false)
+test('canUseOnDiskRuntime: python exists but runtime imports fail -> not usable', () => {
+  assert.equal(canUseOnDiskRuntime({ sourcePresent: true, runtimeImportable: false }), false)
 })
 
 test('canUseOnDiskRuntime: missing source -> not usable', () => {
-  assert.equal(canUseOnDiskRuntime({ sourcePresent: false, pythonPresent: true }), false)
+  assert.equal(canUseOnDiskRuntime({ sourcePresent: false, runtimeImportable: true }), false)
 })
 
 test('canUseOnDiskRuntime: nothing present -> not usable', () => {
-  assert.equal(canUseOnDiskRuntime({ sourcePresent: false, pythonPresent: false }), false)
+  assert.equal(canUseOnDiskRuntime({ sourcePresent: false, runtimeImportable: false }), false)
 })
 
 test('canUseOnDiskRuntime: bad input is safe (returns false)', () => {

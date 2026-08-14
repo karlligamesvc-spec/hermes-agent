@@ -11,12 +11,9 @@
  *      hermes.cmd/hermes.exe; the shim then failed the --version probe and
  *      the desktop fell through to a spurious bootstrap/repair. The fix:
  *      PATHEXT extensions first, empty extension LAST.
- *   2. chooseUpdaterArgs() — handOffWindowsBootstrapRecovery() chose
- *      --update vs the destructive --repair by checking ONLY
- *      venv\Scripts\hermes.exe (the console-script shim, written at the END
- *      of venv setup and absent in interrupted states), so it escalated to a
- *      full venv recreate even on healthy installs. The fix: gate on ANY
- *      real-install signal, not just the shim.
+ *   2. chooseUpdaterArgs() — handOffWindowsBootstrapRecovery() once chose
+ *      --update vs repair from file/marker presence. An incomplete venv can
+ *      retain all those signals, so the fix gates on the runtime import probe.
  *   3. resolveVenvHermesCommand() — unwrapWindowsVenvHermesCommand() returned
  *      the venv python with NO runtime probe (bypassing the caller's
  *      --version check too), so a venv broken mid-update (e.g. missing
@@ -62,22 +59,18 @@ export function buildPathExtCandidates(pathext: string | undefined, isWindows: b
 
 /**
  * Choose the Windows bootstrap-recovery updater invocation: the gentle
- * in-place --update when ANY real-install signal is present, the
- * destructive --repair (full venv recreate) otherwise.
+ * in-place --update only when the existing runtime passed its launch-dependency
+ * import probe, and --repair (full venv recreate) otherwise.
  *
- * haveRealInstall must be computed by the caller from ALL real-install
- * signals (venv python interpreter, venv hermes shim, bootstrap-complete
- * marker) — gating on just the hermes.exe console-script shim alone is the
- * regression this function's callers must avoid: that shim is written at
- * the END of venv setup and is absent in exactly the interrupted/quarantined
- * states this recovery exists to heal.
+ * runtimeUsable must come from an executable import probe, never file/marker
+ * presence. A partial venv can retain python.exe, hermes.exe and the marker.
  *
- * @param {boolean} haveRealInstall
+ * @param {boolean} runtimeUsable
  * @param {string} branch
  * @returns {string[]} updater argv, e.g. ['--update', '--branch', 'main'].
  */
-export function chooseUpdaterArgs(haveRealInstall: boolean, branch: string): string[] {
-  return haveRealInstall ? ['--update', '--branch', branch] : ['--repair', '--branch', branch]
+export function chooseUpdaterArgs(runtimeUsable: boolean, branch: string): string[] {
+  return runtimeUsable ? ['--update', '--branch', branch] : ['--repair', '--branch', branch]
 }
 
 /**
@@ -184,6 +177,23 @@ export interface ResolveVenvHermesCommandDeps {
   rememberLog?: (message: string) => void
 }
 
+export function isWindowsVenvHermesShim(
+  command: string,
+  deps: Pick<ResolveVenvHermesCommandDeps, 'isWindows' | 'resolvePath' | 'dirname' | 'basename'>
+): boolean {
+  if (!deps.isWindows || !command) {
+    return false
+  }
+
+  const resolved = deps.resolvePath(String(command))
+
+  if (!/^hermes(?:\.(?:exe|cmd|bat))?$/i.test(deps.basename(resolved))) {
+    return false
+  }
+
+  return deps.basename(deps.dirname(resolved)).toLowerCase() === 'scripts'
+}
+
 /**
  * If `command` is a Windows venv `hermes`/`hermes.exe` console-script shim
  * (i.e. `<venvRoot>/Scripts/hermes(.exe)`), resolve it to the underlying
@@ -219,7 +229,6 @@ export function resolveVenvHermesCommand(
 } | null {
   const {
     isWindows,
-    isCommandScript,
     fileExists,
     directoryExists,
     canImportHermesCli,
@@ -233,22 +242,12 @@ export function resolveVenvHermesCommand(
     rememberLog
   } = deps
 
-  if (!isWindows || !command || isCommandScript(command)) {
+  if (!isWindowsVenvHermesShim(command, { isWindows, resolvePath, dirname, basename })) {
     return null
   }
 
   const resolved = resolvePath(String(command))
-
-  if (!/^hermes(?:\.exe)?$/i.test(basename(resolved))) {
-    return null
-  }
-
   const scriptsDir = dirname(resolved)
-
-  if (basename(scriptsDir).toLowerCase() !== 'scripts') {
-    return null
-  }
-
   const venvRoot = dirname(scriptsDir)
   const python = getVenvPython(venvRoot)
 
@@ -288,4 +287,50 @@ export function resolveVenvHermesCommand(
     root,
     shell: false
   }
+}
+
+export interface ExistingHermesCandidateDeps {
+  isWindowsVenvHermesShim: (command: string) => boolean
+  unwrapWindowsVenvHermesCommand: (command: string, backendArgs: string[]) => Record<string, unknown> | null
+  isCommandScript: (command: string) => boolean
+  verifyHermesCli: (command: string, opts: { shell: boolean }) => boolean
+}
+
+/** Resolve the complete existing-command rung without a venv integrity bypass. */
+export function resolveExistingHermesCandidate(
+  command: string,
+  backendArgs: string[],
+  deps: ExistingHermesCandidateDeps
+): { backend: Record<string, unknown> | null; rejection: 'runtime-import' | 'version' | null } {
+  const venvShim = deps.isWindowsVenvHermesShim(command)
+  const unwrapped = deps.unwrapWindowsVenvHermesCommand(command, backendArgs)
+
+  if (unwrapped) {
+    return { backend: unwrapped, rejection: null }
+  }
+
+  // `hermes --version` returns before config imports. Once an identified venv
+  // shim fails the import-aware unwrap, the generic probe must not re-adopt it.
+  if (venvShim) {
+    return { backend: null, rejection: 'runtime-import' }
+  }
+
+  const shell = deps.isCommandScript(command)
+
+  if (deps.verifyHermesCli(command, { shell })) {
+    return {
+      backend: {
+        label: `existing Hermes CLI at ${command}`,
+        command,
+        args: backendArgs,
+        bootstrap: false,
+        env: {},
+        kind: 'command',
+        shell
+      },
+      rejection: null
+    }
+  }
+
+  return { backend: null, rejection: 'version' }
 }

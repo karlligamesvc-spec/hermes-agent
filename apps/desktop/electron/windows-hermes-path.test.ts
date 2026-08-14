@@ -5,9 +5,8 @@
 //   1. buildPathExtCandidates() — PATHEXT extensions must be tried BEFORE the
 //      empty extension, or an extensionless Git-Bash `hermes` shim shadows
 //      the real hermes.cmd/hermes.exe.
-//   2. chooseUpdaterArgs() — must gate on haveRealInstall (any real-install
-//      signal), not just the hermes.exe console-script shim, or healthy
-//      installs get forced into a destructive --repair.
+//   2. chooseUpdaterArgs() — must gate on the runtime import probe, not file or
+//      marker presence, or an incomplete venv loops through --update forever.
 //   3. resolveVenvHermesCommand() — must probe the venv python via
 //      canImportHermesCli() before trusting it, or a broken venv gets
 //      re-selected forever instead of falling through to bootstrap.
@@ -21,6 +20,8 @@ import {
   buildPathExtCandidates,
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
+  isWindowsVenvHermesShim,
+  resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
 
@@ -45,11 +46,11 @@ test('buildPathExtCandidates: non-Windows only tries the bare name', () => {
   assert.deepEqual(buildPathExtCandidates(undefined, false), [''])
 })
 
-test('chooseUpdaterArgs: gentle --update when a real-install signal is present', () => {
+test('chooseUpdaterArgs: gentle --update only when the runtime import probe passes', () => {
   assert.deepEqual(chooseUpdaterArgs(true, 'main'), ['--update', '--branch', 'main'])
 })
 
-test('chooseUpdaterArgs: destructive --repair only when NO real-install signal is present', () => {
+test('chooseUpdaterArgs: missing launch dependency selects rebuilding --repair despite install files', () => {
   assert.deepEqual(chooseUpdaterArgs(false, 'main'), ['--repair', '--branch', 'main'])
 })
 
@@ -83,10 +84,13 @@ test('resolveVenvHermesCommand: returns null off Windows', () => {
   assert.equal(resolveVenvHermesCommand('/root/venv/Scripts/hermes.exe', [], deps), null)
 })
 
-test('resolveVenvHermesCommand: returns null for a .cmd/.bat script command', () => {
+test('resolveVenvHermesCommand: unwraps a venv .cmd script through its probed Python', () => {
   const deps = makeDeps({ isCommandScript: () => true })
+  const result = resolveVenvHermesCommand('/root/venv/Scripts/hermes.cmd', ['serve'], deps)
 
-  assert.equal(resolveVenvHermesCommand('/root/venv/Scripts/hermes.cmd', [], deps), null)
+  assert.ok(result)
+  assert.equal(result.command, '/root/venv/Scripts/python.exe')
+  assert.deepEqual(result.args, ['-m', 'hermes_cli.main', 'serve'])
 })
 
 test('resolveVenvHermesCommand: returns null when the basename is not hermes/hermes.exe', () => {
@@ -143,6 +147,52 @@ test('resolveVenvHermesCommand: is case-insensitive on hermes.exe and the Script
 
   assert.ok(resolveVenvHermesCommand('/root/venv/Scripts/HERMES.EXE', [], deps))
   assert.ok(resolveVenvHermesCommand('/root/venv/SCRIPTS/hermes.exe', [], deps))
+})
+
+test('existing-command chain rejects a broken venv shim even when --version would pass', () => {
+  const command = '/root/venv/Scripts/hermes.exe'
+  let versionProbeCalled = false
+  const venvDeps = makeDeps({ canImportHermesCli: () => false })
+
+  const result = resolveExistingHermesCandidate(command, ['serve'], {
+    isWindowsVenvHermesShim: candidate =>
+      isWindowsVenvHermesShim(candidate, {
+        isWindows: true,
+        resolvePath: v => v,
+        dirname: v => v.slice(0, v.lastIndexOf('/')) || '/',
+        basename: v => v.slice(v.lastIndexOf('/') + 1)
+      }),
+    unwrapWindowsVenvHermesCommand: (candidate, args) => resolveVenvHermesCommand(candidate, args, venvDeps),
+    isCommandScript: () => false,
+    verifyHermesCli: () => {
+      versionProbeCalled = true
+      return true
+    }
+  })
+
+  assert.deepEqual(result, { backend: null, rejection: 'runtime-import' })
+  assert.equal(versionProbeCalled, false, 'the --version pre-import fast path must not re-adopt the broken venv')
+})
+
+test('existing-command chain still accepts a healthy generic non-venv CLI', () => {
+  const command = '/usr/local/bin/hermes'
+  const result = resolveExistingHermesCandidate(command, ['serve'], {
+    isWindowsVenvHermesShim: () => false,
+    unwrapWindowsVenvHermesCommand: () => null,
+    isCommandScript: () => false,
+    verifyHermesCli: () => true
+  })
+
+  assert.equal(result.rejection, null)
+  assert.deepEqual(result.backend, {
+    label: `existing Hermes CLI at ${command}`,
+    command,
+    args: ['serve'],
+    bootstrap: false,
+    env: {},
+    kind: 'command',
+    shell: false
+  })
 })
 
 // ── getVenvSitePackagesEntries ─────────────────────────────────────────────

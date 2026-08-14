@@ -1877,6 +1877,15 @@ python_deps_fingerprint() {
     cksum < "$dir/uv.lock" 2>/dev/null | tr -s ' \t' '-'
 }
 
+# Probe the same launch boundary as Desktop. File presence and package metadata
+# are insufficient: a partially deleted wheel can leave uv --check green while
+# `hermes` immediately dies importing PyYAML.
+runtime_imports_ok() {
+    local python="$1"
+    [ -x "$python" ] || return 1
+    "$python" -c 'import yaml; import dotenv; import hermes_cli.config' >/dev/null 2>&1
+}
+
 # True (rc 0) when the python-deps install segment would be a no-op: uv.lock
 # is unchanged since the last lock-verified install of THIS checkout AND the
 # venv still exists AND the installed package is actually importable. The
@@ -1895,7 +1904,7 @@ python_deps_up_to_date() {
     [ -n "$current" ] || return 1
     [ "$(cat "$marker" 2>/dev/null)" = "$current" ] || return 1
 
-    "$dir/venv/bin/python" -c 'import hermes_cli' >/dev/null 2>&1 || return 1
+    runtime_imports_ok "$dir/venv/bin/python" || return 1
 }
 
 # Record a lock-verified install so the next run's python_deps_up_to_date can
@@ -2012,15 +2021,20 @@ install_deps() {
     # Correctness-preserving by construction: we only skip when uv itself
     # confirms nothing would change. Goes through _uv_sync_locked (see above)
     # so a CN mirror index in the env can't turn this into a permanent no-op.
+    local force_locked_reinstall=false
     if [ "$USE_VENV" = true ] && [ -f "uv.lock" ] && [ -x "$INSTALL_DIR/venv/bin/python" ]; then
         if _uv_sync_locked --check >/dev/null 2>&1; then
-            log_success "Python dependencies already satisfied (uv.lock) — skipping"
-            # hc-569: uv just confirmed the environment matches uv.lock —
-            # record the fingerprint so the NEXT run takes the sub-second
-            # fingerprint path instead of re-running this ~5s uv check.
-            python_deps_mark_installed "$INSTALL_DIR"
-            mark_stage_skipped deps_unchanged "environment verified against uv.lock"
-            return 0
+            if runtime_imports_ok "$INSTALL_DIR/venv/bin/python"; then
+                log_success "Python dependencies already satisfied (uv.lock) — skipping"
+                # hc-569: uv just confirmed the environment matches uv.lock —
+                # record the fingerprint so the NEXT run takes the sub-second
+                # fingerprint path instead of re-running this ~5s uv check.
+                python_deps_mark_installed "$INSTALL_DIR"
+                mark_stage_skipped deps_unchanged "environment verified against uv.lock"
+                return 0
+            fi
+            log_warn "uv.lock metadata is satisfied but runtime imports fail; rebuilding dependencies from locked artifacts"
+            force_locked_reinstall=true
         fi
     fi
 
@@ -2068,13 +2082,17 @@ install_deps() {
     # It has to come BEFORE tier 0, not after it: tier 0 does not FAIL on a
     # mainland machine, it just takes half an hour, so a fallback would never be
     # reached. Non-CN installs return non-zero here and drop straight through.
-    if _uv_mirror_hashed; then
-        log_success "Main package installed (hash-verified via CN mirror)"
-        # Same lock-verified posture as the tier below, so the same fingerprint
-        # short-circuit applies: every file was checked against uv.lock's sha256.
-        python_deps_mark_installed "$INSTALL_DIR"
-        log_success "All dependencies installed"
-        return 0
+    if [ "$force_locked_reinstall" = false ] && _uv_mirror_hashed; then
+        if runtime_imports_ok "$INSTALL_DIR/venv/bin/python"; then
+            log_success "Main package installed (hash-verified via CN mirror)"
+            # Same lock-verified posture as the tier below, so the same fingerprint
+            # short-circuit applies: every file was checked against uv.lock's sha256.
+            python_deps_mark_installed "$INSTALL_DIR"
+            log_success "All dependencies installed"
+            return 0
+        fi
+        log_warn "Mirror install completed but runtime imports still fail; forcing a full locked reinstall"
+        force_locked_reinstall=true
     fi
 
     if [ -f "uv.lock" ]; then
@@ -2105,13 +2123,23 @@ install_deps() {
         # _uv_sync_locked (see above install_deps) sanitizes the CN mirror
         # index env so this tier is actually attempted instead of always
         # refusing under HERMES_CN_MIRRORS=1.
-        if _uv_sync_locked; then
-            log_success "Main package installed (hash-verified via uv.lock)"
-            # hc-569: lock-verified success — record the uv.lock fingerprint so
-            # the next dependency-unchanged update can skip this segment.
-            python_deps_mark_installed "$INSTALL_DIR"
-            log_success "All dependencies installed"
-            return 0
+        local locked_sync_ok=false
+        if [ "$force_locked_reinstall" = true ]; then
+            if _uv_sync_locked --reinstall; then locked_sync_ok=true; fi
+        elif _uv_sync_locked; then
+            locked_sync_ok=true
+        fi
+        if [ "$locked_sync_ok" = true ]; then
+            if ! runtime_imports_ok "$INSTALL_DIR/venv/bin/python"; then
+                log_warn "Locked sync completed but runtime imports still fail; trying the recovery tiers"
+            else
+                log_success "Main package installed (hash-verified via uv.lock)"
+                # hc-569: lock-verified success — record the uv.lock fingerprint so
+                # the next dependency-unchanged update can skip this segment.
+                python_deps_mark_installed "$INSTALL_DIR"
+                log_success "All dependencies installed"
+                return 0
+            fi
         fi
         log_warn "uv.lock sync failed (see uv output above), falling back to PyPI resolve..."
     else
@@ -2216,6 +2244,12 @@ PY
         log_error "Package installation failed even with no extras."
         log_info "Check that build tools are installed: sudo apt install build-essential python3-dev"
         log_info "Then re-run: cd $INSTALL_DIR && uv pip install -e '.[all]'"
+        exit 1
+    fi
+
+    if [ "$USE_VENV" = true ] && ! runtime_imports_ok "$INSTALL_DIR/venv/bin/python"; then
+        log_error "Runtime imports failed after dependency installation (yaml/dotenv/hermes_cli.config)."
+        log_info "The environment is incomplete; no success marker will be written. Re-run the installer to rebuild it."
         exit 1
     fi
 

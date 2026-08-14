@@ -171,7 +171,7 @@ import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, normalizeHermesHomeRoot } from './backend-env'
-import { canImportHermesCli, verifyHermesCli } from './backend-probes'
+import { canImportHermesCli, probeHermesRuntimeIntegrity, verifyHermesCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { shouldLatchBackendStartFailure } from './backend-start-failure'
 import { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
@@ -303,6 +303,8 @@ import {
   buildPathExtCandidates,
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
+  isWindowsVenvHermesShim,
+  resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
 import {
@@ -2936,19 +2938,22 @@ async function handOffWindowsBootstrapRecovery(reason) {
     : configuredBranch || DEFAULT_UPDATE_BRANCH
 
   const venvBin = path.join(updateRoot, 'venv', IS_WINDOWS ? 'Scripts' : 'bin')
-  const venvHermes = path.join(venvBin, IS_WINDOWS ? 'hermes.exe' : 'hermes')
   const venvPython = path.join(venvBin, IS_WINDOWS ? 'python.exe' : 'python')
 
-  // Choose the gentle in-place --update when ANY real-install signal is present,
-  // not just the `hermes.exe` console-script shim. That shim is generated at the
-  // END of venv setup and is absent in exactly the interrupted/quarantined states
-  // this recovery exists to heal — gating on it alone forced the destructive
-  // --repair (full venv recreate) and drove reinstall loops. The venv interpreter
-  // and the bootstrap-complete marker are present earlier and are better signals.
-  const haveRealInstall =
-    fileExists(venvPython) || fileExists(venvHermes) || fileExists(path.join(updateRoot, '.hermes-bootstrap-complete'))
+  // An interpreter/shim/marker proves only that an install was attempted. In
+  // the reported Windows 0.17.20 state had source + interpreter present while
+  // launch still failed on a missing dependency. The environment continued to
+  // change during diagnosis, so file presence cannot establish its history.
+  // Only a real launch-dependency import probe earns the in-place update path;
+  // an incomplete runtime is rebuilt by repair.
+  const runtimeProbe = probeHermesRuntimeIntegrity({
+    root: updateRoot,
+    pythonPath: venvPython,
+    sourcePresent: isHermesSourceRoot(updateRoot),
+    pythonPresent: fileExists(venvPython)
+  })
 
-  const updaterArgs = chooseUpdaterArgs(haveRealInstall, branch)
+  const updaterArgs = chooseUpdaterArgs(runtimeProbe.runtimeImportable, branch)
 
   await releaseBackendLockForUpdate(updateRoot)
 
@@ -3771,38 +3776,28 @@ function resolveHermesBackend(backendArgs) {
     }
 
     if (hermesCommand) {
-      const unwrapped = unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs)
+      const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
+        isWindowsVenvHermesShim: command =>
+          isWindowsVenvHermesShim(command, {
+            isWindows: IS_WINDOWS,
+            resolvePath: (...segments) => path.resolve(...segments),
+            dirname: p => path.dirname(p),
+            basename: p => path.basename(p)
+          }),
+        unwrapWindowsVenvHermesCommand,
+        isCommandScript,
+        verifyHermesCli
+      })
 
-      if (unwrapped) {
-        return unwrapped
+      if (candidate.backend) {
+        return candidate.backend
       }
 
-      // Smoke-test the candidate before trusting it. A `hermes` shim
-      // left behind by a half-uninstalled pip install (or a venv
-      // entry-point pointing at a deleted interpreter) still resolves
-      // via findOnPath but explodes on spawn -- the user then sees a
-      // dead backend instead of the first-launch installer. The cheap
-      // `--version` probe (see backend-probes.ts) catches that case
-      // and lets the resolver fall through to step 6 / bootstrap.
-      const shellForProbe = isCommandScript(hermesCommand)
-
-      if (verifyHermesCli(hermesCommand, { shell: shellForProbe })) {
-        return (
-          unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs) || {
-            label: `existing Hermes CLI at ${hermesCommand}`,
-            command: hermesCommand,
-            args: backendArgs,
-            bootstrap: false,
-            env: {},
-            kind: 'command',
-            shell: shellForProbe
-          }
-        )
-      }
-
-      rememberLog(
-        `Ignoring existing Hermes CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
-      )
+      const reason =
+        candidate.rejection === 'runtime-import'
+          ? 'recognized venv shim failed the runtime import probe'
+          : '--version probe failed'
+      rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
     }
   }
 
@@ -11458,19 +11453,24 @@ function readDeclaredMinEngineVersion() {
 
 // Probe the on-disk canonical install for the runtime-select fail-open logic.
 // Reports the two facts canUseOnDiskRuntime() needs: is the runtime SOURCE
-// present (hermes_cli/main.py) and is a runnable interpreter present. We scope
-// "python present" to the co-located venv on purpose: ensureRuntime()'s adoption
-// path (the createActiveBackend venv-wiring branch) REQUIRES getVenvPython(
+// present (hermes_cli/main.py) and can its co-located interpreter import the
+// actual launch dependencies. We scope the probe to the co-located venv because
+// ensureRuntime()'s adoption path (the createActiveBackend venv-wiring branch)
+// REQUIRES getVenvPython(
 // VENV_ROOT) and throws without it, so adopting on the strength of a mere system
-// Python would just trade a bootstrap brick for a venv-missing brick. The pair
-// here is therefore exactly the pair isBootstrapComplete() checks — the only
-// difference the fail-open path cares about is the presence/absence of the
-// attesting MARKER, not the runnability of the install.
+// Python would just trade a bootstrap brick for a venv-missing brick. Unlike
+// the marker, this result is live runtime evidence and is re-evaluated both
+// before bootstrap and before any failure fallback.
 function probeOnDiskRuntime() {
-  return {
-    sourcePresent: isHermesSourceRoot(ACTIVE_HERMES_ROOT),
-    pythonPresent: fileExists(getVenvPython(VENV_ROOT))
-  }
+  const sourcePresent = isHermesSourceRoot(ACTIVE_HERMES_ROOT)
+  const venvPython = getVenvPython(VENV_ROOT)
+
+  return probeHermesRuntimeIntegrity({
+    root: ACTIVE_HERMES_ROOT,
+    pythonPath: venvPython,
+    sourcePresent,
+    pythonPresent: fileExists(venvPython)
+  })
 }
 
 function isDirectorySync(dir) {

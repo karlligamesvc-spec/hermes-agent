@@ -107,6 +107,21 @@ function run(cmd, argv, opts = {}) {
   return res
 }
 
+export function probeRuntimeImports(python, { env = process.env, cwd = os.tmpdir() } = {}) {
+  const code = 'import yaml, dotenv, hermes_cli.config, run_agent, toolsets'
+  const result = spawnSync(python, ['-c', code], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    cwd,
+    env,
+    encoding: 'utf8',
+    shell: false,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(`runtime imports failed (${result.status}): ${String(result.stderr || '').trim()}`)
+  }
+}
+
 function sha256File(file) {
   const h = createHash('sha256')
   const fd = fs.openSync(file, 'r')
@@ -863,9 +878,11 @@ function cmdSmoke(args) {
     ].join('\n')], { capture: true, env: probeEnv })
     log(idn.stdout.trim())
 
-    // editable finder covers packages AND py-modules
-    run(py, ['-c', 'import hermes_cli, run_agent, toolsets; print("imports-ok")'], { capture: true, env: probeEnv, cwd: os.tmpdir() })
-    log('imports-ok (hermes_cli, run_agent, toolsets)')
+    // Editable finder covers packages AND py-modules. Import the same config
+    // boundary Desktop probes at startup; top-level hermes_cli alone does not
+    // prove that PyYAML or the configuration path is intact.
+    probeRuntimeImports(py, { env: probeEnv, cwd: os.tmpdir() })
+    log('imports-ok (yaml, dotenv, hermes_cli.config, run_agent, toolsets)')
 
     // entry-point trampoline end to end (the real relocation assertion)
     const hermes = path.join(venvBin, manifest.os === 'win' ? 'hermes.exe' : 'hermes')
@@ -905,13 +922,15 @@ function cmdSmoke(args) {
 
 // ---------------------------------------------------------------------------
 
-const args = parseArgs(process.argv.slice(2))
-const sub = args._[0]
-switch (sub) {
-  case 'build': await cmdBuild(args); break
-  case 'fixup': cmdFixup(args); break
-  case 'verify': cmdVerify(args); break
-  case 'smoke': cmdSmoke(args); break
-  default:
-    die('usage: build-runtime-bundle.mjs <build|fixup|verify|smoke> [--out DIR] [--ref REF] [--root DIR] [--archive FILE] [--workdir DIR] [--min-desktop-version X] [--uv-version X] [--keep-stage] [--keep]')
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  const args = parseArgs(process.argv.slice(2))
+  const sub = args._[0]
+  switch (sub) {
+    case 'build': await cmdBuild(args); break
+    case 'fixup': cmdFixup(args); break
+    case 'verify': cmdVerify(args); break
+    case 'smoke': cmdSmoke(args); break
+    default:
+      die('usage: build-runtime-bundle.mjs <build|fixup|verify|smoke> [--out DIR] [--ref REF] [--root DIR] [--archive FILE] [--workdir DIR] [--min-desktop-version X] [--uv-version X] [--keep-stage] [--keep]')
+  }
 }

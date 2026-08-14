@@ -24,6 +24,7 @@ on:
     paths:
       - 'scripts/install.ps1'
       - 'scripts/install.sh'
+      - 'scripts/tests/test-install-ps1-runtime-integrity.ps1'
       - 'scripts/lib/apexnodes-region-detect.ps1'
       - 'scripts/lib/apexnodes-region-detect.sh'
       - 'scripts/lib/apexnodes-tar-extract.Tests.ps1'
@@ -74,6 +75,16 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+
+      # hc-727: parse coverage cannot prove that Repair rejects a metadata-clean
+      # but import-broken venv, or that the locked recovery actually passes
+      # --reinstall. Use Windows PowerShell 5.1, matching the shipped installer,
+      # and execute the real installer functions against a temporary real venv.
+      - name: Runtime integrity repair behaves (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          .\scripts\tests\test-install-ps1-runtime-integrity.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # hc-657: parsing proves the publish script compiles, not that it retries
       # a stalled upload or refuses to flip the feed ahead of its binaries.

@@ -34,6 +34,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import path from 'node:path'
 
 /** Default probe budget. 5s false-negativeed healthy Windows cold starts (#61764). */
 const DEFAULT_PROBE_TIMEOUT_MS = 15_000
@@ -161,6 +162,38 @@ function canImportHermesCli(pythonPath: string, opts: { env?: Record<string, str
 }
 
 /**
+ * Probe a concrete source+venv pair at the same boundary used by startup,
+ * repair selection, and fallback adoption. Keeping PYTHONPATH construction
+ * here prevents callers from accidentally degrading this to file presence.
+ */
+function probeHermesRuntimeIntegrity({
+  root,
+  pythonPath,
+  sourcePresent,
+  pythonPresent,
+  inheritedPythonPath = process.env.PYTHONPATH,
+  delimiter = path.delimiter
+}: {
+  root: string
+  pythonPath: string
+  sourcePresent: boolean
+  pythonPresent: boolean
+  inheritedPythonPath?: string
+  delimiter?: string
+}) {
+  const runtimeImportable =
+    Boolean(sourcePresent) &&
+    Boolean(pythonPresent) &&
+    canImportHermesCli(pythonPath, {
+      env: {
+        PYTHONPATH: [root, inheritedPythonPath].filter(Boolean).join(delimiter)
+      }
+    })
+
+  return { sourcePresent: Boolean(sourcePresent), runtimeImportable }
+}
+
+/**
  * Return true iff `<hermesCommand> --version` exits 0.
  *
  * Used to gate the "existing `hermes` on PATH" rung. Without this, a
@@ -215,6 +248,7 @@ export {
   execProbeSync,
   hermesRuntimeImportProbe,
   PROBE_TIMEOUT_MS,
+  probeHermesRuntimeIntegrity,
   resolveProbeTimeoutMs,
   shouldTrustHermesOverride,
   verifyHermesCli
