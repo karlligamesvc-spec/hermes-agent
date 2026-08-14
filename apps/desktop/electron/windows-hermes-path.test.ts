@@ -5,9 +5,8 @@
 //   1. buildPathExtCandidates() — PATHEXT extensions must be tried BEFORE the
 //      empty extension, or an extensionless Git-Bash `hermes` shim shadows
 //      the real hermes.cmd/hermes.exe.
-//   2. chooseUpdaterArgs() — must gate on haveRealInstall (any real-install
-//      signal), not just the hermes.exe console-script shim, or healthy
-//      installs get forced into a destructive --repair.
+//   2. chooseUpdaterArgs() — must gate on the runtime import probe, not file or
+//      marker presence, or an incomplete venv loops through --update forever.
 //   3. resolveVenvHermesCommand() — must probe the venv python via
 //      canImportHermesCli() before trusting it, or a broken venv gets
 //      re-selected forever instead of falling through to bootstrap.
@@ -45,11 +44,11 @@ test('buildPathExtCandidates: non-Windows only tries the bare name', () => {
   assert.deepEqual(buildPathExtCandidates(undefined, false), [''])
 })
 
-test('chooseUpdaterArgs: gentle --update when a real-install signal is present', () => {
+test('chooseUpdaterArgs: gentle --update only when the runtime import probe passes', () => {
   assert.deepEqual(chooseUpdaterArgs(true, 'main'), ['--update', '--branch', 'main'])
 })
 
-test('chooseUpdaterArgs: destructive --repair only when NO real-install signal is present', () => {
+test('chooseUpdaterArgs: missing launch dependency selects rebuilding --repair despite install files', () => {
   assert.deepEqual(chooseUpdaterArgs(false, 'main'), ['--repair', '--branch', 'main'])
 })
 

@@ -179,6 +179,7 @@ def _py_trio_harness() -> str:
         for name in (
             "python_deps_marker_path",
             "python_deps_fingerprint",
+            "runtime_imports_ok",
             "python_deps_up_to_date",
             "python_deps_mark_installed",
         )
@@ -194,12 +195,15 @@ def _run_py_trio(script: str, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-def _seed_python_tree(root: Path, importable: bool = True) -> None:
+def _seed_python_tree(root: Path, importable: bool = True, missing_yaml: bool = False) -> None:
     (root / "uv.lock").write_text("version = 1\n[[package]]\nname='x'\n")
     venv_bin = root / "venv" / "bin"
     venv_bin.mkdir(parents=True)
     python = venv_bin / "python"
-    python.write_text("#!/bin/bash\nexit 0\n" if importable else "#!/bin/bash\nexit 1\n")
+    if missing_yaml:
+        python.write_text('#!/bin/bash\ncase "$*" in *yaml*) exit 1 ;; *) exit 0 ;; esac\n')
+    else:
+        python.write_text("#!/bin/bash\nexit 0\n" if importable else "#!/bin/bash\nexit 1\n")
     python.chmod(0o755)
 
 
@@ -250,6 +254,19 @@ def test_python_failed_import_probe_forces_install(tmp_path: Path) -> None:
     site-packages) must not be trusted: the import probe is the decisive
     guard and must fail toward the full install."""
     _seed_python_tree(tmp_path, importable=False)
+    res = _run_py_trio(
+        'python_deps_mark_installed "$PWD"\n'
+        'python_deps_up_to_date "$PWD" && echo UP_TO_DATE || echo NEEDS_INSTALL',
+        tmp_path,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "NEEDS_INSTALL" in res.stdout
+
+
+def test_python_marker_cannot_hide_missing_pyyaml(tmp_path: Path) -> None:
+    """A venv whose top-level package imports but whose real config boundary
+    lacks PyYAML is incomplete and must fall through to dependency repair."""
+    _seed_python_tree(tmp_path, missing_yaml=True)
     res = _run_py_trio(
         'python_deps_mark_installed "$PWD"\n'
         'python_deps_up_to_date "$PWD" && echo UP_TO_DATE || echo NEEDS_INSTALL',

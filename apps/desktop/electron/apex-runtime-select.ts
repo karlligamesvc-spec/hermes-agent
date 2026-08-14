@@ -53,21 +53,22 @@
 
 /**
  * Decide whether a runtime already extracted on disk is runnable enough to start
- * the gateway with — i.e. the source tree has the Python entrypoint AND some
- * Python interpreter (a co-located venv, or a usable system Python) resolved.
+ * the gateway with — i.e. the source tree has the Python entrypoint AND the
+ * co-located interpreter can import the runtime's launch dependencies.
  *
- * This is the same pair of facts isBootstrapComplete() checks, minus the marker:
- * "is there actually something we can spawn `-m hermes_cli.main` against?"
+ * File presence is not enough: this verdict includes the executable import
+ * probe that proves `-m hermes_cli.main` can cross its configuration boundary.
  *
  * @param {object} probe
  * @param {boolean} probe.sourcePresent  hermes_cli/main.py exists under the root
- * @param {boolean} probe.pythonPresent  a runnable interpreter resolved for the root
+ * @param {boolean} probe.runtimeImportable  the co-located interpreter passed
+ *   the real Hermes launch-dependency import probe
  * @returns {boolean}
  */
 function canUseOnDiskRuntime(probe) {
   if (!probe || typeof probe !== 'object') {return false}
 
-  return Boolean(probe.sourcePresent) && Boolean(probe.pythonPresent)
+  return Boolean(probe.sourcePresent) && Boolean(probe.runtimeImportable)
 }
 
 /**

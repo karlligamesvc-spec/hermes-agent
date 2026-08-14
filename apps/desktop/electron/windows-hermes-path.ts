@@ -11,12 +11,9 @@
  *      hermes.cmd/hermes.exe; the shim then failed the --version probe and
  *      the desktop fell through to a spurious bootstrap/repair. The fix:
  *      PATHEXT extensions first, empty extension LAST.
- *   2. chooseUpdaterArgs() — handOffWindowsBootstrapRecovery() chose
- *      --update vs the destructive --repair by checking ONLY
- *      venv\Scripts\hermes.exe (the console-script shim, written at the END
- *      of venv setup and absent in interrupted states), so it escalated to a
- *      full venv recreate even on healthy installs. The fix: gate on ANY
- *      real-install signal, not just the shim.
+ *   2. chooseUpdaterArgs() — handOffWindowsBootstrapRecovery() once chose
+ *      --update vs repair from file/marker presence. An incomplete venv can
+ *      retain all those signals, so the fix gates on the runtime import probe.
  *   3. resolveVenvHermesCommand() — unwrapWindowsVenvHermesCommand() returned
  *      the venv python with NO runtime probe (bypassing the caller's
  *      --version check too), so a venv broken mid-update (e.g. missing
@@ -62,22 +59,18 @@ export function buildPathExtCandidates(pathext: string | undefined, isWindows: b
 
 /**
  * Choose the Windows bootstrap-recovery updater invocation: the gentle
- * in-place --update when ANY real-install signal is present, the
- * destructive --repair (full venv recreate) otherwise.
+ * in-place --update only when the existing runtime passed its launch-dependency
+ * import probe, and --repair (full venv recreate) otherwise.
  *
- * haveRealInstall must be computed by the caller from ALL real-install
- * signals (venv python interpreter, venv hermes shim, bootstrap-complete
- * marker) — gating on just the hermes.exe console-script shim alone is the
- * regression this function's callers must avoid: that shim is written at
- * the END of venv setup and is absent in exactly the interrupted/quarantined
- * states this recovery exists to heal.
+ * runtimeUsable must come from an executable import probe, never file/marker
+ * presence. A partial venv can retain python.exe, hermes.exe and the marker.
  *
- * @param {boolean} haveRealInstall
+ * @param {boolean} runtimeUsable
  * @param {string} branch
  * @returns {string[]} updater argv, e.g. ['--update', '--branch', 'main'].
  */
-export function chooseUpdaterArgs(haveRealInstall: boolean, branch: string): string[] {
-  return haveRealInstall ? ['--update', '--branch', branch] : ['--repair', '--branch', branch]
+export function chooseUpdaterArgs(runtimeUsable: boolean, branch: string): string[] {
+  return runtimeUsable ? ['--update', '--branch', branch] : ['--repair', '--branch', branch]
 }
 
 /**

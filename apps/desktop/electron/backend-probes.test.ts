@@ -17,6 +17,7 @@ import {
   DEFAULT_PROBE_TIMEOUT_MS,
   hermesRuntimeImportProbe,
   PROBE_TIMEOUT_MS,
+  probeHermesRuntimeIntegrity,
   resolveProbeTimeoutMs,
   shouldTrustHermesOverride,
   verifyHermesCli
@@ -57,6 +58,45 @@ test('hermes runtime import probe checks config dependencies', () => {
   // passed the old probe and produced an unrecoverable boot loop.
   assert.match(probe, /\bimport dotenv\b/)
   assert.match(probe, /\bimport hermes_cli\.config\b/)
+})
+
+test('runtime integrity probe rejects a real interpreter environment missing PyYAML', { skip: process.platform === 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-runtime-integrity-'))
+  const packageDir = path.join(root, 'hermes_cli')
+  const wrapper = path.join(root, 'python-no-site')
+
+  fs.mkdirSync(packageDir)
+  fs.writeFileSync(path.join(packageDir, '__init__.py'), '')
+  fs.writeFileSync(path.join(packageDir, 'config.py'), 'import yaml\n')
+  fs.writeFileSync(path.join(root, 'dotenv.py'), '')
+  fs.writeFileSync(wrapper, '#!/bin/sh\nexec /usr/bin/python3 -S "$@"\n')
+  fs.chmodSync(wrapper, 0o755)
+
+  try {
+    const missingYaml = probeHermesRuntimeIntegrity({
+      root,
+      pythonPath: wrapper,
+      sourcePresent: true,
+      pythonPresent: true,
+      inheritedPythonPath: ''
+    })
+
+    assert.deepEqual(missingYaml, { sourcePresent: true, runtimeImportable: false })
+
+    fs.writeFileSync(path.join(root, 'yaml.py'), '')
+
+    const complete = probeHermesRuntimeIntegrity({
+      root,
+      pythonPath: wrapper,
+      sourcePresent: true,
+      pythonPresent: true,
+      inheritedPythonPath: ''
+    })
+
+    assert.deepEqual(complete, { sourcePresent: true, runtimeImportable: true })
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('explicit Hermes override is authoritative', () => {
