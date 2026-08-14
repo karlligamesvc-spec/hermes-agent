@@ -24,9 +24,9 @@ $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("hc727-runtime-integrit
 $script:InstallDir = $tempRoot
 $venv = Join-Path $tempRoot "venv"
 New-Item -ItemType Directory -Path (Join-Path $tempRoot "hermes_cli") -Force | Out-Null
-Set-Content -Path (Join-Path $tempRoot "hermes_cli\__init__.py") -Value ""
-Set-Content -Path (Join-Path $tempRoot "hermes_cli\config.py") -Value ""
-Set-Content -Path (Join-Path $tempRoot "dotenv.py") -Value ""
+Set-Content -Path (Join-Path $tempRoot "hermes_cli\__init__.py") -Value "" -Encoding Ascii
+Set-Content -Path (Join-Path $tempRoot "hermes_cli\config.py") -Value "" -Encoding Ascii
+Set-Content -Path (Join-Path $tempRoot "dotenv.py") -Value "" -Encoding Ascii
 
 try {
     & python -m venv $venv
@@ -36,7 +36,7 @@ try {
     if (Test-HermesRuntimeImports $python) {
         throw "runtime probe accepted a real venv missing PyYAML"
     }
-    Set-Content -Path (Join-Path $tempRoot "yaml.py") -Value ""
+    Set-Content -Path (Join-Path $tempRoot "yaml.py") -Value "" -Encoding Ascii
     if (-not (Test-HermesRuntimeImports $python)) {
         throw "runtime probe rejected the complete synthetic launch boundary"
     }

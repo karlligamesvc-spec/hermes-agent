@@ -268,12 +268,16 @@ def test_the_new_tier_runs_before_the_upstream_locked_sync():
     where it was.
     """
     sh = INSTALL_SH.read_text(encoding="utf-8")
-    assert sh.index("if _uv_mirror_hashed; then") < sh.index('log_info "Trying tier: hash-verified (uv.lock)'), (
+    assert sh.index('if [ "$force_locked_reinstall" = false ] && _uv_mirror_hashed; then') < sh.index(
+        'log_info "Trying tier: hash-verified (uv.lock)'
+    ), (
         "sh: the mirror tier must be attempted before the upstream locked sync"
     )
 
     ps = _strip_ps_comments(INSTALL_PS1.read_text(encoding="utf-8"))
-    assert ps.index("if (Invoke-UvMirrorHashedInstall)") < ps.index('Write-Info "Trying tier: hash-verified (uv.lock)'), (
+    assert ps.index("if ((-not $forceLockedReinstall) -and (Invoke-UvMirrorHashedInstall))") < ps.index(
+        'Write-Info "Trying tier: hash-verified (uv.lock)'
+    ), (
         "ps1: same ordering"
     )
 
