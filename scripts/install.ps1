@@ -2343,12 +2343,19 @@ function Test-HermesRuntimeImports {
 
     $previous = $ErrorActionPreference
     $previousPythonPath = $env:PYTHONPATH
+    $locationPushed = $false
     $ErrorActionPreference = "Continue"
     try {
         $env:PYTHONPATH = $InstallDir
+        # `python -c` searches its current directory before PYTHONPATH. Probe
+        # from the candidate install root so another checkout cannot shadow it
+        # and turn either a healthy or broken runtime into a false verdict.
+        Push-Location $InstallDir
+        $locationPushed = $true
         & $PythonExe -c "import yaml; import dotenv; import hermes_cli.config" 2>&1 | Out-Null
         return ($LASTEXITCODE -eq 0)
     } finally {
+        if ($locationPushed) { Pop-Location }
         $env:PYTHONPATH = $previousPythonPath
         $ErrorActionPreference = $previous
     }

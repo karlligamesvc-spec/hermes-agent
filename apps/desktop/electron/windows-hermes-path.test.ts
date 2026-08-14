@@ -20,6 +20,8 @@ import {
   buildPathExtCandidates,
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
+  isWindowsVenvHermesShim,
+  resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
 
@@ -82,10 +84,13 @@ test('resolveVenvHermesCommand: returns null off Windows', () => {
   assert.equal(resolveVenvHermesCommand('/root/venv/Scripts/hermes.exe', [], deps), null)
 })
 
-test('resolveVenvHermesCommand: returns null for a .cmd/.bat script command', () => {
+test('resolveVenvHermesCommand: unwraps a venv .cmd script through its probed Python', () => {
   const deps = makeDeps({ isCommandScript: () => true })
+  const result = resolveVenvHermesCommand('/root/venv/Scripts/hermes.cmd', ['serve'], deps)
 
-  assert.equal(resolveVenvHermesCommand('/root/venv/Scripts/hermes.cmd', [], deps), null)
+  assert.ok(result)
+  assert.equal(result.command, '/root/venv/Scripts/python.exe')
+  assert.deepEqual(result.args, ['-m', 'hermes_cli.main', 'serve'])
 })
 
 test('resolveVenvHermesCommand: returns null when the basename is not hermes/hermes.exe', () => {
@@ -142,6 +147,52 @@ test('resolveVenvHermesCommand: is case-insensitive on hermes.exe and the Script
 
   assert.ok(resolveVenvHermesCommand('/root/venv/Scripts/HERMES.EXE', [], deps))
   assert.ok(resolveVenvHermesCommand('/root/venv/SCRIPTS/hermes.exe', [], deps))
+})
+
+test('existing-command chain rejects a broken venv shim even when --version would pass', () => {
+  const command = '/root/venv/Scripts/hermes.exe'
+  let versionProbeCalled = false
+  const venvDeps = makeDeps({ canImportHermesCli: () => false })
+
+  const result = resolveExistingHermesCandidate(command, ['serve'], {
+    isWindowsVenvHermesShim: candidate =>
+      isWindowsVenvHermesShim(candidate, {
+        isWindows: true,
+        resolvePath: v => v,
+        dirname: v => v.slice(0, v.lastIndexOf('/')) || '/',
+        basename: v => v.slice(v.lastIndexOf('/') + 1)
+      }),
+    unwrapWindowsVenvHermesCommand: (candidate, args) => resolveVenvHermesCommand(candidate, args, venvDeps),
+    isCommandScript: () => false,
+    verifyHermesCli: () => {
+      versionProbeCalled = true
+      return true
+    }
+  })
+
+  assert.deepEqual(result, { backend: null, rejection: 'runtime-import' })
+  assert.equal(versionProbeCalled, false, 'the --version pre-import fast path must not re-adopt the broken venv')
+})
+
+test('existing-command chain still accepts a healthy generic non-venv CLI', () => {
+  const command = '/usr/local/bin/hermes'
+  const result = resolveExistingHermesCandidate(command, ['serve'], {
+    isWindowsVenvHermesShim: () => false,
+    unwrapWindowsVenvHermesCommand: () => null,
+    isCommandScript: () => false,
+    verifyHermesCli: () => true
+  })
+
+  assert.equal(result.rejection, null)
+  assert.deepEqual(result.backend, {
+    label: `existing Hermes CLI at ${command}`,
+    command,
+    args: ['serve'],
+    bootstrap: false,
+    env: {},
+    kind: 'command',
+    shell: false
+  })
 })
 
 // ── getVenvSitePackagesEntries ─────────────────────────────────────────────

@@ -303,6 +303,8 @@ import {
   buildPathExtCandidates,
   chooseUpdaterArgs,
   getVenvSitePackagesEntries,
+  isWindowsVenvHermesShim,
+  resolveExistingHermesCandidate,
   resolveVenvHermesCommand
 } from './windows-hermes-path'
 import {
@@ -2939,8 +2941,9 @@ async function handOffWindowsBootstrapRecovery(reason) {
   const venvPython = path.join(venvBin, IS_WINDOWS ? 'python.exe' : 'python')
 
   // An interpreter/shim/marker proves only that an install was attempted. In
-  // the Windows 0.17.20 incident the source-install dependency stage had not
-  // completed, yet source + interpreter presence let Desktop adopt that venv.
+  // the reported Windows 0.17.20 state had source + interpreter present while
+  // launch still failed on a missing dependency. The environment continued to
+  // change during diagnosis, so file presence cannot establish its history.
   // Only a real launch-dependency import probe earns the in-place update path;
   // an incomplete runtime is rebuilt by repair.
   const runtimeProbe = probeHermesRuntimeIntegrity({
@@ -3773,38 +3776,28 @@ function resolveHermesBackend(backendArgs) {
     }
 
     if (hermesCommand) {
-      const unwrapped = unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs)
+      const candidate = resolveExistingHermesCandidate(hermesCommand, backendArgs, {
+        isWindowsVenvHermesShim: command =>
+          isWindowsVenvHermesShim(command, {
+            isWindows: IS_WINDOWS,
+            resolvePath: (...segments) => path.resolve(...segments),
+            dirname: p => path.dirname(p),
+            basename: p => path.basename(p)
+          }),
+        unwrapWindowsVenvHermesCommand,
+        isCommandScript,
+        verifyHermesCli
+      })
 
-      if (unwrapped) {
-        return unwrapped
+      if (candidate.backend) {
+        return candidate.backend
       }
 
-      // Smoke-test the candidate before trusting it. A `hermes` shim
-      // left behind by a half-uninstalled pip install (or a venv
-      // entry-point pointing at a deleted interpreter) still resolves
-      // via findOnPath but explodes on spawn -- the user then sees a
-      // dead backend instead of the first-launch installer. The cheap
-      // `--version` probe (see backend-probes.ts) catches that case
-      // and lets the resolver fall through to step 6 / bootstrap.
-      const shellForProbe = isCommandScript(hermesCommand)
-
-      if (verifyHermesCli(hermesCommand, { shell: shellForProbe })) {
-        return (
-          unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs) || {
-            label: `existing Hermes CLI at ${hermesCommand}`,
-            command: hermesCommand,
-            args: backendArgs,
-            bootstrap: false,
-            env: {},
-            kind: 'command',
-            shell: shellForProbe
-          }
-        )
-      }
-
-      rememberLog(
-        `Ignoring existing Hermes CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
-      )
+      const reason =
+        candidate.rejection === 'runtime-import'
+          ? 'recognized venv shim failed the runtime import probe'
+          : '--version probe failed'
+      rememberLog(`Ignoring existing Hermes CLI at ${hermesCommand}: ${reason}; falling through to bootstrap.`)
     }
   }
 

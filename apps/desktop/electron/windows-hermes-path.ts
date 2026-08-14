@@ -177,6 +177,23 @@ export interface ResolveVenvHermesCommandDeps {
   rememberLog?: (message: string) => void
 }
 
+export function isWindowsVenvHermesShim(
+  command: string,
+  deps: Pick<ResolveVenvHermesCommandDeps, 'isWindows' | 'resolvePath' | 'dirname' | 'basename'>
+): boolean {
+  if (!deps.isWindows || !command) {
+    return false
+  }
+
+  const resolved = deps.resolvePath(String(command))
+
+  if (!/^hermes(?:\.(?:exe|cmd|bat))?$/i.test(deps.basename(resolved))) {
+    return false
+  }
+
+  return deps.basename(deps.dirname(resolved)).toLowerCase() === 'scripts'
+}
+
 /**
  * If `command` is a Windows venv `hermes`/`hermes.exe` console-script shim
  * (i.e. `<venvRoot>/Scripts/hermes(.exe)`), resolve it to the underlying
@@ -212,7 +229,6 @@ export function resolveVenvHermesCommand(
 } | null {
   const {
     isWindows,
-    isCommandScript,
     fileExists,
     directoryExists,
     canImportHermesCli,
@@ -226,22 +242,12 @@ export function resolveVenvHermesCommand(
     rememberLog
   } = deps
 
-  if (!isWindows || !command || isCommandScript(command)) {
+  if (!isWindowsVenvHermesShim(command, { isWindows, resolvePath, dirname, basename })) {
     return null
   }
 
   const resolved = resolvePath(String(command))
-
-  if (!/^hermes(?:\.exe)?$/i.test(basename(resolved))) {
-    return null
-  }
-
   const scriptsDir = dirname(resolved)
-
-  if (basename(scriptsDir).toLowerCase() !== 'scripts') {
-    return null
-  }
-
   const venvRoot = dirname(scriptsDir)
   const python = getVenvPython(venvRoot)
 
@@ -281,4 +287,50 @@ export function resolveVenvHermesCommand(
     root,
     shell: false
   }
+}
+
+export interface ExistingHermesCandidateDeps {
+  isWindowsVenvHermesShim: (command: string) => boolean
+  unwrapWindowsVenvHermesCommand: (command: string, backendArgs: string[]) => Record<string, unknown> | null
+  isCommandScript: (command: string) => boolean
+  verifyHermesCli: (command: string, opts: { shell: boolean }) => boolean
+}
+
+/** Resolve the complete existing-command rung without a venv integrity bypass. */
+export function resolveExistingHermesCandidate(
+  command: string,
+  backendArgs: string[],
+  deps: ExistingHermesCandidateDeps
+): { backend: Record<string, unknown> | null; rejection: 'runtime-import' | 'version' | null } {
+  const venvShim = deps.isWindowsVenvHermesShim(command)
+  const unwrapped = deps.unwrapWindowsVenvHermesCommand(command, backendArgs)
+
+  if (unwrapped) {
+    return { backend: unwrapped, rejection: null }
+  }
+
+  // `hermes --version` returns before config imports. Once an identified venv
+  // shim fails the import-aware unwrap, the generic probe must not re-adopt it.
+  if (venvShim) {
+    return { backend: null, rejection: 'runtime-import' }
+  }
+
+  const shell = deps.isCommandScript(command)
+
+  if (deps.verifyHermesCli(command, { shell })) {
+    return {
+      backend: {
+        label: `existing Hermes CLI at ${command}`,
+        command,
+        args: backendArgs,
+        bootstrap: false,
+        env: {},
+        kind: 'command',
+        shell
+      },
+      rejection: null
+    }
+  }
+
+  return { backend: null, rejection: 'version' }
 }
