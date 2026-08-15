@@ -28,9 +28,10 @@ ASR 族:
       top-posts                                              ← creator_top_posts
       download                                               ← social_download。data 返回
                                                                直链 download_url(+可选
-                                                               download_headers)与元数据,
-                                                               媒体由本端自取,网关只出
-                                                               元数据/签名链接(PD §8)
+                                                               fallback_urls/download_headers)
+                                                               与元数据;本端按主→备用→
+                                                               一次刷新取件,断流严格续传
+                                                               (PD §8 / hc-735)
       image-ocr                                              ← image_ocr({url|image_urls,
                                                                prompt};OCR 在云侧执行;仅有
                                                                裸图片 URL 识别不出平台时,
@@ -46,7 +47,8 @@ ASR 族:
 
 错误语义(全部显式降级文案,不静默吞):
   401 key 失效→提示重新登录;402 配额/余额;429 限流(本客户端带有限退避重试);
-  503 vendor 不可用;其余透传 detail。
+  503 按 download resolve / ASR / 其他能力分段,不向用户暴露供应商细节;
+  其余透传 detail。
 ──────────────────────────────────────────────────────────────────────────────
 
 模式解析(insight:云端 P1 回退通道 = 旧 master 内网端点,PD §8):
@@ -172,6 +174,11 @@ _TRUTHY = {"1", "true", "yes", "on"}
 # 429 有限退避:最多重试 2 次,Retry-After 上限 8s(媒体长轮询场景不宜久睡)。
 _MAX_429_RETRIES = 2
 _MAX_RETRY_AFTER_SECONDS = 8.0
+
+# hc-735: vendor 直链属于短时效 CDN 资源。单一 URL 内允许「首次 + 两次恢复」；
+# URL 之间的主/fallback/重新解析编排由调用插件负责，避免共享下载器知道业务协议。
+_MEDIA_DOWNLOAD_ATTEMPTS = 3
+_CONTENT_RANGE_RE = re.compile(r"^bytes (\d+)-(\d+)/(\d+)$", re.IGNORECASE)
 
 # hc-560 大音频直传:>阈值走「upload-url → PUT 直传 COS → JSON media_url 提交」,
 # ≤阈值维持 multipart(默认 8MB,env 可调;0=全部直传,拉大=事实关停直传)。
@@ -380,7 +387,12 @@ def _server_detail(response: httpx.Response) -> str:
     return str(detail or "").strip()[:300]
 
 
-def _error_from_response(response: httpx.Response, source: str = SOURCE_ENV) -> GatewayError:
+def _error_from_response(
+    response: httpx.Response,
+    source: str = SOURCE_ENV,
+    *,
+    path: str = "",
+) -> GatewayError:
     status = response.status_code
     detail = _server_detail(response)
     if status == 401:
@@ -395,15 +407,21 @@ def _error_from_response(response: httpx.Response, source: str = SOURCE_ENV) -> 
     elif status == 429:
         message = "平台工具请求过于频繁(429):已自动退避重试仍被限流,请稍等 1-2 分钟再试。"
     elif status == 503:
-        message = (
-            "平台能力暂不可用(503):上游服务暂时故障或维护中,请稍后重试;"
-            "不要尝试在本地安装替代工具,可以稍后重试或先把素材文字发给我。"
-        )
+        if path.startswith("/tools/v1/social/") and path.endswith("/download"):
+            message = "视频链接解析/下载服务暂不可用(503),请稍后重试或直接上传视频文件。"
+        elif path.startswith("/tools/v1/asr/"):
+            message = "视频转写服务暂不可用(503),请稍后重试或先提供已有文字稿。"
+        else:
+            message = "平台能力暂不可用(503),请稍后重试。"
     else:
         message = f"平台工具网关返回错误(HTTP {status})"
     # 413 不拼服务端 detail:旧版云端的 413 文案带「请在本地抽音轨并压缩」类
     # 自救指引(hc-560 已改中性,但客户端不应依赖服务端版本),中性一句已完整。
-    if detail and status != 413:
+    redact_outage_detail = status == 503 and (
+        (path.startswith("/tools/v1/social/") and path.endswith("/download"))
+        or path.startswith("/tools/v1/asr/")
+    )
+    if detail and status != 413 and not redact_outage_detail:
         message = f"{message}(详情: {detail})"
     return GatewayError(message, status=status)
 
@@ -472,7 +490,7 @@ def request_json(
             time.sleep(delay)
             continue
         if response.status_code >= 400:
-            raise _error_from_response(response, source)
+            raise _error_from_response(response, source, path=path)
         try:
             body = response.json()
         except Exception as exc:  # noqa: BLE001
@@ -634,33 +652,120 @@ def download_media(
     dest_dir: Path | None = None,
     filename_hint: str = "",
 ) -> Path:
-    """把网关解析出的 vendor 直链流式下载到本地媒体缓存,返回文件路径。
+    """把一个 vendor 直链可靠地下载到本地媒体缓存。
 
-    失败抛 :class:`GatewayError`(带用户可读文案)。
+    使用同目录 ``.part`` 文件；断流后优先以严格校验的 ``Range`` 续传，服务端忽略
+    Range 并返回 200 时安全地从头覆盖。只有长度完整的响应才原子改名为最终文件。
+    失败会清理残件并抛 :class:`GatewayError`，错误面绝不包含签名 URL。
     """
     target_dir = dest_dir or media_cache_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
     request_headers = {k: str(v) for k, v in (headers or {}).items() if v is not None}
+    stem = re.sub(r"[^\w-]+", "_", filename_hint).strip("_")[:40] or "media"
+    unique = uuid.uuid4().hex[:8]
+    suffix = _guess_extension(url, None)
+    dest = target_dir / f"{stem}_{unique}{suffix}"
+    partial = dest.with_name(f"{dest.name}.part")
+    expected_total: int | None = None
+
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            with client.stream("GET", url, headers=request_headers) as response:
-                if response.status_code >= 400:
-                    raise GatewayError(
-                        f"媒体直链下载失败(HTTP {response.status_code}),链接可能已过期,请重发分享链接再试。",
-                        status=response.status_code,
-                    )
-                suffix = _guess_extension(url, response.headers.get("Content-Type"))
-                stem = re.sub(r"[^\w-]+", "_", filename_hint).strip("_")[:40] or "media"
-                dest = target_dir / f"{stem}_{uuid.uuid4().hex[:8]}{suffix}"
-                with open(dest, "wb") as fh:
-                    for chunk in response.iter_bytes():
-                        fh.write(chunk)
-    except GatewayError:
-        raise
-    except httpx.HTTPError as exc:
-        raise GatewayError(f"媒体直链下载失败: {exc}") from exc
-    if not dest.exists() or dest.stat().st_size == 0:
-        raise GatewayError("媒体直链下载失败: 得到了空文件,链接可能已失效,请重发分享链接。")
-    return dest
+            for _attempt in range(_MEDIA_DOWNLOAD_ATTEMPTS):
+                offset = partial.stat().st_size if partial.exists() else 0
+                attempt_headers = dict(request_headers)
+                if offset:
+                    attempt_headers["Range"] = f"bytes={offset}-"
+                try:
+                    with client.stream("GET", url, headers=attempt_headers) as response:
+                        if response.status_code >= 400:
+                            raise GatewayError(
+                                f"媒体直链下载失败(HTTP {response.status_code}),链接可能已过期。",
+                                status=response.status_code,
+                                code="media_download_http_error",
+                            )
+
+                        # 共享下载器也服务图片/生成视频取件。首次响应仍按 Content-Type
+                        # 解析无扩展名 URL，保持 hc-735 前的文件类型行为；续传后不再改名。
+                        if offset == 0 and not partial.exists():
+                            response_suffix = _guess_extension(
+                                url, response.headers.get("Content-Type")
+                            )
+                            if response_suffix != suffix:
+                                suffix = response_suffix
+                                dest = target_dir / f"{stem}_{unique}{suffix}"
+                                partial = dest.with_name(f"{dest.name}.part")
+
+                        append = offset > 0 and response.status_code == 206
+                        response_expected = _validate_download_response(
+                            response,
+                            requested_offset=offset,
+                            append=append,
+                        )
+                        if response_expected is not None:
+                            if expected_total is not None and expected_total != response_expected:
+                                raise GatewayError(
+                                    "媒体直链在续传时长度发生变化,已停止使用残缺文件。",
+                                    code="media_download_size_changed",
+                                )
+                            expected_total = response_expected
+
+                        # Range 被忽略(200)时必须覆盖，绝不能把完整响应追加到残件后面。
+                        mode = "ab" if append else "wb"
+                        with open(partial, mode) as fh:
+                            for chunk in response.iter_bytes():
+                                fh.write(chunk)
+
+                        actual = partial.stat().st_size
+                        if expected_total is not None and actual != expected_total:
+                            continue
+                        if actual <= 0:
+                            continue
+                        partial.replace(dest)
+                        return dest
+                except (httpx.HTTPError, GatewayError):
+                    # 保留 .part 供下一次严格 Range 恢复；最终失败统一在外层清理。
+                    continue
+    finally:
+        if not dest.exists():
+            partial.unlink(missing_ok=True)
+
+    raise GatewayError(
+        "媒体直链下载中断,自动续传仍未完成;请稍后重试或直接上传视频文件。",
+        code="media_download_incomplete",
+    )
+
+
+def _validate_download_response(
+    response: httpx.Response,
+    *,
+    requested_offset: int,
+    append: bool,
+) -> int | None:
+    """返回完整对象总字节数；协议不可信时抛错，禁止把响应拼进残件。"""
+    raw_length = (response.headers.get("Content-Length") or "").strip()
+    content_length = int(raw_length) if raw_length.isdigit() else None
+
+    if response.status_code == 206 and not append:
+        raise GatewayError(
+            "媒体直链在未请求续传时返回了局部响应。",
+            code="invalid_content_range",
+        )
+
+    if append:
+        raw_range = (response.headers.get("Content-Range") or "").strip()
+        match = _CONTENT_RANGE_RE.fullmatch(raw_range)
+        if match is None:
+            raise GatewayError("媒体续传响应缺少有效的 Content-Range。", code="invalid_content_range")
+        start, end, total = (int(value) for value in match.groups())
+        if start != requested_offset or end < start or end >= total:
+            raise GatewayError("媒体续传响应范围不匹配。", code="invalid_content_range")
+        segment_size = end - start + 1
+        if content_length is not None and content_length != segment_size:
+            raise GatewayError("媒体续传响应长度不匹配。", code="invalid_content_range")
+        return total
+
+    # 首次请求或 Range 被服务器忽略后返回的完整 200。
+    return content_length
 
 
 def extract_audio_for_asr(media_path: Path | str, *, timeout: int = 1800) -> Path | None:
