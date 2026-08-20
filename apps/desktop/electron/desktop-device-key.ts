@@ -22,8 +22,10 @@ function revokeDeviceBody(deviceInstanceId: string, rawKey: string) {
 
   return {
     ...body,
-    // Upgrade bridge for pre-hc-731 credentials. The raw key never leaves the
-    // process; this digest cannot authenticate to relay (relay hashes raw input).
+    // Wire name retained for released clients. The raw key never leaves the
+    // process; this digest cannot authenticate to relay (relay hashes raw
+    // input), but lets the server prove this exact held key is already inactive
+    // when the first revoke response was lost or the installation ID repaired.
     legacy_key_hash: crypto.createHash('sha256').update(key).digest('hex')
   }
 }

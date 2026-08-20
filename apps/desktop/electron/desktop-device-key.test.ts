@@ -18,7 +18,7 @@ test('provision body carries one canonical stable installation UUID', () => {
   assert.throws(() => provisionDeviceBody('not-a-device'))
 })
 
-test('logout sends only a SHA-256 proof of the held legacy key', () => {
+test('logout sends only a SHA-256 proof of the exact held key', () => {
   const rawKey = 'sk-local-only-test-value'
   const body = revokeDeviceBody(DEVICE_ID, rawKey)
 
@@ -82,6 +82,37 @@ test('managed logout fails closed when revoke cannot be proven', async () => {
     assert.equal(result.ok, false)
     assert.equal(cleared, false)
   }
+})
+
+test('managed logout can retry the same proof after a lost revoke response', async () => {
+  const bodies: unknown[] = []
+  let cleared = false
+  let attempts = 0
+  const input = {
+    accessToken: 'login-token',
+    clearCredential: () => {
+      cleared = true
+    },
+    deviceInstanceId: DEVICE_ID,
+    envKey: '',
+    managedKey: 'stored-relay-key',
+    revoke: async body => {
+      bodies.push(body)
+      attempts += 1
+      if (attempts === 1) {
+        throw new Error('response lost after server revoke')
+      }
+    }
+  }
+
+  assert.deepEqual(await signOutManagedDevice(input), {
+    ok: false,
+    message: 'response lost after server revoke'
+  })
+  assert.equal(cleared, false)
+  assert.deepEqual(await signOutManagedDevice(input), { ok: true })
+  assert.equal(cleared, true)
+  assert.deepEqual(bodies[0], bodies[1])
 })
 
 test('out-of-band and already signed-out installs clear locally without server revoke', async () => {
