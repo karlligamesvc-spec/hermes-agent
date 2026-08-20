@@ -1298,12 +1298,11 @@ function defaultModelPath(state) {
 }
 
 // ── Relay-key self-heal (401 → auto re-provision) ───────────────────────────
-// provision-key ROTATES the relay key on every sign-in; the server marks the
-// prior key `rotated` and only the newest is relay-valid. If the cloud rotates
-// the active key out from under a signed-in desktop (e.g. a re-provision from
-// another surface, or a background rotation), the on-disk key silently goes
-// dead: the model picker's live `GET /v1/models` listing 401s and collapses to
-// the single configured model — the "过几天列表缩水到只剩一个" bug. Manual
+// provision-key rotates only this installation's relay-key slot on every
+// sign-in; another Mac/Windows installation has an independent active slot.
+// A same-device retry or administrative revocation can still make the on-disk
+// key stale: the model picker's live `GET /v1/models` listing then 401s and
+// collapses to the single configured model — the "过几天列表缩水到只剩一个" bug. Manual
 // re-login fixes it (provision re-mints + syncs), but the user shouldn't have
 // to. These pure helpers back the auto-heal: main.ts probes /v1/models at
 // boot, and on a 401 re-runs the existing provision chain with the STORED login

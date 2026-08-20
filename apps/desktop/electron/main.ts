@@ -195,6 +195,13 @@ import {
 } from './connection-config'
 import { adoptServedDashboardToken } from './dashboard-token'
 import {
+  provisionDeviceBody,
+  provisionKeyRevokeUrl,
+  requireRevokedDeviceKey,
+  signOutManagedDevice
+} from './desktop-device-key'
+import { loadOrCreateInstallationId } from './desktop-installation'
+import {
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
   modeRemovesAgent,
@@ -11376,6 +11383,14 @@ async function reloadBackendForRelayKey(reason) {
 // own file (not connection.json) because the managed-LLM credential and the
 // remote-gateway session are unrelated concerns.
 const DESKTOP_MANAGED_CONFIG_PATH = path.join(app.getPath('userData'), 'apex-managed.json')
+// Stable per-install identity shared by Mac/Windows shells. It is deliberately
+// separate from apex-managed.json so logout and account changes cannot turn one
+// physical install into an unbounded stream of server-side device slots.
+const DESKTOP_INSTALLATION_ID_PATH = path.join(app.getPath('userData'), 'desktop-installation.json')
+
+function desktopDeviceInstanceId() {
+  return loadOrCreateInstallationId(DESKTOP_INSTALLATION_ID_PATH)
+}
 
 // apex-client-config.json caches the platform-served versioned client config
 // ({ version, payload, fetchedAt, appliedVersion } — see apex-client-config.cjs).
@@ -13730,13 +13745,17 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   // account (email from the login body); always fold in the JWT claims as a
   // fallback so a browser-flow sign-in (no login body) still gets an email.
   const resolvedAccount = accountFromLogin(account || {}, token)
+  // Fail before touching the network when the owner-only stable identity cannot
+  // be loaded/repaired. Falling back to the legacy slot would reintroduce
+  // last-login-wins across machines.
+  const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
 
   let provisioned = null
 
   try {
     const body = await apexAuthPostJson(endpoints.provisionKeyUrl, {
       bearer: token,
-      body: {}
+      body: deviceBody
     })
 
     provisioned = parseProvisionResponse(body, process.env)
@@ -14534,12 +14553,30 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
   }
 })
 
-// signOut: forget the relay key. The renderer is responsible for re-pointing the
-// model at a BYOK provider if the user wants to keep chatting.
+// signOut: revoke this install first, then forget the relay key. A network/JWT
+// failure leaves local state intact so the user can retry; silently clearing
+// while a server key stays active would be a security regression. Env-managed
+// keys are out-of-band and have no stored server session to revoke.
 ipcMain.handle('hermes:managed:signOut', async () => {
-  clearManagedRelayCredential()
+  const managed = resolveManagedConfig()
+  const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
+  const endpoints = resolveApexEndpoints(process.env)
 
-  return { ok: true }
+  return signOutManagedDevice({
+    accessToken: managed.accessToken,
+    clearCredential: clearManagedRelayCredential,
+    deviceInstanceId: desktopDeviceInstanceId(),
+    envKey,
+    managedKey: managed.key,
+    revoke: async body => {
+      const result = await apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), {
+        bearer: managed.accessToken as string,
+        body
+      })
+
+      requireRevokedDeviceKey(result)
+    }
+  })
 })
 
 // selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat

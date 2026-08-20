@@ -304,19 +304,25 @@ export function returnToManagedLogin() {
   patch({ enabled: true, status: 'signed-out', account: EMPTY_ACCOUNT, gateReason: null })
 }
 
-// User chose "退出登录" (logout) in the account panel. Clears the relay key on
-// disk via the managed bridge, then flips the gate to signed-out so the login
-// screen takes over.
-export async function signOutAccount(): Promise<void> {
+// User chose "退出登录" (logout) in the account panel. The main process first
+// revokes this installation's server key and only then clears the encrypted
+// local key. Preserve renderer state when that proof fails so every shell is
+// fail-closed instead of merely looking signed out while a key remains active.
+export async function signOutAccount(): Promise<boolean> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
   try {
-    await bridge?.signOut()
+    const result = await bridge?.signOut()
+
+    if (!result?.ok) {
+      return false
+    }
   } catch {
-    // Best-effort: even if the IPC clear fails, drop the local session so the
-    // user isn't stranded in a half-signed-out state.
+    return false
   }
 
   writeCachedSignedIn(false)
   patch({ account: EMPTY_ACCOUNT, gateReason: null, status: 'signed-out' })
+
+  return true
 }

@@ -172,11 +172,31 @@ describe('markSignedIn / markManagedUnavailable / signOutAccount', () => {
     installManagedMock({ signOut })
     $authState.set({ ...$authState.get(), enabled: true, status: 'signed-in' })
 
-    await signOutAccount()
+    await expect(signOutAccount()).resolves.toBe(true)
 
     expect(signOut).toHaveBeenCalledOnce()
     expect($authState.get().status).toBe('signed-out')
     expect($authState.get().gateReason).toBeNull()
+  })
+
+  it.each([
+    ['server refusal', vi.fn().mockResolvedValue({ ok: false })],
+    ['IPC failure', vi.fn().mockRejectedValue(new Error('offline'))]
+  ])('signOutAccount preserves the signed-in session on %s', async (_label, signOut) => {
+    installManagedMock({ signOut })
+    window.localStorage.setItem('apexnodes-desktop-signed-in-v1', '1')
+    $authState.set({
+      ...$authState.get(),
+      account: { email: 'j@apex-nodes.com', name: 'Jane', plan: 'pro' },
+      enabled: true,
+      status: 'signed-in'
+    })
+
+    await expect(signOutAccount()).resolves.toBe(false)
+
+    expect($authState.get().status).toBe('signed-in')
+    expect($authState.get().account.email).toBe('j@apex-nodes.com')
+    expect(window.localStorage.getItem('apexnodes-desktop-signed-in-v1')).toBe('1')
   })
 })
 
