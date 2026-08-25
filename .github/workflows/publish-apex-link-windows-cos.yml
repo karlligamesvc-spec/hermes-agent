@@ -1,0 +1,124 @@
+name: Publish APEX Link Windows to COS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: APEX Link version (for example 0.1.0-alpha.41)
+        required: true
+        default: 0.1.0-alpha.41
+      sha256:
+        description: Expected lowercase SHA-256
+        required: true
+        default: 487c26a580cd6df00bf168e61ddd1f96358c7bc9bac1ddbe56ef4ccecdbc52f1
+      size:
+        description: Expected file size in bytes
+        required: true
+        default: "110163233"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate immutable release inputs
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SHA256: ${{ inputs.sha256 }}
+          INPUT_SIZE: ${{ inputs.size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          sha256="$INPUT_SHA256"
+          size="$INPUT_SIZE"
+          [[ "$version" =~ ^0\.1\.0-alpha\.[0-9]+$ ]]
+          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$size" =~ ^[1-9][0-9]{7,9}$ ]]
+
+      - name: Download and verify APEX release
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SHA256: ${{ inputs.sha256 }}
+          INPUT_SIZE: ${{ inputs.size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          filename="APEX-Link-Windows-x64-${version}.zip"
+          source="https://claude.apex-nodes.com/downloads/apex-link/${filename}?release=${version}-r1"
+          curl --fail --location --retry 5 --retry-all-errors \
+            --connect-timeout 20 --max-time 1200 \
+            --output "$filename" "$source"
+          echo "$INPUT_SHA256  $filename" | sha256sum --check --strict
+          actual_size="$(stat --format=%s "$filename")"
+          test "$actual_size" = "$INPUT_SIZE"
+
+      - name: Install and configure coscli
+        env:
+          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${COS_SECRET_ID:-}"
+          test -n "${COS_SECRET_KEY:-}"
+          curl --fail --location --retry 5 \
+            --output /usr/local/bin/coscli \
+            https://github.com/tencentyun/coscli/releases/download/v1.0.8/coscli-v1.0.8-linux-amd64
+          chmod +x /usr/local/bin/coscli
+          umask 077
+          {
+            echo 'cos:'
+            echo '  base:'
+            echo '    protocol: https'
+            echo "    secretid: ${COS_SECRET_ID}"
+            echo "    secretkey: ${COS_SECRET_KEY}"
+            echo '  buckets:'
+            echo '  - name: apexnodes-runtime-202606250443-1300912302'
+            echo '    alias: apexnodes-runtime'
+            echo '    region: ap-guangzhou'
+            echo '    endpoint: cos.ap-guangzhou.myqcloud.com'
+          } > "$HOME/.cos.yaml"
+
+      - name: Publish immutable object
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          filename="APEX-Link-Windows-x64-${version}.zip"
+          object="cos://apexnodes-runtime/oneclick/apex-link/windows/${filename}"
+          timeout 900 coscli cp "$filename" "$object" \
+            --forbid-overwrite \
+            --meta 'Cache-Control:public,max-age=31536000,immutable#Content-Type:application/zip' \
+            --err-retry-num 8 --err-retry-interval 5 --thread-num 8
+
+      - name: Verify public COS object
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SHA256: ${{ inputs.sha256 }}
+          INPUT_SIZE: ${{ inputs.size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          filename="APEX-Link-Windows-x64-${version}.zip"
+          public_url="https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/oneclick/apex-link/windows/${filename}"
+          headers="$(mktemp)"
+          curl --fail --silent --show-error --location --retry 5 \
+            --dump-header "$headers" --output /dev/null "$public_url"
+          length="$(awk 'BEGIN{IGNORECASE=1} /^content-length:/ {gsub("\\r", "", $2); print $2}' "$headers" | tail -1)"
+          test "$length" = "$INPUT_SIZE"
+          curl --fail --silent --show-error --location --retry 5 \
+            --output verify.zip "$public_url"
+          echo "$INPUT_SHA256  verify.zip" | sha256sum --check --strict
+
+      - name: Scrub credentials
+        if: always()
+        shell: bash
+        run: rm -f "$HOME/.cos.yaml"
