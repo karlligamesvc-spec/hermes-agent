@@ -22,7 +22,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Validate immutable release inputs
         env:
@@ -93,10 +93,11 @@ jobs:
           version="$INPUT_VERSION"
           filename="APEX-Link-Windows-x64-${version}.zip"
           object="cos://apexnodes-runtime/oneclick/apex-link/windows/${filename}"
-          timeout 900 coscli cp "$filename" "$object" \
+          timeout 1800 coscli cp "$filename" "$object" \
             --forbid-overwrite \
             --meta 'Cache-Control:public,max-age=31536000,immutable#Content-Type:application/zip' \
-            --err-retry-num 8 --err-retry-interval 5 --thread-num 8
+            --err-retry-num 8 --err-retry-interval 5 \
+            --part-size 8 --thread-num 16
 
       - name: Verify public COS object
         env:
@@ -110,7 +111,7 @@ jobs:
           filename="APEX-Link-Windows-x64-${version}.zip"
           public_url="https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/oneclick/apex-link/windows/${filename}"
           headers="$(mktemp)"
-          curl --fail --silent --show-error --location --retry 5 \
+          curl --fail --silent --show-error --location --head --retry 5 \
             --dump-header "$headers" --output /dev/null "$public_url"
           length="$(awk 'BEGIN{IGNORECASE=1} /^content-length:/ {gsub("\\r", "", $2); print $2}' "$headers" | tail -1)"
           test "$length" = "$INPUT_SIZE"
