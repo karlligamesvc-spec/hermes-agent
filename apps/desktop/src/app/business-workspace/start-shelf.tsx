@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useMemo } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -9,12 +9,15 @@ import { useI18n } from '@/i18n'
 import { fmtDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
+import { $tasks } from '@/store/tasks'
 
 import { requestComposerFocus, requestComposerInsert } from '../chat/composer/focus'
 import { openSession } from '../open-session'
-import { PROJECTS_ROUTE, WORKFLOWS_ROUTE } from '../routes'
+import { ARTIFACTS_ROUTE, PROJECTS_ROUTE, TASKS_ROUTE, WORKFLOWS_ROUTE } from '../routes'
+import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
-import { recentConversations } from './workspace-model'
+import { useWorkspaceEvidence } from './use-workspace-evidence'
+import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
 interface StartWorkflow {
   icon: 'globe' | 'graph' | 'megaphone'
@@ -37,7 +40,20 @@ export function BusinessStartShelf() {
   const sessions = useStore($sessions)
   const sessionsLoading = useStore($sessionsLoading)
   const states = useStore($sessionStates)
+  const tasks = useStore($tasks)
   const conversations = useMemo(() => recentConversations(sessions, states, 2), [sessions, states])
+
+  const runningTasks = useMemo(
+    () =>
+      recentWorkspaceTasks(
+        tasks.filter(task => taskPhase(task) === 'running'),
+        2
+      ),
+    [tasks]
+  )
+
+  const { evidence, evidenceUnavailable } = useWorkspaceEvidence(sessions, runningTasks)
+  const artifacts = evidence?.artifacts.slice(0, 2) ?? []
 
   const workflows: StartWorkflow[] = [
     {
@@ -167,6 +183,105 @@ export function BusinessStartShelf() {
           )}
         </div>
       </section>
+
+      <section className="grid gap-6 md:grid-cols-2" data-business-start-evidence="">
+        <StartEvidenceSection
+          action={c.projects.openTasks}
+          onAction={() => navigate(TASKS_ROUTE)}
+          title={c.projects.taskProgress}
+        >
+          {runningTasks.length > 0 ? (
+            runningTasks.map(task => {
+              const taskEvidence = evidence?.tasks[task.id]
+              const progress = taskEvidence?.progress
+
+              return (
+                <button
+                  className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                  key={task.id}
+                  onClick={() => navigate(TASKS_ROUTE)}
+                  type="button"
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <strong className="truncate text-xs font-medium">{jobTitleShort(task)}</strong>
+                    <span className="shrink-0 text-[0.6875rem] text-primary">{c.projects.running}</span>
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-[0.6875rem] leading-4 text-(--ui-text-tertiary)">
+                    {evidenceUnavailable || taskEvidence?.readState === 'unavailable'
+                      ? c.projects.taskProgressUnavailable
+                      : !evidence
+                        ? c.projects.taskProgressLoading
+                        : progress?.totalSteps
+                          ? `${c.projects.steps(progress.completedSteps, progress.totalSteps)}${progress.currentStep ? ` · ${progress.currentStep}` : ''}`
+                          : progress?.latestOutput
+                            ? `${c.projects.latestOutput}: ${progress.latestOutput}`
+                            : c.projects.progressUnavailable}
+                  </span>
+                </button>
+              )
+            })
+          ) : (
+            <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noTasks}</p>
+          )}
+        </StartEvidenceSection>
+
+        <StartEvidenceSection
+          action={c.projects.openArtifacts}
+          onAction={() => navigate(ARTIFACTS_ROUTE)}
+          title={c.projects.deliverables}
+        >
+          {artifacts.length > 0 ? (
+            artifacts.map(artifact => (
+              <button
+                className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                key={artifact.id}
+                onClick={() => navigate(ARTIFACTS_ROUTE)}
+                type="button"
+              >
+                <Codicon className="shrink-0 text-primary" name={artifact.kind === 'link' ? 'link' : 'file'} />
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-xs font-medium">{artifact.label}</strong>
+                  <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                    {artifact.sessionTitle}
+                  </span>
+                </span>
+              </button>
+            ))
+          ) : (
+            <p className="py-4 text-xs leading-5 text-muted-foreground">
+              {evidenceUnavailable || evidence?.failedArtifactSessions
+                ? c.projects.partialEvidence
+                : evidence
+                  ? c.projects.noArtifacts
+                  : c.projects.loadingEvidence}
+            </p>
+          )}
+        </StartEvidenceSection>
+      </section>
     </div>
+  )
+}
+
+function StartEvidenceSection({
+  action,
+  children,
+  onAction,
+  title
+}: {
+  action: string
+  children: ReactNode
+  onAction: () => void
+  title: string
+}) {
+  return (
+    <section>
+      <header className="flex items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) pb-2">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <Button onClick={onAction} size="inline" variant="textStrong">
+          {action}
+        </Button>
+      </header>
+      <div>{children}</div>
+    </section>
   )
 }

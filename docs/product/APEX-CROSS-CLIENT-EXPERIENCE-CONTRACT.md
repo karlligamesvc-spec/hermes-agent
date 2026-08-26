@@ -18,6 +18,11 @@ surfaces.
 | Task progress and latest output | `getCronJobRuns` + run transcript                                         | Pick `primaryRun`; derive todo progress and latest assistant output with `deriveProgress`                                                                                                  | Tasks detail                    |
 | Evidence and deliverables       | all-profile recent session list + stored transcripts                      | Same bounded 30-session source window and `collectArtifactsForSession` parser as Artifacts; cron run sessions remain included                                                              | Artifacts / source conversation |
 
+Start and Projects consume this table through the same bounded evidence hook.
+Start limits the projection to two active one-shot tasks and two recent
+deliverables; it does not run a second mapping algorithm or advertise platform
+capabilities that the runtime has not reported.
+
 The workspace is a recent-work summary, not a new project domain. It never
 creates grouping, ownership, approval, progress, evidence, or deliverable data.
 
@@ -37,6 +42,9 @@ creates grouping, ownership, approval, progress, evidence, or deliverable data.
 ## Empty, degraded, and missing-capability behavior
 
 - A pristine profile still lands on the real composer and can chat immediately.
+- Start shows live one-shot tasks and recent transcript-derived deliverables
+  when present. A read failure is labelled as unavailable and never collapsed
+  into a false zero-result state.
 - No history shows a start-chat action and a direct link to Tasks. It does not
   show sample projects, fake percentages, fake evidence, or sample files.
 - A task without a run, todo plan, or assistant output says that progress has
@@ -83,12 +91,14 @@ npx playwright test e2e/business-workspace-packaged.spec.ts
 ```
 
 The dev-Electron history E2E creates a durable session through the real TUI
-gateway, opens Projects, and proves that the projected row restores the current
-stored session tip with its transcript intact. The packaged smoke separately
-covers a pristine isolated macOS profile and the shared renderer identity; its
-fake boot cannot seed backend history and is not evidence for historical-data
-mapping. A real Windows machine and Windows package remain a release gate; a
-macOS host must not claim Windows hands-on validation.
+gateway, first proves that Start projects it, then opens Projects and proves
+that the projected row restores the current stored session tip with its
+transcript intact. The packaged smoke separately covers a pristine isolated
+macOS profile, the shared renderer identity, and screenshots at 1440×900,
+1280×800, and 900×720; its fake boot cannot seed backend history and is not
+evidence for historical-data mapping. A real Windows machine and Windows
+package remain a release gate; a macOS host must not claim Windows hands-on
+validation.
 
 ## Failure injection
 

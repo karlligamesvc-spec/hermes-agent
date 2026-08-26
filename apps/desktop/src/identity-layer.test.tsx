@@ -210,7 +210,7 @@ describe('identity: brand assets and chrome', () => {
 
     expect(commandCenter).toContain('checkDesktopUpdates')
     expect(commandCenter).not.toContain('updateHermes')
-    expect(commandPalette).toContain("run: go(`${COMMAND_CENTER_ROUTE}?section=system`)")
+    expect(commandPalette).toContain('run: go(`${COMMAND_CENTER_ROUTE}?section=system`)')
     expect(commandPalette).not.toContain('requestActiveUpdate')
 
     // Help > Check for Updates is emitted by the Electron main process. Both
@@ -443,10 +443,24 @@ describe('identity: the home zero-state is ours', () => {
   }
 
   it('greets in Chinese and offers the real business start shelf', () => {
-    renderIntro()
+    const originalBridge = window.hermesDesktop
 
-    expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { api: vi.fn(async () => new Promise(() => undefined)) }
+    })
+
+    try {
+      const { container } = renderIntro()
+
+      expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
+      expect(container.querySelector('[data-business-start-evidence]')).toBeTruthy()
+      expect(screen.getByRole('button', { name: '打开任务' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: '打开交付物' })).toBeTruthy()
+    } finally {
+      Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
+    }
   })
 
   it('restores the scenario catalog through the business-workspace rollback seam', () => {

@@ -193,6 +193,118 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByText('No real conversations yet. Start a chat to create the first one.')).toBeTruthy()
   })
 
+  it('shows running tasks and deliverables on Start only from their real scheduler and transcript exits', async () => {
+    const artifactSource = {
+      id: 'artifact-source',
+      ended_at: null,
+      input_tokens: 0,
+      is_active: false,
+      last_active: 40,
+      message_count: 2,
+      model: null,
+      output_tokens: 0,
+      preview: 'Delivered the market report',
+      source: 'desktop',
+      started_at: 30,
+      title: 'Market evidence',
+      tool_call_count: 1
+    }
+
+    const run = {
+      ...artifactSource,
+      id: 'run-1',
+      preview: 'Collect competitor evidence',
+      source: 'cron',
+      title: 'Competitor scan'
+    }
+
+    $cronJobs.set([
+      {
+        enabled: true,
+        id: 'job-1',
+        name: 'Competitor scan',
+        schedule: { kind: 'once' },
+        state: 'running'
+      }
+    ])
+
+    window.hermesDesktop!.api = vi.fn(async request => {
+      if (request.path.startsWith('/api/profiles/sessions')) {
+        return { errors: [], has_more_by_profile: {}, offset: 0, sessions: [artifactSource], total: 1 }
+      }
+
+      if (request.path.startsWith('/api/cron/jobs/job-1/runs')) {
+        return { runs: [run] }
+      }
+
+      if (request.path.startsWith('/api/sessions/run-1/messages')) {
+        return {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'todo-1',
+                  name: 'todo',
+                  args: { todos: [{ id: 'one', content: 'Collect evidence', status: 'in_progress' }] }
+                }
+              ]
+            },
+            { role: 'tool', content: '{"ok":true}', tool_call_id: 'todo-1', tool_name: 'todo' }
+          ]
+        }
+      }
+
+      if (request.path.startsWith('/api/sessions/artifact-source/messages')) {
+        return { messages: [{ role: 'assistant', content: 'Saved /tmp/market-report.pdf', timestamp: 100 }] }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText(/Collect evidence/)).toBeTruthy())
+    expect(screen.getByText('market-report.pdf')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Competitor scan/ }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks'))
+
+    fireEvent.click(screen.getByRole('button', { name: /market-report.pdf/ }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/artifacts'))
+  })
+
+  it('does not turn a Start evidence failure into a false empty-deliverables claim', async () => {
+    window.hermesDesktop!.api = vi.fn(async () => {
+      throw new Error('evidence source unavailable')
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Some evidence could not be read. The original conversations, Tasks, and Artifacts views remain available.'
+        )
+      ).toBeTruthy()
+    )
+    expect(screen.queryByText('No file, image, or link deliverables were found in recent conversations.')).toBeNull()
+  })
+
   it('keeps the existing v0.20 task surface reachable from the real-work summary', async () => {
     render(
       <MemoryRouter initialEntries={['/projects']}>

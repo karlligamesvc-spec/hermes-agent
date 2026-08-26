@@ -1,11 +1,10 @@
 import { useStore } from '@nanostores/react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
-import { getCronJobRuns, getSessionMessages, listAllProfileSessions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { fmtDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
@@ -17,12 +16,8 @@ import { openSession } from '../open-session'
 import { ARTIFACTS_ROUTE, NEW_CHAT_ROUTE, TASKS_ROUTE } from '../routes'
 import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
-import {
-  loadWorkspaceEvidence,
-  recentConversations,
-  recentWorkspaceTasks,
-  type WorkspaceEvidence
-} from './workspace-model'
+import { useWorkspaceEvidence } from './use-workspace-evidence'
+import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
 interface WorkflowStarter {
   icon: 'globe' | 'graph' | 'megaphone'
@@ -41,48 +36,7 @@ export function ProjectsView() {
   const tasks = useStore($tasks)
   const conversations = useMemo(() => recentConversations(sessions, states), [sessions, states])
   const recentTasks = useMemo(() => recentWorkspaceTasks(tasks), [tasks])
-  const [evidence, setEvidence] = useState<null | WorkspaceEvidence>(null)
-  const [evidenceUnavailable, setEvidenceUnavailable] = useState(false)
-
-  const evidenceRequestKey = useMemo(
-    () =>
-      `${sessions.map(session => `${session.id}:${session.last_active}`).join('|')}::${recentTasks
-        .map(task => `${task.id}:${task.state || ''}:${task.last_run_at || ''}`)
-        .join('|')}`,
-    [recentTasks, sessions]
-  )
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        // Same bounded all-profile source window as the canonical Artifacts
-        // page. Cron run sessions remain included so task deliverables count.
-        const sourceSessions = (await listAllProfileSessions(30, 1)).sessions
-
-        const result = await loadWorkspaceEvidence(sourceSessions, recentTasks, {
-          getCronJobRuns,
-          getSessionMessages
-        })
-
-        if (!cancelled) {
-          setEvidence(result)
-          setEvidenceUnavailable(false)
-        }
-      } catch {
-        if (!cancelled) {
-          setEvidenceUnavailable(true)
-        }
-      }
-    }
-
-    void load()
-
-    return () => {
-      cancelled = true
-    }
-  }, [evidenceRequestKey, recentTasks])
+  const { evidence, evidenceUnavailable } = useWorkspaceEvidence(sessions, recentTasks)
 
   const artifacts = evidence?.artifacts.slice(0, 4) ?? []
   const hasHistory = conversations.length > 0 || recentTasks.length > 0 || artifacts.length > 0
