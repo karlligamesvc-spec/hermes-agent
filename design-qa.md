@@ -1,65 +1,46 @@
-# hc-711 Design QA
+# hc-794 Design QA — Start real-work evidence
 
-- Source visual truth: `artifacts/hc711/reference.png`
-- Rendered implementation: `artifacts/hc711/implementation.png`
-- Side-by-side comparison: `artifacts/hc711/side-by-side.png`
-- Source pixels: 1172 × 768
-- Implementation pixels: 1172 × 768
-- Side-by-side pixels: 2344 × 768
-- CSS viewport: 1172 × 768 for both full-window captures
-- Device scale / normalization: both app-window captures came from the same macOS display surface at the same native scale; no resize, crop, fit, or density normalization was applied before comparison.
-- State: Simplified Chinese, light theme, empty scheduled-task list. The reference is the installed packaged APEX modal; the implementation is the real contribution shell running the branch renderer against an isolated Desktop mock backend.
+- Source visual truth: `/Users/karl/.codex/visualizations/2026/08/26/hc794-design-qa/prototype-start-1440x900.png`
+- Packaged implementation: `/Users/karl/.codex/visualizations/2026/08/26/hc794-design-qa/implementation-packaged-wide-1440.png`
+- Normalized comparison: `/Users/karl/.codex/visualizations/2026/08/26/hc794-design-qa/source-vs-packaged-1440x865-logical.png`
+- Additional packaged captures: `implementation-packaged-desktop-1280.png`, `implementation-packaged-narrow-900.png` in the same evidence directory
+- Source capture: 1440 × 900 CSS pixels, Simplified Chinese, light theme, Start route
+- Implementation capture: packaged `APEX.app` from commit `6068101dd1`, 1440 × 900 outer window / 1440 × 865 renderer viewport, Simplified Chinese, light theme, isolated fresh account
+- Normalization: removed only the source's bottom 35 pixels of blank canvas, and reduced the Retina implementation capture from 2880 × 1730 to 1440 × 865. The side-by-side image contains both 1440 × 865 surfaces without fit, stretch, or state substitution.
 
 ## Findings
 
-No actionable P0/P1/P2 visual differences remain.
+No actionable P0/P1/P2 visual or interaction defects remain in this hc-794 slice.
 
-- The rejected capture's empty state sat near the lower-right because the page had no explicit layout owner for the space below `PanelHeader`; it relied on `PanelEmpty` to infer its flex basis in an isolated surface harness. The real page now inserts `PanelPageBody` as a `min-h-0 min-w-0 flex-1 flex-col` child and makes `PanelEmpty` a full-width, flexing centered grid.
-- In the corrected implementation, the empty-state group is horizontally and vertically centered in the main content body below the title. It is no longer near the lower-right.
-- The source backdrop, floating rounded modal card, shadow, top-right X, and dimmed shell are intentionally absent. The implementation keeps the complete shell visible, including Start/new conversation, Search, Scheduled Runs, and the right-hand scheduled-task page.
-- The implementation reuses the existing shell, sidebar, page gutter, typography, Codicon, button, and theme tokens.
+- The prototype's core information architecture is present: Start, Projects, Workflows, Scheduled, Deliverables, Accounts, and History; goal-first heading; three workflow starters; recent work; task progress; and evidence/deliverables.
+- The implementation deliberately retains the existing APEX conversation shell and its bottom composer instead of moving the production composer to the prototype's temporary top-card position. This preserves current message behavior, keyboard shortcuts, project selector, model selector, and Mac/Windows shared renderer.
+- The prototype's fake project rows, percentages, platform availability, and deliverables are not copied. Fresh packaged state shows explicit truthful empty states. Runtime-populated rows are covered by real session/task/transcript evidence tests.
+- At 900 × 720 the fixed composer pushes the lower evidence sections below the first fold; the renderer remains horizontally contained and the evidence region is reachable by scrolling. The packaged guard scrolls that region into the viewport and verifies it remains usable.
 
-## Required fidelity surfaces
+## Fidelity surfaces
 
-1. **Fonts and typography** — Existing Desktop font family, optical weights, sizes, line heights, antialiasing, wrapping, and hierarchy are unchanged. Title/count and empty-state copy remain the same components and translations.
-2. **Spacing and layout rhythm** — Both evidence images are exact 1172 × 768 full-window captures. `PanelPageBody` owns all remaining height below the header; `PanelEmpty` owns its full width and centers via grid. The main page retains `PAGE_INSET_X` and titlebar clearance.
-3. **Colors and visual tokens** — Page/sidebar backgrounds, active navigation row, text hierarchy, icon opacity, and primary button resolve through existing Desktop tokens. No new palette, gradient, shadow, or bespoke border was introduced.
-4. **Image quality and asset fidelity** — Both images retain native capture pixels. The existing Codicon watch glyph is used; there are no handmade SVG, CSS-art, or placeholder substitutions.
-5. **Copy and content** — Chinese title, count, empty title, description, and primary action match the reference. The implementation capture visibly includes Start/new conversation (`开始`), Search (`搜索`), and Scheduled Runs (`定时运行`) in the real sidebar.
-
-## Full-view comparison evidence
-
-`artifacts/hc711/side-by-side.png` places the exact-size source and implementation captures together without scaling. The left side shows the old modal/backdrop/X. The right side shows the complete contribution shell and same empty state as a sibling workspace page. The empty-state center aligns with the available page body, not with the whole window or a clipped standalone surface.
-
-## Focused-region evidence
-
-No separate crop is needed: the exact-size full-window comparison keeps the sidebar labels, title/count, empty-state group, modal X, and absence of backdrop/card/X readable. Accessibility inspection additionally reported the real page as a named `定时任务` container and found the create dialog only after the primary action was invoked.
+1. **Typography** — The implementation uses the existing Desktop font stack, weight hierarchy, text colors, and Chinese translations. The headline and explanatory copy preserve the prototype's goal-first intent while using APEX production wording.
+2. **Spacing and layout** — The source and packaged renderer were compared at the same 1440 × 865 content area. The implementation uses the existing centered chat column and fixed composer; workflow, recent-work, and evidence sections align to one 48rem content rail.
+3. **Color and tokens** — Sidebar, canvas, primary purple, strokes, muted text, hover states, and controls all resolve through existing APEX theme tokens. No parallel palette or one-off visual system was introduced.
+4. **Assets** — Existing Codicon assets are used for navigation, workflows, tasks, artifacts, and actions. No handmade SVG, CSS-art, emoji, or placeholder asset was added.
+5. **Copy and data truth** — All visible project/session/task/artifact claims come from the existing session, scheduler-task, and transcript/file/link sources. Loading, empty, partial, and unavailable states use translated production copy rather than prototype mock entities.
 
 ## Interaction and responsive verification
 
-- Desktop full shell: clicked `定时运行`, confirmed route `#/cron`, opened `新建定时任务`, then clicked `取消` and returned to the same page.
-- Narrow shell: resized the Electron content viewport to 700 × 800 (the app-window capture including native frame measured 728 × 833), opened the responsive sidebar, clicked `定时运行`, opened the create dialog, cancelled, and returned to the page.
-- Narrow layout kept the title, empty copy, and primary action visible without horizontal clipping; the responsive sidebar appeared as its existing overlay rail.
-- Initial page state has no route dialog, backdrop, floating card, close control, or top-right X. The create/edit and delete confirmations remain intentional dialogs.
-- No renderer console error appeared during the clean Desktop interaction runs. Electron emitted only its existing dev-only deprecation/sandbox diagnostics outside the renderer.
+- Packaged `APEX.app`: all seven business navigation entries are present, implementation vocabulary is absent, Start's evidence surface is visible, and no startup error banner appears.
+- Packaged viewports: 1440 × 900, 1280 × 800, and 900 × 720 all pass without horizontal document overflow. The narrow evidence region is programmatically scrolled into view and asserted visible.
+- Real E2E: a durable session is created through the real TUI gateway and mock provider, appears first on Start, appears again in Projects, and restores its stored session when opened.
+- Unit behavior: workflow starters prefill the existing composer; live one-shot tasks map progress/latest output; transcript files, images, and links map to deliverables; a failed evidence read never reports a false zero-result state.
+- Routes/actions continue to use the canonical Tasks, Artifacts, Projects, and Workflows routes; no duplicate business model or fake entity store was added.
 
-## Comparison history
+## Reverse validation
 
-- **Rejected pass (P1):** `implementation.png` was an isolated 2103 × 1676 surface while the 2440 × 1660 source showed the full app. The empty state appeared around the lower-right and the report incorrectly called it centered.
-- **Fix:** added an explicit flexing `PanelPageBody`, gave `PanelEmpty` full-width/min-size constraints, added a real `CronView` accessible-name/layout test, and discarded the isolated harness evidence.
-- **Corrected pass:** recaptured source and implementation as full app windows at identical 1172 × 768 pixels, same language/theme/empty state, then rebuilt the unscaled 2344 × 768 side-by-side. No actionable P0/P1/P2 mismatch remains.
+- Injected fault: removed `data-business-start-evidence` from the Start implementation.
+- Expected guard: `apps/desktop/src/identity-layer.test.tsx` failed specifically because the real-evidence surface disappeared from the identity layer.
+- Restored result: the same identity test passed all 24 assertions.
 
-## Behavioral guards
+## Follow-up boundary
 
-- `CronView` now sets `aria-labelledby="cron-page-title"`, and its real heading owns that ID.
-- The real `CronView` test asserts the named durable region, heading relationship, `PanelPageBody` parentage/flex ownership, empty state, and absence of route-modal chrome.
-- The primitive test asserts `PanelPage > PanelPageBody > PanelEmpty` plus the exact flex/grid relationship required to consume the remaining body.
-- Reverse layout fault injection removed `flex-1` from `PanelPageBody`; both the real CronView test and primitive layout test failed at the missing token. The injection was then reverted and both passed.
-- The existing route fault injection still proves that restoring `cron` to `OVERLAY_VIEWS` fails the page-identity guard.
-- Existing `hermes-cron-scope.test.ts` verifies list/read/create/update/pause/resume/trigger/delete helpers retain active-profile identity.
-
-## Follow-up polish
-
-None required for hc-711.
+This slice closes Start/Projects real-data projection and packaged responsive evidence. It does not claim Windows hardware execution, production DSH wiring, or completion of hc-795/hc-796; those remain separate gated work.
 
 final result: passed

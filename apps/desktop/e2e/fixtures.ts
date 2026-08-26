@@ -27,7 +27,7 @@ import * as path from 'node:path'
 
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
 
-import { startMockServer, type MockServerOptions } from './mock-server'
+import { type MockServerOptions, startMockServer } from './mock-server'
 import { installErrorBannerGuard } from './test'
 
 const DESKTOP_ROOT = path.resolve(import.meta.dirname, '..')
@@ -368,6 +368,7 @@ export interface MockBackendOptions {
   extraConfig?: string
   /** Override the mock model's context window for compression scenarios. */
   modelContextLength?: number
+  mockServer?: MockServerOptions
 }
 
 /**
@@ -377,10 +378,6 @@ export interface MockBackendOptions {
  *   3. Launch the desktop app
  *   4. Return handles for test interaction
  */
-export interface MockBackendOptions {
-  mockServer?: MockServerOptions
-}
-
 export async function setupMockBackend(options: MockBackendOptions = {}): Promise<MockBackendFixture> {
   // 1. Start mock server
   const mock = await startMockServer(options.mockServer)
@@ -544,6 +541,23 @@ export interface PackagedAppFixture {
   cleanup: () => Promise<void>
 }
 
+export type PackagedMockBackendFixture = MockBackendFixture
+
+async function launchPackagedApp(env: Record<string, string>): Promise<{ app: ElectronApplication; page: Page }> {
+  delete (env as Record<string, string | undefined>).HERMES_DESKTOP_DEV_SERVER
+
+  const app = await _electron.launch({
+    executablePath: PACKAGED_BINARY_PATH,
+    args: ['--disable-gpu', '--no-sandbox'],
+    env,
+  })
+
+  const page = await app.firstWindow()
+  installErrorBannerGuard(page)
+
+  return { app, page }
+}
+
 /**
  * Launch the *packaged* Electron binary (from `npm run pack` →
  * `electron-builder --dir`) with `BOOT_FAKE=1` so it simulates boot
@@ -556,9 +570,7 @@ export interface PackagedAppFixture {
  */
 export async function setupPackagedApp(): Promise<PackagedAppFixture> {
   if (!packagedBinaryExists()) {
-    throw new Error(
-      `Built app binary not found: ${PACKAGED_BINARY_PATH}. Run 'npm run pack' first.`,
-    )
+    throw new Error(`Built app binary not found: ${PACKAGED_BINARY_PATH}. Run 'npm run pack' first.`)
   }
 
   const sandbox = createSandbox('packaged')
@@ -571,20 +583,12 @@ export async function setupPackagedApp(): Promise<PackagedAppFixture> {
     HERMES_DESKTOP_BOOT_FAKE_STEP_MS: '120',
   })
 
-  // Clear dev-server + hermes-root overrides — the packaged binary
-  // should use its own bundled renderer, not the dev checkout.
-  delete (env as Record<string, string | undefined>).HERMES_DESKTOP_DEV_SERVER
+  // Clear source-runtime overrides — this smoke covers the packaged binary's
+  // own install/bootstrap path as well as its bundled renderer.
   delete (env as Record<string, string | undefined>).HERMES_DESKTOP_HERMES
   delete (env as Record<string, string | undefined>).HERMES_DESKTOP_HERMES_ROOT
 
-  const app = await _electron.launch({
-    executablePath: PACKAGED_BINARY_PATH,
-    args: ['--disable-gpu', '--no-sandbox'],
-    env,
-  })
-
-  const page = await app.firstWindow()
-  installErrorBannerGuard(page)
+  const { app, page } = await launchPackagedApp(env)
 
   return {
     app,
@@ -592,6 +596,42 @@ export async function setupPackagedApp(): Promise<PackagedAppFixture> {
     sandbox,
     cleanup: async () => {
       await app.close().catch(() => undefined)
+      sandbox.cleanup()
+    },
+  }
+}
+
+/**
+ * Launch the packaged renderer against the real source-runtime gateway and a
+ * local mock model. This keeps UI/IPC/session behavior real while avoiding the
+ * first-install overlay that the bootstrap-only packaged smoke intentionally
+ * exercises.
+ */
+export async function setupPackagedMockBackend(): Promise<PackagedMockBackendFixture> {
+  if (!packagedBinaryExists()) {
+    throw new Error(`Built app binary not found: ${PACKAGED_BINARY_PATH}. Run 'npm run pack' first.`)
+  }
+
+  const mock = await startMockServer()
+  const sandbox = createSandbox('packaged-mock')
+
+  writeMockProviderConfig(sandbox.hermesHome, mock.url)
+  writeEnvFile(sandbox.hermesHome)
+
+  // buildAppEnv deliberately points the gateway at this checkout. The
+  // executable and renderer still come only from the packaged APEX.app.
+  const env = buildAppEnv(sandbox)
+  const { app, page } = await launchPackagedApp(env)
+
+  return {
+    app,
+    page,
+    mock,
+    mockUrl: mock.url,
+    sandbox,
+    cleanup: async () => {
+      await app.close().catch(() => undefined)
+      await mock.close()
       sandbox.cleanup()
     },
   }
@@ -642,6 +682,7 @@ export async function waitForAppReady(fixture: MockBackendFixture | NoProviderFi
       // `position: fixed; inset: 0`. If the hit element or an ancestor
       // is a full-viewport fixed overlay, we're still covered.
       let node: Element | null = el
+
       while (node) {
         const cs = window.getComputedStyle(node)
 

@@ -1,4 +1,4 @@
-import { type PackagedAppFixture, setupPackagedApp } from './fixtures'
+import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { expect, test } from './test'
 
 const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '业务账号', '历史'] as const
@@ -9,10 +9,14 @@ const BUSINESS_START_VIEWPORTS = [
   { height: 720, name: 'narrow-900', width: 900 }
 ] as const
 
-let fixture: PackagedAppFixture | null = null
+let fixture: PackagedMockBackendFixture | null = null
+
+test.setTimeout(180_000)
 
 test.beforeAll(async () => {
-  fixture = await setupPackagedApp()
+  fixture = await setupPackagedMockBackend()
+  await fixture.page.getByRole('button', { name: '使用自己的密钥' }).click()
+  await waitForAppReady(fixture, 120_000)
 })
 
 test.afterAll(async () => {
@@ -37,8 +41,9 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByText('模型', { exact: true })).toHaveCount(0)
 })
 
-test('packaged Start keeps its real-data sections usable at wide, desktop, and narrow window sizes', async (_args, testInfo) => {
+test('packaged Start keeps its real-data sections usable at wide, desktop, and narrow window sizes', async () => {
   const { app, page } = fixture!
+  const testInfo = test.info()
 
   await expect(page.locator('[data-business-start-shelf]')).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('[data-business-start-evidence]')).toBeVisible()
@@ -66,5 +71,11 @@ test('packaged Start keeps its real-data sections usable at wide, desktop, and n
       caret: 'hide',
       path: testInfo.outputPath(`business-start-${viewport.name}.png`)
     })
+
+    if (viewport.name === 'narrow-900') {
+      const evidence = page.locator('[data-business-start-evidence]')
+      await evidence.scrollIntoViewIfNeeded()
+      await expect(evidence).toBeInViewport()
+    }
   }
 })
