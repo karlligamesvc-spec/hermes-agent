@@ -18,6 +18,8 @@ import { $cronJobs } from '@/store/cron'
 import { setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
+import { BusinessStartShelf } from './start-shelf'
+
 import { ProjectsView, WorkflowsView } from '.'
 
 function LocationProbe() {
@@ -92,7 +94,7 @@ describe('hc-685 business workspace identity', () => {
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false).at(-1)).toEqual(contributed[0])
   })
 
-  it('moves a workflow goal into the real composer seam without creating domain data', () => {
+  it('moves a workflow goal into the real composer seam without creating domain data', async () => {
     const insert = vi.fn()
     window.addEventListener('hermes:composer-insert', insert)
 
@@ -107,13 +109,88 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.queryByText(/Skill|MCP|模型/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
 
-    return new Promise<void>(resolve => {
-      window.setTimeout(() => {
-        expect(insert).toHaveBeenCalledTimes(1)
-        window.removeEventListener('hermes:composer-insert', insert)
-        resolve()
-      }, 20)
-    })
+    await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('uses the real chat composer for a start-page workflow without creating a project route', async () => {
+    const insert = vi.fn()
+    window.addEventListener('hermes:composer-insert', insert)
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Market opportunity to launch assets/ }))
+
+    await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    expect(screen.getByTestId('location').textContent).toBe('/')
+    window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('shows and restores recent work only from real sessions', async () => {
+    setSessions([
+      {
+        id: 'real-tip-2',
+        _lineage_root_id: 'real-root-2',
+        ended_at: null,
+        input_tokens: 0,
+        is_active: false,
+        last_active: 30,
+        message_count: 3,
+        model: null,
+        output_tokens: 0,
+        preview: 'Evidence-backed market summary',
+        source: 'desktop',
+        started_at: 20,
+        title: 'Real market review',
+        tool_call_count: 2
+      }
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByText('美国宠物用品机会分析')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Real market review/ }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/real-tip-2'))
+  })
+
+  it('keeps start-page loading distinct from a proven real-session empty state', () => {
+    setSessionsLoading(true)
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Loading recent conversations…')).toBeTruthy()
+    expect(screen.queryByText('No real conversations yet. Start a chat to create the first one.')).toBeNull()
+
+    act(() => setSessionsLoading(false))
+    rerender(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('No real conversations yet. Start a chat to create the first one.')).toBeTruthy()
   })
 
   it('keeps the existing v0.20 task surface reachable from the real-work summary', async () => {

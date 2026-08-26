@@ -1,5 +1,7 @@
+import { BusinessStartShelf } from '@/app/business-workspace/start-shelf'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
+import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 
 // Props are kept for call-site compatibility (the Thread passes the resolved
 // personality + seed), but the home screen no longer varies its copy.
@@ -9,10 +11,10 @@ export type IntroProps = {
 }
 
 /**
- * Home zero-state: a quiet greeting plus the hc-554 scenario shelf below it.
- * The shelf self-gates (renders nothing when the catalog is disabled/empty), so
- * with scenarios off this stays the bare Codex-minimal heading. The heading is
- * pointer-events-none; the shelf re-enables pointer events for its own subtree.
+ * Home zero-state: a quiet greeting plus the business start shelf. The legacy
+ * scenario catalog remains the exact feature-flag rollback path. The heading
+ * is pointer-events-none; either shelf re-enables pointer events for its own
+ * subtree.
  *
  * hc-589: the v0.19.0 rebase reinstated upstream's zero-state here — a giant
  * `HERMES AGENT` wordmark over a rotating line of coding-agent copy ("Search the
@@ -24,6 +26,7 @@ export type IntroProps = {
  */
 export function Intro(_props: IntroProps) {
   const { t } = useI18n()
+  const businessWorkspaceEnabled = isBusinessWorkspaceEnabled()
 
   return (
     <div
@@ -36,7 +39,7 @@ export function Intro(_props: IntroProps) {
         </h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
       </div>
-      <ScenarioShelf />
+      {businessWorkspaceEnabled ? <BusinessStartShelf /> : <ScenarioShelf />}
     </div>
   )
 }

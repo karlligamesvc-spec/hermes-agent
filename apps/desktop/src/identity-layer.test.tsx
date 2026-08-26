@@ -11,6 +11,7 @@ import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { type I18nConfigClient, I18nProvider } from '@/i18n/context'
 import { $authState } from '@/store/auth'
+import { BUSINESS_WORKSPACE_FLAG_KEY } from '@/store/business-workspace'
 import { $desktopOnboarding, requestManagedReSignIn, skipManagedForByok } from '@/store/onboarding'
 
 // hc-589 identity-layer guard.
@@ -422,10 +423,10 @@ describe('zero setup: a managed user is never asked to pick a provider', () => {
 // a user sees, in English, describing a product we do not sell — and no test
 // noticed, because upstream's own intro test only checked that copy was picked.
 //
-// Behavioral, against the real component tree: the greeting and the hc-554
-// shelf have to coexist (leg 5 wired the shelf INTO this component, so a
-// careless restore drops one or the other), and the upstream surface has to be
-// gone from what actually renders — not merely unimported.
+// Behavioral, against the real component tree: the greeting and the active
+// start shelf have to coexist, the hc-554 catalog remains the explicit rollback
+// path, and the upstream surface has to be gone from what actually renders —
+// not merely unimported.
 describe('identity: the home zero-state is ours', () => {
   const renderIntro = () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -441,13 +442,22 @@ describe('identity: the home zero-state is ours', () => {
     )
   }
 
-  it('greets in Chinese and offers the scenario shelf', () => {
+  it('greets in Chinese and offers the real business start shelf', () => {
     renderIntro()
 
     expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
-    // The shelf resolves to the built-in fallback catalog on first frame, so a
-    // hero scenario proves leg 5's wiring is still in place.
-    expect(screen.getByRole('button', { name: /热榜/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
+  })
+
+  it('restores the scenario catalog through the business-workspace rollback seam', () => {
+    window.localStorage.setItem(BUSINESS_WORKSPACE_FLAG_KEY, '0')
+
+    try {
+      renderIntro()
+      expect(screen.getByRole('button', { name: /热榜/ })).toBeTruthy()
+    } finally {
+      window.localStorage.removeItem(BUSINESS_WORKSPACE_FLAG_KEY)
+    }
   })
 
   it('never renders the upstream wordmark or its coding-agent pitch', () => {
@@ -471,6 +481,7 @@ describe('identity: the home zero-state is ours', () => {
     const intro = readSource('src', 'components', 'chat', 'intro.tsx')
 
     expect(intro).toContain('t.home.title')
+    expect(intro).toContain('<BusinessStartShelf />')
     expect(intro).toContain('<ScenarioShelf />')
     expect(intro).not.toMatch(/^import .*intro-copy\.jsonl/m)
     expect(intro).not.toContain('WORDMARK')
