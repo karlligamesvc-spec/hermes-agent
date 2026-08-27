@@ -1,57 +1,56 @@
-# hc-794 Design QA — business Start layout
+# hc-794 Design QA — workflow-to-goal execution loop
 
 - Source visual truth: `/Users/karl/.codex/visualizations/2026/08/27/hc794-action-closure/prototype-start-1440x900.png`
-- Final signed-package capture: `/Users/karl/.codex/visualizations/2026/08/27/hc794-start-layout/implementation-packaged-wide-1440.png`
-- Full-view same-canvas comparison: `/Users/karl/.codex/visualizations/2026/08/27/hc794-start-layout/prototype-vs-packaged-start-layout-1440x874.png`
-- Focused top-region comparison: `/Users/karl/.codex/visualizations/2026/08/27/hc794-start-layout/prototype-vs-packaged-start-top-1440x520.png`
-- Additional signed-package captures: `implementation-packaged-desktop-1280.png` and `implementation-packaged-narrow-900.png` in the same evidence directory
-- Source dimensions: 1440 × 1000 pixels (JPEG payload with `.png` filename); comparison uses its top 1440 × 874 pixels.
-- Implementation dimensions: 2880 × 1748 Retina capture of a 1440 × 874 CSS viewport at device scale factor 2; normalized to 1440 × 874 without stretching.
-- State: Simplified Chinese, light theme, Start route, isolated fresh account, signed `APEX.app` from clean renderer commit `df8c2f84e5`.
+- Final signed-package capture: `/Users/karl/.codex/visualizations/2026/08/27/hc794-workflow-loop/packaged-start-e221b096-1440x874.png`
+- Full-view same-canvas comparison: `/Users/karl/.codex/visualizations/2026/08/27/hc794-workflow-loop/prototype-vs-packaged-workflow-loop-2880x874.png`
+- Additional signed-package captures: `business-start-desktop-1280.png` and `business-start-narrow-900.png` under `apps/desktop/test-results` at verification time.
+- Source dimensions: 1440 × 1000 pixels; the normalized comparison uses its top 1440 × 874 pixels.
+- Implementation dimensions: 2880 × 1736 Retina capture of a 1440 × 868 CSS content viewport at device scale factor 2; normalized to 1440 × 868 and placed on a 1440 × 874 white comparison frame without stretching.
+- State: Simplified Chinese, light theme, Start route, isolated fresh account, signed `APEX.app` from clean renderer commit `e221b0965a`.
 
 ## Findings
 
 No actionable P0, P1, or P2 visual or interaction defect remains in this hc-794 slice.
 
-- The business heading, description, goal field, workflow starters, and real-work evidence now share a left-aligned frame instead of the earlier centered marketing-like composition.
-- The prototype's top-right “new goal” action is represented by “开始一个目标”; it focuses the same canonical business-goal textarea and does not create another conversation or transport.
-- Recent conversations, running task progress, and transcript-derived deliverables are compressed into a two-column first-screen evidence region. Empty, loading, partial-failure, and degraded states remain truthful.
-- The fixed production Composer remains visible for attachments, project/model selection, voice, and advanced controls. This is an intentional product constraint rather than design drift.
-- Prototype-only project names, progress percentages, and platform availability are not copied because the Desktop does not have authoritative data for those claims yet.
+- Selecting a workflow on Start now stages its approved business goal in the canonical top goal field and focuses that field. The user can review or edit it before choosing “开始执行”.
+- The selected goal submits through the existing `ChatView.onSubmit` path. This slice does not introduce a second conversation, transport, or hidden execution path.
+- Start and the full Workflows page now render from one shared three-workflow catalog, preventing copy, icon, prompt, and ordering drift.
+- The full Workflows page intentionally preserves its existing “new chat + Composer” selection exit, while Start intentionally uses the top goal field. These are two product contexts sharing one catalog, not duplicate workflow definitions.
+- The default Start rendering is unchanged from the fifth-slice signed visual baseline. The new signed capture therefore preserves the already-approved composition while adding the missing interaction closure.
 
 ## Required fidelity surfaces
 
-1. **Typography** — The signed renderer keeps the Desktop font stack and increases the business heading to the prototype's stronger hierarchy. Weight, wrapping, muted description, section labels, and compact evidence copy remain legible at all tested widths.
-2. **Spacing and layout rhythm** — The final 48rem business frame is visually close to the prototype's content width. Heading, goal card, workflow row, divider, and two-column evidence preserve the prototype's scan order without horizontal overflow.
-3. **Colors and tokens** — Background, elevated goal surface, borders, violet action, muted text, focus, hover, and disabled states all use existing APEX tokens; no parallel palette or gradient was introduced.
-4. **Image and icon fidelity** — Production uses the existing Codicon set and APEX surfaces. No handmade SVG, CSS art, emoji, or fake asset was introduced. The source's illustrative workflow art is intentionally represented by established production icons.
-5. **Copy and content** — Existing five-locale business copy remains intact. The new top action reuses the already-translated “start a goal” copy, so language parity is preserved without a new translation seam.
+1. **Typography** — The signed renderer preserves the approved Desktop font stack, heading hierarchy, muted supporting copy, workflow labels, wrapping, and optical weights. The staged workflow goal remains readable in the existing textarea without truncation.
+2. **Spacing and layout rhythm** — The 48rem business frame, goal surface, workflow row, evidence grid, radii, dividers, and fixed Composer keep the approved hierarchy at all tested widths. No new control or container changes the vertical rhythm.
+3. **Colors and tokens** — Background, surface, border, violet action, muted text, focus, hover, and disabled states continue to use existing APEX tokens. No new palette, gradient, shadow system, or parallel theme was introduced.
+4. **Image and icon fidelity** — The workflow catalog reuses the production Codicon set and existing APEX surfaces. No handmade SVG, CSS art, emoji, placeholder image, or fake asset was added.
+5. **Copy and content** — The same approved three workflow titles, descriptions, and prompts feed both consumers. Existing five-locale UI copy remains intact; no untranslated UI key or prototype-only business claim was introduced.
 
 ## Interaction, accessibility, and responsive verification
 
-- The top action focuses the canonical labelled textarea; keyboard focus remains visible and the field keeps its accessible “业务目标” name.
-- Enter submits, Shift+Enter inserts a line, IME composition is protected, rejected/failed submission preserves the draft, and the canonical ChatView submit path remains the only exit.
-- Signed packaged E2E: 7/7 passed. The top action focused the field, the goal was submitted through the existing gateway, the user turn rendered, and the streamed mock-inference response appeared in the conversation body.
-- Packaged viewports 1440 × 900, 1280 × 800, and 900 × 720 passed without horizontal document overflow. At 900 pixels the evidence region remains reachable by scrolling.
-- Full UI suite: 442 files / 3949 tests passed. Targeted business/identity suite: 55/55 before final packaging and 49/49 after the last width correction. Typecheck, lint (0 errors; 106 existing warnings), production build, and `assert-dist-built` passed.
-- Strict signature verification passed for `APEX.app`; the embedded install stamp is commit `df8c2f84e584023c18e97ce964025d1654fd6c88`, `dirty: false`. Notarization was skipped because Apple API credentials are not configured.
+- Clicking “从市场机会到上架素材” stages `分析美国宠物用品市场，并生成选品报告和上架素材` in the labelled top goal textarea and transfers focus there.
+- Enter submits, Shift+Enter inserts a line, IME composition remains protected, and failed submission preserves the draft. Successful submission clears the controlled top draft through the same canonical callback.
+- Signed packaged E2E: 7/7 passed. It exercised the workflow card, asserted the exact staged goal, submitted through the existing gateway, rendered the user turn, and received the streamed mock-inference response.
+- Packaged viewports 1440 × 868 CSS pixels, 1280 × 800, and 900 × 720 passed without horizontal document overflow. The narrow evidence region remains reachable by scrolling.
+- Full UI suite: 442 files / 3950 tests passed. Targeted business/identity suite: 50/50 passed. Typecheck, lint (0 errors; 106 existing warnings), production build, and `assert-dist-built` passed.
+- Strict signature verification passed for `APEX.app`; the embedded install stamp is commit `e221b0965a43e5e273f6133a5c63e8dc7f9189e9`, `dirty: false`. Notarization was skipped because Apple API credentials are not configured.
 
-## Comparison history
+## Comparison evidence and history
 
-1. The pre-slice signed comparison showed a centered heading/goal/workflow stack, no top-right goal action, and recent conversations plus task/deliverable evidence spread vertically below the fold.
-2. The first implementation pass left-aligned the business frame, added the focus action, and grouped real evidence into a compact lower grid. The signed same-canvas comparison showed the intended hierarchy but prompted a width measurement check.
-3. A 64rem trial visibly overshot the prototype's roughly 750px content width by more than 200px and was rejected as P2 drift.
-4. The final implementation restored the 48rem frame, regenerated a clean signed package, and passed the full-view and focused same-canvas comparisons shown above.
+1. Earlier hc-794 iterations corrected the centered marketing-like composition, added the top action, restored the measured 48rem frame after rejecting a 64rem P2 width drift, and established the fifth-slice signed visual baseline.
+2. This sixth slice changes workflow selection behavior without changing the default Start layout. The new clean signed package was captured at the same wide state and normalized beside the same source visual in `prototype-vs-packaged-workflow-loop-2880x874.png`.
+3. The full-view comparison is sufficient for this slice because all visible default-state surfaces remain unchanged and readable at original resolution. A new focused crop was not needed; the earlier top-region focused evidence remains applicable, while the new behavior is proven by packaged E2E and exact-value assertions rather than a static image.
+4. The post-change same-canvas pass found no new typography, spacing, color, asset, copy, icon, accessibility, or responsive regression. No visual fix was required, so there is no additional P0/P1/P2 iteration.
 
 ## Reverse validation and source/consumer/exit inventory
 
-1. Business Start composition source: one, `BusinessStartHome`.
-2. Intro consumer: one, the business-workspace branch in `Intro`.
-3. Goal input source: one, `BusinessGoalLauncher`; both the top action and submit button address that same labelled field.
-4. Submit exit: one canonical `ChatView.onSubmit`, shared with the fixed Composer.
-5. Evidence exits: existing session restore, task deep-link, and artifact open transports only.
-6. Rollback exit: the existing `apex.desktop.feature.business-workspace` flag restores the legacy scenario shelf.
-7. Reverse injection replaced the business Start consumer with the legacy scenario shelf. The behavioral identity test and source-wiring guard both failed, then returned green after restoration.
+1. Workflow definition source: one, `businessWorkflowStarters(copy)` in `workflow-starters.ts`.
+2. Workflow consumers: two, `BusinessStartShelf` and `BusinessWorkflowsView`.
+3. Workflow-selection exits: two intentional context-specific exits. Start invokes `onSelectWorkflow` and stages the prompt in the top goal; Workflows starts a new chat and inserts the prompt through the existing Composer event seam.
+4. Start execution exit: one canonical `ChatView.onSubmit`; no additional runtime or transport was added.
+5. Standalone fallback exit: `BusinessStartShelf` retains the existing Composer event only when no Start callback is provided, preserving its reusable contract.
+6. Reverse injection removed `<BusinessStartShelf onSelectWorkflow={selectWorkflow} />`. The behavioral test failed because the top goal remained empty, and the identity/source guard failed because canonical callback wiring was absent. Both returned green after restoration.
+7. Rollback exit: the existing `apex.desktop.feature.business-workspace` flag still restores the legacy scenario shelf.
 
 ## Follow-up boundary
 
