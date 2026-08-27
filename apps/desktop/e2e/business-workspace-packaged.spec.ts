@@ -16,8 +16,16 @@ test.setTimeout(180_000)
 test.beforeAll(async () => {
   fixture = await setupPackagedMockBackend()
   await fixture.page.getByRole('button', { name: '使用自己的密钥' }).click()
+  const chooseLater = fixture.page.getByRole('button', { name: '稍后再选择提供方' })
+  const providerPickerVisible = await chooseLater.waitFor({ state: 'visible', timeout: 3_000 }).then(
+    () => true,
+    () => false,
+  )
+  if (providerPickerVisible) {
+    await chooseLater.click()
+  }
   await waitForAppReady(fixture, 120_000)
-})
+}, { timeout: 180_000 })
 
 test.afterAll(async () => {
   await fixture?.cleanup()
