@@ -97,9 +97,15 @@ test('packaged business goal starts a real chat turn through the existing gatewa
   const goal = page.getByRole('textbox', { name: '业务目标' })
 
   await expect(goal).toBeVisible()
+  await page.getByRole('button', { name: '开始一个目标' }).click()
+  await expect(goal).toBeFocused()
   await goal.fill(prompt)
   await page.getByRole('button', { name: '开始执行' }).click()
 
   await expect(page.getByText(prompt, { exact: true })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText(/mock inference server|boot chain is working/)).toBeVisible({ timeout: 60_000 })
+  await expect(
+    page.getByRole('paragraph').filter({ hasText: /mock inference server|boot chain is working/ })
+  ).toBeVisible({
+    timeout: 60_000
+  })
 })

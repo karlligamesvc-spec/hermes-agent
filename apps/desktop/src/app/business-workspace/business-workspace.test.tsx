@@ -21,6 +21,7 @@ import { $sessionStates } from '@/store/session-states'
 import { TasksView } from '../tasks'
 
 import { BusinessGoalLauncher } from './goal-launcher'
+import { BusinessStartHome } from './start-home'
 import { BusinessStartShelf } from './start-shelf'
 
 import { ProjectsView, WorkflowsView } from '.'
@@ -173,6 +174,22 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start goal' }))
     await waitFor(() => expect(submit).toHaveBeenCalledWith('Keep this draft'))
     expect((goal as HTMLTextAreaElement).value).toBe('Keep this draft')
+  })
+
+  it('focuses the canonical goal field from the prototype-aligned top action', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    expect(window.document.activeElement).not.toBe(goal)
+
+    fireEvent.click(screen.getByRole('button', { name: '开始一个目标' }))
+    expect(window.document.activeElement).toBe(goal)
   })
 
   it('shows and restores recent work only from real sessions', async () => {

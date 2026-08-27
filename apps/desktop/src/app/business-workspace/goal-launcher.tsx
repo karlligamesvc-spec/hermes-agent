@@ -9,6 +9,8 @@ export interface BusinessGoalLauncherProps {
   onSubmit?: (goal: string) => Promise<boolean> | boolean
 }
 
+export const BUSINESS_GOAL_INPUT_ID = 'business-goal-input'
+
 /**
  * Goal-first entrance for the business Start zero state.
  *
@@ -63,11 +65,11 @@ export function BusinessGoalLauncher({ disabled = false, onSubmit }: BusinessGoa
 
   return (
     <form
-      className="pointer-events-auto mx-auto w-[min(46rem,calc(100%-2rem))] rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) p-4 text-left shadow-(--shadow-composer) transition-[border-color,box-shadow] focus-within:border-primary/45"
+      className="pointer-events-auto w-full rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) p-4 text-left shadow-(--shadow-composer) transition-[border-color,box-shadow] focus-within:border-primary/45"
       data-business-goal-launcher=""
       onSubmit={handleSubmit}
     >
-      <label className="sr-only" htmlFor="business-goal-input">
+      <label className="sr-only" htmlFor={BUSINESS_GOAL_INPUT_ID}>
         {copy.label}
       </label>
       <textarea
@@ -77,7 +79,7 @@ export function BusinessGoalLauncher({ disabled = false, onSubmit }: BusinessGoa
         autoCorrect="on"
         className="block min-h-16 w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled || submitting}
-        id="business-goal-input"
+        id={BUSINESS_GOAL_INPUT_ID}
         onChange={event => setGoal(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={copy.placeholder}

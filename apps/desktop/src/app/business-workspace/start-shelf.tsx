@@ -83,10 +83,7 @@ export function BusinessStartShelf() {
   }
 
   return (
-    <div
-      className="pointer-events-auto mx-auto flex w-[min(48rem,100%)] flex-col gap-7 px-4 pb-6 text-left"
-      data-business-start-shelf=""
-    >
+    <div className="pointer-events-auto flex w-full flex-col gap-6 pb-6 text-left" data-business-start-shelf="">
       <section aria-labelledby="business-start-workflows">
         <header className="mb-3 flex items-end justify-between gap-4">
           <div>
@@ -105,7 +102,7 @@ export function BusinessStartShelf() {
         <div className="grid grid-cols-1 border-y border-(--ui-stroke-tertiary) sm:grid-cols-3">
           {workflows.map(workflow => (
             <button
-              className="group flex min-h-28 items-start gap-3 border-b border-(--ui-stroke-tertiary) px-3 py-4 text-left transition-colors last:border-b-0 hover:bg-(--chrome-action-hover) sm:border-r sm:border-b-0 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0"
+              className="group flex min-h-24 items-start gap-3 border-b border-(--ui-stroke-tertiary) px-3 py-3.5 text-left transition-colors last:border-b-0 hover:bg-(--chrome-action-hover) sm:border-r sm:border-b-0 sm:first:pl-0 sm:last:border-r-0 sm:last:pr-0"
               key={workflow.title}
               onClick={() => selectWorkflow(workflow)}
               type="button"
@@ -128,137 +125,139 @@ export function BusinessStartShelf() {
         </div>
       </section>
 
-      <section aria-labelledby="business-start-recent">
-        <header className="mb-2 flex items-center justify-between gap-4">
-          <h2 className="text-sm font-semibold" id="business-start-recent">
-            {c.projects.recentConversations}
-          </h2>
-          <Button onClick={() => navigate(PROJECTS_ROUTE)} size="inline" variant="textStrong">
-            {c.projects.title}
-          </Button>
-        </header>
+      <div className="grid gap-6 border-t border-(--ui-stroke-tertiary) pt-5 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <section aria-labelledby="business-start-recent">
+          <header className="flex items-center justify-between gap-4 border-b border-(--ui-stroke-tertiary) pb-2">
+            <h2 className="text-sm font-semibold" id="business-start-recent">
+              {c.projects.recentConversations}
+            </h2>
+            <Button onClick={() => navigate(PROJECTS_ROUTE)} size="inline" variant="textStrong">
+              {c.projects.title}
+            </Button>
+          </header>
 
-        <div className="border-t border-(--ui-stroke-tertiary)">
-          {sessionsLoading && conversations.length === 0 ? (
-            <div className="flex min-h-16 items-center gap-3 text-xs text-muted-foreground">
-              <Loader className="size-7" label={c.projects.loadingHistory} type="lemniscate-bloom" />
-              <span>{c.projects.loadingHistory}</span>
-            </div>
-          ) : conversations.length > 0 ? (
-            conversations.map(conversation => (
-              <button
-                className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
-                key={conversation.id}
-                onClick={() => openSession(conversation.id, navigate)}
-                type="button"
-              >
-                <span
-                  className={
-                    conversation.status === 'needs-input'
-                      ? 'size-2 shrink-0 rounded-full bg-amber-500'
-                      : conversation.status === 'running'
-                        ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
-                        : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
-                  }
-                />
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-xs font-medium">
-                    {conversation.title || c.projects.untitled}
-                  </strong>
-                  <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
-                    {conversation.preview || c.projects.noPreview}
-                  </span>
-                </span>
-                <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">
-                  {conversation.status === 'needs-input'
-                    ? c.projects.needsInput
-                    : conversation.status === 'running'
-                      ? c.projects.running
-                      : fmtDayTime.format(new Date(conversation.lastActive * 1000))}
-                </span>
-                <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
-              </button>
-            ))
-          ) : (
-            <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noConversations}</p>
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-6 md:grid-cols-2" data-business-start-evidence="">
-        <StartEvidenceSection
-          action={c.projects.openTasks}
-          onAction={() => navigate(TASKS_ROUTE)}
-          title={c.projects.taskProgress}
-        >
-          {runningTasks.length > 0 ? (
-            runningTasks.map(task => {
-              const taskEvidence = evidence?.tasks[task.id]
-              const progress = taskEvidence?.progress
-
-              return (
+          <div>
+            {sessionsLoading && conversations.length === 0 ? (
+              <div className="flex min-h-16 items-center gap-3 text-xs text-muted-foreground">
+                <Loader className="size-7" label={c.projects.loadingHistory} type="lemniscate-bloom" />
+                <span>{c.projects.loadingHistory}</span>
+              </div>
+            ) : conversations.length > 0 ? (
+              conversations.map(conversation => (
                 <button
-                  className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
-                  key={task.id}
-                  onClick={() => navigate(taskDetailRoute(task.id))}
+                  className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                  key={conversation.id}
+                  onClick={() => openSession(conversation.id, navigate)}
                   type="button"
                 >
-                  <span className="flex items-center justify-between gap-3">
-                    <strong className="truncate text-xs font-medium">{jobTitleShort(task)}</strong>
-                    <span className="shrink-0 text-[0.6875rem] text-primary">{c.projects.running}</span>
+                  <span
+                    className={
+                      conversation.status === 'needs-input'
+                        ? 'size-2 shrink-0 rounded-full bg-amber-500'
+                        : conversation.status === 'running'
+                          ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
+                          : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+                    }
+                  />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-xs font-medium">
+                      {conversation.title || c.projects.untitled}
+                    </strong>
+                    <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                      {conversation.preview || c.projects.noPreview}
+                    </span>
                   </span>
-                  <span className="mt-1 line-clamp-2 block text-[0.6875rem] leading-4 text-(--ui-text-tertiary)">
-                    {evidenceUnavailable || taskEvidence?.readState === 'unavailable'
-                      ? c.projects.taskProgressUnavailable
-                      : !evidence
-                        ? c.projects.taskProgressLoading
-                        : progress?.totalSteps
-                          ? `${c.projects.steps(progress.completedSteps, progress.totalSteps)}${progress.currentStep ? ` · ${progress.currentStep}` : ''}`
-                          : progress?.latestOutput
-                            ? `${c.projects.latestOutput}: ${progress.latestOutput}`
-                            : c.projects.progressUnavailable}
+                  <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">
+                    {conversation.status === 'needs-input'
+                      ? c.projects.needsInput
+                      : conversation.status === 'running'
+                        ? c.projects.running
+                        : fmtDayTime.format(new Date(conversation.lastActive * 1000))}
+                  </span>
+                  <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
+                </button>
+              ))
+            ) : (
+              <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noConversations}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-5" data-business-start-evidence="">
+          <StartEvidenceSection
+            action={c.projects.openTasks}
+            onAction={() => navigate(TASKS_ROUTE)}
+            title={c.projects.taskProgress}
+          >
+            {runningTasks.length > 0 ? (
+              runningTasks.map(task => {
+                const taskEvidence = evidence?.tasks[task.id]
+                const progress = taskEvidence?.progress
+
+                return (
+                  <button
+                    className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                    key={task.id}
+                    onClick={() => navigate(taskDetailRoute(task.id))}
+                    type="button"
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <strong className="truncate text-xs font-medium">{jobTitleShort(task)}</strong>
+                      <span className="shrink-0 text-[0.6875rem] text-primary">{c.projects.running}</span>
+                    </span>
+                    <span className="mt-1 line-clamp-2 block text-[0.6875rem] leading-4 text-(--ui-text-tertiary)">
+                      {evidenceUnavailable || taskEvidence?.readState === 'unavailable'
+                        ? c.projects.taskProgressUnavailable
+                        : !evidence
+                          ? c.projects.taskProgressLoading
+                          : progress?.totalSteps
+                            ? `${c.projects.steps(progress.completedSteps, progress.totalSteps)}${progress.currentStep ? ` · ${progress.currentStep}` : ''}`
+                            : progress?.latestOutput
+                              ? `${c.projects.latestOutput}: ${progress.latestOutput}`
+                              : c.projects.progressUnavailable}
+                    </span>
+                  </button>
+                )
+              })
+            ) : (
+              <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noTasks}</p>
+            )}
+          </StartEvidenceSection>
+
+          <StartEvidenceSection
+            action={c.projects.openArtifacts}
+            onAction={() => navigate(ARTIFACTS_ROUTE)}
+            title={c.projects.deliverables}
+          >
+            {artifacts.length > 0 ? (
+              artifacts.map(artifact => (
+                <button
+                  className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                  key={artifact.id}
+                  onClick={() => void openWorkspaceArtifact(artifact.href, t.artifacts.openFailed)}
+                  type="button"
+                >
+                  <Codicon className="shrink-0 text-primary" name={artifact.kind === 'link' ? 'link' : 'file'} />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-xs font-medium">{artifact.label}</strong>
+                    <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                      {artifact.sessionTitle}
+                    </span>
                   </span>
                 </button>
-              )
-            })
-          ) : (
-            <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noTasks}</p>
-          )}
-        </StartEvidenceSection>
-
-        <StartEvidenceSection
-          action={c.projects.openArtifacts}
-          onAction={() => navigate(ARTIFACTS_ROUTE)}
-          title={c.projects.deliverables}
-        >
-          {artifacts.length > 0 ? (
-            artifacts.map(artifact => (
-              <button
-                className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
-                key={artifact.id}
-                onClick={() => void openWorkspaceArtifact(artifact.href, t.artifacts.openFailed)}
-                type="button"
-              >
-                <Codicon className="shrink-0 text-primary" name={artifact.kind === 'link' ? 'link' : 'file'} />
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-xs font-medium">{artifact.label}</strong>
-                  <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
-                    {artifact.sessionTitle}
-                  </span>
-                </span>
-              </button>
-            ))
-          ) : (
-            <p className="py-4 text-xs leading-5 text-muted-foreground">
-              {evidenceUnavailable || evidence?.failedArtifactSessions
-                ? c.projects.partialEvidence
-                : evidence
-                  ? c.projects.noArtifacts
-                  : c.projects.loadingEvidence}
-            </p>
-          )}
-        </StartEvidenceSection>
-      </section>
+              ))
+            ) : (
+              <p className="py-4 text-xs leading-5 text-muted-foreground">
+                {evidenceUnavailable || evidence?.failedArtifactSessions
+                  ? c.projects.partialEvidence
+                  : evidence
+                    ? c.projects.noArtifacts
+                    : c.projects.loadingEvidence}
+              </p>
+            )}
+          </StartEvidenceSection>
+        </section>
+      </div>
     </div>
   )
 }

@@ -1,5 +1,4 @@
-import { BusinessGoalLauncher } from '@/app/business-workspace/goal-launcher'
-import { BusinessStartShelf } from '@/app/business-workspace/start-shelf'
+import { BusinessStartHome } from '@/app/business-workspace/start-home'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
@@ -33,22 +32,21 @@ export function Intro({ goalDisabled = false, onSubmitGoal }: IntroProps) {
 
   return (
     <div
-      className="pointer-events-none flex w-full min-w-0 flex-col items-center gap-5 px-4 py-5 text-center sm:px-6 lg:px-8"
+      className={`pointer-events-none flex w-full min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 ${businessWorkspaceEnabled ? 'items-start text-left' : 'items-center text-center'}`}
       data-slot="aui_intro"
     >
-      <div>
-        <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
-          {t.home.title}
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
-      </div>
       {businessWorkspaceEnabled ? (
-        <>
-          <BusinessGoalLauncher disabled={goalDisabled} onSubmit={onSubmitGoal} />
-          <BusinessStartShelf />
-        </>
+        <BusinessStartHome goalDisabled={goalDisabled} onSubmitGoal={onSubmitGoal} />
       ) : (
-        <ScenarioShelf />
+        <>
+          <div>
+            <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
+              {t.home.title}
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
+          </div>
+          <ScenarioShelf />
+        </>
       )}
     </div>
   )
