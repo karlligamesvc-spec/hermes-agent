@@ -1,5 +1,5 @@
 import { readDesktopFileDataUrl } from '@/lib/desktop-fs'
-import { filePathFromMediaPath, isRemoteGateway, mediaExternalUrl } from '@/lib/media'
+import { downloadGatewayMediaFile, filePathFromMediaPath, isRemoteGateway, mediaExternalUrl } from '@/lib/media'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 
 export type ArtifactKind = 'image' | 'file' | 'link'
@@ -15,6 +15,24 @@ export interface ArtifactRecord {
   sessionId: string
   sessionTitle: string
   timestamp: number
+}
+
+/** Open the exact artifact through the same local/remote desktop seam used by
+ * the canonical Artifacts page. */
+export async function openArtifactHref(href: string): Promise<void> {
+  if (isRemoteGateway() && /^file:/i.test(href)) {
+    await downloadGatewayMediaFile(href)
+
+    return
+  }
+
+  if (window.hermesDesktop?.openExternal) {
+    await window.hermesDesktop.openExternal(href)
+
+    return
+  }
+
+  window.open(href, '_blank', 'noopener,noreferrer')
 }
 
 const MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g

@@ -13,9 +13,10 @@ import { $tasks } from '@/store/tasks'
 
 import { requestComposerFocus, requestComposerInsert } from '../chat/composer/focus'
 import { openSession } from '../open-session'
-import { ARTIFACTS_ROUTE, PROJECTS_ROUTE, TASKS_ROUTE, WORKFLOWS_ROUTE } from '../routes'
+import { ARTIFACTS_ROUTE, PROJECTS_ROUTE, taskDetailRoute, TASKS_ROUTE, WORKFLOWS_ROUTE } from '../routes'
 import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
+import { openWorkspaceArtifact } from './open-workspace-artifact'
 import { useWorkspaceEvidence } from './use-workspace-evidence'
 import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
@@ -199,7 +200,7 @@ export function BusinessStartShelf() {
                 <button
                   className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                   key={task.id}
-                  onClick={() => navigate(TASKS_ROUTE)}
+                  onClick={() => navigate(taskDetailRoute(task.id))}
                   type="button"
                 >
                   <span className="flex items-center justify-between gap-3">
@@ -235,7 +236,7 @@ export function BusinessStartShelf() {
               <button
                 className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                 key={artifact.id}
-                onClick={() => navigate(ARTIFACTS_ROUTE)}
+                onClick={() => void openWorkspaceArtifact(artifact.href, t.artifacts.openFailed)}
                 type="button"
               >
                 <Codicon className="shrink-0 text-primary" name={artifact.kind === 'link' ? 'link' : 'file'} />

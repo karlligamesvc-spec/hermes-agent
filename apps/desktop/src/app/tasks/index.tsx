@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -88,7 +89,16 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
   // Projection over the shared cron atom (controller already polls it), so the
   // list stays live without a second fetch — there is nothing to load here, so
   // an empty projection is a real "no tasks yet" state, not a pending one.
+
   const tasks = useStore($tasks)
+  const [searchParams] = useSearchParams()
+  const requestedTaskId = searchParams.get('task')
+
+  const requestedTask = useMemo(
+    () => tasks.find(task => task.id === requestedTaskId) ?? null,
+    [requestedTaskId, tasks]
+  )
+
   const [tab, setTab] = useState<Tab>('running')
   const [selectedId, setSelectedId] = useState<null | string>(null)
   const [busyId, setBusyId] = useState<null | string>(null)
@@ -111,6 +121,15 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
   const running = useMemo(() => tasks.filter(task => taskPhase(task) === 'running'), [tasks])
   const finished = useMemo(() => tasks.filter(task => taskPhase(task) !== 'running'), [tasks])
   const visible = tab === 'running' ? running : finished
+
+  useEffect(() => {
+    if (!requestedTask) {
+      return
+    }
+
+    setTab(taskPhase(requestedTask) === 'running' ? 'running' : 'done')
+    setSelectedId(requestedTask.id)
+  }, [requestedTask])
 
   // Detail always reflects a concrete task in the active tab.
   const selected = useMemo(

@@ -18,12 +18,16 @@ import { $cronJobs } from '@/store/cron'
 import { setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
+import { TasksView } from '../tasks'
+
 import { BusinessStartShelf } from './start-shelf'
 
 import { ProjectsView, WorkflowsView } from '.'
 
 function LocationProbe() {
-  return <output data-testid="location">{useLocation().pathname}</output>
+  const location = useLocation()
+
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
 }
 
 describe('hc-685 business workspace identity', () => {
@@ -35,7 +39,8 @@ describe('hc-685 business workspace identity', () => {
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
-        api: vi.fn(async () => ({ errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 }))
+        api: vi.fn(async () => ({ errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 })),
+        openExternal: vi.fn(async () => undefined)
       }
     })
   })
@@ -276,10 +281,13 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByText('market-report.pdf')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /Competitor scan/ }))
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks'))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks?task=job-1'))
 
     fireEvent.click(screen.getByRole('button', { name: /market-report.pdf/ }))
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/artifacts'))
+    await waitFor(() =>
+      expect(window.hermesDesktop!.openExternal).toHaveBeenCalledWith(expect.stringContaining('market-report.pdf'))
+    )
+    expect(screen.getByTestId('location').textContent).toBe('/tasks?task=job-1')
   })
 
   it('does not turn a Start evidence failure into a false empty-deliverables claim', async () => {
@@ -318,6 +326,25 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '查看任务进度' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '查看任务进度' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks'))
+  })
+
+  it('selects the exact finished task named by a real-work deep link', async () => {
+    $cronJobs.set([
+      { enabled: true, id: 'running-job', name: 'Running scan', schedule: { kind: 'once' }, state: 'running' },
+      { enabled: false, id: 'done-job', name: 'Finished report', schedule: { kind: 'once' }, state: 'completed' }
+    ])
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/tasks?task=done-job']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <TasksView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Done/ }).getAttribute('data-active')).toBe('true'))
+    expect(container.querySelector('[data-task-row="done-job"]')?.className).toContain('bg-accent')
+    expect(screen.getAllByText('Finished report').length).toBeGreaterThan(1)
   })
 
   it('opens the current compressed-session tip from real history, not its lineage root', async () => {

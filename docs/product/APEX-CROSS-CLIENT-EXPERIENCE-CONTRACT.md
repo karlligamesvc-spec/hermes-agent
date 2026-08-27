@@ -14,9 +14,9 @@ surfaces.
 | Recent conversations            | `$sessions`, the active-profile recents slice populated by the controller | Non-empty, non-cron sessions ordered by `last_active`; open the projected `session.id`, exactly like sidebar/search/command center                                                         | History / original conversation |
 | Conversation state              | `$sessionStates`                                                          | Match the listed tip or its lineage root to live `busy` / `needsInput`; state is never inferred from copy                                                                                  | Original conversation           |
 | Tool activity / status          | `SessionInfo.tool_call_count` + `$sessionStates`                          | Show the stored call count as activity only; running / needs-input are live session status. Tool-level status and structured evidence are explicitly deferred to the original conversation | Original conversation           |
-| Recent tasks                    | `$tasks` (one-shot cron jobs)                                             | Order by parsed `last_run_at`, then `next_run_at`, then id; lifecycle uses `taskPhase`                                                                                                     | Tasks                           |
+| Recent tasks                    | `$tasks` (one-shot cron jobs)                                             | Order by parsed `last_run_at`, then `next_run_at`, then id; lifecycle uses `taskPhase`; a summary-row action carries the real job id through `taskDetailRoute`                              | Selected Tasks detail           |
 | Task progress and latest output | `getCronJobRuns` + run transcript                                         | Pick `primaryRun`; derive todo progress and latest assistant output with `deriveProgress`                                                                                                  | Tasks detail                    |
-| Evidence and deliverables       | all-profile recent session list + stored transcripts                      | Same bounded 30-session source window and `collectArtifactsForSession` parser as Artifacts; cron run sessions remain included                                                              | Artifacts / source conversation |
+| Evidence and deliverables       | all-profile recent session list + stored transcripts                      | Same bounded 30-session source window and `collectArtifactsForSession` parser as Artifacts; cron run sessions remain included; row actions reuse the canonical local/remote open seam         | Artifacts / source conversation |
 
 Start and Projects consume this table through the same bounded evidence hook.
 Start limits the projection to two active one-shot tasks and two recent
@@ -31,9 +31,13 @@ creates grouping, ownership, approval, progress, evidence, or deliverable data.
 1. Sessions: active-profile recents cache (`$sessions`) and the canonical History
    page; restore through `openSession(session.id)`.
 2. Tasks: `$tasks` projection, `getCronJobRuns`, run transcript, and the Tasks
-   page. The recent-work summary does not claim a direct run-conversation link.
+   page. A row opens `/tasks?task=<real job id>` and the Tasks surface selects
+   the matching running or finished detail. The recent-work summary does not
+   claim a direct run-conversation link.
 3. Artifacts: all-profile session list, transcript reads, Artifacts page, source
-   conversation, and native/remote file-open behavior owned by Artifacts.
+   conversation, and native/remote file-open behavior owned by Artifacts. A
+   concrete summary row uses that same open behavior; only the section-level
+   action opens the aggregate Artifacts page.
 4. Live session state: `$sessionStates` runtime-to-stored-id mapping; the
    workspace only reads `busy` and `needsInput`.
 5. Platform output: macOS and Windows consume the same renderer route and
@@ -110,3 +114,7 @@ validation.
   test fails or observes two reads for the same run.
 - Make task or transcript readers reject: the partial-data test requires explicit
   failure counts and no synthetic replacement rows.
+- Replace `taskDetailRoute(task.id)` with the bare Tasks route: the business
+  workspace interaction test fails because the selected task id disappears.
+- Replace the concrete artifact row action with aggregate Artifacts navigation:
+  the interaction test fails because the desktop open seam is never called.

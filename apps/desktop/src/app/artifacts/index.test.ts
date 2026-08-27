@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { $connection } from '@/store/session'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 
-import { artifactImageSrc, collectArtifactsForSession } from './artifact-utils'
+import { artifactImageSrc, collectArtifactsForSession, openArtifactHref } from './artifact-utils'
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -87,5 +87,15 @@ describe('collectArtifactsForSession', () => {
     expect(api).toHaveBeenCalledWith({
       path: '/api/fs/read-data-url?path=%2FUsers%2Fme%2F.hermes%2Fskills%2Fwork-esab%2Freferences%2Fimages%2Fmanual-step03.jpeg'
     })
+  })
+
+  it('opens a local artifact through the desktop shell seam', async () => {
+    const openExternal = vi.fn(async () => undefined)
+
+    vi.stubGlobal('window', { hermesDesktop: { openExternal } })
+
+    await openArtifactHref('file:///tmp/report.pdf')
+
+    expect(openExternal).toHaveBeenCalledWith('file:///tmp/report.pdf')
   })
 })

@@ -13,9 +13,10 @@ import { $tasks } from '@/store/tasks'
 
 import { requestComposerFocus, requestComposerInsert } from '../chat/composer/focus'
 import { openSession } from '../open-session'
-import { ARTIFACTS_ROUTE, NEW_CHAT_ROUTE, TASKS_ROUTE } from '../routes'
+import { ARTIFACTS_ROUTE, NEW_CHAT_ROUTE, taskDetailRoute, TASKS_ROUTE } from '../routes'
 import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
+import { openWorkspaceArtifact } from './open-workspace-artifact'
 import { useWorkspaceEvidence } from './use-workspace-evidence'
 import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
@@ -137,7 +138,12 @@ export function ProjectsView() {
                 const phase = taskPhase(task)
 
                 return (
-                  <div className="border-b border-(--ui-stroke-tertiary) py-3 last:border-b-0" key={task.id}>
+                  <button
+                    className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                    key={task.id}
+                    onClick={() => navigate(taskDetailRoute(task.id))}
+                    type="button"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <span className="truncate text-sm font-medium">{jobTitleShort(task)}</span>
                       <span className="shrink-0 text-[0.7rem] text-(--ui-text-tertiary)">
@@ -160,7 +166,7 @@ export function ProjectsView() {
                     ) : (
                       <p className="mt-1 text-xs text-muted-foreground">{c.progressUnavailable}</p>
                     )}
-                  </div>
+                  </button>
                 )
               })
             ) : (
@@ -174,7 +180,7 @@ export function ProjectsView() {
                 <button
                   className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                   key={artifact.id}
-                  onClick={() => navigate(ARTIFACTS_ROUTE)}
+                  onClick={() => void openWorkspaceArtifact(artifact.href, t.artifacts.openFailed)}
                   type="button"
                 >
                   <Codicon className="shrink-0 text-primary" name={artifact.kind === 'link' ? 'link' : 'file'} />
