@@ -20,6 +20,7 @@ import { $sessionStates } from '@/store/session-states'
 
 import { TasksView } from '../tasks'
 
+import { BusinessGoalLauncher } from './goal-launcher'
 import { BusinessStartShelf } from './start-shelf'
 
 import { ProjectsView, WorkflowsView } from '.'
@@ -136,6 +137,42 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('location').textContent).toBe('/')
     window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('submits a trimmed business goal through the caller-owned chat seam', async () => {
+    const submit = vi.fn(async () => true)
+
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <BusinessGoalLauncher onSubmit={submit} />
+      </I18nProvider>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    fireEvent.change(goal, { target: { value: '  分析美国宠物用品市场  ' } })
+    fireEvent.keyDown(goal, { key: 'Enter' })
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场'))
+    expect((goal as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('preserves the draft for a rejected goal and leaves Shift+Enter to the textarea', async () => {
+    const submit = vi.fn(async () => false)
+
+    render(
+      <I18nProvider configClient={null} initialLocale="en">
+        <BusinessGoalLauncher onSubmit={submit} />
+      </I18nProvider>
+    )
+
+    const goal = screen.getByRole('textbox', { name: 'Business goal' })
+    fireEvent.change(goal, { target: { value: 'Keep this draft' } })
+    fireEvent.keyDown(goal, { key: 'Enter', shiftKey: true })
+    expect(submit).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start goal' }))
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('Keep this draft'))
+    expect((goal as HTMLTextAreaElement).value).toBe('Keep this draft')
   })
 
   it('shows and restores recent work only from real sessions', async () => {

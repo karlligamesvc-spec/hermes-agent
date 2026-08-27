@@ -2936,6 +2936,12 @@ export const zhHant = defineLocale({
   },
 
   businessWorkspace: {
+    goalLauncher: {
+      label: '業務目標',
+      placeholder: '例如：分析美國寵物用品市場，並產出選品報告和上架素材',
+      hint: 'Enter 開始執行 · Shift+Enter 換行',
+      submit: '開始執行'
+    },
     projects: {
       eyebrow: '從目標到交付',
       title: '專案',

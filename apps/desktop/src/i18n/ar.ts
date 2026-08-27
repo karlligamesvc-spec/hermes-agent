@@ -39,6 +39,14 @@ export const ar = defineLocale({
     on: 'مفعل',
     off: 'معطل'
   },
+  businessWorkspace: {
+    goalLauncher: {
+      label: 'هدف العمل',
+      placeholder: 'مثال: حلّل سوق مستلزمات الحيوانات الأليفة في الولايات المتحدة وأنشئ تقرير اختيار ومواد إطلاق',
+      hint: 'Enter للبدء · Shift+Enter لسطر جديد',
+      submit: 'بدء الهدف'
+    }
+  },
   fileMenu: {
     revealFinder: 'إظهار في Finder',
     revealExplorer: 'إظهار في File Explorer',

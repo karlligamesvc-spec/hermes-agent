@@ -3285,6 +3285,12 @@ export const zh = defineLocale({
   },
 
   businessWorkspace: {
+    goalLauncher: {
+      label: '业务目标',
+      placeholder: '例如：分析美国宠物用品市场，并生成选品报告和上架素材',
+      hint: 'Enter 开始执行 · Shift+Enter 换行',
+      submit: '开始执行'
+    },
     projects: {
       eyebrow: '从目标到交付',
       title: '项目',

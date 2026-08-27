@@ -1,3 +1,4 @@
+import { BusinessGoalLauncher } from '@/app/business-workspace/goal-launcher'
 import { BusinessStartShelf } from '@/app/business-workspace/start-shelf'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
@@ -6,6 +7,8 @@ import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 // Props are kept for call-site compatibility (the Thread passes the resolved
 // personality + seed), but the home screen no longer varies its copy.
 export type IntroProps = {
+  goalDisabled?: boolean
+  onSubmitGoal?: (goal: string) => Promise<boolean> | boolean
   personality?: string
   seed?: number
 }
@@ -24,13 +27,13 @@ export type IntroProps = {
  * stays on disk to keep the rebase surface small (same call as the upstream
  * mascot art in public/) — what matters is that nothing rendered reaches for it.
  */
-export function Intro(_props: IntroProps) {
+export function Intro({ goalDisabled = false, onSubmitGoal }: IntroProps) {
   const { t } = useI18n()
   const businessWorkspaceEnabled = isBusinessWorkspaceEnabled()
 
   return (
     <div
-      className="pointer-events-none flex w-full min-w-0 flex-col items-center gap-8 px-4 py-6 text-center sm:px-6 lg:px-8"
+      className="pointer-events-none flex w-full min-w-0 flex-col items-center gap-5 px-4 py-5 text-center sm:px-6 lg:px-8"
       data-slot="aui_intro"
     >
       <div>
@@ -39,7 +42,14 @@ export function Intro(_props: IntroProps) {
         </h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
       </div>
-      {businessWorkspaceEnabled ? <BusinessStartShelf /> : <ScenarioShelf />}
+      {businessWorkspaceEnabled ? (
+        <>
+          <BusinessGoalLauncher disabled={goalDisabled} onSubmit={onSubmitGoal} />
+          <BusinessStartShelf />
+        </>
+      ) : (
+        <ScenarioShelf />
+      )}
     </div>
   )
 }

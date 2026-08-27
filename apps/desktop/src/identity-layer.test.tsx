@@ -454,6 +454,8 @@ describe('identity: the home zero-state is ours', () => {
       const { container } = renderIntro()
 
       expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
+      expect(screen.getByRole('textbox', { name: '业务目标' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
       expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
       expect(container.querySelector('[data-business-start-evidence]')).toBeTruthy()
       expect(screen.getByRole('button', { name: '打开任务' })).toBeTruthy()
@@ -495,10 +497,18 @@ describe('identity: the home zero-state is ours', () => {
     const intro = readSource('src', 'components', 'chat', 'intro.tsx')
 
     expect(intro).toContain('t.home.title')
+    expect(intro).toContain('<BusinessGoalLauncher')
     expect(intro).toContain('<BusinessStartShelf />')
     expect(intro).toContain('<ScenarioShelf />')
     expect(intro).not.toMatch(/^import .*intro-copy\.jsonl/m)
     expect(intro).not.toContain('WORDMARK')
+  })
+
+  it('wires the goal launcher to the canonical chat submit path', () => {
+    const chat = readSource('src', 'app', 'chat', 'index.tsx')
+
+    expect(chat).toContain('onSubmitGoal: onSubmit')
+    expect(chat).toContain('goalDisabled: !gatewayOpen || busy')
   })
 })
 
