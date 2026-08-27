@@ -178,8 +178,7 @@ jobs:
           set -euo pipefail
           APP="$(find release/mac* -maxdepth 1 -name '*.app' | head -1)"
           codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Authority=Developer ID|TeamIdentifier"
-          spctl --assess --type execute -v "$APP" || {
-            echo "::warning::spctl assessment failed — DMG is signed but likely NOT notarized"; exit 0; }
+          spctl --assess --type execute -v "$APP"
 
       - name: List build output
         if: always()

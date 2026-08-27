@@ -29,3 +29,14 @@ test('manual macOS builds are artifact-only unless production publish is explici
   assert.match(publishStep, /if: \$\{\{ inputs\.publish \}\}/)
   assert.match(publishStep, /coscmd upload/)
 })
+
+test('Gatekeeper rejection fails the signed macOS build', () => {
+  const gatekeeperStep = namedStep(
+    workflowSource(),
+    'Gatekeeper assessment (fails if not notarized)'
+  )
+
+  assert.match(gatekeeperStep, /spctl --assess --type execute -v "\$APP"/)
+  assert.doesNotMatch(gatekeeperStep, /::warning::/)
+  assert.doesNotMatch(gatekeeperStep, /exit 0/)
+})
