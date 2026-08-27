@@ -18,23 +18,23 @@ import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
 import { openWorkspaceArtifact } from './open-workspace-artifact'
 import { useWorkspaceEvidence } from './use-workspace-evidence'
+import { type BusinessWorkflowStarter, businessWorkflowStarters } from './workflow-starters'
 import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
-interface StartWorkflow {
-  icon: 'globe' | 'graph' | 'megaphone'
-  prompt: string
-  summary: string
-  title: string
+export interface BusinessStartShelfProps {
+  onSelectWorkflow?: (workflow: BusinessWorkflowStarter) => void
 }
 
 /**
  * Business-mode zero state for the real chat home.
  *
- * The workflow rows only prefill the existing composer. The recent-work rows
- * are derived from backend sessions and live client state; this surface never
- * creates a project, progress value, platform claim, or deliverable of its own.
+ * The production Start composition stages workflow prompts in the compact goal
+ * launcher; the standalone fallback still targets the existing Composer. The
+ * recent-work rows are derived from backend sessions and live client state;
+ * this surface never creates a project, progress value, platform claim, or
+ * deliverable of its own.
  */
-export function BusinessStartShelf() {
+export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps = {}) {
   const { t } = useI18n()
   const c = t.businessWorkspace
   const navigate = useNavigate()
@@ -56,28 +56,15 @@ export function BusinessStartShelf() {
   const { evidence, evidenceUnavailable } = useWorkspaceEvidence(sessions, runningTasks)
   const artifacts = evidence?.artifacts.slice(0, 2) ?? []
 
-  const workflows: StartWorkflow[] = [
-    {
-      icon: 'globe',
-      prompt: c.workflows.commerce.prompt,
-      summary: c.workflows.commerce.summary,
-      title: c.workflows.commerce.title
-    },
-    {
-      icon: 'graph',
-      prompt: c.workflows.insight.prompt,
-      summary: c.workflows.insight.summary,
-      title: c.workflows.insight.title
-    },
-    {
-      icon: 'megaphone',
-      prompt: c.workflows.content.prompt,
-      summary: c.workflows.content.summary,
-      title: c.workflows.content.title
-    }
-  ]
+  const workflows = businessWorkflowStarters(c.workflows)
 
-  const selectWorkflow = (workflow: StartWorkflow) => {
+  const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
+    if (onSelectWorkflow) {
+      onSelectWorkflow(workflow)
+
+      return
+    }
+
     requestComposerInsert(workflow.prompt, { mode: 'block', target: 'main' })
     requestComposerFocus('main')
   }

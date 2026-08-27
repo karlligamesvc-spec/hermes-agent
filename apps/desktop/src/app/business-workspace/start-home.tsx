@@ -1,9 +1,12 @@
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from './goal-launcher'
 import { BusinessStartShelf } from './start-shelf'
+import type { BusinessWorkflowStarter } from './workflow-starters'
 
 export interface BusinessStartHomeProps {
   goalDisabled?: boolean
@@ -19,9 +22,15 @@ export interface BusinessStartHomeProps {
  */
 export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: BusinessStartHomeProps) {
   const { t } = useI18n()
+  const [goalDraft, setGoalDraft] = useState('')
 
   const focusGoal = () => {
     document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
+  }
+
+  const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
+    setGoalDraft(workflow.prompt)
+    focusGoal()
   }
 
   return (
@@ -40,8 +49,13 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
       </header>
 
       <div className="flex w-full max-w-[48rem] flex-col gap-6">
-        <BusinessGoalLauncher disabled={goalDisabled} onSubmit={onSubmitGoal} />
-        <BusinessStartShelf />
+        <BusinessGoalLauncher
+          disabled={goalDisabled}
+          draft={goalDraft}
+          onDraftChange={setGoalDraft}
+          onSubmit={onSubmitGoal}
+        />
+        <BusinessStartShelf onSelectWorkflow={selectWorkflow} />
       </div>
     </div>
   )

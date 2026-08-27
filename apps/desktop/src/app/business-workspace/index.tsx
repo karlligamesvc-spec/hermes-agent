@@ -18,14 +18,8 @@ import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
 import { openWorkspaceArtifact } from './open-workspace-artifact'
 import { useWorkspaceEvidence } from './use-workspace-evidence'
+import { type BusinessWorkflowStarter, businessWorkflowStarters } from './workflow-starters'
 import { recentConversations, recentWorkspaceTasks } from './workspace-model'
-
-interface WorkflowStarter {
-  icon: 'globe' | 'graph' | 'megaphone'
-  prompt: string
-  title: string
-  summary: string
-}
 
 export function ProjectsView() {
   const { t } = useI18n()
@@ -245,13 +239,9 @@ export function WorkflowsView() {
   const c = t.businessWorkspace.workflows
   const navigate = useNavigate()
 
-  const starters: WorkflowStarter[] = [
-    { icon: 'globe', title: c.commerce.title, summary: c.commerce.summary, prompt: c.commerce.prompt },
-    { icon: 'graph', title: c.insight.title, summary: c.insight.summary, prompt: c.insight.prompt },
-    { icon: 'megaphone', title: c.content.title, summary: c.content.summary, prompt: c.content.prompt }
-  ]
+  const starters = businessWorkflowStarters(c)
 
-  const selectStarter = (starter: WorkflowStarter) => {
+  const selectStarter = (starter: BusinessWorkflowStarter) => {
     navigate(NEW_CHAT_ROUTE)
     window.requestAnimationFrame(() => {
       requestComposerInsert(starter.prompt, { mode: 'block', target: 'main' })

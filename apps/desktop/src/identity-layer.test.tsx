@@ -505,9 +505,16 @@ describe('identity: the home zero-state is ours', () => {
 
   it('wires the goal launcher to the canonical chat submit path', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
+    const startHome = readSource('src', 'app', 'business-workspace', 'start-home.tsx')
+    const startShelf = readSource('src', 'app', 'business-workspace', 'start-shelf.tsx')
+    const workflows = readSource('src', 'app', 'business-workspace', 'index.tsx')
 
     expect(chat).toContain('onSubmitGoal: onSubmit')
     expect(chat).toContain('goalDisabled: !gatewayOpen || busy')
+    expect(startHome).toContain('<BusinessStartShelf onSelectWorkflow={selectWorkflow} />')
+    expect(startHome).toContain('draft={goalDraft}')
+    expect(startShelf).toContain('businessWorkflowStarters(c.workflows)')
+    expect(workflows).toContain('businessWorkflowStarters(c)')
   })
 })
 

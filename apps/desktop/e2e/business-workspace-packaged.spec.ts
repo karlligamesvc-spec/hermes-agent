@@ -93,13 +93,15 @@ test('packaged Start keeps its real-data sections usable at wide, desktop, and n
 
 test('packaged business goal starts a real chat turn through the existing gateway', async () => {
   const page = fixture!.page
-  const prompt = '分析美国宠物用品市场并给出有证据支持的上架建议'
+  const prompt = '分析美国宠物用品市场，并生成选品报告和上架素材'
   const goal = page.getByRole('textbox', { name: '业务目标' })
 
   await expect(goal).toBeVisible()
   await page.getByRole('button', { name: '开始一个目标' }).click()
   await expect(goal).toBeFocused()
-  await goal.fill(prompt)
+  await page.getByRole('button', { name: /从市场机会到上架素材/ }).click()
+  await expect(goal).toHaveValue(prompt)
+  await expect(goal).toBeFocused()
   await page.getByRole('button', { name: '开始执行' }).click()
 
   await expect(page.getByText(prompt, { exact: true })).toBeVisible({ timeout: 15_000 })

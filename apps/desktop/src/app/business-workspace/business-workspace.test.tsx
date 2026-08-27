@@ -120,7 +120,7 @@ describe('hc-685 business workspace identity', () => {
     window.removeEventListener('hermes:composer-insert', insert)
   })
 
-  it('uses the real chat composer for a start-page workflow without creating a project route', async () => {
+  it('keeps the standalone Start shelf fallback on the real Composer seam', async () => {
     const insert = vi.fn()
     window.addEventListener('hermes:composer-insert', insert)
 
@@ -137,6 +137,34 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('location').textContent).toBe('/')
+    window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('stages a Start workflow in the canonical goal field before real submission', async () => {
+    const insert = vi.fn()
+    const submit = vi.fn(async () => true)
+    window.addEventListener('hermes:composer-insert', insert)
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
+
+    await waitFor(() =>
+      expect((goal as HTMLTextAreaElement).value).toBe('分析美国宠物用品市场，并生成选品报告和上架素材')
+    )
+    expect(window.document.activeElement).toBe(goal)
+    expect(insert).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场，并生成选品报告和上架素材'))
+    await waitFor(() => expect((goal as HTMLTextAreaElement).value).toBe(''))
     window.removeEventListener('hermes:composer-insert', insert)
   })
 

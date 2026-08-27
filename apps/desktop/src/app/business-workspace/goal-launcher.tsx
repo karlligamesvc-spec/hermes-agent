@@ -6,6 +6,8 @@ import { useI18n } from '@/i18n'
 
 export interface BusinessGoalLauncherProps {
   disabled?: boolean
+  draft?: string
+  onDraftChange?: (draft: string) => void
   onSubmit?: (goal: string) => Promise<boolean> | boolean
 }
 
@@ -20,11 +22,14 @@ export const BUSINESS_GOAL_INPUT_ID = 'business-goal-input'
  * controls; this compact entrance exists for the prototype's primary
  * "describe the outcome and start" path.
  */
-export function BusinessGoalLauncher({ disabled = false, onSubmit }: BusinessGoalLauncherProps) {
+export function BusinessGoalLauncher({ disabled = false, draft, onDraftChange, onSubmit }: BusinessGoalLauncherProps) {
   const { t } = useI18n()
   const copy = t.businessWorkspace.goalLauncher
-  const [goal, setGoal] = useState('')
+  const [localDraft, setLocalDraft] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const controlled = draft !== undefined && onDraftChange !== undefined
+  const goal = controlled ? draft : localDraft
+  const setGoal = controlled ? onDraftChange : setLocalDraft
   const normalizedGoal = goal.trim()
   const canSubmit = Boolean(onSubmit) && !disabled && !submitting && normalizedGoal.length > 0
 
