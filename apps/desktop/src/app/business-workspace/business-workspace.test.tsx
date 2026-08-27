@@ -18,10 +18,18 @@ import { $cronJobs } from '@/store/cron'
 import { setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
+import { TasksView } from '../tasks'
+
+import { BusinessGoalLauncher } from './goal-launcher'
+import { BusinessStartHome } from './start-home'
+import { BusinessStartShelf } from './start-shelf'
+
 import { ProjectsView, WorkflowsView } from '.'
 
 function LocationProbe() {
-  return <output data-testid="location">{useLocation().pathname}</output>
+  const location = useLocation()
+
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
 }
 
 describe('hc-685 business workspace identity', () => {
@@ -33,7 +41,8 @@ describe('hc-685 business workspace identity', () => {
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
-        api: vi.fn(async () => ({ errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 }))
+        api: vi.fn(async () => ({ errors: [], has_more_by_profile: {}, offset: 0, sessions: [], total: 0 })),
+        openExternal: vi.fn(async () => undefined)
       }
     })
   })
@@ -92,7 +101,7 @@ describe('hc-685 business workspace identity', () => {
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false).at(-1)).toEqual(contributed[0])
   })
 
-  it('moves a workflow goal into the real composer seam without creating domain data', () => {
+  it('moves a workflow goal into the real composer seam without creating domain data', async () => {
     const insert = vi.fn()
     window.addEventListener('hermes:composer-insert', insert)
 
@@ -107,13 +116,283 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.queryByText(/Skill|MCP|模型/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
 
-    return new Promise<void>(resolve => {
-      window.setTimeout(() => {
-        expect(insert).toHaveBeenCalledTimes(1)
-        window.removeEventListener('hermes:composer-insert', insert)
-        resolve()
-      }, 20)
-    })
+    await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('keeps the standalone Start shelf fallback on the real Composer seam', async () => {
+    const insert = vi.fn()
+    window.addEventListener('hermes:composer-insert', insert)
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Market opportunity to launch assets/ }))
+
+    await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    expect(screen.getByTestId('location').textContent).toBe('/')
+    window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('stages a Start workflow in the canonical goal field before real submission', async () => {
+    const insert = vi.fn()
+    const submit = vi.fn(async () => true)
+    window.addEventListener('hermes:composer-insert', insert)
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
+
+    await waitFor(() =>
+      expect((goal as HTMLTextAreaElement).value).toBe('分析美国宠物用品市场，并生成选品报告和上架素材')
+    )
+    expect(window.document.activeElement).toBe(goal)
+    expect(insert).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场，并生成选品报告和上架素材'))
+    await waitFor(() => expect((goal as HTMLTextAreaElement).value).toBe(''))
+    window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('submits a trimmed business goal through the caller-owned chat seam', async () => {
+    const submit = vi.fn(async () => true)
+
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <BusinessGoalLauncher onSubmit={submit} />
+      </I18nProvider>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    fireEvent.change(goal, { target: { value: '  分析美国宠物用品市场  ' } })
+    fireEvent.keyDown(goal, { key: 'Enter' })
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场'))
+    expect((goal as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('preserves the draft for a rejected goal and leaves Shift+Enter to the textarea', async () => {
+    const submit = vi.fn(async () => false)
+
+    render(
+      <I18nProvider configClient={null} initialLocale="en">
+        <BusinessGoalLauncher onSubmit={submit} />
+      </I18nProvider>
+    )
+
+    const goal = screen.getByRole('textbox', { name: 'Business goal' })
+    fireEvent.change(goal, { target: { value: 'Keep this draft' } })
+    fireEvent.keyDown(goal, { key: 'Enter', shiftKey: true })
+    expect(submit).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start goal' }))
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('Keep this draft'))
+    expect((goal as HTMLTextAreaElement).value).toBe('Keep this draft')
+  })
+
+  it('focuses the canonical goal field from the prototype-aligned top action', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    expect(window.document.activeElement).not.toBe(goal)
+
+    fireEvent.click(screen.getByRole('button', { name: '开始一个目标' }))
+    expect(window.document.activeElement).toBe(goal)
+  })
+
+  it('shows and restores recent work only from real sessions', async () => {
+    setSessions([
+      {
+        id: 'real-tip-2',
+        _lineage_root_id: 'real-root-2',
+        ended_at: null,
+        input_tokens: 0,
+        is_active: false,
+        last_active: 30,
+        message_count: 3,
+        model: null,
+        output_tokens: 0,
+        preview: 'Evidence-backed market summary',
+        source: 'desktop',
+        started_at: 20,
+        title: 'Real market review',
+        tool_call_count: 2
+      }
+    ])
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByText('美国宠物用品机会分析')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Real market review/ }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/real-tip-2'))
+  })
+
+  it('keeps start-page loading distinct from a proven real-session empty state', () => {
+    setSessionsLoading(true)
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Loading recent conversations…')).toBeTruthy()
+    expect(screen.queryByText('No real conversations yet. Start a chat to create the first one.')).toBeNull()
+
+    act(() => setSessionsLoading(false))
+    rerender(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('No real conversations yet. Start a chat to create the first one.')).toBeTruthy()
+  })
+
+  it('shows running tasks and deliverables on Start only from their real scheduler and transcript exits', async () => {
+    const artifactSource = {
+      id: 'artifact-source',
+      ended_at: null,
+      input_tokens: 0,
+      is_active: false,
+      last_active: 40,
+      message_count: 2,
+      model: null,
+      output_tokens: 0,
+      preview: 'Delivered the market report',
+      source: 'desktop',
+      started_at: 30,
+      title: 'Market evidence',
+      tool_call_count: 1
+    }
+
+    const run = {
+      ...artifactSource,
+      id: 'run-1',
+      preview: 'Collect competitor evidence',
+      source: 'cron',
+      title: 'Competitor scan'
+    }
+
+    $cronJobs.set([
+      {
+        enabled: true,
+        id: 'job-1',
+        name: 'Competitor scan',
+        schedule: { kind: 'once' },
+        state: 'running'
+      }
+    ])
+
+    window.hermesDesktop!.api = vi.fn(async request => {
+      if (request.path.startsWith('/api/profiles/sessions')) {
+        return { errors: [], has_more_by_profile: {}, offset: 0, sessions: [artifactSource], total: 1 }
+      }
+
+      if (request.path.startsWith('/api/cron/jobs/job-1/runs')) {
+        return { runs: [run] }
+      }
+
+      if (request.path.startsWith('/api/sessions/run-1/messages')) {
+        return {
+          messages: [
+            {
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'todo-1',
+                  name: 'todo',
+                  args: { todos: [{ id: 'one', content: 'Collect evidence', status: 'in_progress' }] }
+                }
+              ]
+            },
+            { role: 'tool', content: '{"ok":true}', tool_call_id: 'todo-1', tool_name: 'todo' }
+          ]
+        }
+      }
+
+      if (request.path.startsWith('/api/sessions/artifact-source/messages')) {
+        return { messages: [{ role: 'assistant', content: 'Saved /tmp/market-report.pdf', timestamp: 100 }] }
+      }
+
+      throw new Error(`Unexpected request: ${request.path}`)
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText(/Collect evidence/)).toBeTruthy())
+    expect(screen.getByText('market-report.pdf')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Competitor scan/ }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks?task=job-1'))
+
+    fireEvent.click(screen.getByRole('button', { name: /market-report.pdf/ }))
+    await waitFor(() =>
+      expect(window.hermesDesktop!.openExternal).toHaveBeenCalledWith(expect.stringContaining('market-report.pdf'))
+    )
+    expect(screen.getByTestId('location').textContent).toBe('/tasks?task=job-1')
+  })
+
+  it('does not turn a Start evidence failure into a false empty-deliverables claim', async () => {
+    window.hermesDesktop!.api = vi.fn(async () => {
+      throw new Error('evidence source unavailable')
+    }) as never
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Some evidence could not be read. The original conversations, Tasks, and Artifacts views remain available.'
+        )
+      ).toBeTruthy()
+    )
+    expect(screen.queryByText('No file, image, or link deliverables were found in recent conversations.')).toBeNull()
   })
 
   it('keeps the existing v0.20 task surface reachable from the real-work summary', async () => {
@@ -129,6 +408,25 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '查看任务进度' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '查看任务进度' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks'))
+  })
+
+  it('selects the exact finished task named by a real-work deep link', async () => {
+    $cronJobs.set([
+      { enabled: true, id: 'running-job', name: 'Running scan', schedule: { kind: 'once' }, state: 'running' },
+      { enabled: false, id: 'done-job', name: 'Finished report', schedule: { kind: 'once' }, state: 'completed' }
+    ])
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/tasks?task=done-job']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <TasksView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Done/ }).getAttribute('data-active')).toBe('true'))
+    expect(container.querySelector('[data-task-row="done-job"]')?.className).toContain('bg-accent')
+    expect(screen.getAllByText('Finished report').length).toBeGreaterThan(1)
   })
 
   it('opens the current compressed-session tip from real history, not its lineage root', async () => {

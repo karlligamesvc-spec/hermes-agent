@@ -3480,6 +3480,12 @@ export const en: Translations = {
   },
 
   businessWorkspace: {
+    goalLauncher: {
+      label: 'Business goal',
+      placeholder: 'For example: analyze the US pet supplies market and produce a selection report and launch assets',
+      hint: 'Enter to start · Shift+Enter for a new line',
+      submit: 'Start goal'
+    },
     projects: {
       eyebrow: 'From goal to delivery',
       title: 'Projects',

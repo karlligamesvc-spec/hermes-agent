@@ -29,7 +29,6 @@ import {
   useLinkTitle
 } from '@/lib/external-link'
 import { FileImage, FileText, FolderOpen, Link2, Loader2, RefreshCw } from '@/lib/icons'
-import { downloadGatewayMediaFile, isRemoteGateway } from '@/lib/media'
 import { normalize } from '@/lib/text'
 import { fmtDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -46,7 +45,8 @@ import {
   type ArtifactFilter,
   artifactImageSrc,
   type ArtifactRecord,
-  collectArtifactsForSession
+  collectArtifactsForSession,
+  openArtifactHref
 } from './artifact-utils'
 
 function formatArtifactTime(timestamp: number): string {
@@ -246,21 +246,7 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
   const openArtifact = useCallback(
     async (href: string) => {
       try {
-        // A gateway-local file resolves to file:// in remote mode (the file
-        // lives on the gateway, not this disk). Opening that locally fails —
-        // and an OAuth remote connection has no query token to build a download
-        // URL. Fetch the bytes over the authenticated fs bridge instead.
-        if (isRemoteGateway() && /^file:/i.test(href)) {
-          await downloadGatewayMediaFile(href)
-
-          return
-        }
-
-        if (window.hermesDesktop?.openExternal) {
-          await window.hermesDesktop.openExternal(href)
-        } else {
-          window.open(href, '_blank', 'noopener,noreferrer')
-        }
+        await openArtifactHref(href)
       } catch (err) {
         notifyError(err, a.openFailed)
       }

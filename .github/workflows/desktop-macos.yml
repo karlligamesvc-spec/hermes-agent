@@ -33,6 +33,12 @@ name: Desktop macOS build
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the notarized installer and updater feed to production COS
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -172,8 +178,7 @@ jobs:
           set -euo pipefail
           APP="$(find release/mac* -maxdepth 1 -name '*.app' | head -1)"
           codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Authority=Developer ID|TeamIdentifier"
-          spctl --assess --type execute -v "$APP" || {
-            echo "::warning::spctl assessment failed — DMG is signed but likely NOT notarized"; exit 0; }
+          spctl --assess --type execute -v "$APP"
 
       - name: List build output
         if: always()
@@ -192,6 +197,7 @@ jobs:
       # per-arch prefix per matrix job (see the header comment for why flat
       # desktop/ would clobber latest-mac.yml across arches).
       - name: Publish installer + updater feed to COS (skipped when secrets absent)
+        if: ${{ inputs.publish }}
         env:
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}

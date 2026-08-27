@@ -2985,6 +2985,12 @@ export interface Translations {
   }
 
   businessWorkspace: {
+    goalLauncher: {
+      label: string
+      placeholder: string
+      hint: string
+      submit: string
+    }
     projects: {
       eyebrow: string
       title: string

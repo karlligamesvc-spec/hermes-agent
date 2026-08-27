@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { NEW_CHAT_ROUTE, primaryRouteSelectedSessionId, sessionRoute, SETTINGS_ROUTE } from './routes'
+import { NEW_CHAT_ROUTE, primaryRouteSelectedSessionId, sessionRoute, SETTINGS_ROUTE, taskDetailRoute } from './routes'
 
 const SESS_A = 'sess-a'
 const SESS_B = 'sess-b'
+
+describe('taskDetailRoute', () => {
+  it('builds an additive encoded task target without changing the bare tasks route', () => {
+    expect(taskDetailRoute('job/a b')).toBe('/tasks?task=job%2Fa+b')
+  })
+})
 
 describe('primaryRouteSelectedSessionId', () => {
   it('prefers the routed session id over a stale/different store selection (#59305)', () => {

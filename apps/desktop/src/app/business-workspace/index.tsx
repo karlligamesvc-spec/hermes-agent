@@ -1,11 +1,10 @@
 import { useStore } from '@nanostores/react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
-import { getCronJobRuns, getSessionMessages, listAllProfileSessions } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { fmtDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
@@ -14,22 +13,13 @@ import { $tasks } from '@/store/tasks'
 
 import { requestComposerFocus, requestComposerInsert } from '../chat/composer/focus'
 import { openSession } from '../open-session'
-import { ARTIFACTS_ROUTE, NEW_CHAT_ROUTE, TASKS_ROUTE } from '../routes'
+import { ARTIFACTS_ROUTE, NEW_CHAT_ROUTE, taskDetailRoute, TASKS_ROUTE } from '../routes'
 import { jobTitleShort, taskPhase } from '../tasks/task-model'
 
-import {
-  loadWorkspaceEvidence,
-  recentConversations,
-  recentWorkspaceTasks,
-  type WorkspaceEvidence
-} from './workspace-model'
-
-interface WorkflowStarter {
-  icon: 'globe' | 'graph' | 'megaphone'
-  prompt: string
-  title: string
-  summary: string
-}
+import { openWorkspaceArtifact } from './open-workspace-artifact'
+import { useWorkspaceEvidence } from './use-workspace-evidence'
+import { type BusinessWorkflowStarter, businessWorkflowStarters } from './workflow-starters'
+import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
 export function ProjectsView() {
   const { t } = useI18n()
@@ -41,48 +31,7 @@ export function ProjectsView() {
   const tasks = useStore($tasks)
   const conversations = useMemo(() => recentConversations(sessions, states), [sessions, states])
   const recentTasks = useMemo(() => recentWorkspaceTasks(tasks), [tasks])
-  const [evidence, setEvidence] = useState<null | WorkspaceEvidence>(null)
-  const [evidenceUnavailable, setEvidenceUnavailable] = useState(false)
-
-  const evidenceRequestKey = useMemo(
-    () =>
-      `${sessions.map(session => `${session.id}:${session.last_active}`).join('|')}::${recentTasks
-        .map(task => `${task.id}:${task.state || ''}:${task.last_run_at || ''}`)
-        .join('|')}`,
-    [recentTasks, sessions]
-  )
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        // Same bounded all-profile source window as the canonical Artifacts
-        // page. Cron run sessions remain included so task deliverables count.
-        const sourceSessions = (await listAllProfileSessions(30, 1)).sessions
-
-        const result = await loadWorkspaceEvidence(sourceSessions, recentTasks, {
-          getCronJobRuns,
-          getSessionMessages
-        })
-
-        if (!cancelled) {
-          setEvidence(result)
-          setEvidenceUnavailable(false)
-        }
-      } catch {
-        if (!cancelled) {
-          setEvidenceUnavailable(true)
-        }
-      }
-    }
-
-    void load()
-
-    return () => {
-      cancelled = true
-    }
-  }, [evidenceRequestKey, recentTasks])
+  const { evidence, evidenceUnavailable } = useWorkspaceEvidence(sessions, recentTasks)
 
   const artifacts = evidence?.artifacts.slice(0, 4) ?? []
   const hasHistory = conversations.length > 0 || recentTasks.length > 0 || artifacts.length > 0
@@ -183,7 +132,12 @@ export function ProjectsView() {
                 const phase = taskPhase(task)
 
                 return (
-                  <div className="border-b border-(--ui-stroke-tertiary) py-3 last:border-b-0" key={task.id}>
+                  <button
+                    className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                    key={task.id}
+                    onClick={() => navigate(taskDetailRoute(task.id))}
+                    type="button"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <span className="truncate text-sm font-medium">{jobTitleShort(task)}</span>
                       <span className="shrink-0 text-[0.7rem] text-(--ui-text-tertiary)">
@@ -206,7 +160,7 @@ export function ProjectsView() {
                     ) : (
                       <p className="mt-1 text-xs text-muted-foreground">{c.progressUnavailable}</p>
                     )}
-                  </div>
+                  </button>
                 )
               })
             ) : (
@@ -220,7 +174,7 @@ export function ProjectsView() {
                 <button
                   className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                   key={artifact.id}
-                  onClick={() => navigate(ARTIFACTS_ROUTE)}
+                  onClick={() => void openWorkspaceArtifact(artifact.href, t.artifacts.openFailed)}
                   type="button"
                 >
                   <Codicon className="shrink-0 text-primary" name={artifact.kind === 'link' ? 'link' : 'file'} />
@@ -285,13 +239,9 @@ export function WorkflowsView() {
   const c = t.businessWorkspace.workflows
   const navigate = useNavigate()
 
-  const starters: WorkflowStarter[] = [
-    { icon: 'globe', title: c.commerce.title, summary: c.commerce.summary, prompt: c.commerce.prompt },
-    { icon: 'graph', title: c.insight.title, summary: c.insight.summary, prompt: c.insight.prompt },
-    { icon: 'megaphone', title: c.content.title, summary: c.content.summary, prompt: c.content.prompt }
-  ]
+  const starters = businessWorkflowStarters(c)
 
-  const selectStarter = (starter: WorkflowStarter) => {
+  const selectStarter = (starter: BusinessWorkflowStarter) => {
     navigate(NEW_CHAT_ROUTE)
     window.requestAnimationFrame(() => {
       requestComposerInsert(starter.prompt, { mode: 'block', target: 'main' })

@@ -3046,6 +3046,12 @@ export const ja = defineLocale({
   },
 
   businessWorkspace: {
+    goalLauncher: {
+      label: '業務目標',
+      placeholder: '例：米国のペット用品市場を分析し、商品選定レポートと販売素材を作成する',
+      hint: 'Enter で開始 · Shift+Enter で改行',
+      submit: '目標を開始'
+    },
     projects: {
       eyebrow: '目標から納品まで',
       title: 'プロジェクト',

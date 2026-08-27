@@ -549,7 +549,16 @@ export const ChatView = memo(function ChatView({
             clampToComposer={showChatBar}
             cwd={currentCwd}
             gateway={gateway}
-            intro={showIntro ? { personality: introPersonality, seed: introSeed } : undefined}
+            intro={
+              showIntro
+                ? {
+                    goalDisabled: !gatewayOpen || busy,
+                    onSubmitGoal: onSubmit,
+                    personality: introPersonality,
+                    seed: introSeed
+                  }
+                : undefined
+            }
             loading={threadLoading}
             onBranchInNewChat={onBranchInNewChat}
             onCancel={haltRun}

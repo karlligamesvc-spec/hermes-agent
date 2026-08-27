@@ -11,8 +11,9 @@ import { I18nProvider } from '@/i18n/context'
 
 import { Thread } from '.'
 
-// hc-554 put the scenario shelf under the greeting, which makes the zero state
-// tall enough to overflow a short window (or any window once the shelf grows).
+// hc-554 put a shelf under the greeting, which makes the zero state tall enough
+// to overflow a short window (or any window once the shelf grows). hc-794 keeps
+// the same layout contract while making the real business shelf the default.
 // Upstream's thread/ centers the placeholder with a clamped flex box, and a
 // clamped centered box clips its own top: the greeting slides off above the
 // viewport with no way to scroll back to it. Ours gives the placeholder its own
@@ -69,11 +70,11 @@ function renderEmptyThread() {
 afterEach(cleanup)
 
 describe('thread zero state', () => {
-  it('shows the greeting and the hc-554 scenario shelf', () => {
+  it('shows the greeting and the real business start shelf', () => {
     renderEmptyThread()
 
     expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /热榜/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
   })
 
   it('keeps the top of an over-tall zero state reachable', () => {

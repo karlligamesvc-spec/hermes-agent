@@ -37,6 +37,15 @@ export const TASKS_ROUTE = '/tasks'
 // Distinct from PROFILES_ROUTE, the multi-profile (配置档案) manager.
 export const PROFILE_STATS_ROUTE = '/profile'
 
+/** Additive task deep link. The bare `/tasks` route remains the canonical
+ * backwards-compatible entry; callers that already hold a real scheduler id
+ * can ask the task surface to select that exact row. */
+export function taskDetailRoute(taskId: string): string {
+  const params = new URLSearchParams({ task: taskId })
+
+  return `${TASKS_ROUTE}?${params.toString()}`
+}
+
 export type AppView =
   | 'agents'
   | 'artifacts'

@@ -38,6 +38,10 @@ test('Projects reads a durable session and restores its current stored tip', asy
     await page.getByRole('button', { name: '使用自己的密钥' }).click()
     await waitForAppReady({ app, page, sandbox, cleanup: async () => undefined }, 120_000)
 
+    const startRow = page.getByRole('button').filter({ hasText: HISTORY_PROMPT }).first()
+
+    await expect(startRow).toBeVisible({ timeout: 30_000 })
+
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).click()
     const persistedRow = page.getByRole('button').filter({ hasText: HISTORY_PROMPT }).first()
 

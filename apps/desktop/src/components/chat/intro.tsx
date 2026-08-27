@@ -1,18 +1,22 @@
+import { BusinessStartHome } from '@/app/business-workspace/start-home'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
+import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 
 // Props are kept for call-site compatibility (the Thread passes the resolved
 // personality + seed), but the home screen no longer varies its copy.
 export type IntroProps = {
+  goalDisabled?: boolean
+  onSubmitGoal?: (goal: string) => Promise<boolean> | boolean
   personality?: string
   seed?: number
 }
 
 /**
- * Home zero-state: a quiet greeting plus the hc-554 scenario shelf below it.
- * The shelf self-gates (renders nothing when the catalog is disabled/empty), so
- * with scenarios off this stays the bare Codex-minimal heading. The heading is
- * pointer-events-none; the shelf re-enables pointer events for its own subtree.
+ * Home zero-state: a quiet greeting plus the business start shelf. The legacy
+ * scenario catalog remains the exact feature-flag rollback path. The heading
+ * is pointer-events-none; either shelf re-enables pointer events for its own
+ * subtree.
  *
  * hc-589: the v0.19.0 rebase reinstated upstream's zero-state here — a giant
  * `HERMES AGENT` wordmark over a rotating line of coding-agent copy ("Search the
@@ -22,21 +26,28 @@ export type IntroProps = {
  * stays on disk to keep the rebase surface small (same call as the upstream
  * mascot art in public/) — what matters is that nothing rendered reaches for it.
  */
-export function Intro(_props: IntroProps) {
+export function Intro({ goalDisabled = false, onSubmitGoal }: IntroProps) {
   const { t } = useI18n()
+  const businessWorkspaceEnabled = isBusinessWorkspaceEnabled()
 
   return (
     <div
-      className="pointer-events-none flex w-full min-w-0 flex-col items-center gap-8 px-4 py-6 text-center sm:px-6 lg:px-8"
+      className={`pointer-events-none flex w-full min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 ${businessWorkspaceEnabled ? 'items-start text-left' : 'items-center text-center'}`}
       data-slot="aui_intro"
     >
-      <div>
-        <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
-          {t.home.title}
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
-      </div>
-      <ScenarioShelf />
+      {businessWorkspaceEnabled ? (
+        <BusinessStartHome goalDisabled={goalDisabled} onSubmitGoal={onSubmitGoal} />
+      ) : (
+        <>
+          <div>
+            <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
+              {t.home.title}
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
+          </div>
+          <ScenarioShelf />
+        </>
+      )}
     </div>
   )
 }
