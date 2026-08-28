@@ -113,6 +113,13 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     // sign in again. See electron/main.cjs hermes:managed:selfHeal.
     selfHeal: () => ipcRenderer.invoke('hermes:managed:selfHeal')
   },
+  workflowDomain: {
+    access: () => ipcRenderer.invoke('hermes:workflowDomain:access'),
+    startGoal: payload => ipcRenderer.invoke('hermes:workflowDomain:startGoal', payload),
+    getRun: runId => ipcRenderer.invoke('hermes:workflowDomain:getRun', runId),
+    cancelRun: runId => ipcRenderer.invoke('hermes:workflowDomain:cancelRun', runId),
+    reviewDeliverable: payload => ipcRenderer.invoke('hermes:workflowDomain:reviewDeliverable', payload)
+  },
   // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
   // Feishu app credential down to light up the Feishu adapter + lark tools. See
   // electron/apex-feishu.cjs. No secret crosses to the renderer: status returns

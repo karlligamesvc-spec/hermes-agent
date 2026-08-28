@@ -3111,6 +3111,60 @@ export const ja = defineLocale({
         summary: '企画、制作、公開準備、振り返り',
         prompt: '今週のコンテンツ計画と公開素材を作り、振り返り指標を設計してください'
       }
+    },
+    workflowDomain: {
+      startFailed: 'ワークフローを開始できませんでした。目標は保持されています。もう一度お試しください。',
+      run: {
+        actionFailed: '操作を保存できませんでした。もう一度お試しください。',
+        approve: '成果物を承認',
+        attempt: '実行回数',
+        cancel: '実行をキャンセル',
+        cancelling: 'キャンセル中…',
+        created: '作成日時',
+        deliverables: '成果物とレビュー',
+        evidence: count => `根拠 ${count} 件`,
+        event: eventType =>
+          ({
+            'executor.requested': 'Hermes の実行を要求しました',
+            'run.cancelled': '実行をキャンセルしました',
+            'run.failed': '実行に失敗しました',
+            'run.queued': '実行をキューに追加しました',
+            'run.retry_deferred': '再試行を延期しました',
+            'run.retry_scheduled': '再試行を予定しました',
+            'run.running': '実行を開始しました',
+            'run.timed_out': '実行がタイムアウトしました',
+            'run.waiting_review': 'レビュー待ちです'
+          })[eventType] || eventType,
+        executor: '実行エンジン',
+        eyebrow: '実際のワークフロー実行',
+        loadFailedDescription: 'この実行を読み込めませんでした。データは置換も削除もされていません。',
+        loadFailedTitle: '実行を利用できません',
+        loading: 'ワークフロー実行を読み込み中',
+        noDeliverablesDescription: 'Hermes が作業を完了して結果を保存すると、成果物がここに表示されます。',
+        noDeliverablesTitle: '成果物はまだありません',
+        noEvents: '実行イベントが記録されると、ここに順番に表示されます。',
+        noObjective: 'この実行には目標の要約が記録されていません。',
+        requestChanges: '修正を依頼',
+        retry: '再読み込み',
+        status: status =>
+          ({
+            approved: '承認済み',
+            cancelled: 'キャンセル済み',
+            changes_requested: '修正が必要',
+            failed: '失敗',
+            in_review: 'レビュー中',
+            queued: '待機中',
+            ready: 'レビュー可能',
+            rejected: '却下済み',
+            running: '実行中',
+            succeeded: '完了',
+            timed_out: 'タイムアウト',
+            waiting_review: 'レビュー待ち'
+          })[status] || status,
+        timeline: '実行タイムライン',
+        title: 'ワークフロー実行',
+        waitingForEvents: '実行イベントを待っています'
+      }
     }
   },
 

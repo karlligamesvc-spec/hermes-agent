@@ -167,6 +167,13 @@ import {
   parseLoginShellPath,
   resolveAugmentedPath
 } from './apex-shell-path'
+import {
+  cancelWorkflowDomainRun,
+  getWorkflowDomainAccess,
+  getWorkflowDomainRun,
+  reviewWorkflowDomainDeliverable,
+  startWorkflowDomainGoal
+} from './apex-workflow-domain'
 import { stopBackendChild as stopBackendChildImpl } from './backend-child'
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
@@ -14337,6 +14344,136 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
 // status: whether the managed default is enabled for this build and whether the
 // user is already signed in (relay key on disk). The renderer uses this to skip
 // the BYOK picker on first run and show "managed, zero-key" instead.
+function workflowDomainIpcContext() {
+  const managed = resolveManagedConfig()
+  const bearer = String(managed.accessToken || '').trim()
+  const apiBase = apexApiBase()
+
+  if (!bearer || !apiBase) {
+    return null
+  }
+
+  return {
+    apiBase,
+    transport: {
+      getJson: url => apexAuthGetJson(url, { bearer }),
+      postJson: (url, body) => apexAuthPostJson(url, { bearer, body })
+    }
+  }
+}
+
+function workflowDomainIpcError(error) {
+  const statusCode = Number(error && error.statusCode) || 0
+
+  rememberLog(
+    `[workflow-domain] request failed: status=${statusCode || 'network'} ` +
+      `type=${error && error.name ? error.name : 'Error'}`
+  )
+
+  if (statusCode === 401) {
+    return 'sign_in'
+  }
+
+  if (statusCode === 403 || statusCode === 404) {
+    return 'unavailable'
+  }
+
+  return 'request_failed'
+}
+
+ipcMain.handle('hermes:workflowDomain:access', async () => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { available: false, code: 'sign_in' }
+  }
+
+  try {
+    await getWorkflowDomainAccess(context.apiBase, context.transport)
+
+    return { available: true }
+  } catch (error) {
+    const code = workflowDomainIpcError(error)
+
+    return { available: false, code }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const run = await startWorkflowDomainGoal({
+      apiBase: context.apiBase,
+      objective: payload?.objective,
+      starter: payload?.starter || {},
+      transport: context.transport,
+      uuid: () => crypto.randomUUID()
+    })
+
+    return { ok: true, run }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getRun', async (_event, runId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const overview = await getWorkflowDomainRun(context.apiBase, runId, context.transport)
+
+    return { ok: true, overview }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:cancelRun', async (_event, runId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const run = await cancelWorkflowDomainRun(context.apiBase, runId, context.transport)
+
+    return { ok: true, run }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:reviewDeliverable', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const review = await reviewWorkflowDomainDeliverable(
+      context.apiBase,
+      payload?.deliverableId,
+      payload?.status,
+      context.transport
+    )
+
+    return { ok: true, review }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
 ipcMain.handle('hermes:managed:status', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const managed = resolveManagedConfig()

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { NEW_CHAT_ROUTE, primaryRouteSelectedSessionId, sessionRoute, SETTINGS_ROUTE, taskDetailRoute } from './routes'
+import {
+  appViewForPath,
+  NEW_CHAT_ROUTE,
+  primaryRouteSelectedSessionId,
+  routeSessionId,
+  sessionRoute,
+  SETTINGS_ROUTE,
+  taskDetailRoute,
+  workflowRunRoute
+} from './routes'
 
 const SESS_A = 'sess-a'
 const SESS_B = 'sess-b'
@@ -8,6 +17,16 @@ const SESS_B = 'sess-b'
 describe('taskDetailRoute', () => {
   it('builds an additive encoded task target without changing the bare tasks route', () => {
     expect(taskDetailRoute('job/a b')).toBe('/tasks?task=job%2Fa+b')
+  })
+})
+
+describe('workflowRunRoute', () => {
+  it('keeps a real workflow Run in the workflow navigation domain without masquerading as a chat session', () => {
+    const route = workflowRunRoute('run/a b')
+
+    expect(route).toBe('/workflow-runs/run%2Fa%20b')
+    expect(appViewForPath(route)).toBe('workflows')
+    expect(routeSessionId(route)).toBeNull()
   })
 })
 

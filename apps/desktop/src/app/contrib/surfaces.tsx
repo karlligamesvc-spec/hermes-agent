@@ -44,6 +44,10 @@ const SearchView = lazy(async () => ({ default: (await import('../search')).Sear
 const ProjectsView = lazy(async () => ({ default: (await import('../business-workspace')).ProjectsView }))
 const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
 
+const WorkflowRunView = lazy(async () => ({
+  default: (await import('../business-workspace/workflow-run-view')).WorkflowRunView
+}))
+
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
 
@@ -190,6 +194,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
       <Route element={page(<ProjectsView />)} path="projects" />
       <Route element={page(<WorkflowsView />)} path="workflows" />
+      <Route element={page(<WorkflowRunView />)} path="workflow-runs/:runId" />
       <Route element={null} path="agents" />
       <Route element={null} path="profile" />
       <Route element={null} path="command-center" />

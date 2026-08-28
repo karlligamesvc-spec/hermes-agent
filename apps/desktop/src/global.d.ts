@@ -140,6 +140,19 @@ declare global {
         // (HTTP 401/403). Optional: an older main process may not expose it.
         selfHeal?: () => Promise<DesktopManagedSelfHealResult>
       }
+      // hc-795: authenticated workflow business-domain bridge. The main
+      // process owns the reusable platform JWT; only typed domain data crosses
+      // into the renderer. Optional for compatibility with older shells.
+      workflowDomain?: {
+        access: () => Promise<DesktopWorkflowDomainAccess>
+        startGoal: (payload: DesktopWorkflowDomainStartGoalInput) => Promise<DesktopWorkflowDomainStartResult>
+        getRun: (runId: string) => Promise<DesktopWorkflowDomainRunResult>
+        cancelRun: (runId: string) => Promise<DesktopWorkflowDomainMutationResult>
+        reviewDeliverable: (payload: {
+          deliverableId: string
+          status: 'approved' | 'changes_requested'
+        }) => Promise<DesktopWorkflowDomainMutationResult>
+      }
       // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
       // Feishu app credential (from the cloud agent_entries) down to the local
       // runtime so the Feishu adapter + lark doc/drive tools light up. No secret
@@ -1173,6 +1186,88 @@ export interface DesktopManagedStatus {
   // UI can then show an honest "not connected to platform" state. Optional so an
   // older main process (no field) reads as undefined rather than a hard error.
   hasToken?: boolean
+}
+
+export interface DesktopWorkflowDomainAccess {
+  available: boolean
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+}
+
+export interface DesktopWorkflowDomainStartGoalInput {
+  objective: string
+  starter: {
+    description: string
+    name: string
+    slug: string
+  }
+}
+
+export interface DesktopWorkflowDomainRun {
+  attempt: number
+  completedAt: null | string
+  createdAt: string
+  errorCode: null | string
+  errorMessage: null | string
+  executorType: string
+  id: string
+  maxAttempts: number
+  startedAt: null | string
+  status: string
+  triggerRef: null | string
+  updatedAt: string
+}
+
+export interface DesktopWorkflowDomainEvent {
+  eventKey: string
+  eventType: string
+  happenedAt: string
+  id: string
+  payload: Record<string, unknown>
+  sequence: number
+}
+
+export interface DesktopWorkflowDomainReview {
+  createdAt: string
+  deliverableId: string
+  id: string
+  notes: null | string
+  roundNumber: number
+  status: 'approved' | 'changes_requested' | 'rejected'
+}
+
+export interface DesktopWorkflowDomainDeliverable {
+  createdAt: string
+  evidenceManifest: Array<Record<string, unknown>>
+  id: string
+  kind: string
+  payload: Record<string, unknown>
+  reviews: DesktopWorkflowDomainReview[]
+  status: string
+  title: string
+  updatedAt: string
+}
+
+export interface DesktopWorkflowDomainOverview {
+  deliverables: DesktopWorkflowDomainDeliverable[]
+  events: DesktopWorkflowDomainEvent[]
+  run: DesktopWorkflowDomainRun
+}
+
+export interface DesktopWorkflowDomainStartResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  ok: boolean
+  run?: DesktopWorkflowDomainRun
+}
+
+export interface DesktopWorkflowDomainRunResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  ok: boolean
+  overview?: DesktopWorkflowDomainOverview
+}
+
+export interface DesktopWorkflowDomainMutationResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  ok: boolean
 }
 
 // Result of hermesDesktop.managed.selfHeal() — an on-demand relay-key recovery.

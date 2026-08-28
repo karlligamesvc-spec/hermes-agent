@@ -32,6 +32,23 @@ function LocationProbe() {
   return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
 }
 
+function domainRun(id: string, triggerRef: string) {
+  return {
+    attempt: 1,
+    completedAt: null,
+    createdAt: '2026-08-27T10:00:00Z',
+    errorCode: null,
+    errorMessage: null,
+    executorType: 'hermes',
+    id,
+    maxAttempts: 2,
+    startedAt: null,
+    status: 'queued',
+    triggerRef,
+    updatedAt: '2026-08-27T10:00:00Z'
+  }
+}
+
 describe('hc-685 business workspace identity', () => {
   beforeEach(() => {
     setSessions([])
@@ -166,6 +183,140 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场，并生成选品报告和上架素材'))
     await waitFor(() => expect((goal as HTMLTextAreaElement).value).toBe(''))
     window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('starts the selected workflow through the authenticated domain bridge and opens its real Run', async () => {
+    const submit = vi.fn(async () => true)
+    const access = vi.fn(async () => ({ available: true }))
+
+    const startGoal = vi.fn(async () => ({
+      ok: true,
+      run: domainRun('run-795', '分析美国宠物用品市场，并生成选品报告和上架素材')
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access,
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-795'))
+    expect(access).toHaveBeenCalledTimes(1)
+    expect(startGoal).toHaveBeenCalledWith({
+      objective: '分析美国宠物用品市场，并生成选品报告和上架素材',
+      starter: {
+        description: '数据采集、机会分析、定位与生产',
+        name: '从市场机会到上架素材',
+        slug: 'market-launch'
+      }
+    })
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the existing chat submission when workflow-domain access is dark', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn()
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: false })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    fireEvent.change(goal, { target: { value: '继续走原有聊天链路' } })
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('继续走原有聊天链路'))
+    expect(startGoal).not.toHaveBeenCalled()
+  })
+
+  it('maps a freeform goal to a neutral workflow instead of silently using the first shelf template', async () => {
+    const startGoal = vi.fn(async () => ({
+      ok: true,
+      run: domainRun('run-freeform', 'Audit my current launch plan')
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartHome />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: 'Business goal' })
+    fireEvent.change(goal, { target: { value: 'Audit my current launch plan' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start goal' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-freeform'))
+    expect(startGoal).toHaveBeenCalledWith({
+      objective: 'Audit my current launch plan',
+      starter: {
+        description: 'Describe the goal. APEX organizes the evidence, moves the work forward, and delivers the result.',
+        name: 'What business should we move forward today?',
+        slug: 'desktop-goal'
+      }
+    })
+  })
+
+  it('preserves the goal and does not duplicate-submit when a gated Run creation fails', async () => {
+    const submit = vi.fn(async () => true)
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn(async () => ({ code: 'request_failed' as const, ok: false }))
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    fireEvent.change(goal, { target: { value: '保留这个目标' } })
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('真实工作流启动失败'))
+    expect((goal as HTMLTextAreaElement).value).toBe('保留这个目标')
+    expect(submit).not.toHaveBeenCalled()
   })
 
   it('submits a trimmed business goal through the caller-owned chat seam', async () => {

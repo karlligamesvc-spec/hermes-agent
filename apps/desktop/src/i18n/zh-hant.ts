@@ -3000,6 +3000,60 @@ export const zhHant = defineLocale({
         summary: '選題、生產、發布準備與復盤',
         prompt: '制定本週內容計畫，產出可發布素材，並設計復盤指標'
       }
+    },
+    workflowDomain: {
+      startFailed: '真實工作流程啟動失敗，目標草稿已保留，請重試。',
+      run: {
+        actionFailed: '操作未儲存，請重試。',
+        approve: '核准交付物',
+        attempt: '執行次數',
+        cancel: '取消執行',
+        cancelling: '正在取消…',
+        created: '建立時間',
+        deliverables: '交付物與審閱',
+        evidence: count => `${count} 條證據`,
+        event: eventType =>
+          ({
+            'executor.requested': '已請求 Hermes 執行',
+            'run.cancelled': '執行已取消',
+            'run.failed': '執行失敗',
+            'run.queued': '執行已排隊',
+            'run.retry_deferred': '重試已延後',
+            'run.retry_scheduled': '已安排重試',
+            'run.running': '執行已開始',
+            'run.timed_out': '執行逾時',
+            'run.waiting_review': '等待審閱'
+          })[eventType] || eventType,
+        executor: '執行器',
+        eyebrow: '真實工作流程執行',
+        loadFailedDescription: '無法讀取這次執行。沒有資料被取代或刪除。',
+        loadFailedTitle: '執行暫時無法使用',
+        loading: '正在讀取工作流程執行',
+        noDeliverablesDescription: 'Hermes 完成工作並儲存結果後，交付物會顯示在這裡。',
+        noDeliverablesTitle: '尚無交付物',
+        noEvents: '執行事件寫入後會依序顯示在這裡。',
+        noObjective: '這次執行沒有記錄目標摘要。',
+        requestChanges: '要求修改',
+        retry: '重新讀取',
+        status: status =>
+          ({
+            approved: '已核准',
+            cancelled: '已取消',
+            changes_requested: '需要修改',
+            failed: '失敗',
+            in_review: '審閱中',
+            queued: '排隊中',
+            ready: '可審閱',
+            rejected: '已拒絕',
+            running: '執行中',
+            succeeded: '已完成',
+            timed_out: '已逾時',
+            waiting_review: '等待審閱'
+          })[status] || status,
+        timeline: '執行時間線',
+        title: '工作流程執行',
+        waitingForEvents: '等待執行事件'
+      }
     }
   },
 
