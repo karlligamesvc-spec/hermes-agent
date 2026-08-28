@@ -23,6 +23,7 @@ export const STARMAP_ROUTE = '/starmap'
 export const SEARCH_ROUTE = '/search'
 export const PROJECTS_ROUTE = '/projects'
 export const WORKFLOWS_ROUTE = '/workflows'
+export const WORKFLOW_RUN_ROUTE_PREFIX = '/workflow-runs/'
 
 // ApexNodes-only destinations, mounted on the contribution shell alongside the
 // upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
@@ -44,6 +45,10 @@ export function taskDetailRoute(taskId: string): string {
   const params = new URLSearchParams({ task: taskId })
 
   return `${TASKS_ROUTE}?${params.toString()}`
+}
+
+export function workflowRunRoute(runId: string): string {
+  return `${WORKFLOW_RUN_ROUTE_PREFIX}${encodeURIComponent(runId)}`
 }
 
 export type AppView =
@@ -241,6 +246,10 @@ export function appViewForPath(pathname: string): AppView {
 
   if (isContributedPath(path)) {
     return 'extension'
+  }
+
+  if (path.startsWith(WORKFLOW_RUN_ROUTE_PREFIX) && path.slice(WORKFLOW_RUN_ROUTE_PREFIX.length)) {
+    return 'workflows'
   }
 
   return APP_VIEW_BY_PATH.get(path) ?? 'chat'

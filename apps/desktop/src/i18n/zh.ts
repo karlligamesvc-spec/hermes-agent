@@ -3349,6 +3349,60 @@ export const zh = defineLocale({
         summary: '选题、生产、发布准备与复盘',
         prompt: '制定本周内容计划，生成可发布素材，并设计复盘指标'
       }
+    },
+    workflowDomain: {
+      startFailed: '真实工作流启动失败，目标草稿已保留，请重试。',
+      run: {
+        actionFailed: '操作没有保存，请重试。',
+        approve: '批准交付物',
+        attempt: '执行次数',
+        cancel: '取消运行',
+        cancelling: '正在取消…',
+        created: '创建时间',
+        deliverables: '交付物与审阅',
+        evidence: count => `${count} 条证据`,
+        event: eventType =>
+          ({
+            'executor.requested': '已请求 Hermes 执行',
+            'run.cancelled': '运行已取消',
+            'run.failed': '运行失败',
+            'run.queued': '运行已排队',
+            'run.retry_deferred': '重试已推迟',
+            'run.retry_scheduled': '已安排重试',
+            'run.running': '运行已开始',
+            'run.timed_out': '运行超时',
+            'run.waiting_review': '等待审阅'
+          })[eventType] || eventType,
+        executor: '执行器',
+        eyebrow: '真实工作流运行',
+        loadFailedDescription: '无法读取这次运行。没有数据被替换或删除。',
+        loadFailedTitle: '运行暂时不可用',
+        loading: '正在读取工作流运行',
+        noDeliverablesDescription: 'Hermes 完成工作并保存结果后，交付物会出现在这里。',
+        noDeliverablesTitle: '尚无交付物',
+        noEvents: '运行事件写入后会在这里按顺序显示。',
+        noObjective: '这次运行没有记录目标摘要。',
+        requestChanges: '要求修改',
+        retry: '重新读取',
+        status: status =>
+          ({
+            approved: '已批准',
+            cancelled: '已取消',
+            failed: '失败',
+            in_review: '审阅中',
+            queued: '排队中',
+            ready: '可审阅',
+            rejected: '已拒绝',
+            running: '运行中',
+            succeeded: '已完成',
+            timed_out: '已超时',
+            waiting_review: '等待审阅',
+            changes_requested: '需要修改'
+          })[status] || status,
+        timeline: '运行时间线',
+        title: '工作流运行',
+        waitingForEvents: '等待运行事件'
+      }
     }
   },
 

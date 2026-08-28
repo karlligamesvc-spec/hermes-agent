@@ -3036,6 +3036,35 @@ export interface Translations {
       insight: { title: string; summary: string; prompt: string }
       content: { title: string; summary: string; prompt: string }
     }
+    workflowDomain: {
+      startFailed: string
+      run: {
+        actionFailed: string
+        approve: string
+        attempt: string
+        cancel: string
+        cancelling: string
+        created: string
+        deliverables: string
+        evidence: (count: number) => string
+        event: (eventType: string) => string
+        executor: string
+        eyebrow: string
+        loadFailedDescription: string
+        loadFailedTitle: string
+        loading: string
+        noDeliverablesDescription: string
+        noDeliverablesTitle: string
+        noEvents: string
+        noObjective: string
+        requestChanges: string
+        retry: string
+        status: (status: string) => string
+        timeline: string
+        title: string
+        waitingForEvents: string
+      }
+    }
   }
 
   /** Desktop auth boot-gate: the full-window login screen + bottom-left account

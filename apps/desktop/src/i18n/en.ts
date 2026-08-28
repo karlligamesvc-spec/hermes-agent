@@ -3547,6 +3547,60 @@ export const en: Translations = {
         summary: 'Topics, production, publishing prep, and review',
         prompt: 'Plan this week’s content, create publishable assets, and define review metrics'
       }
+    },
+    workflowDomain: {
+      startFailed: 'The workflow could not start. Your goal is still here; try again.',
+      run: {
+        actionFailed: 'The action was not saved. Try again.',
+        approve: 'Approve deliverable',
+        attempt: 'Attempt',
+        cancel: 'Cancel run',
+        cancelling: 'Cancelling…',
+        created: 'Created',
+        deliverables: 'Deliverables and review',
+        evidence: count => `${count} evidence ${count === 1 ? 'item' : 'items'}`,
+        event: eventType =>
+          ({
+            'executor.requested': 'Hermes execution requested',
+            'run.cancelled': 'Run cancelled',
+            'run.failed': 'Run failed',
+            'run.queued': 'Run queued',
+            'run.retry_deferred': 'Retry deferred',
+            'run.retry_scheduled': 'Retry scheduled',
+            'run.running': 'Run started',
+            'run.timed_out': 'Run timed out',
+            'run.waiting_review': 'Waiting for review'
+          })[eventType] || eventType,
+        executor: 'Executor',
+        eyebrow: 'Real workflow run',
+        loadFailedDescription: 'APEX could not read this run. Nothing was replaced or deleted.',
+        loadFailedTitle: 'Run unavailable',
+        loading: 'Reading workflow run',
+        noDeliverablesDescription: 'Deliverables appear here after Hermes completes the work and saves the result.',
+        noDeliverablesTitle: 'No deliverables yet',
+        noEvents: 'Run events appear here in order as they are recorded.',
+        noObjective: 'No objective summary was recorded for this run.',
+        requestChanges: 'Request changes',
+        retry: 'Read again',
+        status: status =>
+          ({
+            approved: 'Approved',
+            cancelled: 'Cancelled',
+            changes_requested: 'Changes requested',
+            failed: 'Failed',
+            in_review: 'In review',
+            queued: 'Queued',
+            ready: 'Ready for review',
+            rejected: 'Rejected',
+            running: 'Running',
+            succeeded: 'Completed',
+            timed_out: 'Timed out',
+            waiting_review: 'Waiting for review'
+          })[status] || status,
+        timeline: 'Run timeline',
+        title: 'Workflow run',
+        waitingForEvents: 'Waiting for run events'
+      }
     }
   },
 

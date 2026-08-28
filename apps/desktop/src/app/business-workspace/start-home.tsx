@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 
+import { workflowRunRoute } from '../routes'
+
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from './goal-launcher'
 import { BusinessStartShelf } from './start-shelf'
+import { startWorkflowGoal } from './workflow-domain-client'
 import type { BusinessWorkflowStarter } from './workflow-starters'
+import { businessWorkflowStarters } from './workflow-starters'
 
 export interface BusinessStartHomeProps {
   goalDisabled?: boolean
@@ -16,21 +21,59 @@ export interface BusinessStartHomeProps {
 /**
  * Prototype-aligned frame for the business Start route.
  *
- * This component only composes the existing goal submit and real workspace
- * read models. The top action focuses the same goal field; it does not create
- * a second conversation, Project, Workflow, Run, or transport.
+ * The top action and starter shelf share one goal field. When the authenticated
+ * workflow-domain bridge is available, submission creates the canonical
+ * Project → Workflow → Run chain; older/dark shells retain the chat fallback.
  */
 export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: BusinessStartHomeProps) {
   const { t } = useI18n()
+  const navigate = useNavigate()
+  const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
   const [goalDraft, setGoalDraft] = useState('')
+  const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(null)
+  const [domainError, setDomainError] = useState(false)
+  const [domainStarting, setDomainStarting] = useState(false)
 
   const focusGoal = () => {
     document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
   }
 
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
+    setSelectedWorkflow(workflow)
     setGoalDraft(workflow.prompt)
     focusGoal()
+  }
+
+  const submitGoal = async (goal: string): Promise<boolean> => {
+    setDomainError(false)
+    setDomainStarting(true)
+
+    const outcome = await startWorkflowGoal(
+      goal,
+      selectedWorkflow ?? {
+        icon: 'graph',
+        prompt: goal,
+        slug: 'desktop-goal',
+        summary: t.home.description,
+        title: t.home.title
+      }
+    )
+
+    setDomainStarting(false)
+
+    if (outcome.mode === 'started') {
+      navigate(workflowRunRoute(outcome.runId))
+
+      return true
+    }
+
+    if (outcome.mode === 'failed') {
+      setDomainError(true)
+
+      return false
+    }
+
+    return (await onSubmitGoal?.(goal)) ?? false
   }
 
   return (
@@ -50,11 +93,19 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
 
       <div className="flex w-full max-w-[48rem] flex-col gap-6">
         <BusinessGoalLauncher
-          disabled={goalDisabled}
+          disabled={goalDisabled || domainStarting}
           draft={goalDraft}
-          onDraftChange={setGoalDraft}
-          onSubmit={onSubmitGoal}
+          onDraftChange={draft => {
+            setGoalDraft(draft)
+            setSelectedWorkflow(null)
+          }}
+          onSubmit={submitGoal}
         />
+        {domainError && (
+          <p className="-mt-4 text-xs text-destructive" role="alert">
+            {t.businessWorkspace.workflowDomain.startFailed}
+          </p>
+        )}
         <BusinessStartShelf onSelectWorkflow={selectWorkflow} />
       </div>
     </div>

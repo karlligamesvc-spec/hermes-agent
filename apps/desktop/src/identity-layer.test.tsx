@@ -542,3 +542,36 @@ describe('identity: the brand skin survives', () => {
     }
   })
 })
+
+describe('identity: hc-795 uses the authenticated workflow domain without exposing credentials', () => {
+  it('keeps the platform JWT in Electron and exposes only typed workflow operations', () => {
+    const main = readSource('electron', 'main.ts')
+    const preload = readSource('electron', 'preload.ts')
+
+    expect(main).toContain('import {\n  cancelWorkflowDomainRun,')
+    expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'")
+
+    expect(preload).toContain('workflowDomain: {')
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getRun', runId)")
+    expect(preload).not.toContain('accessToken')
+  })
+
+  it('pins the first real P2B loop from Start to Run review while retaining the dark-launch fallback', () => {
+    const startHome = readSource('src', 'app', 'business-workspace', 'start-home.tsx')
+    const client = readSource('src', 'app', 'business-workspace', 'workflow-domain-client.ts')
+    const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
+    const runView = readSource('src', 'app', 'business-workspace', 'workflow-run-view.tsx')
+
+    expect(startHome).toContain('const outcome = await startWorkflowGoal(')
+    expect(startHome).toContain("slug: 'desktop-goal'")
+    expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId))')
+    expect(startHome).toContain('return (await onSubmitGoal?.(goal)) ?? false')
+    expect(client).toContain('access = await bridge.access()')
+    expect(client).toContain("return { mode: 'unavailable' }")
+    expect(surfaces).toContain('path="workflow-runs/:runId"')
+    expect(runView).toContain("review(deliverable.id, 'approved')")
+    expect(runView).toContain("review(deliverable.id, 'changes_requested')")
+  })
+})
