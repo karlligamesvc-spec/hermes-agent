@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict')
+const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
@@ -17,6 +18,15 @@ function namedStep(source, name) {
 
   const nextStep = source.indexOf('\n      - name:', start + 1)
   return source.slice(start, nextStep === -1 ? source.length : nextStep)
+}
+
+function bashRunBody(step) {
+  const match = step.match(/\n        run: \|\n([\s\S]*)/)
+  assert.ok(match, 'workflow step has no multiline run body')
+  return match[1]
+    .split('\n')
+    .map(line => line.startsWith('          ') ? line.slice(10) : line)
+    .join('\n')
 }
 
 test('manual macOS builds are artifact-only and paired calls own production publish', () => {
@@ -57,6 +67,18 @@ test('direct single-platform dispatches are artifact-only', () => {
     )
     assert.match(source, /source_sha: \$\{\{ steps\.release-identity\.outputs\.source_sha \}\}/)
     assert.match(source, /version: \$\{\{ steps\.release-identity\.outputs\.version \}\}/)
+  }
+})
+
+test('release identity steps are valid Bash on both platform workflows', () => {
+  const sources = [workflowSource(), fs.readFileSync(windowsWorkflowPath, 'utf8')]
+
+  for (const source of sources) {
+    const script = bashRunBody(namedStep(source, 'Record release identity'))
+    const result = spawnSync('bash', ['-n'], { input: script, encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(script, /process\.stdout\.write\('version='/)
+    assert.doesNotMatch(script, /node -p \\"/)
   }
 })
 
