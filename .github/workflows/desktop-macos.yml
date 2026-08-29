@@ -101,7 +101,7 @@ jobs:
         working-directory: apps/desktop
         run: |
           echo "source_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+          node -e "process.stdout.write('version=' + require('./package.json').version + '\\n')" >> "$GITHUB_OUTPUT"
 
       # Root install: apps/desktop's build asserts a root workspace install
       # (assert-root-install.cjs) and links @hermes/shared via the workspace.
