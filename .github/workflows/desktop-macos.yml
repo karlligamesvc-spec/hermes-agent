@@ -32,13 +32,20 @@
 name: Desktop macOS build
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       publish:
         description: Publish the notarized installer and updater feed to production COS
-        required: false
+        required: true
         type: boolean
-        default: false
+    outputs:
+      source_sha:
+        description: Source commit packaged by this workflow
+        value: ${{ jobs.build.outputs.source_sha }}
+      version:
+        description: Desktop version packaged by this workflow
+        value: ${{ jobs.build.outputs.version }}
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -71,6 +78,9 @@ jobs:
     needs: preflight
     runs-on: macos-14
     timeout-minutes: 60
+    outputs:
+      source_sha: ${{ steps.release-identity.outputs.source_sha }}
+      version: ${{ steps.release-identity.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -85,6 +95,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Record release identity
+        id: release-identity
+        working-directory: apps/desktop
+        run: |
+          echo "source_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
 
       # Root install: apps/desktop's build asserts a root workspace install
       # (assert-root-install.cjs) and links @hermes/shared via the workspace.
@@ -197,7 +214,7 @@ jobs:
       # per-arch prefix per matrix job (see the header comment for why flat
       # desktop/ would clobber latest-mac.yml across arches).
       - name: Publish installer + updater feed to COS (skipped when secrets absent)
-        if: ${{ inputs.publish }}
+        if: ${{ github.event_name == 'workflow_call' && inputs.publish }}
         env:
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}

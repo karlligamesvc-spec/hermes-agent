@@ -1,0 +1,69 @@
+name: Desktop synchronized release
+
+# Production Desktop releases are one cross-platform operation. Both reusable
+# workflows run from this caller's exact SHA; the final job rejects identity or
+# public-feed drift. Direct single-platform dispatches remain useful for
+# diagnostics, but default to artifact-only and cannot silently advance one
+# production updater feed.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish both Mac and Windows updater feeds to production COS
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: Build macOS arm64/x64
+    uses: ./.github/workflows/desktop-macos.yml
+    with:
+      publish: ${{ inputs.publish }}
+    secrets: inherit
+
+  windows:
+    name: Build Windows x64
+    uses: ./.github/workflows/desktop-windows.yml
+    with:
+      publish: ${{ inputs.publish }}
+    secrets: inherit
+
+  verify-release-parity:
+    name: Verify same SHA/version and public feeds
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: 22
+
+      - name: Assert reusable workflows packaged one release identity
+        env:
+          CALLER_SHA: ${{ github.sha }}
+          MAC_SHA: ${{ needs.macos.outputs.source_sha }}
+          WINDOWS_SHA: ${{ needs.windows.outputs.source_sha }}
+          MAC_VERSION: ${{ needs.macos.outputs.version }}
+          WINDOWS_VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$MAC_SHA" && test -n "$WINDOWS_SHA"
+          test "$MAC_SHA" = "$CALLER_SHA"
+          test "$WINDOWS_SHA" = "$CALLER_SHA"
+          test -n "$MAC_VERSION" && test "$MAC_VERSION" = "$WINDOWS_VERSION"
+          test "$MAC_VERSION" = "$(node -p \"require('./apps/desktop/package.json').version\")"
+          echo "paired release identity OK: version=$MAC_VERSION sha=$CALLER_SHA"
+
+      - name: Assert all production updater feeds advanced together
+        if: ${{ inputs.publish }}
+        working-directory: apps/desktop
+        env:
+          EXPECTED_VERSION: ${{ needs.macos.outputs.version }}
+        run: node scripts/verify-cross-platform-release.mjs --expected-version "$EXPECTED_VERSION"
