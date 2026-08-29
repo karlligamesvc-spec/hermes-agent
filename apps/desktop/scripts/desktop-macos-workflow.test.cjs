@@ -92,3 +92,15 @@ test('the production coordinator owns both platform workflows and a final parity
   assert.match(source, /test "\$WINDOWS_SHA" = "\$CALLER_SHA"/)
   assert.match(source, /verify-cross-platform-release\.mjs --expected-version/)
 })
+
+test('the production coordinator release identity check is valid Bash', () => {
+  const source = fs.readFileSync(synchronizedWorkflowPath, 'utf8')
+  const script = bashRunBody(
+    namedStep(source, 'Assert reusable workflows packaged one release identity')
+  )
+  const result = spawnSync('bash', ['-n'], { input: script, encoding: 'utf8' })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(script, /PACKAGE_VERSION=/)
+  assert.doesNotMatch(script, /node -p \\"/)
+})
