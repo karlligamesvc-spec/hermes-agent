@@ -50,7 +50,7 @@
     "fix": "npm run lint:fix && npm run fmt",
     "test:ui": "vitest run --project ui",
     "test:desktop:platforms": "vitest run --project electron",
-    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs scripts/desktop-macos-workflow.test.cjs scripts/runtime-bundle-import-probe.node-test.mjs && vitest run scripts/before-pack.test.mjs",
+    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs scripts/desktop-macos-workflow.test.cjs scripts/verify-cross-platform-release.node-test.mjs scripts/runtime-bundle-import-probe.node-test.mjs && vitest run scripts/before-pack.test.mjs",
     "test": "vitest run",
     "preview": "node scripts/assert-root-install.mjs && vite preview --host 127.0.0.1 --port 4174",
     "check": "npm run typecheck && npm run test && npm run test:release-gates && npm run build"
