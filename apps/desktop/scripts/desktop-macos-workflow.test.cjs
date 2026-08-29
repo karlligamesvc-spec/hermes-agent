@@ -28,7 +28,7 @@ test('manual macOS builds are artifact-only and paired calls own production publ
   )
 
   assert.doesNotMatch(dispatchBlock, /inputs:/)
-  assert.match(publishStep, /if: \$\{\{ github\.event_name == 'workflow_call' && inputs\.publish \}\}/)
+  assert.match(publishStep, /if: \$\{\{ inputs\.publish \}\}/)
   assert.match(publishStep, /coscmd upload/)
 })
 
@@ -52,8 +52,8 @@ test('direct single-platform dispatches are artifact-only', () => {
     assert.doesNotMatch(source, /workflow_dispatch:\n\s+inputs:/)
     assert.match(
       source,
-      /if: \$\{\{ github\.event_name == 'workflow_call' && inputs\.publish \}\}/,
-      `${platform} publish job/step is not restricted to the paired release caller`
+      /if: \$\{\{ inputs\.publish \}\}/,
+      `${platform} publish job/step is not gated by the reusable-only input`
     )
     assert.match(source, /source_sha: \$\{\{ steps\.release-identity\.outputs\.source_sha \}\}/)
     assert.match(source, /version: \$\{\{ steps\.release-identity\.outputs\.version \}\}/)

@@ -214,7 +214,7 @@ jobs:
       # per-arch prefix per matrix job (see the header comment for why flat
       # desktop/ would clobber latest-mac.yml across arches).
       - name: Publish installer + updater feed to COS (skipped when secrets absent)
-        if: ${{ github.event_name == 'workflow_call' && inputs.publish }}
+        if: ${{ inputs.publish }}
         env:
           COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
           COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
