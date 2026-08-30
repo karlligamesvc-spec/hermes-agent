@@ -30,6 +30,7 @@ import {
   setSidebarOverlayMounted,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
   SIDEBAR_SESSIONS_PAGE_SIZE,
   unpinSession
 } from '../store/layout'
@@ -1179,7 +1180,7 @@ export function DesktopController() {
           hoverReveal
           id="chat-sidebar"
           maxWidth={SIDEBAR_MAX_WIDTH}
-          minWidth={SIDEBAR_DEFAULT_WIDTH}
+          minWidth={SIDEBAR_MIN_WIDTH}
           onOverlayActiveChange={setSidebarOverlayMounted}
           resizable
           side={sidebarSide}

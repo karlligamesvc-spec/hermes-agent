@@ -7,14 +7,24 @@ import { matchesQuery } from '@/hooks/use-media-query'
 import { Codecs, persistentAtom } from '@/lib/persisted'
 import { arraysEqual, insertUniqueId, readKey } from '@/lib/storage'
 
-import { $paneStates, ensurePaneRegistered, setPaneOpen, setPaneWidthOverride, togglePane } from './panes'
+import {
+  $paneStates,
+  ensurePaneRegistered,
+  getPaneStateSnapshot,
+  setPaneOpen,
+  setPaneWidthOverride,
+  togglePane
+} from './panes'
 
+// The approved Desktop prototype uses the established 237px navigation rail.
+// Keep a smaller resize range for users who need longer session titles,
+// without letting an old 360px override consume a quarter of a wide window.
 export const SIDEBAR_DEFAULT_WIDTH = 237
-export const SIDEBAR_MAX_WIDTH = 360
-// Open at the same width as the sessions sidebar so the two rails match, but
-// allow shrinking well below that (~30% under the old 14rem floor) for users who
-// want a narrow tree.
-export const FILE_BROWSER_DEFAULT_WIDTH = `${SIDEBAR_DEFAULT_WIDTH}px`
+export const SIDEBAR_MIN_WIDTH = 180
+export const SIDEBAR_MAX_WIDTH = 280
+// The file tree is a dense developer surface rather than the business
+// navigation rail, so retain its established readable width.
+export const FILE_BROWSER_DEFAULT_WIDTH = '237px'
 export const FILE_BROWSER_MIN_WIDTH = '10rem'
 export const FILE_BROWSER_MAX_WIDTH = '20rem'
 
@@ -51,6 +61,21 @@ export type RightRailTabId = `artifact:${string}` | `file:${string}` | `url:${st
 ensurePaneRegistered(CHAT_SIDEBAR_PANE_ID, { open: true })
 ensurePaneRegistered(FILE_BROWSER_PANE_ID, { open: false })
 ensurePaneRegistered(PREVIEW_PANE_ID, { open: true })
+reconcileSidebarWidthOverride()
+
+/**
+ * Width overrides predate the compact APEX business shell and can survive an
+ * app update indefinitely. Drop only values outside the current resize
+ * contract; valid user choices remain untouched and stale 360px installs
+ * return to the prototype default on the next renderer boot.
+ */
+export function reconcileSidebarWidthOverride(): void {
+  const override = getPaneStateSnapshot(CHAT_SIDEBAR_PANE_ID)?.widthOverride
+
+  if (override !== undefined && (override < SIDEBAR_MIN_WIDTH || override > SIDEBAR_MAX_WIDTH)) {
+    setPaneWidthOverride(CHAT_SIDEBAR_PANE_ID, undefined)
+  }
+}
 
 export const $sidebarOpen: ReadableAtom<boolean> = computed(
   $paneStates,
@@ -265,7 +290,7 @@ export function restoreWorktree(id: string): void {
 }
 
 export function setSidebarWidth(width: number) {
-  const bounded = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_DEFAULT_WIDTH, width))
+  const bounded = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width))
   setPaneWidthOverride(CHAT_SIDEBAR_PANE_ID, bounded)
 }
 

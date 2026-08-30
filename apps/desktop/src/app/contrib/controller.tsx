@@ -53,7 +53,8 @@ import {
   setFileBrowserOpen,
   setSidebarOpen,
   SIDEBAR_DEFAULT_WIDTH,
-  SIDEBAR_MAX_WIDTH
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH
 } from '@/store/layout'
 import { $previewOpenRequest, $previewTabs, closeRightRail } from '@/store/preview'
 import { $reviewOpen, closeReview, openReview, REVIEW_PANE_ID } from '@/store/review'
@@ -149,7 +150,7 @@ registry.registerMany([
       dock: { pane: 'workspace', pos: 'left' },
       revealAliases: ['chat-sidebar'],
       width: `${SIDEBAR_DEFAULT_WIDTH}px`,
-      minWidth: `${SIDEBAR_DEFAULT_WIDTH}px`,
+      minWidth: `${SIDEBAR_MIN_WIDTH}px`,
       maxWidth: `${SIDEBAR_MAX_WIDTH}px`
     },
     render: () => <WiredPane part="sidebar" />
