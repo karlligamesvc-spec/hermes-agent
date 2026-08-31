@@ -4,7 +4,9 @@ import { expect, test } from './test'
 const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '业务账号', '历史'] as const
 
 const BUSINESS_START_VIEWPORTS = [
+  { height: 865, name: 'prototype-1223', width: 1223 },
   { height: 900, name: 'wide-1440', width: 1440 },
+  { height: 865, name: 'reported-1512', width: 1512 },
   { height: 800, name: 'desktop-1280', width: 1280 },
   { height: 720, name: 'narrow-900', width: 900 }
 ] as const
@@ -71,12 +73,28 @@ test('packaged Start keeps its real-data sections usable at wide, desktop, and n
     }, viewport)
     await page.waitForTimeout(200)
 
-    const layout = await page.evaluate(() => ({
-      innerWidth: window.innerWidth,
-      scrollWidth: document.documentElement.scrollWidth
-    }))
+    const layout = await page.evaluate(() => {
+      const intro = document.querySelector<HTMLElement>('[data-slot="aui_intro"]')
+      const launcher = document.querySelector<HTMLElement>('[data-business-goal-launcher]')
+      const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar"]')
+
+      return {
+        innerWidth: window.innerWidth,
+        introPaddingLeft: intro ? Number.parseFloat(window.getComputedStyle(intro).paddingLeft) : null,
+        launcherWidth: launcher?.getBoundingClientRect().width ?? null,
+        sidebarWidth: sidebar?.getBoundingClientRect().width ?? null,
+        scrollWidth: document.documentElement.scrollWidth
+      }
+    })
 
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.innerWidth)
+    expect(layout.sidebarWidth).toBeCloseTo(237, 0)
+
+    if (viewport.name === 'wide-1440') {
+      expect(layout.introPaddingLeft).toBeCloseTo(34, 0)
+      expect(layout.launcherWidth).toBeCloseTo(816, 0)
+    }
+
     await page.screenshot({
       animations: 'disabled',
       caret: 'hide',

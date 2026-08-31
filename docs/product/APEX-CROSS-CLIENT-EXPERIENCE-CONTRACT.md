@@ -80,6 +80,20 @@ sidebar contract. No history is migrated or deleted. Data that cannot be
 mapped remains available through its original conversation, Tasks, or Artifacts
 surface.
 
+## Desktop home geometry and persisted-width recovery
+
+hc-803 keeps the approved business-home composition on the established 237px
+navigation rail. The rail may be resized only within 180–280px; overrides in
+that range are user choices and survive relaunches. Legacy overrides outside
+that range—including the old 360px maximum that made the rail consume almost a
+quarter of a wide window—are cleared once during renderer boot so the home
+returns to the 237px prototype default without deleting open state, sessions,
+projects, or any other preference.
+
+The same constants and recovery path feed both the contribution-tree shell and
+the legacy rollback shell. macOS and Windows therefore receive identical home
+geometry from the shared renderer; there is no platform-specific visual fork.
+
 ## Verification
 
 ```bash
@@ -99,10 +113,11 @@ gateway, first proves that Start projects it, then opens Projects and proves
 that the projected row restores the current stored session tip with its
 transcript intact. The packaged smoke separately covers a pristine isolated
 macOS profile, the shared renderer identity, and screenshots at 1440×900,
-1280×800, and 900×720; its fake boot cannot seed backend history and is not
-evidence for historical-data mapping. A real Windows machine and Windows
-package remain a release gate; a macOS host must not claim Windows hands-on
-validation.
+1280×800, and 900×720, plus the reported 1223×865 and 1512×865 window sizes. It
+asserts the real rendered rail width and the approved goal-launcher geometry;
+its fake boot cannot seed backend history and is not evidence for
+historical-data mapping. A real Windows machine and Windows package remain a
+release gate; a macOS host must not claim Windows hands-on validation.
 
 ## Failure injection
 
@@ -118,3 +133,6 @@ validation.
   workspace interaction test fails because the selected task id disappears.
 - Replace the concrete artifact row action with aggregate Artifacts navigation:
   the interaction test fails because the desktop open seam is never called.
+- Seed a 360px `chat-sidebar` override and skip
+  `reconcileSidebarWidthOverride()`: the hc-803 store test proves the old width
+  remains live instead of returning to the prototype default.
