@@ -79,12 +79,21 @@ vi.mock('@/store/gateway-reconnect', () => ({
   reconnectGateway: (...args: unknown[]) => reconnectGatewaySpy(...args)
 }))
 
+const checkRuntimeUpdateSpy = vi.fn()
+const applyRuntimeUpdateSpy = vi.fn()
+
+vi.mock('@/store/runtime-update', () => ({
+  checkRuntimeUpdate: (...args: unknown[]) => checkRuntimeUpdateSpy(...args),
+  applyRuntimeUpdate: (...args: unknown[]) => applyRuntimeUpdateSpy(...args)
+}))
+
 const {
   maybeNotifyUpdateAvailable,
   checkBackendUpdates,
   $backendUpdateStatus,
   applyBackendUpdate,
   $backendUpdateApply,
+  alignBackendContract,
   reportBackendContract,
   applyUpdates,
   applyEverythingUpdate,
@@ -187,6 +196,9 @@ describe('reportBackendContract', () => {
     storage.clear()
     notifySpy.mockClear()
     dismissSpy.mockClear()
+    checkRuntimeUpdateSpy.mockReset()
+    applyRuntimeUpdateSpy.mockReset()
+    setRemote(false)
     vi.useRealTimers()
   })
 
@@ -234,6 +246,53 @@ describe('reportBackendContract', () => {
     reportBackendContract(6) // backend updated → satisfied, snooze cleared
     reportBackendContract(5) // a later regression must warn immediately
     expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes a local contract repair through the managed Runtime updater', async () => {
+    checkRuntimeUpdateSpy.mockResolvedValue({
+      ok: true,
+      updateAvailable: true,
+      current: { version: 'old', key: 'old' },
+      latest: { version: 'new', key: 'new' }
+    })
+    applyRuntimeUpdateSpy.mockResolvedValue({ ok: true, applied: true, reloadRequired: false })
+
+    await alignBackendContract()
+
+    expect(checkRuntimeUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(applyRuntimeUpdateSpy).toHaveBeenCalledTimes(1)
+    expect(updateHermesSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not run the Git updater when the local Runtime catalog has no newer version', async () => {
+    checkRuntimeUpdateSpy.mockResolvedValue({
+      ok: true,
+      updateAvailable: false,
+      current: { version: 'old', key: 'old' },
+      latest: { version: 'old', key: 'old' }
+    })
+
+    await alignBackendContract()
+
+    expect(applyRuntimeUpdateSpy).not.toHaveBeenCalled()
+    expect(updateHermesSpy).not.toHaveBeenCalled()
+  })
+
+  it('keeps remote contract repair on the remote backend updater', async () => {
+    setRemote(true)
+    updateHermesSpy.mockResolvedValue({ action_id: 'remote-update' })
+    getActionStatusSpy.mockResolvedValue({
+      action_id: 'remote-update',
+      action: 'update',
+      status: 'completed',
+      exit_code: 0,
+      progress: []
+    })
+
+    await alignBackendContract()
+
+    expect(updateHermesSpy).toHaveBeenCalledTimes(1)
+    expect(checkRuntimeUpdateSpy).not.toHaveBeenCalled()
   })
 })
 

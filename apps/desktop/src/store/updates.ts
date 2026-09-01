@@ -20,6 +20,7 @@ import { persistString, storedString } from '@/lib/storage'
 import { $connectionsRegistry, refreshConnectionsRegistry } from '@/store/connections'
 import { reconnectGateway } from '@/store/gateway-reconnect'
 import { dismissNotification, notify } from '@/store/notifications'
+import { applyRuntimeUpdate, checkRuntimeUpdate } from '@/store/runtime-update'
 import { $connection } from '@/store/session'
 import type { BackendUpdateCheckResponse } from '@/types/hermes'
 
@@ -167,7 +168,7 @@ export function reportBackendContract(contract: number | undefined): void {
       label: translateNow('notifications.updateHermes'),
       onClick: () => {
         snoozeSkewToast()
-        void applyBackendUpdate()
+        void alignBackendContract()
       }
     },
     durationMs: 0,
@@ -177,6 +178,42 @@ export function reportBackendContract(contract: number | undefined): void {
     onDismiss: () => snoozeSkewToast(),
     title: translateNow('notifications.backendOutOfDateTitle')
   })
+}
+
+/**
+ * Align the backend that actually owns the active session. A remote session is
+ * backed by the gateway's Git-managed checkout, while a local packaged session
+ * is backed by the desktop's managed Runtime. Routing both through
+ * `/update/apply` made bundle installs run `hermes update` inside a non-Git
+ * extracted tree, producing a backup and then failing without changing the
+ * runtime.
+ */
+export async function alignBackendContract(): Promise<void> {
+  if (isRemoteMode()) {
+    await applyBackendUpdate()
+
+    return
+  }
+
+  const check = await checkRuntimeUpdate()
+
+  // Do not invoke the mutating bridge when the catalog has no newer compatible
+  // Runtime. The warning stays snoozed for this session-open cadence; once the
+  // catalog is published, the normal Runtime pill/check path offers it.
+  if (!check.ok || !check.updateAvailable || check.desktopUpgradeRequired) {
+    return
+  }
+
+  try {
+    const result = await applyRuntimeUpdate()
+
+    if (result.reloadRequired) {
+      window.location.reload()
+    }
+  } catch {
+    // Runtime update UI owns detailed failure/rollback presentation. This
+    // notification action must never create an unhandled renderer rejection.
+  }
 }
 
 export function reportInstallMethodWarning(message: string | undefined): void {
