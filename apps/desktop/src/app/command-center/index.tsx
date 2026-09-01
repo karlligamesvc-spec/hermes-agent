@@ -11,6 +11,7 @@ import { ResponsiveTabs } from '@/components/ui/tab-dropdown'
 import { Tip } from '@/components/ui/tooltip'
 import { getActionStatus, getLogs, getStatus, getUsageAnalytics, restartGateway } from '@/hermes'
 import type { ActionStatusResponse, AnalyticsResponse, StatusResponse } from '@/hermes'
+import { type SessionInfo } from "@/hermes"
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { compactNumber } from '@/lib/format'
@@ -42,6 +43,7 @@ import { OverlayMain, OverlayNav, OverlaySplitLayout } from '../overlays/overlay
 import { OverlayView } from '../overlays/overlay-view'
 
 import { MaintenancePanel } from './maintenance'
+
 
 export type CommandCenterSection = 'maintenance' | 'sessions' | 'system' | 'usage'
 
@@ -148,6 +150,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
   const pinnedSessionIds = useStoreSelector($pinnedSessionIds, s => (section === 'sessions' ? s : EMPTY_PINNED))
 
   const [query, setQuery] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<SessionInfo | null>(null)
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [logFile, setLogFile] = useState<(typeof LOG_FILES)[number]>('agent')
@@ -464,7 +467,7 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
                           </RowIconButton>
                           <RowIconButton
                             className="hover:text-destructive"
-                            onClick={() => void onDeleteSession(session.id)}
+                            onClick={() => setPendingDelete(session)}
                             title={cc.deleteSession}
                           >
                             <Trash2 className="size-3.5" />
@@ -593,6 +596,20 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
           )}
         </OverlayMain>
       </OverlaySplitLayout>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          busyLabel={t.sidebar.row.deleting}
+          confirmLabel={t.common.delete}
+          description={t.sidebar.row.deleteDesc(sessionTitle(pendingDelete))}
+          destructive
+          doneLabel={t.sidebar.row.deleted}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={() => void onDeleteSession(pendingDelete.id)}
+          open
+          title={t.sidebar.row.deleteTitle}
+        />
+      )}
 
       <ConfirmDialog
         busyLabel={t.sidebar.desktopUpdate.installing}

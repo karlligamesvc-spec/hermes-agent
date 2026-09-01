@@ -29,6 +29,7 @@ guarantee.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -37,17 +38,56 @@ from typing import Mapping, Sequence
 __all__ = [
     "IS_WINDOWS",
     "resolve_node_command",
+    "split_command_line",
     "suppress_platform_ver_console",
     "windows_detach_flags",
     "windows_detach_flags_without_breakaway",
     "windows_hide_flags",
     "windows_detach_popen_kwargs",
     "bounded_git_probe",
+    "bounded_probe_run",
     "noninteractive_git_env",
+    "pid_is_hermes",
 ]
 
 
 IS_WINDOWS = sys.platform == "win32"
+
+# Private launcher-to-child metadata. This is diagnostic state, not user config.
+_WINDOWS_GATEWAY_BREAKAWAY_ENV = "_HERMES_GATEWAY_BREAKAWAY"
+
+
+def split_command_line(line: str) -> list[str]:
+    """Split a user-supplied command line into tokens, Windows-safely.
+
+    ``shlex.split(line)`` (posix=True) treats every backslash as an escape
+    character, so Windows paths are silently mangled: ``C:\\Users\\me\\out.txt``
+    becomes ``C:Usersmeout.txt`` — no error, just a wrong path that then
+    "succeeds" against a mangled relative filename (#83934) or makes a valid
+    hook script report "not executable" (#78293).
+
+    On Windows this uses ``posix=False``, which preserves backslashes while
+    still honoring double-quoted tokens ("path with spaces"). The trade-off
+    is that posix=False keeps surrounding quotes on quoted tokens, so we
+    strip one layer of matching double quotes per token — that matches how
+    Windows command lines are conventionally parsed. On POSIX the behavior
+    is exactly ``shlex.split``.
+
+    Raises ValueError for unbalanced quotes, same as ``shlex.split``.
+    """
+    if not IS_WINDOWS:
+        import shlex
+
+        return shlex.split(line)
+    import shlex
+
+    tokens = shlex.split(line, posix=False)
+    out: list[str] = []
+    for tok in tokens:
+        if len(tok) >= 2 and tok[0] == tok[-1] and tok[0] in ("'", '"'):
+            tok = tok[1:-1]
+        out.append(tok)
+    return out
 
 
 # -----------------------------------------------------------------------------
@@ -349,14 +389,107 @@ def noninteractive_git_env(
 # -----------------------------------------------------------------------------
 
 
-def _kill_git_process_tree(proc: "subprocess.Popen") -> None:
-    """Best-effort terminate *proc* and, on Windows, its descendants.
 
-    ``proc.kill()`` alone only terminates the PATH-resolved ``git`` launcher; a
-    suspended descendant ``git.exe`` can survive holding duplicates of the
+def _process_start_time(pid: int) -> int | None:
+    """Return the repository's stable process-start fingerprint, if available."""
+    try:
+        from gateway.status import get_process_start_time
+
+        return get_process_start_time(pid)
+    except Exception:
+        return None
+
+
+def _text_names_hermes(text: str) -> bool:
+    """True when *text* names Hermes at a path-segment / token boundary.
+
+    A bare ``"hermes" in text`` substring test would also match unrelated
+    processes whose paths merely contain the letters (``...\\shermesa\\...``),
+    which is exactly the false-positive class this guard exists to prevent.
+    Instead, split on path separators and whitespace and require a segment
+    that *starts with* ``hermes`` (``hermes``, ``hermes.exe``, ``hermes_cli``,
+    ``hermes-agent``, ``hermes-runtime``) or the hidden-dir form
+    ``.hermes``/``.hermes-runtime``.
+    """
+    for token in re.split(r"[\\/\s=,;\"']+", text.lower()):
+        if token.startswith("hermes") or token.startswith(".hermes"):
+            return True
+    return False
+
+
+def _process_command_is_hermes(pid: int) -> bool:
+    """Best-effort check that *pid* currently runs Hermes code."""
+    try:
+        import psutil
+
+        process = psutil.Process(pid)
+        command = " ".join(process.cmdline() or [])
+        executable = process.exe() or ""
+        return _text_names_hermes(f"{command} {executable}")
+    except Exception:
+        return False
+
+
+def pid_is_hermes(
+    pid: int,
+    *,
+    expected_start_time: int | None = None,
+) -> bool:
+    """Return whether it is safe to use ``taskkill`` for *pid*.
+
+    The PID must be valid, currently exist, and identify a Hermes process. When
+    the caller captured a start-time fingerprint before the destructive action,
+    the live process must still have the same ``(pid, start_time)`` identity.
+    Any ambiguity fails closed. Non-Windows callers have no ``taskkill`` path,
+    so a valid PID with no (or a matching) explicit expectation is accepted
+    there — but a caller-provided fingerprint that no longer matches is a
+    recycled PID on every platform and is always refused.
+    """
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    if not IS_WINDOWS:
+        if expected_start_time is None:
+            return True
+        try:
+            return _process_start_time(pid) == expected_start_time
+        except Exception:
+            return False
+
+    try:
+        current_start_time = _process_start_time(pid)
+    except Exception:
+        return False
+    if current_start_time is None:
+        return False
+    if (
+        expected_start_time is not None
+        and current_start_time != expected_start_time
+    ):
+        return False
+    try:
+        return _process_command_is_hermes(pid)
+    except Exception:
+        return False
+
+
+def kill_process_tree(proc: "subprocess.Popen") -> None:
+    """Best-effort terminate *proc* and its descendants on both platforms.
+
+    ``proc.kill()`` alone only terminates the direct child. On Windows a
+    suspended descendant (e.g. ``git.exe``) can survive holding duplicates of the
     captured pipe handles, which keeps the pipes from reaching EOF and leaks two
-    reader threads + the process per fired timeout. ``taskkill /T /F`` takes the
+    reader threads + the process per fired timeout — ``taskkill /T /F`` takes the
     whole tree down so the bounded drain that follows can actually reach EOF.
+    On POSIX the same class exists: killing the launcher leaves descendants
+    (credential helpers, ``git-remote-https``, hook children) running and
+    holding the pipe write ends. Callers spawn the child in its own process
+    group (``process_group=0``, Python ≥3.11), so when — and only
+    when — the child leads its own group (``pgid == pid``), the entire group is
+    signalled with ``os.killpg``. The ownership check means a fallback spawn
+    that shares our group can never cause us to kill unrelated processes.
+    Ported from openai/codex#36793 ("Terminate timed-out Git process trees");
+    generalized for the shell-hook runner via openai/codex#37527
+    ("Terminate timed-out hook process trees").
 
     All failures are swallowed — this is cleanup on an already-failing path, and
     the caller's contract is to fail open. ``kill()`` can raise (access denied,
@@ -364,12 +497,59 @@ def _kill_git_process_tree(proc: "subprocess.Popen") -> None:
     handler and break that contract. The ``taskkill`` spawn itself cannot
     re-enter the deadlock class it fixes: it captures no pipes (DEVNULL), so its
     own timeout cleanup has no reader threads to join.
+
+    Delegates the tree-kill to :func:`agent.deadline.kill_process_tree`
+    (#85125 4d) — same taskkill /T /F on Windows and killpg-when-leader on
+    POSIX, plus a psutil descendant sweep that also reaches descendants that
+    ``setsid``'d into their own sessions. On any import/delegation failure it
+    falls back to the original local implementation
+    (:func:`_legacy_kill_process_tree`), so the fail-open contract holds even
+    in stripped environments.
     """
+    try:
+        from agent.deadline import kill_process_tree as _deadline_kill_tree
+
+        _deadline_kill_tree(proc.pid)
+    except Exception:
+        _legacy_kill_process_tree(proc)
+        return
+    # Ensure Popen's own bookkeeping sees the exit (matches the legacy body:
+    # a direct kill() so communicate()/wait() cannot hang on a stale handle).
+    try:
+        proc.kill()
+    except OSError:
+        pass
+
+
+def _legacy_kill_process_tree(proc: "subprocess.Popen") -> None:
+    """Pre-#85125 local tree-kill — fallback when agent.deadline is unavailable.
+
+    Kept verbatim so ``kill_process_tree`` can honor its swallow-everything
+    contract even when the delegation path itself fails (partial install,
+    import cycle during teardown).
+    """
+    if not IS_WINDOWS:
+        # Group-kill first: verify the child actually leads its own process
+        # group before signalling it, so we never blast a shared group.
+        try:
+            import signal as _signal
+
+            pgid = os.getpgid(proc.pid)
+            if pgid == proc.pid:
+                os.killpg(pgid, _signal.SIGKILL)  # windows-footgun: ok — inside `if not IS_WINDOWS` gate
+        except Exception:
+            pass
     try:
         proc.kill()
     except OSError:
         pass
     if IS_WINDOWS:
+        # No identity guard here on purpose: *proc* is our own retained
+        # ``Popen`` handle. The child cannot be reaped (and its PID cannot be
+        # recycled) while we still hold the handle, so an identity check could
+        # only ever false-refuse a legitimate cleanup. The fail-closed
+        # ``pid_is_hermes`` guard is for BARE pids from state files or process
+        # scans, where recycling is real.
         try:
             subprocess.run(
                 ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
@@ -382,6 +562,67 @@ def _kill_git_process_tree(proc: "subprocess.Popen") -> None:
             )
         except Exception:
             pass
+
+
+def bounded_probe_run(
+    argv: Sequence[str],
+    *,
+    timeout: float,
+    errors: str = "replace",
+) -> "subprocess.CompletedProcess[str] | None":
+    """Deadlock-safe ``subprocess.run(argv, capture_output=True, timeout=...)``
+    for fail-open probe call sites. Returns a ``CompletedProcess`` when the
+    child finished within *timeout* (any exit code), or ``None`` on spawn
+    failure or timeout.
+
+    Why not ``subprocess.run``: on Windows, ``run()``'s post-timeout cleanup
+    calls an *unbounded* ``communicate()`` after killing the direct child.
+    Killing it can leave a descendant (``git.exe`` under a launcher shim,
+    ``conhost.exe`` under wmic/powershell) holding duplicates of the captured
+    stdout/stderr handles, so the pipes never reach EOF and the reader-thread
+    join blocks forever. The wmic / ``Get-CimInstance Win32_Process`` gateway
+    scan hit exactly this during ``hermes update`` on slow-WMI machines
+    (#87134); the git probes hit it first (#68609 / #66037).
+
+    The bounded flow: an explicit ``communicate(timeout)``, then on any
+    failure a tree-kill (see :func:`kill_process_tree`) plus a bounded 1s
+    post-kill drain; if the pipes are still held after that, they're abandoned
+    (the orphaned reader threads are daemonic and cost nothing).
+
+    The spawn contract mirrors the ``run`` calls it replaces: PIPE/PIPE/DEVNULL,
+    ``text`` with UTF-8 decoding (*errors* configurable — the process scans use
+    ``"ignore"``), and the hidden-window ``creationflags`` on Windows only. On
+    POSIX the child is placed in its own process group (``process_group=0``,
+    Python ≥3.11) so timeout cleanup can take down descendants with the
+    launcher instead of orphaning them.
+    """
+    _popen_kwargs: dict = {"creationflags": windows_hide_flags()} if IS_WINDOWS else {"process_group": 0}
+    try:
+        proc = subprocess.Popen(
+            list(argv),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors=errors,
+            **_popen_kwargs,
+        )
+    except Exception:
+        return None
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except Exception:
+        # Timeout OR any other communicate() failure (torn-down pipe, decode
+        # error): terminate the child + descendants and drain bounded. Leaving
+        # it running would leak the same suspended-descendant class this guards.
+        kill_process_tree(proc)
+        try:
+            proc.communicate(timeout=1)
+        except Exception:
+            pass
+        return None
+    return subprocess.CompletedProcess(list(argv), proc.returncode, stdout, stderr)
 
 
 def bounded_git_probe(argv: Sequence[str], *, timeout: float) -> str:
@@ -408,32 +649,19 @@ def bounded_git_probe(argv: Sequence[str], *, timeout: float) -> str:
 
     The normal-path spawn contract mirrors the previous ``run`` call byte-for-byte:
     PIPE/PIPE/DEVNULL, ``text`` with UTF-8 ``errors="replace"`` decoding, and the
-    hidden-window ``creationflags`` on Windows only.
+    hidden-window ``creationflags`` on Windows only. On POSIX the probe is
+    additionally placed in its own process group (``process_group=0``,
+    Python ≥3.11) so timeout cleanup can take down descendants — credential
+    helpers, ``git-remote-https``, hook children — with the launcher instead of
+    orphaning them (see :func:`_kill_git_process_tree`; port of
+    openai/codex#36793). ``process_group`` only changes which group the child
+    belongs to; it does not detach the terminal or alter the fast path.
     """
-    _popen_kwargs = {"creationflags": windows_hide_flags()} if IS_WINDOWS else {}
-    try:
-        proc = subprocess.Popen(
-            list(argv),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            **_popen_kwargs,
-        )
-    except Exception:
+    result = bounded_probe_run(argv, timeout=timeout)
+    if result is None or result.returncode != 0:
         return ""
-    try:
-        stdout, _ = proc.communicate(timeout=timeout)
-    except Exception:
-        # Timeout OR any other communicate() failure (torn-down pipe, decode
-        # error): terminate the child + descendants and drain bounded. Leaving
-        # it running would leak the same suspended-descendant class this guards.
-        _kill_git_process_tree(proc)
-        try:
-            proc.communicate(timeout=1)
-        except Exception:
-            pass
-        return ""
-    return stdout.strip() if proc.returncode == 0 else ""
+    return (result.stdout or "").strip()
+
+
+# Backward-compat alias — existing call sites/tests import the historical name.
+_kill_git_process_tree = kill_process_tree

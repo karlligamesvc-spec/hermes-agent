@@ -7,14 +7,17 @@ import {
   listOAuthProviders,
   pollOAuthSession,
   setEnvVar,
-  setModelAssignment,
   startOAuthLogin,
   submitOAuthCode,
   validateProviderCredential
 } from '@/hermes'
+import { setModelAssignment } from "@/hermes"
+import { isProviderSetupErrorMessage } from "@/lib/provider-setup-errors"
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+import { setMainModelAssignment } from '@/store/cron-model-impact'
 import { notify, notifyError } from '@/store/notifications'
 import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/hermes'
+
 
 type PkceStart = Extract<OAuthStartResponse, { flow: 'pkce' }>
 type DeviceStart = Extract<OAuthStartResponse, { flow: 'device_code' }>
@@ -408,16 +411,22 @@ async function completeWithModelConfirm(
     // config provider (e.g. anthropic from a prior failed setup) cannot make
     // setup.runtime_check validate the wrong backend after a fresh OAuth login.
     try {
-      const res = await setModelAssignment({
-        scope: 'main',
-        provider: defaults.providerSlug,
-        model: defaults.defaultModel
-      })
+      const res = await setMainModelAssignment(
+        {
+          provider: defaults.providerSlug,
+          model: defaults.defaultModel
+        },
+        undefined,
+        // Headless automated flow: nothing is mounted to click a guard
+        // prompt, so fail with the message instead of hanging.
+        { skipConfirmPrompt: true }
+      )
 
       notifyGatewayTools(res.gateway_tools)
-    } catch {
-      // Persistence failed — still run the scoped runtime check below and
-      // show the confirm card so the user can pick something explicitly.
+    } catch (error) {
+      onFail(error instanceof Error ? error.message : 'Hermes could not save the selected model.')
+
+      return
     }
   }
 
@@ -480,14 +489,29 @@ export function requestDesktopOnboarding(reason = DEFAULT_ONBOARDING_REASON) {
   patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
 }
 
-/** Only the runtime's exact main-provider warning should reopen setup. Auxiliary
- * provider warnings use shorter "ENV_KEY not set" text and must stay passive. */
-export function requestDesktopOnboardingForCredentialWarning(warning?: string | null) {
-  const detail = warning?.trim() ?? ''
+/** A profile may emit its provider warning while the user is only browsing it.
+ * Opening onboarding here would punish inspection, so defer the warning until
+ * submit. The latest warning wins; a healthy event clears the pending gate. */
+let pendingCredentialWarning: null | string = null
 
-  if (/^No API key configured for provider '.+'\. First message will fail\.$/.test(detail)) {
-    requestDesktopOnboarding(detail)
+export function requestDesktopOnboardingForCredentialWarning(reason: null | string | undefined) {
+  const warning = reason?.trim()
+
+  if (!warning || !isProviderSetupErrorMessage(warning)) {
+    pendingCredentialWarning = null
+
+    return
   }
+
+  pendingCredentialWarning = warning
+}
+
+export function consumePendingCredentialWarning(): null | string {
+  const warning = pendingCredentialWarning
+
+  pendingCredentialWarning = null
+
+  return warning
 }
 
 // hc-511: a signed-in managed session lost its relay auth and can't self-heal
@@ -1278,7 +1302,7 @@ export async function saveOnboardingLocalEndpoint(baseUrl: string, apiKey: strin
   }
 
   try {
-    await setModelAssignment({ scope: 'main', provider: 'custom', model, base_url: url, api_key: key })
+    await setMainModelAssignment({ provider: 'custom', model, base_url: url, api_key: key })
     await ctx.requestGateway('reload.env').catch(() => undefined)
 
     const runtime = await checkRuntime(ctx)
@@ -1315,8 +1339,7 @@ export async function setOnboardingModel(model: string) {
   setFlow({ ...flow, currentModel: model, saving: true })
 
   try {
-    await setModelAssignment({
-      scope: 'main',
+    await setMainModelAssignment({
       provider: flow.providerSlug,
       model
     })

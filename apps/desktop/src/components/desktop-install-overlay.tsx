@@ -300,6 +300,7 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
     : null
 
   const completedCount = progress.completedStages.length
+
   const runtimeDownload =
     progress.currentStage === 'runtime' &&
     progress.runtimeProgress?.phase === 'downloading' &&
@@ -307,12 +308,15 @@ function DesktopUpdateProgressCard({ now, progress }: { now: number; progress: D
     progress.runtimeProgress.total > 0
       ? progress.runtimeProgress
       : null
+
   const currentFraction = runtimeDownload
     ? Math.max(0, Math.min(1, (runtimeDownload.received ?? 0) / runtimeDownload.total!))
     : 0
+
   const progressUnits = completedCount + currentFraction
   const progressPct = progress.stages.length > 0 ? Math.round((progressUnits / progress.stages.length) * 100) : 0
   const determinate = failed || Boolean(runtimeDownload) || progress.currentStage === null
+
   const byteProgress = runtimeDownload
     ? `${formatUpdateBytes(runtimeDownload.received ?? 0)} / ${formatUpdateBytes(runtimeDownload.total!)}`
     : null

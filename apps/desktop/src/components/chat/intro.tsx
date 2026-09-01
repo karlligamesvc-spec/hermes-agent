@@ -3,6 +3,7 @@ import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 
+
 // Props are kept for call-site compatibility (the Thread passes the resolved
 // personality + seed), but the home screen no longer varies its copy.
 export type IntroProps = {

@@ -2,6 +2,7 @@ import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 
+
 export const zh = defineLocale({
   common: {
     apply: '应用',
@@ -53,6 +54,9 @@ export const zh = defineLocale({
     revealInSidebar: '在文件树中显示',
     copyPath: '复制路径',
     copyRelativePath: '复制相对路径',
+    download: '下载',
+    downloadSaved: '已保存',
+    downloadFailed: '下载失败',
     rename: '重命名…',
     delete: '删除',
     renameTitle: '重命名',
@@ -69,6 +73,7 @@ export const zh = defineLocale({
       connectingGateway: '正在连接桌面网关',
       loadingSettings: '正在加载 APEX 设置',
       loadingSessions: '正在加载最近会话',
+      retryingRemoteBackend: '正在重新连接远程 Hermes 后端…',
       startingDesktopConnection: '正在启动桌面连接',
       startingHermesDesktop: '正在启动 APEX 桌面版…'
     },
@@ -78,6 +83,8 @@ export const zh = defineLocale({
       backendStopped: '后端已停止',
       desktopBootFailed: '桌面启动失败',
       gatewayConnectionLost: '与网关的连接已断开',
+      gatewayConnectionLostDetail:
+        'Still retrying in the background. You can keep reading and drafting — open Gateway settings if this persists.',
       gatewaySignInRequired: '需要登录网关',
       ipcBridgeUnavailable: '桌面 IPC 桥不可用。'
     },
@@ -97,6 +104,12 @@ export const zh = defineLocale({
         `先退出已保存的远程浏览器会话，然后打开${signInLabel}。也可以使用本地网关切换到随应用提供的后端。`,
       signOutAndSignIn: '退出并重新登录',
       remoteFailureHint: '在“网关设置”中检查网关 URL 和登录，或切换到本地网关。',
+      cloudDownTitle: 'Nous Cloud 代理已宕机',
+      cloudDownDescription:
+        '此网关连接的 Nous 托管云代理正在返回服务器错误。无法在此处重启——请检查其状态、切换到本地网关或获取支持。',
+      cloudDownHint: '使用下方按钮打开 Nous Portal（查看实例状态与操作）或加入 Discord 获取支持。',
+      cloudDownCheckPortal: '查看 Portal 状态',
+      cloudDownDiscord: '在 Discord 获取帮助',
       hideRecentLogs: '隐藏最近日志',
       showRecentLogs: '显示最近日志',
       signedInTitle: '已登录',
@@ -132,7 +145,16 @@ export const zh = defineLocale({
     updateHermes: '更新 APEX',
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 项新更改可用。`,
+    updateReadyMessageUnknown: '有新更新可用。',
     seeWhatsNew: '查看更新内容',
+    mcp: {
+      needsAuthTitle: 'MCP 服务器需要重新认证',
+      needsAuthMessage: name => `${name} MCP 需要重新认证。`,
+      errorTitle: 'MCP 服务器无法连接',
+      errorMessage: name => `${name} MCP 健康检查失败。`,
+      signIn: '登录',
+      view: '查看'
+    },
     errors: {
       elevenLabsNeedsKey: 'ElevenLabs STT 需要 ELEVENLABS_API_KEY。',
       elevenLabsRejectedKey: 'ElevenLabs 拒绝了该 API key (401)。',
@@ -187,13 +209,16 @@ export const zh = defineLocale({
     swapSidebarSides: '交换侧边栏位置',
     hideRightSidebar: '隐藏右侧栏',
     showRightSidebar: '显示右侧栏',
+    unreadSessions: count => (count === 1 ? '1 个未读会话' : `${count} 个未读会话`),
     muteHaptics: '关闭触感反馈',
     unmuteHaptics: '开启触感反馈',
     openSettings: '打开设置',
     openStarmap: '打开记忆图谱',
-    openKeybinds: '键盘快捷键',
+    enterHud: 'HUD 模式',
+    exitHud: '退出 HUD 模式',
+    resetHudLayout: '重置 HUD 大小和位置',
     layoutEditor: '布局编辑器',
-    layoutEditorTitle: '布局编辑器 — ⌘ 点击重置布局'
+    layoutEditorTitle: mod => `布局编辑器 — ${mod} 点击重置布局`
   },
 
   keybinds: {
@@ -240,6 +265,7 @@ export const zh = defineLocale({
       'session.slot.9': '切换到最近会话 9',
       'session.focusSearch': '搜索会话',
       'session.togglePin': '固定/取消固定当前会话',
+      'session.archive': '归档当前会话',
       'workspace.newWorktree': '新建工作树',
       'composer.focus': '聚焦输入框',
       'composer.modelPicker': '打开模型选择器',
@@ -248,6 +274,7 @@ export const zh = defineLocale({
       'view.toggleRightSidebar': '切换文件浏览器',
       'view.toggleReview': '切换审查面板',
       'view.showFiles': '显示文件浏览器',
+      'view.showBrowser': '打开浏览器',
       'view.showTerminal': '显示终端',
       'view.terminalSelection': '将终端选区发送到输入框',
       'view.closeTab': '关闭标签',
@@ -336,7 +363,53 @@ export const zh = defineLocale({
       disable: '禁用',
       failed: '失败',
       empty: '尚未安装桌面插件。',
-      kinds: { bundled: '内置', disk: '磁盘', runtime: '运行时' }
+      kinds: { bundled: '内置', disk: '磁盘', runtime: '运行时' },
+      agent: {
+        title: '智能体插件',
+        blurb:
+          '你安装到 Hermes 后端的插件——工具、技能、MCP 服务器、钩子和斜杠命令。「便携」插件是 Agent Plugins 标准包（技能 + MCP 组合，也可在其他智能体中使用）。开关在新会话中生效。',
+        appliesTo: '应用于：',
+        empty: '尚未安装智能体插件。',
+        loadFailed: '无法加载智能体插件',
+        portable: '便携',
+        search: '搜索插件…',
+        noMatches: '没有匹配的插件。',
+        toggleFailed: (name: string) => `无法切换 ${name}`,
+        updateBackendToManage: '请更新 Hermes 后端以便在桌面端管理此插件。',
+        sources: { bundled: '内置', user: '用户', git: 'git', project: '项目', entrypoint: 'pip' }
+      },
+      installModal: {
+        title: '安装插件',
+        description: '在安装前查看此仓库包含哪些组件。',
+        repoLabel: '仓库',
+        includesHeading: '此包包含',
+        agentLabel: '智能体插件',
+        desktopLabel: '桌面 UI',
+        agentTargetLocal: profile => `安装到 ${profile} 后端（~/.hermes/plugins/）`,
+        agentTargetRemote: profile => `安装到已连接的 ${profile} 后端`,
+        desktopTarget: '安装到此应用的本地 desktop-plugins 文件夹',
+        desktopOnlyNote: '仅桌面包不会安装后端智能体插件。',
+        insecureWarning: '此 URL 使用了不安全的本地 scheme。生产环境请优先使用 https:// 或 git@。',
+        securityHeading: '安装前须知',
+        securityIntro: '请仅安装你信任的来源 — 如需了解将添加的内容，可先查看下方仓库。',
+        sourceHeading: '源代码',
+        viewRepository: '查看仓库',
+        viewPluginFiles: '查看插件文件',
+        gitCloneLabel: 'Git 克隆地址',
+        enableAgent: '安装后启用智能体插件',
+        forceReinstall: '强制重装（替换已存在的安装）',
+        install: '安装',
+        installing: '正在安装…',
+        probing: '正在检查仓库…',
+        probeUnavailable: '当前环境无法检查插件仓库。',
+        desktopUnavailable: '当前环境无法安装桌面插件。',
+        selectComponent: '请至少选择一个要安装的组件。',
+        agentSuccess: name => `智能体插件 ${name} 已安装`,
+        desktopSuccess: name => `桌面插件 ${name} 已安装`,
+        agentFailed: '智能体插件安装失败',
+        desktopFailed: '桌面插件安装失败',
+        missingEnv: vars => `缺少环境变量：${vars}。请在设置 → 密钥中添加。`
+      }
     },
     notifications: {
       title: '通知',
@@ -406,11 +479,30 @@ export const zh = defineLocale({
       colorModeDesc: '选择固定模式，或让 APEX 跟随系统设置。',
       toolViewTitle: '工具调用显示',
       toolViewDesc: '产品模式隐藏原始工具数据；技术模式显示完整输入/输出。',
+      reasoningCollapsedTitle: '默认折叠推理过程',
+      reasoningCollapsedDesc: '保留流式推理内容，但在您打开前保持折叠。',
       uiScaleTitle: '界面缩放',
       uiScaleDesc: (percent: number) =>
         `缩放整个应用的文字和界面。也可使用 Cmd/Ctrl 加 +、- 或 0 调整。当前：${percent}%`,
       translucencyTitle: '窗口透明',
-      translucencyDesc: '让整个窗口透出桌面。仅支持 macOS 和 Windows。',
+      translucencyDesc: '让整个窗口（包括文字）透出桌面。',
+      translucencyGlassDesc: '磨砂玻璃：桌面以柔和模糊透出，文字保持清晰。',
+      translucencyModeClear: '透明',
+      translucencyModeGlass: '玻璃',
+      translucencyTintTitle: '色调',
+      translucencyFadeTitle: '淡出',
+      translucencyFrostTitle: '磨砂质感',
+      translucencyFrost: {
+        'under-window': '深邃',
+        popover: '柔和',
+        titlebar: '明亮',
+        header: '透亮'
+      },
+      translucencyScopeTitle: '应用范围',
+      translucencyScope: {
+        window: '整个窗口',
+        sidebar: '仅侧边栏'
+      },
       backdropTitle: '聊天背景',
       backdropDesc: '对话后方那张淡淡的雕像图片。',
       embedsTitle: '内嵌预览',
@@ -692,6 +784,10 @@ export const zh = defineLocale({
       heading: 'APEX 桌面版',
       version: value => `版本 ${value}`,
       versionUnavailable: '版本不可用',
+      bundleOutOfSync: '应用构建版本过旧',
+      bundleOutOfSyncDesc:
+        'Hermes 运行时已更新,但桌面应用本身仍是旧构建——在应用更新之前,新的界面功能(如 Bot Mode)不会显示。请运行下方的更新以重新构建应用。如果此警告仍未消除,请从最新的桌面安装程序重新安装。',
+      bundleOutOfSyncAction: '获取安装程序',
       updates: '更新',
       checkNow: '立即检查',
       checking: '检查中…',
@@ -704,6 +800,7 @@ export const zh = defineLocale({
       cantReach: '无法连接更新服务器。',
       tapCheck: '点击"立即检查"以查找更新。',
       updateReady: count => `已准备好新更新 (包含 ${count} 项更改)。`,
+      updateReadyUnknown: '新更新已就绪。',
       lastChecked: age => `上次检查:${age}`,
       justNowSuffix: ' · 刚刚',
       automaticUpdates: '自动更新',
@@ -781,6 +878,85 @@ export const zh = defineLocale({
       set: '设置',
       clear: '清除'
     },
+    // v2 多连接注册表：设置 → 网关。
+    connections: {
+      title: '已注册网关',
+      intro: '管理本机以及通过远程、SSH 或 Hermes Cloud 连接可访问的每个 Hermes 网关。',
+      stagedNote:
+        '可在“会话”侧边栏切换网关。配置档案、聊天、消息和定时任务归属于各自网关；其他网关上的工作会继续运行。',
+      launchModeTitle: '启动时返回上次使用网关的会话视图',
+      launchModeDesc: '关闭时，会话将在主网关上打开。',
+      searchPlaceholder: '搜索网关…',
+      noSearchResults: '没有与搜索匹配的网关。',
+      loadFailed: '无法加载连接',
+      currentPill: '当前',
+      primaryPill: '主连接',
+      managedPill: '应用管理',
+      addConnection: '添加连接',
+      editConnection: '编辑',
+      removeConnection: '移除',
+      removeConfirmTitle: '移除此连接？',
+      removeConfirmDesc: (label: string) => `“${label}”将从本应用移除。实例本身不受影响——你可以随时重新添加。`,
+      makePrimary: '设为主连接',
+      testConnection: '测试',
+      testOk: '可访问',
+      testFailed: '连接测试失败',
+      saveFailed: '无法保存连接',
+      removeFailed: '无法移除连接',
+      updateAll: '更新所有实例',
+      updateAllRunning: '正在更新所有实例…',
+      updateAllDone: '更新已分发',
+      updateAllFailed: '批量更新失败',
+      updateSkippedCloud: '由 Hermes Cloud 托管',
+      kindLocal: '本地',
+      kindRemote: '远程网关',
+      kindCloud: 'Hermes Cloud',
+      kindSsh: 'SSH',
+      kindLocalDesc: '由本应用管理的 Hermes 运行时。',
+      kindRemoteDesc: '可通过 HTTP(S) 访问的 Hermes 网关——局域网、Tailscale 或互联网。',
+      kindCloudDesc: '通过你的 Hermes Cloud 账户发现的托管实例。',
+      kindSshDesc: '通过 SSH 访问的 Hermes 安装。',
+      labelTitle: '名称',
+      labelDesc: '必填。此实例出现的所有位置都会显示该名称；必须唯一（例如“家庭服务器”、“工作笔记本”）。',
+      labelPlaceholder: '家庭服务器',
+      urlTitle: '网关 URL',
+      sshHostTitle: 'SSH 主机',
+      headersTitle: '额外网关请求头',
+      headersDesc:
+        '随发往此网关的每个 HTTP 和 WebSocket 请求一起发送——用于 Cloudflare Access 等访问代理（CF-Access-Client-Id / CF-Access-Client-Secret）。值加密存储。由 Hermes 管理的请求头（Authorization、Cookie、Host 等）会被忽略。',
+      headerValuePlaceholder: '值',
+      headerValueSaved: '已保存——留空以保留',
+      headerAdd: '添加请求头',
+      headerRemove: '移除',
+      duplicateLocal: '本应用已管理一个本地连接——只能有一个。',
+      duplicateUrl: (label: string) => `已存在指向此网关 URL 的连接（“${label}”）。`,
+      duplicateSsh: (label: string) => `已存在指向此 SSH 主机的连接（“${label}”）。`,
+      sameBackendHint: (label: string) => `与“${label}”是同一后端`,
+      localAddHint: '“本地”不可用：应用管理的本地连接已存在（永远只有一个）。',
+      cloudAddHint: '提示：在上方登录 Hermes Cloud 可自动发现你的智能体——此表单仅用于手动注册已知的实例 URL。',
+      save: '保存连接',
+      saving: '保存中…',
+      cancel: '取消',
+      empty: '尚未注册任何连接。'
+    },
+    managedUpdates: {
+      title: '托管更新',
+      intro:
+        '以事务方式更新由桌面端托管的 SSH 安装：先排空会话，再更新远端检出，最后恢复每个 profile，并生成关联回执。',
+      sshConnection: '桌面端托管的 SSH 安装',
+      update: '更新',
+      updating: '更新中…',
+      progress: '正在排空会话、更新远端安装并恢复 profile…',
+      updated: '已更新',
+      partial: '已更新 — 恢复失败',
+      refused: '已拒绝',
+      failed: '更新失败',
+      alreadyRunning: '更新已在进行中',
+      receipt: (id: string, outcome: string) => `回执 ${id} · ${outcome}`,
+      receiptVersions: (pre: string, post: string) => `${pre} → ${post}`,
+      scopesRestored: (profiles: string) => `已恢复的 profile：${profiles}`,
+      scopeNotRestored: (profile: string, error: string) => `Profile“${profile}”未恢复：${error}`
+    },
     gateway: {
       loading: '正在加载网关设置...',
       unavailableTitle: '网关设置不可用',
@@ -850,6 +1026,17 @@ export const zh = defineLocale({
       existingToken: value => `现有 token ${value}`,
       savedToken: '已保存',
       pasteSessionToken: '粘贴会话 token',
+      plainTextConfirmTitle: '以明文存储网关 token？',
+      plainTextConfirmDesc:
+        '在此设备上未找到操作系统的密钥环服务，因此 token 将以未加密的明文保存在应用的连接设置文件中，以该用户身份运行的任何进程都可读取。请安装或启用 GNOME Keyring 或 KWallet 以进行加密存储。',
+      plainTextConfirmAction: '以明文保存',
+      plainTextStoredTitle: 'Token 以明文存储',
+      plainTextStoredDesc:
+        '安全存储不可用，因此已保存的 token 以未加密方式存储在此设备上应用的连接设置文件中。请安装或启用 GNOME Keyring 或 KWallet 以对其加密。',
+      keychainEncryptionTitle: '使用系统钥匙串加密已保存的机密',
+      keychainEncryptionDesc:
+        '默认关闭。开启后，网关 token 和登录凭据将使用系统钥匙串（Keychain Access、GNOME Keyring 或 Windows DPAPI）加密——系统可能会请求授权或密码。关闭时，它们以仅当前用户可读的普通文件形式存储。',
+      keychainEncryptionFailed: '无法更改机密加密设置',
       testRemote: '测试远程',
       saveForRestart: '保存到下次重启',
       saveAndReconnect: '保存并重连',
@@ -881,6 +1068,14 @@ export const zh = defineLocale({
       loading: '正在加载 API 密钥和凭据...',
       failedLoad: 'API 密钥加载失败',
       empty: '此类别暂时没有配置项。'
+    },
+    search: {
+      placeholder: '搜索所有设置...',
+      pill: '搜索'
+    },
+    profileScope: {
+      appliesTo: '应用于',
+      editsProfile: profile => `此页面的更改将应用于“${profile}”配置文件。`
     },
     mcp: {
       loading: '正在加载 MCP 服务器...',
@@ -934,6 +1129,9 @@ export const zh = defineLocale({
       catalogEnvRequired: '安装前请填写必需的值。',
       capabilitySummary: (tools, prompts, resources) =>
         `已启用 ${[`${tools} 个工具`, ...(prompts ? [`${prompts} 个提示`] : []), ...(resources ? [`${resources} 个资源`] : [])].join('、')}`,
+      costTokens: tokens => `每次调用约 ${tokens} token`,
+      usage30d: uses => `30 天内 ${uses} 次调用`,
+      unusedPill: '未使用',
       statusConnecting: '连接中…',
       statusNeedsAuth: '需要认证',
       statusError: '错误',
@@ -946,7 +1144,25 @@ export const zh = defineLocale({
       unsavedConnect: '未保存 — 保存 mcp.json 以连接。',
       enableTool: tool => `启用 ${tool}`,
       disableTool: tool => `禁用 ${tool}`,
-      noOutput: '暂无输出。'
+      noOutput: '暂无输出。',
+      deepLinkTitle: '添加 MCP 服务器？',
+      deepLinkDescription:
+        '一个链接请求将此 MCP 服务器添加到 Hermes。请检查下方的完整配置——它来自该链接，而非 Hermes。',
+      deepLinkStdioWarning: '此服务器会使用下方所示命令在你的电脑上运行本地进程。仅在信任其来源时继续。',
+      deepLinkConfirm: '添加服务器',
+      deepLinkNameInvalid: '名称须为 1-64 个字母、数字、点、连字符或下划线。',
+      deepLinkNameConflict: name => `已存在名为 ${name} 的服务器——请改用其他名称或取消。`,
+      deepLinkErrorTitle: 'MCP 安装链接已拒绝',
+      deepLinkErrorName: '链接中的服务器名称缺失或无效。',
+      deepLinkErrorConfig: '链接中的配置不是有效的 base64 编码 JSON。',
+      deepLinkErrorShape: '配置必须是包含字符串 `url` 或 `command` 字段的 JSON 对象。',
+      deepLinkErrorUrl: '仅允许 http:// 和 https:// 服务器地址。',
+      deepLinkErrorTooLarge: '配置负载超过 32KB 上限。',
+      importButton: '导入',
+      importPlaceholder: '粘贴 mcp.json 片段、npx/docker 命令、claude mcp add 命令、URL 或 Cursor 链接…',
+      importNoMatch: '粘贴的文本中未识别到服务器配置。',
+      importConfirm: '添加到 mcp.json',
+      importConfirmMany: count => `添加 ${count} 个服务器到 mcp.json`
     },
     model: {
       selectTitle: '选择模型(可多选)',
@@ -981,12 +1197,12 @@ export const zh = defineLocale({
       noModels: '还没有可用模型,请在「设置 › 提供方」中添加。',
       tasks: {
         vision: { label: '视觉', hint: '图片分析' },
-        web_extract: { label: '网页提取', hint: '页面总结' },
         compression: { label: '压缩', hint: '上下文压缩' },
         skills_hub: { label: '技能中心', hint: '技能搜索' },
         approval: { label: '审批', hint: '智能自动批准' },
         mcp: { label: 'MCP', hint: 'MCP 工具路由' },
         title_generation: { label: '标题生成', hint: '会话标题' },
+        review: { label: '评审', hint: '/review 评审子智能体' },
         curator: { label: '维护器', hint: '技能使用审查' }
       }
     },
@@ -1143,6 +1359,16 @@ export const zh = defineLocale({
         selectedMessage: backend => `终端命令现在通过 ${backend} 运行。将应用于新会话。`,
         failedSelect: backend => `选择 ${backend} 失败`,
         needsSetupHint: '现在即可选择此后端——但在完成设置前命令将会失败。'
+      },
+      browserRealProfile: {
+        label: '使用我的真实浏览器配置文件',
+        description:
+          '将默认浏览器的登录信息和 Cookie 复制到托管快照中，代理使用该快照进行浏览。绝不会直接打开你的真实配置文件。将应用于新会话。',
+        enabledTitle: '真实配置文件浏览：已开启',
+        enabledMessage: '新会话将使用默认浏览器配置文件的快照进行浏览。',
+        disabledTitle: '真实配置文件浏览：已关闭',
+        disabledMessage: '配置文件快照将被删除；新会话使用干净的浏览器。',
+        failedSave: '无法保存真实配置文件设置'
       }
     },
     agentAuth: {
@@ -1245,8 +1471,8 @@ export const zh = defineLocale({
   skills: {
     tabSkills: '技能',
     tabToolsets: '工具集',
+    configuringProfile: '正在配置：',
     tabMcp: 'MCP',
-    tabHub: '浏览技能中心',
     all: '全部',
     searchSkills: '搜索技能…',
     searchToolsets: '搜索工具集…',
@@ -1339,6 +1565,11 @@ export const zh = defineLocale({
       updateStarted: '正在更新已安装技能…',
       actionFailed: '技能操作失败',
       actionLog: '操作日志',
+      alreadyInstalled: name => `“${name}”已安装`,
+      pickerTitle: '技能中心',
+      pickerBrowse: '浏览完整技能中心',
+      pickerHide: '隐藏技能中心浏览器',
+      pickerHint: '点击任意技能上的“+ Add to this Agent”即可安装，安装后会出现在上方列表中。',
       loadFailed: '技能中心加载失败',
       previewFailed: '技能预览失败',
       scanFailed: '安全扫描失败',
@@ -1510,6 +1741,7 @@ export const zh = defineLocale({
     gatewayStopped: '消息网关已停止',
     hermesActiveSessions: (version, count) => `AI 引擎 ${version} · 活跃会话 ${count}`,
     restartGateway: '重启网关',
+    openBrowser: '打开浏览器',
     gatewayRestartFailed: '网关重启失败。',
     checkDesktopUpdate: '检查 APEX 更新',
     checkingDesktopUpdate: '正在检查更新…',
@@ -1729,9 +1961,17 @@ export const zh = defineLocale({
     search: '搜索配置档案…',
     loading: '正在加载配置档案…',
     newProfile: '新建配置档案',
+    importProfile: '导入配置档案…',
+    exportProfile: '导出配置档案…',
+    imported: '配置档案已导入',
+    exported: '配置档案已导出',
+    failedImport: '导入配置档案失败',
+    failedExport: '导出配置档案失败',
     allProfiles: '全部配置档案',
     showAllProfiles: '显示全部配置档案',
     switchToProfile: name => `切换到 ${name}`,
+    switchToConnection: name => `切换到 ${name}`,
+    switchConnectionFailed: name => `无法连接到 ${name}`,
     manageProfiles: '管理配置档案…',
     actions: '配置档案操作',
     color: '颜色…',
@@ -1748,6 +1988,7 @@ export const zh = defineLocale({
     defaultBadge: '默认',
     rename: '重命名',
     renameMenu: '重命名…',
+    exportMenu: '导出…',
     editSoul: '编辑 SOUL.md…',
     copySetup: '复制安装命令',
     copying: '复制中…',
@@ -1781,6 +2022,9 @@ export const zh = defineLocale({
     creating: '创建中…',
     createAction: '创建配置档案',
     renameTitle: '重命名配置档案',
+    displayNameTitle: '为智能体命名',
+    displayNameDesc: '设置一个在整个应用中显示的名称。内部配置档案 ID 仍为 "default"。',
+    displayNameLabel: '显示名称',
     renameDescPrefix: '重命名会更新配置档案目录以及 ',
     renameDescSuffix: ' 中的所有包装脚本。',
     newNameLabel: '新名称',
@@ -1803,6 +2047,17 @@ export const zh = defineLocale({
     close: '关闭定时任务',
     title: '定时任务',
     count: count => `${count} 个任务`,
+    modelImpact: {
+      title: '定时任务需要检查',
+      message: count => `在您检查模型设置之前，${count} 个定时任务将被跳过。`,
+      detailMore: (names, remaining) => `${names}，以及另外 ${remaining} 个`,
+      review: '检查定时任务',
+      saveFailed: 'Hermes 未保存该模型更改。',
+      confirmTitle: '模型选择警告',
+      confirmDetail: '仅在你接受此权衡时确认。',
+      confirmAction: '确认',
+      declined: '已取消模型更改 — 你拒绝了数据训练层级警告。'
+    },
     search: '搜索定时任务…',
     loading: '正在加载定时任务…',
     states: {
@@ -1981,6 +2236,7 @@ export const zh = defineLocale({
     noWorkspace: '无工作区',
     projectEmpty: '暂无会话',
     noSessions: '暂无会话',
+    noFilterMatches: '没有会话符合这些筛选条件',
     projects: {
       sectionLabel: '项目',
       newButton: '新建项目',
@@ -2007,6 +2263,11 @@ export const zh = defineLocale({
       menuAddFolder: '添加文件夹',
       menuSetActive: '设为活动',
       menuDelete: '删除',
+      moveToProject: '移动到项目',
+      movedTo: name => `已移动到 ${name}`,
+      moveFailed: '无法移动会话',
+      moveNoFolder: '该项目没有可移入的文件夹',
+      moveNoProjects: '没有其他项目',
       reveal: '在文件夹中显示',
       copyPath: '复制路径',
       removeFromSidebar: '从侧边栏移除',
@@ -2021,6 +2282,10 @@ export const zh = defineLocale({
       baseBranchPlaceholder: '搜索分支…',
       baseBranchNone: '未找到分支',
       startWorkFailed: '无法创建工作树',
+      worktreeStaleBackend: '请更新 Hermes 后端以在此远程连接上创建工作树 —— 该后端早于 git 工作树 API。',
+      worktreeProjectLabel: '项目',
+      worktreeProjectPlaceholder: '搜索项目…',
+      worktreeProjectNone: '没有包含文件夹的项目',
       convertBranch: '转换分支…',
       convertBranchTitle: '转换分支',
       convertBranchDesc: '打开已检出的分支，或为可用分支创建工作树。',
@@ -2029,6 +2294,7 @@ export const zh = defineLocale({
       branchOpenExisting: '打开',
       branchSwitchHome: '切回主检出',
       branchCreateWorktree: '新工作树',
+      branchTrackRemote: '跟踪远程',
       branchesLoading: '正在加载分支…',
       noBranches: '未找到分支',
       removeWorktree: '移除工作树',
@@ -2047,15 +2313,21 @@ export const zh = defineLocale({
     loading: '加载中…',
     loadMore: '加载更多',
     loadCount: step => `再加载 ${step} 个`,
+    messageCount: count => `${count} 条消息`,
+    toolCallCount: count => `${count} 次工具调用`,
     row: {
       pin: '置顶',
       unpin: '取消置顶',
+      markUnread: '标记为未读',
+      markRead: '标记为已读',
+      unreadFailed: '无法更新未读状态',
       copyId: '复制 ID',
       export: '导出',
       branchFrom: '分支',
-      rename: '重命名',
+      rename: '重命名…',
       archive: '归档',
       newWindow: '新窗口',
+      openInTerminal: '在终端中打开',
       hideTabBar: '隐藏标签栏',
       openInNewTab: '在新标签页中打开',
       openInSplit: '在分屏中打开',
@@ -2066,6 +2338,7 @@ export const zh = defineLocale({
       waitingForAnswer: '正在等待你的回答',
       finishedUnread: '已完成 — 未读',
       backgroundRunning: '后台任务运行中',
+      draftSession: '草稿 — 尚未发送',
       handoffOrigin: platform => `从 ${platform} 转接`,
       ownedByProfile: profile => `配置档：${profile}`,
       renamed: '已重命名',
@@ -2073,7 +2346,13 @@ export const zh = defineLocale({
       renameTitle: '重命名会话',
       renameDesc: '给这个对话起一个好记的标题。留空则清除。',
       untitledPlaceholder: '无标题会话',
+      deleteTitle: '删除会话？',
+      deleteDesc: title => `这将永久删除“${title}”，且无法撤销。`,
+      deleting: '正在删除…',
+      deleted: '会话已删除',
       untitledChat: id => `会话 ${id}`,
+      messageCount: count => `${count} 条消息`,
+      todoProgress: '任务完成度',
       ageNow: '刚刚',
       ageDay: '天',
       ageHour: '时',
@@ -2151,6 +2430,7 @@ export const zh = defineLocale({
     endShort: '结束',
     stopDictation: '停止听写',
     transcribingDictation: '正在转写听写',
+    voiceControls: '语音',
     voiceDictation: '语音听写',
     speakReplies: '朗读回复',
     stopSpeakingReplies: '停止朗读回复',
@@ -2192,6 +2472,7 @@ export const zh = defineLocale({
     editingQueuedInComposer: '正在输入框中编辑排队回合',
     queueEdit: '编辑',
     queueSendNext: '下一个',
+    queueSteer: '引导 — 立即修正当前回合',
     queueSend: '发送',
     queueDelete: '删除',
     queueStuckTitle: '排队消息未发送',
@@ -2221,6 +2502,43 @@ export const zh = defineLocale({
     snippetsDesc: '选择一个起始提示词放入输入框。',
     dropFiles: '拖放文件以附加',
     dropSession: '拖放以链接此对话',
+    mcpSuggestions: {
+      label: server => `添加 ${server}`,
+      tip: keyword => `因为你提到了“${keyword}”而推荐 — 点击连接`,
+      connecting: server => `正在连接 ${server}…`,
+      cancelTip: '点击取消',
+      added: server => `已添加 ${server}`,
+      addedTip: '已连接 — 其工具已在此对话中可用',
+      connectFailed: server => `无法连接 ${server}`
+    },
+    skillSuggestions: {
+      label: skill => `使用技能: ${skill}`,
+      tip: skill => `你提到了“${skill}” — 点击以该技能开头`,
+      done: skill => `已添加 /${skill}`,
+      doneTip: '发送时将加载该技能'
+    },
+    githubSuggestions: {
+      label: '设置 GitHub',
+      tip: '这里通过 gh CLI 技能使用 GitHub — 点击连接你的账号',
+      done: '已添加 /github-auth',
+      doneTip: '发送消息后，agent 将引导你完成 GitHub 登录'
+    },
+    repairSuggestions: {
+      label: server => `重新连接 ${server}`,
+      tip: server => `${server} 调用刚因连接错误失败`,
+      working: server => `正在重新连接 ${server}…`,
+      workingTip: '点击取消',
+      done: server => `已重新连接 ${server}`,
+      doneTip: '新凭据已在此对话中生效',
+      failed: server => `无法重新连接 ${server}`
+    },
+    cronSuggestions: {
+      label: '定时执行',
+      tip: phrase => `“${phrase}”听起来是周期性任务 — 可以按计划运行`,
+      prefix: '将此设置为定时任务:',
+      done: '已标记为定时任务',
+      doneTip: '发送后由智能体创建任务'
+    },
     snippets: {
       codeReview: {
         label: '代码审查',
@@ -2324,7 +2642,7 @@ export const zh = defineLocale({
       scopeLastTurn: '上一轮',
       commit: '提交',
       commitAndPush: '提交并推送',
-      commitPlaceholder: '信息（⌘↵ 提交）',
+      commitPlaceholder: shortcut => `信息（${shortcut} 提交）`,
       generateCommitMessage: '生成提交信息',
       stopGenerating: '停止生成',
       createPr: '创建 PR',
@@ -2386,7 +2704,25 @@ export const zh = defineLocale({
     applyingClose: '此窗口会在更新期间关闭，随后 APEX 会自动重新打开。',
     errorTitle: '更新未完成',
     errorBody: '没有数据丢失。你可以现在重试。',
+    blockerTitle: '关闭本地预览以更新 Hermes？',
+    blockerBody: 'Hermes 需要在更新前停止这些本地预览。这不会修改或删除你的文件。',
+    foreignBlockerTitle: '关闭其他进程以更新 Hermes',
+    foreignBlockerBody: 'Hermes 无法安全地自动关闭这些进程。请关闭拥有这些进程的应用、终端或服务，然后重试更新。',
+    mixedBlockerBody: 'Hermes 可以关闭下方列出的本地预览。其他进程必须手动关闭，更新才能继续。',
+    closePreviewsAndUpdate: '关闭预览并更新',
+    closePreviewsAndCheckAgain: '关闭预览并重新检查',
+    localPreview: '本地预览',
+    portLabel: port => `端口 ${port}`,
+    pidLabel: pid => `PID ${pid}`,
+    technicalDetails: '技术详情',
     notNow: '暂不',
+    clientAlsoBehindTitle: '桌面应用版本落后',
+    clientAlsoBehindMessage: '后端已是最新，但此桌面应用仍是旧版本。请更新以获得最新修复。',
+    clientAlsoBehindAction: '更新桌面应用',
+    everythingDispatched: '更新已分发',
+    everythingSkipped: '已跳过',
+    everythingRowFailed: '更新失败',
+    everythingFanoutFailedTitle: '无法更新其他实例',
     applyStatus: {
       preparing: '正在更新后端…',
       pulling: '后端更新中…',
@@ -2665,6 +3001,7 @@ export const zh = defineLocale({
       inferenceNotReady: '推理未就绪',
       checkingInference: '正在检查推理',
       disconnected: '已断开',
+      reconnectGateway: '重连网关',
       openSystem: '打开系统面板',
       connection: label => `连接：${label}`,
       recentActivity: '最近活动',
@@ -2700,6 +3037,7 @@ export const zh = defineLocale({
       gateway: '网关',
       gatewayReady: '就绪',
       gatewayNeedsSetup: '需要设置',
+      gatewayUnavailable: '推理不可用',
       gatewayChecking: '检查中',
       gatewayConnecting: '连接中',
       gatewayOffline: '离线',
@@ -2789,10 +3127,6 @@ export const zh = defineLocale({
 
   preview: {
     tab: '预览',
-    closeTab: label => `关闭 ${label}`,
-    closeOthers: '关闭其他',
-    closeToRight: '关闭右侧',
-    closeAll: '全部关闭',
     closePane: '关闭预览面板',
     loading: '正在加载预览',
     unavailable: '预览不可用',
@@ -2800,6 +3134,9 @@ export const zh = defineLocale({
     hide: '隐藏',
     openPreview: '打开预览',
     openInBrowser: '在浏览器中打开',
+    openInExternal: '在外部打开',
+    popIn: '弹回',
+    popOut: '弹出',
     linkHint: '⌘/Ctrl+点击在预览面板打开',
     sourceLineTitle: '点击选择 · shift 点击扩展 · 拖到输入框',
     source: '源码',
@@ -2845,6 +3182,8 @@ export const zh = defineLocale({
     web: {
       appFailedToBoot: '预览应用启动失败',
       serverNotFound: '未找到服务器',
+      remoteLoopback:
+        '该地址指向运行代理的那台机器，而不是本机。浏览器面板在本地加载页面，因此远程开发服务器需要端口转发或可访问的主机名。',
       failedToLoad: '预览加载失败',
       tryAgain: '重试',
       restarting: 'APEX 正在重启...',
@@ -2880,8 +3219,13 @@ export const zh = defineLocale({
   },
 
   zones: {
-    showHeader: '显示标题栏',
-    hideHeader: '隐藏标题栏',
+    showTabStrip: '显示标签',
+    hideTabStrip: '隐藏标签',
+    showStripTab: title => `显示 ${title}`,
+    hideStripTab: title => `隐藏 ${title}`,
+    lastTabKeptTitle: '保留最后一个标签',
+    lastTabKeptBody: '该区域至少需要一个可见标签。请先显示另一个标签，或折叠整个侧边栏。',
+    toggleStripTab: title => `切换 ${title} 标签`,
     minimize: '最小化',
     restore: '还原',
     closeRunningTitle: '关闭正在运行的标签？',
@@ -2915,7 +3259,32 @@ export const zh = defineLocale({
     layoutNamePlaceholder: fallback => `布局名称（${fallback}）`,
     saveApply: '保存并应用',
     notExpressible: '此排列互相咬合（风车形）——暂无法表示为嵌套拆分',
-    zoneCount: count => `${count} 个区域`
+    zoneCount: count => `${count} 个区域`,
+    tabCount: count => `${count} 个标签页`
+  },
+
+  contextMenu: {
+    link: {
+      openInApp: '在应用内浏览器中打开',
+      openExternal: '在外部浏览器中打开',
+      copyUrl: '复制 URL',
+      copyResolvedUrl: '复制解析后的 URL'
+    },
+    image: {
+      copyImage: '复制图片',
+      copyImageAddress: '复制图片地址',
+      saveImageAs: '图片另存为…'
+    },
+    edit: {
+      cut: '剪切',
+      paste: '粘贴',
+      selectAll: '全选',
+      addToDictionary: '添加到词典'
+    },
+    page: {
+      copyPageUrl: '复制页面 URL',
+      inspectElement: '检查元素'
+    }
   },
 
   assistant: {
@@ -2981,6 +3350,28 @@ export const zh = defineLocale({
       skip: '跳过',
       skipped: '已跳过',
       continueLabel: '继续'
+    },
+    mcpSetup: {
+      installTitle: server => `添加 ${server} MCP 服务器？`,
+      enableTitle: server => `启用 ${server} MCP 服务器？`,
+      authorizeTitle: server => `授权 ${server} MCP 服务器？`,
+      installAction: '安装',
+      enableAction: '启用',
+      authorizeAction: '授权',
+      decline: '暂不',
+      declined: '已拒绝',
+      installed: server => `已安装 ${server}`,
+      enabled: server => `已启用 ${server}`,
+      authorized: server => `已授权 ${server}`,
+      failed: server => `${server} 设置失败`,
+      unanswered: '未响应',
+      toolCount: count => `${count} 个工具`,
+      notInCatalog: server => `“${server}”不在 MCP 目录中`,
+      catalogSource: '来自 Nous 认证目录',
+      envRequired: '请先填写所需凭据',
+      sendFailed: '无法发送 MCP 设置响应',
+      reloadFailed: '服务器已保存，但重新加载 MCP 工具失败 — 将在下个会话加载',
+      gatewayDisconnected: 'Hermes 网关未连接'
     },
     tool: {
       copyCode: '复制代码',
@@ -3095,7 +3486,12 @@ export const zh = defineLocale({
     stopFailed: '停止失败',
     regenerateFailed: '重新生成失败',
     editFailed: '编辑失败',
+    editTurnUnavailable: '此回合已不在服务器历史中（可能已被压缩移除）。',
     resumeFailed: '恢复失败',
+    readOnlyTranscriptTitle: '已以只读方式打开',
+    readOnlyTranscriptBody:
+      '尚无已连接的后端认领这个较早的会话，因此它以只读记录方式打开。历史记录完好；在有后端认领之前无法发送消息。',
+    readOnlyTranscriptSendBlocked: '该会话目前以只读记录方式打开——发送已禁用。',
     resumeStrandedTitle: '无法加载此会话',
     resumeStrandedBody: '与此会话的连接失败，自动重试已停止。请确认网关正在运行，然后重试。',
     resumeRetry: '重试',
@@ -3113,6 +3509,7 @@ export const zh = defineLocale({
     cwdStagedTitle: '工作目录已暂存',
     cwdStagedMessage: '重启桌面后端后，工作目录更改才会应用到当前活跃会话。',
     modelSwitchFailed: '模型切换失败',
+    hydrationSyncing: (profile: string) => `正在同步 ${profile}\u2026`,
     sessionExported: '会话已导出',
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',
@@ -3138,6 +3535,52 @@ export const zh = defineLocale({
       systemNote: platform => `↻ 已移交到 ${platform} — 随时可在此处恢复。`,
       failed: error => `移交失败：${error}`,
       timedOut: '等待网关超时。`hermes gateway` 是否正在运行？'
+    }
+  },
+
+  tips: {
+    close: '不再显示这条提示',
+    items: {
+      'new-session': {
+        title: '从头开始',
+        text: '新对话拥有独立的上下文、终端和工作目录。'
+      },
+      skills: {
+        title: '教一次就够',
+        text: '技能是一组说明文件，Hermes 会在需要时自行加载。'
+      },
+      messaging: {
+        title: '离开电脑也能用',
+        text: '接入 Telegram、Discord、Slack 等 — 同一个智能体，同一份记忆。'
+      },
+      artifacts: {
+        title: 'Hermes 做过的一切',
+        text: '所有会话里的图片、文件和链接，都汇总在这里。'
+      },
+      cron: {
+        title: '会自己运行的任务',
+        text: '让一条提示按小时、按夜间，或按 cron 表达式定时执行。'
+      },
+      'command-palette': {
+        title: '一个输入框搞定一切',
+        text: '会话、设置、技能和命令都能从命令面板找到。'
+      },
+      profiles: {
+        title: '配置文件彼此独立',
+        text: '每个都是独立的 Hermes — 自己的密钥、记忆和会话。'
+      },
+      'composer-mentions': {
+        title: '附件与命令',
+        text: '输入 @ 把文件带入对话，输入 / 运行命令。'
+      },
+      'model-switch': {
+        title: '对话中随时换模型',
+        text: '模型名称就是按钮。工作性质变了就换一个。'
+      },
+      'right-pane': {
+        title: '工作面板',
+        text: '文件、终端、审阅和内置浏览器都在侧边面板里。'
+      }
     }
   },
 
