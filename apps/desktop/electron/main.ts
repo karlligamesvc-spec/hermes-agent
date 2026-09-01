@@ -16835,24 +16835,6 @@ registerFsIpc({
   resolveGitBinary
 })
 
-// Resolve the LOCAL desktop plugin root from this Electron process. A remote
-// backend's hermes_home points at another machine and must never leak into this
-// path; named profiles remain isolated exactly like their local runtime homes.
-ipcMain.handle('hermes:fs:desktopPluginsRoot', async () => {
-  const profile = readActiveDesktopProfile()
-  const base = profile && profile !== 'default' ? path.join(HERMES_HOME, 'profiles', profile) : HERMES_HOME
-  const dir = path.join(base, 'desktop-plugins')
-
-  try {
-    await fs.promises.mkdir(dir, { recursive: true })
-  } catch {
-    // Best effort: callers still receive the real path and can surface a useful
-    // open/scan error instead of silently falling back to a remote path.
-  }
-
-  return dir
-})
-
 // Git-driven features (worktrees, review pane, repo scan) — see git-ipc.ts.
 registerGitIpc({ resolveGitBinary, resolveGhBinary })
 
