@@ -91,6 +91,14 @@ describe('identity: the first screen is ours', () => {
     expect(logo?.getAttribute('src')).toContain('apple-touch-icon.png')
   })
 
+  it('keeps both auth-gate surfaces opaque when window glass is enabled', () => {
+    const { container } = renderLoginScreen()
+    const authGate = readSource('src', 'app', 'desktop-auth-gate.tsx')
+
+    expect(container.firstElementChild?.hasAttribute('data-glass-opaque')).toBe(true)
+    expect(authGate.match(/data-glass-opaque/g)).toHaveLength(1)
+  })
+
   it('keeps the managed login ahead of upstream’s provider picker', () => {
     // Boot order is what stops upstream's Nous Portal / Google panel from ever
     // being the first thing a managed user sees: the auth gate blocks the
