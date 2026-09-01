@@ -16740,11 +16740,6 @@ ipcMain.handle('hermes:stop-find-in-page', event => {
   stopFind(win.webContents)
 })
 
-ipcMain.handle('hermes:openExternal', (_event, url) => {
-  if (!openExternalUrl(url)) {
-    throw new Error('Invalid external URL')
-  }
-})
 // The renderer can't know whether a loopback URL is reachable — only main
 // knows which transport backs this gateway. Ask before loading one.
 ipcMain.handle('hermes:preview:reach', async (event, url) => reachablePreviewUrl(event.sender.id, String(url || '')))
