@@ -15,15 +15,20 @@ INSTALL_SCRIPTS = (
     REPO_ROOT / "scripts" / "install.sh",
     REPO_ROOT / "setup-hermes.sh",
 )
-_HELPER_START = "run_locked_uv_sync() {\n"
+_HELPER_NAMES = {
+    "install.sh": "_uv_sync_locked",
+    "setup-hermes.sh": "run_locked_uv_sync",
+}
 
 
 def _locked_sync_helper(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
-    _, marker, rest = text.partition(_HELPER_START)
-    assert marker, f"{path.name} is missing run_locked_uv_sync()"
+    helper_name = _HELPER_NAMES[path.name]
+    marker_text = f"{helper_name}() {{\n"
+    _, marker, rest = text.partition(marker_text)
+    assert marker, f"{path.name} is missing {helper_name}()"
     body, end, _ = rest.partition("\n}\n")
-    assert end, f"{path.name} has an unterminated run_locked_uv_sync()"
+    assert end, f"{path.name} has an unterminated {helper_name}()"
     return marker + body + end
 
 
@@ -41,20 +46,40 @@ def test_installers_keep_bootstrap_isolation_but_restore_project_config_for_lock
 
     assert "export UV_NO_CONFIG=1" in install_text
     assert "export UV_NO_CONFIG=1" in setup_text
-    assert _locked_sync_helper(INSTALL_SCRIPTS[0]) == _locked_sync_helper(
-        INSTALL_SCRIPTS[1]
-    )
+    helpers = [_locked_sync_helper(path) for path in INSTALL_SCRIPTS]
+    for helper in helpers:
+        unset_names = {
+            name
+            for line in helper.splitlines()
+            if line.lstrip().startswith("unset ")
+            for name in line.split()[1:]
+        }
+        assert {"UV_NO_CONFIG", "UV_CONFIG_FILE"} <= unset_names
+        assert 'export XDG_CONFIG_HOME="$isolated_uv_config"' in helper
+        assert 'export XDG_CONFIG_DIRS="$isolated_uv_config"' in helper
+        assert "$UV_CMD sync --extra all --locked" in helper
 
-    helper = _locked_sync_helper(INSTALL_SCRIPTS[0])
-    assert "unset UV_NO_CONFIG UV_CONFIG_FILE" in helper
-    assert 'export XDG_CONFIG_HOME="$isolated_uv_config"' in helper
-    assert 'export XDG_CONFIG_DIRS="$isolated_uv_config"' in helper
-    assert "$UV_CMD sync --extra all --locked" in helper
-    assert 'run_locked_uv_sync "$INSTALL_DIR/venv"' in install_text
+    # install.sh additionally strips mirror index variables and owns its fixed
+    # project venv; setup-hermes keeps the reusable project_env argument. They
+    # intentionally no longer have byte-identical helper bodies.
+    assert 'UV_PROJECT_ENVIRONMENT="$INSTALL_DIR/venv"' in helpers[0]
+    assert "_uv_sync_locked --check" in install_text
+    assert "elif _uv_sync_locked; then" in install_text
+    assert 'UV_PROJECT_ENVIRONMENT="$project_env"' in helpers[1]
     assert 'run_locked_uv_sync "$SCRIPT_DIR/venv"' in setup_text
 
 
-def test_locked_sync_helper_sanitizes_only_its_subprocess(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("installer", "prelude", "invocation"),
+    [
+        (INSTALL_SCRIPTS[0], 'INSTALL_DIR="/tmp/hermes"\n', "_uv_sync_locked\n"),
+        (INSTALL_SCRIPTS[1], "", "run_locked_uv_sync /tmp/hermes-venv\n"),
+    ],
+    ids=("install", "setup"),
+)
+def test_locked_sync_helper_sanitizes_only_its_subprocess(
+    tmp_path: Path, installer: Path, prelude: str, invocation: str
+) -> None:
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash is unavailable")
@@ -85,10 +110,11 @@ export UV_CONFIG_FILE=/poison/uv.toml
 export XDG_CONFIG_HOME=/poison/user
 export XDG_CONFIG_DIRS=/poison/system
 """
-        + _locked_sync_helper(INSTALL_SCRIPTS[0])
-        + """
-run_locked_uv_sync /tmp/hermes-venv
-test "$UV_NO_CONFIG" = 1
+        + prelude
+        + _locked_sync_helper(installer)
+        + "\n"
+        + invocation
+        + """test "$UV_NO_CONFIG" = 1
 test "$UV_CONFIG_FILE" = /poison/uv.toml
 test "$XDG_CONFIG_HOME" = /poison/user
 test "$XDG_CONFIG_DIRS" = /poison/system

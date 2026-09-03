@@ -75,7 +75,8 @@ def test_blobless_partial_clone_fallback_exists():
         "(many small packs — what gets past the repo-scoped 429)"
     )
     assert re.search(
-        r"git clone --depth 1 --single-branch --filter=blob:none \\\n"
+        r"git clone (?:--config core\.autocrlf=false )?--depth 1 "
+        r"--single-branch --filter=blob:none \\\n"
         r"\s*--no-checkout --branch \"\$BRANCH\"",
         branch,
     ), (
