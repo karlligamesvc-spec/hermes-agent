@@ -48,7 +48,9 @@ jobs:
             runner: macos-latest
             marker: macos_only
           - name: Windows-only tests
-            runner: windows-latest-32-core
+            # The ApexNodes fork has the standard GitHub-hosted Windows pool;
+            # upstream's named 32-core runner is not registered here.
+            runner: windows-latest
             marker: windows_only
     steps:
       - name: Checkout code
