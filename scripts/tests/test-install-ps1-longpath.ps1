@@ -179,20 +179,35 @@ function Invoke-Normalization {
     # normalized is an object keyed by variable name; flatten to a hashtable so
     # callers can ask "was TEMP rewritten, and to what".
     $rewrites = @{}
-    if ($paths -and $paths.normalized) {
+    if (($null -ne $paths) -and ($null -ne $paths.normalized)) {
         foreach ($prop in $paths.normalized.PSObject.Properties) {
             $rewrites[$prop.Name] = "$($prop.Value)"
         }
     }
 
-    return @{
+    # The Windows PowerShell 5.1 lane has observed the raw JSON carrying these
+    # fields while a value calculated inline in the return hashtable arrived
+    # at the caller as $null. Avoid that version-sensitive combination: read
+    # each property explicitly, then return a non-enumerated PSCustomObject so
+    # pwsh 7 and Windows PowerShell 5.1 share one result contract.
+    $installDir = $null
+    $hermesHome = $null
+    $longRoot = $null
+    if ($null -ne $paths) {
+        $installDir = $paths.PSObject.Properties['install_dir'].Value
+        $hermesHome = $paths.PSObject.Properties['hermes_home'].Value
+        $longRoot = $paths.PSObject.Properties['long_profile_root'].Value
+    }
+
+    $result = [PSCustomObject][ordered]@{
         ExitCode   = $exitCode
         Stdout     = $stdout
         Rewrites   = $rewrites
-        InstallDir = $(if ($paths) { $paths.install_dir } else { $null })
-        HermesHome = $(if ($paths) { $paths.hermes_home } else { $null })
-        LongRoot   = $(if ($paths) { $paths.long_profile_root } else { $null })
+        InstallDir = $installDir
+        HermesHome = $hermesHome
+        LongRoot   = $longRoot
     }
+    Write-Output -NoEnumerate $result
 }
 
 function Get-Rewrite {
