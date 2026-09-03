@@ -205,10 +205,10 @@ export default defineConfig(({ command }) => ({
       '@hermes/shared/billing-policy': path.resolve(import.meta.dirname, '../shared/src/billing-policy.ts'),
       '@hermes/shared/charge-settlement': path.resolve(import.meta.dirname, '../shared/src/charge-settlement.ts'),
       '@hermes/shared': path.resolve(import.meta.dirname, '../shared/src'),
-      react: path.resolve(import.meta.dirname, '../../node_modules/react'),
-      'react-dom': path.resolve(import.meta.dirname, '../../node_modules/react-dom'),
-      'react/jsx-dev-runtime': path.resolve(import.meta.dirname, '../../node_modules/react/jsx-dev-runtime.js'),
-      'react/jsx-runtime': path.resolve(import.meta.dirname, '../../node_modules/react/jsx-runtime.js')
+      react: reactDir,
+      'react-dom': reactDomDir,
+      'react/jsx-dev-runtime': path.join(reactDir, 'jsx-dev-runtime.js'),
+      'react/jsx-runtime': path.join(reactDir, 'jsx-runtime.js')
     },
     dedupe: ['react', 'react-dom', 'react-router', '@tanstack/react-query']
   },
