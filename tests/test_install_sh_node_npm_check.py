@@ -35,8 +35,11 @@ def test_check_node_requires_npm_alongside_node() -> None:
 def test_check_node_managed_requires_npm() -> None:
     """The Hermes-managed Node fallback also requires its npm to exist."""
     text = INSTALL_SH.read_text()
-    assert (
-        '[ -x "$HERMES_HOME/node/bin/node" ] && [ -x "$HERMES_HOME/node/bin/npm" ] \\'
-        in text
-    )
+    body = text[text.index("check_node() {") : text.index("install_node_line() {")]
+    start = body.index('if [ -x "$HERMES_HOME/node/bin/node" ]')
+    condition = body[start : body.index("; then", start)]
 
+    assert '[ -x "$HERMES_HOME/node/bin/node" ]' in condition
+    assert 'node_satisfies_build "$("$HERMES_HOME/node/bin/node" --version)"' in condition
+    assert '[ -x "$HERMES_HOME/node/bin/npm" ]' in condition
+    assert 'npm_supports_npmrc "$("$HERMES_HOME/node/bin/npm" --version 2>/dev/null)"' in condition

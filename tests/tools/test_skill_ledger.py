@@ -29,7 +29,7 @@ Original body.
 def ledger_env(tmp_path, monkeypatch):
     """Isolated HERMES_HOME + skills dir for skill_manage and the ledger."""
     from agent import skill_utils
-    from tools import skill_ledger, skill_manager_tool, skill_usage
+    from tools import skill_ledger, skill_manager_tool, skill_usage, write_approval
 
     home = tmp_path / "home"
     skills_dir = home / "skills"
@@ -39,6 +39,12 @@ def ledger_env(tmp_path, monkeypatch):
     monkeypatch.setattr(skill_usage, "get_hermes_home", lambda: home)
     monkeypatch.setattr(skill_manager_tool, "SKILLS_DIR", skills_dir)
     monkeypatch.setattr(skill_utils, "get_all_skills_dirs", lambda: [skills_dir])
+    # Ledger tests need the mutation to land. Background-review approval
+    # staging has its own contract tests and otherwise returns success=True
+    # with staged=True without creating the fixture skill on disk.
+    monkeypatch.setattr(
+        write_approval, "background_review_skill_autowrite_enabled", lambda: True
+    )
     return {"home": home, "skills": skills_dir}
 
 
