@@ -3,9 +3,12 @@ import { join, resolve } from 'node:path'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { WorkflowRunView } from '@/app/business-workspace/workflow-run-view'
+import { AccountPanel } from '@/app/chat/sidebar/account-panel'
+import { APEX_PRIMARY_NAVIGATION } from '@/app/routes'
 import { Intro } from '@/components/chat/intro'
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
@@ -560,6 +563,107 @@ describe('identity: the brand skin survives', () => {
 
     for (const cls of ['.p5-settings', '.p5-card', '.p5-profile-heatmap', '.p5-update-pill']) {
       expect(styles).toContain(cls)
+    }
+  })
+})
+
+describe('identity: the APEX business shell stays user-facing', () => {
+  it('pins all seven primary destinations in order and names the long-term surface assistant', () => {
+    expect(APEX_PRIMARY_NAVIGATION.map(item => item.id)).toEqual([
+      'start',
+      'projects',
+      'workflows',
+      'scheduled-runs',
+      'deliverables',
+      'assistant',
+      'history'
+    ])
+    expect(APEX_PRIMARY_NAVIGATION.map(item => item.path)).toEqual([
+      '/',
+      '/projects',
+      '/workflows',
+      '/cron',
+      '/deliverables',
+      '/assistant',
+      '/history'
+    ])
+    expect(APEX_PRIMARY_NAVIGATION.some(item => ['accounts', 'agents', 'bots'].includes(item.id))).toBe(false)
+  })
+
+  it('keeps Profile and Settings behind the bottom account control', async () => {
+    const previousAuthState = $authState.get()
+
+    $authState.set({
+      account: { email: 'kael@example.com', name: 'Kael', plan: '' },
+      enabled: true,
+      gateReason: null,
+      loginTruth: true,
+      status: 'signed-in'
+    })
+
+    try {
+      render(
+        <MemoryRouter>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <AccountPanel />
+          </I18nProvider>
+        </MemoryRouter>
+      )
+
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Kael' }), { button: 0, ctrlKey: false })
+
+      expect(await screen.findByRole('menuitem', { name: '个人资料' })).toBeTruthy()
+      expect(screen.getByRole('menuitem', { name: '设置' })).toBeTruthy()
+    } finally {
+      $authState.set(previousAuthState)
+    }
+  })
+
+  it('renders Hermes as the only production executor and offers no DSH picker', async () => {
+    const originalBridge = window.hermesDesktop
+
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: {
+        ...originalBridge,
+        workflowDomain: {
+          getRun: vi.fn().mockResolvedValue({
+            ok: true,
+            overview: {
+              deliverables: [],
+              events: [],
+              run: {
+                attempt: 1,
+                createdAt: '2026-09-03T00:00:00Z',
+                errorMessage: null,
+                executorType: 'hermes',
+                id: 'run-identity',
+                maxAttempts: 1,
+                status: 'succeeded',
+                triggerRef: 'Verify identity'
+              }
+            }
+          })
+        }
+      }
+    })
+
+    try {
+      render(
+        <MemoryRouter initialEntries={['/workflow-runs/run-identity']}>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <Routes>
+              <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+            </Routes>
+          </I18nProvider>
+        </MemoryRouter>
+      )
+
+      expect(await screen.findByText('hermes')).toBeTruthy()
+      expect(screen.queryByRole('combobox')).toBeNull()
+      expect(screen.queryByText(/DeepSeek Harness|DSH/i)).toBeNull()
+    } finally {
+      Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
     }
   })
 })

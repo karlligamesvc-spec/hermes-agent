@@ -9,10 +9,11 @@
 
 import { useStore } from '@nanostores/react'
 import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router'
 
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
+import { useI18n } from '@/i18n'
 import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -20,8 +21,21 @@ import { $freshDraftReady, $gatewayState } from '@/store/session'
 
 import { ChatView } from '../chat'
 import { ChatSidebar } from '../chat/sidebar'
+import { RouteDrivenDrawer } from '../overlays/responsive-route-drawer'
 import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
-import { contributedRoutes, NEW_CHAT_ROUTE, ROUTES_AREA, sessionRoute } from '../routes'
+import {
+  ASSISTANT_ROUTE,
+  contributedRoutes,
+  DELIVERABLES_ROUTE,
+  HISTORY_ROUTE,
+  LEGACY_ACCOUNTS_ROUTE,
+  NEW_CHAT_ROUTE,
+  routeDrawerBackgroundLocation,
+  ROUTES_AREA,
+  sessionRoute,
+  workflowRunIdForPath,
+  WORKFLOWS_ROUTE
+} from '../routes'
 import { useStatusSnapshot } from '../shell/hooks/use-status-snapshot'
 import { useStatusbarItems } from '../shell/hooks/use-statusbar-items'
 import { ModelMenuPanel } from '../shell/model-menu-panel'
@@ -54,6 +68,30 @@ export function LegacySessionRedirect() {
   const { sessionId } = useParams()
 
   return <Navigate replace to={sessionId ? sessionRoute(sessionId) : NEW_CHAT_ROUTE} />
+}
+
+export function LegacyAccountsRedirect() {
+  const location = useLocation()
+
+  return (
+    <Navigate
+      replace
+      state={location.state}
+      to={{ hash: location.hash, pathname: ASSISTANT_ROUTE, search: location.search }}
+    />
+  )
+}
+
+function WorkflowRunRouteDrawer() {
+  const { t } = useI18n()
+
+  return (
+    <RouteDrivenDrawer deepLinkFallback={WORKFLOWS_ROUTE} title={t.businessWorkspace.workflowDomain.run.title}>
+      <Suspense fallback={null}>
+        <WorkflowRunView />
+      </Suspense>
+    </RouteDrivenDrawer>
+  )
 }
 
 export const SidebarSurface = memo(function SidebarSurface({
@@ -132,8 +170,15 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   const activeGatewayProfile = useStore($activeGatewayProfile)
   const gateway = useStore($gateway)
   const gatewayState = useStore($gatewayState)
+  const location = useLocation()
   useContributions(ROUTES_AREA)
   const routeContributions = contributedRoutes()
+  const workflowRunOpen = workflowRunIdForPath(location.pathname) !== null
+  const backgroundLocation = workflowRunOpen ? routeDrawerBackgroundLocation(location.state) : null
+
+  const pageLocation = workflowRunOpen
+    ? (backgroundLocation ?? { hash: '', pathname: WORKFLOWS_ROUTE, search: '', state: null })
+    : location
 
   const modelMenuContent = useMemo(
     () =>
@@ -171,52 +216,79 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   )
 
   return (
-    <Routes>
-      <Route element={chatView} index />
-      <Route element={chatView} path=":sessionId" />
-      <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
-      <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
-      <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
-      <Route
-        element={page(<CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />)}
-        path="cron"
-      />
-      {/* hc-417 IM 入口 — scan-to-bind this machine's assistant to 飞书/微信/…
-          Reached from the composer "+" menu's connectors row, the sidebar's
-          channel strip, and Settings → 提供方. */}
-      <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
-      <Route
-        element={page(<TasksView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />)}
-        path="tasks"
-      />
-      <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
-      <Route element={page(<ProjectsView />)} path="projects" />
-      <Route element={page(<WorkflowsView />)} path="workflows" />
-      <Route element={page(<WorkflowRunView />)} path="workflow-runs/:runId" />
-      <Route element={null} path="agents" />
-      <Route element={null} path="profile" />
-      <Route element={null} path="command-center" />
-      <Route element={null} path="profiles" />
-      <Route element={null} path="settings" />
-      <Route element={null} path="starmap" />
-      <Route element={null} path="webhooks" />
-      {/* Registry-contributed pages (core features + plugins) render in the
-          workspace pane like any built-in view — behind the same blast wall
-          as every other contribution mount. */}
-      {routeContributions.map(route => (
+    <>
+      <Routes location={pageLocation}>
+        <Route element={chatView} index />
+        <Route element={chatView} path=":sessionId" />
+        <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
+        <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
+        <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
+        <Route
+          element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)}
+          path={DELIVERABLES_ROUTE.slice(1)}
+        />
         <Route
           element={page(
-            <ContribBoundary id={route.key}>
-              <ContribRender render={route.render} />
-            </ContribBoundary>
+            <CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
           )}
-          key={route.key}
-          path={route.path.slice(1)}
+          path="cron"
         />
-      ))}
-      <Route element={<Navigate replace to={NEW_CHAT_ROUTE} />} path="new" />
-      <Route element={<LegacySessionRedirect />} path="sessions/:sessionId" />
-      <Route element={<Navigate replace to={NEW_CHAT_ROUTE} />} path="*" />
-    </Routes>
+        {/* hc-417 IM 入口 — scan-to-bind this machine's assistant to 飞书/微信/…
+            Reached from the composer "+" menu's connectors row, the sidebar's
+            channel strip, and Settings → 提供方. */}
+        <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
+        {/* Phase 0 keeps the canonical assistant URL on the current truthful
+            connection surface. The dedicated assistant workspace arrives in
+            Phase 3 without another route migration. */}
+        <Route
+          element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)}
+          path={ASSISTANT_ROUTE.slice(1)}
+        />
+        <Route element={<LegacyAccountsRedirect />} path={LEGACY_ACCOUNTS_ROUTE.slice(1)} />
+        <Route
+          element={page(
+            <TasksView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
+          )}
+          path="tasks"
+        />
+        <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
+        <Route
+          element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)}
+          path={HISTORY_ROUTE.slice(1)}
+        />
+        <Route element={page(<ProjectsView />)} path="projects" />
+        <Route element={page(<WorkflowsView />)} path="workflows" />
+        <Route element={null} path="agents" />
+        <Route element={null} path="profile" />
+        <Route element={null} path="command-center" />
+        <Route element={null} path="profiles" />
+        <Route element={null} path="settings" />
+        <Route element={null} path="starmap" />
+        <Route element={null} path="webhooks" />
+        {/* Registry-contributed pages (core features + plugins) render in the
+            workspace pane like any built-in view — behind the same blast wall
+            as every other contribution mount. */}
+        {routeContributions.map(route => (
+          <Route
+            element={page(
+              <ContribBoundary id={route.key}>
+                <ContribRender render={route.render} />
+              </ContribBoundary>
+            )}
+            key={route.key}
+            path={route.path.slice(1)}
+          />
+        ))}
+        <Route element={<Navigate replace to={NEW_CHAT_ROUTE} />} path="new" />
+        <Route element={<LegacySessionRedirect />} path="sessions/:sessionId" />
+        <Route element={<Navigate replace to={NEW_CHAT_ROUTE} />} path="*" />
+      </Routes>
+
+      {workflowRunOpen && (
+        <Routes>
+          <Route element={<WorkflowRunRouteDrawer />} path="workflow-runs/:runId" />
+        </Routes>
+      )}
+    </>
   )
 })
