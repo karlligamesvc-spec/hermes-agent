@@ -105,12 +105,20 @@ if ($ApexRegionLib -and (Test-Path $ApexRegionLib)) {
     . $ApexRegionLib
 }
 
-# Skip region detection for -Manifest (pure metadata; a probe there would only
-# slow the bootstrap runner's first call). Every other invocation resolves it.
+# Pure metadata queries must remain single-frame machine-readable output, so
+# they do not need (and must not print diagnostics from) region detection.
+# Structured stage / -Json invocations still need the resolved mirror settings,
+# but silence the human information stream so stdout remains valid JSON.
 # The command guard also makes this a clean no-op when the overlay lib was not
 # present (e.g. a remote irm|iex run with no $PSScriptRoot).
-if ((-not $Manifest) -and (Get-Command Resolve-ApexRegion -ErrorAction SilentlyContinue)) {
-    Resolve-ApexRegion
+$ApexPureMetadataQuery = $Manifest -or $ProtocolVersion -or $ShowResolvedPaths
+$ApexStructuredOutput = $Json -or $PSBoundParameters.ContainsKey("Stage")
+if ((-not $ApexPureMetadataQuery) -and (Get-Command Resolve-ApexRegion -ErrorAction SilentlyContinue)) {
+    if ($ApexStructuredOutput) {
+        Resolve-ApexRegion 6>$null
+    } else {
+        Resolve-ApexRegion
+    }
     Set-ApexCnMirrorEnv
 }
 

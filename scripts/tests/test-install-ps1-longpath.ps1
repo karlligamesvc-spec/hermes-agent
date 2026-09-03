@@ -117,6 +117,10 @@ function Invoke-Normalization {
         APPDATA      = (Join-Parts @($root, 'AppData', 'Roaming'))
         USERPROFILE  = $root
         HERMES_HOME  = ''
+        # Force the overlay's formerly noisy branch. -ShowResolvedPaths must
+        # still emit exactly one JSON frame under an explicitly CN environment.
+        APEXNODES_REGION = 'cn'
+        HERMES_CN_MIRRORS = ''
     }
     foreach ($key in $Environment.Keys) { $env0[$key] = $Environment[$key] }
 
