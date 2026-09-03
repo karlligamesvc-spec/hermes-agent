@@ -162,11 +162,15 @@ const NON_SESSION_LOAD_STEP = 10
 
 const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
   'new-session': props => <Codicon name="edit" {...props} />,
+  start: props => <Codicon name="edit" {...props} />,
   projects: props => <Codicon name="folder" {...props} />,
   workflows: props => <Codicon name="list-tree" {...props} />,
   cron: props => <Codicon name="calendar" {...props} />,
+  'scheduled-runs': props => <Codicon name="calendar" {...props} />,
   artifacts: props => <Codicon name="package" {...props} />,
+  deliverables: props => <Codicon name="package" {...props} />,
   accounts: props => <Codicon name="organization" {...props} />,
+  assistant: props => <Codicon name="organization" {...props} />,
   history: props => <Codicon name="history" {...props} />,
   search: props => <Codicon name="search" {...props} />,
   tasks: props => <Codicon name="rocket" {...props} />,
@@ -1190,13 +1194,12 @@ export function ChatSidebar({
                 const isInteractive = Boolean(item.action) || Boolean(item.route)
 
                 const active =
-                  (item.id === 'skills' && currentView === 'skills') ||
-                  (item.id === 'messaging' && currentView === 'messaging') ||
-                  (item.id === 'artifacts' && currentView === 'artifacts') ||
+                  (item.id === 'start' && pathname === '/') ||
+                  item.id === currentView ||
                   // Contributed rows light up at their own route.
                   (Boolean(item.route) && pathname === item.route)
 
-                const isNewSession = item.id === 'new-session'
+                const isNewSession = item.action === 'new-session'
 
                 const button = (
                   <SidebarMenuButton

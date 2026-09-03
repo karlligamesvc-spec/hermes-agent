@@ -13,7 +13,7 @@ import { $tasks } from '@/store/tasks'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
 import { openSession } from '../../open-session'
-import { ARTIFACTS_ROUTE, PROJECTS_ROUTE, taskDetailRoute, TASKS_ROUTE, WORKFLOWS_ROUTE } from '../../routes'
+import { DELIVERABLES_ROUTE, PROJECTS_ROUTE, taskDetailRoute, TASKS_ROUTE, WORKFLOWS_ROUTE } from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
@@ -214,7 +214,7 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
 
           <BusinessSection
             action={c.projects.openArtifacts}
-            onAction={() => navigate(ARTIFACTS_ROUTE)}
+            onAction={() => navigate(DELIVERABLES_ROUTE)}
             title={c.projects.deliverables}
           >
             {artifacts.length > 0 ? (

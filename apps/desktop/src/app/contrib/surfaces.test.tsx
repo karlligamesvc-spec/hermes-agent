@@ -47,7 +47,7 @@ vi.mock('../business-workspace', () => ({
   ProjectsView: () => <div>projects-view</div>,
   WorkflowsView: () => <div>workflows-view</div>
 }))
-vi.mock('../business-workspace/workflow-run-view', () => ({ WorkflowRunView: () => <div>workflow-run-view</div> }))
+vi.mock('../business-workspace/pages/workflow-run-page', () => ({ WorkflowRunView: () => <div>workflow-run-view</div> }))
 
 function LocationProbe() {
   const location = useLocation()

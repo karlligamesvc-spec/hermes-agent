@@ -61,7 +61,7 @@ const ProjectsView = lazy(async () => ({ default: (await import('../business-wor
 const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
 
 const WorkflowRunView = lazy(async () => ({
-  default: (await import('../business-workspace/workflow-run-view')).WorkflowRunView
+  default: (await import('../business-workspace/pages/workflow-run-page')).WorkflowRunView
 }))
 
 export function LegacySessionRedirect() {

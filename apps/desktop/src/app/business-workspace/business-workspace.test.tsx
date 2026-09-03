@@ -29,7 +29,16 @@ import { ProjectsView, WorkflowsView } from '.'
 function LocationProbe() {
   const location = useLocation()
 
-  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
+  const routeDrawerState = location.state as
+    | { routeDrawer?: { backgroundLocation?: { pathname?: string } } }
+    | null
+
+  return (
+    <>
+      <output data-testid="location">{`${location.pathname}${location.search}`}</output>
+      <output data-testid="route-drawer-source">{routeDrawerState?.routeDrawer?.backgroundLocation?.pathname ?? ''}</output>
+    </>
+  )
 }
 
 function domainRun(id: string, triggerRef: string) {
@@ -66,12 +75,12 @@ describe('hc-685 business workspace identity', () => {
 
   it('exposes the seven outcome-oriented destinations in order', () => {
     expect(BUSINESS_NAV_IDS).toEqual([
-      'new-session',
+      'start',
       'projects',
       'workflows',
-      'cron',
-      'artifacts',
-      'accounts',
+      'scheduled-runs',
+      'deliverables',
+      'assistant',
       'history'
     ])
     expect(isBusinessNavigationContract([...BUSINESS_NAV_IDS, 'skills'])).toBe(false)
@@ -104,7 +113,7 @@ describe('hc-685 business workspace identity', () => {
     activateSidebarNavigation(history!, clickNavigate, vi.fn())
     runSessionSearchShortcut(shortcutNavigate, focus)
 
-    expect(BUSINESS_HISTORY_ROUTE).toBe('/search')
+    expect(BUSINESS_HISTORY_ROUTE).toBe('/history')
     expect(clickNavigate).toHaveBeenCalledWith(BUSINESS_HISTORY_ROUTE)
     expect(shortcutNavigate).toHaveBeenCalledWith(BUSINESS_HISTORY_ROUTE)
     expect(focus).toHaveBeenCalledTimes(1)
@@ -215,6 +224,7 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-795'))
+    expect(screen.getByTestId('route-drawer-source').textContent).toBe('/')
     expect(access).toHaveBeenCalledTimes(1)
     expect(startGoal).toHaveBeenCalledWith({
       objective: '分析美国宠物用品市场，并生成选品报告和上架素材',

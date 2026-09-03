@@ -2207,15 +2207,18 @@ export const zh = defineLocale({
   sidebar: {
     nav: {
       'new-session': '开始',
+      start: '开始',
       projects: '项目',
       workflows: '工作流',
-      accounts: '业务账号',
+      assistant: '助手',
       history: '历史',
       search: '搜索',
       cron: '定时运行',
+      'scheduled-runs': '定时运行',
       tasks: '任务',
       skills: '插件',
-      artifacts: '交付物'
+      artifacts: '交付物',
+      deliverables: '交付物'
     },
     searchAria: '搜索会话',
     searchPlaceholder: '搜索会话…',

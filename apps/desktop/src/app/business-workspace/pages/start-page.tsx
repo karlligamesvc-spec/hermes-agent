@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 
-import { workflowRunRoute } from '../../routes'
+import { routeDrawerNavigationState, workflowRunRoute } from '../../routes'
 import { startWorkflowGoal } from '../api/adapters'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
@@ -26,6 +26,7 @@ export interface BusinessStartHomeProps {
  */
 export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: BusinessStartHomeProps) {
   const { t } = useI18n()
+  const location = useLocation()
   const navigate = useNavigate()
   const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
   const [goalDraft, setGoalDraft] = useState('')
@@ -61,7 +62,9 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
     setDomainStarting(false)
 
     if (outcome.mode === 'started') {
-      navigate(workflowRunRoute(outcome.runId))
+      navigate(workflowRunRoute(outcome.runId), {
+        state: routeDrawerNavigationState(location)
+      })
 
       return true
     }

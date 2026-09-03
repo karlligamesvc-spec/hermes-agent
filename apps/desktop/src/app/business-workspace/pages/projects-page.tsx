@@ -12,7 +12,7 @@ import { $sessionStates } from '@/store/session-states'
 import { $tasks } from '@/store/tasks'
 
 import { openSession } from '../../open-session'
-import { ARTIFACTS_ROUTE, NEW_CHAT_ROUTE, taskDetailRoute, TASKS_ROUTE } from '../../routes'
+import { DELIVERABLES_ROUTE, HISTORY_ROUTE, NEW_CHAT_ROUTE, taskDetailRoute, TASKS_ROUTE } from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
@@ -55,7 +55,7 @@ export function ProjectsView() {
               <Button onClick={() => navigate(NEW_CHAT_ROUTE)} size="sm">
                 {c.action}
               </Button>
-              <Button onClick={() => navigate(ARTIFACTS_ROUTE)} size="sm" variant="outline">
+              <Button onClick={() => navigate(DELIVERABLES_ROUTE)} size="sm" variant="outline">
                 {c.openArtifacts}
               </Button>
             </div>
@@ -80,7 +80,7 @@ export function ProjectsView() {
         </div>
       ) : (
         <div className="mx-auto grid w-full max-w-4xl gap-8 py-6">
-          <BusinessSection action={c.openHistory} onAction={() => navigate('/search')} title={c.recentConversations}>
+          <BusinessSection action={c.openHistory} onAction={() => navigate(HISTORY_ROUTE)} title={c.recentConversations}>
             {conversations.length > 0 ? (
               conversations.map(conversation => (
                 <button
@@ -166,7 +166,7 @@ export function ProjectsView() {
             )}
           </BusinessSection>
 
-          <BusinessSection action={c.openArtifacts} onAction={() => navigate(ARTIFACTS_ROUTE)} title={c.deliverables}>
+          <BusinessSection action={c.openArtifacts} onAction={() => navigate(DELIVERABLES_ROUTE)} title={c.deliverables}>
             {artifacts.length > 0 ? (
               artifacts.map(artifact => (
                 <button

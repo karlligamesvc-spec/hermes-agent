@@ -14,7 +14,7 @@ import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { type I18nConfigClient, I18nProvider } from '@/i18n/context'
 import { $authState } from '@/store/auth'
-import { BUSINESS_WORKSPACE_FLAG_KEY } from '@/store/business-workspace'
+import { BUSINESS_SIDEBAR_NAV_CONTRACT, BUSINESS_WORKSPACE_FLAG_KEY } from '@/store/business-workspace'
 import { $desktopOnboarding, requestManagedReSignIn, skipManagedForByok } from '@/store/onboarding'
 
 // hc-589 identity-layer guard.
@@ -529,9 +529,9 @@ describe('identity: the home zero-state is ours', () => {
 
   it('wires the goal launcher to the canonical chat submit path', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
-    const startHome = readSource('src', 'app', 'business-workspace', 'start-home.tsx')
-    const startShelf = readSource('src', 'app', 'business-workspace', 'start-shelf.tsx')
-    const workflows = readSource('src', 'app', 'business-workspace', 'index.tsx')
+    const startHome = readSource('src', 'app', 'business-workspace', 'pages', 'start-page.tsx')
+    const startShelf = readSource('src', 'app', 'business-workspace', 'components', 'start-shelf.tsx')
+    const workflows = readSource('src', 'app', 'business-workspace', 'pages', 'workflows-page.tsx')
 
     expect(chat).toContain('onSubmitGoal: onSubmit')
     expect(chat).toContain('goalDisabled: !gatewayOpen || busy')
@@ -588,6 +588,10 @@ describe('identity: the APEX business shell stays user-facing', () => {
       '/history'
     ])
     expect(APEX_PRIMARY_NAVIGATION.some(item => ['accounts', 'agents', 'bots'].includes(item.id))).toBe(false)
+    expect(BUSINESS_SIDEBAR_NAV_CONTRACT.map(item => item.id)).toEqual(APEX_PRIMARY_NAVIGATION.map(item => item.id))
+    expect(BUSINESS_SIDEBAR_NAV_CONTRACT.map(item => item.route)).toEqual(
+      APEX_PRIMARY_NAVIGATION.map(item => item.path)
+    )
   })
 
   it('keeps Profile and Settings behind the bottom account control', async () => {
@@ -684,14 +688,15 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
   })
 
   it('pins the first real P2B loop from Start to Run review while retaining the dark-launch fallback', () => {
-    const startHome = readSource('src', 'app', 'business-workspace', 'start-home.tsx')
-    const client = readSource('src', 'app', 'business-workspace', 'workflow-domain-client.ts')
+    const startHome = readSource('src', 'app', 'business-workspace', 'pages', 'start-page.tsx')
+    const client = readSource('src', 'app', 'business-workspace', 'api', 'adapters.ts')
     const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
-    const runView = readSource('src', 'app', 'business-workspace', 'workflow-run-view.tsx')
+    const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
 
     expect(startHome).toContain('const outcome = await startWorkflowGoal(')
     expect(startHome).toContain("slug: 'desktop-goal'")
-    expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId))')
+    expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId), {')
+    expect(startHome).toContain('state: routeDrawerNavigationState(location)')
     expect(startHome).toContain('return (await onSubmitGoal?.(goal)) ?? false')
     expect(client).toContain('access = await bridge.access()')
     expect(client).toContain("return { mode: 'unavailable' }")
