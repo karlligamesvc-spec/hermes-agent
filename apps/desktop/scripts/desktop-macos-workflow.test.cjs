@@ -70,6 +70,16 @@ test('direct single-platform dispatches are artifact-only', () => {
   }
 })
 
+test('Windows packaging reads back APEX PE metadata and exports proof', () => {
+  const source = fs.readFileSync(windowsWorkflowPath, 'utf8')
+  const identityStep = namedStep(source, 'Assert packaged APEX PE identity')
+
+  assert.match(identityStep, /assert-exe-identity\.mjs release\/win-unpacked\/APEX\.exe/)
+  assert.match(identityStep, /identity_verified=true/)
+  assert.match(source, /identity_verified: \$\{\{ steps\.exe-identity\.outputs\.identity_verified \}\}/)
+  assert.match(source, /value: \$\{\{ jobs\.build\.outputs\.identity_verified \}\}/)
+})
+
 test('release identity steps are valid Bash on both platform workflows', () => {
   const sources = [workflowSource(), fs.readFileSync(windowsWorkflowPath, 'utf8')]
 
@@ -90,6 +100,7 @@ test('the production coordinator owns both platform workflows and a final parity
   assert.match(source, /needs: \[macos, windows\]/)
   assert.match(source, /test "\$MAC_SHA" = "\$CALLER_SHA"/)
   assert.match(source, /test "\$WINDOWS_SHA" = "\$CALLER_SHA"/)
+  assert.match(source, /test "\$WINDOWS_IDENTITY_VERIFIED" = "true"/)
   assert.match(source, /verify-cross-platform-release\.mjs --expected-version/)
 })
 

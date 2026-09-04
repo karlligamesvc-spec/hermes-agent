@@ -319,7 +319,8 @@ import {
   performFindAfterIndexingStarted,
   stopFind
 } from './find-in-page'
-import { createFirstRunSetupGate } from './first-run-setup-gate'
+import { createFirstRunSetupGate, resolveApexFirstRunSetupDecision } from './first-run-setup-gate'
+import { continueLocalBootstrapIpc } from './first-run-setup-ipc'
 import { registerFsIpc } from './fs-ipc'
 import {
   filenameFromContentDisposition,
@@ -2136,24 +2137,7 @@ function getFirstRunSetupGate() {
 }
 
 async function waitForFirstRunSetupChoice(backend) {
-  const gate = getFirstRunSetupGate()
-
-  if (!gate.shouldGate(backend)) {
-    return 'continue-local'
-  }
-
-  updateBootProgress(
-    {
-      error: null,
-      message: 'Waiting for first-run setup choice',
-      phase: 'bootstrap.choice',
-      progress: 12,
-      running: true
-    },
-    { allowDecrease: true }
-  )
-
-  return gate.wait(backend)
+  return resolveApexFirstRunSetupDecision(getFirstRunSetupGate(), backend)
 }
 
 function continueFirstRunLocalBootstrap() {
@@ -14592,7 +14576,9 @@ ipcMain.handle('hermes:bootstrap:repair', async () => {
 // in ApexNodes: our signed-in managed setup owns first launch and the existing
 // bootstrap continues locally without waiting. Keep the bridge compatible so a
 // renderer built from v0.20 can safely issue the action during skewed updates.
-ipcMain.handle('hermes:bootstrap:continue-local', async () => ({ ok: true }))
+ipcMain.handle('hermes:bootstrap:continue-local', async () =>
+  continueLocalBootstrapIpc(continueFirstRunLocalBootstrap)
+)
 ipcMain.handle('hermes:bootstrap:cancel', async () => {
   // Renderer's Cancel button during first-launch install. Abort the running
   // install script (SIGTERM via the runner's abortSignal). runBootstrap
