@@ -8,7 +8,7 @@ import { assertWindowsExeIdentity } from './windows-exe-identity.mjs'
 
 const readVersionInfoScript = String.raw`
 $ErrorActionPreference = 'Stop'
-$info = (Get-Item -LiteralPath $args[0]).VersionInfo
+$info = (Get-Item -LiteralPath $env:APEX_EXE_IDENTITY_TARGET).VersionInfo
 [ordered]@{
   ProductName = $info.ProductName
   FileDescription = $info.FileDescription
@@ -28,8 +28,12 @@ function readWindowsExeIdentity(exe) {
 
   const output = execFileSync(
     'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', readVersionInfoScript, exe],
-    { encoding: 'utf8', windowsHide: true }
+    ['-NoProfile', '-NonInteractive', '-Command', readVersionInfoScript],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, APEX_EXE_IDENTITY_TARGET: resolve(exe) },
+      windowsHide: true
+    }
   )
   return JSON.parse(output.trim())
 }
