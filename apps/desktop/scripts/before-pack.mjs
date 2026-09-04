@@ -34,7 +34,7 @@
  * on every pack; nothing else depends on its prior contents.
  *
  * Cross-platform: the same partial-state trap exists on macOS
- * (the mac-unpacked Hermes.app bundle) and Windows (win-unpacked), so we
+ * (the mac-unpacked APEX.app bundle) and Windows (win-unpacked), so we
  * clean whatever `appOutDir` electron-builder hands us regardless of platform.
  *
  * Best-effort: a cleanup failure must never mask the real build. We log and
@@ -81,7 +81,7 @@ export function cleanStaleAppOutDir(appOutDir) {
  * tree, preserve it as `<appOutDir>.bak` — but ONLY when it holds the product
  * exe (i.e. it is a previously-working build, not the corrupted partial state
  * cleanStaleAppOutDir exists to remove). If the fresh pack then produces a
- * Hermes.exe that Windows can't load (truncated PE from a corrupt cached
+ * APEX.exe that Windows can't load (truncated PE from a corrupt cached
  * Electron zip, wrong arch), the updater's integrity gate in
  * `hermes desktop --build-only` (hermes_cli/main.py
  * `_ensure_desktop_exe_launchable`) restores this .bak instead of leaving the
