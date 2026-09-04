@@ -244,6 +244,18 @@ declare global {
       workflowDomain?: {
         access: () => Promise<DesktopWorkflowDomainAccess>
         startGoal: (payload: DesktopWorkflowDomainStartGoalInput) => Promise<DesktopWorkflowDomainStartResult>
+        listProjects?: (options?: {
+          cursor?: string
+          limit?: number
+          status?: string
+        }) => Promise<DesktopWorkflowDomainProjectListResult>
+        listWorkflows?: (options?: {
+          cursor?: string
+          limit?: number
+          projectId?: string
+          status?: string
+        }) => Promise<DesktopWorkflowDomainWorkflowListResult>
+        getCatalog?: () => Promise<DesktopWorkflowDomainCatalogResult>
         getRun: (runId: string) => Promise<DesktopWorkflowDomainRunResult>
         cancelRun: (runId: string) => Promise<DesktopWorkflowDomainMutationResult>
         reviewDeliverable: (payload: {
@@ -1683,9 +1695,77 @@ export interface DesktopWorkflowDomainStartGoalInput {
   objective: string
   starter: {
     description: string
+    id: string
     name: string
     slug: string
+    version: number
   }
+}
+
+export interface DesktopWorkflowDomainProjectSummary {
+  attention: 'failed' | 'none' | 'review'
+  currentRunId: null | string
+  currentRunStatus: null | string
+  currentStepTitle: null | string
+  deliverableCount: number
+  stepCompleted: number
+  stepTotal: number
+}
+
+export interface DesktopWorkflowDomainProject {
+  createdAt: string
+  id: string
+  name: string
+  objective: string
+  status: string
+  summary: DesktopWorkflowDomainProjectSummary
+  updatedAt: string
+}
+
+export interface DesktopWorkflowDomainWorkflow {
+  createdAt: string
+  description: null | string
+  id: string
+  name: string
+  projectId: string
+  slug: string
+  status: string
+  updatedAt: string
+  version: null | number
+}
+
+export interface DesktopWorkflowDomainCatalogItem {
+  businessPath: string
+  id: string
+  position: number
+  recommended: boolean
+  slug: string
+  version: number
+}
+
+export interface DesktopWorkflowDomainProjectListResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  items?: DesktopWorkflowDomainProject[]
+  limit?: number
+  nextCursor?: null | string
+  offset?: number
+  ok: boolean
+  total?: number
+}
+
+export interface DesktopWorkflowDomainWorkflowListResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  items?: DesktopWorkflowDomainWorkflow[]
+  limit?: number
+  nextCursor?: null | string
+  ok: boolean
+}
+
+export interface DesktopWorkflowDomainCatalogResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  items?: DesktopWorkflowDomainCatalogItem[]
+  ok: boolean
+  version?: string
 }
 
 export interface DesktopWorkflowDomainRun {

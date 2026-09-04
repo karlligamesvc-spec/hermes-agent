@@ -3188,7 +3188,7 @@ export const zhHant = defineLocale({
     projects: {
       eyebrow: '從目標到交付',
       title: '專案',
-      description: '查看最近對話、真實任務進度、證據與交付結果，不另建專案記錄。',
+      description: '依業務目標查看目前執行、真實步驟狀態、待處理事項與交付結果。',
       emptyTitle: '從一個真實業務任務開始',
       emptyDescription: '先在對話中描述目標。最近對話、真實任務進度、證據與交付檔案會顯示在這裡。',
       action: '開始一個目標',
@@ -3221,7 +3221,29 @@ export const zhHant = defineLocale({
       toolActivity: count => `已記錄 ${count} 次工具呼叫`,
       toolStatusDetail:
         '執行中與等待輸入來自即時工作階段狀態。工具級狀態和結構化證據仍以原對話為準，請開啟對話查看權威詳情。',
-      latestOutput: '最新輸出'
+      latestOutput: '最新輸出',
+      recentProjects: '最近專案',
+      loadingProjects: '正在讀取專案…',
+      projectLoadFailed: '暫時無法讀取專案，下方仍保留本機工作的相容視圖。',
+      deliverableCount: count => `${count} 個交付物`,
+      currentStep: title => `目前：${title}`,
+      lifecycle: status =>
+        ({
+          cancelled: '已取消',
+          failed: '需要處理',
+          queued: '等待 Hermes 執行',
+          running: 'Hermes 正在執行',
+          succeeded: '已完成',
+          timed_out: '已逾時',
+          waiting_review: '等待審閱'
+        })[status] || status,
+      viewRun: '開啟目前執行',
+      noRun: '尚未開始執行',
+      legacyFallback: '本機對話與任務（相容視圖）',
+      availableSources: '可用資料來源',
+      sourceConnected: '已連接',
+      sourceNotConnected: '未連接',
+      noAvailableSources: '目前版本沒有可用的資料來源連接出口。'
     },
     workflows: {
       eyebrow: '成熟業務路徑',
@@ -3242,7 +3264,26 @@ export const zhHant = defineLocale({
         title: '從洞察到內容復盤',
         summary: '選題、生產、發布準備與復盤',
         prompt: '制定本週內容計畫，產出可發布素材，並設計復盤指標'
-      }
+      },
+      competitor: {
+        title: '競品監控',
+        summary: '追蹤關鍵市場變化，並把變化轉為行動',
+        prompt: '監控我的主要競品，核驗關鍵變化，並依據證據提出行動建議'
+      },
+      reviews: {
+        title: '評論洞察',
+        summary: '把客戶回饋整理為主題、風險與優先級',
+        prompt: '分析近期客戶評論，輸出有證據支持的主題、風險和改進優先級'
+      },
+      businessReview: {
+        title: '業務復盤',
+        summary: '彙整經營訊號，形成決策與下一步計畫',
+        prompt: '復盤目前業務表現，並為下一週期提出有證據支持的優先事項'
+      },
+      savedTitle: '我的工作流程',
+      savedEmpty: '還沒有已儲存的工作流程。開始一個目標後會在這裡出現。',
+      catalogUnavailable: '真實工作流程目錄暫時無法使用，沒有範本被啟動。',
+      version: version => `版本 ${version}`
     },
     workflowDomain: {
       startFailed: '真實工作流程啟動失敗，目標草稿已保留，請重試。',

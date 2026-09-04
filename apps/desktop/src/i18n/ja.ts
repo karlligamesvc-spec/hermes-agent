@@ -3308,7 +3308,7 @@ export const ja = defineLocale({
     projects: {
       eyebrow: '目標から納品まで',
       title: 'プロジェクト',
-      description: '別のプロジェクトレコードを作らず、最近の会話、実際のタスク進捗、根拠、成果物を確認します。',
+      description: '業務目標ごとに、現在の実行、実際のステップ状態、要対応事項、成果物を確認します。',
       emptyTitle: '実際の業務タスクから始める',
       emptyDescription:
         'まずチャットで目標を説明してください。最近の会話、実際のタスク進捗、根拠、納品ファイルがここに表示されます。',
@@ -3342,7 +3342,29 @@ export const ja = defineLocale({
       toolActivity: count => `${count} 件のツール呼び出しを記録`,
       toolStatusDetail:
         '実行中と入力待ちはライブセッション状態から取得します。ツール単位の状態と構造化された根拠は元の会話が正です。会話を開いて確認してください。',
-      latestOutput: '最新出力'
+      latestOutput: '最新出力',
+      recentProjects: '最近のプロジェクト',
+      loadingProjects: 'プロジェクトを読み込み中…',
+      projectLoadFailed: 'プロジェクトを読み込めません。下にローカル作業の互換ビューを残しています。',
+      deliverableCount: count => `成果物 ${count} 件`,
+      currentStep: title => `現在：${title}`,
+      lifecycle: status =>
+        ({
+          cancelled: 'キャンセル済み',
+          failed: '対応が必要',
+          queued: 'Hermes の実行待ち',
+          running: 'Hermes が実行中',
+          succeeded: '完了',
+          timed_out: 'タイムアウト',
+          waiting_review: 'レビュー待ち'
+        })[status] || status,
+      viewRun: '現在の実行を開く',
+      noRun: '実行はまだ開始されていません',
+      legacyFallback: 'ローカル会話とタスク（互換ビュー）',
+      availableSources: '利用可能なデータソース',
+      sourceConnected: '接続済み',
+      sourceNotConnected: '未接続',
+      noAvailableSources: 'このビルドで利用できるデータソース接続はありません。'
     },
     workflows: {
       eyebrow: '実績ある業務パス',
@@ -3363,7 +3385,26 @@ export const ja = defineLocale({
         title: '洞察からコンテンツ振り返りへ',
         summary: '企画、制作、公開準備、振り返り',
         prompt: '今週のコンテンツ計画と公開素材を作り、振り返り指標を設計してください'
-      }
+      },
+      competitor: {
+        title: '競合モニタリング',
+        summary: '重要な市場変化を追跡し、行動につなげます',
+        prompt: '主要な競合を監視し、重要な変化を検証して、根拠に基づく対応を提案してください'
+      },
+      reviews: {
+        title: 'レビュー分析',
+        summary: '顧客の声をテーマ、リスク、優先事項に整理します',
+        prompt: '最近の顧客レビューを分析し、根拠のあるテーマ、リスク、優先事項をまとめてください'
+      },
+      businessReview: {
+        title: '事業レビュー',
+        summary: '運営シグナルを意思決定と次の行動にまとめます',
+        prompt: '現在の事業実績を振り返り、次の期間の優先事項を根拠とともに提案してください'
+      },
+      savedTitle: '自分のワークフロー',
+      savedEmpty: '保存済みワークフローはまだありません。目標を始めると最初のワークフローが作成されます。',
+      catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
+      version: version => `バージョン ${version}`
     },
     workflowDomain: {
       startFailed: 'ワークフローを開始できませんでした。目標は保持されています。もう一度お試しください。',

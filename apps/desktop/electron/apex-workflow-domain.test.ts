@@ -5,6 +5,9 @@ import { test } from 'vitest'
 import {
   cancelWorkflowDomainRun,
   getWorkflowDomainAccess,
+  getWorkflowDomainCatalog,
+  listWorkflowDomainProjects,
+  listWorkflowDomainWorkflows,
   reviewWorkflowDomainDeliverable,
   startWorkflowDomainGoal,
   workflowDomainUrl,
@@ -32,8 +35,10 @@ test('starts one canonical Project to Workflow to Hermes Run chain', async () =>
     objective: 'Analyze the pet market',
     starter: {
       description: 'Evidence-backed market research',
+      id: 'market-research',
       name: 'Market research',
-      slug: 'market-research'
+      slug: 'market-research',
+      version: 3
     },
     uuid: () => '00000000-0000-4000-8000-000000000795',
     transport: {
@@ -67,6 +72,25 @@ test('starts one canonical Project to Workflow to Hermes Run chain', async () =>
     projectConfig: { createdFrom: 'desktop_start' }
   })
   assert.equal(calls[1]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-1/workflows')
+  assert.deepEqual(calls[1]?.body, {
+    name: 'Market research',
+    slug: 'market-research',
+    description: 'Evidence-backed market research',
+    definition: {
+      entrypoint: 'hermes',
+      objective: 'Analyze the pet market',
+      template: { id: 'market-research', version: 3 }
+    },
+    inputSchema: {
+      type: 'object',
+      required: ['objective'],
+      properties: { objective: { type: 'string' } }
+    },
+    outputSchema: {
+      type: 'object',
+      properties: { summary: { type: 'string' }, evidence: { type: 'array' } }
+    }
+  })
   assert.deepEqual(calls[2]?.body, {
     workflowId: 'workflow-1',
     idempotencyKey: 'desktop:00000000-0000-4000-8000-000000000795',
@@ -81,7 +105,7 @@ test('rejects malformed server identifiers before they can retarget a later requ
     startWorkflowDomainGoal({
       apiBase: 'https://api.apex-nodes.com',
       objective: 'Goal',
-      starter: { description: 'Description', name: 'Workflow', slug: 'workflow' },
+      starter: { description: 'Description', id: 'workflow', name: 'Workflow', slug: 'workflow', version: 1 },
       uuid: () => 'uuid',
       transport: {
         getJson: async () => ({}),
@@ -90,6 +114,40 @@ test('rejects malformed server identifiers before they can retarget a later requ
     }),
     /project id/
   )
+})
+
+test('keeps Project, Workflow, and catalog reads on bounded authenticated exits', async () => {
+  const gets: string[] = []
+
+  const transport = {
+    getJson: async (url: string) => {
+      gets.push(url)
+
+      return { items: [] }
+    }
+  }
+
+  await listWorkflowDomainProjects(
+    'https://api.apex-nodes.com',
+    { cursor: 'opaque cursor', limit: 20, status: 'active' },
+    transport
+  )
+  await listWorkflowDomainWorkflows(
+    'https://api.apex-nodes.com',
+    { cursor: 'workflow cursor', limit: 50, projectId: 'project/1', status: 'paused' },
+    transport
+  )
+  await getWorkflowDomainCatalog('https://api.apex-nodes.com', transport)
+
+  assert.equal(
+    gets[0],
+    'https://api.apex-nodes.com/api/v1/workflow-domain/projects?cursor=opaque+cursor&limit=20&status=active'
+  )
+  assert.equal(
+    gets[1],
+    'https://api.apex-nodes.com/api/v1/workflow-domain/workflows?cursor=workflow+cursor&limit=50&projectId=project%2F1&status=paused'
+  )
+  assert.equal(gets[2], 'https://api.apex-nodes.com/api/v1/workflow-domain/catalog')
 })
 
 test('keeps access, cancel, and review on their exact typed exits', async () => {

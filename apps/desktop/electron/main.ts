@@ -154,7 +154,10 @@ import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } fr
 import {
   cancelWorkflowDomainRun,
   getWorkflowDomainAccess,
+  getWorkflowDomainCatalog,
   getWorkflowDomainRun,
+  listWorkflowDomainProjects,
+  listWorkflowDomainWorkflows,
   reviewWorkflowDomainDeliverable,
   startWorkflowDomainGoal
 } from './apex-workflow-domain'
@@ -20852,7 +20855,7 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
       log: msg => rememberLog(msg)
     })
 
-    return { ok: true, ...result }
+    return { ...result, ok: true }
   } catch (error: any) {
     // checkForRuntimeUpdate already swallows; defensive only.
     rememberLog(`[runtime-update] check-update errored: ${error && error.message}`)
@@ -21122,6 +21125,54 @@ ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
     })
 
     return { ok: true, run }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:listProjects', async (_event, options) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const result = await listWorkflowDomainProjects(context.apiBase, options || {}, context.transport)
+
+    return { ...result, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:listWorkflows', async (_event, options) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const result = await listWorkflowDomainWorkflows(context.apiBase, options || {}, context.transport)
+
+    return { ...result, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getCatalog', async () => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const result = await getWorkflowDomainCatalog(context.apiBase, context.transport)
+
+    return { ok: true, ...result }
   } catch (error) {
     return { ok: false, code: workflowDomainIpcError(error) }
   }

@@ -1,10 +1,11 @@
 import { useStore } from '@nanostores/react'
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { fmtDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
@@ -12,14 +13,120 @@ import { $sessionStates } from '@/store/session-states'
 import { $tasks } from '@/store/tasks'
 
 import { openSession } from '../../open-session'
-import { DELIVERABLES_ROUTE, HISTORY_ROUTE, NEW_CHAT_ROUTE, taskDetailRoute, TASKS_ROUTE } from '../../routes'
+import {
+  DELIVERABLES_ROUTE,
+  HISTORY_ROUTE,
+  NEW_CHAT_ROUTE,
+  routeDrawerNavigationState,
+  taskDetailRoute,
+  TASKS_ROUTE,
+  workflowRunRoute
+} from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
+import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
 
 export function ProjectsView() {
+  const { t } = useI18n()
+  const c = t.businessWorkspace.projects
+  const location = useLocation()
+  const navigate = useNavigate()
+  const projects = useWorkflowProjects()
+
+  if (projects.mode === 'unavailable') {
+    return <LegacyProjectsView />
+  }
+
+  if (projects.mode === 'failed') {
+    return <LegacyProjectsView notice={c.projectLoadFailed} />
+  }
+
+  return (
+    <section className="flex h-full flex-col overflow-y-auto bg-(--ui-chat-surface-background) px-(--page-inset-x) py-8">
+      <header className="mx-auto w-full max-w-4xl border-b border-(--ui-stroke-tertiary) pb-5">
+        <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{c.description}</p>
+      </header>
+      {projects.mode === 'loading' ? (
+        <div className="mx-auto flex w-full max-w-4xl flex-1 items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
+          <Loader className="size-8" label={c.loadingProjects} type="lemniscate-bloom" />
+          <span>{c.loadingProjects}</span>
+        </div>
+      ) : projects.items.length === 0 ? (
+        <div className="mx-auto grid w-full max-w-4xl flex-1 place-items-center py-10 text-center">
+          <div>
+            <Codicon className="mx-auto text-primary" name="folder" size="1.75rem" />
+            <EmptyState description={c.emptyDescription} title={c.emptyTitle} />
+            <Button onClick={() => navigate(NEW_CHAT_ROUTE)} size="sm">
+              <Codicon name="edit" size="0.875rem" />
+              {c.action}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto grid w-full max-w-4xl gap-0 py-6" data-workflow-project-list="">
+          {projects.items.map(project => {
+            const summary = project.summary
+            const status = summary.currentRunStatus || project.status
+
+            const progress = summary.currentStepTitle
+              ? c.currentStep(summary.currentStepTitle)
+              : summary.stepTotal > 0
+                ? c.steps(summary.stepCompleted, summary.stepTotal)
+                : c.lifecycle(status)
+
+            return (
+              <button
+                className="grid w-full gap-3 border-b border-(--ui-stroke-tertiary) py-5 text-left hover:bg-(--chrome-action-hover) sm:grid-cols-[minmax(0,1fr)_auto]"
+                key={project.id}
+                onClick={() =>
+                  summary.currentRunId
+                    ? navigate(workflowRunRoute(summary.currentRunId), {
+                        state: routeDrawerNavigationState(location)
+                      })
+                    : navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: project.objective } })
+                }
+                type="button"
+              >
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={
+                        summary.attention === 'failed'
+                          ? 'size-2 shrink-0 rounded-full bg-destructive'
+                          : summary.attention === 'review'
+                            ? 'size-2 shrink-0 rounded-full bg-amber-500'
+                            : status === 'running'
+                              ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
+                              : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+                      }
+                    />
+                    <strong className="truncate text-sm font-semibold">{project.name}</strong>
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                    {project.objective}
+                  </span>
+                  <span className="mt-2 block text-xs text-(--ui-text-tertiary)">{progress}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-4 text-xs text-(--ui-text-tertiary)">
+                  <span>{c.deliverableCount(summary.deliverableCount)}</span>
+                  <span>{summary.currentRunId ? c.viewRun : c.noRun}</span>
+                  <Codicon name="arrow-right" size="0.75rem" />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function LegacyProjectsView({ notice }: { notice?: string } = {}) {
   const { t } = useI18n()
   const c = t.businessWorkspace.projects
   const navigate = useNavigate()
@@ -45,6 +152,12 @@ export function ProjectsView() {
         <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{c.description}</p>
+        {notice && (
+          <p className="mt-3 text-xs text-amber-600" role="alert">
+            {notice}
+          </p>
+        )}
+        <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">{c.legacyFallback}</p>
       </header>
       {showEvidenceFailure ? (
         <div className="mx-auto grid w-full max-w-4xl flex-1 place-items-center py-10 text-center">

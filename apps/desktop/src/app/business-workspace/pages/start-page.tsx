@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -29,14 +29,33 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   const location = useLocation()
   const navigate = useNavigate()
   const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
-  const [goalDraft, setGoalDraft] = useState('')
-  const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(null)
+  const launchState = location.state as null | { businessGoalDraft?: unknown; businessWorkflowSlug?: unknown }
+  const launchedWorkflow = workflows.find(workflow => workflow.slug === launchState?.businessWorkflowSlug) ?? null
+
+  const initialDraft =
+    launchedWorkflow?.prompt ??
+    (typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : '')
+
+  const [goalDraft, setGoalDraft] = useState(initialDraft)
+  const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
   const [domainError, setDomainError] = useState(false)
   const [domainStarting, setDomainStarting] = useState(false)
 
   const focusGoal = () => {
     document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
   }
+
+  useEffect(() => {
+    if (!launchedWorkflow) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [launchedWorkflow])
 
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
     setSelectedWorkflow(workflow)
@@ -51,11 +70,15 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
     const outcome = await startWorkflowGoal(
       goal,
       selectedWorkflow ?? {
+        businessPath: 'desktop_goal',
         icon: 'graph',
+        id: 'desktop-goal',
         prompt: goal,
+        recommended: false,
         slug: 'desktop-goal',
         summary: t.home.description,
-        title: t.home.title
+        title: t.home.title,
+        version: 1
       }
     )
 
@@ -99,7 +122,6 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
           draft={goalDraft}
           onDraftChange={draft => {
             setGoalDraft(draft)
-            setSelectedWorkflow(null)
           }}
           onSubmit={submitGoal}
         />
