@@ -25,6 +25,9 @@ on:
       version:
         description: Desktop version packaged by this workflow
         value: ${{ jobs.build.outputs.version }}
+      identity_verified:
+        description: Whether packaged APEX.exe PE metadata matched the Desktop package identity
+        value: ${{ jobs.build.outputs.identity_verified }}
   workflow_dispatch:
 
 permissions:
@@ -65,6 +68,7 @@ jobs:
     outputs:
       source_sha: ${{ steps.release-identity.outputs.source_sha }}
       version: ${{ steps.release-identity.outputs.version }}
+      identity_verified: ${{ steps.exe-identity.outputs.identity_verified }}
 
     steps:
       - name: Checkout
@@ -95,7 +99,8 @@ jobs:
       # is the Windows electron on this runner, so the builder wrapper's
       # electronDist override resolves to the correct binary. Unsigned: no CSC_*
       # or Azure secrets (CSC_IDENTITY_AUTO_DISCOVERY=false; the build config
-      # already sets signAndEditExecutable:false so no wine/rcedit is needed).
+      # keeps electron-builder's signing path disabled; afterPack runs rcedit
+      # directly and the post-pack gate below reads the resulting PE metadata.
       # --publish never: build.publish (generic COS feed) makes electron-builder
       # emit latest.yml + the exe blockmap for electron-updater; the COS step
       # below uploads them (generic providers can't be published to directly).
@@ -117,6 +122,14 @@ jobs:
       - name: Assert packaged updater-deps integrity
         working-directory: apps/desktop
         run: node scripts/assert-updater-deps.cjs release/win-unpacked/resources
+
+      - name: Assert packaged APEX PE identity
+        id: exe-identity
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          node scripts/assert-exe-identity.mjs release/win-unpacked/APEX.exe
+          "identity_verified=true" >> $env:GITHUB_OUTPUT
 
       - name: List build output
         if: always()
