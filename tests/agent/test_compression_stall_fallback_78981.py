@@ -90,7 +90,12 @@ class _StalledSummaryWorker:
             fence.finish_commit()
 
 
-def _run(worker, *, chain, timeouts, messages, idle=0.05, ceiling=0.2):
+# Keep the synthetic idle boundary well below the total ceiling. With a 0.2s
+# ceiling, a loaded CI worker can wake after both deadlines and exercise the
+# total-ceiling teardown branch instead of the idle-stall fallback this suite
+# is intended to verify. The 2s ceiling remains finite while making those two
+# behaviors unambiguous.
+def _run(worker, *, chain, timeouts, messages, idle=0.05, ceiling=2.0):
     with _patch_chain(chain):
         return run_compress_context_with_progress_timeout(
             worker=worker,
