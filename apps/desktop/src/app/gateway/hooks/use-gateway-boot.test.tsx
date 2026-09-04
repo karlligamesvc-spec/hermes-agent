@@ -209,6 +209,7 @@ function fakeDesktop() {
       running: true as boolean,
       timestamp: Date.now()
     })),
+    getBootstrapState: vi.fn(async () => ({ active: false })),
     onBootProgress: vi.fn(callback => {
       bootProgressHandler = callback
 
@@ -392,6 +393,91 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     })
 
     expect($desktopBoot.get().error).toBeTruthy()
+  })
+
+  it('keeps the initial connection attached while a real first-run bootstrap outlives the normal boot budget', async () => {
+    const connection = deferred<typeof primaryConn>()
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(() => connection.promise)
+    desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect(desktop.getBootstrapState).toHaveBeenCalledOnce()
+    expect(desktop.getConnection).toHaveBeenCalledOnce()
+    expect($desktopBoot.get().error).toBeNull()
+
+    connection.resolve(primaryConn)
+    await flushAsync()
+
+    expect($gatewayState.get()).toBe('open')
+    expect($desktopBoot.get().error).toBeNull()
+    expect($desktopBoot.get().visible).toBe(false)
+  })
+
+  it('still fails in finite time when a hung initial connection is not owned by an active bootstrap', async () => {
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(() => new Promise<never>(() => undefined))
+    desktop.getBootstrapState = vi.fn(async () => ({ active: false }))
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect(desktop.getConnection).toHaveBeenCalledOnce()
+    expect(desktop.getBootstrapState).toHaveBeenCalledOnce()
+    expect($desktopBoot.get().error).toBe('Timed out connecting to Hermes backend')
+  })
+
+  it('rides out the completion-snapshot race while Electron starts the just-installed backend', async () => {
+    const connection = deferred<typeof primaryConn>()
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(() => connection.promise)
+    desktop.getBootstrapState = vi.fn(async () => ({ active: false, completedAt: Date.now(), error: null }))
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect($desktopBoot.get().error).toBeNull()
+
+    connection.resolve(primaryConn)
+    await flushAsync()
+
+    expect($gatewayState.get()).toBe('open')
+    expect($desktopBoot.get().visible).toBe(false)
+  })
+
+  it('bounds even an active bootstrap connection wait instead of creating a permanent setup spinner', async () => {
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(() => new Promise<never>(() => undefined))
+    desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000)
+    })
+
+    expect(desktop.getConnection).toHaveBeenCalledOnce()
+    expect($desktopBoot.get().error).toBe('Timed out waiting for APEX setup to finish')
   })
 
   it('resets the old machine context before connecting an applied gateway', async () => {

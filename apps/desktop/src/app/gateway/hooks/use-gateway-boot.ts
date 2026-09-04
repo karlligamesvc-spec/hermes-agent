@@ -8,7 +8,12 @@ import { translateNow } from '@/i18n'
 import { desktopDefaultCwd } from '@/lib/desktop-fs'
 import { decideLivenessForceClose, LIVENESS_REPROBE_DELAY_MS } from '@/lib/gateway-liveness-policy'
 import { reconnectBackoffDelayMs } from '@/lib/reconnect-backoff'
-import { BACKEND_BOOT_WAIT_TIMEOUT_MS, RECONNECT_ATTEMPT_TIMEOUT_MS, withTimeout } from '@/lib/with-timeout'
+import {
+  BACKEND_BOOT_WAIT_TIMEOUT_MS,
+  isTimeoutError,
+  RECONNECT_ATTEMPT_TIMEOUT_MS,
+  withTimeout
+} from '@/lib/with-timeout'
 import {
   $desktopBoot,
   applyDesktopBootProgress,
@@ -116,6 +121,15 @@ const BOOT_RETRY_MAX_ATTEMPTS = 5
 // Base delay for boot retries. Deliberately slower than the socket reconnect
 // loop's 300ms: each attempt may rebuild an SSH master + remote dashboard.
 const BOOT_RETRY_BASE_DELAY_MS = 2_000
+
+// A real first install includes package downloads and can legitimately outlive
+// the normal 45s backend-spawn budget. Keep the renderer attached to the SAME
+// getConnection IPC while Electron reports an active bootstrap; otherwise the
+// install finishes in main but the renderer has already latched a terminal
+// timeout overlay. The extended budget is still finite, and applies only after
+// a live bootstrap snapshot proves this is installation work rather than a
+// wedged ordinary IPC round-trip.
+const ACTIVE_BOOTSTRAP_CONNECTION_TIMEOUT_MS = 20 * 60 * 1000
 
 // While any of the RECONNECT_ATTEMPT_TIMEOUT_MS-bounded awaits below is
 // pending, `reconnecting` never clears, so scheduleReconnect()/
@@ -967,6 +981,51 @@ export function useGatewayBoot({
       })
     })
 
+    async function getInitialConnection() {
+      const connectionStartedAt = Date.now()
+      const pendingConnection = desktop.getConnection(windowProfileOverride() ?? undefined)
+
+      try {
+        return await withTimeout(
+          pendingConnection,
+          BACKEND_BOOT_WAIT_TIMEOUT_MS,
+          'Timed out connecting to Hermes backend'
+        )
+      } catch (error) {
+        if (!isTimeoutError(error)) {
+          throw error
+        }
+
+        let bootstrapOwnsPendingConnection = false
+
+        try {
+          const bootstrap = await withTimeout(
+            desktop.getBootstrapState(),
+            RECONNECT_ATTEMPT_TIMEOUT_MS,
+            'Timed out checking APEX setup state'
+          )
+
+          const completedDuringAttempt =
+            bootstrap.completedAt !== null && bootstrap.completedAt >= connectionStartedAt && !bootstrap.error
+
+          bootstrapOwnsPendingConnection = bootstrap.active || completedDuringAttempt
+        } catch {
+          // Preserve the original connection timeout. A failed snapshot cannot
+          // prove that a long-running bootstrap owns the pending IPC.
+        }
+
+        if (!bootstrapOwnsPendingConnection) {
+          throw error
+        }
+
+        return withTimeout(
+          pendingConnection,
+          ACTIVE_BOOTSTRAP_CONNECTION_TIMEOUT_MS,
+          'Timed out waiting for APEX setup to finish'
+        )
+      }
+    }
+
     async function boot() {
       try {
         // A profile-pinned helper window (the HUD) dials its target profile's
@@ -974,13 +1033,10 @@ export function useGatewayBoot({
         // Everything else keeps dialing the primary.
         // Bounded like the reconnect path (#93454): a wedged main-process
         // round-trip must not hang "Starting Hermes…" forever. Initial boot
-        // rides out a full backend cold spawn, so it gets the shared 45s
-        // backend-boot budget, not the 20s reconnect budget.
-        const conn = await withTimeout(
-          desktop.getConnection(windowProfileOverride() ?? undefined),
-          BACKEND_BOOT_WAIT_TIMEOUT_MS,
-          'Timed out connecting to Hermes backend'
-        )
+        // rides out a full backend cold spawn. A real first-run bootstrap is
+        // allowed to outlive the shared 45s spawn budget only while Electron's
+        // bootstrap snapshot proves that install owns this exact attempt.
+        const conn = await getInitialConnection()
 
         if (cancelled) {
           return
