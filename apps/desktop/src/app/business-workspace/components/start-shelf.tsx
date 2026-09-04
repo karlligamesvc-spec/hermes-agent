@@ -161,46 +161,51 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
                 <span>{c.projects.loadingProjects}</span>
               </div>
             ) : projects.mode === 'ready' && projects.items.length > 0 ? (
-              projects.items.map(project => (
-                <button
-                  className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
-                  key={project.id}
-                  onClick={() =>
-                    project.summary.currentRunId
-                      ? navigate(workflowRunRoute(project.summary.currentRunId), {
-                          state: routeDrawerNavigationState(location)
-                        })
-                      : navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: project.objective } })
-                  }
-                  type="button"
-                >
-                  <span
-                    className={
-                      project.summary.attention === 'failed'
-                        ? 'size-2 shrink-0 rounded-full bg-destructive'
-                        : project.summary.attention === 'review'
-                          ? 'size-2 shrink-0 rounded-full bg-amber-500'
-                          : project.summary.currentRunStatus === 'running'
-                            ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
-                            : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+              projects.items.map(project => {
+                const summary = project.summary
+                const status = summary?.currentRunStatus || project.status
+
+                return (
+                  <button
+                    className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                    key={project.id}
+                    onClick={() =>
+                      summary?.currentRunId
+                        ? navigate(workflowRunRoute(summary.currentRunId), {
+                            state: routeDrawerNavigationState(location)
+                          })
+                        : navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: project.objective } })
                     }
-                  />
-                  <span className="min-w-0 flex-1">
-                    <strong className="block truncate text-xs font-medium">{project.name}</strong>
-                    <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
-                      {project.summary.currentStepTitle
-                        ? c.projects.currentStep(project.summary.currentStepTitle)
-                        : project.summary.stepTotal > 0
-                          ? c.projects.steps(project.summary.stepCompleted, project.summary.stepTotal)
-                          : c.projects.lifecycle(project.summary.currentRunStatus || project.status)}
+                    type="button"
+                  >
+                    <span
+                      className={
+                        summary?.attention === 'failed'
+                          ? 'size-2 shrink-0 rounded-full bg-destructive'
+                          : summary?.attention === 'review'
+                            ? 'size-2 shrink-0 rounded-full bg-amber-500'
+                            : summary?.currentRunStatus === 'running'
+                              ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
+                              : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+                      }
+                    />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-xs font-medium">{project.name}</strong>
+                      <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                        {summary?.currentStepTitle
+                          ? c.projects.currentStep(summary.currentStepTitle)
+                          : summary && summary.stepTotal > 0
+                            ? c.projects.steps(summary.stepCompleted, summary.stepTotal)
+                            : c.projects.lifecycle(status)}
+                      </span>
                     </span>
-                  </span>
-                  <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">
-                    {fmtDayTime.format(new Date(project.updatedAt))}
-                  </span>
-                  <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
-                </button>
-              ))
+                    <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">
+                      {fmtDayTime.format(new Date(project.updatedAt))}
+                    </span>
+                    <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
+                  </button>
+                )
+              })
             ) : projects.mode === 'ready' ? (
               <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.emptyDescription}</p>
             ) : sessionsLoading && conversations.length === 0 ? (

@@ -40,7 +40,10 @@ export interface WorkflowProject {
   name: string
   objective: string
   status: string
-  summary: WorkflowProjectSummary
+  // Phase 1 servers add the aggregate summary. Phase 0 servers return the
+  // canonical Project fields without it, so the renderer must keep showing
+  // those real projects without inventing run/progress data.
+  summary?: WorkflowProjectSummary
   updatedAt: string
 }
 

@@ -71,11 +71,11 @@ export function ProjectsView() {
         <div className="mx-auto grid w-full max-w-4xl gap-0 py-6" data-workflow-project-list="">
           {projects.items.map(project => {
             const summary = project.summary
-            const status = summary.currentRunStatus || project.status
+            const status = summary?.currentRunStatus || project.status
 
-            const progress = summary.currentStepTitle
+            const progress = summary?.currentStepTitle
               ? c.currentStep(summary.currentStepTitle)
-              : summary.stepTotal > 0
+              : summary && summary.stepTotal > 0
                 ? c.steps(summary.stepCompleted, summary.stepTotal)
                 : c.lifecycle(status)
 
@@ -84,7 +84,7 @@ export function ProjectsView() {
                 className="grid w-full gap-3 border-b border-(--ui-stroke-tertiary) py-5 text-left hover:bg-(--chrome-action-hover) sm:grid-cols-[minmax(0,1fr)_auto]"
                 key={project.id}
                 onClick={() =>
-                  summary.currentRunId
+                  summary?.currentRunId
                     ? navigate(workflowRunRoute(summary.currentRunId), {
                         state: routeDrawerNavigationState(location)
                       })
@@ -96,9 +96,9 @@ export function ProjectsView() {
                   <span className="flex items-center gap-2">
                     <span
                       className={
-                        summary.attention === 'failed'
+                        summary?.attention === 'failed'
                           ? 'size-2 shrink-0 rounded-full bg-destructive'
-                          : summary.attention === 'review'
+                          : summary?.attention === 'review'
                             ? 'size-2 shrink-0 rounded-full bg-amber-500'
                             : status === 'running'
                               ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
@@ -113,8 +113,8 @@ export function ProjectsView() {
                   <span className="mt-2 block text-xs text-(--ui-text-tertiary)">{progress}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-4 text-xs text-(--ui-text-tertiary)">
-                  <span>{c.deliverableCount(summary.deliverableCount)}</span>
-                  <span>{summary.currentRunId ? c.viewRun : c.noRun}</span>
+                  {summary && <span>{c.deliverableCount(summary.deliverableCount)}</span>}
+                  {summary && <span>{summary.currentRunId ? c.viewRun : c.noRun}</span>}
                   <Codicon name="arrow-right" size="0.75rem" />
                 </span>
               </button>

@@ -335,6 +335,89 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByTestId('route-drawer-source').textContent).toBe('/projects')
   })
 
+  it('keeps Phase 0 Project responses visible without inventing run summary data', async () => {
+    const listProjects = vi.fn(async () => ({
+      items: [
+        {
+          createdAt: '2026-09-01T10:00:00Z',
+          id: 'phase-0-project',
+          name: 'Phase 0 真实项目',
+          objective: '沿用服务端返回的真实目标',
+          status: 'active',
+          updatedAt: '2026-09-04T10:00:00Z'
+        }
+      ],
+      nextCursor: null,
+      ok: true,
+      total: 1
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects,
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <ProjectsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Phase 0 真实项目')).toBeTruthy())
+    expect(screen.getByText('沿用服务端返回的真实目标')).toBeTruthy()
+    expect(screen.getByText('active')).toBeTruthy()
+    expect(screen.queryByText('0 个交付物')).toBeNull()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Phase 0 真实项目/ }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(screen.getByTestId('business-goal-draft').textContent).toBe('沿用服务端返回的真实目标')
+  })
+
+  it('shows Phase 0 projects on Start without dereferencing a missing summary', async () => {
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({
+        items: [
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'phase-0-start-project',
+            name: 'Start 真实项目',
+            objective: '真实目标',
+            status: 'active',
+            updatedAt: '2026-09-04T10:00:00Z'
+          }
+        ],
+        ok: true,
+        total: 1
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Start 真实项目')).toBeTruthy())
+    expect(screen.getByText('active')).toBeTruthy()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
+  })
+
   it('shows only real channel capabilities as Start data sources', async () => {
     window.hermesDesktop!.workflowDomain = {
       access: vi.fn(async () => ({ available: true })),

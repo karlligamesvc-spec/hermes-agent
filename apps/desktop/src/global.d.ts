@@ -1718,7 +1718,8 @@ export interface DesktopWorkflowDomainProject {
   name: string
   objective: string
   status: string
-  summary: DesktopWorkflowDomainProjectSummary
+  // Optional while a Desktop may be paired with a Phase 0 API deployment.
+  summary?: DesktopWorkflowDomainProjectSummary
   updatedAt: string
 }
 
