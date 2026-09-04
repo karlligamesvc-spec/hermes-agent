@@ -128,8 +128,10 @@ const BOOT_RETRY_BASE_DELAY_MS = 2_000
 // install finishes in main but the renderer has already latched a terminal
 // timeout overlay. The extended budget is still finite, and applies only after
 // a live bootstrap snapshot proves this is installation work rather than a
-// wedged ordinary IPC round-trip.
-const ACTIVE_BOOTSTRAP_CONNECTION_TIMEOUT_MS = 20 * 60 * 1000
+// wedged ordinary IPC round-trip. A clean Windows install can spend more than
+// 20 minutes resolving and downloading the locked Python environment, so keep
+// enough headroom for the subsequent Node install while retaining a hard cap.
+const ACTIVE_BOOTSTRAP_CONNECTION_TIMEOUT_MS = 60 * 60 * 1000
 
 // While any of the RECONNECT_ATTEMPT_TIMEOUT_MS-bounded awaits below is
 // pending, `reconnecting` never clears, so scheduleReconnect()/
