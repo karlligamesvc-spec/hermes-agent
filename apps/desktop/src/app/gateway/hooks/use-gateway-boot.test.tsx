@@ -462,7 +462,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($desktopBoot.get().visible).toBe(false)
   })
 
-  it('bounds even an active bootstrap connection wait instead of creating a permanent setup spinner', async () => {
+  it('keeps a slow but active Windows cold install alive beyond twenty minutes', async () => {
     const desktop = fakeDesktop()
     desktop.getConnection = vi.fn(() => new Promise<never>(() => undefined))
     desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
@@ -474,6 +474,24 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(45_000)
       await vi.advanceTimersByTimeAsync(20 * 60 * 1000)
+    })
+
+    expect(desktop.getConnection).toHaveBeenCalledOnce()
+    expect($desktopBoot.get().error).toBeNull()
+  })
+
+  it('bounds even an active bootstrap connection wait instead of creating a permanent setup spinner', async () => {
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(() => new Promise<never>(() => undefined))
+    desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000)
     })
 
     expect(desktop.getConnection).toHaveBeenCalledOnce()
