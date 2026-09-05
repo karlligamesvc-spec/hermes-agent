@@ -127,7 +127,7 @@ export function ProfileStatsView({ onClose }: ProfileStatsViewProps) {
   const plan = signedIn ? account.plan.trim() : ''
 
   return (
-    <OverlayView closeLabel={p.close} onClose={onClose}>
+    <OverlayView closeLabel={p.close} compactFullscreen onClose={onClose}>
       <section className="p5-settings flex h-full min-h-0 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-20 pt-[calc(var(--titlebar-height)+1.25rem)]">
           <div className="p5-profile-page">
