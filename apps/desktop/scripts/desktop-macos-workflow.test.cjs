@@ -53,6 +53,15 @@ test('Gatekeeper rejection fails the signed macOS build', () => {
   assert.doesNotMatch(gatekeeperStep, /exit 0/)
 })
 
+test('macOS matrix stages and reads back the requested package architecture', () => {
+  const source = workflowSource()
+  const architectureStep = namedStep(source, 'Assert packaged target architecture')
+
+  assert.match(source, /npm_config_arch: \$\{\{ matrix\.arch \}\}/)
+  assert.match(architectureStep, /EXPECTED_ARCH: \$\{\{ matrix\.arch \}\}/)
+  assert.match(architectureStep, /assert-macos-package-arch\.mjs "\$APP" "\$EXPECTED_ARCH"/)
+})
+
 test('direct single-platform dispatches are artifact-only', () => {
   const mac = workflowSource()
   const windows = fs.readFileSync(windowsWorkflowPath, 'utf8')

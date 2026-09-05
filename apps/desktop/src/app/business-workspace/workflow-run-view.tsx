@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
-import { fmtDayTime } from '@/lib/time'
+import { formatBusinessDayTime } from '@/lib/time'
 
 import {
   cancelWorkflowRun,
@@ -29,7 +29,7 @@ function runStatusTone(status: string): string {
 }
 
 export function WorkflowRunView() {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const copy = t.businessWorkspace.workflowDomain.run
   const { runId = '' } = useParams()
   const [overview, setOverview] = useState<null | WorkflowRunOverview>(null)
@@ -163,7 +163,7 @@ export function WorkflowRunView() {
         <dl className="mt-6 grid gap-4 border-b border-(--ui-stroke-tertiary) pb-6 sm:grid-cols-3">
           <RunFact label={copy.executor} value={run.executorType} />
           <RunFact label={copy.attempt} value={`${run.attempt}/${run.maxAttempts}`} />
-          <RunFact label={copy.created} value={fmtDayTime.format(new Date(run.createdAt))} />
+          <RunFact label={copy.created} value={formatBusinessDayTime(new Date(run.createdAt), locale)} />
         </dl>
 
         <RunSection title={copy.timeline}>
@@ -177,7 +177,7 @@ export function WorkflowRunView() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{copy.event(event.eventType)}</p>
                   <p className="mt-0.5 text-xs text-(--ui-text-tertiary)">
-                    #{event.sequence} · {fmtDayTime.format(new Date(event.happenedAt))}
+                    #{event.sequence} · {formatBusinessDayTime(new Date(event.happenedAt), locale)}
                   </p>
                 </div>
               </div>

@@ -19,7 +19,7 @@ import {
 import { RowButton } from '@/components/ui/row-button'
 import { Tip } from '@/components/ui/tooltip'
 import { getAllSessionMessages, listAllProfileSessions } from '@/hermes'
-import { type Translations, useI18n } from '@/i18n'
+import { type Locale, type Translations, useI18n } from '@/i18n'
 import { resolveBrandIcon } from '@/lib/brand-icon'
 import {
   ExternalLink,
@@ -31,7 +31,7 @@ import {
 } from '@/lib/external-link'
 import { FileImage, FileText, FolderOpen, Link2 } from '@/lib/icons'
 import { normalize } from '@/lib/text'
-import { fmtDayTime } from '@/lib/time'
+import { formatBusinessDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 
@@ -51,8 +51,8 @@ import {
 import { loadArtifactsForSessions } from "./artifact-utils"
 
 
-function formatArtifactTime(timestamp: number): string {
-  return fmtDayTime.format(new Date(timestamp))
+function formatArtifactTime(timestamp: number, locale: Locale): string {
+  return formatBusinessDayTime(new Date(timestamp), locale)
 }
 
 function pageRangeLabel(total: number, page: number, pageSize: number, a: Translations['artifacts']): string {
@@ -452,7 +452,7 @@ interface ArtifactImageCardProps {
 }
 
 function ArtifactImageCard({ artifact, failedImage, onImageError, onOpenChat }: ArtifactImageCardProps) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const a = t.artifacts
   const kindLabel = artifact.kind === 'image' ? a.kindImage : artifact.kind === 'file' ? a.kindFile : a.kindLink
   const [src, setSrc] = useState('')
@@ -516,7 +516,7 @@ function ArtifactImageCard({ artifact, failedImage, onImageError, onOpenChat }: 
         </div>
 
         <div className="truncate text-[0.625rem] text-(--ui-text-tertiary)">
-          {artifact.sessionTitle} · {formatArtifactTime(artifact.timestamp)}
+          {artifact.sessionTitle} · {formatArtifactTime(artifact.timestamp, locale)}
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -623,12 +623,14 @@ const LocationCell = memo(function LocationCell({ artifact }: { artifact: Artifa
 })
 
 const SessionCell = memo(function SessionCell({ artifact, ctx }: { artifact: ArtifactRecord; ctx: CellCtx }) {
+  const { locale } = useI18n()
+
   return (
     <ArtifactCellAction onClick={() => ctx.onOpenChat(artifact.sessionId)} title={artifact.sessionTitle}>
       <span className="flex min-w-0 flex-col">
         <span className="truncate">{artifact.sessionTitle}</span>
         <span className="truncate text-[0.6875rem] font-normal text-(--ui-text-tertiary)">
-          {formatArtifactTime(artifact.timestamp)}
+          {formatArtifactTime(artifact.timestamp, locale)}
         </span>
       </span>
     </ArtifactCellAction>
