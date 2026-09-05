@@ -2,7 +2,7 @@ import { isGatewayReauthRequired, JsonRpcGatewayError, resolveGatewayWsUrl } fro
 import { useEffect, useRef } from 'react'
 
 import { shouldApplyPostBootProgressError } from '@/components/boot-failure-reauth'
-import type { HermesConnection } from '@/global'
+import type { DesktopBootstrapEvent, HermesConnection } from '@/global'
 import { HermesGateway } from '@/hermes'
 import { translateNow } from '@/i18n'
 import { desktopDefaultCwd } from '@/lib/desktop-fs'
@@ -12,6 +12,7 @@ import {
   BACKEND_BOOT_WAIT_TIMEOUT_MS,
   isTimeoutError,
   RECONNECT_ATTEMPT_TIMEOUT_MS,
+  TimeoutError,
   withTimeout
 } from '@/lib/with-timeout'
 import {
@@ -126,12 +127,115 @@ const BOOT_RETRY_BASE_DELAY_MS = 2_000
 // the normal 45s backend-spawn budget. Keep the renderer attached to the SAME
 // getConnection IPC while Electron reports an active bootstrap; otherwise the
 // install finishes in main but the renderer has already latched a terminal
-// timeout overlay. The extended budget is still finite, and applies only after
-// a live bootstrap snapshot proves this is installation work rather than a
-// wedged ordinary IPC round-trip. A clean Windows install can spend more than
-// 20 minutes resolving and downloading the locked Python environment, so keep
-// enough headroom for the subsequent Node install while retaining a hard cap.
-const ACTIVE_BOOTSTRAP_CONNECTION_TIMEOUT_MS = 60 * 60 * 1000
+// timeout overlay. Windows dependency resolution has exceeded an hour on a
+// healthy, still-streaming install, so elapsed wall time is not a useful stall
+// signal. Bootstrap events are: reset the inactivity budget whenever main
+// reports work, and only abort after a long SILENT period. Cancellation is
+// requested before the renderer publishes failure so main and renderer cannot
+// disagree indefinitely about whether setup is still running.
+const ACTIVE_BOOTSTRAP_PROGRESS_STALL_TIMEOUT_MS = 30 * 60 * 1000
+const ACTIVE_BOOTSTRAP_CANCEL_GRACE_TIMEOUT_MS = RECONNECT_ATTEMPT_TIMEOUT_MS
+
+function bootstrapEventShowsProgress(event: DesktopBootstrapEvent) {
+  return event.type === 'manifest' || event.type === 'stage' || event.type === 'log'
+}
+
+function waitForActiveBootstrapConnection<T>(
+  pendingConnection: Promise<T>,
+  desktop: NonNullable<typeof window.hermesDesktop>
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    let stallTimer: ReturnType<typeof setTimeout> | null = null
+    let cancelGraceTimer: ReturnType<typeof setTimeout> | null = null
+    let offBootstrapEvent: (() => void) | undefined
+
+    const cleanup = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer)
+        stallTimer = null
+      }
+
+      if (cancelGraceTimer) {
+        clearTimeout(cancelGraceTimer)
+        cancelGraceTimer = null
+      }
+
+      offBootstrapEvent?.()
+      offBootstrapEvent = undefined
+    }
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      cleanup()
+      callback()
+    }
+
+    const fail = (message: string) => settle(() => reject(new TimeoutError(message)))
+
+    const cancelStalledBootstrap = () => {
+      stallTimer = null
+
+      try {
+        void desktop.cancelBootstrap?.().catch(() => undefined)
+      } catch {
+        // A compatibility bridge can throw synchronously. The finite grace
+        // below still releases the renderer even when cancellation is absent.
+      }
+
+      cancelGraceTimer = setTimeout(
+        () => fail('Timed out waiting for APEX setup progress'),
+        ACTIVE_BOOTSTRAP_CANCEL_GRACE_TIMEOUT_MS
+      )
+    }
+
+    const armProgressStallTimer = () => {
+      if (settled || cancelGraceTimer) {
+        return
+      }
+
+      if (stallTimer) {
+        clearTimeout(stallTimer)
+      }
+
+      stallTimer = setTimeout(cancelStalledBootstrap, ACTIVE_BOOTSTRAP_PROGRESS_STALL_TIMEOUT_MS)
+    }
+
+    const armPostBootstrapConnectionTimer = () => {
+      if (settled || cancelGraceTimer) {
+        return
+      }
+
+      if (stallTimer) {
+        clearTimeout(stallTimer)
+      }
+
+      stallTimer = setTimeout(
+        () => fail('Timed out connecting to Hermes backend after APEX setup'),
+        BACKEND_BOOT_WAIT_TIMEOUT_MS
+      )
+    }
+
+    offBootstrapEvent = desktop.onBootstrapEvent?.(event => {
+      if (bootstrapEventShowsProgress(event)) {
+        armProgressStallTimer()
+      } else if (event.type === 'complete') {
+        armPostBootstrapConnectionTimer()
+      }
+    })
+
+    armProgressStallTimer()
+
+    pendingConnection.then(
+      connection => settle(() => resolve(connection)),
+      error => settle(() => reject(error))
+    )
+  })
+}
 
 // While any of the RECONNECT_ATTEMPT_TIMEOUT_MS-bounded awaits below is
 // pending, `reconnecting` never clears, so scheduleReconnect()/
@@ -1020,11 +1124,7 @@ export function useGatewayBoot({
           throw error
         }
 
-        return withTimeout(
-          pendingConnection,
-          ACTIVE_BOOTSTRAP_CONNECTION_TIMEOUT_MS,
-          'Timed out waiting for APEX setup to finish'
-        )
+        return waitForActiveBootstrapConnection(pendingConnection, desktop)
       }
     }
 

@@ -1,7 +1,7 @@
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { DesktopConnectionsRegistry } from '@/global'
+import type { DesktopBootstrapEvent, DesktopConnectionsRegistry } from '@/global'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $desktopBoot } from '@/store/boot'
 import {
@@ -191,6 +191,7 @@ const coderConn = {
 
 function fakeDesktop() {
   let bootProgressHandler: ((payload: Record<string, unknown>) => void) | null = null
+  let bootstrapEventHandler: ((payload: DesktopBootstrapEvent) => void) | null = null
 
   return {
     getConnection: vi.fn(async (profile?: null | string) => {
@@ -210,6 +211,17 @@ function fakeDesktop() {
       timestamp: Date.now()
     })),
     getBootstrapState: vi.fn(async () => ({ active: false })),
+    cancelBootstrap: vi.fn(async () => ({ ok: true, cancelled: true })),
+    onBootstrapEvent: vi.fn((callback: (payload: DesktopBootstrapEvent) => void) => {
+      bootstrapEventHandler = callback
+
+      return () => {
+        bootstrapEventHandler = null
+      }
+    }),
+    emitBootstrapEvent(payload: DesktopBootstrapEvent) {
+      bootstrapEventHandler?.(payload)
+    },
     onBootProgress: vi.fn(callback => {
       bootProgressHandler = callback
 
@@ -462,9 +474,10 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($desktopBoot.get().visible).toBe(false)
   })
 
-  it('keeps a slow but active Windows cold install alive beyond twenty minutes', async () => {
+  it('keeps a slow but progressing Windows cold install attached beyond an hour', async () => {
+    const connection = deferred<typeof primaryConn>()
     const desktop = fakeDesktop()
-    desktop.getConnection = vi.fn(() => new Promise<never>(() => undefined))
+    desktop.getConnection = vi.fn(() => connection.promise)
     desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
     ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
 
@@ -473,14 +486,24 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(45_000)
-      await vi.advanceTimersByTimeAsync(20 * 60 * 1000)
+
+      for (let elapsedMinutes = 0; elapsedMinutes < 75; elapsedMinutes += 20) {
+        await vi.advanceTimersByTimeAsync(20 * 60 * 1000)
+        desktop.emitBootstrapEvent({ type: 'log', stage: 'dependencies', line: `progress ${elapsedMinutes}` })
+      }
     })
 
     expect(desktop.getConnection).toHaveBeenCalledOnce()
     expect($desktopBoot.get().error).toBeNull()
+
+    connection.resolve(primaryConn)
+    await flushAsync()
+
+    expect($gatewayState.get()).toBe('open')
+    expect($desktopBoot.get().error).toBeNull()
   })
 
-  it('bounds even an active bootstrap connection wait instead of creating a permanent setup spinner', async () => {
+  it('cancels a silent active bootstrap and still fails in finite time if main never settles', async () => {
     const desktop = fakeDesktop()
     desktop.getConnection = vi.fn(() => new Promise<never>(() => undefined))
     desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
@@ -491,11 +514,18 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(45_000)
-      await vi.advanceTimersByTimeAsync(60 * 60 * 1000)
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000)
+    })
+
+    expect(desktop.cancelBootstrap).toHaveBeenCalledOnce()
+    expect($desktopBoot.get().error).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000)
     })
 
     expect(desktop.getConnection).toHaveBeenCalledOnce()
-    expect($desktopBoot.get().error).toBe('Timed out waiting for APEX setup to finish')
+    expect($desktopBoot.get().error).toBe('Timed out waiting for APEX setup progress')
   })
 
   it('resets the old machine context before connecting an applied gateway', async () => {
