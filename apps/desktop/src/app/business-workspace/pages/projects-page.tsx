@@ -7,7 +7,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
-import { fmtDayTime } from '@/lib/time'
+import { formatBusinessDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 import { $tasks } from '@/store/tasks'
@@ -30,7 +30,7 @@ import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
 
 export function ProjectsView() {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const c = t.businessWorkspace.projects
   const location = useLocation()
   const navigate = useNavigate()
@@ -127,7 +127,7 @@ export function ProjectsView() {
 }
 
 function LegacyProjectsView({ notice }: { notice?: string } = {}) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const c = t.businessWorkspace.projects
   const navigate = useNavigate()
   const sessions = useStore($sessions)
@@ -225,7 +225,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
                       ? c.needsInput
                       : conversation.status === 'running'
                         ? c.running
-                        : fmtDayTime.format(new Date(conversation.lastActive * 1000))}
+                        : formatBusinessDayTime(new Date(conversation.lastActive * 1000), locale)}
                   </span>
                 </button>
               ))

@@ -31,6 +31,7 @@ import { isHudWindow } from "@/store/windows"
 import { type SessionInfo } from "@/types/hermes"
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
+import { handleDesktopDeepLinkPayload } from '../../desktop-deep-link'
 import { appViewForPath, COMMAND_CENTER_ROUTE, isOverlayView, NEW_CHAT_ROUTE, sessionRoute } from '../../routes'
 import { routeSessionId } from "../../routes"
 
@@ -238,7 +239,7 @@ export function useDesktopIntegrations({
     return () => unsubscribe?.()
   }, [navigate])
 
-  // hermes:// deep links:
+  // apexnodes:// login and parse-only hermes:// compatibility links:
   //  - mcp/install?… → pending MCP install (explicit confirm, never auto-install)
   //  - plugin/install?… (and legacy plugin-agent/plugin-desktop) → plugin install
   //    modal awaiting explicit confirmation. Never auto-installs.
@@ -248,6 +249,12 @@ export function useDesktopIntegrations({
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onDeepLink?.(payload => {
       if (!payload?.kind) {
+        return
+      }
+
+      if (payload.kind === 'login') {
+        handleDesktopDeepLinkPayload(payload)
+
         return
       }
 

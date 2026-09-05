@@ -26,6 +26,7 @@ vi.mock('@/store/runtime-update', async () => {
 })
 
 import { $runtimeUpdateCheck, $runtimeVersion } from '@/store/runtime-update'
+import { $desktopVersion } from '@/store/updates'
 
 import { EngineUpdateSection } from './about-settings'
 
@@ -37,6 +38,7 @@ beforeEach(() => {
     .mockResolvedValue({ ok: false, version: null, commit: null, branch: null, key: null })
   $runtimeUpdateCheck.set(null)
   $runtimeVersion.set(null)
+  $desktopVersion.set(null)
 })
 
 afterEach(() => {
@@ -44,6 +46,29 @@ afterEach(() => {
 })
 
 describe('EngineUpdateSection (hc-591 engine version display)', () => {
+  it('labels the Electron shell version as the app and the managed runtime as the engine', () => {
+    $desktopVersion.set({
+      appVersion: '0.17.24',
+      electronVersion: '40.10.2',
+      engineVersion: '0.20.0',
+      hermesRoot: '/tmp/hermes-agent',
+      nodeVersion: '22.22.1',
+      platform: 'darwin'
+    })
+    $runtimeVersion.set({
+      branch: 'main',
+      commit: '8fe26a54',
+      key: '8fe26a54',
+      ok: true,
+      version: '0.20.0'
+    })
+
+    render(<EngineUpdateSection />)
+
+    expect(screen.getByText('Version 0.17.24')).toBeTruthy()
+    expect(screen.getByText('Version: 0.20.0')).toBeTruthy()
+  })
+
   it('shows the humanized installed version, not the raw internal pin', () => {
     $runtimeVersion.set({
       ok: true,

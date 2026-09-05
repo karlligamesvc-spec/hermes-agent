@@ -72,6 +72,7 @@ import {
   resolveDaemonEndpoints,
   sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
+import { ensureApexDesktopSoul } from './apex-default-soul'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -278,6 +279,12 @@ import {
 import type { RosterProfileMetadata } from './connection-registry'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken } from './dashboard-token'
+import {
+  createDesktopDeepLinkRouter,
+  type DesktopDeepLinkSource,
+  findDesktopDeepLink,
+  registerApexDesktopProtocol
+} from './desktop-deep-link'
 import {
   provisionDeviceBody,
   provisionKeyRevokeUrl,
@@ -14107,7 +14114,7 @@ function createWindow() {
     if (mainWindow === createdMainWindow) {
       mainWindow = null
       // the replacement renderer must register before queued links can be delivered.
-      _rendererReadyForDeepLink = false
+      _deepLinkRouter.markRendererUnavailable()
     }
   })
 
@@ -17161,119 +17168,74 @@ ipcMain.handle('hermes:vscode-theme:fetch', async (_event, id) => fetchMarketpla
 ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMarketplaceThemes(String(query || ''), 20))
 
 // ---------------------------------------------------------------------------
-// hermes:// deep links (e.g. hermes://blueprint/morning-brief?time=08:00,
-// hermes://mcp/install?name=NAME&config=B64 — the vendor "Add to Hermes"
-// button, or hermes://plugin/install?repo=owner/repo). Dev
-// (`HERMES_DESKTOP_DEV_SERVER`) registers hermes-dev:// instead — bare
-// Electron or a stale OS handler often owns hermes:// on dev machines.
-// Parsing is generic ({kind, name, params}); the renderer routes per kind
-// and anything install-shaped requires explicit user confirmation there.
+// apexnodes:// deep links, plus parse-only compatibility for legacy Hermes
+// links. APEX is the only scheme this app registers with the OS; the renderer
+// still routes non-auth compatibility payloads and requires explicit user
+// confirmation for install-shaped actions.
 // A docs/dashboard "Send to App" button opens this URL; we route it into the
 // running app. Three delivery paths: macOS 'open-url',
 // Win/Linux running-app 'second-instance' (argv), Win/Linux cold-start argv.
 // ---------------------------------------------------------------------------
-const HERMES_PROTOCOL = DEV_SERVER ? 'hermes-dev' : 'hermes'
-/** Schemes accepted when parsing inbound URLs (dev accepts both). */
-const DEEPLINK_SCHEMES = DEV_SERVER ? ['hermes-dev', 'hermes'] : ['hermes']
-let _pendingDeepLink = null
-let _rendererReadyForDeepLink = false
-
-function _extractDeepLink(argv) {
-  if (!Array.isArray(argv)) {
-    return null
-  }
-
-  return argv.find(a => typeof a === 'string' && DEEPLINK_SCHEMES.some(s => a.startsWith(`${s}://`))) || null
-}
-
-function handleDeepLink(url) {
-  if (!url || typeof url !== 'string') {
-    return
-  }
-
-  let parsed
-
-  try {
-    parsed = new URL(url)
-  } catch {
-    rememberLog(`[deeplink] ignoring malformed url: ${url}`)
-
-    return
-  }
-
-  const scheme = parsed.protocol.replace(/:$/, '')
-
-  if (!DEEPLINK_SCHEMES.includes(scheme)) {
-    rememberLog(`[deeplink] ignoring scheme ${scheme} (expected ${DEEPLINK_SCHEMES.join(' or ')})`)
-
-    return
-  }
-
-  // hermes://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
-  const kind = parsed.hostname || ''
-  const name = decodeURIComponent((parsed.pathname || '').replace(/^\//, ''))
-  const params = {}
-  parsed.searchParams.forEach((v, k) => {
-    params[k] = v
-  })
-  const payload = { kind, name, params }
-
-  if (!_rendererReadyForDeepLink || !mainWindow || mainWindow.isDestroyed()) {
-    _pendingDeepLink = payload
-
-    return
-  }
-
-  try {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
+const _deepLinkRouter = createDesktopDeepLinkRouter({
+  deliver(payload) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return false
     }
 
-    mainWindow.focus()
-    mainWindow.webContents.send('hermes:deep-link', payload)
-    rememberLog(`[deeplink] delivered ${kind}/${name}`)
-  } catch (err) {
-    rememberLog(`[deeplink] delivery failed: ${err.message}`)
-  }
+    try {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+
+      mainWindow.focus()
+      mainWindow.webContents.send('hermes:deep-link', payload)
+
+      return true
+    } catch (err) {
+      rememberLog(`[deeplink] delivery failed: ${err.message}`)
+
+      return false
+    }
+  },
+  log: rememberLog
+})
+
+function handleDeepLink(url, source: DesktopDeepLinkSource = 'unknown') {
+  return _deepLinkRouter.accept(url, source)
 }
 
 // Renderer calls this (via IPC) once it has mounted its deep-link listener, so
 // a link that arrived during boot/install is flushed exactly once.
 ipcMain.handle('hermes:deep-link-ready', () => {
-  _rendererReadyForDeepLink = true
-
-  if (_pendingDeepLink) {
-    const queued = _pendingDeepLink
-    _pendingDeepLink = null
-    handleDeepLink(
-      `${HERMES_PROTOCOL}://${queued.kind}/${encodeURIComponent(queued.name)}` +
-        (Object.keys(queued.params).length ? '?' + new URLSearchParams(queued.params).toString() : '')
-    )
-  }
+  _deepLinkRouter.markRendererReady()
 
   return { ok: true }
 })
 
 function registerDeepLinkProtocol() {
   try {
-    if (process.defaultApp && process.argv.length >= 2) {
-      // Dev: register with the electron exec path + entry script so the OS can
-      // relaunch us with the URL. argv[1] is usually "." when launched via
-      // `electron .` from apps/desktop — resolve against cwd.
-      const entry = path.resolve(process.argv[1])
-      app.setAsDefaultProtocolClient(HERMES_PROTOCOL, process.execPath, [entry])
-    } else {
-      app.setAsDefaultProtocolClient(HERMES_PROTOCOL)
-    }
+    const developmentLaunch =
+      process.defaultApp && process.argv.length >= 2
+        ? {
+            // Dev: include the Electron entry script so the OS relaunches the
+            // same application rather than the bare Electron executable.
+            entryScript: path.resolve(process.argv[1]),
+            executable: process.execPath
+          }
+        : undefined
 
-    rememberLog(`[deeplink] registered ${HERMES_PROTOCOL}:// handler`)
+    const registered = registerApexDesktopProtocol(app, developmentLaunch)
+
+    if (!registered) {
+      rememberLog('[deeplink] OS rejected apexnodes protocol registration')
+    }
   } catch (err) {
     rememberLog(`[deeplink] protocol registration failed: ${err.message}`)
   }
 }
 
 // Single-instance lock: deep links on a running app (Win/Linux) arrive as a
-// second-instance argv. Without the lock a second `hermes://` launch spawns a
+// second-instance argv. Without the lock a second `apexnodes://` launch spawns a
 // whole new app instead of routing into the running one.
 const _gotSingleInstanceLock = app.requestSingleInstanceLock()
 const isPrimaryInstance = _gotSingleInstanceLock
@@ -17289,10 +17251,10 @@ if (!isPrimaryInstance) {
   app.exit(0)
 } else {
   app.on('second-instance', (_event, argv) => {
-    const url = _extractDeepLink(argv)
+    const url = findDesktopDeepLink(argv)
 
     if (url) {
-      handleDeepLink(url)
+      handleDeepLink(url, 'second-instance')
     }
 
     ensureMainWindow(mainWindow, {
@@ -22363,10 +22325,17 @@ ipcMain.handle('hermes:fs:worktrees', async (_event, cwds) => worktreesForIpc(cw
 // whenReady; handleDeepLink queues until the renderer is ready).
 app.on('open-url', (event, url) => {
   event.preventDefault()
-  handleDeepLink(url)
+  handleDeepLink(url, 'macos-open-url')
 })
 
 app.whenReady().then(() => {
+  try {
+    const soulSeed = ensureApexDesktopSoul(HERMES_HOME)
+    rememberLog(`[soul] APEX default ${soulSeed}`)
+  } catch (error) {
+    rememberLog(`[soul] could not seed APEX default: ${error?.message || error}`)
+  }
+
   // hc-544: repair the GUI-minimal PATH BEFORE any child spawns, so the backend,
   // messaging gateway, and daemon agent-runner all inherit ~/.local/bin etc. and
   // can resolve the user's claude/codex CLI. Fail-soft; no-op on Windows.
@@ -22487,11 +22456,11 @@ app.whenReady().then(() => {
   // 壳自更新:首查本身就延迟 60s(shell-updater.ts),不和启动高峰抢资源。
   initShellUpdater()
 
-  // Win/Linux cold start: the launching hermes:// URL is in our own argv.
-  const _coldStartLink = _extractDeepLink(process.argv)
+  // Win/Linux cold start: the launching apexnodes:// URL is in our own argv.
+  const _coldStartLink = findDesktopDeepLink(process.argv)
 
   if (_coldStartLink) {
-    handleDeepLink(_coldStartLink)
+    handleDeepLink(_coldStartLink, 'cold-start')
   }
 
   app.on('activate', () => {
