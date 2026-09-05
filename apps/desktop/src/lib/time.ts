@@ -19,6 +19,34 @@ export const fmtDayTime = new Intl.DateTimeFormat(undefined, {
   month: 'short'
 })
 
+const APP_LOCALE_TAGS = {
+  ar: 'ar',
+  en: 'en-US',
+  ja: 'ja-JP',
+  zh: 'zh-CN',
+  'zh-hant': 'zh-TW'
+} as const
+
+const appDayTimeFormatters = new Map<string, Intl.DateTimeFormat>()
+
+/** Business objects follow the selected APEX UI language, not the OS locale. */
+export function formatBusinessDayTime(value: Date | number, locale: keyof typeof APP_LOCALE_TAGS): string {
+  const tag = APP_LOCALE_TAGS[locale]
+  let formatter = appDayTimeFormatters.get(tag)
+
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(tag, {
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      month: 'short'
+    })
+    appDayTimeFormatters.set(tag, formatter)
+  }
+
+  return formatter.format(value)
+}
+
 // Medium date + short time (command center session detail).
 export const fmtDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 

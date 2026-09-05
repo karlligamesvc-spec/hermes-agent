@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useI18n } from '@/i18n'
-import { fmtDayTime } from '@/lib/time'
+import { formatBusinessDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 import { $tasks } from '@/store/tasks'
@@ -22,7 +22,7 @@ import { type BusinessWorkflowStarter, businessWorkflowStarters } from './workfl
 import { recentConversations, recentWorkspaceTasks } from './workspace-model'
 
 export function ProjectsView() {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const c = t.businessWorkspace.projects
   const navigate = useNavigate()
   const sessions = useStore($sessions)
@@ -114,7 +114,7 @@ export function ProjectsView() {
                       ? c.needsInput
                       : conversation.status === 'running'
                         ? c.running
-                        : fmtDayTime.format(new Date(conversation.lastActive * 1000))}
+                        : formatBusinessDayTime(new Date(conversation.lastActive * 1000), locale)}
                   </span>
                 </button>
               ))

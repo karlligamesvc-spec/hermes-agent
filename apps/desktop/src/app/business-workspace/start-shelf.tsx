@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
-import { fmtDayTime } from '@/lib/time'
+import { formatBusinessDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 import { $tasks } from '@/store/tasks'
@@ -35,7 +35,7 @@ export interface BusinessStartShelfProps {
  * deliverable of its own.
  */
 export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps = {}) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const c = t.businessWorkspace
   const navigate = useNavigate()
   const sessions = useStore($sessions)
@@ -159,7 +159,7 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
                       ? c.projects.needsInput
                       : conversation.status === 'running'
                         ? c.projects.running
-                        : fmtDayTime.format(new Date(conversation.lastActive * 1000))}
+                        : formatBusinessDayTime(new Date(conversation.lastActive * 1000), locale)}
                   </span>
                   <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
                 </button>

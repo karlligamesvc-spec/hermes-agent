@@ -18,7 +18,7 @@ import { onSessionsChanged } from '@/store/session-sync'
 import { startUpdatePoller, stopUpdatePoller } from '@/store/updates'
 import { isSecondaryWindow } from '@/store/windows'
 
-import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
+import { handleDesktopDeepLinkPayload } from '../../desktop-deep-link'
 import { appViewForPath, COMMAND_CENTER_ROUTE, isOverlayView, NEW_CHAT_ROUTE, sessionRoute } from '../../routes'
 
 interface DesktopIntegrationsParams {
@@ -154,25 +154,9 @@ export function useDesktopIntegrations({
     return () => unsubscribe?.()
   }, [])
 
-  // hermes:// deep links -> a reviewable /blueprint command in the composer.
+  // APEX login and legacy blueprint deep links share one renderer adapter.
   useEffect(() => {
-    const unsubscribe = window.hermesDesktop?.onDeepLink?.(payload => {
-      if (!payload || payload.kind !== 'blueprint' || !payload.name) {
-        return
-      }
-
-      const slots = Object.entries(payload.params || {})
-        .map(([k, v]) => {
-          const sval = /\s/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v
-
-          return `${k}=${sval}`
-        })
-        .join(' ')
-
-      const command = `/blueprint ${payload.name}${slots ? ' ' + slots : ''}`
-      requestComposerInsert(command, { mode: 'block', target: 'main' })
-      requestComposerFocus('main')
-    })
+    const unsubscribe = window.hermesDesktop?.onDeepLink?.(handleDesktopDeepLinkPayload)
 
     void window.hermesDesktop?.signalDeepLinkReady?.()
 
