@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router'
 
-import { Codicon } from '@/components/ui/codicon'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 
 import { NEW_CHAT_ROUTE } from '../../routes'
+import { BusinessPageHeader } from '../components/business-page-header'
+import { WorkflowStarterCard } from '../components/workflow-starter-card'
 import { useWorkflowDefinitions } from '../hooks/use-workflow-domain-lists'
 import { type BusinessWorkflowStarter, businessWorkflowStarters } from '../view-model/workflow-starters'
 
@@ -38,75 +39,96 @@ export function WorkflowsView() {
     navigate(NEW_CHAT_ROUTE, {
       state: {
         businessGoalDraft: starter.prompt,
+        businessWorkflowId: starter.id,
+        businessWorkflowVersion: starter.version,
         businessWorkflowSlug: starter.slug
       }
     })
   }
 
   return (
-    <section className="flex h-full flex-col overflow-y-auto bg-(--ui-chat-surface-background) px-(--page-inset-x) py-8">
-      <header className="mx-auto w-full max-w-4xl border-b border-(--ui-stroke-tertiary) pb-5">
-        <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{c.description}</p>
-      </header>
+    <section
+      className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-6 py-8 min-[1100px]:px-9"
+      data-business-workflows-page=""
+    >
+      <div className="mx-auto w-full max-w-[65.625rem]">
+        <BusinessPageHeader
+          action={{
+            icon: 'play',
+            label: c.startGoal,
+            onClick: () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalFocus: true } })
+          }}
+          description={c.description}
+          eyebrow={c.eyebrow}
+          icon="list-unordered"
+          title={c.title}
+          trailing={
+            result.mode === 'unavailable' ? (
+              <p className="mt-3 text-xs text-(--ui-text-tertiary)">{c.localCatalogNotice}</p>
+            ) : undefined
+          }
+        />
+      </div>
       {result.mode === 'loading' ? (
-        <div className="mx-auto flex w-full max-w-4xl flex-1 items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
+        <div className="mx-auto flex min-h-72 w-full max-w-[65.625rem] items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader className="size-8" label={c.title} type="lemniscate-bloom" />
           <span>{c.title}</span>
         </div>
       ) : result.mode === 'failed' ? (
-        <p className="mx-auto w-full max-w-4xl py-8 text-sm text-amber-600" role="alert">
+        <p className="mx-auto w-full max-w-[65.625rem] py-8 text-sm text-amber-600" role="alert">
           {c.catalogUnavailable}
         </p>
       ) : (
         <>
-          <div className="mx-auto grid w-full max-w-4xl gap-0 py-5 md:grid-cols-3">
-            {recommended.map(starter => (
-              <button
-                className="group flex min-h-40 flex-col items-start border-b border-(--ui-stroke-tertiary) px-4 py-5 text-left hover:bg-(--chrome-action-hover) md:border-r md:border-b-0 first:pl-0 last:border-r-0"
-                key={starter.id}
-                onClick={() => selectStarter(starter)}
-                type="button"
-              >
-                <span className="grid size-9 place-items-center rounded-md bg-primary/10 text-primary">
-                  <Codicon name={starter.icon} size="1rem" />
-                </span>
-                <strong className="mt-4 text-sm">{starter.title}</strong>
-                <span className="mt-1 text-xs leading-5 text-muted-foreground">{starter.summary}</span>
-                <span className="mt-auto pt-4 text-xs font-medium text-primary">{c.use} →</span>
-              </button>
-            ))}
-          </div>
-          <div className="mx-auto grid w-full max-w-4xl border-t border-(--ui-stroke-tertiary)">
-            {additional.map(starter => (
-              <button
-                className="flex items-center gap-3 border-b border-(--ui-stroke-tertiary) py-4 text-left hover:bg-(--chrome-action-hover)"
-                key={starter.id}
-                onClick={() => selectStarter(starter)}
-                type="button"
-              >
-                <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-                  <Codicon name={starter.icon} size="0.875rem" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <strong className="block text-sm">{starter.title}</strong>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{starter.summary}</span>
-                </span>
-                <span className="text-xs font-medium text-primary">{c.use} →</span>
-              </button>
-            ))}
+          <div className="mx-auto w-full max-w-[65.625rem] py-6">
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold">{c.recommendedTitle}</h2>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{c.recommendedDescription}</p>
+              </div>
+              <span className="text-xs text-(--ui-text-tertiary)">{c.pathCount(recommended.length)}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 min-[820px]:grid-cols-3" data-recommended-workflows="">
+              {recommended.map(starter => (
+                <WorkflowStarterCard
+                  action={c.use}
+                  key={starter.id}
+                  onSelect={() => selectStarter(starter)}
+                  starter={starter}
+                  variant="featured"
+                />
+              ))}
+            </div>
+
+            <div className="mb-4 mt-8 flex items-center justify-between gap-4 border-t border-(--ui-stroke-tertiary) pt-6">
+              <h2 className="text-base font-semibold">{c.additionalTitle}</h2>
+              <span className="text-xs text-(--ui-text-tertiary)">{c.pathCount(additional.length)}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-3" data-additional-workflows="">
+              {additional.map(starter => (
+                <WorkflowStarterCard
+                  action={c.useShort}
+                  key={starter.id}
+                  onSelect={() => selectStarter(starter)}
+                  starter={starter}
+                  variant="compact"
+                />
+              ))}
+            </div>
           </div>
         </>
       )}
       {result.mode === 'ready' && (
-        <section className="mx-auto w-full max-w-4xl border-t border-(--ui-stroke-tertiary) py-6">
-          <h2 className="text-sm font-semibold">{c.savedTitle}</h2>
+        <section className="mx-auto w-full max-w-[65.625rem] border-t border-(--ui-stroke-tertiary) py-6">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-base font-semibold">{c.savedTitle}</h2>
+            <span className="text-xs text-(--ui-text-tertiary)">{c.savedCount(result.items.length)}</span>
+          </div>
           {result.items.length > 0 ? (
-            <div className="mt-3 grid gap-0">
+            <div className="mt-4 overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated)">
               {result.items.map(workflow => (
                 <div
-                  className="flex items-start justify-between gap-4 border-b border-(--ui-stroke-tertiary) py-3"
+                  className="flex items-start justify-between gap-4 border-b border-(--ui-stroke-tertiary) px-4 py-3 last:border-b-0"
                   key={workflow.id}
                 >
                   <span className="min-w-0">
@@ -122,7 +144,9 @@ export function WorkflowsView() {
               ))}
             </div>
           ) : (
-            <p className="mt-3 text-xs text-muted-foreground">{c.savedEmpty}</p>
+            <p className="mt-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-5 text-xs text-muted-foreground">
+              {c.savedEmpty}
+            </p>
           )}
         </section>
       )}

@@ -29,8 +29,36 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   const location = useLocation()
   const navigate = useNavigate()
   const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
-  const launchState = location.state as null | { businessGoalDraft?: unknown; businessWorkflowSlug?: unknown }
-  const launchedWorkflow = workflows.find(workflow => workflow.slug === launchState?.businessWorkflowSlug) ?? null
+
+  const launchState = location.state as null | {
+    businessGoalDraft?: unknown
+    businessGoalFocus?: unknown
+    businessWorkflowId?: unknown
+    businessWorkflowSlug?: unknown
+    businessWorkflowVersion?: unknown
+  }
+
+  const launchedWorkflow = useMemo(() => {
+    const routedWorkflow = workflows.find(workflow => workflow.slug === launchState?.businessWorkflowSlug) ?? null
+
+    return routedWorkflow
+      ? {
+          ...routedWorkflow,
+          id: typeof launchState?.businessWorkflowId === 'string' ? launchState.businessWorkflowId : routedWorkflow.id,
+          version:
+            typeof launchState?.businessWorkflowVersion === 'number' &&
+            Number.isSafeInteger(launchState.businessWorkflowVersion) &&
+            launchState.businessWorkflowVersion > 0
+              ? launchState.businessWorkflowVersion
+              : routedWorkflow.version
+        }
+      : null
+  }, [
+    launchState?.businessWorkflowId,
+    launchState?.businessWorkflowSlug,
+    launchState?.businessWorkflowVersion,
+    workflows
+  ])
 
   const initialDraft =
     launchedWorkflow?.prompt ??
@@ -42,20 +70,20 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   const [domainStarting, setDomainStarting] = useState(false)
 
   const focusGoal = () => {
-    document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
+    window.document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
   }
 
   useEffect(() => {
-    if (!launchedWorkflow) {
+    if (!launchedWorkflow && launchState?.businessGoalFocus !== true) {
       return
     }
 
     const frame = window.requestAnimationFrame(() => {
-      document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
+      window.document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [launchedWorkflow])
+  }, [launchState?.businessGoalFocus, launchedWorkflow])
 
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
     setSelectedWorkflow(workflow)
@@ -102,21 +130,24 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   }
 
   return (
-    <div className="pointer-events-auto flex w-full min-w-0 flex-col gap-5" data-business-start-home="">
-      <header className="flex items-start justify-between gap-6">
+    <div
+      className="pointer-events-auto mx-auto flex w-full max-w-[48rem] min-w-0 flex-col gap-6"
+      data-business-start-home=""
+    >
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="max-w-[48rem]">
           <h1 className="m-0 text-balance text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-foreground">
             {t.home.title}
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
         </div>
-        <Button className="shrink-0" onClick={focusGoal} size="sm" variant="outline">
+        <Button className="shrink-0 self-start" onClick={focusGoal} size="sm" variant="outline">
           <Codicon name="add" size="0.875rem" />
           {t.businessWorkspace.projects.action}
         </Button>
       </header>
 
-      <div className="flex w-full max-w-[48rem] flex-col gap-6">
+      <div className="flex w-full flex-col gap-7">
         <BusinessGoalLauncher
           disabled={goalDisabled || domainStarting}
           draft={goalDraft}

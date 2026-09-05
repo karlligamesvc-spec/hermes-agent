@@ -3190,8 +3190,18 @@ export const zhHant = defineLocale({
       title: '專案',
       description: '依業務目標查看目前執行、真實步驟狀態、待處理事項與交付結果。',
       emptyTitle: '從一個真實業務任務開始',
-      emptyDescription: '先在對話中描述目標。最近對話、真實任務進度、證據與交付檔案會顯示在這裡。',
+      emptyDescription: '先描述一個業務目標，APEX 會據此建立真實專案並組織工作流程。',
       action: '開始一個目標',
+      newProject: '新增專案',
+      chooseWorkflow: '選擇工作流程',
+      filters: {
+        label: '專案狀態篩選',
+        all: '全部',
+        active: '進行中',
+        completed: '已完成'
+      },
+      totalProjects: count => `共 ${count} 個專案`,
+      filterEmpty: '這個狀態下還沒有真實專案。',
       tasksAction: '查看任務進度',
       recentConversations: '最近對話',
       openHistory: '開啟歷史',
@@ -3225,7 +3235,9 @@ export const zhHant = defineLocale({
       recentProjects: '最近專案',
       loadingProjects: '正在讀取專案…',
       projectLoadFailed: '暫時無法讀取專案，下方仍保留本機工作的相容視圖。',
+      projectDomainUnavailable: '專案服務尚未連接。真實資料可用後，最近專案會顯示在這裡。',
       deliverableCount: count => `${count} 個交付物`,
+      updatedAt: date => `${date} 更新`,
       currentStep: title => `目前：${title}`,
       lifecycle: status =>
         ({
@@ -3250,6 +3262,12 @@ export const zhHant = defineLocale({
       title: '工作流程',
       description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。',
       use: '使用此工作流程',
+      useShort: '使用',
+      startGoal: '開始一個目標',
+      recommendedTitle: '三條重點路徑',
+      recommendedDescription: '選擇成熟路徑，目標會預填到開始頁並保持可編輯。',
+      additionalTitle: '其他業務路徑',
+      pathCount: count => `${count} 條路徑`,
       commerce: {
         title: '從市場機會到上架素材',
         summary: '資料採集、機會分析、定位與生產',
@@ -3282,6 +3300,8 @@ export const zhHant = defineLocale({
       },
       savedTitle: '我的工作流程',
       savedEmpty: '還沒有已儲存的工作流程。開始一個目標後會在這裡出現。',
+      savedCount: count => `${count} 個真實工作流程`,
+      localCatalogNotice: '生產目錄尚未連接；目前顯示內建路徑，選擇後仍會先回到開始頁編輯目標。',
       catalogUnavailable: '真實工作流程目錄暫時無法使用，沒有範本被啟動。',
       version: version => `版本 ${version}`
     },

@@ -30,20 +30,26 @@ import { ProjectsView, WorkflowsView } from '.'
 function LocationProbe() {
   const location = useLocation()
 
-  const routeDrawerState = location.state as
-    | {
-        businessGoalDraft?: string
-        businessWorkflowSlug?: string
-        routeDrawer?: { backgroundLocation?: { pathname?: string } }
-      }
-    | null
+  const routeDrawerState = location.state as {
+    businessGoalDraft?: string
+    businessGoalFocus?: boolean
+    businessWorkflowId?: string
+    businessWorkflowSlug?: string
+    businessWorkflowVersion?: number
+    routeDrawer?: { backgroundLocation?: { pathname?: string } }
+  } | null
 
   return (
     <>
       <output data-testid="location">{`${location.pathname}${location.search}`}</output>
-      <output data-testid="route-drawer-source">{routeDrawerState?.routeDrawer?.backgroundLocation?.pathname ?? ''}</output>
+      <output data-testid="route-drawer-source">
+        {routeDrawerState?.routeDrawer?.backgroundLocation?.pathname ?? ''}
+      </output>
       <output data-testid="business-goal-draft">{routeDrawerState?.businessGoalDraft ?? ''}</output>
+      <output data-testid="business-goal-focus">{routeDrawerState?.businessGoalFocus ? 'true' : ''}</output>
+      <output data-testid="business-workflow-id">{routeDrawerState?.businessWorkflowId ?? ''}</output>
       <output data-testid="business-workflow-slug">{routeDrawerState?.businessWorkflowSlug ?? ''}</output>
+      <output data-testid="business-workflow-version">{routeDrawerState?.businessWorkflowVersion ?? ''}</output>
     </>
   )
 }
@@ -335,6 +341,101 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByTestId('route-drawer-source').textContent).toBe('/projects')
   })
 
+  it('filters only real Project rows and hides zero deliverable counts', async () => {
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({
+        items: [
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'active-project',
+            name: '进行中的真实项目',
+            objective: '继续推进真实目标',
+            status: 'active',
+            summary: {
+              attention: 'none' as const,
+              currentRunId: null,
+              currentRunStatus: 'queued',
+              currentStepTitle: null,
+              deliverableCount: 0,
+              stepCompleted: 0,
+              stepTotal: 0
+            },
+            updatedAt: '2026-09-04T10:00:00Z'
+          },
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'completed-project',
+            name: '已完成的真实项目',
+            objective: '已完成的真实目标',
+            status: 'active',
+            summary: {
+              attention: 'none' as const,
+              currentRunId: 'run-complete',
+              currentRunStatus: 'succeeded',
+              currentStepTitle: null,
+              deliverableCount: 1,
+              stepCompleted: 0,
+              stepTotal: 0
+            },
+            updatedAt: '2026-09-03T10:00:00Z'
+          }
+        ],
+        ok: true,
+        total: 2
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <ProjectsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('进行中的真实项目')).toBeTruthy())
+    expect(screen.queryByText('0 个交付物')).toBeNull()
+    expect(screen.getByRole('button', { name: /全部2/ }).getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: /已完成1/ }))
+    expect(screen.queryByText('进行中的真实项目')).toBeNull()
+    expect(screen.getByText('已完成的真实项目')).toBeTruthy()
+    expect(screen.getByText('1 个交付物')).toBeTruthy()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
+  })
+
+  it('routes New project back to a focused blank Start goal', async () => {
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({ items: [], ok: true, total: 0 })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <ProjectsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '新建项目' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '新建项目' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(screen.getByTestId('business-goal-draft').textContent).toBe('')
+    expect(screen.getByTestId('business-goal-focus').textContent).toBe('true')
+  })
+
   it('keeps Phase 0 Project responses visible without inventing run summary data', async () => {
     const listProjects = vi.fn(async () => ({
       items: [
@@ -461,7 +562,7 @@ describe('hc-685 business workspace identity', () => {
       position: index + 1,
       recommended: Boolean(recommended),
       slug: String(id),
-      version: 1
+      version: id === 'competitor-monitoring' ? 7 : 1
     }))
 
     const getCatalog = vi.fn(async () => ({ items: catalog, ok: true, version: 'workflow-catalog/v1' }))
@@ -513,7 +614,50 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(screen.getByRole('button', { name: /竞品监控/ }))
 
     await waitFor(() => expect(screen.getByTestId('business-workflow-slug').textContent).toBe('competitor-monitoring'))
+    expect(screen.getByTestId('business-workflow-id').textContent).toBe('competitor-monitoring')
+    expect(screen.getByTestId('business-workflow-version').textContent).toBe('7')
     expect(startGoal).not.toHaveBeenCalled()
+  })
+
+  it('retains the routed catalog template id and version after goal editing', async () => {
+    const startGoal = vi.fn(async () => ({ ok: true, run: domainRun('run-versioned', 'edited catalog goal') }))
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessGoalDraft: 'catalog goal',
+              businessWorkflowId: 'competitor-monitoring',
+              businessWorkflowSlug: 'competitor-monitoring',
+              businessWorkflowVersion: 7
+            }
+          }
+        ]}
+      >
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: 'Business goal' })
+    fireEvent.change(goal, { target: { value: 'edited catalog goal' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start goal' }))
+
+    await waitFor(() => expect(startGoal).toHaveBeenCalledTimes(1))
+    expect(startGoal).toHaveBeenCalledWith({
+      objective: 'edited catalog goal',
+      starter: expect.objectContaining({ id: 'competitor-monitoring', slug: 'competitor-monitoring', version: 7 })
+    })
   })
 
   it('falls back to the existing chat submission when workflow-domain access is dark', async () => {
@@ -666,7 +810,7 @@ describe('hc-685 business workspace identity', () => {
     expect(window.document.activeElement).toBe(goal)
   })
 
-  it('shows and restores recent work only from real sessions', async () => {
+  it('keeps Start scoped to three recommended paths and an honest unavailable-project lifecycle', () => {
     setSessions([
       {
         id: 'real-tip-2',
@@ -690,138 +834,35 @@ describe('hc-685 business workspace identity', () => {
       <MemoryRouter initialEntries={['/']}>
         <I18nProvider configClient={null} initialLocale="en">
           <BusinessStartShelf />
-          <LocationProbe />
         </I18nProvider>
       </MemoryRouter>
     )
 
-    expect(screen.queryByText('美国宠物用品机会分析')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Real market review/ }))
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/real-tip-2'))
+    expect(window.document.querySelectorAll('[data-workflow-starter="shelf"]')).toHaveLength(3)
+    expect(
+      screen.getByText(
+        'The project service is not connected yet. Recent projects appear here when real data is available.'
+      )
+    ).toBeTruthy()
+    expect(screen.queryByText('Real market review')).toBeNull()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
   })
 
-  it('keeps start-page loading distinct from a proven real-session empty state', () => {
-    setSessionsLoading(true)
+  it('keeps Start project loading distinct from a proven real-project empty state', async () => {
+    let resolveProjects!: (value: { items: []; ok: true; total: 0 }) => void
 
-    const { rerender } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <I18nProvider configClient={null} initialLocale="en">
-          <BusinessStartShelf />
-        </I18nProvider>
-      </MemoryRouter>
-    )
+    const pendingProjects = new Promise<{ items: []; ok: true; total: 0 }>(resolve => {
+      resolveProjects = resolve
+    })
 
-    expect(screen.getByText('Loading recent conversations…')).toBeTruthy()
-    expect(screen.queryByText('No real conversations yet. Start a chat to create the first one.')).toBeNull()
-
-    act(() => setSessionsLoading(false))
-    rerender(
-      <MemoryRouter initialEntries={['/']}>
-        <I18nProvider configClient={null} initialLocale="en">
-          <BusinessStartShelf />
-        </I18nProvider>
-      </MemoryRouter>
-    )
-
-    expect(screen.getByText('No real conversations yet. Start a chat to create the first one.')).toBeTruthy()
-  })
-
-  it('shows running tasks and deliverables on Start only from their real scheduler and transcript exits', async () => {
-    const artifactSource = {
-      id: 'artifact-source',
-      ended_at: null,
-      input_tokens: 0,
-      is_active: false,
-      last_active: 40,
-      message_count: 2,
-      model: null,
-      output_tokens: 0,
-      preview: 'Delivered the market report',
-      source: 'desktop',
-      started_at: 30,
-      title: 'Market evidence',
-      tool_call_count: 1
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => pendingProjects),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
     }
-
-    const run = {
-      ...artifactSource,
-      id: 'run-1',
-      preview: 'Collect competitor evidence',
-      source: 'cron',
-      title: 'Competitor scan'
-    }
-
-    $cronJobs.set([
-      {
-        enabled: true,
-        id: 'job-1',
-        name: 'Competitor scan',
-        schedule: { kind: 'once' },
-        state: 'running'
-      }
-    ])
-
-    window.hermesDesktop!.api = vi.fn(async request => {
-      if (request.path.startsWith('/api/profiles/sessions')) {
-        return { errors: [], has_more_by_profile: {}, offset: 0, sessions: [artifactSource], total: 1 }
-      }
-
-      if (request.path.startsWith('/api/cron/jobs/job-1/runs')) {
-        return { runs: [run] }
-      }
-
-      if (request.path.startsWith('/api/sessions/run-1/messages')) {
-        return {
-          messages: [
-            {
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  id: 'todo-1',
-                  name: 'todo',
-                  args: { todos: [{ id: 'one', content: 'Collect evidence', status: 'in_progress' }] }
-                }
-              ]
-            },
-            { role: 'tool', content: '{"ok":true}', tool_call_id: 'todo-1', tool_name: 'todo' }
-          ]
-        }
-      }
-
-      if (request.path.startsWith('/api/sessions/artifact-source/messages')) {
-        return { messages: [{ role: 'assistant', content: 'Saved /tmp/market-report.pdf', timestamp: 100 }] }
-      }
-
-      throw new Error(`Unexpected request: ${request.path}`)
-    }) as never
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <I18nProvider configClient={null} initialLocale="en">
-          <BusinessStartShelf />
-          <LocationProbe />
-        </I18nProvider>
-      </MemoryRouter>
-    )
-
-    await waitFor(() => expect(screen.getByText(/Collect evidence/)).toBeTruthy())
-    expect(screen.getByText('market-report.pdf')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: /Competitor scan/ }))
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tasks?task=job-1'))
-
-    fireEvent.click(screen.getByRole('button', { name: /market-report.pdf/ }))
-    await waitFor(() =>
-      expect(window.hermesDesktop!.openExternal).toHaveBeenCalledWith(expect.stringContaining('market-report.pdf'))
-    )
-    expect(screen.getByTestId('location').textContent).toBe('/tasks?task=job-1')
-  })
-
-  it('does not turn a Start evidence failure into a false empty-deliverables claim', async () => {
-    window.hermesDesktop!.api = vi.fn(async () => {
-      throw new Error('evidence source unavailable')
-    }) as never
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -830,15 +871,80 @@ describe('hc-685 business workspace identity', () => {
         </I18nProvider>
       </MemoryRouter>
     )
+
+    expect(screen.getByText('Loading projects…')).toBeTruthy()
+    expect(
+      screen.queryByText(
+        'Describe a business goal. APEX creates a real project and organizes its workflow from that goal.'
+      )
+    ).toBeNull()
+
+    await act(async () => {
+      resolveProjects({ items: [], ok: true, total: 0 })
+      await pendingProjects
+    })
 
     await waitFor(() =>
       expect(
         screen.getByText(
-          'Some evidence could not be read. The original conversations, Tasks, and Artifacts views remain available.'
+          'Describe a business goal. APEX creates a real project and organizes its workflow from that goal.'
         )
       ).toBeTruthy()
     )
-    expect(screen.queryByText('No file, image, or link deliverables were found in recent conversations.')).toBeNull()
+    expect(screen.queryByText('Loading projects…')).toBeNull()
+  })
+
+  it('shows recent work on Start only from the real Project bridge', async () => {
+    setSessions([
+      {
+        id: 'legacy-session',
+        ended_at: null,
+        input_tokens: 0,
+        is_active: false,
+        last_active: 30,
+        message_count: 2,
+        model: null,
+        output_tokens: 0,
+        preview: 'must not be relabelled as a project',
+        source: 'desktop',
+        started_at: 20,
+        title: 'Legacy conversation',
+        tool_call_count: 1
+      }
+    ])
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({
+        items: [
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'real-start-project',
+            name: '真实 Project bridge 项目',
+            objective: '真实服务端目标',
+            status: 'active',
+            updatedAt: '2026-09-04T10:00:00Z'
+          }
+        ],
+        ok: true,
+        total: 1
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('真实 Project bridge 项目')).toBeTruthy())
+    expect(screen.queryByText('Legacy conversation')).toBeNull()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
   })
 
   it('keeps the existing v0.20 task surface reachable from the real-work summary', async () => {

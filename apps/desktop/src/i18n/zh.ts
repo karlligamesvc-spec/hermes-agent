@@ -2,7 +2,6 @@ import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 
-
 export const zh = defineLocale({
   common: {
     apply: '应用',
@@ -3742,8 +3741,18 @@ export const zh = defineLocale({
       title: '项目',
       description: '按业务目标查看当前运行、真实步骤状态、待处理事项与交付结果。',
       emptyTitle: '从一次真实业务任务开始',
-      emptyDescription: '先在对话中描述目标。最近会话、真实任务进度、证据与交付文件会显示在这里。',
+      emptyDescription: '先描述一个业务目标，APEX 会据此创建真实项目并组织工作流。',
       action: '开始一个目标',
+      newProject: '新建项目',
+      chooseWorkflow: '选择工作流',
+      filters: {
+        label: '项目状态筛选',
+        all: '全部',
+        active: '进行中',
+        completed: '已完成'
+      },
+      totalProjects: count => `共 ${count} 个项目`,
+      filterEmpty: '这个状态下还没有真实项目。',
       tasksAction: '查看任务进度',
       recentConversations: '最近对话',
       openHistory: '打开历史',
@@ -3777,7 +3786,9 @@ export const zh = defineLocale({
       recentProjects: '最近项目',
       loadingProjects: '正在读取项目…',
       projectLoadFailed: '暂时无法读取项目，下面仍保留本地工作兼容视图。',
+      projectDomainUnavailable: '项目服务尚未连接。真实数据可用后，最近项目会显示在这里。',
       deliverableCount: count => `${count} 个交付物`,
+      updatedAt: date => `${date} 更新`,
       currentStep: title => `当前：${title}`,
       lifecycle: status =>
         ({
@@ -3802,6 +3813,12 @@ export const zh = defineLocale({
       title: '工作流',
       description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。',
       use: '使用这个工作流',
+      useShort: '使用',
+      startGoal: '开始一个目标',
+      recommendedTitle: '三条重点路径',
+      recommendedDescription: '选择一个成熟路径，目标会预填到开始页并保持可编辑。',
+      additionalTitle: '其他业务路径',
+      pathCount: count => `${count} 条路径`,
       commerce: {
         title: '从市场机会到上架素材',
         summary: '数据采集、机会分析、定位与生产',
@@ -3834,6 +3851,8 @@ export const zh = defineLocale({
       },
       savedTitle: '我的工作流',
       savedEmpty: '还没有已保存工作流。开始一个目标后会在这里出现。',
+      savedCount: count => `${count} 个真实工作流`,
+      localCatalogNotice: '生产目录尚未连接；当前展示内置路径，选择后仍会先回到开始页编辑目标。',
       catalogUnavailable: '真实工作流目录暂时不可用，没有模板被启动。',
       version: version => `版本 ${version}`
     },

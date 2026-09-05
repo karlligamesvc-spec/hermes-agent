@@ -3510,6 +3510,16 @@ export interface Translations {
       emptyTitle: string
       emptyDescription: string
       action: string
+      newProject: string
+      chooseWorkflow: string
+      filters: {
+        label: string
+        all: string
+        active: string
+        completed: string
+      }
+      totalProjects: (count: number) => string
+      filterEmpty: string
       tasksAction: string
       recentConversations: string
       openHistory: string
@@ -3541,7 +3551,9 @@ export interface Translations {
       recentProjects: string
       loadingProjects: string
       projectLoadFailed: string
+      projectDomainUnavailable: string
       deliverableCount: (count: number) => string
+      updatedAt: (date: string) => string
       currentStep: (title: string) => string
       lifecycle: (status: string) => string
       viewRun: string
@@ -3557,6 +3569,12 @@ export interface Translations {
       title: string
       description: string
       use: string
+      useShort: string
+      startGoal: string
+      recommendedTitle: string
+      recommendedDescription: string
+      additionalTitle: string
+      pathCount: (count: number) => string
       commerce: { title: string; summary: string; prompt: string }
       insight: { title: string; summary: string; prompt: string }
       content: { title: string; summary: string; prompt: string }
@@ -3565,6 +3583,8 @@ export interface Translations {
       businessReview: { title: string; summary: string; prompt: string }
       savedTitle: string
       savedEmpty: string
+      savedCount: (count: number) => string
+      localCatalogNotice: string
       catalogUnavailable: string
       version: (version: number) => string
     }

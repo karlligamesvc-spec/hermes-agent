@@ -4085,8 +4085,18 @@ export const en: Translations = {
         'Track each business goal through its current run, real step state, attention needs, and delivered results.',
       emptyTitle: 'Start with a real business task',
       emptyDescription:
-        'Describe the goal in chat. Recent conversations, real task progress, evidence, and delivered files will appear here.',
+        'Describe a business goal. APEX creates a real project and organizes its workflow from that goal.',
       action: 'Start a goal',
+      newProject: 'New project',
+      chooseWorkflow: 'Choose workflow',
+      filters: {
+        label: 'Project status filters',
+        all: 'All',
+        active: 'Active',
+        completed: 'Completed'
+      },
+      totalProjects: count => `${count} total ${count === 1 ? 'project' : 'projects'}`,
+      filterEmpty: 'There are no real projects in this state yet.',
       tasksAction: 'View task progress',
       recentConversations: 'Recent conversations',
       openHistory: 'Open history',
@@ -4121,7 +4131,10 @@ export const en: Translations = {
       recentProjects: 'Recent projects',
       loadingProjects: 'Loading projects…',
       projectLoadFailed: 'Projects could not be read. Your local work remains available below.',
+      projectDomainUnavailable:
+        'The project service is not connected yet. Recent projects appear here when real data is available.',
       deliverableCount: count => `${count} ${count === 1 ? 'deliverable' : 'deliverables'}`,
+      updatedAt: date => `Updated ${date}`,
       currentStep: title => `Current: ${title}`,
       lifecycle: status =>
         ({
@@ -4146,6 +4159,12 @@ export const en: Translations = {
       title: 'Workflows',
       description: 'Choose an outcome path. APEX clarifies the goal in chat and organizes the work.',
       use: 'Use this workflow',
+      useShort: 'Use',
+      startGoal: 'Start a goal',
+      recommendedTitle: 'Three recommended paths',
+      recommendedDescription: 'Choose a proven path. Its goal opens on Start and remains editable before execution.',
+      additionalTitle: 'More business paths',
+      pathCount: count => `${count} ${count === 1 ? 'path' : 'paths'}`,
       commerce: {
         title: 'Market opportunity to launch assets',
         summary: 'Data, opportunity analysis, positioning, and production',
@@ -4178,6 +4197,9 @@ export const en: Translations = {
       },
       savedTitle: 'Your workflows',
       savedEmpty: 'No saved workflows yet. Starting a goal creates the first one.',
+      savedCount: count => `${count} real ${count === 1 ? 'workflow' : 'workflows'}`,
+      localCatalogNotice:
+        'The production catalog is not connected. These built-in paths still return to Start for goal editing.',
       catalogUnavailable: 'The live workflow catalog is temporarily unavailable. No template was started.',
       version: version => `Version ${version}`
     },

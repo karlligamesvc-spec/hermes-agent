@@ -3310,9 +3310,18 @@ export const ja = defineLocale({
       title: 'プロジェクト',
       description: '業務目標ごとに、現在の実行、実際のステップ状態、要対応事項、成果物を確認します。',
       emptyTitle: '実際の業務タスクから始める',
-      emptyDescription:
-        'まずチャットで目標を説明してください。最近の会話、実際のタスク進捗、根拠、納品ファイルがここに表示されます。',
+      emptyDescription: '業務目標を入力すると、APEX が実際のプロジェクトを作成し、ワークフローを構成します。',
       action: '目標を始める',
+      newProject: '新規プロジェクト',
+      chooseWorkflow: 'ワークフローを選択',
+      filters: {
+        label: 'プロジェクト状態フィルター',
+        all: 'すべて',
+        active: '進行中',
+        completed: '完了'
+      },
+      totalProjects: count => `全 ${count} プロジェクト`,
+      filterEmpty: 'この状態の実際のプロジェクトはまだありません。',
       tasksAction: 'タスク進捗を見る',
       recentConversations: '最近の会話',
       openHistory: '履歴を開く',
@@ -3346,7 +3355,10 @@ export const ja = defineLocale({
       recentProjects: '最近のプロジェクト',
       loadingProjects: 'プロジェクトを読み込み中…',
       projectLoadFailed: 'プロジェクトを読み込めません。下にローカル作業の互換ビューを残しています。',
+      projectDomainUnavailable:
+        'プロジェクトサービスはまだ接続されていません。実際のデータが利用可能になると、ここに表示されます。',
       deliverableCount: count => `成果物 ${count} 件`,
+      updatedAt: date => `${date} 更新`,
       currentStep: title => `現在：${title}`,
       lifecycle: status =>
         ({
@@ -3371,6 +3383,12 @@ export const ja = defineLocale({
       title: 'ワークフロー',
       description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。',
       use: 'このワークフローを使う',
+      useShort: '使用',
+      startGoal: '目標を始める',
+      recommendedTitle: '3つの重点パス',
+      recommendedDescription: '実績あるパスを選ぶと、開始画面で目標を編集してから実行できます。',
+      additionalTitle: 'その他の業務パス',
+      pathCount: count => `${count} パス`,
       commerce: {
         title: '市場機会から販売素材まで',
         summary: 'データ収集、機会分析、位置付け、制作',
@@ -3403,6 +3421,8 @@ export const ja = defineLocale({
       },
       savedTitle: '自分のワークフロー',
       savedEmpty: '保存済みワークフローはまだありません。目標を始めると最初のワークフローが作成されます。',
+      savedCount: count => `実際のワークフロー ${count} 件`,
+      localCatalogNotice: '本番カタログはまだ接続されていません。内蔵パスを選んでも、開始画面で目標を編集できます。',
       catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
       version: version => `バージョン ${version}`
     },

@@ -466,7 +466,7 @@ describe('identity: the home zero-state is ours', () => {
     )
   }
 
-  it('greets in Chinese and offers the real business start shelf', () => {
+  it('greets in Chinese and offers the real business start shelf', async () => {
     const originalBridge = window.hermesDesktop
 
     Object.defineProperty(window, 'hermesDesktop', {
@@ -482,9 +482,11 @@ describe('identity: the home zero-state is ours', () => {
       expect(screen.getByRole('textbox', { name: '业务目标' })).toBeTruthy()
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
       expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
-      expect(container.querySelector('[data-business-start-evidence]')).toBeTruthy()
-      expect(screen.getByRole('button', { name: '打开任务' })).toBeTruthy()
-      expect(screen.getByRole('button', { name: '打开交付物' })).toBeTruthy()
+      expect(container.querySelector('[data-business-start-shelf]')).toBeTruthy()
+      expect(container.querySelectorAll('[data-workflow-starter="shelf"]')).toHaveLength(3)
+      expect(await screen.findByText('项目服务尚未连接。真实数据可用后，最近项目会显示在这里。')).toBeTruthy()
+      expect(screen.getByText('当前版本没有可用的数据源连接出口。')).toBeTruthy()
+      expect(screen.queryByText(/0\s*\/\s*0/)).toBeNull()
     } finally {
       Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
     }
