@@ -88,6 +88,7 @@ test('managed logout can retry the same proof after a lost revoke response', asy
   const bodies: unknown[] = []
   let cleared = false
   let attempts = 0
+
   const input = {
     accessToken: 'login-token',
     clearCredential: () => {
@@ -99,6 +100,7 @@ test('managed logout can retry the same proof after a lost revoke response', asy
     revoke: async body => {
       bodies.push(body)
       attempts += 1
+
       if (attempts === 1) {
         throw new Error('response lost after server revoke')
       }

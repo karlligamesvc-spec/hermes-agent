@@ -1,6 +1,6 @@
 ---
 name: douyin-operator
-description: "规划并运营合规的抖音账号起号系统,覆盖账号定位、主页地基、对标拆解、爆款视频转写拆解、选题库、9 条视频实验矩阵、口播脚本+封面简报、内容日历和周复盘。与纯 prompt 起号包不同:对标拆解和选题库调用平台社媒数据工具(social_search / social_trending / social_posts / social_content / social_comments / social_profile / creator_top_posts,platform=douyin)拉取真实视频与评论,并用平台的视频下载+转写能力(social_download / media_transcribe / social_batch_submit)把爆款口播逐字拆解——这是抖音线独有的优势。不做自动回复(内容策略层 only)。封面与口播脚本走运行时生图/文案能力(系统按档位自动选路由)。用于用户询问抖音起号、新号冷启动、账号定位、对标账号、爆款视频拆解、选题规划、视频实验、封面/口播脚本或抖音周复盘时。"
+description: "用于抖音起号、账号定位、对标与爆款拆解、选题、视频实验、口播脚本、封面、内容日历及周复盘."
 version: 1.0.0
 author: Chen (agent-skills-launch-pack, MIT)
 license: MIT

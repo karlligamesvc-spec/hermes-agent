@@ -83,7 +83,12 @@ export function DesktopAuthGate({ enabled, onSignedIn, requestGateway }: Desktop
   // swaps to the real login screen or unmounts. A returning user is seeded
   // 'signed-in' from cache and never reaches here.
   if (status === 'checking') {
-    return <div className="fixed inset-0 z-1400 bg-(--ui-chat-surface-background) [-webkit-app-region:drag]" />
+    return (
+      <div
+        className="fixed inset-0 z-1400 bg-(--ui-chat-surface-background) [-webkit-app-region:drag]"
+        data-glass-opaque
+      />
+    )
   }
 
   // 'disabled' → account abnormal; a 'signed-out' that followed a 401 gate →

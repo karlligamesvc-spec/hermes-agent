@@ -7,6 +7,7 @@ import { registerDesktopVersionIpc, showFreshAboutPanel } from './desktop-versio
 
 test('version IPC reports the Electron shell separately from the managed engine', async () => {
   let handler: (() => unknown) | undefined
+
   const ipcMain = {
     handle(channel: string, listener: () => unknown) {
       assert.equal(channel, 'hermes:version')
@@ -37,6 +38,7 @@ test('version IPC reports the Electron shell separately from the managed engine'
 test('native About panel identifies the Electron shell', () => {
   let options: Electron.AboutPanelOptionsOptions | undefined
   let shown = false
+
   const app = {
     getVersion: () => '0.17.18',
     setAboutPanelOptions(next: Electron.AboutPanelOptionsOptions) {

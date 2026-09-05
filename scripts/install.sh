@@ -57,7 +57,7 @@ else
     INSTALL_DIR_EXPLICIT=false
 fi
 PYTHON_VERSION="3.11"
-NODE_VERSION="22"
+NODE_VERSION="26"
 
 # FHS-style root install layout (set by resolve_install_layout when applicable):
 #   code at /usr/local/lib/hermes-agent, command at /usr/local/bin/hermes,
@@ -70,6 +70,7 @@ DETECTED_BROWSER_EXECUTABLE=""
 USE_VENV=true
 RUN_SETUP=true
 SKIP_BROWSER=false
+SKIP_COMPUTER_USE=false
 NO_SKILLS=false
 BRANCH="main"
 INSTALL_COMMIT=""
@@ -104,6 +105,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-browser|--no-playwright)
             SKIP_BROWSER=true
+            shift
+            ;;
+        --skip-computer-use)
+            SKIP_COMPUTER_USE=true
             shift
             ;;
         --no-skills)
@@ -168,6 +173,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-venv      Don't create virtual environment"
             echo "  --skip-setup   Skip interactive setup wizard"
             echo "  --skip-browser Skip Playwright/Chromium install (browser tools won't work)"
+            echo "  --skip-computer-use  Skip the cua-driver (Computer Use) install"
             echo "  --no-skills    Start with a blank slate — seed no bundled skills, and"
             echo "                   write \$HERMES_HOME/.no-bundled-skills so future"
             echo "                   'hermes update' runs never inject bundled skills either"
@@ -865,16 +871,126 @@ check_git() {
     exit 1
 }
 
-# react-router 8.3 sets the dependency tree's real floor at Node >=22.22.0.
-# Keep this gate aligned with root package.json so a desktop install does not
-# get as far as npm ci only to die with EBADENGINE.
+# Node deps below (install_node_deps) build native addons — most notably
+# node-pty, which every install needs — via node-gyp. node-gyp needs a C/C++
+# toolchain (make + a compiler); Python and make are already covered by
+# check_python/check_node's prerequisites, but the compiler itself was never
+# checked, so a missing g++/clang++ only surfaced as a wall of node-gyp/make
+# output deep inside `npm install`, with no earlier, actionable warning.
+# Best-effort like install_system_packages: warns and lets the caller decide
+# whether to proceed rather than aborting the whole install (unlike git,
+# which is hard-required much earlier for clone_repo).
+check_cxx_compiler() {
+    log_info "Checking for a C++ compiler (needed to build native Node modules like node-pty)..."
+
+    if command -v g++ &> /dev/null || command -v clang++ &> /dev/null; then
+        log_success "C++ compiler found"
+        HAS_CXX_COMPILER=true
+        return 0
+    fi
+
+    HAS_CXX_COMPILER=false
+    log_warn "No C++ compiler found"
+
+    case "$OS" in
+        macos)
+            # Same Command Line Tools path as attempt_install_git — CLT provides
+            # git AND a compiler, so this is usually already satisfied by the
+            # check_git step above. Handles the case where git was present
+            # without CLT (e.g. installed via Homebrew) so CLT never triggered.
+            log_info "Attempting to install Xcode Command Line Tools (provides a C++ compiler)..."
+            log_info "If a macOS dialog appears, click \"Install\" and accept the license."
+            xcode-select --install >/dev/null 2>&1 || true
+            local waited=0
+            local timeout=900
+            while [ "$waited" -lt "$timeout" ]; do
+                if command -v g++ &> /dev/null || command -v clang++ &> /dev/null; then
+                    log_success "C++ compiler installed"
+                    HAS_CXX_COMPILER=true
+                    return 0
+                fi
+                sleep 5
+                waited=$((waited + 5))
+                if [ $((waited % 60)) -eq 0 ]; then
+                    log_info "Still waiting for Command Line Tools install ($((waited / 60))m)..."
+                fi
+            done
+            ;;
+        linux)
+            local sudo_cmd=""
+            if [ "$(id -u 2>/dev/null || echo 1000)" -ne 0 ]; then
+                command -v sudo >/dev/null 2>&1 && sudo_cmd="sudo"
+            fi
+            log_info "Attempting to install a C++ compiler automatically..."
+            case "$DISTRO" in
+                ubuntu|debian)
+                    log_info "Installing build-essential via apt..."
+                    $sudo_cmd env DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 || true
+                    $sudo_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential >/dev/null 2>&1 || true
+                    ;;
+                fedora)
+                    log_info "Installing gcc-c++ via dnf..."
+                    $sudo_cmd dnf install -y gcc-c++ >/dev/null 2>&1 || true
+                    ;;
+                arch)
+                    log_info "Installing base-devel via pacman..."
+                    $sudo_cmd pacman -S --noconfirm base-devel >/dev/null 2>&1 || true
+                    ;;
+            esac
+            if command -v g++ &> /dev/null || command -v clang++ &> /dev/null; then
+                log_success "C++ compiler installed"
+                HAS_CXX_COMPILER=true
+                return 0
+            fi
+            ;;
+    esac
+
+    log_warn "Could not install a C++ compiler automatically."
+    log_warn "Node steps that compile native modules (e.g. node-pty) will fail below until one is installed."
+    log_info "Install it manually, then re-run this installer:"
+    case "$OS" in
+        linux)
+            case "$DISTRO" in
+                ubuntu|debian) log_info "  sudo apt install build-essential" ;;
+                fedora)        log_info "  sudo dnf install gcc-c++" ;;
+                arch)          log_info "  sudo pacman -S base-devel" ;;
+                *)             log_info "  Install a C++ compiler (g++/gcc-c++) via your package manager" ;;
+            esac
+            ;;
+        android)
+            log_info "  pkg install clang"
+            ;;
+        macos)
+            log_info "  xcode-select --install"
+            ;;
+    esac
+    return 1
+}
+
+# The dependency tree supports Node 22.22+, 24.11+, and 26+. nanoid 6 excludes
+# Node 23 and 25 while its >=26 arm accepts later releases, and @babel/* 8.x
+# requires ^22.18.0 || >=24.11.0 — so accepting 23/25 or an early Node 24
+# here only defers the failure to `npm ci` under engine-strict. Keep this in
+# sync with the root package.json. Anything outside the supported lines is
+# replaced with the Hermes-managed Node $NODE_VERSION.
 node_satisfies_build() {
     local ver="${1#v}"
+    # Pre-release builds are rejected outright, however new they are. `node-pty`
+    # ships no Linux prebuild, so every install compiles it with node-gyp, which
+    # fetches the headers named by `process.release.headersUrl` — a URL only
+    # published for final releases. nodejs.org/dist/latest-v26.x currently
+    # serves node-v26.8.0-<os>-<arch>.tar.xz whose binary reports
+    # v26.8.0-alpha.0.0.0; its headers 404, and the install dies at
+    # `node-gyp rebuild` with the underlying error swallowed by the
+    # `node scripts/prebuild.js || node-gyp rebuild` fallback.
+    case "$ver" in *-*) return 1 ;; esac
     local major="${ver%%.*}"
     local minor="${ver#*.}"; minor="${minor%%.*}"
     case "$major" in ''|*[!0-9]*) return 1 ;; esac
     case "$minor" in ''|*[!0-9]*) minor=0 ;; esac
-    if [ "$major" -ge 22 ] && { [ "$major" -gt 22 ] || [ "$minor" -ge 22 ]; }; then return 0; fi
+    if [ "$major" -eq 22 ] && [ "$minor" -ge 22 ]; then return 0; fi
+    if [ "$major" -eq 24 ] && [ "$minor" -ge 11 ]; then return 0; fi
+    if [ "$major" -ge 26 ]; then return 0; fi
     return 1
 }
 
@@ -897,8 +1013,20 @@ check_node() {
     # every install — including re-runs that skip the Node (re)install below.
     configure_managed_node_npm_prefix
 
-    if command -v node &> /dev/null && node_satisfies_build "$(node --version)"; then
-        if command -v npm &> /dev/null && npm_supports_npmrc "$(npm --version 2>/dev/null)"; then
+    # The system toolchain is only usable when BOTH halves work: a Node new
+    # enough for the desktop build AND an npm that can read our .npmrc. A
+    # bad-band npm (see npm_supports_npmrc) fails `npm ci` outright, and the
+    # managed Node we install instead bundles one that works.
+    #
+    # npm must actually be reachable, not just node: a stray `node` symlink
+    # without a sibling npm (leftover from a node version manager) makes
+    # `command -v node` succeed while every later `npm install` silently
+    # fails and the desktop build dies with an opaque "Node.js / npm
+    # unavailable" (#77003). Node only counts as found when npm resolves on
+    # the same PATH.
+    if command -v node &> /dev/null && command -v npm &> /dev/null \
+        && node_satisfies_build "$(node --version)"; then
+        if npm_supports_npmrc "$(npm --version 2>/dev/null)"; then
             log_success "Node.js $(node --version) found"
             HAS_NODE=true
             return 0
@@ -917,8 +1045,10 @@ check_node() {
         return 0
     fi
 
-    if command -v node &> /dev/null; then
-        log_warn "Node.js $(node --version) is too old (need >=22.22) — installing Hermes-managed Node $NODE_VERSION LTS..."
+    if command -v node &> /dev/null && ! command -v npm &> /dev/null; then
+        log_warn "node found but npm is not on PATH (stray node symlink?) — installing Hermes-managed Node $NODE_VERSION LTS..."
+    elif command -v node &> /dev/null; then
+        log_warn "Node.js $(node --version) is unsupported (Hermes requires Node 22.22+, 24.11+, or 26+) — installing Hermes-managed Node $NODE_VERSION..."
     elif [ "$DISTRO" = "termux" ]; then
         log_info "Node.js not found — installing Node.js via pkg..."
     else
@@ -927,14 +1057,153 @@ check_node() {
     install_node
 }
 
+# Download and adopt one Node release line (e.g. 26) into ~/.hermes/node/.
+#
+# Split out of install_node() so the caller can walk a list of candidate lines.
+# A line is rejected — and the caller should try an older one — when nodejs.org
+# publishes no tarball for this platform, when the download or extraction
+# fails, or when the tree it ships fails node_satisfies_build.
+#
+# Returns 0 with the tree in place, PATH exported and HAS_NODE=true; 1 when the
+# line is unusable. Nothing on disk is replaced until the candidate passes, so
+# a rejected line leaves any existing managed Node untouched.
+install_node_line() {
+    local node_line="$1"
+    local node_os="$2"
+    local node_arch="$3"
+
+    # Resolve from the operator-selected dist base. APEX CN mode injects the
+    # npmmirror endpoint; ordinary installs keep the official Node server.
+    local node_dist_base="${HERMES_NODE_DIST_BASE:-https://nodejs.org/dist}"
+    node_dist_base="${node_dist_base%/}"
+    local index_url="${node_dist_base}/latest-v${node_line}.x/"
+    local tarball_name
+    tarball_name=$(curl -fsSL "$index_url" \
+        | grep -oE "node-v${node_line}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.xz" \
+        | head -1)
+
+    # Fallback to .tar.gz if .tar.xz not available
+    if [ -z "$tarball_name" ]; then
+        tarball_name=$(curl -fsSL "$index_url" \
+            | grep -oE "node-v${node_line}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.gz" \
+            | head -1)
+    fi
+
+    if [ -z "$tarball_name" ]; then
+        log_warn "Could not find Node.js $node_line binary for $node_os-$node_arch"
+        return 1
+    fi
+
+    local download_url="${index_url}${tarball_name}"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+
+    log_info "Downloading $tarball_name..."
+    if ! curl -fsSL "$download_url" -o "$tmp_dir/$tarball_name"; then
+        log_warn "Download failed"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    log_info "Extracting to ~/.hermes/node/..."
+    if [[ "$tarball_name" == *.tar.xz ]]; then
+        tar xf "$tmp_dir/$tarball_name" -C "$tmp_dir"
+    else
+        tar xzf "$tmp_dir/$tarball_name" -C "$tmp_dir"
+    fi
+
+    local extracted_dir
+    extracted_dir=$(ls -d "$tmp_dir"/node-v* 2>/dev/null | head -1)
+
+    if [ ! -d "$extracted_dir" ]; then
+        log_warn "Extraction failed"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # Trust the binary, not the filename. A tarball named for a final release
+    # can still carry a pre-release build — latest-v26.x serves
+    # node-v26.8.0-<os>-<arch>.tar.xz whose `node --version` is
+    # v26.8.0-alpha.0.0.0 — and adopting it leaves node-pty unbuildable for the
+    # life of the install. Probe the extracted tree before it replaces anything.
+    local candidate_ver
+    candidate_ver=$("$extracted_dir/bin/node" --version 2>/dev/null)
+    if ! node_satisfies_build "$candidate_ver"; then
+        log_warn "Node.js ${candidate_ver:-unreadable} from ${index_url} cannot build native modules — trying an older release line..."
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # Place into ~/.hermes/node/ and symlink binaries into the same bin dir
+    # the hermes command uses (get_command_link_dir): /usr/local/bin for root
+    # FHS installs, $PREFIX/bin on Termux, ~/.local/bin otherwise.
+    rm -rf "$HERMES_HOME/node"
+    mkdir -p "$HERMES_HOME"
+    mv "$extracted_dir" "$HERMES_HOME/node"
+    rm -rf "$tmp_dir"
+
+    # Node's official linux-x64 builds (observed: v26.7.0) link
+    # libatomic.so.1, which minimal Debian/Ubuntu images do not ship —
+    # the freshly downloaded binary then fails to start. Install the
+    # library up front, best-effort; the version probe below reports
+    # clearly if the binary still cannot run (#87460).
+    if [ "$OS" = "linux" ] && { [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ]; }; then
+        if command -v apt-get >/dev/null 2>&1; then
+            local sudo_cmd=""
+            if [ "$(id -u 2>/dev/null || echo 1000)" -ne 0 ]; then
+                command -v sudo >/dev/null 2>&1 && sudo_cmd="sudo"
+            fi
+            $sudo_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libatomic1 >/dev/null 2>&1 || true
+        fi
+    fi
+
+    local node_link_dir
+    node_link_dir="$(get_command_link_dir)"
+    mkdir -p "$node_link_dir"
+    ln -sf "$HERMES_HOME/node/bin/node" "$node_link_dir/node"
+    ln -sf "$HERMES_HOME/node/bin/npm"  "$node_link_dir/npm"
+    ln -sf "$HERMES_HOME/node/bin/npx"  "$node_link_dir/npx"
+
+    configure_managed_node_npm_prefix
+
+    export PATH="$HERMES_HOME/node/bin:$PATH"
+
+    local installed_ver
+    if ! installed_ver=$("$HERMES_HOME/node/bin/node" --version 2>&1); then
+        # The adopted Node exists but cannot start (observed: missing
+        # libatomic.so.1 on minimal Debian/Ubuntu, #87460). Degrade loudly,
+        # surface the loader's real error, and remove the broken tree and
+        # bin links so later steps and retry runs start clean. Signal the
+        # caller to try an older release line rather than claiming success.
+        log_error "Downloaded Node.js failed to start:"
+        printf '%s\n' "$installed_ver" >&2
+        log_info "On Debian/Ubuntu the usual fix is: sudo apt-get install -y libatomic1"
+        rm -rf "$HERMES_HOME/node"
+        rm -f "$node_link_dir/node" "$node_link_dir/npm" "$node_link_dir/npx"
+        return 1
+    fi
+    log_success "Node.js $installed_ver installed to ~/.hermes/node/"
+    HAS_NODE=true
+    return 0
+}
+
 install_node() {
     if [ "$DISTRO" = "termux" ]; then
         log_info "Installing Node.js via pkg..."
         if pkg install -y nodejs >/dev/null; then
             local installed_ver
-            installed_ver=$(node --version 2>/dev/null)
-            log_success "Node.js $installed_ver installed via pkg"
-            HAS_NODE=true
+            installed_ver=$(node --version 2>/dev/null || true)
+            if [ -n "$installed_ver" ]; then
+                log_success "Node.js $installed_ver installed via pkg"
+                HAS_NODE=true
+            else
+                # pkg succeeded but the binary cannot start — the same
+                # silent-success class the managed-download probe guards
+                # against (#87460). Degrade instead of claiming success.
+                log_error "Node.js installed via pkg failed to start:"
+                node --version >&2 || true
+                HAS_NODE=false
+            fi
         else
             log_warn "Failed to install Node.js via pkg"
             HAS_NODE=false
@@ -967,83 +1236,21 @@ install_node() {
             ;;
     esac
 
-    # Resolve the latest v22.x.x tarball name from the index page. HERMES_NODE_DIST_BASE
-    # lets CN mode point this at the npmmirror Node binary mirror (set in the CN
-    # block above); it defaults to the official nodejs.org dist server.
-    local node_dist_base="${HERMES_NODE_DIST_BASE:-https://nodejs.org/dist}"
-    node_dist_base="${node_dist_base%/}"
-    local index_url="${node_dist_base}/latest-v${NODE_VERSION}.x/"
-    local tarball_name
-    tarball_name=$(curl -fsSL "$index_url" \
-        | grep -oE "node-v${NODE_VERSION}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.xz" \
-        | head -1)
+    # Try the target line first, then the two previous even-numbered (LTS)
+    # lines. Whether a line is usable cannot be known from its index page —
+    # see install_node_line — and stepping down beats adopting a Node that
+    # leaves every native dependency unbuildable.
+    local node_line
+    for node_line in "$NODE_VERSION" "$((NODE_VERSION - 2))" "$((NODE_VERSION - 4))"; do
+        if install_node_line "$node_line" "$node_os" "$node_arch"; then
+            return 0
+        fi
+    done
 
-    # Fallback to .tar.gz if .tar.xz not available
-    if [ -z "$tarball_name" ]; then
-        tarball_name=$(curl -fsSL "$index_url" \
-            | grep -oE "node-v${NODE_VERSION}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.gz" \
-            | head -1)
-    fi
-
-    if [ -z "$tarball_name" ]; then
-        log_warn "Could not find Node.js $NODE_VERSION binary for $node_os-$node_arch"
-        log_info "Install manually: https://nodejs.org/en/download/"
-        HAS_NODE=false
-        return 0
-    fi
-
-    local download_url="${index_url}${tarball_name}"
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-
-    log_info "Downloading $tarball_name..."
-    if ! curl -fsSL "$download_url" -o "$tmp_dir/$tarball_name"; then
-        log_warn "Download failed"
-        rm -rf "$tmp_dir"
-        HAS_NODE=false
-        return 0
-    fi
-
-    log_info "Extracting to ~/.hermes/node/..."
-    if [[ "$tarball_name" == *.tar.xz ]]; then
-        tar xf "$tmp_dir/$tarball_name" -C "$tmp_dir"
-    else
-        tar xzf "$tmp_dir/$tarball_name" -C "$tmp_dir"
-    fi
-
-    local extracted_dir
-    extracted_dir=$(ls -d "$tmp_dir"/node-v* 2>/dev/null | head -1)
-
-    if [ ! -d "$extracted_dir" ]; then
-        log_warn "Extraction failed"
-        rm -rf "$tmp_dir"
-        HAS_NODE=false
-        return 0
-    fi
-
-    # Place into ~/.hermes/node/ and symlink binaries into the same bin dir
-    # the hermes command uses (get_command_link_dir): /usr/local/bin for root
-    # FHS installs, $PREFIX/bin on Termux, ~/.local/bin otherwise.
-    rm -rf "$HERMES_HOME/node"
-    mkdir -p "$HERMES_HOME"
-    mv "$extracted_dir" "$HERMES_HOME/node"
-    rm -rf "$tmp_dir"
-
-    local node_link_dir
-    node_link_dir="$(get_command_link_dir)"
-    mkdir -p "$node_link_dir"
-    ln -sf "$HERMES_HOME/node/bin/node" "$node_link_dir/node"
-    ln -sf "$HERMES_HOME/node/bin/npm"  "$node_link_dir/npm"
-    ln -sf "$HERMES_HOME/node/bin/npx"  "$node_link_dir/npx"
-
-    configure_managed_node_npm_prefix
-
-    export PATH="$HERMES_HOME/node/bin:$PATH"
-
-    local installed_ver
-    installed_ver=$("$HERMES_HOME/node/bin/node" --version 2>/dev/null)
-    log_success "Node.js $installed_ver installed to ~/.hermes/node/"
-    HAS_NODE=true
+    log_warn "No usable Node.js release line found for $node_os-$node_arch"
+    log_info "Install manually: https://nodejs.org/en/download/"
+    HAS_NODE=false
+    return 0
 }
 
 # A lightweight, non-cryptographic identity for "this machine + this app
@@ -1641,7 +1848,57 @@ EOF
         else
             rm -rf "$INSTALL_DIR" 2>/dev/null  # Clean up partial SSH clone
             log_info "SSH failed, trying HTTPS..."
-            if git clone --config core.autocrlf=false --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+            # GitHub throttles packfile generation for large repos (this one:
+            # ~9.6k files at HEAD plus thousands of auto-generated branches)
+            # with repo-scoped HTTP 429s that are NOT client IP rate limits —
+            # an anonymous clone of a small repo succeeds and the API quota
+            # is untouched, but the single big pack behind `--depth 1` dies
+            # mid-transfer with "RPC failed; HTTP 429 / expected 'packfile'"
+            # (#89624, same throttle as the update path in #89287). Retry
+            # with backoff, then degrade to a blobless partial clone + fetch
+            # (many small packs instead of one big one — what gets past the
+            # throttle). Fully materialize the tree afterwards so the rest of
+            # the installer sees the normal files.
+            local clone_ok=false
+            local attempt=0
+            local max_attempts=4
+            for attempt in $(seq 1 "$max_attempts"); do
+                [ "$attempt" -gt 1 ] && log_info "Retrying HTTPS clone (attempt $attempt/$max_attempts)..."
+                if git clone --config core.autocrlf=false --depth 1 --single-branch --branch "$BRANCH" \
+                     "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+                    clone_ok=true
+                    break
+                fi
+                rm -rf "$INSTALL_DIR" 2>/dev/null  # partial clone is unusable
+                [ "$attempt" -lt "$max_attempts" ] && sleep $((attempt * 5))
+            done
+            if [ "$clone_ok" != true ]; then
+                log_info "Direct clone throttled — trying blobless partial clone..."
+                # --no-checkout keeps the clone itself to commits+trees (small,
+                # gets past the pack throttle). Without it the blob fetch runs
+                # inside `git clone`'s own checkout step, the throttle kills
+                # the whole clone, and this fallback degrades to one more
+                # failed clone. The blobs are fetched by the reset below — a
+                # separate request the retry can actually wrap.
+                if git clone --config core.autocrlf=false --depth 1 --single-branch --filter=blob:none \
+                     --no-checkout --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+                    # Materialize the working tree: on a --no-checkout clone
+                    # this reset is the step that fetches the blobs (several
+                    # small packs instead of one big one). Fail closed — a
+                    # half-materialized checkout must not report success and
+                    # hand the rest of the installer an unusable tree.
+                    if (cd "$INSTALL_DIR" \
+                        && (git reset --hard HEAD >/dev/null 2>&1 \
+                            || { sleep 5; git reset --hard HEAD >/dev/null 2>&1; })); then
+                        clone_ok=true
+                    else
+                        rm -rf "$INSTALL_DIR" 2>/dev/null  # unusable checkout
+                    fi
+                else
+                    rm -rf "$INSTALL_DIR" 2>/dev/null
+                fi
+            fi
+            if [ "$clone_ok" = true ]; then
                 log_success "Cloned via HTTPS"
             else
                 log_error "Failed to clone repository"
@@ -1653,29 +1910,47 @@ EOF
     cd "$INSTALL_DIR"
 
     # Pin only matters for git checkouts; a COS source tarball is already built
-    # from the pinned commit and has no .git to check out against.
+    # from the pinned commit and has no .git to validate or check out against.
     if [ -n "$INSTALL_COMMIT" ] && [ -d "$INSTALL_DIR/.git" ]; then
+        # Validate the commit argument: must look like a hex SHA (full 40-char
+        # or abbreviated 7-39 char). Reject anything else early so the user
+        # gets a clear error instead of a misleading git message (#87268).
+        if ! printf '%s' "$INSTALL_COMMIT" | grep -qE '^[0-9a-fA-F]{7,40}$'; then
+            log_error "--commit expects a hex SHA (7-40 chars), got: $INSTALL_COMMIT"
+            return 1
+        fi
         # A commit pin must never move an existing install BACKWARDS. The
         # bootstrap installer bakes its build-time commit into the binary and
         # passes it on every install-mode run, including desktop retries. A
         # stale installer would otherwise rewind a current checkout to ancient
         # source while leaving its current venv in place.
         if ! git cat-file -e "$INSTALL_COMMIT^{commit}" 2>/dev/null; then
-            git fetch origin "$INSTALL_COMMIT" || true
+            if ! git fetch origin "$INSTALL_COMMIT"; then
+                log_error "Could not fetch commit $INSTALL_COMMIT from origin."
+                log_error "Abbreviated SHAs are not supported — use the full 40-char hash."
+                log_error "Find it with: git ls-remote origin | grep <short-sha>"
+                return 1
+            fi
         fi
         if git rev-parse --verify --quiet HEAD >/dev/null 2>&1 \
            && git merge-base --is-ancestor "$INSTALL_COMMIT" HEAD 2>/dev/null \
            && [ "$(git rev-parse "$INSTALL_COMMIT^{commit}" 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then
             if [ "$FORCE_COMMIT" = true ]; then
                 log_warn "--force-commit: rolling this install back to $INSTALL_COMMIT."
-                git checkout --detach "$INSTALL_COMMIT"
+                if ! git checkout --detach "$INSTALL_COMMIT"; then
+                    log_error "Failed to detach at $INSTALL_COMMIT"
+                    return 1
+                fi
             else
                 log_warn "Ignoring --commit $INSTALL_COMMIT: the checkout is already newer."
                 log_warn "Pinning to it would roll this install back. Pass --force-commit to override."
             fi
         else
             log_info "Pinning checkout to commit $INSTALL_COMMIT..."
-            git checkout --detach "$INSTALL_COMMIT"
+            if ! git checkout --detach "$INSTALL_COMMIT"; then
+                log_error "Failed to detach at $INSTALL_COMMIT"
+                return 1
+            fi
         fi
     fi
 
@@ -1774,9 +2049,19 @@ setup_venv() {
 # 0.12+ reject a current lock as stale. Mirrors build-runtime-bundle.mjs's
 # identical sanitization — keep the env-var list in step with that file.
 _uv_sync_locked() {
-    env -u UV_DEFAULT_INDEX -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INDEX \
-        -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u UV_NO_CONFIG \
-        UV_PROJECT_ENVIRONMENT="$INSTALL_DIR/venv" $UV_CMD sync --extra all --locked "$@"
+    local isolated_uv_config sync_rc
+    isolated_uv_config="$(mktemp -d)" || return 1
+    (
+        unset UV_DEFAULT_INDEX UV_INDEX_URL UV_EXTRA_INDEX_URL UV_INDEX
+        unset PIP_INDEX_URL PIP_EXTRA_INDEX_URL UV_NO_CONFIG UV_CONFIG_FILE
+        export XDG_CONFIG_HOME="$isolated_uv_config"
+        export XDG_CONFIG_DIRS="$isolated_uv_config"
+        UV_PROJECT_ENVIRONMENT="$INSTALL_DIR/venv" \
+            $UV_CMD sync --extra all --locked "$@"
+    )
+    sync_rc=$?
+    rmdir "$isolated_uv_config" 2>/dev/null || true
+    return "$sync_rc"
 }
 
 # hc-636: the hash-verified tier and the CN mirror were mutually exclusive, and
@@ -2253,7 +2538,7 @@ PY
         exit 1
     fi
 
-    if [ "$_tier_name" != "all (with RL/matrix extras)" ]; then
+    if [ "$_tier_name" != "all" ]; then
         log_warn "Note: installed via fallback tier ($_tier_name)."
         log_info "Some optional features may be missing. After resolving any"
         log_info "PyPI/network issue, re-run: $UV_CMD pip install -e '.[all]'"
@@ -2520,7 +2805,7 @@ copy_config_templates() {
     # here is self-healing, but keep them in sync to avoid a churn on first run.
     if [ ! -f "$HERMES_HOME/SOUL.md" ]; then
         cat > "$HERMES_HOME/SOUL.md" << 'SOUL_EOF'
-You are Hermes Agent, an intelligent AI assistant created by Nous Research. You are helpful, knowledgeable, and direct. You assist users with a wide range of tasks including answering questions, writing and editing code, analyzing information, creative work, and executing actions via your tools. You communicate clearly, admit uncertainty when appropriate, and prioritize being genuinely useful over being verbose unless otherwise directed below. Be targeted and efficient in your exploration and investigations.
+You are Hermes Agent, built by Nous Research. Be direct: match the length of your reply to the weight of the ask — a one-line question gets a one-line answer, and finished work gets a short report of what changed, what's verified, and what's left, never a replay of the process. No filler ("Great question," "I'd be happy to"), no restating the request back, no re-summarizing what you already said, no narrating tool calls the user can see. Plain claims over adjectives; when unsure, say so plainly. Agree because it's right, not because the user said it. Depth is earned — give it when the user asks for detail, teaches, or the stakes demand it, not by default.
 SOUL_EOF
         log_success "Created ~/.hermes/SOUL.md (edit to customize personality)"
     fi
@@ -2939,6 +3224,21 @@ node_browser_provisioned() {
     return 1
 }
 
+# Select only the npm workspaces required by a CLI install. Desktop owns its
+# own dependency installation in install_desktop(); including apps/* here
+# would build node-pty on machines that will never launch Electron.
+node_deps_workspace_args() {
+    local install_dir="$1"
+    NODE_DEPS_WORKSPACE_ARGS=()
+    [ -f "$install_dir/ui-tui/package.json" ] && NODE_DEPS_WORKSPACE_ARGS+=(--workspace ui-tui)
+    [ -f "$install_dir/web/package.json" ] && NODE_DEPS_WORKSPACE_ARGS+=(--workspace web)
+    if [ "${#NODE_DEPS_WORKSPACE_ARGS[@]}" -eq 0 ]; then
+        NODE_DEPS_WORKSPACE_ARGS=(--workspaces=false)
+        return 0
+    fi
+    NODE_DEPS_WORKSPACE_ARGS+=(--include-workspace-root)
+}
+
 install_node_deps() {
     if [ "$HAS_NODE" = false ]; then
         log_info "Skipping Node.js dependencies (Node not installed)"
@@ -2983,13 +3283,22 @@ install_node_deps() {
             _node_deps_any_skipped=false
             log_info "Installing Node.js dependencies (browser tools)..."
             cd "$INSTALL_DIR"
-            # Time-boxed: a stalled registry fetch would otherwise hang here with no
-            # progress (same #39219 stall class as the desktop build below).
-            if run_with_timeout "$NODE_DEPS_TIMEOUT" npm install --silent; then
-                node_deps_mark_installed "$INSTALL_DIR"
-            else
-                log_warn "npm install failed or timed out (browser tools may not work)"
+            node_deps_workspace_args "$INSTALL_DIR"
+            local npm_log
+            npm_log="$(mktemp)"
+            if ! run_with_timeout "$NODE_DEPS_TIMEOUT" npm install "${NODE_DEPS_WORKSPACE_ARGS[@]}" --silent \
+                    >"$npm_log" 2>&1; then
+                log_error "npm install failed or timed out; Node.js dependencies were not installed"
+                if [ -s "$npm_log" ]; then
+                    log_error "npm output:"
+                    cat "$npm_log" >&2
+                fi
+                rm -f "$npm_log"
+                restore_dirty_lockfiles "$INSTALL_DIR"
+                return 1
             fi
+            rm -f "$npm_log"
+            node_deps_mark_installed "$INSTALL_DIR"
             log_success "Node.js dependencies installed"
         fi
 
@@ -3096,12 +3405,21 @@ install_node_deps() {
             _node_deps_any_skipped=false
             log_info "Installing TUI dependencies..."
             cd "$INSTALL_DIR/ui-tui"
-            # Time-boxed: a stalled registry fetch would otherwise hang here (#39219).
-            if run_with_timeout "$NODE_DEPS_TIMEOUT" npm install --silent; then
-                node_deps_mark_installed "$INSTALL_DIR/ui-tui"
-            else
-                log_warn "TUI npm install failed or timed out (hermes --tui may not work)"
+            local tui_npm_log
+            tui_npm_log="$(mktemp)"
+            if ! run_with_timeout "$NODE_DEPS_TIMEOUT" npm install --silent \
+                    >"$tui_npm_log" 2>&1; then
+                log_error "TUI npm install failed or timed out; TUI dependencies were not installed"
+                if [ -s "$tui_npm_log" ]; then
+                    log_error "npm output:"
+                    cat "$tui_npm_log" >&2
+                fi
+                rm -f "$tui_npm_log"
+                restore_dirty_lockfiles "$INSTALL_DIR"
+                return 1
             fi
+            rm -f "$tui_npm_log"
+            node_deps_mark_installed "$INSTALL_DIR/ui-tui"
             log_success "TUI dependencies installed"
         fi
     fi
@@ -3118,6 +3436,125 @@ install_node_deps() {
     if [ "$_node_deps_any_skipped" = true ]; then
         mark_stage_skipped
     fi
+}
+
+install_browser_use_cli() {
+    # The Browser Use CLI is the default browser backend when it is runnable
+    # (tools/browser_use_cli.py). Provision it here so fresh installs don't
+    # silently fall back to the built-in browser tools. Best-effort: any
+    # failure is non-fatal because browser_exec can still run via uvx and
+    # `hermes tools` can install it later.
+    if [ "$SKIP_BROWSER" = true ]; then
+        log_info "Skipping Browser Use CLI install (--skip-browser)"
+        return 0
+    fi
+    if [ "$DISTRO" = "termux" ]; then
+        return 0
+    fi
+    if [ -z "$UV_CMD" ]; then
+        log_info "Skipping Browser Use CLI install (uv unavailable)"
+        return 0
+    fi
+    # MANAGED-FIRST: only Hermes' managed copy short-circuits. A browser-use
+    # on the user's PATH is a side install — resolution prefers the managed
+    # copy, so it must be provisioned regardless.
+    if [ -x "$HERMES_HOME/bin/browser-use" ]; then
+        log_success "Browser Use CLI already installed"
+        return 0
+    fi
+
+    log_info "Installing Browser Use CLI (default browser backend)..."
+    # UV_TOOL_BIN_DIR keeps the binary inside Hermes' managed bin dir, where
+    # the browser tool resolves it — no reliance on the user's PATH.
+    if run_with_timeout 600 env UV_NO_CONFIG=1 UV_TOOL_BIN_DIR="$HERMES_HOME/bin" \
+        "$UV_CMD" tool install browser-use >/dev/null 2>&1; then
+        log_success "Browser Use CLI installed"
+    else
+        log_warn "Browser Use CLI install failed — browser automation falls back to built-in tools."
+        log_info "Install later with: $UV_CMD tool install browser-use  (or via 'hermes tools')"
+    fi
+}
+
+cua_driver_runtime_compatible() {
+    local driver_path version_output manifest_output
+    local major minor
+    driver_path="$(command -v cua-driver 2>/dev/null)" || return 1
+    version_output="$("$driver_path" --version 2>/dev/null)" || return 1
+    if [[ ! "$version_output" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+        return 1
+    fi
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    if (( major == 0 && minor < 20 )); then
+        return 1
+    fi
+    manifest_output="$("$driver_path" manifest 2>/dev/null)" || return 1
+    local required
+    for required in \
+        '"mcp_invocation"' \
+        '"--socket"' \
+        '"--grant"' \
+        '"--permission-mode"' \
+        '"--capability-manifest"' \
+        '"--approve-capability-manifest"' \
+        '"--embedded"'; do
+        case "$manifest_output" in
+            *"$required"*) ;;
+            *) return 1 ;;
+        esac
+    done
+    return 0
+}
+
+install_computer_use_driver() {
+    # cua-driver powers the computer_use toolset (background desktop control).
+    # Provision it at install time so enabling the tool later — via
+    # `hermes tools`, the dashboard, or the desktop app — is a config flip,
+    # not a surprise multi-minute binary fetch (the confusion this fixes:
+    # users had to discover `hermes computer-use install` on their own).
+    # Best-effort and non-fatal: the enable paths still lazy-install via
+    # install_cua_driver() when this step was skipped or failed.
+    if [ "$SKIP_COMPUTER_USE" = true ]; then
+        log_info "Skipping Computer Use (cua-driver) install (--skip-computer-use)"
+        return 0
+    fi
+    case "$DISTRO" in
+        termux)
+            return 0
+            ;;
+    esac
+    if command -v cua-driver >/dev/null 2>&1; then
+        if cua_driver_runtime_compatible; then
+            log_success "Computer Use driver (cua-driver) already installed and compatible"
+            return 0
+        fi
+        log_warn "Existing cua-driver is old or incomplete; repairing it"
+    fi
+    # Non-admin macOS accounts can't receive the CuaDriver.app bundle in
+    # /Applications; skip cleanly instead of failing loudly (#47865 class).
+    if [ "$(uname -s)" = "Darwin" ] && [ -d /Applications ] && [ ! -w /Applications ]; then
+        log_info "Skipping Computer Use driver (cua-driver): /Applications is not writable"
+        return 0
+    fi
+
+    log_info "Installing Computer Use driver (cua-driver)..."
+    # Same upstream installer `hermes computer-use install` runs; time-boxed
+    # so a stalled GitHub download can't hang the Hermes install. The
+    # upstream installer serializes with its own lock (600s stale window),
+    # so give it a ceiling above that — matching Hermes'
+    # _CUA_INSTALLER_TIMEOUT (660s).
+    local cua_log
+    cua_log="$(mktemp)"
+    if run_with_timeout 660 /bin/bash -c \
+        'curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh | /bin/bash' \
+        >"$cua_log" 2>&1; then
+        log_success "Computer Use driver installed (enable via 'hermes tools' → Computer Use)"
+    else
+        log_warn "Computer Use driver install failed — it will install on demand when you enable the tool."
+        log_info "Install later with: hermes computer-use install"
+        tail -n 5 "$cua_log" >&2 || true
+    fi
+    rm -f "$cua_log"
 }
 
 run_setup_wizard() {
@@ -3375,13 +3812,20 @@ ensure_browser() {
         return 1
     fi
 
-    log_info "Installing agent-browser..."
+    # agent-browser itself is intentionally NOT installed here (#43564 /
+    # PR #44772 review): it resolves lazily via `npx agent-browser` instead,
+    # which every consumer (tools/browser_tool.py, `hermes update`'s npx
+    # cache warm) already goes through. Eagerly npm-installing a second,
+    # separately version-pinned copy here -- only reachable via this
+    # explicit --ensure browser fallback in the first place -- was redundant
+    # complexity and an extra credential/supply-chain surface for a path
+    # npx already covers.
+    log_info "Installing camofox browser server..."
     local log_file
     log_file="$(mktemp)"
     # Time-boxed (#39219): a stalled npm registry fetch here would otherwise
     # hang the installer with no progress, same class as the desktop build.
     if ! run_with_timeout "$NODE_DEPS_TIMEOUT" "$npm_bin" install -g --prefix "$HERMES_HOME/node" --silent --ignore-scripts \
-        "agent-browser@^0.26.0" \
         "@askjo/camofox-browser@^1.5.2" \
         >"$log_file" 2>&1; then
         log_error "npm install failed or timed out:"
@@ -3397,31 +3841,7 @@ ensure_browser() {
     sys_browser="$(find_system_browser 2>/dev/null || true)"
     if [ -n "$sys_browser" ]; then
         configure_browser_env_from_system_browser "$sys_browser"
-        log_info "Explicit browser override set -- skipping bundled Chromium download"
-        return 0
-    fi
-
-    log_info "Installing Chromium via agent-browser install..."
-    local ab_bin="$HERMES_HOME/node/bin/agent-browser"
-    if [ -x "$ab_bin" ]; then
-        "$ab_bin" install 2>/dev/null || {
-            log_warn "Chromium install failed. Browser tools may not work without a system browser."
-
-            # OS-specific hints (detect_os sets $DISTRO)
-            case "${DISTRO:-unknown}" in
-                ubuntu|debian)
-                    log_info "Try: sudo apt-get install -y chromium-browser"
-                    ;;
-                arch)
-                    log_info "Try: sudo pacman -S chromium"
-                    ;;
-                fedora|rhel|centos)
-                    log_info "Try: sudo dnf install -y chromium"
-                    ;;
-            esac
-        }
-    else
-        log_warn "agent-browser not found at $ab_bin"
+        log_info "Explicit browser override set -- Chromium download will be skipped when agent-browser installs on demand"
     fi
 
     return 0
@@ -3652,8 +4072,8 @@ install_desktop() {
     # failure, not a silent skip — a silent skip yields a "complete" install
     # with no app and a confusing "couldn't find a built desktop" at launch.
     # Always re-resolve Node here. Stages run in separate processes, so we can't
-    # trust an earlier check; more importantly check_node now enforces the build
-    # floor (>=22.22) and prepends the Hermes-managed Node to PATH, so
+    # trust an earlier check; more importantly check_node now enforces the
+    # supported Node lines and prepends the Hermes-managed Node to PATH, so
     # the build never runs on a too-old system Node — the cause of the opaque
     # "Build desktop app … exit code 1" failure (Vite crashes on old Node).
     check_node
@@ -3869,6 +4289,7 @@ run_stage_body() {
                 check_python
                 check_git
                 check_node
+                check_cxx_compiler
                 check_network_prerequisites
                 install_system_packages
                 prereq_record_success
@@ -3901,7 +4322,10 @@ run_stage_body() {
             resolve_install_layout
             require_install_dir
             check_node
-            install_node_deps
+            install_node_deps || return
+            install_uv
+            install_browser_use_cli
+            install_computer_use_driver
             ;;
         path)
             detect_os
@@ -4057,13 +4481,16 @@ main() {
     check_python
     check_git
     check_node
+    check_cxx_compiler
     check_network_prerequisites
     install_system_packages
 
     clone_repo
     setup_venv
     install_deps
-    install_node_deps
+    install_node_deps || return
+    install_browser_use_cli
+    install_computer_use_driver
     setup_path
     copy_config_templates
     run_setup_wizard

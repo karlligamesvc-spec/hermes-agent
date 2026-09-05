@@ -1,6 +1,6 @@
 ---
 name: xhs-operator
-description: "规划并运营合规的小红书账号起号系统,覆盖账号定位、主页地基、对标拆解、选题库、笔记简报(文案+封面)、内容日历和周复盘。与纯 prompt 起号包不同:对标拆解和选题库调用平台社媒数据工具(social_search / social_posts / social_content / social_comments / creator_top_posts,platform=xiaohongshu)拉取真实笔记与评论,抽取真实的标题钩子/封面模式/标签,而不是让模型凭空编造对标数据。封面由运行时生图能力生成(系统按档位自动选路由)。用于用户询问小红书起号、新号冷启动、账号定位、对标账号、爆款笔记拆解、封面/标签策略、选题规划、30天内容日历或小红书周复盘时。"
+description: "用于小红书起号、账号定位、对标与爆款笔记拆解、选题、封面与标签、内容日历及周复盘."
 version: 1.0.0
 author: Chen (agent-skills-launch-pack, MIT)
 license: MIT

@@ -47,7 +47,6 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   requireHiddenChildOptions(source, 'execFileSync(pyExe')
   requireHiddenChildOptions(source, 'spawn(resolveGitBinary()')
   requireHiddenChildOptions(source, "execFileSync('taskkill'")
-  requireHiddenChildOptions(source, 'spawn(command, args')
   requireHiddenChildOptions(source, "spawn('curl'")
   requireHiddenChildOptions(source, 'spawn(backend.command, backend.args')
   requireHiddenChildOptions(source, 'hermesProcess = spawn(backend.command, backend.args')
@@ -60,10 +59,11 @@ test('desktop background child processes opt into hidden Windows consoles', () =
 
 test('intentional or interactive desktop child processes stay documented', () => {
   const source = readElectronFile('main.ts')
+  const terminalSource = readElectronFile('terminal-ipc.ts')
 
   assert.match(source, /handOffWindowsBootstrapRecovery/)
   assert.match(source, /'--update', '--branch'/)
-  assert.match(source, /nodePty\.spawn\(command, args/)
+  assert.match(terminalSource, /nodePty\.spawn\(command, args/)
   assert.match(source, /spawn\('cmd\.exe', \['\/c', 'start'/)
 })
 

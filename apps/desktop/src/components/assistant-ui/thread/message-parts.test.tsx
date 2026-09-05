@@ -115,7 +115,9 @@ function Harness({ result, toolName = 'gen_ladder' }: { result: unknown; toolNam
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <Thread />
+      <div data-composer-surface-id="main-test-surface" data-composer-target="main">
+        <Thread />
+      </div>
     </AssistantRuntimeProvider>
   )
 }

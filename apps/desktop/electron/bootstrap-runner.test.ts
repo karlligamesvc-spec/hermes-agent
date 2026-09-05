@@ -50,7 +50,11 @@ function mkTmpHome() {
 //
 // Must live at <sourceRepoRoot>/scripts/install.sh -- resolveLocalInstallScript
 // (the "dev shortcut" tier runBootstrap tries first) hardcodes that path.
-function writeFakeInstallSh(sourceRepoRoot, stageFrame = '{"ok":true,"stage":"complete","skipped":false}') {
+function writeFakeInstallSh(
+  sourceRepoRoot,
+  stageFrame = '{"ok":true,"stage":"complete","skipped":false}',
+  stagePrelude = []
+) {
   const scriptsDir = path.join(sourceRepoRoot, 'scripts')
   fs.mkdirSync(scriptsDir, { recursive: true })
   const scriptPath = path.join(scriptsDir, 'install.sh')
@@ -65,6 +69,7 @@ function writeFakeInstallSh(sourceRepoRoot, stageFrame = '{"ok":true,"stage":"co
       '  exit 0',
       'fi',
       'if [ "$1" = "--stage" ] && [ "$2" = "complete" ]; then',
+      ...stagePrelude,
       `  echo '${stageFrame}'`,
       '  exit 0',
       'fi',
@@ -516,6 +521,65 @@ testManifestFlow('runBootstrap defaults updateInfo to a first-install shape when
     const manifestEvents = events.filter(ev => ev.type === 'manifest')
     assert.equal(manifestEvents.length, 1)
     assert.deepEqual(manifestEvents[0].updateInfo, { isUpdate: false, toVersion: null, fromVersion: null })
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+testManifestFlow('runBootstrap emits activity for raw child output before a line-framed log exists', async () => {
+  const home = mkTmpHome()
+
+  try {
+    writeFakeInstallSh(home, undefined, [
+      "  printf 'Downloading package without a newline' >&2",
+      '  sleep 0.05',
+      '  touch "$HERMES_HOME/raw-activity-delay-finished"'
+    ])
+    const events = []
+    const activityAfterDelayFlags = []
+    const delayFinishedMarker = path.join(home, 'raw-activity-delay-finished')
+
+    const result = await runBootstrap({
+      installStamp: null,
+      activeRoot: path.join(home, 'hermes-agent'),
+      sourceRepoRoot: home,
+      hermesHome: home,
+      logRoot: home,
+      onEvent: ev => {
+        events.push(ev)
+
+        if (ev.type === 'activity' && ev.stage === 'complete') {
+          activityAfterDelayFlags.push(fs.existsSync(delayFinishedMarker))
+        }
+      },
+      writeMarker: payload => payload
+    })
+
+    assert.equal(result.ok, true, `bootstrap should succeed against the fake stub: ${JSON.stringify(result)}`)
+
+    const stageStartedAt = events.findIndex(
+      ev => ev.type === 'stage' && ev.name === 'complete' && ev.state === 'running'
+    )
+
+    const rawActivityAt = events.findIndex(
+      (ev, index) => index > stageStartedAt && ev.type === 'activity' && ev.stage === 'complete'
+    )
+
+    const unterminatedLogAt = events.findIndex(
+      ev => ev.type === 'log' && ev.stream === 'stderr' && ev.line === 'Downloading package without a newline'
+    )
+
+    assert.ok(stageStartedAt >= 0, 'the stage must enter running state')
+    assert.ok(rawActivityAt > stageStartedAt, 'raw child output must publish activity while the stage is running')
+    assert.equal(
+      activityAfterDelayFlags[0],
+      false,
+      'the first stage activity must come from the unterminated bytes before the delayed JSON line exists'
+    )
+    assert.ok(
+      unterminatedLogAt > rawActivityAt,
+      'activity must arrive before the unterminated bytes flush as a log on close'
+    )
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }

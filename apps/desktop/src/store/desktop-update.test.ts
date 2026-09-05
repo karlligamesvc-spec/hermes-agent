@@ -105,6 +105,7 @@ describe('desktop update orchestration', () => {
       emitProgress?: (progress: { attempt: number; phase: 'downloading'; received: number; total: number }) => void
       finishApply?: (result: { applied: true; ok: true; reloadRequired: false }) => void
     } = {}
+
     const applyResult = new Promise<{ applied: true; ok: true; reloadRequired: false }>(resolve => {
       controls.finishApply = resolve
     })

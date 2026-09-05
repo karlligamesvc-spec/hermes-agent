@@ -26,6 +26,7 @@ import { ChangelogSection } from './changelog-section'
 import { SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
+
 // hc-690 unified install/update center. This remains exported under its old
 // name so focused hc-591 tests and extensions keep a stable import while the
 // visible product entry changes from "AI engine" to one APEX update surface.

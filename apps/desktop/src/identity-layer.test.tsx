@@ -91,6 +91,14 @@ describe('identity: the first screen is ours', () => {
     expect(logo?.getAttribute('src')).toContain('apple-touch-icon.png')
   })
 
+  it('keeps both auth-gate surfaces opaque when window glass is enabled', () => {
+    const { container } = renderLoginScreen()
+    const authGate = readSource('src', 'app', 'desktop-auth-gate.tsx')
+
+    expect(container.firstElementChild?.hasAttribute('data-glass-opaque')).toBe(true)
+    expect(authGate.match(/data-glass-opaque/g)).toHaveLength(1)
+  })
+
   it('keeps the managed login ahead of upstream’s provider picker', () => {
     // Boot order is what stops upstream's Nous Portal / Google panel from ever
     // being the first thing a managed user sees: the auth gate blocks the
@@ -162,7 +170,10 @@ describe('identity: brand assets and chrome', () => {
     expect(packageProbe).toContain('`${EXECUTABLE_NAME}.exe`')
     expect(e2e).toContain('`${PACKAGED_PRODUCT_NAME}.app`')
     expect(e2e).toContain('`${PACKAGED_EXECUTABLE_NAME}.exe`')
-    expect(main).toContain("'mac-arm64', 'APEX.app'")
+    // v0.21 removed the legacy in-process macOS bundle swap. The current
+    // handoff no longer searches a staged .app here; if that lookup returns in
+    // a future refactor, it must not regress to the upstream artifact name.
+    expect(main).not.toContain("'Hermes.app'")
     expect(installSh).toContain('/mac-arm64/APEX.app')
     expect(installPs1).toContain('\\release\\win-unpacked\\APEX.exe')
     expect(cli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
@@ -173,7 +184,17 @@ describe('identity: brand assets and chrome', () => {
     const main = readSource('electron', 'main.ts')
     const bootE2e = readSource('e2e', 'boot.spec.ts')
     const onboarding = readSource('src', 'store', 'onboarding.ts')
-    const gatewayEvents = readSource('src', 'app', 'session', 'hooks', 'use-message-stream', 'gateway-event.ts')
+
+    const gatewayEvents = readSource(
+      'src',
+      'app',
+      'session',
+      'hooks',
+      'use-message-stream',
+      'gateway-event',
+      'status.ts'
+    )
+
     const reactions = readSource('src', 'components', 'assistant-ui', 'thread', 'message-reactions.tsx')
 
     expect((main.match(/title: APP_NAME/g) || []).length).toBeGreaterThanOrEqual(3)

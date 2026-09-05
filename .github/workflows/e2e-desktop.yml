@@ -17,6 +17,9 @@ concurrency:
 jobs:
   e2e:
     name: Playwright E2E (Linux)
+    # This job builds the renderer and the electron bundle, then drives a real
+    # Electron app under xvfb. Use the standard pool available to the fork;
+    # upstream's named 32-core runner is not registered here.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -184,6 +187,18 @@ jobs:
             cat /tmp/e2e-review-status.json
             echo '__E2E_REVIEW_STATUS__'
           } >> "$GITHUB_OUTPUT"
+          cp /tmp/e2e-review-status.json review-status.json
+
+      - name: Upload review status artifact
+        if: always() && steps.review-status.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: review-status-e2e-desktop
+          path: apps/desktop/review-status.json
+          retention-days: 1
+          overwrite: true
+          if-no-files-found: ignore
 
       # The trusted workflow_run publisher consumes only this flat, bounded
       # artifact. It turns selected images into GitHub attachment URLs; it

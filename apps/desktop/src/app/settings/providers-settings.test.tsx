@@ -3,6 +3,8 @@ import { atom } from 'nanostores'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ConfirmHost } from '@/components/confirm-host'
+import { $confirmRequest } from '@/store/confirm'
 import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 
 const listOAuthProviders = vi.fn()
@@ -65,11 +67,11 @@ beforeEach(() => {
   listOAuthProviders.mockResolvedValue({
     providers: [provider('minimax-oauth', true), provider('qwen-oauth', false)]
   })
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 afterEach(() => {
   cleanup()
+  $confirmRequest.set(null)
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
@@ -84,6 +86,7 @@ async function renderProvidersSettings() {
     result = render(
       <MemoryRouter>
         <ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />
+        <ConfirmHost />
       </MemoryRouter>
     )
   })
@@ -100,8 +103,29 @@ describe('ProvidersSettings', () => {
       fireEvent.click(remove)
     })
 
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(disconnectOAuthProvider).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+    })
+
     await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('minimax-oauth'))
     expect(listOAuthProviders).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves the account connected when the removal prompt is dismissed', async () => {
+    await renderProvidersSettings()
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove MiniMax' }))
+    })
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    })
+
+    expect(disconnectOAuthProvider).not.toHaveBeenCalled()
   })
 
   it('keeps provider selection separate from account removal', async () => {

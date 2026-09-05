@@ -388,9 +388,10 @@ def test_boot_repair_restores_the_full_picker_catalog(hermes_config):
     def relay_models():
         config = load_config()
         model = config["model"]
-        with patch(
-            "hermes_cli.models.fetch_api_models",
-            lambda key, url, headers=None, timeout=None: list(live_catalog),
+        with patch.object(
+            model_switch,
+            "_fetch_picker_live_models",
+            lambda *args, **kwargs: list(live_catalog),
         ), patch.object(model_switch, "_save_discovered_models_to_config", lambda *a, **k: None):
             rows = raw_list_providers(
                 current_provider=model.get("provider", ""),

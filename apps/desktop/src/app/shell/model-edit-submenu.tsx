@@ -20,6 +20,7 @@ import { notifyError } from '@/store/notifications'
 import { markComposerSelectionManual, setCurrentFastMode, setCurrentReasoningEffort } from '@/store/session'
 import { sessionTileDelegate } from '@/store/session-states'
 
+
 /** How "fast" is achieved for a given model — two different mechanisms:
  *  - `param`: the Anthropic/OpenAI `speed=fast` request parameter.
  *  - `variant`: a separate `…-fast` sibling model selected via the model field.
@@ -66,6 +67,8 @@ export function resolveFastControl(
 }
 
 interface ModelEditSubmenuProps {
+  /** False for routes whose provider requires reasoning to remain enabled. */
+  canDisableReasoning?: boolean
   defaultEffort?: string
   /** This row's effective reasoning effort (live for the active model, else its
    *  preset) — the submenu shows and edits from this, never the raw session. */
@@ -90,6 +93,7 @@ interface ModelEditSubmenuProps {
 }
 
 export function ModelEditSubmenu({
+  canDisableReasoning,
   effort,
   fastControl,
   isActive,
@@ -234,7 +238,7 @@ export function ModelEditSubmenu({
       ) : (
         <>
           <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.options}</DropdownMenuLabel>
-          {reasoning ? (
+          {reasoning && canDisableReasoning !== false ? (
             <DropdownMenuItem className={dropdownMenuRow} onSelect={event => event.preventDefault()}>
               {copy.thinking}
               <Switch
