@@ -36,7 +36,7 @@ import {
 } from '../store/layout'
 import { registerActiveTurnResend } from '../store/managed-recovery'
 import { respondToApprovalAction } from '../store/native-notifications'
-import { $desktopOnboarding, $pendingDesktopLoginCode } from '../store/onboarding'
+import { $desktopOnboarding } from '../store/onboarding'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -86,7 +86,6 @@ import { startUpdatePoller, stopUpdatePoller } from '../store/updates'
 import { isSecondaryWindow } from '../store/windows'
 
 import { ChatView } from './chat'
-import { requestComposerFocus, requestComposerInsert } from './chat/composer/focus'
 import { useComposerActions } from './chat/hooks/use-composer-actions'
 import {
   ChatPreviewRail,
@@ -98,6 +97,7 @@ import { onScenarioSessionRequest } from './chat/scenarios/scenario-session-brid
 import { ChatSidebar } from './chat/sidebar'
 import { CommandPalette } from './command-palette'
 import { DesktopAuthGate } from './desktop-auth-gate'
+import { handleDesktopDeepLinkPayload } from './desktop-deep-link'
 import { useGatewayBoot } from './gateway/hooks/use-gateway-boot'
 import { useGatewayRequest } from './gateway/hooks/use-gateway-request'
 import { useKeybinds } from './hooks/use-keybinds'
@@ -311,47 +311,10 @@ export function DesktopController() {
     return () => unsubscribe?.()
   }, [])
 
-  // hermes:// deep links (e.g. a docs "Send to App" button for an automation blueprint).
-  // Build the equivalent /blueprint slash command from the payload and drop
-  // it into the composer — the user reviews/edits, then sends; the agent (or
-  // the shared command handler) creates the job. Signal readiness so a link
-  // that arrived during boot is flushed exactly once.
+  // APEX login and legacy blueprint deep links share one renderer adapter.
+  // Signal readiness so a link that arrived during boot is flushed exactly once.
   useEffect(() => {
-    const unsubscribe = window.hermesDesktop?.onDeepLink?.(payload => {
-      if (!payload) {
-        return
-      }
-
-      // hc-530: apexnodes://login?code=… — web → desktop one-click login. Park the
-      // one-time code for the login screen to exchange (it owns the onboarding
-      // ctx). Ignore when already signed in: the web handoff is a sign-IN, not an
-      // account switch.
-      if (payload.kind === 'login') {
-        const code = typeof payload.params?.code === 'string' ? payload.params.code.trim() : ''
-
-        if (code && $authState.get().status !== 'signed-in') {
-          $pendingDesktopLoginCode.set(code)
-        }
-
-        return
-      }
-
-      if (payload.kind !== 'blueprint' || !payload.name) {
-        return
-      }
-
-      const slots = Object.entries(payload.params || {})
-        .map(([k, v]) => {
-          const sval = /\s/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v
-
-          return `${k}=${sval}`
-        })
-        .join(' ')
-
-      const command = `/blueprint ${payload.name}${slots ? ' ' + slots : ''}`
-      requestComposerInsert(command, { mode: 'block', target: 'main' })
-      requestComposerFocus('main')
-    })
+    const unsubscribe = window.hermesDesktop?.onDeepLink?.(handleDesktopDeepLinkPayload)
 
     // Tell the main process the renderer is ready to receive deep links.
     void window.hermesDesktop?.signalDeepLinkReady?.()

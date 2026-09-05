@@ -6,6 +6,7 @@ import {
   fmtMonth,
   fmtMonthYear,
   formatAgo,
+  formatBusinessDayTime,
   HOUR,
   MINUTE,
   nominalDayStart,
@@ -39,6 +40,17 @@ describe('formatAgo', () => {
 
   it('clamps future timestamps to "now"', () => {
     expect(ago(-HOUR)).toBe('now')
+  })
+})
+
+describe('formatBusinessDayTime', () => {
+  it('uses the selected APEX locale instead of leaking an English OS month into Chinese UI', () => {
+    const date = new Date('2026-09-04T10:03:00Z')
+    const chinese = formatBusinessDayTime(date, 'zh')
+
+    expect(chinese).toContain('9月')
+    expect(chinese).not.toMatch(/Sep(?:tember)?/i)
+    expect(formatBusinessDayTime(date, 'en')).toMatch(/Sep/i)
   })
 })
 

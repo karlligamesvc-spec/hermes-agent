@@ -20,6 +20,7 @@ interface OverlayViewProps {
   children: ReactNode
   onClose: () => void
   closeLabel?: string
+  compactFullscreen?: boolean
   contentClassName?: string
   /** Chrome pinned to the card's top edge, horizontally centered and riding
    *  the border half-in half-out (e.g. the Settings search pill). Rendered
@@ -36,6 +37,7 @@ export function OverlayView({
   children,
   onClose,
   closeLabel = translateNow('common.close'),
+  compactFullscreen = false,
   contentClassName,
   edgeBadge,
   headerContent,
@@ -80,7 +82,9 @@ export function OverlayView({
         // since the card top already sits below them, the left needs no extra
         // inset — keeping all sides equal so the card is ~full-width at any size.
         'p-[calc(var(--titlebar-height)+0.625rem)]',
-        'sm:p-[calc(var(--titlebar-height)+0.875rem)]'
+        'sm:p-[calc(var(--titlebar-height)+0.875rem)]',
+        compactFullscreen &&
+          'max-[47.5rem]:bg-(--ui-chat-surface-background) max-[47.5rem]:p-0 max-[47.5rem]:backdrop-blur-none'
       )}
       // Every OverlayView-based overlay (settings, command-center, agents,
       // profiles, star map, …) covers the chat while the composer stays mounted
@@ -89,6 +93,7 @@ export function OverlayView({
       // leak into the hidden composer (and the overlay's own bare-key shortcuts,
       // e.g. star map's Space, keep working).
       data-overlay-surface=""
+      data-responsive-mode={compactFullscreen ? 'compact-fullscreen' : 'inset'}
       onClick={event => {
         if (event.target === event.currentTarget) {
           closeOverlay()
@@ -106,6 +111,7 @@ export function OverlayView({
         <div
           className={cn(
             'relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-chat-surface-background) shadow-md',
+            compactFullscreen && 'max-[47.5rem]:rounded-none max-[47.5rem]:border-0 max-[47.5rem]:shadow-none',
             rootClassName
           )}
           // Marks the card as a RAISED surface for window glass: while the field
