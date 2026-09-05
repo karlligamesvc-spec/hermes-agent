@@ -3538,6 +3538,19 @@ export interface Translations {
       toolActivity: (count: number) => string
       toolStatusDetail: string
       latestOutput: string
+      recentProjects: string
+      loadingProjects: string
+      projectLoadFailed: string
+      deliverableCount: (count: number) => string
+      currentStep: (title: string) => string
+      lifecycle: (status: string) => string
+      viewRun: string
+      noRun: string
+      legacyFallback: string
+      availableSources: string
+      sourceConnected: string
+      sourceNotConnected: string
+      noAvailableSources: string
     }
     workflows: {
       eyebrow: string
@@ -3547,6 +3560,13 @@ export interface Translations {
       commerce: { title: string; summary: string; prompt: string }
       insight: { title: string; summary: string; prompt: string }
       content: { title: string; summary: string; prompt: string }
+      competitor: { title: string; summary: string; prompt: string }
+      reviews: { title: string; summary: string; prompt: string }
+      businessReview: { title: string; summary: string; prompt: string }
+      savedTitle: string
+      savedEmpty: string
+      catalogUnavailable: string
+      version: (version: number) => string
     }
     workflowDomain: {
       startFailed: string

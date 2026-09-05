@@ -3740,7 +3740,7 @@ export const zh = defineLocale({
     projects: {
       eyebrow: '从目标到交付',
       title: '项目',
-      description: '查看最近对话、真实任务进度、证据与交付结果，不另建项目记录。',
+      description: '按业务目标查看当前运行、真实步骤状态、待处理事项与交付结果。',
       emptyTitle: '从一次真实业务任务开始',
       emptyDescription: '先在对话中描述目标。最近会话、真实任务进度、证据与交付文件会显示在这里。',
       action: '开始一个目标',
@@ -3773,7 +3773,29 @@ export const zh = defineLocale({
       toolActivity: count => `已记录 ${count} 次工具调用`,
       toolStatusDetail:
         '运行中与等待输入来自实时会话状态。工具级状态和结构化证据仍以原对话为准，请打开对话查看权威详情。',
-      latestOutput: '最新输出'
+      latestOutput: '最新输出',
+      recentProjects: '最近项目',
+      loadingProjects: '正在读取项目…',
+      projectLoadFailed: '暂时无法读取项目，下面仍保留本地工作兼容视图。',
+      deliverableCount: count => `${count} 个交付物`,
+      currentStep: title => `当前：${title}`,
+      lifecycle: status =>
+        ({
+          cancelled: '已取消',
+          failed: '需要处理',
+          queued: '等待 Hermes 执行',
+          running: 'Hermes 正在执行',
+          succeeded: '已完成',
+          timed_out: '已超时',
+          waiting_review: '等待审阅'
+        })[status] || status,
+      viewRun: '打开当前运行',
+      noRun: '尚未开始运行',
+      legacyFallback: '本地对话与任务（兼容视图）',
+      availableSources: '可用数据源',
+      sourceConnected: '已连接',
+      sourceNotConnected: '未连接',
+      noAvailableSources: '当前版本没有可用的数据源连接出口。'
     },
     workflows: {
       eyebrow: '成熟业务路径',
@@ -3794,7 +3816,26 @@ export const zh = defineLocale({
         title: '从洞察到内容复盘',
         summary: '选题、生产、发布准备与复盘',
         prompt: '制定本周内容计划，生成可发布素材，并设计复盘指标'
-      }
+      },
+      competitor: {
+        title: '竞品监控',
+        summary: '跟踪关键市场变化，并把变化转成行动',
+        prompt: '监控我的主要竞品，核验关键变化，并基于证据给出行动建议'
+      },
+      reviews: {
+        title: '评论洞察',
+        summary: '把客户反馈整理为主题、风险与优先级',
+        prompt: '分析近期客户评论，输出有证据支持的主题、风险和改进优先级'
+      },
+      businessReview: {
+        title: '业务复盘',
+        summary: '汇总经营信号，形成决策与下一步计划',
+        prompt: '复盘当前业务表现，并为下一周期提出有证据支持的优先事项'
+      },
+      savedTitle: '我的工作流',
+      savedEmpty: '还没有已保存工作流。开始一个目标后会在这里出现。',
+      catalogUnavailable: '真实工作流目录暂时不可用，没有模板被启动。',
+      version: version => `版本 ${version}`
     },
     workflowDomain: {
       startFailed: '真实工作流启动失败，目标草稿已保留，请重试。',

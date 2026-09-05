@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -12,10 +12,22 @@ import { $sessionStates } from '@/store/session-states'
 import { $tasks } from '@/store/tasks'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
+import { useChannelStatus } from '../../chat/scenarios/use-channel-status'
 import { openSession } from '../../open-session'
-import { DELIVERABLES_ROUTE, PROJECTS_ROUTE, taskDetailRoute, TASKS_ROUTE, WORKFLOWS_ROUTE } from '../../routes'
+import {
+  DELIVERABLES_ROUTE,
+  IM_ENTRY_ROUTE,
+  NEW_CHAT_ROUTE,
+  PROJECTS_ROUTE,
+  routeDrawerNavigationState,
+  taskDetailRoute,
+  TASKS_ROUTE,
+  workflowRunRoute,
+  WORKFLOWS_ROUTE
+} from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
+import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
 import { type BusinessWorkflowStarter, businessWorkflowStarters } from '../view-model/workflow-starters'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
@@ -38,6 +50,7 @@ export interface BusinessStartShelfProps {
 export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps = {}) {
   const { t } = useI18n()
   const c = t.businessWorkspace
+  const location = useLocation()
   const navigate = useNavigate()
   const sessions = useStore($sessions)
   const sessionsLoading = useStore($sessionsLoading)
@@ -57,7 +70,22 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
   const { evidence, evidenceUnavailable } = useWorkspaceEvidence(sessions, runningTasks)
   const artifacts = evidence?.artifacts.slice(0, 2) ?? []
 
-  const workflows = businessWorkflowStarters(c.workflows)
+  const workflows = businessWorkflowStarters(c.workflows).filter(workflow => workflow.recommended)
+  const projects = useWorkflowProjects(2)
+  const channelStatus = useChannelStatus()
+
+  const sources = [
+    {
+      key: 'feishu',
+      label: t.imEntry.channels.feishu?.name ?? 'Feishu',
+      status: channelStatus.feishu
+    },
+    {
+      key: 'weixin',
+      label: t.imEntry.channels.weixin?.name ?? 'WeChat',
+      status: channelStatus.weixin
+    }
+  ].filter(source => source.status.available)
 
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
     if (onSelectWorkflow) {
@@ -117,7 +145,9 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
         <section aria-labelledby="business-start-recent">
           <header className="flex items-center justify-between gap-4 border-b border-(--ui-stroke-tertiary) pb-2">
             <h2 className="text-sm font-semibold" id="business-start-recent">
-              {c.projects.recentConversations}
+              {projects.mode === 'ready' || projects.mode === 'loading'
+                ? c.projects.recentProjects
+                : c.projects.recentConversations}
             </h2>
             <Button onClick={() => navigate(PROJECTS_ROUTE)} size="inline" variant="textStrong">
               {c.projects.title}
@@ -125,7 +155,60 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
           </header>
 
           <div>
-            {sessionsLoading && conversations.length === 0 ? (
+            {projects.mode === 'loading' ? (
+              <div className="flex min-h-16 items-center gap-3 text-xs text-muted-foreground">
+                <Loader className="size-7" label={c.projects.loadingProjects} type="lemniscate-bloom" />
+                <span>{c.projects.loadingProjects}</span>
+              </div>
+            ) : projects.mode === 'ready' && projects.items.length > 0 ? (
+              projects.items.map(project => {
+                const summary = project.summary
+                const status = summary?.currentRunStatus || project.status
+
+                return (
+                  <button
+                    className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                    key={project.id}
+                    onClick={() =>
+                      summary?.currentRunId
+                        ? navigate(workflowRunRoute(summary.currentRunId), {
+                            state: routeDrawerNavigationState(location)
+                          })
+                        : navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: project.objective } })
+                    }
+                    type="button"
+                  >
+                    <span
+                      className={
+                        summary?.attention === 'failed'
+                          ? 'size-2 shrink-0 rounded-full bg-destructive'
+                          : summary?.attention === 'review'
+                            ? 'size-2 shrink-0 rounded-full bg-amber-500'
+                            : summary?.currentRunStatus === 'running'
+                              ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
+                              : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+                      }
+                    />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-xs font-medium">{project.name}</strong>
+                      <span className="mt-0.5 block truncate text-[0.6875rem] text-(--ui-text-tertiary)">
+                        {summary?.currentStepTitle
+                          ? c.projects.currentStep(summary.currentStepTitle)
+                          : summary && summary.stepTotal > 0
+                            ? c.projects.steps(summary.stepCompleted, summary.stepTotal)
+                            : c.projects.lifecycle(status)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">
+                      {fmtDayTime.format(new Date(project.updatedAt))}
+                    </span>
+                    <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
+                  </button>
+                )
+              })
+            ) : projects.mode === 'ready' ? (
+              <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.emptyDescription}</p>
+            ) : sessionsLoading && conversations.length === 0 ? (
               <div className="flex min-h-16 items-center gap-3 text-xs text-muted-foreground">
                 <Loader className="size-7" label={c.projects.loadingHistory} type="lemniscate-bloom" />
                 <span>{c.projects.loadingHistory}</span>
@@ -171,7 +254,41 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
           </div>
         </section>
 
-        <section className="grid gap-5" data-business-start-evidence="">
+        {projects.mode === 'ready' ? (
+          <BusinessSection
+            action={t.imEntry.manage}
+            onAction={() => navigate(IM_ENTRY_ROUTE)}
+            title={c.projects.availableSources}
+          >
+            {sources.length > 0 ? (
+              sources.map(source => (
+                <button
+                  className="flex w-full items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
+                  key={source.key}
+                  onClick={() => navigate(IM_ENTRY_ROUTE)}
+                  type="button"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span
+                      className={
+                        source.status.bound
+                          ? 'size-2 shrink-0 rounded-full bg-emerald-500'
+                          : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+                      }
+                    />
+                    <strong className="truncate text-xs font-medium">{source.label}</strong>
+                  </span>
+                  <span className="text-[0.6875rem] text-(--ui-text-tertiary)">
+                    {source.status.bound ? c.projects.sourceConnected : c.projects.sourceNotConnected}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noAvailableSources}</p>
+            )}
+          </BusinessSection>
+        ) : (
+          <section className="grid gap-5" data-business-start-evidence="">
           <BusinessSection
             action={c.projects.openTasks}
             onAction={() => navigate(TASKS_ROUTE)}
@@ -244,7 +361,8 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
               </p>
             )}
           </BusinessSection>
-        </section>
+          </section>
+        )}
       </div>
     </div>
   )

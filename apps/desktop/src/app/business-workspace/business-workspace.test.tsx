@@ -14,6 +14,7 @@ import {
   runSessionSearchShortcut,
   visibleSidebarNavItems
 } from '@/store/business-workspace'
+import { mainComposerScope } from '@/store/composer'
 import { $cronJobs } from '@/store/cron'
 import { setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
@@ -30,13 +31,19 @@ function LocationProbe() {
   const location = useLocation()
 
   const routeDrawerState = location.state as
-    | { routeDrawer?: { backgroundLocation?: { pathname?: string } } }
+    | {
+        businessGoalDraft?: string
+        businessWorkflowSlug?: string
+        routeDrawer?: { backgroundLocation?: { pathname?: string } }
+      }
     | null
 
   return (
     <>
       <output data-testid="location">{`${location.pathname}${location.search}`}</output>
       <output data-testid="route-drawer-source">{routeDrawerState?.routeDrawer?.backgroundLocation?.pathname ?? ''}</output>
+      <output data-testid="business-goal-draft">{routeDrawerState?.businessGoalDraft ?? ''}</output>
+      <output data-testid="business-workflow-slug">{routeDrawerState?.businessWorkflowSlug ?? ''}</output>
     </>
   )
 }
@@ -64,6 +71,7 @@ describe('hc-685 business workspace identity', () => {
     setSessionsLoading(false)
     $sessionStates.set({})
     $cronJobs.set([])
+    mainComposerScope.clear()
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
@@ -127,7 +135,7 @@ describe('hc-685 business workspace identity', () => {
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false).at(-1)).toEqual(contributed[0])
   })
 
-  it('moves a workflow goal into the real composer seam without creating domain data', async () => {
+  it('moves a workflow selection to the editable Start goal without starting it', async () => {
     const insert = vi.fn()
     window.addEventListener('hermes:composer-insert', insert)
 
@@ -135,6 +143,7 @@ describe('hc-685 business workspace identity', () => {
       <MemoryRouter initialEntries={['/workflows']}>
         <I18nProvider configClient={null} initialLocale="zh">
           <WorkflowsView />
+          <LocationProbe />
         </I18nProvider>
       </MemoryRouter>
     )
@@ -142,7 +151,10 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.queryByText(/Skill|MCP|模型/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
 
-    await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(screen.getByTestId('business-goal-draft').textContent).toContain('分析美国宠物用品市场')
+    expect(screen.getByTestId('business-workflow-slug').textContent).toBe('market-launch')
+    expect(insert).not.toHaveBeenCalled()
     window.removeEventListener('hermes:composer-insert', insert)
   })
 
@@ -164,6 +176,31 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('location').textContent).toBe('/')
     window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('restores a routed workflow choice into the editable Start goal and returns focus', async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessGoalDraft: 'stale copy must not override the approved prompt',
+              businessWorkflowSlug: 'competitor-monitoring'
+            }
+          }
+        ]}
+      >
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: 'Business goal' })
+
+    await waitFor(() => expect(window.document.activeElement).toBe(goal))
+    expect((goal as HTMLTextAreaElement).value).toContain('Monitor my key competitors')
   })
 
   it('stages a Start workflow in the canonical goal field before real submission', async () => {
@@ -221,20 +258,262 @@ describe('hc-685 business workspace identity', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
+      target: { value: '分析美国宠物用品市场，并生成选品报告和上架素材（已编辑）' }
+    })
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-795'))
     expect(screen.getByTestId('route-drawer-source').textContent).toBe('/')
     expect(access).toHaveBeenCalledTimes(1)
     expect(startGoal).toHaveBeenCalledWith({
-      objective: '分析美国宠物用品市场，并生成选品报告和上架素材',
+      objective: '分析美国宠物用品市场，并生成选品报告和上架素材（已编辑）',
       starter: {
         description: '数据采集、机会分析、定位与生产',
+        id: 'market-launch',
         name: '从市场机会到上架素材',
-        slug: 'market-launch'
+        slug: 'market-launch',
+        version: 1
       }
     })
     expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('renders one canonical Project summary read and reopens its current Run', async () => {
+    const listProjects = vi.fn(async () => ({
+      items: [
+        {
+          createdAt: '2026-09-01T10:00:00Z',
+          id: 'project-1',
+          name: '美国宠物用品上架',
+          objective: '完成选品并准备上架素材',
+          status: 'active',
+          summary: {
+            attention: 'none' as const,
+            currentRunId: 'run-project-1',
+            currentRunStatus: 'running',
+            currentStepTitle: null,
+            deliverableCount: 2,
+            stepCompleted: 0,
+            stepTotal: 0
+          },
+          updatedAt: '2026-09-04T10:00:00Z'
+        }
+      ],
+      nextCursor: null,
+      ok: true,
+      total: 1
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects,
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <ProjectsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('美国宠物用品上架')).toBeTruthy())
+    expect(listProjects).toHaveBeenCalledWith({ limit: 50 })
+    expect(screen.getByText('Hermes 正在执行')).toBeTruthy()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
+    expect(screen.getByText('2 个交付物')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /美国宠物用品上架/ }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-project-1'))
+    expect(screen.getByTestId('route-drawer-source').textContent).toBe('/projects')
+  })
+
+  it('keeps Phase 0 Project responses visible without inventing run summary data', async () => {
+    const listProjects = vi.fn(async () => ({
+      items: [
+        {
+          createdAt: '2026-09-01T10:00:00Z',
+          id: 'phase-0-project',
+          name: 'Phase 0 真实项目',
+          objective: '沿用服务端返回的真实目标',
+          status: 'active',
+          updatedAt: '2026-09-04T10:00:00Z'
+        }
+      ],
+      nextCursor: null,
+      ok: true,
+      total: 1
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects,
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <ProjectsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Phase 0 真实项目')).toBeTruthy())
+    expect(screen.getByText('沿用服务端返回的真实目标')).toBeTruthy()
+    expect(screen.getByText('active')).toBeTruthy()
+    expect(screen.queryByText('0 个交付物')).toBeNull()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Phase 0 真实项目/ }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(screen.getByTestId('business-goal-draft').textContent).toBe('沿用服务端返回的真实目标')
+  })
+
+  it('shows Phase 0 projects on Start without dereferencing a missing summary', async () => {
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({
+        items: [
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'phase-0-start-project',
+            name: 'Start 真实项目',
+            objective: '真实目标',
+            status: 'active',
+            updatedAt: '2026-09-04T10:00:00Z'
+          }
+        ],
+        ok: true,
+        total: 1
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Start 真实项目')).toBeTruthy())
+    expect(screen.getByText('active')).toBeTruthy()
+    expect(screen.queryByText(/0 \/ 0/)).toBeNull()
+  })
+
+  it('shows only real channel capabilities as Start data sources', async () => {
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({ items: [], ok: true, total: 0 })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+    Object.assign(window.hermesDesktop!, {
+      imEntry: {
+        list: vi.fn(async () => ({ channels: [{ boundAt: 1, channelId: 'feishu', domain: 'feishu.cn' }] }))
+      }
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <BusinessStartShelf />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('Available data sources')).toBeTruthy())
+    expect(screen.getByText('Feishu / Lark')).toBeTruthy()
+    expect(screen.getByText('Connected')).toBeTruthy()
+    expect(screen.queryByText('DingTalk')).toBeNull()
+  })
+
+  it('uses the live six-path catalog and reads saved workflows without starting a Run', async () => {
+    const catalog = [
+      ['market-launch', 'cross_border_launch', true],
+      ['geo-brand-audit', 'geo_brand_audit', true],
+      ['content-review', 'content_review', true],
+      ['competitor-monitoring', 'competitor_monitoring', false],
+      ['review-insights', 'review_insights', false],
+      ['business-review', 'business_review', false]
+    ].map(([id, businessPath, recommended], index) => ({
+      businessPath: String(businessPath),
+      id: String(id),
+      position: index + 1,
+      recommended: Boolean(recommended),
+      slug: String(id),
+      version: 1
+    }))
+
+    const getCatalog = vi.fn(async () => ({ items: catalog, ok: true, version: 'workflow-catalog/v1' }))
+
+    const listWorkflows = vi.fn(async () => ({
+      items: [
+        {
+          createdAt: '2026-09-04T10:00:00Z',
+          description: '真实工作流',
+          id: 'workflow-1',
+          name: '我的选品流程',
+          projectId: 'project-1',
+          slug: 'market-launch',
+          status: 'active',
+          updatedAt: '2026-09-04T10:00:00Z',
+          version: 2
+        }
+      ],
+      ok: true
+    }))
+
+    const startGoal = vi.fn()
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getCatalog,
+      getRun: vi.fn(),
+      listWorkflows,
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <WorkflowsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('我的选品流程')).toBeTruthy())
+    expect(getCatalog).toHaveBeenCalledTimes(1)
+    expect(listWorkflows).toHaveBeenCalledWith({ limit: 50 })
+    expect(screen.getByText('版本 2')).toBeTruthy()
+    expect(screen.queryByText(/DSH|DeepSeek/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /竞品监控/ }))
+
+    await waitFor(() => expect(screen.getByTestId('business-workflow-slug').textContent).toBe('competitor-monitoring'))
+    expect(startGoal).not.toHaveBeenCalled()
   })
 
   it('falls back to the existing chat submission when workflow-domain access is dark', async () => {
@@ -296,14 +575,19 @@ describe('hc-685 business workspace identity', () => {
       objective: 'Audit my current launch plan',
       starter: {
         description: 'Describe the goal. APEX organizes the evidence, moves the work forward, and delivers the result.',
+        id: 'desktop-goal',
         name: 'What business should we move forward today?',
-        slug: 'desktop-goal'
+        slug: 'desktop-goal',
+        version: 1
       }
     })
   })
 
   it('preserves the goal and does not duplicate-submit when a gated Run creation fails', async () => {
     const submit = vi.fn(async () => true)
+    const attachment = { id: 'launch-brief', kind: 'file' as const, label: 'launch-brief.pdf' }
+
+    mainComposerScope.add(attachment)
     window.hermesDesktop!.workflowDomain = {
       access: vi.fn(async () => ({ available: true })),
       cancelRun: vi.fn(),
@@ -326,6 +610,7 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('真实工作流启动失败'))
     expect((goal as HTMLTextAreaElement).value).toBe('保留这个目标')
+    expect(mainComposerScope.$attachments.get()).toEqual([attachment])
     expect(submit).not.toHaveBeenCalled()
   })
 
