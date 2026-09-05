@@ -1805,15 +1805,18 @@ export const ja = defineLocale({
   sidebar: {
     nav: {
       'new-session': '開始',
+      start: '開始',
       projects: 'プロジェクト',
       workflows: 'ワークフロー',
-      accounts: 'ビジネスアカウント',
+      assistant: 'アシスタント',
       history: '履歴',
       search: '検索',
       cron: '定期実行',
+      'scheduled-runs': '定期実行',
       tasks: 'タスク',
       skills: 'プラグイン',
-      artifacts: '成果物'
+      artifacts: '成果物',
+      deliverables: '成果物'
     },
     searchAria: 'セッションを検索',
     searchPlaceholder: 'セッションを検索…',

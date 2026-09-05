@@ -3,15 +3,18 @@ import { join, resolve } from 'node:path'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { WorkflowRunView } from '@/app/business-workspace/workflow-run-view'
+import { AccountPanel } from '@/app/chat/sidebar/account-panel'
+import { APEX_PRIMARY_NAVIGATION } from '@/app/routes'
 import { Intro } from '@/components/chat/intro'
 import { DesktopLoginScreen } from '@/components/desktop-login-screen'
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { type I18nConfigClient, I18nProvider } from '@/i18n/context'
 import { $authState } from '@/store/auth'
-import { BUSINESS_WORKSPACE_FLAG_KEY } from '@/store/business-workspace'
+import { BUSINESS_SIDEBAR_NAV_CONTRACT, BUSINESS_WORKSPACE_FLAG_KEY } from '@/store/business-workspace'
 import { $desktopOnboarding, requestManagedReSignIn, skipManagedForByok } from '@/store/onboarding'
 
 // hc-589 identity-layer guard.
@@ -526,9 +529,9 @@ describe('identity: the home zero-state is ours', () => {
 
   it('wires the goal launcher to the canonical chat submit path', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
-    const startHome = readSource('src', 'app', 'business-workspace', 'start-home.tsx')
-    const startShelf = readSource('src', 'app', 'business-workspace', 'start-shelf.tsx')
-    const workflows = readSource('src', 'app', 'business-workspace', 'index.tsx')
+    const startHome = readSource('src', 'app', 'business-workspace', 'pages', 'start-page.tsx')
+    const startShelf = readSource('src', 'app', 'business-workspace', 'components', 'start-shelf.tsx')
+    const workflows = readSource('src', 'app', 'business-workspace', 'pages', 'workflows-page.tsx')
 
     expect(chat).toContain('onSubmitGoal: onSubmit')
     expect(chat).toContain('goalDisabled: !gatewayOpen || busy')
@@ -564,6 +567,111 @@ describe('identity: the brand skin survives', () => {
   })
 })
 
+describe('identity: the APEX business shell stays user-facing', () => {
+  it('pins all seven primary destinations in order and names the long-term surface assistant', () => {
+    expect(APEX_PRIMARY_NAVIGATION.map(item => item.id)).toEqual([
+      'start',
+      'projects',
+      'workflows',
+      'scheduled-runs',
+      'deliverables',
+      'assistant',
+      'history'
+    ])
+    expect(APEX_PRIMARY_NAVIGATION.map(item => item.path)).toEqual([
+      '/',
+      '/projects',
+      '/workflows',
+      '/cron',
+      '/deliverables',
+      '/assistant',
+      '/history'
+    ])
+    expect(APEX_PRIMARY_NAVIGATION.some(item => ['accounts', 'agents', 'bots'].includes(item.id))).toBe(false)
+    expect(BUSINESS_SIDEBAR_NAV_CONTRACT.map(item => item.id)).toEqual(APEX_PRIMARY_NAVIGATION.map(item => item.id))
+    expect(BUSINESS_SIDEBAR_NAV_CONTRACT.map(item => item.route)).toEqual(
+      APEX_PRIMARY_NAVIGATION.map(item => item.path)
+    )
+  })
+
+  it('keeps Profile and Settings behind the bottom account control', async () => {
+    const previousAuthState = $authState.get()
+
+    $authState.set({
+      account: { email: 'kael@example.com', name: 'Kael', plan: '' },
+      enabled: true,
+      gateReason: null,
+      loginTruth: true,
+      status: 'signed-in'
+    })
+
+    try {
+      render(
+        <MemoryRouter>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <AccountPanel />
+          </I18nProvider>
+        </MemoryRouter>
+      )
+
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Kael' }), { button: 0, ctrlKey: false })
+
+      expect(await screen.findByRole('menuitem', { name: '个人资料' })).toBeTruthy()
+      expect(screen.getByRole('menuitem', { name: '设置' })).toBeTruthy()
+    } finally {
+      $authState.set(previousAuthState)
+    }
+  })
+
+  it('renders Hermes as the only production executor and offers no DSH picker', async () => {
+    const originalBridge = window.hermesDesktop
+
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: {
+        ...originalBridge,
+        workflowDomain: {
+          getRun: vi.fn().mockResolvedValue({
+            ok: true,
+            overview: {
+              deliverables: [],
+              events: [],
+              run: {
+                attempt: 1,
+                createdAt: '2026-09-03T00:00:00Z',
+                errorMessage: null,
+                executorType: 'hermes',
+                id: 'run-identity',
+                maxAttempts: 1,
+                status: 'succeeded',
+                triggerRef: 'Verify identity'
+              }
+            }
+          })
+        }
+      }
+    })
+
+    try {
+      render(
+        <MemoryRouter initialEntries={['/workflow-runs/run-identity']}>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <Routes>
+              <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+            </Routes>
+          </I18nProvider>
+        </MemoryRouter>
+      )
+
+      expect(await screen.findByText('hermes')).toBeTruthy()
+      expect(screen.queryByRole('combobox')).toBeNull()
+      expect(screen.queryByText(/DeepSeek Harness|DSH/i)).toBeNull()
+    } finally {
+      Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
+    }
+  })
+})
+
 describe('identity: hc-795 uses the authenticated workflow domain without exposing credentials', () => {
   it('keeps the platform JWT in Electron and exposes only typed workflow operations', () => {
     const main = readSource('electron', 'main.ts')
@@ -580,14 +688,15 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
   })
 
   it('pins the first real P2B loop from Start to Run review while retaining the dark-launch fallback', () => {
-    const startHome = readSource('src', 'app', 'business-workspace', 'start-home.tsx')
-    const client = readSource('src', 'app', 'business-workspace', 'workflow-domain-client.ts')
+    const startHome = readSource('src', 'app', 'business-workspace', 'pages', 'start-page.tsx')
+    const client = readSource('src', 'app', 'business-workspace', 'api', 'adapters.ts')
     const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
-    const runView = readSource('src', 'app', 'business-workspace', 'workflow-run-view.tsx')
+    const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
 
     expect(startHome).toContain('const outcome = await startWorkflowGoal(')
     expect(startHome).toContain("slug: 'desktop-goal'")
-    expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId))')
+    expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId), {')
+    expect(startHome).toContain('state: routeDrawerNavigationState(location)')
     expect(startHome).toContain('return (await onSubmitGoal?.(goal)) ?? false')
     expect(client).toContain('access = await bridge.access()')
     expect(client).toContain("return { mode: 'unavailable' }")

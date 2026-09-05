@@ -1735,15 +1735,18 @@ export const zhHant = defineLocale({
   sidebar: {
     nav: {
       'new-session': '開始',
+      start: '開始',
       projects: '專案',
       workflows: '工作流程',
-      accounts: '業務帳號',
+      assistant: '助手',
       history: '歷史',
       search: '搜尋',
       cron: '定時執行',
+      'scheduled-runs': '定時執行',
       tasks: '任務',
       skills: '外掛',
-      artifacts: '交付物'
+      artifacts: '交付物',
+      deliverables: '交付物'
     },
     searchAria: '搜尋工作階段',
     searchPlaceholder: '搜尋工作階段…',

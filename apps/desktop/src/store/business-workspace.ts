@@ -1,7 +1,10 @@
 import {
   ARTIFACTS_ROUTE,
+  ASSISTANT_ROUTE,
   CRON_ROUTE,
-  IM_ENTRY_ROUTE,
+  DELIVERABLES_ROUTE,
+  HISTORY_ROUTE,
+  NEW_CHAT_ROUTE,
   PROJECTS_ROUTE,
   SEARCH_ROUTE,
   SKILLS_ROUTE,
@@ -18,15 +21,15 @@ export interface SidebarNavigationContract {
   keybindActionId?: string
 }
 
-export const BUSINESS_HISTORY_ROUTE = SEARCH_ROUTE
+export const BUSINESS_HISTORY_ROUTE = HISTORY_ROUTE
 
 export const BUSINESS_SIDEBAR_NAV_CONTRACT = [
-  { id: 'new-session', action: 'new-session', keybindActionId: 'session.new' },
+  { id: 'start', action: 'new-session', route: NEW_CHAT_ROUTE, keybindActionId: 'session.new' },
   { id: 'projects', route: PROJECTS_ROUTE },
   { id: 'workflows', route: WORKFLOWS_ROUTE },
-  { id: 'cron', route: CRON_ROUTE, keybindActionId: 'nav.cron' },
-  { id: 'artifacts', route: ARTIFACTS_ROUTE, keybindActionId: 'nav.artifacts' },
-  { id: 'accounts', route: IM_ENTRY_ROUTE },
+  { id: 'scheduled-runs', route: CRON_ROUTE, keybindActionId: 'nav.cron' },
+  { id: 'deliverables', route: DELIVERABLES_ROUTE, keybindActionId: 'nav.artifacts' },
+  { id: 'assistant', route: ASSISTANT_ROUTE },
   { id: 'history', route: BUSINESS_HISTORY_ROUTE, keybindActionId: 'session.focusSearch' }
 ] as const satisfies readonly SidebarNavigationContract[]
 
