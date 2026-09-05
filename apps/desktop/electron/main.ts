@@ -268,6 +268,13 @@ import {
   resolveTimeoutMs,
   TEXT_PREVIEW_SOURCE_MAX_BYTES
 } from './hardening'
+import {
+  createDesktopLifecycleContext,
+  formatLifecycleEvent,
+  httpFailureLifecycleFields,
+  processGoneLifecycleFields,
+  sanitizeLifecycleArgv
+} from './lifecycle-diagnostics'
 import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
 import { ensureMainWindow } from './main-window-lifecycle'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
@@ -355,6 +362,13 @@ const RESOLVED_USER_DATA_DIR = resolveUserDataDir(app.getPath('appData'), USER_D
 
 fs.mkdirSync(RESOLVED_USER_DATA_DIR, { recursive: true })
 app.setPath('userData', RESOLVED_USER_DATA_DIR)
+
+const DESKTOP_LIFECYCLE_CONTEXT = createDesktopLifecycleContext({
+  argv: process.argv,
+  parentPid: process.ppid,
+  pid: process.pid,
+  userData: app.getPath('userData')
+})
 
 // Public-read COS bucket base URL that hosts the ApexNodes runtime source
 // tarball + uv binary for mainland-China first-launch installs (published by
@@ -480,6 +494,8 @@ if (IS_WINDOWS) {
   // Catch the first GPU breakpoint death and relaunch before Chromium's
   // "GPU process isn't usable" FATAL abort ends the process with no recovery.
   app.on('child-process-gone', (_event, details) => {
+    rememberLifecycle('electron.child_process_gone', processGoneLifecycleFields(details))
+
     if (
       !shouldRelaunchForGpuSandboxCrash({
         details,
@@ -1156,6 +1172,7 @@ function registerMediaProtocol() {
 
 let mainWindow = null
 const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
+const backendTeardownReasons = new WeakMap<object, string>()
 // True while connection-config:apply soft-rehomes the primary — suppresses the
 // backend-exit toast so an intentional kill doesn't look like a crash.
 let softRehomeInProgress = false
@@ -1364,6 +1381,10 @@ function rememberLog(chunk) {
   }
 
   scheduleDesktopLogFlush()
+}
+
+function rememberLifecycle(event: string, fields: Record<string, unknown> = {}) {
+  rememberLog(formatLifecycleEvent(event, DESKTOP_LIFECYCLE_CONTEXT, fields))
 }
 
 function openExternalUrl(rawUrl) {
@@ -2886,7 +2907,7 @@ async function applyUpdates(opts = {}) {
         '(a second Hermes window or a terminal running hermes?). Close it and retry.'
 
       emitUpdateProgress({ stage: 'error', message, percent: null })
-      startHermes().catch(() => {})
+      startHermes('shell-update-abort-recovery').catch(() => {})
 
       return { ok: false, error: message }
     }
@@ -6145,7 +6166,7 @@ async function freshGatewayWsUrl(profile) {
   // silently lands back on the primary (default) backend and writes sessions to
   // the wrong profile's DB. A null/empty profile resolves to the primary, so
   // legacy callers and single-profile users are unchanged.
-  const connection = await ensureBackend(profile)
+  const connection = await ensureBackend(profile, 'gateway-ws-url')
 
   if (connection.authMode === 'oauth') {
     const ticket = await mintGatewayWsTicket(connection.baseUrl)
@@ -6931,7 +6952,7 @@ async function fetchJsonForProfile(profile, path) {
 
 // Issue an arbitrary method against a profile's resolved backend, parsed JSON.
 async function requestJsonForProfile(profile: string, path: string, method: string, body?: string) {
-  const conn = await ensureBackend(profile)
+  const conn = await ensureBackend(profile, 'profile-json-request')
   const url = `${conn.baseUrl}${path}`
   const opts = { method, body, timeoutMs: DEFAULT_FETCH_TIMEOUT_MS }
 
@@ -7031,7 +7052,7 @@ async function testDesktopConnectionConfig(input: any = {}) {
       token = decryptDesktopSecret(block.token)
     }
   } else {
-    const remote = (await resolveRemoteBackend(key)) || (await startHermes())
+    const remote = (await resolveRemoteBackend(key)) || (await startHermes('connection-config-test'))
     baseUrl = remote.baseUrl
     token = remote.token
     authMode = normAuthMode(remote.authMode)
@@ -7090,9 +7111,19 @@ function stopBackendChild(child) {
 // reloading the renderer. The shell stays up; the renderer wipes session lists
 // (so skeletons retrigger) and re-dials. Distinct from hard re-home (profile
 // switch / crash recovery), which still resets boot progress + reloads.
-function resetHermesConnection({ soft = false } = {}) {
+function resetHermesConnection({ reason = 'unspecified', soft = false } = {}) {
   backendStartFailure = null
   const hermesProcess = backendConnectionState.invalidate()
+
+  if (hermesProcess) {
+    backendTeardownReasons.set(hermesProcess, reason)
+  }
+
+  rememberLifecycle('backend.invalidate', {
+    backendPid: hermesProcess?.pid || null,
+    reason,
+    soft
+  })
   stopBackendChild(hermesProcess)
 
   if (!soft) {
@@ -7104,18 +7135,31 @@ function resetHermesConnection({ soft = false } = {}) {
 // dashboard process to actually exit (SIGKILL after 5s) so the next
 // startHermes() spawns fresh instead of racing the dying one. Shared by the
 // connection-config and profile switch flows.
-async function teardownPrimaryBackendAndWait({ soft = false } = {}) {
+async function teardownPrimaryBackendAndWait({ reason = 'unspecified', soft = false } = {}) {
   // Capture the reference before resetHermesConnection() invalidates it.
   const hermesProcess = backendConnectionState.getProcess()
   const dying = hermesProcess && !hermesProcess.killed ? hermesProcess : null
+
+  rememberLifecycle('backend.teardown_requested', {
+    backendPid: dying?.pid || null,
+    reason,
+    soft
+  })
 
   if (soft) {
     softRehomeInProgress = true
   }
 
   try {
-    resetHermesConnection({ soft })
+    resetHermesConnection({ reason, soft })
     await waitForBackendExit(dying)
+    rememberLifecycle('backend.teardown_completed', {
+      backendPid: dying?.pid || null,
+      exitCode: dying?.exitCode ?? null,
+      reason,
+      signalCode: dying?.signalCode ?? null,
+      soft
+    })
   } finally {
     if (soft) {
       softRehomeInProgress = false
@@ -7179,11 +7223,11 @@ function primaryProfileKey() {
 // profile to startHermes() (the window backend: boot UI, bootstrap, remote
 // mode), and any OTHER profile to a lazily-spawned pool backend. An empty /
 // unknown profile resolves to the primary, so all legacy callers are unchanged.
-async function ensureBackend(profile) {
+async function ensureBackend(profile, source = 'ensure-backend') {
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
 
   if (key === primaryProfileKey()) {
-    return startHermes()
+    return startHermes(source)
   }
 
   const existing = backendPool.get(key)
@@ -7472,7 +7516,7 @@ async function prepareProfileDeleteRequest(request) {
 
   if (decision.action === 'teardown-primary') {
     writeActiveDesktopProfile('default')
-    await teardownPrimaryBackendAndWait()
+    await teardownPrimaryBackendAndWait({ reason: 'profile-delete-primary' })
 
     return decision.profile
   }
@@ -7482,7 +7526,14 @@ async function prepareProfileDeleteRequest(request) {
   return decision.profile
 }
 
-async function startHermes() {
+async function startHermes(source = 'unspecified') {
+  rememberLifecycle('backend.start_requested', {
+    hasBootstrapFailure: Boolean(bootstrapFailure),
+    hasCachedConnection: Boolean(backendConnectionState.getPromise()),
+    hasStartFailure: Boolean(backendStartFailure),
+    source
+  })
+
   // Latched-failure short-circuit: once bootstrap has failed in this
   // process, every subsequent startHermes() call re-throws the same error
   // without re-running install.ps1. This prevents the renderer's
@@ -7504,6 +7555,8 @@ async function startHermes() {
   }
 
   const connectionAttempt = backendConnectionState.startAttempt()
+  const connectionAttemptId = crypto.randomUUID()
+  const spawnNonce = crypto.randomUUID()
 
   // Classify this boot BEFORE the throwing resolve/mint runs: a remote failure
   // must NOT latch (it's transient — see shouldLatchBackendStartFailure), while
@@ -7519,6 +7572,12 @@ async function startHermes() {
     const remote = await resolveRemoteBackend(primaryProfileKey())
 
     if (remote) {
+      rememberLifecycle('backend.remote_selected', {
+        connectionAttemptId,
+        connectionGeneration: connectionAttempt.generation,
+        source,
+        remoteSource: remote.source
+      })
       await advanceBootProgress('backend.remote', `Connecting to remote Hermes backend at ${remote.baseUrl}`, 24)
       await waitForHermes(remote.baseUrl, remote.token)
       updateBootProgress({
@@ -7527,6 +7586,12 @@ async function startHermes() {
         progress: 94,
         running: true,
         error: null
+      })
+      rememberLifecycle('backend.remote_ready', {
+        connectionAttemptId,
+        connectionGeneration: connectionAttempt.generation,
+        source,
+        remoteSource: remote.source
       })
 
       return {
@@ -7617,6 +7682,17 @@ async function startHermes() {
       })
     )
 
+    rememberLifecycle('backend.spawned', {
+      args: sanitizeLifecycleArgv(backend.args),
+      backendPid: hermesProcess.pid || null,
+      command: backend.command,
+      connectionAttemptId,
+      connectionGeneration: connectionAttempt.generation,
+      parentPid: process.pid,
+      source,
+      spawnNonce
+    })
+
     const processOwner = backendConnectionState.attachProcess(connectionAttempt, hermesProcess)
 
     if (!processOwner) {
@@ -7634,6 +7710,16 @@ async function startHermes() {
     })
 
     hermesProcess.once('error', error => {
+      rememberLifecycle('backend.spawn_error', {
+        backendPid: hermesProcess.pid || null,
+        connectionAttemptId,
+        connectionGeneration: connectionAttempt.generation,
+        error: error.message,
+        reason: backendTeardownReasons.get(hermesProcess) || 'child-error-without-shell-teardown',
+        source,
+        spawnNonce
+      })
+
       if (!backendConnectionState.clearForCurrentProcess(processOwner)) {
         rememberLog(`Ignoring stale Hermes backend error: ${error.message}`)
         rejectBackendStart?.(new Error('Hermes backend start was superseded by a newer connection attempt.'))
@@ -7655,6 +7741,18 @@ async function startHermes() {
       rejectBackendStart?.(error)
     })
     hermesProcess.once('exit', (code, signal) => {
+      rememberLifecycle('backend.exited', {
+        backendPid: hermesProcess.pid || null,
+        backendReady,
+        code,
+        connectionAttemptId,
+        connectionGeneration: connectionAttempt.generation,
+        reason: backendTeardownReasons.get(hermesProcess) || 'child-exit-without-shell-teardown',
+        signal,
+        source,
+        spawnNonce
+      })
+
       if (!backendConnectionState.clearForCurrentProcess(processOwner)) {
         rememberLog(`Ignoring stale Hermes backend exit (${signal || code})`)
 
@@ -7695,6 +7793,15 @@ async function startHermes() {
       backendStartFailed
     ])
 
+    rememberLifecycle('backend.port_announced', {
+      backendPid: hermesProcess.pid || null,
+      connectionAttemptId,
+      connectionGeneration: connectionAttempt.generation,
+      port,
+      source,
+      spawnNonce
+    })
+
     if (readyFile) {
       fs.unlink(readyFile, () => {})
     }
@@ -7716,6 +7823,14 @@ async function startHermes() {
       progress: 94,
       running: true,
       error: null
+    })
+    rememberLifecycle('backend.ready', {
+      backendPid: hermesProcess.pid || null,
+      connectionAttemptId,
+      connectionGeneration: connectionAttempt.generation,
+      port,
+      source,
+      spawnNonce
     })
 
     // hc-417: the local dashboard is live — bring up the messaging gateway
@@ -8362,11 +8477,15 @@ function createWindow() {
   mainWindow.on('moved', schedulePersistWindowState)
   mainWindow.on('maximize', schedulePersistWindowState)
   mainWindow.on('unmaximize', schedulePersistWindowState)
-  mainWindow.on('close', () => schedulePersistWindowState.flush())
+  mainWindow.on('close', () => {
+    rememberLifecycle('electron.main_window_close', { isQuittingForHandoff })
+    schedulePersistWindowState.flush()
+  })
 
   // the closed wrapper remains truthy, so clear only the window this callback owns.
   const createdMainWindow = mainWindow
   mainWindow.on('closed', () => {
+    rememberLifecycle('electron.main_window_closed', { isQuittingForHandoff })
     closePetOverlay()
 
     if (mainWindow === createdMainWindow) {
@@ -8380,6 +8499,7 @@ function createWindow() {
   streamThrottle.register(mainWindow)
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    rememberLifecycle('electron.render_process_gone', processGoneLifecycleFields(details))
     rememberLog(`[renderer] render-process-gone reason=${details?.reason} exitCode=${details?.exitCode}`)
 
     if (details?.reason === 'crashed' || details?.reason === 'oom') {
@@ -8476,7 +8596,7 @@ function createWindow() {
   // shared (backendConnectionState), so the renderer's getConnection() joins
   // this in-flight boot instead of duplicating it; early boot-progress events
   // the renderer misses are recovered by its getBootProgress() pull on mount.
-  startHermes().catch(error => rememberLog(error.stack || error.message))
+  startHermes('main-window-create').catch(error => rememberLog(error.stack || error.message))
 
   mainWindow.webContents.once('did-finish-load', () => {
     // Zoom restore is handled by wireCommonWindowHandlers (shared with session
@@ -8486,7 +8606,7 @@ function createWindow() {
   })
 }
 
-ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile))
+ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(profile, 'ipc:hermes:connection'))
 // Reconnect-after-wake recovery. A REMOTE primary backend has no child process,
 // so the 'exit'/'error' handlers that would clear a dead connection promise never
 // fire — once the remote becomes unreachable across a sleep/wake the renderer
@@ -8527,7 +8647,7 @@ ipcMain.handle('hermes:connection:revalidate', async () => {
     // tick rebuilds a fresh, reachable descriptor. resetHermesConnection only
     // clears the connection promise for a remote (no child to SIGTERM).
     rememberLog('Cached remote Hermes backend failed liveness probe; dropping stale connection.')
-    resetHermesConnection()
+    resetHermesConnection({ reason: 'remote-liveness-revalidate' })
 
     return { ok: true, rebuilt: true }
   }
@@ -8709,7 +8829,7 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
   // reset connection state so the next startHermes() call restarts the
   // full backend flow (including a fresh runBootstrap pass).
   rememberLog('[bootstrap] reset requested by renderer; clearing latched failure')
-  await teardownPrimaryBackendAndWait()
+  await teardownPrimaryBackendAndWait({ reason: 'bootstrap-reset' })
   bootstrapFailure = null
   backendStartFailure = null
   bootstrapState = {
@@ -8743,7 +8863,7 @@ ipcMain.handle('hermes:bootstrap:repair', async () => {
 
   bootstrapFailure = null
   backendStartFailure = null
-  resetHermesConnection()
+  resetHermesConnection({ reason: 'bootstrap-repair' })
 
   return { ok: true }
 })
@@ -8888,7 +9008,7 @@ ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
     // Global / primary connection: soft re-home. Tear down the window backend
     // without resetting boot UI or reloading — the shell stays, the renderer
     // wipes session lists (skeletons) and re-dials on hermes:connection:applied.
-    await teardownPrimaryBackendAndWait({ soft: true })
+    await teardownPrimaryBackendAndWait({ reason: 'connection-config-apply', soft: true })
     sendConnectionApplied()
   }
 
@@ -8902,7 +9022,7 @@ ipcMain.handle('hermes:profile:set', async (_event, name) => {
   // Switching profiles is a backend re-home: relaunch the dashboard under the
   // new HERMES_HOME. Pool backends keep their own homes, so only the primary
   // is torn down.
-  await teardownPrimaryBackendAndWait()
+  await teardownPrimaryBackendAndWait({ reason: 'profile-switch' })
   mainWindow?.reload()
 
   return { profile: next }
@@ -9104,7 +9224,7 @@ async function fetchProfilesSessionSlice(searchParams, remoteProfiles) {
       return remoteSessionList(requested, searchParams)
     }
 
-    const primary = await ensureBackend(null)
+    const primary = await ensureBackend(null, 'profile-session-slice')
 
     return fetchJson(`${primary.baseUrl}/api/profiles/sessions?${searchParams}`, primary.token, {
       method: 'GET',
@@ -9124,7 +9244,7 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
   const offset = Math.max(0, Number(searchParams.get('offset')) || 0)
   const order = searchParams.get('order') === 'created' ? 'started_at' : 'last_active'
 
-  const primary = await ensureBackend(null)
+  const primary = await ensureBackend(null, 'remote-profile-session-merge')
 
   const base = (await fetchJson(`${primary.baseUrl}/api/profiles/sessions?${searchParams}`, primary.token, {
     method: 'GET',
@@ -9166,7 +9286,7 @@ async function mergeRemoteProfileSessions(searchParams, remoteProfiles) {
   return { ...(base as any), sessions: merged.slice(offset, offset + limit), total, profile_totals: profileTotals }
 }
 
-ipcMain.handle('hermes:api', async (_event, request) => {
+ipcMain.handle('hermes:api', async (event, request) => {
   // Remote-profile session requests would otherwise hit the local primary off
   // each profile's on-disk state.db — fine for local profiles, but a remote
   // profile's sessions live on its remote host, so the UI's IDs 404 (or mutations
@@ -9185,7 +9305,7 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   // backend calls ensure_hermes_home() which recreates the profile directory,
   // defeating the deletion and leaving a zombie process.
   const routeProfile = resolveRouteProfile(tornDownProfile, profile)
-  const connection = await ensureBackend(routeProfile)
+  const connection = await ensureBackend(routeProfile, 'ipc:hermes:api')
   const timeoutMs = resolveTimeoutMs(request?.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
 
   const requestPath = pathWithGlobalRemoteProfile(request.path, profile, {
@@ -9221,6 +9341,20 @@ ipcMain.handle('hermes:api', async (_event, request) => {
       timeoutMs
     })
   } catch (error) {
+    const statusCode = httpStatusFromError(error)
+
+    if (statusCode === 405) {
+      rememberLifecycle(
+        'backend.http_failure',
+        httpFailureLifecycleFields({
+          method: request?.method,
+          pageUrl: event.senderFrame?.url || event.sender?.getURL?.(),
+          path: requestPath,
+          statusCode
+        })
+      )
+    }
+
     // Fire the continuous auth gate on 401 / 403 account_disabled, then rethrow
     // so the caller's own error handling is unchanged.
     broadcastAuthGate(error)
@@ -10589,11 +10723,16 @@ function registerDeepLinkProtocol() {
 // second-instance argv. Without the lock a second `hermes://` launch spawns a
 // whole new app instead of routing into the running one.
 const _gotSingleInstanceLock = app.requestSingleInstanceLock()
+rememberLifecycle('electron.single_instance_lock', {
+  acquired: _gotSingleInstanceLock,
+  userDataOverrideSet: Boolean(USER_DATA_OVERRIDE)
+})
 
 if (!_gotSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', (_event, argv) => {
+    rememberLifecycle('electron.second_instance', { argv: sanitizeLifecycleArgv(argv) })
     const url = _extractDeepLink(argv)
 
     if (url) {
@@ -11372,7 +11511,7 @@ async function reloadBackendForRelayKey(reason) {
 
   try {
     rememberLog(`[apexnodes] reloading the local backend so it picks up the refreshed relay key (${reason})…`)
-    await teardownPrimaryBackendAndWait({ soft: true })
+    await teardownPrimaryBackendAndWait({ reason: `relay-key-refresh:${reason}`, soft: true })
     sendConnectionApplied()
 
     return true
@@ -14241,7 +14380,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
       }
 
       bootstrapFailure = null
-      resetHermesConnection()
+      resetHermesConnection({ reason: 'runtime-bundle-update-applied' })
 
       return {
         ok: true,
@@ -14330,7 +14469,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
   }
 
   bootstrapFailure = null
-  resetHermesConnection()
+  resetHermesConnection({ reason: 'runtime-legacy-update-armed' })
 
   return {
     ok: true,
@@ -14780,7 +14919,7 @@ ipcMain.handle('hermes:feishu:sync', async () => {
   if (result.ok && result.hasEntry) {
     // Re-home the local backend (same teardown+reload path as a profile switch)
     // so the freshly-injected FEISHU_* env takes effect immediately.
-    await teardownPrimaryBackendAndWait()
+    await teardownPrimaryBackendAndWait({ reason: 'feishu-sync' })
     mainWindow?.reload()
   }
 
@@ -14793,7 +14932,7 @@ ipcMain.handle('hermes:feishu:sync', async () => {
 // a desktop-local un-sync only.
 ipcMain.handle('hermes:feishu:disconnect', async () => {
   clearFeishuConfig()
-  await teardownPrimaryBackendAndWait()
+  await teardownPrimaryBackendAndWait({ reason: 'feishu-disconnect' })
   mainWindow?.reload()
 
   return { ok: true }
@@ -15048,7 +15187,7 @@ ipcMain.handle('hermes:imEntry:feishuPoll', async (_event, provisionId) => {
   // effect. The credential is already safe on disk — a teardown/reload failure
   // must not fail the bind, only downgrade it to "restart manually".
   try {
-    await teardownPrimaryBackendAndWait()
+    await teardownPrimaryBackendAndWait({ reason: 'im-entry-feishu-bind' })
     mainWindow?.reload()
   } catch (error: any) {
     rememberLog(`[im-entry] backend restart after bind failed: ${error && error.message ? error.message : error}`)
@@ -15224,7 +15363,7 @@ ipcMain.handle('hermes:imEntry:weixinPoll', async (_event, provisionId) => {
   // The credential is already safe on disk — a teardown/reload failure must not
   // fail the bind, only downgrade it to "restart manually".
   try {
-    await teardownPrimaryBackendAndWait()
+    await teardownPrimaryBackendAndWait({ reason: 'im-entry-weixin-bind' })
     mainWindow?.reload()
   } catch (error: any) {
     rememberLog(`[im-entry] backend restart after weixin bind failed: ${error && error.message ? error.message : error}`)
@@ -15288,7 +15427,7 @@ ipcMain.handle('hermes:imEntry:unbind', async (_event, channelId) => {
   await restartMessagingGateway()
 
   try {
-    await teardownPrimaryBackendAndWait()
+    await teardownPrimaryBackendAndWait({ reason: `im-entry-${id}-unbind` })
     mainWindow?.reload()
   } catch (error: any) {
     // The binding is already cleared and the gateway already converged; the
@@ -15620,10 +15759,13 @@ ipcMain.handle('hermes:fs:worktrees', async (_event, cwds) => worktreesForIpc(cw
 // whenReady; handleDeepLink queues until the renderer is ready).
 app.on('open-url', (event, url) => {
   event.preventDefault()
+  rememberLifecycle('electron.open_url', { argv: sanitizeLifecycleArgv([url]) })
   handleDeepLink(url)
 })
 
 app.whenReady().then(() => {
+  rememberLifecycle('electron.ready')
+
   // hc-544: repair the GUI-minimal PATH BEFORE any child spawns, so the backend,
   // messaging gateway, and daemon agent-runner all inherit ~/.local/bin etc. and
   // can resolve the user's claude/codex CLI. Fail-soft; no-op on Windows.
@@ -15750,6 +15892,7 @@ function configureSpellChecker() {
 }
 
 app.on('before-quit', () => {
+  rememberLifecycle('electron.before_quit', { isQuittingForHandoff })
   // Clean quit mid-boot should not trip next-launch --no-sandbox (#38216).
   // FATAL GPU aborts skip before-quit, leaving the `booting` marker in place.
   // Keyed on sticky (not active): a manual --no-sandbox run still records a
@@ -15806,7 +15949,18 @@ app.on('before-quit', () => {
   stopAllPoolBackends()
 })
 
+app.on('will-quit', () => {
+  rememberLifecycle('electron.will_quit', { isQuittingForHandoff })
+  flushDesktopLogBufferSync()
+})
+
+app.on('quit', (_event, exitCode) => {
+  rememberLifecycle('electron.quit', { exitCode, isQuittingForHandoff })
+  flushDesktopLogBufferSync()
+})
+
 app.on('window-all-closed', () => {
+  rememberLifecycle('electron.window_all_closed', { isQuittingForHandoff })
   // macOS convention: keep the process alive in the Dock when the user closes
   // the last window. But when we're handing off to a detached updater / swap /
   // uninstall script, the process MUST exit so the script can replace or remove
