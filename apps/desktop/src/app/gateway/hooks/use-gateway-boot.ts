@@ -137,7 +137,7 @@ const ACTIVE_BOOTSTRAP_PROGRESS_STALL_TIMEOUT_MS = 30 * 60 * 1000
 const ACTIVE_BOOTSTRAP_CANCEL_GRACE_TIMEOUT_MS = RECONNECT_ATTEMPT_TIMEOUT_MS
 
 function bootstrapEventShowsProgress(event: DesktopBootstrapEvent) {
-  return event.type === 'manifest' || event.type === 'stage' || event.type === 'log'
+  return event.type === 'activity' || event.type === 'manifest' || event.type === 'stage' || event.type === 'log'
 }
 
 function waitForActiveBootstrapConnection<T>(
