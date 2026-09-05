@@ -474,7 +474,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($desktopBoot.get().visible).toBe(false)
   })
 
-  it('keeps a slow but progressing Windows cold install attached beyond an hour', async () => {
+  it('keeps a slow but raw-I/O-active Windows cold install attached beyond an hour', async () => {
     const connection = deferred<typeof primaryConn>()
     const desktop = fakeDesktop()
     desktop.getConnection = vi.fn(() => connection.promise)
@@ -489,7 +489,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
 
       for (let elapsedMinutes = 0; elapsedMinutes < 75; elapsedMinutes += 20) {
         await vi.advanceTimersByTimeAsync(20 * 60 * 1000)
-        desktop.emitBootstrapEvent({ type: 'log', stage: 'dependencies', line: `progress ${elapsedMinutes}` })
+        desktop.emitBootstrapEvent({ type: 'activity', stage: 'dependencies' })
       }
     })
 

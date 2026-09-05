@@ -1365,6 +1365,7 @@ export interface DesktopBootstrapState {
 
 export type DesktopBootstrapEvent =
   | { type: 'dismissed' }
+  | { type: 'activity'; stage?: string | null }
   | {
       type: 'setup-choice'
       active: boolean
