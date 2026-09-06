@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import http from 'node:http'
-import path from 'node:path'
 import type { AddressInfo } from 'node:net'
+import path from 'node:path'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
@@ -232,6 +232,44 @@ test('fresh packaged app exposes the business workspace without implementation v
   expect(businessLabels).toEqual(BUSINESS_NAV_LABELS)
   await expect(page.getByText(/\b(?:MCP|Skill|Skills)\b/)).toHaveCount(0)
   await expect(page.getByText('模型', { exact: true })).toHaveCount(0)
+})
+
+test('primary navigation dismisses only the narrow sidebar overlay, including keyboard activation', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0]
+
+    win?.unmaximize()
+    win?.setMinimumSize(400, 620)
+    win?.setBounds({ height: 800, width: 752, x: 0, y: 0 }, false)
+  })
+  await page.waitForTimeout(400)
+
+  for (const [index, label] of BUSINESS_NAV_LABELS.entries()) {
+    await page.getByRole('button', { name: /显示侧边栏/ }).click()
+    const overlay = page.locator('[data-narrow-overlay]')
+    await expect(overlay).toBeVisible()
+    const navButton = overlay.getByRole('button', { name: new RegExp(`^${label}(?:\\s|⌘|$)`) })
+
+    if (index === 2) {
+      await navButton.focus()
+      await page.keyboard.press('Enter')
+    } else {
+      await navButton.click()
+    }
+
+    await expect(overlay).toHaveCount(0)
+  }
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.waitForTimeout(400)
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(7)
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(7)
+  await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
 })
 
 test('Start mounts exactly one accessible and focusable primary input', async () => {

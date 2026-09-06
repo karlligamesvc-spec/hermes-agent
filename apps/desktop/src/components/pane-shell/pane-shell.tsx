@@ -87,8 +87,9 @@ const HOVER_REVEAL_SHADOW = '0px -18px 18px -5px #00000012'
 const HOVER_REVEAL_TRIGGER_WIDTH = 14
 const HOVER_REVEAL_EDGE_GUTTER = 'calc(0.5rem + 2px)'
 
-// Fired (window CustomEvent<{ id }>) to toggle a force-collapsed pane's reveal
-// from the keyboard, since its store-open toggle is a no-op while collapsed.
+// Fired to control a force-collapsed pane's reveal from the keyboard or a
+// narrow-window navigation action, since its store-open toggle is a no-op
+// while collapsed.
 export const PANE_TOGGLE_REVEAL_EVENT = 'hermes:pane-toggle-reveal'
 
 const widthToCss = (value: WidthValue | undefined, fallback: string) =>
@@ -276,10 +277,24 @@ export function Pane({
       return
     }
 
-    const onToggle = (e: Event) => {
-      if ((e as CustomEvent<{ id: string }>).detail?.id === id) {
-        setForced(v => !v)
+    const onToggle = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; mode?: 'close' | 'open' | 'toggle' }>).detail
+
+      if (detail?.id !== id) {
+        return
       }
+
+      setForced(current => {
+        if (detail.mode === 'open') {
+          return true
+        }
+
+        if (detail.mode === 'close') {
+          return false
+        }
+
+        return !current
+      })
     }
 
     window.addEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)

@@ -18,6 +18,15 @@
 
 ## Kael 实包反馈修正
 
+### 窄窗一级导航覆盖层收口
+
+- 已逐项核对 7 个一级导航出口：开始、项目、工作流、定时运行、交付物、助手、历史；它们全部从 `ChatSidebar` 的原生 button 进入共享 `selectSidebarItem` 路径。
+- `640–899px` 窄窗中，用户展开覆盖式侧栏并激活任一一级导航后，页面完成导航并立即收起覆盖层；鼠标点击和键盘 Enter 激活使用同一行为。
+- 关闭动作只发送窄窗覆盖层的显式 `close` 事件，不写入持久化 pane `open` 状态；`900px` 及以上宽窗点击导航后仍保留完整侧栏和用户原有开关偏好。
+- 两个覆盖层事件消费者均已核对：现行 tree renderer 和兼容 Pane 都按 `open` / `close` / `toggle` 处理，重复 `close` 保持关闭，不会把旧壳的侧栏反向打开。
+- 真实 `752×800` Electron `BrowserWindow` 对 7 个出口逐一开栏、导航、关栏，并以“工作流”的键盘 Enter 激活覆盖键盘路径；再切回 `1220×800` 验证侧栏保持。
+- 本项只修改共享导航/布局 seam 及其测试标记，没有修改业务数据、API bridge、APEX 身份、Hermes-only 或 DSH 边界。
+
 ### `0830bf0` 二次实包复验
 
 - Kael 在默认真实登录态确认 Start 单输入、752px 窄窗、中文状态、描述去重和 APEX 辅助功能身份均已修好。
@@ -80,7 +89,7 @@
 
 - 保留三条重点路径和紧凑的其他路径；目标从模板预填后仍可编辑。
 - 实包完整态来自可控本地 catalog，页面和截图均显式标注本地测试数据。
-- 原型没有覆盖的 catalog 故障态增加了重试、连接检查和返回 Start，不使用本地模板伪装成功态。
+- 原型没有覆盖的 catalog 故障态增加了重试和返回 Start，不使用本地模板伪装成功态。
 
 ### 仍保留的共享 shell 差异
 
@@ -109,14 +118,15 @@
 
 ## 验证结果
 
-- 定向 UI / route / a11y / identity / Electron bridge：7 files，118 tests，通过。
-- Desktop UI 全量：750 files，7504 tests，通过。
+- 本轮窄窗导航定向：4 files，136 tests，通过；加入兼容监听器后，共享导航/布局最终复验为 4 files，111 tests，通过。
+- 定向 UI / route / a11y / identity / Electron bridge：此前 7 files，118 tests，通过。
+- Desktop UI 全量：750 files，7509 tests，通过。
 - Electron/platform：178 files 通过、2 skipped；2719 tests 通过、6 skipped。
 - release gates：Node 65/65；Vitest 12/12，通过。
 - `npm run typecheck`：通过。
 - `npm run lint`：0 error；131 个基线 warning。
 - `npm run test:desktop:all`：清除签名凭据并设置 `CSC_IDENTITY_AUTO_DISCOVERY=false` 后通过。
-- 原生 Phase 1 packaged E2E：6/6，通过；覆盖真实窗口三档、Start 单输入、生产旧 Project envelope 详情、测试 catalog 确认流、chat fallback 与 composer 安全区。
+- 原生 Phase 1 packaged E2E：7/7，通过；新增逐一覆盖 7 个一级导航的 752px 自动收栏、键盘 Enter 和 1220px 侧栏保持，并继续覆盖真实窗口三档、Start 单输入、生产旧 Project envelope 详情、测试 catalog 确认流、chat fallback 与 composer 安全区。
 - `git diff --check`：通过。
 
 一次初始 `test:desktop:all` 调用继承了本机 Developer ID，日志刚显示签名身份即被中止；未进入 notarize、上传或 updater。随后全部打包门禁都在清空签名变量且禁用身份发现的环境中重跑。最终交付包必须以同样环境从提交后的精确 HEAD 显式执行 `--publish never`，并回读 codesign。
@@ -137,6 +147,8 @@
 | 移除本地测试 catalog 标记 | 测试数据身份守卫失败 |
 | 将 Project run id 归一化恢复为无保护的 `summary.currentRunId` | 旧 envelope 详情测试真实崩溃，归一化单测同时失败 |
 | 在 Workflow 不可用态恢复“检查连接”按钮 | recovery 守卫失败：不允许把生产 API 404 误导成本机连接问题；仅保留“重试”和“返回开始页” |
+| 移除共享导航中的窄窗覆盖层关闭调用 | 7 个一级导航的 close 事件从 7 降为 0，`use-session-actions` 定向守卫失败；恢复后重新全绿 |
+| 把兼容 Pane 恢复为不区分模式的 toggle-only 监听器 | 连续显式 `close` 后覆盖层错误保持 open，PaneShell 幂等关闭守卫失败；恢复后重新全绿 |
 
 以上注入均先断言命中唯一目标，再运行对应守卫确认失败，随后恢复并重跑为绿。
 
