@@ -3447,9 +3447,8 @@ export const ja = defineLocale({
       savedCount: count => `実際のワークフロー ${count} 件`,
       localCatalogNotice: '本番カタログは接続されていません。内蔵またはテスト用テンプレートで代替しません。',
       catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
-      catalogUnavailableDescription: 'カタログを再試行するか、接続を確認するか、開始画面に戻って目標を入力してください。',
+      catalogUnavailableDescription: 'カタログを再試行するか、開始画面に戻って目標を入力してください。',
       retryCatalog: '再試行',
-      checkConnection: '接続を確認',
       backToStart: '開始画面へ戻る',
       testDataNotice: 'ローカルテストデータ：パッケージ版の表示と操作確認専用で、本番データではありません。',
       version: version => `バージョン ${version}`

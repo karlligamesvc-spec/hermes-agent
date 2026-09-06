@@ -18,6 +18,14 @@
 
 ## Kael 实包反馈修正
 
+### `0830bf0` 二次实包复验
+
+- Kael 在默认真实登录态确认 Start 单输入、752px 窄窗、中文状态、描述去重和 APEX 辅助功能身份均已修好。
+- 同次复验发现生产 hc-795 旧 Project envelope 不含 `summary` 时，React Compiler 会把详情页回调中的非空断言提前求值为无条件 `summary.currentRunId`，导致 workspace 崩溃。
+- 详情页现先把可选 summary 归一化为安全的 `currentRunId` 标量；summary 缺失时展示“运行摘要暂时不可用”，仍允许用户显式“继续这个目标”，不伪造 Run 或进度。
+- Workflow 不可用态移除会误导用户自行排查本机连接的“检查连接”；生产 404 的恢复动作收敛为“重试”和“返回开始页”。
+- 本地 packaged E2E 的 Project fixture 已改为生产旧 envelope 形状（列表和详情均无 summary），确保优化后的实际 renderer bundle 也守住该路径。
+
 ### Start 只有一个输入
 
 - Start 的“业务目标”成为该页面唯一可见、可聚焦、可由辅助功能识别的 textbox。
@@ -42,7 +50,7 @@
 
 ### Workflows 恢复与确认
 
-- 真实 catalog 不可用/失败时，不再回退展示内置模板；提供“重试”“检查连接”“返回开始页”三个可执行动作。
+- 真实 catalog 不可用/失败时，不再回退展示内置模板；提供“重试”和“返回开始页”两个可执行动作。
 - 页面只展示真实 catalog 返回并能映射到 Phase 1 路径的模板。
 - catalog version 明确含 local/test/staging/review 时显示“本地测试数据”状态提示，不把测试模板冒充生产数据。
 - 已走通：模板列表 → 选择模板 → Start 目标可编辑 → 启动前确认；确认区显示服务端 template version 和 Hermes executor。
@@ -102,13 +110,13 @@
 ## 验证结果
 
 - 定向 UI / route / a11y / identity / Electron bridge：7 files，118 tests，通过。
-- Desktop UI 全量：750 files，7502 tests，通过。
+- Desktop UI 全量：750 files，7504 tests，通过。
 - Electron/platform：178 files 通过、2 skipped；2719 tests 通过、6 skipped。
 - release gates：Node 65/65；Vitest 12/12，通过。
 - `npm run typecheck`：通过。
 - `npm run lint`：0 error；131 个基线 warning。
 - `npm run test:desktop:all`：清除签名凭据并设置 `CSC_IDENTITY_AUTO_DISCOVERY=false` 后通过。
-- 原生 Phase 1 packaged E2E：6/6，通过；覆盖真实窗口三档、Start 单输入、Project 详情、测试 catalog 确认流、chat fallback 与 composer 安全区。
+- 原生 Phase 1 packaged E2E：6/6，通过；覆盖真实窗口三档、Start 单输入、生产旧 Project envelope 详情、测试 catalog 确认流、chat fallback 与 composer 安全区。
 - `git diff --check`：通过。
 
 一次初始 `test:desktop:all` 调用继承了本机 Developer ID，日志刚显示签名身份即被中止；未进入 notarize、上传或 updater。随后全部打包门禁都在清空签名变量且禁用身份发现的环境中重跑。最终交付包必须以同样环境从提交后的精确 HEAD 显式执行 `--publish never`，并回读 codesign。
@@ -127,12 +135,14 @@
 | 恢复 `Wake word: "hey hermes"` | composer controls a11y 守卫失败 |
 | 隐藏“启动前确认” | catalog 确认流守卫失败 |
 | 移除本地测试 catalog 标记 | 测试数据身份守卫失败 |
+| 将 Project run id 归一化恢复为无保护的 `summary.currentRunId` | 旧 envelope 详情测试真实崩溃，归一化单测同时失败 |
+| 在 Workflow 不可用态恢复“检查连接”按钮 | recovery 守卫失败：不允许把生产 API 404 误导成本机连接问题；仅保留“重试”和“返回开始页” |
 
 以上注入均先断言命中唯一目标，再运行对应守卫确认失败，随后恢复并重跑为绿。
 
 ## 未覆盖与停止点
 
-- 未连接生产 catalog；完整态只验证可控本地 catalog，并已显式标注。
+- 生产 `/workflows`、`/catalog` 当前仍因未部署 hc-810 返回 404；完整态只验证可控本地 catalog，并已显式标注。生产完整态最终验收继续等待另行授权的 backend fast-forward 与 scheduler 回读。
 - 未做 Windows 真机视觉验收；本轮交付是 Mac arm64 诊断包，不是生产成对发布。
 - 未验证真实生产 Run 的长时追问、审批与干预；仅守住对象页 composer 和现有 Run route。
 - 未实现 Run 双页签、Deliverable/Review 新页、定时运行重构、助手/历史新页、Profile/Settings 重做、Phase 2 API 或 DSH。

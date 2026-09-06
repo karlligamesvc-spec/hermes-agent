@@ -59,15 +59,6 @@ const reviewProjects = [
     name: '[本地测试] 尚未启动的业务目标',
     objective: '[本地测试] 尚未启动的业务目标',
     status: 'active',
-    summary: {
-      attention: 'none',
-      currentRunId: null,
-      currentRunStatus: null,
-      currentStepTitle: null,
-      deliverableCount: 0,
-      stepCompleted: 0,
-      stepTotal: 0
-    },
     updatedAt: '2026-09-05T21:15:00Z'
   }
 ]
@@ -360,7 +351,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   }
 })
 
-test('Project rows open a real detail view before a no-Run goal can continue', async () => {
+test('a legacy Project envelope opens an honest detail before its goal can continue', async () => {
   const { app, page } = fixture!
 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220 }))
@@ -372,7 +363,8 @@ test('Project rows open a real detail view before a no-Run goal can continue', a
   const detail = page.locator('[data-project-detail]')
 
   await expect(detail).toBeVisible()
-  await expect(detail.getByText('这个项目尚未启动运行')).toBeVisible()
+  await expect(detail.getByText('运行摘要暂时不可用')).toBeVisible()
+  await expect(detail.getByText(/当前接口没有提供运行摘要/)).toBeVisible()
   await expect(detail.getByText('[本地测试] 尚未启动的业务目标', { exact: true })).toHaveCount(1)
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveCount(0)
   await expect(detail.getByText(/0 \/ 0|百分比|待处理事项/)).toHaveCount(0)

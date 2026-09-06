@@ -3877,9 +3877,8 @@ export const zh = defineLocale({
       savedCount: count => `${count} 个真实工作流`,
       localCatalogNotice: '生产目录尚未连接。不会用内置或测试模板替代真实目录。',
       catalogUnavailable: '真实工作流目录暂时不可用，没有模板被启动。',
-      catalogUnavailableDescription: '请重试目录连接，检查账户连接，或返回开始页直接描述目标。',
+      catalogUnavailableDescription: '请重试目录连接，或返回开始页直接描述目标。',
       retryCatalog: '重试',
-      checkConnection: '检查连接',
       backToStart: '返回开始页',
       testDataNotice: '本地测试数据：此目录仅用于实包视觉与交互验收，不代表生产数据。',
       version: version => `版本 ${version}`

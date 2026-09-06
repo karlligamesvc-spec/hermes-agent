@@ -3326,9 +3326,8 @@ export const zhHant = defineLocale({
       savedCount: count => `${count} 個真實工作流程`,
       localCatalogNotice: '生產目錄尚未連接。不會用內建或測試範本替代真實目錄。',
       catalogUnavailable: '真實工作流程目錄暫時無法使用，沒有範本被啟動。',
-      catalogUnavailableDescription: '請重試目錄連接、檢查帳戶連接，或返回開始頁直接描述目標。',
+      catalogUnavailableDescription: '請重試目錄連接，或返回開始頁直接描述目標。',
       retryCatalog: '重試',
-      checkConnection: '檢查連接',
       backToStart: '返回開始頁',
       testDataNotice: '本機測試資料：此目錄僅供實包視覺與互動驗收，不代表生產資料。',
       version: version => `版本 ${version}`

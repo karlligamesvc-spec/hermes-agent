@@ -17,7 +17,7 @@ import {
 } from '../../routes'
 import type { WorkflowProjectSummary } from '../api/types'
 import { useWorkflowProject } from '../hooks/use-workflow-domain-lists'
-import { distinctProjectObjective } from '../view-model/project'
+import { distinctProjectObjective, projectCurrentRunId } from '../view-model/project'
 
 function routedProjectSummary(state: unknown): WorkflowProjectSummary | undefined {
   if (!state || typeof state !== 'object') {
@@ -72,13 +72,19 @@ export function ProjectDetailView() {
   const item = project.item
   const objective = distinctProjectObjective(item)
   const summary = routeSummary ?? item.summary
+  const currentRunId = projectCurrentRunId(summary)
+  const currentRunStatus = summary?.currentRunStatus ?? null
 
   const openRun = () => {
+    if (!currentRunId) {
+      return
+    }
+
     const state = routeDrawerBackgroundLocation(location.state)
       ? location.state
       : routeDrawerNavigationState({ hash: '', pathname: PROJECTS_ROUTE, search: '', state: null })
 
-    navigate(workflowRunRoute(summary!.currentRunId!), { replace: true, state })
+    navigate(workflowRunRoute(currentRunId), { replace: true, state })
   }
 
   const continueGoal = () =>
@@ -108,15 +114,13 @@ export function ProjectDetailView() {
         </dl>
 
         <div className="mt-6 border-t border-(--ui-stroke-tertiary) pt-6">
-          {summary?.currentRunId ? (
+          {currentRunId ? (
             <div className="rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-medium text-primary">{copy.currentRunTitle}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {summary.currentRunStatus
-                      ? copy.lifecycle(summary.currentRunStatus)
-                      : copy.runStatusUnavailable}
+                    {currentRunStatus ? copy.lifecycle(currentRunStatus) : copy.runStatusUnavailable}
                   </p>
                 </div>
                 <Button onClick={openRun} size="sm">

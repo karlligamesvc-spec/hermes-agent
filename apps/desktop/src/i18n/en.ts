@@ -4223,9 +4223,8 @@ export const en: Translations = {
       savedCount: count => `${count} real ${count === 1 ? 'workflow' : 'workflows'}`,
       localCatalogNotice: 'The production catalog is not connected. Built-in or test templates are not substituted.',
       catalogUnavailable: 'The live workflow catalog is temporarily unavailable. No template was started.',
-      catalogUnavailableDescription: 'Retry the catalog, check your account connection, or return to Start and describe a goal.',
+      catalogUnavailableDescription: 'Retry the catalog, or return to Start and describe a goal.',
       retryCatalog: 'Retry',
-      checkConnection: 'Check connection',
       backToStart: 'Back to Start',
       testDataNotice: 'Local test data: this catalog is for packaged visual and interaction review, not production data.',
       version: version => `Version ${version}`

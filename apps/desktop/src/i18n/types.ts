@@ -3608,7 +3608,6 @@ export interface Translations {
       catalogUnavailable: string
       catalogUnavailableDescription: string
       retryCatalog: string
-      checkConnection: string
       backToStart: string
       testDataNotice: string
       version: (version: number) => string

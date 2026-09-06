@@ -25,6 +25,7 @@ import { BusinessGoalLauncher } from './goal-launcher'
 import { ProjectDetailView } from './pages/project-detail-page'
 import { BusinessStartHome } from './start-home'
 import { BusinessStartShelf } from './start-shelf'
+import { projectCurrentRunId } from './view-model/project'
 
 import { ProjectsView, WorkflowsView } from '.'
 
@@ -655,9 +656,12 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByText('真实工作流目录暂时不可用，没有模板被启动。')).toBeTruthy())
     expect(screen.getByRole('button', { name: '重试' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '检查连接' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '检查连接' })).toBeNull()
     expect(screen.getByRole('button', { name: '返回开始页' })).toBeTruthy()
     expect(screen.queryByText('从市场机会到上架素材')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '返回开始页' }))
+    expect(screen.getByTestId('location').textContent).toBe('/')
   })
 
   it('labels a controllable local catalog as test data', async () => {
@@ -737,6 +741,68 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续这个目标' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
     expect(screen.getByTestId('business-goal-draft').textContent).toBe('测试项目目标')
+  })
+
+  it('opens a legacy Project detail without a summary and never dereferences a missing Run', async () => {
+    const legacyProject = {
+      createdAt: '2026-08-27T10:00:00Z',
+      id: 'project-hc795-envelope',
+      name: '生产旧合同项目',
+      objective: '检查旧 Project envelope',
+      status: 'active',
+      updatedAt: '2026-09-04T10:00:00Z'
+    }
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getProject: vi.fn(async () => ({ item: legacyProject, ok: true })),
+      getRun: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects/project-hc795-envelope']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<ProjectDetailView />} path="projects/:projectId" />
+          </Routes>
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(screen.getByText('运行摘要暂时不可用')).toBeTruthy())
+    expect(screen.getByText('项目详情已读取，但当前接口没有提供运行摘要。这里不会猜测运行或进度。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '打开当前运行' })).toBeNull()
+    expect(screen.queryByText(/百分比|待处理事项/)).toBeNull()
+  })
+
+  it('normalizes a missing or blank Project run id before render callbacks capture it', () => {
+    expect(projectCurrentRunId(undefined)).toBeNull()
+    expect(
+      projectCurrentRunId({
+        attention: 'none',
+        currentRunId: '  ',
+        currentRunStatus: null,
+        currentStepTitle: null,
+        deliverableCount: 0,
+        stepCompleted: 0,
+        stepTotal: 0
+      })
+    ).toBeNull()
+    expect(
+      projectCurrentRunId({
+        attention: 'none',
+        currentRunId: 'run-real',
+        currentRunStatus: 'running',
+        currentStepTitle: null,
+        deliverableCount: 0,
+        stepCompleted: 0,
+        stepTotal: 0
+      })
+    ).toBe('run-real')
   })
 
   it('opens a Project current Run only from its overview action', async () => {

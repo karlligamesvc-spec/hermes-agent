@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 
-import { NEW_CHAT_ROUTE, PROFILE_STATS_ROUTE } from '../../routes'
+import { NEW_CHAT_ROUTE } from '../../routes'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
 import { useWorkflowDefinitions } from '../hooks/use-workflow-domain-lists'
@@ -93,9 +93,6 @@ export function WorkflowsView() {
               <Button onClick={() => setReloadToken(token => token + 1)} size="sm">
                 <Codicon name="refresh" size="0.875rem" />
                 {c.retryCatalog}
-              </Button>
-              <Button onClick={() => navigate(PROFILE_STATS_ROUTE)} size="sm" variant="outline">
-                {c.checkConnection}
               </Button>
               <Button onClick={() => navigate(NEW_CHAT_ROUTE)} size="sm" variant="ghost">
                 {c.backToStart}
