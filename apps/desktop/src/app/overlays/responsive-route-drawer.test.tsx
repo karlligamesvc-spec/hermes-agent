@@ -95,7 +95,7 @@ describe('ResponsiveRouteDrawer', () => {
 
     expect(window.matchMedia).toHaveBeenCalledWith(ROUTE_DRAWER_COMPACT_QUERY)
     expect(drawer.getAttribute('data-layout')).toBe('drawer')
-    expect(drawer.className).toContain('min-[640px]:w-[min(33.75rem,calc(100vw-1rem))]')
+    expect(drawer.className).toContain('min-[640px]:w-[min(540px,calc(100vw-16px))]')
     expect(drawer.className).not.toContain('min-[1100px]:w-[min(35rem,48vw)]')
   })
 

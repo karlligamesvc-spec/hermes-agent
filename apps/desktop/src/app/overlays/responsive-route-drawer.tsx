@@ -104,7 +104,7 @@ export function ResponsiveRouteDrawer({
             'fixed inset-x-0 bottom-0 top-[var(--titlebar-height)] z-(--z-modal) flex min-h-0 min-w-0 flex-col overflow-hidden border-(--stroke-nous) bg-(--ui-chat-surface-background) text-foreground shadow-nous outline-none duration-150',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
             compact
-              ? 'min-[640px]:left-auto min-[640px]:right-0 min-[640px]:w-[min(33.75rem,calc(100vw-1rem))] min-[640px]:border-l min-[640px]:data-[state=closed]:slide-out-to-right-4 min-[640px]:data-[state=open]:slide-in-from-right-4'
+              ? 'min-[640px]:left-auto min-[640px]:right-0 min-[640px]:w-[min(540px,calc(100vw-16px))] min-[640px]:border-l min-[640px]:data-[state=closed]:slide-out-to-right-4 min-[640px]:data-[state=open]:slide-in-from-right-4'
               : 'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
             'motion-reduce:animate-none motion-reduce:transition-none',
             contentClassName
