@@ -633,7 +633,10 @@ describe('identity: the APEX business shell stays user-facing', () => {
         </MemoryRouter>
       )
 
-      fireEvent.pointerDown(screen.getByRole('button', { name: 'Kael' }), { button: 0, ctrlKey: false })
+      fireEvent.pointerDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), {
+        button: 0,
+        ctrlKey: false
+      })
 
       expect(await screen.findByRole('menuitem', { name: '个人资料' })).toBeTruthy()
       expect(screen.getByRole('menuitem', { name: '设置' })).toBeTruthy()

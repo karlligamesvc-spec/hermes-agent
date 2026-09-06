@@ -417,11 +417,13 @@ test('packaged Settings shows the running APEX app version separately from the e
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
-  await page.getByRole('button', { name: '本地 UI 评审' }).click()
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
+  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+  await page.getByRole('button', { name: /打开账户菜单.*本地 UI 评审/ }).click()
   await page.getByRole('menuitem', { name: '设置' }).click()
   await expect(page.getByText('版本 0.17.24', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
-  await page.goBack()
+  await page.getByRole('button', { name: '关闭设置' }).click()
   await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
 })
 
@@ -528,4 +530,103 @@ test('packaged plain goal clears a retained workflow template and starts a real 
   expect(clearance!.remainingScroll).toBeLessThanOrEqual(1)
   expect(clearance!.latestMessageBottom).toBeLessThanOrEqual(clearance!.composerTop)
   expect(clearance!.documentScrollWidth).toBeLessThanOrEqual(clearance!.documentClientWidth)
+
+  const composerStopButton = page.locator('form').getByRole('button', { name: '停止', exact: true })
+  if (await composerStopButton.isVisible()) {
+    await composerStopButton.click()
+    await expect(composerStopButton).toHaveCount(0, { timeout: 15_000 })
+  }
+})
+
+test('packaged Profile and Settings keep real data, modal focus, and full-width compact layout', async () => {
+  const { app, page } = fixture!
+  const testInfo = test.info()
+  const screenshotRoot = process.env.HC818_SCREENSHOT_DIR
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  const accountTrigger = page.getByRole('button', { name: /打开账户菜单.*本地 UI 评审/ })
+  await expect(accountTrigger).toBeVisible()
+  await accountTrigger.click()
+  await page.getByRole('menuitem', { name: '个人资料' }).click()
+
+  const profileDialog = page.getByRole('dialog', { name: '个人资料' })
+  await expect(profileDialog).toBeVisible()
+  await expect(profileDialog.getByText('phase1-review@local.test', { exact: true })).toBeVisible()
+  await expect(profileDialog.getByText('账户信息')).toBeVisible()
+
+  const captureSurface = async (surface: 'profile' | 'settings', viewport: (typeof PHASE1_VIEWPORTS)[number]) => {
+    const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (!win) return null
+      win.unmaximize()
+      win.setMinimumSize(400, 620)
+      win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+      win.show()
+      win.focus()
+      return win.getBounds()
+    }, viewport)
+    await page.bringToFront()
+    await page.waitForTimeout(350)
+
+    const dialog = page.getByRole('dialog', { name: surface === 'profile' ? '个人资料' : '设置' })
+    const layout = await dialog.evaluate(element => {
+      const root = document.documentElement
+      const rect = element.getBoundingClientRect()
+      return {
+        activeInside: element.contains(document.activeElement),
+        clientWidth: root.clientWidth,
+        dialogLeft: rect.left,
+        dialogRight: rect.right,
+        dialogWidth: rect.width,
+        scrollWidth: root.scrollWidth
+      }
+    })
+
+    expect(bounds?.width).toBe(viewport.width)
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+    expect(layout.activeInside).toBe(true)
+    if (viewport.name === 'narrow-752') {
+      expect(layout.dialogLeft).toBeLessThanOrEqual(1)
+      expect(layout.dialogRight).toBeGreaterThanOrEqual(layout.clientWidth - 1)
+    } else {
+      expect(layout.dialogWidth).toBeLessThanOrEqual(surface === 'profile' ? 1040 : 1024)
+    }
+
+    const screenshotName = `${surface}-${viewport.width}x${viewport.height}.png`
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, screenshotName) : testInfo.outputPath(screenshotName)
+    })
+  }
+
+  for (const viewport of PHASE1_VIEWPORTS) {
+    await captureSurface('profile', viewport)
+  }
+
+  await page.getByRole('button', { name: '打开设置' }).click()
+  const settingsDialog = page.getByRole('dialog', { name: '设置' })
+  await expect(settingsDialog).toBeVisible()
+  await expect(settingsDialog.getByRole('heading', { name: '设置', level: 1 })).toBeVisible()
+  await expect(settingsDialog.getByText('人格文件（SOUL.md）', { exact: true })).toBeVisible()
+
+  const settingsScroll = settingsDialog.locator('[data-settings-scroll]')
+  const lastSettingsContent = settingsDialog.getByText('卸载 APEX', { exact: true })
+
+  for (const viewport of PHASE1_VIEWPORTS) {
+    await settingsScroll.evaluate(element => {
+      element.scrollTop = 0
+    })
+    await captureSurface('settings', viewport)
+    await lastSettingsContent.scrollIntoViewIfNeeded()
+    await expect(lastSettingsContent).toBeVisible()
+  }
+
+  await page.getByRole('button', { name: '关闭设置' }).click()
+  await expect(settingsDialog).toHaveCount(0)
 })

@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { $authState } from '@/store/auth'
 import type { AnalyticsResponse } from '@/types/hermes'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
+import { AccountSurfaceHeader } from '../overlays/account-surface-header'
 import { OverlayView } from '../overlays/overlay-view'
 import { EmptyState } from '../settings/primitives'
 
@@ -88,9 +89,10 @@ function initialOf(name: string): string {
 
 interface ProfileStatsViewProps {
   onClose: () => void
+  onOpenSettings?: () => void
 }
 
-export function ProfileStatsView({ onClose }: ProfileStatsViewProps) {
+export function ProfileStatsView({ onClose, onOpenSettings }: ProfileStatsViewProps) {
   const { locale, t } = useI18n()
   const p = t.profileStats
   const { account, status } = useStore($authState)
@@ -127,9 +129,24 @@ export function ProfileStatsView({ onClose }: ProfileStatsViewProps) {
   const plan = signedIn ? account.plan.trim() : ''
 
   return (
-    <OverlayView closeLabel={p.close} compactFullscreen onClose={onClose}>
+    <OverlayView
+      ariaDescribedBy="profile-surface-description"
+      ariaLabelledBy="profile-surface-title"
+      closeLabel={p.close}
+      compactFullscreen
+      containerClassName="max-w-[1040px]"
+      onClose={onClose}
+    >
       <section className="p5-settings flex h-full min-h-0 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-20 pt-[calc(var(--titlebar-height)+1.25rem)]">
+        <AccountSurfaceHeader
+          description={p.description}
+          title={p.title}
+          titleId="profile-surface-title"
+        />
+        <span className="sr-only" id="profile-surface-description">
+          {p.description}
+        </span>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-20 pt-5 max-[53rem]:px-4">
           <div className="p5-profile-page">
             <header className="p5-profile-header">
               <span aria-hidden className="p5-profile-avatar">
@@ -160,6 +177,29 @@ export function ProfileStatsView({ onClose }: ProfileStatsViewProps) {
             ) : usage ? (
               <UsageBody locale={locale} t={t} usage={usage} />
             ) : null}
+
+            <section aria-labelledby="profile-account-details-title" className="p5-profile-section p5-profile-card">
+              <div className="p5-profile-card-title" id="profile-account-details-title">
+                <span>{p.accountDetails.title}</span>
+              </div>
+              <div className="p5-profile-rows">
+                <div className="p5-profile-kv">
+                  <span className="p5-profile-kv-label">{p.accountDetails.email}</span>
+                  <span className="p5-profile-kv-value">{email || p.accountDetails.notAvailable}</span>
+                </div>
+                <div className="p5-profile-kv">
+                  <span className="p5-profile-kv-label">{p.accountDetails.plan}</span>
+                  <span className="p5-profile-kv-value">{plan || p.accountDetails.notAvailable}</span>
+                </div>
+              </div>
+              {onOpenSettings ? (
+                <div className="mt-3 flex justify-end border-t border-(--p5-divider) pt-3">
+                  <Button onClick={onOpenSettings} size="sm" variant="outline">
+                    {p.accountDetails.openSettings}
+                  </Button>
+                </div>
+              ) : null}
+            </section>
           </div>
         </div>
       </section>
@@ -457,18 +497,50 @@ function TokenHeatmap({
     { id: 'cumulative', label: p.heatmap.cumulative }
   ]
 
+  const activeDays = [...tokensByDay.values()].filter(value => value > 0).length
+  const totalTokens = [...tokensByDay.values()].reduce((sum, value) => sum + value, 0)
+
+  const selectModeFromKeyboard = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null
+
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (index + 1) % modes.length
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (index - 1 + modes.length) % modes.length
+    } else if (event.key === 'Home') {
+      nextIndex = 0
+    } else if (event.key === 'End') {
+      nextIndex = modes.length - 1
+    }
+
+    if (nextIndex == null) {
+      return
+    }
+
+    event.preventDefault()
+    setMode(modes[nextIndex].id)
+    const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    tabs?.[nextIndex]?.focus()
+  }
+
   return (
-    <section className="p5-profile-section p5-profile-card">
+    <section
+      aria-describedby="profile-heatmap-summary"
+      aria-labelledby="profile-heatmap-title"
+      className="p5-profile-section p5-profile-card"
+    >
       <div className="p5-profile-card-title">
-        <span>{p.heatmap.title}</span>
-        <div className="p5-profile-toggle" role="tablist">
-          {modes.map(entry => (
+        <span id="profile-heatmap-title">{p.heatmap.title}</span>
+        <div aria-label={p.heatmap.modeLabel} className="p5-profile-toggle" role="tablist">
+          {modes.map((entry, index) => (
             <button
               aria-selected={mode === entry.id}
               data-active={mode === entry.id || undefined}
               key={entry.id}
               onClick={() => setMode(entry.id)}
+              onKeyDown={event => selectModeFromKeyboard(event, index)}
               role="tab"
+              tabIndex={mode === entry.id ? 0 : -1}
               type="button"
             >
               {entry.label}
@@ -477,7 +549,11 @@ function TokenHeatmap({
         </div>
       </div>
 
-      <div className="p5-profile-heatmap-scroll">
+      <p className="sr-only" id="profile-heatmap-summary">
+        {p.heatmap.summary(activeDays, formatTokens(totalTokens))}
+      </p>
+
+      <div aria-hidden className="p5-profile-heatmap-scroll">
         <div className="p5-profile-heatmap">
           <div aria-hidden className="p5-profile-weekdays">
             {Array.from({ length: 7 }, (_, row) => (
@@ -491,6 +567,7 @@ function TokenHeatmap({
             <div className="p5-profile-heatmap-grid">
               {cells.map(cell => (
                 <span
+                  aria-hidden
                   className="p5-profile-heatmap-cell"
                   data-future={cell.future || undefined}
                   data-level={level(cell)}

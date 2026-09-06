@@ -67,7 +67,7 @@ describe('Command Center session delete confirmation (#99410)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Delete session' }))
 
     expect(onDeleteSession).not.toHaveBeenCalled()
-    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(await screen.findByRole('dialog', { name: 'Delete session?' })).toBeTruthy()
   })
 
   it('deletes only after explicit confirm', async () => {
@@ -75,7 +75,7 @@ describe('Command Center session delete confirmation (#99410)', () => {
     renderCommandCenter(onDeleteSession)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Delete session' }))
-    const dialog = await screen.findByRole('dialog')
+    const dialog = await screen.findByRole('dialog', { name: 'Delete session?' })
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(onDeleteSession).toHaveBeenCalledWith('sess-1'))
@@ -87,10 +87,10 @@ describe('Command Center session delete confirmation (#99410)', () => {
     renderCommandCenter(onDeleteSession)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Delete session' }))
-    await screen.findByRole('dialog')
+    await screen.findByRole('dialog', { name: 'Delete session?' })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete session?' })).toBeNull())
     expect(onDeleteSession).not.toHaveBeenCalled()
   })
 })

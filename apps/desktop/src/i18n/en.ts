@@ -389,6 +389,8 @@ export const en: Translations = {
   },
 
   settings: {
+    title: 'Settings',
+    description: 'Manage your APEX preferences, appearance, providers, and archived conversations.',
     closeSettings: 'Close settings',
     exportConfig: 'Export config',
     importConfig: 'Import config',
@@ -528,7 +530,8 @@ export const en: Translations = {
       safety: 'Safety',
       memory: 'Memory & Context',
       voice: 'Voice',
-      advanced: 'Advanced'
+      advanced: 'Advanced',
+      browser: 'Browser'
     },
     searchPlaceholder: {
       about: 'About APEX Desktop',
@@ -4298,6 +4301,7 @@ export const en: Translations = {
     },
     account: {
       fallbackName: 'Account',
+      openMenu: 'Open account menu',
       profile: 'Profile',
       settings: 'Settings',
       usage: 'Usage',
@@ -4362,6 +4366,8 @@ export const en: Translations = {
   },
 
   profileStats: {
+    title: 'Profile',
+    description: 'Your APEX account and real activity from the currently connected AI engine.',
     close: 'Close profile',
     signedOut: 'Not signed in',
     loading: 'Loading usage stats…',
@@ -4377,6 +4383,8 @@ export const en: Translations = {
     },
     heatmap: {
       title: 'Token activity',
+      modeLabel: 'Token activity view',
+      summary: (activeDays, tokens) => `${activeDays} active days and ${tokens} tokens in the available activity period.`,
       daily: 'Daily',
       weekly: 'Weekly',
       cumulative: 'Cumulative',
@@ -4394,8 +4402,15 @@ export const en: Translations = {
       estimatedCost: 'Estimated cost'
     },
     topSkills: {
-      title: 'Top plugins',
+      title: 'Frequently used skills',
       uses: count => `${count} uses`
+    },
+    accountDetails: {
+      title: 'Account details',
+      email: 'Email',
+      plan: 'Plan',
+      notAvailable: 'Not provided',
+      openSettings: 'Open Settings'
     }
   },
 

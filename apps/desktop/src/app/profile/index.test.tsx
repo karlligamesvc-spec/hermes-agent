@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AnalyticsResponse } from '@/types/hermes'
@@ -123,12 +123,13 @@ describe('ProfileStatsView', () => {
     signIn()
     getUsageAnalytics.mockResolvedValue(FULL_USAGE)
 
-    render(<ProfileStatsView onClose={vi.fn()} />)
+    const onOpenSettings = vi.fn()
+    render(<ProfileStatsView onClose={vi.fn()} onOpenSettings={onOpenSettings} />)
 
     // Header — managed-account identity (name / @handle / plan badge).
     expect(await screen.findByText('Kael')).toBeTruthy()
     expect(screen.getByText('@kael')).toBeTruthy()
-    expect(screen.getByText('pro')).toBeTruthy()
+    expect(screen.getAllByText('pro')).toHaveLength(2)
 
     // Stat cards — real totals (42 sessions, 1.2M + 300K = 1.5M tokens).
     expect(await screen.findByText('42')).toBeTruthy()
@@ -145,9 +146,29 @@ describe('ProfileStatsView', () => {
     // Insights + top plugins columns.
     expect(screen.getByText('Activity insights')).toBeTruthy()
     expect(screen.getByText('deepseek-v4-pro')).toBeTruthy()
-    expect(screen.getByText('Top plugins')).toBeTruthy()
+    expect(screen.getByText('Frequently used skills')).toBeTruthy()
     expect(screen.getByText('douyin-data')).toBeTruthy()
     expect(screen.getByText('12 uses')).toBeTruthy()
+
+    // Read-only account facts come from managed auth; Settings is an explicit
+    // handoff rather than a fake profile-edit flow.
+    expect(screen.getByText('kael@apex-nodes.com')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Settings' }))
+    expect(onOpenSettings).toHaveBeenCalledTimes(1)
+
+    // One active heatmap tab participates in the Tab order; arrow keys move
+    // selection and focus without exposing hundreds of decorative cells.
+    const daily = screen.getByRole('tab', { name: 'Daily' })
+    const weekly = screen.getByRole('tab', { name: 'Weekly' })
+    expect(daily.tabIndex).toBe(0)
+    expect(weekly.tabIndex).toBe(-1)
+    daily.focus()
+    fireEvent.keyDown(daily, { key: 'ArrowRight' })
+    expect(weekly.getAttribute('aria-selected')).toBe('true')
+    expect(weekly.tabIndex).toBe(0)
+    expect(globalThis.document.activeElement).toBe(weekly)
+    expect(screen.getByText(/2 active days and 1.5M tokens/)).toBeTruthy()
+    expect(globalThis.document.querySelectorAll('.p5-profile-heatmap-cell[aria-label]')).toHaveLength(0)
 
     expect(getUsageAnalytics).toHaveBeenCalledTimes(1)
     expect(getUsageAnalytics).toHaveBeenCalledWith(365)
@@ -179,5 +200,34 @@ describe('ProfileStatsView', () => {
 
     expect(await screen.findByText('Not signed in')).toBeTruthy()
     expect(screen.queryByText(/@/)).toBeNull()
+    expect(screen.getAllByText('Not provided')).toHaveLength(2)
+  })
+
+  it('shows one honest empty state instead of zero-valued usage cards', async () => {
+    signIn()
+    getUsageAnalytics.mockResolvedValue({
+      ...SPARSE_USAGE,
+      totals: { ...SPARSE_USAGE.totals, total_sessions: 0 }
+    })
+
+    render(<ProfileStatsView onClose={vi.fn()} />)
+
+    expect(await screen.findByText('No activity yet')).toBeTruthy()
+    expect(screen.queryByText('Sessions')).toBeNull()
+    expect(screen.queryByText('Token activity')).toBeNull()
+  })
+
+  it('keeps the account surface usable when analytics fail and retries explicitly', async () => {
+    signIn()
+    getUsageAnalytics.mockRejectedValueOnce(new Error('analytics unavailable')).mockResolvedValueOnce(SPARSE_USAGE)
+
+    render(<ProfileStatsView onClose={vi.fn()} />)
+
+    expect(await screen.findByText('analytics unavailable')).toBeTruthy()
+    expect(screen.getByText('Account details')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => expect(getUsageAnalytics).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('5')).toBeTruthy()
   })
 })

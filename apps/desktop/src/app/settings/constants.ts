@@ -43,8 +43,8 @@ export const EMPTY_SELECT_VALUE = '__hermes_empty__'
 export const CONTROL_TEXT = 'text-xs'
 
 // ── Consumer (China-first) settings surface ─────────────────────────────────
-// APEX Desktop ships a consumer-sized settings IA: 个性化 / 外观 / 提供方 /
-// 已归档对话. Every pro/technical section below is HIDDEN — not deleted — from
+// APEX Desktop ships a consumer-sized settings IA: 个性化 / 外观 / 浏览器 /
+// 提供方 / 已归档对话. Every pro/technical section below is HIDDEN — not deleted — from
 // the settings nav, the settings-field search index and the ⌘K command
 // palette, all of which consult this one set. Pages and their `?tab=` deep
 // links keep working, so re-enabling a section later is a one-line delete

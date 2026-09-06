@@ -1271,7 +1271,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
       {profileStatsOpen && (
         <Suspense fallback={null}>
-          <ProfileStatsView onClose={closeOverlayToPreviousRoute} />
+          <ProfileStatsView onClose={closeOverlayToPreviousRoute} onOpenSettings={() => navigate(SETTINGS_ROUTE)} />
         </Suspense>
       )}
 

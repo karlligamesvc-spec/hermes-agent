@@ -15,8 +15,11 @@ import { PAGE_INSET_X } from '../layout-constants'
 // surface (e.g. the boot-failure recovery card owns its own padding).
 export function SettingsContent({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   return (
-    <section className="min-h-0 overflow-hidden">
-      <div className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}>
+    <section className="p5-settings min-h-0 flex-1 overflow-hidden">
+      <div
+        className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}
+        data-settings-scroll=""
+      >
         {children}
       </div>
     </section>

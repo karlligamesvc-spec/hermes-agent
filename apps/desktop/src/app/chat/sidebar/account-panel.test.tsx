@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
@@ -22,6 +22,22 @@ function ExpiredAccountWindow() {
       )}
     </>
   )
+}
+
+function CurrentPath() {
+  const location = useLocation()
+
+  return <output aria-label="current path">{location.pathname}</output>
+}
+
+function signIn() {
+  $authState.set({
+    account: { email: 'kael@apex-nodes.com', name: 'Kael', plan: 'pro' },
+    enabled: true,
+    gateReason: null,
+    loginTruth: true,
+    status: 'signed-in'
+  })
 }
 
 describe('expired account recovery', () => {
@@ -83,5 +99,54 @@ describe('expired account recovery', () => {
 
     expect(screen.queryByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeNull()
     expect(screen.getByRole('button', { name: /登录已失效/ })).toBeTruthy()
+  })
+})
+
+describe('signed-in account navigation', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    signIn()
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('names the account intent, opens by keyboard, and routes Profile explicitly', async () => {
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <MemoryRouter initialEntries={['/start']}>
+          <AccountPanel />
+          <CurrentPath />
+        </MemoryRouter>
+      </I18nProvider>
+    )
+
+    const trigger = screen.getByRole('button', { name: '打开账户菜单: Kael' })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+
+    const profile = await screen.findByRole('menuitem', { name: '个人资料' })
+    expect(screen.queryByText(/%/)).toBeNull()
+    fireEvent.click(profile)
+
+    await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe('/profile'))
+  })
+
+  it('routes Settings only after its own explicit menu action', async () => {
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <MemoryRouter initialEntries={['/projects']}>
+          <AccountPanel />
+          <CurrentPath />
+        </MemoryRouter>
+      </I18nProvider>
+    )
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: '设置' }))
+
+    await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe('/settings'))
   })
 })

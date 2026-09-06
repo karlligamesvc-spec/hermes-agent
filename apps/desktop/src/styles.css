@@ -2379,7 +2379,7 @@ body.guest-pointer-lock :is(webview, iframe) {
   margin-inline: auto;
   width: 100%;
   max-width: 44rem;
-  padding-top: 1.5rem;
+  padding-top: 0;
 }
 
 .p5-settings .p5-profile-header {
