@@ -495,6 +495,12 @@ providers:
  * electron-builder's output layout under release/.
  */
 function resolvePackagedBinaryPath(): string {
+  const installedBinary = process.env.HERMES_DESKTOP_PACKAGED_BINARY
+
+  if (installedBinary) {
+    return path.resolve(installedBinary)
+  }
+
   if (process.platform === 'win32') {
     return path.join(RELEASE_ROOT, 'win-unpacked', `${PACKAGED_EXECUTABLE_NAME}.exe`)
   }

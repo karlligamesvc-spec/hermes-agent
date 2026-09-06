@@ -6,6 +6,7 @@ import {
   cancelWorkflowDomainRun,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
+  getWorkflowDomainProject,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
   reviewWorkflowDomainDeliverable,
@@ -123,7 +124,7 @@ test('keeps Project, Workflow, and catalog reads on bounded authenticated exits'
     getJson: async (url: string) => {
       gets.push(url)
 
-      return { items: [] }
+      return url.endsWith('/projects/project%2F1') ? { item: { id: 'project/1' } } : { items: [] }
     }
   }
 
@@ -138,6 +139,7 @@ test('keeps Project, Workflow, and catalog reads on bounded authenticated exits'
     transport
   )
   await getWorkflowDomainCatalog('https://api.apex-nodes.com', transport)
+  await getWorkflowDomainProject('https://api.apex-nodes.com', 'project/1', transport)
 
   assert.equal(
     gets[0],
@@ -148,6 +150,7 @@ test('keeps Project, Workflow, and catalog reads on bounded authenticated exits'
     'https://api.apex-nodes.com/api/v1/workflow-domain/workflows?cursor=workflow+cursor&limit=50&projectId=project%2F1&status=paused'
   )
   assert.equal(gets[2], 'https://api.apex-nodes.com/api/v1/workflow-domain/catalog')
+  assert.equal(gets[3], 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project%2F1')
 })
 
 test('keeps access, cancel, and review on their exact typed exits', async () => {

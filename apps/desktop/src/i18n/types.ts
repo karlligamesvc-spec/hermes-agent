@@ -3498,6 +3498,10 @@ export interface Translations {
 
   businessWorkspace: {
     goalLauncher: {
+      confirmationEyebrow: string
+      confirmationExecutor: string
+      confirmationTemplate: string
+      changeWorkflow: string
       label: string
       placeholder: string
       hint: string
@@ -3552,6 +3556,22 @@ export interface Translations {
       loadingProjects: string
       projectLoadFailed: string
       projectDomainUnavailable: string
+      detailTitle: string
+      detailEyebrow: string
+      detailUnavailableTitle: string
+      detailUnavailableDescription: string
+      loadingProjectDetail: string
+      backToProjects: string
+      createdAtLabel: string
+      updatedAtLabel: string
+      currentRunTitle: string
+      runStatusUnavailable: string
+      noRunTitle: string
+      noRunDescription: string
+      runSummaryUnavailableTitle: string
+      runSummaryUnavailable: string
+      continueGoal: string
+      viewProject: string
       deliverableCount: (count: number) => string
       updatedAt: (date: string) => string
       currentStep: (title: string) => string
@@ -3586,6 +3606,11 @@ export interface Translations {
       savedCount: (count: number) => string
       localCatalogNotice: string
       catalogUnavailable: string
+      catalogUnavailableDescription: string
+      retryCatalog: string
+      checkConnection: string
+      backToStart: string
+      testDataNotice: string
       version: (version: number) => string
     }
     workflowDomain: {

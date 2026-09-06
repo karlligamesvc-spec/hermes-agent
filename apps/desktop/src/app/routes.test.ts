@@ -10,6 +10,8 @@ import {
   LEGACY_ACCOUNTS_ROUTE,
   NEW_CHAT_ROUTE,
   primaryRouteSelectedSessionId,
+  projectDetailRoute,
+  projectIdForPath,
   routeDrawerBackgroundLocation,
   routeDrawerNavigationState,
   routeSessionId,
@@ -44,6 +46,23 @@ describe('workflowRunRoute', () => {
     expect(workflowRunIdForPath('/workflow-runs/')).toBeNull()
     expect(workflowRunIdForPath('/workflow-runs/a/b')).toBeNull()
     expect(workflowRunIdForPath('/workflow-runs/%E0%A4%A')).toBeNull()
+  })
+})
+
+describe('projectDetailRoute', () => {
+  it('keeps an encoded Project in the Projects domain', () => {
+    const route = projectDetailRoute('project/a b')
+
+    expect(route).toBe('/projects/project%2Fa%20b')
+    expect(appViewForPath(route)).toBe('projects')
+    expect(projectIdForPath(route)).toBe('project/a b')
+    expect(routeSessionId(route)).toBeNull()
+  })
+
+  it('rejects missing, nested, and malformed project ids', () => {
+    expect(projectIdForPath('/projects/')).toBeNull()
+    expect(projectIdForPath('/projects/a/b')).toBeNull()
+    expect(projectIdForPath('/projects/%E0%A4%A')).toBeNull()
   })
 })
 

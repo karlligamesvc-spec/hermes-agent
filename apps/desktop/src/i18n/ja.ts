@@ -3300,6 +3300,10 @@ export const ja = defineLocale({
 
   businessWorkspace: {
     goalLauncher: {
+      confirmationEyebrow: '開始前の確認',
+      confirmationExecutor: '実行基盤：Hermes',
+      confirmationTemplate: 'ワークフロー：',
+      changeWorkflow: 'ワークフローを変更',
       label: '業務目標',
       placeholder: '例：米国のペット用品市場を分析し、商品選定レポートと販売素材を作成する',
       hint: 'Enter で開始 · Shift+Enter で改行',
@@ -3357,12 +3361,31 @@ export const ja = defineLocale({
       projectLoadFailed: 'プロジェクトを読み込めません。下にローカル作業の互換ビューを残しています。',
       projectDomainUnavailable:
         'プロジェクトサービスはまだ接続されていません。実際のデータが利用可能になると、ここに表示されます。',
+      detailTitle: 'プロジェクト概要',
+      detailEyebrow: 'プロジェクト概要',
+      detailUnavailableTitle: 'プロジェクト詳細を利用できません',
+      detailUnavailableDescription: 'APEX はこのプロジェクトを読み込めませんでした。データは置換されていません。プロジェクト画面から再試行してください。',
+      loadingProjectDetail: 'プロジェクト詳細を読み込み中…',
+      backToProjects: 'プロジェクトへ戻る',
+      createdAtLabel: '作成日時',
+      updatedAtLabel: '最終更新',
+      currentRunTitle: '現在の実行',
+      runStatusUnavailable: '実行状態を読み込めません',
+      noRunTitle: 'このプロジェクトの実行はまだありません',
+      noRunDescription: '表示できる Run、Step、進捗はありません。目標を続け、開始画面で確認してください。',
+      runSummaryUnavailableTitle: '実行概要を利用できません',
+      runSummaryUnavailable: 'プロジェクト詳細は読み込めましたが、API に実行概要がありません。進捗を推測して表示しません。',
+      continueGoal: 'この目標を続ける',
+      viewProject: 'プロジェクトを表示',
       deliverableCount: count => `成果物 ${count} 件`,
       updatedAt: date => `${date} 更新`,
       currentStep: title => `現在：${title}`,
       lifecycle: status =>
         ({
+          active: '進行中',
+          archived: 'アーカイブ済み',
           cancelled: 'キャンセル済み',
+          completed: '完了',
           failed: '対応が必要',
           queued: 'Hermes の実行待ち',
           running: 'Hermes が実行中',
@@ -3422,8 +3445,13 @@ export const ja = defineLocale({
       savedTitle: '自分のワークフロー',
       savedEmpty: '保存済みワークフローはまだありません。目標を始めると最初のワークフローが作成されます。',
       savedCount: count => `実際のワークフロー ${count} 件`,
-      localCatalogNotice: '本番カタログはまだ接続されていません。内蔵パスを選んでも、開始画面で目標を編集できます。',
+      localCatalogNotice: '本番カタログは接続されていません。内蔵またはテスト用テンプレートで代替しません。',
       catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
+      catalogUnavailableDescription: 'カタログを再試行するか、接続を確認するか、開始画面に戻って目標を入力してください。',
+      retryCatalog: '再試行',
+      checkConnection: '接続を確認',
+      backToStart: '開始画面へ戻る',
+      testDataNotice: 'ローカルテストデータ：パッケージ版の表示と操作確認専用で、本番データではありません。',
       version: version => `バージョン ${version}`
     },
     workflowDomain: {

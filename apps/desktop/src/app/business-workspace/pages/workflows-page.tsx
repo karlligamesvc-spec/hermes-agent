@@ -1,9 +1,13 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
+import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 
-import { NEW_CHAT_ROUTE } from '../../routes'
+import { NEW_CHAT_ROUTE, PROFILE_STATS_ROUTE } from '../../routes'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
 import { useWorkflowDefinitions } from '../hooks/use-workflow-domain-lists'
@@ -13,7 +17,8 @@ export function WorkflowsView() {
   const { t } = useI18n()
   const c = t.businessWorkspace.workflows
   const navigate = useNavigate()
-  const result = useWorkflowDefinitions()
+  const [reloadToken, setReloadToken] = useState(0)
+  const result = useWorkflowDefinitions(reloadToken)
   const localStarters = businessWorkflowStarters(c)
 
   const starters =
@@ -28,9 +33,9 @@ export function WorkflowsView() {
               ? [{ ...local, businessPath: item.businessPath, recommended: item.recommended, version: item.version }]
               : []
           })
-      : result.mode === 'unavailable'
-        ? localStarters
-        : []
+      : []
+
+  const testCatalog = result.mode === 'ready' && /(?:local|test|staging|review)/i.test(result.catalogVersion ?? '')
 
   const recommended = starters.filter(starter => starter.recommended)
   const additional = starters.filter(starter => !starter.recommended)
@@ -63,8 +68,10 @@ export function WorkflowsView() {
           icon="list-unordered"
           title={c.title}
           trailing={
-            result.mode === 'unavailable' ? (
-              <p className="mt-3 text-xs text-(--ui-text-tertiary)">{c.localCatalogNotice}</p>
+            testCatalog ? (
+              <p className="mt-3 rounded-lg border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200" role="status">
+                {c.testDataNotice}
+              </p>
             ) : undefined
           }
         />
@@ -74,10 +81,28 @@ export function WorkflowsView() {
           <Loader className="size-8" label={c.title} type="lemniscate-bloom" />
           <span>{c.title}</span>
         </div>
-      ) : result.mode === 'failed' ? (
-        <p className="mx-auto w-full max-w-[65.625rem] py-8 text-sm text-amber-600" role="alert">
-          {c.catalogUnavailable}
-        </p>
+      ) : result.mode !== 'ready' ? (
+        <div className="mx-auto grid min-h-72 w-full max-w-[65.625rem] place-items-center py-10 text-center" data-workflow-recovery="">
+          <div>
+            <Codicon className="mx-auto text-amber-500" name="warning" size="1.75rem" />
+            <EmptyState
+              description={result.mode === 'unavailable' ? c.localCatalogNotice : c.catalogUnavailableDescription}
+              title={c.catalogUnavailable}
+            />
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={() => setReloadToken(token => token + 1)} size="sm">
+                <Codicon name="refresh" size="0.875rem" />
+                {c.retryCatalog}
+              </Button>
+              <Button onClick={() => navigate(PROFILE_STATS_ROUTE)} size="sm" variant="outline">
+                {c.checkConnection}
+              </Button>
+              <Button onClick={() => navigate(NEW_CHAT_ROUTE)} size="sm" variant="ghost">
+                {c.backToStart}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : (
         <>
           <div className="mx-auto w-full max-w-[65.625rem] py-6">

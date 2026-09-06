@@ -18,10 +18,10 @@ import {
   DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   NEW_CHAT_ROUTE,
+  projectDetailRoute,
   routeDrawerNavigationState,
   taskDetailRoute,
   TASKS_ROUTE,
-  workflowRunRoute,
   WORKFLOWS_ROUTE
 } from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
@@ -30,6 +30,7 @@ import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
+import { distinctProjectObjective } from '../view-model/project'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
 
 type ProjectFilter = 'active' | 'all' | 'completed'
@@ -145,6 +146,7 @@ export function ProjectsView() {
               {visibleProjects.map(project => {
                 const summary = project.summary
                 const status = projectStatus(project)
+                const objective = distinctProjectObjective(project)
 
                 const progress = summary?.currentStepTitle
                   ? c.currentStep(summary.currentStepTitle)
@@ -157,11 +159,9 @@ export function ProjectsView() {
                     className="grid h-auto w-full gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-5 py-4 text-left last:border-b-0 hover:bg-(--chrome-action-hover) sm:grid-cols-[minmax(0,1fr)_auto]"
                     key={project.id}
                     onClick={() =>
-                      summary?.currentRunId
-                        ? navigate(workflowRunRoute(summary.currentRunId), {
-                            state: routeDrawerNavigationState(location)
-                          })
-                        : navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: project.objective } })
+                      navigate(projectDetailRoute(project.id), {
+                        state: { ...routeDrawerNavigationState(location), businessProjectSummary: summary }
+                      })
                     }
                     type="button"
                     variant="ghost"
@@ -192,16 +192,18 @@ export function ProjectsView() {
                           {progress}
                         </Badge>
                       </span>
-                      <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
-                        {project.objective}
-                      </span>
+                      {objective && (
+                        <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                          {objective}
+                        </span>
+                      )}
                     </span>
                     <span className="flex shrink-0 items-center gap-4 self-center text-xs text-(--ui-text-tertiary)">
                       <span>{c.updatedAt(formatBusinessDayTime(new Date(project.updatedAt), locale))}</span>
                       {summary && summary.deliverableCount > 0 && (
                         <span>{c.deliverableCount(summary.deliverableCount)}</span>
                       )}
-                      {summary && <span>{summary.currentRunId ? c.viewRun : c.noRun}</span>}
+                      <span>{c.viewProject}</span>
                       <Codicon name="arrow-right" size="0.75rem" />
                     </span>
                   </Button>

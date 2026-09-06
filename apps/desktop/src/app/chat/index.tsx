@@ -30,6 +30,7 @@ import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-s
 import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
+import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { migrateSessionDraft } from '@/store/composer'
 import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
 import { $introSplash } from '@/store/intro-splash'
@@ -70,7 +71,7 @@ import type { ChatBarState } from './composer/types'
 import { DirectConnectBanner } from './direct-connect-banner'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
-import { shouldShowIntro } from './intro-visibility'
+import { shouldShowChatComposer, shouldShowIntro } from './intro-visibility'
 import { ProfileTag } from './profile-tag'
 import { isRouteSessionMismatch } from './route-session-state'
 import { useRuntimeMessageRepository } from './runtime-repository'
@@ -96,6 +97,7 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   onAddUrl: (url: string) => void
   onBranchInNewChat?: (messageId: string) => void
   maxVoiceRecordingSeconds?: number
+  objectRouteOpen?: boolean
   onAttachImageBlob: (blob: Blob) => Promise<boolean | void> | boolean | void
   onAttachDroppedItems: (candidates: DroppedFile[]) => Promise<boolean | void> | boolean | void
   onAttachPrCommentUrl?: (url: string) => boolean
@@ -375,6 +377,7 @@ const ChatViewContent = memo(function ChatViewContent({
   onAttachPrCommentUrl,
   onBranchInNewChat,
   maxVoiceRecordingSeconds,
+  objectRouteOpen = false,
   onPasteClipboardImage,
   onPickFiles,
   onPickFolders,
@@ -546,10 +549,16 @@ const ChatViewContent = memo(function ChatViewContent({
   })
 
   const threadLoading = threadLoadingState(loadingSession, busy, awaitingResponse, lastVisibleIsUser)
+
   // Hide the composer in the exhausted error state too: there's no live runtime
   // to send to until a retry rebinds one. Watch windows are pure spectators of a
   // subagent run driven elsewhere — no composer, transcript is read-only.
-  const showChatBar = !loadingSession && !resumeExhausted && !isWatchWindow()
+  const showChatBar = shouldShowChatComposer({
+    available: !loadingSession && !resumeExhausted && !isWatchWindow(),
+    businessStartVisible: showIntro && isBusinessWorkspaceEnabled(),
+    objectRouteOpen
+  })
+
   const threadKey = selectedSessionId || activeSessionId || (isRoutedSessionView ? location.pathname : 'new')
 
   const modelOptionsQuery = useQuery<ModelOptionsResponse>({

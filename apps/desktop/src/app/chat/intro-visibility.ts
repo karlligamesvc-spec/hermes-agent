@@ -30,3 +30,17 @@ export function shouldShowIntro(input: {
     input.messagesEmpty
   )
 }
+
+/**
+ * The business Start surface owns the only primary input while its zero-state
+ * is visible. Once a goal/session exists, or an object drawer (currently a
+ * Workflow Run or Project detail) is open over Start, the canonical chat composer returns for
+ * follow-up, approval, and intervention.
+ */
+export function shouldShowChatComposer(input: {
+  available: boolean
+  businessStartVisible: boolean
+  objectRouteOpen: boolean
+}): boolean {
+  return input.available && (!input.businessStartVisible || input.objectRouteOpen)
+}

@@ -64,7 +64,7 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
   }
 
   return (
-    <div className="pointer-events-auto flex w-full flex-col gap-8 pb-28 text-left" data-business-start-shelf="">
+    <div className="pointer-events-auto flex w-full flex-col gap-8 pb-10 text-left" data-business-start-shelf="">
       <section aria-labelledby="business-start-workflows">
         <header className="mb-4 flex items-end justify-between gap-4">
           <div>

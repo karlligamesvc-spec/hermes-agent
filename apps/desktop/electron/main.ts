@@ -156,6 +156,7 @@ import {
   cancelWorkflowDomainRun,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
+  getWorkflowDomainProject,
   getWorkflowDomainRun,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
@@ -21089,6 +21090,22 @@ ipcMain.handle('hermes:workflowDomain:listProjects', async (_event, options) => 
     const result = await listWorkflowDomainProjects(context.apiBase, options || {}, context.transport)
 
     return { ...result, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await getWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
   } catch (error) {
     return { ok: false, code: workflowDomainIpcError(error) }
   }

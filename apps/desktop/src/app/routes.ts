@@ -27,6 +27,7 @@ export const STARMAP_ROUTE = '/starmap'
 // a field stacked on top of the sidebar, which pushes every conversation down.
 export const SEARCH_ROUTE = '/search'
 export const PROJECTS_ROUTE = '/projects'
+export const PROJECT_DETAIL_ROUTE_PREFIX = '/projects/'
 export const WORKFLOWS_ROUTE = '/workflows'
 export const WORKFLOW_RUN_ROUTE_PREFIX = '/workflow-runs/'
 export const ASSISTANT_ROUTE = '/assistant'
@@ -69,6 +70,30 @@ export function taskDetailRoute(taskId: string): string {
 
 export function workflowRunRoute(runId: string): string {
   return `${WORKFLOW_RUN_ROUTE_PREFIX}${encodeURIComponent(runId)}`
+}
+
+export function projectDetailRoute(projectId: string): string {
+  return `${PROJECT_DETAIL_ROUTE_PREFIX}${encodeURIComponent(projectId)}`
+}
+
+export function projectIdForPath(pathname: string): string | null {
+  const path = routePathname(pathname)
+
+  if (!path.startsWith(PROJECT_DETAIL_ROUTE_PREFIX)) {
+    return null
+  }
+
+  const encodedId = path.slice(PROJECT_DETAIL_ROUTE_PREFIX.length)
+
+  if (!encodedId || encodedId.includes('/')) {
+    return null
+  }
+
+  try {
+    return decodeURIComponent(encodedId)
+  } catch {
+    return null
+  }
 }
 
 export function workflowRunIdForPath(pathname: string): string | null {
@@ -120,7 +145,8 @@ function isSafeRouteLocationSnapshot(value: unknown): value is RouteLocationSnap
     (!candidate.search || candidate.search.startsWith('?')) &&
     typeof candidate.hash === 'string' &&
     (!candidate.hash || candidate.hash.startsWith('#')) &&
-    !candidate.pathname.startsWith(WORKFLOW_RUN_ROUTE_PREFIX)
+    !candidate.pathname.startsWith(WORKFLOW_RUN_ROUTE_PREFIX) &&
+    !candidate.pathname.startsWith(PROJECT_DETAIL_ROUTE_PREFIX)
   )
 }
 
@@ -376,6 +402,10 @@ export function appViewForPath(pathname: string): AppView {
 
   if (workflowRunIdForPath(path)) {
     return 'workflows'
+  }
+
+  if (projectIdForPath(path)) {
+    return 'projects'
   }
 
   return APP_VIEW_BY_PATH.get(path) ?? 'chat'

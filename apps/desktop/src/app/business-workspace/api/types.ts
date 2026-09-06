@@ -1,6 +1,7 @@
 export interface WorkflowDomainBridge {
   access: () => Promise<{ available: boolean }>
   cancelRun: (runId: string) => Promise<{ ok: boolean }>
+  getProject?: (projectId: string) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getCatalog?: () => Promise<WorkflowCatalogResult>
   getRun: (runId: string) => Promise<{ ok: boolean; overview?: WorkflowRunOverview }>
   listProjects?: (options?: {

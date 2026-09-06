@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 
-import { routeDrawerNavigationState, workflowRunRoute } from '../../routes'
+import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { startWorkflowGoal } from '../api/adapters'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
@@ -148,6 +148,29 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
       </header>
 
       <div className="flex w-full flex-col gap-7">
+        {selectedWorkflow && (
+          <section
+            aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-3"
+            data-workflow-start-confirmation=""
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-primary">
+                {t.businessWorkspace.goalLauncher.confirmationEyebrow}
+              </p>
+              <p className="mt-1 truncate text-sm font-medium">
+                {t.businessWorkspace.goalLauncher.confirmationTemplate}
+                {selectedWorkflow.title} · {t.businessWorkspace.workflows.version(selectedWorkflow.version)}
+              </p>
+              <p className="mt-0.5 text-xs text-(--ui-text-tertiary)">
+                {t.businessWorkspace.goalLauncher.confirmationExecutor}
+              </p>
+            </div>
+            <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="sm" variant="ghost">
+              {t.businessWorkspace.goalLauncher.changeWorkflow}
+            </Button>
+          </section>
+        )}
         <BusinessGoalLauncher
           disabled={goalDisabled || domainStarting}
           draft={goalDraft}

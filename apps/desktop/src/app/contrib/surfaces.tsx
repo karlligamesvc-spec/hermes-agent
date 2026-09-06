@@ -30,6 +30,8 @@ import {
   HISTORY_ROUTE,
   LEGACY_ACCOUNTS_ROUTE,
   NEW_CHAT_ROUTE,
+  projectIdForPath,
+  PROJECTS_ROUTE,
   routeDrawerBackgroundLocation,
   ROUTES_AREA,
   sessionRoute,
@@ -60,6 +62,10 @@ const SearchView = lazy(async () => ({ default: (await import('../search')).Sear
 const ProjectsView = lazy(async () => ({ default: (await import('../business-workspace')).ProjectsView }))
 const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
 
+const ProjectDetailView = lazy(async () => ({
+  default: (await import('../business-workspace/pages/project-detail-page')).ProjectDetailView
+}))
+
 const WorkflowRunView = lazy(async () => ({
   default: (await import('../business-workspace/pages/workflow-run-page')).WorkflowRunView
 }))
@@ -89,6 +95,18 @@ function WorkflowRunRouteDrawer() {
     <RouteDrivenDrawer deepLinkFallback={WORKFLOWS_ROUTE} title={t.businessWorkspace.workflowDomain.run.title}>
       <Suspense fallback={null}>
         <WorkflowRunView />
+      </Suspense>
+    </RouteDrivenDrawer>
+  )
+}
+
+function ProjectDetailRouteDrawer() {
+  const { t } = useI18n()
+
+  return (
+    <RouteDrivenDrawer deepLinkFallback={PROJECTS_ROUTE} title={t.businessWorkspace.projects.detailTitle}>
+      <Suspense fallback={null}>
+        <ProjectDetailView />
       </Suspense>
     </RouteDrivenDrawer>
   )
@@ -174,10 +192,17 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   useContributions(ROUTES_AREA)
   const routeContributions = contributedRoutes()
   const workflowRunOpen = workflowRunIdForPath(location.pathname) !== null
-  const backgroundLocation = workflowRunOpen ? routeDrawerBackgroundLocation(location.state) : null
+  const projectDetailOpen = projectIdForPath(location.pathname) !== null
+  const objectRouteOpen = workflowRunOpen || projectDetailOpen
+  const backgroundLocation = objectRouteOpen ? routeDrawerBackgroundLocation(location.state) : null
 
-  const pageLocation = workflowRunOpen
-    ? (backgroundLocation ?? { hash: '', pathname: WORKFLOWS_ROUTE, search: '', state: null })
+  const pageLocation = objectRouteOpen
+    ? (backgroundLocation ?? {
+        hash: '',
+        pathname: projectDetailOpen ? PROJECTS_ROUTE : WORKFLOWS_ROUTE,
+        search: '',
+        state: null
+      })
     : location
 
   const modelMenuContent = useMemo(
@@ -200,6 +225,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       gateway={gateway}
       maxVoiceRecordingSeconds={maxVoiceRecordingSeconds}
       modelMenuContent={modelMenuContent}
+      objectRouteOpen={objectRouteOpen}
       {...chatActions}
     />
   )
@@ -287,6 +313,11 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       {workflowRunOpen && (
         <Routes>
           <Route element={<WorkflowRunRouteDrawer />} path="workflow-runs/:runId" />
+        </Routes>
+      )}
+      {projectDetailOpen && (
+        <Routes>
+          <Route element={<ProjectDetailRouteDrawer />} path="projects/:projectId" />
         </Routes>
       )}
     </>

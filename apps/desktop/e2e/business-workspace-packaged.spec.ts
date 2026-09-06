@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { AddressInfo } from 'node:net'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
+import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
 
 const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '助手', '历史'] as const
@@ -11,7 +12,7 @@ const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '�
 const PHASE1_VIEWPORTS = [
   { height: 900, name: 'wide-1440', width: 1440 },
   { height: 800, name: 'desktop-1220', width: 1220 },
-  { height: 800, name: 'narrow-700', width: 700 }
+  { height: 800, name: 'narrow-752', width: 752 }
 ] as const
 
 let fixture: PackagedMockBackendFixture | null = null
@@ -51,6 +52,23 @@ const reviewProjects = [
       stepTotal: 0
     },
     updatedAt: '2026-09-05T17:30:00Z'
+  },
+  {
+    createdAt: '2026-09-05T19:00:00Z',
+    id: 'local-review-project-no-run',
+    name: '[本地测试] 尚未启动的业务目标',
+    objective: '[本地测试] 尚未启动的业务目标',
+    status: 'active',
+    summary: {
+      attention: 'none',
+      currentRunId: null,
+      currentRunStatus: null,
+      currentStepTitle: null,
+      deliverableCount: 0,
+      stepCompleted: 0,
+      stepTotal: 0
+    },
+    updatedAt: '2026-09-05T21:15:00Z'
   }
 ]
 
@@ -112,6 +130,15 @@ async function startPhase1ReviewApi() {
 
     if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/projects') {
       json(200, { items: reviewProjects, nextCursor: null, total: reviewProjects.length })
+
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/api/v1/workflow-domain/projects/')) {
+      const projectId = decodeURIComponent(url.pathname.slice('/api/v1/workflow-domain/projects/'.length))
+      const project = reviewProjects.find(item => item.id === projectId)
+
+      json(project ? 200 : 404, project ? { item: project } : { detail: 'not found' })
 
       return
     }
@@ -216,12 +243,26 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByText('模型', { exact: true })).toHaveCount(0)
 })
 
+test('Start mounts exactly one accessible and focusable primary input', async () => {
+  const page = fixture!.page
+
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+  await expect(page.locator('[data-business-start-home]')).toBeVisible()
+  await expect(page.getByRole('textbox')).toHaveCount(1)
+  await expect(page.getByRole('textbox', { name: '业务目标' })).toBeVisible()
+  await expect(page.locator('[data-slot="composer-root"]')).toHaveCount(0)
+
+  await page.getByRole('textbox', { name: '业务目标' }).fill('本地测试焦点顺序')
+  await page.getByRole('textbox', { name: '业务目标' }).focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: '开始执行' })).toBeFocused()
+  await page.getByRole('textbox', { name: '业务目标' }).fill('')
+})
+
 test('packaged Phase 1 pages keep local review data explicit across the approved window matrix', async () => {
   const { app, page } = fixture!
   const testInfo = test.info()
   const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
-  const cdp = await page.context().newCDPSession(page)
-
   if (screenshotRoot) {
     fs.mkdirSync(screenshotRoot, { recursive: true })
   }
@@ -236,7 +277,6 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   ] as const
 
   for (const phasePage of pages) {
-    await cdp.send('Emulation.clearDeviceMetricsOverride')
     await app.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0]
 
@@ -269,15 +309,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
 
         return win.getBounds()
       }, viewport)
-      await cdp.send('Emulation.setDeviceMetricsOverride', {
-        deviceScaleFactor: 1,
-        height: viewport.height,
-        mobile: false,
-        screenHeight: viewport.height,
-        screenWidth: viewport.width,
-        width: viewport.width
-      })
-      await page.waitForTimeout(250)
+      await page.waitForTimeout(400)
 
       expect(bounds?.width).toBe(viewport.width)
       expect(bounds?.height).toBeLessThanOrEqual(viewport.height)
@@ -298,7 +330,18 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
         path: screenshotRoot ? path.join(screenshotRoot, screenshotName) : testInfo.outputPath(screenshotName)
       })
 
-      if (viewport.name === 'narrow-700') {
+      if (viewport.name === 'narrow-752') {
+        const sidebarTrigger = page.getByRole('button', { name: /显示侧边栏/ })
+
+        await expect(sidebarTrigger).toBeVisible()
+        await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(0)
+
+        if (process.platform === 'darwin') {
+          const triggerBox = await sidebarTrigger.boundingBox()
+
+          expect(triggerBox?.x).toBeGreaterThanOrEqual(70)
+        }
+
         const lowerContent =
           phasePage.name === 'start'
             ? page.getByRole('heading', { name: '可用数据源', level: 2 })
@@ -315,16 +358,61 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       }
     }
   }
+})
 
-  await cdp.send('Emulation.clearDeviceMetricsOverride')
+test('Project rows open a real detail view before a no-Run goal can continue', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220 }))
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  const row = page.getByRole('button', { name: /尚未启动的业务目标/ })
+
+  await expect(row).toBeVisible()
+  await row.click()
+  const detail = page.locator('[data-project-detail]')
+
+  await expect(detail).toBeVisible()
+  await expect(detail.getByText('这个项目尚未启动运行')).toBeVisible()
+  await expect(detail.getByText('[本地测试] 尚未启动的业务目标', { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveCount(0)
+  await expect(detail.getByText(/0 \/ 0|百分比|待处理事项/)).toHaveCount(0)
+
+  await page.getByRole('button', { name: '继续这个目标' }).click()
+  await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveValue('[本地测试] 尚未启动的业务目标')
+})
+
+test('local workflow catalog is labeled and reaches editable pre-start confirmation', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
+  await expect(page.getByText(/本地测试数据：此目录仅用于实包视觉与交互验收/)).toBeVisible()
+  await page.getByRole('button', { name: /竞品监控/ }).click()
+
+  const goal = page.getByRole('textbox', { name: '业务目标' })
+  await expect(page.locator('[data-workflow-start-confirmation]')).toContainText('启动前确认')
+  await expect(page.locator('[data-workflow-start-confirmation]')).toContainText('Hermes')
+  await expect(page.locator('[data-workflow-start-confirmation]')).toContainText('版本 1')
+  await expect(goal).toBeEditable()
+  await goal.fill('本地测试：编辑后的竞品监控目标')
+  await expect(goal).toHaveValue('本地测试：编辑后的竞品监控目标')
 })
 
 test('packaged business goal starts a real chat turn through the existing gateway', async () => {
-  const page = fixture!.page
+  const { app, page } = fixture!
   const prompt = '分析美国宠物用品市场，并生成选品报告和上架素材'
+  const longPrompt = `${prompt}\n\n${TASK_PANEL_RESUME_TRIGGER}`
 
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
   reviewApi!.setWorkflowEnabled(false)
-  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 752, x: 0, y: 0 }, false)
+  )
   const goal = page.getByRole('textbox', { name: '业务目标' })
 
   await expect(goal).toBeVisible()
@@ -333,12 +421,42 @@ test('packaged business goal starts a real chat turn through the existing gatewa
   await page.getByRole('button', { name: /从市场机会到上架素材/ }).click()
   await expect(goal).toHaveValue(prompt)
   await expect(goal).toBeFocused()
+  await goal.fill(longPrompt)
   await page.getByRole('button', { name: '开始执行' }).click()
 
-  await expect(page.getByText(prompt, { exact: true })).toBeVisible({ timeout: 15_000 })
-  await expect(
-    page.getByRole('paragraph').filter({ hasText: /mock inference server|boot chain is working/ })
-  ).toBeVisible({
-    timeout: 60_000
+  await expect(page.getByText(longPrompt, { exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(/Task-panel clearance line 24/)).toBeVisible({ timeout: 60_000 })
+
+  const composer = page.locator('[data-slot="composer-root"]:visible').first()
+  const viewport = page.locator('[data-slot="aui_thread-viewport"]:visible').first()
+
+  await expect(composer).toBeVisible()
+  await expect(page.locator('[data-slot="aui_composer-clearance"]:visible')).toHaveCount(1)
+  await viewport.evaluate(element => {
+    element.scrollTop = element.scrollHeight
   })
+  await page.waitForTimeout(200)
+
+  const clearance = await page.evaluate(() => {
+    const composerRoot = document.querySelector<HTMLElement>('[data-slot="composer-root"]:not([data-popped-out])')
+    const transcript = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')
+    const latest = Array.from(document.querySelectorAll<HTMLElement>('[data-role="assistant"]')).at(-1)
+
+    if (!composerRoot || !transcript || !latest) {
+      return null
+    }
+
+    return {
+      composerTop: composerRoot.getBoundingClientRect().top,
+      documentClientWidth: document.documentElement.clientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      latestMessageBottom: latest.getBoundingClientRect().bottom,
+      remainingScroll: transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop
+    }
+  })
+
+  expect(clearance).not.toBeNull()
+  expect(clearance!.remainingScroll).toBeLessThanOrEqual(1)
+  expect(clearance!.latestMessageBottom).toBeLessThanOrEqual(clearance!.composerTop)
+  expect(clearance!.documentScrollWidth).toBeLessThanOrEqual(clearance!.documentClientWidth)
 })
