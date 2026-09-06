@@ -27,6 +27,7 @@ import * as path from 'node:path'
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
 
 import { type MockServerOptions, startMockServer } from './mock-server'
+import { resolvePackagedE2ePython } from './python-prerequisite'
 import { installErrorBannerGuard } from './test'
 
 const DESKTOP_ROOT = path.resolve(import.meta.dirname, '..')
@@ -607,6 +608,11 @@ export async function setupPackagedMockBackend(
     throw new Error(`Built app binary not found: ${PACKAGED_BINARY_PATH}. Run 'npm run pack' first.`)
   }
 
+  const python = resolvePackagedE2ePython({
+    explicit: extraEnv.HERMES_DESKTOP_PYTHON || process.env.HERMES_DESKTOP_PYTHON,
+    repoRoot: REPO_ROOT,
+  })
+
   const mock = await startMockServer()
   const sandbox = createSandbox('packaged-mock')
 
@@ -615,7 +621,7 @@ export async function setupPackagedMockBackend(
 
   // buildAppEnv deliberately points the gateway at this checkout. The
   // executable and renderer still come only from the packaged APEX.app.
-  const env = buildAppEnv(sandbox, extraEnv)
+  const env = buildAppEnv(sandbox, { ...extraEnv, HERMES_DESKTOP_PYTHON: python })
   const { app, page } = await launchPackagedApp(env)
 
   return {

@@ -3620,6 +3620,7 @@ export interface Translations {
         actionFailed: string
         approve: string
         attempt: string
+        attemptDescription: (attempt: number, maximum: number) => string
         cancel: string
         cancelling: string
         created: string

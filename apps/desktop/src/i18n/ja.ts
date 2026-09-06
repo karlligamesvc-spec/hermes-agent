@@ -3461,6 +3461,7 @@ export const ja = defineLocale({
         actionFailed: '操作を保存できませんでした。もう一度お試しください。',
         approve: '成果物を承認',
         attempt: '実行回数',
+        attemptDescription: (attempt, maximum) => `${attempt} 回目の試行（最大 ${maximum} 回）`,
         cancel: '実行をキャンセル',
         cancelling: 'キャンセル中…',
         created: '作成日時',
@@ -3486,10 +3487,14 @@ export const ja = defineLocale({
               : '実行イベント'),
         eventSummary: eventType =>
           eventType.startsWith('tool.')
-            ? 'Hermes がツールを使用しました。生の引数と結果は表示しません。'
-            : eventType.includes('result')
-              ? '結果が記録されました。安全なライフサイクル要約だけを表示します。'
-              : 'この実行のライフサイクル更新が記録されました。',
+            ? 'APEX / Hermes がツールを使用しました。引数と結果は非表示です。'
+            : eventType === 'run.queued'
+              ? 'キューに追加され、開始準備中です。'
+              : eventType === 'run.running'
+                ? 'APEX が処理を開始しました。'
+                : eventType.includes('result')
+                  ? '結果が記録されました。安全なライフサイクル要約だけを表示します。'
+                  : 'この実行のライフサイクル更新が記録されました。',
         events: '記録済みイベント',
         executor: '実行エンジン',
         executorUnavailable: '利用できません',
@@ -3504,7 +3509,8 @@ export const ja = defineLocale({
         noObjective: 'この実行には目標の要約が記録されていません。',
         noPendingDescription: '現在、レビューや介入は必要ありません。',
         noPendingTitle: '対応が必要な項目はありません',
-        noStageProgressDescription: '現在の実行レスポンスには実際の段階データがないため、APEX は段階や進捗を推測しません。',
+        noStageProgressDescription:
+          '現在の実行レスポンスには実際の段階データがないため、APEX は段階や進捗を推測しません。',
         noStageProgressTitle: '表示できる段階進捗はまだありません',
         openDeliverable: '成果物を開く',
         openFailed: '成果物を開けませんでした。現在の Run データは保持されています。',

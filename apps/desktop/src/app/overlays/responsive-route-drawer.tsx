@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { closeRouteDrawer } from '../routes'
 
 export const ROUTE_DRAWER_WIDE_QUERY = '(min-width: 1100px)'
-export const ROUTE_DRAWER_COMPACT_QUERY = '(min-width: 640px)'
+export const ROUTE_DRAWER_COMPACT_QUERY = '(min-width: 900px)'
 
 let bodyScrollLockDepth = 0
 let bodyOverflowBeforeLock = ''
@@ -73,6 +73,7 @@ export function ResponsiveRouteDrawer({
 }: ResponsiveRouteDrawerProps) {
   const { t } = useI18n()
   const wide = useWideRouteDrawer(compact ? ROUTE_DRAWER_COMPACT_QUERY : ROUTE_DRAWER_WIDE_QUERY)
+  const contentRef = useRef<HTMLDivElement | null>(null)
 
   const returnFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -91,6 +92,20 @@ export function ResponsiveRouteDrawer({
     }
   }, [])
 
+  useEffect(() => {
+    const resetNestedScroll = () => {
+      const scrollContainer = contentRef.current?.querySelector<HTMLElement>('[data-route-drawer-scroll]')
+
+      if (scrollContainer) {
+        scrollContainer.scrollTop = 0
+      }
+    }
+
+    window.addEventListener('resize', resetNestedScroll)
+
+    return () => window.removeEventListener('resize', resetNestedScroll)
+  }, [])
+
   return (
     <DialogPrimitive.Root onOpenChange={open => !open && onClose()} open>
       <DialogPrimitive.Portal>
@@ -104,7 +119,7 @@ export function ResponsiveRouteDrawer({
             'fixed inset-x-0 bottom-0 top-[var(--titlebar-height)] z-(--z-modal) flex min-h-0 min-w-0 flex-col overflow-hidden border-(--stroke-nous) bg-(--ui-chat-surface-background) text-foreground shadow-nous outline-none duration-150',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
             compact
-              ? 'min-[640px]:left-auto min-[640px]:right-0 min-[640px]:w-[min(540px,calc(100vw-16px))] min-[640px]:border-l min-[640px]:data-[state=closed]:slide-out-to-right-4 min-[640px]:data-[state=open]:slide-in-from-right-4'
+              ? 'min-[900px]:left-auto min-[900px]:right-0 min-[900px]:w-[min(540px,calc(100vw-16px))] min-[900px]:border-l min-[900px]:data-[state=closed]:slide-out-to-right-4 min-[900px]:data-[state=open]:slide-in-from-right-4'
               : 'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
             'motion-reduce:animate-none motion-reduce:transition-none',
             contentClassName
@@ -121,6 +136,19 @@ export function ResponsiveRouteDrawer({
               target.focus({ preventScroll: true })
             }
           }}
+          onOpenAutoFocus={event => {
+            event.preventDefault()
+            const content = contentRef.current
+            const scrollContainer = content?.querySelector<HTMLElement>('[data-route-drawer-scroll]')
+
+            if (scrollContainer) {
+              scrollContainer.scrollTop = 0
+            }
+
+            content?.focus({ preventScroll: true })
+          }}
+          ref={contentRef}
+          tabIndex={-1}
         >
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Close asChild>

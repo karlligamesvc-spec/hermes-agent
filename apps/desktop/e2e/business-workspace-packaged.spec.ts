@@ -504,6 +504,8 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   await expect(drawer.getByText('暂时没有可展示的阶段进度')).toBeVisible()
   await expect(drawer.getByRole('button', { name: '暂无可打开结果' })).toBeDisabled()
   await expect(drawer.getByText(/伪造阶段|88%|e2e-payload-secret|private-schema|tenant-user/)).toHaveCount(0)
+  await expect(drawer.getByRole('heading', { name: '工作流运行', level: 1 })).toBeVisible()
+  expect(await drawer.locator('[data-run-scroll-container]').evaluate(element => element.scrollTop)).toBe(0)
 
   for (const viewport of PHASE1_VIEWPORTS) {
     const bounds = await app.evaluate(({ BrowserWindow }, size) => {
@@ -534,16 +536,50 @@ test('packaged real Run drawer preserves context, safe data and focus across the
         drawerLeft: rect.left,
         drawerRight: rect.right,
         drawerWidth: rect.width,
+        layout: element.getAttribute('data-layout'),
         scrollWidth: root.scrollWidth
       }
     })
+    const runScroll = drawer.locator('[data-run-scroll-container]')
+    const runTitle = drawer.getByRole('heading', { name: '工作流运行', level: 1 })
+    const reviewHeading = drawer.getByRole('heading', { name: '需要审阅', level: 2 })
+    const approveButton = drawer.getByRole('button', { name: '批准交付物' })
+    const stageHeading = drawer.getByRole('heading', { name: '阶段进度', level: 2 })
+    const stageSection = stageHeading.locator('..')
 
     expect(bounds?.width).toBe(viewport.width)
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
-    expect(layout.drawerWidth).toBeCloseTo(Math.min(540, layout.clientWidth - 16), 0)
-    expect(layout.drawerRight).toBeCloseTo(layout.clientWidth, 0)
-    expect(layout.drawerLeft).toBeGreaterThan(0)
+    if (viewport.width < 900) {
+      expect(layout.layout).toBe('fullscreen')
+      expect(layout.drawerWidth).toBeCloseTo(layout.clientWidth, 0)
+      expect(layout.drawerLeft).toBeCloseTo(0, 0)
+      expect(layout.drawerRight).toBeCloseTo(layout.clientWidth, 0)
+    } else {
+      expect(layout.layout).toBe('drawer')
+      expect(layout.drawerWidth).toBeCloseTo(Math.min(540, layout.clientWidth - 16), 0)
+      expect(layout.drawerRight).toBeCloseTo(layout.clientWidth, 0)
+      expect(layout.drawerLeft).toBeGreaterThan(0)
+    }
     expect(layout.activeInside).toBe(true)
+    expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
+    await expect(runTitle).toBeVisible()
+
+    const [drawerBox, runTitleBox, reviewBox, approveBox, stageBox, stageSectionBox] = await Promise.all([
+      drawer.boundingBox(),
+      runTitle.boundingBox(),
+      reviewHeading.boundingBox(),
+      approveButton.boundingBox(),
+      stageHeading.boundingBox(),
+      stageSection.boundingBox()
+    ])
+
+    expect(runTitleBox?.y).toBeGreaterThanOrEqual(drawerBox?.y ?? 0)
+    expect(reviewBox?.y).toBeLessThan(stageBox?.y ?? Number.POSITIVE_INFINITY)
+    expect(approveBox?.y).toBeLessThan(stageBox?.y ?? Number.POSITIVE_INFINITY)
+    expect((approveBox?.y ?? 0) + (approveBox?.height ?? 0)).toBeLessThanOrEqual(
+      (drawerBox?.y ?? 0) + (drawerBox?.height ?? 0)
+    )
+    expect(stageSectionBox?.height).toBeLessThan(160)
 
     const progressName = `run-progress-${viewport.width}x${viewport.height}.png`
     await page.screenshot({
@@ -556,6 +592,10 @@ test('packaged real Run drawer preserves context, safe data and focus across the
     await expect(drawer.getByText('运行已排队')).toBeVisible()
     await expect(drawer.getByText('运行已开始')).toBeVisible()
     await expect(drawer.getByText('工具活动')).toBeVisible()
+    await expect(drawer.getByText('已加入队列，准备开始。')).toBeVisible()
+    await expect(drawer.getByText('APEX 已开始处理。')).toBeVisible()
+    await expect(drawer.getByText('APEX / Hermes 使用了工具，参数和结果已隐藏。')).toBeVisible()
+    await expect(drawer.getByText('第 1 次尝试（最多 2 次）')).toBeVisible()
 
     const eventOrder = await drawer.locator('text=/^#\\d+/').allTextContents()
     expect(eventOrder.map(item => Number(item.match(/^#(\d+)/)?.[1]))).toEqual([1, 2, 3])
@@ -567,7 +607,12 @@ test('packaged real Run drawer preserves context, safe data and focus across the
       caret: 'hide',
       path: screenshotRoot ? path.join(screenshotRoot, detailsName) : testInfo.outputPath(detailsName)
     })
+    await runScroll.evaluate(element => {
+      element.scrollTop = 180
+    })
     await drawer.getByRole('tab', { name: '进展' }).click()
+    expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
+    await expect(runTitle).toBeVisible()
   }
 
   for (let index = 0; index < 6; index += 1) {

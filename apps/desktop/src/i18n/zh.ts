@@ -3917,6 +3917,7 @@ export const zh = defineLocale({
         actionFailed: '操作没有保存，请重试。',
         approve: '批准交付物',
         attempt: '执行次数',
+        attemptDescription: (attempt, maximum) => `第 ${attempt} 次尝试（最多 ${maximum} 次）`,
         cancel: '取消运行',
         cancelling: '正在取消…',
         created: '创建时间',
@@ -3938,10 +3939,14 @@ export const zh = defineLocale({
           (eventType.startsWith('tool.') ? '工具活动' : eventType.includes('result') ? '已记录执行结果' : '运行事件'),
         eventSummary: eventType =>
           eventType.startsWith('tool.')
-            ? 'Hermes 使用了工具；这里不会显示原始参数和结果。'
-            : eventType.includes('result')
-              ? '已记录结果；这里只显示安全的生命周期摘要。'
-              : '这次运行记录了一条生命周期更新。',
+            ? 'APEX / Hermes 使用了工具，参数和结果已隐藏。'
+            : eventType === 'run.queued'
+              ? '已加入队列，准备开始。'
+              : eventType === 'run.running'
+                ? 'APEX 已开始处理。'
+                : eventType.includes('result')
+                  ? '已记录结果；这里只显示安全的生命周期摘要。'
+                  : '这次运行记录了一条生命周期更新。',
         events: '已记录事件',
         executor: '执行器',
         executorUnavailable: '暂不可用',

@@ -36,7 +36,7 @@ function installMatchMedia(initialMatches: boolean) {
   }
 }
 
-function DrawerHarness({ compact = false }: { compact?: boolean }) {
+function DrawerHarness({ compact = false, seedScroll = false }: { compact?: boolean; seedScroll?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -46,18 +46,28 @@ function DrawerHarness({ compact = false }: { compact?: boolean }) {
       </button>
       {open && (
         <ResponsiveRouteDrawer compact={compact} onClose={() => setOpen(false)} title="Run details">
-          <button type="button">Inside action</button>
+          <div
+            data-route-drawer-scroll=""
+            ref={node => {
+              if (node && seedScroll && node.dataset.scrollSeeded !== 'true') {
+                node.dataset.scrollSeeded = 'true'
+                node.scrollTop = 240
+              }
+            }}
+          >
+            <button type="button">Inside action</button>
+          </div>
         </ResponsiveRouteDrawer>
       )}
     </>
   )
 }
 
-function renderHarness(compact = false) {
+function renderHarness(compact = false, seedScroll = false) {
   return render(
     <MemoryRouter>
       <I18nProvider configClient={null} initialLocale="en">
-        <DrawerHarness compact={compact} />
+        <DrawerHarness compact={compact} seedScroll={seedScroll} />
       </I18nProvider>
     </MemoryRouter>
   )
@@ -85,18 +95,42 @@ describe('ResponsiveRouteDrawer', () => {
     await waitFor(() => expect(drawer.getAttribute('data-layout')).toBe('drawer'))
   })
 
-  it('keeps a 540px Run drawer and source context from 640px upward', () => {
-    installMatchMedia(true)
+  it('uses a full-width Run surface through 899px and a 540px drawer from 900px', async () => {
+    const setWide = installMatchMedia(false)
 
     renderHarness(true)
     fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
 
     const drawer = screen.getByRole('dialog', { name: 'Run details' })
 
+    expect(ROUTE_DRAWER_COMPACT_QUERY).toBe('(min-width: 900px)')
     expect(window.matchMedia).toHaveBeenCalledWith(ROUTE_DRAWER_COMPACT_QUERY)
-    expect(drawer.getAttribute('data-layout')).toBe('drawer')
-    expect(drawer.className).toContain('min-[640px]:w-[min(540px,calc(100vw-16px))]')
-    expect(drawer.className).not.toContain('min-[1100px]:w-[min(35rem,48vw)]')
+    expect(drawer.getAttribute('data-layout')).toBe('fullscreen')
+    expect(drawer.className).toContain('min-[900px]:w-[min(540px,calc(100vw-16px))]')
+    expect(drawer.className).not.toContain('min-[640px]:')
+
+    setWide(true)
+    await waitFor(() => expect(drawer.getAttribute('data-layout')).toBe('drawer'))
+  })
+
+  it('anchors initial focus and nested scroll at the Run title, including after native resize', async () => {
+    installMatchMedia(true)
+
+    renderHarness(true, true)
+    fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
+
+    const drawer = screen.getByRole('dialog', { name: 'Run details' })
+    const scrollContainer = drawer.querySelector<HTMLElement>('[data-route-drawer-scroll]')
+
+    await waitFor(() => expect(globalThis.document.activeElement).toBe(drawer))
+    expect(scrollContainer?.scrollTop).toBe(0)
+
+    if (scrollContainer) {
+      scrollContainer.scrollTop = 180
+    }
+
+    fireEvent(window, new Event('resize'))
+    expect(scrollContainer?.scrollTop).toBe(0)
   })
 
   it('traps focus, closes once on Escape, restores focus, and releases the scroll lock', async () => {

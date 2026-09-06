@@ -4241,6 +4241,7 @@ export const en: Translations = {
         actionFailed: 'The action was not saved. Try again.',
         approve: 'Approve deliverable',
         attempt: 'Attempt',
+        attemptDescription: (attempt, maximum) => `Attempt ${attempt} (up to ${maximum})`,
         cancel: 'Cancel run',
         cancelling: 'Cancelling…',
         created: 'Created',
@@ -4266,10 +4267,14 @@ export const en: Translations = {
               : 'Run event'),
         eventSummary: eventType =>
           eventType.startsWith('tool.')
-            ? 'Hermes used a tool. Raw arguments and results are not shown here.'
-            : eventType.includes('result')
-              ? 'A result was recorded. Only the safe lifecycle summary is shown.'
-              : 'A lifecycle update was recorded for this run.',
+            ? 'APEX / Hermes used a tool. Arguments and results are hidden.'
+            : eventType === 'run.queued'
+              ? 'Added to the queue and getting ready to start.'
+              : eventType === 'run.running'
+                ? 'APEX has started working.'
+                : eventType.includes('result')
+                  ? 'A result was recorded. Only the safe lifecycle summary is shown.'
+                  : 'A lifecycle update was recorded for this run.',
         events: 'Recorded events',
         executor: 'Executor',
         executorUnavailable: 'Unavailable',

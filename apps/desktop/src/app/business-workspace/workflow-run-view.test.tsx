@@ -92,12 +92,21 @@ describe('hc-795 real workflow Run view', () => {
     expect(screen.getByText('Pet market evidence report')).toBeTruthy()
     expect(screen.getByText(/1 evidence item/)).toBeTruthy()
     expect(screen.getByText('No stage progress to show yet')).toBeTruthy()
+    expect(globalThis.document.querySelector('[data-stage-empty-state="compact"]')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'No openable result yet' }).hasAttribute('disabled')).toBe(true)
+
+    const reviewHeading = screen.getByRole('heading', { name: 'Review required', level: 2 })
+    const stageHeading = screen.getByRole('heading', { name: 'Stage progress', level: 2 })
+    const approveButton = screen.getByRole('button', { name: 'Approve deliverable' })
+
+    expect(reviewHeading.compareDocumentPosition(stageHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(approveButton.compareDocumentPosition(stageHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Execution details' }), { button: 0, ctrlKey: false })
 
     expect(screen.getByText('Run queued')).toBeTruthy()
-    expect(screen.getAllByText('A lifecycle update was recorded for this run.')).toHaveLength(2)
+    expect(screen.getByText('Added to the queue and getting ready to start.')).toBeTruthy()
+    expect(screen.getByText('Attempt 1 (up to 2)')).toBeTruthy()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Progress' }), { button: 0, ctrlKey: false })
 
@@ -219,7 +228,7 @@ describe('hc-795 real workflow Run view', () => {
     })
 
     expect(screen.getByText('Tool activity')).toBeTruthy()
-    expect(screen.getByText(/Raw arguments and results are not shown/)).toBeTruthy()
+    expect(screen.getByText('APEX / Hermes used a tool. Arguments and results are hidden.')).toBeTruthy()
     expect(screen.queryByText(/sk-sensitive|private-schema|tenant-user/)).toBeNull()
     expect(globalThis.document.body.textContent).not.toMatch(/deepseek/i)
   })

@@ -3338,6 +3338,7 @@ export const zhHant = defineLocale({
         actionFailed: '操作未儲存，請重試。',
         approve: '核准交付物',
         attempt: '執行次數',
+        attemptDescription: (attempt, maximum) => `第 ${attempt} 次嘗試（最多 ${maximum} 次）`,
         cancel: '取消執行',
         cancelling: '正在取消…',
         created: '建立時間',
@@ -3359,10 +3360,14 @@ export const zhHant = defineLocale({
           (eventType.startsWith('tool.') ? '工具活動' : eventType.includes('result') ? '已記錄執行結果' : '執行事件'),
         eventSummary: eventType =>
           eventType.startsWith('tool.')
-            ? 'Hermes 使用了工具；這裡不會顯示原始參數和結果。'
-            : eventType.includes('result')
-              ? '已記錄結果；這裡只顯示安全的生命週期摘要。'
-              : '這次執行記錄了一項生命週期更新。',
+            ? 'APEX / Hermes 使用了工具，參數和結果已隱藏。'
+            : eventType === 'run.queued'
+              ? '已加入佇列，準備開始。'
+              : eventType === 'run.running'
+                ? 'APEX 已開始處理。'
+                : eventType.includes('result')
+                  ? '已記錄結果；這裡只顯示安全的生命週期摘要。'
+                  : '這次執行記錄了一項生命週期更新。',
         events: '已記錄事件',
         executor: '執行器',
         executorUnavailable: '暫時無法使用',
