@@ -660,13 +660,15 @@ describe('identity: the APEX business shell stays user-facing', () => {
               events: [],
               run: {
                 attempt: 1,
+                completedAt: '2026-09-03T00:01:00Z',
                 createdAt: '2026-09-03T00:00:00Z',
-                errorMessage: null,
                 executorType: 'hermes',
                 id: 'run-identity',
                 maxAttempts: 1,
+                startedAt: '2026-09-03T00:00:01Z',
                 status: 'succeeded',
-                triggerRef: 'Verify identity'
+                triggerRef: 'Verify identity',
+                updatedAt: '2026-09-03T00:01:00Z'
               }
             }
           })
@@ -685,7 +687,7 @@ describe('identity: the APEX business shell stays user-facing', () => {
         </MemoryRouter>
       )
 
-      expect(await screen.findByText('hermes')).toBeTruthy()
+      expect(await screen.findByText('Hermes')).toBeTruthy()
       expect(screen.queryByRole('combobox')).toBeNull()
       expect(screen.queryByText(/DeepSeek Harness|DSH/i)).toBeNull()
     } finally {
@@ -698,12 +700,23 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
   it('keeps the platform JWT in Electron and exposes only typed workflow operations', () => {
     const main = readSource('electron', 'main.ts')
     const preload = readSource('electron', 'preload.ts')
+    const cancelHandler = main.slice(
+      main.indexOf("ipcMain.handle('hermes:workflowDomain:cancelRun'"),
+      main.indexOf("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'")
+    )
+
+    const reviewHandler = main.slice(
+      main.indexOf("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'"),
+      main.indexOf("ipcMain.handle('hermes:managed:status'")
+    )
 
     expect(main).toContain('import {\n  cancelWorkflowDomainRun,')
     expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getProject'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'")
+    expect(cancelHandler).not.toContain('return { ok: true, run }')
+    expect(reviewHandler).not.toContain('return { ok: true, review }')
 
     expect(preload).toContain('workflowDomain: {')
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId)")

@@ -3623,11 +3623,16 @@ export interface Translations {
         cancel: string
         cancelling: string
         created: string
+        detailsTab: string
         deliverables: string
         evidence: (count: number) => string
         event: (eventType: string) => string
+        eventSummary: (eventType: string) => string
+        events: string
         executor: string
+        executorUnavailable: string
         eyebrow: string
+        hermesExecutor: string
         loadFailedDescription: string
         loadFailedTitle: string
         loading: string
@@ -3635,11 +3640,28 @@ export interface Translations {
         noDeliverablesTitle: string
         noEvents: string
         noObjective: string
+        noPendingDescription: string
+        noPendingTitle: string
+        noStageProgressDescription: string
+        noStageProgressTitle: string
+        openDeliverable: string
+        openFailed: string
+        openUnavailable: string
+        openingDeliverable: string
+        pendingReviewDescription: (count: number) => string
+        pendingReviewTitle: string
+        progressTab: string
+        refresh: string
+        refreshFailedDescription: string
         requestChanges: string
         retry: string
+        stageProgress: string
+        started: string
         status: (status: string) => string
         timeline: string
         title: string
+        updated: string
+        viewTabs: string
         waitingForEvents: string
       }
     }

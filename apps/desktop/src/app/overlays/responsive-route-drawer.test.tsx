@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 
-import { ResponsiveRouteDrawer, ROUTE_DRAWER_WIDE_QUERY } from './responsive-route-drawer'
+import { ResponsiveRouteDrawer, ROUTE_DRAWER_COMPACT_QUERY, ROUTE_DRAWER_WIDE_QUERY } from './responsive-route-drawer'
 
 function installMatchMedia(initialMatches: boolean) {
   let matches = initialMatches
@@ -35,7 +36,7 @@ function installMatchMedia(initialMatches: boolean) {
   }
 }
 
-function DrawerHarness() {
+function DrawerHarness({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -44,7 +45,7 @@ function DrawerHarness() {
         Open run
       </button>
       {open && (
-        <ResponsiveRouteDrawer onClose={() => setOpen(false)} title="Run details">
+        <ResponsiveRouteDrawer compact={compact} onClose={() => setOpen(false)} title="Run details">
           <button type="button">Inside action</button>
         </ResponsiveRouteDrawer>
       )}
@@ -52,11 +53,11 @@ function DrawerHarness() {
   )
 }
 
-function renderHarness() {
+function renderHarness(compact = false) {
   return render(
     <MemoryRouter>
       <I18nProvider configClient={null} initialLocale="en">
-        <DrawerHarness />
+        <DrawerHarness compact={compact} />
       </I18nProvider>
     </MemoryRouter>
   )
@@ -82,6 +83,20 @@ describe('ResponsiveRouteDrawer', () => {
 
     setWide(true)
     await waitFor(() => expect(drawer.getAttribute('data-layout')).toBe('drawer'))
+  })
+
+  it('keeps a 540px Run drawer and source context from 640px upward', () => {
+    installMatchMedia(true)
+
+    renderHarness(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
+
+    const drawer = screen.getByRole('dialog', { name: 'Run details' })
+
+    expect(window.matchMedia).toHaveBeenCalledWith(ROUTE_DRAWER_COMPACT_QUERY)
+    expect(drawer.getAttribute('data-layout')).toBe('drawer')
+    expect(drawer.className).toContain('min-[640px]:w-[min(33.75rem,calc(100vw-1rem))]')
+    expect(drawer.className).not.toContain('min-[1100px]:w-[min(35rem,48vw)]')
   })
 
   it('traps focus, closes once on Escape, restores focus, and releases the scroll lock', async () => {
@@ -118,5 +133,43 @@ describe('ResponsiveRouteDrawer', () => {
     expect(drawer.className).toContain('motion-reduce:animate-none')
     expect(drawer.className).toContain('motion-reduce:transition-none')
     expect(backdrop?.className).toContain('motion-reduce:animate-none')
+  })
+
+  it('lets a nested modal consume the first Escape before the route drawer', async () => {
+    installMatchMedia(true)
+
+    function LayeredHarness() {
+      const [outerOpen, setOuterOpen] = useState(true)
+
+      return outerOpen ? (
+        <ResponsiveRouteDrawer onClose={() => setOuterOpen(false)} title="Run details">
+          <DialogPrimitive.Root defaultOpen>
+            <DialogPrimitive.Portal>
+              <DialogPrimitive.Overlay />
+              <DialogPrimitive.Content aria-describedby={undefined}>
+                <DialogPrimitive.Title>Review confirmation</DialogPrimitive.Title>
+                <button type="button">Confirm</button>
+              </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+          </DialogPrimitive.Root>
+        </ResponsiveRouteDrawer>
+      ) : null
+    }
+
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="en">
+          <LayeredHarness />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Review confirmation' })).toBeNull())
+    expect(screen.getByRole('dialog', { name: 'Run details' })).toBeTruthy()
+
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Run details' })).toBeNull())
   })
 })

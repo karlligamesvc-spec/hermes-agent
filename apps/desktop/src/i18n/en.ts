@@ -4143,7 +4143,8 @@ export const en: Translations = {
       detailTitle: 'Project overview',
       detailEyebrow: 'Project overview',
       detailUnavailableTitle: 'Project details are unavailable',
-      detailUnavailableDescription: 'APEX could not read this project. No data was replaced; return to Projects and retry.',
+      detailUnavailableDescription:
+        'APEX could not read this project. No data was replaced; return to Projects and retry.',
       loadingProjectDetail: 'Loading project details…',
       backToProjects: 'Back to Projects',
       createdAtLabel: 'Created',
@@ -4153,7 +4154,8 @@ export const en: Translations = {
       noRunTitle: 'No run has started for this project',
       noRunDescription: 'There is no Run, Step, or progress to show. Continue this goal and confirm it on Start.',
       runSummaryUnavailableTitle: 'Run summary unavailable',
-      runSummaryUnavailable: 'Project details loaded, but this API did not provide a run summary. APEX will not infer progress.',
+      runSummaryUnavailable:
+        'Project details loaded, but this API did not provide a run summary. APEX will not infer progress.',
       continueGoal: 'Continue this goal',
       viewProject: 'View project',
       deliverableCount: count => `${count} ${count === 1 ? 'deliverable' : 'deliverables'}`,
@@ -4229,7 +4231,8 @@ export const en: Translations = {
       catalogUnavailableDescription: 'Retry the catalog, or return to Start and describe a goal.',
       retryCatalog: 'Retry',
       backToStart: 'Back to Start',
-      testDataNotice: 'Local test data: this catalog is for packaged visual and interaction review, not production data.',
+      testDataNotice:
+        'Local test data: this catalog is for packaged visual and interaction review, not production data.',
       version: version => `Version ${version}`
     },
     workflowDomain: {
@@ -4241,6 +4244,7 @@ export const en: Translations = {
         cancel: 'Cancel run',
         cancelling: 'Cancelling…',
         created: 'Created',
+        detailsTab: 'Execution details',
         deliverables: 'Deliverables and review',
         evidence: count => `${count} evidence ${count === 1 ? 'item' : 'items'}`,
         event: eventType =>
@@ -4254,9 +4258,23 @@ export const en: Translations = {
             'run.running': 'Run started',
             'run.timed_out': 'Run timed out',
             'run.waiting_review': 'Waiting for review'
-          })[eventType] || eventType,
+          })[eventType] ||
+          (eventType.startsWith('tool.')
+            ? 'Tool activity'
+            : eventType.includes('result')
+              ? 'Execution result recorded'
+              : 'Run event'),
+        eventSummary: eventType =>
+          eventType.startsWith('tool.')
+            ? 'Hermes used a tool. Raw arguments and results are not shown here.'
+            : eventType.includes('result')
+              ? 'A result was recorded. Only the safe lifecycle summary is shown.'
+              : 'A lifecycle update was recorded for this run.',
+        events: 'Recorded events',
         executor: 'Executor',
+        executorUnavailable: 'Unavailable',
         eyebrow: 'Real workflow run',
+        hermesExecutor: 'Hermes',
         loadFailedDescription: 'APEX could not read this run. Nothing was replaced or deleted.',
         loadFailedTitle: 'Run unavailable',
         loading: 'Reading workflow run',
@@ -4264,8 +4282,25 @@ export const en: Translations = {
         noDeliverablesTitle: 'No deliverables yet',
         noEvents: 'Run events appear here in order as they are recorded.',
         noObjective: 'No objective summary was recorded for this run.',
+        noPendingDescription: 'No review or intervention is required from you right now.',
+        noPendingTitle: 'Nothing needs attention',
+        noStageProgressDescription:
+          'This Run response does not include real Steps, so APEX does not infer stages or progress.',
+        noStageProgressTitle: 'No stage progress to show yet',
+        openDeliverable: 'Open deliverable',
+        openFailed: 'The deliverable could not be opened. Its Run data is still available.',
+        openUnavailable: 'No openable result yet',
+        openingDeliverable: 'Opening…',
+        pendingReviewDescription: count =>
+          `${count} real ${count === 1 ? 'deliverable is' : 'deliverables are'} ready for your decision.`,
+        pendingReviewTitle: 'Review required',
+        progressTab: 'Progress',
+        refresh: 'Refresh',
+        refreshFailedDescription: 'The latest refresh failed. Showing the last successful Run data.',
         requestChanges: 'Request changes',
         retry: 'Read again',
+        stageProgress: 'Stage progress',
+        started: 'Started',
         status: status =>
           ({
             approved: 'Approved',
@@ -4280,9 +4315,11 @@ export const en: Translations = {
             succeeded: 'Completed',
             timed_out: 'Timed out',
             waiting_review: 'Waiting for review'
-          })[status] || status,
+          })[status] || 'Unknown status',
         timeline: 'Run timeline',
         title: 'Workflow run',
+        updated: 'Updated',
+        viewTabs: 'Workflow run views',
         waitingForEvents: 'Waiting for run events'
       }
     }
@@ -4384,7 +4421,8 @@ export const en: Translations = {
     heatmap: {
       title: 'Token activity',
       modeLabel: 'Token activity view',
-      summary: (activeDays, tokens) => `${activeDays} active days and ${tokens} tokens in the available activity period.`,
+      summary: (activeDays, tokens) =>
+        `${activeDays} active days and ${tokens} tokens in the available activity period.`,
       daily: 'Daily',
       weekly: 'Weekly',
       cumulative: 'Cumulative',

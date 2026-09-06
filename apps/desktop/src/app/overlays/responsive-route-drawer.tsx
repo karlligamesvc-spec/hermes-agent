@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { closeRouteDrawer } from '../routes'
 
 export const ROUTE_DRAWER_WIDE_QUERY = '(min-width: 1100px)'
+export const ROUTE_DRAWER_COMPACT_QUERY = '(min-width: 640px)'
 
 let bodyScrollLockDepth = 0
 let bodyOverflowBeforeLock = ''
@@ -31,11 +32,11 @@ function lockBodyScroll(): () => void {
   }
 }
 
-function useWideRouteDrawer(): boolean {
-  const [wide, setWide] = useState(() => window.matchMedia?.(ROUTE_DRAWER_WIDE_QUERY).matches ?? false)
+function useWideRouteDrawer(query: string): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia?.(query).matches ?? false)
 
   useEffect(() => {
-    const media = window.matchMedia?.(ROUTE_DRAWER_WIDE_QUERY)
+    const media = window.matchMedia?.(query)
 
     if (!media) {
       return
@@ -47,13 +48,14 @@ function useWideRouteDrawer(): boolean {
     media.addEventListener('change', update)
 
     return () => media.removeEventListener('change', update)
-  }, [])
+  }, [query])
 
   return wide
 }
 
 interface ResponsiveRouteDrawerProps {
   children: ReactNode
+  compact?: boolean
   onClose: () => void
   title: string
   contentClassName?: string
@@ -62,9 +64,15 @@ interface ResponsiveRouteDrawerProps {
 /** Modal object surface shared by route-backed drawers. Radix owns the focus
  * trap and topmost Escape behavior; this shell owns the Desktop breakpoint,
  * scroll lock, and focus restoration when route history removes the surface. */
-export function ResponsiveRouteDrawer({ children, contentClassName, onClose, title }: ResponsiveRouteDrawerProps) {
+export function ResponsiveRouteDrawer({
+  children,
+  compact = false,
+  contentClassName,
+  onClose,
+  title
+}: ResponsiveRouteDrawerProps) {
   const { t } = useI18n()
-  const wide = useWideRouteDrawer()
+  const wide = useWideRouteDrawer(compact ? ROUTE_DRAWER_COMPACT_QUERY : ROUTE_DRAWER_WIDE_QUERY)
 
   const returnFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -95,7 +103,9 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
           className={cn(
             'fixed inset-x-0 bottom-0 top-[var(--titlebar-height)] z-(--z-modal) flex min-h-0 min-w-0 flex-col overflow-hidden border-(--stroke-nous) bg-(--ui-chat-surface-background) text-foreground shadow-nous outline-none duration-150',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
-            'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
+            compact
+              ? 'min-[640px]:left-auto min-[640px]:right-0 min-[640px]:w-[min(33.75rem,calc(100vw-1rem))] min-[640px]:border-l min-[640px]:data-[state=closed]:slide-out-to-right-4 min-[640px]:data-[state=open]:slide-in-from-right-4'
+              : 'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
             'motion-reduce:animate-none motion-reduce:transition-none',
             contentClassName
           )}

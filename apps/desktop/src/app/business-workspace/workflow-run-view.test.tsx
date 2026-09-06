@@ -3,17 +3,19 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { $previewTabs, $previewTarget } from '@/store/preview'
 
+import type { WorkflowRunOverview } from './api/types'
 import { WorkflowRunView } from './workflow-run-view'
 
-const overview = {
+const overview: WorkflowRunOverview = {
   deliverables: [
     {
       createdAt: '2026-08-27T10:03:00Z',
-      evidenceManifest: [{ url: 'https://example.com/evidence' }],
+      evidenceCount: 1,
       id: 'deliverable-1',
       kind: 'report',
-      payload: {},
+      openReference: null,
       reviews: [],
       status: 'ready',
       title: 'Pet market evidence report',
@@ -22,19 +24,15 @@ const overview = {
   ],
   events: [
     {
-      eventKey: 'run-795:1',
       eventType: 'run.queued',
       happenedAt: '2026-08-27T10:00:00Z',
       id: 'event-1',
-      payload: {},
       sequence: 1
     },
     {
-      eventKey: 'run-795:2',
       eventType: 'run.waiting_review',
       happenedAt: '2026-08-27T10:03:00Z',
       id: 'event-2',
-      payload: {},
       sequence: 2
     }
   ],
@@ -42,8 +40,6 @@ const overview = {
     attempt: 1,
     completedAt: null,
     createdAt: '2026-08-27T10:00:00Z',
-    errorCode: null,
-    errorMessage: null,
     executorType: 'hermes',
     id: 'run-795',
     maxAttempts: 2,
@@ -64,6 +60,7 @@ describe('hc-795 real workflow Run view', () => {
     getRun.mockClear()
     getRun.mockResolvedValue({ ok: true, overview })
     reviewDeliverable.mockClear()
+    $previewTabs.set([])
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
@@ -91,10 +88,18 @@ describe('hc-795 real workflow Run view', () => {
 
     expect(await screen.findByRole('heading', { name: 'Workflow run' })).toBeTruthy()
     expect(screen.getByText('Analyze the US pet market')).toBeTruthy()
-    expect(screen.getByText('Run queued')).toBeTruthy()
-    expect(screen.getAllByText('Waiting for review')).toHaveLength(2)
+    expect(screen.getAllByText('Waiting for review')).toHaveLength(1)
     expect(screen.getByText('Pet market evidence report')).toBeTruthy()
     expect(screen.getByText(/1 evidence item/)).toBeTruthy()
+    expect(screen.getByText('No stage progress to show yet')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'No openable result yet' }).hasAttribute('disabled')).toBe(true)
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Execution details' }), { button: 0, ctrlKey: false })
+
+    expect(screen.getByText('Run queued')).toBeTruthy()
+    expect(screen.getAllByText('A lifecycle update was recorded for this run.')).toHaveLength(2)
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Progress' }), { button: 0, ctrlKey: false })
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve deliverable' }))
 
@@ -145,5 +150,95 @@ describe('hc-795 real workflow Run view', () => {
 
     await waitFor(() => expect(cancelRun).toHaveBeenCalledWith('run-795'))
     await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+  })
+
+  it('opens only an explicit real deliverable target through the existing preview seam', async () => {
+    getRun.mockResolvedValue({
+      ok: true,
+      overview: {
+        ...overview,
+        deliverables: [
+          {
+            ...overview.deliverables[0],
+            openReference: 'https://files.example/report.pdf'
+          }
+        ]
+      }
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open deliverable' }))
+
+    await waitFor(() => expect($previewTarget.get()?.url).toBe('https://files.example/report.pdf'))
+    expect($previewTarget.get()?.label).toBe('Pet market evidence report')
+  })
+
+  it('never renders raw event payloads or unsupported executor identity', async () => {
+    getRun.mockResolvedValue({
+      ok: true,
+      overview: {
+        ...overview,
+        events: [
+          {
+            eventType: 'tool.result',
+            happenedAt: '2026-08-27T10:02:00Z',
+            id: 'event-sensitive',
+            payload: {
+              config: { apiKey: 'sk-sensitive' },
+              schema: 'private-schema',
+              user_id: 'tenant-user'
+            },
+            sequence: 3
+          }
+        ]
+      } as unknown as WorkflowRunOverview
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Execution details' }), {
+      button: 0,
+      ctrlKey: false
+    })
+
+    expect(screen.getByText('Tool activity')).toBeTruthy()
+    expect(screen.getByText(/Raw arguments and results are not shown/)).toBeTruthy()
+    expect(screen.queryByText(/sk-sensitive|private-schema|tenant-user/)).toBeNull()
+    expect(globalThis.document.body.textContent).not.toMatch(/deepseek/i)
+  })
+
+  it('does not expose Review actions after the Run reaches a terminal state', async () => {
+    getRun.mockResolvedValue({ ok: true, overview: { ...overview, run: { ...overview.run, status: 'succeeded' } } })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Pet market evidence report')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Approve deliverable' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull()
   })
 })

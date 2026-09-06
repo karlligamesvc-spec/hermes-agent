@@ -49,6 +49,134 @@ function responseItem(value: unknown, field: string): JsonObject {
   return requireObject(requireObject(value, field).item, `${field}.item`)
 }
 
+function requireInteger(value: unknown, field: string, minimum = 0): number {
+  const normalized = Number(value)
+
+  if (!Number.isInteger(normalized) || normalized < minimum) {
+    throw new Error(`Invalid workflow domain ${field} response`)
+  }
+
+  return normalized
+}
+
+function optionalText(value: unknown, maxLength: number): null | string {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  const normalized = trimmed(value)
+
+  return normalized && normalized.length <= maxLength ? normalized : null
+}
+
+function deliverableOpenReference(value: JsonObject): null | string {
+  const kind = trimmed(value.storageKind).toLowerCase()
+  const reference = optionalText(value.storageRef, 240)
+
+  if (!reference || kind !== 'url') {
+    return null
+  }
+
+  try {
+    const url = new URL(reference)
+
+    return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password
+      ? url.toString()
+      : null
+  } catch {
+    return null
+  }
+}
+
+/** The renderer receives a narrow Run read model rather than the server's raw
+ * audit payload. Event payloads, deliverable payloads, evidence records,
+ * ownership fields, schemas and verifier internals stay on the trusted side of
+ * the preload boundary. */
+export function projectWorkflowDomainRunOverview(value: unknown): JsonObject {
+  const overview = requireObject(value, 'run overview')
+  const run = requireObject(overview.run, 'run overview.run')
+  const executorType = requireText(run.executorType, 'run executor type', 48).toLowerCase()
+
+  if (executorType !== 'hermes') {
+    throw new Error('Unsupported workflow domain executor')
+  }
+
+  if (!Array.isArray(overview.events) || !Array.isArray(overview.deliverables)) {
+    throw new Error('Invalid workflow domain run overview response')
+  }
+
+  const events = overview.events
+    .map(value => {
+      const event = requireObject(value, 'run event')
+
+      return {
+        id: requireText(event.id, 'run event id', 160),
+        sequence: requireInteger(event.sequence, 'run event sequence'),
+        eventType: requireText(event.eventType, 'run event type', 120),
+        happenedAt: requireText(event.happenedAt, 'run event time', 80)
+      }
+    })
+    .sort(
+      (left, right) =>
+        left.sequence - right.sequence ||
+        left.happenedAt.localeCompare(right.happenedAt) ||
+        left.id.localeCompare(right.id)
+    )
+
+  const deliverables = overview.deliverables.map(value => {
+    const deliverable = requireObject(value, 'run deliverable')
+
+    const reviews = Array.isArray(deliverable.reviews)
+      ? deliverable.reviews
+          .map(value => {
+            const review = requireObject(value, 'deliverable review')
+            const status = requireText(review.status, 'deliverable review status', 48)
+
+            if (status !== 'approved' && status !== 'changes_requested' && status !== 'rejected') {
+              throw new Error('Invalid workflow domain deliverable review status')
+            }
+
+            return {
+              createdAt: optionalText(review.createdAt, 80),
+              id: requireText(review.id, 'deliverable review id', 160),
+              roundNumber: requireInteger(review.roundNumber, 'deliverable review round', 1),
+              status
+            }
+          })
+          .sort((left, right) => left.roundNumber - right.roundNumber || left.id.localeCompare(right.id))
+      : []
+
+    return {
+      createdAt: requireText(deliverable.createdAt, 'deliverable creation time', 80),
+      evidenceCount: Array.isArray(deliverable.evidenceManifest) ? deliverable.evidenceManifest.length : 0,
+      id: requireText(deliverable.id, 'deliverable id', 160),
+      kind: requireText(deliverable.kind, 'deliverable kind', 80),
+      openReference: deliverableOpenReference(deliverable),
+      reviews,
+      status: requireText(deliverable.status, 'deliverable status', 48),
+      title: requireText(deliverable.title, 'deliverable title', 240),
+      updatedAt: requireText(deliverable.updatedAt, 'deliverable update time', 80)
+    }
+  })
+
+  return {
+    deliverables,
+    events,
+    run: {
+      attempt: requireInteger(run.attempt, 'run attempt', 1),
+      completedAt: optionalText(run.completedAt, 80),
+      createdAt: requireText(run.createdAt, 'run creation time', 80),
+      executorType,
+      id: requireText(run.id, 'run id', 160),
+      maxAttempts: requireInteger(run.maxAttempts, 'run maximum attempts', 1),
+      startedAt: optionalText(run.startedAt, 80),
+      status: requireText(run.status, 'run status', 48),
+      triggerRef: optionalText(run.triggerRef, 4000),
+      updatedAt: requireText(run.updatedAt, 'run update time', 80)
+    }
+  }
+}
+
 export function workflowDomainUrl(apiBase: string, path = ''): string {
   const normalizedBase = trimmed(apiBase).replace(/\/+$/, '')
 
@@ -86,7 +214,11 @@ export async function getWorkflowDomainAccess(
   return { enabled: true }
 }
 
-function workflowDomainListUrl(apiBase: string, path: string, query: Record<string, null | number | string | undefined>) {
+function workflowDomainListUrl(
+  apiBase: string,
+  path: string,
+  query: Record<string, null | number | string | undefined>
+) {
   const url = new URL(workflowDomainUrl(apiBase, path))
 
   for (const [key, value] of Object.entries(query)) {
@@ -161,7 +293,12 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
   const description = requireText(options.starter.description, 'workflow description', 4000)
   const templateVersion = Number(options.starter.version)
 
-  if (!/^[a-z0-9-]+$/.test(slug) || !/^[a-z0-9-]+$/.test(templateId) || !Number.isInteger(templateVersion) || templateVersion < 1) {
+  if (
+    !/^[a-z0-9-]+$/.test(slug) ||
+    !/^[a-z0-9-]+$/.test(templateId) ||
+    !Number.isInteger(templateVersion) ||
+    templateVersion < 1
+  ) {
     throw new Error('Invalid workflow domain workflow slug')
   }
 
@@ -204,7 +341,7 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
 
   const workflowId = requireText(workflow.id, 'workflow id', 160)
 
-  return responseItem(
+  const run = responseItem(
     await options.transport.postJson(workflowDomainUrl(options.apiBase, 'runs'), {
       workflowId,
       idempotencyKey: `desktop:${options.uuid()}`,
@@ -214,6 +351,8 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
     }),
     'run'
   )
+
+  return { id: requireText(run.id, 'run id', 160) }
 }
 
 export async function getWorkflowDomainRun(
@@ -223,9 +362,8 @@ export async function getWorkflowDomainRun(
 ): Promise<JsonObject> {
   const normalizedRunId = requireText(runId, 'run id', 160)
 
-  return requireObject(
-    await transport.getJson(workflowDomainUrl(apiBase, `runs/${encodeURIComponent(normalizedRunId)}`)),
-    'run overview'
+  return projectWorkflowDomainRunOverview(
+    await transport.getJson(workflowDomainUrl(apiBase, `runs/${encodeURIComponent(normalizedRunId)}`))
   )
 }
 
