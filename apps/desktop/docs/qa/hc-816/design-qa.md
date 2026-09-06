@@ -65,6 +65,16 @@
 - 已走通：模板列表 → 选择模板 → Start 目标可编辑 → 启动前确认；确认区显示服务端 template version 和 Hermes executor。
 - 没有 DeepSeek Harness 选择器或已接入声明。
 
+### Phase 1R2 产品审计 P0 收口
+
+- 从工作流确认页选择“更换工作流”，再从工作流页进入“开始一个目标”时，Start 的每次新导航都会清除旧 template id/version、catalog provenance、旧目标和错误状态。普通自由目标不再构造虚假的 `desktop-goal` 模板，也不会因 Workflow API 可用而误调用 `startGoal`；它稳定走现有 chat fallback。
+- 只有用户明确选择真实 catalog 模板时才保留 template id/version 并调用真实 `startGoal`。创建失败仍保留可编辑目标与附件；本地 catalog 的“本地测试数据”来源标记会随模板进入启动确认，生产 provenance 不显示测试标签。
+- Desktop version IPC 改以 Electron `app.getVersion()` 为应用版本单一事实源，引擎版本单独展示；Mac `afterPack` 同时核验 package version、builder runtime appInfo、`CFBundleShortVersionString` 和 `CFBundleVersion`，任一不一致即阻止产包。
+- Settings 更新状态改为诚实状态机：未检查提示用户检查，检查中不显示旧“最新”，网络/检查失败显示不可达；只有一次成功且明确无更新的检查才显示“你已是最新版本”。
+- Browser 布尔开关、BOTS activity-toast 控件补上中文可访问名称和 pressed 状态；Phase 1 必经的 assistant 错误恢复动作完成中文化。
+- 752px 下，普通 Bot 行和 Group Chat 行的鼠标/键盘选择都会显式关闭窄窗覆盖侧栏；宽窗持久侧栏偏好不受影响。
+- 已盘点文件树和 Terminal 的全部可达出口（titlebar、command/keybind、pane focus、statusbar、文件/Review 上下文动作、Terminal 新建/页签）。当前代码没有稳定的 APEX/customer-build 产品 gate；本轮没有临时硬编码关闭这些共享壳能力，作为独立产品决策保留，不借 Phase 1 扩大改造边界。
+
 ### 文案与辅助功能
 
 - 中文 `active` 统一显示“进行中”，并补齐 archived/completed 等生命周期映射。
@@ -98,13 +108,13 @@
 
 ## 原生窗口截图
 
-截图来自真实打包 APEX.app，以独立临时 userData 和本地测试 API 运行；每个 Project/Workflow 测试条目都显式标记测试属性。
+截图来自真实打包 APEX.app，以独立临时 userData 和本地测试 API 运行；每个 Project/Workflow 测试条目都显式标记测试属性。为避免 Playwright renderer 截图丢失 macOS 原生 vibrancy 后变成灰色底，本组对比图通过产品现有“窗口透明度”设置将强度设为 0；窗口、titlebar、安全区、滚动与响应式布局仍是实际 Electron `BrowserWindow`。
 
 | 页面 | 1440×900 Before / After | 1220×800 Before / After | 约 700–752px Before / After |
 | --- | --- | --- | --- |
-| 开始 | [Before](screenshots/before/start-1440x900.png) / [After](screenshots/after-kael-review/start-1440x900.png) | [Before](screenshots/before/start-1220x800.png) / [After](screenshots/after-kael-review/start-1220x800.png) | [Before 700](screenshots/before/start-700x800.png) / [After 752](screenshots/after-kael-review/start-752x800.png) |
-| 项目 | [Before](screenshots/before/projects-1440x900.png) / [After](screenshots/after-kael-review/projects-1440x900.png) | [Before](screenshots/before/projects-1220x800.png) / [After](screenshots/after-kael-review/projects-1220x800.png) | [Before 700](screenshots/before/projects-700x800.png) / [After 752](screenshots/after-kael-review/projects-752x800.png) |
-| 工作流 | [Before](screenshots/before/workflows-1440x900.png) / [After](screenshots/after-kael-review/workflows-1440x900.png) | [Before](screenshots/before/workflows-1220x800.png) / [After](screenshots/after-kael-review/workflows-1220x800.png) | [Before 700](screenshots/before/workflows-700x800.png) / [After 752](screenshots/after-kael-review/workflows-752x800.png) |
+| 开始 | [Before](screenshots/before/start-1440x900.png) / [After R2](screenshots/after-phase1r2/start-1440x900.png) | [Before](screenshots/before/start-1220x800.png) / [After R2](screenshots/after-phase1r2/start-1220x800.png) | [Before 700](screenshots/before/start-700x800.png) / [After R2 752](screenshots/after-phase1r2/start-752x800.png) |
+| 项目 | [Before](screenshots/before/projects-1440x900.png) / [After R2](screenshots/after-phase1r2/projects-1440x900.png) | [Before](screenshots/before/projects-1220x800.png) / [After R2](screenshots/after-phase1r2/projects-1220x800.png) | [Before 700](screenshots/before/projects-700x800.png) / [After R2 752](screenshots/after-phase1r2/projects-752x800.png) |
+| 工作流 | [Before](screenshots/before/workflows-1440x900.png) / [After R2](screenshots/after-phase1r2/workflows-1440x900.png) | [Before](screenshots/before/workflows-1220x800.png) / [After R2](screenshots/after-phase1r2/workflows-1220x800.png) | [Before 700](screenshots/before/workflows-700x800.png) / [After R2 752](screenshots/after-phase1r2/workflows-752x800.png) |
 
 ## 数据真值
 
@@ -112,21 +122,22 @@
 | --- | --- | --- |
 | Project 列表、详情和状态 | 本地 HTTP 测试 API，按真实 Project list/detail bridge 契约返回 | 名称显式加 `[本地测试]`；状态映射中文 |
 | Workflow catalog / 我的工作流 | 本地 HTTP 测试 API，按真实 catalog/list bridge 契约返回 | 页面显示“本地测试数据”；保存条目加 `[本地测试]` |
-| 目标启动 | 真实 `startGoal` bridge；domain 暗开时走现有 chat gateway | 不伪造 Run 或执行进度 |
+| 普通目标启动 | 现有 chat gateway；即使 Workflow domain 可用也不构造伪模板 | 不伪造 Run 或执行进度 |
+| 已选 Workflow 启动 | 真实 `startGoal` bridge，保留服务端 template id/version | 测试 catalog 在确认与失败态继续显式标注，生产数据不显示测试标签 |
 | 数据源 | 现有渠道 bridge 可用/绑定状态 | 无 bridge 时显示不可用/未连接，不伪造来源数 |
 | 无真实 Run / Step / Deliverable | API 空值或数值 0 | 诚实生命周期空态，不显示伪步骤、伪百分比、伪产出 |
 
 ## 验证结果
 
-- 本轮窄窗导航定向：4 files，136 tests，通过；加入兼容监听器后，共享导航/布局最终复验为 4 files，111 tests，通过。
-- 定向 UI / route / a11y / identity / Electron bridge：此前 7 files，118 tests，通过。
-- Desktop UI 全量：750 files，7509 tests，通过。
-- Electron/platform：178 files 通过、2 skipped；2719 tests 通过、6 skipped。
-- release gates：Node 65/65；Vitest 12/12，通过。
+- Phase 1R2 定向 UI / route / a11y / identity：8 files，129 tests，通过。
+- Desktop version IPC：2/2，通过；Mac after-pack version identity：5/5，通过。
+- Desktop UI 全量：751 files，7518 tests，通过。
+- Electron/platform：178 files 通过、2 skipped；2722 tests 通过、6 skipped。
+- release gates：Node 65/65；Vitest 15/15，通过。
 - `npm run typecheck`：通过。
 - `npm run lint`：0 error；131 个基线 warning。
 - `npm run test:desktop:all`：清除签名凭据并设置 `CSC_IDENTITY_AUTO_DISCOVERY=false` 后通过。
-- 原生 Phase 1 packaged E2E：7/7，通过；新增逐一覆盖 7 个一级导航的 752px 自动收栏、键盘 Enter 和 1220px 侧栏保持，并继续覆盖真实窗口三档、Start 单输入、生产旧 Project envelope 详情、测试 catalog 确认流、chat fallback 与 composer 安全区。
+- 原生 Phase 1 packaged E2E：8/8，通过；逐一覆盖 7 个一级导航的 752px 自动收栏、键盘 Enter 和 1220px 侧栏保持，并覆盖真实窗口三档、Start 单输入、生产旧 Project envelope 详情、测试 catalog 确认流、Workflow API 可用时的普通目标 chat fallback、Settings 运行包版本与 composer 安全区。
 - `git diff --check`：通过。
 
 一次初始 `test:desktop:all` 调用继承了本机 Developer ID，日志刚显示签名身份即被中止；未进入 notarize、上传或 updater。随后全部打包门禁都在清空签名变量且禁用身份发现的环境中重跑。最终交付包必须以同样环境从提交后的精确 HEAD 显式执行 `--publish never`，并回读 codesign。
@@ -149,6 +160,15 @@
 | 在 Workflow 不可用态恢复“检查连接”按钮 | recovery 守卫失败：不允许把生产 API 404 误导成本机连接问题；仅保留“重试”和“返回开始页” |
 | 移除共享导航中的窄窗覆盖层关闭调用 | 7 个一级导航的 close 事件从 7 降为 0，`use-session-actions` 定向守卫失败；恢复后重新全绿 |
 | 把兼容 Pane 恢复为不区分模式的 toggle-only 监听器 | 连续显式 `close` 后覆盖层错误保持 open，PaneShell 幂等关闭守卫失败；恢复后重新全绿 |
+| 仅在 routed workflow 为 truthy 时更新 Start 选择 | “工作流 → 更换工作流 → 开始一个目标”完整序列失败：旧确认卡与模板残留；恢复后普通目标走 chat fallback |
+| Desktop IPC 再次用 engine version 充当 app version | version IPC 守卫失败：期望 `0.17.17`，实际被注入为 `0.17.18` |
+| 删除 catalog provenance 的跨页传递 | 本地测试来源和生产无标签两条守卫同时失败 |
+| 未检查更新时恢复显示“最新” | Settings 诚实状态守卫失败 |
+| 删除 Browser boolean 的 `aria-label` | 中文 Browser 开关辅助名称守卫失败 |
+| 删除 BOTS activity-toast 的 `aria-label` | 实际 DOM 可访问名称与 pressed-state 守卫失败 |
+| 删除 Bot 与 Group 选择后的窄窗 close | 两条 752px overlay 守卫分别失败 |
+| 把中文“重试”恢复为英文 `Retry` | Phase 1 错误恢复中文化守卫失败 |
+| 将 Info.plist 或 builder runtime version 注入为 `0.21.0` | after-pack gate 分别拒绝 Info/runtime 与 package `0.17.24` 不一致的构建 |
 
 以上注入均先断言命中唯一目标，再运行对应守卫确认失败，随后恢复并重跑为绿。
 

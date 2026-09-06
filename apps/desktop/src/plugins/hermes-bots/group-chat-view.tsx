@@ -1380,6 +1380,7 @@ export function openGroupChat(group: string): void {
   // The in-flight host navigation may complete underneath this workspace,
   // but it may not later close or visually steal the room the user chose.
   bumpBotOpenGeneration()
+  host.dismissNarrowSidebarOverlay?.()
   $groupNeedsYou.set({
     ...$groupNeedsYou.get(),
     [group]: false

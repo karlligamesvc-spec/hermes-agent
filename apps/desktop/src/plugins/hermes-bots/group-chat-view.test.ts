@@ -61,6 +61,16 @@ beforeEach(() => {
 })
 
 describe('opening a room', () => {
+  it('dismisses a narrow sidebar overlay after a group row is selected', async () => {
+    const room = await loadRoom()
+    const dismiss = vi.fn(() => true)
+    host.dismissNarrowSidebarOverlay = dismiss
+
+    room.view.openGroupChat('Core')
+
+    expect(dismiss).toHaveBeenCalledTimes(1)
+  })
+
   it('follows the main-window tab open and close', async () => {
     const room = await loadRoom()
     let onClose: () => void = () => undefined

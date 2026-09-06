@@ -40,6 +40,8 @@ type BotsMessages = {
     search: string
     searchPlaceholder: string
     newBotOrGroup: string
+    activityToastsOn: string
+    activityToastsOff: string
     groupChats: string
     emptyTitle: string
     emptyDesc: string
@@ -250,6 +252,8 @@ const en: BotsMessages = {
     search: 'Search bots and group chats',
     searchPlaceholder: 'Search bots and group chats…',
     newBotOrGroup: 'New bot or group chat',
+    activityToastsOn: 'Activity notifications on — select to turn off',
+    activityToastsOff: 'Activity notifications off — select to turn on',
     groupChats: 'Group chats',
     emptyTitle: 'No bots yet',
     emptyDesc: 'Create your first bot.',
@@ -445,6 +449,8 @@ const ja: BotsMessages = {
     search: 'ボットとグループチャットを検索',
     searchPlaceholder: 'ボットとグループチャットを検索…',
     newBotOrGroup: '新しいボットまたはグループチャット',
+    activityToastsOn: 'アクティビティ通知はオンです — オフにする',
+    activityToastsOff: 'アクティビティ通知はオフです — オンにする',
     groupChats: 'グループチャット',
     emptyTitle: 'ボットはまだありません',
     emptyDesc: '最初のボットを作成しましょう。',
@@ -639,6 +645,8 @@ const zh: BotsMessages = {
     search: '搜索机器人和群聊',
     searchPlaceholder: '搜索机器人和群聊…',
     newBotOrGroup: '新建机器人或群聊',
+    activityToastsOn: '活动通知已开启 — 点按关闭',
+    activityToastsOff: '活动通知已关闭 — 点按开启',
     groupChats: '群聊',
     emptyTitle: '还没有机器人',
     emptyDesc: '创建你的第一个机器人。',
@@ -832,6 +840,8 @@ const zhHant: BotsMessages = {
     search: '搜尋機器人和群組聊天',
     searchPlaceholder: '搜尋機器人和群組聊天…',
     newBotOrGroup: '新增機器人或群組聊天',
+    activityToastsOn: '活動通知已開啟 — 點按關閉',
+    activityToastsOff: '活動通知已關閉 — 點按開啟',
     groupChats: '群組聊天',
     emptyTitle: '還沒有機器人',
     emptyDesc: '建立你的第一個機器人。',

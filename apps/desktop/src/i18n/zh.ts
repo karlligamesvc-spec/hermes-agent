@@ -614,8 +614,9 @@ export const zh = defineLocale({
         allowPrivateUrls: '允许私有 URL'
       },
       browser: {
-        allowPrivateUrls: '浏览器私有 URL',
-        autoLocalForPrivateUrls: '私有 URL 使用本地浏览器'
+        allowPrivateUrls: '允许访问内网地址',
+        autoLocalForPrivateUrls: '内网地址自动使用本地浏览器',
+        useRealProfile: '使用我的真实浏览器资料'
       },
       checkpoints: {
         enabled: '文件检查点',
@@ -3304,6 +3305,24 @@ export const zh = defineLocale({
       moreActions: '更多操作',
       branchNewChat: '在新对话中分支',
       dismissError: '关闭错误',
+      errorLayers: {
+        auth: '身份验证错误',
+        billing: '额度不足',
+        disk: '磁盘空间不足',
+        endpoint: '自定义端点错误',
+        gateway: '连接错误',
+        generic: '本轮执行失败',
+        provider: '提供方错误',
+        runtime: '本地运行时错误',
+        streaming: '流式连接错误'
+      },
+      errorRetry: '重试',
+      errorSwitchProvider: '切换提供方',
+      errorOpenLogs: '打开日志',
+      errorOpenLogsFailed: '无法打开日志文件夹',
+      errorOpenDesktopLogs: '打开桌面端日志',
+      errorCopyDiagnostics: '复制错误详情',
+      errorSendDiagnostics: '发送诊断信息',
       readAloudFailed: '朗读失败',
       preparingAudio: '正在准备音频...',
       stopReading: '停止朗读',

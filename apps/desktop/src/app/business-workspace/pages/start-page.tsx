@@ -33,6 +33,7 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   const launchState = location.state as null | {
     businessGoalDraft?: unknown
     businessGoalFocus?: unknown
+    businessWorkflowCatalogProvenance?: unknown
     businessWorkflowId?: unknown
     businessWorkflowSlug?: unknown
     businessWorkflowVersion?: unknown
@@ -66,6 +67,11 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
+
+  const [selectedWorkflowIsTestData, setSelectedWorkflowIsTestData] = useState(
+    launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
+  )
+
   const [domainError, setDomainError] = useState(false)
   const [domainStarting, setDomainStarting] = useState(false)
 
@@ -85,30 +91,44 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
     return () => window.cancelAnimationFrame(frame)
   }, [launchState?.businessGoalFocus, launchedWorkflow])
 
+  // ChatView is retained while full-page routes temporarily cover it, so a
+  // Workflow selection can survive a trip back to the catalog in component
+  // state. Treat every new Start navigation as authoritative: a routed
+  // template restores its exact id/version, while an explicit plain-goal
+  // entry clears the template and its provenance before the next submit.
+  useEffect(() => {
+    setSelectedWorkflow(launchedWorkflow)
+    setSelectedWorkflowIsTestData(
+      launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
+    )
+    setGoalDraft(
+      launchedWorkflow?.prompt ??
+        (typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : '')
+    )
+    setDomainError(false)
+  }, [
+    launchState?.businessGoalDraft,
+    launchState?.businessWorkflowCatalogProvenance,
+    launchedWorkflow,
+    location.key
+  ])
+
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
     setSelectedWorkflow(workflow)
+    setSelectedWorkflowIsTestData(false)
     setGoalDraft(workflow.prompt)
     focusGoal()
   }
 
   const submitGoal = async (goal: string): Promise<boolean> => {
+    if (!selectedWorkflow) {
+      return (await onSubmitGoal?.(goal)) ?? false
+    }
+
     setDomainError(false)
     setDomainStarting(true)
 
-    const outcome = await startWorkflowGoal(
-      goal,
-      selectedWorkflow ?? {
-        businessPath: 'desktop_goal',
-        icon: 'graph',
-        id: 'desktop-goal',
-        prompt: goal,
-        recommended: false,
-        slug: 'desktop-goal',
-        summary: t.home.description,
-        title: t.home.title,
-        version: 1
-      }
-    )
+    const outcome = await startWorkflowGoal(goal, selectedWorkflow)
 
     setDomainStarting(false)
 
@@ -165,6 +185,11 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
               <p className="mt-0.5 text-xs text-(--ui-text-tertiary)">
                 {t.businessWorkspace.goalLauncher.confirmationExecutor}
               </p>
+              {selectedWorkflowIsTestData && (
+                <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-200" role="status">
+                  {t.businessWorkspace.workflows.testDataNotice}
+                </p>
+              )}
             </div>
             <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="sm" variant="ghost">
               {t.businessWorkspace.goalLauncher.changeWorkflow}

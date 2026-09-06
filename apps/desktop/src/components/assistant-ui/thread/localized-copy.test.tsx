@@ -58,6 +58,23 @@ function userMessage(id: string, text: string): ThreadMessage {
   } as ThreadMessage
 }
 
+function assistantErrorMessage(error: string): ThreadMessage {
+  return {
+    id: 'assistant-error',
+    role: 'assistant',
+    content: [],
+    status: { type: 'incomplete', reason: 'error', error },
+    createdAt,
+    metadata: {
+      unstable_state: null,
+      unstable_annotations: [],
+      unstable_data: [],
+      steps: [],
+      custom: {}
+    }
+  } as ThreadMessage
+}
+
 function renderThread(messages: ThreadMessage[], loading?: 'response' | 'session') {
   function Harness() {
     const runtime = useExternalStoreRuntime<ThreadMessage>({
@@ -122,5 +139,25 @@ describe('thread meta lines speak the user language', () => {
 
     expect(await screen.findByRole('status', { name: '正在整理对话' })).toBeTruthy()
     expect(screen.queryByText('Summarizing thread')).toBeNull()
+  })
+
+  it('keeps the failed-turn recovery actions in Chinese', async () => {
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: {
+        logsRoot: vi.fn(async () => '/tmp/apex-logs'),
+        openDir: vi.fn(async () => ({ ok: true }))
+      }
+    })
+
+    renderThread([assistantErrorMessage('local test failure')])
+
+    expect(await screen.findByText('本轮执行失败')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '打开日志' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '发送诊断信息' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open logs' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send diagnostics' })).toBeNull()
   })
 })

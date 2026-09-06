@@ -7,10 +7,13 @@ export interface DesktopVersionInfo {
   nodeVersion: string
   platform: NodeJS.Platform
   hermesRoot: string
+  bundleOutOfSync?: boolean
+  bundleCommitsBehind?: null | number
 }
 
 interface DesktopVersionDependencies {
   app: Pick<App, 'getVersion'>
+  bundleStatus?: () => Promise<{ desktopCommitsBehind: null | number; outOfSync: boolean }>
   electronVersion: string
   engineVersion: () => string
   hermesRoot: () => string
@@ -28,17 +31,27 @@ export function registerDesktopVersionIpc(
   ipcMain: Pick<IpcMain, 'handle'>,
   dependencies: DesktopVersionDependencies
 ): void {
-  ipcMain.handle('hermes:version', async () => ({
-    // The shell and managed engine update on separate clocks. Keep their
-    // identities distinct so a post-update readback compares the frozen shell
-    // target with the running Electron package, not with the engine version.
-    appVersion: dependencies.app.getVersion(),
-    engineVersion: dependencies.engineVersion(),
-    electronVersion: dependencies.electronVersion,
-    nodeVersion: dependencies.nodeVersion,
-    platform: dependencies.platform,
-    hermesRoot: dependencies.hermesRoot()
-  }) satisfies DesktopVersionInfo)
+  ipcMain.handle('hermes:version', async () => {
+    const bundleStatus = await dependencies.bundleStatus?.()
+
+    return {
+      // The shell and managed engine update on separate clocks. Keep their
+      // identities distinct so a post-update readback compares the frozen shell
+      // target with the running Electron package, not with the engine version.
+      appVersion: dependencies.app.getVersion(),
+      engineVersion: dependencies.engineVersion(),
+      electronVersion: dependencies.electronVersion,
+      nodeVersion: dependencies.nodeVersion,
+      platform: dependencies.platform,
+      hermesRoot: dependencies.hermesRoot(),
+      ...(bundleStatus
+        ? {
+            bundleOutOfSync: bundleStatus.outOfSync,
+            bundleCommitsBehind: bundleStatus.desktopCommitsBehind
+          }
+        : {})
+    } satisfies DesktopVersionInfo
+  })
 }
 
 export function configureShellAboutPanel(dependencies: AboutPanelDependencies): void {

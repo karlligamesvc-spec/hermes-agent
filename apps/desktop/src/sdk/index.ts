@@ -53,6 +53,7 @@ import {
   retainGatewayForRelay,
   retireLocalProfileGateways
 } from '@/store/gateway'
+import { dismissNarrowSidebarOverlay } from '@/store/layout'
 import { notify, notifyError } from '@/store/notifications'
 import {
   $activeGatewayProfile,
@@ -640,6 +641,11 @@ export const host = {
   navigate: (path: string) => {
     window.location.hash = path.startsWith('#') ? path : `#${path}`
   },
+
+  /** Close the transient left rail after a navigation choice on narrow
+   * viewports. Wide layouts are unchanged; older plugin code can feature-detect
+   * this presentation-only verb. */
+  dismissNarrowSidebarOverlay: (): boolean => dismissNarrowSidebarOverlay(),
 
   /** Pre-dial a profile's gateway socket in the background — pool-only, no
    *  activation, no navigation, no scope change (openGatewayForProfile; it

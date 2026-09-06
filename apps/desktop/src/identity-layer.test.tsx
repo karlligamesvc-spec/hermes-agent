@@ -714,8 +714,9 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
     const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
 
-    expect(startHome).toContain('const outcome = await startWorkflowGoal(')
-    expect(startHome).toContain("slug: 'desktop-goal'")
+    expect(startHome).toContain('if (!selectedWorkflow) {')
+    expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, selectedWorkflow)')
+    expect(startHome).not.toContain("slug: 'desktop-goal'")
     expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId), {')
     expect(startHome).toContain('state: routeDrawerNavigationState(location)')
     expect(startHome).toContain('return (await onSubmitGoal?.(goal)) ?? false')

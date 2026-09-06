@@ -204,6 +204,21 @@ test.beforeAll(
 
     expect(signIn?.ok).toBe(true)
     expect(signIn?.hasRelayKey).toBe(true)
+    await fixture.page.evaluate(() => {
+      const opaqueWindow = {
+        fade: 0,
+        intensity: 0,
+        material: 'under-window' as const,
+        mode: 'glass' as const,
+        scope: 'window' as const
+      }
+
+      window.localStorage.setItem(
+        'hermes.desktop.translucency.v2',
+        JSON.stringify({ base: opaqueWindow, dark: {}, light: {}, mode: opaqueWindow.mode })
+      )
+      window.hermesDesktop?.setTranslucency?.(opaqueWindow)
+    })
     await fixture.page.reload()
     await waitForAppReady(fixture, 120_000)
   },
@@ -335,9 +350,12 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
 
         win.setSimpleFullScreen(false)
         win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+        win.show()
+        win.focus()
 
         return win.getBounds()
       }, viewport)
+      await page.bringToFront()
       await page.waitForTimeout(400)
 
       expect(bounds?.width).toBe(viewport.width)
@@ -389,6 +407,24 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   }
 })
 
+test('packaged Settings shows the running APEX app version separately from the engine', async () => {
+  const { app, page } = fixture!
+  const version = await page.evaluate(() => window.hermesDesktop?.getVersion())
+
+  expect(version?.appVersion).toBe('0.17.24')
+  expect(version?.engineVersion).toBeTruthy()
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.getByRole('button', { name: '本地 UI 评审' }).click()
+  await page.getByRole('menuitem', { name: '设置' }).click()
+  await expect(page.getByText('版本 0.17.24', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
+
+  await page.goBack()
+  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+})
+
 test('a legacy Project envelope opens an honest detail before its goal can continue', async () => {
   const { app, page } = fixture!
 
@@ -430,7 +466,7 @@ test('local workflow catalog is labeled and reaches editable pre-start confirmat
   await expect(goal).toHaveValue('本地测试：编辑后的竞品监控目标')
 })
 
-test('packaged business goal starts a real chat turn through the existing gateway', async () => {
+test('packaged plain goal clears a retained workflow template and starts a real chat turn', async () => {
   const { app, page } = fixture!
   const prompt = '分析美国宠物用品市场，并生成选品报告和上架素材'
   const longPrompt = `${prompt}\n\n${TASK_PANEL_RESUME_TRIGGER}`
@@ -438,19 +474,22 @@ test('packaged business goal starts a real chat turn through the existing gatewa
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
-  reviewApi!.setWorkflowEnabled(false)
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
+  reviewApi!.setWorkflowEnabled(true)
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
+  await page.getByRole('button', { name: /竞品监控/ }).click()
+  await expect(page.locator('[data-workflow-start-confirmation]')).toBeVisible()
+  await expect(page.locator('[data-workflow-start-confirmation]').getByRole('status')).toContainText('本地测试数据')
+  await page.getByRole('button', { name: '更换工作流' }).click()
+  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+  await page.getByRole('button', { name: '开始一个目标' }).click()
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 752, x: 0, y: 0 }, false)
   )
   const goal = page.getByRole('textbox', { name: '业务目标' })
 
   await expect(goal).toBeVisible()
-  await page.getByRole('button', { name: '开始一个目标' }).click()
-  await expect(goal).toBeFocused()
-  await page.getByRole('button', { name: /从市场机会到上架素材/ }).click()
-  await expect(goal).toHaveValue(prompt)
-  await expect(goal).toBeFocused()
+  await expect(page.locator('[data-workflow-start-confirmation]')).toHaveCount(0)
+  await expect(page.getByRole('status').filter({ hasText: '本地测试数据' })).toHaveCount(0)
   await goal.fill(longPrompt)
   await page.getByRole('button', { name: '开始执行' }).click()
 

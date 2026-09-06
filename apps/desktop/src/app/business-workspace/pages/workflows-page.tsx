@@ -44,6 +44,7 @@ export function WorkflowsView() {
     navigate(NEW_CHAT_ROUTE, {
       state: {
         businessGoalDraft: starter.prompt,
+        businessWorkflowCatalogProvenance: testCatalog ? 'test' : 'production',
         businessWorkflowId: starter.id,
         businessWorkflowVersion: starter.version,
         businessWorkflowSlug: starter.slug
