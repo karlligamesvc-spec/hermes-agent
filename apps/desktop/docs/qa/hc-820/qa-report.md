@@ -30,6 +30,8 @@ R4 App 从 DMG 只读挂载后独立安装到 `/Users/karl/Applications/APEX Pha
 
 所有具名 Project/Run/事件/交付物来自明确标注的本地测试 API；错误态来自本地503注入，Legacy兼容列表为空。上述结果不代表生产 catalog 已返回200，也不代表 Windows/macOS x64 实包验收或下一层 Deliverable/Review 页面完成。
 
+首启边界：每次 fixture 使用新建 userData，真实点击“使用自己的密钥”及“稍后再选择提供方”，随后通过真实 managed signIn bridge 登录受控本地评审服务；这不是生产登录/扫码验收。测试显式设置100%缩放，并调整评审窗口透明度以稳定截图；不能据此宣称覆盖所有用户缩放与系统显示模式。正式生产账号、实际 LLM 计费及独立 VoiceOver 全流程仍未覆盖。
+
 ## R3 合并前留白审计（2026-09-07）
 
 全仓 `--page-inset-x` 有三个引用、零个定义：Run 正常态、Run 首次读取错误态、Legacy Projects fallback。三个出口均改为现有 `PAGE_INSET_X`；没有新增 CSS token。组件测试覆盖正常态、失败后重试和 Legacy loading。实包测试独立读取 computed padding、真实内容边界、页面/容器 scrollWidth，并检查原生窗口宽高；没有从被测常量计算期望值。
