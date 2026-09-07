@@ -470,7 +470,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       await page.waitForTimeout(400)
 
       expect(bounds?.width).toBe(viewport.width)
-      expect(bounds?.height).toBeLessThanOrEqual(viewport.height)
+      expect(bounds?.height).toBe(viewport.height)
 
       const layout = await page.evaluate(() => ({
         clientHeight: document.documentElement.clientHeight,

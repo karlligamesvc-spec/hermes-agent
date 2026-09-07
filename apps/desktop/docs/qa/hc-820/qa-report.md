@@ -2,9 +2,34 @@
 
 ## 结论
 
-本批次在冻结的 Draft PR #262 精确基线 `0ae743c20aef14da599698ef2921d31b17f6e740` 上完成，分支为 `codex/hc-820-desktop-phase2a-real-run-drawer`，版本保持 `0.17.24`。R2 审计修复与截图构建提交为 `f6953d4aeb25a0f7e522e47d9278fcf9ca5c99a8`；其后的最终交付提交只增加本报告与截图，避免构建提交自引用。
+本批次在 PR #262 原精确基线 `0ae743c20aef14da599698ef2921d31b17f6e740` 上开发，分支为 `codex/hc-820-desktop-phase2a-real-run-drawer`，版本保持 `0.17.24`。最新 R3 留白修复的实包构建提交为 `4b181e2e5d1c79dfc94616ee570a62e49bc85647`，安装戳 `dirty:false`。后续报告/截图与堆叠 ancestry 提交必须与此构建身份区分；最终 main 诊断包会从最终 main SHA 重建。
 
-实现限定在 Phase 2A 的真实 Run 右抽屉：路由、两页签、真实生命周期数据、审阅/取消动作、轮询、响应式布局和辅助功能。未修改冻结的 #261/#262，也未进入 Phase 3、Deliverable/Review 新页面、ApexNodes 后端、新 API、DeepSeek Harness、发布或部署。
+实现限定在 Phase 2A 的真实 Run 右抽屉。R3 审计另获明确授权修复同类缺陷：LegacyProjectsView 唯一的失效 padding 引用；没有改 canonical Projects 布局或数据/业务行为。既有 #261/#262 原分支未夹带此修复。未进入 Phase 3、Deliverable/Review 新页面、ApexNodes 后端、新 API、DeepSeek Harness、发布或部署。
+
+## R3 合并前留白审计（2026-09-07）
+
+全仓 `--page-inset-x` 有三个引用、零个定义：Run 正常态、Run 首次读取错误态、Legacy Projects fallback。三个出口均改为现有 `PAGE_INSET_X`；没有新增 CSS token。组件测试覆盖正常态、失败后重试和 Legacy loading。实包测试独立读取 computed padding、真实内容边界、页面/容器 scrollWidth，并检查原生窗口宽高；没有从被测常量计算期望值。
+
+| 原生窗口 | 三个出口的实际左/右 padding | root clientWidth / scrollWidth |
+|---|---|---|
+| 1440×900 | 57.6px / 57.6px | 1440 / 1440 |
+| 1220×800 | 48.8px / 48.8px | 1220 / 1220 |
+| 752×800 | 30.08px / 30.08px | 752 / 752 |
+
+反向验证使用未修复的 R2 安装 App（`f6953d4`）：三个出口分别由实包几何守卫捕获 `paddingLeft=0`，预期至少 20px，3/3 失败。相同守卫在 R3 安装 App 上 3/3 通过，每条测试覆盖三档窗口。初次验证还发现 macOS 可用桌面会把请求 900 高度限制为 870；该轮不是有效的 900 高度证据。之后只在测试期间把显示空间从 1512×982 临时调至 1800×1169，取得真实 1440×900 原生 bounds，测试结束恢复原显示模式。没有修改产品窗口逻辑。旧 R2 标称 1440×900 截图没有高度相等守卫，本报告不将其当作精确 900 高度证明。
+
+| R3 截图 | 1440×900 | 1220×800 | 752×800 |
+|---|---|---|---|
+| Run 进展 | [截图](screenshots/after-4b181e2-r3/run-progress-1440x900.png) | [截图](screenshots/after-4b181e2-r3/run-progress-1220x800.png) | [截图](screenshots/after-4b181e2-r3/run-progress-752x800.png) |
+| Run 执行详情 | [截图](screenshots/after-4b181e2-r3/run-details-1440x900.png) | [截图](screenshots/after-4b181e2-r3/run-details-1220x800.png) | [截图](screenshots/after-4b181e2-r3/run-details-752x800.png) |
+| Run 读取失败 | [截图](screenshots/after-4b181e2-r3/run-error-1440x900.png) | [截图](screenshots/after-4b181e2-r3/run-error-1220x800.png) | [截图](screenshots/after-4b181e2-r3/run-error-752x800.png) |
+| Legacy Projects | [截图](screenshots/after-4b181e2-r3/legacy-projects-1440x900.png) | [截图](screenshots/after-4b181e2-r3/legacy-projects-1220x800.png) | [截图](screenshots/after-4b181e2-r3/legacy-projects-752x800.png) |
+
+R3 自动验证：定向 51 tests；typecheck 通过；lint 0 errors / 132 存量 warnings；Desktop UI 756 files / 7546 tests；Electron/platform 179 files / 2728 tests（2 files / 6 tests skipped）；release gates Node 65 + Vitest 15；production build、`test:desktop:all` 与 `git diff --check` 通过。整份 `business-workspace-packaged.spec.ts` 12/12 通过（50.2s）：开始页单输入、三页本地数据、原生窄窗导航、真实 chat fallback、项目详情、模板编辑/启动前确认、Profile/Settings，以及三个留白出口。原生 Run 验证包括左右留白、无横向溢出、双页签、审阅首屏顺序、滚动回顶与焦点回落。
+
+R3 App 从 DMG 只读挂载后独立安装到 `/Users/karl/Applications/APEX Phase2A hc-820 inset-4b181e2.app`。独立 DMG 为 `/Users/karl/Applications/APEX Phase2A hc-820 inset-4b181e2.dmg`，SHA-256 `a1b85c56fc2af7b1e3f25e52ddc4bfaec4a925583f9a2e775c5f82e8f4e3a3bd`。执行完整 build 后显式运行 `npm run builder -- --mac dmg --arm64 --publish never`；清除全部 `APPLE_*`、`CSC_*`、`NOTARIZE_*`，显式 `CSC_IDENTITY_AUTO_DISCOVERY=false` 与 `npm_config_arch=arm64`。日志确认跳过签名/notarization；回读主程序为 arm64、`Signature=adhoc`、`TeamIdentifier=not set`，无 Developer ID Authority。未上传或更新公开 updater feed。
+
+数据均来自标有“本地测试”的受控 API；Run 错误态为本地注入 503，Legacy fallback 使用测试环境真实读取出的空状态。没有新的生产验收结论；生产 Workflow catalog、Windows 真机、Mac x64 实包与 canonical Deliverable 完整链仍未覆盖。下文 R1/R2 结果保留为历史证据。
 
 ## 票号与隔离基线
 
