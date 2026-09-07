@@ -25,7 +25,8 @@ vi.mock('@/store/runtime-update', async () => {
   }
 })
 
-import { $runtimeUpdateCheck, $runtimeVersion } from '@/store/runtime-update'
+import { $runtimeUpdateCheck, $runtimeUpdateChecking, $runtimeVersion } from '@/store/runtime-update'
+import { $shellUpdate } from '@/store/shell-update'
 import { $desktopVersion } from '@/store/updates'
 
 import { EngineUpdateSection } from './about-settings'
@@ -37,7 +38,9 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ ok: false, version: null, commit: null, branch: null, key: null })
   $runtimeUpdateCheck.set(null)
+  $runtimeUpdateChecking.set(false)
   $runtimeVersion.set(null)
+  $shellUpdate.set(null)
   $desktopVersion.set(null)
 })
 
@@ -46,6 +49,43 @@ afterEach(() => {
 })
 
 describe('EngineUpdateSection (hc-591 engine version display)', () => {
+  it('keeps an unchecked update state honest instead of claiming latest', () => {
+    render(<EngineUpdateSection />)
+
+    expect(screen.getByText('Check whether a newer engine is available.')).toBeTruthy()
+    expect(screen.queryByText("You're on the latest version.")).toBeNull()
+  })
+
+  it('announces checking even when the previous successful result said latest', () => {
+    $runtimeUpdateCheck.set({
+      ok: true,
+      updateAvailable: false,
+      current: { version: 'v2026.7.15-fork.b21a7e0d', key: 'b21a7e0d' },
+      latest: { version: 'v2026.7.15-fork.b21a7e0d', key: 'b21a7e0d', compatibilityNotes: null }
+    })
+    $runtimeUpdateChecking.set(true)
+
+    render(<EngineUpdateSection />)
+
+    expect(screen.getAllByText('Checking…')).toHaveLength(2)
+    expect(screen.queryByText("You're on the latest version.")).toBeNull()
+  })
+
+  it('shows a failed check as a failure instead of claiming latest', () => {
+    $runtimeUpdateCheck.set({
+      error: 'offline',
+      ok: false,
+      updateAvailable: false,
+      current: { version: null, key: null },
+      latest: null
+    })
+
+    render(<EngineUpdateSection />)
+
+    expect(screen.getByText("Couldn't check for an engine update. Check your connection and try again.")).toBeTruthy()
+    expect(screen.queryByText("You're on the latest version.")).toBeNull()
+  })
+
   it('labels the Electron shell version as the app and the managed runtime as the engine', () => {
     $desktopVersion.set({
       appVersion: '0.17.24',

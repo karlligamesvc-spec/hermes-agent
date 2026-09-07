@@ -90,7 +90,12 @@ export function EngineUpdateSection() {
   let statusLine: string
   let statusTone: 'available' | 'error' | 'idle' = 'idle'
 
-  if (shellPreparing) {
+  if (checking) {
+    statusLine = a.checking
+  } else if (shellFailed) {
+    statusLine = shell?.error || a.engineCantReach
+    statusTone = 'error'
+  } else if (shellPreparing) {
     statusLine = updateCopy.preparingTitle(shellVersion ?? '')
     statusTone = 'available'
   } else if (shellReady || latest) {
@@ -100,9 +105,6 @@ export function EngineUpdateSection() {
     statusLine = a.engineTapCheck
   } else if (!reachable) {
     statusLine = a.engineCantReach
-    statusTone = 'error'
-  } else if (shellFailed) {
-    statusLine = shell?.error || a.engineCantReach
     statusTone = 'error'
   } else if (upgradeRequired) {
     // hc-591: upgradeRequired.minDesktopVersion is a DESKTOP shell semver

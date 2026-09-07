@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shouldShowIntro } from './intro-visibility'
+import { shouldShowChatComposer, shouldShowIntro } from './intro-visibility'
 
 const showing = {
   activeSessionId: null,
@@ -44,5 +44,28 @@ describe('shouldShowIntro', () => {
     expect(shouldShowIntro({ ...showing, selectedSessionId: 'session-1' })).toBe(false)
     expect(shouldShowIntro({ ...showing, activeSessionId: 'session-1' })).toBe(false)
     expect(shouldShowIntro({ ...showing, messagesEmpty: false })).toBe(false)
+  })
+})
+
+describe('shouldShowChatComposer', () => {
+  it('removes the global composer only from the business Start zero-state', () => {
+    expect(
+      shouldShowChatComposer({ available: true, businessStartVisible: true, objectRouteOpen: false })
+    ).toBe(false)
+    expect(
+      shouldShowChatComposer({ available: true, businessStartVisible: false, objectRouteOpen: false })
+    ).toBe(true)
+  })
+
+  it('keeps the composer for a Workflow Run opened over Start', () => {
+    expect(
+      shouldShowChatComposer({ available: true, businessStartVisible: true, objectRouteOpen: true })
+    ).toBe(true)
+  })
+
+  it('never bypasses the base loading, failure, or watch-window gate', () => {
+    expect(
+      shouldShowChatComposer({ available: false, businessStartVisible: false, objectRouteOpen: true })
+    ).toBe(false)
   })
 })

@@ -176,6 +176,7 @@ export async function openRosterBot(bot: RosterRow, { canonical = false } = {}):
     : null
 
   haptic('tap')
+  host.dismissNarrowSidebarOverlay?.()
   saveSelectedRosterBot(bot)
   setBotsWorkspaceOwner(botWorkspaceOwnerKey(bot), bot)
   const dismissedGroup = bot.remoteSource ? null : dismissGroupChatForLocalBotOpen()

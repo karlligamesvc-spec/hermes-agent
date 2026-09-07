@@ -35,7 +35,7 @@ import {
   retainGatewayForAgent
 } from '@/store/gateway'
 import { $gatewaySwitching } from '@/store/gateway-switch'
-import { $pinnedSessionIds } from '@/store/layout'
+import { $pinnedSessionIds, dismissNarrowSidebarOverlay } from '@/store/layout'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import {
   $activeGatewayProfile,
@@ -713,6 +713,7 @@ export function useSessionActions({
   const selectSidebarItem = useCallback(
     (item: SidebarNavItem) => {
       activateSidebarNavigation(item, route => navigateToWorkspacePage(navigate, route), startFreshSessionDraft)
+      dismissNarrowSidebarOverlay()
     },
     [navigate, startFreshSessionDraft]
   )

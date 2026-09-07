@@ -115,6 +115,19 @@ export async function listWorkflowDomainProjects(
   )
 }
 
+export async function getWorkflowDomainProject(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  const normalizedProjectId = requireText(projectId, 'project id', 160)
+
+  return responseItem(
+    await transport.getJson(workflowDomainUrl(apiBase, `projects/${encodeURIComponent(normalizedProjectId)}`)),
+    'project'
+  )
+}
+
 export async function listWorkflowDomainWorkflows(
   apiBase: string,
   options: { cursor?: string; limit?: number; projectId?: string; status?: string },

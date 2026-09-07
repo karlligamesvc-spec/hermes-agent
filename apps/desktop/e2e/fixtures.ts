@@ -495,6 +495,12 @@ providers:
  * electron-builder's output layout under release/.
  */
 function resolvePackagedBinaryPath(): string {
+  const installedBinary = process.env.HERMES_DESKTOP_PACKAGED_BINARY
+
+  if (installedBinary) {
+    return path.resolve(installedBinary)
+  }
+
   if (process.platform === 'win32') {
     return path.join(RELEASE_ROOT, 'win-unpacked', `${PACKAGED_EXECUTABLE_NAME}.exe`)
   }
@@ -594,7 +600,9 @@ export async function setupPackagedApp(): Promise<PackagedAppFixture> {
  * first-install overlay that the bootstrap-only packaged smoke intentionally
  * exercises.
  */
-export async function setupPackagedMockBackend(): Promise<PackagedMockBackendFixture> {
+export async function setupPackagedMockBackend(
+  extraEnv: Record<string, string> = {},
+): Promise<PackagedMockBackendFixture> {
   if (!packagedBinaryExists()) {
     throw new Error(`Built app binary not found: ${PACKAGED_BINARY_PATH}. Run 'npm run pack' first.`)
   }
@@ -607,7 +615,7 @@ export async function setupPackagedMockBackend(): Promise<PackagedMockBackendFix
 
   // buildAppEnv deliberately points the gateway at this checkout. The
   // executable and renderer still come only from the packaged APEX.app.
-  const env = buildAppEnv(sandbox)
+  const env = buildAppEnv(sandbox, extraEnv)
   const { app, page } = await launchPackagedApp(env)
 
   return {

@@ -249,6 +249,7 @@ declare global {
           limit?: number
           status?: string
         }) => Promise<DesktopWorkflowDomainProjectListResult>
+        getProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
         listWorkflows?: (options?: {
           cursor?: string
           limit?: number
@@ -1753,6 +1754,12 @@ export interface DesktopWorkflowDomainProjectListResult {
   offset?: number
   ok: boolean
   total?: number
+}
+
+export interface DesktopWorkflowDomainProjectResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  item?: DesktopWorkflowDomainProject
+  ok: boolean
 }
 
 export interface DesktopWorkflowDomainWorkflowListResult {

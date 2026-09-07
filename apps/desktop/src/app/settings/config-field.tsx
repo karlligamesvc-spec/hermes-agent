@@ -91,7 +91,7 @@ export function ConfigField({
   if (schema.type === 'boolean') {
     return row(
       <div className="flex items-center justify-end">
-        <Switch checked={Boolean(value)} onCheckedChange={onChange} />
+        <Switch aria-label={label} checked={Boolean(value)} onCheckedChange={onChange} />
       </div>
     )
   }

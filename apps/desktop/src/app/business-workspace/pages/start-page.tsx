@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 
-import { routeDrawerNavigationState, workflowRunRoute } from '../../routes'
+import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { startWorkflowGoal } from '../api/adapters'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
@@ -29,8 +29,37 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   const location = useLocation()
   const navigate = useNavigate()
   const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
-  const launchState = location.state as null | { businessGoalDraft?: unknown; businessWorkflowSlug?: unknown }
-  const launchedWorkflow = workflows.find(workflow => workflow.slug === launchState?.businessWorkflowSlug) ?? null
+
+  const launchState = location.state as null | {
+    businessGoalDraft?: unknown
+    businessGoalFocus?: unknown
+    businessWorkflowCatalogProvenance?: unknown
+    businessWorkflowId?: unknown
+    businessWorkflowSlug?: unknown
+    businessWorkflowVersion?: unknown
+  }
+
+  const launchedWorkflow = useMemo(() => {
+    const routedWorkflow = workflows.find(workflow => workflow.slug === launchState?.businessWorkflowSlug) ?? null
+
+    return routedWorkflow
+      ? {
+          ...routedWorkflow,
+          id: typeof launchState?.businessWorkflowId === 'string' ? launchState.businessWorkflowId : routedWorkflow.id,
+          version:
+            typeof launchState?.businessWorkflowVersion === 'number' &&
+            Number.isSafeInteger(launchState.businessWorkflowVersion) &&
+            launchState.businessWorkflowVersion > 0
+              ? launchState.businessWorkflowVersion
+              : routedWorkflow.version
+        }
+      : null
+  }, [
+    launchState?.businessWorkflowId,
+    launchState?.businessWorkflowSlug,
+    launchState?.businessWorkflowVersion,
+    workflows
+  ])
 
   const initialDraft =
     launchedWorkflow?.prompt ??
@@ -38,49 +67,68 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
+
+  const [selectedWorkflowIsTestData, setSelectedWorkflowIsTestData] = useState(
+    launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
+  )
+
   const [domainError, setDomainError] = useState(false)
   const [domainStarting, setDomainStarting] = useState(false)
 
   const focusGoal = () => {
-    document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
+    window.document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
   }
 
   useEffect(() => {
-    if (!launchedWorkflow) {
+    if (!launchedWorkflow && launchState?.businessGoalFocus !== true) {
       return
     }
 
     const frame = window.requestAnimationFrame(() => {
-      document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
+      window.document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [launchedWorkflow])
+  }, [launchState?.businessGoalFocus, launchedWorkflow])
+
+  // ChatView is retained while full-page routes temporarily cover it, so a
+  // Workflow selection can survive a trip back to the catalog in component
+  // state. Treat every new Start navigation as authoritative: a routed
+  // template restores its exact id/version, while an explicit plain-goal
+  // entry clears the template and its provenance before the next submit.
+  useEffect(() => {
+    setSelectedWorkflow(launchedWorkflow)
+    setSelectedWorkflowIsTestData(
+      launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
+    )
+    setGoalDraft(
+      launchedWorkflow?.prompt ??
+        (typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : '')
+    )
+    setDomainError(false)
+  }, [
+    launchState?.businessGoalDraft,
+    launchState?.businessWorkflowCatalogProvenance,
+    launchedWorkflow,
+    location.key
+  ])
 
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
     setSelectedWorkflow(workflow)
+    setSelectedWorkflowIsTestData(false)
     setGoalDraft(workflow.prompt)
     focusGoal()
   }
 
   const submitGoal = async (goal: string): Promise<boolean> => {
+    if (!selectedWorkflow) {
+      return (await onSubmitGoal?.(goal)) ?? false
+    }
+
     setDomainError(false)
     setDomainStarting(true)
 
-    const outcome = await startWorkflowGoal(
-      goal,
-      selectedWorkflow ?? {
-        businessPath: 'desktop_goal',
-        icon: 'graph',
-        id: 'desktop-goal',
-        prompt: goal,
-        recommended: false,
-        slug: 'desktop-goal',
-        summary: t.home.description,
-        title: t.home.title,
-        version: 1
-      }
-    )
+    const outcome = await startWorkflowGoal(goal, selectedWorkflow)
 
     setDomainStarting(false)
 
@@ -102,21 +150,52 @@ export function BusinessStartHome({ goalDisabled = false, onSubmitGoal }: Busine
   }
 
   return (
-    <div className="pointer-events-auto flex w-full min-w-0 flex-col gap-5" data-business-start-home="">
-      <header className="flex items-start justify-between gap-6">
+    <div
+      className="pointer-events-auto mx-auto flex w-full max-w-[48rem] min-w-0 flex-col gap-6"
+      data-business-start-home=""
+    >
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="max-w-[48rem]">
           <h1 className="m-0 text-balance text-[2rem] font-semibold leading-tight tracking-[-0.02em] text-foreground">
             {t.home.title}
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
         </div>
-        <Button className="shrink-0" onClick={focusGoal} size="sm" variant="outline">
+        <Button className="shrink-0 self-start" onClick={focusGoal} size="sm" variant="outline">
           <Codicon name="add" size="0.875rem" />
           {t.businessWorkspace.projects.action}
         </Button>
       </header>
 
-      <div className="flex w-full max-w-[48rem] flex-col gap-6">
+      <div className="flex w-full flex-col gap-7">
+        {selectedWorkflow && (
+          <section
+            aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-3"
+            data-workflow-start-confirmation=""
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-primary">
+                {t.businessWorkspace.goalLauncher.confirmationEyebrow}
+              </p>
+              <p className="mt-1 truncate text-sm font-medium">
+                {t.businessWorkspace.goalLauncher.confirmationTemplate}
+                {selectedWorkflow.title} · {t.businessWorkspace.workflows.version(selectedWorkflow.version)}
+              </p>
+              <p className="mt-0.5 text-xs text-(--ui-text-tertiary)">
+                {t.businessWorkspace.goalLauncher.confirmationExecutor}
+              </p>
+              {selectedWorkflowIsTestData && (
+                <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-200" role="status">
+                  {t.businessWorkspace.workflows.testDataNotice}
+                </p>
+              )}
+            </div>
+            <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="sm" variant="ghost">
+              {t.businessWorkspace.goalLauncher.changeWorkflow}
+            </Button>
+          </section>
+        )}
         <BusinessGoalLauncher
           disabled={goalDisabled || domainStarting}
           draft={goalDraft}

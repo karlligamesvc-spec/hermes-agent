@@ -17,6 +17,7 @@ test('version IPC reports the Electron shell separately from the managed engine'
 
   registerDesktopVersionIpc(ipcMain, {
     app: { getVersion: () => '0.17.18' },
+    bundleStatus: async () => ({ desktopCommitsBehind: 3, outOfSync: true }),
     electronVersion: '38.7.2',
     engineVersion: () => '0.17.17',
     hermesRoot: () => '/tmp/hermes-agent',
@@ -27,6 +28,8 @@ test('version IPC reports the Electron shell separately from the managed engine'
   assert.ok(handler)
   assert.deepEqual(await handler(), {
     appVersion: '0.17.18',
+    bundleOutOfSync: true,
+    bundleCommitsBehind: 3,
     engineVersion: '0.17.17',
     electronVersion: '38.7.2',
     nodeVersion: '22.22.1',

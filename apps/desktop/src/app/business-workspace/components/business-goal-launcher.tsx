@@ -62,7 +62,7 @@ export function BusinessGoalLauncher({ disabled = false, draft, onDraftChange, o
 
   return (
     <form
-      className="pointer-events-auto w-full rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) p-4 text-left shadow-(--shadow-composer) transition-[border-color,box-shadow] focus-within:border-primary/45"
+      className="pointer-events-auto w-full rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) p-4 text-left shadow-(--shadow-composer) transition-[border-color,box-shadow] focus-within:border-primary/45"
       data-business-goal-launcher=""
       onSubmit={handleSubmit}
     >
@@ -74,18 +74,18 @@ export function BusinessGoalLauncher({ disabled = false, draft, onDraftChange, o
         autoCapitalize="sentences"
         autoComplete="off"
         autoCorrect="on"
-        className="block min-h-16 w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50"
+        className="block min-h-14 w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled || submitting}
         id={BUSINESS_GOAL_INPUT_ID}
         onChange={event => setGoal(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={copy.placeholder}
-        rows={3}
+        rows={2}
         spellCheck
         value={goal}
       />
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-(--ui-stroke-tertiary) pt-3">
-        <span className="text-[0.6875rem] leading-4 text-(--ui-text-tertiary)">{copy.hint}</span>
+      <div className="mt-2 flex items-center justify-between gap-3 border-t border-(--ui-stroke-tertiary) pt-2">
+        <span className="text-xs leading-4 text-(--ui-text-tertiary)">{copy.hint}</span>
         <Button aria-label={copy.submit} disabled={!canSubmit} size="icon-sm" type="submit">
           <Codicon name={submitting ? 'loading' : 'send'} size="0.875rem" spinning={submitting} />
         </Button>

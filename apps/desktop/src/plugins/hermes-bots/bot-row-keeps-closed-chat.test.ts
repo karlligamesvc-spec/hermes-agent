@@ -70,6 +70,21 @@ beforeEach(() => {
 })
 
 describe('a row click returns to the tabs the bot already has open', () => {
+  it('dismisses a narrow sidebar overlay after its row is selected', async () => {
+    const dismiss = vi.fn(() => true)
+    const original = host.dismissNarrowSidebarOverlay
+    const restoreFocus = withFocusApi(() => 'thread-2')
+    host.dismissNarrowSidebarOverlay = dismiss
+
+    try {
+      await expect(openRosterBot(bot)).resolves.toBe(true)
+      expect(dismiss).toHaveBeenCalledTimes(1)
+    } finally {
+      host.dismissNarrowSidebarOverlay = original
+      restoreFocus()
+    }
+  })
+
   it('fronts the remembered tab and resolves no canonical chat', async () => {
     const focus = vi.fn(() => 'thread-2')
     const restore = withFocusApi(focus)

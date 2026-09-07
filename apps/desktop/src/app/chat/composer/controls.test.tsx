@@ -166,7 +166,7 @@ describe('wake-word ear visibility', () => {
     applyWakeStatus({ available: true, enabled: true, listening: true, phrase: 'hey hermes' })
     renderControls({ busy: true, busyAction: 'stop' })
 
-    expect(screen.getByLabelText('Wake word: "hey hermes" — listening')).toBeTruthy()
+    expect(screen.getByLabelText('APEX voice activation — listening')).toBeTruthy()
   })
 
   it('stays mounted (enabled in config) even when a start was refused', () => {
@@ -175,7 +175,7 @@ describe('wake-word ear visibility', () => {
     applyWakeStartResult({ hint: 'mic busy', reason: 'unavailable', started: false })
     renderControls()
 
-    expect(screen.getByLabelText('Wake word: "hey hermes" — off')).toBeTruthy()
+    expect(screen.getByLabelText('APEX voice activation — off')).toBeTruthy()
   })
 
   it('stays visible (never hides) even when unavailable and not enabled', () => {
@@ -184,7 +184,7 @@ describe('wake-word ear visibility', () => {
 
     // The ear ALWAYS shows so the user can click to enable; a failed start
     // surfaces its reason in the tooltip rather than hiding the control.
-    expect(screen.getByLabelText('Wake word: "hey hermes" — off')).toBeTruthy()
+    expect(screen.getByLabelText('APEX voice activation — off')).toBeTruthy()
   })
 
   it('surfaces the backend refusal reason in the tooltip, still visible', () => {
@@ -192,7 +192,7 @@ describe('wake-word ear visibility', () => {
     applyWakeStartResult({ hint: 'run `hermes tools` (Voice section)', reason: 'unavailable', started: false })
     renderControls()
 
-    const ear = screen.getByLabelText('Wake word: "hey hermes" — off')
+    const ear = screen.getByLabelText('APEX voice activation — off')
     expect(ear).toBeTruthy()
   })
 
@@ -211,7 +211,7 @@ describe('wake-word ear visibility', () => {
       }
     })
 
-    const ear = screen.getByLabelText('Wake word: "hey hermes" — paused during voice chat')
+    const ear = screen.getByLabelText('APEX voice activation — paused during voice chat')
     expect((ear as HTMLButtonElement).disabled).toBe(true)
   })
 })

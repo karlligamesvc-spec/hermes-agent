@@ -2,7 +2,6 @@ import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 
-
 export const zh = defineLocale({
   common: {
     apply: '应用',
@@ -615,8 +614,9 @@ export const zh = defineLocale({
         allowPrivateUrls: '允许私有 URL'
       },
       browser: {
-        allowPrivateUrls: '浏览器私有 URL',
-        autoLocalForPrivateUrls: '私有 URL 使用本地浏览器'
+        allowPrivateUrls: '允许访问内网地址',
+        autoLocalForPrivateUrls: '内网地址自动使用本地浏览器',
+        useRealProfile: '使用我的真实浏览器资料'
       },
       checkpoints: {
         enabled: '文件检查点',
@@ -3305,6 +3305,24 @@ export const zh = defineLocale({
       moreActions: '更多操作',
       branchNewChat: '在新对话中分支',
       dismissError: '关闭错误',
+      errorLayers: {
+        auth: '身份验证错误',
+        billing: '额度不足',
+        disk: '磁盘空间不足',
+        endpoint: '自定义端点错误',
+        gateway: '连接错误',
+        generic: '本轮执行失败',
+        provider: '提供方错误',
+        runtime: '本地运行时错误',
+        streaming: '流式连接错误'
+      },
+      errorRetry: '重试',
+      errorSwitchProvider: '切换提供方',
+      errorOpenLogs: '打开日志',
+      errorOpenLogsFailed: '无法打开日志文件夹',
+      errorOpenDesktopLogs: '打开桌面端日志',
+      errorCopyDiagnostics: '复制错误详情',
+      errorSendDiagnostics: '发送诊断信息',
       readAloudFailed: '朗读失败',
       preparingAudio: '正在准备音频...',
       stopReading: '停止朗读',
@@ -3732,6 +3750,10 @@ export const zh = defineLocale({
 
   businessWorkspace: {
     goalLauncher: {
+      confirmationEyebrow: '启动前确认',
+      confirmationExecutor: '执行器：Hermes',
+      confirmationTemplate: '工作流：',
+      changeWorkflow: '更换工作流',
       label: '业务目标',
       placeholder: '例如：分析美国宠物用品市场，并生成选品报告和上架素材',
       hint: 'Enter 开始执行 · Shift+Enter 换行',
@@ -3742,8 +3764,18 @@ export const zh = defineLocale({
       title: '项目',
       description: '按业务目标查看当前运行、真实步骤状态、待处理事项与交付结果。',
       emptyTitle: '从一次真实业务任务开始',
-      emptyDescription: '先在对话中描述目标。最近会话、真实任务进度、证据与交付文件会显示在这里。',
+      emptyDescription: '先描述一个业务目标，APEX 会据此创建真实项目并组织工作流。',
       action: '开始一个目标',
+      newProject: '新建项目',
+      chooseWorkflow: '选择工作流',
+      filters: {
+        label: '项目状态筛选',
+        all: '全部',
+        active: '进行中',
+        completed: '已完成'
+      },
+      totalProjects: count => `共 ${count} 个项目`,
+      filterEmpty: '这个状态下还没有真实项目。',
       tasksAction: '查看任务进度',
       recentConversations: '最近对话',
       openHistory: '打开历史',
@@ -3777,11 +3809,32 @@ export const zh = defineLocale({
       recentProjects: '最近项目',
       loadingProjects: '正在读取项目…',
       projectLoadFailed: '暂时无法读取项目，下面仍保留本地工作兼容视图。',
+      projectDomainUnavailable: '项目服务尚未连接。真实数据可用后，最近项目会显示在这里。',
+      detailTitle: '项目概览',
+      detailEyebrow: '项目概览',
+      detailUnavailableTitle: '项目详情暂时不可用',
+      detailUnavailableDescription: 'APEX 无法读取这个项目。没有数据被替换；请返回项目页后重试。',
+      loadingProjectDetail: '正在读取项目详情…',
+      backToProjects: '返回项目',
+      createdAtLabel: '创建时间',
+      updatedAtLabel: '最近更新',
+      currentRunTitle: '当前运行',
+      runStatusUnavailable: '运行状态暂时不可读',
+      noRunTitle: '这个项目尚未启动运行',
+      noRunDescription: '没有 Run、Step 或进度可展示。可继续这个目标，并在开始页确认后启动。',
+      runSummaryUnavailableTitle: '运行摘要暂时不可用',
+      runSummaryUnavailable: '项目详情已读取，但当前接口没有提供运行摘要。这里不会猜测运行或进度。',
+      continueGoal: '继续这个目标',
+      viewProject: '查看项目',
       deliverableCount: count => `${count} 个交付物`,
+      updatedAt: date => `${date} 更新`,
       currentStep: title => `当前：${title}`,
       lifecycle: status =>
         ({
+          active: '进行中',
+          archived: '已归档',
           cancelled: '已取消',
+          completed: '已完成',
           failed: '需要处理',
           queued: '等待 Hermes 执行',
           running: 'Hermes 正在执行',
@@ -3802,6 +3855,12 @@ export const zh = defineLocale({
       title: '工作流',
       description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。',
       use: '使用这个工作流',
+      useShort: '使用',
+      startGoal: '开始一个目标',
+      recommendedTitle: '三条重点路径',
+      recommendedDescription: '选择一个成熟路径，目标会预填到开始页并保持可编辑。',
+      additionalTitle: '其他业务路径',
+      pathCount: count => `${count} 条路径`,
       commerce: {
         title: '从市场机会到上架素材',
         summary: '数据采集、机会分析、定位与生产',
@@ -3834,7 +3893,13 @@ export const zh = defineLocale({
       },
       savedTitle: '我的工作流',
       savedEmpty: '还没有已保存工作流。开始一个目标后会在这里出现。',
+      savedCount: count => `${count} 个真实工作流`,
+      localCatalogNotice: '生产目录尚未连接。不会用内置或测试模板替代真实目录。',
       catalogUnavailable: '真实工作流目录暂时不可用，没有模板被启动。',
+      catalogUnavailableDescription: '请重试目录连接，或返回开始页直接描述目标。',
+      retryCatalog: '重试',
+      backToStart: '返回开始页',
+      testDataNotice: '本地测试数据：此目录仅用于实包视觉与交互验收，不代表生产数据。',
       version: version => `版本 ${version}`
     },
     workflowDomain: {

@@ -466,7 +466,7 @@ describe('identity: the home zero-state is ours', () => {
     )
   }
 
-  it('greets in Chinese and offers the real business start shelf', () => {
+  it('greets in Chinese and offers the real business start shelf', async () => {
     const originalBridge = window.hermesDesktop
 
     Object.defineProperty(window, 'hermesDesktop', {
@@ -480,11 +480,14 @@ describe('identity: the home zero-state is ours', () => {
       expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
       expect(screen.getByRole('button', { name: '开始一个目标' })).toBeTruthy()
       expect(screen.getByRole('textbox', { name: '业务目标' })).toBeTruthy()
+      expect(screen.getAllByRole('textbox')).toHaveLength(1)
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
       expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
-      expect(container.querySelector('[data-business-start-evidence]')).toBeTruthy()
-      expect(screen.getByRole('button', { name: '打开任务' })).toBeTruthy()
-      expect(screen.getByRole('button', { name: '打开交付物' })).toBeTruthy()
+      expect(container.querySelector('[data-business-start-shelf]')).toBeTruthy()
+      expect(container.querySelectorAll('[data-workflow-starter="shelf"]')).toHaveLength(3)
+      expect(await screen.findByText('项目服务尚未连接。真实数据可用后，最近项目会显示在这里。')).toBeTruthy()
+      expect(screen.getByText('当前版本没有可用的数据源连接出口。')).toBeTruthy()
+      expect(screen.queryByText(/0\s*\/\s*0/)).toBeNull()
     } finally {
       Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
     }
@@ -513,6 +516,22 @@ describe('identity: the home zero-state is ours', () => {
     for (const upstream of ['Search the repo', 'open PRs', 'run tests', 'APEX look at']) {
       expect(rendered).not.toContain(upstream)
     }
+  })
+
+  it('unmounts the global composer while the business Start input owns the empty state', () => {
+    const chat = readSource('src', 'app', 'chat', 'index.tsx')
+    const visibility = readSource('src', 'app', 'chat', 'intro-visibility.ts')
+
+    expect(chat).toContain('businessStartVisible: showIntro && isBusinessWorkspaceEnabled()')
+    expect(chat).toContain('{showChatBar && (')
+    expect(visibility).toContain('!input.businessStartVisible || input.objectRouteOpen')
+  })
+
+  it('uses APEX identity for voice activation accessibility names', () => {
+    const copy = readSource('src', 'i18n', 'en.ts')
+
+    expect(copy).toContain("wakeWordListening: _phrase => 'APEX voice activation — listening'")
+    expect(copy).not.toContain('Wake word:')
   })
 
   it('keeps the intro off the upstream copy corpus entirely', () => {
@@ -680,9 +699,11 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(main).toContain('import {\n  cancelWorkflowDomainRun,')
     expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getProject'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'")
 
     expect(preload).toContain('workflowDomain: {')
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getRun', runId)")
     expect(preload).not.toContain('accessToken')
   })
@@ -693,8 +714,9 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
     const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
 
-    expect(startHome).toContain('const outcome = await startWorkflowGoal(')
-    expect(startHome).toContain("slug: 'desktop-goal'")
+    expect(startHome).toContain('if (!selectedWorkflow) {')
+    expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, selectedWorkflow)')
+    expect(startHome).not.toContain("slug: 'desktop-goal'")
     expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId), {')
     expect(startHome).toContain('state: routeDrawerNavigationState(location)')
     expect(startHome).toContain('return (await onSubmitGoal?.(goal)) ?? false')

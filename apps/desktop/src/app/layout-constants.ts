@@ -21,5 +21,5 @@ export const PAGE_MAX_W = 'max-w-[75rem]'
 // Below this viewport width a docked sidebar leaves no room for content, so both
 // rails auto-collapse into the hover-reveal overlay. Single source of truth for
 // the responsive collapse point.
-export const SIDEBAR_COLLAPSE_BREAKPOINT_PX = 768
+export const SIDEBAR_COLLAPSE_BREAKPOINT_PX = 899
 export const SIDEBAR_COLLAPSE_MEDIA_QUERY = `(max-width: ${SIDEBAR_COLLAPSE_BREAKPOINT_PX}px)`

@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { $paneStates, setPaneOpen, setPaneWidthOverride } from '@/store/panes'
 
-import { Pane, PaneMain, PaneShell } from './pane-shell'
+import { Pane, PANE_TOGGLE_REVEAL_EVENT, PaneMain, PaneShell } from './pane-shell'
 
 function gridContainer(rendered: ReturnType<typeof render>): HTMLElement {
   const root = rendered.container.firstElementChild
@@ -264,6 +264,32 @@ describe('PaneShell composition', () => {
 
     expect(cell.getAttribute('aria-hidden')).toBe('true')
     expect(cell.getAttribute('data-pane-open')).toBe('false')
+  })
+
+  it('honors idempotent open and close intents for a force-collapsed overlay', () => {
+    const rendered = render(
+      <PaneShell>
+        <Pane forceCollapsed hoverReveal id="files" side="left" width="240px">
+          <span data-testid="files-content">files</span>
+        </Pane>
+        <PaneMain>main</PaneMain>
+      </PaneShell>
+    )
+
+    const cell = rendered.getByTestId('files-content').closest('[data-pane-hover-reveal]')
+
+    expect(cell?.getAttribute('data-pane-hover-reveal')).toBe('closed')
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'files', mode: 'open' } }))
+    })
+    expect(cell?.getAttribute('data-pane-hover-reveal')).toBe('open')
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'files', mode: 'close' } }))
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: 'files', mode: 'close' } }))
+    })
+    expect(cell?.getAttribute('data-pane-hover-reveal')).toBe('closed')
   })
 
   it('passes through arbitrary non-Pane children for self-placement', () => {

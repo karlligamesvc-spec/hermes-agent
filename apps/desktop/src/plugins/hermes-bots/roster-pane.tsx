@@ -30,6 +30,7 @@ import {
 } from '@hermes/plugin-sdk'
 import { useEffect, useRef, useState } from 'react'
 
+import { ActivityToastButton } from './activity-toast-button'
 import { BotRow, GroupRow } from './bot-row'
 import {
   $botChatFocused,
@@ -607,18 +608,11 @@ export function BotsPane() {
           Bots
         </span>
         <div className="flex items-center gap-0.5">
-          <Tip
-            label={activityToasts ? 'Activity toasts on — click to silence' : 'Activity toasts off — click to enable'}
-          >
-            <Button
-              className="rounded-md text-(--ui-text-tertiary) hover:text-foreground"
-              onClick={() => setActivityToasts(!activityToasts)}
-              size="icon-xs"
-              variant="ghost"
-            >
-              <Codicon name={activityToasts ? 'bell' : 'bell-slash'} />
-            </Button>
-          </Tip>
+          <ActivityToastButton
+            enabled={activityToasts}
+            labels={{ off: b.roster.activityToastsOff, on: b.roster.activityToastsOn }}
+            onToggle={() => setActivityToasts(!activityToasts)}
+          />
           <DropdownMenu>
             <Tip label="New…">
               <DropdownMenuTrigger asChild>

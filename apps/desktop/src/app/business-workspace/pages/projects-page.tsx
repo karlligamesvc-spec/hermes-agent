@@ -1,7 +1,8 @@
 import { useStore } from '@nanostores/react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -17,17 +18,32 @@ import {
   DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   NEW_CHAT_ROUTE,
+  projectDetailRoute,
   routeDrawerNavigationState,
   taskDetailRoute,
   TASKS_ROUTE,
-  workflowRunRoute
+  WORKFLOWS_ROUTE
 } from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
+import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
+import { distinctProjectObjective } from '../view-model/project'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
+
+type ProjectFilter = 'active' | 'all' | 'completed'
+
+const completedProjectStates = new Set(['archived', 'cancelled', 'completed', 'succeeded'])
+
+function projectStatus(project: { status: string; summary?: { currentRunStatus: null | string } }) {
+  return project.summary?.currentRunStatus || project.status
+}
+
+function isCompletedProject(status: string) {
+  return completedProjectStates.has(status)
+}
 
 export function ProjectsView() {
   const { locale, t } = useI18n()
@@ -35,6 +51,7 @@ export function ProjectsView() {
   const location = useLocation()
   const navigate = useNavigate()
   const projects = useWorkflowProjects()
+  const [filter, setFilter] = useState<ProjectFilter>('all')
 
   if (projects.mode === 'unavailable') {
     return <LegacyProjectsView />
@@ -44,82 +61,156 @@ export function ProjectsView() {
     return <LegacyProjectsView notice={c.projectLoadFailed} />
   }
 
+  const newProject = () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: '', businessGoalFocus: true } })
+
+  const visibleProjects =
+    projects.mode === 'ready'
+      ? projects.items.filter(project => {
+          if (filter === 'all') {
+            return true
+          }
+
+          return filter === 'completed'
+            ? isCompletedProject(projectStatus(project))
+            : !isCompletedProject(projectStatus(project))
+        })
+      : []
+
+  const counts =
+    projects.mode === 'ready'
+      ? {
+          active: projects.items.filter(project => !isCompletedProject(projectStatus(project))).length,
+          all: projects.total,
+          completed: projects.items.filter(project => isCompletedProject(projectStatus(project))).length
+        }
+      : { active: 0, all: 0, completed: 0 }
+
   return (
-    <section className="flex h-full flex-col overflow-y-auto bg-(--ui-chat-surface-background) px-(--page-inset-x) py-8">
-      <header className="mx-auto w-full max-w-4xl border-b border-(--ui-stroke-tertiary) pb-5">
-        <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{c.description}</p>
-      </header>
+    <section className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-6 py-8 min-[1100px]:px-9">
+      <div className="mx-auto w-full max-w-[65.625rem]">
+        <BusinessPageHeader
+          action={{ icon: 'add', label: c.newProject, onClick: newProject }}
+          description={c.description}
+          eyebrow={c.eyebrow}
+          icon="folder"
+          title={c.title}
+        />
+      </div>
       {projects.mode === 'loading' ? (
-        <div className="mx-auto flex w-full max-w-4xl flex-1 items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
+        <div className="mx-auto flex min-h-72 w-full max-w-[65.625rem] items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader className="size-8" label={c.loadingProjects} type="lemniscate-bloom" />
           <span>{c.loadingProjects}</span>
         </div>
       ) : projects.items.length === 0 ? (
-        <div className="mx-auto grid w-full max-w-4xl flex-1 place-items-center py-10 text-center">
+        <div className="mx-auto grid min-h-72 w-full max-w-[65.625rem] place-items-center py-10 text-center">
           <div>
             <Codicon className="mx-auto text-primary" name="folder" size="1.75rem" />
             <EmptyState description={c.emptyDescription} title={c.emptyTitle} />
-            <Button onClick={() => navigate(NEW_CHAT_ROUTE)} size="sm">
-              <Codicon name="edit" size="0.875rem" />
-              {c.action}
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={newProject} size="sm">
+                <Codicon name="edit" size="0.875rem" />
+                {c.action}
+              </Button>
+              <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="sm" variant="outline">
+                {c.chooseWorkflow}
+              </Button>
+            </div>
           </div>
         </div>
       ) : (
-        <div className="mx-auto grid w-full max-w-4xl gap-0 py-6" data-workflow-project-list="">
-          {projects.items.map(project => {
-            const summary = project.summary
-            const status = summary?.currentRunStatus || project.status
+        <div className="mx-auto w-full max-w-[65.625rem] py-6" data-workflow-project-list="">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div aria-label={c.filters.label} className="flex flex-wrap gap-2" role="group">
+              {(['all', 'active', 'completed'] as const).map(item => (
+                <Button
+                  aria-pressed={filter === item}
+                  key={item}
+                  onClick={() => setFilter(item)}
+                  size="sm"
+                  variant={filter === item ? 'secondary' : 'ghost'}
+                >
+                  {c.filters[item]}
+                  <span className="text-(--ui-text-tertiary)">{counts[item]}</span>
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-(--ui-text-tertiary)">{c.totalProjects(projects.total)}</p>
+          </div>
 
-            const progress = summary?.currentStepTitle
-              ? c.currentStep(summary.currentStepTitle)
-              : summary && summary.stepTotal > 0
-                ? c.steps(summary.stepCompleted, summary.stepTotal)
-                : c.lifecycle(status)
+          {visibleProjects.length === 0 ? (
+            <div className="rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-5 py-10 text-center text-sm text-muted-foreground">
+              {c.filterEmpty}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-sm">
+              {visibleProjects.map(project => {
+                const summary = project.summary
+                const status = projectStatus(project)
+                const objective = distinctProjectObjective(project)
 
-            return (
-              <button
-                className="grid w-full gap-3 border-b border-(--ui-stroke-tertiary) py-5 text-left hover:bg-(--chrome-action-hover) sm:grid-cols-[minmax(0,1fr)_auto]"
-                key={project.id}
-                onClick={() =>
-                  summary?.currentRunId
-                    ? navigate(workflowRunRoute(summary.currentRunId), {
-                        state: routeDrawerNavigationState(location)
+                const progress = summary?.currentStepTitle
+                  ? c.currentStep(summary.currentStepTitle)
+                  : summary && summary.stepTotal > 0
+                    ? c.steps(summary.stepCompleted, summary.stepTotal)
+                    : c.lifecycle(status)
+
+                return (
+                  <Button
+                    className="grid h-auto w-full gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-5 py-4 text-left last:border-b-0 hover:bg-(--chrome-action-hover) sm:grid-cols-[minmax(0,1fr)_auto]"
+                    key={project.id}
+                    onClick={() =>
+                      navigate(projectDetailRoute(project.id), {
+                        state: { ...routeDrawerNavigationState(location), businessProjectSummary: summary }
                       })
-                    : navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: project.objective } })
-                }
-                type="button"
-              >
-                <span className="min-w-0">
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={
-                        summary?.attention === 'failed'
-                          ? 'size-2 shrink-0 rounded-full bg-destructive'
-                          : summary?.attention === 'review'
-                            ? 'size-2 shrink-0 rounded-full bg-amber-500'
-                            : status === 'running'
-                              ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
-                              : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
-                      }
-                    />
-                    <strong className="truncate text-sm font-semibold">{project.name}</strong>
-                  </span>
-                  <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
-                    {project.objective}
-                  </span>
-                  <span className="mt-2 block text-xs text-(--ui-text-tertiary)">{progress}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-4 text-xs text-(--ui-text-tertiary)">
-                  {summary && <span>{c.deliverableCount(summary.deliverableCount)}</span>}
-                  {summary && <span>{summary.currentRunId ? c.viewRun : c.noRun}</span>}
-                  <Codicon name="arrow-right" size="0.75rem" />
-                </span>
-              </button>
-            )
-          })}
+                    }
+                    type="button"
+                    variant="ghost"
+                  >
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={
+                            summary?.attention === 'failed'
+                              ? 'size-2 shrink-0 rounded-full bg-destructive'
+                              : summary?.attention === 'review'
+                                ? 'size-2 shrink-0 rounded-full bg-amber-500'
+                                : status === 'running'
+                                  ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
+                                  : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
+                          }
+                        />
+                        <strong className="truncate text-sm font-semibold">{project.name}</strong>
+                        <Badge
+                          variant={
+                            summary?.attention === 'failed'
+                              ? 'destructive'
+                              : summary?.attention === 'review'
+                                ? 'warn'
+                                : 'muted'
+                          }
+                        >
+                          {progress}
+                        </Badge>
+                      </span>
+                      {objective && (
+                        <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                          {objective}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-4 self-center text-xs text-(--ui-text-tertiary)">
+                      <span>{c.updatedAt(formatBusinessDayTime(new Date(project.updatedAt), locale))}</span>
+                      {summary && summary.deliverableCount > 0 && (
+                        <span>{c.deliverableCount(summary.deliverableCount)}</span>
+                      )}
+                      <span>{c.viewProject}</span>
+                      <Codicon name="arrow-right" size="0.75rem" />
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -193,7 +284,11 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
         </div>
       ) : (
         <div className="mx-auto grid w-full max-w-4xl gap-8 py-6">
-          <BusinessSection action={c.openHistory} onAction={() => navigate(HISTORY_ROUTE)} title={c.recentConversations}>
+          <BusinessSection
+            action={c.openHistory}
+            onAction={() => navigate(HISTORY_ROUTE)}
+            title={c.recentConversations}
+          >
             {conversations.length > 0 ? (
               conversations.map(conversation => (
                 <button
@@ -279,7 +374,11 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
             )}
           </BusinessSection>
 
-          <BusinessSection action={c.openArtifacts} onAction={() => navigate(DELIVERABLES_ROUTE)} title={c.deliverables}>
+          <BusinessSection
+            action={c.openArtifacts}
+            onAction={() => navigate(DELIVERABLES_ROUTE)}
+            title={c.deliverables}
+          >
             {artifacts.length > 0 ? (
               artifacts.map(artifact => (
                 <button

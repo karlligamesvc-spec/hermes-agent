@@ -3498,6 +3498,10 @@ export interface Translations {
 
   businessWorkspace: {
     goalLauncher: {
+      confirmationEyebrow: string
+      confirmationExecutor: string
+      confirmationTemplate: string
+      changeWorkflow: string
       label: string
       placeholder: string
       hint: string
@@ -3510,6 +3514,16 @@ export interface Translations {
       emptyTitle: string
       emptyDescription: string
       action: string
+      newProject: string
+      chooseWorkflow: string
+      filters: {
+        label: string
+        all: string
+        active: string
+        completed: string
+      }
+      totalProjects: (count: number) => string
+      filterEmpty: string
       tasksAction: string
       recentConversations: string
       openHistory: string
@@ -3541,7 +3555,25 @@ export interface Translations {
       recentProjects: string
       loadingProjects: string
       projectLoadFailed: string
+      projectDomainUnavailable: string
+      detailTitle: string
+      detailEyebrow: string
+      detailUnavailableTitle: string
+      detailUnavailableDescription: string
+      loadingProjectDetail: string
+      backToProjects: string
+      createdAtLabel: string
+      updatedAtLabel: string
+      currentRunTitle: string
+      runStatusUnavailable: string
+      noRunTitle: string
+      noRunDescription: string
+      runSummaryUnavailableTitle: string
+      runSummaryUnavailable: string
+      continueGoal: string
+      viewProject: string
       deliverableCount: (count: number) => string
+      updatedAt: (date: string) => string
       currentStep: (title: string) => string
       lifecycle: (status: string) => string
       viewRun: string
@@ -3557,6 +3589,12 @@ export interface Translations {
       title: string
       description: string
       use: string
+      useShort: string
+      startGoal: string
+      recommendedTitle: string
+      recommendedDescription: string
+      additionalTitle: string
+      pathCount: (count: number) => string
       commerce: { title: string; summary: string; prompt: string }
       insight: { title: string; summary: string; prompt: string }
       content: { title: string; summary: string; prompt: string }
@@ -3565,7 +3603,13 @@ export interface Translations {
       businessReview: { title: string; summary: string; prompt: string }
       savedTitle: string
       savedEmpty: string
+      savedCount: (count: number) => string
+      localCatalogNotice: string
       catalogUnavailable: string
+      catalogUnavailableDescription: string
+      retryCatalog: string
+      backToStart: string
+      testDataNotice: string
       version: (version: number) => string
     }
     workflowDomain: {

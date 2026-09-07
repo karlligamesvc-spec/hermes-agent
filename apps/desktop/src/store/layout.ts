@@ -526,6 +526,13 @@ function revealNarrowPane(id: string, mode: 'close' | 'open' | 'toggle'): boolea
   return true
 }
 
+/** Dismiss the transient sidebar after it has been used for navigation.
+ *  This deliberately leaves the persisted pane `open` state untouched: on a
+ *  wide window the sidebar is still docked exactly as the user left it. */
+export function dismissNarrowSidebarOverlay(): boolean {
+  return revealNarrowPane(CHAT_SIDEBAR_PANE_ID, 'close')
+}
+
 export function setSidebarOpen(open: boolean) {
   setPaneOpen(CHAT_SIDEBAR_PANE_ID, open)
   revealNarrowPane(CHAT_SIDEBAR_PANE_ID, open ? 'open' : 'close')

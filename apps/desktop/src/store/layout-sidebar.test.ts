@@ -1,8 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 
 import {
   $sidebarWidth,
   CHAT_SIDEBAR_PANE_ID,
+  dismissNarrowSidebarOverlay,
   reconcileSidebarWidthOverride,
   setSidebarWidth,
   SIDEBAR_DEFAULT_WIDTH,
@@ -11,9 +14,22 @@ import {
 } from './layout'
 import { $paneStates, getPaneStateSnapshot, setPaneWidthOverride } from './panes'
 
+function setNarrowViewport(matches: boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: vi.fn(() => ({ matches }))
+  })
+}
+
 describe('APEX sidebar geometry', () => {
+  const originalMatchMedia = window.matchMedia
+
   beforeEach(() => {
     $paneStates.set({ [CHAT_SIDEBAR_PANE_ID]: { open: true } })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
   })
 
   it('uses the compact prototype width for a fresh renderer', () => {
@@ -41,5 +57,31 @@ describe('APEX sidebar geometry', () => {
 
     setSidebarWidth(400)
     expect($sidebarWidth.get()).toBe(SIDEBAR_MAX_WIDTH)
+  })
+
+  it('dismisses only the transient narrow overlay without changing the docked sidebar preference', () => {
+    setNarrowViewport(true)
+    const events: CustomEvent[] = []
+    const onToggle = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
+
+    expect(dismissNarrowSidebarOverlay()).toBe(true)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.detail).toEqual({ id: CHAT_SIDEBAR_PANE_ID, mode: 'close' })
+    expect(getPaneStateSnapshot(CHAT_SIDEBAR_PANE_ID)?.open).toBe(true)
+
+    window.removeEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
+  })
+
+  it('does nothing on a wide window and preserves the docked sidebar', () => {
+    setNarrowViewport(false)
+    const onToggle = vi.fn()
+    window.addEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
+
+    expect(dismissNarrowSidebarOverlay()).toBe(false)
+    expect(onToggle).not.toHaveBeenCalled()
+    expect(getPaneStateSnapshot(CHAT_SIDEBAR_PANE_ID)?.open).toBe(true)
+
+    window.removeEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
   })
 })

@@ -156,6 +156,7 @@ import {
   cancelWorkflowDomainRun,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
+  getWorkflowDomainProject,
   getWorkflowDomainRun,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
@@ -309,7 +310,7 @@ import {
   transitionDesktopUpdatePlan,
   writeDesktopUpdatePlan
 } from './desktop-update-plan'
-import { configureShellAboutPanel } from './desktop-version'
+import { configureShellAboutPanel, registerDesktopVersionIpc } from './desktop-version'
 import { installEmbedReferer } from './embed-referer'
 import { createEventDeduper } from './event-dedupe'
 import {
@@ -16923,26 +16924,22 @@ function showAboutPanelFresh() {
     app.setAboutPanelOptions({
       applicationName: APP_NAME,
       applicationVersion: skew.outOfSync
-        ? `${resolveHermesVersion()} — app build out of date, update the desktop app`
-        : resolveHermesVersion(),
+        ? `${app.getVersion()} — app build out of date, update the desktop app`
+        : app.getVersion(),
       copyright: 'Copyright © 2026 ApexNodes'
     })
     app.showAboutPanel()
   })
 }
 
-ipcMain.handle('hermes:version', async () => {
-  const skew = await detectRendererSkew()
-
-  return {
-    appVersion: resolveHermesVersion(),
-    electronVersion: process.versions.electron,
-    nodeVersion: process.versions.node,
-    platform: process.platform,
-    hermesRoot: resolveUpdateRoot(),
-    bundleOutOfSync: skew.outOfSync,
-    bundleCommitsBehind: skew.desktopCommitsBehind
-  }
+registerDesktopVersionIpc(ipcMain, {
+  app,
+  bundleStatus: detectRendererSkew,
+  electronVersion: process.versions.electron,
+  engineVersion: resolveHermesVersion,
+  hermesRoot: resolveUpdateRoot,
+  nodeVersion: process.versions.node,
+  platform: process.platform
 })
 
 // ===========================================================================
@@ -21089,6 +21086,22 @@ ipcMain.handle('hermes:workflowDomain:listProjects', async (_event, options) => 
     const result = await listWorkflowDomainProjects(context.apiBase, options || {}, context.transport)
 
     return { ...result, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await getWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
   } catch (error) {
     return { ok: false, code: workflowDomainIpcError(error) }
   }

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NO_PROJECT_ID } from '@/app/chat/sidebar/projects/workspace-groups'
 import { resolveSessionRpcOwner } from '@/app/contrib/wiring-routing'
 import { $terminalTakeover, setTerminalTakeover } from '@/app/right-sidebar/store'
+import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { noteActiveTreeGroup, revealTreePane } from '@/components/pane-shell/tree/store'
 import {
   deleteSession,
@@ -20,10 +21,11 @@ import {
   setSessionArchived
 } from '@/hermes'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { BUSINESS_SIDEBAR_NAV_CONTRACT } from '@/store/business-workspace'
 import { $clarifyRequests, clearClarifyRequest, setClarifyRequest } from '@/store/clarify'
 import { clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { requestGatewayForAgent, requestGatewayForProfile } from '@/store/gateway'
-import { $pinnedSessionIds } from '@/store/layout'
+import { $pinnedSessionIds, CHAT_SIDEBAR_PANE_ID } from '@/store/layout'
 import { $activeGatewayProfile, $newChatProfile, $newChatRoute, $profiles, ensureGatewayProfile } from '@/store/profile'
 import {
   $projectScope,
@@ -3693,6 +3695,13 @@ describe('openNewSessionTile workspace target', () => {
   })
 })
 describe('selectSidebarItem', () => {
+  const originalMatchMedia = window.matchMedia
+
+  afterEach(() => {
+    cleanup()
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+  })
+
   it('fronts the workspace pane when navigating to a sidebar route (issue #72602)', async () => {
     const navigate = vi.fn()
     const requestGateway = vi.fn(async () => ({}) as never)
@@ -3708,6 +3717,57 @@ describe('selectSidebarItem', () => {
     expect(navigate).toHaveBeenCalledWith('/skills', undefined)
     expect(noteActiveTreeGroup).toHaveBeenCalledWith(null)
     expect(revealTreePane).toHaveBeenCalledWith('workspace')
+  })
+
+  it('closes the narrow sidebar overlay after every APEX primary navigation exit', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn(() => ({ matches: true }))
+    })
+    const navigate = vi.fn()
+    const requestGateway = vi.fn(async () => ({}) as never)
+    const closeEvents: CustomEvent[] = []
+    const onToggle = (event: Event) => closeEvents.push(event as CustomEvent)
+    let handle: HarnessHandle | null = null
+    window.addEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
+
+    render(<Harness navigate={navigate} onReady={value => (handle = value)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(handle).not.toBeNull())
+
+    act(() => {
+      BUSINESS_SIDEBAR_NAV_CONTRACT.forEach(item => handle!.selectSidebarItem(item as never))
+    })
+
+    expect(closeEvents).toHaveLength(BUSINESS_SIDEBAR_NAV_CONTRACT.length)
+    expect(closeEvents.map(event => event.detail)).toEqual(
+      BUSINESS_SIDEBAR_NAV_CONTRACT.map(() => ({ id: CHAT_SIDEBAR_PANE_ID, mode: 'close' }))
+    )
+
+    window.removeEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
+  })
+
+  it('does not dismiss or change the sidebar when primary navigation runs on a wide window', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false }))
+    })
+    const navigate = vi.fn()
+    const requestGateway = vi.fn(async () => ({}) as never)
+    const onToggle = vi.fn()
+    let handle: HarnessHandle | null = null
+    window.addEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
+
+    render(<Harness navigate={navigate} onReady={value => (handle = value)} requestGateway={requestGateway} />)
+    await waitFor(() => expect(handle).not.toBeNull())
+
+    act(() => {
+      handle!.selectSidebarItem(BUSINESS_SIDEBAR_NAV_CONTRACT[1] as never)
+    })
+
+    expect(navigate).toHaveBeenCalledWith('/projects', undefined)
+    expect(onToggle).not.toHaveBeenCalled()
+
+    window.removeEventListener(PANE_TOGGLE_REVEAL_EVENT, onToggle)
   })
 })
 

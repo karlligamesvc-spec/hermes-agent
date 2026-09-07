@@ -15,8 +15,13 @@ export type WorkflowProjectListOutcome =
   | { mode: 'failed' }
   | { mode: 'unavailable' }
 
+export type WorkflowProjectOutcome =
+  | { item: WorkflowProject; mode: 'ready' }
+  | { mode: 'failed' }
+  | { mode: 'unavailable' }
+
 export type WorkflowListOutcome =
-  | { catalog: WorkflowCatalogItem[]; items: WorkflowDefinition[]; mode: 'ready' }
+  | { catalog: WorkflowCatalogItem[]; catalogVersion: null | string; items: WorkflowDefinition[]; mode: 'ready' }
   | { mode: 'failed' }
   | { mode: 'unavailable' }
 
@@ -91,6 +96,31 @@ export async function listWorkflowProjects(
   }
 }
 
+export async function getWorkflowProject(
+  projectId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowProjectOutcome> {
+  const normalizedProjectId = projectId.trim()
+
+  if (!bridge?.getProject || !normalizedProjectId) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.getProject(normalizedProjectId)
+
+    return result.ok && result.item ? { item: result.item, mode: 'ready' } : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
 export async function listWorkflowDefinitions(
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<WorkflowListOutcome> {
@@ -108,7 +138,7 @@ export async function listWorkflowDefinitions(
     const [catalog, workflows] = await Promise.all([bridge.getCatalog(), bridge.listWorkflows({ limit: 50 })])
 
     return catalog.ok && workflows.ok && Array.isArray(catalog.items) && Array.isArray(workflows.items)
-      ? { catalog: catalog.items, items: workflows.items, mode: 'ready' }
+      ? { catalog: catalog.items, catalogVersion: catalog.version ?? null, items: workflows.items, mode: 'ready' }
       : { mode: 'failed' }
   } catch {
     return { mode: 'failed' }

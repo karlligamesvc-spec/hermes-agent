@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { I18nProvider } from '@/i18n'
 import { stubResizeObserver } from '@/test/jsdom'
 import type { ConfigFieldSchema } from '@/types/hermes'
 
@@ -126,5 +127,20 @@ describe('ConfigField searchable routing', () => {
     fireEvent.click(screen.getByText('System default'))
 
     expect(onChange).toHaveBeenCalledWith('')
+  })
+
+  it('gives Browser switches a localized accessible name', () => {
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <ConfigField
+          onChange={vi.fn()}
+          schema={{ type: 'boolean' }}
+          schemaKey="browser.allow_private_urls"
+          value={false}
+        />
+      </I18nProvider>
+    )
+
+    expect(screen.getByRole('switch', { name: '允许访问内网地址' })).toBeTruthy()
   })
 })

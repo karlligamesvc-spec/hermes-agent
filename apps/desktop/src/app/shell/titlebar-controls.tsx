@@ -8,6 +8,7 @@ import { resetLayoutTree } from '@/components/pane-shell/tree/store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { compactNumber } from '@/lib/format'
 import { triggerHaptic } from '@/lib/haptics'
@@ -25,6 +26,7 @@ import {
 } from '@/store/layout'
 import { $unreadSessionCount } from '@/store/session-dot-state'
 
+import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '../layout-constants'
 import { appViewForPath, isOverlayView } from '../routes'
 
 import { TITLEBAR_SYSTEM_TOOLS } from './chrome-gates'
@@ -138,6 +140,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const fileBrowserOpen = useStore($fileBrowserOpen)
   const panesFlipped = useStore($panesFlipped)
   const sidebarOpen = useStore($sidebarOpen)
+  const narrowViewport = useMediaQuery(SIDEBAR_COLLAPSE_MEDIA_QUERY)
   const unreadCount = useStore($unreadSessionCount)
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
@@ -159,8 +162,8 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   // stay correct through flips and rearranges. $sidebarOpen ≙ left side,
   // $fileBrowserOpen ≙ right side. Never an active highlight — plain
   // show/hide affordances.
-  const leftEdge = { open: sidebarOpen, toggle: toggleSidebarOpen }
-  const rightEdge = { open: fileBrowserOpen, toggle: toggleFileBrowserOpen }
+  const leftEdge = { open: !narrowViewport && sidebarOpen, toggle: toggleSidebarOpen }
+  const rightEdge = { open: !narrowViewport && fileBrowserOpen, toggle: toggleFileBrowserOpen }
   const leftLabel = leftEdge.open ? t.titlebar.hideSidebar : t.titlebar.showSidebar
   const rightLabel = rightEdge.open ? t.titlebar.hideRightSidebar : t.titlebar.showRightSidebar
 
