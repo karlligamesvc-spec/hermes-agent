@@ -4082,7 +4082,7 @@ export const en: Translations = {
       eyebrow: 'From goal to delivery',
       title: 'Projects',
       description:
-        'Review recent conversations, real task progress, evidence, and delivered results without creating a separate project record.',
+        'Track each business goal through its current run, real step state, attention needs, and delivered results.',
       emptyTitle: 'Start with a real business task',
       emptyDescription:
         'Describe the goal in chat. Recent conversations, real task progress, evidence, and delivered files will appear here.',
@@ -4117,7 +4117,29 @@ export const en: Translations = {
       toolActivity: count => `${count} recorded tool ${count === 1 ? 'call' : 'calls'}`,
       toolStatusDetail:
         'Live running and input-needed status comes from session state. Tool-level status and structured evidence remain in the original conversation; open it for the authoritative detail.',
-      latestOutput: 'Latest output'
+      latestOutput: 'Latest output',
+      recentProjects: 'Recent projects',
+      loadingProjects: 'Loading projects…',
+      projectLoadFailed: 'Projects could not be read. Your local work remains available below.',
+      deliverableCount: count => `${count} ${count === 1 ? 'deliverable' : 'deliverables'}`,
+      currentStep: title => `Current: ${title}`,
+      lifecycle: status =>
+        ({
+          cancelled: 'Cancelled',
+          failed: 'Needs attention',
+          queued: 'Queued for Hermes',
+          running: 'Hermes is working',
+          succeeded: 'Completed',
+          timed_out: 'Timed out',
+          waiting_review: 'Ready for review'
+        })[status] || status,
+      viewRun: 'Open current run',
+      noRun: 'No run has started yet',
+      legacyFallback: 'Local conversations and tasks (compatibility view)',
+      availableSources: 'Available data sources',
+      sourceConnected: 'Connected',
+      sourceNotConnected: 'Not connected',
+      noAvailableSources: 'No supported data-source connection is available in this build.'
     },
     workflows: {
       eyebrow: 'Proven business paths',
@@ -4138,7 +4160,26 @@ export const en: Translations = {
         title: 'Insight to content review',
         summary: 'Topics, production, publishing prep, and review',
         prompt: 'Plan this week’s content, create publishable assets, and define review metrics'
-      }
+      },
+      competitor: {
+        title: 'Competitor monitoring',
+        summary: 'Track meaningful market moves and turn changes into actions',
+        prompt: 'Monitor my key competitors, validate meaningful changes, and recommend actions with evidence'
+      },
+      reviews: {
+        title: 'Review insights',
+        summary: 'Turn customer feedback into themes, risks, and priorities',
+        prompt: 'Analyze recent customer reviews and produce evidence-backed themes, risks, and priorities'
+      },
+      businessReview: {
+        title: 'Business review',
+        summary: 'Bring operating signals together into decisions and next steps',
+        prompt: 'Review current business performance and propose evidence-backed priorities for the next cycle'
+      },
+      savedTitle: 'Your workflows',
+      savedEmpty: 'No saved workflows yet. Starting a goal creates the first one.',
+      catalogUnavailable: 'The live workflow catalog is temporarily unavailable. No template was started.',
+      version: version => `Version ${version}`
     },
     workflowDomain: {
       startFailed: 'The workflow could not start. Your goal is still here; try again.',

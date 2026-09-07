@@ -9,8 +9,10 @@ export interface WorkflowDomainTransport {
 
 export interface WorkflowDomainStarter {
   description: string
+  id: string
   name: string
   slug: string
+  version: number
 }
 
 export interface StartWorkflowDomainGoalOptions {
@@ -84,13 +86,69 @@ export async function getWorkflowDomainAccess(
   return { enabled: true }
 }
 
+function workflowDomainListUrl(apiBase: string, path: string, query: Record<string, null | number | string | undefined>) {
+  const url = new URL(workflowDomainUrl(apiBase, path))
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined && String(value).trim()) {
+      url.searchParams.set(key, String(value))
+    }
+  }
+
+  return url.toString()
+}
+
+export async function listWorkflowDomainProjects(
+  apiBase: string,
+  options: { cursor?: string; limit?: number; status?: string },
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  return requireObject(
+    await transport.getJson(
+      workflowDomainListUrl(apiBase, 'projects', {
+        cursor: options.cursor,
+        limit: options.limit,
+        status: options.status
+      })
+    ),
+    'project list'
+  )
+}
+
+export async function listWorkflowDomainWorkflows(
+  apiBase: string,
+  options: { cursor?: string; limit?: number; projectId?: string; status?: string },
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  return requireObject(
+    await transport.getJson(
+      workflowDomainListUrl(apiBase, 'workflows', {
+        cursor: options.cursor,
+        limit: options.limit,
+        projectId: options.projectId,
+        status: options.status
+      })
+    ),
+    'workflow list'
+  )
+}
+
+export async function getWorkflowDomainCatalog(
+  apiBase: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  return requireObject(await transport.getJson(workflowDomainUrl(apiBase, 'catalog')), 'workflow catalog')
+}
+
 export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOptions): Promise<JsonObject> {
   const objective = requireText(options.objective, 'objective', 4000)
   const name = requireText(options.starter.name, 'workflow name', 200)
+  const templateId = requireText(options.starter.id, 'workflow template id', 120)
   const slug = requireText(options.starter.slug, 'workflow slug', 120)
   const description = requireText(options.starter.description, 'workflow description', 4000)
+  const templateVersion = Number(options.starter.version)
 
-  if (!/^[a-z0-9-]+$/.test(slug)) {
+  if (!/^[a-z0-9-]+$/.test(slug) || !/^[a-z0-9-]+$/.test(templateId) || !Number.isInteger(templateVersion) || templateVersion < 1) {
     throw new Error('Invalid workflow domain workflow slug')
   }
 
@@ -115,7 +173,7 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
         definition: {
           entrypoint: 'hermes',
           objective,
-          steps: ['clarify', 'execute', 'deliver']
+          template: { id: templateId, version: templateVersion }
         },
         inputSchema: {
           type: 'object',
