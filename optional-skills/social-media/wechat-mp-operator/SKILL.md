@@ -1,6 +1,6 @@
 ---
 name: wechat-mp-operator
-description: "规划并运营合规的微信公众号起号系统,覆盖账号定位、主页地基、对标拆解、选题库、文章简报、发布节奏和周复盘。与纯 prompt 起号包不同:对标拆解和选题库调用平台社媒数据工具(social_search / social_posts / social_content / social_comments,platform=wechat_mp)拉取真实公众号文章,抽取真实的标题模式与结构,而不是让模型凭空编造对标数据。用于用户询问公众号起号、新号冷启动、公众号定位、对标账号、爆款标题拆解、选题规划、文章简报或公众号周复盘时。"
+description: "用于微信公众号起号、账号定位、对标与标题拆解、选题、文章简报、发布节奏及周复盘."
 version: 1.0.0
 author: Chen (agent-skills-launch-pack, MIT)
 license: MIT

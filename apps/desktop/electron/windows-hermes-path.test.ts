@@ -54,7 +54,7 @@ test('chooseUpdaterArgs: missing launch dependency selects rebuilding --repair d
   assert.deepEqual(chooseUpdaterArgs(false, 'main'), ['--repair', '--branch', 'main'])
 })
 
-test('chooseUpdaterArgs: passes the branch through unchanged in both cases', () => {
+test('chooseUpdaterArgs: passes the branch through unchanged in both modes', () => {
   assert.deepEqual(chooseUpdaterArgs(true, 'release/1.2'), ['--update', '--branch', 'release/1.2'])
   assert.deepEqual(chooseUpdaterArgs(false, 'release/1.2'), ['--repair', '--branch', 'release/1.2'])
 })
@@ -166,6 +166,7 @@ test('existing-command chain rejects a broken venv shim even when --version woul
     isCommandScript: () => false,
     verifyHermesCli: () => {
       versionProbeCalled = true
+
       return true
     }
   })
@@ -176,6 +177,7 @@ test('existing-command chain rejects a broken venv shim even when --version woul
 
 test('existing-command chain still accepts a healthy generic non-venv CLI', () => {
   const command = '/usr/local/bin/hermes'
+
   const result = resolveExistingHermesCandidate(command, ['serve'], {
     isWindowsVenvHermesShim: () => false,
     unwrapWindowsVenvHermesCommand: () => null,

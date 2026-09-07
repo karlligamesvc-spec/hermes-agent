@@ -74,6 +74,7 @@ import {
   toggleSidebarMessagingOpen,
   unpinSession
 } from '@/store/layout'
+import { notifyError } from "@/store/notifications"
 import { $newChatProfile, $profiles, $profileScope, ALL_PROFILES, normalizeProfileKey } from '@/store/profile'
 import {
   $activeProjectId,
@@ -108,6 +109,7 @@ import {
   setCurrentCwd
 } from '@/store/session'
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
+import { markSessionUnread } from "@/store/session-unread-remote"
 
 import {
   type AppView,
@@ -150,6 +152,7 @@ import { buildSessionByAnyId } from './session-index'
 import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section'
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
 import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
+
 
 // Non-session groups (messaging platforms) stay compact: show a few rows up
 // front, reveal more in larger steps on demand. Keeps a busy platform from
@@ -213,6 +216,10 @@ const HEADER_NAV_BTN =
 // FTS results cover sessions that aren't in the loaded page; synthesize a
 // minimal SessionInfo so they render in the same row component (resume works
 // by id; the snippet stands in for the preview).
+export function stripFtsMarkers(snippet: string): string {
+  return snippet.replaceAll('>>>', '').replaceAll('<<<', '')
+}
+
 function searchResultToSession(result: SessionSearchResult): SessionInfo {
   const ts = result.session_started ?? Date.now() / 1000
 
@@ -228,7 +235,7 @@ function searchResultToSession(result: SessionSearchResult): SessionInfo {
     message_count: 0,
     model: result.model ?? null,
     output_tokens: 0,
-    preview: result.snippet?.trim() || null,
+    preview: stripFtsMarkers(result.snippet ?? '').trim() || null,
     source: result.source ?? null,
     started_at: ts,
     title: null,
@@ -242,7 +249,7 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onLoadMoreSessions: () => Promise<void> | void
   onLoadMoreProfileSessions?: (profile: string) => Promise<void> | void
   onLoadMoreMessaging?: (platform: string) => Promise<void> | void
-  onResumeSession: (sessionId: string) => void
+  onResumeSession: (sessionId: string, session?: SessionInfo) => void
   onDeleteSession: (sessionId: string) => void
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
@@ -319,6 +326,17 @@ export function ChatSidebar({
   const workingSessionIds = useStore($workingSessionIds)
   const profiles = useStore($profiles)
   const profileScope = useStore($profileScope)
+
+  const toggleUnread = (storedId: string) => {
+    const row = $sessions.get().find(session => session.id === storedId)
+
+    if (!row) {
+      return
+    }
+
+    markSessionUnread(storedId, row.unread !== true).catch(err => notifyError(err, s.row.unreadFailed))
+  }
+
   // Only surface the profile switcher when more than one profile exists, so
   // single-profile users see the unchanged sidebar.
   const multiProfile = profiles.length > 1
@@ -848,7 +866,10 @@ export function ChatSidebar({
   // session shows under its project instantly (and with its working arc),
   // matching the flat Recents list. Keyed by project id for the rows.
   const overviewPreviews = useMemo<Record<string, SessionInfo[]>>(
-    () => overlayLivePreviews(projectOverview ?? [], agentSessions, projects, PROJECT_PREVIEW_COUNT, removedSessionIds),
+    () =>
+      overlayLivePreviews(projectOverview ?? [], agentSessions, projects, PROJECT_PREVIEW_COUNT, {
+        removed: removedSessionIds
+      }),
     [projectOverview, agentSessions, projects, removedSessionIds]
   )
 
@@ -1296,12 +1317,12 @@ export function ChatSidebar({
                 onResumeSession={onResumeSession}
                 onToggle={() => undefined}
                 onTogglePin={pinSession}
+                onToggleUnread={toggleUnread}
                 open
                 pinned={false}
                 rootClassName="min-h-32 flex-1 overflow-hidden p-0"
                 sessions={searchResults}
                 showProfileTags={showAllProfiles}
-                workingSessionIdSet={workingSessionIdSet}
               />
             )}
 
@@ -1319,13 +1340,13 @@ export function ChatSidebar({
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarPinsOpen(!pinsOpen)}
                 onTogglePin={unpinSession}
+                onToggleUnread={toggleUnread}
                 open={pinsOpen}
                 pinned
                 rootClassName="shrink-0 p-0 pb-1"
                 sessions={pinnedSessions}
                 showProfileTags={showAllProfiles}
                 sortable={pinnedSessions.length > 1}
-                workingSessionIdSet={workingSessionIdSet}
               />
             )}
 
@@ -1348,11 +1369,11 @@ export function ChatSidebar({
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarProjectsOpen(!projectsOpen)}
                 onTogglePin={pinSession}
+                onToggleUnread={toggleUnread}
                 open={projectsOpen}
                 pinned={false}
                 rootClassName="shrink-0 p-0 pb-1"
                 sessions={projectSessions}
-                workingSessionIdSet={workingSessionIdSet}
               />
             )}
 
@@ -1371,7 +1392,6 @@ export function ChatSidebar({
                   // virtualized long list, which must keep its own scroller.
                   !recentsVirtualizes && COMPACT_FLAT
                 )}
-                dateGrouped={inProject || !agentOrderManual}
                 dndSensors={dndSensors}
                 emptyState={
                   showSessionSkeletons ? (
@@ -1398,12 +1418,13 @@ export function ChatSidebar({
                   ) : null
                 }
                 forceEmptyState={showSessionSkeletons}
+                grouping={inProject || !agentOrderManual ? 'date' : 'none'}
                 groups={displayAgentGroups}
                 headerAction={
                   inProject && enteredProject ? (
                     <div className="group/workspace flex shrink-0 items-center gap-0.5">
                       {enteredProject.path && (
-                        <StartWorkButton onStarted={onNewSessionInWorkspace} repoPath={enteredProject.path} />
+                        <StartWorkButton repoPath={enteredProject.path} />
                       )}
                       {/* Home has no folder and no record to rename, theme, or delete. */}
                       {!enteredProject.isNoProject && (
@@ -1498,6 +1519,7 @@ export function ChatSidebar({
                 onResumeSession={onResumeSession}
                 onToggle={() => setSidebarRecentsOpen(!agentsOpen)}
                 onTogglePin={pinSession}
+                onToggleUnread={toggleUnread}
                 open={agentsOpen}
                 pinned={false}
                 projectBackRow={
@@ -1515,7 +1537,6 @@ export function ChatSidebar({
                 )}
                 sessions={displayAgentSessions}
                 sortable={!showAllProfiles && agentSessions.length > 1}
-                workingSessionIdSet={workingSessionIdSet}
               />
             )}
 
@@ -1556,11 +1577,11 @@ export function ChatSidebar({
                     onResumeSession={onResumeSession}
                     onToggle={() => toggleSidebarMessagingOpen(group.sourceId)}
                     onTogglePin={pinSession}
+                    onToggleUnread={toggleUnread}
                     open={messagingOpenIds.includes(group.sourceId)}
                     pinned={false}
                     rootClassName="shrink-0 p-0"
                     sessions={shownSessions}
-                    workingSessionIdSet={workingSessionIdSet}
                   />
                 )
               })}
@@ -1572,7 +1593,9 @@ export function ChatSidebar({
                 onManageJob={onManageCronJob}
                 onOpenRun={onResumeSession}
                 onToggle={() => setSidebarCronOpen(!cronOpen)}
-                onTriggerJob={onTriggerCronJob}
+                onTriggerJob={async jobId => {
+                  onTriggerCronJob(jobId)
+                }}
                 open={cronOpen}
               />
             )}

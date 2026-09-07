@@ -98,7 +98,10 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
   const notice = gateNotice ?? (managedError || null)
 
   return (
-    <div className="fixed inset-0 z-1400 flex flex-col items-center justify-center bg-(--ui-chat-surface-background) p-6 [-webkit-app-region:drag]">
+    <div
+      className="fixed inset-0 z-1400 flex flex-col items-center justify-center bg-(--ui-chat-surface-background) p-6 [-webkit-app-region:drag]"
+      data-glass-opaque
+    >
       <div className="flex w-full max-w-[22rem] flex-col items-center [-webkit-app-region:no-drag]">
         <img alt="" aria-hidden className="mb-6 size-16 rounded-[1.125rem]" src={assetPath(LOGO_ASSET)} />
 

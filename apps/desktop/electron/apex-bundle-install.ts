@@ -411,6 +411,7 @@ async function applyBundleUpdate(o) {
   // normalization needed (unlike bootstrap-runner/shell-updater, which start
   // from raw process.platform).
   const telemetryBase = { platform: os, arch, app_version: desktopVersion || null, runtime_key: key }
+
   const reportProgress = event => {
     try {
       onProgress(event)

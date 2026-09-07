@@ -229,6 +229,7 @@ async function downloadWithResume(o) {
 
   const partPath = `${dest}.part`
   fs.mkdirSync(path.dirname(dest), { recursive: true })
+
   const reportProgress = event => {
     if (!onProgress) {return}
 

@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
+import { useDebounced } from '@/app/hooks/use-debounced'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -13,10 +14,33 @@ import { selectableCardClass } from '@/lib/selectable-card'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $backdrop, setBackdrop } from '@/store/backdrop'
+import { $composerPopoutGesturesEnabled } from '@/store/composer-popout'
 import { $embedAllowed, $embedMode, clearEmbedAllowed, type EmbedMode, setEmbedMode } from '@/store/embed-consent'
+import { $introSplash } from '@/store/intro-splash'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
+import { $reasoningCollapsedByDefault } from "@/store/reasoning-disclosure"
+import { $sessionListDensity } from "@/store/session-list-density"
+import { type SessionListDensity } from "@/store/session-list-density"
+import { $tabStripDefault } from "@/store/tabstrip-prefs"
+import { type TabStripDefault } from "@/store/tabstrip-prefs"
+import { $retiredTips } from "@/store/tips"
+import { $tipsEnabled } from "@/store/tips"
+import { resetTips } from "@/store/tips"
+import { setTipsEnabled } from "@/store/tips"
 import { $toolViewMode, setToolViewMode } from '@/store/tool-view'
-import { $translucency, setTranslucency } from '@/store/translucency'
+import { $toursEnabled, setToursEnabled } from '@/store/tours'
+import {
+  $translucency,
+  beginTranslucencyPeek,
+  endTranslucencyPeek,
+  pulseTranslucencyPeek,
+  resetTranslucencyPeek,
+  setTranslucency,
+  TRANSLUCENCY_MAX,
+  TRANSLUCENCY_MIN,
+  TRANSLUCENCY_STEP
+} from '@/store/translucency'
+import { $vibeHeartsEnabled, setVibeHeartsEnabled } from '@/store/vibe-hearts-enabled'
 import { $zoomPercent, setZoomPercent } from '@/store/zoom'
 import { getBaseColors, useTheme } from '@/themes/context'
 import { installVscodeThemeFromMarketplace } from '@/themes/install'
@@ -26,6 +50,9 @@ import { $marketplaceInstalls, isUserTheme, removeUserTheme } from '@/themes/use
 import { MODE_OPTIONS } from './constants'
 import { PetSettings } from './pet-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
+import { APPEARANCE_SETTING_IDS } from "./settings-search"
+import { useDeepLinkHighlight } from "./use-deep-link-highlight"
+
 
 function ThemePreview({ name, mode }: { name: string; mode: 'light' | 'dark' }) {
   // Preview in the *current* mode: the dark palette in Dark, and the light
@@ -69,23 +96,13 @@ function ThemePreview({ name, mode }: { name: string; mode: 'light' | 'dark' }) 
 // +/- step landing between presets highlights nothing, and the row
 // description keeps showing the exact current percent.
 const UI_SCALE_PRESETS = ['90', '100', '110', '125', '150', '175'] as const
+const APPEARANCE_SEARCH_TARGETS = new Set<string>(Object.values(APPEARANCE_SETTING_IDS))
+const appearanceSettingElementId = (id: string) => `setting-field-${id}`
 
 type UiScalePreset = (typeof UI_SCALE_PRESETS)[number]
 
 function matchUiScalePreset(percent: number): UiScalePreset | null {
   return UI_SCALE_PRESETS.find(preset => Number(preset) === percent) ?? null
-}
-
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value)
-
-  useEffect(() => {
-    const handle = setTimeout(() => setDebounced(value), delayMs)
-
-    return () => clearTimeout(handle)
-  }, [value, delayMs])
-
-  return debounced
 }
 
 const compactNumber = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
@@ -262,21 +279,134 @@ function MarketplaceThemeResults({
   )
 }
 
+// Keys a range input treats as a step, so the peek can flash the live window
+// for keyboard adjustment the way a pointer drag holds it open.
+const SLIDER_STEP_KEYS = new Set([
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'End',
+  'Home',
+  'PageDown',
+  'PageUp'
+])
+
+interface TranslucencySliderProps {
+  label: string
+  onChange: (value: number) => void
+  value: number
+}
+
+/**
+ * One 0–100 lever, used up to twice: Clear's window opacity, and under Glass
+ * the tint plus an optional native fade.
+ *
+ * Peek while the hand is on it — the overlay (scrim + near-opaque card) ghosts
+ * so the window behind IS the live preview. The pointer pair covers
+ * mouse/touch drags; the keyboard path pulses per step instead, and blur ends
+ * any residual hold.
+ */
+function TranslucencySlider({ label, onChange, value }: TranslucencySliderProps) {
+  return (
+    <>
+      <input
+        aria-label={label}
+        className="h-1 w-40 cursor-pointer appearance-none rounded-full bg-(--ui-stroke-tertiary)"
+        max={TRANSLUCENCY_MAX}
+        min={TRANSLUCENCY_MIN}
+        onBlur={endTranslucencyPeek}
+        onChange={event => {
+          triggerHaptic('selection')
+          onChange(Number(event.target.value))
+        }}
+        onKeyDown={event => {
+          if (SLIDER_STEP_KEYS.has(event.key)) {
+            pulseTranslucencyPeek()
+          }
+        }}
+        onLostPointerCapture={endTranslucencyPeek}
+        onPointerDown={beginTranslucencyPeek}
+        onPointerUp={endTranslucencyPeek}
+        step={TRANSLUCENCY_STEP}
+        style={{ accentColor: 'var(--dt-primary)' }}
+        type="range"
+        value={value}
+      />
+      <span className="w-9 text-right text-[length:var(--conversation-caption-font-size)] tabular-nums text-(--ui-text-tertiary)">
+        {value}%
+      </span>
+    </>
+  )
+}
+
+interface GlassRowProps {
+  children: React.ReactNode
+  label: string
+}
+
+/** A labelled control in the Glass sub-panel: tint, fade, frost, area. */
+function GlassRow({ children, label }: GlassRowProps) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-12 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+        {label}
+      </span>
+      {children}
+    </div>
+  )
+}
+
 export function AppearanceSettings() {
   const { t, isSavingLocale } = useI18n()
   const { themeName, mode, resolvedMode, availableThemes, setTheme, setMode } = useTheme()
   const toolViewMode = useStore($toolViewMode)
+  const reasoningCollapsedByDefault = useStore($reasoningCollapsedByDefault)
+  const sessionListDensity = useStore($sessionListDensity)
+  const tabStripDefault = useStore($tabStripDefault)
   const zoomPercent = useStore($zoomPercent)
   const embedMode = useStore($embedMode)
   const embedAllowed = useStore($embedAllowed)
+  const composerPopoutGesturesEnabled = useStore($composerPopoutGesturesEnabled)
   const translucency = useStore($translucency)
   const backdrop = useStore($backdrop)
+  const introSplash = useStore($introSplash)
+  const tipsEnabled = useStore($tipsEnabled)
+  const retiredTips = useStore($retiredTips)
+  const toursEnabled = useStore($toursEnabled)
+  const vibeHeartsEnabled = useStore($vibeHeartsEnabled)
   const installs = useStore($marketplaceInstalls)
   const profiles = useStore($profiles)
   const activeProfileKey = normalizeProfileKey(useStore($activeGatewayProfile))
   const a = t.settings.appearance
 
+  // A pointer held on the intensity slider when this overlay closes (Escape
+  // mid-drag) never delivers its pointerup here, which would strand the peek
+  // counter above zero and ghost the NEXT settings overlay. Unmount drops
+  // every outstanding hold.
+  useEffect(() => resetTranslucencyPeek, [])
+
+  // Shared by the mode/frost/area pickers: apply the choice, then show it
+  // through the overlay it just altered (a pulse, not a hold — see the peek
+  // notes on the slider itself).
+  const pickTranslucency =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      triggerHaptic('selection')
+      set(value)
+
+      if (translucency.intensity > 0) {
+        pulseTranslucencyPeek()
+      }
+    }
+
   const [query, setQuery] = useState('')
+
+  useDeepLinkHighlight({
+    elementId: appearanceSettingElementId,
+    param: 'setting',
+    ready: id => APPEARANCE_SEARCH_TARGETS.has(id)
+  })
 
   // One box does double duty: filter installed themes live (below), and run a
   // name search against the VS Code Marketplace (the Cmd-K "Install theme…"
@@ -308,6 +438,18 @@ export function AppearanceSettings() {
     { id: 'technical', label: a.technical }
   ] as const
 
+  const sessionDensityOptions = [
+    { id: 'compact', label: a.sessionDensityCompact },
+    { id: 'comfortable', label: a.sessionDensityComfortable },
+    { id: 'detailed', label: a.sessionDensityDetailed }
+  ] as const satisfies readonly { id: SessionListDensity; label: string }[]
+
+  const tabStripOptions = [
+    { id: 'auto', label: a.tabStripAuto },
+    { id: 'always', label: a.tabStripAlways },
+    { id: 'never', label: a.tabStripNever }
+  ] as const satisfies readonly { id: TabStripDefault; label: string }[]
+
   const embedOptions = [
     { id: 'ask', label: a.embedsAsk },
     { id: 'always', label: a.embedsAlways },
@@ -328,6 +470,7 @@ export function AppearanceSettings() {
           <ListRow
             action={<LanguageSwitcher />}
             description={isSavingLocale ? t.language.saving : t.language.description}
+            id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.language)}
             title={t.language.label}
           />
 
@@ -472,10 +615,10 @@ export function AppearanceSettings() {
                     step={5}
                     style={{ accentColor: 'var(--dt-primary)' }}
                     type="range"
-                    value={translucency}
+                    value={translucency.intensity}
                   />
                   <span className="w-9 text-right text-[length:var(--conversation-caption-font-size)] tabular-nums text-(--ui-text-tertiary)">
-                    {translucency}%
+                    {translucency.intensity}%
                   </span>
                 </div>
               }
@@ -506,6 +649,76 @@ export function AppearanceSettings() {
 
           <ListRow
             action={
+              <div className="flex flex-col items-end gap-1.5">
+                <SegmentedControl
+                  onChange={id => {
+                    triggerHaptic('selection')
+                    setTipsEnabled(id === 'on')
+                  }}
+                  options={[
+                    { id: 'off', label: t.common.off },
+                    { id: 'on', label: t.common.on }
+                  ]}
+                  value={tipsEnabled ? 'on' : 'off'}
+                />
+                {/* The ✕ on a tip is permanent, so this is the only way back.
+                    It appears once there is something to bring back. */}
+                {retiredTips.length > 0 && (
+                  <Button
+                    onClick={() => {
+                      triggerHaptic('selection')
+                      resetTips()
+                    }}
+                    size="inline"
+                    variant="text"
+                  >
+                    {a.tipsReset(retiredTips.length)}
+                  </Button>
+                )}
+              </div>
+            }
+            description={a.tipsDesc}
+            title={a.tipsTitle}
+          />
+
+          <ListRow
+            action={
+              <SegmentedControl
+                onChange={id => {
+                  triggerHaptic('selection')
+                  setToursEnabled(id === 'on')
+                }}
+                options={[
+                  { id: 'off', label: t.common.off },
+                  { id: 'on', label: t.common.on }
+                ]}
+                value={toursEnabled ? 'on' : 'off'}
+              />
+            }
+            description={a.toursDesc}
+            title={a.toursTitle}
+          />
+
+          <ListRow
+            action={
+              <SegmentedControl
+                onChange={id => {
+                  triggerHaptic('selection')
+                  setVibeHeartsEnabled(id === 'on')
+                }}
+                options={[
+                  { id: 'off', label: t.common.off },
+                  { id: 'on', label: t.common.on }
+                ]}
+                value={vibeHeartsEnabled ? 'on' : 'off'}
+              />
+            }
+            description={a.vibeHeartsDesc}
+            title={a.vibeHeartsTitle}
+          />
+
+          <ListRow
+            action={
               <SegmentedControl
                 onChange={id => {
                   triggerHaptic('selection')
@@ -516,6 +729,7 @@ export function AppearanceSettings() {
               />
             }
             description={a.toolViewDesc}
+            id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.toolView)}
             title={a.toolViewTitle}
           />
 

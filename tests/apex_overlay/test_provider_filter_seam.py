@@ -455,6 +455,9 @@ def test_undenied_copilot_probe_resumes_via_gh(_denylist, monkeypatch):
 
     import hermes_cli.copilot_auth as copilot_auth
 
+    # v0.21 caches both successful and failed gh probes. Keep this test on the
+    # uncached boundary so earlier deny-path tests cannot seed its result.
+    monkeypatch.setattr(copilot_auth, "_gh_cli_token_cache", None)
     spy = MagicMock(
         return_value=MagicMock(returncode=0, stdout="gho_valid0123456789\n")
     )
@@ -487,6 +490,7 @@ def test_undenied_provider_status_delegates_to_upstream(_denylist, monkeypatch):
     import hermes_cli.copilot_auth as copilot_auth
     from hermes_cli import auth
 
+    monkeypatch.setattr(copilot_auth, "_gh_cli_token_cache", None)
     spy = MagicMock(
         return_value=MagicMock(returncode=0, stdout="gho_valid0123456789\n")
     )

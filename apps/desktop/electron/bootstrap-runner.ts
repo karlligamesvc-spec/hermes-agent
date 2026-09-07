@@ -25,6 +25,7 @@
  *                        updateInfo: {isUpdate, toVersion, fromVersion} }
  *   { type: 'stage',     name, state: 'running'|'succeeded'|'skipped'|'failed',
  *                        json?, durationMs?, error? }
+ *   { type: 'activity',  stage? } // throttled raw child stdout/stderr activity
  *   { type: 'log',       stage?, line, stream: 'stdout'|'stderr' } // raw line from install.ps1
  *   { type: 'complete',  marker: <written marker payload> }
  *   { type: 'failed',    stage?, error }     // bootstrap aborted
@@ -633,6 +634,27 @@ function resolveWindowsPowerShell() {
   return 'powershell.exe'
 }
 
+const BOOTSTRAP_ACTIVITY_THROTTLE_MS = 1_000
+
+function createBootstrapActivityReporter(emit, stageName) {
+  let lastEmittedAt = 0
+
+  return () => {
+    if (!emit) {
+      return
+    }
+
+    const now = Date.now()
+
+    if (lastEmittedAt && now - lastEmittedAt < BOOTSTRAP_ACTIVITY_THROTTLE_MS) {
+      return
+    }
+
+    lastEmittedAt = now
+    emit({ type: 'activity', stage: stageName || null })
+  }
+}
+
 function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, hermesHome, extraEnv }: any = {}) {
   return new Promise<any>((resolve, reject) => {
     const ps = process.platform === 'win32' ? resolveWindowsPowerShell() : 'pwsh'
@@ -681,10 +703,12 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
 
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
+    const reportActivity = createBootstrapActivityReporter(emit, stageName)
 
     // Stream stdout line-by-line so the renderer sees progress in real time.
     let stdoutBuf = ''
     child.stdout.on('data', chunk => {
+      reportActivity()
       stdout += chunk
       stdoutBuf += chunk
       let nl
@@ -701,6 +725,7 @@ function spawnPowerShell(scriptPath, args, { emit, stageName, abortSignal, herme
 
     let stderrBuf = ''
     child.stderr.on('data', chunk => {
+      reportActivity()
       stderr += chunk
       stderrBuf += chunk
       let nl
@@ -779,9 +804,11 @@ function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome,
 
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
+    const reportActivity = createBootstrapActivityReporter(emit, stageName)
 
     let stdoutBuf = ''
     child.stdout.on('data', chunk => {
+      reportActivity()
       stdout += chunk
       stdoutBuf += chunk
       let nl
@@ -798,6 +825,7 @@ function spawnBash(scriptPath, args, { emit, stageName, abortSignal, hermesHome,
 
     let stderrBuf = ''
     child.stderr.on('data', chunk => {
+      reportActivity()
       stderr += chunk
       stderrBuf += chunk
       let nl

@@ -25,6 +25,7 @@ import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillScope, useSkillCatalog } from './skill-catalog'
 import type { ChatBarState } from './types'
 
+
 // hc-572 made the composer "+" a unified CAPABILITY entry instead of an
 // attachment picker. hc-572-followup (real-machine feedback, both rounds): the
 // file/folder/image/paste-image/URL/prompt-snippet pickers were dropped from

@@ -395,6 +395,7 @@ test('applyBundleUpdate: emits durable stage changes and forwards download bytes
     const originalDownload = deps.download
 
     deps.onProgress = event => progress.push(event)
+
     deps.download = async options => {
       options.onProgress({ attempt: 1, received: 512, total: 1024 })
 

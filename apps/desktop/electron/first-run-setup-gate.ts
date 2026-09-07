@@ -14,6 +14,26 @@ interface FirstRunSetupGateOptions {
 
 export type FirstRunSetupDecision = 'continue-local' | 'remote-applied' | 'reset'
 
+interface FirstRunSetupGateDecisionPort {
+  continueLocal: () => void
+  shouldGate: (backend?: FirstRunSetupBackend | null) => boolean
+}
+
+// ApexNodes does not expose upstream's local/remote first-run chooser. Saved
+// remotes are resolved before this decision is reached; a genuinely fresh
+// bootstrap therefore continues locally in the same turn and never creates a
+// pending setup waiter that the dormant renderer cannot release.
+export async function resolveApexFirstRunSetupDecision(
+  gate: FirstRunSetupGateDecisionPort,
+  backend?: FirstRunSetupBackend | null
+): Promise<FirstRunSetupDecision> {
+  if (gate.shouldGate(backend)) {
+    gate.continueLocal()
+  }
+
+  return 'continue-local'
+}
+
 export function createFirstRunSetupGate({
   hideChoice,
   log,

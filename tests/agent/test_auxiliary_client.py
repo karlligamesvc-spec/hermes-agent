@@ -1042,6 +1042,51 @@ class TestOpenRouterPaidLaneGuard:
         assert model is None
         mock_openai.assert_not_called()
 
+    def test_resolver_forwards_explicit_free_model_to_gate(self, monkeypatch):
+        """The concrete OpenRouter route gates the caller's model, not its default."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)), \
+             patch("hermes_cli.config.load_config_readonly",
+                   return_value={"auxiliary": {"free_only": True}}), \
+             patch("agent.auxiliary_client.OpenAI") as mock_openai:
+            mock_client = MagicMock(name="openrouter_client")
+            mock_openai.return_value = mock_client
+            client, model = resolve_provider_client(
+                "openrouter", model="nvidia/nemotron-3-ultra-550b-a55b:free"
+            )
+
+        assert client is mock_client
+        assert model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+    def test_free_only_gate_does_not_mark_openrouter_unhealthy(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)), \
+             patch("hermes_cli.config.load_config_readonly",
+                   return_value={"auxiliary": {"free_only": True}}), \
+             patch("agent.auxiliary_client._mark_provider_unhealthy") as mark_unhealthy:
+            client, model = resolve_provider_client(
+                "openrouter", model="google/gemini-3.6-flash"
+            )
+
+        assert client is None
+        assert model is None
+        mark_unhealthy.assert_not_called()
+
+    def test_free_only_gate_reports_policy_not_credentials(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+        with patch("agent.auxiliary_client._select_pool_entry", return_value=(False, None)), \
+             patch("hermes_cli.config.load_config_readonly",
+                   return_value={"auxiliary": {"free_only": True}}), \
+             caplog.at_level(logging.WARNING, logger="agent.auxiliary_client"):
+            resolve_provider_client("openrouter", model="google/gemini-3.6-flash")
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("free_only" in message and "google/gemini-3.6-flash" in message
+                   for message in messages)
+        assert not any("credentials" in message for message in messages)
+
     def test_paid_lane_warns_once(self, monkeypatch, caplog):
         """Engaging the default paid model logs a WARNING (once per model)."""
         import logging
@@ -1071,7 +1116,10 @@ class TestOpenRouterPaidLaneGuard:
     def test_is_free_model(self):
         from agent.auxiliary_client import _is_free_model
         assert _is_free_model("nvidia/nemotron-3-ultra-550b-a55b:free")
+        # Stealth-preview SKUs are free-tier without a :free suffix (issue #91843).
+        assert _is_free_model("stealth/ox-alpha")
         assert not _is_free_model("google/gemini-3.6-flash")
+        assert not _is_free_model("my-stealth/model")
         assert not _is_free_model("")
         assert not _is_free_model(None)
 
@@ -2536,17 +2584,20 @@ class TestAuxiliaryAuthRefreshRetry:
 
         with (
             patch("agent.auxiliary_client._client_cache", {cache_key: (stale_client, "claude-haiku-4-5-20251001", None)}),
-            patch("agent.anthropic_adapter.read_claude_code_credentials", return_value={
+            # Anthropic credential sourcing lives in agent/anthropic_credentials.py;
+            # patch it at that definition site so both the direct call here and
+            # the re-read inside ``_refresh_oauth_token`` see the same stub.
+            patch("agent.anthropic_credentials.read_claude_code_credentials", return_value={
                 "accessToken": "expired-token",
                 "refreshToken": "refresh-token",
                 "expiresAt": 0,
             }),
-            patch("agent.anthropic_adapter.refresh_anthropic_oauth_pure", return_value={
+            patch("agent.anthropic_credentials.refresh_anthropic_oauth_pure", return_value={
                 "access_token": "fresh-token",
                 "refresh_token": "refresh-token-2",
                 "expires_at_ms": 9999999999999,
             }) as mock_refresh_oauth,
-            patch("agent.anthropic_adapter._write_claude_code_credentials") as mock_write,
+            patch("agent.anthropic_credentials._write_claude_code_credentials") as mock_write,
         ):
             from agent.auxiliary_client import _refresh_provider_credentials
 
@@ -2734,7 +2785,8 @@ class TestAuxiliaryProviderProfileReasoning:
             base_url="https://api.moonshot.ai/v1",
         )
 
-        assert kwargs["reasoning_effort"] == "medium"
+        # K3 maps medium → high (ref: K3 model docs)
+        assert kwargs["reasoning_effort"] == "high"
         assert "reasoning" not in kwargs.get("extra_body", {})
         assert "thinking" not in kwargs.get("extra_body", {})
 
@@ -2826,6 +2878,9 @@ class TestCodexAdapterReasoningTranslation:
 
         def _create(**kwargs):
             captured_kwargs.update(kwargs)
+            # #93650 routes bulk fields through extra_body; fold them back in
+            # so assertions read the effective wire body the SDK would send.
+            captured_kwargs.update(kwargs.get("extra_body") or {})
             return _FakeCreateStream()
 
         real_client = MagicMock()
@@ -2909,6 +2964,9 @@ class TestCodexAdapterPromptCacheKey:
 
         def _create(**kwargs):
             captured_kwargs.update(kwargs)
+            # #93650 routes bulk fields through extra_body; fold them back in
+            # so assertions read the effective wire body the SDK would send.
+            captured_kwargs.update(kwargs.get("extra_body") or {})
             return _FakeCreateStream()
 
         real_client = MagicMock()
@@ -2932,6 +2990,14 @@ class TestCodexAdapterPromptCacheKey:
             base_url="https://bedrock-mantle.us-west-2.api.aws/v1",
             model=model,
         )
+        adapter.create(messages=[
+            {"role": "system", "content": "SYS"},
+            {"role": "user", "content": "hi"},
+        ])
+        assert captured["prompt_cache_retention"] == "24h"
+
+    def test_meta_endpoint_includes_prompt_cache_retention(self):
+        adapter, captured = self._build_adapter(base_url="https://api.meta.ai/v1", model="muse-spark-1.2")
         adapter.create(messages=[
             {"role": "system", "content": "SYS"},
             {"role": "user", "content": "hi"},
@@ -3016,6 +3082,9 @@ class TestCodexAdapterGithubResponsesMessageIdDrop:
 
         def _create(**kwargs):
             captured_kwargs.update(kwargs)
+            # #93650 routes bulk fields through extra_body; fold them back in
+            # so assertions read the effective wire body the SDK would send.
+            captured_kwargs.update(kwargs.get("extra_body") or {})
             return _FakeCreateStream()
 
         real_client = MagicMock()
@@ -3187,6 +3256,69 @@ class TestCodexAuxiliaryAdapterTimeout:
         assert time.monotonic() - started < 0.14
 
 
+class TestCodexAuxiliaryAdapterCacheScope:
+    """Regression for issue #78941: auxiliary Codex calls (compression,
+    flush_memories, MoA, session_search) must not bucket-share a prompt
+    cache slot across unrelated sessions just because their instructions
+    and tools happen to match.
+    """
+
+    def _create_and_capture(self, *, session_id):
+        import agent.auxiliary_client as aux
+
+        class _FakeCreateStream:
+            def __iter__(self):
+                return iter([
+                    SimpleNamespace(
+                        type="response.output_item.done",
+                        item=SimpleNamespace(
+                            type="message",
+                            content=[SimpleNamespace(type="output_text", text="ok")],
+                        ),
+                    ),
+                    SimpleNamespace(type="response.completed", response=SimpleNamespace(
+                        status="completed", id="r1", usage=None,
+                    )),
+                ])
+
+            def close(self):
+                pass
+
+        class FakeResponses:
+            def __init__(self):
+                self.kwargs = None
+
+            def create(self, **kwargs):
+                self.kwargs = kwargs
+                return _FakeCreateStream()
+
+        fake_client = SimpleNamespace(responses=FakeResponses(), base_url="")
+        adapter = aux._CodexCompletionsAdapter(fake_client, "gpt-5.5")
+        token = aux.set_runtime_main("openai", "gpt-5.5", session_id=session_id)
+        try:
+            adapter.create(
+                messages=[
+                    {"role": "system", "content": "You are a memory summarizer."},
+                    {"role": "user", "content": "Summarize the last turn."},
+                ],
+            )
+        finally:
+            aux.reset_runtime_main(token)
+        return fake_client.responses.kwargs["prompt_cache_key"]
+
+    def test_different_sessions_get_different_cache_keys(self):
+        key_a = self._create_and_capture(session_id="session-A")
+        key_b = self._create_and_capture(session_id="session-B")
+        assert key_a != key_b
+
+    def test_cron_refires_of_the_same_job_share_a_cache_key(self):
+        first = self._create_and_capture(session_id="cron_job42_20260801_090000")
+        second = self._create_and_capture(session_id="cron_job42_20260802_090000")
+        other_job = self._create_and_capture(session_id="cron_job99_20260801_090000")
+        assert first == second
+        assert first != other_job
+
+
 class TestCodexAuxiliaryToolMessageConversion:
     """Regression for issue #5709.
 
@@ -3237,7 +3369,11 @@ class TestCodexAuxiliaryToolMessageConversion:
         fake_client = SimpleNamespace(responses=FakeResponses())
         adapter = _CodexCompletionsAdapter(fake_client, "gpt-5.5")
         adapter.create(messages=messages, model="gpt-5.5")
-        return fake_client.responses.kwargs
+        # #93650 routes bulk fields through extra_body; fold them back in so
+        # assertions read the effective wire body the SDK would send.
+        kwargs = dict(fake_client.responses.kwargs)
+        kwargs.update(kwargs.pop("extra_body", None) or {})
+        return kwargs
 
     def test_tool_history_never_leaks_role_tool(self):
         messages = [
@@ -4363,3 +4499,188 @@ class TestAsynchronousFallbackCachePlans:
         wire_tools = client.chat.completions.create.call_args.kwargs["tools"]
         assert "cache_control" in wire_tools[-1]
         assert "cache_control" not in tools[-1]
+
+
+class TestAutoRoutedProviderProfileHooks:
+    def test_cached_auto_route_projects_selected_provider_on_every_request(self):
+        """Auto routing must retain the concrete provider for request hooks."""
+        import agent.auxiliary_client as aux
+        from providers.base import ProviderProfile
+
+        hook_calls = []
+
+        class DynamicProfile(ProviderProfile):
+            def build_api_kwargs_extras(self, *, reasoning_config=None, **context):
+                hook_calls.append(context)
+                return {}, {
+                    "extra_headers": {
+                        "Authorization": f"Bearer token-{len(hook_calls)}",
+                    },
+                }
+
+        profile = DynamicProfile(name="agentgateway")
+        client = MagicMock()
+        client.base_url = "https://gateway.example.com/v1"
+        response = MagicMock()
+        response.choices = [MagicMock(message=MagicMock(content="ok"))]
+
+        def lookup_profile(name):
+            return profile if name == "agentgateway" else None
+
+        aux.shutdown_cached_clients()
+        try:
+            with (
+                patch(
+                    "agent.auxiliary_client._resolve_task_provider_model",
+                    return_value=("auto", "gateway/model", None, None, None),
+                ),
+                patch(
+                    "agent.auxiliary_client._resolve_auto_route",
+                    return_value=(client, "gateway/model", "agentgateway"),
+                ) as resolve_auto,
+                patch("providers.get_provider_profile", side_effect=lookup_profile),
+                patch(
+                    "agent.auxiliary_client._relay_sync_completion",
+                    return_value=response,
+                ) as relay,
+            ):
+                for _ in range(2):
+                    result = call_llm(
+                        task="title_generation",
+                        messages=[{"role": "user", "content": "title this"}],
+                    )
+                    assert result is response
+        finally:
+            aux.shutdown_cached_clients()
+
+        resolve_auto.assert_called_once()
+        assert len(hook_calls) == 2
+        assert relay.call_args_list[0].args[1]["extra_headers"] == {
+            "Authorization": "Bearer token-1",
+        }
+        assert relay.call_args_list[1].args[1]["extra_headers"] == {
+            "Authorization": "Bearer token-2",
+        }
+
+
+class TestFastModelTier:
+    """The opt-in titling fast tier: rot-proof and scoped to titling only."""
+
+    def test_auto_client_cache_key_tracks_fast_model_preference(self):
+        """Changing the routing preference must not reuse the old auto client."""
+        from agent import auxiliary_client as ac
+
+        with patch.object(ac, "_task_prefers_fast_model", return_value=False):
+            main_key = ac._client_cache_key(
+                "auto", async_mode=False, task="title_generation"
+            )
+        with patch.object(ac, "_task_prefers_fast_model", return_value=True):
+            fast_key = ac._client_cache_key(
+                "auto", async_mode=False, task="title_generation"
+            )
+
+        assert main_key != fast_key
+
+    def test_catalog_match_prefers_rolling_alias_over_pinned_id(self):
+        """A "-latest" alias wins: it is the only id that cannot go stale."""
+        from agent import auxiliary_client as ac
+
+        catalog = {
+            "z-ai/glm-5.2": {},
+            "openai/gpt-5.4-mini": {},
+            "~openai/gpt-mini-latest": {},
+            "stepfun/step-3.7-flash:free": {},
+        }
+        with patch("hermes_cli.models.fetch_models_with_pricing", return_value=catalog):
+            assert ac._fast_model_from_catalog("nous") == "~openai/gpt-mini-latest"
+
+    def test_catalog_match_skips_reasoning_batch_and_embedding_lookalikes(self):
+        """Substring matching must not pick a thinker, a queue, or an encoder."""
+        from agent import auxiliary_client as ac
+
+        catalog = {
+            "openai/o3-mini": {},
+            "openai/gpt-5.4-mini:batch": {},
+            "sentence-transformers/all-minilm-l6-v2": {},
+            "google/gemini-3.6-flash": {},
+        }
+        with patch("hermes_cli.models.fetch_models_with_pricing", return_value=catalog):
+            assert ac._fast_model_from_catalog("nous") == "google/gemini-3.6-flash"
+
+    def test_catalog_match_skips_the_non_chat_siblings_of_a_chat_model(self):
+        """A provider names its speech and image endpoints after the chat model
+        they're paired with, so they satisfy the family rungs and can't answer."""
+        from agent import auxiliary_client as ac
+
+        catalog = {
+            "openai/gpt-4o-mini-tts": {},
+            "openai/gpt-4o-mini-transcribe": {},
+            "openai/gpt-4o-mini-search-preview": {},
+            "openai/gpt-4o-mini": {},
+        }
+        with patch("hermes_cli.models.fetch_models_with_pricing", return_value=catalog):
+            assert ac._fast_model_from_catalog("nous") == "openai/gpt-4o-mini"
+
+    def test_catalog_match_takes_the_newest_of_a_family(self):
+        """The bare family rungs must land on the current generation.
+
+        A provider serves every generation of its small tier it hasn't retired,
+        and compared as strings the oldest sorts first — so the rung meant to
+        keep the titler current was pinning it to the most obsolete member.
+        """
+        from agent import auxiliary_client as ac
+
+        catalog = {
+            "openai/gpt-3.5-mini": {},
+            "openai/gpt-9-mini": {},
+            "openai/gpt-10-mini": {},
+        }
+        with patch("hermes_cli.models.fetch_models_with_pricing", return_value=catalog):
+            assert ac._fast_model_from_catalog("nous") == "openai/gpt-10-mini"
+
+    def test_catalog_fetch_is_authenticated(self):
+        """Most /v1/models endpoints need a key; anonymously they 401.
+
+        A 401 reads as "this provider serves no small model", so the titler
+        would fall back to the curated default and never notice.
+        """
+        from agent import auxiliary_client as ac
+
+        with patch(
+            "hermes_cli.auth.resolve_api_key_provider_credentials",
+            return_value={"api_key": "sk-test", "base_url": "https://api.example.com/v1"},
+        ), patch(
+            "hermes_cli.models.fetch_models_with_pricing", return_value={}
+        ) as fetch:
+            ac._fast_model_from_catalog("openai")
+
+        assert fetch.call_args.kwargs["api_key"] == "sk-test"
+        assert fetch.call_args.kwargs["base_url"] == "https://api.example.com"
+
+    def test_falls_back_to_curated_default_when_catalog_unavailable(self):
+        """An offline catalog degrades to the provider's pinned default."""
+        from agent import auxiliary_client as ac
+
+        with patch.object(ac, "_fast_model_from_catalog", return_value=""):
+            assert (
+                ac._get_aux_model_for_provider("anthropic", prefer_fast=True)
+                == ac._get_aux_model_for_provider("anthropic")
+            )
+
+    def test_fast_tier_is_opt_in(self):
+        """Without prefer_fast the resolver must not touch the live catalog."""
+        from agent import auxiliary_client as ac
+
+        with patch.object(ac, "_fast_model_from_catalog") as spy:
+            ac._get_aux_model_for_provider("nous")
+        spy.assert_not_called()
+
+    def test_only_titling_is_in_the_fast_tier(self):
+        """Compression/vision/search keep 'auto means my chat model'."""
+        from agent.auxiliary_client import _FAST_MODEL_TASKS
+
+        assert "title_generation" in _FAST_MODEL_TASKS
+        overlap = {"compression", "vision", "web_extract"}.intersection(
+            _FAST_MODEL_TASKS
+        )
+        assert not overlap

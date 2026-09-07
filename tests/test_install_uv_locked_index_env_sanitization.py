@@ -80,9 +80,10 @@ def _extract_install_ps1_function(name: str) -> str:
 
 def test_install_sh_uv_sync_locked_helper_strips_every_index_env_var() -> None:
     body = _extract_install_sh_function("_uv_sync_locked")
+    before_sync = body[: body.index("$UV_CMD sync")]
     for var in _LOCKED_PROJECT_ENV_VARS:
-        assert f"-u {var}" in body, (
-            f"_uv_sync_locked must strip {var} (env -u {var}) before the "
+        assert re.search(rf"^\s*unset\s+[^\n]*\b{re.escape(var)}\b", before_sync, re.MULTILINE), (
+            f"_uv_sync_locked must unset {var} before the "
             "--locked uv sync, or a CN mirror default index re-keys the "
             "lock's recorded registry and --locked always refuses"
         )

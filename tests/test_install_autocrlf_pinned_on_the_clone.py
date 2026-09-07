@@ -109,9 +109,29 @@ _SH_TRAILERS = re.compile(r"(\s+2>/dev/null.*|\s*;\s*then\s*$|\s+then\s*$)")
 
 def _clone_argv(body: str, subs: dict[str, str], shell: bool) -> list[list[str]]:
     """Every `git [-c k=v]... clone ...` the body actually executes, as argv."""
+    lines = body.splitlines()
+    if shell:
+        # install.sh wraps the larger HTTPS clone commands across physical
+        # lines. Reconstruct shell continuation lines before tokenising so a
+        # newly added route cannot be counted but replayed without its repo
+        # and destination arguments.
+        logical_lines = []
+        pending = ""
+        for raw in lines:
+            line = raw.strip()
+            if line.endswith("\\"):
+                pending += line[:-1].rstrip() + " "
+                continue
+            logical_lines.append(pending + line)
+            pending = ""
+        assert not pending, "unterminated shell continuation in clone_repo()"
+        lines = logical_lines
+
     argvs = []
-    for line in body.splitlines():
+    for line in lines:
         stripped = _SH_TRAILERS.sub("", line.strip()) if shell else line.strip()
+        if shell:
+            stripped = re.sub(r'^if\s+GIT_SSH_COMMAND="[^"]*"\s+', "if ", stripped)
         tokens = [t for t in stripped.split() if t not in _WRAPPER_TOKENS]
         tokens = [t for t in tokens if not re.match(r"^\w+=", t)]  # env prefixes
         if not tokens or tokens[0] != "git" or "clone" not in tokens[:4]:
@@ -121,7 +141,7 @@ def _clone_argv(body: str, subs: dict[str, str], shell: bool) -> list[list[str]]
 
     # Belt: a clone written in a form the filter above does not recognise would
     # silently drop out of the replay. Every real route uses `--depth 1`.
-    written = len(re.findall(r"clone\b[^\n]*--depth", body))
+    written = len(re.findall(r"clone\b[^\n]*--depth", "\n".join(lines)))
     assert written == len(argvs), (
         f"parsed {len(argvs)} clone routes but the source contains {written} -- "
         "a clone route is written in a shape this test cannot replay"
@@ -301,10 +321,11 @@ def test_installer_clone_survives_a_pin_under_autocrlf_true(
     build = _ps1_clone_argv if installer == "install.ps1" else _sh_clone_argv
 
     route_count = len(build(remote, workdir / "probe"))
-    assert route_count == 2, (
-        f"{installer} has {route_count} clone routes, not the 2 (SSH, HTTPS) this "
-        "guard was written against. Count them before changing them (AGENTS.md "
-        "#12) and extend this test to cover the new one."
+    expected_routes = {"install.ps1": 2, "install.sh": 3}[installer]
+    assert route_count == expected_routes, (
+        f"{installer} has {route_count} clone routes, not the {expected_routes} "
+        "routes this guard was written against. Count them before changing "
+        "them (AGENTS.md #12) and extend this test to cover the new one."
     )
 
     for index in range(route_count):

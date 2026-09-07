@@ -21,6 +21,7 @@
       "@hermes/shared/billing": ["../shared/src/billing-types.ts"],
       "@hermes/shared/billing-policy": ["../shared/src/billing-policy.ts"],
       "@hermes/shared/charge-settlement": ["../shared/src/charge-settlement.ts"],
+      "@hermes/shared/translucency": ["../shared/src/translucency.ts"],
       "@hermes/shared": ["../shared/src/index.ts"]
     }
   },

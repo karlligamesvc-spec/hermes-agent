@@ -3,9 +3,60 @@ import assert from 'node:assert/strict'
 import { test, vi } from 'vitest'
 
 import { applyConnectionChange } from './connection-apply'
-import { createFirstRunSetupGate } from './first-run-setup-gate'
+import { createFirstRunSetupGate, resolveApexFirstRunSetupDecision } from './first-run-setup-gate'
 import { runPrimaryBackendStartup } from './primary-backend-startup'
 import { rehomePrimaryConnection } from './primary-connection-rehome'
+
+async function withDeadline<T>(promise: Promise<T>, timeoutMs = 250): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`startup did not settle within ${timeoutMs}ms`)), timeoutMs)
+      })
+    ])
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  }
+}
+
+test('a fresh APEX home immediately ensures its local runtime without a setup waiter', async () => {
+  const promptedBackends: unknown[] = []
+
+  const gate = createFirstRunSetupGate({
+    promptChoice: backend => promptedBackends.push(backend),
+    stuckAfterMs: 0
+  })
+
+  const bootstrapBackend = {
+    activeRoot: '/tmp/fresh-hermes-home/hermes-agent',
+    kind: 'bootstrap-needed',
+    platform: 'linux'
+  }
+
+  const ensureLocalRuntime = vi.fn(async backend => ({ ...backend, command: 'hermes' }))
+
+  const startup = runPrimaryBackendStartup({
+    connectRemote: vi.fn(),
+    ensureLocalRuntime,
+    prepareLocalBackend: vi.fn(async () => bootstrapBackend),
+    resolveRemote: vi.fn(async () => null),
+    waitForDecision: backend => resolveApexFirstRunSetupDecision(gate, backend),
+    waitForLocalStart: vi.fn(async () => {})
+  })
+
+  assert.deepEqual(await withDeadline(startup), {
+    kind: 'local',
+    backend: { ...bootstrapBackend, command: 'hermes' }
+  })
+  assert.deepEqual(ensureLocalRuntime.mock.calls, [[bootstrapBackend]])
+  assert.equal(gate.hasWaiter(), false)
+  assert.deepEqual(promptedBackends, [])
+})
 
 test('a first-run bootstrap-needed remote apply connects without ensuring or bootstrapping locally', async () => {
   const gate = createFirstRunSetupGate({ stuckAfterMs: 0 })

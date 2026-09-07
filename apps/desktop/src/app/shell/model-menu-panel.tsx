@@ -30,6 +30,8 @@ import {
   SHOW_EXPLICIT_MOA_UI
 } from '@/lib/moa-compose'
 import { requestModelOptions } from '@/lib/model-options'
+import { modelOptionsQueryKey } from "@/lib/model-options"
+import { reconcileSelectionAfterCatalogRefresh } from "@/lib/model-options"
 import {
   currentPickerSelection,
   displayModelName,
@@ -61,6 +63,7 @@ import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-c
 import type { MoaConfigResponse, MoaModelSlot, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 import { ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
+
 
 // Lets the host dropdown (model-pill) hand the panel a way to dismiss itself so
 // clicking a model row commits + closes, while the hover-revealed edit submenu
@@ -111,11 +114,12 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
   const collapsedProviders = useStore($collapsedProviders)
 
   const modelOptions = useQuery({
-    queryKey: ['model-options', activeSessionId || 'global'],
+    queryKey: modelOptionsQueryKey(profile, activeSessionId),
     // Gateway-first even with no session yet: a connected (possibly remote)
     // gateway owns the model catalog, including virtual providers like `moa`
     // that the local REST fallback can't know about (#53817).
-    queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, sessionId: activeSessionId })
+    queryFn: (): Promise<ModelOptionsResponse> =>
+      requestModelOptions({ gateway, profile, request: requestGateway, sessionId: activeSessionId })
   })
 
   // Also the source of "what is currently multi-selected" (expandMoaPresetMembers
@@ -318,7 +322,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     setRefreshing(true)
 
     try {
-      const queryKey = ['model-options', activeSessionId || 'global']
+      const queryKey = modelOptionsQueryKey(profile, activeSessionId)
 
       // hc-602: an explicit refresh on a collapsed managed row is the user
       // saying "my models are missing". Heal the relay key BEFORE re-querying —
@@ -329,9 +333,24 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
         await recoverManagedCatalogAuth()
       }
 
-      const next = await requestModelOptions({ gateway, refresh: true, sessionId: activeSessionId })
+      const next = await requestModelOptions({
+        gateway,
+        profile,
+        refresh: true,
+        request: requestGateway,
+        sessionId: activeSessionId
+      })
 
       queryClient.setQueryData<ModelOptionsResponse>(queryKey, next)
+
+      // Group / credential swaps can return a catalog that no longer contains
+      // the session's current model. The store + currentPickerSelection would
+      // otherwise keep painting the stale id (it is not in the new list).
+      const switchTo = reconcileSelectionAfterCatalogRefresh(optionsModel, next.providers)
+
+      if (switchTo) {
+        await onSelectModel({ ...switchTo, sessionId: activeSessionId || null })
+      }
     } catch {
       // Network/backend hiccup — fall back to a plain invalidate so the next
       // open re-fetches (still cached, but no worse than before).

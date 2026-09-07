@@ -94,11 +94,13 @@ test('downloadWithResume: clean download passes the sha256 gate', async () => {
 test('downloadWithResume: reports byte progress while the response is still streaming', async () => {
   const dir = mkTmp()
   const half = Math.floor(BODY.length / 2)
+
   const { url, close } = await startServer((_req, res) => {
     res.writeHead(200, { 'Content-Length': String(BODY.length) })
     res.write(BODY.subarray(0, half))
     setImmediate(() => res.end(BODY.subarray(half)))
   })
+
   const progress: Array<{ attempt: number; received: number; total: number | null }> = []
 
   try {
@@ -127,6 +129,7 @@ test('downloadWithResume: a failing progress observer cannot abort the integrity
 
   try {
     const dest = path.join(dir, 'bundle.tar.gz')
+
     const result = await downloadWithResume({
       url,
       dest,

@@ -300,13 +300,27 @@ def _managed_models(list_providers, current_provider, current_base_url, current_
     """Run the picker assembly and return the APEX row's models + probe calls."""
     probed: list[str] = []
 
-    def fake_fetch(api_key, api_url, headers=None, timeout=None):
+    def fake_fetch(
+        api_key,
+        api_url,
+        native_catalog_provider,
+        preserve_native_models,
+        headers=None,
+        timeout=5.0,
+        api_mode=None,
+    ):
         probed.append(api_url)
         return list(LIVE_CATALOG)
 
     from hermes_cli import model_switch
 
-    with patch("hermes_cli.models.fetch_api_models", fake_fetch), patch.object(
+    # v0.21 routes every picker probe through this helper so native catalogs
+    # and the generic discovery cache share one boundary. Patch that
+    # authoritative boundary: patching models.fetch_api_models directly no
+    # longer observes a picker probe and can be masked by a warm cache.
+    with patch.object(
+        model_switch, "_fetch_picker_live_models", fake_fetch
+    ), patch.object(
         model_switch, "_save_discovered_models_to_config", lambda *a, **k: None
     ):
         rows = list_providers(

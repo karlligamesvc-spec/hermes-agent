@@ -193,7 +193,7 @@ def fake_subprocess_run(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_seed_supervise_skeleton_creates_expected_layout(tmp_path) -> None:
-    """Verifies the dirs + FIFO + modes the helper lays down."""
+    """Verifies the dirs + FIFO the helper lays down."""
     import stat
     import sys
 
@@ -232,6 +232,31 @@ def test_seed_supervise_skeleton_creates_expected_layout(tmp_path) -> None:
         "supervise/control must be a FIFO"
     )
     assert stat.S_IMODE(control.stat().st_mode) == 0o660
+
+
+@pytest.mark.linux_only
+def test_seed_supervise_skeleton_sets_setgid_on_event_dirs(tmp_path) -> None:
+    """The event dirs carry setgid so s6-supervise's EEXIST path leaves them alone.
+
+    Linux-only because the assertion is about what ``chmod`` does, and that
+    differs by kernel: BSD (macOS) silently drops ``S_ISGID`` from a directory
+    unless the caller is root or a member of the directory's group, so the same
+    correct helper produces 01730 there. s6 only ever runs on Linux — inside
+    s6-overlay's stage2 as root with umask 0 — so Linux is the host whose
+    answer matters.
+    """
+    import stat
+
+    from hermes_cli.service_manager import _seed_supervise_skeleton
+
+    svc_dir = tmp_path / "gateway-foo"
+    svc_dir.mkdir()
+
+    _seed_supervise_skeleton(svc_dir)
+
+    for rel in ("event", "supervise/event"):
+        mode = stat.S_IMODE((svc_dir / rel).stat().st_mode)
+        assert mode == 0o3730, f"{rel}/ mode = {oct(mode)}, want 0o3730"
 
 
 
@@ -289,6 +314,28 @@ def test_render_finish_script_exits_125_on_ex_config() -> None:
     assert '[ "$1" = "78" ]' in text
     assert "exit 125" in text
     assert "exit 0" in text
+
+
+def test_render_finish_script_does_not_restart_on_clean_exit(tmp_path) -> None:
+    """Behavioral: the rendered finish script, executed for each run-exit
+    code, must exit 125 (no restart) for clean exit 0 and EX_CONFIG 78,
+    and exit 0 (restart) for genuine crashes (#76435 — restart-on-normal-
+    exit turned a supervised gateway into a reconnect storm)."""
+    import subprocess
+
+    script = tmp_path / "finish"
+    script.write_text(S6ServiceManager._render_finish_script())
+    script.chmod(0o755)
+
+    def finish_exit(run_exit_code: int) -> int:
+        proc = subprocess.run(["sh", str(script), str(run_exit_code)],
+                              capture_output=True)
+        return proc.returncode
+
+    assert finish_exit(0) == 125   # clean stop — no restart
+    assert finish_exit(78) == 125  # fatal config — no restart
+    assert finish_exit(1) == 0     # crash — s6 restarts
+    assert finish_exit(137) == 0   # SIGKILL crash — s6 restarts
 
 
 
@@ -492,4 +539,3 @@ def test_s6_log_run_never_invokes_chown_with_symlinked_log_dir(tmp_path) -> None
     assert after.st_gid == before.st_gid
     assert (victim / "marker").read_text(encoding="utf-8") == "keep"
     assert (victim / "lock").read_text(encoding="utf-8") == "keep-lock"
-

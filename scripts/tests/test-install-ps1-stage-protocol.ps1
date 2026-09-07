@@ -21,6 +21,13 @@ if (-not (Test-Path $installScript)) {
 }
 
 $failures = 0
+
+# Exercise the overlay's formerly noisy branch deterministically. Every command
+# below is a machine-readable contract and must remain parseable when the user
+# or an earlier bootstrap step has selected the China mirror region.
+$env:APEXNODES_REGION = "cn"
+$env:HERMES_CN_MIRRORS = ""
+
 function Assert-Equal {
     param([Parameter(Mandatory=$true)] $Expected,
           [Parameter(Mandatory=$true)] $Actual,

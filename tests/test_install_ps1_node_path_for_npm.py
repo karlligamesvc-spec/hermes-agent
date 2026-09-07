@@ -29,17 +29,27 @@ def test_install_ps1_defines_ensure_node_exe_on_path_helper() -> None:
 
 def test_test_node_prepends_node_dir_before_success() -> None:
     text = _install_ps1()
+    helper = text[
+        text.index("function Test-SystemNodeReady {"):
+        text.index("function Test-Node {")
+    ]
+    accepted = helper.index("Test-NodeVersionOk $version")
+    path_fix = helper.index("Ensure-NodeExeOnPath", accepted)
+    success = helper.index(
+        'Write-Success "Node.js $version with npm $npmVersion found"', accepted
+    )
+    assert accepted < path_fix < success, (
+        "Test-SystemNodeReady must prepend node.exe's directory before "
+        "reporting a valid system Node/npm pair as usable"
+    )
+
     body = text[
         text.index("function Test-Node {"):
         text.index("function Get-NodeDepsFingerprint {")
     ]
-    accepted = body.index("Test-NodeVersionOk $version")
-    path_fix = body.index("Ensure-NodeExeOnPath", accepted)
-    success = body.index('Write-Success "Node.js $version found"', accepted)
-    assert accepted < path_fix < success, (
-        "Test-Node must prepend node.exe's directory before reporting a valid "
-        "system Node/npm pair as usable"
-    )
+    assert body.index("if (Test-SystemNodeReady)") < body.index(
+        "$script:HasNode = $true"
+    ), "Test-Node must delegate to the PATH-safe system Node readiness gate"
 
 
 def test_install_node_deps_prepends_node_dir_before_npm() -> None:
