@@ -278,6 +278,7 @@ import {
   upsertConnection
 } from './connection-registry'
 import type { RosterProfileMetadata } from './connection-registry'
+import { contextMenuPointFor, installContextMenuBridge } from './context-menu-bridge'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken } from './dashboard-token'
 import {
@@ -7015,50 +7016,6 @@ function installZoomShortcuts(window) {
  *    renderer appends them to its already-open menu,
  *  - the gesture coordinates — kept for copyImageAt, which needs them.
  */
-const lastContextMenuPoint = new Map<number, { x: number; y: number }>()
-
-function installContextMenuBridge(window: BrowserWindow) {
-  window.webContents.on('context-menu', (_event, params) => {
-    const template = []
-    const hasSelection = Boolean(params.selectionText?.trim())
-    const isEditable = Boolean(params.isEditable)
-    lastContextMenuPoint.set(window.webContents.id, { x: params.x, y: params.y })
-
-    const suggestions = Array.isArray(params.dictionarySuggestions) ? params.dictionarySuggestions : []
-
-    if (params.isEditable && params.misspelledWord) {
-      window.webContents.send('hermes:context-menu-spellcheck', {
-        misspelledWord: params.misspelledWord,
-        suggestions
-      })
-    }
-
-    if (hasSelection || isEditable) {
-      if (template.length) {
-        template.push({ type: 'separator' })
-      }
-
-      if (isEditable) {
-        template.push(
-          { role: 'cut', enabled: params.editFlags.canCut },
-          { role: 'copy', enabled: params.editFlags.canCopy },
-          { role: 'paste', enabled: params.editFlags.canPaste },
-          { type: 'separator' },
-          { role: 'selectAll', enabled: params.editFlags.canSelectAll }
-        )
-      } else {
-        template.push({ role: 'copy', enabled: params.editFlags.canCopy })
-      }
-    }
-
-    if (!template.length) {
-      template.push({ role: 'selectAll' })
-    }
-
-    Menu.buildFromTemplate(template).popup({ window })
-  })
-}
-
 // Microphone capture for the voice composer. The renderer drives mic access
 // through getUserMedia, which Chromium gates behind these two session hooks.
 //
@@ -12830,7 +12787,7 @@ function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {})
     installZoomReassertOnNavigation(win.webContents, reassertZoom)
   }
 
-  installContextMenuBridge(win)
+  installContextMenuBridge(win.webContents)
   win.webContents.setWindowOpenHandler(details => {
     openExternalUrl(details.url)
 
@@ -16374,7 +16331,7 @@ ipcMain.handle('hermes:context-menu:edit', (event, command) => {
 // Copy the image under the sender's LAST context-menu gesture. Chromium only
 // exposes image bytes through copyImageAt, and only main saw the coordinates.
 ipcMain.handle('hermes:context-menu:copy-image', event => {
-  const point = lastContextMenuPoint.get(event.sender.id)
+  const point = contextMenuPointFor(event.sender.id)
 
   if (point) {
     event.sender.copyImageAt(point.x, point.y)
