@@ -3917,9 +3917,11 @@ export const zh = defineLocale({
         actionFailed: '操作没有保存，请重试。',
         approve: '批准交付物',
         attempt: '执行次数',
+        attemptDescription: (attempt, maximum) => `第 ${attempt} 次尝试（最多 ${maximum} 次）`,
         cancel: '取消运行',
         cancelling: '正在取消…',
         created: '创建时间',
+        detailsTab: '执行详情',
         deliverables: '交付物与审阅',
         evidence: count => `${count} 条证据`,
         event: eventType =>
@@ -3933,9 +3935,23 @@ export const zh = defineLocale({
             'run.running': '运行已开始',
             'run.timed_out': '运行超时',
             'run.waiting_review': '等待审阅'
-          })[eventType] || eventType,
+          })[eventType] ||
+          (eventType.startsWith('tool.') ? '工具活动' : eventType.includes('result') ? '已记录执行结果' : '运行事件'),
+        eventSummary: eventType =>
+          eventType.startsWith('tool.')
+            ? 'APEX / Hermes 使用了工具，参数和结果已隐藏。'
+            : eventType === 'run.queued'
+              ? '已加入队列，准备开始。'
+              : eventType === 'run.running'
+                ? 'APEX 已开始处理。'
+                : eventType.includes('result')
+                  ? '已记录结果；这里只显示安全的生命周期摘要。'
+                  : '这次运行记录了一条生命周期更新。',
+        events: '已记录事件',
         executor: '执行器',
+        executorUnavailable: '暂不可用',
         eyebrow: '真实工作流运行',
+        hermesExecutor: 'Hermes',
         loadFailedDescription: '无法读取这次运行。没有数据被替换或删除。',
         loadFailedTitle: '运行暂时不可用',
         loading: '正在读取工作流运行',
@@ -3943,8 +3959,23 @@ export const zh = defineLocale({
         noDeliverablesTitle: '尚无交付物',
         noEvents: '运行事件写入后会在这里按顺序显示。',
         noObjective: '这次运行没有记录目标摘要。',
+        noPendingDescription: '当前不需要你审阅或干预。',
+        noPendingTitle: '当前无待处理事项',
+        noStageProgressDescription: '当前运行响应没有真实阶段数据，APEX 不会推测阶段或进度。',
+        noStageProgressTitle: '暂时没有可展示的阶段进度',
+        openDeliverable: '打开交付物',
+        openFailed: '无法打开交付物，当前 Run 数据仍已保留。',
+        openUnavailable: '暂无可打开结果',
+        openingDeliverable: '正在打开…',
+        pendingReviewDescription: count => `${count} 个真实交付物等待你的决定。`,
+        pendingReviewTitle: '需要审阅',
+        progressTab: '进展',
+        refresh: '刷新',
+        refreshFailedDescription: '最新刷新失败，正在显示上一次成功读取的 Run 数据。',
         requestChanges: '要求修改',
         retry: '重新读取',
+        stageProgress: '阶段进度',
+        started: '启动时间',
         status: status =>
           ({
             approved: '已批准',
@@ -3959,9 +3990,11 @@ export const zh = defineLocale({
             timed_out: '已超时',
             waiting_review: '等待审阅',
             changes_requested: '需要修改'
-          })[status] || status,
+          })[status] || '未知状态',
         timeline: '运行时间线',
         title: '工作流运行',
+        updated: '更新时间',
+        viewTabs: '工作流运行视图',
         waitingForEvents: '等待运行事件'
       }
     }

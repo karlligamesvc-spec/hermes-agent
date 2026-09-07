@@ -3,6 +3,8 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 
+import type { Locator } from '@playwright/test'
+
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
@@ -14,6 +16,69 @@ const PHASE1_VIEWPORTS = [
   { height: 800, name: 'desktop-1220', width: 1220 },
   { height: 800, name: 'narrow-752', width: 752 }
 ] as const
+
+async function expectDrawerBelowNativeChrome(drawer: Locator) {
+  const geometry = await drawer.evaluate(element => {
+    const box = element.getBoundingClientRect()
+    const style = getComputedStyle(element)
+
+    return {
+      top: box.top,
+      bottom: box.bottom,
+      height: box.height,
+      viewportHeight: window.innerHeight,
+      titlebarHeight: style.getPropertyValue('--titlebar-height'),
+      computedTop: style.top
+    }
+  })
+  await test.info().attach('native-drawer-geometry', {
+    body: JSON.stringify(geometry, null, 2),
+    contentType: 'application/json'
+  })
+  // Native chrome is 34px at the fixture's explicit 100% zoom. A portal
+  // without its shell token instead shrinks to content and anchors at bottom.
+  expect(geometry.top).toBeCloseTo(34, 0)
+  expect(geometry.bottom).toBeCloseTo(geometry.viewportHeight, 0)
+  expect(geometry.height).toBeCloseTo(geometry.viewportHeight - 34, 0)
+}
+
+async function expectReadablePageGutters(surface: Locator) {
+  const geometry = await surface.evaluate(element => {
+    const style = getComputedStyle(element)
+    const box = element.getBoundingClientRect()
+    const content = element.firstElementChild!.getBoundingClientRect()
+
+    return {
+      contentLeftGap: content.left - box.left,
+      contentRightGap: box.right - content.right,
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+      rootClientWidth: document.documentElement.clientWidth,
+      rootScrollWidth: document.documentElement.scrollWidth,
+      surfaceClientWidth: element.clientWidth,
+      surfaceScrollWidth: element.scrollWidth,
+      surfaceTop: box.top,
+      surfaceBottom: box.bottom,
+      viewportHeight: window.innerHeight
+    }
+  })
+
+  // Measure the packaged CSS and real content edges, independently of the
+  // renderer's token. An undefined custom property computes to zero here.
+  expect(geometry.paddingLeft).toBeGreaterThanOrEqual(20)
+  expect(geometry.paddingLeft).toBeLessThanOrEqual(64)
+  expect(geometry.paddingRight).toBeCloseTo(geometry.paddingLeft, 1)
+  expect(geometry.contentLeftGap).toBeGreaterThanOrEqual(20)
+  expect(geometry.contentRightGap).toBeGreaterThanOrEqual(20)
+  expect(geometry.surfaceScrollWidth).toBeLessThanOrEqual(geometry.surfaceClientWidth)
+  expect(geometry.rootScrollWidth).toBeLessThanOrEqual(geometry.rootClientWidth)
+  expect(geometry.surfaceTop).toBeGreaterThanOrEqual(0)
+  expect(geometry.surfaceBottom).toBeLessThanOrEqual(geometry.viewportHeight + 1)
+  await test.info().attach('page-gutter-geometry', {
+    body: JSON.stringify(geometry, null, 2),
+    contentType: 'application/json'
+  })
+}
 
 let fixture: PackagedMockBackendFixture | null = null
 let reviewApi: null | Awaited<ReturnType<typeof startPhase1ReviewApi>> = null
@@ -79,8 +144,75 @@ const reviewCatalog = [
   version: 1
 }))
 
+const reviewRun = {
+  deliverables: [
+    {
+      createdAt: '2026-09-06T17:04:00Z',
+      evidenceManifest: [{ sourceUrl: 'https://private.local.test/evidence', token: 'e2e-evidence-secret' }],
+      id: 'local-review-deliverable-1',
+      kind: 'report',
+      payload: { config: { apiKey: 'e2e-payload-secret' }, schema: 'private-schema' },
+      reviews: [
+        {
+          createdAt: '2026-09-06T17:05:00Z',
+          id: 'local-review-review-1',
+          notes: 'e2e-private-review-note',
+          roundNumber: 1,
+          status: 'changes_requested',
+          userId: 'tenant-user'
+        }
+      ],
+      status: 'ready',
+      storageKind: 'inline',
+      storageRef: null,
+      title: '[本地测试] 美国宠物用品分析报告',
+      updatedAt: '2026-09-06T17:05:00Z'
+    }
+  ],
+  events: [
+    {
+      eventKey: 'private-event-key',
+      eventType: 'tool.result',
+      happenedAt: '2026-09-06T17:03:00Z',
+      id: 'local-review-event-3',
+      payload: { result: 'e2e-raw-result-secret' },
+      sequence: 3
+    },
+    {
+      eventType: 'run.queued',
+      happenedAt: '2026-09-06T17:00:00Z',
+      id: 'local-review-event-1',
+      payload: {},
+      sequence: 1
+    },
+    {
+      eventType: 'run.running',
+      happenedAt: '2026-09-06T17:01:00Z',
+      id: 'local-review-event-2',
+      payload: {},
+      sequence: 2
+    }
+  ],
+  run: {
+    attempt: 1,
+    completedAt: null,
+    createdAt: '2026-09-06T17:00:00Z',
+    errorMessage: 'e2e-private-stack',
+    executorType: 'hermes',
+    id: 'local-review-run-running',
+    maxAttempts: 2,
+    startedAt: '2026-09-06T17:01:00Z',
+    status: 'waiting_review',
+    triggerRef: '[本地测试] 验证真实 Run 抽屉、事件顺序与诚实空态。',
+    updatedAt: '2026-09-06T17:05:00Z',
+    userId: 'tenant-user'
+  },
+  steps: [{ progress: 88, title: '伪造阶段，不得展示' }]
+}
+
 async function startPhase1ReviewApi() {
   let relayBaseUrl = ''
+  let runAvailable = true
   let workflowEnabled = true
   const server = http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -160,6 +292,12 @@ async function startPhase1ReviewApi() {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/runs/local-review-run-running') {
+      json(runAvailable ? 200 : 503, runAvailable ? reviewRun : { detail: 'local test: Run unavailable' })
+
+      return
+    }
+
     json(404, { detail: 'not found' })
   })
 
@@ -170,6 +308,9 @@ async function startPhase1ReviewApi() {
     close: () => new Promise<void>(resolve => server.close(() => resolve())),
     setRelayBaseUrl: (value: string) => {
       relayBaseUrl = value
+    },
+    setRunAvailable: (value: boolean) => {
+      runAvailable = value
     },
     setWorkflowEnabled: (value: boolean) => {
       workflowEnabled = value
@@ -359,7 +500,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       await page.waitForTimeout(400)
 
       expect(bounds?.width).toBe(viewport.width)
-      expect(bounds?.height).toBeLessThanOrEqual(viewport.height)
+      expect(bounds?.height).toBe(viewport.height)
 
       const layout = await page.evaluate(() => ({
         clientHeight: document.documentElement.clientHeight,
@@ -407,6 +548,227 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   }
 })
 
+test('packaged real Run drawer preserves context, safe data and focus across the approved window matrix', async () => {
+  const { app, page } = fixture!
+  const testInfo = test.info()
+  const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+  const opener = page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ })
+
+  await expect(opener).toBeVisible()
+  await opener.focus()
+  await opener.click()
+
+  const drawer = page.getByRole('dialog', { name: '工作流运行' })
+
+  await expect(drawer).toBeVisible()
+  await expect(drawer.getByText('[本地测试] 验证真实 Run 抽屉、事件顺序与诚实空态。')).toBeVisible()
+  await expect(drawer.getByText('暂时没有可展示的阶段进度')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '暂无可打开结果' })).toBeDisabled()
+  await expect(drawer.getByText(/伪造阶段|88%|e2e-payload-secret|private-schema|tenant-user/)).toHaveCount(0)
+  await expect(drawer.getByRole('heading', { name: '工作流运行', level: 1 })).toBeVisible()
+  expect(await drawer.locator('[data-run-scroll-container]').evaluate(element => element.scrollTop)).toBe(0)
+
+  for (const viewport of [...PHASE1_VIEWPORTS, { height: 800, width: 899 }, { height: 800, width: 900 }]) {
+    const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]
+
+      if (!win) {
+        return null
+      }
+
+      win.unmaximize()
+      win.setMinimumSize(400, 620)
+      win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+      win.show()
+      win.focus()
+
+      return win.getBounds()
+    }, viewport)
+    await page.bringToFront()
+    await page.waitForTimeout(400)
+
+    const layout = await drawer.evaluate(element => {
+      const root = document.documentElement
+      const rect = element.getBoundingClientRect()
+
+      return {
+        activeInside: element.contains(document.activeElement),
+        clientWidth: root.clientWidth,
+        drawerLeft: rect.left,
+        drawerRight: rect.right,
+        drawerWidth: rect.width,
+        layout: element.getAttribute('data-layout'),
+        scrollWidth: root.scrollWidth
+      }
+    })
+    const runScroll = drawer.locator('[data-run-scroll-container]')
+    const runTitle = drawer.getByRole('heading', { name: '工作流运行', level: 1 })
+    const reviewHeading = drawer.getByRole('heading', { name: '需要审阅', level: 2 })
+    const approveButton = drawer.getByRole('button', { name: '批准交付物' })
+    const stageHeading = drawer.getByRole('heading', { name: '阶段进度', level: 2 })
+    const stageSection = stageHeading.locator('..')
+
+    expect(bounds?.width).toBe(viewport.width)
+    expect(bounds?.height).toBe(viewport.height)
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+    if (viewport.width < 900) {
+      expect(layout.layout).toBe('fullscreen')
+      expect(layout.drawerWidth).toBeCloseTo(layout.clientWidth, 0)
+      expect(layout.drawerLeft).toBeCloseTo(0, 0)
+      expect(layout.drawerRight).toBeCloseTo(layout.clientWidth, 0)
+    } else {
+      expect(layout.layout).toBe('drawer')
+      expect(layout.drawerWidth).toBeCloseTo(Math.min(540, layout.clientWidth - 16), 0)
+      expect(layout.drawerRight).toBeCloseTo(layout.clientWidth, 0)
+      expect(layout.drawerLeft).toBeGreaterThan(0)
+    }
+    expect(layout.activeInside).toBe(true)
+    expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
+    await expect(runTitle).toBeVisible()
+
+    await expectDrawerBelowNativeChrome(drawer)
+    await expectReadablePageGutters(runScroll)
+
+    const [drawerBox, runTitleBox, reviewBox, approveBox, stageBox, stageSectionBox] = await Promise.all([
+      drawer.boundingBox(),
+      runTitle.boundingBox(),
+      reviewHeading.boundingBox(),
+      approveButton.boundingBox(),
+      stageHeading.boundingBox(),
+      stageSection.boundingBox()
+    ])
+
+    expect(runTitleBox?.y).toBeGreaterThanOrEqual(drawerBox?.y ?? 0)
+    expect(reviewBox?.y).toBeLessThan(stageBox?.y ?? Number.POSITIVE_INFINITY)
+    expect(approveBox?.y).toBeLessThan(stageBox?.y ?? Number.POSITIVE_INFINITY)
+    expect((approveBox?.y ?? 0) + (approveBox?.height ?? 0)).toBeLessThanOrEqual(
+      (drawerBox?.y ?? 0) + (drawerBox?.height ?? 0)
+    )
+    expect(stageSectionBox?.height).toBeLessThan(160)
+
+    const progressName = `run-progress-${viewport.width}x${viewport.height}.png`
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, progressName) : testInfo.outputPath(progressName)
+    })
+
+    await drawer.getByRole('tab', { name: '执行详情' }).click()
+    await expect(drawer.getByText('运行已排队')).toBeVisible()
+    await expect(drawer.getByText('运行已开始')).toBeVisible()
+    await expect(drawer.getByText('工具活动')).toBeVisible()
+    await expect(drawer.getByText('已加入队列，准备开始。')).toBeVisible()
+    await expect(drawer.getByText('APEX 已开始处理。')).toBeVisible()
+    await expect(drawer.getByText('APEX / Hermes 使用了工具，参数和结果已隐藏。')).toBeVisible()
+    await expect(drawer.getByText('第 1 次尝试（最多 2 次）')).toBeVisible()
+
+    const eventOrder = await drawer.locator('text=/^#\\d+/').allTextContents()
+    expect(eventOrder.map(item => Number(item.match(/^#(\d+)/)?.[1]))).toEqual([1, 2, 3])
+    await expect(drawer.getByText(/e2e-raw-result-secret|private-event-key|e2e-private-stack/)).toHaveCount(0)
+
+    const detailsName = `run-details-${viewport.width}x${viewport.height}.png`
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, detailsName) : testInfo.outputPath(detailsName)
+    })
+    await runScroll.evaluate(element => {
+      element.scrollTop = 180
+    })
+    await drawer.getByRole('tab', { name: '进展' }).click()
+    expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
+    await expect(runTitle).toBeVisible()
+  }
+
+  for (let index = 0; index < 6; index += 1) {
+    await page.keyboard.press('Tab')
+    expect(await drawer.evaluate(element => element.contains(document.activeElement))).toBe(true)
+  }
+
+  await page.keyboard.press('Escape')
+  await expect(drawer).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '今天想推进什么业务？', level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ })).toBeFocused()
+})
+
+for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
+  test(`packaged ${surfaceName} preserves page gutters across native windows`, async () => {
+    const { app, page } = fixture!
+    const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+    if (screenshotRoot) {
+      fs.mkdirSync(screenshotRoot, { recursive: true })
+    }
+
+    try {
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+      )
+      reviewApi!.setRunAvailable(surfaceName !== 'run-error')
+      reviewApi!.setWorkflowEnabled(surfaceName !== 'legacy-projects')
+      await page.reload()
+      await waitForAppReady(fixture!, 120_000)
+
+      if (surfaceName === 'run-error') {
+        await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+        await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+      } else {
+        await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+      }
+
+      const surface =
+        surfaceName === 'run-error'
+          ? page.getByRole('heading', { name: '运行暂时不可用', level: 2 }).locator('..').locator('..').locator('..')
+          : page.getByRole('heading', { name: '项目', level: 1 }).locator('..').locator('..')
+      await expect(surface).toBeVisible()
+
+      for (const viewport of PHASE1_VIEWPORTS) {
+        const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+          const win = BrowserWindow.getAllWindows()[0]!
+          win.unmaximize()
+          win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+          win.show()
+          win.focus()
+          return win.getBounds()
+        }, viewport)
+        expect(bounds.width).toBe(viewport.width)
+        expect(bounds.height).toBe(viewport.height)
+        await page.bringToFront()
+        await page.waitForTimeout(400)
+        if (surfaceName === 'run-error') {
+          await expectDrawerBelowNativeChrome(page.locator('[data-route-drawer]'))
+        }
+        await expectReadablePageGutters(surface)
+        const name = `${surfaceName}-${viewport.width}x${viewport.height}.png`
+        await page.screenshot({
+          animations: 'disabled',
+          caret: 'hide',
+          path: screenshotRoot ? path.join(screenshotRoot, name) : test.info().outputPath(name)
+        })
+      }
+
+      if (surfaceName === 'run-error') {
+        await page.keyboard.press('Escape')
+      }
+    } finally {
+      reviewApi!.setRunAvailable(true)
+      reviewApi!.setWorkflowEnabled(true)
+      await page.evaluate(() => {
+        window.location.hash = '/'
+      })
+      await page.reload()
+      await waitForAppReady(fixture!, 120_000)
+    }
+  })
+}
+
 test('packaged Settings shows the running APEX app version separately from the engine', async () => {
   const { app, page } = fixture!
   const version = await page.evaluate(() => window.hermesDesktop?.getVersion())
@@ -445,6 +807,40 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveCount(0)
   await expect(detail.getByText(/0 \/ 0|百分比|待处理事项/)).toHaveCount(0)
 
+  for (const viewport of [...PHASE1_VIEWPORTS, { height: 800, width: 1099 }, { height: 800, width: 1100 }]) {
+    const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]!
+      win.unmaximize()
+      win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+      return win.getBounds()
+    }, viewport)
+    expect(bounds.width).toBe(viewport.width)
+    expect(bounds.height).toBe(viewport.height)
+    await page.waitForTimeout(400)
+    const drawer = page.locator('[data-route-drawer]')
+    await expectDrawerBelowNativeChrome(drawer)
+    await expect(drawer).toHaveAttribute('data-layout', viewport.width < 1100 ? 'fullscreen' : 'drawer')
+    const box = await drawer.boundingBox()
+    const rem = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize))
+    expect(box?.width).toBeCloseTo(
+      viewport.width < 1100 ? viewport.width : Math.min(35 * rem, viewport.width * 0.48),
+      0
+    )
+    const name = `project-detail-${viewport.width}x${viewport.height}.png`
+    const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+    if (screenshotRoot) fs.mkdirSync(screenshotRoot, { recursive: true })
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, name) : test.info().outputPath(name)
+    })
+  }
+
+  await page.keyboard.press('Escape')
+  await expect(detail).toHaveCount(0)
+  await expect(row).toBeFocused()
+  await row.click()
+  await expect(detail).toBeVisible()
   await page.getByRole('button', { name: '继续这个目标' }).click()
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveValue('[本地测试] 尚未启动的业务目标')
 })

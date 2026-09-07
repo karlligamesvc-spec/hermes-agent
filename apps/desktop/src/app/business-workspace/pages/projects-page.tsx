@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { PAGE_INSET_X } from '@/app/layout-constants'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -238,7 +239,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
     !sessionsLoading && !evidenceUnavailable && evidence !== null && !hasChildReadFailures && !hasHistory
 
   return (
-    <section className="flex h-full flex-col overflow-y-auto bg-(--ui-chat-surface-background) px-(--page-inset-x) py-8">
+    <section className={`flex h-full flex-col overflow-y-auto bg-(--ui-chat-surface-background) py-8 ${PAGE_INSET_X}`}>
       <header className="mx-auto w-full max-w-4xl border-b border-(--ui-stroke-tertiary) pb-5">
         <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>

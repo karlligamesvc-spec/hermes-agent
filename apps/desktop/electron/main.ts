@@ -21163,9 +21163,9 @@ ipcMain.handle('hermes:workflowDomain:cancelRun', async (_event, runId) => {
   }
 
   try {
-    const run = await cancelWorkflowDomainRun(context.apiBase, runId, context.transport)
+    await cancelWorkflowDomainRun(context.apiBase, runId, context.transport)
 
-    return { ok: true, run }
+    return { ok: true }
   } catch (error) {
     return { ok: false, code: workflowDomainIpcError(error) }
   }
@@ -21179,14 +21179,14 @@ ipcMain.handle('hermes:workflowDomain:reviewDeliverable', async (_event, payload
   }
 
   try {
-    const review = await reviewWorkflowDomainDeliverable(
+    await reviewWorkflowDomainDeliverable(
       context.apiBase,
       payload?.deliverableId,
       payload?.status,
       context.transport
     )
 
-    return { ok: true, review }
+    return { ok: true }
   } catch (error) {
     return { ok: false, code: workflowDomainIpcError(error) }
   }

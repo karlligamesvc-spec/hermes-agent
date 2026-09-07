@@ -1,5 +1,5 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -8,8 +8,10 @@ import { X } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { closeRouteDrawer } from '../routes'
+import { TITLEBAR_HEIGHT } from '../shell/titlebar'
 
 export const ROUTE_DRAWER_WIDE_QUERY = '(min-width: 1100px)'
+export const ROUTE_DRAWER_COMPACT_QUERY = '(min-width: 900px)'
 
 let bodyScrollLockDepth = 0
 let bodyOverflowBeforeLock = ''
@@ -31,11 +33,11 @@ function lockBodyScroll(): () => void {
   }
 }
 
-function useWideRouteDrawer(): boolean {
-  const [wide, setWide] = useState(() => window.matchMedia?.(ROUTE_DRAWER_WIDE_QUERY).matches ?? false)
+function useWideRouteDrawer(query: string): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia?.(query).matches ?? false)
 
   useEffect(() => {
-    const media = window.matchMedia?.(ROUTE_DRAWER_WIDE_QUERY)
+    const media = window.matchMedia?.(query)
 
     if (!media) {
       return
@@ -47,13 +49,14 @@ function useWideRouteDrawer(): boolean {
     media.addEventListener('change', update)
 
     return () => media.removeEventListener('change', update)
-  }, [])
+  }, [query])
 
   return wide
 }
 
 interface ResponsiveRouteDrawerProps {
   children: ReactNode
+  compact?: boolean
   onClose: () => void
   title: string
   contentClassName?: string
@@ -62,9 +65,16 @@ interface ResponsiveRouteDrawerProps {
 /** Modal object surface shared by route-backed drawers. Radix owns the focus
  * trap and topmost Escape behavior; this shell owns the Desktop breakpoint,
  * scroll lock, and focus restoration when route history removes the surface. */
-export function ResponsiveRouteDrawer({ children, contentClassName, onClose, title }: ResponsiveRouteDrawerProps) {
+export function ResponsiveRouteDrawer({
+  children,
+  compact = false,
+  contentClassName,
+  onClose,
+  title
+}: ResponsiveRouteDrawerProps) {
   const { t } = useI18n()
-  const wide = useWideRouteDrawer()
+  const wide = useWideRouteDrawer(compact ? ROUTE_DRAWER_COMPACT_QUERY : ROUTE_DRAWER_WIDE_QUERY)
+  const contentRef = useRef<HTMLDivElement | null>(null)
 
   const returnFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -83,6 +93,20 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
     }
   }, [])
 
+  useEffect(() => {
+    const resetNestedScroll = () => {
+      const scrollContainer = contentRef.current?.querySelector<HTMLElement>('[data-route-drawer-scroll]')
+
+      if (scrollContainer) {
+        scrollContainer.scrollTop = 0
+      }
+    }
+
+    window.addEventListener('resize', resetNestedScroll)
+
+    return () => window.removeEventListener('resize', resetNestedScroll)
+  }, [])
+
   return (
     <DialogPrimitive.Root onOpenChange={open => !open && onClose()} open>
       <DialogPrimitive.Portal>
@@ -95,7 +119,9 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
           className={cn(
             'fixed inset-x-0 bottom-0 top-[var(--titlebar-height)] z-(--z-modal) flex min-h-0 min-w-0 flex-col overflow-hidden border-(--stroke-nous) bg-(--ui-chat-surface-background) text-foreground shadow-nous outline-none duration-150',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
-            'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
+            compact
+              ? 'min-[900px]:left-auto min-[900px]:right-0 min-[900px]:w-[min(540px,calc(100vw-16px))] min-[900px]:border-l min-[900px]:data-[state=closed]:slide-out-to-right-4 min-[900px]:data-[state=open]:slide-in-from-right-4'
+              : 'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
             'motion-reduce:animate-none motion-reduce:transition-none',
             contentClassName
           )}
@@ -111,6 +137,21 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
               target.focus({ preventScroll: true })
             }
           }}
+          onOpenAutoFocus={event => {
+            event.preventDefault()
+            const content = contentRef.current
+            const scrollContainer = content?.querySelector<HTMLElement>('[data-route-drawer-scroll]')
+
+            if (scrollContainer) {
+              scrollContainer.scrollTop = 0
+            }
+
+            content?.focus({ preventScroll: true })
+          }}
+          ref={contentRef}
+          // The body portal cannot inherit AppShell's native-chrome token.
+          style={{ '--titlebar-height': `${TITLEBAR_HEIGHT}px` } as CSSProperties}
+          tabIndex={-1}
         >
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Close asChild>

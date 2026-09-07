@@ -1781,8 +1781,6 @@ export interface DesktopWorkflowDomainRun {
   attempt: number
   completedAt: null | string
   createdAt: string
-  errorCode: null | string
-  errorMessage: null | string
   executorType: string
   id: string
   maxAttempts: number
@@ -1793,29 +1791,25 @@ export interface DesktopWorkflowDomainRun {
 }
 
 export interface DesktopWorkflowDomainEvent {
-  eventKey: string
   eventType: string
   happenedAt: string
   id: string
-  payload: Record<string, unknown>
   sequence: number
 }
 
 export interface DesktopWorkflowDomainReview {
-  createdAt: string
-  deliverableId: string
+  createdAt: null | string
   id: string
-  notes: null | string
   roundNumber: number
   status: 'approved' | 'changes_requested' | 'rejected'
 }
 
 export interface DesktopWorkflowDomainDeliverable {
   createdAt: string
-  evidenceManifest: Array<Record<string, unknown>>
+  evidenceCount: number
   id: string
   kind: string
-  payload: Record<string, unknown>
+  openReference: null | string
   reviews: DesktopWorkflowDomainReview[]
   status: string
   title: string
@@ -1831,7 +1825,7 @@ export interface DesktopWorkflowDomainOverview {
 export interface DesktopWorkflowDomainStartResult {
   code?: 'request_failed' | 'sign_in' | 'unavailable'
   ok: boolean
-  run?: DesktopWorkflowDomainRun
+  run?: { id: string }
 }
 
 export interface DesktopWorkflowDomainRunResult {
@@ -2158,7 +2152,8 @@ export interface DesktopRuntimeUpdateProgress {
 // 壳自更新状态机快照(electron/shell-updater.cjs 推送/查询的同一形状)。
 // disabled = dev/未打包停用;downloading 全程静默(UI 不渲染);downloaded =
 // 新壳就位等重启(侧栏胶囊唯一渲染的相位);error 只记日志,下轮周期检查自愈。
-export type DesktopShellUpdatePhase = 'available' | 'checking' | 'disabled' | 'downloaded' | 'downloading' | 'error' | 'idle'
+export type DesktopShellUpdatePhase =
+  'available' | 'checking' | 'disabled' | 'downloaded' | 'downloading' | 'error' | 'idle'
 
 export interface DesktopShellUpdateState {
   phase: DesktopShellUpdatePhase

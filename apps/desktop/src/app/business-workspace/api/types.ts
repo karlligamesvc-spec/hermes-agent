@@ -4,11 +4,7 @@ export interface WorkflowDomainBridge {
   getProject?: (projectId: string) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getCatalog?: () => Promise<WorkflowCatalogResult>
   getRun: (runId: string) => Promise<{ ok: boolean; overview?: WorkflowRunOverview }>
-  listProjects?: (options?: {
-    cursor?: string
-    limit?: number
-    status?: string
-  }) => Promise<WorkflowProjectListResult>
+  listProjects?: (options?: { cursor?: string; limit?: number; status?: string }) => Promise<WorkflowProjectListResult>
   listWorkflows?: (options?: {
     cursor?: string
     limit?: number
@@ -91,33 +87,38 @@ export interface WorkflowCatalogResult {
 export interface WorkflowRunOverview {
   deliverables: Array<{
     createdAt: string
-    evidenceManifest: Array<Record<string, unknown>>
+    evidenceCount: number
     id: string
     kind: string
-    reviews: Array<{ id: string; status: 'approved' | 'changes_requested' | 'rejected' }>
+    openReference: null | string
+    reviews: Array<{
+      createdAt: null | string
+      id: string
+      roundNumber: number
+      status: 'approved' | 'changes_requested' | 'rejected'
+    }>
     status: string
     title: string
+    updatedAt: string
   }>
   events: Array<{
     eventType: string
     happenedAt: string
     id: string
-    payload: Record<string, unknown>
     sequence: number
   }>
   run: {
     attempt: number
+    completedAt: null | string
     createdAt: string
-    errorMessage: null | string
     executorType: string
     id: string
     maxAttempts: number
+    startedAt: null | string
     status: string
     triggerRef: null | string
+    updatedAt: string
   }
 }
 
-export type StartWorkflowGoalOutcome =
-  | { mode: 'failed' }
-  | { mode: 'started'; runId: string }
-  | { mode: 'unavailable' }
+export type StartWorkflowGoalOutcome = { mode: 'failed' } | { mode: 'started'; runId: string } | { mode: 'unavailable' }

@@ -13,13 +13,13 @@ describe('hc-806 business object display status', () => {
     expect(businessStatusPresentation(object, status).tone).toBe(tone)
   })
 
-  it('keeps only queued and running Runs pollable and cancellable', () => {
+  it('keeps active Runs pollable while only queued and running Runs remain cancellable', () => {
     expect(businessStatusPresentation('run', 'queued')).toMatchObject({ active: true, canCancel: true, poll: true })
     expect(businessStatusPresentation('run', 'running')).toMatchObject({ active: true, canCancel: true, poll: true })
     expect(businessStatusPresentation('run', 'waiting_review')).toMatchObject({
       active: true,
       canCancel: false,
-      poll: false
+      poll: true
     })
     expect(businessStatusPresentation('run', 'succeeded')).toMatchObject({
       active: false,

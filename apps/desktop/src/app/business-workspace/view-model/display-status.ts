@@ -45,7 +45,7 @@ const RUN_STATUSES: StatusTable = {
   running: { active: true, canCancel: true, poll: true, tone: 'accent' },
   succeeded: { terminal: true, tone: 'success' },
   timed_out: { terminal: true, tone: 'danger' },
-  waiting_review: { active: true, tone: 'attention' }
+  waiting_review: { active: true, poll: true, tone: 'attention' }
 }
 
 const DELIVERABLE_STATUSES: StatusTable = {

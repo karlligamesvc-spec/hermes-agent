@@ -3338,9 +3338,11 @@ export const zhHant = defineLocale({
         actionFailed: '操作未儲存，請重試。',
         approve: '核准交付物',
         attempt: '執行次數',
+        attemptDescription: (attempt, maximum) => `第 ${attempt} 次嘗試（最多 ${maximum} 次）`,
         cancel: '取消執行',
         cancelling: '正在取消…',
         created: '建立時間',
+        detailsTab: '執行詳情',
         deliverables: '交付物與審閱',
         evidence: count => `${count} 條證據`,
         event: eventType =>
@@ -3354,9 +3356,23 @@ export const zhHant = defineLocale({
             'run.running': '執行已開始',
             'run.timed_out': '執行逾時',
             'run.waiting_review': '等待審閱'
-          })[eventType] || eventType,
+          })[eventType] ||
+          (eventType.startsWith('tool.') ? '工具活動' : eventType.includes('result') ? '已記錄執行結果' : '執行事件'),
+        eventSummary: eventType =>
+          eventType.startsWith('tool.')
+            ? 'APEX / Hermes 使用了工具，參數和結果已隱藏。'
+            : eventType === 'run.queued'
+              ? '已加入佇列，準備開始。'
+              : eventType === 'run.running'
+                ? 'APEX 已開始處理。'
+                : eventType.includes('result')
+                  ? '已記錄結果；這裡只顯示安全的生命週期摘要。'
+                  : '這次執行記錄了一項生命週期更新。',
+        events: '已記錄事件',
         executor: '執行器',
+        executorUnavailable: '暫時無法使用',
         eyebrow: '真實工作流程執行',
+        hermesExecutor: 'Hermes',
         loadFailedDescription: '無法讀取這次執行。沒有資料被取代或刪除。',
         loadFailedTitle: '執行暫時無法使用',
         loading: '正在讀取工作流程執行',
@@ -3364,8 +3380,23 @@ export const zhHant = defineLocale({
         noDeliverablesTitle: '尚無交付物',
         noEvents: '執行事件寫入後會依序顯示在這裡。',
         noObjective: '這次執行沒有記錄目標摘要。',
+        noPendingDescription: '目前不需要你審閱或介入。',
+        noPendingTitle: '目前沒有待處理事項',
+        noStageProgressDescription: '目前執行回應沒有真實階段資料，APEX 不會推測階段或進度。',
+        noStageProgressTitle: '暫時沒有可顯示的階段進度',
+        openDeliverable: '開啟交付物',
+        openFailed: '無法開啟交付物，目前的 Run 資料仍已保留。',
+        openUnavailable: '尚無可開啟結果',
+        openingDeliverable: '正在開啟…',
+        pendingReviewDescription: count => `${count} 個真實交付物等待你的決定。`,
+        pendingReviewTitle: '需要審閱',
+        progressTab: '進展',
+        refresh: '重新整理',
+        refreshFailedDescription: '最新重新整理失敗，正在顯示上一次成功讀取的 Run 資料。',
         requestChanges: '要求修改',
         retry: '重新讀取',
+        stageProgress: '階段進度',
+        started: '啟動時間',
         status: status =>
           ({
             approved: '已核准',
@@ -3380,9 +3411,11 @@ export const zhHant = defineLocale({
             succeeded: '已完成',
             timed_out: '已逾時',
             waiting_review: '等待審閱'
-          })[status] || status,
+          })[status] || '未知狀態',
         timeline: '執行時間線',
         title: '工作流程執行',
+        updated: '更新時間',
+        viewTabs: '工作流程執行檢視',
         waitingForEvents: '等待執行事件'
       }
     }
