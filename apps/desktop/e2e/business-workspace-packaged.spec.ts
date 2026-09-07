@@ -17,6 +17,31 @@ const PHASE1_VIEWPORTS = [
   { height: 800, name: 'narrow-752', width: 752 }
 ] as const
 
+async function expectDrawerBelowNativeChrome(drawer: Locator) {
+  const geometry = await drawer.evaluate(element => {
+    const box = element.getBoundingClientRect()
+    const style = getComputedStyle(element)
+
+    return {
+      top: box.top,
+      bottom: box.bottom,
+      height: box.height,
+      viewportHeight: window.innerHeight,
+      titlebarHeight: style.getPropertyValue('--titlebar-height'),
+      computedTop: style.top
+    }
+  })
+  await test.info().attach('native-drawer-geometry', {
+    body: JSON.stringify(geometry, null, 2),
+    contentType: 'application/json'
+  })
+  // Native chrome is 34px at the fixture's explicit 100% zoom. A portal
+  // without its shell token instead shrinks to content and anchors at bottom.
+  expect(geometry.top).toBeCloseTo(34, 0)
+  expect(geometry.bottom).toBeCloseTo(geometry.viewportHeight, 0)
+  expect(geometry.height).toBeCloseTo(geometry.viewportHeight - 34, 0)
+}
+
 async function expectReadablePageGutters(surface: Locator) {
   const geometry = await surface.evaluate(element => {
     const style = getComputedStyle(element)
@@ -31,7 +56,10 @@ async function expectReadablePageGutters(surface: Locator) {
       rootClientWidth: document.documentElement.clientWidth,
       rootScrollWidth: document.documentElement.scrollWidth,
       surfaceClientWidth: element.clientWidth,
-      surfaceScrollWidth: element.scrollWidth
+      surfaceScrollWidth: element.scrollWidth,
+      surfaceTop: box.top,
+      surfaceBottom: box.bottom,
+      viewportHeight: window.innerHeight
     }
   })
 
@@ -44,6 +72,8 @@ async function expectReadablePageGutters(surface: Locator) {
   expect(geometry.contentRightGap).toBeGreaterThanOrEqual(20)
   expect(geometry.surfaceScrollWidth).toBeLessThanOrEqual(geometry.surfaceClientWidth)
   expect(geometry.rootScrollWidth).toBeLessThanOrEqual(geometry.rootClientWidth)
+  expect(geometry.surfaceTop).toBeGreaterThanOrEqual(0)
+  expect(geometry.surfaceBottom).toBeLessThanOrEqual(geometry.viewportHeight + 1)
   await test.info().attach('page-gutter-geometry', {
     body: JSON.stringify(geometry, null, 2),
     contentType: 'application/json'
@@ -546,7 +576,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   await expect(drawer.getByRole('heading', { name: '工作流运行', level: 1 })).toBeVisible()
   expect(await drawer.locator('[data-run-scroll-container]').evaluate(element => element.scrollTop)).toBe(0)
 
-  for (const viewport of PHASE1_VIEWPORTS) {
+  for (const viewport of [...PHASE1_VIEWPORTS, { height: 800, width: 899 }, { height: 800, width: 900 }]) {
     const bounds = await app.evaluate(({ BrowserWindow }, size) => {
       const win = BrowserWindow.getAllWindows()[0]
 
@@ -604,6 +634,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
     expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
     await expect(runTitle).toBeVisible()
 
+    await expectDrawerBelowNativeChrome(drawer)
     await expectReadablePageGutters(runScroll)
 
     const [drawerBox, runTitleBox, reviewBox, approveBox, stageBox, stageSectionBox] = await Promise.all([
@@ -703,11 +734,17 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
           const win = BrowserWindow.getAllWindows()[0]!
           win.unmaximize()
           win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+          win.show()
+          win.focus()
           return win.getBounds()
         }, viewport)
         expect(bounds.width).toBe(viewport.width)
         expect(bounds.height).toBe(viewport.height)
+        await page.bringToFront()
         await page.waitForTimeout(400)
+        if (surfaceName === 'run-error') {
+          await expectDrawerBelowNativeChrome(page.locator('[data-route-drawer]'))
+        }
         await expectReadablePageGutters(surface)
         const name = `${surfaceName}-${viewport.width}x${viewport.height}.png`
         await page.screenshot({
@@ -770,6 +807,36 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveCount(0)
   await expect(detail.getByText(/0 \/ 0|百分比|待处理事项/)).toHaveCount(0)
 
+  for (const viewport of [...PHASE1_VIEWPORTS, { height: 800, width: 1099 }, { height: 800, width: 1100 }]) {
+    const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]!
+      win.unmaximize()
+      win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+      return win.getBounds()
+    }, viewport)
+    expect(bounds.width).toBe(viewport.width)
+    expect(bounds.height).toBe(viewport.height)
+    await page.waitForTimeout(400)
+    const drawer = page.locator('[data-route-drawer]')
+    await expectDrawerBelowNativeChrome(drawer)
+    await expect(drawer).toHaveAttribute('data-layout', viewport.width < 1100 ? 'fullscreen' : 'drawer')
+    const box = await drawer.boundingBox()
+    expect(box?.width).toBeCloseTo(viewport.width < 1100 ? viewport.width : Math.min(560, viewport.width * 0.48), 0)
+    const name = `project-detail-${viewport.width}x${viewport.height}.png`
+    const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+    if (screenshotRoot) fs.mkdirSync(screenshotRoot, { recursive: true })
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, name) : test.info().outputPath(name)
+    })
+  }
+
+  await page.keyboard.press('Escape')
+  await expect(detail).toHaveCount(0)
+  await expect(row).toBeFocused()
+  await row.click()
+  await expect(detail).toBeVisible()
   await page.getByRole('button', { name: '继续这个目标' }).click()
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveValue('[本地测试] 尚未启动的业务目标')
 })

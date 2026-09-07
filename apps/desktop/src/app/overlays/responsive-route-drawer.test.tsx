@@ -80,6 +80,17 @@ afterEach(() => {
 })
 
 describe('ResponsiveRouteDrawer', () => {
+  it('carries native titlebar clearance into the body portal', () => {
+    installMatchMedia(true)
+    renderHarness()
+    fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
+
+    const drawer = screen.getByRole('dialog', { name: 'Run details' })
+
+    expect(drawer.parentElement).toBe(globalThis.document.body)
+    expect(drawer.style.getPropertyValue('--titlebar-height')).toBe('34px')
+  })
+
   it('uses a full-screen object surface below 1100px and a right drawer at the wide breakpoint', async () => {
     const setWide = installMatchMedia(false)
 
