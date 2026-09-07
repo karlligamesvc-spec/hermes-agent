@@ -1,14 +1,24 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
+  APEX_PRIMARY_NAVIGATION,
   appViewForPath,
+  ASSISTANT_ROUTE,
+  closeRouteDrawer,
+  DELIVERABLES_ROUTE,
+  HISTORY_ROUTE,
+  LEGACY_ACCOUNTS_ROUTE,
   NEW_CHAT_ROUTE,
   primaryRouteSelectedSessionId,
+  routeDrawerBackgroundLocation,
+  routeDrawerNavigationState,
   routeSessionId,
   sessionRoute,
   SETTINGS_ROUTE,
   taskDetailRoute,
-  workflowRunRoute
+  workflowRunIdForPath,
+  workflowRunRoute,
+  WORKFLOWS_ROUTE
 } from './routes'
 
 const SESS_A = 'sess-a'
@@ -27,6 +37,77 @@ describe('workflowRunRoute', () => {
     expect(route).toBe('/workflow-runs/run%2Fa%20b')
     expect(appViewForPath(route)).toBe('workflows')
     expect(routeSessionId(route)).toBeNull()
+    expect(workflowRunIdForPath(route)).toBe('run/a b')
+  })
+
+  it('rejects missing, nested, and malformed run ids', () => {
+    expect(workflowRunIdForPath('/workflow-runs/')).toBeNull()
+    expect(workflowRunIdForPath('/workflow-runs/a/b')).toBeNull()
+    expect(workflowRunIdForPath('/workflow-runs/%E0%A4%A')).toBeNull()
+  })
+})
+
+describe('APEX route contract', () => {
+  it('declares the seven user destinations in their fixed product order', () => {
+    expect(APEX_PRIMARY_NAVIGATION).toEqual([
+      { id: 'start', path: '/' },
+      { id: 'projects', path: '/projects' },
+      { id: 'workflows', path: '/workflows' },
+      { id: 'scheduled-runs', path: '/cron' },
+      { id: 'deliverables', path: '/deliverables' },
+      { id: 'assistant', path: '/assistant' },
+      { id: 'history', path: '/history' }
+    ])
+  })
+
+  it('classifies canonical pages and reserves the legacy accounts alias from session routing', () => {
+    expect(appViewForPath(DELIVERABLES_ROUTE)).toBe('deliverables')
+    expect(appViewForPath(ASSISTANT_ROUTE)).toBe('assistant')
+    expect(appViewForPath(HISTORY_ROUTE)).toBe('history')
+    expect(appViewForPath(LEGACY_ACCOUNTS_ROUTE)).toBe('assistant')
+    expect(routeSessionId(LEGACY_ACCOUNTS_ROUTE)).toBeNull()
+  })
+})
+
+describe('route-driven drawer history', () => {
+  it('preserves the exact source location for the background page', () => {
+    const state = routeDrawerNavigationState({
+      hash: '#current',
+      key: 'projects-key',
+      pathname: '/projects',
+      search: '?status=running',
+      state: { scrollTop: 420 }
+    })
+
+    expect(routeDrawerBackgroundLocation(state)).toEqual({
+      hash: '#current',
+      key: 'projects-key',
+      pathname: '/projects',
+      search: '?status=running',
+      state: { scrollTop: 420 }
+    })
+  })
+
+  it('uses browser Back for an in-app drawer and a replacing default for a cold deep link', () => {
+    const navigate = vi.fn()
+    const state = routeDrawerNavigationState({ hash: '', pathname: '/projects', search: '' })
+
+    closeRouteDrawer(navigate, state, WORKFLOWS_ROUTE)
+    expect(navigate).toHaveBeenCalledWith(-1)
+
+    navigate.mockClear()
+    closeRouteDrawer(navigate, null, WORKFLOWS_ROUTE)
+    expect(navigate).toHaveBeenCalledWith(WORKFLOWS_ROUTE, { replace: true })
+  })
+
+  it('rejects unsafe or nested background locations', () => {
+    expect(() => routeDrawerNavigationState({ hash: '', pathname: '//outside.example', search: '' })).toThrowError(
+      'Invalid route drawer source'
+    )
+    expect(() => routeDrawerNavigationState({ hash: '', pathname: '/workflow-runs/other', search: '' })).toThrowError(
+      'Invalid route drawer source'
+    )
+    expect(routeDrawerBackgroundLocation({ routeDrawer: { backgroundLocation: { pathname: '/projects' } } })).toBeNull()
   })
 })
 

@@ -1691,12 +1691,19 @@ export const ar = defineLocale({
   sidebar: {
     nav: {
       'new-session': 'جلسة جديدة',
+      start: 'ابدأ',
+      projects: 'المشاريع',
+      workflows: 'سير العمل',
+      assistant: 'المساعد',
+      history: 'السجل',
+      deliverables: 'المخرجات',
       skills: 'المهارات',
       messaging: 'المراسلة',
       artifacts: 'العناصر',
       chat: 'المحادثة',
       settings: 'الإعدادات',
       cron: 'المهام المجدولة',
+      'scheduled-runs': 'التشغيلات المجدولة',
       agents: 'الوكلاء'
     },
     searchAria: 'البحث في الجلسات',

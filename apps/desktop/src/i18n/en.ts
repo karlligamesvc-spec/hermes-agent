@@ -2384,15 +2384,18 @@ export const en: Translations = {
   sidebar: {
     nav: {
       'new-session': 'Start',
+      start: 'Start',
       projects: 'Projects',
       workflows: 'Workflows',
-      accounts: 'Business accounts',
+      assistant: 'Assistant',
       history: 'History',
       search: 'Search',
       cron: 'Scheduled runs',
+      'scheduled-runs': 'Scheduled runs',
       tasks: 'Tasks',
       skills: 'Plugins',
-      artifacts: 'Deliverables'
+      artifacts: 'Deliverables',
+      deliverables: 'Deliverables'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',

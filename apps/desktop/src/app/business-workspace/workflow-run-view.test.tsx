@@ -55,18 +55,21 @@ const overview = {
 }
 
 describe('hc-795 real workflow Run view', () => {
+  const cancelRun = vi.fn(async () => ({ ok: true }))
   const getRun = vi.fn(async () => ({ ok: true, overview }))
   const reviewDeliverable = vi.fn(async () => ({ ok: true }))
 
   beforeEach(() => {
+    cancelRun.mockClear()
     getRun.mockClear()
+    getRun.mockResolvedValue({ ok: true, overview })
     reviewDeliverable.mockClear()
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
         workflowDomain: {
           access: vi.fn(),
-          cancelRun: vi.fn(),
+          cancelRun,
           getRun,
           reviewDeliverable,
           startGoal: vi.fn()
@@ -98,6 +101,49 @@ describe('hc-795 real workflow Run view', () => {
     await waitFor(() =>
       expect(reviewDeliverable).toHaveBeenCalledWith({ deliverableId: 'deliverable-1', status: 'approved' })
     )
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+  })
+
+  it('routes request-changes through the same Review exit and refreshes authoritative data', async () => {
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Pet market evidence report')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+
+    await waitFor(() =>
+      expect(reviewDeliverable).toHaveBeenCalledWith({
+        deliverableId: 'deliverable-1',
+        status: 'changes_requested'
+      })
+    )
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+  })
+
+  it('offers cancellation only for a cancellable Run and refreshes after the mutation succeeds', async () => {
+    const runningOverview = { ...overview, run: { ...overview.run, status: 'running' } }
+    getRun.mockResolvedValue({ ok: true, overview: runningOverview })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel run' }))
+
+    await waitFor(() => expect(cancelRun).toHaveBeenCalledWith('run-795'))
     await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
   })
 })

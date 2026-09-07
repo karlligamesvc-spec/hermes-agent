@@ -4,7 +4,11 @@ import type { ReactNode } from 'react'
 import { noteActiveTreeGroup, revealTreePane } from '@/components/pane-shell/tree/store'
 import { registry } from '@/contrib/registry'
 
-type NavigateLike = (to: string, options?: { replace?: boolean }) => void
+type NavigateLike = (to: string, options?: { replace?: boolean; state?: unknown }) => void
+type RouteDrawerNavigateLike = {
+  (to: string, options?: { replace?: boolean; state?: unknown }): void
+  (delta: number): void
+}
 
 export const SESSION_ROUTE_PREFIX = '/'
 export const NEW_CHAT_ROUTE = '/'
@@ -15,6 +19,7 @@ export const MESSAGING_ROUTE = '/messaging'
 export const WEBHOOKS_ROUTE = '/webhooks'
 export const ARTIFACTS_ROUTE = '/artifacts'
 export const CRON_ROUTE = '/cron'
+export const DELIVERABLES_ROUTE = '/deliverables'
 export const PROFILES_ROUTE = '/profiles'
 export const AGENTS_ROUTE = '/agents'
 export const STARMAP_ROUTE = '/starmap'
@@ -24,6 +29,21 @@ export const SEARCH_ROUTE = '/search'
 export const PROJECTS_ROUTE = '/projects'
 export const WORKFLOWS_ROUTE = '/workflows'
 export const WORKFLOW_RUN_ROUTE_PREFIX = '/workflow-runs/'
+export const ASSISTANT_ROUTE = '/assistant'
+export const HISTORY_ROUTE = '/history'
+export const LEGACY_ACCOUNTS_ROUTE = '/accounts'
+
+/** APEX's user-facing navigation contract. Technical and compatibility routes
+ * remain in APP_ROUTES, but they are not allowed to leak into this list. */
+export const APEX_PRIMARY_NAVIGATION = [
+  { id: 'start', path: NEW_CHAT_ROUTE },
+  { id: 'projects', path: PROJECTS_ROUTE },
+  { id: 'workflows', path: WORKFLOWS_ROUTE },
+  { id: 'scheduled-runs', path: CRON_ROUTE },
+  { id: 'deliverables', path: DELIVERABLES_ROUTE },
+  { id: 'assistant', path: ASSISTANT_ROUTE },
+  { id: 'history', path: HISTORY_ROUTE }
+] as const
 
 // ApexNodes-only destinations, mounted on the contribution shell alongside the
 // upstream pages (ChatRoutesSurface for the full-page ones, the wiring's
@@ -51,12 +71,110 @@ export function workflowRunRoute(runId: string): string {
   return `${WORKFLOW_RUN_ROUTE_PREFIX}${encodeURIComponent(runId)}`
 }
 
+export function workflowRunIdForPath(pathname: string): string | null {
+  const path = routePathname(pathname)
+
+  if (!path.startsWith(WORKFLOW_RUN_ROUTE_PREFIX)) {
+    return null
+  }
+
+  const encodedId = path.slice(WORKFLOW_RUN_ROUTE_PREFIX.length)
+
+  if (!encodedId || encodedId.includes('/')) {
+    return null
+  }
+
+  try {
+    return decodeURIComponent(encodedId)
+  } catch {
+    return null
+  }
+}
+
+export interface RouteLocationSnapshot {
+  hash: string
+  key?: string
+  pathname: string
+  search: string
+  state?: unknown
+}
+
+export interface RouteDrawerNavigationState {
+  routeDrawer: {
+    backgroundLocation: RouteLocationSnapshot
+  }
+}
+
+function isSafeRouteLocationSnapshot(value: unknown): value is RouteLocationSnapshot {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<RouteLocationSnapshot>
+
+  return (
+    typeof candidate.pathname === 'string' &&
+    candidate.pathname.startsWith('/') &&
+    !candidate.pathname.startsWith('//') &&
+    typeof candidate.search === 'string' &&
+    (!candidate.search || candidate.search.startsWith('?')) &&
+    typeof candidate.hash === 'string' &&
+    (!candidate.hash || candidate.hash.startsWith('#')) &&
+    !candidate.pathname.startsWith(WORKFLOW_RUN_ROUTE_PREFIX)
+  )
+}
+
+/** Capture the exact page location beneath a route-driven object drawer. The
+ * snapshot stays in browser history, so Back/Forward restores both the object
+ * URL and its source page query/hash state. */
+export function routeDrawerNavigationState(location: RouteLocationSnapshot): RouteDrawerNavigationState {
+  const backgroundLocation: RouteLocationSnapshot = {
+    hash: location.hash,
+    key: location.key,
+    pathname: location.pathname,
+    search: location.search,
+    state: location.state
+  }
+
+  if (!isSafeRouteLocationSnapshot(backgroundLocation)) {
+    throw new Error(`Invalid route drawer source: ${location.pathname}`)
+  }
+
+  return { routeDrawer: { backgroundLocation } }
+}
+
+export function routeDrawerBackgroundLocation(state: unknown): RouteLocationSnapshot | null {
+  if (!state || typeof state !== 'object') {
+    return null
+  }
+
+  const routeDrawer = (state as Partial<RouteDrawerNavigationState>).routeDrawer
+
+  return isSafeRouteLocationSnapshot(routeDrawer?.backgroundLocation) ? routeDrawer.backgroundLocation : null
+}
+
+/** Close a drawer opened from an in-app page by walking history back, keeping
+ * the drawer entry available to Forward. A cold deep link has no source entry,
+ * so it replaces itself with the object's documented default page. */
+export function closeRouteDrawer(navigate: RouteDrawerNavigateLike, state: unknown, deepLinkFallback: string): void {
+  if (routeDrawerBackgroundLocation(state)) {
+    navigate(-1)
+
+    return
+  }
+
+  navigate(deepLinkFallback, { replace: true })
+}
+
 export type AppView =
   | 'agents'
+  | 'assistant'
   | 'artifacts'
   | 'chat'
   | 'command-center'
   | 'cron'
+  | 'deliverables'
+  | 'history'
   | 'im-entry'
   | 'projects'
   | 'workflows'
@@ -77,9 +195,13 @@ export type AppView =
 
 export type AppRouteId =
   | 'agents'
+  | 'assistant'
+  | 'accounts'
   | 'artifacts'
   | 'command-center'
   | 'cron'
+  | 'deliverables'
+  | 'history'
   | 'im-entry'
   | 'projects'
   | 'workflows'
@@ -109,6 +231,7 @@ export const APP_ROUTES = [
   { id: 'webhooks', path: WEBHOOKS_ROUTE, view: 'webhooks' },
   { id: 'artifacts', path: ARTIFACTS_ROUTE, view: 'artifacts' },
   { id: 'cron', path: CRON_ROUTE, view: 'cron' },
+  { id: 'deliverables', path: DELIVERABLES_ROUTE, view: 'deliverables' },
   { id: 'profiles', path: PROFILES_ROUTE, view: 'profiles' },
   { id: 'agents', path: AGENTS_ROUTE, view: 'agents' },
   { id: 'starmap', path: STARMAP_ROUTE, view: 'starmap' },
@@ -117,7 +240,10 @@ export const APP_ROUTES = [
   { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' },
   { id: 'search', path: SEARCH_ROUTE, view: 'search' },
   { id: 'projects', path: PROJECTS_ROUTE, view: 'projects' },
-  { id: 'workflows', path: WORKFLOWS_ROUTE, view: 'workflows' }
+  { id: 'workflows', path: WORKFLOWS_ROUTE, view: 'workflows' },
+  { id: 'assistant', path: ASSISTANT_ROUTE, view: 'assistant' },
+  { id: 'history', path: HISTORY_ROUTE, view: 'history' },
+  { id: 'accounts', path: LEGACY_ACCOUNTS_ROUTE, view: 'assistant' }
 ] as const satisfies readonly AppRoute[]
 
 const APP_VIEW_BY_PATH = new Map<string, AppView>(APP_ROUTES.map(route => [route.path, route.view]))
@@ -248,7 +374,7 @@ export function appViewForPath(pathname: string): AppView {
     return 'extension'
   }
 
-  if (path.startsWith(WORKFLOW_RUN_ROUTE_PREFIX) && path.slice(WORKFLOW_RUN_ROUTE_PREFIX.length)) {
+  if (workflowRunIdForPath(path)) {
     return 'workflows'
   }
 
