@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { PAGE_INSET_X } from '@/app/layout-constants'
 import { I18nProvider } from '@/i18n'
 import {
   activateSidebarNavigation,
@@ -1336,6 +1337,9 @@ describe('hc-685 business workspace identity', () => {
     )
 
     expect(screen.getByText('Reading evidence from recent conversations…')).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: 'Projects', level: 1 }).closest('section')?.classList.contains(PAGE_INSET_X)
+    ).toBe(true)
     expect(screen.queryByText('Start with a real business task')).toBeNull()
   })
 

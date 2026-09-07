@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { PAGE_INSET_X } from '@/app/layout-constants'
 import { I18nProvider } from '@/i18n'
 import { $previewTabs, $previewTarget } from '@/store/preview'
 
@@ -87,6 +88,9 @@ describe('hc-795 real workflow Run view', () => {
     )
 
     expect(await screen.findByRole('heading', { name: 'Workflow run' })).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: 'Workflow run' }).closest('section')?.classList.contains(PAGE_INSET_X)
+    ).toBe(true)
     expect(screen.getByText('Analyze the US pet market')).toBeTruthy()
     expect(screen.getAllByText('Waiting for review')).toHaveLength(1)
     expect(screen.getByText('Pet market evidence report')).toBeTruthy()
@@ -116,6 +120,25 @@ describe('hc-795 real workflow Run view', () => {
       expect(reviewDeliverable).toHaveBeenCalledWith({ deliverableId: 'deliverable-1', status: 'approved' })
     )
     await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+  })
+
+  it('keeps the retryable Run error inside the shared page gutters', async () => {
+    getRun.mockRejectedValueOnce(new Error('local test: Run unavailable'))
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const retry = await screen.findByRole('button', { name: 'Read again' })
+    expect(container.querySelector('[data-run-error-container]')?.classList.contains(PAGE_INSET_X)).toBe(true)
+    fireEvent.click(retry)
+    expect(await screen.findByRole('heading', { name: 'Workflow run' })).toBeTruthy()
   })
 
   it('routes request-changes through the same Review exit and refreshes authoritative data', async () => {

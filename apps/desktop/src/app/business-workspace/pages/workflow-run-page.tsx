@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 
+import { PAGE_INSET_X } from '@/app/layout-constants'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -72,7 +73,10 @@ export function WorkflowRunView() {
 
   if (!overview) {
     return (
-      <div className="grid h-full place-items-center bg-(--ui-chat-surface-background) px-(--page-inset-x)">
+      <div
+        className={`grid h-full place-items-center bg-(--ui-chat-surface-background) ${PAGE_INSET_X}`}
+        data-run-error-container=""
+      >
         <ErrorState description={copy.loadFailedDescription} title={copy.loadFailedTitle}>
           <Button onClick={() => void load()} size="sm" variant="outline">
             <Codicon name="refresh" />
@@ -184,7 +188,7 @@ export function WorkflowRunView() {
 
   return (
     <section
-      className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-(--page-inset-x) py-8"
+      className={`h-full overflow-y-auto bg-(--ui-chat-surface-background) py-8 ${PAGE_INSET_X}`}
       data-route-drawer-scroll=""
       data-run-scroll-container=""
       ref={scrollRef}

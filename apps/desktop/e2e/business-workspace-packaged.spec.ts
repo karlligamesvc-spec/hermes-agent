@@ -3,6 +3,8 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 
+import type { Locator } from '@playwright/test'
+
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
@@ -14,6 +16,39 @@ const PHASE1_VIEWPORTS = [
   { height: 800, name: 'desktop-1220', width: 1220 },
   { height: 800, name: 'narrow-752', width: 752 }
 ] as const
+
+async function expectReadablePageGutters(surface: Locator) {
+  const geometry = await surface.evaluate(element => {
+    const style = getComputedStyle(element)
+    const box = element.getBoundingClientRect()
+    const content = element.firstElementChild!.getBoundingClientRect()
+
+    return {
+      contentLeftGap: content.left - box.left,
+      contentRightGap: box.right - content.right,
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+      rootClientWidth: document.documentElement.clientWidth,
+      rootScrollWidth: document.documentElement.scrollWidth,
+      surfaceClientWidth: element.clientWidth,
+      surfaceScrollWidth: element.scrollWidth
+    }
+  })
+
+  // Measure the packaged CSS and real content edges, independently of the
+  // renderer's token. An undefined custom property computes to zero here.
+  expect(geometry.paddingLeft).toBeGreaterThanOrEqual(20)
+  expect(geometry.paddingLeft).toBeLessThanOrEqual(64)
+  expect(geometry.paddingRight).toBeCloseTo(geometry.paddingLeft, 1)
+  expect(geometry.contentLeftGap).toBeGreaterThanOrEqual(20)
+  expect(geometry.contentRightGap).toBeGreaterThanOrEqual(20)
+  expect(geometry.surfaceScrollWidth).toBeLessThanOrEqual(geometry.surfaceClientWidth)
+  expect(geometry.rootScrollWidth).toBeLessThanOrEqual(geometry.rootClientWidth)
+  await test.info().attach('page-gutter-geometry', {
+    body: JSON.stringify(geometry, null, 2),
+    contentType: 'application/json'
+  })
+}
 
 let fixture: PackagedMockBackendFixture | null = null
 let reviewApi: null | Awaited<ReturnType<typeof startPhase1ReviewApi>> = null
@@ -147,6 +182,7 @@ const reviewRun = {
 
 async function startPhase1ReviewApi() {
   let relayBaseUrl = ''
+  let runAvailable = true
   let workflowEnabled = true
   const server = http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -227,7 +263,7 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/runs/local-review-run-running') {
-      json(200, reviewRun)
+      json(runAvailable ? 200 : 503, runAvailable ? reviewRun : { detail: 'local test: Run unavailable' })
 
       return
     }
@@ -242,6 +278,9 @@ async function startPhase1ReviewApi() {
     close: () => new Promise<void>(resolve => server.close(() => resolve())),
     setRelayBaseUrl: (value: string) => {
       relayBaseUrl = value
+    },
+    setRunAvailable: (value: boolean) => {
+      runAvailable = value
     },
     setWorkflowEnabled: (value: boolean) => {
       workflowEnabled = value
@@ -548,6 +587,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
     const stageSection = stageHeading.locator('..')
 
     expect(bounds?.width).toBe(viewport.width)
+    expect(bounds?.height).toBe(viewport.height)
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
     if (viewport.width < 900) {
       expect(layout.layout).toBe('fullscreen')
@@ -563,6 +603,8 @@ test('packaged real Run drawer preserves context, safe data and focus across the
     expect(layout.activeInside).toBe(true)
     expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
     await expect(runTitle).toBeVisible()
+
+    await expectReadablePageGutters(runScroll)
 
     const [drawerBox, runTitleBox, reviewBox, approveBox, stageBox, stageSectionBox] = await Promise.all([
       drawer.boundingBox(),
@@ -625,6 +667,70 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   await expect(page.getByRole('heading', { name: '今天想推进什么业务？', level: 1 })).toBeVisible()
   await expect(page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ })).toBeFocused()
 })
+
+for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
+  test(`packaged ${surfaceName} preserves page gutters across native windows`, async () => {
+    const { app, page } = fixture!
+    const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+    if (screenshotRoot) {
+      fs.mkdirSync(screenshotRoot, { recursive: true })
+    }
+
+    try {
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+      )
+      reviewApi!.setRunAvailable(surfaceName !== 'run-error')
+      reviewApi!.setWorkflowEnabled(surfaceName !== 'legacy-projects')
+      await page.reload()
+      await waitForAppReady(fixture!, 120_000)
+
+      if (surfaceName === 'run-error') {
+        await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+        await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+      } else {
+        await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+      }
+
+      const surface =
+        surfaceName === 'run-error'
+          ? page.getByRole('heading', { name: '运行暂时不可用', level: 2 }).locator('..').locator('..').locator('..')
+          : page.getByRole('heading', { name: '项目', level: 1 }).locator('..').locator('..')
+      await expect(surface).toBeVisible()
+
+      for (const viewport of PHASE1_VIEWPORTS) {
+        const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+          const win = BrowserWindow.getAllWindows()[0]!
+          win.unmaximize()
+          win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+          return win.getBounds()
+        }, viewport)
+        expect(bounds.width).toBe(viewport.width)
+        expect(bounds.height).toBe(viewport.height)
+        await page.waitForTimeout(400)
+        await expectReadablePageGutters(surface)
+        const name = `${surfaceName}-${viewport.width}x${viewport.height}.png`
+        await page.screenshot({
+          animations: 'disabled',
+          caret: 'hide',
+          path: screenshotRoot ? path.join(screenshotRoot, name) : test.info().outputPath(name)
+        })
+      }
+
+      if (surfaceName === 'run-error') {
+        await page.keyboard.press('Escape')
+      }
+    } finally {
+      reviewApi!.setRunAvailable(true)
+      reviewApi!.setWorkflowEnabled(true)
+      await page.evaluate(() => {
+        window.location.hash = '/'
+      })
+      await page.reload()
+      await waitForAppReady(fixture!, 120_000)
+    }
+  })
+}
 
 test('packaged Settings shows the running APEX app version separately from the engine', async () => {
   const { app, page } = fixture!
