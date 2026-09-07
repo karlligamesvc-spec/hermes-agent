@@ -2,9 +2,33 @@
 
 ## 结论
 
-本批次在 PR #262 原精确基线 `0ae743c20aef14da599698ef2921d31b17f6e740` 上开发，分支为 `codex/hc-820-desktop-phase2a-real-run-drawer`，版本保持 `0.17.24`。最新 R3 留白修复的实包构建提交为 `4b181e2e5d1c79dfc94616ee570a62e49bc85647`，安装戳 `dirty:false`。后续报告/截图与堆叠 ancestry 提交必须与此构建身份区分；最终 main 诊断包会从最终 main SHA 重建。
+本批次在 PR #262 原精确基线 `0ae743c20aef14da599698ef2921d31b17f6e740` 上开发，分支为 `codex/hc-820-desktop-phase2a-real-run-drawer`，版本保持 `0.17.24`。最新 R4 实包构建提交为 `1082c61b4a582e746823ef233dbeda11c3afb471`，安装戳 `dirty:false`。后续报告/测试修正/截图与堆叠 ancestry 提交必须与此构建身份区分；最终 main 诊断包会从最终 main SHA 重建。R3 的横向留白测试通过，但 Run 纵向位置未通过后续截图复核，R3 截图仅保留为反例，不作为完整视觉验收。
 
 实现限定在 Phase 2A 的真实 Run 右抽屉。R3 审计另获明确授权修复同类缺陷：LegacyProjectsView 唯一的失效 padding 引用；没有改 canonical Projects 布局或数据/业务行为。既有 #261/#262 原分支未夹带此修复。未进入 Phase 3、Deliverable/Review 新页面、ApexNodes 后端、新 API、DeepSeek Harness、发布或部署。
+
+## R4 原生标题栏 / Portal 审计（2026-09-07）
+
+截图复核发现 R3 Run 错误页缩到窗口底部。根因是 Radix body Portal 无法继承 AppShell 子树内的 `--titlebar-height`，`top:var(...)` 因变量缺失失效，抽屉变成按内容高度、底部对齐。现有 OverlayView 已显式传递 `TITLEBAR_HEIGHT`；本次在 ResponsiveRouteDrawer 的 Content 复用相同模式，不改全局 token、Portal 容器或业务数据。非测试业务消费者共两个：WorkflowRunRouteDrawer 与 ProjectDetailRouteDrawer，均纳入验证。
+
+实包守卫在动画稳定后的真实 BrowserWindow 上读取 DOM rect，独立要求 `top=34px`、`bottom=innerHeight`、`height=innerHeight-34px`。除三档原生窗口外，Run 验证 899/900px 断点，Project 验证 1099/1100px 断点；Project 还验证 Escape 后焦点归还原行，再次打开后显式“继续这个目标”才预填 Start。Project 宽度仍使用原有 35rem 上限；fixture 的应用字号为 17px，测试先读取实际 rem，不能误把 1rem 写死为 16px。
+
+反向证据（安装的未修复 R3 App，构建 `4b181e2`）：Run 正常态顶边为 `131.03125px`、错误态 `747px`，两条测试分别失败；Project 顶边为 `329.78125px`，专门测试也失败。组件守卫在修复前因 Portal 上 token 为空失败。修复后两类消费者在所有上述原生尺寸均通过，主窗口宽高精确匹配请求值，显示模式结束后恢复。日志：`/private/tmp/hc820-portal-negative.log`、`/private/tmp/hc820-project-portal-negative.log`、`/private/tmp/hc820-portal-unit-negative.log`、`/private/tmp/hc820-portal-verified.log`。
+
+R4 自动验证：定向 UI/身份层 47 tests；全量 UI **756 files / 7547 tests**；Electron/platform **179 files / 2728 tests**（2 files / 6 tests skipped）；release gates Node **65** + Vitest **15**；typecheck、lint（0 errors / 132 存量 warnings）、production build、`test:desktop:all` 与 `git diff --check` 通过。完整打包 `business-workspace-packaged.spec.ts` **12/12** 通过（55.5s）。初次整份运行的 Project 失败是新测试把 35rem 错算为 560px，实际595px；修正测试的单位换算后原产品代码不变，整份重新通过。
+
+| R4 已检查截图 | 1440×900 | 1220×800 | 752×800 |
+|---|---|---|---|
+| Run 进展 | [截图](screenshots/after-1082c61-r4/run-progress-1440x900.png) | [截图](screenshots/after-1082c61-r4/run-progress-1220x800.png) | [截图](screenshots/after-1082c61-r4/run-progress-752x800.png) |
+| Run 执行详情 | [截图](screenshots/after-1082c61-r4/run-details-1440x900.png) | [截图](screenshots/after-1082c61-r4/run-details-1220x800.png) | [截图](screenshots/after-1082c61-r4/run-details-752x800.png) |
+| Run 读取失败 | [截图](screenshots/after-1082c61-r4/run-error-1440x900.png) | [截图](screenshots/after-1082c61-r4/run-error-1220x800.png) | [截图](screenshots/after-1082c61-r4/run-error-752x800.png) |
+| canonical Project 详情 | [截图](screenshots/after-1082c61-r4/project-detail-1440x900.png) | [截图](screenshots/after-1082c61-r4/project-detail-1220x800.png) | [截图](screenshots/after-1082c61-r4/project-detail-752x800.png) |
+| Legacy Projects | [截图](screenshots/after-1082c61-r4/legacy-projects-1440x900.png) | [截图](screenshots/after-1082c61-r4/legacy-projects-1220x800.png) | [截图](screenshots/after-1082c61-r4/legacy-projects-752x800.png) |
+
+验收路径：①打开 Run，标题/审阅动作正常；②切执行详情，事件与滚动正常；③注入读取失败，诚实错误态和重试完整可见；④打开 Project 概览，标题不重复，摘要未提供时不猜 Run；⑤关闭回原行、显式继续目标，焦点和草稿预填正常。截图不是完整辅助技术合规证明；本轮仅验证已有可访问名称、键盘圈定、Escape 和焦点回落。
+
+R4 App 从 DMG 只读挂载后独立安装到 `/Users/karl/Applications/APEX Phase2A hc-820 portal-1082c61.app`。独立 DMG：`/Users/karl/Applications/APEX Phase2A hc-820 portal-1082c61.dmg`；SHA-256 **`c3a524c5671609d0df58423ff2af96a387f16238d795f01d8230027ed0863c9a`**。安装戳回读完整 commit `1082c61b4a582e746823ef233dbeda11c3afb471`、`dirty:false`；主程序 arm64，`Signature=adhoc`、`TeamIdentifier=not set`，没有 Developer ID Authority。构建遵循下文相同清空签名环境、完整 build、显式 `--mac dmg --arm64 --publish never`；没有 notarize、上传或公开 updater feed 更新。
+
+所有具名 Project/Run/事件/交付物来自明确标注的本地测试 API；错误态来自本地503注入，Legacy兼容列表为空。上述结果不代表生产 catalog 已返回200，也不代表 Windows/macOS x64 实包验收或下一层 Deliverable/Review 页面完成。
 
 ## R3 合并前留白审计（2026-09-07）
 

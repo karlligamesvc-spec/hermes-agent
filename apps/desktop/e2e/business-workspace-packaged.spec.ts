@@ -821,7 +821,11 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
     await expectDrawerBelowNativeChrome(drawer)
     await expect(drawer).toHaveAttribute('data-layout', viewport.width < 1100 ? 'fullscreen' : 'drawer')
     const box = await drawer.boundingBox()
-    expect(box?.width).toBeCloseTo(viewport.width < 1100 ? viewport.width : Math.min(560, viewport.width * 0.48), 0)
+    const rem = await page.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).fontSize))
+    expect(box?.width).toBeCloseTo(
+      viewport.width < 1100 ? viewport.width : Math.min(35 * rem, viewport.width * 0.48),
+      0
+    )
     const name = `project-detail-${viewport.width}x${viewport.height}.png`
     const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
     if (screenshotRoot) fs.mkdirSync(screenshotRoot, { recursive: true })
