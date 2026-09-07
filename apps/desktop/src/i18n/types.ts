@@ -345,6 +345,8 @@ export interface Translations {
   }
 
   settings: {
+    title: string
+    description: string
     closeSettings: string
     exportConfig: string
     importConfig: string
@@ -3670,6 +3672,8 @@ export interface Translations {
     account: {
       /** Fallback display name when no email/name is known (e.g. "账户"). */
       fallbackName: string
+      /** Accessible name for the account-menu trigger. */
+      openMenu: string
       /** Menu item — open profile. */
       profile: string
       /** Menu item — open settings. */
@@ -3741,6 +3745,8 @@ export interface Translations {
   // 个人资料 — the profile stats page (avatar header + usage stats off the
   // local analytics API). Distinct from `profiles` (the multi-profile manager).
   profileStats: {
+    title: string
+    description: string
     close: string
     signedOut: string
     loading: string
@@ -3756,6 +3762,8 @@ export interface Translations {
     }
     heatmap: {
       title: string
+      modeLabel: string
+      summary: (activeDays: number, tokens: string) => string
       daily: string
       weekly: string
       cumulative: string
@@ -3775,6 +3783,13 @@ export interface Translations {
     topSkills: {
       title: string
       uses: (count: string) => string
+    }
+    accountDetails: {
+      title: string
+      email: string
+      plan: string
+      notAvailable: string
+      openSettings: string
     }
   }
 

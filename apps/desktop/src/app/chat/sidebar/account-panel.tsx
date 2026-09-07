@@ -104,7 +104,7 @@ export function AccountPanel() {
     <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger asChild>
         <button
-          aria-label={name}
+          aria-label={`${a.openMenu}: ${name}`}
           className={cn(
             'flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors',
             'hover:bg-(--ui-control-hover-background)',

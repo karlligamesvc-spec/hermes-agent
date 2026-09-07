@@ -326,6 +326,8 @@ export const zh = defineLocale({
   },
 
   settings: {
+    title: '设置',
+    description: '管理 APEX 的个性化、外观、提供方和已归档对话。',
     closeSettings: '关闭设置',
     exportConfig: '导出配置',
     importConfig: '导入配置',
@@ -456,7 +458,8 @@ export const zh = defineLocale({
       safety: '安全',
       memory: '记忆与上下文',
       voice: '语音',
-      advanced: '高级'
+      advanced: '高级',
+      browser: '浏览器'
     },
     searchPlaceholder: {
       about: '关于 APEX 桌面版',
@@ -752,6 +755,12 @@ export const zh = defineLocale({
       },
       security: {
         redactSecrets: '尽可能从模型可见内容中隐藏检测到的密钥。'
+      },
+      browser: {
+        useRealProfile:
+          '本地浏览可使用你的真实登录状态。APEX 会复制受支持浏览器的资料到隔离快照中，并使用内置浏览器操作；不会直接打开你的实时资料。默认关闭。',
+        allowPrivateUrls: '允许浏览器访问仅本机或内网可达的地址。',
+        autoLocalForPrivateUrls: '遇到内网地址时自动改用本地浏览器。'
       },
       checkpoints: {
         enabled: '在文件编辑前创建可回滚的快照。'
@@ -3971,6 +3980,7 @@ export const zh = defineLocale({
     },
     account: {
       fallbackName: '账户',
+      openMenu: '打开账户菜单',
       profile: '个人资料',
       settings: '设置',
       usage: '剩余用量',
@@ -4034,6 +4044,8 @@ export const zh = defineLocale({
   },
 
   profileStats: {
+    title: '个人资料',
+    description: '查看你的 APEX 账户，以及当前所连接 AI 引擎提供的真实使用记录。',
     close: '关闭个人资料',
     signedOut: '未登录',
     loading: '正在加载使用统计…',
@@ -4049,6 +4061,8 @@ export const zh = defineLocale({
     },
     heatmap: {
       title: 'Token 活动',
+      modeLabel: 'Token 活动视图',
+      summary: (activeDays, tokens) => `现有活动周期内共 ${activeDays} 个活跃日，使用 ${tokens} Tokens。`,
       daily: '每日',
       weekly: '每周',
       cumulative: '累计',
@@ -4066,8 +4080,15 @@ export const zh = defineLocale({
       estimatedCost: '预估成本'
     },
     topSkills: {
-      title: '最常用的插件',
+      title: '常用技能',
       uses: count => `${count} 次`
+    },
+    accountDetails: {
+      title: '账户信息',
+      email: '邮箱',
+      plan: '方案',
+      notAvailable: '未提供',
+      openSettings: '打开设置'
     }
   },
 

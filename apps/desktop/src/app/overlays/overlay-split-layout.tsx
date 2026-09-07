@@ -12,8 +12,11 @@ import { OVERLAY_TOP_CLEARANCE } from './overlay-view'
 
 // The wide rail and the narrow dropdown swap at exactly the width where
 // OverlaySplitLayout drops to a single column, so the rail never stacks.
-const RAIL_HIDDEN = 'max-[47.5rem]:hidden'
-const BAR_HIDDEN = 'hidden max-[47.5rem]:flex'
+// Electron ships at 90% default zoom, so a 752px native window exposes an
+// ~836 CSS-pixel viewport. Keep the CSS threshold aligned with that real
+// window contract instead of keying compact mode to renderer pixels alone.
+const RAIL_HIDDEN = 'max-[53rem]:hidden'
+const BAR_HIDDEN = 'hidden max-[53rem]:flex'
 
 interface OverlaySplitLayoutProps {
   children: ReactNode
@@ -50,7 +53,7 @@ export function OverlaySplitLayout({ children, className }: OverlaySplitLayoutPr
         // Narrow: one column, and pin rows to [nav-bar auto | main 1fr] — without
         // an explicit template the grid's default align-content:stretch splits the
         // height evenly across the two rows, shoving the content to mid-screen.
-        'grid h-full min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)] overflow-hidden bg-transparent max-[47.5rem]:grid-cols-1 max-[47.5rem]:grid-rows-[auto_minmax(0,1fr)]',
+        'grid h-full min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)] overflow-hidden bg-transparent max-[53rem]:grid-cols-1 max-[53rem]:grid-rows-[auto_minmax(0,1fr)]',
         className
       )}
     >
@@ -92,7 +95,7 @@ export function OverlayMain({ children, className }: OverlayMainProps) {
         // top clearance, the bottom gutter, and the horizontal clamp gutter
         // (inlined from PAGE_INSET_X so only overlay panes tighten, not the
         // shared page gutter). Narrow top drops toward the OverlayNav bar.
-        'mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent pb-2 pt-[calc((var(--titlebar-height)/2+1rem)*2/3)] max-[47.5rem]:pt-[calc(0.5rem*2/3)] px-[clamp(0.8333rem,2.6667vw,2.6667rem)]',
+        'mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-transparent pb-2 pt-[calc((var(--titlebar-height)/2+1rem)*2/3)] max-[53rem]:pt-[calc(0.5rem*2/3)] px-[clamp(0.8333rem,2.6667vw,2.6667rem)]',
         PAGE_MAX_W,
         className
       )}

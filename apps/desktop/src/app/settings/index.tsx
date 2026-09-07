@@ -34,6 +34,7 @@ import { bindingsFor } from '@/store/keybinds'
 import { notifyError } from '@/store/notifications'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
+import { AccountSurfaceHeader } from '../overlays/account-surface-header'
 import { OverlayIconButton } from '../overlays/overlay-chrome'
 import { OverlayMain, OverlayNav, type OverlayNavGroup, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import { OverlayView } from '../overlays/overlay-view'
@@ -127,7 +128,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'hermes-config.json'
+      a.download = 'apex-desktop-config.json'
       a.click()
       URL.revokeObjectURL(url)
       triggerHaptic('success')
@@ -157,7 +158,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   }
 
   const navGroups: OverlayNavGroup[] = [
-    // Consumer nav: 个性化 / 外观 / 提供方 / 已归档对话 (+ whatever else isn't
+    // Consumer nav: 个性化 / 外观 / 浏览器 / 提供方 / 已归档对话 (+ whatever else isn't
     // consumer-hidden). Gating through isConsumerHiddenSection (one set in
     // constants.ts) means restoring a section re-lights its nav row, its ⌘K
     // entries and its field search hits all at once.
@@ -337,18 +338,16 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Fake search pill riding the card's top edge, dead-center and half off it.
-  // Clicking (or just typing) opens the ⌘K palette scoped to settings; while
-  // the palette is up the pill hands over to it — grows slightly and fades,
-  // then fades back when the palette closes. It renders as chrome, not an
-  // input — no border, recessed fill, live ⌘K hint.
+  // Search is an explicit header action, not a faux field straddling the card.
+  // Keeping it in document flow prevents collisions with macOS traffic lights,
+  // the compact section selector, and Close at 752px.
   const searchCombo = bindingsFor('nav.commandPalette')[0]
   const paletteOpen = useStore($commandPaletteOpen)
 
   const searchPill = (
     <button
       className={cn(
-        'flex h-(--titlebar-control-height) items-center gap-1.5 rounded-full border border-(--ui-stroke-secondary) bg-(--ui-chat-surface-background) px-2.5 text-(--ui-text-tertiary) shadow-sm transition-all duration-200 ease-out hover:text-foreground motion-reduce:transition-none',
+        'flex h-8 items-center gap-1.5 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-control-background) px-2.5 text-(--ui-text-secondary) shadow-xs transition-colors hover:bg-(--ui-control-hover-background) hover:text-foreground',
         paletteOpen && 'pointer-events-none scale-110 opacity-0'
       )}
       onClick={() => {
@@ -396,7 +395,9 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const activeSettingsContent =
-    activeView === 'config:appearance' ? (
+    activeView === 'config:personalization' ? (
+      <PersonalizationSettings onConfigSaved={onConfigSaved} />
+    ) : activeView === 'config:appearance' ? (
       <AppearanceSettings />
     ) : activeView === 'about' ? (
       <AboutSettings />
@@ -434,47 +435,29 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     )
 
   return (
-    <OverlayView closeLabel={t.settings.closeSettings} compactFullscreen edgeBadge={searchPill} onClose={onClose}>
-      <OverlaySplitLayout>
+    <OverlayView
+      ariaDescribedBy="settings-surface-description"
+      ariaLabelledBy="settings-surface-title"
+      closeLabel={t.settings.closeSettings}
+      compactFullscreen
+      containerClassName="max-w-[1024px]"
+      onClose={onClose}
+    >
+      <OverlaySplitLayout className="p5-settings">
         <OverlayNav footer={navFooter} groups={navGroups} />
 
-        <OverlayMain className="px-0 pb-0 pt-[calc(var(--titlebar-height)+1rem)]">
-          {activeView === 'config:personalization' ? (
-            <PersonalizationSettings onConfigSaved={onConfigSaved} />
-          ) : activeView === 'config:appearance' ? (
-            <AppearanceSettings />
-          ) : activeView === 'about' ? (
-            <AboutSettings />
-          ) : activeView === 'gateway' ? (
-            <GatewaySettings />
-          ) : activeView === 'keybinds' ? (
-            <KeybindSettings />
-          ) : activeView.startsWith('config:') ? (
-            <ConfigSettings
-              activeSectionId={activeView.slice('config:'.length)}
-              importInputRef={importInputRef}
-              onConfigSaved={onConfigSaved}
-              onMainModelChanged={onMainModelChanged}
-            />
-          ) : activeView === 'providers' ? (
-            <ProvidersSettings
-              onClose={onClose}
-              onConfigSaved={onConfigSaved}
-              onMainModelChanged={onMainModelChanged}
-              onViewChange={setProviderView}
-              view={providerView}
-            />
-          ) : activeView === 'keys' ? (
-            <KeysSettings view={keysView} />
-          ) : activeView === 'notifications' ? (
-            <NotificationsSettings />
-          ) : activeView === 'billing' ? (
-            <BillingSettings />
-          ) : activeView === 'plugins' ? (
-            <PluginsSettings />
-          ) : (
-            <SessionsSettings />
-          )}
+        <OverlayMain className="px-0 pb-0 pt-0">
+          <AccountSurfaceHeader
+            action={searchPill}
+            className="max-[53rem]:pt-3"
+            description={t.settings.description}
+            title={t.settings.title}
+            titleId="settings-surface-title"
+          />
+          <span className="sr-only" id="settings-surface-description">
+            {t.settings.description}
+          </span>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{activeSettingsContent}</div>
         </OverlayMain>
       </OverlaySplitLayout>
     </OverlayView>
