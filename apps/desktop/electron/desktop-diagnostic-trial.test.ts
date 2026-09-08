@@ -16,6 +16,7 @@ import {
   productionHermesHomeFromEnvironment,
   registerOsLoginProtocolForPolicy,
   resolveDesktopLaunchPolicy,
+  runDesktopMaintenanceForPolicy,
   updatesAllowedByPolicy
 } from './desktop-diagnostic-trial'
 
@@ -37,6 +38,7 @@ function diagnosticHarness(overrides: Record<string, unknown> = {}) {
   const pythonPath = path.resolve('/tmp/apex-hc826-shared-python/bin/python')
   const modulePath = path.join(runtimeRoot, 'hermes_cli', 'main.py')
   const events: string[] = []
+
   const directories = new Set([
     root,
     path.join(root, 'user-data'),
@@ -44,7 +46,9 @@ function diagnosticHarness(overrides: Record<string, unknown> = {}) {
     path.join(root, 'workspace'),
     runtimeRoot
   ])
+
   const files = new Set([pythonPath, modulePath])
+
   const marker = {
     appId: diagnosticTrialPolicy.appId,
     mode: diagnosticTrialPolicy.mode,
@@ -70,14 +74,17 @@ function diagnosticHarness(overrides: Record<string, unknown> = {}) {
     platform: process.platform,
     readDiagnosticMarker: (candidate: string) => {
       events.push(`marker:${candidate}`)
+
       return marker
     },
     readRuntimeBinding: (python: string, runtime: string) => {
       events.push(`binding:${python}:${runtime}`)
+
       return { modulePath }
     },
     readRuntimeCommit: (candidate: string) => {
       events.push(`commit:${candidate}`)
+
       return runtimeSourceCommit
     },
     runtimeAppName: 'apex-diagnostic-trial',
@@ -155,6 +162,7 @@ test('missing launcher root refuses without touching userData', () => {
       HERMES_DESKTOP_PYTHON: '/tmp/apex-hc826-shared-python/bin/python'
     }
   })
+
   const result = initializeDesktopLaunchEnvironment(dependencies)
 
   assert.equal(result.ok, false)
@@ -200,6 +208,7 @@ test('launcher-derived HERMES_HOME is isolated while a different environment hom
 
 test('canonical path overlap catches a symlink into production APEX data', () => {
   const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-hc826-realpath-'))
+
   try {
     const productionRoot = path.join(temporaryHome, '.apexnodes')
     const launcherParent = path.join(temporaryHome, 'launcher')
@@ -208,10 +217,12 @@ test('canonical path overlap catches a symlink into production APEX data', () =>
     fs.symlinkSync(productionRoot, path.join(launcherParent, 'trial-link'), 'dir')
 
     const throughSymlink = path.join(launcherParent, 'trial-link', 'not-created-yet')
+
     const canonical = canonicalizePathThroughExistingParent(throughSymlink, {
       exists: fs.existsSync,
       realpath: fs.realpathSync
     })
+
     assert.equal(canonical, path.join(fs.realpathSync(productionRoot), 'not-created-yet'))
 
     const harness = diagnosticHarness()
@@ -236,12 +247,16 @@ test('diagnostic protocol decision skips before the registrar can be called', ()
   const diagnostic = resolveDesktopLaunchPolicy(diagnosticPackageJson(), {
     runtimeAppName: 'apex-diagnostic-trial'
   })
+
   if (diagnostic.mode === 'invalid') {
     throw new Error(diagnostic.error)
   }
+
   let calls = 0
+
   const result = registerOsLoginProtocolForPolicy(diagnostic, () => {
     calls += 1
+
     return true
   })
 
@@ -252,15 +267,67 @@ test('diagnostic protocol decision skips before the registrar can be called', ()
 
 test('formal protocol decision still calls the registrar exactly once', () => {
   const production = resolveDesktopLaunchPolicy({})
+
   if (production.mode === 'invalid') {
     throw new Error(production.error)
   }
+
   let calls = 0
+
   const result = registerOsLoginProtocolForPolicy(production, () => {
     calls += 1
+
     return true
   })
 
   assert.deepEqual(result, { attempted: true, registered: true })
   assert.equal(calls, 1)
+})
+
+test('diagnostic maintenance refuses before uninstall, repair or quit side effects', async () => {
+  const diagnostic = resolveDesktopLaunchPolicy(diagnosticPackageJson(), {
+    runtimeAppName: 'apex-diagnostic-trial'
+  })
+
+  if (diagnostic.mode === 'invalid') {
+    throw new Error(diagnostic.error)
+  }
+
+  const effects = {
+    quit: 0,
+    runtimeWrite: 0,
+    spawn: 0,
+    unlink: 0
+  }
+
+  const sideEffects = () => {
+    effects.spawn += 1
+    effects.unlink += 1
+    effects.quit += 1
+    effects.runtimeWrite += 1
+
+    return { ok: true }
+  }
+
+  for (const operation of ['uninstall-summary', 'uninstall-run', 'bootstrap-repair']) {
+    assert.deepEqual(await runDesktopMaintenanceForPolicy(diagnostic, operation, sideEffects), {
+      error: 'diagnostic-trial-maintenance-disabled',
+      ok: false,
+      operation
+    })
+  }
+
+  assert.deepEqual(effects, { quit: 0, runtimeWrite: 0, spawn: 0, unlink: 0 })
+
+  const production = resolveDesktopLaunchPolicy({})
+
+  if (production.mode === 'invalid') {
+    throw new Error(production.error)
+  }
+
+  assert.deepEqual(
+    await runDesktopMaintenanceForPolicy(production, 'uninstall-run', sideEffects),
+    { ok: true }
+  )
+  assert.deepEqual(effects, { quit: 1, runtimeWrite: 1, spawn: 1, unlink: 1 })
 })

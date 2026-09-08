@@ -20,7 +20,10 @@ updater feed.
 - OS protocol registration: disabled
 - Shell updater: disabled
 - Runtime updater and bootstrap fallback: disabled
-- Runtime source: an exact clean 40-character Git HEAD embedded by the build
+- Runtime uninstall probes/actions and bootstrap repair: disabled
+- Runtime source: an exact 40-character Git HEAD embedded by the build; tracked
+  state must be clean and the only permitted untracked entry is the Runtime's
+  own root `.bytecode-fingerprint` cache
 - Version: inherited unchanged from `apps/desktop/package.json`
 - macOS signing: local ad-hoc identity only; no distribution certificate or
   notarization
@@ -34,10 +37,13 @@ its process, but it never registers or takes ownership of a system scheme.
 ## Launch contract
 
 The package is launched only through `scripts/launch-diagnostic-trial.mjs` with
-four explicit absolute paths: app, diagnostic root, clean Runtime worktree, and
-Python interpreter. Python may be shared outside the Runtime checkout. The
-launcher and app both verify that the interpreter actually imports
-`hermes_cli.main` from the exact pinned Runtime.
+four explicit absolute paths: app, diagnostic root, verified Runtime worktree,
+and Python interpreter. Python may be shared outside the Runtime checkout. The
+launcher and app both use `importlib.util.find_spec()` in a separate Python
+process to verify that the interpreter resolves `hermes_cli.main` from the exact
+pinned Runtime. They do not import the Runtime module during this preflight:
+importing it creates HERMES_HOME directories and an upstream default SOUL before
+the APEX first-run seed owns that state.
 
 The launcher creates only these writable paths beneath the diagnostic root:
 
@@ -51,15 +57,29 @@ diagnostic root and its derived paths may not equal or sit beneath formal APEX
 userData, `~/.apexnodes`, `~/.hermes`, the Windows `%LOCALAPPDATA%\apexnodes`
 root, or a configured production `HERMES_HOME`.
 
-The embedded diagnostic identity without a complete policy, a missing marker,
-a dirty/wrong Runtime, a wrong module binding, a protected path overlap, or a
-Finder/Explorer launch without launcher context refuses before the app's first
-userData write. There is no fallback to a global Runtime and no bootstrap.
+The build and launcher reject every tracked change (including a tracked change
+to `.bytecode-fingerprint`) and every untracked path except the exact root
+`?? .bytecode-fingerprint` entry. That path must also be a regular non-symlink
+file, remain explicitly untracked, and contain the Runtime's `git:<ref>:<sha>`
+(or unresolved-ref) fingerprint shape. A directory, symlink, tracked file, or
+arbitrary same-name content is rejected before Runtime startup. Hermes Runtime
+owns the file: every real CLI launch runs its stale-bytecode sweep and records
+only the checkout's Git ref/commit fingerprint. This narrow allowlist lets the
+same pinned Runtime pass a second diagnostic launch; it is not a general dirty
+worktree bypass.
+
+The app main process independently rejects incomplete embedded policy, a
+missing marker, a wrong Runtime HEAD, a wrong module resolution, a protected
+path overlap, or a Finder/Explorer launch without launcher context before its
+first userData write. The main process does not duplicate the launcher's Git
+status/content check, so a dirty same-HEAD Runtime is an official launcher/build
+refusal rather than a main-process refusal. There is no fallback to a global
+Runtime and no bootstrap.
 
 ## Build and audit commands
 
-Run from `apps/desktop` in a clean source worktree. The Runtime root must also
-be a clean Git worktree; its exact HEAD is embedded into `app.asar`.
+Run from `apps/desktop` in a clean source worktree. The Runtime root must satisfy
+the exact clean-state rule above; its exact HEAD is embedded into `app.asar`.
 
 ```sh
 npm run build
@@ -98,12 +118,17 @@ formal application, or updates an updater feed.
   `registerApexDesktopProtocol()` call is wrapped by the embedded policy
 - Shell/runtime update exits: shell updater initialization, update-plan writes,
   shell apply, Runtime check/apply
+- Maintenance exits: Runtime uninstall summary/run and bootstrap repair refuse
+  before probe spawn, marker removal, backend teardown, detached cleanup, or App
+  quit; formal APEX continues through the existing implementations
 - Runtime resolution: exact root/interpreter only, bootstrap false
 - macOS/Windows package identity: package config, macOS plist audit, Windows PE
   product-name override while formal APEX defaults remain unchanged
 - Operator launcher and artifact audit:
   `scripts/launch-diagnostic-trial.mjs`,
   `scripts/assert-diagnostic-trial-package.mjs`
+- Runtime source-state gate shared by build and launcher:
+  `scripts/diagnostic-trial-runtime-clean.cjs`
 
 ## Verification and reverse checks
 
@@ -127,10 +152,23 @@ and then reverted with patches:
 - Bypass `registerOsLoginProtocolForPolicy()`: main-process source guard fails.
 - Put `RESOLVED_USER_DATA_DIR` before the launch gate: early-order source guard
   fails.
+- Replace the exact generated-cache rule with a broad untracked allow: the
+  first-launch/second-launch Runtime test accepts `.bytecode-fingerprint` but
+  fails on the injected unknown path.
+- Replace `find_spec()` with `import_module()`: the no-import source guard fails;
+  the real Python regression also proves the target module stays absent from
+  `sys.modules` and the probe HERMES_HOME stays empty.
+- Run diagnostic maintenance callbacks: the behavior test fails unless
+  uninstall summary/run and bootstrap repair return before spawn, unlink,
+  Runtime writes, or quit.
 
 The behavior test also rejects a policy deletion based on the remaining
-diagnostic package identity, a Runtime SHA mismatch, a module loaded outside
-the Runtime, and a symlink-resolved path inside production APEX data.
+diagnostic package identity, a Runtime SHA mismatch, a module resolved outside
+the Runtime, a symlink-resolved path inside production APEX data, tracked
+Runtime drift, nested/lookalike fingerprint paths, and all other untracked
+Runtime files. A real Git fixture additionally rejects a symlinked fingerprint
+and a tracked modification at that same path while accepting the normal cache
+on two consecutive validations.
 
 ## Remaining platform evidence
 

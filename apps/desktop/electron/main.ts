@@ -299,6 +299,7 @@ import {
   initializeDesktopLaunchEnvironment,
   productionHermesHomeFromEnvironment,
   registerOsLoginProtocolForPolicy,
+  runDesktopMaintenanceForPolicy,
   updatesAllowedByPolicy
 } from './desktop-diagnostic-trial'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
@@ -647,11 +648,11 @@ function canonicalizeDesktopLaunchPath(candidate) {
   })
 }
 
-function readDiagnosticRuntimeBinding(pythonPath, runtimeRoot, hermesHome) {
+function readDiagnosticRuntimeBinding(pythonPath, runtimeRoot) {
   const source = [
-    'import importlib, json',
-    "module = importlib.import_module('hermes_cli.main')",
-    "print(json.dumps({'modulePath': module.__file__}))"
+    'import importlib.util, json',
+    "spec = importlib.util.find_spec('hermes_cli.main')",
+    "print(json.dumps({'modulePath': spec.origin if spec else None}))"
   ].join('; ')
 
   try {
@@ -659,7 +660,6 @@ function readDiagnosticRuntimeBinding(pythonPath, runtimeRoot, hermesHome) {
       encoding: 'utf8',
       env: {
         ...process.env,
-        HERMES_HOME: hermesHome,
         PYTHONDONTWRITEBYTECODE: '1',
         PYTHONNOUSERSITE: '1',
         PYTHONPATH: [runtimeRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)
@@ -668,6 +668,7 @@ function readDiagnosticRuntimeBinding(pythonPath, runtimeRoot, hermesHome) {
       timeout: 15000,
       windowsHide: true
     }).trim()
+
     const lastLine = stdout.split(/\r?\n/).filter(Boolean).at(-1)
     const parsed = lastLine ? JSON.parse(lastLine) : null
 
@@ -753,6 +754,7 @@ if (IS_DIAGNOSTIC_TRIAL) {
 const USER_DATA_OVERRIDE = IS_DIAGNOSTIC_TRIAL
   ? DESKTOP_LAUNCH.userDataDir
   : process.env.HERMES_DESKTOP_USER_DATA_DIR
+
 const RESOLVED_USER_DATA_DIR = DESKTOP_LAUNCH.userDataDir
 
 // Public-read COS bucket base URL that hosts the ApexNodes runtime source
@@ -1206,6 +1208,7 @@ const BOOT_FAKE_STEP_MS = (() => {
 const APP_NAME = IS_DIAGNOSTIC_TRIAL
   ? DESKTOP_LAUNCH_POLICY.productName
   : process.env.HERMES_DESKTOP_APP_NAME || DESKTOP_LAUNCH_POLICY.productName
+
 const APP_ID = DESKTOP_LAUNCH_POLICY.appId
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
@@ -4849,11 +4852,13 @@ function resolveHermesBackend(backendArgs) {
     }
 
     const backend = createPythonBackend(overrideRoot, `Diagnostic Runtime at ${overrideRoot}`, backendArgs)
+
     if (!backend || path.resolve(backend.command) !== DESKTOP_LAUNCH.pythonPath) {
       throw new Error('Diagnostic Trial could not resolve its paired Runtime Python; refusing fallback or bootstrap.')
     }
 
     backend.bootstrap = false
+
     return backend
   }
 
@@ -14689,7 +14694,8 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
 
   return { ok: true }
 })
-ipcMain.handle('hermes:bootstrap:repair', async () => {
+
+async function repairBootstrapForProduction() {
   // Forceful repair: drop the bootstrap-complete marker so the next
   // startHermes() re-runs the full installer (refreshing a broken/partial
   // venv), and clear any latched failure + live connection. The renderer
@@ -14709,7 +14715,11 @@ ipcMain.handle('hermes:bootstrap:repair', async () => {
   resetHermesConnection()
 
   return { ok: true }
-})
+}
+
+ipcMain.handle('hermes:bootstrap:repair', async () =>
+  runDesktopMaintenanceForPolicy(DESKTOP_LAUNCH_POLICY, 'bootstrap-repair', repairBootstrapForProduction)
+)
 // The upstream first-run local-vs-remote chooser intentionally remains dormant
 // in ApexNodes: our signed-in managed setup owns first launch and the existing
 // bootstrap continues locally without waiting. Keep the bridge compatible so a
@@ -17082,16 +17092,16 @@ registerDesktopVersionIpc(ipcMain, {
 // registry / service / node-symlink cleanup all lives in one place
 // (hermes_cli/uninstall.py + hermes_cli/gui_uninstall.py).
 //
-// getUninstallSummary() shells out to `--gui-summary` (a fast, no-side-effect
-// JSON probe) so the UI can gate options on what's actually installed — and
-// detect a missing agent (a future "lite client" that ships without the
-// bundled agent), hiding the agent/full options when there's nothing to remove.
+// Formal APEX getUninstallSummary() shells out to `--gui-summary` so the UI can
+// gate options on what's actually installed and detect a missing agent. The
+// Runtime CLI may perform its own startup housekeeping even for that read, so
+// the diagnostic policy refuses before spawning the probe.
 
 function uninstallVenvPython() {
   return getVenvPython(VENV_ROOT)
 }
 
-async function getUninstallSummary() {
+async function getUninstallSummaryForProduction() {
   const py = uninstallVenvPython()
   const agentRoot = ACTIVE_HERMES_ROOT
 
@@ -17165,7 +17175,15 @@ async function getUninstallSummary() {
   })
 }
 
-async function runDesktopUninstall(mode) {
+async function getUninstallSummary() {
+  return runDesktopMaintenanceForPolicy(
+    DESKTOP_LAUNCH_POLICY,
+    'uninstall-summary',
+    getUninstallSummaryForProduction
+  )
+}
+
+async function runDesktopUninstallForProduction(mode) {
   let uninstallArgs
 
   try {
@@ -17278,6 +17296,12 @@ async function runDesktopUninstall(mode) {
   setTimeout(() => app.quit(), 800)
 
   return { ok: true, mode, willRemoveAppBundle: Boolean(removeBundle), scriptPath }
+}
+
+async function runDesktopUninstall(mode) {
+  return runDesktopMaintenanceForPolicy(DESKTOP_LAUNCH_POLICY, 'uninstall-run', () =>
+    runDesktopUninstallForProduction(mode)
+  )
 }
 
 ipcMain.handle('hermes:uninstall:summary', async () => getUninstallSummary())

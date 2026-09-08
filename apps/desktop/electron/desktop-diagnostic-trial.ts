@@ -106,6 +106,7 @@ export type DesktopLaunchInitialization =
 const EXPECTED_DIAGNOSTIC_KEYS = Object.freeze(
   [...Object.keys(diagnosticTrialPolicy), 'runtimeSourceCommit'].sort()
 )
+
 const DIAGNOSTIC_RUNTIME_NAMES = new Set([
   'apex-diagnostic-trial',
   diagnosticTrialPolicy.productName
@@ -131,6 +132,7 @@ export function resolveDesktopLaunchPolicy(
   const apexnodes = isRecord(packageJson) && isRecord(packageJson.apexnodes) ? packageJson.apexnodes : null
   const raw = apexnodes?.desktopTrial
   const packageBuild = isRecord(packageJson) && isRecord(packageJson.build) ? packageJson.build : null
+
   const carriesDiagnosticIdentity =
     (isRecord(packageJson) &&
       (packageJson.name === 'apex-diagnostic-trial' || packageJson.productName === diagnosticTrialPolicy.productName)) ||
@@ -156,6 +158,7 @@ export function resolveDesktopLaunchPolicy(
   }
 
   const keys = Object.keys(raw).sort()
+
   if (keys.length !== EXPECTED_DIAGNOSTIC_KEYS.length || keys.some((key, index) => key !== EXPECTED_DIAGNOSTIC_KEYS[index])) {
     return invalidPolicy(`desktopTrial metadata keys are not recognized: ${keys.join(', ') || '<none>'}`)
   }
@@ -169,6 +172,7 @@ export function resolveDesktopLaunchPolicy(
   if (typeof raw.runtimeSourceCommit !== 'string' || !/^[0-9a-f]{40}$/.test(raw.runtimeSourceCommit)) {
     return invalidPolicy('desktopTrial runtimeSourceCommit must be a full lowercase SHA')
   }
+
   if (
     !carriesDiagnosticIdentity ||
     (runtimeAppName !== undefined && !DIAGNOSTIC_RUNTIME_NAMES.has(runtimeAppName))
@@ -181,6 +185,7 @@ export function resolveDesktopLaunchPolicy(
 
 function normalizeForComparison(candidate: string, platform: NodeJS.Platform): string {
   const resolved = path.resolve(candidate)
+
   return platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
@@ -210,9 +215,11 @@ export function canonicalizePathThroughExistingParent(
 
   while (!dependencies.exists(current)) {
     const parent = path.dirname(current)
+
     if (parent === current) {
       return null
     }
+
     missingSegments.unshift(path.basename(current))
     current = parent
   }
@@ -233,6 +240,7 @@ export function productionHermesHomeFromEnvironment(
   }
 
   const derivedDiagnosticHome = path.join(path.resolve(diagnosticRoot), 'hermes-home')
+
   return path.resolve(environmentHome) === derivedDiagnosticHome ? null : environmentHome
 }
 
@@ -241,9 +249,11 @@ function requiredAbsolutePath(
   label: string
 ): { ok: true; value: string } | { error: string; ok: false } {
   const trimmed = typeof value === 'string' ? value.trim() : ''
+
   if (!trimmed) {
     return { error: `${label} is required`, ok: false }
   }
+
   if (!path.isAbsolute(trimmed)) {
     return { error: `${label} must be an absolute path`, ok: false }
   }
@@ -283,6 +293,7 @@ export function initializeDesktopLaunchEnvironment(
   const policy = resolveDesktopLaunchPolicy(dependencies.packageJson, {
     runtimeAppName: dependencies.runtimeAppName
   })
+
   if (policy.mode === 'invalid') {
     return refused(policy.error)
   }
@@ -292,6 +303,7 @@ export function initializeDesktopLaunchEnvironment(
       dependencies.appDataDir,
       dependencies.env.HERMES_DESKTOP_USER_DATA_DIR
     )
+
     dependencies.mkdirUserData(userDataDir)
     dependencies.setUserDataPath(userDataDir)
 
@@ -309,6 +321,7 @@ export function initializeDesktopLaunchEnvironment(
   }
 
   const rootResult = requiredAbsolutePath(dependencies.env[DIAGNOSTIC_TRIAL_ROOT_ENV], DIAGNOSTIC_TRIAL_ROOT_ENV)
+
   if (rootResult.ok === false) {
     return refused(rootResult.error)
   }
@@ -316,7 +329,9 @@ export function initializeDesktopLaunchEnvironment(
   if (!dependencies.directoryExists(rootResult.value)) {
     return refused(`diagnostic root does not exist: ${rootResult.value}`)
   }
+
   const diagnosticRoot = dependencies.canonicalizePath(rootResult.value)
+
   if (!diagnosticRoot) {
     return refused(`diagnostic root cannot be resolved: ${rootResult.value}`)
   }
@@ -324,14 +339,18 @@ export function initializeDesktopLaunchEnvironment(
   const requestedUserDataDir = path.join(diagnosticRoot, 'user-data')
   const requestedHermesHome = path.join(diagnosticRoot, 'hermes-home')
   const requestedWorkingDirectory = path.join(diagnosticRoot, 'workspace')
+
   const runtimeResult = requiredAbsolutePath(
     dependencies.env.HERMES_DESKTOP_HERMES_ROOT,
     'HERMES_DESKTOP_HERMES_ROOT'
   )
+
   if (runtimeResult.ok === false) {
     return refused(runtimeResult.error)
   }
+
   const pythonResult = requiredAbsolutePath(dependencies.env.HERMES_DESKTOP_PYTHON, 'HERMES_DESKTOP_PYTHON')
+
   if (pythonResult.ok === false) {
     return refused(pythonResult.error)
   }
@@ -349,6 +368,7 @@ export function initializeDesktopLaunchEnvironment(
       return refused(`${label} directory does not exist: ${candidate}`)
     }
   }
+
   if (!dependencies.fileExists(requestedPythonPath)) {
     return refused(`paired Runtime Python does not exist: ${requestedPythonPath}`)
   }
@@ -358,17 +378,20 @@ export function initializeDesktopLaunchEnvironment(
   const workingDirectory = dependencies.canonicalizePath(requestedWorkingDirectory)
   const runtimeRoot = dependencies.canonicalizePath(requestedRuntimeRoot)
   const pythonPath = dependencies.canonicalizePath(requestedPythonPath)
+
   if (!userDataDir || !hermesHome || !workingDirectory || !runtimeRoot || !pythonPath) {
     return refused('one or more diagnostic paths cannot be resolved through the filesystem')
   }
 
   const productionUserData = resolveUserDataDir(dependencies.appDataDir, undefined)
+
   const protectedRoots = [
     productionUserData,
     path.join(dependencies.homeDir, '.apexnodes'),
     path.join(dependencies.homeDir, '.hermes'),
     ...(dependencies.additionalProtectedRoots || []).filter((candidate): candidate is string => Boolean(candidate))
   ]
+
   if (dependencies.localAppDataDir) {
     protectedRoots.push(path.join(dependencies.localAppDataDir, 'apexnodes'))
   }
@@ -376,8 +399,10 @@ export function initializeDesktopLaunchEnvironment(
   const canonicalProtectedRoots = protectedRoots
     .map(root => dependencies.canonicalizePath(root))
     .filter((candidate): candidate is string => Boolean(candidate))
+
   for (const candidate of [diagnosticRoot, userDataDir, hermesHome, workingDirectory, runtimeRoot]) {
     const protectedRoot = canonicalProtectedRoots.find(root => isSameOrInside(candidate, root, dependencies.platform))
+
     if (protectedRoot) {
       return refused(`diagnostic path ${candidate} overlaps protected APEX data ${protectedRoot}`)
     }
@@ -392,6 +417,7 @@ export function initializeDesktopLaunchEnvironment(
   }
 
   const runtimeCommit = dependencies.readRuntimeCommit(runtimeRoot)
+
   if (runtimeCommit !== policy.runtimeSourceCommit) {
     return refused(
       `paired Runtime commit ${runtimeCommit || '<unreadable>'} does not match ${policy.runtimeSourceCommit}`
@@ -400,8 +426,9 @@ export function initializeDesktopLaunchEnvironment(
 
   const binding = dependencies.readRuntimeBinding(requestedPythonPath, runtimeRoot, hermesHome)
   const modulePath = binding?.modulePath && dependencies.canonicalizePath(binding.modulePath)
+
   if (!modulePath || !isSameOrInside(modulePath, runtimeRoot, dependencies.platform)) {
-    return refused('paired Python did not import hermes_cli.main from the verified Runtime')
+    return refused('paired Python did not resolve hermes_cli.main from the verified Runtime')
   }
 
   // These are the first write-capable calls in this function. Every refusal
@@ -435,4 +462,20 @@ export function registerOsLoginProtocolForPolicy(
 
 export function updatesAllowedByPolicy(policy: DesktopLaunchPolicy): boolean {
   return policy.shellUpdater === 'enabled' && policy.runtimeUpdates === 'enabled'
+}
+
+export async function runDesktopMaintenanceForPolicy<T>(
+  policy: DesktopLaunchPolicy,
+  operation: string,
+  run: () => Promise<T> | T
+): Promise<T | { error: 'diagnostic-trial-maintenance-disabled'; ok: false; operation: string }> {
+  if (policy.mode !== 'production') {
+    return {
+      error: 'diagnostic-trial-maintenance-disabled',
+      ok: false,
+      operation
+    }
+  }
+
+  return run()
 }

@@ -10,6 +10,7 @@ import trialPolicy from '../diagnostic-trial-policy.json' with { type: 'json' }
 import { assertDiagnosticPackageMetadata } from './assert-diagnostic-trial-package.mjs'
 
 const require = createRequire(import.meta.url)
+const { assertDiagnosticRuntimeClean } = require('./diagnostic-trial-runtime-clean.cjs')
 const MARKER_NAME = '.apex-diagnostic-trial.json'
 
 function parseArgs(argv) {
@@ -46,11 +47,6 @@ function git(runtimeRoot, args) {
 
 function runtimeCommit(runtimeRoot) {
   return git(runtimeRoot, ['rev-parse', 'HEAD'])
-}
-
-function assertCleanRuntime(runtimeRoot) {
-  const status = git(runtimeRoot, ['status', '--porcelain=v1', '--untracked-files=all'])
-  if (status) throw new Error(`Runtime worktree is not clean; first entry: ${status.split(/\r?\n/)[0]}`)
 }
 
 function canonicalizeThroughExistingParent(candidate) {
@@ -126,17 +122,16 @@ function readEmbeddedPolicy(appPath) {
   return assertDiagnosticPackageMetadata(packageJson)
 }
 
-function probePythonBinding(pythonPath, runtimeRoot, hermesHome) {
+function probePythonBinding(pythonPath, runtimeRoot) {
   const source = [
-    'import importlib, json',
-    "module = importlib.import_module('hermes_cli.main')",
-    "print(json.dumps({'modulePath': module.__file__}))"
+    'import importlib.util, json',
+    "spec = importlib.util.find_spec('hermes_cli.main')",
+    "print(json.dumps({'modulePath': spec.origin if spec else None}))"
   ].join('; ')
   const stdout = execFileSync(pythonPath, ['-B', '-c', source], {
     encoding: 'utf8',
     env: {
       ...process.env,
-      HERMES_HOME: hermesHome,
       PYTHONDONTWRITEBYTECODE: '1',
       PYTHONNOUSERSITE: '1',
       PYTHONPATH: [runtimeRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)
@@ -149,7 +144,7 @@ function probePythonBinding(pythonPath, runtimeRoot, hermesHome) {
   const modulePath = binding?.modulePath ? fs.realpathSync(binding.modulePath) : null
   const canonicalRuntime = fs.realpathSync(runtimeRoot)
   if (!modulePath || !isSameOrInside(modulePath, canonicalRuntime)) {
-    throw new Error(`paired Python did not import hermes_cli.main from Runtime ${canonicalRuntime}`)
+    throw new Error(`paired Python did not resolve hermes_cli.main from Runtime ${canonicalRuntime}`)
   }
   return modulePath
 }
@@ -169,7 +164,7 @@ function main() {
   }
   if (!fs.existsSync(pythonPath)) throw new Error(`Runtime Python not found: ${pythonPath}`)
 
-  assertCleanRuntime(runtimeRoot)
+  assertDiagnosticRuntimeClean(runtimeRoot)
   const actualCommit = runtimeCommit(runtimeRoot)
   if (actualCommit !== embeddedPolicy.runtimeSourceCommit) {
     throw new Error(
@@ -183,7 +178,7 @@ function main() {
     workspace: path.join(diagnosticRoot, 'workspace')
   }
   assertIsolatedPaths({ diagnosticRoot, runtimeRoot, ...directories })
-  const runtimeModulePath = probePythonBinding(pythonPath, runtimeRoot, directories.hermesHome)
+  const runtimeModulePath = probePythonBinding(pythonPath, runtimeRoot)
 
   if (!args.launch) {
     console.log(
