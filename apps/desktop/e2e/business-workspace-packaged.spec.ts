@@ -549,6 +549,10 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
     fs.mkdirSync(screenshotRoot, { recursive: true })
   }
 
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
   await expect(page.locator('[data-business-start-shelf]')).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText('[本地测试] 美国宠物用品机会分析')).toBeVisible()
 

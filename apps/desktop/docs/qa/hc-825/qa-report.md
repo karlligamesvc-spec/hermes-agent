@@ -6,7 +6,7 @@
 
 Draft PR #263 的 hc-820 Run drawer、双页签、compact responsive Run drawer 及其文案/测试未进入候选。Profile、Settings、账户 Overlay 的独立 JSX、样式、i18n 与实包测试已恢复为 fork main，避免把 Phase 1 三页验收扩成 Profile/Settings 重做。
 
-远端 #265、PR base、公开 updater 和 release workflow 尚未修改。任何早于本次 Phase 1-only restack 的 App、DMG、截图、哈希和 CI 只作为历史诊断证据冻结，不能证明新的发布候选。
+远端 Draft restack、公开 updater 和 release workflow 不属于本报告的发布授权。实包证据来自严格 Phase 1-only 集成 `8e5463144fd5ffb3e19a772829e3c15814ef8acd`（tree `9258a5c4036bead3a6f42f38f6e0606284242b86`）；最终 Draft HEAD 将只追加 QA 测试、截图和本报告，renderer 生产源码不再变化。最终远端 HEAD/tree、CI 和精确重建 DMG 哈希以 PR body 的只读回读为准。
 
 ## 允许范围与行为
 
@@ -47,17 +47,27 @@ Draft PR #263 的 hc-820 Run drawer、双页签、compact responsive Run drawer 
 - 范围守卫：明确断言 hc-820 的 `data-run-scroll-container`、Run 双页签、compact route drawer 标志不在候选中。
 - 反向验证：向现有 Run 页面精确注入一次 `data-run-scroll-container` 后，发布边界守卫按预期失败；恢复后重新通过。
 - `git diff --check`、Electron/platform、release gates 与精确组合树验证在最终本地集成 HEAD 收口，并由协调报告记录。
+- packaged Electron：完整 `business-workspace-packaged.spec.ts` 9/9 通过；三页在 1440、1220、752 三档均由真实 BrowserWindow 调整并截图，不是 renderer-only viewport。
+- clean userData 原生首启：Start 辅助功能树只含一个“业务目标”文本输入，Tab 后焦点落到“开始执行”；没有启动测试目标。
+- 截图测试隔离反向验证：删除矩阵测试开头的窗口复位与 Start 导航后，测试继承前序 Workflows 路由并失败；恢复后 9/9 复绿。
+
+实包记录：
+
+- 版本：`0.17.24`；arm64；Electron `40.10.2`。
+- DMG：`apps/desktop/release/APEX-0.17.24-mac-arm64.dmg`；首轮严格树 SHA-256 `689e45b8f2cc0a3012017bd46d3b184f9d130eb7525c3124c672cfce13cd6e51`。
+- 独立 App：`/Users/karl/Applications/APEX Phase 1 QA 8e546314.app`。
+- `codesign`：ad-hoc、`TeamIdentifier=not set`、无 Developer ID Authority；stapler 无 ticket。
+- 构建：完整 build 后显式 `npm run builder -- --mac dmg --arm64 --publish never`；签名发现关闭，未 notarize、未上传、未修改公开 updater feed。
+- 真实数据：Project/Workflow/Profile/Settings bridge 与 Project detail seam；本地测试数据：截图中的 `[本地测试]` Project/catalog；空状态：没有真实 Run/Step/Deliverable/来源/百分比时不补数字。
+
+三档 Before/After 与批准原型的逐页差异见 [design-qa.md](design-qa.md)。
 
 旧分支的远端 CI 全绿只对应旧 HEAD；任何 force-with-lease restack 都必须重新跑 GitHub CI，不能继承旧绿色结论。
 
-## 仍需重生成
+## 最终收口与未覆盖范围
 
-远端 restack 获得授权并完成后，必须从最终 Phase 1-only 精确组合 HEAD 重新生成：
+Draft restack 完成后仍需从最终精确组合 HEAD 再构建一次同参数 unsigned/ad-hoc 包，并在 PR body 回读最终 SHA-256、签名与 CI；这一步不会借用首轮哈希冒充最终包。
 
-1. 三档真实 Electron 原生窗口截图：1440×900（若 macOS 实际夹高则记录实际值）、1220×800、700–752px。
-2. Start / Projects / Workflows 的 Before/After 与测试数据标记。
-3. Mac arm64 unsigned/ad-hoc 试用 App、DMG、codesign 读回与 SHA-256。
-4. clean userData 下单输入、侧栏、安全区、Project 详情与 Workflow 选择→编辑→确认路径。
-5. 所有改写后 PR 的 GitHub CI 与最终 ancestry/tree 证明。
+未覆盖范围：生产 Workflows 完整态仍等待 authenticated `/workflows`、`/catalog` 返回 200；Windows 配对发布产物与真机验收属于正式发版门禁；带空格自定义 `HERMES_HOME` 会触发 runtime `install.sh` 未引用路径问题，但默认生产路径 `~/.apexnodes` 不受影响，本轮不跨出 Phase 1 renderer 修复边界。
 
 未经新的明确授权，不合并、不发布、不部署、不触发 desktop-release，不更新 updater feed，不进入 Phase 2。
