@@ -1,13 +1,15 @@
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SIDEBAR_DEFAULT_WIDTH_PX } from '@/app/layout-constants'
 import { registry } from '@/contrib/registry'
+import { HERMES_BOTS_PANE_WIDTH } from '@/plugins/hermes-bots/pane-layout'
 import { stubResizeObserver } from '@/test/jsdom'
 
 import { group, split } from '../model'
 import { $hiddenTreePanes, $layoutTree } from '../store'
 
-import { subtreeGone, type TrackContext } from './track-model'
+import { fixedTrackSize, subtreeGone, type TrackContext } from './track-model'
 import { TreeSplit } from './tree-split'
 
 // Ground truth for "the main pane always shows, no matter what". Emptying the
@@ -28,7 +30,8 @@ beforeEach(() => {
   $hiddenTreePanes.set(new Set())
 
   for (const [id, data] of [
-    ['sessions', { placement: 'left', width: '237px' }],
+    ['sessions', { placement: 'left', width: `${SIDEBAR_DEFAULT_WIDTH_PX}px` }],
+    ['hermes-bots:pane', { placement: 'left', width: HERMES_BOTS_PANE_WIDTH }],
     ['workspace', { placement: 'main', uncloseable: true }],
     ['session-tile:a', { placement: 'main' }],
     ['terminal', { placement: 'bottom', height: '38vh' }]
@@ -56,6 +59,13 @@ const ctx = (gone: string[]): TrackContext => ({
 })
 
 describe('subtreeGone', () => {
+  it('keeps the actual Sessions and Bots declarations on one 190px track', () => {
+    const sharedSidebar = group(['sessions', 'hermes-bots:pane'])
+
+    expect(HERMES_BOTS_PANE_WIDTH).toBe(`${SIDEBAR_DEFAULT_WIDTH_PX}px`)
+    expect(fixedTrackSize(sharedSidebar, 'row', ctx([]))).toBe(`${SIDEBAR_DEFAULT_WIDTH_PX}px`)
+  })
+
   it('keeps a main-bearing subtree even when every one of its panes is gone', () => {
     const main = group(['workspace', 'session-tile:a'], { id: 'grp-main' })
 

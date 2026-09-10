@@ -399,6 +399,7 @@ const ChatViewContent = memo(function ChatViewContent({
   // atoms) or a tile's session slice — same component either way.
   const view = useSessionView()
   const composerScope = useComposerScope()
+  const introAttachments = useStore(composerScope.attachments.$attachments)
   const composerSurfaceId = useComposerSurfaceId()
   const isPrimary = view.kind === 'primary'
   const activeSessionId = useStore(view.$runtimeId)
@@ -704,6 +705,11 @@ const ChatViewContent = memo(function ChatViewContent({
               showIntro
                 ? {
                     goalDisabled: !gatewayOpen || busy,
+                    attachments: introAttachments,
+                    onPickFiles,
+                    onPickFolders,
+                    onPickImages,
+                    onRemoveAttachment,
                     onSubmitGoal: onSubmit,
                     personality: introPersonality,
                     seed: introSeed

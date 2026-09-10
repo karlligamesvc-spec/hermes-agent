@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { RowButton } from './row-button'
@@ -15,20 +15,30 @@ describe('RowButton', () => {
     expect(el.getAttribute('data-slot')).toBe('row-button')
   })
 
-  it('imposes no styling of its own — only the caller class is applied', () => {
+  it('keeps caller layout classes and native disabled behavior', () => {
     const onClick = vi.fn()
 
-    const { getByText } = render(
-      <RowButton className="custom-row" onClick={onClick}>
-        Hit
-      </RowButton>
+    render(
+      <>
+        <RowButton className="custom-row" onClick={onClick}>
+          Hit
+        </RowButton>
+        <RowButton disabled onClick={onClick}>
+          Disabled row
+        </RowButton>
+      </>
     )
 
-    const el = getByText('Hit')
+    const enabled = screen.getByRole('button', { name: 'Hit' })
+    const disabled = screen.getByRole('button', { name: 'Disabled row' }) as HTMLButtonElement
 
-    expect(el.className).toBe('custom-row')
-    el.click()
+    expect(enabled.className).toContain('custom-row')
+    enabled.focus()
+    expect(globalThis.document.activeElement).toBe(enabled)
+    fireEvent.click(enabled)
+    fireEvent.click(disabled)
     expect(onClick).toHaveBeenCalledTimes(1)
+    expect(disabled.disabled).toBe(true)
   })
 
   it('allows the native button type to be overridden', () => {

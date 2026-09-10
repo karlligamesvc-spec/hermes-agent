@@ -10,6 +10,14 @@ const starterTone = {
   megaphone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
 } as const
 
+const recommendedStarterAssets: Partial<Record<BusinessWorkflowStarter['id'], string>> = {
+  'market-launch': 'assets/workflow-commerce-minimal.png',
+  'geo-brand-audit': 'assets/workflow-geo-minimal.png',
+  'content-review': 'assets/workflow-content-minimal.png'
+}
+
+const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
+
 export interface WorkflowStarterCardProps {
   action: string
   onSelect: () => void
@@ -21,43 +29,55 @@ export interface WorkflowStarterCardProps {
 export function WorkflowStarterCard({ action, onSelect, starter, variant }: WorkflowStarterCardProps) {
   const featured = variant === 'featured'
   const shelf = variant === 'shelf'
+  const artwork = recommendedStarterAssets[starter.id]
+  const imageLed = Boolean(artwork) && (featured || shelf)
 
   return (
     <Button
       aria-label={`${starter.title} · ${action}`}
       className={cn(
-        'group h-auto min-w-0 justify-start whitespace-normal rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) text-left shadow-sm hover:border-primary/30 hover:bg-(--chrome-action-hover)',
+        'group h-auto min-w-0 justify-start gap-2 whitespace-normal text-left',
         featured
-          ? 'min-h-36 flex-col items-start px-4 py-4'
+          ? 'min-h-28 items-center rounded-2xl border border-transparent bg-transparent px-2.5 py-3 shadow-none hover:border-primary/15 hover:bg-(--chrome-action-hover)'
           : shelf
-            ? 'min-h-24 items-center px-3.5 py-3.5'
-            : 'min-h-20 items-center px-3.5 py-3'
+            ? 'min-h-24 items-center rounded-2xl border border-transparent bg-transparent px-2.5 py-3 shadow-none hover:border-primary/15 hover:bg-(--chrome-action-hover)'
+            : 'min-h-20 items-center rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-3.5 py-3 shadow-sm hover:border-primary/30 hover:bg-(--chrome-action-hover)'
       )}
       data-workflow-starter={variant}
       onClick={onSelect}
       type="button"
       variant="ghost"
     >
-      <span
-        className={cn(
-          'grid shrink-0 place-items-center rounded-lg',
-          featured ? 'size-10' : 'size-9',
-          starterTone[starter.icon]
-        )}
-      >
-        <Codicon name={starter.icon} size="1rem" />
+      {imageLed ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="size-[4.75rem] shrink-0 rounded-[1.125rem] object-cover shadow-xs"
+          data-workflow-artwork={starter.id}
+          height={76}
+          src={assetPath(artwork!)}
+          width={76}
+        />
+      ) : (
+        <span className={cn('grid size-9 shrink-0 place-items-center rounded-lg', starterTone[starter.icon])}>
+          <Codicon name={starter.icon} size="1rem" />
+        </span>
+      )}
+      <span className="min-w-0 flex-1 basis-0" data-workflow-card-copy="">
+        <strong
+          className="block break-words text-[0.875rem] font-semibold leading-5 text-foreground"
+          data-workflow-card-title=""
+        >
+          {starter.title}
+        </strong>
+        <span
+          className="mt-1 block break-words text-xs leading-[1.15rem] text-muted-foreground"
+          data-workflow-card-summary=""
+        >
+          {starter.summary}
+        </span>
       </span>
-      <span className={cn('min-w-0 flex-1', featured ? 'mt-3' : 'ml-1')}>
-        <strong className="block text-sm font-semibold leading-5 text-foreground">{starter.title}</strong>
-        <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">{starter.summary}</span>
-      </span>
-      <span
-        className={cn(
-          'flex shrink-0 items-center gap-1 text-xs font-medium text-primary',
-          featured ? 'mt-auto pt-3' : 'ml-2'
-        )}
-      >
-        <span className={shelf ? 'sr-only' : undefined}>{action}</span>
+      <span aria-hidden="true" className="flex shrink-0 items-center text-primary" data-workflow-card-action="">
         <Codicon name="arrow-right" size="0.75rem" />
       </span>
     </Button>

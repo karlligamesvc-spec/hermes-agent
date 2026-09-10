@@ -344,6 +344,13 @@ export const zhHant = defineLocale({
       },
       backdropTitle: '聊天背景',
       backdropDesc: '對話後方那張淡淡的雕像圖片。',
+      tipsTitle: '應用程式內提示',
+      tipsDesc: '在閒置時或 APEX 判斷有幫助時，偶爾顯示一個指向介面局部的小氣泡。關閉後會永久收起該提示。',
+      tipsReset: (count: number) => `恢復 ${count} 則已關閉的提示`,
+      toursTitle: '導覽教學',
+      toursDesc: '讓 APEX 逐步帶你熟悉應用程式；畫面會變暗，並逐項突顯目前步驟。',
+      vibeHeartsTitle: '互動愛心',
+      vibeHeartsDesc: '當你說「謝謝」、「愛你」、「好助手」或傳送愛心時，顯示漂浮愛心；與上方的訊息回應分開。',
       embedsTitle: '內嵌預覽',
       embedsDesc:
         '豐富預覽會從第三方網站（YouTube、X 等）載入。詢問會在你允許前顯示佔位符；一律會自動載入；關閉則保留純連結。',
@@ -3187,7 +3194,9 @@ export const zhHant = defineLocale({
       label: '業務目標',
       placeholder: '例如：分析美國寵物用品市場，並產出選品報告和上架素材',
       hint: 'Enter 開始執行 · Shift+Enter 換行',
-      submit: '開始執行'
+      submit: '開始執行',
+      workflowAttachmentsUnsupported:
+        '此工作流程暫不支援隨目標提交附件。目標、工作流程選擇和目前附件會保留，直到你移除附件後繼續。'
     },
     projects: {
       eyebrow: '從目標到交付',
@@ -3323,7 +3332,7 @@ export const zhHant = defineLocale({
       },
       savedTitle: '我的工作流程',
       savedEmpty: '還沒有已儲存的工作流程。開始一個目標後會在這裡出現。',
-      savedCount: count => `${count} 個真實工作流程`,
+      savedCount: count => `${count} 個工作流程`,
       localCatalogNotice: '生產目錄尚未連接。不會用內建或測試範本替代真實目錄。',
       catalogUnavailable: '真實工作流程目錄暫時無法使用，沒有範本被啟動。',
       catalogUnavailableDescription: '請重試目錄連接，或返回開始頁直接描述目標。',

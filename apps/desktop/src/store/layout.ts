@@ -1,6 +1,6 @@
 import { atom, computed, type ReadableAtom, type WritableAtom } from 'nanostores'
 
-import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '@/app/layout-constants'
+import { SIDEBAR_COLLAPSE_MEDIA_QUERY, SIDEBAR_DEFAULT_WIDTH_PX } from '@/app/layout-constants'
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { isPaneVisible, revealTreePane } from '@/components/pane-shell/tree/store'
 import { matchesQuery } from '@/hooks/use-media-query'
@@ -16,17 +16,17 @@ import {
   setPaneWidthOverride,
   togglePane
 } from './panes'
-import { $showAllProfiles } from "./profile"
-import { setShowAllProfiles } from "./profile"
-import { type PullRequestBucket } from "./pull-requests"
-import { type SessionStatusBucket } from "./session-dot-state"
+import { $showAllProfiles } from './profile'
+import { setShowAllProfiles } from './profile'
+import { type PullRequestBucket } from './pull-requests'
+import { type SessionStatusBucket } from './session-dot-state'
 
-
-// The approved Desktop prototype uses the established 237px navigation rail.
-// Keep a smaller resize range for users who need longer session titles,
-// without letting an old 360px override consume a quarter of a wide window.
-export const SIDEBAR_DEFAULT_WIDTH = 237
-export const SIDEBAR_MIN_WIDTH = 180
+// APEX's primary navigation is designed as a compact 190px rail. This is also
+// the existing minimum supported width, so session rows retain their complete
+// resize range while a clean install opens on the approved product proportion;
+// old 360px overrides still reconcile below instead of consuming the canvas.
+export const SIDEBAR_DEFAULT_WIDTH = SIDEBAR_DEFAULT_WIDTH_PX
+export const SIDEBAR_MIN_WIDTH = 190
 export const SIDEBAR_MAX_WIDTH = 280
 // The file tree is a dense developer surface rather than the business
 // navigation rail, so retain its established readable width.

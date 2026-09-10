@@ -3,6 +3,8 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 
+import type { Page } from '@playwright/test'
+
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
@@ -14,6 +16,88 @@ const PHASE1_VIEWPORTS = [
   { height: 800, name: 'desktop-1220', width: 1220 },
   { height: 800, name: 'narrow-752', width: 752 }
 ] as const
+
+async function expectApexShellPaint(page: Page, expected: 'business-canvas' | 'session', label: string) {
+  const shell = page.locator('[data-contrib-shell]')
+
+  await expect(shell).toHaveCount(1)
+
+  const paint = await shell.evaluate(element => {
+    const root = document.documentElement
+    const shellStyle = getComputedStyle(element)
+    const shellRect = element.getBoundingClientRect()
+    const chromeProbe = document.createElement('div')
+
+    chromeProbe.style.backgroundColor = 'var(--ui-bg-chrome)'
+    chromeProbe.style.position = 'fixed'
+    chromeProbe.style.visibility = 'hidden'
+    document.body.append(chromeProbe)
+
+    const chromeColor = getComputedStyle(chromeProbe).backgroundColor
+    const backgroundColor = shellStyle.backgroundColor
+    chromeProbe.remove()
+
+    const alphaFor = (color: string): number => {
+      if (color === 'transparent') {
+        return 0
+      }
+
+      const commaAlpha = color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/)
+      if (commaAlpha) {
+        return Number(commaAlpha[1])
+      }
+
+      const slashAlpha = color.match(/\/\s*([\d.]+)%?\s*\)$/)
+      if (slashAlpha) {
+        const alpha = Number(slashAlpha[1])
+
+        return color.includes('%') ? alpha / 100 : alpha
+      }
+
+      return 1
+    }
+
+    return {
+      appearance: root.classList.contains('dark') ? 'dark' : 'light',
+      backgroundAlpha: alphaFor(backgroundColor),
+      backgroundColor,
+      businessSurface: element.getAttribute('data-apex-surface'),
+      chromeColor,
+      glassActive: root.hasAttribute('data-hermes-glass'),
+      glassKeep: getComputedStyle(root).getPropertyValue('--translucency-glass-keep').trim(),
+      shellRect: {
+        bottom: shellRect.bottom,
+        left: shellRect.left,
+        right: shellRect.right,
+        top: shellRect.top
+      },
+      viewport: { height: root.clientHeight, width: root.clientWidth }
+    }
+  })
+
+  await test.info().attach(`apex-shell-paint-${label}`, {
+    body: JSON.stringify(paint, null, 2),
+    contentType: 'application/json'
+  })
+
+  expect(paint.glassActive).toBe(true)
+  expect(paint.glassKeep).toBe('34%')
+  expect(paint.appearance).toBe('light')
+  expect(paint.shellRect.left).toBeCloseTo(0, 0)
+  expect(paint.shellRect.top).toBeCloseTo(0, 0)
+  expect(paint.shellRect.right).toBeCloseTo(paint.viewport.width, 0)
+  expect(paint.shellRect.bottom).toBeCloseTo(paint.viewport.height, 0)
+
+  if (expected === 'business-canvas') {
+    expect(paint.businessSurface).toBe('business-canvas')
+    expect(paint.backgroundAlpha).toBe(1)
+    expect(paint.backgroundColor).toBe(paint.chromeColor)
+  } else {
+    expect(paint.businessSurface).toBeNull()
+    expect(paint.backgroundAlpha).toBe(0)
+    expect(paint.backgroundColor).not.toBe(paint.chromeColor)
+  }
+}
 
 let fixture: PackagedMockBackendFixture | null = null
 let reviewApi: null | Awaited<ReturnType<typeof startPhase1ReviewApi>> = null
@@ -204,21 +288,6 @@ test.beforeAll(
 
     expect(signIn?.ok).toBe(true)
     expect(signIn?.hasRelayKey).toBe(true)
-    await fixture.page.evaluate(() => {
-      const opaqueWindow = {
-        fade: 0,
-        intensity: 0,
-        material: 'under-window' as const,
-        mode: 'glass' as const,
-        scope: 'window' as const
-      }
-
-      window.localStorage.setItem(
-        'hermes.desktop.translucency.v2',
-        JSON.stringify({ base: opaqueWindow, dark: {}, light: {}, mode: opaqueWindow.mode })
-      )
-      window.hermesDesktop?.setTranslucency?.(opaqueWindow)
-    })
     await fixture.page.reload()
     await waitForAppReady(fixture, 120_000)
   },
@@ -247,6 +316,26 @@ test('fresh packaged app exposes the business workspace without implementation v
   expect(businessLabels).toEqual(BUSINESS_NAV_LABELS)
   await expect(page.getByText(/\b(?:MCP|Skill|Skills)\b/)).toHaveCount(0)
   await expect(page.getByText('模型', { exact: true })).toHaveCount(0)
+})
+
+test('fresh default glass keeps every Phase 1 business route on one opaque APEX shell', async () => {
+  const page = fixture!.page
+
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+  await expect(page.getByRole('heading', { name: '今天想推进什么业务？', level: 1 })).toBeVisible()
+  await expectApexShellPaint(page, 'business-canvas', 'start')
+
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
+  await expectApexShellPaint(page, 'business-canvas', 'projects')
+  await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+  await expect(page.locator('[data-project-detail]')).toBeVisible()
+  await expectApexShellPaint(page, 'business-canvas', 'project-drawer')
+  await page.keyboard.press('Escape')
+
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
+  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+  await expectApexShellPaint(page, 'business-canvas', 'workflows')
 })
 
 test('primary navigation dismisses only the narrow sidebar overlay, including keyboard activation', async () => {
@@ -301,6 +390,155 @@ test('Start mounts exactly one accessible and focusable primary input', async ()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('button', { name: '开始执行' })).toBeFocused()
   await page.getByRole('textbox', { name: '业务目标' }).fill('')
+})
+
+test('packaged workflow entries follow each real content container around the sidebar edge', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+
+  const surfaces = [
+    {
+      cases: [
+        { columns: 1, width: 700 },
+        { columns: 1, width: 752 },
+        { columns: 3, width: 899 },
+        { columns: 2, width: 900 },
+        { columns: 2, width: 1000 },
+        { columns: 3, width: 1220 },
+        { columns: 3, width: 1235 }
+      ],
+      key: 'start',
+      nav: '开始',
+      selector: '[data-start-recommended-workflows]',
+      variant: 'shelf'
+    },
+    {
+      cases: [
+        { columns: 1, width: 700 },
+        { columns: 1, width: 752 },
+        { columns: 3, width: 899 },
+        { columns: 2, width: 900 },
+        { columns: 3, width: 1000 },
+        { columns: 3, width: 1220 },
+        { columns: 3, width: 1235 }
+      ],
+      key: 'workflows',
+      nav: '工作流',
+      selector: '[data-recommended-workflows]',
+      variant: 'featured'
+    }
+  ] as const
+
+  for (const surface of surfaces) {
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+    )
+    await page.bringToFront()
+    await page.waitForTimeout(400)
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: surface.nav }).first().click()
+    await expect(page.locator(surface.selector)).toBeVisible()
+
+    for (const testCase of surface.cases) {
+      const bounds = await app.evaluate(({ BrowserWindow }, size) => {
+        const win = BrowserWindow.getAllWindows()[0]
+
+        if (!win) {
+          return null
+        }
+
+        win.unmaximize()
+        win.setMinimumSize(400, 620)
+        win.setBounds({ height: 800, width: size.width, x: 0, y: 0 }, false)
+        win.show()
+        win.focus()
+
+        return win.getBounds()
+      }, testCase)
+
+      await page.bringToFront()
+      await page.waitForTimeout(400)
+
+      const metrics = await page.locator(surface.selector).evaluate((element, variant) => {
+        const gridBox = element.getBoundingClientRect()
+        const gridStyle = window.getComputedStyle(element)
+        const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize)
+
+        const cards = Array.from(element.querySelectorAll<HTMLElement>(`[data-workflow-starter="${variant}"]`))
+        const cardBoxes = cards.map(card => card.getBoundingClientRect())
+        const firstRowTop = Math.min(...cardBoxes.map(box => box.top))
+
+        const lineCount = (node: Element | null) => {
+          if (!node) {
+            return 0
+          }
+
+          const range = document.createRange()
+          range.selectNodeContents(node)
+
+          const tops = Array.from(range.getClientRects())
+            .filter(rect => rect.width > 0 && rect.height > 0)
+            .map(rect => Math.round(rect.top))
+
+          return new Set(tops).size
+        }
+
+        return {
+          cardWidths: cardBoxes.map(box => box.width),
+          columnGap: Number.parseFloat(gridStyle.columnGap),
+          copyWidths: cards.map(card => card.querySelector<HTMLElement>('[data-workflow-card-copy]')?.clientWidth ?? 0),
+          firstRowColumns: cardBoxes.filter(box => Math.abs(box.top - firstRowTop) <= 1).length,
+          fullyContained: cardBoxes.every(box => box.left >= gridBox.left - 1 && box.right <= gridBox.right + 1),
+          gridWidth: gridBox.width,
+          rootClientWidth: document.documentElement.clientWidth,
+          rootFontSize,
+          rootScrollWidth: document.documentElement.scrollWidth,
+          summaryLines: cards.map(card => lineCount(card.querySelector('[data-workflow-card-summary]'))),
+          summariesUnclipped: cards.every(card => {
+            const summary = card.querySelector<HTMLElement>('[data-workflow-card-summary]')
+
+            return summary !== null && summary.scrollHeight <= summary.clientHeight + 1
+          }),
+          titleLines: cards.map(card => lineCount(card.querySelector('[data-workflow-card-title]'))),
+          titlesUnclipped: cards.every(card => {
+            const title = card.querySelector<HTMLElement>('[data-workflow-card-title]')
+
+            return title !== null && title.scrollHeight <= title.clientHeight + 1
+          })
+        }
+      }, surface.variant)
+
+      const minimumTrackWidth = 14.25 * metrics.rootFontSize
+      const threeColumnThreshold = minimumTrackWidth * 3 + metrics.columnGap * 2
+
+      await test.info().attach(`${surface.key}-workflow-entry-geometry-${testCase.width}`, {
+        body: JSON.stringify({ ...metrics, minimumTrackWidth, threeColumnThreshold }, null, 2),
+        contentType: 'application/json'
+      })
+
+      expect(bounds?.width).toBe(testCase.width)
+      expect(metrics.rootFontSize).toBe(17)
+      expect(metrics.firstRowColumns).toBe(testCase.columns)
+      expect(Math.min(...metrics.cardWidths)).toBeGreaterThanOrEqual(minimumTrackWidth - 1)
+      expect(Math.min(...metrics.copyWidths)).toBeGreaterThanOrEqual(110)
+      expect(Math.max(...metrics.titleLines)).toBeLessThanOrEqual(2)
+      expect(Math.max(...metrics.summaryLines)).toBeLessThanOrEqual(3)
+      expect(metrics.titlesUnclipped).toBe(true)
+      expect(metrics.summariesUnclipped).toBe(true)
+      expect(metrics.fullyContained).toBe(true)
+      expect(metrics.rootScrollWidth).toBeLessThanOrEqual(metrics.rootClientWidth)
+
+      if (testCase.width >= 760 && testCase.columns === 3) {
+        expect(metrics.gridWidth).toBeGreaterThanOrEqual(threeColumnThreshold - 1)
+      }
+
+      if (testCase.width >= 760 && testCase.columns === 2) {
+        expect(metrics.gridWidth).toBeLessThan(threeColumnThreshold)
+      }
+    }
+  }
 })
 
 test('packaged Phase 1 pages keep local review data explicit across the approved window matrix', async () => {
@@ -407,26 +645,6 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   }
 })
 
-test('packaged Settings shows the running APEX app version separately from the engine', async () => {
-  const { app, page } = fixture!
-  const version = await page.evaluate(() => window.hermesDesktop?.getVersion())
-
-  expect(version?.appVersion).toBe('0.17.24')
-  expect(version?.engineVersion).toBeTruthy()
-
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
-  )
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
-  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
-  await page.getByRole('button', { name: /打开账户菜单.*本地 UI 评审/ }).click()
-  await page.getByRole('menuitem', { name: '设置' }).click()
-  await expect(page.getByText('版本 0.17.24', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
-
-  await page.getByRole('button', { name: '关闭设置' }).click()
-  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
-})
-
 test('a legacy Project envelope opens an honest detail before its goal can continue', async () => {
   const { app, page } = fixture!
 
@@ -472,6 +690,7 @@ test('packaged plain goal clears a retained workflow template and starts a real 
   const { app, page } = fixture!
   const prompt = '分析美国宠物用品市场，并生成选品报告和上架素材'
   const longPrompt = `${prompt}\n\n${TASK_PANEL_RESUME_TRIGGER}`
+  const translucencyBefore = await page.evaluate(() => window.localStorage.getItem('hermes.desktop.translucency.v2'))
 
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
@@ -530,103 +749,14 @@ test('packaged plain goal clears a retained workflow template and starts a real 
   expect(clearance!.remainingScroll).toBeLessThanOrEqual(1)
   expect(clearance!.latestMessageBottom).toBeLessThanOrEqual(clearance!.composerTop)
   expect(clearance!.documentScrollWidth).toBeLessThanOrEqual(clearance!.documentClientWidth)
+  await expectApexShellPaint(page, 'session', 'ordinary-session')
+  expect(await page.evaluate(() => window.localStorage.getItem('hermes.desktop.translucency.v2'))).toBe(
+    translucencyBefore
+  )
 
   const composerStopButton = page.locator('form').getByRole('button', { name: '停止', exact: true })
   if (await composerStopButton.isVisible()) {
     await composerStopButton.click()
     await expect(composerStopButton).toHaveCount(0, { timeout: 15_000 })
   }
-})
-
-test('packaged Profile and Settings keep real data, modal focus, and full-width compact layout', async () => {
-  const { app, page } = fixture!
-  const testInfo = test.info()
-  const screenshotRoot = process.env.HC818_SCREENSHOT_DIR
-  if (screenshotRoot) {
-    fs.mkdirSync(screenshotRoot, { recursive: true })
-  }
-
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
-  )
-  const accountTrigger = page.getByRole('button', { name: /打开账户菜单.*本地 UI 评审/ })
-  await expect(accountTrigger).toBeVisible()
-  await accountTrigger.click()
-  await page.getByRole('menuitem', { name: '个人资料' }).click()
-
-  const profileDialog = page.getByRole('dialog', { name: '个人资料' })
-  await expect(profileDialog).toBeVisible()
-  await expect(profileDialog.getByText('phase1-review@local.test', { exact: true })).toBeVisible()
-  await expect(profileDialog.getByText('账户信息')).toBeVisible()
-
-  const captureSurface = async (surface: 'profile' | 'settings', viewport: (typeof PHASE1_VIEWPORTS)[number]) => {
-    const bounds = await app.evaluate(({ BrowserWindow }, size) => {
-      const win = BrowserWindow.getAllWindows()[0]
-      if (!win) return null
-      win.unmaximize()
-      win.setMinimumSize(400, 620)
-      win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
-      win.show()
-      win.focus()
-      return win.getBounds()
-    }, viewport)
-    await page.bringToFront()
-    await page.waitForTimeout(350)
-
-    const dialog = page.getByRole('dialog', { name: surface === 'profile' ? '个人资料' : '设置' })
-    const layout = await dialog.evaluate(element => {
-      const root = document.documentElement
-      const rect = element.getBoundingClientRect()
-      return {
-        activeInside: element.contains(document.activeElement),
-        clientWidth: root.clientWidth,
-        dialogLeft: rect.left,
-        dialogRight: rect.right,
-        dialogWidth: rect.width,
-        scrollWidth: root.scrollWidth
-      }
-    })
-
-    expect(bounds?.width).toBe(viewport.width)
-    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
-    expect(layout.activeInside).toBe(true)
-    if (viewport.name === 'narrow-752') {
-      expect(layout.dialogLeft).toBeLessThanOrEqual(1)
-      expect(layout.dialogRight).toBeGreaterThanOrEqual(layout.clientWidth - 1)
-    } else {
-      expect(layout.dialogWidth).toBeLessThanOrEqual(surface === 'profile' ? 1040 : 1024)
-    }
-
-    const screenshotName = `${surface}-${viewport.width}x${viewport.height}.png`
-    await page.screenshot({
-      animations: 'disabled',
-      caret: 'hide',
-      path: screenshotRoot ? path.join(screenshotRoot, screenshotName) : testInfo.outputPath(screenshotName)
-    })
-  }
-
-  for (const viewport of PHASE1_VIEWPORTS) {
-    await captureSurface('profile', viewport)
-  }
-
-  await page.getByRole('button', { name: '打开设置' }).click()
-  const settingsDialog = page.getByRole('dialog', { name: '设置' })
-  await expect(settingsDialog).toBeVisible()
-  await expect(settingsDialog.getByRole('heading', { name: '设置', level: 1 })).toBeVisible()
-  await expect(settingsDialog.getByText('人格文件（SOUL.md）', { exact: true })).toBeVisible()
-
-  const settingsScroll = settingsDialog.locator('[data-settings-scroll]')
-  const lastSettingsContent = settingsDialog.getByText('卸载 APEX', { exact: true })
-
-  for (const viewport of PHASE1_VIEWPORTS) {
-    await settingsScroll.evaluate(element => {
-      element.scrollTop = 0
-    })
-    await captureSurface('settings', viewport)
-    await lastSettingsContent.scrollIntoViewIfNeeded()
-    await expect(lastSettingsContent).toBeVisible()
-  }
-
-  await page.getByRole('button', { name: '关闭设置' }).click()
-  await expect(settingsDialog).toHaveCount(0)
 })

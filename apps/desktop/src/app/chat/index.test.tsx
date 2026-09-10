@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { assistantTextPart, type ChatMessage } from '@/lib/chat-messages'
+import { mainComposerScope } from '@/store/composer'
 import {
   $activeSessionId,
   $awaitingResponse,
@@ -21,13 +22,15 @@ import {
 } from '@/store/session'
 
 const threadRenderCount = vi.hoisted(() => ({ current: 0 }))
+const threadProps = vi.hoisted(() => ({ current: null as null | { intro?: Record<string, unknown> } }))
 
 vi.mock('@/components/assistant-ui/thread', async () => {
   const React = await import('react')
 
   return {
-    Thread: () => {
+    Thread: (props: { intro?: Record<string, unknown> }) => {
       threadRenderCount.current += 1
+      threadProps.current = props
 
       return React.createElement('div', { 'data-testid': 'thread' })
     }
@@ -74,6 +77,8 @@ function assistantMessage(id: string, text: string): ChatMessage {
 describe('ChatView render isolation', () => {
   beforeEach(() => {
     threadRenderCount.current = 0
+    threadProps.current = null
+    mainComposerScope.clear()
     $activeSessionId.set('runtime-1')
     $awaitingResponse.set(false)
     $busy.set(false)
@@ -103,6 +108,7 @@ describe('ChatView render isolation', () => {
     $messages.set([])
     $selectedStoredSessionId.set(null)
     $sessions.set([])
+    mainComposerScope.clear()
   })
 
   it('does not re-render chat history when an unrelated parent idle tick updates', () => {
@@ -160,5 +166,64 @@ describe('ChatView render isolation', () => {
     // memo(ChatView) with stable props must absorb the parent's idle tick —
     // the transcript (Thread) must not re-render. This is PR #38470's contract.
     expect(threadRenderCount.current).toBe(1)
+  })
+
+  it('passes the main Composer attachment draft and real actions into the Start intro', () => {
+    const attachment = { id: 'brief', kind: 'file' as const, label: 'brief.pdf' }
+    const onPickFiles = vi.fn()
+    const onPickFolders = vi.fn()
+    const onPickImages = vi.fn()
+    const onRemoveAttachment = vi.fn()
+
+    mainComposerScope.add(attachment)
+    $activeSessionId.set(null)
+    $freshDraftReady.set(true)
+    $gatewayState.set('open')
+    $messages.set([])
+    $selectedStoredSessionId.set(null)
+    $sessions.set([])
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <ChatView
+            gateway={null}
+            maxVoiceRecordingSeconds={120}
+            onAddContextRef={vi.fn()}
+            onAddUrl={vi.fn()}
+            onAttachDroppedItems={vi.fn()}
+            onAttachImageBlob={vi.fn()}
+            onBranchInNewChat={vi.fn()}
+            onCancel={vi.fn()}
+            onDeleteSelectedSession={vi.fn()}
+            onEdit={vi.fn()}
+            onPasteClipboardImage={vi.fn()}
+            onPickFiles={onPickFiles}
+            onPickFolders={onPickFolders}
+            onPickImages={onPickImages}
+            onReload={vi.fn()}
+            onRemoveAttachment={onRemoveAttachment}
+            onRetryResume={vi.fn()}
+            onSteer={vi.fn()}
+            onSubmit={vi.fn()}
+            onThreadMessagesChange={vi.fn()}
+            onToggleSelectedPin={vi.fn()}
+            onTranscribeAudio={vi.fn()}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(threadProps.current?.intro).toEqual(
+      expect.objectContaining({
+        attachments: [expect.objectContaining({ id: 'brief', label: 'brief.pdf' })],
+        onPickFiles,
+        onPickFolders,
+        onPickImages,
+        onRemoveAttachment
+      })
+    )
   })
 })

@@ -23,3 +23,8 @@ export const PAGE_MAX_W = 'max-w-[75rem]'
 // the responsive collapse point.
 export const SIDEBAR_COLLAPSE_BREAKPOINT_PX = 899
 export const SIDEBAR_COLLAPSE_MEDIA_QUERY = `(max-width: ${SIDEBAR_COLLAPSE_BREAKPOINT_PX}px)`
+
+// Sessions and Bots share one standing tab strip, so every tenant of that
+// fixed track must declare the same width. A larger inactive tab still wins
+// the pane renderer's intentional cssMax() sizing rule.
+export const SIDEBAR_DEFAULT_WIDTH_PX = 190

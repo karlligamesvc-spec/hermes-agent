@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { atom, computed } from 'nanostores'
 import type { CSSProperties, ReactElement, PointerEvent as ReactPointerEvent } from 'react'
+import { useLocation } from 'react-router'
 
 import { SessionDraftTitle } from '@/app/chat/session-draft-title'
 import { SessionStatusDot } from '@/app/chat/session-status-dot'
@@ -46,6 +47,7 @@ import { Download, FileText, LayoutDashboard, PanelBottom, PanelTop, Terminal, U
 import { type KeybindContribution, KEYBINDS_AREA } from '@/lib/keybinds/actions'
 import { TRANSCRIPT_DIRECTIVE_AREA, type TranscriptDirectiveContribution } from '@/lib/transcript-directives'
 import { setYoloEnabled } from '@/lib/yolo-session'
+import { isBusinessCanvasRoute, isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { pruneComposerPopoutZones } from '@/store/composer-popout'
 import {
   $fileBrowserOpen,
@@ -811,8 +813,10 @@ function TitlebarSlot({ area, className, style }: TitlebarSlotProps) {
 }
 
 export function ContribController() {
+  const location = useLocation()
   const sidebarOpen = useStore($sidebarOpen)
   const statusbarVisible = useStore($statusbarVisible)
+  const businessCanvas = isBusinessCanvasRoute(location.pathname, isBusinessWorkspaceEnabled())
 
   // HUD mode is the SAME app with its frame removed: the wiring (gateway,
   // sessions, streams, submit) mounts identically, and only the shell around
@@ -850,7 +854,10 @@ export function ContribController() {
           // the app shell's two full-window opaque painters; the
           // [data-hermes-glass] rules in styles.css clear them so the tint
           // painted by <body> is the only thing between the page and the
-          // vibrancy material.
+          // vibrancy material. Business canvases deliberately restore this
+          // shared painter in light mode so their page, outer gutter, and
+          // titlebar are one continuous APEX chrome surface.
+          data-apex-surface={businessCanvas ? 'business-canvas' : undefined}
           data-contrib-shell=""
           style={{ '--titlebar-height': '0px' } as CSSProperties}
         >
