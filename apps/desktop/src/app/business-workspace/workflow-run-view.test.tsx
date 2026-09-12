@@ -170,6 +170,7 @@ describe('hc-795 real workflow Run view', () => {
       ...overview,
       events: [{ ...overview.events[0], eventType: 'run.running', id: 'event-running' }]
     }
+
     getRun.mockResolvedValue({ ok: true, overview: runningOverview })
 
     render(
