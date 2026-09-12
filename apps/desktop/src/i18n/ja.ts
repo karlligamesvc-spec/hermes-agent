@@ -3509,12 +3509,14 @@ export const ja = defineLocale({
         event: eventType =>
           ({
             'executor.requested': 'Hermes の実行を要求しました',
+            'run.cancel_requested': '実行のキャンセルを要求しました',
             'run.cancelled': '実行をキャンセルしました',
             'run.failed': '実行に失敗しました',
             'run.queued': '実行をキューに追加しました',
             'run.retry_deferred': '再試行を延期しました',
             'run.retry_scheduled': '再試行を予定しました',
             'run.running': '実行を開始しました',
+            'run.succeeded': '実行が完了しました',
             'run.timed_out': '実行がタイムアウトしました',
             'run.waiting_review': 'レビュー待ちです'
           })[eventType] || eventType,

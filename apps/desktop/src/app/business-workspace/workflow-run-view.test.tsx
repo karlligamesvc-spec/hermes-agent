@@ -36,6 +36,22 @@ const overview = {
       id: 'event-2',
       payload: {},
       sequence: 2
+    },
+    {
+      eventKey: 'run-795:3',
+      eventType: 'run.cancel_requested',
+      happenedAt: '2026-08-27T10:04:00Z',
+      id: 'event-3',
+      payload: {},
+      sequence: 3
+    },
+    {
+      eventKey: 'run-795:4',
+      eventType: 'run.succeeded',
+      happenedAt: '2026-08-27T10:05:00Z',
+      id: 'event-4',
+      payload: {},
+      sequence: 4
     }
   ],
   run: {
@@ -93,6 +109,8 @@ describe('hc-795 real workflow Run view', () => {
     expect(screen.getByText('Analyze the US pet market')).toBeTruthy()
     expect(screen.getByText('Run queued')).toBeTruthy()
     expect(screen.getAllByText('Waiting for review')).toHaveLength(2)
+    expect(screen.getByText('Cancellation requested')).toBeTruthy()
+    expect(screen.getByText('Run succeeded')).toBeTruthy()
     expect(screen.getByText('Pet market evidence report')).toBeTruthy()
     expect(screen.getByText(/1 evidence item/)).toBeTruthy()
 
@@ -145,5 +163,26 @@ describe('hc-795 real workflow Run view', () => {
 
     await waitFor(() => expect(cancelRun).toHaveBeenCalledWith('run-795'))
     await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+  })
+
+  it('localizes canonical Run lifecycle events instead of exposing backend enum keys', async () => {
+    const runningOverview = {
+      ...overview,
+      events: [{ ...overview.events[0], eventType: 'run.running', id: 'event-running' }]
+    }
+    getRun.mockResolvedValue({ ok: true, overview: runningOverview })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('运行已开始')).toBeTruthy()
+    expect(screen.queryByText('run.running')).toBeNull()
   })
 })

@@ -1,5 +1,5 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { X } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { closeRouteDrawer } from '../routes'
+import { TITLEBAR_HEIGHT } from '../shell/titlebar'
 
 export const ROUTE_DRAWER_WIDE_QUERY = '(min-width: 1100px)'
 
@@ -111,6 +112,7 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
               target.focus({ preventScroll: true })
             }
           }}
+          style={{ '--titlebar-height': `${TITLEBAR_HEIGHT}px` } as CSSProperties}
         >
           <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Close asChild>

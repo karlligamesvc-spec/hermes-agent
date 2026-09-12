@@ -4279,12 +4279,14 @@ export const en: Translations = {
         event: eventType =>
           ({
             'executor.requested': 'Hermes execution requested',
+            'run.cancel_requested': 'Cancellation requested',
             'run.cancelled': 'Run cancelled',
             'run.failed': 'Run failed',
             'run.queued': 'Run queued',
             'run.retry_deferred': 'Retry deferred',
             'run.retry_scheduled': 'Retry scheduled',
             'run.running': 'Run started',
+            'run.succeeded': 'Run succeeded',
             'run.timed_out': 'Run timed out',
             'run.waiting_review': 'Waiting for review'
           })[eventType] || eventType,

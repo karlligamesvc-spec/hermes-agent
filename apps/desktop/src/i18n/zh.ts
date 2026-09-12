@@ -3968,12 +3968,14 @@ export const zh = defineLocale({
         event: eventType =>
           ({
             'executor.requested': '已请求 Hermes 执行',
+            'run.cancel_requested': '已请求取消运行',
             'run.cancelled': '运行已取消',
             'run.failed': '运行失败',
             'run.queued': '运行已排队',
             'run.retry_deferred': '重试已推迟',
             'run.retry_scheduled': '已安排重试',
             'run.running': '运行已开始',
+            'run.succeeded': '运行已完成',
             'run.timed_out': '运行超时',
             'run.waiting_review': '等待审阅'
           })[eventType] || eventType,

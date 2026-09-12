@@ -259,7 +259,7 @@ async function startPhase1ReviewApi() {
             sequence: 1
           },
           {
-            eventType: 'run.started',
+            eventType: 'run.running',
             happenedAt: '2026-09-05T21:06:00Z',
             id: 'local-review-event-started',
             payload: {},
@@ -748,7 +748,7 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
 
     const geometry = await page.evaluate(() => {
       const drawerElement = document.querySelector<HTMLElement>('[data-route-drawer]')
-      const contentElement = drawerElement?.querySelector<HTMLElement>('section')
+      const contentElement = drawerElement?.querySelector<HTMLElement>('section > div')
       const closeElement = drawerElement?.querySelector<HTMLElement>('button[aria-label="关闭"]')
 
       const cancelElement = Array.from(drawerElement?.querySelectorAll<HTMLElement>('button') ?? []).find(button =>

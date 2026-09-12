@@ -3386,12 +3386,14 @@ export const zhHant = defineLocale({
         event: eventType =>
           ({
             'executor.requested': '已請求 Hermes 執行',
+            'run.cancel_requested': '已請求取消執行',
             'run.cancelled': '執行已取消',
             'run.failed': '執行失敗',
             'run.queued': '執行已排隊',
             'run.retry_deferred': '重試已延後',
             'run.retry_scheduled': '已安排重試',
             'run.running': '執行已開始',
+            'run.succeeded': '執行已完成',
             'run.timed_out': '執行逾時',
             'run.waiting_review': '等待審閱'
           })[eventType] || eventType,
