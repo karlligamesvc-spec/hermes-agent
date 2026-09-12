@@ -93,9 +93,9 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
         <DialogPrimitive.Content
           aria-describedby={undefined}
           className={cn(
-            'fixed inset-x-0 bottom-0 top-[var(--titlebar-height)] z-(--z-modal) flex min-h-0 min-w-0 flex-col overflow-hidden border-(--stroke-nous) bg-(--ui-chat-surface-background) text-foreground shadow-nous outline-none duration-150',
+            'fixed inset-x-0 bottom-0 top-[var(--titlebar-height)] z-(--z-modal) flex min-h-0 min-w-0 flex-col overflow-hidden border-(--stroke-nous) bg-(--ui-chat-surface-background) text-foreground shadow-nous outline-none duration-150 [--route-drawer-action-clearance:3.25rem] [--route-drawer-content-inset:1.5rem]',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
-            'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(35rem,48vw)] min-[1100px]:border-l min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
+            'min-[1100px]:left-auto min-[1100px]:right-0 min-[1100px]:w-[min(42rem,52vw)] min-[1100px]:border-l min-[1100px]:[--route-drawer-content-inset:2rem] min-[1100px]:data-[state=closed]:slide-out-to-right-4 min-[1100px]:data-[state=open]:slide-in-from-right-4',
             'motion-reduce:animate-none motion-reduce:transition-none',
             contentClassName
           )}
@@ -116,7 +116,7 @@ export function ResponsiveRouteDrawer({ children, contentClassName, onClose, tit
           <DialogPrimitive.Close asChild>
             <Button
               aria-label={t.common.close}
-              className="absolute right-3 top-3 z-20 text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground"
+              className="absolute right-3 top-3 z-20 bg-(--ui-chat-surface-background) text-(--ui-text-tertiary) shadow-xs hover:bg-(--chrome-action-hover) hover:text-foreground"
               size="icon-titlebar"
               variant="ghost"
             >

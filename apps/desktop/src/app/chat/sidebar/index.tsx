@@ -192,6 +192,7 @@ const LEGACY_SIDEBAR_NAV = renderableNav(LEGACY_SIDEBAR_NAV_CONTRACT)
 
 const BUSINESS_WORKSPACE_ENABLED = isBusinessWorkspaceEnabled()
 const SIDEBAR_NAV = BUSINESS_WORKSPACE_ENABLED ? BUSINESS_SIDEBAR_NAV : LEGACY_SIDEBAR_NAV
+const BUSINESS_UTILITY_NAV_IDS = new Set(['assistant', 'history'])
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.
@@ -419,7 +420,10 @@ export function ChatSidebar({
   // profile in, grouped by profile below. Single-profile users land here with
   // scope === their only profile, so nothing is filtered out.
   const visibleSessions = useMemo(
-    () => (showAllProfiles ? sessions : sessions.filter(s => normalizeProfileKey(s.profile) === profileScope)),
+    () =>
+      BUSINESS_WORKSPACE_ENABLED || showAllProfiles
+        ? sessions
+        : sessions.filter(s => normalizeProfileKey(s.profile) === profileScope),
     [sessions, showAllProfiles, profileScope]
   )
 
@@ -1175,6 +1179,89 @@ export function ChatSidebar({
       })
     )
 
+  const sidebarNavItems = visibleSidebarNavItems(SIDEBAR_NAV, contributedNav, BUSINESS_WORKSPACE_ENABLED)
+
+  const primarySidebarNavItems = BUSINESS_WORKSPACE_ENABLED
+    ? sidebarNavItems.filter(item => !BUSINESS_UTILITY_NAV_IDS.has(item.id))
+    : sidebarNavItems
+
+  const utilitySidebarNavItems = BUSINESS_WORKSPACE_ENABLED
+    ? sidebarNavItems.filter(item => BUSINESS_UTILITY_NAV_IDS.has(item.id))
+    : []
+
+  const renderSidebarNavItem = (item: (typeof sidebarNavItems)[number]) => {
+    const isInteractive = Boolean(item.action) || Boolean(item.route)
+
+    const active =
+      (item.id === 'start' && pathname === '/') ||
+      item.id === currentView ||
+      (Boolean(item.route) && pathname === item.route)
+
+    const isNewSession = item.action === 'new-session'
+
+    const button = (
+      <SidebarMenuButton
+        aria-disabled={!isInteractive}
+        className={cn(
+          'flex h-8 w-full justify-start gap-2.5 rounded-[0.625rem] border border-transparent px-2.5 text-left text-[0.8125rem] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
+          active &&
+            'border-transparent bg-(--ui-row-active-background) text-foreground shadow-none hover:bg-(--ui-row-active-background)!',
+          !isInteractive && 'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
+        )}
+        onClick={() => {
+          if (isNewSession) {
+            $newChatProfile.set(null)
+          }
+
+          onNavigate(item)
+        }}
+        tooltip={
+          item.keybindActionId
+            ? {
+                children: <TipKeybindLabel actionId={item.keybindActionId} text={s.nav[item.id] ?? item.label} />
+              }
+            : (s.nav[item.id] ?? item.label)
+        }
+        type="button"
+      >
+        <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
+        <span className="min-w-0 flex-1 truncate">{s.nav[item.id] ?? item.label}</span>
+        {isNewSession && (
+          <KbdGroup
+            className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}
+            keys={newSessionKbd}
+            size="sm"
+          />
+        )}
+      </SidebarMenuButton>
+    )
+
+    return (
+      <SidebarMenuItem key={item.id}>
+        {isNewSession || item.route ? (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
+            <ContextMenuContent aria-label={s.nav[item.id] ?? item.label}>
+              <SplitSubmenu
+                kit={CONTEXT_SPLIT_KIT}
+                label={s.row.openInSplit}
+                onSplit={dir => {
+                  if (isNewSession) {
+                    onNewSessionSplit(dir)
+                  } else if (item.route) {
+                    openRouteTile(item.route, dir)
+                  }
+                }}
+              />
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : (
+          button
+        )}
+      </SidebarMenuItem>
+    )
+  }
+
   return (
     <Sidebar
       className={cn(
@@ -1206,95 +1293,7 @@ export function ChatSidebar({
         <SidebarGroup className="shrink-0 p-0 pb-2 pt-0">
           <SidebarGroupContent>
             <SidebarMenu className="gap-px">
-              {visibleSidebarNavItems(SIDEBAR_NAV, contributedNav, BUSINESS_WORKSPACE_ENABLED).map(item => {
-                const isInteractive = Boolean(item.action) || Boolean(item.route)
-
-                const active =
-                  (item.id === 'start' && pathname === '/') ||
-                  item.id === currentView ||
-                  // Contributed rows light up at their own route.
-                  (Boolean(item.route) && pathname === item.route)
-
-                const isNewSession = item.action === 'new-session'
-
-                const button = (
-                  <SidebarMenuButton
-                    aria-disabled={!isInteractive}
-                    className={cn(
-                      // no-drag: these rows sit directly under the titlebar's
-                      // [-webkit-app-region:drag] strips (app-shell.tsx), with only
-                      // 6px of clearance. Drag regions win hit-testing over DOM
-                      // (pointer-events can't override), and on Linux/WSLg the
-                      // resolved region has been observed to swallow clicks on the
-                      // top rows. Same carve-out as USER_BUBBLE_BASE_CLASS in
-                      // assistant-ui/thread/user-message.tsx.
-                      'flex h-8 w-full justify-start gap-2.5 rounded-[0.625rem] border border-transparent px-2.5 text-left text-[0.8125rem] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
-                      active &&
-                        'border-transparent bg-(--ui-row-active-background) text-foreground shadow-none hover:bg-(--ui-row-active-background)!',
-                      !isInteractive &&
-                        'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
-                    )}
-                    onClick={() => {
-                      // A plain new session lands in whatever profile the live
-                      // gateway is on (= the active switcher context). null →
-                      // no swap. The switcher header is the single place to
-                      // change which profile that is.
-                      if (isNewSession) {
-                        $newChatProfile.set(null)
-                      }
-
-                      onNavigate(item)
-                    }}
-                    tooltip={
-                      item.keybindActionId
-                        ? {
-                            children: (
-                              <TipKeybindLabel actionId={item.keybindActionId} text={s.nav[item.id] ?? item.label} />
-                            )
-                          }
-                        : (s.nav[item.id] ?? item.label)
-                    }
-                    type="button"
-                  >
-                    <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
-                    <span className="min-w-0 flex-1 truncate">{s.nav[item.id] ?? item.label}</span>
-                    {isNewSession && (
-                      <KbdGroup
-                        className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}
-                        keys={newSessionKbd}
-                        size="sm"
-                      />
-                    )}
-                  </SidebarMenuButton>
-                )
-
-                // New session + route-backed pages can open in a split —
-                // right-click for the directional "Open in split" submenu.
-                return (
-                  <SidebarMenuItem key={item.id}>
-                    {isNewSession || item.route ? (
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
-                        <ContextMenuContent aria-label={s.nav[item.id] ?? item.label}>
-                          <SplitSubmenu
-                            kit={CONTEXT_SPLIT_KIT}
-                            label={s.row.openInSplit}
-                            onSplit={dir => {
-                              if (isNewSession) {
-                                onNewSessionSplit(dir)
-                              } else if (item.route) {
-                                openRouteTile(item.route, dir)
-                              }
-                            }}
-                          />
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ) : (
-                      button
-                    )}
-                  </SidebarMenuItem>
-                )
-              })}
+              {primarySidebarNavItems.map(renderSidebarNavItem)}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -1632,6 +1631,11 @@ export function ChatSidebar({
           ))}
 
         <div className="shrink-0 px-0.5 pb-1 pt-0.5">
+          {utilitySidebarNavItems.length > 0 && (
+            <SidebarMenu className="mb-1 gap-px border-t border-(--ui-stroke-tertiary) pt-1">
+              {utilitySidebarNavItems.map(renderSidebarNavItem)}
+            </SidebarMenu>
+          )}
           {/* hc-690: one update entry for the app shell + Hermes Runtime. The
               underlying artifacts stay independent; discovery, confirmation,
               progress, restart and post-restart continuation are unified. */}

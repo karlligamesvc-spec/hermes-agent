@@ -963,14 +963,16 @@
 }
 
 /* Pointer focus stays visually quiet, while keyboard focus remains explicit.
-   Shared controls may add a box-shadow ring; the outline is the fail-safe for
-   native buttons and custom rows that do not use the shared Button primitive. */
+   The fallback outline is only for unstyled focus targets. Shared controls
+   own a shape-matched ring/border; drawing this square outline over them was
+   the source of the doubled purple rectangles on textareas, search fields and
+   titlebar buttons. */
 *:focus {
   outline: none;
 }
 
-*:focus-visible {
-  outline: 0.125rem solid color-mix(in srgb, var(--theme-primary) 72%, var(--ui-text-primary));
+:focus-visible:not([data-slot]) {
+  outline: 0.0625rem solid color-mix(in srgb, var(--theme-primary) 62%, var(--ui-text-primary));
   outline-offset: 0.125rem;
 }
 

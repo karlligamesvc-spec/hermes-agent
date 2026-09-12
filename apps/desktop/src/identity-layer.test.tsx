@@ -607,6 +607,61 @@ describe('identity: the brand skin survives', () => {
       /\.apex-primary-sidebar \{[\s\S]*?--ui-row-active-background: color-mix\(in srgb, var\(--ui-bg-elevated\) 98%, var\(--ui-blue\) 2%\)/
     )
   })
+
+  it('keeps text-field focus shape-matched and gives history search the full available width', () => {
+    const search = readSource('src', 'components', 'ui', 'search-field.tsx')
+    const searchShell = readSource('src', 'app', 'page-search-shell.tsx')
+
+    const goalLauncher = readSource(
+      'src',
+      'app',
+      'business-workspace',
+      'components',
+      'business-goal-launcher.tsx'
+    )
+
+    const styles = readSource('src', 'styles.css')
+
+    expect(styles).not.toContain('*:focus-visible {')
+    expect(styles).toContain(':focus-visible:not([data-slot])')
+    expect(styles).toContain('.apex-goal-launcher:focus-within')
+    expect(search).toContain("'h-7 min-w-0 flex-1 bg-transparent")
+    expect(search).not.toContain('[field-sizing:content]')
+    expect(search).toContain('data-slot="search-field-input"')
+    expect(searchShell).toContain('containerClassName="w-full max-w-[45vw]"')
+    expect(goalLauncher).toContain('data-slot="business-goal-input"')
+  })
+
+  it('uses one APEX page-heading system across projects, workflows, scheduled jobs, and deliverables', () => {
+    const businessHeader = readSource(
+      'src',
+      'app',
+      'business-workspace',
+      'components',
+      'business-page-header.tsx'
+    )
+
+    const cron = readSource('src', 'app', 'cron', 'index.tsx')
+    const artifacts = readSource('src', 'app', 'artifacts', 'index.tsx')
+    const settings = readSource('src', 'app', 'settings', 'primitives.tsx')
+
+    expect(businessHeader).toContain('<ApexPageHeader {...props} />')
+    expect(cron).toContain('<ApexPageHeader')
+    expect(artifacts).toContain('heading={<ApexPageHeader')
+    expect(settings).toContain('className="p5-section-heading"')
+    expect(settings).toContain('<div className="p5-row"')
+  })
+
+  it('moves connection and session-history utilities to the sidebar footer without hiding real recents', () => {
+    const sidebar = readSource('src', 'app', 'chat', 'sidebar', 'index.tsx')
+    const zh = readSource('src', 'i18n', 'zh.ts')
+
+    expect(sidebar).toContain("const BUSINESS_UTILITY_NAV_IDS = new Set(['assistant', 'history'])")
+    expect(sidebar).toContain('{utilitySidebarNavItems.map(renderSidebarNavItem)}')
+    expect(sidebar).toMatch(/BUSINESS_WORKSPACE_ENABLED \|\| showAllProfiles\s*\? sessions/)
+    expect(zh).toContain("assistant: '连接助手'")
+    expect(zh).toContain("history: '历史会话'")
+  })
 })
 
 describe('identity: the APEX business shell stays user-facing', () => {
@@ -740,7 +795,7 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
 
     expect(startHome).toContain('if (!selectedWorkflow) {')
-    expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, selectedWorkflow)')
+    expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, selectedWorkflow, projectId)')
     expect(startHome).not.toContain("slug: 'desktop-goal'")
     expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId), {')
     expect(startHome).toContain('state: routeDrawerNavigationState(location)')

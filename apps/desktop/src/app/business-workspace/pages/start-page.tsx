@@ -47,6 +47,7 @@ export function BusinessStartHome({
   const launchState = location.state as null | {
     businessGoalDraft?: unknown
     businessGoalFocus?: unknown
+    businessProjectId?: unknown
     businessWorkflowCatalogProvenance?: unknown
     businessWorkflowId?: unknown
     businessWorkflowSlug?: unknown
@@ -75,9 +76,18 @@ export function BusinessStartHome({
     workflows
   ])
 
-  const initialDraft =
-    launchedWorkflow?.prompt ??
-    (typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : '')
+  const routedProjectId =
+    typeof launchState?.businessProjectId === 'string' ? launchState.businessProjectId.trim() : ''
+
+  const routedGoalDraft =
+    typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : ''
+
+  // A catalog selection owns its approved prompt. A routed draft is only
+  // authoritative when the user is adding that workflow to an existing
+  // Project, where their Project objective must survive the round trip.
+  const initialDraft = routedProjectId
+    ? routedGoalDraft || launchedWorkflow?.prompt || ''
+    : launchedWorkflow?.prompt || routedGoalDraft
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
@@ -116,12 +126,9 @@ export function BusinessStartHome({
     setSelectedWorkflowIsTestData(
       launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
     )
-    setGoalDraft(
-      launchedWorkflow?.prompt ??
-        (typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : '')
-    )
+    setGoalDraft(routedProjectId ? routedGoalDraft || launchedWorkflow?.prompt || '' : launchedWorkflow?.prompt || routedGoalDraft)
     setDomainError(false)
-  }, [launchState?.businessGoalDraft, launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key])
+  }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
 
   const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
     setSelectedWorkflow(workflow)
@@ -138,7 +145,8 @@ export function BusinessStartHome({
     setDomainError(false)
     setDomainStarting(true)
 
-    const outcome = await startWorkflowGoal(goal, selectedWorkflow)
+    const projectId = routedProjectId || undefined
+    const outcome = await startWorkflowGoal(goal, selectedWorkflow, projectId)
 
     setDomainStarting(false)
 
@@ -204,7 +212,20 @@ export function BusinessStartHome({
                 </p>
               )}
             </div>
-            <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="sm" variant="ghost">
+            <Button
+              onClick={() =>
+                navigate(WORKFLOWS_ROUTE, {
+                  state: {
+                    businessGoalDraft: goalDraft,
+                    ...(typeof launchState?.businessProjectId === 'string'
+                      ? { businessProjectId: launchState.businessProjectId }
+                      : {})
+                  }
+                })
+              }
+              size="sm"
+              variant="ghost"
+            >
               {t.businessWorkspace.goalLauncher.changeWorkflow}
             </Button>
           </section>

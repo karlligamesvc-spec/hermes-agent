@@ -146,7 +146,10 @@ export const ja = defineLocale({
     backendOutOfDateMessage:
       'APEX バックエンドがこのデスクトップビルドより古く、正常に動作しない場合があります。更新して揃えてください。',
     installMethodUnsupportedTitle: 'サポート対象外のインストール方法',
-    updateHermes: 'APEX を更新',
+    backendAlignmentUnavailableTitle: '互換 Runtime はまだ公開されていません',
+    backendAlignmentUnavailableMessage:
+      'このデスクトップ版に一致する Runtime パッケージはまだありません。デスクトップ App のインストールでは使用中のバックエンドを上書きしません。公開後に更新画面からインストールできます。',
+    updateHermes: '互換更新を確認',
     updateReadyTitle: '更新の準備ができました',
     updateReadyMessage: count => `${count} 件の新しい変更が利用可能です。`,
     updateReadyMessageUnknown: '新しい更新が利用可能です。',
@@ -1650,6 +1653,8 @@ export const ja = defineLocale({
 
   cron: {
     close: 'Cron を閉じる',
+    eyebrow: '自動実行',
+    description: '目標をスケジュールどおりに実行し、実際の結果を指定先へ届けます。',
     title: 'スケジュール済みジョブ',
     count: count => `${count} 件のジョブ`,
     modelImpact: {
@@ -1777,6 +1782,9 @@ export const ja = defineLocale({
   },
 
   artifacts: {
+    eyebrow: '成果物',
+    title: '納品物',
+    description: 'セッションとワークフローが生成した実際の画像、ファイル、リンクを確認します。',
     search: 'アーティファクトを検索...',
     refresh: 'アーティファクトを更新',
     refreshing: 'アーティファクトを更新中',
@@ -1817,8 +1825,8 @@ export const ja = defineLocale({
       start: '開始',
       projects: 'プロジェクト',
       workflows: 'ワークフロー',
-      assistant: 'アシスタント',
-      history: '履歴',
+      assistant: 'アシスタント接続',
+      history: '会話履歴',
       search: '検索',
       cron: '定期実行',
       'scheduled-runs': '定期実行',
@@ -3328,6 +3336,20 @@ export const ja = defineLocale({
       emptyDescription: '業務目標を入力すると、APEX が実際のプロジェクトを作成し、ワークフローを構成します。',
       action: '目標を始める',
       newProject: '新規プロジェクト',
+      create: {
+        title: '新規プロジェクト',
+        description: 'ワークフローを追加する前に名前と目標を定義します。作成だけでは実行や進捗は生成されません。',
+        nameLabel: 'プロジェクト名',
+        namePlaceholder: '例：米国ペット用品市場',
+        objectiveLabel: '説明と目標',
+        objectivePlaceholder: '課題、期待する成果、重要な制約を入力',
+        folderLabel: 'ローカルフォルダー',
+        chooseFolder: 'フォルダーを選択',
+        folderOptional: '任意のローカル作業フォルダー',
+        create: 'プロジェクトを作成',
+        creating: '作成中…',
+        failed: 'プロジェクトを作成できませんでした。入力は保持されています。接続を確認して再試行してください。'
+      },
       chooseWorkflow: 'ワークフローを選択',
       filters: {
         label: 'プロジェクト状態フィルター',
@@ -3410,7 +3432,13 @@ export const ja = defineLocale({
       availableSources: '利用可能なデータソース',
       sourceConnected: '接続済み',
       sourceNotConnected: '未接続',
-      noAvailableSources: 'このビルドで利用できるデータソース接続はありません。'
+      noAvailableSources: 'このビルドで利用できるデータソース接続はありません。',
+      workflowsTitle: 'プロジェクトのワークフロー',
+      workflowsDescription: 'プロジェクトは目標を保持し、ワークフローは実行経路です。1つのプロジェクトに複数追加できます。',
+      addWorkflow: 'ワークフローを追加',
+      loadingWorkflows: 'プロジェクトのワークフローを読み込み中…',
+      noWorkflows: 'このプロジェクトにはワークフロー、Run、進捗がまだありません。',
+      workflowsUnavailable: 'プロジェクトは読み込めましたが、ワークフロー一覧を利用できません。実行状態は推測しません。'
     },
     workflows: {
       eyebrow: '実績ある業務パス',
@@ -3456,6 +3484,9 @@ export const ja = defineLocale({
       savedTitle: '自分のワークフロー',
       savedEmpty: '保存済みワークフローはまだありません。目標を始めると最初のワークフローが作成されます。',
       savedCount: count => `ワークフロー ${count} 件`,
+      loadingSaved: 'ワークフローを読み込み中…',
+      savedUnavailable: 'ワークフローを読み込めません。カタログの状態で実データを置き換えません。',
+      addingToProject: '現在のプロジェクトに追加する実行経路を選択してください。',
       localCatalogNotice: '本番カタログは接続されていません。内蔵またはテスト用テンプレートで代替しません。',
       catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
       catalogUnavailableDescription: 'カタログを再試行するか、開始画面に戻って目標を入力してください。',

@@ -30,6 +30,7 @@ import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
+import { ProjectCreateDialog } from '../components/project-create-dialog'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
 import { distinctProjectObjective, projectRunDisplayState } from '../view-model/project'
@@ -54,6 +55,7 @@ export function ProjectsView() {
   const navigate = useNavigate()
   const projects = useWorkflowProjects()
   const [filter, setFilter] = useState<ProjectFilter>('all')
+  const [createOpen, setCreateOpen] = useState(false)
 
   if (projects.mode === 'unavailable') {
     return <LegacyProjectsView />
@@ -63,7 +65,7 @@ export function ProjectsView() {
     return <LegacyProjectsView notice={c.projectLoadFailed} />
   }
 
-  const newProject = () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: '', businessGoalFocus: true } })
+  const newProject = () => setCreateOpen(true)
 
   const visibleProjects =
     projects.mode === 'ready'
@@ -224,6 +226,15 @@ export function ProjectsView() {
           )}
         </div>
       )}
+      <ProjectCreateDialog
+        onCreated={project =>
+          navigate(projectDetailRoute(project.id), {
+            state: { ...routeDrawerNavigationState(location), businessProjectSummary: project.summary }
+          })
+        }
+        onOpenChange={setCreateOpen}
+        open={createOpen}
+      />
     </section>
   )
 }

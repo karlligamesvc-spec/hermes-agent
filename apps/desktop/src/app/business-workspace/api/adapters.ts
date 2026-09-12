@@ -2,6 +2,7 @@ import type { BusinessWorkflowStarter } from '../view-model/workflow-starters'
 
 import { workflowDomainBridge } from './bridge'
 import type {
+  CreateWorkflowProjectOutcome,
   StartWorkflowGoalOutcome,
   WorkflowCatalogItem,
   WorkflowDefinition,
@@ -20,16 +21,25 @@ export type WorkflowProjectOutcome =
   | { mode: 'failed' }
   | { mode: 'unavailable' }
 
-export type WorkflowListOutcome =
-  | { catalog: WorkflowCatalogItem[]; catalogVersion: null | string; items: WorkflowDefinition[]; mode: 'ready' }
+export type WorkflowCatalogOutcome =
+  | { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string }
+  | { mode: 'failed' }
+  | { mode: 'unavailable' }
+
+export type WorkflowDefinitionListOutcome =
+  | { items: WorkflowDefinition[]; mode: 'ready' }
   | { mode: 'failed' }
   | { mode: 'unavailable' }
 
 export async function startWorkflowGoal(
   objective: string,
   starter: BusinessWorkflowStarter,
-  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+  projectIdOrBridge?: null | string | WorkflowDomainBridge,
+  fallbackBridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<StartWorkflowGoalOutcome> {
+  const projectId = typeof projectIdOrBridge === 'string' ? projectIdOrBridge : undefined
+  const bridge = typeof projectIdOrBridge === 'string' || projectIdOrBridge === undefined ? fallbackBridge : projectIdOrBridge
+
   if (!bridge) {
     return { mode: 'unavailable' }
   }
@@ -49,6 +59,7 @@ export async function startWorkflowGoal(
   try {
     const result = await bridge.startGoal({
       objective,
+      ...(projectId?.trim() ? { projectId: projectId.trim() } : {}),
       starter: {
         description: starter.summary,
         id: starter.id,
@@ -61,6 +72,29 @@ export async function startWorkflowGoal(
     const runId = result.run?.id?.trim()
 
     return result.ok && runId ? { mode: 'started', runId } : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function createWorkflowProject(
+  input: { localPath?: string; name: string; objective: string },
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<CreateWorkflowProjectOutcome> {
+  if (!bridge?.createProject) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.createProject(input)
+
+    return result.ok && result.item ? { item: result.item, mode: 'created' } : { mode: 'failed' }
   } catch {
     return { mode: 'failed' }
   }
@@ -121,10 +155,10 @@ export async function getWorkflowProject(
   }
 }
 
-export async function listWorkflowDefinitions(
+export async function listWorkflowCatalog(
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
-): Promise<WorkflowListOutcome> {
-  if (!bridge?.getCatalog || !bridge.listWorkflows) {
+): Promise<WorkflowCatalogOutcome> {
+  if (!bridge?.getCatalog) {
     return { mode: 'unavailable' }
   }
 
@@ -135,10 +169,35 @@ export async function listWorkflowDefinitions(
       return { mode: 'unavailable' }
     }
 
-    const [catalog, workflows] = await Promise.all([bridge.getCatalog(), bridge.listWorkflows({ limit: 50 })])
+    const catalog = await bridge.getCatalog()
 
-    return catalog.ok && workflows.ok && Array.isArray(catalog.items) && Array.isArray(workflows.items)
-      ? { catalog: catalog.items, catalogVersion: catalog.version ?? null, items: workflows.items, mode: 'ready' }
+    return catalog.ok && Array.isArray(catalog.items)
+      ? { items: catalog.items, mode: 'ready', version: catalog.version ?? null }
+      : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function listWorkflowDefinitions(
+  options: { limit?: number; projectId?: string; status?: string } = {},
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowDefinitionListOutcome> {
+  if (!bridge?.listWorkflows) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const workflows = await bridge.listWorkflows(options)
+
+    return workflows.ok && Array.isArray(workflows.items)
+      ? { items: workflows.items, mode: 'ready' }
       : { mode: 'failed' }
   } catch {
     return { mode: 'failed' }

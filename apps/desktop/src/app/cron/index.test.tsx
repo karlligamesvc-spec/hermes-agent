@@ -40,6 +40,7 @@ describe('CronView page identity', () => {
 
     expect(page.getAttribute('data-cron-surface')).toBe('page')
     expect(page.getAttribute('aria-labelledby')).toBe(heading.id)
+    expect(container.querySelector('[data-apex-page-header]')).not.toBeNull()
     expect(body?.parentElement).toBe(page)
     expect(body?.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'min-h-0', 'flex-1', 'flex-col']))
     expect(screen.queryByRole('dialog')).toBeNull()

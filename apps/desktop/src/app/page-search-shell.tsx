@@ -16,6 +16,8 @@ export interface PageShellTab {
 
 interface PageSearchShellProps extends React.ComponentProps<'section'> {
   children: ReactNode
+  /** Product page identity rendered above the shared search/tabs controls. */
+  heading?: ReactNode
   tabs?: PageShellTab[]
   activeTab?: string
   onTabChange?: (id: string) => void
@@ -66,6 +68,7 @@ function ShellTabs({
 export function PageSearchShell({
   children,
   className,
+  heading,
   tabs,
   activeTab,
   onTabChange,
@@ -103,12 +106,22 @@ export function PageSearchShell({
         (see app-shell.tsx), so window dragging still works here.
       */}
       <div className="shrink-0">
+        {heading ? (
+          <div className="mx-auto w-full max-w-[65.625rem] px-5 pt-[calc(var(--titlebar-height)+0.75rem)] sm:px-6 min-[1100px]:px-9">
+            {heading}
+          </div>
+        ) : null}
         {/* Centered mode shares the body's `mx-auto max-w-2xl px-3` box so the
             search field lines up with the column beneath it, and drops the
             tab/trailing cells the single-column pages have no use for. */}
         {centered
           ? !searchHidden && (
-              <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]">
+              <div
+                className={cn(
+                  'mx-auto flex w-full max-w-2xl items-center gap-3 px-3 pb-2',
+                  heading ? 'pt-3' : 'pt-[calc(var(--titlebar-height)+0.5rem)]'
+                )}
+              >
                 <SearchField
                   containerClassName="w-full"
                   hints={searchHints}
@@ -121,11 +134,16 @@ export function PageSearchShell({
               </div>
             )
           : (hasTabs || !searchHidden) && (
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3 pb-2 pt-[calc(var(--titlebar-height)+0.5rem)]">
+              <div
+                className={cn(
+                  'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3 pb-2',
+                  heading ? 'pt-3' : 'pt-[calc(var(--titlebar-height)+0.5rem)]'
+                )}
+              >
                 <div className="flex min-w-0 items-center justify-start">
                   {!searchHidden && (
                     <SearchField
-                      containerClassName="max-w-[45vw]"
+                      containerClassName="w-full max-w-[45vw]"
                       hints={searchHints}
                       inputRef={searchInputRef}
                       onChange={onSearchChange}

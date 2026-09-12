@@ -139,9 +139,12 @@ export const zh = defineLocale({
     copyDetail: '复制详情',
     copyDetailFailed: '无法复制通知详情',
     backendOutOfDateTitle: '后端版本过旧',
-    backendOutOfDateMessage: '你的 APEX 后端早于当前桌面构建，可能无法正常工作。请更新以保持一致。',
+    backendOutOfDateMessage: '本机 APEX 运行时早于当前桌面界面，部分功能可能不可用。请检查兼容更新。',
+    backendAlignmentUnavailableTitle: '兼容运行时尚未发布',
+    backendAlignmentUnavailableMessage:
+      '当前没有与此桌面版本匹配的运行时包。安装桌面 App 不会强行覆盖正在使用的后端；兼容包发布后可在更新中安装。',
     installMethodUnsupportedTitle: '不受支持的安装方式',
-    updateHermes: '更新 APEX',
+    updateHermes: '检查兼容更新',
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 项新更改可用。`,
     updateReadyMessageUnknown: '有新更新可用。',
@@ -2064,6 +2067,8 @@ export const zh = defineLocale({
 
   cron: {
     close: '关闭定时任务',
+    eyebrow: '自动化执行',
+    description: '按计划自动运行目标，并把真实结果发送到指定位置。',
     title: '定时任务',
     count: count => `${count} 个任务`,
     modelImpact: {
@@ -2189,6 +2194,9 @@ export const zh = defineLocale({
   },
 
   artifacts: {
+    eyebrow: '结果资产',
+    title: '交付物',
+    description: '集中查看会话和工作流产生的真实图片、文件与链接。',
     search: '搜索产物…',
     refresh: '刷新产物',
     refreshing: '正在刷新产物',
@@ -2229,8 +2237,8 @@ export const zh = defineLocale({
       start: '开始',
       projects: '项目',
       workflows: '工作流',
-      assistant: '助手',
-      history: '历史',
+      assistant: '连接助手',
+      history: '历史会话',
       search: '搜索',
       cron: '定时运行',
       'scheduled-runs': '定时运行',
@@ -3788,6 +3796,20 @@ export const zh = defineLocale({
       emptyDescription: '先描述一个业务目标，APEX 会据此创建真实项目并组织工作流。',
       action: '开始一个目标',
       newProject: '新建项目',
+      create: {
+        title: '新建项目',
+        description: '先定义项目名称和目标。创建后不会自动启动工作流或伪造进度。',
+        nameLabel: '项目名称',
+        namePlaceholder: '例如：美国宠物用品市场',
+        objectiveLabel: '项目描述与目标',
+        objectivePlaceholder: '说明要解决的问题、期望结果和必要约束',
+        folderLabel: '本地文件夹',
+        chooseFolder: '选择文件夹',
+        folderOptional: '可选；用于记录这个项目的本地工作目录',
+        create: '创建项目',
+        creating: '正在创建…',
+        failed: '项目创建失败。输入内容已保留，请检查连接后重试。'
+      },
       chooseWorkflow: '选择工作流',
       filters: {
         label: '项目状态筛选',
@@ -3869,7 +3891,13 @@ export const zh = defineLocale({
       availableSources: '可用数据源',
       sourceConnected: '已连接',
       sourceNotConnected: '未连接',
-      noAvailableSources: '当前版本没有可用的数据源连接出口。'
+      noAvailableSources: '当前版本没有可用的数据源连接出口。',
+      workflowsTitle: '项目工作流',
+      workflowsDescription: '项目是目标容器；工作流是完成目标的一条执行路径。一个项目可以有多个工作流。',
+      addWorkflow: '增加工作流',
+      loadingWorkflows: '正在读取项目工作流…',
+      noWorkflows: '这个项目还没有工作流，也没有 Run 或进度。',
+      workflowsUnavailable: '项目已读取，但工作流列表暂时不可用。不会猜测运行状态。'
     },
     workflows: {
       eyebrow: '成熟业务路径',
@@ -3915,6 +3943,9 @@ export const zh = defineLocale({
       savedTitle: '我的工作流',
       savedEmpty: '还没有已保存工作流。开始一个目标后会在这里出现。',
       savedCount: count => `${count} 个工作流`,
+      loadingSaved: '正在读取我的工作流…',
+      savedUnavailable: '我的工作流暂时无法读取；目录状态不会覆盖这里的真实数据。',
+      addingToProject: '正在为当前项目选择新的执行路径。',
       localCatalogNotice: '生产目录尚未连接。不会用内置或测试模板替代真实目录。',
       catalogUnavailable: '真实工作流目录暂时不可用，没有模板被启动。',
       catalogUnavailableDescription: '请重试目录连接，或返回开始页直接描述目标。',

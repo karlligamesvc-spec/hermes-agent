@@ -9,7 +9,7 @@ import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppRe
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
 
-const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '助手', '历史'] as const
+const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '连接助手', '历史会话'] as const
 
 const PHASE1_VIEWPORTS = [
   { height: 900, name: 'wide-1440', width: 1440 },
@@ -239,6 +239,43 @@ async function startPhase1ReviewApi() {
             version: 1
           }
         ]
+      })
+
+      return
+    }
+
+    if (
+      request.method === 'GET' &&
+      url.pathname === '/api/v1/workflow-domain/runs/local-review-run-running'
+    ) {
+      json(200, {
+        deliverables: [],
+        events: [
+          {
+            eventType: 'run.queued',
+            happenedAt: '2026-09-05T21:05:00Z',
+            id: 'local-review-event-queued',
+            payload: {},
+            sequence: 1
+          },
+          {
+            eventType: 'run.started',
+            happenedAt: '2026-09-05T21:06:00Z',
+            id: 'local-review-event-started',
+            payload: {},
+            sequence: 2
+          }
+        ],
+        run: {
+          attempt: 1,
+          createdAt: '2026-09-05T21:05:00Z',
+          errorMessage: null,
+          executorType: 'hermes',
+          id: 'local-review-run-running',
+          maxAttempts: 2,
+          status: 'running',
+          triggerRef: '[本地测试] 验证工作流运行抽屉的安全区与关闭入口'
+        }
       })
 
       return
@@ -669,6 +706,101 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
 
   await page.getByRole('button', { name: '继续这个目标' }).click()
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveValue('[本地测试] 尚未启动的业务目标')
+})
+
+test('workflow Run uses a roomy drawer on wide windows and a collision-free full-screen surface when narrow', async () => {
+  const { app, page } = fixture!
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+
+  for (const viewport of PHASE1_VIEWPORTS) {
+    await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]
+
+      win?.unmaximize()
+      win?.setMinimumSize(400, 620)
+      win?.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+    }, viewport)
+    await page.bringToFront()
+    await page.waitForTimeout(400)
+
+    if (viewport.width < 900) {
+      await page.getByRole('button', { name: /显示侧边栏/ }).click()
+    }
+
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+    await page.getByRole('button', { name: '打开当前运行' }).click()
+
+    const drawer = page.locator('[data-route-drawer]')
+    const content = drawer.locator('section').first()
+    const close = drawer.getByRole('button', { name: '关闭' })
+    const cancel = drawer.getByRole('button', { name: '取消运行' })
+
+    await expect(drawer).toBeVisible()
+    await expect(content).toBeVisible()
+    await expect(close).toBeVisible()
+    await expect(cancel).toBeVisible()
+    await expect(drawer).toHaveAttribute('data-layout', viewport.width >= 1100 ? 'drawer' : 'fullscreen')
+
+    const geometry = await page.evaluate(() => {
+      const drawerElement = document.querySelector<HTMLElement>('[data-route-drawer]')
+      const contentElement = drawerElement?.querySelector<HTMLElement>('section')
+      const closeElement = drawerElement?.querySelector<HTMLElement>('button[aria-label="关闭"]')
+
+      const cancelElement = Array.from(drawerElement?.querySelectorAll<HTMLElement>('button') ?? []).find(button =>
+        button.textContent?.includes('取消运行')
+      )
+
+      if (!drawerElement || !contentElement || !closeElement || !cancelElement) {
+        return null
+      }
+
+      const drawerBox = drawerElement.getBoundingClientRect()
+      const contentBox = contentElement.getBoundingClientRect()
+      const closeBox = closeElement.getBoundingClientRect()
+      const cancelBox = cancelElement.getBoundingClientRect()
+
+      const overlaps = !(
+        closeBox.right <= cancelBox.left ||
+        closeBox.left >= cancelBox.right ||
+        closeBox.bottom <= cancelBox.top ||
+        closeBox.top >= cancelBox.bottom
+      )
+
+      return {
+        contentInset: contentBox.left - drawerBox.left,
+        drawerWidth: drawerBox.width,
+        overlaps,
+        rootClientWidth: document.documentElement.clientWidth,
+        rootScrollWidth: document.documentElement.scrollWidth
+      }
+    })
+
+    expect(geometry).not.toBeNull()
+    expect(geometry!.contentInset).toBeGreaterThanOrEqual(viewport.width >= 1100 ? 31 : 23)
+    expect(geometry!.overlaps).toBe(false)
+    expect(geometry!.rootScrollWidth).toBeLessThanOrEqual(geometry!.rootClientWidth)
+
+    if (viewport.width >= 1100) {
+      expect(geometry!.drawerWidth).toBeGreaterThanOrEqual(630)
+    } else {
+      expect(geometry!.drawerWidth).toBeCloseTo(geometry!.rootClientWidth, 0)
+    }
+
+    const screenshotName = `workflow-run-${viewport.width}x${viewport.height}.png`
+
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, screenshotName) : test.info().outputPath(screenshotName)
+    })
+    await close.click()
+    await expect(drawer).toHaveCount(0)
+  }
 })
 
 test('local workflow catalog is labeled and reaches editable pre-start confirmation', async () => {

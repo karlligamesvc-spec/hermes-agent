@@ -243,6 +243,9 @@ declare global {
       // into the renderer. Optional for compatibility with older shells.
       workflowDomain?: {
         access: () => Promise<DesktopWorkflowDomainAccess>
+        createProject?: (
+          payload: DesktopWorkflowDomainCreateProjectInput
+        ) => Promise<DesktopWorkflowDomainProjectResult>
         startGoal: (payload: DesktopWorkflowDomainStartGoalInput) => Promise<DesktopWorkflowDomainStartResult>
         listProjects?: (options?: {
           cursor?: string
@@ -1695,6 +1698,7 @@ export interface DesktopWorkflowDomainAccess {
 
 export interface DesktopWorkflowDomainStartGoalInput {
   objective: string
+  projectId?: string
   starter: {
     description: string
     id: string
@@ -1702,6 +1706,12 @@ export interface DesktopWorkflowDomainStartGoalInput {
     slug: string
     version: number
   }
+}
+
+export interface DesktopWorkflowDomainCreateProjectInput {
+  localPath?: string
+  name: string
+  objective: string
 }
 
 export interface DesktopWorkflowDomainProjectSummary {

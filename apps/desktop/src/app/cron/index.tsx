@@ -5,6 +5,7 @@ import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { PageLoader } from '@/components/page-loader'
+import { ApexPageHeader } from '@/components/ui/apex-page-header'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Codicon } from '@/components/ui/codicon'
@@ -62,7 +63,6 @@ import {
   PanelBody,
   PanelDetail,
   PanelEmpty,
-  PanelHeader,
   PanelList,
   PanelListRow,
   type PanelMenuItem,
@@ -635,9 +635,17 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
 
   return (
     <PanelPage {...props} aria-labelledby="cron-page-title" data-cron-surface="page">
-      <PanelHeader subtitle={c.count(totalCount)} title={c.title} titleId="cron-page-title" />
+      <ApexPageHeader
+        action={{ icon: 'add', label: c.newCron, onClick: () => setEditor({ mode: 'create' }) }}
+        description={c.description}
+        eyebrow={c.eyebrow}
+        icon="calendar"
+        title={c.title}
+        titleId="cron-page-title"
+        trailing={<p className="mt-2 text-xs text-(--ui-text-tertiary)">{c.count(totalCount)}</p>}
+      />
 
-      <PanelPageBody>
+      <PanelPageBody className="pt-5">
         {loading && jobs.length === 0 ? (
           <PageLoader label={c.loading} />
         ) : loadError && jobs.length === 0 ? (

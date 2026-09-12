@@ -143,9 +143,12 @@ export const en: Translations = {
     copyDetailFailed: 'Could not copy notification detail',
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
-      'Your APEX backend is older than this desktop build and may not work correctly. Update to align them.',
+      'The local APEX Runtime is older than this desktop interface, so some features may be unavailable. Check for a compatible update.',
+    backendAlignmentUnavailableTitle: 'Compatible Runtime not published yet',
+    backendAlignmentUnavailableMessage:
+      'No Runtime package matches this desktop version yet. Installing the desktop app does not overwrite an active backend; install the compatible package from Updates after it is published.',
     installMethodUnsupportedTitle: 'Unsupported install method',
-    updateHermes: 'Update APEX',
+    updateHermes: 'Check compatible update',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     updateReadyMessageUnknown: 'A new update is available.',
@@ -2184,6 +2187,8 @@ export const en: Translations = {
 
   cron: {
     close: 'Close cron',
+    eyebrow: 'Automated execution',
+    description: 'Run goals on a schedule and deliver real results to the destination you choose.',
     title: 'Scheduled jobs',
     count: count => `${count} ${count === 1 ? 'job' : 'jobs'}`,
     modelImpact: {
@@ -2330,6 +2335,9 @@ export const en: Translations = {
   },
 
   artifacts: {
+    eyebrow: 'Result assets',
+    title: 'Deliverables',
+    description: 'Browse the real images, files, and links produced by sessions and workflows.',
     search: 'Search artifacts...',
     refresh: 'Refresh artifacts',
     refreshing: 'Refreshing artifacts',
@@ -2390,8 +2398,8 @@ export const en: Translations = {
       start: 'Start',
       projects: 'Projects',
       workflows: 'Workflows',
-      assistant: 'Assistant',
-      history: 'History',
+      assistant: 'Connect assistants',
+      history: 'Session history',
       search: 'Search',
       cron: 'Scheduled runs',
       'scheduled-runs': 'Scheduled runs',
@@ -4097,6 +4105,20 @@ export const en: Translations = {
         'Describe a business goal. APEX creates a real project and organizes its workflow from that goal.',
       action: 'Start a goal',
       newProject: 'New project',
+      create: {
+        title: 'New project',
+        description: 'Define the project before adding a workflow. Creating it does not start work or invent progress.',
+        nameLabel: 'Project name',
+        namePlaceholder: 'For example: US pet supplies market',
+        objectiveLabel: 'Description and objective',
+        objectivePlaceholder: 'Describe the problem, expected outcome, and important constraints',
+        folderLabel: 'Local folder',
+        chooseFolder: 'Choose folder',
+        folderOptional: 'Optional local workspace for this project',
+        create: 'Create project',
+        creating: 'Creating…',
+        failed: 'The project could not be created. Your entries are still here; check the connection and retry.'
+      },
       chooseWorkflow: 'Choose workflow',
       filters: {
         label: 'Project status filters',
@@ -4180,7 +4202,13 @@ export const en: Translations = {
       availableSources: 'Available data sources',
       sourceConnected: 'Connected',
       sourceNotConnected: 'Not connected',
-      noAvailableSources: 'No supported data-source connection is available in this build.'
+      noAvailableSources: 'No supported data-source connection is available in this build.',
+      workflowsTitle: 'Project workflows',
+      workflowsDescription: 'A project contains the goal; a workflow is one execution path. A project can have multiple workflows.',
+      addWorkflow: 'Add workflow',
+      loadingWorkflows: 'Loading project workflows…',
+      noWorkflows: 'This project has no workflows, Runs, or progress yet.',
+      workflowsUnavailable: 'The project loaded, but its workflow list is unavailable. APEX will not infer run state.'
     },
     workflows: {
       eyebrow: 'Proven business paths',
@@ -4226,6 +4254,9 @@ export const en: Translations = {
       savedTitle: 'Your workflows',
       savedEmpty: 'No saved workflows yet. Starting a goal creates the first one.',
       savedCount: count => `${count} ${count === 1 ? 'workflow' : 'workflows'}`,
+      loadingSaved: 'Loading your workflows…',
+      savedUnavailable: 'Your workflows are unavailable. Catalog status does not replace their real data.',
+      addingToProject: 'Choose a new execution path for the current project.',
       localCatalogNotice: 'The production catalog is not connected. Built-in or test templates are not substituted.',
       catalogUnavailable: 'The live workflow catalog is temporarily unavailable. No template was started.',
       catalogUnavailableDescription: 'Retry the catalog, or return to Start and describe a goal.',
