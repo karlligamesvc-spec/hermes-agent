@@ -46,7 +46,7 @@ import { windowsExeIdentity } from './windows-exe-identity.mjs'
 // Stamp the APEX icon + identity onto `exe`. Resolves on success, throws on
 // failure. `desktopRoot` defaults to this script's package root so the icon and
 // the rcedit dependency resolve regardless of cwd.
-async function stampExeIdentity(exe, desktopRoot = resolve(import.meta.dirname, '..')) {
+async function stampExeIdentity(exe, desktopRoot = resolve(import.meta.dirname, '..'), identityOverrides = {}) {
   if (!exe || !existsSync(exe)) {
     throw new Error(`target exe not found: ${exe}`)
   }
@@ -59,7 +59,7 @@ async function stampExeIdentity(exe, desktopRoot = resolve(import.meta.dirname, 
 
   const packageJsonPath = join(desktopRoot, 'package.json')
   const packageVersion = JSON.parse(readFileSync(packageJsonPath, 'utf8')).version
-  const identity = windowsExeIdentity(packageVersion)
+  const identity = windowsExeIdentity(packageVersion, identityOverrides)
 
   console.log(`[set-exe-identity] stamping ${exe}`)
   console.log(`[set-exe-identity] icon: ${icon}`)
@@ -76,7 +76,7 @@ async function stampExeIdentity(exe, desktopRoot = resolve(import.meta.dirname, 
     }
   })
 
-  console.log(`[set-exe-identity] done — APEX identity ${identity.FileVersion} stamped`)
+  console.log(`[set-exe-identity] done — ${identity.ProductName} identity ${identity.FileVersion} stamped`)
 }
 
 export { stampExeIdentity }

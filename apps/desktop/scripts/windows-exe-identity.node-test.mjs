@@ -27,6 +27,21 @@ test('the shipping validator accepts the exact APEX identity', () => {
   assert.deepEqual(assertWindowsExeIdentity(expected, packageVersion), expected)
 })
 
+test('a diagnostic executable can use an isolated product name without changing formal defaults', () => {
+  assert.deepEqual(
+    windowsExeIdentity(packageVersion, {
+      FileDescription: 'APEX Diagnostic Trial',
+      ProductName: 'APEX Diagnostic Trial'
+    }),
+    {
+      ...expected,
+      FileDescription: 'APEX Diagnostic Trial',
+      ProductName: 'APEX Diagnostic Trial'
+    }
+  )
+  assert.deepEqual(windowsExeIdentity(packageVersion), expected)
+})
+
 test('the shipping validator rejects an injected Hermes product identity', () => {
   assert.throws(
     () => assertWindowsExeIdentity({ ...expected, ProductName: 'Hermes' }, packageVersion),
