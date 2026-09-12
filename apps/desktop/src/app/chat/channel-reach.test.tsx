@@ -20,7 +20,7 @@ import { SidebarChannelStatus } from './sidebar/channel-status'
 // live conversation as much as the zero state). That was the loudest of three
 // entry points, and losing it is only safe because the other two are permanent:
 //
-//   1. the sidebar's "渠道 · 分身在哪" block — always there, bound or not;
+//   1. the sidebar's compact channel-status group — always there, bound or not;
 //   2. the zero state's "连接你的分身" strip, under the scenario cards.
 //
 // Each is small, easy to mistake for decoration, and easy to delete while
@@ -73,7 +73,8 @@ describe('reaching channel binding', () => {
 
     // Feishu / WeChat go to the binding flow; phone-remote to its setting.
     await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3))
-    expect(screen.getByText('渠道 · 分身在哪')).toBeTruthy()
+    expect(screen.queryByText('渠道 · 分身在哪')).toBeNull()
+    expect(screen.getByRole('group', { name: '连接你的分身' })).toBeTruthy()
     expect(screen.getAllByText('扫码绑定').length).toBeGreaterThan(0)
   })
 

@@ -3979,7 +3979,6 @@ export const en: Translations = {
     labelOutput: 'Output',
     inputNone: 'No input needed — runs right away',
     use: 'Use scenario',
-    channelsTitle: 'Channels · where your agent lives',
     connectTitle: 'Connect your agent',
     phoneRemote: 'Phone remote',
     remoteOn: 'On · /cc',
@@ -4167,7 +4166,8 @@ export const en: Translations = {
       detailTitle: 'Project overview',
       detailEyebrow: 'Project overview',
       detailUnavailableTitle: 'Project details are unavailable',
-      detailUnavailableDescription: 'APEX could not read this project. No data was replaced; return to Projects and retry.',
+      detailUnavailableDescription:
+        'APEX could not read this project. No data was replaced; return to Projects and retry.',
       loadingProjectDetail: 'Loading project details…',
       backToProjects: 'Back to Projects',
       createdAtLabel: 'Created',
@@ -4177,7 +4177,8 @@ export const en: Translations = {
       noRunTitle: 'No run has started for this project',
       noRunDescription: 'There is no Run, Step, or progress to show. Continue this goal and confirm it on Start.',
       runSummaryUnavailableTitle: 'Run summary unavailable',
-      runSummaryUnavailable: 'Project details loaded, but this API did not provide a run summary. APEX will not infer progress.',
+      runSummaryUnavailable:
+        'Project details loaded, but this API did not provide a run summary. APEX will not infer progress.',
       continueGoal: 'Continue this goal',
       viewProject: 'View project',
       deliverableCount: count => `${count} ${count === 1 ? 'deliverable' : 'deliverables'}`,
@@ -4204,7 +4205,8 @@ export const en: Translations = {
       sourceNotConnected: 'Not connected',
       noAvailableSources: 'No supported data-source connection is available in this build.',
       workflowsTitle: 'Project workflows',
-      workflowsDescription: 'A project contains the goal; a workflow is one execution path. A project can have multiple workflows.',
+      workflowsDescription:
+        'A project contains the goal; a workflow is one execution path. A project can have multiple workflows.',
       addWorkflow: 'Add workflow',
       loadingWorkflows: 'Loading project workflows…',
       noWorkflows: 'This project has no workflows, Runs, or progress yet.',
@@ -4262,7 +4264,8 @@ export const en: Translations = {
       catalogUnavailableDescription: 'Retry the catalog, or return to Start and describe a goal.',
       retryCatalog: 'Retry',
       backToStart: 'Back to Start',
-      testDataNotice: 'Local test data: this catalog is for packaged visual and interaction review, not production data.',
+      testDataNotice:
+        'Local test data: this catalog is for packaged visual and interaction review, not production data.',
       version: version => `Version ${version}`
     },
     workflowDomain: {
@@ -4419,7 +4422,8 @@ export const en: Translations = {
     heatmap: {
       title: 'Token activity',
       modeLabel: 'Token activity view',
-      summary: (activeDays, tokens) => `${activeDays} active days and ${tokens} tokens in the available activity period.`,
+      summary: (activeDays, tokens) =>
+        `${activeDays} active days and ${tokens} tokens in the available activity period.`,
       daily: 'Daily',
       weekly: 'Weekly',
       cumulative: 'Cumulative',

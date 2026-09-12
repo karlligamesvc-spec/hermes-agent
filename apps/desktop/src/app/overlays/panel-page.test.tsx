@@ -42,4 +42,21 @@ describe('PanelPage', () => {
       expect.arrayContaining(['grid', 'min-h-0', 'min-w-0', 'w-full', 'flex-1', 'place-items-center'])
     )
   })
+
+  it('opts business destinations into the shared APEX page canvas and rhythm', () => {
+    render(
+      <PanelPage aria-label="Scheduled jobs" businessPage>
+        <PanelPageBody>Jobs</PanelPageBody>
+      </PanelPage>
+    )
+
+    expect(screen.getByRole('region', { name: 'Scheduled jobs' }).className.split(' ')).toEqual(
+      expect.arrayContaining([
+        'apex-business-surface',
+        'apex-business-page',
+        'apex-primary-page',
+        'apex-primary-page--locked'
+      ])
+    )
+  })
 })

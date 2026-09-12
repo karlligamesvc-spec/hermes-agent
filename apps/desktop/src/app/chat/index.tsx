@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReadableAtom } from 'nanostores'
 import type * as React from 'react'
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useId } from "react"
+import { useId } from 'react'
 import { useLocation } from 'react-router'
 
 import { useGatewayRequest } from '@/app/gateway/hooks/use-gateway-request'
@@ -12,7 +12,7 @@ import { useCwdActions } from '@/app/session/hooks/use-cwd-actions'
 import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { sessionShouldHaveTranscript } from '@/app/session/hooks/use-session-actions/utils'
 import { Thread } from '@/components/assistant-ui/thread'
-import { TranscriptWindowProvider } from "@/components/assistant-ui/thread/transcript-window"
+import { TranscriptWindowProvider } from '@/components/assistant-ui/thread/transcript-window'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { Backdrop } from '@/components/Backdrop'
 import { COMPOSER_HEART_CONFIG, HeartField } from '@/components/chat/vibe-hearts'
@@ -85,7 +85,6 @@ import {
   transcriptBackfillAvailable
 } from './transcript-backfill'
 import { advanceTranscriptWindow, type TranscriptWindowState } from './transcript-window'
-
 
 interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   gateway: HermesGateway | null
@@ -521,6 +520,8 @@ const ChatViewContent = memo(function ChatViewContent({
     selectedSessionId
   })
 
+  const businessStartVisible = showIntro && isBusinessWorkspaceEnabled()
+
   // Session is still loading if the route references a session we haven't
   // resumed yet. Brand-new routed drafts are empty on purpose once a runtime
   // is bound. A session the list already knows has history must keep the
@@ -556,7 +557,7 @@ const ChatViewContent = memo(function ChatViewContent({
   // subagent run driven elsewhere — no composer, transcript is read-only.
   const showChatBar = shouldShowChatComposer({
     available: !loadingSession && !resumeExhausted && !isWatchWindow(),
-    businessStartVisible: showIntro && isBusinessWorkspaceEnabled(),
+    businessStartVisible,
     objectRouteOpen
   })
 
@@ -640,6 +641,7 @@ const ChatViewContent = memo(function ChatViewContent({
     <div
       className={cn(
         'relative isolate flex h-full min-w-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)',
+        businessStartVisible && 'apex-business-surface apex-business-page',
         className
       )}
       data-chat-surface=""
@@ -679,10 +681,12 @@ const ChatViewContent = memo(function ChatViewContent({
           The first-run "connect a channel" guidance used to sit here too and was
           removed in hc-590 — Kael's call: it squatted on the main content of
           every unconnected user, in the live conversation as much as the zero
-          state. Connecting a channel is reachable from the sidebar's
-          "渠道 · 分身在哪" block and the zero state's connect strip; see
-          channel-reach.test.tsx, which pins both. */}
-      {isPrimary && <DirectConnectBanner />}
+          state. Connecting a channel is reachable from the sidebar's compact
+          channel-status rows and the zero state's connect strip; see
+          channel-reach.test.tsx, which pins both. The Start page deliberately
+          omits this strip: connection state remains available in the sidebar,
+          while the goal canvas keeps one uninterrupted visual surface. */}
+      {isPrimary && !businessStartVisible && <DirectConnectBanner />}
 
       <ChatRuntimeBoundary
         busy={busy}

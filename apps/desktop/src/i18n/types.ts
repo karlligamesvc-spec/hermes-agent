@@ -3413,8 +3413,7 @@ export interface Translations {
     labelOutput: string
     inputNone: string
     use: string
-    // ① manifestation: sidebar channel status + "connect your agent" strip.
-    channelsTitle: string
+    // ① manifestation: compact sidebar channel status + "connect your agent" strip.
     connectTitle: string
     phoneRemote: string
     remoteOn: string

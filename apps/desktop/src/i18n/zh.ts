@@ -3672,7 +3672,6 @@ export const zh = defineLocale({
     labelOutput: '产出',
     inputNone: '无需参数，直接出结果',
     use: '使用场景',
-    channelsTitle: '渠道 · 分身在哪',
     connectTitle: '连接你的分身',
     phoneRemote: '手机遥控',
     remoteOn: '开 · /cc',

@@ -76,8 +76,7 @@ export function BusinessStartHome({
     workflows
   ])
 
-  const routedProjectId =
-    typeof launchState?.businessProjectId === 'string' ? launchState.businessProjectId.trim() : ''
+  const routedProjectId = typeof launchState?.businessProjectId === 'string' ? launchState.businessProjectId.trim() : ''
 
   const routedGoalDraft =
     typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : ''
@@ -126,7 +125,9 @@ export function BusinessStartHome({
     setSelectedWorkflowIsTestData(
       launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
     )
-    setGoalDraft(routedProjectId ? routedGoalDraft || launchedWorkflow?.prompt || '' : launchedWorkflow?.prompt || routedGoalDraft)
+    setGoalDraft(
+      routedProjectId ? routedGoalDraft || launchedWorkflow?.prompt || '' : launchedWorkflow?.prompt || routedGoalDraft
+    )
     setDomainError(false)
   }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
 
@@ -169,7 +170,7 @@ export function BusinessStartHome({
 
   return (
     <div
-      className="pointer-events-auto mx-auto flex w-full max-w-[52rem] min-w-0 flex-col gap-7 pb-4 pt-[clamp(1rem,2vh,1.75rem)] text-left"
+      className="pointer-events-auto mx-auto flex w-full max-w-[52rem] min-w-0 flex-col gap-7 pb-4 text-left"
       data-business-start-home=""
     >
       <header className="relative flex flex-col gap-4">

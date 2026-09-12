@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { PAGE_INSET_X } from '@/app/layout-constants'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -90,8 +89,8 @@ export function ProjectsView() {
       : { active: 0, all: 0, completed: 0 }
 
   return (
-    <section className="apex-business-surface apex-business-page h-full overflow-x-hidden overflow-y-auto px-5 py-7 sm:px-6 sm:py-8 min-[1100px]:px-9">
-      <div className="mx-auto w-full max-w-[65.625rem]">
+    <section className="apex-business-surface apex-business-page apex-primary-page">
+      <div className="apex-primary-page-column">
         <BusinessPageHeader
           action={{ icon: 'add', label: c.newProject, onClick: newProject }}
           description={c.description}
@@ -260,18 +259,25 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
     !sessionsLoading && !evidenceUnavailable && evidence !== null && !hasChildReadFailures && !hasHistory
 
   return (
-    <section className={`apex-business-surface apex-business-page flex h-full flex-col overflow-x-hidden overflow-y-auto py-8 ${PAGE_INSET_X}`}>
-      <header className="mx-auto w-full max-w-4xl border-b border-(--ui-stroke-tertiary) pb-5">
-        <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{c.description}</p>
-        {notice && (
-          <p className="mt-3 text-xs text-amber-600" role="alert">
-            {notice}
-          </p>
-        )}
-        <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">{c.legacyFallback}</p>
-      </header>
+    <section className="apex-business-surface apex-business-page apex-primary-page flex flex-col">
+      <div className="apex-primary-page-column">
+        <BusinessPageHeader
+          description={c.description}
+          eyebrow={c.eyebrow}
+          icon="folder"
+          title={c.title}
+          trailing={
+            <>
+              {notice ? (
+                <p className="mt-3 text-xs text-amber-600" role="alert">
+                  {notice}
+                </p>
+              ) : null}
+              <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">{c.legacyFallback}</p>
+            </>
+          }
+        />
+      </div>
       {showEvidenceFailure ? (
         <div className="mx-auto grid w-full max-w-4xl flex-1 place-items-center py-10 text-center">
           <div>

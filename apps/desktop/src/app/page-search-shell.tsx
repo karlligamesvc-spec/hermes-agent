@@ -44,6 +44,8 @@ interface PageSearchShellProps extends React.ComponentProps<'section'> {
    * the column's content as `children`.
    */
   centered?: boolean
+  /** Use the shared APEX primary-page canvas, content width, and vertical rhythm. */
+  businessPage?: boolean
 }
 
 function ShellTabs({
@@ -81,6 +83,7 @@ export function PageSearchShell({
   searchTrailingAction,
   searchInputRef,
   centered = false,
+  businessPage = false,
   ...props
 }: PageSearchShellProps) {
   const hasTabs = (tabs?.length ?? 0) > 0
@@ -88,7 +91,11 @@ export function PageSearchShell({
   return (
     <section
       {...props}
-      className={cn('flex h-full min-w-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)', className)}
+      className={cn(
+        'flex h-full min-w-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)',
+        businessPage && 'apex-business-surface apex-business-page',
+        className
+      )}
     >
       {/*
         Header lives in the page body, below the window chrome (the shell floats
@@ -107,7 +114,14 @@ export function PageSearchShell({
       */}
       <div className="shrink-0">
         {heading ? (
-          <div className="mx-auto w-full max-w-[65.625rem] px-5 pt-[calc(var(--titlebar-height)+0.75rem)] sm:px-6 min-[1100px]:px-9">
+          <div
+            className={cn(
+              'mx-auto w-full max-w-[65.625rem]',
+              businessPage
+                ? 'apex-primary-page-inset-x apex-primary-page-inset-top'
+                : 'px-5 pt-[calc(var(--titlebar-height)+0.75rem)] sm:px-6 min-[1100px]:px-9'
+            )}
+          >
             {heading}
           </div>
         ) : null}
@@ -136,7 +150,8 @@ export function PageSearchShell({
           : (hasTabs || !searchHidden) && (
               <div
                 className={cn(
-                  'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3 pb-2',
+                  'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 pb-2',
+                  businessPage ? 'apex-primary-page-column apex-primary-page-inset-x' : 'px-3',
                   heading ? 'pt-3' : 'pt-[calc(var(--titlebar-height)+0.5rem)]'
                 )}
               >
@@ -158,7 +173,12 @@ export function PageSearchShell({
             )}
         {filters ? <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">{filters}</div> : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)">
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-hidden bg-(--ui-chat-surface-background)',
+          businessPage && 'apex-primary-page-column apex-primary-page-inset-x pb-7 sm:pb-8'
+        )}
+      >
         {centered ? (
           // Scroll at the window edge, content in the same centered column as
           // the header. `px-3` matches the header so both edges align.

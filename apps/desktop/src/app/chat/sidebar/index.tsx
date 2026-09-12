@@ -74,7 +74,7 @@ import {
   toggleSidebarMessagingOpen,
   unpinSession
 } from '@/store/layout'
-import { notifyError } from "@/store/notifications"
+import { notifyError } from '@/store/notifications'
 import { $newChatProfile, $profiles, $profileScope, ALL_PROFILES, normalizeProfileKey } from '@/store/profile'
 import {
   $activeProjectId,
@@ -109,18 +109,10 @@ import {
   setCurrentCwd
 } from '@/store/session'
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
-import { markSessionUnread } from "@/store/session-unread-remote"
+import { markSessionUnread } from '@/store/session-unread-remote'
 
-import {
-  type AppView,
-  SIDEBAR_NAV_AREA,
-  type SidebarNavContribution
-} from '../../routes'
-import {
-  SIDEBAR_BLANK_STATE_PITCH,
-  SIDEBAR_PROJECTS_SECTION,
-  SIDEBAR_SEARCH_FIELD
-} from '../../shell/chrome-gates'
+import { type AppView, SIDEBAR_NAV_AREA, type SidebarNavContribution } from '../../routes'
+import { SIDEBAR_BLANK_STATE_PITCH, SIDEBAR_PROJECTS_SECTION, SIDEBAR_SEARCH_FIELD } from '../../shell/chrome-gates'
 import type { SidebarNavItem } from '../../types'
 
 import { AccountPanel } from './account-panel'
@@ -152,7 +144,6 @@ import { buildSessionByAnyId } from './session-index'
 import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section'
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
 import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
-
 
 // Non-session groups (messaging platforms) stay compact: show a few rows up
 // front, reveal more in larger steps on demand. Keeps a busy platform from
@@ -192,7 +183,10 @@ const LEGACY_SIDEBAR_NAV = renderableNav(LEGACY_SIDEBAR_NAV_CONTRACT)
 
 const BUSINESS_WORKSPACE_ENABLED = isBusinessWorkspaceEnabled()
 const SIDEBAR_NAV = BUSINESS_WORKSPACE_ENABLED ? BUSINESS_SIDEBAR_NAV : LEGACY_SIDEBAR_NAV
-const BUSINESS_UTILITY_NAV_IDS = new Set(['assistant', 'history'])
+// These destinations remain part of APEX's navigation contract, but live in
+// the bottom account menu alongside Profile and Settings. Keeping them out of
+// the standing rail gives the conversation list the full remaining height.
+const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history'])
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.
@@ -1182,12 +1176,8 @@ export function ChatSidebar({
   const sidebarNavItems = visibleSidebarNavItems(SIDEBAR_NAV, contributedNav, BUSINESS_WORKSPACE_ENABLED)
 
   const primarySidebarNavItems = BUSINESS_WORKSPACE_ENABLED
-    ? sidebarNavItems.filter(item => !BUSINESS_UTILITY_NAV_IDS.has(item.id))
+    ? sidebarNavItems.filter(item => !ACCOUNT_MENU_NAV_IDS.has(item.id))
     : sidebarNavItems
-
-  const utilitySidebarNavItems = BUSINESS_WORKSPACE_ENABLED
-    ? sidebarNavItems.filter(item => BUSINESS_UTILITY_NAV_IDS.has(item.id))
-    : []
 
   const renderSidebarNavItem = (item: (typeof sidebarNavItems)[number]) => {
     const isInteractive = Boolean(item.action) || Boolean(item.route)
@@ -1292,9 +1282,7 @@ export function ChatSidebar({
         </div>
         <SidebarGroup className="shrink-0 p-0 pb-2 pt-0">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-px">
-              {primarySidebarNavItems.map(renderSidebarNavItem)}
-            </SidebarMenu>
+            <SidebarMenu className="gap-px">{primarySidebarNavItems.map(renderSidebarNavItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -1441,9 +1429,7 @@ export function ChatSidebar({
                 headerAction={
                   inProject && enteredProject ? (
                     <div className="group/workspace flex shrink-0 items-center gap-0.5">
-                      {enteredProject.path && (
-                        <StartWorkButton repoPath={enteredProject.path} />
-                      )}
+                      {enteredProject.path && <StartWorkButton repoPath={enteredProject.path} />}
                       {/* Home has no folder and no record to rename, theme, or delete. */}
                       {!enteredProject.isNoProject && (
                         <ProjectMenu
@@ -1631,23 +1617,20 @@ export function ChatSidebar({
           ))}
 
         <div className="shrink-0 px-0.5 pb-1 pt-0.5">
-          {utilitySidebarNavItems.length > 0 && (
-            <SidebarMenu className="mb-1 gap-px border-t border-(--ui-stroke-tertiary) pt-1">
-              {utilitySidebarNavItems.map(renderSidebarNavItem)}
-            </SidebarMenu>
-          )}
           {/* hc-690: one update entry for the app shell + Hermes Runtime. The
               underlying artifacts stay independent; discovery, confirmation,
               progress, restart and post-restart continuation are unified. */}
           <DesktopUpdatePill />
-          {/* hc-554 显化 — 「渠道 · 分身在哪」: channel presence (飞书/微信/手机遥控)
-              above the account row. Self-gates to nothing when no channel bridge
-              exists. */}
+          {/* Compact connection state (飞书/微信/手机遥控) above the account
+              row. The explanatory heading is intentionally omitted: the rows
+              already name their channels, and the recovered height belongs to
+              recent conversations. */}
           <SidebarChannelStatus />
           {/* Bottom-left account row (avatar + name + email → popover menu).
               Renders only on managed builds when signed in; the auth gate covers
-              the signed-out case. Profile management lives in the account menu
-              (个人资料), so no separate profile rail. */}
+              the signed-out case. Profile, Settings, connection management and
+              session history live in one account menu, so none needs a separate
+              standing row. */}
           <AccountPanel />
         </div>
       </SidebarContent>

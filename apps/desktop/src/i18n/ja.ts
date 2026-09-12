@@ -3212,7 +3212,6 @@ export const ja = defineLocale({
     labelOutput: '成果物',
     inputNone: '入力不要 — すぐに実行',
     use: 'このシナリオを使う',
-    channelsTitle: 'チャネル · 分身の所在',
     connectTitle: '分身を接続',
     phoneRemote: 'スマホ遠隔',
     remoteOn: 'オン · /cc',
@@ -3397,7 +3396,8 @@ export const ja = defineLocale({
       detailTitle: 'プロジェクト概要',
       detailEyebrow: 'プロジェクト概要',
       detailUnavailableTitle: 'プロジェクト詳細を利用できません',
-      detailUnavailableDescription: 'APEX はこのプロジェクトを読み込めませんでした。データは置換されていません。プロジェクト画面から再試行してください。',
+      detailUnavailableDescription:
+        'APEX はこのプロジェクトを読み込めませんでした。データは置換されていません。プロジェクト画面から再試行してください。',
       loadingProjectDetail: 'プロジェクト詳細を読み込み中…',
       backToProjects: 'プロジェクトへ戻る',
       createdAtLabel: '作成日時',
@@ -3407,7 +3407,8 @@ export const ja = defineLocale({
       noRunTitle: 'このプロジェクトの実行はまだありません',
       noRunDescription: '表示できる Run、Step、進捗はありません。目標を続け、開始画面で確認してください。',
       runSummaryUnavailableTitle: '実行概要を利用できません',
-      runSummaryUnavailable: 'プロジェクト詳細は読み込めましたが、API に実行概要がありません。進捗を推測して表示しません。',
+      runSummaryUnavailable:
+        'プロジェクト詳細は読み込めましたが、API に実行概要がありません。進捗を推測して表示しません。',
       continueGoal: 'この目標を続ける',
       viewProject: 'プロジェクトを表示',
       deliverableCount: count => `成果物 ${count} 件`,
@@ -3434,7 +3435,8 @@ export const ja = defineLocale({
       sourceNotConnected: '未接続',
       noAvailableSources: 'このビルドで利用できるデータソース接続はありません。',
       workflowsTitle: 'プロジェクトのワークフロー',
-      workflowsDescription: 'プロジェクトは目標を保持し、ワークフローは実行経路です。1つのプロジェクトに複数追加できます。',
+      workflowsDescription:
+        'プロジェクトは目標を保持し、ワークフローは実行経路です。1つのプロジェクトに複数追加できます。',
       addWorkflow: 'ワークフローを追加',
       loadingWorkflows: 'プロジェクトのワークフローを読み込み中…',
       noWorkflows: 'このプロジェクトにはワークフロー、Run、進捗がまだありません。',

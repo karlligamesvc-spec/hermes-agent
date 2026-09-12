@@ -49,8 +49,7 @@ import {
   type ArtifactRecord,
   openArtifactHref
 } from './artifact-utils'
-import { loadArtifactsForSessions } from "./artifact-utils"
-
+import { loadArtifactsForSessions } from './artifact-utils'
 
 function formatArtifactTime(timestamp: number, locale: Locale): string {
   return formatBusinessDayTime(new Date(timestamp), locale)
@@ -303,6 +302,7 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
     <PageSearchShell
       {...props}
       activeTab={kindFilter}
+      businessPage
       heading={<ApexPageHeader description={a.description} eyebrow={a.eyebrow} icon="package" title={a.title} />}
       onSearchChange={setQuery}
       onTabChange={id => setKindFilter(id as typeof kindFilter)}

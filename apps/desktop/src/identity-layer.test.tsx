@@ -529,7 +529,8 @@ describe('identity: the home zero-state is ours', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
     const visibility = readSource('src', 'app', 'chat', 'intro-visibility.ts')
 
-    expect(chat).toContain('businessStartVisible: showIntro && isBusinessWorkspaceEnabled()')
+    expect(chat).toContain('const businessStartVisible = showIntro && isBusinessWorkspaceEnabled()')
+    expect(chat).toContain('businessStartVisible,')
     expect(chat).toContain('{showChatBar && (')
     expect(chat).toContain('attachments: introAttachments')
     expect(chat).toContain('onPickFiles')
@@ -612,13 +613,7 @@ describe('identity: the brand skin survives', () => {
     const search = readSource('src', 'components', 'ui', 'search-field.tsx')
     const searchShell = readSource('src', 'app', 'page-search-shell.tsx')
 
-    const goalLauncher = readSource(
-      'src',
-      'app',
-      'business-workspace',
-      'components',
-      'business-goal-launcher.tsx'
-    )
+    const goalLauncher = readSource('src', 'app', 'business-workspace', 'components', 'business-goal-launcher.tsx')
 
     const styles = readSource('src', 'styles.css')
 
@@ -633,34 +628,58 @@ describe('identity: the brand skin survives', () => {
   })
 
   it('uses one APEX page-heading system across projects, workflows, scheduled jobs, and deliverables', () => {
-    const businessHeader = readSource(
-      'src',
-      'app',
-      'business-workspace',
-      'components',
-      'business-page-header.tsx'
-    )
+    const businessHeader = readSource('src', 'app', 'business-workspace', 'components', 'business-page-header.tsx')
 
     const cron = readSource('src', 'app', 'cron', 'index.tsx')
     const artifacts = readSource('src', 'app', 'artifacts', 'index.tsx')
+    const projects = readSource('src', 'app', 'business-workspace', 'pages', 'projects-page.tsx')
+    const workflows = readSource('src', 'app', 'business-workspace', 'pages', 'workflows-page.tsx')
+    const pageShell = readSource('src', 'app', 'page-search-shell.tsx')
+    const panel = readSource('src', 'app', 'overlays', 'panel.tsx')
+    const styles = readSource('src', 'styles.css')
     const settings = readSource('src', 'app', 'settings', 'primitives.tsx')
 
     expect(businessHeader).toContain('<ApexPageHeader {...props} />')
     expect(cron).toContain('<ApexPageHeader')
+    expect(cron).toContain('businessPage data-cron-surface="page"')
+    expect(cron).toContain('className="apex-primary-page-column"')
     expect(artifacts).toContain('heading={<ApexPageHeader')
+    expect(artifacts).toContain('businessPage')
+    expect(projects).toContain('apex-primary-page')
+    expect(workflows).toContain('apex-primary-page')
+    expect(pageShell).toContain("businessPage && 'apex-primary-page-column apex-primary-page-inset-x pb-7 sm:pb-8'")
+    expect(panel).toContain("'apex-business-surface apex-business-page apex-primary-page apex-primary-page--locked'")
+    expect(styles).toContain('.apex-primary-page-column')
+    expect(styles).toMatch(/\.apex-business-page\s*\{[^}]*--ui-chat-surface-background:\s*var\(--ui-bg-chrome\)/s)
     expect(settings).toContain('className="p5-section-heading"')
     expect(settings).toContain('<div className="p5-row"')
   })
 
-  it('moves connection and session-history utilities to the sidebar footer without hiding real recents', () => {
+  it('keeps Start on one uninterrupted canvas and omits the session connection strip there', () => {
+    const chat = readSource('src', 'app', 'chat', 'index.tsx')
+    const intro = readSource('src', 'components', 'chat', 'intro.tsx')
+
+    expect(chat).toContain("businessStartVisible && 'apex-business-surface apex-business-page'")
+    expect(chat).toContain('isPrimary && !businessStartVisible && <DirectConnectBanner />')
+    expect(intro).toContain('apex-business-page apex-primary-page-inset')
+    expect(intro).not.toContain('apex-business-surface apex-business-page items-start')
+  })
+
+  it('moves connection and session-history utilities into the account menu without hiding real recents', () => {
     const sidebar = readSource('src', 'app', 'chat', 'sidebar', 'index.tsx')
+    const accountPanel = readSource('src', 'app', 'chat', 'sidebar', 'account-panel.tsx')
+    const channelStatus = readSource('src', 'app', 'chat', 'sidebar', 'channel-status.tsx')
     const zh = readSource('src', 'i18n', 'zh.ts')
 
-    expect(sidebar).toContain("const BUSINESS_UTILITY_NAV_IDS = new Set(['assistant', 'history'])")
-    expect(sidebar).toContain('{utilitySidebarNavItems.map(renderSidebarNavItem)}')
+    expect(sidebar).toContain("const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history'])")
+    expect(sidebar).not.toContain('utilitySidebarNavItems')
+    expect(accountPanel).toContain('<span>{nav.assistant}</span>')
+    expect(accountPanel).toContain('<span>{nav.history}</span>')
+    expect(channelStatus).not.toContain('s.channelsTitle')
     expect(sidebar).toMatch(/BUSINESS_WORKSPACE_ENABLED \|\| showAllProfiles\s*\? sessions/)
     expect(zh).toContain("assistant: '连接助手'")
     expect(zh).toContain("history: '历史会话'")
+    expect(zh).not.toContain('渠道 · 分身在哪')
   })
 })
 
@@ -718,6 +737,8 @@ describe('identity: the APEX business shell stays user-facing', () => {
 
       expect(await screen.findByRole('menuitem', { name: '个人资料' })).toBeTruthy()
       expect(screen.getByRole('menuitem', { name: '设置' })).toBeTruthy()
+      expect(screen.getByRole('menuitem', { name: '连接助手' })).toBeTruthy()
+      expect(screen.getByRole('menuitem', { name: '历史会话' })).toBeTruthy()
     } finally {
       $authState.set(previousAuthState)
     }

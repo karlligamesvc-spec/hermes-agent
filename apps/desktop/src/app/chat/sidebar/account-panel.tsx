@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { $authState, type AuthAccount, signOutAccount } from '@/store/auth'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
-import { PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
+import { ASSISTANT_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 
 // The signed-in display name: prefer an explicit name, else the email's local
 // part, else a generic fallback ("账户"). The avatar shows its first letter.
@@ -41,13 +41,15 @@ function initialOf(name: string): string {
 // Bottom-left account panel (Codex account row, high-fidelity). The row is
 // avatar (initial) + a two-line stack: display name over the signed-in email —
 // no plan badge, no phone icon, no caret, matching the Codex reference. Click →
-// a popover menu with 个人资料 (profile → the usage-stats page), 设置 (settings),
-// 剩余用量 (usage — only when quota data is on hand), 退出登录 (logout). Rendered
+// a popover menu with 个人资料, 设置, 连接助手, 历史会话, optional real usage,
+// and 退出登录. The four destinations share one information-architecture group
+// instead of spending permanent sidebar height on two additional rows. Rendered
 // only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
 export function AccountPanel() {
   const { t } = useI18n()
   const a = t.auth.account
+  const nav = t.sidebar.nav
   const navigate = useNavigate()
   const { account, enabled, status } = useStore($authState)
   const [open, setOpen] = useState(false)
@@ -134,6 +136,14 @@ export function AccountPanel() {
         <DropdownMenuItem onSelect={() => navigate(`${SETTINGS_ROUTE}`)}>
           <Codicon name="settings-gear" size="0.875rem" />
           <span>{a.settings}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate(ASSISTANT_ROUTE)}>
+          <Codicon name="organization" size="0.875rem" />
+          <span>{nav.assistant}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate(HISTORY_ROUTE)}>
+          <Codicon name="history" size="0.875rem" />
+          <span>{nav.history}</span>
         </DropdownMenuItem>
         {usageLabel ? (
           <DropdownMenuItem onSelect={() => navigate(`${SETTINGS_ROUTE}`)}>

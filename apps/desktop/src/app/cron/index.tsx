@@ -86,7 +86,6 @@ import {
 } from './cron-job-model'
 import { jobState, jobTitle, STATE_DOT } from './job-state'
 
-
 const DEFAULT_DELIVER = 'local'
 
 // Radix <SelectItem> rejects empty-string values, so the "no override" row in
@@ -634,9 +633,10 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
   }
 
   return (
-    <PanelPage {...props} aria-labelledby="cron-page-title" data-cron-surface="page">
+    <PanelPage {...props} aria-labelledby="cron-page-title" businessPage data-cron-surface="page">
       <ApexPageHeader
         action={{ icon: 'add', label: c.newCron, onClick: () => setEditor({ mode: 'create' }) }}
+        className="apex-primary-page-column"
         description={c.description}
         eyebrow={c.eyebrow}
         icon="calendar"
@@ -645,7 +645,7 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
         trailing={<p className="mt-2 text-xs text-(--ui-text-tertiary)">{c.count(totalCount)}</p>}
       />
 
-      <PanelPageBody className="pt-5">
+      <PanelPageBody className="apex-primary-page-column pt-5">
         {loading && jobs.length === 0 ? (
           <PageLoader label={c.loading} />
         ) : loadError && jobs.length === 0 ? (

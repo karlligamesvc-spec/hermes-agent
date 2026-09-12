@@ -3090,7 +3090,6 @@ export const zhHant = defineLocale({
     labelOutput: '產出',
     inputNone: '無需參數，直接出結果',
     use: '使用場景',
-    channelsTitle: '管道 · 分身在哪',
     connectTitle: '連接你的分身',
     phoneRemote: '手機遙控',
     remoteOn: '開 · /cc',

@@ -63,11 +63,8 @@ export function WorkflowsView() {
   }
 
   return (
-    <section
-      className="apex-business-surface apex-business-page h-full overflow-x-hidden overflow-y-auto px-5 py-7 sm:px-6 sm:py-8 min-[1100px]:px-9"
-      data-business-workflows-page=""
-    >
-      <div className="mx-auto w-full max-w-[65.625rem]">
+    <section className="apex-business-surface apex-business-page apex-primary-page" data-business-workflows-page="">
+      <div className="apex-primary-page-column">
         <BusinessPageHeader
           action={{
             icon: 'play',
@@ -90,7 +87,10 @@ export function WorkflowsView() {
           }
         />
       </div>
-      <section className="mx-auto w-full max-w-[65.625rem] border-b border-(--ui-stroke-tertiary) py-6" data-saved-workflows="">
+      <section
+        className="mx-auto w-full max-w-[65.625rem] border-b border-(--ui-stroke-tertiary) py-6"
+        data-saved-workflows=""
+      >
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold">{c.savedTitle}</h2>
