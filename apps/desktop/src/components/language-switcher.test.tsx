@@ -25,7 +25,7 @@ describe('LanguageSwitcher', () => {
     vi.restoreAllMocks()
   })
 
-  it('persists language changes through display.language config', async () => {
+  it('keeps a parked pointer inert, then persists a real move-and-click language change', async () => {
     const saveConfig = vi.fn().mockResolvedValue({ ok: true })
     const latestConfig: HermesConfigRecord = { display: { language: 'en', skin: 'slate' } }
 
@@ -45,7 +45,19 @@ describe('LanguageSwitcher', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch language' }))
-    fireEvent.click(screen.getByRole('option', { name: /日本語/i }))
+    const option = screen.getByRole('option', { name: /日本語/i })
+    const commandList = option.closest('[data-slot="command-list"]')
+
+    expect(commandList).toBeTruthy()
+    expect(commandList!.className).toContain('pointer-events-none')
+
+    // A real pointer cannot target the inert list yet; its first movement lands
+    // on the surrounding command surface, whose window-capture listener wakes
+    // all options without treating the parked cursor as selection intent.
+    fireEvent.mouseMove(commandList!.parentElement!)
+    await waitFor(() => expect(commandList!.className).not.toContain('pointer-events-none'))
+
+    fireEvent.click(option)
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1))
     expect(saveConfig).toHaveBeenCalledWith({ display: { language: 'ja', skin: 'slate' } })

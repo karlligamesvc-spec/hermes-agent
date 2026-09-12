@@ -353,6 +353,15 @@ export const ja = defineLocale({
       },
       backdropTitle: 'チャット背景',
       backdropDesc: '会話の背後に表示される淡い彫像の画像。',
+      tipsTitle: 'アプリ内ヒント',
+      tipsDesc:
+        '操作に役立つ場面やアイドル時に、APEX が画面の一部を指す小さなヒントを表示します。閉じたヒントは今後表示されません。',
+      tipsReset: (count: number) => `閉じたヒント ${count} 件を復元`,
+      toursTitle: 'ガイドツアー',
+      toursDesc: '画面を暗くして現在の手順を強調しながら、APEX がアプリを順番に案内します。',
+      vibeHeartsTitle: 'リアクションハート',
+      vibeHeartsDesc:
+        '感謝や愛情を伝えたり、ハートを送ったりすると、浮かぶハートを表示します。上のメッセージリアクションとは別の機能です。',
       embedsTitle: 'インライン埋め込み',
       embedsDesc:
         'リッチプレビューは第三者サイト（YouTube、X など）から読み込まれます。確認は許可するまでプレースホルダーを表示し、常には自動で読み込み、オフはリンクのままにします。',
@@ -3307,7 +3316,9 @@ export const ja = defineLocale({
       label: '業務目標',
       placeholder: '例：米国のペット用品市場を分析し、商品選定レポートと販売素材を作成する',
       hint: 'Enter で開始 · Shift+Enter で改行',
-      submit: '目標を開始'
+      submit: '目標を開始',
+      workflowAttachmentsUnsupported:
+        'このワークフローでは目標への添付をまだ送信できません。添付を削除して続行するまで、目標、ワークフローの選択、現在の添付は保持されます。'
     },
     projects: {
       eyebrow: '目標から納品まで',
@@ -3444,7 +3455,7 @@ export const ja = defineLocale({
       },
       savedTitle: '自分のワークフロー',
       savedEmpty: '保存済みワークフローはまだありません。目標を始めると最初のワークフローが作成されます。',
-      savedCount: count => `実際のワークフロー ${count} 件`,
+      savedCount: count => `ワークフロー ${count} 件`,
       localCatalogNotice: '本番カタログは接続されていません。内蔵またはテスト用テンプレートで代替しません。',
       catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
       catalogUnavailableDescription: 'カタログを再試行するか、開始画面に戻って目標を入力してください。',

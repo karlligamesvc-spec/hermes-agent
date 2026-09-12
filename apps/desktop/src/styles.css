@@ -329,9 +329,9 @@
     --dt-primary: var(--theme-primary);
     --dt-primary-foreground: #fcfcfc;
     /* Boot-paint fallbacks. themes/context.tsx replaces --dt-primary-solid with
-       the hue deepened until #fcfcfc clears AA on it; until it runs, the raw
-       primary is the closest honest guess. */
-    --dt-primary-solid: var(--theme-primary);
+       the active hue deepened until #fcfcfc clears AA on it. #6556bf is that
+       same derivation for the default #7e6cef APEX violet. */
+    --dt-primary-solid: #6556bf;
     --dt-primary-solid-foreground: #fcfcfc;
     --dt-secondary: var(--theme-secondary);
     --dt-secondary-foreground: var(--ui-text-secondary);
@@ -464,7 +464,7 @@
     --image-preview-max-width: 34rem;
     --image-preview-height: clamp(16.25rem, calc(var(--vsq) * 100), 26.25rem);
 
-    --sidebar-width: 14.8125rem;
+    --sidebar-width: 11.875rem;
     --chat-min-width: 28rem;
     --titlebar-control-size: 24px;
     --titlebar-control-height: 24px;
@@ -595,6 +595,17 @@
   :root[data-hermes-glass] [data-contrib-shell],
   :root[data-hermes-glass] [data-slot='sidebar-wrapper'] {
     background-color: transparent !important;
+  }
+
+  /* Light APEX business pages are one continuous reading canvas. Restore the
+     shared full-window shell painter AFTER the generic glass clearing rule so
+     Start, Projects/Project drawers and Workflows/Run drawers cannot expose a
+     grey native-material gutter around their opaque page. The explicit route
+     state keeps ordinary Sessions on whole-window glass, while :not(.dark)
+     leaves the user's dark glass appearance untouched. Native vibrancy stays
+     mounted below this painter and becomes visible again on a Session route. */
+  :root:not(.dark)[data-hermes-glass] [data-contrib-shell][data-apex-surface='business-canvas'] {
+    background-color: var(--ui-bg-chrome) !important;
   }
 
   /* Surfaces that MASK sibling content must stay filled under glass — a
@@ -951,23 +962,77 @@
   }
 }
 
-/* No focus rings, anywhere. Kills the native outline plus Tailwind's
-   `focus-visible:ring-*` (a box-shadow driven by --tw-ring-*). Unlayered so it
-   beats the utilities layer without !important on the outline. The composer /
-   .desktop-input-chrome focus glow is untouched — those set `box-shadow`
-   directly rather than through the ring vars. */
-*:focus,
-*:focus-visible {
+/* Pointer focus stays visually quiet, while keyboard focus remains explicit.
+   Shared controls may add a box-shadow ring; the outline is the fail-safe for
+   native buttons and custom rows that do not use the shared Button primitive. */
+*:focus {
   outline: none;
 }
 
 *:focus-visible {
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  outline: 0.125rem solid color-mix(in srgb, var(--theme-primary) 72%, var(--ui-text-primary));
+  outline-offset: 0.125rem;
+}
+
+/* APEX business routes must remain an opaque reading surface even when the
+   optional window-glass mode makes chat/editor fields transparent. The token
+   follows the active theme instead of forcing the app into a light palette. */
+.apex-business-surface {
+  background: var(--ui-bg-chrome);
+}
+
+.apex-business-page {
+  /* Opaque, contrast-safe copy on the business canvas. The shared tertiary
+     token is translucent by design for dense chat chrome; using it unchanged
+     here made explanatory copy fall below the approved reading hierarchy. */
+  --ui-text-tertiary: color-mix(in srgb, var(--ui-base) 68%, var(--ui-bg-chrome));
+  --ui-text-quaternary: color-mix(in srgb, var(--ui-base) 48%, var(--ui-bg-chrome));
+  --dt-muted-foreground: var(--ui-text-tertiary);
+  color: var(--ui-text-primary);
+}
+
+.apex-primary-sidebar {
+  --ui-sidebar-surface-background: color-mix(in srgb, var(--ui-bg-sidebar) 92%, var(--ui-blue) 8%);
+  --ui-row-active-background: color-mix(in srgb, var(--ui-bg-elevated) 98%, var(--ui-blue) 2%);
+}
+
+.apex-goal-launcher {
+  border-color: color-mix(in srgb, var(--theme-primary) 26%, var(--ui-stroke-secondary));
+  background:
+    linear-gradient(var(--ui-bg-elevated), var(--ui-bg-elevated)) padding-box,
+    linear-gradient(120deg, color-mix(in srgb, var(--theme-primary) 48%, transparent), color-mix(in srgb, var(--ui-cyan) 34%, transparent)) border-box;
+  box-shadow: 0 1rem 2.5rem color-mix(in srgb, var(--theme-primary) 9%, transparent), var(--shadow-sm);
+}
+
+.apex-goal-launcher:focus-within {
+  border-color: transparent;
+  box-shadow: 0 0 0 0.1875rem color-mix(in srgb, var(--theme-primary) 16%, transparent), 0 1rem 2.5rem color-mix(in srgb, var(--theme-primary) 11%, transparent);
+}
+
+/* The 900px native tier reveals the 190px sidebar, so viewport media queries
+   alone cannot decide whether three illustrated workflow entries are readable.
+   Size columns from the real content container: one column stays calm on the
+   approved narrow tier, while wider containers fit as many complete tracks
+   as they actually have room for. The app's 17px rem base makes 14.25rem
+   242.25px; the 748px Start rail can therefore hold three rendered 246px
+   cards while the shared compact gap preserves readable copy width. */
+.apex-workflow-entry-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 47.5rem) {
+  .apex-workflow-entry-grid {
+    grid-template-columns: repeat(auto-fit, minmax(14.25rem, 1fr));
+  }
 }
 
 button {
   -webkit-app-region: no-drag;
+}
+
+button:disabled,
+button[aria-disabled='true'] {
+  cursor: default;
 }
 
 /* Button variant styling lives entirely in the cva in components/ui/button.tsx

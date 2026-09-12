@@ -58,6 +58,7 @@ import { groupWorkspaceOwnerKey } from './group-membership'
 import { annotateOrphanedGroupChatMembers } from './hygiene'
 import { BOTS_LOCALES } from './i18n'
 import { displayName } from './labels'
+import { HERMES_BOTS_PANE_WIDTH } from './pane-layout'
 import { startBotRelay, stopBotRelay } from './relay'
 import { $activityToasts } from './roster-actions'
 import {
@@ -384,7 +385,7 @@ export default {
       // zone's tab strip, so the pane stays reachable while collapsed.
       data: {
         placement: 'left',
-        width: '260px',
+        width: HERMES_BOTS_PANE_WIDTH,
         collapsible: true,
         hideOnly: true,
         dock: {

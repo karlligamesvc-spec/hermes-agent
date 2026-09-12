@@ -28,6 +28,24 @@ describe('desktop i18n runtime translator', () => {
     expect(translateNow('notifications.updateReadyMessage', 2)).toBe('2 new changes available.')
   })
 
+  it('keeps saved workflow counts factual without presenting provenance as a quantity', () => {
+    const expected = {
+      en: ['1 workflow', '2 workflows'],
+      ja: ['ワークフロー 1 件', 'ワークフロー 2 件'],
+      zh: ['1 个工作流', '2 个工作流'],
+      'zh-hant': ['1 個工作流程', '2 個工作流程']
+    } as const
+
+    for (const [locale, counts] of Object.entries(expected)) {
+      setRuntimeI18nLocale(locale as keyof typeof expected)
+
+      expect([
+        translateNow('businessWorkspace.workflows.savedCount', 1),
+        translateNow('businessWorkspace.workflows.savedCount', 2)
+      ]).toEqual(counts)
+    }
+  })
+
   it('translates migrated overlap keys for newly supported locales', () => {
     setRuntimeI18nLocale('ja')
     expect(translateNow('common.save')).toBe('保存')
@@ -50,6 +68,41 @@ describe('desktop i18n runtime translator', () => {
     expect(translateNow('settings.appearance.reasoningCollapsedDesc')).toBe(
       'أبقِ التفكير المتدفق متاحًا دون توسيعه حتى تفتحه.'
     )
+  })
+
+  it('localizes the visible appearance helpers without English or Hermes fallback', () => {
+    const expected = {
+      ja: ['アプリ内ヒント', 'ガイドツアー', 'リアクションハート'],
+      zh: ['应用内提示', '引导教程', '互动爱心'],
+      'zh-hant': ['應用程式內提示', '導覽教學', '互動愛心']
+    } as const
+
+    for (const [locale, titles] of Object.entries(expected)) {
+      setRuntimeI18nLocale(locale as keyof typeof expected)
+
+      expect([
+        translateNow('settings.appearance.tipsTitle'),
+        translateNow('settings.appearance.toursTitle'),
+        translateNow('settings.appearance.vibeHeartsTitle')
+      ]).toEqual(titles)
+
+      const copy = [
+        translateNow('settings.appearance.tipsDesc'),
+        translateNow('settings.appearance.tipsReset', 2),
+        translateNow('settings.appearance.toursDesc'),
+        translateNow('settings.appearance.vibeHeartsDesc')
+      ].join(' ')
+
+      expect(copy).toContain('APEX')
+      expect(copy).not.toContain('Hermes')
+    }
+
+    for (const locale of ['en', 'ar'] as const) {
+      setRuntimeI18nLocale(locale)
+      expect(
+        [translateNow('settings.appearance.tipsDesc'), translateNow('settings.appearance.toursDesc')].join(' ')
+      ).not.toContain('Hermes')
+    }
   })
 
   it('keeps translated settings field copy addressable from schema keys', () => {

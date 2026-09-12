@@ -14,6 +14,34 @@ const bloomberg = (foreground: string) => ({
 
 const cssVar = (name: string) => window.document.documentElement.style.getPropertyValue(name)
 
+const independentContrast = (first: string, second: string) => {
+  const luminance = (hex: string) => {
+    const channels = hex
+      .slice(1)
+      .match(/.{2}/g)!
+      .map(channel => Number.parseInt(channel, 16) / 255)
+      .map(channel => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+  }
+
+  const firstLuminance = luminance(first)
+  const secondLuminance = luminance(second)
+
+  return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05)
+}
+
+const darkenChannels = (hex: string, factor: number) =>
+  `#${hex
+    .slice(1)
+    .match(/.{2}/g)!
+    .map(channel =>
+      Math.round(Number.parseInt(channel, 16) * factor)
+        .toString(16)
+        .padStart(2, '0')
+    )
+    .join('')}`
+
 describe('ThemeProvider ← backend skin sync', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -33,6 +61,25 @@ describe('ThemeProvider ← backend skin sync', () => {
 
     expect(cssVar('--theme-foreground')).toBe('#ff9f0a')
     expect(cssVar('--theme-background-seed')).toBe('#000000')
+  })
+
+  it('derives a contrast-safe solid primary for default, hover and pressed actions', () => {
+    render(
+      <ThemeProvider>
+        <div />
+      </ThemeProvider>
+    )
+
+    const foreground = cssVar('--dt-primary-solid-foreground')
+    const solid = cssVar('--dt-primary-solid')
+    const hover = darkenChannels(solid, 0.9)
+    const pressed = darkenChannels(solid, 0.96)
+
+    expect(foreground).toBe('#fcfcfc')
+    expect(solid).toBe('#6556bf')
+    expect(independentContrast(solid, foreground)).toBeGreaterThanOrEqual(4.5)
+    expect(independentContrast(hover, foreground)).toBeGreaterThanOrEqual(4.5)
+    expect(independentContrast(pressed, foreground)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('repaints an in-place edit of the ACTIVE skin (same name, new palette)', () => {

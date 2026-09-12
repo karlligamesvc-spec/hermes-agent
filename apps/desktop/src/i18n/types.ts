@@ -3508,6 +3508,7 @@ export interface Translations {
       placeholder: string
       hint: string
       submit: string
+      workflowAttachmentsUnsupported: string
     }
     projects: {
       eyebrow: string

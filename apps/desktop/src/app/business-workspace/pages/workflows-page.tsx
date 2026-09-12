@@ -54,7 +54,7 @@ export function WorkflowsView() {
 
   return (
     <section
-      className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-6 py-8 min-[1100px]:px-9"
+      className="apex-business-surface apex-business-page h-full overflow-x-hidden overflow-y-auto px-5 py-7 sm:px-6 sm:py-8 min-[1100px]:px-9"
       data-business-workflows-page=""
     >
       <div className="mx-auto w-full max-w-[65.625rem]">
@@ -70,7 +70,10 @@ export function WorkflowsView() {
           title={c.title}
           trailing={
             testCatalog ? (
-              <p className="mt-3 rounded-lg border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200" role="status">
+              <p
+                className="mt-3 rounded-lg border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-200"
+                role="status"
+              >
                 {c.testDataNotice}
               </p>
             ) : undefined
@@ -83,7 +86,10 @@ export function WorkflowsView() {
           <span>{c.title}</span>
         </div>
       ) : result.mode !== 'ready' ? (
-        <div className="mx-auto grid min-h-72 w-full max-w-[65.625rem] place-items-center py-10 text-center" data-workflow-recovery="">
+        <div
+          className="mx-auto grid min-h-72 w-full max-w-[65.625rem] place-items-center py-10 text-center"
+          data-workflow-recovery=""
+        >
           <div>
             <Codicon className="mx-auto text-amber-500" name="warning" size="1.75rem" />
             <EmptyState
@@ -103,7 +109,7 @@ export function WorkflowsView() {
         </div>
       ) : (
         <>
-          <div className="mx-auto w-full max-w-[65.625rem] py-6">
+          <div className="mx-auto w-full max-w-[65.625rem] py-5">
             <div className="mb-4 flex items-end justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold">{c.recommendedTitle}</h2>
@@ -111,7 +117,7 @@ export function WorkflowsView() {
               </div>
               <span className="text-xs text-(--ui-text-tertiary)">{c.pathCount(recommended.length)}</span>
             </div>
-            <div className="grid grid-cols-1 gap-3 min-[820px]:grid-cols-3" data-recommended-workflows="">
+            <div className="apex-workflow-entry-grid grid gap-1" data-recommended-workflows="">
               {recommended.map(starter => (
                 <WorkflowStarterCard
                   action={c.use}
@@ -123,11 +129,14 @@ export function WorkflowsView() {
               ))}
             </div>
 
-            <div className="mb-4 mt-8 flex items-center justify-between gap-4 border-t border-(--ui-stroke-tertiary) pt-6">
+            <div className="mb-4 mt-7 flex items-center justify-between gap-4 border-t border-(--ui-stroke-tertiary) pt-6">
               <h2 className="text-base font-semibold">{c.additionalTitle}</h2>
               <span className="text-xs text-(--ui-text-tertiary)">{c.pathCount(additional.length)}</span>
             </div>
-            <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-3" data-additional-workflows="">
+            <div
+              className="grid grid-cols-1 gap-3 min-[760px]:grid-cols-2 min-[1100px]:grid-cols-3"
+              data-additional-workflows=""
+            >
               {additional.map(starter => (
                 <WorkflowStarterCard
                   action={c.useShort}
@@ -148,7 +157,7 @@ export function WorkflowsView() {
             <span className="text-xs text-(--ui-text-tertiary)">{c.savedCount(result.items.length)}</span>
           </div>
           {result.items.length > 0 ? (
-            <div className="mt-4 overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated)">
+            <div className="mt-4 overflow-hidden rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-xs">
               {result.items.map(workflow => (
                 <div
                   className="flex items-start justify-between gap-4 border-b border-(--ui-stroke-tertiary) px-4 py-3 last:border-b-0"

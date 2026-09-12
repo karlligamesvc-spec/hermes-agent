@@ -429,6 +429,11 @@ describe('zero setup: a managed user is never asked to pick a provider', () => {
       </I18nProvider>
     )
 
+    const signIn = screen.getByRole('button', { name: '登录 APEX 账户' })
+
+    expect(signIn.className).toContain('bg-(--dt-primary-solid)')
+    expect(signIn.className).not.toContain('bg-(--theme-primary)')
+
     fireEvent.click(screen.getByRole('button', { name: '使用自己的密钥' }))
 
     // Marked as an explicit BYOK detour, and the account gate steps aside so the
@@ -459,7 +464,7 @@ describe('identity: the home zero-state is ours', () => {
       <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <I18nProvider configClient={null} initialLocale="zh">
-            <Intro />
+            <Intro onPickFiles={vi.fn()} />
           </I18nProvider>
         </MemoryRouter>
       </QueryClientProvider>
@@ -481,7 +486,9 @@ describe('identity: the home zero-state is ours', () => {
       expect(screen.getByRole('button', { name: '开始一个目标' })).toBeTruthy()
       expect(screen.getByRole('textbox', { name: '业务目标' })).toBeTruthy()
       expect(screen.getAllByRole('textbox')).toHaveLength(1)
+      expect(screen.getByRole('button', { name: '附加' }).hasAttribute('disabled')).toBe(false)
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
+      expect(container.querySelector('[data-slot="composer-root"]')).toBeNull()
       expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy()
       expect(container.querySelector('[data-business-start-shelf]')).toBeTruthy()
       expect(container.querySelectorAll('[data-workflow-starter="shelf"]')).toHaveLength(3)
@@ -524,6 +531,9 @@ describe('identity: the home zero-state is ours', () => {
 
     expect(chat).toContain('businessStartVisible: showIntro && isBusinessWorkspaceEnabled()')
     expect(chat).toContain('{showChatBar && (')
+    expect(chat).toContain('attachments: introAttachments')
+    expect(chat).toContain('onPickFiles')
+    expect(chat).toContain('onRemoveAttachment')
     expect(visibility).toContain('!input.businessStartVisible || input.objectRouteOpen')
   })
 
@@ -571,6 +581,7 @@ describe('identity: the brand skin survives', () => {
     const styles = readSource('src', 'styles.css')
 
     expect(styles).toContain('--theme-primary: #7e6cef;')
+    expect(styles).toContain('--dt-primary-solid: #6556bf;')
     expect(styles).not.toContain('--theme-primary: #0053fd;')
   })
 
@@ -583,6 +594,18 @@ describe('identity: the brand skin survives', () => {
     for (const cls of ['.p5-settings', '.p5-card', '.p5-profile-heatmap', '.p5-update-pill']) {
       expect(styles).toContain(cls)
     }
+  })
+
+  it('keeps APEX business chrome cool-blue with a restrained sidebar hierarchy', () => {
+    const styles = readSource('src', 'styles.css')
+
+    expect(styles).toMatch(/\.apex-business-surface \{\s*background: var\(--ui-bg-chrome\)/)
+    expect(styles).toMatch(
+      /\.apex-primary-sidebar \{[\s\S]*?--ui-sidebar-surface-background: color-mix\(in srgb, var\(--ui-bg-sidebar\) 92%, var\(--ui-blue\) 8%\)/
+    )
+    expect(styles).toMatch(
+      /\.apex-primary-sidebar \{[\s\S]*?--ui-row-active-background: color-mix\(in srgb, var\(--ui-bg-elevated\) 98%, var\(--ui-blue\) 2%\)/
+    )
   })
 })
 
@@ -698,7 +721,6 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
   it('keeps the platform JWT in Electron and exposes only typed workflow operations', () => {
     const main = readSource('electron', 'main.ts')
     const preload = readSource('electron', 'preload.ts')
-
     expect(main).toContain('import {\n  cancelWorkflowDomainRun,')
     expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
@@ -728,5 +750,18 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(surfaces).toContain('path="workflow-runs/:runId"')
     expect(runView).toContain("review(deliverable.id, 'approved')")
     expect(runView).toContain("review(deliverable.id, 'changes_requested')")
+  })
+})
+
+describe('release boundary: hc-825 remains Phase 1-only', () => {
+  it('does not carry the hc-820 Run drawer expansion or dual-tab surface', () => {
+    const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
+    const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
+    const routeDrawer = readSource('src', 'app', 'overlays', 'responsive-route-drawer.tsx')
+
+    expect(runView).not.toContain('data-run-scroll-container')
+    expect(runView).not.toContain('<TabsTrigger')
+    expect(surfaces).not.toContain('<RouteDrivenDrawer compact')
+    expect(routeDrawer).not.toContain('ROUTE_DRAWER_COMPACT_QUERY')
   })
 })

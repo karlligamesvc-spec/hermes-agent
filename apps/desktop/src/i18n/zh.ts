@@ -276,6 +276,8 @@ export const zh = defineLocale({
       'view.showBrowser': '打开浏览器',
       'view.showTerminal': '显示终端',
       'view.terminalSelection': '将终端选区发送到输入框',
+      'view.toggleStatusbar': '显示或隐藏状态栏',
+      'view.toggleTabStrip': '显示或隐藏标签栏',
       'view.closeTab': '关闭标签',
       'view.reopenTab': '重新打开已关闭的标签',
       'view.flipPanes': '交换侧边栏位置',
@@ -507,6 +509,13 @@ export const zh = defineLocale({
       },
       backdropTitle: '聊天背景',
       backdropDesc: '对话后方那张淡淡的雕像图片。',
+      tipsTitle: '应用内提示',
+      tipsDesc: '在空闲时或 APEX 判断有帮助时，偶尔显示一个指向界面局部的小气泡。关闭后将永久收起该提示。',
+      tipsReset: (count: number) => `恢复 ${count} 条已关闭提示`,
+      toursTitle: '引导教程',
+      toursDesc: '让 APEX 逐步带你熟悉应用；界面会变暗，并逐项突出当前步骤。',
+      vibeHeartsTitle: '互动爱心',
+      vibeHeartsDesc: '当你说“谢谢”“爱你”“好助手”或发送爱心时，显示漂浮爱心；与上方的消息回应分开。',
       embedsTitle: '内嵌预览',
       embedsDesc:
         '富预览会从第三方网站（YouTube、X 等）加载。询问会在你允许前显示占位符；总是会自动加载；关闭则保留纯链接。',
@@ -1752,6 +1761,7 @@ export const zh = defineLocale({
     restartGateway: '重启网关',
     openBrowser: '打开浏览器',
     gatewayRestartFailed: '网关重启失败。',
+    updateHermes: '更新 APEX',
     checkDesktopUpdate: '检查 APEX 更新',
     checkingDesktopUpdate: '正在检查更新…',
     desktopUpdateReady: 'APEX 应用或 AI 引擎更新已就绪。',
@@ -3766,7 +3776,9 @@ export const zh = defineLocale({
       label: '业务目标',
       placeholder: '例如：分析美国宠物用品市场，并生成选品报告和上架素材',
       hint: 'Enter 开始执行 · Shift+Enter 换行',
-      submit: '开始执行'
+      submit: '开始执行',
+      workflowAttachmentsUnsupported:
+        '此工作流暂不支持随目标提交附件。目标、工作流选择和当前附件会保留，直到你移除附件后继续。'
     },
     projects: {
       eyebrow: '从目标到交付',
@@ -3902,7 +3914,7 @@ export const zh = defineLocale({
       },
       savedTitle: '我的工作流',
       savedEmpty: '还没有已保存工作流。开始一个目标后会在这里出现。',
-      savedCount: count => `${count} 个真实工作流`,
+      savedCount: count => `${count} 个工作流`,
       localCatalogNotice: '生产目录尚未连接。不会用内置或测试模板替代真实目录。',
       catalogUnavailable: '真实工作流目录暂时不可用，没有模板被启动。',
       catalogUnavailableDescription: '请重试目录连接，或返回开始页直接描述目标。',

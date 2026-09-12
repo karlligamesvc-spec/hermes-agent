@@ -602,10 +602,10 @@ export const en: Translations = {
       reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and Hermes can react to yours.',
       tipsTitle: 'In-App Tips',
       tipsDesc:
-        'A small bubble pointing at one part of the app, shown occasionally while idle and by Hermes when it helps. Closing one retires it for good.',
+        'A small bubble pointing at one part of the app, shown occasionally while idle and by APEX when it helps. Closing one retires it for good.',
       tipsReset: (count: number) => `Bring back ${count} closed ${count === 1 ? 'tip' : 'tips'}`,
       toursTitle: 'Guided Tours',
-      toursDesc: 'Let Hermes walk you through the app, dimming the screen and spotlighting each step.',
+      toursDesc: 'Let APEX walk you through the app, dimming the screen and spotlighting each step.',
       composerPopoutTitle: 'Floating Composer',
       composerPopoutDesc: 'Allow dragging the composer out of its dock. Turn this off to keep it locked at the bottom.',
       vibeHeartsTitle: 'Vibe Hearts',
@@ -4083,7 +4083,9 @@ export const en: Translations = {
       label: 'Business goal',
       placeholder: 'For example: analyze the US pet supplies market and produce a selection report and launch assets',
       hint: 'Enter to start · Shift+Enter for a new line',
-      submit: 'Start goal'
+      submit: 'Start goal',
+      workflowAttachmentsUnsupported:
+        'This workflow cannot accept goal attachments yet. Your goal, workflow selection, and current attachments stay in place until you remove the attachments and continue.'
     },
     projects: {
       eyebrow: 'From goal to delivery',
@@ -4223,7 +4225,7 @@ export const en: Translations = {
       },
       savedTitle: 'Your workflows',
       savedEmpty: 'No saved workflows yet. Starting a goal creates the first one.',
-      savedCount: count => `${count} real ${count === 1 ? 'workflow' : 'workflows'}`,
+      savedCount: count => `${count} ${count === 1 ? 'workflow' : 'workflows'}`,
       localCatalogNotice: 'The production catalog is not connected. Built-in or test templates are not substituted.',
       catalogUnavailable: 'The live workflow catalog is temporarily unavailable. No template was started.',
       catalogUnavailableDescription: 'Retry the catalog, or return to Start and describe a goal.',

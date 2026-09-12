@@ -2,12 +2,18 @@ import { BusinessStartHome } from '@/app/business-workspace/start-home'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
+import type { ComposerAttachment } from '@/store/composer'
 
 
 // Props are kept for call-site compatibility (the Thread passes the resolved
 // personality + seed), but the home screen no longer varies its copy.
 export type IntroProps = {
+  attachments?: ComposerAttachment[]
   goalDisabled?: boolean
+  onPickFiles?: () => void
+  onPickFolders?: () => void
+  onPickImages?: () => void
+  onRemoveAttachment?: (id: string) => void
   onSubmitGoal?: (goal: string) => Promise<boolean> | boolean
   personality?: string
   seed?: number
@@ -27,17 +33,33 @@ export type IntroProps = {
  * stays on disk to keep the rebase surface small (same call as the upstream
  * mascot art in public/) — what matters is that nothing rendered reaches for it.
  */
-export function Intro({ goalDisabled = false, onSubmitGoal }: IntroProps) {
+export function Intro({
+  attachments = [],
+  goalDisabled = false,
+  onPickFiles,
+  onPickFolders,
+  onPickImages,
+  onRemoveAttachment,
+  onSubmitGoal
+}: IntroProps) {
   const { t } = useI18n()
   const businessWorkspaceEnabled = isBusinessWorkspaceEnabled()
 
   return (
     <div
-      className={`pointer-events-none flex w-full min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 ${businessWorkspaceEnabled ? 'items-start text-left' : 'items-center text-center'}`}
+      className={`pointer-events-none flex min-h-full w-full min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 ${businessWorkspaceEnabled ? 'apex-business-surface apex-business-page items-start overflow-x-hidden text-left' : 'items-center text-center'}`}
       data-slot="aui_intro"
     >
       {businessWorkspaceEnabled ? (
-        <BusinessStartHome goalDisabled={goalDisabled} onSubmitGoal={onSubmitGoal} />
+        <BusinessStartHome
+          attachments={attachments}
+          goalDisabled={goalDisabled}
+          onPickFiles={onPickFiles}
+          onPickFolders={onPickFolders}
+          onPickImages={onPickImages}
+          onRemoveAttachment={onRemoveAttachment}
+          onSubmitGoal={onSubmitGoal}
+        />
       ) : (
         <>
           <div>

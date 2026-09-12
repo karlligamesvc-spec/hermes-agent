@@ -22,6 +22,7 @@ import { atom } from 'nanostores'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as DataModule from './data'
+import { HERMES_BOTS_PANE_WIDTH } from './pane-layout'
 import type * as RoutingModule from './routing'
 
 const mocks = vi.hoisted(() => ({
@@ -171,6 +172,8 @@ describe('the Bots pane dock', () => {
     const data = harness.find('pane')!.data!
 
     expect(data.dock).toEqual({ enforce: true, pane: 'sessions', pos: 'center' })
+    expect(data.width).toBe(HERMES_BOTS_PANE_WIDTH)
+
     // A 'bottom' split was the old workaround for the lone-pane auto-hide trap.
     expect((data.dock as { pos: string }).pos).not.toBe('bottom')
     // No heal token: the invariant runs at every adoption, unconditionally.
