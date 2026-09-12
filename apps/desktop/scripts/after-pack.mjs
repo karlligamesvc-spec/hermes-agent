@@ -69,5 +69,8 @@ export default async function afterPack(context) {
 
   const exe = path.join(context.appOutDir, `${productName}.exe`)
 
-  await stampExeIdentity(exe, desktopRoot)
+  await stampExeIdentity(exe, desktopRoot, {
+    FileDescription: productName,
+    ProductName: productName
+  })
 }

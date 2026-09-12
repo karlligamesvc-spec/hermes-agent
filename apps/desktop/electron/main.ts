@@ -293,6 +293,15 @@ import {
   requireRevokedDeviceKey,
   signOutManagedDevice
 } from './desktop-device-key'
+import {
+  canonicalizePathThroughExistingParent,
+  DIAGNOSTIC_TRIAL_ROOT_ENV,
+  initializeDesktopLaunchEnvironment,
+  productionHermesHomeFromEnvironment,
+  registerOsLoginProtocolForPolicy,
+  runDesktopMaintenanceForPolicy,
+  updatesAllowedByPolicy
+} from './desktop-diagnostic-trial'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
 import { formatDesktopLogLine } from './desktop-log-line'
 import { resolveDesktopRemoteRoute } from './desktop-remote-route'
@@ -531,7 +540,6 @@ import {
   stagedUpdaterSupportsPrewrittenMarker,
   wrapHandoffForDetachedConsole
 } from './updater-process'
-import { resolveUserDataDir } from './user-data-dir'
 import {
   formatBlockerMessage,
   formatProbeFailedMessage,
@@ -589,6 +597,152 @@ import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './work
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath, setActiveGatewayProfile, setWslBridgeProfileState } from './wsl-path-bridge'
 
+function readEmbeddedDesktopPackageJson() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function readDiagnosticTrialMarker(markerPath) {
+  try {
+    return JSON.parse(fs.readFileSync(markerPath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function readDiagnosticRuntimeCommit(runtimeRoot) {
+  const candidates =
+    process.platform === 'win32'
+      ? [
+          process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'cmd', 'git.exe'),
+          path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'cmd', 'git.exe'),
+          path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'cmd', 'git.exe'),
+          'git'
+        ]
+      : ['/usr/bin/git', 'git']
+
+  for (const command of candidates.filter(Boolean)) {
+    try {
+      return execFileSync(command, ['-C', runtimeRoot, 'rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 5000,
+        windowsHide: true
+      }).trim()
+    } catch {
+      // Try the next known Git location. No fallback to an unverified Runtime.
+    }
+  }
+
+  return null
+}
+
+function canonicalizeDesktopLaunchPath(candidate) {
+  return canonicalizePathThroughExistingParent(candidate, {
+    exists: fs.existsSync,
+    realpath: existingPath =>
+      fs.realpathSync.native ? fs.realpathSync.native(existingPath) : fs.realpathSync(existingPath)
+  })
+}
+
+function readDiagnosticRuntimeBinding(pythonPath, runtimeRoot) {
+  const source = [
+    'import importlib.util, json',
+    "spec = importlib.util.find_spec('hermes_cli.main')",
+    "print(json.dumps({'modulePath': spec.origin if spec else None}))"
+  ].join('; ')
+
+  try {
+    const stdout = execFileSync(pythonPath, ['-B', '-c', source], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PYTHONDONTWRITEBYTECODE: '1',
+        PYTHONNOUSERSITE: '1',
+        PYTHONPATH: [runtimeRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)
+      },
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 15000,
+      windowsHide: true
+    }).trim()
+
+    const lastLine = stdout.split(/\r?\n/).filter(Boolean).at(-1)
+    const parsed = lastLine ? JSON.parse(lastLine) : null
+
+    return parsed && typeof parsed.modulePath === 'string' ? { modulePath: parsed.modulePath } : null
+  } catch {
+    return null
+  }
+}
+
+// The package-embedded policy is resolved synchronously before the first
+// userData write. Formal APEX keeps the historical directory continuity below;
+// the diagnostic package requires a launcher-created isolated root and exact
+// Runtime, then derives every writable path from that root. Finder/Explorer
+// launches without the paired context fail here before touching either product.
+const DESKTOP_LAUNCH = initializeDesktopLaunchEnvironment({
+  additionalProtectedRoots: [
+    productionHermesHomeFromEnvironment(
+      process.env.HERMES_HOME,
+      process.env[DIAGNOSTIC_TRIAL_ROOT_ENV]
+    ),
+    readWindowsUserEnvVar('HERMES_HOME')
+  ],
+  appDataDir: app.getPath('appData'),
+  canonicalizePath: canonicalizeDesktopLaunchPath,
+  directoryExists: candidate => {
+    try {
+      return fs.statSync(candidate).isDirectory()
+    } catch {
+      return false
+    }
+  },
+  env: process.env,
+  fileExists: candidate => {
+    try {
+      return fs.statSync(candidate).isFile()
+    } catch {
+      return false
+    }
+  },
+  homeDir: app.getPath('home'),
+  localAppDataDir: process.env.LOCALAPPDATA,
+  mkdirUserData: candidate => fs.mkdirSync(candidate, { recursive: true }),
+  packageJson: readEmbeddedDesktopPackageJson(),
+  platform: process.platform,
+  readRuntimeBinding: readDiagnosticRuntimeBinding,
+  readDiagnosticMarker: readDiagnosticTrialMarker,
+  readRuntimeCommit: readDiagnosticRuntimeCommit,
+  runtimeAppName: app.getName(),
+  setUserDataPath: candidate => app.setPath('userData', candidate)
+})
+
+if (DESKTOP_LAUNCH.ok === false) {
+  console.error(`[diagnostic-trial] launch refused: ${DESKTOP_LAUNCH.error}`)
+  dialog.showErrorBox('APEX Diagnostic Trial — isolated launcher required', DESKTOP_LAUNCH.message)
+  app.exit(78)
+  process.exit(78)
+}
+
+const DESKTOP_LAUNCH_POLICY = DESKTOP_LAUNCH.policy
+const IS_DIAGNOSTIC_TRIAL = DESKTOP_LAUNCH.mode === 'isolated-diagnostic'
+
+if (IS_DIAGNOSTIC_TRIAL) {
+  // These are derived from the verified root, never selected independently.
+  process.env[DIAGNOSTIC_TRIAL_ROOT_ENV] = DESKTOP_LAUNCH.diagnosticRoot
+  process.env.HERMES_DESKTOP_USER_DATA_DIR = DESKTOP_LAUNCH.userDataDir
+  process.env.HERMES_HOME = DESKTOP_LAUNCH.hermesHome
+  process.env.HERMES_DESKTOP_CWD = DESKTOP_LAUNCH.workingDirectory
+  process.env.HERMES_DESKTOP_HERMES_ROOT = DESKTOP_LAUNCH.runtimeRoot
+  process.env.HERMES_DESKTOP_IGNORE_EXISTING = '1'
+  process.env.HERMES_DESKTOP_PYTHON = DESKTOP_LAUNCH.pythonPath
+  process.env.PYTHONDONTWRITEBYTECODE = '1'
+  process.env.PYTHONNOUSERSITE = '1'
+}
+
 // Data continuity across the APEX brand rename: Electron derives the DEFAULT
 // userData dir from productName, so renaming "ApexNodes" -> "APEX" would move
 // it to .../APEX and abandon every existing install's state (connection.json,
@@ -597,11 +751,11 @@ import { resolvePickerDefaultPath, setActiveGatewayProfile, setWslBridgeProfileS
 // below. Verified on Electron 40: this single setPath also re-points
 // sessionData (cookies/localStorage), so remote-gateway sessions survive too.
 // HERMES_DESKTOP_USER_DATA_DIR still wins when set (tests / sandboxed runs).
-const USER_DATA_OVERRIDE = process.env.HERMES_DESKTOP_USER_DATA_DIR
-const RESOLVED_USER_DATA_DIR = resolveUserDataDir(app.getPath('appData'), USER_DATA_OVERRIDE)
+const USER_DATA_OVERRIDE = IS_DIAGNOSTIC_TRIAL
+  ? DESKTOP_LAUNCH.userDataDir
+  : process.env.HERMES_DESKTOP_USER_DATA_DIR
 
-fs.mkdirSync(RESOLVED_USER_DATA_DIR, { recursive: true })
-app.setPath('userData', RESOLVED_USER_DATA_DIR)
+const RESOLVED_USER_DATA_DIR = DESKTOP_LAUNCH.userDataDir
 
 // Public-read COS bucket base URL that hosts the ApexNodes runtime source
 // tarball + uv binary for mainland-China first-launch installs (published by
@@ -1051,7 +1205,11 @@ const BOOT_FAKE_STEP_MS = (() => {
 // 关于/隐藏/退出), the native About panel, and the fallback notification title.
 // The userData pin near the top of this file deliberately does NOT follow this
 // name — see user-data-dir.ts.
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME || 'APEX'
+const APP_NAME = IS_DIAGNOSTIC_TRIAL
+  ? DESKTOP_LAUNCH_POLICY.productName
+  : process.env.HERMES_DESKTOP_APP_NAME || DESKTOP_LAUNCH_POLICY.productName
+
+const APP_ID = DESKTOP_LAUNCH_POLICY.appId
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -1455,7 +1613,7 @@ app.setName(APP_NAME)
 // need this, so gate it on Windows. (Fixes: desktop approval/turn notifications
 // never firing on Windows.)
 if (IS_WINDOWS) {
-  app.setAppUserModelId('com.apexnodes.desktop')
+  app.setAppUserModelId(APP_ID)
 }
 
 // Seed the native About panel for the first open and non-menu invocation paths.
@@ -3756,6 +3914,10 @@ async function releaseBackendLock(updateRoot, tag) {
 // Detection (checkUpdates / commit changelog / "N behind") stays in the UI;
 // only this apply action changed.
 async function applyUpdates(opts: { stopSafeBlockers?: boolean } = {}) {
+  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
+    return { ok: false, error: 'diagnostic-trial-updates-disabled' }
+  }
+
   if (updateInFlight) {
     throw new Error('An update is already in progress.')
   }
@@ -4683,6 +4845,22 @@ function resolveHermesBackend(backendArgs) {
   // 1. Explicit override -- HERMES_DESKTOP_HERMES_ROOT points at a developer
   //    checkout. Honour it as-is (no bootstrap; the user is driving).
   const overrideRoot = process.env.HERMES_DESKTOP_HERMES_ROOT && path.resolve(process.env.HERMES_DESKTOP_HERMES_ROOT)
+
+  if (IS_DIAGNOSTIC_TRIAL) {
+    if (!overrideRoot || overrideRoot !== DESKTOP_LAUNCH.runtimeRoot) {
+      throw new Error('Diagnostic Trial lost its verified Runtime root; refusing fallback or bootstrap.')
+    }
+
+    const backend = createPythonBackend(overrideRoot, `Diagnostic Runtime at ${overrideRoot}`, backendArgs)
+
+    if (!backend || path.resolve(backend.command) !== DESKTOP_LAUNCH.pythonPath) {
+      throw new Error('Diagnostic Trial could not resolve its paired Runtime Python; refusing fallback or bootstrap.')
+    }
+
+    backend.bootstrap = false
+
+    return backend
+  }
 
   if (overrideRoot && isHermesSourceRoot(overrideRoot)) {
     const backend = createPythonBackend(overrideRoot, `Hermes source at ${overrideRoot}`, backendArgs)
@@ -14516,7 +14694,8 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
 
   return { ok: true }
 })
-ipcMain.handle('hermes:bootstrap:repair', async () => {
+
+async function repairBootstrapForProduction() {
   // Forceful repair: drop the bootstrap-complete marker so the next
   // startHermes() re-runs the full installer (refreshing a broken/partial
   // venv), and clear any latched failure + live connection. The renderer
@@ -14536,7 +14715,11 @@ ipcMain.handle('hermes:bootstrap:repair', async () => {
   resetHermesConnection()
 
   return { ok: true }
-})
+}
+
+ipcMain.handle('hermes:bootstrap:repair', async () =>
+  runDesktopMaintenanceForPolicy(DESKTOP_LAUNCH_POLICY, 'bootstrap-repair', repairBootstrapForProduction)
+)
 // The upstream first-run local-vs-remote chooser intentionally remains dormant
 // in ApexNodes: our signed-in managed setup owns first launch and the existing
 // bootstrap continues locally without waiting. Keep the bridge compatible so a
@@ -16909,16 +17092,16 @@ registerDesktopVersionIpc(ipcMain, {
 // registry / service / node-symlink cleanup all lives in one place
 // (hermes_cli/uninstall.py + hermes_cli/gui_uninstall.py).
 //
-// getUninstallSummary() shells out to `--gui-summary` (a fast, no-side-effect
-// JSON probe) so the UI can gate options on what's actually installed — and
-// detect a missing agent (a future "lite client" that ships without the
-// bundled agent), hiding the agent/full options when there's nothing to remove.
+// Formal APEX getUninstallSummary() shells out to `--gui-summary` so the UI can
+// gate options on what's actually installed and detect a missing agent. The
+// Runtime CLI may perform its own startup housekeeping even for that read, so
+// the diagnostic policy refuses before spawning the probe.
 
 function uninstallVenvPython() {
   return getVenvPython(VENV_ROOT)
 }
 
-async function getUninstallSummary() {
+async function getUninstallSummaryForProduction() {
   const py = uninstallVenvPython()
   const agentRoot = ACTIVE_HERMES_ROOT
 
@@ -16992,7 +17175,15 @@ async function getUninstallSummary() {
   })
 }
 
-async function runDesktopUninstall(mode) {
+async function getUninstallSummary() {
+  return runDesktopMaintenanceForPolicy(
+    DESKTOP_LAUNCH_POLICY,
+    'uninstall-summary',
+    getUninstallSummaryForProduction
+  )
+}
+
+async function runDesktopUninstallForProduction(mode) {
   let uninstallArgs
 
   try {
@@ -17107,6 +17298,12 @@ async function runDesktopUninstall(mode) {
   return { ok: true, mode, willRemoveAppBundle: Boolean(removeBundle), scriptPath }
 }
 
+async function runDesktopUninstall(mode) {
+  return runDesktopMaintenanceForPolicy(DESKTOP_LAUNCH_POLICY, 'uninstall-run', () =>
+    runDesktopUninstallForProduction(mode)
+  )
+}
+
 ipcMain.handle('hermes:uninstall:summary', async () => getUninstallSummary())
 ipcMain.handle('hermes:uninstall:run', async (_event, payload) => {
   const mode = payload && typeof payload === 'object' ? payload.mode : payload
@@ -17178,9 +17375,13 @@ function registerDeepLinkProtocol() {
           }
         : undefined
 
-    const registered = registerApexDesktopProtocol(app, developmentLaunch)
+    const decision = registerOsLoginProtocolForPolicy(DESKTOP_LAUNCH_POLICY, () =>
+      registerApexDesktopProtocol(app, developmentLaunch)
+    )
 
-    if (!registered) {
+    if (!decision.attempted) {
+      rememberLog('[deeplink] OS protocol registration disabled by embedded diagnostic policy')
+    } else if (!decision.registered) {
       rememberLog('[deeplink] OS rejected apexnodes protocol registration')
     }
   } catch (err) {
@@ -17227,8 +17428,9 @@ if (!isPrimaryInstance) {
 // (未打包)不 import electron-updater,整体停用(IPC 面保留,renderer 免探测)。
 function initShellUpdater() {
   let autoUpdater = null
+  const updatesAllowed = updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)
 
-  if (app.isPackaged) {
+  if (app.isPackaged && updatesAllowed) {
     try {
       autoUpdater = require('electron-updater').autoUpdater
     } catch {
@@ -17262,7 +17464,7 @@ function initShellUpdater() {
   createShellUpdater({
     autoUpdater,
     ipcMain,
-    isPackaged: app.isPackaged,
+    isPackaged: app.isPackaged && updatesAllowed,
     log: rememberLog,
     // hc-532 (gate 3): thread the shell version so the shell-update beacons
     // carry app_version (createShellUpdater defaults it to null when omitted).
@@ -17323,6 +17525,10 @@ function readDurableDesktopUpdatePlan() {
 
 ipcMain.handle('hermes:update-center:plan:get', async () => readDurableDesktopUpdatePlan())
 ipcMain.handle('hermes:update-center:plan:set-runtime-after-shell', async (_event, payload = {}) => {
+  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
+    return { ok: false, error: 'diagnostic-trial-updates-disabled' }
+  }
+
   try {
     const plan = writeDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
       kind: 'runtime-after-shell',
@@ -17345,6 +17551,10 @@ ipcMain.handle('hermes:update-center:plan:set-runtime-after-shell', async (_even
   }
 })
 ipcMain.handle('hermes:update-center:plan:set-shell-only', async (_event, payload = {}) => {
+  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
+    return { ok: false, error: 'diagnostic-trial-updates-disabled' }
+  }
+
   try {
     const plan = writeDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
       kind: 'shell-only',
@@ -17367,6 +17577,10 @@ ipcMain.handle('hermes:update-center:plan:set-shell-only', async (_event, payloa
   }
 })
 ipcMain.handle('hermes:update-center:plan:transition', async (_event, payload = {}) => {
+  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
+    return { ok: false, error: 'diagnostic-trial-updates-disabled' }
+  }
+
   try {
     if (!['failed', 'ready-to-restart', 'resuming'].includes(payload?.phase)) {
       return { ok: false, error: 'invalid_plan_phase' }
@@ -20746,6 +20960,10 @@ ipcMain.handle('hermes:runtime:version', async () => {
 // check-update: compare the installed runtime (bootstrap marker) against the
 // admin-set default (GET /api/v1/runtime/latest). Read-only; never mutates.
 ipcMain.handle('hermes:runtime:check-update', async () => {
+  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
+    return { ok: true, updateAvailable: false, disabled: 'diagnostic-trial' }
+  }
+
   try {
     const result = await checkForRuntimeUpdate({
       apiBase: apexApiBase(),
@@ -20773,6 +20991,10 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
 // back to the snapshot (see rollbackRuntimePinOverride), so a working install is
 // never bricked. The renderer reloads to drive the boot flow.
 ipcMain.handle('hermes:runtime:apply-update', async () => {
+  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
+    return { ok: false, error: 'diagnostic-trial-updates-disabled' }
+  }
+
   // 1. Resolve the target pin. No managed latest / offline -> nothing to do.
   let pin = null
 
