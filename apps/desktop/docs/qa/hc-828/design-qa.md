@@ -6,17 +6,19 @@
 
 ## 三档 Before / After
 
-Before 采用 hc-816 Kael 首次实包复核截图；After 来自 `c12cf7a9` 代码候选、clean userData 的真实 Electron BrowserWindow。macOS 将请求的 1440×900 工作区夹为可用高度，文件名保留验收档名称。
+Before 采用 hc-816 Kael 首次实包复核截图；After 来自 `890266bd` 五页视觉代码候选、clean userData 的真实 Electron BrowserWindow。macOS 将请求的 1440×900 工作区夹为可用高度，文件名保留验收档名称。
 
 | 页面 | 1440 档 | 1220 档 | 752 窄窗 |
 |---|---|---|---|
 | Start Before | [截图](../hc-816/screenshots/after-kael-review/start-1440x900.png) | [截图](../hc-816/screenshots/after-kael-review/start-1220x800.png) | [截图](../hc-816/screenshots/after-kael-review/start-752x800.png) |
-| Start After | [截图](screenshots/after-c12cf7a9/start-1440x900.png) | [截图](screenshots/after-c12cf7a9/start-1220x800.png) | [截图](screenshots/after-c12cf7a9/start-752x800.png) |
+| Start After | [截图](screenshots/after-890266bd/start-1440x900.png) | [截图](screenshots/after-890266bd/start-1220x800.png) | [截图](screenshots/after-890266bd/start-752x800.png) |
 | Projects Before | [截图](../hc-816/screenshots/after-kael-review/projects-1440x900.png) | [截图](../hc-816/screenshots/after-kael-review/projects-1220x800.png) | [截图](../hc-816/screenshots/after-kael-review/projects-752x800.png) |
-| Projects After | [截图](screenshots/after-c12cf7a9/projects-1440x900.png) | [截图](screenshots/after-c12cf7a9/projects-1220x800.png) | [截图](screenshots/after-c12cf7a9/projects-752x800.png) |
+| Projects After | [截图](screenshots/after-890266bd/projects-1440x900.png) | [截图](screenshots/after-890266bd/projects-1220x800.png) | [截图](screenshots/after-890266bd/projects-752x800.png) |
 | Workflows Before | [截图](../hc-816/screenshots/after-kael-review/workflows-1440x900.png) | [截图](../hc-816/screenshots/after-kael-review/workflows-1220x800.png) | [截图](../hc-816/screenshots/after-kael-review/workflows-752x800.png) |
-| Workflows After | [截图](screenshots/after-c12cf7a9/workflows-1440x900.png) | [截图](screenshots/after-c12cf7a9/workflows-1220x800.png) | [截图](screenshots/after-c12cf7a9/workflows-752x800.png) |
-| Workflow Run After | [截图](screenshots/after-c12cf7a9/workflow-run-1440x900.png) | [截图](screenshots/after-c12cf7a9/workflow-run-1220x800.png) | [截图](screenshots/after-c12cf7a9/workflow-run-752x800.png) |
+| Workflows After | [截图](screenshots/after-890266bd/workflows-1440x900.png) | [截图](screenshots/after-890266bd/workflows-1220x800.png) | [截图](screenshots/after-890266bd/workflows-752x800.png) |
+| Scheduled Runs After | [截图](screenshots/after-890266bd/scheduled-runs-1440x900.png) | [截图](screenshots/after-890266bd/scheduled-runs-1220x800.png) | [截图](screenshots/after-890266bd/scheduled-runs-752x800.png) |
+| Deliverables After | [截图](screenshots/after-890266bd/deliverables-1440x900.png) | [截图](screenshots/after-890266bd/deliverables-1220x800.png) | [截图](screenshots/after-890266bd/deliverables-752x800.png) |
+| Workflow Run After | [截图](screenshots/after-890266bd/workflow-run-1440x900.png) | [截图](screenshots/after-890266bd/workflow-run-1220x800.png) | [截图](screenshots/after-890266bd/workflow-run-752x800.png) |
 
 ## 逐页差异
 
@@ -25,7 +27,9 @@ Before 采用 hc-816 Kael 首次实包复核截图；After 来自 `c12cf7a9` 代
 - 中央“业务目标”是唯一主输入，旧底部 composer 不进入 DOM、Tab 顺序或辅助功能树。
 - Focus 保留键盘可见性，但外圈跟随圆角容器，不再出现内外叠加的方框。
 - 三条重点路径、近期 Project 和数据源保持次级信息密度；不展示模拟百分比、步骤或来源数。
-- “连接助手”“历史会话”移到左下工具区，主导航只表达核心业务对象。
+- Start 不再挂载 Session 专属的“手机正遥控本机”状态条；普通 Session 保留真实连接反馈。
+- Start 根和内部内容统一为一层不透明 APEX surface，不再出现灰底包白卡的分裂。
+- “连接助手”“历史会话”与“个人资料”“设置”并排收敛到账户菜单；主导航只表达五个核心业务对象。
 
 ### Projects
 
@@ -50,9 +54,11 @@ Before 采用 hc-816 Kael 首次实包复核截图；After 来自 `c12cf7a9` 代
 
 ### 共享页面与 Settings
 
-- Project、Workflow、定时任务、交付物采用同一 Header 结构和最大内容宽度。
+- Start、Project、Workflow、定时任务、交付物采用同一响应式水平留白、顶部起点、文字层级和最大内容宽度。
+- 定时任务与交付物不再走各自的顶部 margin；空状态也落在共享内容列中。
 - Settings 的 Content、Head、section/row 标题、说明与控件列由统一原语约束，避免页面内字号和基线漂移。
 - 搜索会话输入占满可用宽度，焦点环跟随搜索容器，窄窗不再缩成短标签。
+- [账户菜单 1220 档截图](screenshots/after-890266bd/sidebar-account-menu-1220x800.png) 验证四个工具入口同区排列，渠道标题隐藏且真实状态行仍可见。
 
 ## 原生窗口检查
 
@@ -68,3 +74,4 @@ Before 采用 hc-816 Kael 首次实包复核截图；After 来自 `c12cf7a9` 代
 - 正式 Mac/Windows 配对发布、签名、notarization、上传与公开 updater。
 - Workflow Run 双页签、Deliverable/Review 新页、定时运行重构、Profile/Settings 整体重做及 Phase 2 API。
 
+final result: passed

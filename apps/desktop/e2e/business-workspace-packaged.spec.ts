@@ -9,7 +9,7 @@ import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppRe
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
 
-const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '连接助手', '历史会话'] as const
+const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物'] as const
 
 const PHASE1_VIEWPORTS = [
   { height: 900, name: 'wide-1440', width: 1440 },
@@ -344,7 +344,7 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByRole('button', { name: '开始 ⌘ N' })).toBeAttached({ timeout: 60_000 })
   const sidebarButtons = page.locator('[data-sidebar="menu-button"]')
 
-  await expect(sidebarButtons).toHaveCount(7)
+  await expect(sidebarButtons).toHaveCount(BUSINESS_NAV_LABELS.length)
 
   const businessLabels = (await sidebarButtons.allTextContents())
     .map(label => label.replace(/\s+/g, ' ').trim())
@@ -353,6 +353,25 @@ test('fresh packaged app exposes the business workspace without implementation v
   expect(businessLabels).toEqual(BUSINESS_NAV_LABELS)
   await expect(page.getByText(/\b(?:MCP|Skill|Skills)\b/)).toHaveCount(0)
   await expect(page.getByText('模型', { exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '打开账户菜单: 本地 UI 评审' }).click()
+  await expect(page.getByRole('menuitem', { name: '个人资料' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '设置' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '连接助手' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '历史会话' })).toBeVisible()
+  await expect(page.getByText('渠道 · 分身在哪', { exact: true })).toHaveCount(0)
+
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'sidebar-account-menu-1220x800.png')
+    })
+  }
+
+  await page.keyboard.press('Escape')
 })
 
 test('fresh default glass keeps every Phase 1 business route on one opaque APEX shell', async () => {
@@ -407,9 +426,9 @@ test('primary navigation dismisses only the narrow sidebar overlay, including ke
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
   await page.waitForTimeout(400)
-  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(7)
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
-  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(7)
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
   await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
 })
 
@@ -596,7 +615,9 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   const pages = [
     { name: 'start', nav: '开始 ⌘ N', title: '今天想推进什么业务？' },
     { name: 'projects', nav: '项目', title: '项目' },
-    { name: 'workflows', nav: '工作流', title: '工作流' }
+    { name: 'workflows', nav: '工作流', title: '工作流' },
+    { name: 'scheduled-runs', nav: '定时运行', title: '定时任务' },
+    { name: 'deliverables', nav: '交付物', title: '交付物' }
   ] as const
 
   for (const phasePage of pages) {
@@ -668,12 +689,13 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
           expect(triggerBox?.x).toBeGreaterThanOrEqual(70)
         }
 
-        const lowerContent =
-          phasePage.name === 'start'
-            ? page.getByRole('heading', { name: '可用数据源', level: 2 })
-            : phasePage.name === 'projects'
-              ? page.getByText('[本地测试] APEX GEO 品牌诊断', { exact: true })
-              : page.getByText('[本地测试] 我的选品流程', { exact: true })
+        const lowerContent = {
+          start: page.getByRole('heading', { name: '可用数据源', level: 2 }),
+          projects: page.getByText('[本地测试] APEX GEO 品牌诊断', { exact: true }),
+          workflows: page.getByText('[本地测试] 我的选品流程', { exact: true }),
+          'scheduled-runs': page.getByText('暂无排程任务', { exact: true }),
+          deliverables: page.getByText('未找到产物', { exact: true })
+        }[phasePage.name]
 
         await lowerContent.scrollIntoViewIfNeeded()
         await expect(lowerContent).toBeVisible()

@@ -2,7 +2,7 @@
 
 ## 结论
 
-本轮从 fork `main@2c517460754bdbd7756a3a16b07816bde33e8c49` 建立隔离工作树，针对 Kael 在已安装 `0.17.24` 实包中连续记录的问题做同系统收敛。生产代码证据提交为 `c12cf7a9dba021ec1a3f4f07d59359a4e3ae9e28`；版本保持 `0.17.24`。
+本轮从 fork `main@2c517460754bdbd7756a3a16b07816bde33e8c49` 建立隔离工作树，针对 Kael 在已安装 `0.17.24` 实包中连续记录的问题做同系统收敛。第一轮生产代码证据为 `c12cf7a9dba021ec1a3f4f07d59359a4e3ae9e28`；第二轮五页视觉收敛代码证据为 `890266bdb20c0fcd48a6b2c8ceacd8904bdc55d4`；版本保持 `0.17.24`。
 
 修复不是逐截图打补丁，而是统一了五个共享根：输入焦点、页面 Header/文字层级、侧栏信息架构、Project/Workflow 生命周期、route drawer 的原生窗口安全区。Phase 2、生产部署、公开 updater、DeepSeek Harness 均未进入本票。
 
@@ -19,6 +19,9 @@
 | Settings、Project、Workflow、定时任务、交付物标题风格分裂 | 页面各自实现标题和 Settings 行级排版 | 新增共享 `ApexPageHeader`；Project/Workflow/定时任务/交付物使用同一标题、眉题、描述和动作节奏。Settings 使用统一 page/section/row title、description、control 原语。 |
 | 中文界面泄漏 `active`、`run.started` 等枚举 | 服务端状态和事件键直接透传 | 生命周期状态集中映射；补齐 canonical Run 事件 `run.cancel_requested`、`run.succeeded` 等。未知事件仍原样诚实回退，不伪造业务含义。 |
 | “后端版本过旧”让人误以为装 Desktop 会自动升级后端 | Desktop shell 与本机 Runtime 的独立版本生命周期没有解释 | 更新入口改为“检查兼容更新”；目录没有兼容 Runtime 时明确说明尚未发布。安装 Desktop 不会强制覆盖正在运行的 Runtime；本票没有发布 Runtime。 |
+| Start 顶部遥控状态条与灰/白内容分层 | Start 复用了 Session 专属连接条，且嵌套容器重复绘制 chat surface | Start 不再挂载遥控状态条；普通 Session 继续保留。业务页面根统一使用一层不透明 APEX surface，Start 内部不再重复涂不同背景。 |
+| 五个一级页面字号、内容起点和间距漂移 | 各页面分别维护 `padding`、最大宽度和 Header，定时运行/交付物还经过不同 shell | 新增共享业务页布局原语；Start、Project、Workflow、定时运行、交付物统一响应式水平留白、顶部节奏、内容宽度和 Header 层级。 |
+| “连接助手/历史会话”压缩最近对话区 | 两个低频工具作为永久侧栏行，与五个一级业务对象争夺高度 | 主导航只保留五个一级菜单；“连接助手”“历史会话”与“个人资料/设置”并排收敛到账户菜单。渠道标题隐藏，但真实飞书、微信、手机遥控状态仍保留。 |
 
 ## 保留的产品契约
 
@@ -34,7 +37,7 @@
 - Project/Workflow API：`electron/apex-workflow-domain.ts`、`electron/main.ts`、`electron/preload.ts`、`src/app/business-workspace/api/{adapters,types}.ts`、`src/global.d.ts`。
 - 页面与流程：`projects-page.tsx`、`project-detail-page.tsx`、`workflows-page.tsx`、`start-page.tsx`、`workflow-run-page.tsx`、`project-create-dialog.tsx`、`use-workflow-domain-lists.ts`。
 - 共享视觉：`components/ui/apex-page-header.tsx`、`components/ui/search-field.tsx`、`settings/primitives.tsx`、`page-search-shell.tsx`、`styles.css`。
-- 壳与导航：`app/chat/sidebar/index.tsx`、`app/overlays/responsive-route-drawer.tsx`、`app/artifacts/index.tsx`、`app/cron/index.tsx`。
+- 壳与导航：`app/chat/index.tsx`、`app/chat/sidebar/{index,account-panel,channel-status}.tsx`、`app/overlays/responsive-route-drawer.tsx`、`app/artifacts/index.tsx`、`app/cron/index.tsx`。
 - 状态与文案：`i18n/{zh,zh-hant,en,ja,ar,types}.ts`、`store/updates.ts`。
 - 守卫：对应 UI/Electron tests、`identity-layer.test.tsx`、`business-workspace-packaged.spec.ts`。
 
@@ -49,8 +52,8 @@
 
 - Desktop typecheck：通过。
 - Desktop lint：0 errors；131 个既有 warnings。
-- Phase 1 定向 UI/路由/辅助功能：通过；最后一次增量 2 files / 7 tests 通过。
-- Desktop 全量 UI：759 files / 7589 tests 通过。
+- Phase 1 定向 UI/路由/辅助功能：通过；五页视觉收敛复绿为 10 files / 135 tests。
+- Desktop 全量 UI：759 files / 7593 tests 通过。
 - Electron/platform：180 files 通过、2 skipped；2747 tests 通过、6 skipped。
 - identity-layer、route/drawer、release gates：通过；release gates 为 Node 78 + Vitest 15。
 - production build：通过。
@@ -69,6 +72,19 @@
 - 重新把 saved workflows 绑定到 catalog 成败后，catalog 404 下的真实 Workflow 守卫变红。
 - 恢复“新建项目→Start”旧跳转后，Project 创建对话框守卫变红。
 - 移除 Runtime 无兼容版本提示、左下工具分组、Settings row 或共享 Header 标记后，各自身份/更新/页面守卫变红。
+- 清空账户菜单过滤集合后，“连接助手/历史会话”重新进入主导航，身份层守卫变红。
+- 恢复可见“渠道 · 分身在哪”标题后，渠道可达性守卫变红。
+- 在 Start 恢复 `DirectConnectBanner` 后，Start 身份守卫变红；普通 Session 的保留断言仍独立存在。
+- 从定时运行或交付物移除共享业务页标记后，对应页面节奏守卫分别变红。
+- 从 Start 根移除统一 surface，或撤销业务页 chat 背景覆盖后，背景一致性守卫变红。
+
+## 第二轮五页实窗证据
+
+- `890266bd` 代码候选的 packaged Electron clean userData 验收为 10/10，通过真实 BrowserWindow 的 1440×900、1220×800、752×800 三档。
+- 截图矩阵覆盖 Start、Project、Workflow、定时运行、交付物，另覆盖 Workflow Run drawer 与 1220 档账户菜单。
+- Start 截图确认遥控状态条不在 DOM/视觉中、背景为单一不透明 surface；Session 保留状态条的行为由独立守卫覆盖。
+- 账户菜单截图确认“个人资料、设置、连接助手、历史会话”在同一区域；侧栏仅保留五个一级菜单，渠道标题不显示。
+- 定时运行与交付物使用诚实空态；Project、Workflow、Run 的可控数据均显式标注 `[本地测试]`。
 
 ## 实包证据
 
