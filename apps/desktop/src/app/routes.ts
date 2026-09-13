@@ -127,7 +127,12 @@ export interface RouteLocationSnapshot {
 export interface RouteDrawerNavigationState {
   routeDrawer: {
     backgroundLocation: RouteLocationSnapshot
+    returnFocusKey?: string
   }
+}
+
+function isSafeRouteDrawerReturnFocusKey(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200
 }
 
 function isSafeRouteLocationSnapshot(value: unknown): value is RouteLocationSnapshot {
@@ -153,7 +158,10 @@ function isSafeRouteLocationSnapshot(value: unknown): value is RouteLocationSnap
 /** Capture the exact page location beneath a route-driven object drawer. The
  * snapshot stays in browser history, so Back/Forward restores both the object
  * URL and its source page query/hash state. */
-export function routeDrawerNavigationState(location: RouteLocationSnapshot): RouteDrawerNavigationState {
+export function routeDrawerNavigationState(
+  location: RouteLocationSnapshot,
+  returnFocusKey?: string
+): RouteDrawerNavigationState {
   const backgroundLocation: RouteLocationSnapshot = {
     hash: location.hash,
     key: location.key,
@@ -166,7 +174,16 @@ export function routeDrawerNavigationState(location: RouteLocationSnapshot): Rou
     throw new Error(`Invalid route drawer source: ${location.pathname}`)
   }
 
-  return { routeDrawer: { backgroundLocation } }
+  if (returnFocusKey !== undefined && !isSafeRouteDrawerReturnFocusKey(returnFocusKey)) {
+    throw new Error('Invalid route drawer return focus key')
+  }
+
+  return {
+    routeDrawer: {
+      backgroundLocation,
+      ...(returnFocusKey ? { returnFocusKey } : {})
+    }
+  }
 }
 
 export function routeDrawerBackgroundLocation(state: unknown): RouteLocationSnapshot | null {
@@ -177,6 +194,16 @@ export function routeDrawerBackgroundLocation(state: unknown): RouteLocationSnap
   const routeDrawer = (state as Partial<RouteDrawerNavigationState>).routeDrawer
 
   return isSafeRouteLocationSnapshot(routeDrawer?.backgroundLocation) ? routeDrawer.backgroundLocation : null
+}
+
+export function routeDrawerReturnFocusKey(state: unknown): string | null {
+  if (!state || typeof state !== 'object') {
+    return null
+  }
+
+  const returnFocusKey = (state as Partial<RouteDrawerNavigationState>).routeDrawer?.returnFocusKey
+
+  return isSafeRouteDrawerReturnFocusKey(returnFocusKey) ? returnFocusKey : null
 }
 
 /** Close a drawer opened from an in-app page by walking history back, keeping

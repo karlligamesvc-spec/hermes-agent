@@ -4274,9 +4274,11 @@ export const en: Translations = {
         actionFailed: 'The action was not saved. Try again.',
         approve: 'Approve deliverable',
         attempt: 'Attempt',
+        attemptDescription: (attempt, maximum) => `Attempt ${attempt} (up to ${maximum})`,
         cancel: 'Cancel run',
         cancelling: 'Cancelling…',
         created: 'Created',
+        detailsTab: 'Execution details',
         deliverables: 'Deliverables and review',
         evidence: count => `${count} evidence ${count === 1 ? 'item' : 'items'}`,
         event: eventType =>
@@ -4292,9 +4294,27 @@ export const en: Translations = {
             'run.succeeded': 'Run succeeded',
             'run.timed_out': 'Run timed out',
             'run.waiting_review': 'Waiting for review'
-          })[eventType] || eventType,
+          })[eventType] ||
+          (eventType.startsWith('tool.')
+            ? 'Tool activity'
+            : eventType.includes('result')
+              ? 'Execution result recorded'
+              : 'Run event'),
+        eventSummary: eventType =>
+          eventType.startsWith('tool.')
+            ? 'APEX / Hermes used a tool. Arguments and results are hidden.'
+            : eventType === 'run.queued'
+              ? 'Added to the queue and getting ready to start.'
+              : eventType === 'run.running'
+                ? 'APEX has started working.'
+                : eventType.includes('result')
+                  ? 'A result was recorded. Only the safe lifecycle summary is shown.'
+                  : 'A lifecycle update was recorded for this run.',
+        events: 'Recorded events',
         executor: 'Executor',
+        executorUnavailable: 'Unavailable',
         eyebrow: 'Real workflow run',
+        hermesExecutor: 'Hermes',
         loadFailedDescription: 'APEX could not read this run. Nothing was replaced or deleted.',
         loadFailedTitle: 'Run unavailable',
         loading: 'Reading workflow run',
@@ -4302,25 +4322,47 @@ export const en: Translations = {
         noDeliverablesTitle: 'No deliverables yet',
         noEvents: 'Run events appear here in order as they are recorded.',
         noObjective: 'No objective summary was recorded for this run.',
+        noPendingDescription: 'No review or intervention is required from you right now.',
+        noPendingTitle: 'Nothing needs attention',
+        noStageProgressDescription:
+          'This Run response does not include real Steps, so APEX does not infer stages or progress.',
+        noStageProgressTitle: 'No stage progress to show yet',
+        openDeliverable: 'Open deliverable',
+        openFailed: 'The deliverable could not be opened. Its Run data is still available.',
+        openUnavailable: 'No openable result yet',
+        openingDeliverable: 'Opening…',
+        pendingReviewDescription: count =>
+          `${count} real ${count === 1 ? 'deliverable is' : 'deliverables are'} ready for your decision.`,
+        pendingReviewTitle: 'Review required',
+        progressTab: 'Progress',
+        refresh: 'Refresh',
+        refreshFailedDescription: 'The latest refresh failed. Showing the last successful Run data.',
         requestChanges: 'Request changes',
         retry: 'Read again',
+        stageProgress: 'Stage progress',
+        started: 'Started',
         status: status =>
           ({
             approved: 'Approved',
             cancelled: 'Cancelled',
             changes_requested: 'Changes requested',
+            draft: 'Draft',
             failed: 'Failed',
             in_review: 'In review',
+            pending: 'Pending review',
             queued: 'Queued',
             ready: 'Ready for review',
             rejected: 'Rejected',
             running: 'Running',
             succeeded: 'Completed',
+            superseded: 'Superseded',
             timed_out: 'Timed out',
             waiting_review: 'Waiting for review'
-          })[status] || status,
+          })[status] || 'Unknown status',
         timeline: 'Run timeline',
         title: 'Workflow run',
+        updated: 'Updated',
+        viewTabs: 'Workflow run views',
         waitingForEvents: 'Waiting for run events'
       }
     }

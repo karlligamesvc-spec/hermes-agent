@@ -8,18 +8,21 @@ describe('hc-806 business object display status', () => {
     ['workflow', 'published', 'success'],
     ['run', 'waiting_review', 'attention'],
     ['deliverable', 'changes_requested', 'attention'],
+    ['deliverable', 'in_review', 'attention'],
+    ['deliverable', 'pending', 'attention'],
+    ['deliverable', 'superseded', 'muted'],
     ['activity', 'failed', 'danger']
   ] as const)('maps %s %s through the shared semantic table', (object, status, tone) => {
     expect(businessStatusPresentation(object, status).tone).toBe(tone)
   })
 
-  it('keeps only queued and running Runs pollable and cancellable', () => {
+  it('keeps active Runs pollable while only queued and running Runs remain cancellable', () => {
     expect(businessStatusPresentation('run', 'queued')).toMatchObject({ active: true, canCancel: true, poll: true })
     expect(businessStatusPresentation('run', 'running')).toMatchObject({ active: true, canCancel: true, poll: true })
     expect(businessStatusPresentation('run', 'waiting_review')).toMatchObject({
       active: true,
       canCancel: false,
-      poll: false
+      poll: true
     })
     expect(businessStatusPresentation('run', 'succeeded')).toMatchObject({
       active: false,

@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import {
-  cancelWorkflowRun,
-  getWorkflowRun,
-  reviewWorkflowDeliverable
-} from '../api/adapters'
+import { cancelWorkflowRun, getWorkflowRun, reviewWorkflowDeliverable } from '../api/adapters'
 import type { WorkflowRunOverview } from '../api/types'
 import { businessStatusPresentation } from '../view-model/display-status'
 
@@ -19,6 +15,17 @@ export interface WorkflowRunController {
   review: (deliverableId: string, status: 'approved' | 'changes_requested') => Promise<void>
 }
 
+export const WORKFLOW_RUN_POLL_INTERVAL_MS = 3000
+
+interface InFlightRunRequest {
+  promise: Promise<void>
+  runId: string
+}
+
+function windowIsActivelyViewed(): boolean {
+  return document.visibilityState === 'visible' && document.hasFocus()
+}
+
 /** Owns Run reads, polling, cancellation and Review mutations. */
 export function useWorkflowRun(runId: string): WorkflowRunController {
   const [overview, setOverview] = useState<null | WorkflowRunOverview>(null)
@@ -26,40 +33,125 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
   const [failed, setFailed] = useState(false)
   const [actionId, setActionId] = useState<null | string>(null)
   const [actionFailed, setActionFailed] = useState(false)
+  const generationRef = useRef(0)
+  const inFlightRef = useRef<InFlightRunRequest | null>(null)
 
-  const load = useCallback(async () => {
-    setFailed(false)
+  const refresh = useCallback(
+    (force = false): Promise<void> => {
+      const existing = inFlightRef.current
 
-    try {
-      const next = runId ? await getWorkflowRun(runId) : null
-
-      if (!next) {
-        setFailed(true)
-
-        return
+      if (!force && existing?.runId === runId) {
+        return existing.promise
       }
 
-      setOverview(next)
-    } catch {
-      setFailed(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [runId])
+      const generation = ++generationRef.current
+
+      const request = (async () => {
+        try {
+          const next = runId ? await getWorkflowRun(runId) : null
+
+          if (generation !== generationRef.current) {
+            return
+          }
+
+          if (!next) {
+            setFailed(true)
+
+            return
+          }
+
+          setOverview(next)
+          setFailed(false)
+        } catch {
+          if (generation === generationRef.current) {
+            setFailed(true)
+          }
+        } finally {
+          if (generation === generationRef.current) {
+            setLoading(false)
+          }
+        }
+      })()
+
+      inFlightRef.current = { promise: request, runId }
+      void request.finally(() => {
+        if (inFlightRef.current?.promise === request) {
+          inFlightRef.current = null
+        }
+      })
+
+      return request
+    },
+    [runId]
+  )
+
+  const load = useCallback(() => refresh(), [refresh])
+
+  const invalidateRequests = useCallback(() => {
+    generationRef.current += 1
+    inFlightRef.current = null
+  }, [])
 
   useEffect(() => {
+    invalidateRequests()
+    setActionFailed(false)
+    setActionId(null)
+    setFailed(false)
+    setLoading(true)
+    setOverview(null)
     void load()
-  }, [load])
+
+    return invalidateRequests
+  }, [invalidateRequests, load])
+
+  const shouldPoll = Boolean(overview && businessStatusPresentation('run', overview.run.status).poll)
 
   useEffect(() => {
-    if (!overview || !businessStatusPresentation('run', overview.run.status).poll) {
+    if (!shouldPoll) {
       return
     }
 
-    const timer = window.setInterval(() => void load(), 3000)
+    let timer: null | number = null
+    let wasViewed = windowIsActivelyViewed()
 
-    return () => window.clearInterval(timer)
-  }, [load, overview])
+    const stop = () => {
+      if (timer !== null) {
+        window.clearInterval(timer)
+        timer = null
+      }
+    }
+
+    const schedule = () => {
+      stop()
+
+      if (windowIsActivelyViewed()) {
+        timer = window.setInterval(() => void load(), WORKFLOW_RUN_POLL_INTERVAL_MS)
+      }
+    }
+
+    const sync = () => {
+      const viewed = windowIsActivelyViewed()
+
+      if (viewed && !wasViewed) {
+        void load()
+      }
+
+      wasViewed = viewed
+      schedule()
+    }
+
+    window.addEventListener('focus', sync)
+    window.addEventListener('blur', sync)
+    document.addEventListener('visibilitychange', sync)
+    schedule()
+
+    return () => {
+      stop()
+      window.removeEventListener('focus', sync)
+      window.removeEventListener('blur', sync)
+      document.removeEventListener('visibilitychange', sync)
+    }
+  }, [load, shouldPoll])
 
   const cancel = async () => {
     setActionFailed(false)
@@ -72,7 +164,7 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
         return
       }
 
-      await load()
+      await refresh(true)
     } catch {
       setActionFailed(true)
     } finally {
@@ -91,7 +183,7 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
         return
       }
 
-      await load()
+      await refresh(true)
     } catch {
       setActionFailed(true)
     } finally {

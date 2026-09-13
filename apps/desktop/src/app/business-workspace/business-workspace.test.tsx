@@ -1822,6 +1822,7 @@ describe('hc-685 business workspace identity', () => {
     )
 
     expect(screen.getByText('Reading evidence from recent conversations…')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Projects', level: 1 }).closest('.apex-business-page')).toBeTruthy()
     expect(screen.queryByText('Start with a real business task')).toBeNull()
   })
 

@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 
-import { ResponsiveRouteDrawer, ROUTE_DRAWER_WIDE_QUERY } from './responsive-route-drawer'
+import { ResponsiveRouteDrawer, ROUTE_DRAWER_COMPACT_QUERY, ROUTE_DRAWER_WIDE_QUERY } from './responsive-route-drawer'
 
 function installMatchMedia(initialMatches: boolean) {
   let matches = initialMatches
@@ -35,7 +36,7 @@ function installMatchMedia(initialMatches: boolean) {
   }
 }
 
-function DrawerHarness() {
+function DrawerHarness({ compact = false, seedScroll = false }: { compact?: boolean; seedScroll?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -44,21 +45,52 @@ function DrawerHarness() {
         Open run
       </button>
       {open && (
-        <ResponsiveRouteDrawer onClose={() => setOpen(false)} title="Run details">
-          <button type="button">Inside action</button>
+        <ResponsiveRouteDrawer compact={compact} onClose={() => setOpen(false)} title="Run details">
+          <div
+            data-route-drawer-scroll=""
+            ref={node => {
+              if (node && seedScroll && node.dataset.scrollSeeded !== 'true') {
+                node.dataset.scrollSeeded = 'true'
+                node.scrollTop = 240
+              }
+            }}
+          >
+            <button type="button">Inside action</button>
+          </div>
         </ResponsiveRouteDrawer>
       )}
     </>
   )
 }
 
-function renderHarness() {
+function renderHarness(compact = false, seedScroll = false) {
   return render(
     <MemoryRouter>
       <I18nProvider configClient={null} initialLocale="en">
-        <DrawerHarness />
+        <DrawerHarness compact={compact} seedScroll={seedScroll} />
       </I18nProvider>
     </MemoryRouter>
+  )
+}
+
+function NestedRouteHarness() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button data-route-drawer-return-focus="project-42" type="button">
+        Original project
+      </button>
+      {!open ? (
+        <button onClick={() => setOpen(true)} type="button">
+          Open nested run
+        </button>
+      ) : (
+        <ResponsiveRouteDrawer onClose={() => setOpen(false)} returnFocusKey="project-42" title="Nested run details">
+          Run content
+        </ResponsiveRouteDrawer>
+      )}
+    </>
   )
 }
 
@@ -69,6 +101,17 @@ afterEach(() => {
 })
 
 describe('ResponsiveRouteDrawer', () => {
+  it('carries native titlebar clearance into the body portal', () => {
+    installMatchMedia(true)
+    renderHarness()
+    fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
+
+    const drawer = screen.getByRole('dialog', { name: 'Run details' })
+
+    expect(drawer.parentElement).toBe(globalThis.document.body)
+    expect(drawer.style.getPropertyValue('--titlebar-height')).toBe('34px')
+  })
+
   it('uses a full-screen object surface below 1100px and a right drawer at the wide breakpoint', async () => {
     const setWide = installMatchMedia(false)
 
@@ -85,6 +128,44 @@ describe('ResponsiveRouteDrawer', () => {
 
     setWide(true)
     await waitFor(() => expect(drawer.getAttribute('data-layout')).toBe('drawer'))
+  })
+
+  it('uses a full-width Run surface through 899px and a 540px drawer from 900px', async () => {
+    const setWide = installMatchMedia(false)
+
+    renderHarness(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
+
+    const drawer = screen.getByRole('dialog', { name: 'Run details' })
+
+    expect(ROUTE_DRAWER_COMPACT_QUERY).toBe('(min-width: 900px)')
+    expect(window.matchMedia).toHaveBeenCalledWith(ROUTE_DRAWER_COMPACT_QUERY)
+    expect(drawer.getAttribute('data-layout')).toBe('fullscreen')
+    expect(drawer.className).toContain('min-[900px]:w-[min(540px,calc(100vw-16px))]')
+    expect(drawer.className).not.toContain('min-[640px]:')
+
+    setWide(true)
+    await waitFor(() => expect(drawer.getAttribute('data-layout')).toBe('drawer'))
+  })
+
+  it('anchors initial focus and nested scroll at the Run title, including after native resize', async () => {
+    installMatchMedia(true)
+
+    renderHarness(true, true)
+    fireEvent.click(screen.getByRole('button', { name: 'Open run' }))
+
+    const drawer = screen.getByRole('dialog', { name: 'Run details' })
+    const scrollContainer = drawer.querySelector<HTMLElement>('[data-route-drawer-scroll]')
+
+    await waitFor(() => expect(globalThis.document.activeElement).toBe(drawer))
+    expect(scrollContainer?.scrollTop).toBe(0)
+
+    if (scrollContainer) {
+      scrollContainer.scrollTop = 180
+    }
+
+    fireEvent(window, new Event('resize'))
+    expect(scrollContainer?.scrollTop).toBe(0)
   })
 
   it('traps focus, closes once on Escape, restores focus, and releases the scroll lock', async () => {
@@ -110,6 +191,27 @@ describe('ResponsiveRouteDrawer', () => {
     expect(globalThis.document.body.style.overflow).toBe('')
   })
 
+  it('restores focus to the background route anchor when the immediate opener was unmounted', async () => {
+    installMatchMedia(true)
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="en">
+          <NestedRouteHarness />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+    const nestedOpener = screen.getByRole('button', { name: 'Open nested run' })
+
+    nestedOpener.focus()
+    fireEvent.click(nestedOpener)
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Nested run details' })).toBeTruthy())
+
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nested run details' })).toBeNull())
+    expect(globalThis.document.activeElement).toBe(screen.getByRole('button', { name: 'Original project' }))
+  })
+
   it('makes route-surface motion opt out under reduced-motion preferences', () => {
     installMatchMedia(false)
     renderHarness()
@@ -121,5 +223,43 @@ describe('ResponsiveRouteDrawer', () => {
     expect(drawer.className).toContain('motion-reduce:animate-none')
     expect(drawer.className).toContain('motion-reduce:transition-none')
     expect(backdrop?.className).toContain('motion-reduce:animate-none')
+  })
+
+  it('lets a nested modal consume the first Escape before the route drawer', async () => {
+    installMatchMedia(true)
+
+    function LayeredHarness() {
+      const [outerOpen, setOuterOpen] = useState(true)
+
+      return outerOpen ? (
+        <ResponsiveRouteDrawer onClose={() => setOuterOpen(false)} title="Run details">
+          <DialogPrimitive.Root defaultOpen>
+            <DialogPrimitive.Portal>
+              <DialogPrimitive.Overlay />
+              <DialogPrimitive.Content aria-describedby={undefined}>
+                <DialogPrimitive.Title>Review confirmation</DialogPrimitive.Title>
+                <button type="button">Confirm</button>
+              </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+          </DialogPrimitive.Root>
+        </ResponsiveRouteDrawer>
+      ) : null
+    }
+
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="en">
+          <LayeredHarness />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Review confirmation' })).toBeNull())
+    expect(screen.getByRole('dialog', { name: 'Run details' })).toBeTruthy()
+
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Run details' })).toBeNull())
   })
 })

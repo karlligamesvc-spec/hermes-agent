@@ -92,7 +92,7 @@ function WorkflowRunRouteDrawer() {
   const { t } = useI18n()
 
   return (
-    <RouteDrivenDrawer deepLinkFallback={WORKFLOWS_ROUTE} title={t.businessWorkspace.workflowDomain.run.title}>
+    <RouteDrivenDrawer compact deepLinkFallback={WORKFLOWS_ROUTE} title={t.businessWorkspace.workflowDomain.run.title}>
       <Suspense fallback={null}>
         <WorkflowRunView />
       </Suspense>

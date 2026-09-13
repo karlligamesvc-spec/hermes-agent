@@ -3503,9 +3503,11 @@ export const ja = defineLocale({
         actionFailed: '操作を保存できませんでした。もう一度お試しください。',
         approve: '成果物を承認',
         attempt: '実行回数',
+        attemptDescription: (attempt, maximum) => `${attempt} 回目の試行（最大 ${maximum} 回）`,
         cancel: '実行をキャンセル',
         cancelling: 'キャンセル中…',
         created: '作成日時',
+        detailsTab: '実行詳細',
         deliverables: '成果物とレビュー',
         evidence: count => `根拠 ${count} 件`,
         event: eventType =>
@@ -3521,9 +3523,27 @@ export const ja = defineLocale({
             'run.succeeded': '実行が完了しました',
             'run.timed_out': '実行がタイムアウトしました',
             'run.waiting_review': 'レビュー待ちです'
-          })[eventType] || eventType,
+          })[eventType] ||
+          (eventType.startsWith('tool.')
+            ? 'ツールのアクティビティ'
+            : eventType.includes('result')
+              ? '実行結果を記録しました'
+              : '実行イベント'),
+        eventSummary: eventType =>
+          eventType.startsWith('tool.')
+            ? 'APEX / Hermes がツールを使用しました。引数と結果は非表示です。'
+            : eventType === 'run.queued'
+              ? 'キューに追加され、開始準備中です。'
+              : eventType === 'run.running'
+                ? 'APEX が処理を開始しました。'
+                : eventType.includes('result')
+                  ? '結果が記録されました。安全なライフサイクル要約だけを表示します。'
+                  : 'この実行のライフサイクル更新が記録されました。',
+        events: '記録済みイベント',
         executor: '実行エンジン',
+        executorUnavailable: '利用できません',
         eyebrow: '実際のワークフロー実行',
+        hermesExecutor: 'Hermes',
         loadFailedDescription: 'この実行を読み込めませんでした。データは置換も削除もされていません。',
         loadFailedTitle: '実行を利用できません',
         loading: 'ワークフロー実行を読み込み中',
@@ -3531,25 +3551,46 @@ export const ja = defineLocale({
         noDeliverablesTitle: '成果物はまだありません',
         noEvents: '実行イベントが記録されると、ここに順番に表示されます。',
         noObjective: 'この実行には目標の要約が記録されていません。',
+        noPendingDescription: '現在、レビューや介入は必要ありません。',
+        noPendingTitle: '対応が必要な項目はありません',
+        noStageProgressDescription:
+          '現在の実行レスポンスには実際の段階データがないため、APEX は段階や進捗を推測しません。',
+        noStageProgressTitle: '表示できる段階進捗はまだありません',
+        openDeliverable: '成果物を開く',
+        openFailed: '成果物を開けませんでした。現在の Run データは保持されています。',
+        openUnavailable: '開ける結果はまだありません',
+        openingDeliverable: '開いています…',
+        pendingReviewDescription: count => `${count} 件の実際の成果物が判断を待っています。`,
+        pendingReviewTitle: 'レビューが必要です',
+        progressTab: '進捗',
+        refresh: '更新',
+        refreshFailedDescription: '最新の更新に失敗しました。最後に取得できた Run データを表示しています。',
         requestChanges: '修正を依頼',
         retry: '再読み込み',
+        stageProgress: '段階の進捗',
+        started: '開始日時',
         status: status =>
           ({
             approved: '承認済み',
             cancelled: 'キャンセル済み',
             changes_requested: '修正が必要',
+            draft: '下書き',
             failed: '失敗',
             in_review: 'レビュー中',
+            pending: 'レビュー待ち',
             queued: '待機中',
             ready: 'レビュー可能',
             rejected: '却下済み',
             running: '実行中',
             succeeded: '完了',
+            superseded: '置き換え済み',
             timed_out: 'タイムアウト',
             waiting_review: 'レビュー待ち'
-          })[status] || status,
+          })[status] || '不明な状態',
         timeline: '実行タイムライン',
         title: 'ワークフロー実行',
+        updated: '更新日時',
+        viewTabs: 'ワークフロー実行の表示',
         waitingForEvents: '実行イベントを待っています'
       }
     }

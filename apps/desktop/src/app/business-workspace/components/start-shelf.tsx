@@ -110,10 +110,11 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
               return (
                 <Button
                   className="flex h-auto w-full items-center justify-start gap-3 rounded-none border-b border-(--ui-stroke-tertiary) px-0 py-3 text-left last:border-b-0"
+                  data-route-drawer-return-focus={project.id}
                   key={project.id}
                   onClick={() =>
                     navigate(projectDetailRoute(project.id), {
-                      state: { ...routeDrawerNavigationState(location), businessProjectSummary: summary }
+                      state: { ...routeDrawerNavigationState(location, project.id), businessProjectSummary: summary }
                     })
                   }
                   variant="ghost"

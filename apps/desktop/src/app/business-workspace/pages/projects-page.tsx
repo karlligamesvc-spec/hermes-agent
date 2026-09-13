@@ -166,10 +166,11 @@ export function ProjectsView() {
                 return (
                   <Button
                     className="grid min-h-[6.25rem] w-full grid-cols-[auto_minmax(0,1fr)] gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-4 py-4 text-left last:border-b-0 hover:bg-(--chrome-action-hover) sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-5"
+                    data-route-drawer-return-focus={project.id}
                     key={project.id}
                     onClick={() =>
                       navigate(projectDetailRoute(project.id), {
-                        state: { ...routeDrawerNavigationState(location), businessProjectSummary: summary }
+                        state: { ...routeDrawerNavigationState(location, project.id), businessProjectSummary: summary }
                       })
                     }
                     type="button"
@@ -259,7 +260,10 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
     !sessionsLoading && !evidenceUnavailable && evidence !== null && !hasChildReadFailures && !hasHistory
 
   return (
-    <section className="apex-business-surface apex-business-page apex-primary-page flex flex-col">
+    <section
+      className="apex-business-surface apex-business-page apex-primary-page flex flex-col"
+      data-legacy-projects=""
+    >
       <div className="apex-primary-page-column">
         <BusinessPageHeader
           description={c.description}

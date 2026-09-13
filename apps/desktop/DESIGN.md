@@ -177,6 +177,8 @@ Sizes: `default`, `xs`, `overlay` (titlebar glyph counts).
 - **`SegmentedControl`** — the choice control for small mutually-exclusive sets
   (color mode, tool-call display, usage period). Replaces radio piles and
   pill rows.
+- **`Tabs` / `TabsList` / `TabsTrigger` / `TabsContent`** — the shared semantic
+  tab set for switching between peer views inside one surface.
 - **`Switch`** (`size="xs"`) — bare, with `aria-label`. No bordered text wrapper.
 
 ## Layout

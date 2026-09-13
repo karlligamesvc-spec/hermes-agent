@@ -14,6 +14,7 @@ import {
   projectIdForPath,
   routeDrawerBackgroundLocation,
   routeDrawerNavigationState,
+  routeDrawerReturnFocusKey,
   routeSessionId,
   sessionRoute,
   SETTINGS_ROUTE,
@@ -90,13 +91,16 @@ describe('APEX route contract', () => {
 
 describe('route-driven drawer history', () => {
   it('preserves the exact source location for the background page', () => {
-    const state = routeDrawerNavigationState({
-      hash: '#current',
-      key: 'projects-key',
-      pathname: '/projects',
-      search: '?status=running',
-      state: { scrollTop: 420 }
-    })
+    const state = routeDrawerNavigationState(
+      {
+        hash: '#current',
+        key: 'projects-key',
+        pathname: '/projects',
+        search: '?status=running',
+        state: { scrollTop: 420 }
+      },
+      'project-42'
+    )
 
     expect(routeDrawerBackgroundLocation(state)).toEqual({
       hash: '#current',
@@ -105,6 +109,7 @@ describe('route-driven drawer history', () => {
       search: '?status=running',
       state: { scrollTop: 420 }
     })
+    expect(routeDrawerReturnFocusKey(state)).toBe('project-42')
   })
 
   it('uses browser Back for an in-app drawer and a replacing default for a cold deep link', () => {
@@ -127,6 +132,10 @@ describe('route-driven drawer history', () => {
       'Invalid route drawer source'
     )
     expect(routeDrawerBackgroundLocation({ routeDrawer: { backgroundLocation: { pathname: '/projects' } } })).toBeNull()
+    expect(routeDrawerReturnFocusKey({ routeDrawer: { returnFocusKey: '' } })).toBeNull()
+    expect(() =>
+      routeDrawerNavigationState({ hash: '', pathname: '/projects', search: '' }, 'x'.repeat(201))
+    ).toThrowError('Invalid route drawer return focus key')
   })
 })
 
