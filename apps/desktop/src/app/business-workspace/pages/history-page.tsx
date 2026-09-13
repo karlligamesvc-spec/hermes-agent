@@ -19,10 +19,14 @@ type ActivityFilter = 'all' | 'deliverable' | 'review' | 'run'
 type ActivityGroup = 'older' | 'recent' | 'today' | 'yesterday'
 
 function startOfLocalDay(value: Date): number {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
+  // Compare calendar dates rather than elapsed milliseconds between local
+  // midnights. A spring-forward day is only 23 hours and would otherwise make
+  // yesterday look like today; a fall-back day is 25 hours and can similarly
+  // push recent items into the wrong group.
+  return Date.UTC(value.getFullYear(), value.getMonth(), value.getDate())
 }
 
-function activityGroup(happenedAt: string, now: Date): ActivityGroup {
+export function activityGroup(happenedAt: string, now: Date): ActivityGroup {
   const dayDistance = Math.floor((startOfLocalDay(now) - startOfLocalDay(new Date(happenedAt))) / 86_400_000)
 
   if (dayDistance <= 0) {

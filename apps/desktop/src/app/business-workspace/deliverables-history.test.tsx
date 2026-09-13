@@ -7,7 +7,7 @@ import { I18nProvider } from '@/i18n'
 import type { WorkflowDeliverableDetail } from './api/types'
 import { DeliverableDetailView } from './pages/deliverable-detail-page'
 import { DeliverablesView } from './pages/deliverables-page'
-import { HistoryView } from './pages/history-page'
+import { activityGroup, HistoryView } from './pages/history-page'
 
 const item = {
   createdAt: '2026-09-13T01:00:00Z',
@@ -128,6 +128,18 @@ beforeEach(() => {
 })
 
 describe('hc-831 Deliverables and Activity loop', () => {
+  it('keeps yesterday grouped by calendar day across a spring-forward DST boundary', () => {
+    const previousTimezone = process.env.TZ
+
+    process.env.TZ = 'America/Los_Angeles'
+
+    try {
+      expect(activityGroup('2026-03-08T12:00:00-07:00', new Date('2026-03-09T12:00:00-07:00'))).toBe('yesterday')
+    } finally {
+      process.env.TZ = previousTimezone
+    }
+  })
+
   it('opens a real Deliverable route from the canonical list with restorable focus state', async () => {
     const bridge = installBridge()
 
