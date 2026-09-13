@@ -376,6 +376,68 @@ test('fresh packaged app exposes the business workspace without implementation v
   await page.keyboard.press('Escape')
 })
 
+test('packaged sidebar uses the APEX app mark and keeps Chinese assistant creation reachable', async () => {
+  const page = fixture!.page
+  const sessionsTab = page
+    .getByRole('button', { exact: true, name: '会话' })
+    .or(page.getByRole('tab', { exact: true, name: '会话' }))
+    .first()
+  const assistantsTab = page
+    .getByRole('button', { exact: true, name: '助手' })
+    .or(page.getByRole('tab', { exact: true, name: '助手' }))
+    .first()
+
+  await expect(sessionsTab).toBeVisible()
+  await expect(assistantsTab).toBeVisible()
+
+  const brandImage = page.locator('[data-apex-sidebar-brand] img')
+
+  await expect(brandImage).toHaveCount(1)
+  await expect(brandImage).toHaveAttribute('src', /apple-touch-icon\.png$/)
+  await assistantsTab.click()
+
+  const createMenu = page.getByRole('button', { name: '添加助手或创建群聊' })
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
+  await expect(createMenu).toBeVisible()
+  await createMenu.click()
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'assistant-menu-1220x800.png')
+    })
+  }
+
+  await expect(page.getByRole('menuitem', { exact: true, name: '添加助手' })).toBeEnabled()
+
+  const createGroup = page.getByRole('menuitem', { exact: true, name: '创建群聊' })
+
+  await expect(createGroup).toBeEnabled()
+  await createGroup.click()
+
+  const dialog = page.getByRole('dialog', { name: '创建群聊' })
+
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('status')).toContainText('至少需要 2 个助手')
+  await expect(dialog.getByRole('button', { exact: true, name: '创建群聊' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { exact: true, name: '添加助手' })).toBeEnabled()
+
+  if (screenshotRoot) {
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'assistant-entry-1220x800.png')
+    })
+  }
+
+  await page.keyboard.press('Escape')
+  await sessionsTab.click()
+  await expect(page.getByRole('button', { name: '开始 ⌘ N' })).toBeVisible()
+})
+
 test('fresh default glass keeps every Phase 1 business route on one opaque APEX shell', async () => {
   const page = fixture!.page
 

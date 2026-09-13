@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
+import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -149,7 +150,6 @@ import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
 // dominating the sidebar before the user asks to see it.
 const NON_SESSION_INITIAL_ROWS = 3
 const NON_SESSION_LOAD_STEP = 10
-const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
 const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
   'new-session': props => <Codicon name="edit" {...props} />,
@@ -1269,14 +1269,7 @@ export function ChatSidebar({
           className="flex h-[calc(var(--titlebar-height)+2.75rem)] shrink-0 items-end gap-2.5 px-2.5 pb-2.5 [-webkit-app-region:drag]"
           data-apex-sidebar-brand=""
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            className="size-5 shrink-0 object-contain"
-            height={20}
-            src={assetPath('assets/apex-mark-minimal.png')}
-            width={20}
-          />
+          <BrandMark aria-hidden="true" className="size-5 rounded-[0.3rem]" />
           <span className="pb-px text-[0.875rem] font-semibold tracking-[0.2em] text-(--ui-text-primary)">APEX</span>
         </div>
         <SidebarGroup className="shrink-0 p-0 pb-2 pt-0">

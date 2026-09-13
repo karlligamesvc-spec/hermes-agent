@@ -172,8 +172,8 @@ describe('materializing the draft profile', () => {
     // The live surface needs a REAL backend row to write to.
     await waitFor(() => expect(mocks.skillsView.at(-1)).toMatchObject({ fixedProfile: 'inbox-triage' }))
 
-    // Create Bot goes through the same helper — no duplicate profiles.create.
-    fireEvent.click(screen.getByRole('button', { name: 'Create Bot' }))
+    // Add assistant goes through the same helper — no duplicate profiles.create.
+    fireEvent.click(screen.getByRole('button', { name: 'Add assistant' }))
 
     await waitFor(() => expect(mocks.createCanonicalChat).toHaveBeenCalledWith('inbox-triage', { kickoff: true }))
     expect(createCalls()).toHaveLength(1)
@@ -244,12 +244,37 @@ describe('the clone-from default', () => {
     fireEvent.click(await screen.findByRole('option', { name: /Fresh profile/ }))
     expect(cloneFrom().textContent).toMatch(/Fresh profile/)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Bot' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add assistant' }))
     await waitFor(() => expect(mocks.createCanonicalChat).toHaveBeenCalled())
 
     // Second open: the picker must read `default` again, or every agent after
     // the first silently starts from a bare profile.
     fireEvent.click(screen.getByRole('button', { name: /Advanced/ }))
     expect(cloneFrom().textContent).toBe('default')
+  })
+})
+
+describe('group chat creation recovery', () => {
+  it('opens with one real assistant, explains the requirement, and offers an enabled add-assistant action', async () => {
+    const onAddAssistant = vi.fn()
+    const { CreateGroupChatDialog } = await import('./create-dialog')
+
+    render(
+      withQueryClient(
+        <CreateGroupChatDialog
+          onAddAssistant={onAddAssistant}
+          onClose={() => undefined}
+          open
+          roster={roster}
+        />
+      )
+    )
+
+    expect(screen.getByRole('dialog', { name: 'Create group chat' })).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('needs at least 2 assistants')
+    expect(screen.getByRole('button', { name: 'Create group chat' }).hasAttribute('disabled')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add assistant' }))
+    expect(onAddAssistant).toHaveBeenCalledTimes(1)
   })
 })
