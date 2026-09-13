@@ -26,5 +26,20 @@ describe('workflow Run lifecycle copy', () => {
     expect(attempt).not.toBe('1/2')
     expect(attempt).toMatch(/1/)
     expect(attempt).toMatch(/2/)
+
+    const unknown = copy.status('__unknown__')
+
+    for (const status of [
+      'approved',
+      'changes_requested',
+      'draft',
+      'in_review',
+      'pending',
+      'ready',
+      'rejected',
+      'superseded'
+    ]) {
+      expect(copy.status(status)).not.toBe(unknown)
+    }
   })
 })

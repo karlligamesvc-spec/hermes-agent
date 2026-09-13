@@ -149,4 +149,24 @@ describe('signed-in account navigation', () => {
 
     await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe('/settings'))
   })
+
+  it.each([
+    ['连接助手', '/assistant'],
+    ['历史会话', '/history']
+  ])('keeps %s inside the account menu and routes only after selection', async (label, route) => {
+    render(
+      <I18nProvider configClient={null} initialLocale="zh">
+        <MemoryRouter initialEntries={['/projects']}>
+          <AccountPanel />
+          <CurrentPath />
+        </MemoryRouter>
+      </I18nProvider>
+    )
+
+    expect(screen.queryByRole('menuitem', { name: label })).toBeNull()
+    fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: label }))
+
+    await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe(route))
+  })
 })

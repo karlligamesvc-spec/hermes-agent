@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "mode": "isolated-diagnostic",
+  "appId": "com.apexnodes.desktop.diagnostic-trial",
+  "productName": "APEX Diagnostic Trial",
+  "executableName": "APEX Diagnostic Trial",
+  "artifactName": "APEX-Diagnostic-Trial-${version}-${os}-${arch}.${ext}",
+  "protocolRegistration": "disabled",
+  "shellUpdater": "disabled",
+  "runtimeUpdates": "disabled"
+}

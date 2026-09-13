@@ -212,6 +212,10 @@ describe('wake-word ear visibility', () => {
     })
 
     const ear = screen.getByLabelText('APEX voice activation — paused during voice chat')
+    const endConversation = screen.getByRole('button', { name: 'End voice conversation' })
+
     expect((ear as HTMLButtonElement).disabled).toBe(true)
+    expect(endConversation.className).toContain('bg-(--dt-primary-solid)')
+    expect(endConversation.className).toContain('text-(--dt-primary-solid-foreground)')
   })
 })

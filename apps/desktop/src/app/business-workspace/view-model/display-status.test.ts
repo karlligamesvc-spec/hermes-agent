@@ -8,6 +8,9 @@ describe('hc-806 business object display status', () => {
     ['workflow', 'published', 'success'],
     ['run', 'waiting_review', 'attention'],
     ['deliverable', 'changes_requested', 'attention'],
+    ['deliverable', 'in_review', 'attention'],
+    ['deliverable', 'pending', 'attention'],
+    ['deliverable', 'superseded', 'muted'],
     ['activity', 'failed', 'danger']
   ] as const)('maps %s %s through the shared semantic table', (object, status, tone) => {
     expect(businessStatusPresentation(object, status).tone).toBe(tone)

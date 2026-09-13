@@ -139,9 +139,12 @@ export const zhHant = defineLocale({
     copyDetail: '複製詳情',
     copyDetailFailed: '無法複製通知詳情',
     backendOutOfDateTitle: '後端版本過舊',
-    backendOutOfDateMessage: '您的 APEX 後端早於目前的桌面版本，可能無法正常運作。請更新以保持一致。',
+    backendOutOfDateMessage: '本機 APEX Runtime 早於目前的桌面介面，部分功能可能無法使用。請檢查相容更新。',
+    backendAlignmentUnavailableTitle: '相容 Runtime 尚未發佈',
+    backendAlignmentUnavailableMessage:
+      '目前沒有與此桌面版本相符的 Runtime 套件。安裝桌面 App 不會強制覆蓋使用中的後端；相容套件發佈後可在更新中安裝。',
     installMethodUnsupportedTitle: '不受支援的安裝方式',
-    updateHermes: '更新 APEX',
+    updateHermes: '檢查相容更新',
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 項新變更可用。`,
     updateReadyMessageUnknown: '有新更新可用。',
@@ -344,6 +347,13 @@ export const zhHant = defineLocale({
       },
       backdropTitle: '聊天背景',
       backdropDesc: '對話後方那張淡淡的雕像圖片。',
+      tipsTitle: '應用程式內提示',
+      tipsDesc: '在閒置時或 APEX 判斷有幫助時，偶爾顯示一個指向介面局部的小氣泡。關閉後會永久收起該提示。',
+      tipsReset: (count: number) => `恢復 ${count} 則已關閉的提示`,
+      toursTitle: '導覽教學',
+      toursDesc: '讓 APEX 逐步帶你熟悉應用程式；畫面會變暗，並逐項突顯目前步驟。',
+      vibeHeartsTitle: '互動愛心',
+      vibeHeartsDesc: '當你說「謝謝」、「愛你」、「好助手」或傳送愛心時，顯示漂浮愛心；與上方的訊息回應分開。',
       embedsTitle: '內嵌預覽',
       embedsDesc:
         '豐富預覽會從第三方網站（YouTube、X 等）載入。詢問會在你允許前顯示佔位符；一律會自動載入；關閉則保留純連結。',
@@ -1573,6 +1583,8 @@ export const zhHant = defineLocale({
 
   cron: {
     close: '關閉排程',
+    eyebrow: '自動化執行',
+    description: '依排程自動執行目標，並把真實結果傳送到指定位置。',
     title: '排程工作',
     count: count => `${count} 個工作`,
     modelImpact: {
@@ -1698,6 +1710,9 @@ export const zhHant = defineLocale({
   },
 
   artifacts: {
+    eyebrow: '結果資產',
+    title: '交付物',
+    description: '集中查看工作階段與工作流程產生的真實圖片、檔案與連結。',
     search: '搜尋成品…',
     refresh: '重新整理成品',
     refreshing: '正在重新整理成品',
@@ -1738,8 +1753,8 @@ export const zhHant = defineLocale({
       start: '開始',
       projects: '專案',
       workflows: '工作流程',
-      assistant: '助手',
-      history: '歷史',
+      assistant: '連接助手',
+      history: '歷史會話',
       search: '搜尋',
       cron: '定時執行',
       'scheduled-runs': '定時執行',
@@ -1754,7 +1769,7 @@ export const zhHant = defineLocale({
     noMatch: query => `沒有工作階段符合「${query}」。`,
     results: '結果',
     pinned: '置頂',
-    sessions: '對話',
+    sessions: '會話',
     cronJobs: '排程任務',
     groupAriaGrouped: '以單一清單顯示工作階段',
     groupAriaUngrouped: '依工作區分組工作階段',
@@ -3075,7 +3090,6 @@ export const zhHant = defineLocale({
     labelOutput: '產出',
     inputNone: '無需參數，直接出結果',
     use: '使用場景',
-    channelsTitle: '管道 · 分身在哪',
     connectTitle: '連接你的分身',
     phoneRemote: '手機遙控',
     remoteOn: '開 · /cc',
@@ -3187,7 +3201,9 @@ export const zhHant = defineLocale({
       label: '業務目標',
       placeholder: '例如：分析美國寵物用品市場，並產出選品報告和上架素材',
       hint: 'Enter 開始執行 · Shift+Enter 換行',
-      submit: '開始執行'
+      submit: '開始執行',
+      workflowAttachmentsUnsupported:
+        '此工作流程暫不支援隨目標提交附件。目標、工作流程選擇和目前附件會保留，直到你移除附件後繼續。'
     },
     projects: {
       eyebrow: '從目標到交付',
@@ -3197,6 +3213,20 @@ export const zhHant = defineLocale({
       emptyDescription: '先描述一個業務目標，APEX 會據此建立真實專案並組織工作流程。',
       action: '開始一個目標',
       newProject: '新增專案',
+      create: {
+        title: '新增專案',
+        description: '先定義專案名稱與目標。建立後不會自動啟動工作流程或虛構進度。',
+        nameLabel: '專案名稱',
+        namePlaceholder: '例如：美國寵物用品市場',
+        objectiveLabel: '專案描述與目標',
+        objectivePlaceholder: '說明要解決的問題、預期結果與必要限制',
+        folderLabel: '本機資料夾',
+        chooseFolder: '選擇資料夾',
+        folderOptional: '選填；記錄此專案的本機工作目錄',
+        create: '建立專案',
+        creating: '正在建立…',
+        failed: '專案建立失敗。輸入內容已保留，請檢查連接後重試。'
+      },
       chooseWorkflow: '選擇工作流程',
       filters: {
         label: '專案狀態篩選',
@@ -3278,7 +3308,13 @@ export const zhHant = defineLocale({
       availableSources: '可用資料來源',
       sourceConnected: '已連接',
       sourceNotConnected: '未連接',
-      noAvailableSources: '目前版本沒有可用的資料來源連接出口。'
+      noAvailableSources: '目前版本沒有可用的資料來源連接出口。',
+      workflowsTitle: '專案工作流程',
+      workflowsDescription: '專案是目標容器；工作流程是完成目標的一條執行路徑。一個專案可有多個工作流程。',
+      addWorkflow: '增加工作流程',
+      loadingWorkflows: '正在讀取專案工作流程…',
+      noWorkflows: '此專案尚無工作流程，也沒有 Run 或進度。',
+      workflowsUnavailable: '專案已讀取，但工作流程清單暫時無法使用。不會猜測執行狀態。'
     },
     workflows: {
       eyebrow: '成熟業務路徑',
@@ -3323,7 +3359,10 @@ export const zhHant = defineLocale({
       },
       savedTitle: '我的工作流程',
       savedEmpty: '還沒有已儲存的工作流程。開始一個目標後會在這裡出現。',
-      savedCount: count => `${count} 個真實工作流程`,
+      savedCount: count => `${count} 個工作流程`,
+      loadingSaved: '正在讀取我的工作流程…',
+      savedUnavailable: '我的工作流程暫時無法讀取；目錄狀態不會覆蓋這裡的真實資料。',
+      addingToProject: '正在為目前專案選擇新的執行路徑。',
       localCatalogNotice: '生產目錄尚未連接。不會用內建或測試範本替代真實目錄。',
       catalogUnavailable: '真實工作流程目錄暫時無法使用，沒有範本被啟動。',
       catalogUnavailableDescription: '請重試目錄連接，或返回開始頁直接描述目標。',
@@ -3348,12 +3387,14 @@ export const zhHant = defineLocale({
         event: eventType =>
           ({
             'executor.requested': '已請求 Hermes 執行',
+            'run.cancel_requested': '已請求取消執行',
             'run.cancelled': '執行已取消',
             'run.failed': '執行失敗',
             'run.queued': '執行已排隊',
             'run.retry_deferred': '重試已延後',
             'run.retry_scheduled': '已安排重試',
             'run.running': '執行已開始',
+            'run.succeeded': '執行已完成',
             'run.timed_out': '執行逾時',
             'run.waiting_review': '等待審閱'
           })[eventType] ||
@@ -3402,13 +3443,16 @@ export const zhHant = defineLocale({
             approved: '已核准',
             cancelled: '已取消',
             changes_requested: '需要修改',
+            draft: '草稿',
             failed: '失敗',
             in_review: '審閱中',
+            pending: '待審閱',
             queued: '排隊中',
             ready: '可審閱',
             rejected: '已拒絕',
             running: '執行中',
             succeeded: '已完成',
+            superseded: '已被取代',
             timed_out: '已逾時',
             waiting_review: '等待審閱'
           })[status] || '未知狀態',

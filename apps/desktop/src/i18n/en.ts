@@ -143,9 +143,12 @@ export const en: Translations = {
     copyDetailFailed: 'Could not copy notification detail',
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
-      'Your APEX backend is older than this desktop build and may not work correctly. Update to align them.',
+      'The local APEX Runtime is older than this desktop interface, so some features may be unavailable. Check for a compatible update.',
+    backendAlignmentUnavailableTitle: 'Compatible Runtime not published yet',
+    backendAlignmentUnavailableMessage:
+      'No Runtime package matches this desktop version yet. Installing the desktop app does not overwrite an active backend; install the compatible package from Updates after it is published.',
     installMethodUnsupportedTitle: 'Unsupported install method',
-    updateHermes: 'Update APEX',
+    updateHermes: 'Check compatible update',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     updateReadyMessageUnknown: 'A new update is available.',
@@ -602,10 +605,10 @@ export const en: Translations = {
       reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and Hermes can react to yours.',
       tipsTitle: 'In-App Tips',
       tipsDesc:
-        'A small bubble pointing at one part of the app, shown occasionally while idle and by Hermes when it helps. Closing one retires it for good.',
+        'A small bubble pointing at one part of the app, shown occasionally while idle and by APEX when it helps. Closing one retires it for good.',
       tipsReset: (count: number) => `Bring back ${count} closed ${count === 1 ? 'tip' : 'tips'}`,
       toursTitle: 'Guided Tours',
-      toursDesc: 'Let Hermes walk you through the app, dimming the screen and spotlighting each step.',
+      toursDesc: 'Let APEX walk you through the app, dimming the screen and spotlighting each step.',
       composerPopoutTitle: 'Floating Composer',
       composerPopoutDesc: 'Allow dragging the composer out of its dock. Turn this off to keep it locked at the bottom.',
       vibeHeartsTitle: 'Vibe Hearts',
@@ -2184,6 +2187,8 @@ export const en: Translations = {
 
   cron: {
     close: 'Close cron',
+    eyebrow: 'Automated execution',
+    description: 'Run goals on a schedule and deliver real results to the destination you choose.',
     title: 'Scheduled jobs',
     count: count => `${count} ${count === 1 ? 'job' : 'jobs'}`,
     modelImpact: {
@@ -2330,6 +2335,9 @@ export const en: Translations = {
   },
 
   artifacts: {
+    eyebrow: 'Result assets',
+    title: 'Deliverables',
+    description: 'Browse the real images, files, and links produced by sessions and workflows.',
     search: 'Search artifacts...',
     refresh: 'Refresh artifacts',
     refreshing: 'Refreshing artifacts',
@@ -2390,8 +2398,8 @@ export const en: Translations = {
       start: 'Start',
       projects: 'Projects',
       workflows: 'Workflows',
-      assistant: 'Assistant',
-      history: 'History',
+      assistant: 'Connect assistants',
+      history: 'Session history',
       search: 'Search',
       cron: 'Scheduled runs',
       'scheduled-runs': 'Scheduled runs',
@@ -3971,7 +3979,6 @@ export const en: Translations = {
     labelOutput: 'Output',
     inputNone: 'No input needed — runs right away',
     use: 'Use scenario',
-    channelsTitle: 'Channels · where your agent lives',
     connectTitle: 'Connect your agent',
     phoneRemote: 'Phone remote',
     remoteOn: 'On · /cc',
@@ -4083,7 +4090,9 @@ export const en: Translations = {
       label: 'Business goal',
       placeholder: 'For example: analyze the US pet supplies market and produce a selection report and launch assets',
       hint: 'Enter to start · Shift+Enter for a new line',
-      submit: 'Start goal'
+      submit: 'Start goal',
+      workflowAttachmentsUnsupported:
+        'This workflow cannot accept goal attachments yet. Your goal, workflow selection, and current attachments stay in place until you remove the attachments and continue.'
     },
     projects: {
       eyebrow: 'From goal to delivery',
@@ -4095,6 +4104,20 @@ export const en: Translations = {
         'Describe a business goal. APEX creates a real project and organizes its workflow from that goal.',
       action: 'Start a goal',
       newProject: 'New project',
+      create: {
+        title: 'New project',
+        description: 'Define the project before adding a workflow. Creating it does not start work or invent progress.',
+        nameLabel: 'Project name',
+        namePlaceholder: 'For example: US pet supplies market',
+        objectiveLabel: 'Description and objective',
+        objectivePlaceholder: 'Describe the problem, expected outcome, and important constraints',
+        folderLabel: 'Local folder',
+        chooseFolder: 'Choose folder',
+        folderOptional: 'Optional local workspace for this project',
+        create: 'Create project',
+        creating: 'Creating…',
+        failed: 'The project could not be created. Your entries are still here; check the connection and retry.'
+      },
       chooseWorkflow: 'Choose workflow',
       filters: {
         label: 'Project status filters',
@@ -4180,7 +4203,14 @@ export const en: Translations = {
       availableSources: 'Available data sources',
       sourceConnected: 'Connected',
       sourceNotConnected: 'Not connected',
-      noAvailableSources: 'No supported data-source connection is available in this build.'
+      noAvailableSources: 'No supported data-source connection is available in this build.',
+      workflowsTitle: 'Project workflows',
+      workflowsDescription:
+        'A project contains the goal; a workflow is one execution path. A project can have multiple workflows.',
+      addWorkflow: 'Add workflow',
+      loadingWorkflows: 'Loading project workflows…',
+      noWorkflows: 'This project has no workflows, Runs, or progress yet.',
+      workflowsUnavailable: 'The project loaded, but its workflow list is unavailable. APEX will not infer run state.'
     },
     workflows: {
       eyebrow: 'Proven business paths',
@@ -4225,7 +4255,10 @@ export const en: Translations = {
       },
       savedTitle: 'Your workflows',
       savedEmpty: 'No saved workflows yet. Starting a goal creates the first one.',
-      savedCount: count => `${count} real ${count === 1 ? 'workflow' : 'workflows'}`,
+      savedCount: count => `${count} ${count === 1 ? 'workflow' : 'workflows'}`,
+      loadingSaved: 'Loading your workflows…',
+      savedUnavailable: 'Your workflows are unavailable. Catalog status does not replace their real data.',
+      addingToProject: 'Choose a new execution path for the current project.',
       localCatalogNotice: 'The production catalog is not connected. Built-in or test templates are not substituted.',
       catalogUnavailable: 'The live workflow catalog is temporarily unavailable. No template was started.',
       catalogUnavailableDescription: 'Retry the catalog, or return to Start and describe a goal.',
@@ -4251,12 +4284,14 @@ export const en: Translations = {
         event: eventType =>
           ({
             'executor.requested': 'Hermes execution requested',
+            'run.cancel_requested': 'Cancellation requested',
             'run.cancelled': 'Run cancelled',
             'run.failed': 'Run failed',
             'run.queued': 'Run queued',
             'run.retry_deferred': 'Retry deferred',
             'run.retry_scheduled': 'Retry scheduled',
             'run.running': 'Run started',
+            'run.succeeded': 'Run succeeded',
             'run.timed_out': 'Run timed out',
             'run.waiting_review': 'Waiting for review'
           })[eventType] ||
@@ -4311,13 +4346,16 @@ export const en: Translations = {
             approved: 'Approved',
             cancelled: 'Cancelled',
             changes_requested: 'Changes requested',
+            draft: 'Draft',
             failed: 'Failed',
             in_review: 'In review',
+            pending: 'Pending review',
             queued: 'Queued',
             ready: 'Ready for review',
             rejected: 'Rejected',
             running: 'Running',
             succeeded: 'Completed',
+            superseded: 'Superseded',
             timed_out: 'Timed out',
             waiting_review: 'Waiting for review'
           })[status] || 'Unknown status',

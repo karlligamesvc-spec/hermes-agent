@@ -7,8 +7,8 @@ import { IM_ENTRY_ROUTE, SETTINGS_ROUTE } from '../../routes'
 import { useChannelStatus } from '../scenarios/use-channel-status'
 
 /**
- * hc-554 显化 — "渠道 · 分身在哪": a compact channel-presence group above the
- * account row (Feishu / WeChat / phone-remote). A bound leg shows a green dot +
+ * A compact channel-presence group above the account row (Feishu / WeChat /
+ * phone-remote). A bound leg shows a green dot +
  * its live label; an unbound one shows a muted dot + a guide label and links to
  * its connect surface. Self-gates to nothing when no channel bridge exists
  * (web build / older main), matching the footer's other self-gating pills.
@@ -59,10 +59,7 @@ export function SidebarChannelStatus() {
   }
 
   return (
-    <div className="pb-1 pt-1">
-      <div className="px-1.5 pb-0.5 text-[0.625rem] uppercase tracking-[0.04em] text-(--ui-text-tertiary)">
-        {s.channelsTitle}
-      </div>
+    <div aria-label={s.connectTitle} className="pb-1 pt-0.5" role="group">
       {legs.map(entry => (
         <button
           className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-foreground"

@@ -58,6 +58,7 @@ describe('SidebarChannelStatus', () => {
     renderStatus(<SidebarChannelStatus />)
 
     await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3))
+    expect(screen.getByRole('group', { name: 'Connect your agent' })).toBeTruthy()
 
     for (const row of screen.getAllByRole('button')) {
       expect(row.querySelector('[aria-hidden="true"]')?.className).toContain('bg-muted-foreground')

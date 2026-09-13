@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { registerTerminalContextMenu } from '@/app/right-sidebar/terminal/terminal-context-menu'
 import { ContextMenu, ContextMenuTrigger, HERMES_CONTEXT_MENU_TRIGGER_ATTR } from '@/components/ui/context-menu'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { I18nProvider } from '@/i18n'
 import { formatCombo } from '@/lib/keybinds/combo'
 import { $previewTabs, closeRightRail } from '@/store/preview'
 import { $connection } from '@/store/session'
@@ -34,6 +35,16 @@ function mountMenu() {
     <MemoryRouter>
       <AppContextMenu />
     </MemoryRouter>
+  )
+}
+
+function mountChineseMenu() {
+  return render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter>
+        <AppContextMenu />
+      </MemoryRouter>
+    </I18nProvider>
   )
 }
 
@@ -94,6 +105,21 @@ describe('resolveDomTarget', () => {
 })
 
 describe('AppContextMenu', () => {
+  it('keeps every bare-shell action in Chinese when the interface is Chinese', async () => {
+    installBridge()
+    mountChineseMenu()
+    const host = attach('<div>项目页面空白区域</div>')
+
+    fireEvent.contextMenu(host.firstElementChild!)
+
+    expect(await screen.findByText('显示或隐藏状态栏')).toBeTruthy()
+    expect(screen.getByText('显示或隐藏标签栏')).toBeTruthy()
+    expect(screen.getByText('更新 APEX')).toBeTruthy()
+    expect(screen.queryByText('Toggle status bar')).toBeNull()
+    expect(screen.queryByText('Toggle tabs')).toBeNull()
+    expect(screen.queryByText('Update APEX')).toBeNull()
+  })
+
   it('opens the link menu on a chat link right-click', async () => {
     installBridge()
     mountMenu()

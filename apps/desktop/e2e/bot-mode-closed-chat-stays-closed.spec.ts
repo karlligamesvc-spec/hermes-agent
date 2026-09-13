@@ -29,12 +29,12 @@ let fixture: MockBackendFixture | null = null
 
 async function openBots(page: Page): Promise<void> {
   const tab = page
-    .getByRole('button', { name: 'Bots', exact: true })
-    .or(page.getByRole('tab', { name: 'Bots', exact: true }))
+    .getByRole('button', { name: 'Assistants', exact: true })
+    .or(page.getByRole('tab', { name: 'Assistants', exact: true }))
     .first()
 
   await tab.click()
-  await expect(page.getByRole('button', { name: 'New bot or group chat' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add an assistant or create a group chat' })).toBeVisible()
 }
 
 /** A bot's backend spawns on its first open; give the wake a real chance to

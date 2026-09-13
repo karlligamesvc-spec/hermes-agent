@@ -104,6 +104,7 @@ function isUpdateToastSnoozed(): boolean {
 //     read-only in Settings → Plugins).
 const REQUIRED_BACKEND_CONTRACT = 6
 const SKEW_TOAST_ID = 'backend-contract-skew'
+const SKEW_REPAIR_TOAST_ID = 'backend-contract-repair-unavailable'
 // The contract check runs on every session.resume (applyRuntimeInfo), so
 // without a snooze the warning re-popped on every thread the user opened, even
 // right after they closed it. Mirror the update toast: persist a cooldown when
@@ -197,10 +198,19 @@ export async function alignBackendContract(): Promise<void> {
 
   const check = await checkRuntimeUpdate()
 
-  // Do not invoke the mutating bridge when the catalog has no newer compatible
-  // Runtime. The warning stays snoozed for this session-open cadence; once the
-  // catalog is published, the normal Runtime pill/check path offers it.
+  // Never imply that installing the shell silently replaces its independently
+  // versioned Runtime. If the signed catalog has not published a compatible
+  // package yet, keep the process untouched and tell the user what is actually
+  // missing instead of making the action look like a successful no-op.
   if (!check.ok || !check.updateAvailable || check.desktopUpgradeRequired) {
+    notify({
+      durationMs: 0,
+      id: SKEW_REPAIR_TOAST_ID,
+      kind: 'warning',
+      message: translateNow('notifications.backendAlignmentUnavailableMessage'),
+      title: translateNow('notifications.backendAlignmentUnavailableTitle')
+    })
+
     return
   }
 

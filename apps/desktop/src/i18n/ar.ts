@@ -152,7 +152,10 @@ export const ar = defineLocale({
     copyDetailFailed: 'تعذر نسخ تفاصيل الإشعار',
     backendOutOfDateTitle: 'الخلفية قديمة',
     backendOutOfDateMessage: 'خلفية Hermes أقدم من إصدار سطح المكتب الحالي وقد لا تعمل كما يجب. حدثهما ليتوافقا.',
-    updateHermes: 'تحديث APEX',
+    backendAlignmentUnavailableTitle: 'لم تُنشر بيئة تشغيل متوافقة بعد',
+    backendAlignmentUnavailableMessage:
+      'لا توجد حزمة Runtime مطابقة لإصدار سطح المكتب هذا بعد. تثبيت تطبيق سطح المكتب لا يستبدل الخلفية المستخدمة؛ ثبّت الحزمة المتوافقة من التحديثات بعد نشرها.',
+    updateHermes: 'التحقق من تحديث متوافق',
     updateReadyTitle: 'التحديث جاهز',
     updateReadyMessage: count => `${count} تغيير جديد متاح.`,
     updateReadyMessageUnknown: 'يتوفر تحديث جديد.',
@@ -479,10 +482,10 @@ export const ar = defineLocale({
       reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل مع الرسائل، ويمكن لـ Hermes التفاعل مع رسائلك.',
       tipsTitle: 'نصائح داخل التطبيق',
       tipsDesc:
-        'فقاعة صغيرة تشير إلى جزء من التطبيق، تظهر أحيانًا أثناء الخمول ومن Hermes عند الحاجة. إغلاق نصيحة يزيلها نهائيًا.',
+        'فقاعة صغيرة تشير إلى جزء من التطبيق، تظهر أحيانًا أثناء الخمول ومن APEX عند الحاجة. إغلاق نصيحة يزيلها نهائيًا.',
       tipsReset: count => `استعادة ${count} نصيحة مغلقة`,
       toursTitle: 'جولات إرشادية',
-      toursDesc: 'دع Hermes يرشدك في التطبيق، مع تعتيم الشاشة وإبراز كل خطوة.',
+      toursDesc: 'دع APEX يرشدك في التطبيق، مع تعتيم الشاشة وإبراز كل خطوة.',
       composerPopoutTitle: 'محرر عائم',
       composerPopoutDesc: 'السماح بسحب محرر الرسائل خارج موضعه. عطّل هذا الخيار لإبقائه مثبتًا في الأسفل.',
       vibeHeartsTitle: 'قلوب المزاج',
@@ -1517,6 +1520,8 @@ export const ar = defineLocale({
   },
   cron: {
     close: 'إغلاق',
+    eyebrow: 'التنفيذ التلقائي',
+    description: 'شغّل الأهداف حسب جدول وأرسل النتائج الفعلية إلى الوجهة التي تختارها.',
     modelImpact: {
       title: 'تحتاج المهام المجدولة إلى المراجعة',
       message: count => `سيتم تخطي ${count} من المهام المجدولة حتى تراجع إعدادات النموذج الخاصة بها.`,
@@ -1635,6 +1640,9 @@ export const ar = defineLocale({
     createAction: 'إنشاء'
   },
   artifacts: {
+    eyebrow: 'أصول النتائج',
+    title: 'التسليمات',
+    description: 'استعرض الصور والملفات والروابط الفعلية التي تنتجها الجلسات وسير العمل.',
     search: 'بحث',
     refresh: 'تحديث',
     refreshing: 'جار التحديث...',

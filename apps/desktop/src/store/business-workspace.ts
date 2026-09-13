@@ -5,10 +5,13 @@ import {
   DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   NEW_CHAT_ROUTE,
+  projectIdForPath,
   PROJECTS_ROUTE,
+  routePathname,
   SEARCH_ROUTE,
   SKILLS_ROUTE,
   TASKS_ROUTE,
+  workflowRunIdForPath,
   WORKFLOWS_ROUTE
 } from '@/app/routes'
 
@@ -52,6 +55,29 @@ export function isBusinessNavigationContract(ids: readonly string[]): boolean {
 /** Rollback seam for the hc-685 information architecture. Apex builds default on. */
 export function isBusinessWorkspaceEnabled(storage: Pick<Storage, 'getItem'> = window.localStorage): boolean {
   return storage.getItem(BUSINESS_WORKSPACE_FLAG_KEY) !== '0'
+}
+
+/**
+ * Whether the contribution shell is currently framing an APEX business
+ * canvas. Object drawers stay in their owning domain: their full-window shell
+ * is still the Projects/Workflows canvas even though the object card is raised
+ * above it. The rollback flag is part of the answer so the legacy Start route
+ * never inherits business-only chrome.
+ */
+export function isBusinessCanvasRoute(pathname: string, businessWorkspaceEnabled: boolean): boolean {
+  if (!businessWorkspaceEnabled) {
+    return false
+  }
+
+  const path = routePathname(pathname)
+
+  return (
+    path === NEW_CHAT_ROUTE ||
+    path === PROJECTS_ROUTE ||
+    projectIdForPath(path) !== null ||
+    path === WORKFLOWS_ROUTE ||
+    workflowRunIdForPath(path) !== null
+  )
 }
 
 export function visibleSidebarNavItems<T, U>(

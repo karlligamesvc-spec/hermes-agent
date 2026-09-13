@@ -4,6 +4,7 @@ import { test } from 'vitest'
 
 import {
   cancelWorkflowDomainRun,
+  createWorkflowDomainProject,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
   getWorkflowDomainProject,
@@ -107,6 +108,76 @@ test('starts one canonical Project to Workflow to Hermes Run chain', async () =>
     executorType: 'hermes',
     maxAttempts: 2
   })
+})
+
+test('creates an honest empty Project with its optional local folder', async () => {
+  const calls: Array<{ body: Record<string, unknown>; url: string }> = []
+
+  const item = await createWorkflowDomainProject({
+    apiBase: 'https://api.apex-nodes.com',
+    localPath: '/Users/karl/Projects/pet-market',
+    name: 'Pet market',
+    objective: 'Analyze the market',
+    transport: {
+      postJson: async (url, body) => {
+        calls.push({ body, url })
+
+        return { item: { id: 'project-1', name: 'Pet market' } }
+      }
+    }
+  })
+
+  assert.deepEqual(item, { id: 'project-1', name: 'Pet market' })
+  assert.deepEqual(calls, [
+    {
+      body: {
+        name: 'Pet market',
+        objective: 'Analyze the market',
+        projectConfig: { createdFrom: 'desktop_projects', localPath: '/Users/karl/Projects/pet-market' }
+      },
+      url: 'https://api.apex-nodes.com/api/v1/workflow-domain/projects'
+    }
+  ])
+})
+
+test('adds a Workflow and Run to an existing Project without creating a duplicate Project', async () => {
+  const calls: Array<{ body?: Record<string, unknown>; method: string; url: string }> = []
+
+  const run = await startWorkflowDomainGoal({
+    apiBase: 'https://api.apex-nodes.com',
+    objective: 'Continue the existing goal',
+    projectId: 'project-existing',
+    starter: {
+      description: 'Evidence-backed market research',
+      id: 'market-research',
+      name: 'Market research',
+      slug: 'market-research',
+      version: 3
+    },
+    transport: {
+      getJson: async url => {
+        calls.push({ method: 'GET', url })
+
+        return {}
+      },
+      postJson: async (url, body) => {
+        calls.push({ body, method: 'POST', url })
+
+        return url.endsWith('/workflows')
+          ? { item: { id: 'workflow-1' } }
+          : { item: { id: 'run-1', status: 'queued' } }
+      }
+    },
+    uuid: () => '00000000-0000-4000-8000-000000000828'
+  })
+
+  assert.deepEqual(run, { id: 'run-1' })
+  assert.equal(calls.length, 2)
+  assert.equal(
+    calls[0]?.url,
+    'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-existing/workflows'
+  )
+  assert.equal(calls[1]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/runs')
 })
 
 test('rejects malformed server identifiers before they can retarget a later request', async () => {
@@ -217,6 +288,12 @@ test('projects Run detail into a sequence-stable renderer model without raw or t
           payload: { config: { apiKey: 'payload-secret' }, schema: 'private-schema' },
           reviews: [
             {
+              createdAt: '2026-09-06T10:02:15Z',
+              id: 'review-pending',
+              roundNumber: 3,
+              status: 'pending'
+            },
+            {
               createdAt: '2026-09-06T10:03:00Z',
               deliverableId: 'deliverable-1',
               id: 'review-2',
@@ -289,7 +366,7 @@ test('projects Run detail into a sequence-stable renderer model without raw or t
     ((projected.deliverables as Array<Record<string, unknown>>)[0]?.reviews as Array<{ roundNumber: number }>).map(
       review => review.roundNumber
     ),
-    [1, 2]
+    [1, 2, 3]
   )
   assert.equal('steps' in projected, false)
 

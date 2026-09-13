@@ -236,6 +236,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   workflowDomain: {
     access: () => ipcRenderer.invoke('hermes:workflowDomain:access'),
+    createProject: payload => ipcRenderer.invoke('hermes:workflowDomain:createProject', payload),
     startGoal: payload => ipcRenderer.invoke('hermes:workflowDomain:startGoal', payload),
     listProjects: options => ipcRenderer.invoke('hermes:workflowDomain:listProjects', options),
     getProject: projectId => ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId),

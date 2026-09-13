@@ -39,7 +39,7 @@ describe('BOTS_LOCALES', () => {
   })
 
   it('translates user-visible chrome instead of echoing English', () => {
-    const samples = ['roster.emptyTitle', 'bot.newTitle', 'group.manageTitle', 'tools.skillsHub'] as const
+    const samples = ['roster.title', 'roster.emptyTitle', 'bot.newTitle', 'group.manageTitle', 'tools.skillsHub'] as const
     const enByPath = Object.fromEntries(leafEntries(en))
 
     for (const locale of [ja, zh, zhHant]) {
@@ -49,6 +49,17 @@ describe('BOTS_LOCALES', () => {
         expect(byPath[path]).not.toBe(enByPath[path])
       }
     }
+  })
+
+  it('uses the approved assistant and group-chat vocabulary in Simplified Chinese', () => {
+    const byPath = Object.fromEntries(leafEntries(zh))
+
+    expect(byPath['roster.title']).toBe('助手')
+    expect(byPath['bot.newTitle']).toBe('添加助手')
+    expect(byPath['group.newTitle']).toBe('创建群聊')
+    expect((byPath['group.minimumMembers'] as (available: number) => string)(1)).toContain('至少需要 2 个助手')
+    expect(leafEntries(zh).map(([, value]) => String(value)).join('\n')).not.toContain('机器人')
+    expect(leafEntries(zhHant).map(([, value]) => String(value)).join('\n')).not.toContain('機器人')
   })
 
   it('keeps interpolator arguments in the translated string', () => {

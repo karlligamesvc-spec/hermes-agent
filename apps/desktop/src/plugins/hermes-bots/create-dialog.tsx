@@ -1007,7 +1007,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
             {t.common.cancel}
           </Button>
           <Button disabled={busy || !valid || taken} onClick={submit}>
-            {busy ? 'Creating…' : 'Create Bot'}
+            {busy ? b.bot.creatingAction : b.bot.createAction}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1114,6 +1114,7 @@ export function GroupDialog({ bot, onClose }: GroupDialogProps) {
 }
 
 interface CreateGroupChatDialogProps {
+  onAddAssistant?: () => void
   onClose: () => void
   onCreated?: (group: string) => void
   open: boolean
@@ -1124,7 +1125,7 @@ interface CreateGroupChatDialogProps {
  *  search), name the group, create. Assignment appends to each local bot's
  *  group membership list, so the room appears in the roster and syncs
  *  cross-machine via ui_meta without replacing its other groups. */
-export function CreateGroupChatDialog({ open, roster, onClose, onCreated }: CreateGroupChatDialogProps) {
+export function CreateGroupChatDialog({ open, roster, onAddAssistant, onClose, onCreated }: CreateGroupChatDialogProps) {
   const { t } = useI18n()
   const b = useBots()
   const allMeta: Record<string, BotMeta> = useValue($botMeta)
@@ -1220,8 +1221,24 @@ export function CreateGroupChatDialog({ open, roster, onClose, onCreated }: Crea
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{b.group.newTitle}</DialogTitle>
-          <DialogDescription>{`Pick 2–${GROUP_CHAT_MAX_MEMBERS} bots. Local memberships sync through each Bot profile; cross-machine members stay scoped to this room.`}</DialogDescription>
+          <DialogDescription>{b.group.createDescription(GROUP_CHAT_MAX_MEMBERS)}</DialogDescription>
         </DialogHeader>
+        {selectableRoster.length < 2 ? (
+          <div
+            aria-live="polite"
+            className="flex items-center justify-between gap-3 rounded-lg border border-(--ui-stroke-secondary) bg-(--chrome-action-hover) px-3 py-2.5"
+            role="status"
+          >
+            <span className="min-w-0 text-xs leading-relaxed text-(--ui-text-secondary)">
+              {b.group.minimumMembers(selectableRoster.length)}
+            </span>
+            {onAddAssistant ? (
+              <Button className="shrink-0" onClick={onAddAssistant} size="sm" variant="secondary">
+                {b.group.addAssistant}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         {/* TODO(bot-mode-types): this search box never takes focus when the dialog
             opens — SearchField accepts no `autoFocus` prop and forwards no extra
             props, so the `autoFocus` that used to sit here was inert. */}
@@ -1309,7 +1326,7 @@ export function CreateGroupChatDialog({ open, roster, onClose, onCreated }: Crea
               })
             ) : (
               <div className="px-1.5 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                {query.trim() ? `No bots match “${query.trim()}”` : 'No bots yet — create one first.'}
+                {query.trim() ? b.group.noMatch(query.trim()) : b.group.noAssistants}
               </div>
             )}
           </div>
@@ -1343,8 +1360,10 @@ export function CreateGroupChatDialog({ open, roster, onClose, onCreated }: Crea
           <Button
             disabled={!canCreate}
             onClick={create}
-            title={selected.length < 2 ? 'Pick at least 2 bots' : undefined}
-          >{`Create Group${selected.length ? ` (${selected.length})` : ''}`}</Button>
+            title={selected.length < 2 ? b.group.pickAtLeastTwo : undefined}
+          >
+            {b.group.createAction(selected.length)}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

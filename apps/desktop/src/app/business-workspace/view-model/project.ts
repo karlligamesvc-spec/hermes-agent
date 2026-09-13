@@ -18,3 +18,19 @@ export function projectCurrentRunId(summary: undefined | WorkflowProjectSummary)
 
   return typeof runId === 'string' && runId.trim() ? runId : null
 }
+
+export type ProjectRunDisplayState =
+  | { kind: 'no-run' }
+  | { kind: 'status'; status: string }
+  | { kind: 'status-unavailable' }
+
+/** Keep Project lifecycle separate from the current Run shown to the user. */
+export function projectRunDisplayState(summary: undefined | WorkflowProjectSummary): ProjectRunDisplayState {
+  if (!projectCurrentRunId(summary)) {
+    return { kind: 'no-run' }
+  }
+
+  const status = summary?.currentRunStatus?.trim()
+
+  return status ? { kind: 'status', status } : { kind: 'status-unavailable' }
+}

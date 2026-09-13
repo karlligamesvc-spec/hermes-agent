@@ -276,6 +276,12 @@ describe('reportBackendContract', () => {
 
     expect(applyRuntimeUpdateSpy).not.toHaveBeenCalled()
     expect(updateHermesSpy).not.toHaveBeenCalled()
+    expect(notifySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'backend-contract-repair-unavailable',
+        title: 'Compatible Runtime not published yet'
+      })
+    )
   })
 
   it('keeps remote contract repair on the remote backend updater', async () => {

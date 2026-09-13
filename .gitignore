@@ -97,6 +97,7 @@ apps/shared/src/**/*.js
 apps/shared/src/**/*.js.map
 apps/shared/src/**/*.d.ts
 apps/desktop/release/
+apps/desktop/release-diagnostic-trial/
 .web_ui_build.lock
 *.tsbuildinfo
 

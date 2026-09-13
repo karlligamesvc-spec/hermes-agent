@@ -2,12 +2,12 @@ import { useStore } from '@nanostores/react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { PAGE_INSET_X } from '@/app/layout-constants'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
+import { RowButton } from '@/components/ui/row-button'
 import { useI18n } from '@/i18n'
 import { formatBusinessDayTime } from '@/lib/time'
 import { $sessions, $sessionsLoading } from '@/store/session'
@@ -29,9 +29,10 @@ import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
+import { ProjectCreateDialog } from '../components/project-create-dialog'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
-import { distinctProjectObjective } from '../view-model/project'
+import { distinctProjectObjective, projectRunDisplayState } from '../view-model/project'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
 
 type ProjectFilter = 'active' | 'all' | 'completed'
@@ -53,6 +54,7 @@ export function ProjectsView() {
   const navigate = useNavigate()
   const projects = useWorkflowProjects()
   const [filter, setFilter] = useState<ProjectFilter>('all')
+  const [createOpen, setCreateOpen] = useState(false)
 
   if (projects.mode === 'unavailable') {
     return <LegacyProjectsView />
@@ -62,7 +64,7 @@ export function ProjectsView() {
     return <LegacyProjectsView notice={c.projectLoadFailed} />
   }
 
-  const newProject = () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: '', businessGoalFocus: true } })
+  const newProject = () => setCreateOpen(true)
 
   const visibleProjects =
     projects.mode === 'ready'
@@ -87,8 +89,8 @@ export function ProjectsView() {
       : { active: 0, all: 0, completed: 0 }
 
   return (
-    <section className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-6 py-8 min-[1100px]:px-9">
-      <div className="mx-auto w-full max-w-[65.625rem]">
+    <section className="apex-business-surface apex-business-page apex-primary-page">
+      <div className="apex-primary-page-column">
         <BusinessPageHeader
           action={{ icon: 'add', label: c.newProject, onClick: newProject }}
           description={c.description}
@@ -119,7 +121,7 @@ export function ProjectsView() {
           </div>
         </div>
       ) : (
-        <div className="mx-auto w-full max-w-[65.625rem] py-6" data-workflow-project-list="">
+        <div className="mx-auto w-full max-w-[65.625rem] py-5" data-workflow-project-list="">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div aria-label={c.filters.label} className="flex flex-wrap gap-2" role="group">
               {(['all', 'active', 'completed'] as const).map(item => (
@@ -143,21 +145,27 @@ export function ProjectsView() {
               {c.filterEmpty}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-sm">
+            <div className="overflow-hidden rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-sm">
               {visibleProjects.map(project => {
                 const summary = project.summary
                 const status = projectStatus(project)
+                const runDisplay = projectRunDisplayState(summary)
                 const objective = distinctProjectObjective(project)
 
-                const progress = summary?.currentStepTitle
-                  ? c.currentStep(summary.currentStepTitle)
-                  : summary && summary.stepTotal > 0
-                    ? c.steps(summary.stepCompleted, summary.stepTotal)
-                    : c.lifecycle(status)
+                const progress =
+                  runDisplay.kind === 'no-run'
+                    ? c.noRun
+                    : runDisplay.kind === 'status-unavailable'
+                      ? c.runStatusUnavailable
+                      : summary?.currentStepTitle
+                        ? c.currentStep(summary.currentStepTitle)
+                        : summary && summary.stepTotal > 0
+                          ? c.steps(summary.stepCompleted, summary.stepTotal)
+                          : c.lifecycle(runDisplay.status)
 
                 return (
                   <Button
-                    className="grid h-auto w-full gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-5 py-4 text-left last:border-b-0 hover:bg-(--chrome-action-hover) sm:grid-cols-[minmax(0,1fr)_auto]"
+                    className="grid min-h-[6.25rem] w-full grid-cols-[auto_minmax(0,1fr)] gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-4 py-4 text-left last:border-b-0 hover:bg-(--chrome-action-hover) sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-5"
                     key={project.id}
                     onClick={() =>
                       navigate(projectDetailRoute(project.id), {
@@ -167,7 +175,10 @@ export function ProjectsView() {
                     type="button"
                     variant="ghost"
                   >
-                    <span className="min-w-0">
+                    <span className="grid size-11 shrink-0 place-items-center self-center rounded-xl bg-primary/10 text-primary">
+                      <Codicon name="folder" size="1.125rem" />
+                    </span>
+                    <span className="min-w-0 self-center">
                       <span className="flex flex-wrap items-center gap-2">
                         <span
                           className={
@@ -199,7 +210,7 @@ export function ProjectsView() {
                         </span>
                       )}
                     </span>
-                    <span className="flex shrink-0 items-center gap-4 self-center text-xs text-(--ui-text-tertiary)">
+                    <span className="col-span-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 self-center pl-[3.75rem] text-xs text-(--ui-text-tertiary) sm:col-span-1 sm:pl-0">
                       <span>{c.updatedAt(formatBusinessDayTime(new Date(project.updatedAt), locale))}</span>
                       {summary && summary.deliverableCount > 0 && (
                         <span>{c.deliverableCount(summary.deliverableCount)}</span>
@@ -214,6 +225,15 @@ export function ProjectsView() {
           )}
         </div>
       )}
+      <ProjectCreateDialog
+        onCreated={project =>
+          navigate(projectDetailRoute(project.id), {
+            state: { ...routeDrawerNavigationState(location), businessProjectSummary: project.summary }
+          })
+        }
+        onOpenChange={setCreateOpen}
+        open={createOpen}
+      />
     </section>
   )
 }
@@ -239,18 +259,25 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
     !sessionsLoading && !evidenceUnavailable && evidence !== null && !hasChildReadFailures && !hasHistory
 
   return (
-    <section className={`flex h-full flex-col overflow-y-auto bg-(--ui-chat-surface-background) py-8 ${PAGE_INSET_X}`}>
-      <header className="mx-auto w-full max-w-4xl border-b border-(--ui-stroke-tertiary) pb-5">
-        <p className="text-xs font-medium text-primary">{c.eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{c.title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{c.description}</p>
-        {notice && (
-          <p className="mt-3 text-xs text-amber-600" role="alert">
-            {notice}
-          </p>
-        )}
-        <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">{c.legacyFallback}</p>
-      </header>
+    <section className="apex-business-surface apex-business-page apex-primary-page flex flex-col">
+      <div className="apex-primary-page-column">
+        <BusinessPageHeader
+          description={c.description}
+          eyebrow={c.eyebrow}
+          icon="folder"
+          title={c.title}
+          trailing={
+            <>
+              {notice ? (
+                <p className="mt-3 text-xs text-amber-600" role="alert">
+                  {notice}
+                </p>
+              ) : null}
+              <p className="mt-2 text-[0.6875rem] text-(--ui-text-tertiary)">{c.legacyFallback}</p>
+            </>
+          }
+        />
+      </div>
       {showEvidenceFailure ? (
         <div className="mx-auto grid w-full max-w-4xl flex-1 place-items-center py-10 text-center">
           <div>
@@ -292,7 +319,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
           >
             {conversations.length > 0 ? (
               conversations.map(conversation => (
-                <button
+                <RowButton
                   className="flex w-full items-start gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                   key={conversation.id}
                   onClick={() => openSession(conversation.id, navigate)}
@@ -323,7 +350,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
                         ? c.running
                         : formatBusinessDayTime(new Date(conversation.lastActive * 1000), locale)}
                   </span>
-                </button>
+                </RowButton>
               ))
             ) : (
               <BusinessLimitation text={sessionsLoading ? c.loadingHistory : c.noConversations} />
@@ -339,7 +366,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
                 const phase = taskPhase(task)
 
                 return (
-                  <button
+                  <RowButton
                     className="block w-full border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                     key={task.id}
                     onClick={() => navigate(taskDetailRoute(task.id))}
@@ -367,7 +394,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
                     ) : (
                       <p className="mt-1 text-xs text-muted-foreground">{c.progressUnavailable}</p>
                     )}
-                  </button>
+                  </RowButton>
                 )
               })
             ) : (
@@ -382,7 +409,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
           >
             {artifacts.length > 0 ? (
               artifacts.map(artifact => (
-                <button
+                <RowButton
                   className="flex w-full items-center gap-3 border-b border-(--ui-stroke-tertiary) py-3 text-left last:border-b-0 hover:bg-(--chrome-action-hover)"
                   key={artifact.id}
                   onClick={() => void openWorkspaceArtifact(artifact.href, t.artifacts.openFailed)}
@@ -393,7 +420,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
                     <span className="block truncate text-sm font-medium">{artifact.label}</span>
                     <span className="block truncate text-xs text-muted-foreground">{artifact.sessionTitle}</span>
                   </span>
-                </button>
+                </RowButton>
               ))
             ) : (
               <BusinessLimitation

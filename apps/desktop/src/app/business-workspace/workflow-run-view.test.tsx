@@ -35,6 +35,18 @@ const overview: WorkflowRunOverview = {
       happenedAt: '2026-08-27T10:03:00Z',
       id: 'event-2',
       sequence: 2
+    },
+    {
+      eventType: 'run.cancel_requested',
+      happenedAt: '2026-08-27T10:04:00Z',
+      id: 'event-3',
+      sequence: 3
+    },
+    {
+      eventType: 'run.succeeded',
+      happenedAt: '2026-08-27T10:05:00Z',
+      id: 'event-4',
+      sequence: 4
     }
   ],
   run: {
@@ -88,9 +100,7 @@ describe('hc-795 real workflow Run view', () => {
     )
 
     expect(await screen.findByRole('heading', { name: 'Workflow run' })).toBeTruthy()
-    expect(
-      screen.getByRole('heading', { name: 'Workflow run' }).closest('section')?.classList.contains(PAGE_INSET_X)
-    ).toBe(true)
+    expect(globalThis.document.querySelector('[data-run-scroll-container]')).toBeTruthy()
     expect(screen.getByText('Analyze the US pet market')).toBeTruthy()
     expect(screen.getAllByText('Waiting for review')).toHaveLength(1)
     expect(screen.getByText('Pet market evidence report')).toBeTruthy()
@@ -272,5 +282,32 @@ describe('hc-795 real workflow Run view', () => {
     expect(await screen.findByText('Pet market evidence report')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Approve deliverable' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull()
+  })
+
+  it('localizes canonical Run lifecycle events instead of exposing backend enum keys', async () => {
+    const runningOverview = {
+      ...overview,
+      events: [{ ...overview.events[0], eventType: 'run.running', id: 'event-running' }]
+    }
+
+    getRun.mockResolvedValue({ ok: true, overview: runningOverview })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: '执行详情' }), {
+      button: 0,
+      ctrlKey: false
+    })
+
+    expect(await screen.findByText('运行已开始')).toBeTruthy()
+    expect(screen.queryByText('run.running')).toBeNull()
   })
 })

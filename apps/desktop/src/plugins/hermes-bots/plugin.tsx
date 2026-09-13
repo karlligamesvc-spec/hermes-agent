@@ -56,8 +56,9 @@ import {
 } from './group-chat'
 import { groupWorkspaceOwnerKey } from './group-membership'
 import { annotateOrphanedGroupChatMembers } from './hygiene'
-import { BOTS_LOCALES } from './i18n'
+import { BOTS_LOCALES, useBots } from './i18n'
 import { displayName } from './labels'
+import { HERMES_BOTS_PANE_WIDTH } from './pane-layout'
 import { startBotRelay, stopBotRelay } from './relay'
 import { $activityToasts } from './roster-actions'
 import {
@@ -87,6 +88,8 @@ interface ComposerDraftPayload {
   attachments?: unknown[]
   text: string
 }
+
+const BotsPaneTabTitle = () => <>{useBots().roster.title}</>
 
 export default {
   id: ID,
@@ -359,7 +362,7 @@ export default {
     ctx.register({
       id: 'pane',
       area: 'panes',
-      title: 'Bots',
+      title: 'Assistants',
       // dock: explicit adoption gesture — CENTER-STACK into the sessions zone
       // so the sidebar grows a SESSIONS | BOTS tab strip instead of splitting
       // two cramped panes down the column. Center is safe now: insertAtGroup
@@ -384,9 +387,10 @@ export default {
       // zone's tab strip, so the pane stays reachable while collapsed.
       data: {
         placement: 'left',
-        width: '260px',
+        width: HERMES_BOTS_PANE_WIDTH,
         collapsible: true,
         hideOnly: true,
+        tabTitle: () => <BotsPaneTabTitle />,
         dock: {
           pane: 'sessions',
           pos: 'center',
@@ -621,7 +625,7 @@ export default {
       area: PALETTE_AREA,
       data: {
         id: `${ID}.new-agent`,
-        label: 'New Bot…',
+        label: ctx.i18n.t('bot.newTitle'),
         keywords: ['bot', 'agent', 'profile', 'teammate', 'create'],
         run: () => {
           host.notify({

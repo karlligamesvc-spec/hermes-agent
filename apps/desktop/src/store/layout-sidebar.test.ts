@@ -33,8 +33,8 @@ describe('APEX sidebar geometry', () => {
   })
 
   it('uses the compact prototype width for a fresh renderer', () => {
-    expect(SIDEBAR_DEFAULT_WIDTH).toBe(237)
-    expect($sidebarWidth.get()).toBe(237)
+    expect(SIDEBAR_DEFAULT_WIDTH).toBe(190)
+    expect($sidebarWidth.get()).toBe(190)
   })
 
   it('drops a legacy 360px override instead of carrying the old wide rail forward', () => {
@@ -45,6 +45,16 @@ describe('APEX sidebar geometry', () => {
 
     expect(getPaneStateSnapshot(CHAT_SIDEBAR_PANE_ID)?.widthOverride).toBeUndefined()
     expect($sidebarWidth.get()).toBe(SIDEBAR_DEFAULT_WIDTH)
+  })
+
+  it('drops the superseded 180px override so existing installs adopt the approved rail width', () => {
+    setPaneWidthOverride(CHAT_SIDEBAR_PANE_ID, 180)
+    expect($sidebarWidth.get()).toBe(180)
+
+    reconcileSidebarWidthOverride()
+
+    expect(getPaneStateSnapshot(CHAT_SIDEBAR_PANE_ID)?.widthOverride).toBeUndefined()
+    expect($sidebarWidth.get()).toBe(190)
   })
 
   it('preserves valid user resizing and clamps new resize writes to the current contract', () => {

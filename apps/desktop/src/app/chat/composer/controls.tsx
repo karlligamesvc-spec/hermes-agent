@@ -276,7 +276,7 @@ function ConversationPill({
       )}
       <Button
         aria-label={c.endConversation}
-        className="h-(--composer-control-size) gap-1.5 rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+        className="h-(--composer-control-size) gap-1.5 rounded-full bg-(--dt-primary-solid) px-3 text-xs font-medium text-(--dt-primary-solid-foreground) hover:bg-[color-mix(in_srgb,var(--dt-primary-solid)_90%,black)]"
         disabled={disabled}
         onClick={() => {
           triggerHaptic('close')

@@ -146,7 +146,10 @@ export const ja = defineLocale({
     backendOutOfDateMessage:
       'APEX バックエンドがこのデスクトップビルドより古く、正常に動作しない場合があります。更新して揃えてください。',
     installMethodUnsupportedTitle: 'サポート対象外のインストール方法',
-    updateHermes: 'APEX を更新',
+    backendAlignmentUnavailableTitle: '互換 Runtime はまだ公開されていません',
+    backendAlignmentUnavailableMessage:
+      'このデスクトップ版に一致する Runtime パッケージはまだありません。デスクトップ App のインストールでは使用中のバックエンドを上書きしません。公開後に更新画面からインストールできます。',
+    updateHermes: '互換更新を確認',
     updateReadyTitle: '更新の準備ができました',
     updateReadyMessage: count => `${count} 件の新しい変更が利用可能です。`,
     updateReadyMessageUnknown: '新しい更新が利用可能です。',
@@ -353,6 +356,15 @@ export const ja = defineLocale({
       },
       backdropTitle: 'チャット背景',
       backdropDesc: '会話の背後に表示される淡い彫像の画像。',
+      tipsTitle: 'アプリ内ヒント',
+      tipsDesc:
+        '操作に役立つ場面やアイドル時に、APEX が画面の一部を指す小さなヒントを表示します。閉じたヒントは今後表示されません。',
+      tipsReset: (count: number) => `閉じたヒント ${count} 件を復元`,
+      toursTitle: 'ガイドツアー',
+      toursDesc: '画面を暗くして現在の手順を強調しながら、APEX がアプリを順番に案内します。',
+      vibeHeartsTitle: 'リアクションハート',
+      vibeHeartsDesc:
+        '感謝や愛情を伝えたり、ハートを送ったりすると、浮かぶハートを表示します。上のメッセージリアクションとは別の機能です。',
       embedsTitle: 'インライン埋め込み',
       embedsDesc:
         'リッチプレビューは第三者サイト（YouTube、X など）から読み込まれます。確認は許可するまでプレースホルダーを表示し、常には自動で読み込み、オフはリンクのままにします。',
@@ -1641,6 +1653,8 @@ export const ja = defineLocale({
 
   cron: {
     close: 'Cron を閉じる',
+    eyebrow: '自動実行',
+    description: '目標をスケジュールどおりに実行し、実際の結果を指定先へ届けます。',
     title: 'スケジュール済みジョブ',
     count: count => `${count} 件のジョブ`,
     modelImpact: {
@@ -1768,6 +1782,9 @@ export const ja = defineLocale({
   },
 
   artifacts: {
+    eyebrow: '成果物',
+    title: '納品物',
+    description: 'セッションとワークフローが生成した実際の画像、ファイル、リンクを確認します。',
     search: 'アーティファクトを検索...',
     refresh: 'アーティファクトを更新',
     refreshing: 'アーティファクトを更新中',
@@ -1808,8 +1825,8 @@ export const ja = defineLocale({
       start: '開始',
       projects: 'プロジェクト',
       workflows: 'ワークフロー',
-      assistant: 'アシスタント',
-      history: '履歴',
+      assistant: 'アシスタント接続',
+      history: '会話履歴',
       search: '検索',
       cron: '定期実行',
       'scheduled-runs': '定期実行',
@@ -3195,7 +3212,6 @@ export const ja = defineLocale({
     labelOutput: '成果物',
     inputNone: '入力不要 — すぐに実行',
     use: 'このシナリオを使う',
-    channelsTitle: 'チャネル · 分身の所在',
     connectTitle: '分身を接続',
     phoneRemote: 'スマホ遠隔',
     remoteOn: 'オン · /cc',
@@ -3307,7 +3323,9 @@ export const ja = defineLocale({
       label: '業務目標',
       placeholder: '例：米国のペット用品市場を分析し、商品選定レポートと販売素材を作成する',
       hint: 'Enter で開始 · Shift+Enter で改行',
-      submit: '目標を開始'
+      submit: '目標を開始',
+      workflowAttachmentsUnsupported:
+        'このワークフローでは目標への添付をまだ送信できません。添付を削除して続行するまで、目標、ワークフローの選択、現在の添付は保持されます。'
     },
     projects: {
       eyebrow: '目標から納品まで',
@@ -3317,6 +3335,20 @@ export const ja = defineLocale({
       emptyDescription: '業務目標を入力すると、APEX が実際のプロジェクトを作成し、ワークフローを構成します。',
       action: '目標を始める',
       newProject: '新規プロジェクト',
+      create: {
+        title: '新規プロジェクト',
+        description: 'ワークフローを追加する前に名前と目標を定義します。作成だけでは実行や進捗は生成されません。',
+        nameLabel: 'プロジェクト名',
+        namePlaceholder: '例：米国ペット用品市場',
+        objectiveLabel: '説明と目標',
+        objectivePlaceholder: '課題、期待する成果、重要な制約を入力',
+        folderLabel: 'ローカルフォルダー',
+        chooseFolder: 'フォルダーを選択',
+        folderOptional: '任意のローカル作業フォルダー',
+        create: 'プロジェクトを作成',
+        creating: '作成中…',
+        failed: 'プロジェクトを作成できませんでした。入力は保持されています。接続を確認して再試行してください。'
+      },
       chooseWorkflow: 'ワークフローを選択',
       filters: {
         label: 'プロジェクト状態フィルター',
@@ -3401,7 +3433,14 @@ export const ja = defineLocale({
       availableSources: '利用可能なデータソース',
       sourceConnected: '接続済み',
       sourceNotConnected: '未接続',
-      noAvailableSources: 'このビルドで利用できるデータソース接続はありません。'
+      noAvailableSources: 'このビルドで利用できるデータソース接続はありません。',
+      workflowsTitle: 'プロジェクトのワークフロー',
+      workflowsDescription:
+        'プロジェクトは目標を保持し、ワークフローは実行経路です。1つのプロジェクトに複数追加できます。',
+      addWorkflow: 'ワークフローを追加',
+      loadingWorkflows: 'プロジェクトのワークフローを読み込み中…',
+      noWorkflows: 'このプロジェクトにはワークフロー、Run、進捗がまだありません。',
+      workflowsUnavailable: 'プロジェクトは読み込めましたが、ワークフロー一覧を利用できません。実行状態は推測しません。'
     },
     workflows: {
       eyebrow: '実績ある業務パス',
@@ -3446,7 +3485,10 @@ export const ja = defineLocale({
       },
       savedTitle: '自分のワークフロー',
       savedEmpty: '保存済みワークフローはまだありません。目標を始めると最初のワークフローが作成されます。',
-      savedCount: count => `実際のワークフロー ${count} 件`,
+      savedCount: count => `ワークフロー ${count} 件`,
+      loadingSaved: 'ワークフローを読み込み中…',
+      savedUnavailable: 'ワークフローを読み込めません。カタログの状態で実データを置き換えません。',
+      addingToProject: '現在のプロジェクトに追加する実行経路を選択してください。',
       localCatalogNotice: '本番カタログは接続されていません。内蔵またはテスト用テンプレートで代替しません。',
       catalogUnavailable: 'ライブのワークフローカタログを利用できません。テンプレートは開始されていません。',
       catalogUnavailableDescription: 'カタログを再試行するか、開始画面に戻って目標を入力してください。',
@@ -3471,12 +3513,14 @@ export const ja = defineLocale({
         event: eventType =>
           ({
             'executor.requested': 'Hermes の実行を要求しました',
+            'run.cancel_requested': '実行のキャンセルを要求しました',
             'run.cancelled': '実行をキャンセルしました',
             'run.failed': '実行に失敗しました',
             'run.queued': '実行をキューに追加しました',
             'run.retry_deferred': '再試行を延期しました',
             'run.retry_scheduled': '再試行を予定しました',
             'run.running': '実行を開始しました',
+            'run.succeeded': '実行が完了しました',
             'run.timed_out': '実行がタイムアウトしました',
             'run.waiting_review': 'レビュー待ちです'
           })[eventType] ||
@@ -3530,13 +3574,16 @@ export const ja = defineLocale({
             approved: '承認済み',
             cancelled: 'キャンセル済み',
             changes_requested: '修正が必要',
+            draft: '下書き',
             failed: '失敗',
             in_review: 'レビュー中',
+            pending: 'レビュー待ち',
             queued: '待機中',
             ready: 'レビュー可能',
             rejected: '却下済み',
             running: '実行中',
             succeeded: '完了',
+            superseded: '置き換え済み',
             timed_out: 'タイムアウト',
             waiting_review: 'レビュー待ち'
           })[status] || '不明な状態',

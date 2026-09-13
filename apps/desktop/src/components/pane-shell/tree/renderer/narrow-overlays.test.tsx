@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { SIDEBAR_DEFAULT_WIDTH_PX } from '@/app/layout-constants'
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { registry } from '@/contrib/registry'
 import { stubResizeObserver } from '@/test/jsdom'
@@ -38,8 +39,10 @@ beforeEach(() => {
   window.localStorage.clear()
   $hiddenTreePanes.set(new Set())
 
-  registerPane('sessions', 'sessions', { collapsible: true, placement: 'left', width: '237px' }, 'session rows')
-  registerPane('bots', 'Bots', { collapsible: true, placement: 'left', width: '260px' }, 'bot roster')
+  const sidebarWidth = `${SIDEBAR_DEFAULT_WIDTH_PX}px`
+
+  registerPane('sessions', 'sessions', { collapsible: true, placement: 'left', width: sidebarWidth }, 'session rows')
+  registerPane('bots', 'Bots', { collapsible: true, placement: 'left', width: sidebarWidth }, 'bot roster')
   registerPane('workspace', 'workspace', { placement: 'main', uncloseable: true }, 'chat')
 
   declareDefaultTree(split('row', [group(['sessions', 'bots']), group(['workspace'])]))

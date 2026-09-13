@@ -156,7 +156,7 @@ export function NarrowOverlays() {
           data-glass-opaque=""
           data-narrow-overlay={revealed.id}
           onMouseLeave={() => setReveal(current => (current?.pinned ? current : null))}
-          // Match the pane's docked width (sessions ~237px, files its rail
+          // Match the pane's docked width (sessions ~180px, files its rail
           // width) instead of a fat fixed 20rem — capped for tiny screens.
           style={{ width: `min(${(revealed.data as { width?: string } | undefined)?.width ?? '18rem'}, 85vw)` }}
         >

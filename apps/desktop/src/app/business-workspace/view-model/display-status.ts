@@ -52,8 +52,11 @@ const DELIVERABLE_STATUSES: StatusTable = {
   approved: { terminal: true, tone: 'success' },
   changes_requested: { active: true, tone: 'attention' },
   draft: { tone: 'muted' },
+  in_review: { active: true, tone: 'attention' },
+  pending: { active: true, tone: 'attention' },
   ready: { active: true, tone: 'accent' },
-  rejected: { terminal: true, tone: 'danger' }
+  rejected: { terminal: true, tone: 'danger' },
+  superseded: { terminal: true, tone: 'muted' }
 }
 
 const ACTIVITY_STATUSES: StatusTable = {

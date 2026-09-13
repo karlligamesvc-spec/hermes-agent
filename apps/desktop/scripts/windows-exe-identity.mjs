@@ -17,10 +17,11 @@ function packageVersionToPeVersion(packageVersion) {
   return `${match[1]}.${match[2]}.${match[3]}.${match[4] || '0'}`
 }
 
-function windowsExeIdentity(packageVersion) {
+function windowsExeIdentity(packageVersion, overrides = {}) {
   const peVersion = packageVersionToPeVersion(packageVersion)
   return {
     ...APEX_WINDOWS_IDENTITY,
+    ...overrides,
     FileVersion: peVersion,
     ProductVersion: peVersion,
     LegalCopyright: 'Copyright (c) 2026 ApexNodes HK'

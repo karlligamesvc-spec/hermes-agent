@@ -30,8 +30,8 @@ interface DesktopLoginScreenProps {
 
 // Full-window, centered login gate mirroring Codex "开始使用": our logo, a primary
 // "sign in with APEX" button, and a secondary Google quick-login button.
-// No marketing copy, no how-to text (Codex layout + our logo + light-purple
-// --theme-primary accent only). Both buttons drive the EXISTING managed browser
+// No marketing copy, no how-to text (Codex layout + our logo + the shared APEX
+// primary action). Both buttons drive the EXISTING managed browser
 // (loopback) OAuth flow (managedBrowserSignIn) — this does not add a second auth
 // system, it reuses the onboarding store's managed sign-in.
 export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: DesktopLoginScreenProps) {
@@ -114,9 +114,9 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
         ) : null}
 
         <div className="grid w-full gap-2.5">
-          {/* Primary: light-purple --theme-primary accent (design rule). */}
+          {/* Primary: the same contrast-safe APEX action used across the app. */}
           <Button
-            className="w-full bg-(--theme-primary) py-2.5 text-sm text-white hover:bg-[color-mix(in_srgb,var(--theme-primary)_90%,black)]"
+            className="w-full py-2.5 text-sm"
             disabled={managedSubmitting}
             onClick={() => signIn('apex')}
             size="lg"
