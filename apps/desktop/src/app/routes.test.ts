@@ -5,6 +5,8 @@ import {
   appViewForPath,
   ASSISTANT_ROUTE,
   closeRouteDrawer,
+  deliverableDetailRoute,
+  deliverableIdForPath,
   DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   LEGACY_ACCOUNTS_ROUTE,
@@ -64,6 +66,23 @@ describe('projectDetailRoute', () => {
     expect(projectIdForPath('/projects/')).toBeNull()
     expect(projectIdForPath('/projects/a/b')).toBeNull()
     expect(projectIdForPath('/projects/%E0%A4%A')).toBeNull()
+  })
+})
+
+describe('deliverableDetailRoute', () => {
+  it('keeps an encoded Deliverable in the Deliverables domain', () => {
+    const route = deliverableDetailRoute('deliverable/a b')
+
+    expect(route).toBe('/deliverables/deliverable%2Fa%20b')
+    expect(appViewForPath(route)).toBe('deliverables')
+    expect(deliverableIdForPath(route)).toBe('deliverable/a b')
+    expect(routeSessionId(route)).toBeNull()
+  })
+
+  it('rejects missing, nested, and malformed deliverable ids', () => {
+    expect(deliverableIdForPath('/deliverables/')).toBeNull()
+    expect(deliverableIdForPath('/deliverables/a/b')).toBeNull()
+    expect(deliverableIdForPath('/deliverables/%E0%A4%A')).toBeNull()
   })
 })
 
@@ -129,6 +148,9 @@ describe('route-driven drawer history', () => {
       'Invalid route drawer source'
     )
     expect(() => routeDrawerNavigationState({ hash: '', pathname: '/workflow-runs/other', search: '' })).toThrowError(
+      'Invalid route drawer source'
+    )
+    expect(() => routeDrawerNavigationState({ hash: '', pathname: '/deliverables/other', search: '' })).toThrowError(
       'Invalid route drawer source'
     )
     expect(routeDrawerBackgroundLocation({ routeDrawer: { backgroundLocation: { pathname: '/projects' } } })).toBeNull()

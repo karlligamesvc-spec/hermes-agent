@@ -242,9 +242,13 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     getProject: projectId => ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId),
     listWorkflows: options => ipcRenderer.invoke('hermes:workflowDomain:listWorkflows', options),
     getCatalog: () => ipcRenderer.invoke('hermes:workflowDomain:getCatalog'),
+    listDeliverables: options => ipcRenderer.invoke('hermes:workflowDomain:listDeliverables', options),
+    getDeliverable: deliverableId => ipcRenderer.invoke('hermes:workflowDomain:getDeliverable', deliverableId),
+    listActivity: options => ipcRenderer.invoke('hermes:workflowDomain:listActivity', options),
     getRun: runId => ipcRenderer.invoke('hermes:workflowDomain:getRun', runId),
     cancelRun: runId => ipcRenderer.invoke('hermes:workflowDomain:cancelRun', runId),
-    reviewDeliverable: payload => ipcRenderer.invoke('hermes:workflowDomain:reviewDeliverable', payload)
+    reviewDeliverable: payload => ipcRenderer.invoke('hermes:workflowDomain:reviewDeliverable', payload),
+    openUserFile: fileId => ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)
   },
   // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
   // Feishu app credential down to light up the Feishu adapter + lark tools. See

@@ -8,7 +8,16 @@ export interface WorkflowDomainBridge {
   }) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getProject?: (projectId: string) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getCatalog?: () => Promise<WorkflowCatalogResult>
+  getDeliverable?: (deliverableId: string) => Promise<WorkflowDeliverableDetailResult>
   getRun: (runId: string) => Promise<{ ok: boolean; overview?: WorkflowRunOverview }>
+  listActivity?: (options?: { cursor?: string; kinds?: string; limit?: number }) => Promise<WorkflowActivityListResult>
+  listDeliverables?: (options?: {
+    cursor?: string
+    kind?: string
+    limit?: number
+    projectId?: string
+    status?: string
+  }) => Promise<WorkflowDeliverableListResult>
   listProjects?: (options?: { cursor?: string; limit?: number; status?: string }) => Promise<WorkflowProjectListResult>
   listWorkflows?: (options?: {
     cursor?: string
@@ -18,13 +27,114 @@ export interface WorkflowDomainBridge {
   }) => Promise<WorkflowListResult>
   reviewDeliverable: (payload: {
     deliverableId: string
+    notes?: string
     status: 'approved' | 'changes_requested'
   }) => Promise<{ ok: boolean }>
+  openUserFile?: (fileId: string) => Promise<{ ok: boolean }>
   startGoal: (payload: {
     objective: string
     projectId?: string
     starter: { description: string; id: string; name: string; slug: string; version: number }
   }) => Promise<{ ok: boolean; run?: { id: string } }>
+}
+
+export interface WorkflowReview {
+  createdAt: null | string
+  decidedAt: null | string
+  id: string
+  metrics: Record<string, boolean | number>
+  nextAction: null | { label?: string; targetId?: string; type?: string }
+  notes: null | string
+  reviewerType: string
+  roundNumber: number
+  status: 'approved' | 'changes_requested' | 'pending' | 'rejected'
+  updatedAt: null | string
+}
+
+export interface WorkflowEvidence {
+  capturedAt?: string
+  quote?: string
+  source?: string
+  title?: string
+  url?: string
+  verificationStatus?: string
+  verified?: boolean
+}
+
+export interface WorkflowDeliverable {
+  createdAt: string
+  evidence: WorkflowEvidence[]
+  executorType: 'hermes'
+  executorVersion: null | string
+  id: string
+  kind: string
+  payload: {
+    content?: string
+    filename?: string
+    format?: string
+    highlights?: string[]
+    mimeType?: string
+    partial?: boolean
+    summary?: string
+  }
+  projectId: string
+  reviews: WorkflowReview[]
+  runId: string
+  schemaVersion: number
+  sourceCapturedAt: null | string
+  status: string
+  storageTarget: null | { id: string; kind: 'user_file' }
+  title: string
+  updatedAt: string
+  verifierResult: null | {
+    checkedAt?: string
+    citationCoverage?: number
+    evidenceCount?: number
+    passed?: boolean
+    reason?: string
+    status?: string
+  }
+}
+
+export interface WorkflowDeliverableListResult {
+  items?: WorkflowDeliverable[]
+  nextCursor?: null | string
+  ok: boolean
+}
+
+export interface WorkflowDeliverableDetail {
+  item: WorkflowDeliverable
+  project: WorkflowProject
+  run: {
+    completedAt: null | string
+    createdAt: string
+    id: string
+    startedAt: null | string
+    status: string
+    updatedAt: string
+  }
+  workflow: WorkflowDefinition
+}
+
+export interface WorkflowDeliverableDetailResult {
+  detail?: WorkflowDeliverableDetail
+  ok: boolean
+}
+
+export interface WorkflowActivityItem {
+  happenedAt: string
+  id: string
+  kind: 'deliverable' | 'review' | 'run'
+  status: string
+  summary: null | string
+  target: { id: string; kind: 'deliverable' | 'run' }
+  title: string
+}
+
+export interface WorkflowActivityListResult {
+  items?: WorkflowActivityItem[]
+  nextCursor?: null | string
+  ok: boolean
 }
 
 export interface WorkflowProjectSummary {
@@ -127,12 +237,7 @@ export interface WorkflowRunOverview {
   }
 }
 
-export type StartWorkflowGoalOutcome =
-  | { mode: 'failed' }
-  | { mode: 'started'; runId: string }
-  | { mode: 'unavailable' }
+export type StartWorkflowGoalOutcome = { mode: 'failed' } | { mode: 'started'; runId: string } | { mode: 'unavailable' }
 
 export type CreateWorkflowProjectOutcome =
-  | { item: WorkflowProject; mode: 'created' }
-  | { mode: 'failed' }
-  | { mode: 'unavailable' }
+  { item: WorkflowProject; mode: 'created' } | { mode: 'failed' } | { mode: 'unavailable' }

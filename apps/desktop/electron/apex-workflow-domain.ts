@@ -1,4 +1,18 @@
 const WORKFLOW_DOMAIN_PATH = '/api/v1/workflow-domain'
+const DELIVERABLE_STATUSES = new Set(['approved', 'draft', 'in_review', 'ready', 'rejected', 'superseded'])
+const RUN_ACTIVITY_STATUSES = new Set([
+  'cancel_requested',
+  'cancelled',
+  'failed',
+  'queued',
+  'retry_deferred',
+  'retry_scheduled',
+  'running',
+  'succeeded',
+  'timed_out',
+  'waiting_review'
+])
+const REVIEW_STATUSES = new Set(['approved', 'changes_requested', 'pending', 'rejected'])
 
 type JsonObject = Record<string, unknown>
 
@@ -79,22 +93,370 @@ function optionalText(value: unknown, maxLength: number): null | string {
   return normalized && normalized.length <= maxLength ? normalized : null
 }
 
-function deliverableOpenReference(value: JsonObject): null | string {
-  const kind = trimmed(value.storageKind).toLowerCase()
-  const reference = optionalText(value.storageRef, 240)
+function optionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
 
-  if (!reference || kind !== 'url') {
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function uuidText(value: unknown, field: string): string {
+  const normalized = requireText(value, field, 36).toLowerCase()
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(normalized)) {
+    throw new Error(`Invalid workflow domain ${field}`)
+  }
+
+  return normalized
+}
+
+function publicUrl(value: unknown): null | string {
+  const normalized = optionalText(value, 4000)
+
+  if (!normalized) {
     return null
   }
 
   try {
-    const url = new URL(reference)
+    const url = new URL(normalized)
 
     return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password
       ? url.toString()
       : null
   } catch {
     return null
+  }
+}
+
+function rendererPublicUrl(value: unknown): null | string {
+  const normalized = publicUrl(value)
+
+  if (!normalized) {
+    return null
+  }
+
+  const url = new URL(normalized)
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const ipLiteral = /^[0-9.]+$/.test(hostname) || hostname.includes(':')
+  const privateName = hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.internal')
+
+  if (url.protocol !== 'https:' || url.search || url.hash || ipLiteral || privateName) {
+    return null
+  }
+
+  return url.toString()
+}
+
+function projectWorkflowDomainReview(value: unknown): JsonObject {
+  const review = requireObject(value, 'deliverable review')
+  const status = requireText(review.status, 'deliverable review status', 48)
+
+  if (status !== 'pending' && status !== 'approved' && status !== 'changes_requested' && status !== 'rejected') {
+    throw new Error('Invalid workflow domain deliverable review status')
+  }
+
+  const metrics = requireObject(review.metrics ?? {}, 'deliverable review metrics')
+  const projectedMetrics: JsonObject = {}
+
+  for (const key of ['citationCoverage', 'completeness', 'qualityScore', 'issueCount'] as const) {
+    const metric = optionalNumber(metrics[key])
+
+    if (metric !== undefined) {
+      projectedMetrics[key] = metric
+    }
+  }
+
+  const passed = optionalBoolean(metrics.passed)
+
+  if (passed !== undefined) {
+    projectedMetrics.passed = passed
+  }
+
+  const rawNextAction = review.nextAction
+  let nextAction: JsonObject | null = null
+
+  if (rawNextAction && typeof rawNextAction === 'object' && !Array.isArray(rawNextAction)) {
+    const next = rawNextAction as JsonObject
+    nextAction = {}
+
+    for (const [key, limit] of [
+      ['type', 80],
+      ['label', 240],
+      ['targetId', 160]
+    ] as const) {
+      const text = optionalText(next[key], limit)
+
+      if (text) {
+        nextAction[key] = text
+      }
+    }
+  }
+
+  return {
+    createdAt: optionalText(review.createdAt, 80),
+    decidedAt: optionalText(review.decidedAt, 80),
+    id: requireText(review.id, 'deliverable review id', 160),
+    metrics: projectedMetrics,
+    nextAction,
+    notes: optionalText(review.notes, 8000),
+    reviewerType: requireText(review.reviewerType, 'deliverable reviewer type', 48),
+    roundNumber: requireInteger(review.roundNumber, 'deliverable review round', 1),
+    status,
+    updatedAt: optionalText(review.updatedAt, 80)
+  }
+}
+
+function projectWorkflowDomainDeliverable(value: unknown): JsonObject {
+  const deliverable = requireObject(value, 'deliverable')
+  const executorType = requireText(deliverable.executorType, 'deliverable executor type', 48).toLowerCase()
+  const status = requireText(deliverable.status, 'deliverable status', 48)
+
+  if (executorType !== 'hermes') {
+    throw new Error('Unsupported workflow domain executor')
+  }
+
+  if (!DELIVERABLE_STATUSES.has(status)) {
+    throw new Error('Invalid workflow domain deliverable status')
+  }
+
+  const payload = requireObject(deliverable.payload ?? {}, 'deliverable payload')
+  const projectedPayload: JsonObject = {}
+
+  for (const [key, limit] of [
+    ['format', 80],
+    ['content', 8000],
+    ['summary', 8000],
+    ['filename', 500],
+    ['mimeType', 160]
+  ] as const) {
+    const text = optionalText(payload[key], limit)
+
+    if (text) {
+      projectedPayload[key] = text
+    }
+  }
+
+  const partial = optionalBoolean(payload.partial)
+
+  if (partial !== undefined) {
+    projectedPayload.partial = partial
+  }
+
+  if (Array.isArray(payload.highlights)) {
+    projectedPayload.highlights = payload.highlights.slice(0, 20).flatMap(item => {
+      const highlight = optionalText(item, 1000)
+
+      return highlight ? [highlight] : []
+    })
+  }
+
+  const evidence = Array.isArray(deliverable.evidence)
+    ? deliverable.evidence.slice(0, 500).map(value => {
+        const item = requireObject(value, 'deliverable evidence')
+        const projected: JsonObject = {}
+
+        for (const [key, limit] of [
+          ['title', 1000],
+          ['source', 1000],
+          ['quote', 8000],
+          ['capturedAt', 80],
+          ['verificationStatus', 80]
+        ] as const) {
+          const text = optionalText(item[key], limit)
+
+          if (text) {
+            projected[key] = text
+          }
+        }
+
+        const url = rendererPublicUrl(item.url)
+
+        if (url) {
+          projected.url = url
+        }
+
+        const verified = optionalBoolean(item.verified)
+
+        if (verified !== undefined) {
+          projected.verified = verified
+        }
+
+        return projected
+      })
+    : []
+
+  const rawStorageTarget = deliverable.storageTarget
+  let storageTarget: JsonObject | null = null
+
+  if (rawStorageTarget && typeof rawStorageTarget === 'object' && !Array.isArray(rawStorageTarget)) {
+    const target = rawStorageTarget as JsonObject
+
+    if (target.kind === 'user_file') {
+      storageTarget = { id: uuidText(target.id, 'user file id'), kind: 'user_file' }
+    }
+  }
+
+  const rawVerifier = deliverable.verifierResult
+  let verifierResult: JsonObject | null = null
+
+  if (rawVerifier && typeof rawVerifier === 'object' && !Array.isArray(rawVerifier)) {
+    const verifier = rawVerifier as JsonObject
+    verifierResult = {}
+
+    for (const [key, limit] of [
+      ['status', 80],
+      ['reason', 4000],
+      ['checkedAt', 80]
+    ] as const) {
+      const text = optionalText(verifier[key], limit)
+
+      if (text) {
+        verifierResult[key] = text
+      }
+    }
+
+    for (const key of ['citationCoverage', 'evidenceCount'] as const) {
+      const metric = optionalNumber(verifier[key])
+
+      if (metric !== undefined) {
+        verifierResult[key] = metric
+      }
+    }
+
+    const passed = optionalBoolean(verifier.passed)
+
+    if (passed !== undefined) {
+      verifierResult.passed = passed
+    }
+  }
+
+  return {
+    createdAt: requireText(deliverable.createdAt, 'deliverable creation time', 80),
+    evidence,
+    executorType,
+    executorVersion: optionalText(deliverable.executorVersion, 160),
+    id: requireText(deliverable.id, 'deliverable id', 160),
+    kind: requireText(deliverable.kind, 'deliverable kind', 80),
+    payload: projectedPayload,
+    projectId: requireText(deliverable.projectId, 'deliverable project id', 160),
+    reviews: Array.isArray(deliverable.reviews)
+      ? deliverable.reviews.slice(0, 100).map(projectWorkflowDomainReview)
+      : [],
+    runId: requireText(deliverable.runId, 'deliverable run id', 160),
+    schemaVersion: requireInteger(deliverable.schemaVersion, 'deliverable schema version', 1),
+    sourceCapturedAt: optionalText(deliverable.sourceCapturedAt, 80),
+    status,
+    storageTarget,
+    title: requireText(deliverable.title, 'deliverable title', 240),
+    updatedAt: requireText(deliverable.updatedAt, 'deliverable update time', 80),
+    verifierResult
+  }
+}
+
+export function projectWorkflowDomainDeliverableList(value: unknown): JsonObject {
+  const result = requireObject(value, 'deliverable list')
+
+  if (!Array.isArray(result.items)) {
+    throw new Error('Invalid workflow domain deliverable list response')
+  }
+
+  return {
+    items: result.items.map(projectWorkflowDomainDeliverable),
+    nextCursor: optionalText(result.nextCursor, 512)
+  }
+}
+
+export function projectWorkflowDomainDeliverableDetail(value: unknown): JsonObject {
+  const detail = requireObject(value, 'deliverable detail')
+  const project = requireObject(detail.project, 'deliverable detail project')
+  const workflow = requireObject(detail.workflow, 'deliverable detail workflow')
+  const run = requireObject(detail.run, 'deliverable detail run')
+
+  if (requireText(run.executorType, 'deliverable run executor type', 48).toLowerCase() !== 'hermes') {
+    throw new Error('Unsupported workflow domain executor')
+  }
+
+  return {
+    item: projectWorkflowDomainDeliverable(detail.item),
+    project: {
+      createdAt: requireText(project.createdAt, 'project creation time', 80),
+      id: requireText(project.id, 'project id', 160),
+      name: requireText(project.name, 'project name', 200),
+      objective: optionalText(project.objective, 4000) ?? '',
+      status: requireText(project.status, 'project status', 48),
+      updatedAt: requireText(project.updatedAt, 'project update time', 80)
+    },
+    run: {
+      completedAt: optionalText(run.completedAt, 80),
+      createdAt: requireText(run.createdAt, 'run creation time', 80),
+      id: requireText(run.id, 'run id', 160),
+      startedAt: optionalText(run.startedAt, 80),
+      status: requireText(run.status, 'run status', 48),
+      updatedAt: requireText(run.updatedAt, 'run update time', 80)
+    },
+    workflow: {
+      createdAt: requireText(workflow.createdAt, 'workflow creation time', 80),
+      description: optionalText(workflow.description, 4000),
+      id: requireText(workflow.id, 'workflow id', 160),
+      name: requireText(workflow.name, 'workflow name', 200),
+      projectId: requireText(workflow.projectId, 'workflow project id', 160),
+      slug: requireText(workflow.slug, 'workflow slug', 120),
+      status: requireText(workflow.status, 'workflow status', 48),
+      updatedAt: requireText(workflow.updatedAt, 'workflow update time', 80),
+      version: workflow.version === null ? null : requireInteger(workflow.version, 'workflow version', 1)
+    }
+  }
+}
+
+export function projectWorkflowDomainActivityList(value: unknown): JsonObject {
+  const result = requireObject(value, 'activity list')
+
+  if (!Array.isArray(result.items)) {
+    throw new Error('Invalid workflow domain activity list response')
+  }
+
+  return {
+    items: result.items.map(value => {
+      const item = requireObject(value, 'activity item')
+      const kind = requireText(item.kind, 'activity kind', 48)
+
+      if (kind !== 'run' && kind !== 'deliverable' && kind !== 'review') {
+        throw new Error('Invalid workflow domain activity kind')
+      }
+
+      const target = requireObject(item.target, 'activity target')
+      const targetKind = requireText(target.kind, 'activity target kind', 48)
+
+      if (targetKind !== 'run' && targetKind !== 'deliverable') {
+        throw new Error('Invalid workflow domain activity target')
+      }
+
+      const expectedTargetKind = kind === 'run' ? 'run' : 'deliverable'
+
+      if (targetKind !== expectedTargetKind) {
+        throw new Error('Mismatched workflow domain activity target')
+      }
+
+      const status = requireText(item.status, 'activity status', 120)
+      const allowedStatuses =
+        kind === 'run' ? RUN_ACTIVITY_STATUSES : kind === 'review' ? REVIEW_STATUSES : DELIVERABLE_STATUSES
+
+      if (!allowedStatuses.has(status)) {
+        throw new Error('Invalid workflow domain activity status')
+      }
+
+      return {
+        happenedAt: requireText(item.happenedAt, 'activity time', 80),
+        id: requireText(item.id, 'activity id', 200),
+        kind,
+        status,
+        summary: optionalText(item.summary, 8000),
+        target: { id: requireText(target.id, 'activity target id', 160), kind: targetKind },
+        title: requireText(item.title, 'activity title', 240)
+      }
+    }),
+    nextCursor: optionalText(result.nextCursor, 512)
   }
 }
 
@@ -134,43 +496,30 @@ export function projectWorkflowDomainRunOverview(value: unknown): JsonObject {
     )
 
   const deliverables = overview.deliverables.map(value => {
-    const deliverable = requireObject(value, 'run deliverable')
+    const deliverable = projectWorkflowDomainDeliverable(value)
 
-    const reviews = Array.isArray(deliverable.reviews)
-      ? deliverable.reviews
-          .map(value => {
-            const review = requireObject(value, 'deliverable review')
-            const status = requireText(review.status, 'deliverable review status', 48)
-
-            if (
-              status !== 'pending' &&
-              status !== 'approved' &&
-              status !== 'changes_requested' &&
-              status !== 'rejected'
-            ) {
-              throw new Error('Invalid workflow domain deliverable review status')
-            }
-
-            return {
-              createdAt: optionalText(review.createdAt, 80),
-              id: requireText(review.id, 'deliverable review id', 160),
-              roundNumber: requireInteger(review.roundNumber, 'deliverable review round', 1),
-              status
-            }
-          })
-          .sort((left, right) => left.roundNumber - right.roundNumber || left.id.localeCompare(right.id))
-      : []
+    const reviews = (deliverable.reviews as JsonObject[])
+      .map(review => ({
+        createdAt: review.createdAt,
+        id: review.id,
+        roundNumber: review.roundNumber,
+        status: review.status
+      }))
+      .sort(
+        (left, right) =>
+          Number(left.roundNumber) - Number(right.roundNumber) || String(left.id).localeCompare(String(right.id))
+      )
 
     return {
-      createdAt: requireText(deliverable.createdAt, 'deliverable creation time', 80),
-      evidenceCount: Array.isArray(deliverable.evidenceManifest) ? deliverable.evidenceManifest.length : 0,
-      id: requireText(deliverable.id, 'deliverable id', 160),
-      kind: requireText(deliverable.kind, 'deliverable kind', 80),
-      openReference: deliverableOpenReference(deliverable),
+      createdAt: deliverable.createdAt,
+      evidenceCount: (deliverable.evidence as JsonObject[]).length,
+      id: deliverable.id,
+      kind: deliverable.kind,
+      openReference: null,
       reviews,
-      status: requireText(deliverable.status, 'deliverable status', 48),
-      title: requireText(deliverable.title, 'deliverable title', 240),
-      updatedAt: requireText(deliverable.updatedAt, 'deliverable update time', 80)
+      status: deliverable.status,
+      title: deliverable.title,
+      updatedAt: deliverable.updatedAt
     }
   })
 
@@ -405,6 +754,76 @@ export async function getWorkflowDomainRun(
   )
 }
 
+export async function listWorkflowDomainDeliverables(
+  apiBase: string,
+  options: { cursor?: string; kind?: string; limit?: number; projectId?: string; status?: string },
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  return projectWorkflowDomainDeliverableList(
+    await transport.getJson(
+      workflowDomainListUrl(apiBase, 'deliverables', {
+        cursor: options.cursor,
+        kind: options.kind,
+        limit: options.limit,
+        projectId: options.projectId,
+        status: options.status
+      })
+    )
+  )
+}
+
+export async function getWorkflowDomainDeliverable(
+  apiBase: string,
+  deliverableId: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  const normalizedId = requireText(deliverableId, 'deliverable id', 160)
+
+  return projectWorkflowDomainDeliverableDetail(
+    await transport.getJson(workflowDomainUrl(apiBase, `deliverables/${encodeURIComponent(normalizedId)}`))
+  )
+}
+
+export async function listWorkflowDomainActivity(
+  apiBase: string,
+  options: { cursor?: string; kinds?: string; limit?: number },
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  return projectWorkflowDomainActivityList(
+    await transport.getJson(
+      workflowDomainListUrl(apiBase, 'activity', {
+        cursor: options.cursor,
+        kinds: options.kinds,
+        limit: options.limit
+      })
+    )
+  )
+}
+
+export async function getWorkflowDomainUserFileDownload(
+  apiBase: string,
+  fileId: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<{ filename: null | string; url: string }> {
+  const normalizedBase = trimmed(apiBase).replace(/\/+$/, '')
+  const normalizedId = uuidText(fileId, 'user file id')
+  const requestUrl = new URL(`${normalizedBase}/api/v1/account/files/${encodeURIComponent(normalizedId)}/download`)
+
+  if (requestUrl.protocol !== 'http:' && requestUrl.protocol !== 'https:') {
+    throw new Error(`Unsupported ApexNodes URL protocol: ${requestUrl.protocol}`)
+  }
+
+  const result = requireObject(await transport.getJson(requestUrl.toString()), 'user file download')
+
+  const url = publicUrl(result.download_url)
+
+  if (!url) {
+    throw new Error('Invalid workflow domain user file download URL')
+  }
+
+  return { filename: optionalText(result.filename, 500), url }
+}
+
 export async function cancelWorkflowDomainRun(
   apiBase: string,
   runId: string,
@@ -422,6 +841,7 @@ export async function reviewWorkflowDomainDeliverable(
   apiBase: string,
   deliverableId: string,
   status: 'approved' | 'changes_requested',
+  notes: string | undefined,
   transport: Pick<WorkflowDomainTransport, 'postJson'>
 ): Promise<JsonObject> {
   const normalizedId = requireText(deliverableId, 'deliverable id', 160)
@@ -430,11 +850,24 @@ export async function reviewWorkflowDomainDeliverable(
     throw new Error('Invalid workflow domain review status')
   }
 
+  if (notes !== undefined && typeof notes !== 'string') {
+    throw new Error('Invalid workflow domain review notes')
+  }
+
+  const normalizedNotes = notes === undefined ? null : optionalText(notes, 8000)
+
+  if (
+    (notes !== undefined && trimmed(notes) && !normalizedNotes) ||
+    (status === 'changes_requested' && !normalizedNotes)
+  ) {
+    throw new Error('Invalid workflow domain review notes')
+  }
+
   return responseItem(
     await transport.postJson(workflowDomainUrl(apiBase, `deliverables/${encodeURIComponent(normalizedId)}/reviews`), {
       status,
       metrics: {},
-      notes: null,
+      notes: normalizedNotes,
       nextAction: null
     }),
     'deliverable review'

@@ -3646,6 +3646,94 @@ export interface Translations {
     }
     workflowDomain: {
       startFailed: string
+      deliverables: {
+        actionFailed: string
+        all: string
+        approve: string
+        back: string
+        citationCoverage: string
+        content: string
+        copy: string
+        created: string
+        description: string
+        detailEyebrow: string
+        detailTitle: string
+        emptyDescription: string
+        emptyTitle: string
+        evidence: string
+        evidenceCount: (count: number) => string
+        filterEmpty: string
+        filters: string
+        highlights: string
+        itemCount: (count: number) => string
+        kind: (kind: string) => string
+        loadFailedDescription: string
+        loadFailedTitle: string
+        loadMore: string
+        loading: string
+        loadingMore: string
+        material: string
+        noEvidence: string
+        noReviews: string
+        notVerified: string
+        open: string
+        openFailed: string
+        openUnavailable: string
+        project: string
+        refresh: string
+        report: string
+        requestChanges: string
+        reviewNote: string
+        reviewNotePlaceholder: string
+        reviewNoteRequired: string
+        reviewRound: (round: number) => string
+        reviews: string
+        run: string
+        sheet: string
+        sourceCaptured: string
+        status: (status: string) => string
+        submitting: string
+        summary: string
+        title: string
+        unavailableDescription: string
+        unavailableTitle: string
+        updated: string
+        verifier: string
+        verificationChecked: string
+        verificationOutcome: string
+        verificationReason: string
+        verified: string
+        view: string
+        workflow: string
+      }
+      history: {
+        all: string
+        deliverables: string
+        description: string
+        emptyDescription: string
+        emptyTitle: string
+        eyebrow: string
+        filterEmpty: string
+        filters: string
+        kind: (kind: string) => string
+        loadFailedDescription: string
+        loadFailedTitle: string
+        loadMore: string
+        loading: string
+        loadingMore: string
+        noSummary: string
+        older: string
+        open: string
+        recent: string
+        refresh: string
+        reviews: string
+        runs: string
+        title: string
+        today: string
+        unavailableDescription: string
+        unavailableTitle: string
+        yesterday: string
+      }
       run: {
         actionFailed: string
         approve: string

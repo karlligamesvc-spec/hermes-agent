@@ -601,9 +601,7 @@ describe('identity: the brand skin survives', () => {
     const styles = readSource('src', 'styles.css')
 
     expect(styles).toMatch(/\.apex-business-surface \{\s*background: var\(--ui-bg-chrome\)/)
-    expect(styles).toMatch(
-      /\.apex-primary-sidebar \{[\s\S]*?--ui-sidebar-surface-background: var\(--ui-bg-chrome\)/
-    )
+    expect(styles).toMatch(/\.apex-primary-sidebar \{[\s\S]*?--ui-sidebar-surface-background: var\(--ui-bg-chrome\)/)
     expect(styles).toMatch(/\.apex-primary-sidebar \{[\s\S]*?--sidebar: var\(--ui-bg-chrome\)/)
     expect(styles).toMatch(
       /\.apex-primary-sidebar \{[\s\S]*?--ui-row-active-background: color-mix\(in srgb, var\(--ui-bg-elevated\) 98%, var\(--ui-blue\) 2%\)/
@@ -814,6 +812,10 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getProject'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:listDeliverables'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getDeliverable'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:listActivity'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:openUserFile'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'")
     expect(cancelHandler).not.toContain('return { ok: true, run }')
     expect(reviewHandler).not.toContain('return { ok: true, review }')
@@ -821,6 +823,7 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(preload).toContain('workflowDomain: {')
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getRun', runId)")
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)")
     expect(preload).not.toContain('accessToken')
   })
 
@@ -829,6 +832,8 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     const client = readSource('src', 'app', 'business-workspace', 'api', 'adapters.ts')
     const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
     const runView = readSource('src', 'app', 'business-workspace', 'pages', 'workflow-run-page.tsx')
+    const deliverableView = readSource('src', 'app', 'business-workspace', 'pages', 'deliverable-detail-page.tsx')
+    const historyView = readSource('src', 'app', 'business-workspace', 'pages', 'history-page.tsx')
 
     expect(startHome).toContain('if (!selectedWorkflow) {')
     expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, selectedWorkflow, projectId)')
@@ -840,6 +845,11 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(client).toContain("return { mode: 'unavailable' }")
     expect(surfaces).toContain('path="workflow-runs/:runId"')
     expect(runView).toContain("review(deliverable.id, 'approved')")
-    expect(runView).toContain("review(deliverable.id, 'changes_requested')")
+    expect(runView).toContain('openDeliverable(deliverable)')
+    expect(deliverableView).toContain('openWorkflowUserFile(fileId)')
+    expect(deliverableView).toContain("submitReview('changes_requested')")
+    expect(deliverableView).not.toContain('download_url')
+    expect(historyView).toContain("item.target.kind === 'run'")
+    expect(historyView).not.toContain('item.title.includes')
   })
 })

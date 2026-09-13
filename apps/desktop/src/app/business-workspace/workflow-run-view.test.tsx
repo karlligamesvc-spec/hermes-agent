@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PAGE_INSET_X } from '@/app/layout-constants'
 import { I18nProvider } from '@/i18n'
-import { $previewTabs, $previewTarget } from '@/store/preview'
 
 import type { WorkflowRunOverview } from './api/types'
 import { WorkflowRunView } from './workflow-run-view'
@@ -73,7 +72,6 @@ describe('hc-795 real workflow Run view', () => {
     getRun.mockClear()
     getRun.mockResolvedValue({ ok: true, overview })
     reviewDeliverable.mockClear()
-    $previewTabs.set([])
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
@@ -107,7 +105,7 @@ describe('hc-795 real workflow Run view', () => {
     expect(screen.getByText(/1 evidence item/)).toBeTruthy()
     expect(screen.getByText('No stage progress to show yet')).toBeTruthy()
     expect(globalThis.document.querySelector('[data-stage-empty-state="compact"]')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'No openable result yet' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Open deliverable' }).hasAttribute('disabled')).toBe(false)
 
     const reviewHeading = screen.getByRole('heading', { name: 'Review required', level: 2 })
     const stageHeading = screen.getByRole('heading', { name: 'Stage progress', level: 2 })
@@ -151,12 +149,13 @@ describe('hc-795 real workflow Run view', () => {
     expect(await screen.findByRole('heading', { name: 'Workflow run' })).toBeTruthy()
   })
 
-  it('routes request-changes through the same Review exit and refreshes authoritative data', async () => {
+  it('routes request-changes to Deliverable detail so a required revision note cannot be skipped', async () => {
     render(
       <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
         <I18nProvider configClient={null} initialLocale="en">
           <Routes>
             <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+            <Route element={<div>deliverable-review-form</div>} path="deliverables/:deliverableId" />
           </Routes>
         </I18nProvider>
       </MemoryRouter>
@@ -165,13 +164,8 @@ describe('hc-795 real workflow Run view', () => {
     expect(await screen.findByText('Pet market evidence report')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
 
-    await waitFor(() =>
-      expect(reviewDeliverable).toHaveBeenCalledWith({
-        deliverableId: 'deliverable-1',
-        status: 'changes_requested'
-      })
-    )
-    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('deliverable-review-form')).toBeTruthy()
+    expect(reviewDeliverable).not.toHaveBeenCalled()
   })
 
   it('offers cancellation only for a cancellable Run and refreshes after the mutation succeeds', async () => {
@@ -194,25 +188,13 @@ describe('hc-795 real workflow Run view', () => {
     await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
   })
 
-  it('opens only an explicit real deliverable target through the existing preview seam', async () => {
-    getRun.mockResolvedValue({
-      ok: true,
-      overview: {
-        ...overview,
-        deliverables: [
-          {
-            ...overview.deliverables[0],
-            openReference: 'https://files.example/report.pdf'
-          }
-        ]
-      }
-    })
-
+  it('routes a Run result into its canonical Deliverable detail instead of exposing storage references', async () => {
     render(
       <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
         <I18nProvider configClient={null} initialLocale="en">
           <Routes>
             <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+            <Route element={<div>canonical-deliverable-detail</div>} path="deliverables/:deliverableId" />
           </Routes>
         </I18nProvider>
       </MemoryRouter>
@@ -220,8 +202,7 @@ describe('hc-795 real workflow Run view', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open deliverable' }))
 
-    await waitFor(() => expect($previewTarget.get()?.url).toBe('https://files.example/report.pdf'))
-    expect($previewTarget.get()?.label).toBe('Pet market evidence report')
+    expect(await screen.findByText('canonical-deliverable-detail')).toBeTruthy()
   })
 
   it('never renders raw event payloads or unsupported executor identity', async () => {

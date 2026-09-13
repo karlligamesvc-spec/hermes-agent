@@ -4,8 +4,11 @@ import { workflowDomainBridge } from './bridge'
 import type {
   CreateWorkflowProjectOutcome,
   StartWorkflowGoalOutcome,
+  WorkflowActivityItem,
   WorkflowCatalogItem,
   WorkflowDefinition,
+  WorkflowDeliverable,
+  WorkflowDeliverableDetail,
   WorkflowDomainBridge,
   WorkflowProject,
   WorkflowRunOverview
@@ -17,17 +20,24 @@ export type WorkflowProjectListOutcome =
   | { mode: 'unavailable' }
 
 export type WorkflowProjectOutcome =
-  | { item: WorkflowProject; mode: 'ready' }
-  | { mode: 'failed' }
-  | { mode: 'unavailable' }
+  { item: WorkflowProject; mode: 'ready' } | { mode: 'failed' } | { mode: 'unavailable' }
 
 export type WorkflowCatalogOutcome =
-  | { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string }
+  { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string } | { mode: 'failed' } | { mode: 'unavailable' }
+
+export type WorkflowDefinitionListOutcome =
+  { items: WorkflowDefinition[]; mode: 'ready' } | { mode: 'failed' } | { mode: 'unavailable' }
+
+export type WorkflowDeliverableListOutcome =
+  | { items: WorkflowDeliverable[]; mode: 'ready'; nextCursor: null | string }
   | { mode: 'failed' }
   | { mode: 'unavailable' }
 
-export type WorkflowDefinitionListOutcome =
-  | { items: WorkflowDefinition[]; mode: 'ready' }
+export type WorkflowDeliverableDetailOutcome =
+  { detail: WorkflowDeliverableDetail; mode: 'ready' } | { mode: 'failed' } | { mode: 'unavailable' }
+
+export type WorkflowActivityListOutcome =
+  | { items: WorkflowActivityItem[]; mode: 'ready'; nextCursor: null | string }
   | { mode: 'failed' }
   | { mode: 'unavailable' }
 
@@ -38,7 +48,8 @@ export async function startWorkflowGoal(
   fallbackBridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<StartWorkflowGoalOutcome> {
   const projectId = typeof projectIdOrBridge === 'string' ? projectIdOrBridge : undefined
-  const bridge = typeof projectIdOrBridge === 'string' || projectIdOrBridge === undefined ? fallbackBridge : projectIdOrBridge
+  const bridge =
+    typeof projectIdOrBridge === 'string' || projectIdOrBridge === undefined ? fallbackBridge : projectIdOrBridge
 
   if (!bridge) {
     return { mode: 'unavailable' }
@@ -216,6 +227,79 @@ export async function getWorkflowRun(runId: string): Promise<null | WorkflowRunO
   return result.ok && result.overview ? result.overview : null
 }
 
+export async function listWorkflowDeliverables(
+  options: { cursor?: string; kind?: string; limit?: number; projectId?: string; status?: string } = {},
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowDeliverableListOutcome> {
+  if (!bridge?.listDeliverables) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.listDeliverables(options)
+
+    return result.ok && Array.isArray(result.items)
+      ? { items: result.items, mode: 'ready', nextCursor: result.nextCursor ?? null }
+      : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function getWorkflowDeliverable(
+  deliverableId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowDeliverableDetailOutcome> {
+  if (!bridge?.getDeliverable || !deliverableId.trim()) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.getDeliverable(deliverableId.trim())
+
+    return result.ok && result.detail ? { detail: result.detail, mode: 'ready' } : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function listWorkflowActivity(
+  options: { cursor?: string; kinds?: string; limit?: number } = {},
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowActivityListOutcome> {
+  if (!bridge?.listActivity) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.listActivity(options)
+
+    return result.ok && Array.isArray(result.items)
+      ? { items: result.items, mode: 'ready', nextCursor: result.nextCursor ?? null }
+      : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
 export async function cancelWorkflowRun(runId: string): Promise<boolean> {
   const bridge = workflowDomainBridge()
 
@@ -224,9 +308,16 @@ export async function cancelWorkflowRun(runId: string): Promise<boolean> {
 
 export async function reviewWorkflowDeliverable(
   deliverableId: string,
-  status: 'approved' | 'changes_requested'
+  status: 'approved' | 'changes_requested',
+  notes?: string
 ): Promise<boolean> {
   const bridge = workflowDomainBridge()
 
-  return bridge ? (await bridge.reviewDeliverable({ deliverableId, status })).ok : false
+  return bridge ? (await bridge.reviewDeliverable({ deliverableId, notes, status })).ok : false
+}
+
+export async function openWorkflowUserFile(fileId: string): Promise<boolean> {
+  const bridge = workflowDomainBridge()
+
+  return bridge?.openUserFile ? (await bridge.openUserFile(fileId)).ok : false
 }

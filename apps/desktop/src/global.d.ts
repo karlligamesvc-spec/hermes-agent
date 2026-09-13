@@ -260,12 +260,27 @@ declare global {
           status?: string
         }) => Promise<DesktopWorkflowDomainWorkflowListResult>
         getCatalog?: () => Promise<DesktopWorkflowDomainCatalogResult>
+        listDeliverables?: (options?: {
+          cursor?: string
+          kind?: string
+          limit?: number
+          projectId?: string
+          status?: string
+        }) => Promise<DesktopWorkflowDomainDeliverableListResult>
+        getDeliverable?: (deliverableId: string) => Promise<DesktopWorkflowDomainDeliverableDetailResult>
+        listActivity?: (options?: {
+          cursor?: string
+          kinds?: string
+          limit?: number
+        }) => Promise<DesktopWorkflowDomainActivityListResult>
         getRun: (runId: string) => Promise<DesktopWorkflowDomainRunResult>
         cancelRun: (runId: string) => Promise<DesktopWorkflowDomainMutationResult>
         reviewDeliverable: (payload: {
           deliverableId: string
+          notes?: string
           status: 'approved' | 'changes_requested'
         }) => Promise<DesktopWorkflowDomainMutationResult>
+        openUserFile?: (fileId: string) => Promise<DesktopWorkflowDomainMutationResult>
       }
       // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
       // Feishu app credential (from the cloud agent_entries) down to the local
@@ -1811,7 +1826,7 @@ export interface DesktopWorkflowDomainReview {
   createdAt: null | string
   id: string
   roundNumber: number
-  status: 'approved' | 'changes_requested' | 'rejected'
+  status: 'approved' | 'changes_requested' | 'pending' | 'rejected'
 }
 
 export interface DesktopWorkflowDomainDeliverable {
@@ -1830,6 +1845,106 @@ export interface DesktopWorkflowDomainOverview {
   deliverables: DesktopWorkflowDomainDeliverable[]
   events: DesktopWorkflowDomainEvent[]
   run: DesktopWorkflowDomainRun
+}
+
+export interface DesktopWorkflowDomainDetailedReview {
+  createdAt: null | string
+  decidedAt: null | string
+  id: string
+  metrics: Record<string, boolean | number>
+  nextAction: null | { label?: string; targetId?: string; type?: string }
+  notes: null | string
+  reviewerType: string
+  roundNumber: number
+  status: 'approved' | 'changes_requested' | 'pending' | 'rejected'
+  updatedAt: null | string
+}
+
+export interface DesktopWorkflowDomainEvidence {
+  capturedAt?: string
+  quote?: string
+  source?: string
+  title?: string
+  url?: string
+  verificationStatus?: string
+  verified?: boolean
+}
+
+export interface DesktopWorkflowDomainDetailedDeliverable {
+  createdAt: string
+  evidence: DesktopWorkflowDomainEvidence[]
+  executorType: 'hermes'
+  executorVersion: null | string
+  id: string
+  kind: string
+  payload: {
+    content?: string
+    filename?: string
+    format?: string
+    highlights?: string[]
+    mimeType?: string
+    partial?: boolean
+    summary?: string
+  }
+  projectId: string
+  reviews: DesktopWorkflowDomainDetailedReview[]
+  runId: string
+  schemaVersion: number
+  sourceCapturedAt: null | string
+  status: string
+  storageTarget: null | { id: string; kind: 'user_file' }
+  title: string
+  updatedAt: string
+  verifierResult: null | {
+    checkedAt?: string
+    citationCoverage?: number
+    evidenceCount?: number
+    passed?: boolean
+    reason?: string
+    status?: string
+  }
+}
+
+export interface DesktopWorkflowDomainDeliverableListResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  items?: DesktopWorkflowDomainDetailedDeliverable[]
+  nextCursor?: null | string
+  ok: boolean
+}
+
+export interface DesktopWorkflowDomainDeliverableDetailResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  detail?: {
+    item: DesktopWorkflowDomainDetailedDeliverable
+    project: DesktopWorkflowDomainProject
+    run: {
+      completedAt: null | string
+      createdAt: string
+      id: string
+      startedAt: null | string
+      status: string
+      updatedAt: string
+    }
+    workflow: DesktopWorkflowDomainWorkflow
+  }
+  ok: boolean
+}
+
+export interface DesktopWorkflowDomainActivityItem {
+  happenedAt: string
+  id: string
+  kind: 'deliverable' | 'review' | 'run'
+  status: string
+  summary: null | string
+  target: { id: string; kind: 'deliverable' | 'run' }
+  title: string
+}
+
+export interface DesktopWorkflowDomainActivityListResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  items?: DesktopWorkflowDomainActivityItem[]
+  nextCursor?: null | string
+  ok: boolean
 }
 
 export interface DesktopWorkflowDomainStartResult {

@@ -230,25 +230,58 @@ const reviewRun = {
   deliverables: [
     {
       createdAt: '2026-09-06T17:04:00Z',
-      evidenceManifest: [{ sourceUrl: 'https://private.local.test/evidence', token: 'e2e-evidence-secret' }],
+      evidence: [
+        {
+          quote: '美国宠物用品搜索需求同比增长。',
+          title: '[本地测试] 公开市场来源',
+          token: 'e2e-evidence-secret',
+          url: 'https://example.com/pet-market',
+          verified: true
+        }
+      ],
+      executorType: 'hermes',
+      executorVersion: '2026.9.1',
       id: 'local-review-deliverable-1',
       kind: 'report',
-      payload: { config: { apiKey: 'e2e-payload-secret' }, schema: 'private-schema' },
+      payload: {
+        config: { apiKey: 'e2e-payload-secret' },
+        highlights: ['美国需求增长', '引用覆盖率达到验收线'],
+        schema: 'private-schema',
+        summary: '[本地测试] 有证据的美国宠物用品市场结论。'
+      },
+      projectId: 'local-review-project-running',
       reviews: [
         {
           createdAt: '2026-09-06T17:05:00Z',
+          decidedAt: '2026-09-06T17:05:00Z',
           id: 'local-review-review-1',
-          notes: 'e2e-private-review-note',
+          metrics: { citationCoverage: 0.8, secretScore: 99 },
+          nextAction: { label: '补充引用', secret: 'e2e-next-action-secret', type: 'revise' },
+          notes: '[本地测试] 请补充主要来源。',
+          reviewerType: 'human',
           roundNumber: 1,
           status: 'changes_requested',
+          updatedAt: '2026-09-06T17:05:00Z',
           userId: 'tenant-user'
         }
       ],
+      runId: 'local-review-run-running',
+      schemaVersion: 1,
+      sourceCapturedAt: '2026-09-06T17:03:30Z',
       status: 'ready',
-      storageKind: 'inline',
-      storageRef: null,
+      storageTarget: {
+        id: '00000000-0000-4000-8000-000000000831',
+        kind: 'user_file',
+        signedUrl: 'https://files.example/private?token=e2e-file-secret'
+      },
       title: '[本地测试] 美国宠物用品分析报告',
-      updatedAt: '2026-09-06T17:05:00Z'
+      updatedAt: '2026-09-06T17:05:00Z',
+      verifierResult: {
+        citationCoverage: 0.8,
+        evidenceCount: 1,
+        passed: true,
+        secret: 'e2e-verifier-secret'
+      }
     }
   ],
   events: [
@@ -293,10 +326,11 @@ const reviewRun = {
 }
 
 async function startPhase1ReviewApi() {
+  let lastReview: null | Record<string, unknown> = null
   let relayBaseUrl = ''
   let runAvailable = true
   let workflowEnabled = true
-  const server = http.createServer((request, response) => {
+  const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     const json = (status: number, body: unknown) => {
       response.writeHead(status, { 'content-type': 'application/json' })
@@ -374,6 +408,89 @@ async function startPhase1ReviewApi() {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/deliverables') {
+      json(200, { items: reviewRun.deliverables, nextCursor: null })
+
+      return
+    }
+
+    if (
+      request.method === 'GET' &&
+      url.pathname === '/api/v1/workflow-domain/deliverables/local-review-deliverable-1'
+    ) {
+      json(200, {
+        item: reviewRun.deliverables[0],
+        project: reviewProjects[0],
+        run: { ...reviewRun.run, executorType: 'hermes' },
+        workflow: {
+          createdAt: '2026-09-05T18:00:00Z',
+          description: '仅用于本地 Phase 2B 视觉评审，不代表生产数据。',
+          id: 'local-review-workflow',
+          name: '[本地测试] 我的选品流程',
+          projectId: 'local-review-project-running',
+          slug: 'market-launch',
+          status: 'active',
+          updatedAt: '2026-09-05T21:05:00Z',
+          version: 1
+        }
+      })
+
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/activity') {
+      json(200, {
+        items: [
+          {
+            happenedAt: '2026-09-06T17:05:00Z',
+            id: 'review:local-review-review-1',
+            kind: 'review',
+            status: 'changes_requested',
+            summary: '[本地测试] 已要求补充主要来源。',
+            target: { id: 'local-review-deliverable-1', kind: 'deliverable' },
+            title: '[本地测试] 审阅意见已保存'
+          },
+          {
+            happenedAt: '2026-09-06T17:01:00Z',
+            id: 'run:local-review-event-2',
+            kind: 'run',
+            status: 'running',
+            summary: '[本地测试] 正在比较公开市场证据。',
+            target: { id: 'local-review-run-running', kind: 'run' },
+            title: '[本地测试] 我的选品流程'
+          }
+        ],
+        nextCursor: null
+      })
+
+      return
+    }
+
+    if (
+      request.method === 'POST' &&
+      url.pathname === '/api/v1/workflow-domain/deliverables/local-review-deliverable-1/reviews'
+    ) {
+      const chunks: Buffer[] = []
+
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk))
+      }
+
+      lastReview = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+      json(201, { item: { id: 'local-review-review-2' } })
+
+      return
+    }
+
+    if (
+      request.method === 'GET' &&
+      url.pathname === '/api/v1/account/files/00000000-0000-4000-8000-000000000831/download'
+    ) {
+      json(200, { download_url: 'https://files.example/report.pdf?signature=local-test', filename: 'report.pdf' })
+
+      return
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/runs/local-review-run-running') {
       json(runAvailable ? 200 : 503, runAvailable ? reviewRun : { detail: 'local test: Run unavailable' })
 
@@ -388,6 +505,7 @@ async function startPhase1ReviewApi() {
 
   return {
     close: () => new Promise<void>(resolve => server.close(() => resolve())),
+    getLastReview: () => lastReview,
     setRelayBaseUrl: (value: string) => {
       relayBaseUrl = value
     },
@@ -860,7 +978,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
           projects: page.getByText('[本地测试] APEX GEO 品牌诊断', { exact: true }),
           workflows: page.getByText('[本地测试] 我的选品流程', { exact: true }),
           'scheduled-runs': page.getByText('暂无排程任务', { exact: true }),
-          deliverables: page.getByText('未找到产物', { exact: true })
+          deliverables: page.getByText('[本地测试] 美国宠物用品分析报告', { exact: true })
         }[phasePage.name]
 
         await lowerContent.scrollIntoViewIfNeeded()
@@ -872,6 +990,96 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       }
     }
   }
+})
+
+test('packaged Deliverables and Activity keep typed targets, review notes and renderer-safe data', async () => {
+  const { app, page } = fixture!
+  const screenshotRoot = process.env.HC831_SCREENSHOT_DIR
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '交付物' }).first().click()
+
+  const opener = page.getByRole('button', { name: /\[本地测试\] 美国宠物用品分析报告/ })
+
+  await expect(page.getByRole('heading', { level: 1, name: '交付物' })).toBeVisible()
+  await expect(opener).toBeVisible()
+  await opener.focus()
+  await opener.click()
+
+  const drawer = page.getByRole('dialog', { name: '交付物详情' })
+
+  await expect(drawer).toBeVisible()
+  await expectDrawerBelowNativeChrome(drawer)
+  await expect(drawer.getByRole('heading', { level: 1, name: '[本地测试] 美国宠物用品分析报告' })).toBeVisible()
+  await expect(drawer.getByText('[本地测试] 有证据的美国宠物用品市场结论。')).toBeVisible()
+  await expect(drawer.getByText('来源采集时间')).toBeVisible()
+  await expect(drawer.getByText('引用覆盖率', { exact: true })).toBeVisible()
+  await expect(drawer.getByText('80%')).toBeVisible()
+  await expect(drawer.getByText('[本地测试] 公开市场来源')).toBeVisible()
+  await expect(drawer.getByText('[本地测试] 请补充主要来源。')).toBeVisible()
+  await expect(drawer.getByRole('button', { name: '打开成果' })).toBeEnabled()
+  await expect(
+    drawer.getByText(
+      /e2e-payload-secret|private-schema|tenant-user|e2e-evidence-secret|e2e-next-action-secret|e2e-file-secret|e2e-verifier-secret/
+    )
+  ).toHaveCount(0)
+
+  for (const viewport of [
+    { height: 800, width: 1220 },
+    { height: 800, width: 752 }
+  ]) {
+    await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]
+
+      win?.unmaximize()
+      win?.setMinimumSize(400, 620)
+      win?.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+    }, viewport)
+    await page.bringToFront()
+    await page.waitForTimeout(400)
+    await expectDrawerBelowNativeChrome(drawer)
+    await expect(drawer).toHaveAttribute('data-layout', viewport.width < 1100 ? 'fullscreen' : 'drawer')
+
+    const screenshotName = `deliverable-detail-${viewport.width}x${viewport.height}.png`
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, screenshotName) : test.info().outputPath(screenshotName)
+    })
+  }
+
+  const reviewNote = '请在结论页增加第二个公开来源。'
+  await drawer.getByRole('textbox', { name: '修改说明' }).fill(reviewNote)
+  await drawer.getByRole('button', { name: '需要修改' }).click()
+  await expect
+    .poll(() => reviewApi?.getLastReview())
+    .toEqual({ metrics: {}, nextAction: null, notes: reviewNote, status: 'changes_requested' })
+
+  await page.keyboard.press('Escape')
+  await expect(drawer).toHaveCount(0)
+  await expect(opener).toBeFocused()
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await page.getByRole('button', { name: '打开账户菜单: 本地 UI 评审' }).click()
+  await page.getByRole('menuitem', { name: '历史会话' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: '历史' })).toBeVisible()
+
+  const activity = page.getByRole('button', { name: /\[本地测试\] 审阅意见已保存/ })
+  await expect(activity).toBeVisible()
+  await activity.focus()
+  await activity.click()
+  await expect(page.getByRole('dialog', { name: '交付物详情' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: '[本地测试] 美国宠物用品分析报告' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(activity).toBeFocused()
 })
 
 test('packaged real Run drawer preserves context, safe data and focus across the approved window matrix', async () => {
@@ -898,7 +1106,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   await expect(drawer).toBeVisible()
   await expect(drawer.getByText('[本地测试] 验证真实 Run 抽屉、事件顺序与诚实空态。')).toBeVisible()
   await expect(drawer.getByText('暂时没有可展示的阶段进度')).toBeVisible()
-  await expect(drawer.getByRole('button', { name: '暂无可打开结果' })).toBeDisabled()
+  await expect(drawer.getByRole('button', { name: '打开交付物' })).toBeEnabled()
   await expect(drawer.getByText(/伪造阶段|88%|e2e-payload-secret|private-schema|tenant-user/)).toHaveCount(0)
   await expect(drawer.getByRole('heading', { name: '工作流运行', level: 1 })).toBeVisible()
   expect(await drawer.locator('[data-run-scroll-container]').evaluate(element => element.scrollTop)).toBe(0)

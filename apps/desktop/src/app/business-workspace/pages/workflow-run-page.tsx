@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 
 import { PAGE_INSET_X } from '@/app/layout-constants'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,9 @@ import { ErrorState } from '@/components/ui/error-state'
 import { Loader } from '@/components/ui/loader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useI18n } from '@/i18n'
-import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { formatBusinessDayTime } from '@/lib/time'
-import { openPreview } from '@/store/preview'
 
+import { deliverableDetailRoute } from '../../routes'
 import type { WorkflowRunOverview } from '../api/types'
 import { RunFact, RunSection } from '../components/run-sections'
 import { useWorkflowRun } from '../hooks/use-workflow-run'
@@ -24,9 +23,9 @@ export function WorkflowRunView() {
   const { locale, t } = useI18n()
   const copy = t.businessWorkspace.workflowDomain.run
   const { runId = '' } = useParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const { actionFailed, actionId, cancel, failed, load, loading, overview, review } = useWorkflowRun(runId)
-  const [openingId, setOpeningId] = useState<null | string>(null)
-  const [openFailedId, setOpenFailedId] = useState<null | string>(null)
   const [activeView, setActiveView] = useState('progress')
   const scrollRef = useRef<HTMLElement | null>(null)
 
@@ -38,29 +37,8 @@ export function WorkflowRunView() {
     }
   }, [runId])
 
-  const openDeliverable = async (deliverable: RunDeliverable) => {
-    if (!deliverable.openReference) {
-      return
-    }
-
-    setOpenFailedId(null)
-    setOpeningId(deliverable.id)
-
-    try {
-      const target = await normalizeOrLocalPreviewTarget(deliverable.openReference)
-
-      if (!target) {
-        setOpenFailedId(deliverable.id)
-
-        return
-      }
-
-      openPreview({ ...target, label: deliverable.title }, 'explicit-link')
-    } catch {
-      setOpenFailedId(deliverable.id)
-    } finally {
-      setOpeningId(null)
-    }
+  const openDeliverable = (deliverable: RunDeliverable) => {
+    navigate(deliverableDetailRoute(deliverable.id), { replace: true, state: location.state })
   }
 
   if (loading && !overview) {
@@ -150,36 +128,17 @@ export function WorkflowRunView() {
                   {copy.approve}
                 </Button>
               )}
-              <Button
-                disabled={!deliverable.openReference || openingId !== null}
-                onClick={() => void openDeliverable(deliverable)}
-                size="sm"
-                variant="outline"
-              >
-                <Codicon name="link-external" />
-                {openingId === deliverable.id
-                  ? copy.openingDeliverable
-                  : deliverable.openReference
-                    ? copy.openDeliverable
-                    : copy.openUnavailable}
+              <Button onClick={() => openDeliverable(deliverable)} size="sm" variant="outline">
+                <Codicon name="arrow-right" />
+                {copy.openDeliverable}
               </Button>
               {canReview && (
-                <Button
-                  disabled={reviewBusy}
-                  onClick={() => void review(deliverable.id, 'changes_requested')}
-                  size="sm"
-                  variant="outline"
-                >
+                <Button disabled={reviewBusy} onClick={() => openDeliverable(deliverable)} size="sm" variant="outline">
                   <Codicon name="edit" />
                   {copy.requestChanges}
                 </Button>
               )}
             </div>
-            {openFailedId === deliverable.id && (
-              <p className="mt-2 text-xs text-destructive" role="alert">
-                {copy.openFailed}
-              </p>
-            )}
           </div>
         </div>
       </article>

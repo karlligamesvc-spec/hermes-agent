@@ -36,18 +36,25 @@ vi.mock('../routes', async importOriginal => ({ ...(await importOriginal()), con
 vi.mock('./latest-actions', () => ({ latestChatActions: () => ({}), latestSidebarActions: () => ({}) }))
 vi.mock('./panes', () => ({ setStatusbarItemGroup: vi.fn(), useStatusbarContributions: () => [] }))
 vi.mock('../shell/model-menu-panel', () => ({ ModelMenuPanel: () => null }))
-vi.mock('../artifacts', () => ({ ArtifactsView: () => <div>deliverables-view</div> }))
+vi.mock('../artifacts', () => ({ ArtifactsView: () => <div>artifacts-view</div> }))
 vi.mock('../cron', () => ({ CronView: () => <div>cron-view</div> }))
 vi.mock('../im-entry', () => ({ ImEntryView: () => <div>assistant-view</div> }))
 vi.mock('../messaging', () => ({ MessagingView: () => <div>messaging-view</div> }))
-vi.mock('../search', () => ({ SearchView: () => <div>history-view</div> }))
+vi.mock('../search', () => ({ SearchView: () => <div>search-view</div> }))
 vi.mock('../skills', () => ({ SkillsView: () => <div>skills-view</div> }))
 vi.mock('../tasks', () => ({ TasksView: () => <div>tasks-view</div> }))
 vi.mock('../business-workspace', () => ({
+  DeliverablesView: () => <div>deliverables-view</div>,
+  HistoryView: () => <div>history-view</div>,
   ProjectsView: () => <div>projects-view</div>,
   WorkflowsView: () => <div>workflows-view</div>
 }))
-vi.mock('../business-workspace/pages/workflow-run-page', () => ({ WorkflowRunView: () => <div>workflow-run-view</div> }))
+vi.mock('../business-workspace/pages/deliverable-detail-page', () => ({
+  DeliverableDetailView: () => <div>deliverable-detail-view</div>
+}))
+vi.mock('../business-workspace/pages/workflow-run-page', () => ({
+  WorkflowRunView: () => <div>workflow-run-view</div>
+}))
 
 function LocationProbe() {
   const location = useLocation()
@@ -162,5 +169,33 @@ describe('ChatRoutesSurface', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Workflow run' })).toBeNull())
     expect(screen.getByTestId('location').textContent).toBe('/workflows')
+  })
+
+  it('keeps Deliverables below a Deliverable drawer and gives cold deep links the canonical fallback', async () => {
+    const source = { hash: '#reports', pathname: '/deliverables', search: '?kind=report' }
+
+    renderRoutes([
+      source,
+      {
+        pathname: '/deliverables/deliverable-831',
+        state: routeDrawerNavigationState(source, 'deliverable:deliverable-831')
+      }
+    ])
+
+    expect(await screen.findByText('deliverables-view')).toBeTruthy()
+    expect(await screen.findByText('deliverable-detail-view')).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Deliverable details' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Deliverable details' })).toBeNull())
+    expect(screen.getByTestId('location').textContent).toBe('/deliverables?kind=report#reports')
+
+    cleanup()
+    renderRoutes(['/deliverables/deliverable-831'])
+    expect(await screen.findByText('deliverables-view')).toBeTruthy()
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Deliverable details' })).toBeNull())
+    expect(screen.getByTestId('location').textContent).toBe('/deliverables')
   })
 })
