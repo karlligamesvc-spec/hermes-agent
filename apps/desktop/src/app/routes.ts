@@ -20,6 +20,7 @@ export const WEBHOOKS_ROUTE = '/webhooks'
 export const ARTIFACTS_ROUTE = '/artifacts'
 export const CRON_ROUTE = '/cron'
 export const DELIVERABLES_ROUTE = '/deliverables'
+export const DELIVERABLE_DETAIL_ROUTE_PREFIX = '/deliverables/'
 export const PROFILES_ROUTE = '/profiles'
 export const AGENTS_ROUTE = '/agents'
 export const STARMAP_ROUTE = '/starmap'
@@ -74,6 +75,30 @@ export function workflowRunRoute(runId: string): string {
 
 export function projectDetailRoute(projectId: string): string {
   return `${PROJECT_DETAIL_ROUTE_PREFIX}${encodeURIComponent(projectId)}`
+}
+
+export function deliverableDetailRoute(deliverableId: string): string {
+  return `${DELIVERABLE_DETAIL_ROUTE_PREFIX}${encodeURIComponent(deliverableId)}`
+}
+
+export function deliverableIdForPath(pathname: string): string | null {
+  const path = routePathname(pathname)
+
+  if (!path.startsWith(DELIVERABLE_DETAIL_ROUTE_PREFIX)) {
+    return null
+  }
+
+  const encodedId = path.slice(DELIVERABLE_DETAIL_ROUTE_PREFIX.length)
+
+  if (!encodedId || encodedId.includes('/')) {
+    return null
+  }
+
+  try {
+    return decodeURIComponent(encodedId)
+  } catch {
+    return null
+  }
 }
 
 export function projectIdForPath(pathname: string): string | null {
@@ -151,7 +176,8 @@ function isSafeRouteLocationSnapshot(value: unknown): value is RouteLocationSnap
     typeof candidate.hash === 'string' &&
     (!candidate.hash || candidate.hash.startsWith('#')) &&
     !candidate.pathname.startsWith(WORKFLOW_RUN_ROUTE_PREFIX) &&
-    !candidate.pathname.startsWith(PROJECT_DETAIL_ROUTE_PREFIX)
+    !candidate.pathname.startsWith(PROJECT_DETAIL_ROUTE_PREFIX) &&
+    !candidate.pathname.startsWith(DELIVERABLE_DETAIL_ROUTE_PREFIX)
   )
 }
 
@@ -433,6 +459,10 @@ export function appViewForPath(pathname: string): AppView {
 
   if (projectIdForPath(path)) {
     return 'projects'
+  }
+
+  if (deliverableIdForPath(path)) {
+    return 'deliverables'
   }
 
   return APP_VIEW_BY_PATH.get(path) ?? 'chat'

@@ -26,6 +26,7 @@ import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
 import {
   ASSISTANT_ROUTE,
   contributedRoutes,
+  deliverableIdForPath,
   DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   LEGACY_ACCOUNTS_ROUTE,
@@ -61,6 +62,12 @@ const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksV
 const SearchView = lazy(async () => ({ default: (await import('../search')).SearchView }))
 const ProjectsView = lazy(async () => ({ default: (await import('../business-workspace')).ProjectsView }))
 const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
+const DeliverablesView = lazy(async () => ({ default: (await import('../business-workspace')).DeliverablesView }))
+const HistoryView = lazy(async () => ({ default: (await import('../business-workspace')).HistoryView }))
+
+const DeliverableDetailView = lazy(async () => ({
+  default: (await import('../business-workspace/pages/deliverable-detail-page')).DeliverableDetailView
+}))
 
 const ProjectDetailView = lazy(async () => ({
   default: (await import('../business-workspace/pages/project-detail-page')).ProjectDetailView
@@ -107,6 +114,21 @@ function ProjectDetailRouteDrawer() {
     <RouteDrivenDrawer deepLinkFallback={PROJECTS_ROUTE} title={t.businessWorkspace.projects.detailTitle}>
       <Suspense fallback={null}>
         <ProjectDetailView />
+      </Suspense>
+    </RouteDrivenDrawer>
+  )
+}
+
+function DeliverableDetailRouteDrawer() {
+  const { t } = useI18n()
+
+  return (
+    <RouteDrivenDrawer
+      deepLinkFallback={DELIVERABLES_ROUTE}
+      title={t.businessWorkspace.workflowDomain.deliverables.detailTitle}
+    >
+      <Suspense fallback={null}>
+        <DeliverableDetailView />
       </Suspense>
     </RouteDrivenDrawer>
   )
@@ -193,13 +215,14 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   const routeContributions = contributedRoutes()
   const workflowRunOpen = workflowRunIdForPath(location.pathname) !== null
   const projectDetailOpen = projectIdForPath(location.pathname) !== null
-  const objectRouteOpen = workflowRunOpen || projectDetailOpen
+  const deliverableDetailOpen = deliverableIdForPath(location.pathname) !== null
+  const objectRouteOpen = workflowRunOpen || projectDetailOpen || deliverableDetailOpen
   const backgroundLocation = objectRouteOpen ? routeDrawerBackgroundLocation(location.state) : null
 
   const pageLocation = objectRouteOpen
     ? (backgroundLocation ?? {
         hash: '',
-        pathname: projectDetailOpen ? PROJECTS_ROUTE : WORKFLOWS_ROUTE,
+        pathname: projectDetailOpen ? PROJECTS_ROUTE : deliverableDetailOpen ? DELIVERABLES_ROUTE : WORKFLOWS_ROUTE,
         search: '',
         state: null
       })
@@ -249,10 +272,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
         <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
         <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
-        <Route
-          element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)}
-          path={DELIVERABLES_ROUTE.slice(1)}
-        />
+        <Route element={page(<DeliverablesView />)} path={DELIVERABLES_ROUTE.slice(1)} />
         <Route
           element={page(
             <CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
@@ -278,10 +298,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
           path="tasks"
         />
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
-        <Route
-          element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)}
-          path={HISTORY_ROUTE.slice(1)}
-        />
+        <Route element={page(<HistoryView />)} path={HISTORY_ROUTE.slice(1)} />
         <Route element={page(<ProjectsView />)} path="projects" />
         <Route element={page(<WorkflowsView />)} path="workflows" />
         <Route element={null} path="agents" />
@@ -318,6 +335,11 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       {projectDetailOpen && (
         <Routes>
           <Route element={<ProjectDetailRouteDrawer />} path="projects/:projectId" />
+        </Routes>
+      )}
+      {deliverableDetailOpen && (
+        <Routes>
+          <Route element={<DeliverableDetailRouteDrawer />} path="deliverables/:deliverableId" />
         </Routes>
       )}
     </>

@@ -157,8 +157,12 @@ import {
   createWorkflowDomainProject,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
+  getWorkflowDomainDeliverable,
   getWorkflowDomainProject,
   getWorkflowDomainRun,
+  getWorkflowDomainUserFileDownload,
+  listWorkflowDomainActivity,
+  listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
   reviewWorkflowDomainDeliverable,
@@ -21342,6 +21346,74 @@ ipcMain.handle('hermes:workflowDomain:getCatalog', async () => {
   }
 })
 
+ipcMain.handle('hermes:workflowDomain:listDeliverables', async (_event, options) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const result = await listWorkflowDomainDeliverables(context.apiBase, options || {}, context.transport)
+
+    return { ...result, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getDeliverable', async (_event, deliverableId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const detail = await getWorkflowDomainDeliverable(context.apiBase, deliverableId, context.transport)
+
+    return { detail, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:listActivity', async (_event, options) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const result = await listWorkflowDomainActivity(context.apiBase, options || {}, context.transport)
+
+    return { ...result, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:openUserFile', async (_event, fileId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const download = await getWorkflowDomainUserFileDownload(context.apiBase, fileId, context.transport)
+
+    if (!openExternalUrl(download.url)) {
+      throw new Error('Invalid workflow domain user file URL')
+    }
+
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
 ipcMain.handle('hermes:workflowDomain:getRun', async (_event, runId) => {
   const context = workflowDomainIpcContext()
 
@@ -21386,6 +21458,7 @@ ipcMain.handle('hermes:workflowDomain:reviewDeliverable', async (_event, payload
       context.apiBase,
       payload?.deliverableId,
       payload?.status,
+      payload?.notes,
       context.transport
     )
 
