@@ -1,6 +1,43 @@
 # hc-820 — Desktop Phase 2A 真实 Run 抽屉 QA 报告
 
-## 结论
+## R6 Phase 1 收敛与最终实包复验（2026-09-13）
+
+Draft PR #263 已从旧 Phase 2A 分支收敛到 Phase 1 已合并的 fork `main`（`d71c2e141f`）。合并提交为 `016f42e040`，最终产品构建提交为 `1c49bc5e9b12f733dffe9cc1423ab246d3920ecc`，版本仍为 `0.17.24`。本轮继续以 APEX 既有 UI 规范和 Phase 1 壳层为基线，没有恢复上游 Hermes 观感，也没有改 ApexNodes 后端、发布版本或生产环境。
+
+收敛时重新核对 ApexNodes `main` 的 GET Run 真值：Desktop 仍读取包含 `run / events / deliverables` 的真实服务端响应，并在 Electron 边界做独立白名单投影；executor 仍只允许 `hermes`。审计发现后端合法 Review 状态 `pending` 未被 Desktop 投影接受，已补齐该状态及四语言显示守卫。撤掉 `pending` 白名单后 Electron fixture 会以 `Invalid workflow domain deliverable review status` 精确失败，恢复后通过。DeepSeek Harness 仍为 No-Go，页面没有显示或暗示其已接入。
+
+最终实包第一次完整复验为 9/15：其中四项由 macOS 可用工作区把 1440×900 请求限制成 1440×870，另两项是 Phase 1 合并后已过时的测试路径/断点。临时隐藏 Dock 取得真实 1440×900 后，第二次复验为 13/15，并暴露两个不同问题：Legacy Projects 测试抓到无 padding 的内层节点；Start → Project → Run 的中间按钮被卸载后，Radix 无法把焦点还到原 Project 行。前者改用稳定的 Legacy 根节点标记；后者把原 Project id 作为安全焦点键随 route drawer state 传递，优先恢复直接 opener，不存在时才回到背景页对应 Project 行。切断备用焦点路径后新增组件守卫精确变红，恢复后转绿。
+
+最终验证结果：
+
+- 定向 UI：3 files / 80 tests；备用焦点单项反向验证后转绿。
+- Desktop UI 全量：762 files / 7,616 tests。
+- Electron/platform 全量：181 files 通过、2 skipped；2,753 tests 通过、6 skipped。
+- TypeScript、ESLint（含 packaged E2E 文件）和 production build 通过。
+- `test:desktop:all` 回读 App、DMG、runtime、install stamp 与 node-pty 通过。
+- release gates：Node 78 / Vitest 15 通过。
+- 完整安装包 E2E：15/15 通过（1.2 分钟），覆盖 Phase 1 身份层、Start/Project/Run 嵌套路径、899/900 与 1099/1100 断点、三档原生窗口、错误态、Legacy fallback、滚动、Escape、焦点与安全数据。
+- 最终截图目检未发现抽屉越过原生标题栏、主动作与关闭按钮碰撞、窄窗横向溢出或 Legacy 页面留白丢失。测试结束后 Dock `autohide` 已恢复到原先未设置状态。
+
+| R6 最终截图 | 1440×900 | 中间断点 | 752×800 |
+|---|---|---|---|
+| Run 进展 | [截图](screenshots/after-1c49bc5-r6/run-progress-1440x900.png) | [900](screenshots/after-1c49bc5-r6/run-progress-900x800.png) / [899](screenshots/after-1c49bc5-r6/run-progress-899x800.png) | [截图](screenshots/after-1c49bc5-r6/run-progress-752x800.png) |
+| Run 执行详情 | [截图](screenshots/after-1c49bc5-r6/run-details-1440x900.png) | [900](screenshots/after-1c49bc5-r6/run-details-900x800.png) / [899](screenshots/after-1c49bc5-r6/run-details-899x800.png) | [截图](screenshots/after-1c49bc5-r6/run-details-752x800.png) |
+| Run 读取失败 | [截图](screenshots/after-1c49bc5-r6/run-error-1440x900.png) | [1220](screenshots/after-1c49bc5-r6/run-error-1220x800.png) | [截图](screenshots/after-1c49bc5-r6/run-error-752x800.png) |
+| Project 概览 | [截图](screenshots/after-1c49bc5-r6/project-detail-1440x900.png) | [1100](screenshots/after-1c49bc5-r6/project-detail-1100x800.png) / [1099](screenshots/after-1c49bc5-r6/project-detail-1099x800.png) | [截图](screenshots/after-1c49bc5-r6/project-detail-752x800.png) |
+| Legacy Projects | [截图](screenshots/after-1c49bc5-r6/legacy-projects-1440x900.png) | [1220](screenshots/after-1c49bc5-r6/legacy-projects-1220x800.png) | [截图](screenshots/after-1c49bc5-r6/legacy-projects-752x800.png) |
+
+本地未签名诊断包：
+
+- App：`apps/desktop/release/mac-arm64/APEX.app`
+- DMG：`apps/desktop/release/APEX-0.17.24-mac-arm64.dmg`
+- DMG SHA-256：`515c8cb6cfd2f11452cb0ea80194790fcee88f192fdfaf6514ee623122ca4370`
+- install stamp：完整 commit `1c49bc5e9b12f733dffe9cc1423ab246d3920ecc`、`dirty:false`
+- 主程序：Mach-O arm64；`Signature=adhoc`、`TeamIdentifier=not set`
+
+builder 使用 `--mac dmg --arm64 --publish never`，签名发现显式关闭；没有 notarize、上传、更新公开 updater feed、生产部署、Windows 或 macOS x64 打包。本报告提交会晚于上述产品构建提交，包身份应以 install stamp 为准。
+
+## 历史 R4 结论（已由 R6 取代）
 
 本批次在 PR #262 原精确基线 `0ae743c20aef14da599698ef2921d31b17f6e740` 上开发，分支为 `codex/hc-820-desktop-phase2a-real-run-drawer`，版本保持 `0.17.24`。最新 R4 实包构建提交为 `1082c61b4a582e746823ef233dbeda11c3afb471`，安装戳 `dirty:false`。后续报告/测试修正/截图与堆叠 ancestry 提交必须与此构建身份区分；最终 main 诊断包会从最终 main SHA 重建。R3 的横向留白测试通过，但 Run 纵向位置未通过后续截图复核，R3 截图仅保留为反例，不作为完整视觉验收。
 
