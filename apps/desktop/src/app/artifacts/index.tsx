@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router'
 import { TitlebarIcon } from '@/app/shell/titlebar-icon'
 import { ZoomableImage } from '@/components/chat/zoomable-image'
 import { PageLoader } from '@/components/page-loader'
+import { ApexPageHeader } from '@/components/ui/apex-page-header'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/ui/copy-button'
 import {
@@ -48,8 +49,7 @@ import {
   type ArtifactRecord,
   openArtifactHref
 } from './artifact-utils'
-import { loadArtifactsForSessions } from "./artifact-utils"
-
+import { loadArtifactsForSessions } from './artifact-utils'
 
 function formatArtifactTime(timestamp: number, locale: Locale): string {
   return formatBusinessDayTime(new Date(timestamp), locale)
@@ -302,6 +302,8 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
     <PageSearchShell
       {...props}
       activeTab={kindFilter}
+      businessPage
+      heading={<ApexPageHeader description={a.description} eyebrow={a.eyebrow} icon="package" title={a.title} />}
       onSearchChange={setQuery}
       onTabChange={id => setKindFilter(id as typeof kindFilter)}
       searchHidden={counts.all === 0}

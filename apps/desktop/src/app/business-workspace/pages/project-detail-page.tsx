@@ -13,10 +13,11 @@ import {
   PROJECTS_ROUTE,
   routeDrawerBackgroundLocation,
   routeDrawerNavigationState,
-  workflowRunRoute
+  workflowRunRoute,
+  WORKFLOWS_ROUTE
 } from '../../routes'
 import type { WorkflowProjectSummary } from '../api/types'
-import { useWorkflowProject } from '../hooks/use-workflow-domain-lists'
+import { useWorkflowDefinitions, useWorkflowProject } from '../hooks/use-workflow-domain-lists'
 import { distinctProjectObjective, projectCurrentRunId } from '../view-model/project'
 
 function routedProjectSummary(state: unknown): WorkflowProjectSummary | undefined {
@@ -44,6 +45,7 @@ export function ProjectDetailView() {
   const location = useLocation()
   const navigate = useNavigate()
   const project = useWorkflowProject(projectId)
+  const workflows = useWorkflowDefinitions({ limit: 50, projectId })
   const routeSummary = routedProjectSummary(location.state)
 
   if (project.mode === 'loading') {
@@ -145,6 +147,51 @@ export function ProjectDetailView() {
             </div>
           )}
         </div>
+
+        <section className="mt-6 border-t border-(--ui-stroke-tertiary) pt-6" data-project-workflows="">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">{copy.workflowsTitle}</h2>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{copy.workflowsDescription}</p>
+            </div>
+            <Button
+              onClick={() =>
+                navigate(WORKFLOWS_ROUTE, {
+                  state: { businessGoalDraft: item.objective, businessProjectId: item.id }
+                })
+              }
+              size="sm"
+              variant="outline"
+            >
+              <Codicon name="add" size="0.875rem" />
+              {copy.addWorkflow}
+            </Button>
+          </div>
+          {workflows.mode === 'loading' ? (
+            <p className="mt-4 text-xs text-muted-foreground">{copy.loadingWorkflows}</p>
+          ) : workflows.mode === 'ready' && workflows.items.length > 0 ? (
+            <div className="mt-4 overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated)">
+              {workflows.items.map(workflow => (
+                <div
+                  className="flex items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) px-4 py-3 last:border-b-0"
+                  key={workflow.id}
+                >
+                  <span className="min-w-0">
+                    <strong className="block truncate text-sm font-medium">{workflow.name}</strong>
+                    {workflow.description && (
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{workflow.description}</span>
+                    )}
+                  </span>
+                  <Badge variant="muted">{copy.lifecycle(workflow.status)}</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-xl border border-dashed border-(--ui-stroke-secondary) px-4 py-4 text-xs leading-5 text-muted-foreground">
+              {workflows.mode === 'ready' ? copy.noWorkflows : copy.workflowsUnavailable}
+            </p>
+          )}
+        </section>
       </div>
     </section>
   )

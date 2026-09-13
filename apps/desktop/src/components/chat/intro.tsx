@@ -4,7 +4,6 @@ import { useI18n } from '@/i18n'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import type { ComposerAttachment } from '@/store/composer'
 
-
 // Props are kept for call-site compatibility (the Thread passes the resolved
 // personality + seed), but the home screen no longer varies its copy.
 export type IntroProps = {
@@ -47,7 +46,7 @@ export function Intro({
 
   return (
     <div
-      className={`pointer-events-none flex min-h-full w-full min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 ${businessWorkspaceEnabled ? 'apex-business-surface apex-business-page items-start overflow-x-hidden text-left' : 'items-center text-center'}`}
+      className={`pointer-events-none flex min-h-full w-full min-w-0 flex-col gap-5 ${businessWorkspaceEnabled ? 'apex-business-page apex-primary-page-inset items-start overflow-x-hidden text-left' : 'items-center px-4 py-5 text-center sm:px-6 lg:px-8'}`}
       data-slot="aui_intro"
     >
       {businessWorkspaceEnabled ? (

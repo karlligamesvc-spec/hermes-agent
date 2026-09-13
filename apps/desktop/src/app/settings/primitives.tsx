@@ -17,7 +17,7 @@ export function SettingsContent({ children, bare = false }: { children: ReactNod
   return (
     <section className="p5-settings min-h-0 flex-1 overflow-hidden">
       <div
-        className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}
+        className={cn('p5-page h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}
         data-settings-scroll=""
       >
         {children}
@@ -46,7 +46,7 @@ export function SectionHeading({
   title: string
 }) {
   return (
-    <div className="mb-2.5 flex items-center gap-2 pt-2 text-[length:var(--conversation-text-font-size)] font-medium">
+    <div className="p5-section-heading">
       <Icon className="size-4 shrink-0 text-muted-foreground" />
       <span>{title}</span>
       {meta && <Pill>{meta}</Pill>}
@@ -72,7 +72,7 @@ export function SettingsSection({
   title: string
 }) {
   return (
-    <section className="mb-6">
+    <section className="mb-6" data-settings-section="">
       <SectionHeading aside={aside} icon={icon} meta={meta} title={title} />
       {children}
     </section>
@@ -140,23 +140,14 @@ export function ListRow({
     // the row's own pane width, so a narrow detail column (messaging, split
     // views) stacks instead of squishing the label against minmax(15rem,…).
     <div className={cn('@container', className)} data-tour={dataTour} id={id}>
-      <div
-        className={cn(
-          'grid gap-3 py-3',
-          !wide && '@2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center'
-        )}
-      >
+      <div className="p5-row" data-wide={wide ? 'true' : undefined}>
         <div className="min-w-0">
-          <div className="text-[length:var(--conversation-text-font-size)] font-medium text-foreground">{title}</div>
-          {description && (
-            <div className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-              {description}
-            </div>
-          )}
-          {hint && <div className="mt-1 block font-mono text-[0.68rem] text-muted-foreground/45">{hint}</div>}
+          <div className="p5-row-title">{title}</div>
+          {description && <div className="p5-row-desc">{description}</div>}
+          {hint && <div className="p5-row-hint">{hint}</div>}
           {below}
         </div>
-        {action && <div className={cn('min-w-0', !wide && '@2xl:justify-self-end')}>{action}</div>}
+        {action && <div className="p5-row-control min-w-0">{action}</div>}
       </div>
     </div>
   )

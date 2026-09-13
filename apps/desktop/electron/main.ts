@@ -154,6 +154,7 @@ import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import {
   cancelWorkflowDomainRun,
+  createWorkflowDomainProject,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
   getWorkflowDomainProject,
@@ -21243,12 +21244,35 @@ ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
     const run = await startWorkflowDomainGoal({
       apiBase: context.apiBase,
       objective: payload?.objective,
+      projectId: payload?.projectId,
       starter: payload?.starter || {},
       transport: context.transport,
       uuid: () => crypto.randomUUID()
     })
 
     return { ok: true, run }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:createProject', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await createWorkflowDomainProject({
+      apiBase: context.apiBase,
+      localPath: payload?.localPath,
+      name: payload?.name,
+      objective: payload?.objective,
+      transport: context.transport
+    })
+
+    return { item, ok: true }
   } catch (error) {
     return { ok: false, code: workflowDomainIpcError(error) }
   }

@@ -9,7 +9,7 @@ import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppRe
 import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
 
-const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物', '助手', '历史'] as const
+const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物'] as const
 
 const PHASE1_VIEWPORTS = [
   { height: 900, name: 'wide-1440', width: 1440 },
@@ -244,6 +244,43 @@ async function startPhase1ReviewApi() {
       return
     }
 
+    if (
+      request.method === 'GET' &&
+      url.pathname === '/api/v1/workflow-domain/runs/local-review-run-running'
+    ) {
+      json(200, {
+        deliverables: [],
+        events: [
+          {
+            eventType: 'run.queued',
+            happenedAt: '2026-09-05T21:05:00Z',
+            id: 'local-review-event-queued',
+            payload: {},
+            sequence: 1
+          },
+          {
+            eventType: 'run.running',
+            happenedAt: '2026-09-05T21:06:00Z',
+            id: 'local-review-event-started',
+            payload: {},
+            sequence: 2
+          }
+        ],
+        run: {
+          attempt: 1,
+          createdAt: '2026-09-05T21:05:00Z',
+          errorMessage: null,
+          executorType: 'hermes',
+          id: 'local-review-run-running',
+          maxAttempts: 2,
+          status: 'running',
+          triggerRef: '[本地测试] 验证工作流运行抽屉的安全区与关闭入口'
+        }
+      })
+
+      return
+    }
+
     json(404, { detail: 'not found' })
   })
 
@@ -307,7 +344,7 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByRole('button', { name: '开始 ⌘ N' })).toBeAttached({ timeout: 60_000 })
   const sidebarButtons = page.locator('[data-sidebar="menu-button"]')
 
-  await expect(sidebarButtons).toHaveCount(7)
+  await expect(sidebarButtons).toHaveCount(BUSINESS_NAV_LABELS.length)
 
   const businessLabels = (await sidebarButtons.allTextContents())
     .map(label => label.replace(/\s+/g, ' ').trim())
@@ -316,6 +353,89 @@ test('fresh packaged app exposes the business workspace without implementation v
   expect(businessLabels).toEqual(BUSINESS_NAV_LABELS)
   await expect(page.getByText(/\b(?:MCP|Skill|Skills)\b/)).toHaveCount(0)
   await expect(page.getByText('模型', { exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '打开账户菜单: 本地 UI 评审' }).click()
+  await expect(page.getByRole('menuitem', { name: '个人资料' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '设置' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '连接助手' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '历史会话' })).toBeVisible()
+  await expect(page.getByText('渠道 · 分身在哪', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: '连接你的分身' })).toHaveCount(0)
+  await expect(page.getByText(/手机正遥控本机/u)).toHaveCount(0)
+
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'sidebar-account-menu-1220x800.png')
+    })
+  }
+
+  await page.keyboard.press('Escape')
+})
+
+test('packaged sidebar uses the APEX app mark and keeps Chinese assistant creation reachable', async () => {
+  const page = fixture!.page
+  const sessionsTab = page
+    .getByRole('button', { exact: true, name: '会话' })
+    .or(page.getByRole('tab', { exact: true, name: '会话' }))
+    .first()
+  const assistantsTab = page
+    .getByRole('button', { exact: true, name: '助手' })
+    .or(page.getByRole('tab', { exact: true, name: '助手' }))
+    .first()
+
+  await expect(sessionsTab).toBeVisible()
+  await expect(assistantsTab).toBeVisible()
+
+  const brandImage = page.locator('[data-apex-sidebar-brand] img')
+
+  await expect(brandImage).toHaveCount(1)
+  await expect(brandImage).toHaveAttribute('src', /apple-touch-icon\.png$/)
+  await assistantsTab.click()
+
+  const createMenu = page.getByRole('button', { name: '添加助手或创建群聊' })
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
+  await expect(createMenu).toBeVisible()
+  await createMenu.click()
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'assistant-menu-1220x800.png')
+    })
+  }
+
+  await expect(page.getByRole('menuitem', { exact: true, name: '添加助手' })).toBeEnabled()
+
+  const createGroup = page.getByRole('menuitem', { exact: true, name: '创建群聊' })
+
+  await expect(createGroup).toBeEnabled()
+  await createGroup.click()
+
+  const dialog = page.getByRole('dialog', { name: '创建群聊' })
+
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('status')).toContainText('至少需要 2 个助手')
+  await expect(dialog.getByRole('button', { exact: true, name: '创建群聊' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { exact: true, name: '添加助手' })).toBeEnabled()
+
+  if (screenshotRoot) {
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'assistant-entry-1220x800.png')
+    })
+  }
+
+  await page.keyboard.press('Escape')
+  await sessionsTab.click()
+  await expect(page.getByRole('button', { name: '开始 ⌘ N' })).toBeVisible()
 })
 
 test('fresh default glass keeps every Phase 1 business route on one opaque APEX shell', async () => {
@@ -370,9 +490,9 @@ test('primary navigation dismisses only the narrow sidebar overlay, including ke
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
   await page.waitForTimeout(400)
-  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(7)
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
-  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(7)
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
   await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
 })
 
@@ -559,7 +679,9 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   const pages = [
     { name: 'start', nav: '开始 ⌘ N', title: '今天想推进什么业务？' },
     { name: 'projects', nav: '项目', title: '项目' },
-    { name: 'workflows', nav: '工作流', title: '工作流' }
+    { name: 'workflows', nav: '工作流', title: '工作流' },
+    { name: 'scheduled-runs', nav: '定时运行', title: '定时任务' },
+    { name: 'deliverables', nav: '交付物', title: '交付物' }
   ] as const
 
   for (const phasePage of pages) {
@@ -631,12 +753,13 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
           expect(triggerBox?.x).toBeGreaterThanOrEqual(70)
         }
 
-        const lowerContent =
-          phasePage.name === 'start'
-            ? page.getByRole('heading', { name: '可用数据源', level: 2 })
-            : phasePage.name === 'projects'
-              ? page.getByText('[本地测试] APEX GEO 品牌诊断', { exact: true })
-              : page.getByText('[本地测试] 我的选品流程', { exact: true })
+        const lowerContent = {
+          start: page.getByRole('heading', { name: '可用数据源', level: 2 }),
+          projects: page.getByText('[本地测试] APEX GEO 品牌诊断', { exact: true }),
+          workflows: page.getByText('[本地测试] 我的选品流程', { exact: true }),
+          'scheduled-runs': page.getByText('暂无排程任务', { exact: true }),
+          deliverables: page.getByText('未找到产物', { exact: true })
+        }[phasePage.name]
 
         await lowerContent.scrollIntoViewIfNeeded()
         await expect(lowerContent).toBeVisible()
@@ -669,6 +792,101 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
 
   await page.getByRole('button', { name: '继续这个目标' }).click()
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveValue('[本地测试] 尚未启动的业务目标')
+})
+
+test('workflow Run uses a roomy drawer on wide windows and a collision-free full-screen surface when narrow', async () => {
+  const { app, page } = fixture!
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+
+  for (const viewport of PHASE1_VIEWPORTS) {
+    await app.evaluate(({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]
+
+      win?.unmaximize()
+      win?.setMinimumSize(400, 620)
+      win?.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+    }, viewport)
+    await page.bringToFront()
+    await page.waitForTimeout(400)
+
+    if (viewport.width < 900) {
+      await page.getByRole('button', { name: /显示侧边栏/ }).click()
+    }
+
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+    await page.getByRole('button', { name: '打开当前运行' }).click()
+
+    const drawer = page.locator('[data-route-drawer]')
+    const content = drawer.locator('section').first()
+    const close = drawer.getByRole('button', { name: '关闭' })
+    const cancel = drawer.getByRole('button', { name: '取消运行' })
+
+    await expect(drawer).toBeVisible()
+    await expect(content).toBeVisible()
+    await expect(close).toBeVisible()
+    await expect(cancel).toBeVisible()
+    await expect(drawer).toHaveAttribute('data-layout', viewport.width >= 1100 ? 'drawer' : 'fullscreen')
+
+    const geometry = await page.evaluate(() => {
+      const drawerElement = document.querySelector<HTMLElement>('[data-route-drawer]')
+      const contentElement = drawerElement?.querySelector<HTMLElement>('section > div')
+      const closeElement = drawerElement?.querySelector<HTMLElement>('button[aria-label="关闭"]')
+
+      const cancelElement = Array.from(drawerElement?.querySelectorAll<HTMLElement>('button') ?? []).find(button =>
+        button.textContent?.includes('取消运行')
+      )
+
+      if (!drawerElement || !contentElement || !closeElement || !cancelElement) {
+        return null
+      }
+
+      const drawerBox = drawerElement.getBoundingClientRect()
+      const contentBox = contentElement.getBoundingClientRect()
+      const closeBox = closeElement.getBoundingClientRect()
+      const cancelBox = cancelElement.getBoundingClientRect()
+
+      const overlaps = !(
+        closeBox.right <= cancelBox.left ||
+        closeBox.left >= cancelBox.right ||
+        closeBox.bottom <= cancelBox.top ||
+        closeBox.top >= cancelBox.bottom
+      )
+
+      return {
+        contentInset: contentBox.left - drawerBox.left,
+        drawerWidth: drawerBox.width,
+        overlaps,
+        rootClientWidth: document.documentElement.clientWidth,
+        rootScrollWidth: document.documentElement.scrollWidth
+      }
+    })
+
+    expect(geometry).not.toBeNull()
+    expect(geometry!.contentInset).toBeGreaterThanOrEqual(viewport.width >= 1100 ? 31 : 23)
+    expect(geometry!.overlaps).toBe(false)
+    expect(geometry!.rootScrollWidth).toBeLessThanOrEqual(geometry!.rootClientWidth)
+
+    if (viewport.width >= 1100) {
+      expect(geometry!.drawerWidth).toBeGreaterThanOrEqual(630)
+    } else {
+      expect(geometry!.drawerWidth).toBeCloseTo(geometry!.rootClientWidth, 0)
+    }
+
+    const screenshotName = `workflow-run-${viewport.width}x${viewport.height}.png`
+
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: screenshotRoot ? path.join(screenshotRoot, screenshotName) : test.info().outputPath(screenshotName)
+    })
+    await close.click()
+    await expect(drawer).toHaveCount(0)
+  }
 })
 
 test('local workflow catalog is labeled and reaches editable pre-start confirmation', async () => {
@@ -757,6 +975,20 @@ test('packaged plain goal clears a retained workflow template and starts a real 
   expect(await page.evaluate(() => window.localStorage.getItem('hermes.desktop.translucency.v2'))).toBe(
     translucencyBefore
   )
+
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setBounds({ height: 900, width: 1440, x: 0, y: 0 }, false)
+    )
+    await expect(page.getByText(/手机正遥控本机/u)).toHaveCount(0)
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'session-1440x900.png')
+    })
+  }
 
   const composerStopButton = page.locator('form').getByRole('button', { name: '停止', exact: true })
   if (await composerStopButton.isVisible()) {

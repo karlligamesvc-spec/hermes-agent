@@ -605,7 +605,7 @@ export function BotsPane() {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 px-2.5 pt-2.5 pb-1.5">
         <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-(--ui-text-quaternary)">
-          Bots
+          {b.roster.title}
         </span>
         <div className="flex items-center gap-0.5">
           <ActivityToastButton
@@ -631,7 +631,7 @@ export function BotsPane() {
                 <Codicon className="mr-1.5" name="hubot" />
                 {b.bot.newTitle}
               </DropdownMenuItem>
-              <DropdownMenuItem disabled={activeSourceRoster.length < 2} onSelect={() => setGroupCreateOpen(true)}>
+              <DropdownMenuItem onSelect={() => setGroupCreateOpen(true)}>
                 <Codicon className="mr-1.5" name="organization" />
                 {b.group.newTitle}
               </DropdownMenuItem>
@@ -858,6 +858,10 @@ export function BotsPane() {
         roster={activeSourceRoster}
       />
       <CreateGroupChatDialog
+        onAddAssistant={() => {
+          setGroupCreateOpen(false)
+          setCreateOpen(true)
+        }}
         onClose={() => setGroupCreateOpen(false)}
         onCreated={groupName => openGroupChat(groupName)}
         open={groupCreateOpen} // Full multi-source roster: group chats can seat bots from other

@@ -198,6 +198,8 @@ export interface Translations {
     copyDetailFailed: string
     backendOutOfDateTitle: string
     backendOutOfDateMessage: string
+    backendAlignmentUnavailableTitle: string
+    backendAlignmentUnavailableMessage: string
     installMethodUnsupportedTitle: string
     updateHermes: string
     updateReadyTitle: string
@@ -1900,6 +1902,8 @@ export interface Translations {
 
   cron: {
     close: string
+    eyebrow: string
+    description: string
     title: string
     count: (count: number) => string
     modelImpact: {
@@ -2005,6 +2009,9 @@ export interface Translations {
   }
 
   artifacts: {
+    eyebrow: string
+    title: string
+    description: string
     search: string
     refresh: string
     refreshing: string
@@ -3406,8 +3413,7 @@ export interface Translations {
     labelOutput: string
     inputNone: string
     use: string
-    // ① manifestation: sidebar channel status + "connect your agent" strip.
-    channelsTitle: string
+    // ① manifestation: compact sidebar channel status + "connect your agent" strip.
     connectTitle: string
     phoneRemote: string
     remoteOn: string
@@ -3518,6 +3524,20 @@ export interface Translations {
       emptyDescription: string
       action: string
       newProject: string
+      create: {
+        title: string
+        description: string
+        nameLabel: string
+        namePlaceholder: string
+        objectiveLabel: string
+        objectivePlaceholder: string
+        folderLabel: string
+        chooseFolder: string
+        folderOptional: string
+        create: string
+        creating: string
+        failed: string
+      }
       chooseWorkflow: string
       filters: {
         label: string
@@ -3586,6 +3606,12 @@ export interface Translations {
       sourceConnected: string
       sourceNotConnected: string
       noAvailableSources: string
+      workflowsTitle: string
+      workflowsDescription: string
+      addWorkflow: string
+      loadingWorkflows: string
+      noWorkflows: string
+      workflowsUnavailable: string
     }
     workflows: {
       eyebrow: string
@@ -3607,6 +3633,9 @@ export interface Translations {
       savedTitle: string
       savedEmpty: string
       savedCount: (count: number) => string
+      loadingSaved: string
+      savedUnavailable: string
+      addingToProject: string
       localCatalogNotice: string
       catalogUnavailable: string
       catalogUnavailableDescription: string

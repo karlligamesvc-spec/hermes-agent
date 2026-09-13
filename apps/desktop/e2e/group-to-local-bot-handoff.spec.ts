@@ -4,19 +4,22 @@ import { expect, test } from './test'
 let fixture: MockBackendFixture | null = null
 
 async function openBots(page: MockBackendFixture['page']): Promise<void> {
-  const tab = page.getByRole('button', { name: 'Bots', exact: true }).or(page.getByRole('tab', { name: 'Bots', exact: true })).first()
+  const tab = page
+    .getByRole('button', { name: 'Assistants', exact: true })
+    .or(page.getByRole('tab', { name: 'Assistants', exact: true }))
+    .first()
   await tab.click()
-  await expect(page.getByRole('button', { name: 'New bot or group chat' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add an assistant or create a group chat' })).toBeVisible()
 }
 
 async function createAgent(page: MockBackendFixture['page'], name: string, title: string): Promise<void> {
-  await page.getByRole('button', { name: 'New bot or group chat' }).click()
-  await page.getByRole('menuitem', { name: 'New Bot' }).click()
+  await page.getByRole('button', { name: 'Add an assistant or create a group chat' }).click()
+  await page.getByRole('menuitem', { name: 'Add assistant' }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'New Bot' })
+  const dialog = page.getByRole('dialog', { name: 'Add assistant' })
   await dialog.getByPlaceholder('inbox-triage').fill(name)
   await dialog.getByPlaceholder('Inbox Triage').fill(title)
-  await dialog.getByRole('button', { name: 'Create Bot' }).click()
+  await dialog.getByRole('button', { name: 'Add assistant' }).click()
   await expect(dialog).toBeHidden({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: new RegExp(`^${title}\\b`) }).first()).toBeVisible({ timeout: 30_000 })
 }
@@ -39,17 +42,17 @@ test('local bot replaces an open group main workspace', async () => {
   await createAgent(page, 'programmer', 'Programmer')
   await createAgent(page, 'reviewer', 'Reviewer')
 
-  await page.getByRole('button', { name: 'New bot or group chat' }).click()
-  await page.getByRole('menuitem', { name: 'New Group Chat' }).click()
+  await page.getByRole('button', { name: 'Add an assistant or create a group chat' }).click()
+  await page.getByRole('menuitem', { name: 'Create group chat' }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'New Group Chat' })
+  const dialog = page.getByRole('dialog', { name: 'Create group chat' })
 
   for (const title of ['Programmer', 'Reviewer']) {
     await dialog.getByText(title, { exact: true }).locator('xpath=ancestor::label').getByRole('checkbox').click()
   }
 
   await dialog.getByRole('textbox', { name: 'Group name' }).fill('Programmer, Reviewer')
-  await dialog.getByRole('button', { name: 'Create Group (2)' }).click()
+  await dialog.getByRole('button', { name: 'Create group chat (2)' }).click()
 
   const groupTab = page.getByRole('tab', { name: /Programmer, Reviewer Close/ })
   const groupComposer = page.getByRole('textbox', { name: 'Message Programmer, Reviewer' }).filter({ visible: true })

@@ -107,6 +107,7 @@ export function BusinessGoalLauncher({
         autoComplete="off"
         autoCorrect="on"
         className="block min-h-[3rem] w-full resize-none border-0 bg-transparent p-0 text-[0.9375rem] leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50"
+        data-slot="business-goal-input"
         disabled={disabled || submitting}
         id={BUSINESS_GOAL_INPUT_ID}
         onChange={event => setGoal(event.target.value)}

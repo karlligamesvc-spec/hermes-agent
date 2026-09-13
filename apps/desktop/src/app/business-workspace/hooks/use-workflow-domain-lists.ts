@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 
 import {
   getWorkflowProject,
+  listWorkflowCatalog,
   listWorkflowDefinitions,
   listWorkflowProjects,
-  type WorkflowListOutcome,
+  type WorkflowCatalogOutcome,
+  type WorkflowDefinitionListOutcome,
   type WorkflowProjectListOutcome,
   type WorkflowProjectOutcome
 } from '../api/adapters'
@@ -12,7 +14,8 @@ import { workflowDomainBridge } from '../api/bridge'
 
 type ProjectListState = WorkflowProjectListOutcome | { mode: 'loading' }
 type ProjectState = WorkflowProjectOutcome | { mode: 'loading' }
-type WorkflowListState = WorkflowListOutcome | { mode: 'loading' }
+type WorkflowCatalogState = WorkflowCatalogOutcome | { mode: 'loading' }
+type WorkflowListState = WorkflowDefinitionListOutcome | { mode: 'loading' }
 
 export function useWorkflowProjects(limit = 50): ProjectListState {
   const [state, setState] = useState<ProjectListState>(() =>
@@ -67,18 +70,16 @@ export function useWorkflowProject(projectId: string | undefined): ProjectState 
   return state
 }
 
-export function useWorkflowDefinitions(reloadToken = 0): WorkflowListState {
-  const [state, setState] = useState<WorkflowListState>(() =>
-    workflowDomainBridge()?.getCatalog && workflowDomainBridge()?.listWorkflows
-      ? { mode: 'loading' }
-      : { mode: 'unavailable' }
+export function useWorkflowCatalog(reloadToken = 0): WorkflowCatalogState {
+  const [state, setState] = useState<WorkflowCatalogState>(() =>
+    workflowDomainBridge()?.getCatalog ? { mode: 'loading' } : { mode: 'unavailable' }
   )
 
   useEffect(() => {
     let active = true
 
     setState({ mode: 'loading' })
-    void listWorkflowDefinitions().then(result => {
+    void listWorkflowCatalog().then(result => {
       if (active) {
         setState(result)
       }
@@ -88,6 +89,34 @@ export function useWorkflowDefinitions(reloadToken = 0): WorkflowListState {
       active = false
     }
   }, [reloadToken])
+
+  return state
+}
+
+export function useWorkflowDefinitions(
+  options: { limit?: number; projectId?: string; status?: string } = {},
+  reloadToken = 0
+): WorkflowListState {
+  const [state, setState] = useState<WorkflowListState>(() =>
+    workflowDomainBridge()?.listWorkflows ? { mode: 'loading' } : { mode: 'unavailable' }
+  )
+
+  const { limit, projectId, status } = options
+
+  useEffect(() => {
+    let active = true
+
+    setState({ mode: 'loading' })
+    void listWorkflowDefinitions({ limit, projectId, status }).then(result => {
+      if (active) {
+        setState(result)
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [limit, projectId, reloadToken, status])
 
   return state
 }

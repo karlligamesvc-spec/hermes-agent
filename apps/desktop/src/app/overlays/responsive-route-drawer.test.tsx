@@ -78,7 +78,10 @@ describe('ResponsiveRouteDrawer', () => {
     const drawer = screen.getByRole('dialog', { name: 'Run details' })
 
     expect(drawer.getAttribute('data-layout')).toBe('fullscreen')
-    expect(drawer.className).toContain('min-[1100px]:w-[min(35rem,48vw)]')
+    expect(drawer.className).toContain('min-[1100px]:w-[min(42rem,52vw)]')
+    expect(drawer.className).toContain('[--route-drawer-action-clearance:3.25rem]')
+    expect(drawer.className).toContain('min-[1100px]:[--route-drawer-content-inset:2rem]')
+    expect(drawer.style.getPropertyValue('--titlebar-height')).toBe('34px')
 
     setWide(true)
     await waitFor(() => expect(drawer.getAttribute('data-layout')).toBe('drawer'))

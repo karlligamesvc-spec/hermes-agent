@@ -1,6 +1,11 @@
 export interface WorkflowDomainBridge {
   access: () => Promise<{ available: boolean }>
   cancelRun: (runId: string) => Promise<{ ok: boolean }>
+  createProject?: (payload: {
+    localPath?: string
+    name: string
+    objective: string
+  }) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getProject?: (projectId: string) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getCatalog?: () => Promise<WorkflowCatalogResult>
   getRun: (runId: string) => Promise<{ ok: boolean; overview?: WorkflowRunOverview }>
@@ -21,6 +26,7 @@ export interface WorkflowDomainBridge {
   }) => Promise<{ ok: boolean }>
   startGoal: (payload: {
     objective: string
+    projectId?: string
     starter: { description: string; id: string; name: string; slug: string; version: number }
   }) => Promise<{ ok: boolean; run?: { id: string } }>
 }
@@ -120,4 +126,9 @@ export interface WorkflowRunOverview {
 export type StartWorkflowGoalOutcome =
   | { mode: 'failed' }
   | { mode: 'started'; runId: string }
+  | { mode: 'unavailable' }
+
+export type CreateWorkflowProjectOutcome =
+  | { item: WorkflowProject; mode: 'created' }
+  | { mode: 'failed' }
   | { mode: 'unavailable' }

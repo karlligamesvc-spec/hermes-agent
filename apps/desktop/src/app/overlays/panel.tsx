@@ -63,13 +63,20 @@ export function Panel({
 // Main-area sibling of Panel. It shares the panel's header/body/list/detail
 // primitives while deliberately owning none of OverlayView's route-modal
 // chrome: no backdrop, floating card, or close button.
-export function PanelPage({ children, className, ...props }: ComponentProps<'section'>) {
+export function PanelPage({
+  businessPage = false,
+  children,
+  className,
+  ...props
+}: ComponentProps<'section'> & { businessPage?: boolean }) {
   return (
     <section
       {...props}
       className={cn(
-        'flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-(--ui-chat-surface-background) pb-4 pt-[calc(var(--titlebar-height)+0.75rem)]',
-        PAGE_INSET_X,
+        businessPage
+          ? 'apex-business-surface apex-business-page apex-primary-page apex-primary-page--locked'
+          : 'flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-(--ui-chat-surface-background) pb-4 pt-[calc(var(--titlebar-height)+0.75rem)]',
+        !businessPage && PAGE_INSET_X,
         className
       )}
     >

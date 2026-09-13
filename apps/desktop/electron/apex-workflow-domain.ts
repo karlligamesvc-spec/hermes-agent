@@ -18,9 +18,19 @@ export interface WorkflowDomainStarter {
 export interface StartWorkflowDomainGoalOptions {
   apiBase: string
   objective: string
+  projectId?: string
   starter: WorkflowDomainStarter
   transport: WorkflowDomainTransport
   uuid: () => string
+}
+
+export interface CreateWorkflowDomainProjectOptions {
+  apiBase: string
+  createdFrom?: 'desktop_projects' | 'desktop_start'
+  localPath?: string
+  name: string
+  objective: string
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
 }
 
 function trimmed(value: unknown): string {
@@ -153,6 +163,24 @@ export async function getWorkflowDomainCatalog(
   return requireObject(await transport.getJson(workflowDomainUrl(apiBase, 'catalog')), 'workflow catalog')
 }
 
+export async function createWorkflowDomainProject(options: CreateWorkflowDomainProjectOptions): Promise<JsonObject> {
+  const name = requireText(options.name, 'project name', 200)
+  const objective = requireText(options.objective, 'objective', 4000)
+  const localPath = trimmed(options.localPath)
+
+  return responseItem(
+    await options.transport.postJson(workflowDomainUrl(options.apiBase, 'projects'), {
+      name,
+      objective,
+      projectConfig: {
+        createdFrom: options.createdFrom ?? 'desktop_projects',
+        ...(localPath ? { localPath } : {})
+      }
+    }),
+    'project'
+  )
+}
+
 export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOptions): Promise<JsonObject> {
   const objective = requireText(options.objective, 'objective', 4000)
   const name = requireText(options.starter.name, 'workflow name', 200)
@@ -165,16 +193,21 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
     throw new Error('Invalid workflow domain workflow slug')
   }
 
-  const project = responseItem(
-    await options.transport.postJson(workflowDomainUrl(options.apiBase, 'projects'), {
-      name: workflowProjectName(objective),
-      objective,
-      projectConfig: { createdFrom: 'desktop_start' }
-    }),
-    'project'
-  )
-
-  const projectId = requireText(project.id, 'project id', 160)
+  const projectId = options.projectId
+    ? requireText(options.projectId, 'project id', 160)
+    : requireText(
+        (
+          await createWorkflowDomainProject({
+            apiBase: options.apiBase,
+            createdFrom: 'desktop_start',
+            name: workflowProjectName(objective),
+            objective,
+            transport: options.transport
+          })
+        ).id,
+        'project id',
+        160
+      )
 
   const workflow = responseItem(
     await options.transport.postJson(

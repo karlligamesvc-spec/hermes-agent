@@ -963,14 +963,16 @@
 }
 
 /* Pointer focus stays visually quiet, while keyboard focus remains explicit.
-   Shared controls may add a box-shadow ring; the outline is the fail-safe for
-   native buttons and custom rows that do not use the shared Button primitive. */
+   The fallback outline is only for unstyled focus targets. Shared controls
+   own a shape-matched ring/border; drawing this square outline over them was
+   the source of the doubled purple rectangles on textareas, search fields and
+   titlebar buttons. */
 *:focus {
   outline: none;
 }
 
-*:focus-visible {
-  outline: 0.125rem solid color-mix(in srgb, var(--theme-primary) 72%, var(--ui-text-primary));
+:focus-visible:not([data-slot]) {
+  outline: 0.0625rem solid color-mix(in srgb, var(--theme-primary) 62%, var(--ui-text-primary));
   outline-offset: 0.125rem;
 }
 
@@ -987,12 +989,82 @@
      here made explanatory copy fall below the approved reading hierarchy. */
   --ui-text-tertiary: color-mix(in srgb, var(--ui-base) 68%, var(--ui-bg-chrome));
   --ui-text-quaternary: color-mix(in srgb, var(--ui-base) 48%, var(--ui-bg-chrome));
+  --ui-chat-surface-background: var(--ui-bg-chrome);
   --dt-muted-foreground: var(--ui-text-tertiary);
   color: var(--ui-text-primary);
 }
 
+/* One page rhythm for Start, Projects, Workflows, Scheduled runs and
+   Deliverables. The frame owns the canvas and scrolling; the inset-only form
+   lets Start reuse the same rhythm inside its existing transcript viewport. */
+.apex-primary-page,
+.apex-primary-page-inset {
+  padding: 1.75rem 1.25rem;
+}
+
+.apex-primary-page {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--ui-bg-chrome);
+}
+
+.apex-primary-page--locked {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+
+.apex-primary-page-column {
+  width: 100%;
+  max-width: 65.625rem;
+  margin-inline: auto;
+}
+
+.apex-primary-page-inset-x {
+  padding-inline: 1.25rem;
+}
+
+.apex-primary-page-inset-top {
+  padding-top: 1.75rem;
+}
+
+@media (min-width: 40rem) {
+  .apex-primary-page,
+  .apex-primary-page-inset {
+    padding: 2rem 1.5rem;
+  }
+
+  .apex-primary-page-inset-x {
+    padding-inline: 1.5rem;
+  }
+
+  .apex-primary-page-inset-top {
+    padding-top: 2rem;
+  }
+}
+
+@media (min-width: 68.75rem) {
+  .apex-primary-page,
+  .apex-primary-page-inset {
+    padding-inline: 2.25rem;
+  }
+
+  .apex-primary-page-inset-x {
+    padding-inline: 2.25rem;
+  }
+}
+
 .apex-primary-sidebar {
-  --ui-sidebar-surface-background: color-mix(in srgb, var(--ui-bg-sidebar) 92%, var(--ui-blue) 8%);
+  /* The primary rail and reading canvas are one APEX workspace. Keep both
+     sidebar paint paths on the chrome token: the outer shell uses
+     --ui-sidebar-surface-background while Sidebar's inner element uses
+     --sidebar. Pinning only one lets the other reintroduce a blue panel. */
+  --ui-sidebar-surface-background: var(--ui-bg-chrome);
+  --sidebar: var(--ui-bg-chrome);
   --ui-row-active-background: color-mix(in srgb, var(--ui-bg-elevated) 98%, var(--ui-blue) 2%);
 }
 

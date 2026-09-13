@@ -43,9 +43,9 @@ export function WorkflowRunView() {
   const canCancel = businessStatusPresentation('run', run.status).canCancel
 
   return (
-    <section className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-(--page-inset-x) py-8">
+    <section className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-(--route-drawer-content-inset,var(--page-inset-x)) py-8">
       <div className="mx-auto w-full max-w-4xl pb-10">
-        <header className="flex items-start justify-between gap-5 border-b border-(--ui-stroke-tertiary) pb-5">
+        <header className="flex flex-col items-start gap-4 border-b border-(--ui-stroke-tertiary) pb-5 pr-(--route-drawer-action-clearance,0rem) sm:flex-row sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-medium text-primary">{copy.eyebrow}</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{copy.title}</h1>

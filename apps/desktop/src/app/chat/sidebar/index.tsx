@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
+import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -74,7 +75,7 @@ import {
   toggleSidebarMessagingOpen,
   unpinSession
 } from '@/store/layout'
-import { notifyError } from "@/store/notifications"
+import { notifyError } from '@/store/notifications'
 import { $newChatProfile, $profiles, $profileScope, ALL_PROFILES, normalizeProfileKey } from '@/store/profile'
 import {
   $activeProjectId,
@@ -109,22 +110,13 @@ import {
   setCurrentCwd
 } from '@/store/session'
 import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
-import { markSessionUnread } from "@/store/session-unread-remote"
+import { markSessionUnread } from '@/store/session-unread-remote'
 
-import {
-  type AppView,
-  SIDEBAR_NAV_AREA,
-  type SidebarNavContribution
-} from '../../routes'
-import {
-  SIDEBAR_BLANK_STATE_PITCH,
-  SIDEBAR_PROJECTS_SECTION,
-  SIDEBAR_SEARCH_FIELD
-} from '../../shell/chrome-gates'
+import { type AppView, SIDEBAR_NAV_AREA, type SidebarNavContribution } from '../../routes'
+import { SIDEBAR_BLANK_STATE_PITCH, SIDEBAR_PROJECTS_SECTION, SIDEBAR_SEARCH_FIELD } from '../../shell/chrome-gates'
 import type { SidebarNavItem } from '../../types'
 
 import { AccountPanel } from './account-panel'
-import { SidebarChannelStatus } from './channel-status'
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { DesktopUpdatePill } from './desktop-update-pill'
 import { SidebarLoadMoreRow } from './load-more-row'
@@ -153,13 +145,11 @@ import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
 import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
 
-
 // Non-session groups (messaging platforms) stay compact: show a few rows up
 // front, reveal more in larger steps on demand. Keeps a busy platform from
 // dominating the sidebar before the user asks to see it.
 const NON_SESSION_INITIAL_ROWS = 3
 const NON_SESSION_LOAD_STEP = 10
-const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
 const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
   'new-session': props => <Codicon name="edit" {...props} />,
@@ -192,6 +182,10 @@ const LEGACY_SIDEBAR_NAV = renderableNav(LEGACY_SIDEBAR_NAV_CONTRACT)
 
 const BUSINESS_WORKSPACE_ENABLED = isBusinessWorkspaceEnabled()
 const SIDEBAR_NAV = BUSINESS_WORKSPACE_ENABLED ? BUSINESS_SIDEBAR_NAV : LEGACY_SIDEBAR_NAV
+// These destinations remain part of APEX's navigation contract, but live in
+// the bottom account menu alongside Profile and Settings. Keeping them out of
+// the standing rail gives the conversation list the full remaining height.
+const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history'])
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.
@@ -419,7 +413,10 @@ export function ChatSidebar({
   // profile in, grouped by profile below. Single-profile users land here with
   // scope === their only profile, so nothing is filtered out.
   const visibleSessions = useMemo(
-    () => (showAllProfiles ? sessions : sessions.filter(s => normalizeProfileKey(s.profile) === profileScope)),
+    () =>
+      BUSINESS_WORKSPACE_ENABLED || showAllProfiles
+        ? sessions
+        : sessions.filter(s => normalizeProfileKey(s.profile) === profileScope),
     [sessions, showAllProfiles, profileScope]
   )
 
@@ -1175,6 +1172,85 @@ export function ChatSidebar({
       })
     )
 
+  const sidebarNavItems = visibleSidebarNavItems(SIDEBAR_NAV, contributedNav, BUSINESS_WORKSPACE_ENABLED)
+
+  const primarySidebarNavItems = BUSINESS_WORKSPACE_ENABLED
+    ? sidebarNavItems.filter(item => !ACCOUNT_MENU_NAV_IDS.has(item.id))
+    : sidebarNavItems
+
+  const renderSidebarNavItem = (item: (typeof sidebarNavItems)[number]) => {
+    const isInteractive = Boolean(item.action) || Boolean(item.route)
+
+    const active =
+      (item.id === 'start' && pathname === '/') ||
+      item.id === currentView ||
+      (Boolean(item.route) && pathname === item.route)
+
+    const isNewSession = item.action === 'new-session'
+
+    const button = (
+      <SidebarMenuButton
+        aria-disabled={!isInteractive}
+        className={cn(
+          'flex h-8 w-full justify-start gap-2.5 rounded-[0.625rem] border border-transparent px-2.5 text-left text-[0.8125rem] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
+          active &&
+            'border-transparent bg-(--ui-row-active-background) text-foreground shadow-none hover:bg-(--ui-row-active-background)!',
+          !isInteractive && 'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
+        )}
+        onClick={() => {
+          if (isNewSession) {
+            $newChatProfile.set(null)
+          }
+
+          onNavigate(item)
+        }}
+        tooltip={
+          item.keybindActionId
+            ? {
+                children: <TipKeybindLabel actionId={item.keybindActionId} text={s.nav[item.id] ?? item.label} />
+              }
+            : (s.nav[item.id] ?? item.label)
+        }
+        type="button"
+      >
+        <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
+        <span className="min-w-0 flex-1 truncate">{s.nav[item.id] ?? item.label}</span>
+        {isNewSession && (
+          <KbdGroup
+            className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}
+            keys={newSessionKbd}
+            size="sm"
+          />
+        )}
+      </SidebarMenuButton>
+    )
+
+    return (
+      <SidebarMenuItem key={item.id}>
+        {isNewSession || item.route ? (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
+            <ContextMenuContent aria-label={s.nav[item.id] ?? item.label}>
+              <SplitSubmenu
+                kit={CONTEXT_SPLIT_KIT}
+                label={s.row.openInSplit}
+                onSplit={dir => {
+                  if (isNewSession) {
+                    onNewSessionSplit(dir)
+                  } else if (item.route) {
+                    openRouteTile(item.route, dir)
+                  }
+                }}
+              />
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : (
+          button
+        )}
+      </SidebarMenuItem>
+    )
+  }
+
   return (
     <Sidebar
       className={cn(
@@ -1193,109 +1269,12 @@ export function ChatSidebar({
           className="flex h-[calc(var(--titlebar-height)+2.75rem)] shrink-0 items-end gap-2.5 px-2.5 pb-2.5 [-webkit-app-region:drag]"
           data-apex-sidebar-brand=""
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            className="size-5 shrink-0 object-contain"
-            height={20}
-            src={assetPath('assets/apex-mark-minimal.png')}
-            width={20}
-          />
+          <BrandMark aria-hidden="true" className="size-5 rounded-[0.3rem]" />
           <span className="pb-px text-[0.875rem] font-semibold tracking-[0.2em] text-(--ui-text-primary)">APEX</span>
         </div>
         <SidebarGroup className="shrink-0 p-0 pb-2 pt-0">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-px">
-              {visibleSidebarNavItems(SIDEBAR_NAV, contributedNav, BUSINESS_WORKSPACE_ENABLED).map(item => {
-                const isInteractive = Boolean(item.action) || Boolean(item.route)
-
-                const active =
-                  (item.id === 'start' && pathname === '/') ||
-                  item.id === currentView ||
-                  // Contributed rows light up at their own route.
-                  (Boolean(item.route) && pathname === item.route)
-
-                const isNewSession = item.action === 'new-session'
-
-                const button = (
-                  <SidebarMenuButton
-                    aria-disabled={!isInteractive}
-                    className={cn(
-                      // no-drag: these rows sit directly under the titlebar's
-                      // [-webkit-app-region:drag] strips (app-shell.tsx), with only
-                      // 6px of clearance. Drag regions win hit-testing over DOM
-                      // (pointer-events can't override), and on Linux/WSLg the
-                      // resolved region has been observed to swallow clicks on the
-                      // top rows. Same carve-out as USER_BUBBLE_BASE_CLASS in
-                      // assistant-ui/thread/user-message.tsx.
-                      'flex h-8 w-full justify-start gap-2.5 rounded-[0.625rem] border border-transparent px-2.5 text-left text-[0.8125rem] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
-                      active &&
-                        'border-transparent bg-(--ui-row-active-background) text-foreground shadow-none hover:bg-(--ui-row-active-background)!',
-                      !isInteractive &&
-                        'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
-                    )}
-                    onClick={() => {
-                      // A plain new session lands in whatever profile the live
-                      // gateway is on (= the active switcher context). null →
-                      // no swap. The switcher header is the single place to
-                      // change which profile that is.
-                      if (isNewSession) {
-                        $newChatProfile.set(null)
-                      }
-
-                      onNavigate(item)
-                    }}
-                    tooltip={
-                      item.keybindActionId
-                        ? {
-                            children: (
-                              <TipKeybindLabel actionId={item.keybindActionId} text={s.nav[item.id] ?? item.label} />
-                            )
-                          }
-                        : (s.nav[item.id] ?? item.label)
-                    }
-                    type="button"
-                  >
-                    <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
-                    <span className="min-w-0 flex-1 truncate">{s.nav[item.id] ?? item.label}</span>
-                    {isNewSession && (
-                      <KbdGroup
-                        className={cn('ml-auto opacity-55', newSessionKbdFlash && 'opacity-100!')}
-                        keys={newSessionKbd}
-                        size="sm"
-                      />
-                    )}
-                  </SidebarMenuButton>
-                )
-
-                // New session + route-backed pages can open in a split —
-                // right-click for the directional "Open in split" submenu.
-                return (
-                  <SidebarMenuItem key={item.id}>
-                    {isNewSession || item.route ? (
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild>{button}</ContextMenuTrigger>
-                        <ContextMenuContent aria-label={s.nav[item.id] ?? item.label}>
-                          <SplitSubmenu
-                            kit={CONTEXT_SPLIT_KIT}
-                            label={s.row.openInSplit}
-                            onSplit={dir => {
-                              if (isNewSession) {
-                                onNewSessionSplit(dir)
-                              } else if (item.route) {
-                                openRouteTile(item.route, dir)
-                              }
-                            }}
-                          />
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ) : (
-                      button
-                    )}
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
+            <SidebarMenu className="gap-px">{primarySidebarNavItems.map(renderSidebarNavItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -1442,9 +1421,7 @@ export function ChatSidebar({
                 headerAction={
                   inProject && enteredProject ? (
                     <div className="group/workspace flex shrink-0 items-center gap-0.5">
-                      {enteredProject.path && (
-                        <StartWorkButton repoPath={enteredProject.path} />
-                      )}
+                      {enteredProject.path && <StartWorkButton repoPath={enteredProject.path} />}
                       {/* Home has no folder and no record to rename, theme, or delete. */}
                       {!enteredProject.isNoProject && (
                         <ProjectMenu
@@ -1636,14 +1613,11 @@ export function ChatSidebar({
               underlying artifacts stay independent; discovery, confirmation,
               progress, restart and post-restart continuation are unified. */}
           <DesktopUpdatePill />
-          {/* hc-554 显化 — 「渠道 · 分身在哪」: channel presence (飞书/微信/手机遥控)
-              above the account row. Self-gates to nothing when no channel bridge
-              exists. */}
-          <SidebarChannelStatus />
           {/* Bottom-left account row (avatar + name + email → popover menu).
               Renders only on managed builds when signed in; the auth gate covers
-              the signed-out case. Profile management lives in the account menu
-              (个人资料), so no separate profile rail. */}
+              the signed-out case. Profile, Settings, connection management and
+              session history live in one account menu. Passive channel rows do
+              not consume conversation-list height. */}
           <AccountPanel />
         </div>
       </SidebarContent>
