@@ -7,7 +7,7 @@ import { useI18n } from '@/i18n'
 import { X } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
-import { closeRouteDrawer } from '../routes'
+import { closeRouteDrawer, routeDrawerReturnFocusKey } from '../routes'
 import { TITLEBAR_HEIGHT } from '../shell/titlebar'
 
 export const ROUTE_DRAWER_WIDE_QUERY = '(min-width: 1100px)'
@@ -58,8 +58,20 @@ interface ResponsiveRouteDrawerProps {
   children: ReactNode
   compact?: boolean
   onClose: () => void
+  returnFocusKey?: null | string
   title: string
   contentClassName?: string
+}
+
+function restoreRouteDrawerFocus(primaryTarget: HTMLElement | null, returnFocusKey?: null | string): void {
+  const fallbackTarget = returnFocusKey
+    ? Array.from(document.querySelectorAll<HTMLElement>('[data-route-drawer-return-focus]')).find(
+        element => element.dataset.routeDrawerReturnFocus === returnFocusKey
+      )
+    : null
+  const target = primaryTarget?.isConnected ? primaryTarget : fallbackTarget
+
+  target?.focus({ preventScroll: true })
 }
 
 /** Modal object surface shared by route-backed drawers. Radix owns the focus
@@ -70,6 +82,7 @@ export function ResponsiveRouteDrawer({
   compact = false,
   contentClassName,
   onClose,
+  returnFocusKey,
   title
 }: ResponsiveRouteDrawerProps) {
   const { t } = useI18n()
@@ -87,11 +100,9 @@ export function ResponsiveRouteDrawer({
     return () => {
       unlock()
 
-      if (returnFocus?.isConnected) {
-        returnFocus.focus({ preventScroll: true })
-      }
+      restoreRouteDrawerFocus(returnFocus, returnFocusKey)
     }
-  }, [])
+  }, [returnFocusKey])
 
   useEffect(() => {
     const resetNestedScroll = () => {
@@ -131,11 +142,7 @@ export function ResponsiveRouteDrawer({
           data-route-drawer=""
           onCloseAutoFocus={event => {
             event.preventDefault()
-            const target = returnFocusRef.current
-
-            if (target?.isConnected) {
-              target.focus({ preventScroll: true })
-            }
+            restoreRouteDrawerFocus(returnFocusRef.current, returnFocusKey)
           }}
           onOpenAutoFocus={event => {
             event.preventDefault()
@@ -171,7 +178,7 @@ export function ResponsiveRouteDrawer({
   )
 }
 
-interface RouteDrivenDrawerProps extends Omit<ResponsiveRouteDrawerProps, 'onClose'> {
+interface RouteDrivenDrawerProps extends Omit<ResponsiveRouteDrawerProps, 'onClose' | 'returnFocusKey'> {
   deepLinkFallback: string
 }
 
@@ -179,8 +186,13 @@ interface RouteDrivenDrawerProps extends Omit<ResponsiveRouteDrawerProps, 'onClo
 export function RouteDrivenDrawer({ deepLinkFallback, ...props }: RouteDrivenDrawerProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const returnFocusKey = routeDrawerReturnFocusKey(location.state)
 
   return (
-    <ResponsiveRouteDrawer {...props} onClose={() => closeRouteDrawer(navigate, location.state, deepLinkFallback)} />
+    <ResponsiveRouteDrawer
+      {...props}
+      onClose={() => closeRouteDrawer(navigate, location.state, deepLinkFallback)}
+      returnFocusKey={returnFocusKey}
+    />
   )
 }

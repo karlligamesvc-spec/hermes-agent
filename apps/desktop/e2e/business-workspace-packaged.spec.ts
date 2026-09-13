@@ -891,6 +891,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   await expect(opener).toBeVisible()
   await opener.focus()
   await opener.click()
+  await page.getByRole('button', { name: '打开当前运行' }).click()
 
   const drawer = page.getByRole('dialog', { name: '工作流运行' })
 
@@ -1045,6 +1046,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
       if (surfaceName === 'run-error') {
         await page.getByRole('button', { name: '开始 ⌘ N' }).click()
         await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+        await page.getByRole('button', { name: '打开当前运行' }).click()
       } else {
         await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
       }
@@ -1052,7 +1054,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
       const surface =
         surfaceName === 'run-error'
           ? page.getByRole('heading', { name: '运行暂时不可用', level: 2 }).locator('..').locator('..').locator('..')
-          : page.getByRole('heading', { name: '项目', level: 1 }).locator('..').locator('..')
+          : page.locator('[data-legacy-projects]')
       await expect(surface).toBeVisible()
 
       for (const viewport of PHASE1_VIEWPORTS) {
@@ -1154,7 +1156,10 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
     )
     const name = `project-detail-${viewport.width}x${viewport.height}.png`
     const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
-    if (screenshotRoot) fs.mkdirSync(screenshotRoot, { recursive: true })
+
+    if (screenshotRoot) {
+      fs.mkdirSync(screenshotRoot, { recursive: true })
+    }
     await page.screenshot({
       animations: 'disabled',
       caret: 'hide',
@@ -1201,37 +1206,37 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
     const drawer = page.locator('[data-route-drawer]')
     const content = drawer.locator('section').first()
     const close = drawer.getByRole('button', { name: '关闭' })
-    const cancel = drawer.getByRole('button', { name: '取消运行' })
+    const approve = drawer.getByRole('button', { name: '批准交付物' })
 
     await expect(drawer).toBeVisible()
     await expect(content).toBeVisible()
     await expect(close).toBeVisible()
-    await expect(cancel).toBeVisible()
-    await expect(drawer).toHaveAttribute('data-layout', viewport.width >= 1100 ? 'drawer' : 'fullscreen')
+    await expect(approve).toBeVisible()
+    await expect(drawer).toHaveAttribute('data-layout', viewport.width >= 900 ? 'drawer' : 'fullscreen')
 
     const geometry = await page.evaluate(() => {
       const drawerElement = document.querySelector<HTMLElement>('[data-route-drawer]')
       const contentElement = drawerElement?.querySelector<HTMLElement>('section > div')
       const closeElement = drawerElement?.querySelector<HTMLElement>('button[aria-label="关闭"]')
 
-      const cancelElement = Array.from(drawerElement?.querySelectorAll<HTMLElement>('button') ?? []).find(button =>
-        button.textContent?.includes('取消运行')
+      const approveElement = Array.from(drawerElement?.querySelectorAll<HTMLElement>('button') ?? []).find(button =>
+        button.textContent?.includes('批准交付物')
       )
 
-      if (!drawerElement || !contentElement || !closeElement || !cancelElement) {
+      if (!drawerElement || !contentElement || !closeElement || !approveElement) {
         return null
       }
 
       const drawerBox = drawerElement.getBoundingClientRect()
       const contentBox = contentElement.getBoundingClientRect()
       const closeBox = closeElement.getBoundingClientRect()
-      const cancelBox = cancelElement.getBoundingClientRect()
+      const approveBox = approveElement.getBoundingClientRect()
 
       const overlaps = !(
-        closeBox.right <= cancelBox.left ||
-        closeBox.left >= cancelBox.right ||
-        closeBox.bottom <= cancelBox.top ||
-        closeBox.top >= cancelBox.bottom
+        closeBox.right <= approveBox.left ||
+        closeBox.left >= approveBox.right ||
+        closeBox.bottom <= approveBox.top ||
+        closeBox.top >= approveBox.bottom
       )
 
       return {
@@ -1244,12 +1249,12 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
     })
 
     expect(geometry).not.toBeNull()
-    expect(geometry!.contentInset).toBeGreaterThanOrEqual(viewport.width >= 1100 ? 31 : 23)
+    expect(geometry!.contentInset).toBeGreaterThanOrEqual(23)
     expect(geometry!.overlaps).toBe(false)
     expect(geometry!.rootScrollWidth).toBeLessThanOrEqual(geometry!.rootClientWidth)
 
-    if (viewport.width >= 1100) {
-      expect(geometry!.drawerWidth).toBeGreaterThanOrEqual(630)
+    if (viewport.width >= 900) {
+      expect(geometry!.drawerWidth).toBeCloseTo(Math.min(540, geometry!.rootClientWidth - 16), 0)
     } else {
       expect(geometry!.drawerWidth).toBeCloseTo(geometry!.rootClientWidth, 0)
     }

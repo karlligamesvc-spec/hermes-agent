@@ -73,6 +73,27 @@ function renderHarness(compact = false, seedScroll = false) {
   )
 }
 
+function NestedRouteHarness() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button data-route-drawer-return-focus="project-42" type="button">
+        Original project
+      </button>
+      {!open ? (
+        <button onClick={() => setOpen(true)} type="button">
+          Open nested run
+        </button>
+      ) : (
+        <ResponsiveRouteDrawer onClose={() => setOpen(false)} returnFocusKey="project-42" title="Nested run details">
+          Run content
+        </ResponsiveRouteDrawer>
+      )}
+    </>
+  )
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -168,6 +189,27 @@ describe('ResponsiveRouteDrawer', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Run details' })).toBeNull())
     expect(globalThis.document.activeElement).toBe(opener)
     expect(globalThis.document.body.style.overflow).toBe('')
+  })
+
+  it('restores focus to the background route anchor when the immediate opener was unmounted', async () => {
+    installMatchMedia(true)
+    render(
+      <MemoryRouter>
+        <I18nProvider configClient={null} initialLocale="en">
+          <NestedRouteHarness />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+    const nestedOpener = screen.getByRole('button', { name: 'Open nested run' })
+
+    nestedOpener.focus()
+    fireEvent.click(nestedOpener)
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Nested run details' })).toBeTruthy())
+
+    fireEvent.keyDown(globalThis.document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nested run details' })).toBeNull())
+    expect(globalThis.document.activeElement).toBe(screen.getByRole('button', { name: 'Original project' }))
   })
 
   it('makes route-surface motion opt out under reduced-motion preferences', () => {
