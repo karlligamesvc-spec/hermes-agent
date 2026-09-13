@@ -276,15 +276,59 @@ def _gateway_resolve_download(url: str, *, timeout: float = 600) -> tuple[dict[s
     return result, media_url
 
 
+def _download_candidates(result: dict[str, Any], media_url: str) -> list[str]:
+    """主 URL 在前、fallback 按服务端顺序；去空去重但不改优先级。"""
+    raw = [media_url]
+    fallbacks = result.get("fallback_urls")
+    if isinstance(fallbacks, list):
+        raw.extend(str(item or "").strip() for item in fallbacks)
+    return list(dict.fromkeys(item for item in raw if item))
+
+
+class _ResolvedMediaDownloadError(_gateway.GatewayError):
+    """本地候选均失败；保留最新签名供既有网关自取 ASR 兜底。"""
+
+    def __init__(self, result: dict[str, Any], media_url: str):
+        super().__init__(
+            "视频直链下载中断,主线路、备用线路和链接刷新均未完成;"
+            "请稍后重试或直接上传视频文件。",
+            code="media_download_exhausted",
+        )
+        self.result = result
+        self.media_url = media_url
+
+
+def _gateway_download_resolved_media(
+    source_url: str,
+    result: dict[str, Any],
+    media_url: str,
+) -> tuple[dict[str, Any], Path]:
+    """按网关契约下载：main → fallbacks → 最多一次重新解析新签名。"""
+    current_result = result
+    current_media_url = media_url
+    for resolution_round in range(2):
+        headers = current_result.get("download_headers")
+        for candidate in _download_candidates(current_result, current_media_url):
+            try:
+                path = _gateway.download_media(
+                    candidate,
+                    headers=headers if isinstance(headers, dict) else None,
+                    filename_hint=str(current_result.get("title") or ""),
+                )
+                current_result.pop("download_headers", None)
+                return current_result, path
+            except _gateway.GatewayError:
+                continue
+        if resolution_round == 0:
+            current_result, current_media_url = _gateway_resolve_download(source_url)
+    raise _ResolvedMediaDownloadError(current_result, current_media_url)
+
+
 def _gateway_social_download(url: str) -> str:
     try:
         result, media_url = _gateway_resolve_download(url)
         if media_url:
-            video_path = _gateway.download_media(
-                media_url,
-                headers=result.pop("download_headers", None),
-                filename_hint=str(result.get("title") or ""),
-            )
+            result, video_path = _gateway_download_resolved_media(url, result, media_url)
             result["video_path"] = str(video_path)
         else:
             result.pop("download_headers", None)
@@ -307,14 +351,12 @@ def _gateway_media_transcribe(video_path: str | None, url: str | None) -> str:
             meta, media_url = _gateway_resolve_download(url)
             if media_url:
                 try:
-                    local_path = _gateway.download_media(
-                        media_url,
-                        headers=meta.pop("download_headers", None),
-                        filename_hint=str(meta.get("title") or ""),
-                    )
-                except _gateway.GatewayError:
-                    # 直链本地下载失败 → 退回契约基本形态:让网关自取媒体转写。
-                    local_path = None
+                    meta, local_path = _gateway_download_resolved_media(url, meta, media_url)
+                except _ResolvedMediaDownloadError as exc:
+                    # 保留迁移前的最后兜底：本机所有候选均失败后，让网关从最新签名
+                    # 自取媒体做 ASR。这里不上传任何 .part/残缺本地文件。
+                    meta = exc.result
+                    media_url = exc.media_url
 
         if local_path is not None:
             # hc-560: 压缩链(ffmpeg → macOS afconvert → 原文件)后交统一提交口——
