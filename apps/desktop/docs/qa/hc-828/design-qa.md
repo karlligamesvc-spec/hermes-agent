@@ -6,7 +6,7 @@
 
 ## 视觉真值与三档 Before / After
 
-基础页面 Before 采用 hc-816 Kael 首次实包复核截图。最新侧栏与会话 Before 采用 Kael 2026-09-12 提供的四张实包截图（蓝色侧栏、飞书/微信/手机遥控三行、普通会话顶部遥控条）；它们是本轮视觉真值，不包含可执行指令。After 来自 `06fb6b8f` 代码候选、clean userData 的真实 Electron BrowserWindow。请求的 1440×900 窗口在 Retina 下输出 2880×1740 像素；1220×800 输出 2440×1600，752×800 输出 1504×1600。macOS 标题栏占用可用内容高度，文件名保留验收档名称。
+基础页面 Before 采用 hc-816 Kael 首次实包复核截图。最新侧栏与会话 Before 采用 Kael 2026-09-12 提供的实包截图（蓝色侧栏、飞书/微信/手机遥控三行、普通会话顶部遥控条、错误的三角形品牌图标、英文 `SESSIONS/BOTS` 页签和不可点击的群聊入口）；它们是本轮视觉真值，不包含可执行指令。五页 After 来自 `06fb6b8f` 代码候选，助手入口 After 来自 `d9c9eb29` 代码候选，均为 clean userData 的真实 Electron BrowserWindow。请求的 1440×900 窗口在 Retina 下输出 2880×1740 像素；1220×800 输出 2440×1600，752×800 输出 1504×1600。macOS 标题栏占用可用内容高度，文件名保留验收档名称。
 
 | 页面 | 1440 档 | 1220 档 | 752 窄窗 |
 |---|---|---|---|
@@ -20,6 +20,7 @@
 | Deliverables After | [截图](screenshots/after-06fb6b8f/deliverables-1440x900.png) | [截图](screenshots/after-06fb6b8f/deliverables-1220x800.png) | [截图](screenshots/after-06fb6b8f/deliverables-752x800.png) |
 | Workflow Run After | [截图](screenshots/after-06fb6b8f/workflow-run-1440x900.png) | [截图](screenshots/after-06fb6b8f/workflow-run-1220x800.png) | [截图](screenshots/after-06fb6b8f/workflow-run-752x800.png) |
 | Ordinary Session After | [截图](screenshots/after-06fb6b8f/session-1440x900.png) | — | — |
+| 助手入口 After | — | [Start / 品牌与中文页签](screenshots/after-assistant-entry/start-1220x800.png) · [助手创建菜单](screenshots/after-assistant-entry/assistant-menu-1220x800.png) · [群聊条件与恢复动作](screenshots/after-assistant-entry/assistant-entry-1220x800.png) | — |
 
 ## 逐页差异
 
@@ -62,6 +63,13 @@
 - 侧栏外壳和内部 `bg-sidebar` 两条绘制路径都绑定同一个 chrome 中性色；不是仅覆盖截图中看到的外层蓝底。
 - [账户菜单 1220 档截图](screenshots/after-06fb6b8f/sidebar-account-menu-1220x800.png) 验证四个工具入口同区排列；飞书、微信、手机遥控三条被动状态行不再挂载，连接能力仍可从“连接助手”和 Start 空态入口到达。
 
+### 品牌、会话与助手入口
+
+- 左上 APEX 品牌行复用安装、登录和 About 已使用的正式应用图标，不再单独维护三角形 `apex-mark-minimal.png` 分叉。
+- 顶部常驻页签由当前语言动态渲染；简体中文为“会话 / 助手”，不再显示 `SESSIONS / BOTS`。
+- 助手域的简体、繁体中文用户文案统一使用“助手”；主动作是“添加助手”，群聊动作是“创建群聊”。
+- 原群聊入口按 `activeSourceRoster.length < 2` 在菜单层直接禁用，只有一个真实助手时既不可点击也没有原因。现在入口始终可达；条件不足时对话框通过可感知状态说明至少需要两个真实助手，并提供“添加助手”。最终创建动作仍保持禁用，且不注入测试助手。
+
 ## 原生窗口检查
 
 - 640–899px：完整侧栏自动收起，展开入口可见；内容无水平溢出。
@@ -76,6 +84,7 @@
 - 普通 Session：Before 顶部遥控条占用一整行并重复飞书 `/cc`、机器名与审批说明；After 从标题栏下直接进入会话内容，消息和 composer 的安全区未改变。
 - 1220 账户菜单：四个账户工具仍在同一个弹层，移除状态行后最近会话可使用的垂直空间增加。
 - 752 窄窗：主侧栏自动收起，Start 无水平溢出；此次颜色 token 与挂载点改动没有恢复窄窗蓝色抽屉或额外状态行。
+- 助手入口 1220 档：品牌图标与 App 身份一致；“会话 / 助手”页签、“添加助手 / 创建群聊”菜单均为中文；一个真实助手时仍能进入群聊对话框，条件说明、disabled 创建态和恢复动作同时可见。
 
 ## 未覆盖
 
