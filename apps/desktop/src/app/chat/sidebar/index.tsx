@@ -116,7 +116,6 @@ import { SIDEBAR_BLANK_STATE_PITCH, SIDEBAR_PROJECTS_SECTION, SIDEBAR_SEARCH_FIE
 import type { SidebarNavItem } from '../../types'
 
 import { AccountPanel } from './account-panel'
-import { SidebarChannelStatus } from './channel-status'
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { DesktopUpdatePill } from './desktop-update-pill'
 import { SidebarLoadMoreRow } from './load-more-row'
@@ -1621,16 +1620,11 @@ export function ChatSidebar({
               underlying artifacts stay independent; discovery, confirmation,
               progress, restart and post-restart continuation are unified. */}
           <DesktopUpdatePill />
-          {/* Compact connection state (飞书/微信/手机遥控) above the account
-              row. The explanatory heading is intentionally omitted: the rows
-              already name their channels, and the recovered height belongs to
-              recent conversations. */}
-          <SidebarChannelStatus />
           {/* Bottom-left account row (avatar + name + email → popover menu).
               Renders only on managed builds when signed in; the auth gate covers
               the signed-out case. Profile, Settings, connection management and
-              session history live in one account menu, so none needs a separate
-              standing row. */}
+              session history live in one account menu. Passive channel rows do
+              not consume conversation-list height. */}
           <AccountPanel />
         </div>
       </SidebarContent>

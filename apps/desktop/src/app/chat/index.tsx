@@ -68,7 +68,6 @@ import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
 import { ComposerSurfaceProvider, useComposerScope, useComposerSurfaceId } from './composer/scope'
 import type { ChatBarState } from './composer/types'
-import { DirectConnectBanner } from './direct-connect-banner'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
 import { shouldShowChatComposer, shouldShowIntro } from './intro-visibility'
@@ -667,26 +666,6 @@ const ChatViewContent = memo(function ChatViewContent({
           so a tiled/background session's blocking prompt surfaces instead of
           stalling to timeout. */}
       <PromptOverlays sessionId={activeSessionId} />
-
-      {/* hc-555 显化: the phone-remote (/cc) live strip. Machine-wide, not
-          session-scoped — so it rides with the primary surface only, like the
-          header, rather than repeating in every tile.
-
-          This is the ONE thing allowed to take a row of the main content, and
-          only while a phone is actively driving this machine: it is the only
-          place that says so, and an awareness signal that can be missed is not
-          one. Every other state (daemon merely enabled, a channel bound or not)
-          self-gates to null, so an ordinary conversation gains zero chrome.
-
-          The first-run "connect a channel" guidance used to sit here too and was
-          removed in hc-590 — Kael's call: it squatted on the main content of
-          every unconnected user, in the live conversation as much as the zero
-          state. Connecting a channel is reachable from the sidebar's compact
-          channel-status rows and the zero state's connect strip; see
-          channel-reach.test.tsx, which pins both. The Start page deliberately
-          omits this strip: connection state remains available in the sidebar,
-          while the goal canvas keeps one uninterrupted visual surface. */}
-      {isPrimary && !businessStartVisible && <DirectConnectBanner />}
 
       <ChatRuntimeBoundary
         busy={busy}

@@ -11,22 +11,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/i18n/context'
 
 import { ScenarioShelf } from './scenarios/scenario-shelf'
-import { SidebarChannelStatus } from './sidebar/channel-status'
-
-// "Bind a channel" must stay reachable from at least TWO places.
+// "Bind a channel" remains reachable without passive channel chrome.
 //
 // hc-590 took the first-run ConnectionGuide banner out of the chat's main
 // content (Kael's call — it squatted on every unconnected user's screen, in the
-// live conversation as much as the zero state). That was the loudest of three
-// entry points, and losing it is only safe because the other two are permanent:
+// live conversation as much as the zero state). The sidebar status rows and
+// phone-remote strip were later removed for the same reason. The active paths
+// remain explicit user actions:
 //
-//   1. the sidebar's compact channel-status group — always there, bound or not;
+//   1. "连接助手" in the account menu;
 //   2. the zero state's "连接你的分身" strip, under the scenario cards.
 //
-// Each is small, easy to mistake for decoration, and easy to delete while
-// tidying. Delete both and a first-run user has no way to connect anything and
-// nothing anywhere fails. So: one test per path, plus a guard that the banner
-// does not creep back into the main content.
+// Source guards keep both destinations reachable and prevent any passive
+// channel banner/status block from creeping back into the app chrome.
 
 class TestResizeObserver {
   observe() {}
@@ -67,18 +64,7 @@ afterEach(() => {
 })
 
 describe('reaching channel binding', () => {
-  it('path 1: the sidebar block offers a way in while nothing is bound', async () => {
-    setUnboundBridges()
-    renderZh(<SidebarChannelStatus />)
-
-    // Feishu / WeChat go to the binding flow; phone-remote to its setting.
-    await waitFor(() => expect(screen.getAllByRole('button')).toHaveLength(3))
-    expect(screen.queryByText('渠道 · 分身在哪')).toBeNull()
-    expect(screen.getByRole('group', { name: '连接你的分身' })).toBeTruthy()
-    expect(screen.getAllByText('扫码绑定').length).toBeGreaterThan(0)
-  })
-
-  it('path 2: the zero-state connect strip offers a way in while nothing is bound', async () => {
+  it('the zero-state connect strip offers a way in while nothing is bound', async () => {
     setUnboundBridges()
     renderZh(<ScenarioShelf />)
 
@@ -87,15 +73,13 @@ describe('reaching channel binding', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: /扫码绑定/u }).length).toBeGreaterThan(0))
   })
 
-  it('keeps the connect banner out of the chat surface', () => {
-    // Source-contract, because the regression is a re-add: the banner rendered
-    // fine, it just took a row of everyone's main content forever. A behavioral
-    // test would have to mount the whole chat view to notice.
+  it('keeps passive channel status out of the chat and sidebar chrome', () => {
     const chatView = readFileSync(resolve(__dirname, 'index.tsx'), 'utf-8')
+    const sidebar = readFileSync(resolve(__dirname, 'sidebar', 'index.tsx'), 'utf-8')
+    const accountPanel = readFileSync(resolve(__dirname, 'sidebar', 'account-panel.tsx'), 'utf-8')
 
-    expect(
-      chatView,
-      'a connect-guidance banner is back in the chat surface — it belongs in the sidebar block and the zero-state strip'
-    ).not.toMatch(/ConnectionGuide|connection-guide/u)
+    expect(chatView).not.toMatch(/ConnectionGuide|connection-guide|DirectConnectBanner/u)
+    expect(sidebar).not.toContain('SidebarChannelStatus')
+    expect(accountPanel).toContain('<span>{nav.assistant}</span>')
   })
 })

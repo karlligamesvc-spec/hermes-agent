@@ -597,13 +597,14 @@ describe('identity: the brand skin survives', () => {
     }
   })
 
-  it('keeps APEX business chrome cool-blue with a restrained sidebar hierarchy', () => {
+  it('keeps the APEX sidebar and content canvas on one neutral surface', () => {
     const styles = readSource('src', 'styles.css')
 
     expect(styles).toMatch(/\.apex-business-surface \{\s*background: var\(--ui-bg-chrome\)/)
     expect(styles).toMatch(
-      /\.apex-primary-sidebar \{[\s\S]*?--ui-sidebar-surface-background: color-mix\(in srgb, var\(--ui-bg-sidebar\) 92%, var\(--ui-blue\) 8%\)/
+      /\.apex-primary-sidebar \{[\s\S]*?--ui-sidebar-surface-background: var\(--ui-bg-chrome\)/
     )
+    expect(styles).toMatch(/\.apex-primary-sidebar \{[\s\S]*?--sidebar: var\(--ui-bg-chrome\)/)
     expect(styles).toMatch(
       /\.apex-primary-sidebar \{[\s\S]*?--ui-row-active-background: color-mix\(in srgb, var\(--ui-bg-elevated\) 98%, var\(--ui-blue\) 2%\)/
     )
@@ -655,12 +656,12 @@ describe('identity: the brand skin survives', () => {
     expect(settings).toContain('<div className="p5-row"')
   })
 
-  it('keeps Start on one uninterrupted canvas and omits the session connection strip there', () => {
+  it('keeps Start on one uninterrupted canvas and removes passive connection strips from chat chrome', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
     const intro = readSource('src', 'components', 'chat', 'intro.tsx')
 
     expect(chat).toContain("businessStartVisible && 'apex-business-surface apex-business-page'")
-    expect(chat).toContain('isPrimary && !businessStartVisible && <DirectConnectBanner />')
+    expect(chat).not.toContain('DirectConnectBanner')
     expect(intro).toContain('apex-business-page apex-primary-page-inset')
     expect(intro).not.toContain('apex-business-surface apex-business-page items-start')
   })
@@ -668,14 +669,13 @@ describe('identity: the brand skin survives', () => {
   it('moves connection and session-history utilities into the account menu without hiding real recents', () => {
     const sidebar = readSource('src', 'app', 'chat', 'sidebar', 'index.tsx')
     const accountPanel = readSource('src', 'app', 'chat', 'sidebar', 'account-panel.tsx')
-    const channelStatus = readSource('src', 'app', 'chat', 'sidebar', 'channel-status.tsx')
     const zh = readSource('src', 'i18n', 'zh.ts')
 
     expect(sidebar).toContain("const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history'])")
     expect(sidebar).not.toContain('utilitySidebarNavItems')
     expect(accountPanel).toContain('<span>{nav.assistant}</span>')
     expect(accountPanel).toContain('<span>{nav.history}</span>')
-    expect(channelStatus).not.toContain('s.channelsTitle')
+    expect(sidebar).not.toContain('SidebarChannelStatus')
     expect(sidebar).toMatch(/BUSINESS_WORKSPACE_ENABLED \|\| showAllProfiles\s*\? sessions/)
     expect(zh).toContain("assistant: '连接助手'")
     expect(zh).toContain("history: '历史会话'")

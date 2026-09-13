@@ -1059,7 +1059,12 @@
 }
 
 .apex-primary-sidebar {
-  --ui-sidebar-surface-background: color-mix(in srgb, var(--ui-bg-sidebar) 92%, var(--ui-blue) 8%);
+  /* The primary rail and reading canvas are one APEX workspace. Keep both
+     sidebar paint paths on the chrome token: the outer shell uses
+     --ui-sidebar-surface-background while Sidebar's inner element uses
+     --sidebar. Pinning only one lets the other reintroduce a blue panel. */
+  --ui-sidebar-surface-background: var(--ui-bg-chrome);
+  --sidebar: var(--ui-bg-chrome);
   --ui-row-active-background: color-mix(in srgb, var(--ui-bg-elevated) 98%, var(--ui-blue) 2%);
 }
 

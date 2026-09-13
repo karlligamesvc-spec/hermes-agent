@@ -360,6 +360,8 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByRole('menuitem', { name: '连接助手' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '历史会话' })).toBeVisible()
   await expect(page.getByText('渠道 · 分身在哪', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: '连接你的分身' })).toHaveCount(0)
+  await expect(page.getByText(/手机正遥控本机/u)).toHaveCount(0)
 
   const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
   if (screenshotRoot) {
@@ -911,6 +913,20 @@ test('packaged plain goal clears a retained workflow template and starts a real 
   expect(await page.evaluate(() => window.localStorage.getItem('hermes.desktop.translucency.v2'))).toBe(
     translucencyBefore
   )
+
+  const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.setBounds({ height: 900, width: 1440, x: 0, y: 0 }, false)
+    )
+    await expect(page.getByText(/手机正遥控本机/u)).toHaveCount(0)
+    await page.screenshot({
+      animations: 'disabled',
+      caret: 'hide',
+      path: path.join(screenshotRoot, 'session-1440x900.png')
+    })
+  }
 
   const composerStopButton = page.locator('form').getByRole('button', { name: '停止', exact: true })
   if (await composerStopButton.isVisible()) {
