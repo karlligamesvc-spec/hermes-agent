@@ -4,7 +4,7 @@
 
 本轮从 fork `main@2c517460754bdbd7756a3a16b07816bde33e8c49` 建立隔离工作树，针对 Kael 在已安装 `0.17.24` 实包中连续记录的问题做同系统收敛。第一轮生产代码证据为 `c12cf7a9dba021ec1a3f4f07d59359a4e3ae9e28`；第二轮五页视觉收敛代码证据为 `890266bdb20c0fcd48a6b2c8ceacd8904bdc55d4`；版本保持 `0.17.24`。
 
-修复不是逐截图打补丁，而是统一了五个共享根：输入焦点、页面 Header/文字层级、侧栏信息架构、Project/Workflow 生命周期、route drawer 的原生窗口安全区。Phase 2、生产部署、公开 updater、DeepSeek Harness 均未进入本票。
+修复不是逐截图打补丁，而是统一了五个共享根：输入焦点、页面 Header/文字层级、侧栏信息架构、Project/Workflow 生命周期、route drawer 的原生窗口安全区。最新侧栏/连接 chrome 收敛的代码证据为 `06fb6b8fcb6102a654d67f931a94118ee27ebce8`。Phase 2、生产部署、公开 updater、DeepSeek Harness 均未进入本票。
 
 ## 问题归纳与根因修复
 
@@ -19,9 +19,9 @@
 | Settings、Project、Workflow、定时任务、交付物标题风格分裂 | 页面各自实现标题和 Settings 行级排版 | 新增共享 `ApexPageHeader`；Project/Workflow/定时任务/交付物使用同一标题、眉题、描述和动作节奏。Settings 使用统一 page/section/row title、description、control 原语。 |
 | 中文界面泄漏 `active`、`run.started` 等枚举 | 服务端状态和事件键直接透传 | 生命周期状态集中映射；补齐 canonical Run 事件 `run.cancel_requested`、`run.succeeded` 等。未知事件仍原样诚实回退，不伪造业务含义。 |
 | “后端版本过旧”让人误以为装 Desktop 会自动升级后端 | Desktop shell 与本机 Runtime 的独立版本生命周期没有解释 | 更新入口改为“检查兼容更新”；目录没有兼容 Runtime 时明确说明尚未发布。安装 Desktop 不会强制覆盖正在运行的 Runtime；本票没有发布 Runtime。 |
-| Start 顶部遥控状态条与灰/白内容分层 | Start 复用了 Session 专属连接条，且嵌套容器重复绘制 chat surface | Start 不再挂载遥控状态条；普通 Session 继续保留。业务页面根统一使用一层不透明 APEX surface，Start 内部不再重复涂不同背景。 |
+| Start/Session 顶部遥控状态条与灰/白内容分层 | 连接状态作为全局 chrome 挂进主内容，且嵌套容器重复绘制 chat surface | Start 与普通 Session 都不再挂载遥控状态条。业务页面根统一使用一层不透明 APEX surface，Start 内部不再重复涂不同背景。 |
 | 五个一级页面字号、内容起点和间距漂移 | 各页面分别维护 `padding`、最大宽度和 Header，定时运行/交付物还经过不同 shell | 新增共享业务页布局原语；Start、Project、Workflow、定时运行、交付物统一响应式水平留白、顶部节奏、内容宽度和 Header 层级。 |
-| “连接助手/历史会话”压缩最近对话区 | 两个低频工具作为永久侧栏行，与五个一级业务对象争夺高度 | 主导航只保留五个一级菜单；“连接助手”“历史会话”与“个人资料/设置”并排收敛到账户菜单。渠道标题隐藏，但真实飞书、微信、手机遥控状态仍保留。 |
+| 侧栏蓝底与飞书/微信/手机遥控状态行继续压缩对话区 | 侧栏外壳和内部 `bg-sidebar` 有两条独立绘制路径；被动连接状态仍作为永久 footer 行 | 两条侧栏背景 token 一并收敛到内容区 chrome 中性色。飞书、微信、手机遥控三行和顶部遥控条不再挂载；“连接助手”账户入口和 Start 空态连接入口保留真实能力。 |
 
 ## 保留的产品契约
 
@@ -53,7 +53,7 @@
 - Desktop typecheck：通过。
 - Desktop lint：0 errors；131 个既有 warnings。
 - Phase 1 定向 UI/路由/辅助功能：通过；五页视觉收敛复绿为 10 files / 135 tests。
-- Desktop 全量 UI：759 files / 7593 tests 通过。
+- Desktop 全量 UI：759 files / 7592 tests 通过；减少的一条是被移除的被动渠道 footer 展示路径，不是业务能力守卫。
 - Electron/platform：180 files 通过、2 skipped；2747 tests 通过、6 skipped。
 - identity-layer、route/drawer、release gates：通过；release gates 为 Node 78 + Vitest 15。
 - production build：通过。
@@ -77,13 +77,16 @@
 - 在 Start 恢复 `DirectConnectBanner` 后，Start 身份守卫变红；普通 Session 的保留断言仍独立存在。
 - 从定时运行或交付物移除共享业务页标记后，对应页面节奏守卫分别变红。
 - 从 Start 根移除统一 surface，或撤销业务页 chat 背景覆盖后，背景一致性守卫变红。
+- 把侧栏任一背景 token 恢复为旧 8% 蓝色混合后，统一表面身份守卫变红。
+- 把 `SidebarChannelStatus` 重新挂回 footer 后，identity-layer 与渠道可达性守卫同时变红。
+- 把 `DirectConnectBanner` 重新挂回 Chat 主内容后，identity-layer 与渠道可达性守卫同时变红。
 
-## 第二轮五页实窗证据
+## 最新五页与会话实窗证据
 
-- `890266bd` 代码候选的 packaged Electron clean userData 验收为 10/10，通过真实 BrowserWindow 的 1440×900、1220×800、752×800 三档。
-- 截图矩阵覆盖 Start、Project、Workflow、定时运行、交付物，另覆盖 Workflow Run drawer 与 1220 档账户菜单。
-- Start 截图确认遥控状态条不在 DOM/视觉中、背景为单一不透明 surface；Session 保留状态条的行为由独立守卫覆盖。
-- 账户菜单截图确认“个人资料、设置、连接助手、历史会话”在同一区域；侧栏仅保留五个一级菜单，渠道标题不显示。
+- `06fb6b8f` 代码候选的 packaged Electron clean userData 验收为 10/10，通过真实 BrowserWindow 的 1440×900、1220×800、752×800 三档。
+- 截图矩阵覆盖 Start、Project、Workflow、定时运行、交付物，另覆盖 Workflow Run drawer、普通 Session 与 1220 档账户菜单。
+- Start 与普通 Session 截图确认遥控状态条均不在 DOM/视觉中；侧栏与内容使用同一中性表面。
+- 账户菜单截图确认“个人资料、设置、连接助手、历史会话”在同一区域；侧栏仅保留五个一级菜单，飞书、微信、手机遥控三行不显示。
 - 定时运行与交付物使用诚实空态；Project、Workflow、Run 的可控数据均显式标注 `[本地测试]`。
 
 ## 实包证据
