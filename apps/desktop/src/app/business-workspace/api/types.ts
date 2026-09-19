@@ -80,7 +80,7 @@ export interface WorkflowDeliverable {
   projectId: string
   reviews: WorkflowReview[]
   runId: string
-  schemaVersion: number
+  schemaVersion: string
   sourceCapturedAt: null | string
   status: string
   storageTarget: null | { id: string; kind: 'user_file' }

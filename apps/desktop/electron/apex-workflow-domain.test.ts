@@ -361,7 +361,7 @@ test('projects Run detail into a sequence-stable renderer model without raw or t
             }
           ],
           runId: 'run-1',
-          schemaVersion: 1,
+          schemaVersion: 'deliverable/v1',
           sourceCapturedAt: '2026-09-06T10:01:30Z',
           status: 'ready',
           storageTarget: { id: '00000000-0000-4000-8000-000000000831', kind: 'user_file' },
@@ -502,7 +502,7 @@ test('projects Deliverable list/detail and Activity onto typed renderer-safe mod
       }
     ],
     runId: 'run-831',
-    schemaVersion: 1,
+    schemaVersion: 'deliverable/v1',
     sourceCapturedAt: '2026-09-13T00:59:00Z',
     status: 'ready',
     storageTarget: {

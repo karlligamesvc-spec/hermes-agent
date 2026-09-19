@@ -344,7 +344,10 @@ function projectWorkflowDomainDeliverable(value: unknown): JsonObject {
       ? deliverable.reviews.slice(0, 100).map(projectWorkflowDomainReview)
       : [],
     runId: requireText(deliverable.runId, 'deliverable run id', 160),
-    schemaVersion: requireInteger(deliverable.schemaVersion, 'deliverable schema version', 1),
+    // The cloud contract uses a namespaced schema identifier
+    // (`deliverable/v1`), not an integer revision. Treating it as a number
+    // rejected every otherwise-valid production Deliverable after a 200.
+    schemaVersion: requireText(deliverable.schemaVersion, 'deliverable schema version', 80),
     sourceCapturedAt: optionalText(deliverable.sourceCapturedAt, 80),
     status,
     storageTarget,
