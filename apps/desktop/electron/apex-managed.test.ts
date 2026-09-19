@@ -43,6 +43,7 @@ import {
   MANAGED_PROVIDER_NAME,
   managedModelConfigYaml,
   maskRelayKey,
+  migrateApexBudgetDefaultsYaml,
   MODEL_DISABLED_PROVIDERS,
   modelDisabledProvidersYaml,
   parseLoopbackCallback,
@@ -786,8 +787,8 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.match(r.next, /^ {2}language: zh$/m)
   assert.match(r.next, /^ {2}show_reasoning: true$/m)
   assert.match(r.next, /^agent:\n(?: {2}\S+: \S+\n){2}\S/m)
-  assert.match(r.next, /^ {2}max_turns: 90$/m)
-  assert.match(r.next, /^delegation:\n {2}max_iterations: 50$/m)
+  assert.match(r.next, /^ {2}max_turns: 500$/m)
+  assert.match(r.next, /^delegation:\n {2}max_iterations: 250$/m)
   assert.match(r.next, /^tool_output:\n {2}max_lines: 2000$/m)
   assert.match(r.next, /^session_reset:\n {2}mode: none$/m)
   assert.match(r.next, /^approvals:\n {2}mode: manual$/m)
@@ -872,8 +873,8 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
   // it: the reconcile is a catch-up path, never a second opinion.
   const seeded =
     'display:\n  language: zh\n  show_reasoning: true\n' +
-    'agent:\n  image_input_mode: auto\n  max_turns: 90\n' +
-    'delegation:\n  max_iterations: 50\n' +
+    'agent:\n  image_input_mode: auto\n  max_turns: 500\n' +
+    'delegation:\n  max_iterations: 250\n' +
     'tool_output:\n  max_lines: 2000\n' +
     'session_reset:\n  mode: none\n' +
     'approvals:\n  mode: manual\n' +
@@ -885,21 +886,34 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
   assert.equal(ensureProductDefaultsYaml(seeded).changed, false)
 })
 
-test('Desktop pins relay-safe parent and child budgets without overwriting explicit values', () => {
-  // v0.20 raises the generic parent default to 500 because complex local tasks
-  // routinely exceeded 90 tool calls. Desktop uses the managed relay, so its
-  // missing-value policy is explicitly parent=90 / child=50. The add-only
-  // writer still preserves any value a user deliberately put on disk.
+test('Desktop follows Hermes parent and child budgets without overwriting explicit values', () => {
+  // hc-837 removes APEX's lower 90/50 cap. Missing values now inherit the same
+  // 500/250 deep-work envelope as Hermes while the add-only writer still
+  // preserves any value a user deliberately put on disk.
   const reconciled = ensureProductDefaultsYaml('model:\n  default: x\n').next
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
   const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
 
-  assert.equal(APEX_PRODUCT_DEFAULTS['agent.max_turns'], 90)
-  assert.equal(APEX_PRODUCT_DEFAULTS['delegation.max_iterations'], 50)
-  assert.match(reconciled, /^ {2}max_turns: 90$/m)
-  assert.match(reconciled, /^ {2}max_iterations: 50$/m)
-  assert.ok(seedBlocks.includes("'  max_turns: 90\\n'"))
-  assert.ok(seedBlocks.includes("'  max_iterations: 50\\n'"))
+  const guardBody = main.slice(
+    main.indexOf('function healConfigYamlProductBlocks'),
+    main.indexOf('// Keep the guard live while the app runs')
+  )
+
+  assert.equal(APEX_PRODUCT_DEFAULTS['agent.max_turns'], 500)
+  assert.equal(APEX_PRODUCT_DEFAULTS['delegation.max_iterations'], 250)
+  assert.match(reconciled, /^ {2}max_turns: 500$/m)
+  assert.match(reconciled, /^ {2}max_iterations: 250$/m)
+  assert.ok(seedBlocks.includes("'  max_turns: 500\\n'"))
+  assert.ok(seedBlocks.includes("'  max_iterations: 250\\n'"))
+  assert.ok(seedBlocks.includes("'_apex_budget_defaults_version: 2\\n'"))
+  assert.ok(
+    guardBody.indexOf('migrateApexBudgetDefaultsYaml(raw)') >= 0,
+    'boot/watch product guard must run the one-time budget migration'
+  )
+  assert.ok(
+    guardBody.indexOf('migrateApexBudgetDefaultsYaml(raw)') < guardBody.indexOf('ensureProductDefaultsYaml(raw)'),
+    'legacy values must migrate before missing Hermes defaults are filled'
+  )
 
   const explicit = ensureProductDefaultsYaml(
     'agent:\n  max_turns: 140\ndelegation:\n  max_iterations: 20\n'
@@ -908,6 +922,46 @@ test('Desktop pins relay-safe parent and child budgets without overwriting expli
   assert.equal(explicit.changed, true)
   assert.match(explicit.next, /^ {2}max_turns: 140$/m)
   assert.match(explicit.next, /^ {2}max_iterations: 20$/m)
+})
+
+test('hc-837 migrates only the old APEX 90/50 defaults once per config', () => {
+  const legacy =
+    'agent:\r\n' +
+    '  max_turns: 90 # old APEX default\r\n' +
+    'delegation:\r\n' +
+    '  max_iterations: 50\r\n'
+
+  const first = migrateApexBudgetDefaultsYaml(legacy)
+
+  assert.equal(first.changed, true)
+  assert.deepEqual(first.migrated, ['agent.max_turns', 'delegation.max_iterations'])
+  assert.match(first.next, /^ {2}max_turns: 500 # old APEX default\r$/m)
+  assert.match(first.next, /^ {2}max_iterations: 250\r$/m)
+  assert.match(first.next, /^_apex_budget_defaults_version: 2$/m)
+
+  const second = migrateApexBudgetDefaultsYaml(first.next)
+
+  assert.equal(second.changed, false)
+  assert.equal(second.next, first.next)
+
+  // Once marked, 90/50 can be a deliberate user choice again and the live
+  // watcher must not turn the migration into a permanent policy mandate.
+  const userReset = first.next.replace('max_turns: 500', 'max_turns: 90').replace('max_iterations: 250', 'max_iterations: 50')
+  const preserved = migrateApexBudgetDefaultsYaml(userReset)
+
+  assert.equal(preserved.changed, false)
+  assert.equal(preserved.next, userReset)
+})
+
+test('hc-837 budget migration marks custom values without changing them', () => {
+  const custom = 'agent:\n  max_turns: 140\ndelegation:\n  max_iterations: 20\n'
+  const result = migrateApexBudgetDefaultsYaml(custom)
+
+  assert.equal(result.changed, true)
+  assert.deepEqual(result.migrated, [])
+  assert.match(result.next, /^ {2}max_turns: 140$/m)
+  assert.match(result.next, /^ {2}max_iterations: 20$/m)
+  assert.match(result.next, /^_apex_budget_defaults_version: 2$/m)
 })
 
 test('hc-687 Desktop defaults preserve deep-work output while closing optional background surfaces', () => {

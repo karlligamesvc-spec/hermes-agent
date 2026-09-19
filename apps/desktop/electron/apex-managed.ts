@@ -188,14 +188,12 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 //   timezone              ''   — empty = server-local clock, which on a desktop
 //     IS the OS timezone, i.e. follow-the-OS. Also pinned, not corrected.
 //
-// Scalars only. The two iteration budgets pin
-// APEX Desktop's relay-cost envelope against upstream schema drift: v0.20
-// raised the generic parent default from 90 to 500 because complex local runs
-// routinely exceeded 90 tool calls, while each child retained an independent
-// 50-call budget. That is a reasonable generic runtime default but would
-// silently multiply managed relay exposure. We therefore seed parent=90 and
-// child=50 on Desktop; an explicit value already present in config.yaml remains
-// the user's answer under the add-only reconciliation contract below.
+// Scalars only. Keep the two iteration budgets aligned with Hermes Desktop's
+// proven deep-work defaults: 500 parent tool calls and 250 per delegated child.
+// APEX previously reduced these to 90/50 for relay-cost containment, but that
+// truncated longer business runs and delegated work. hc-837 removes that
+// product-only capability reduction; explicit user values remain the user's
+// answer under the add-only reconciliation contract below.
 // The seed's other blocks are
 // either already reconciled elsewhere in guardConfigYamlProductBlocks
 // (custom_providers, skills.disabled, plugins.enabled, model.disabled_providers)
@@ -206,8 +204,8 @@ const APEX_PRODUCT_DEFAULTS = {
   'display.language': 'zh',
   'display.show_reasoning': true,
   'agent.image_input_mode': 'auto',
-  'agent.max_turns': 90,
-  'delegation.max_iterations': 50,
+  'agent.max_turns': 500,
+  'delegation.max_iterations': 250,
   // hc-687: Desktop is the deep-work surface, so retain v0.20's full output
   // allowance while cloud IM uses 500 lines. These remain add-only below.
   'tool_output.max_lines': 2000,
@@ -223,6 +221,18 @@ const APEX_PRODUCT_DEFAULTS = {
   'proxy.enabled': false,
   timezone: ''
 }
+
+// One-time, per-config migration marker. Keeping this in config.yaml (rather
+// than process-global app state) makes the migration correct for every local
+// profile/HERMES_HOME. Once version 2 is recorded, a user may deliberately set
+// 90 or 50 again and the boot/watch guard will preserve that choice.
+const APEX_BUDGET_DEFAULTS_VERSION = 2
+const APEX_BUDGET_DEFAULTS_VERSION_KEY = '_apex_budget_defaults_version'
+
+const LEGACY_APEX_BUDGET_DEFAULTS = Object.freeze({
+  'agent.max_turns': 90,
+  'delegation.max_iterations': 50
+})
 
 // Standalone runtime plugins the product REQUIRES enabled. The runtime's
 // plugin loader is opt-in: only names listed under `plugins.enabled` in
@@ -585,6 +595,127 @@ function ensureProductDefaultsYaml(raw, defaults: any = APEX_PRODUCT_DEFAULTS) {
   const written = applyConfigYamlKeys(source, missing)
 
   return { changed: written.changed, next: written.next, added: written.applied }
+}
+
+/**
+ * Lift the old APEX-only 90/50 iteration limits to Hermes' 500/250 defaults.
+ * This is deliberately versioned instead of being a permanent rewrite rule:
+ * exact legacy defaults migrate once, while custom values are preserved and a
+ * post-migration user can still choose 90/50 without the watcher fighting it.
+ *
+ * The scalar edits use conservative line surgery so comments and mixed CRLF/LF
+ * files survive. Duplicate/inline target mappings are left untouched and
+ * unmarked, allowing a later repaired shape to be migrated safely.
+ *
+ * @param {string} raw config.yaml contents
+ * @returns {{ changed: boolean, next: string, migrated: string[], marked: boolean, skipped: string[] }}
+ */
+function migrateApexBudgetDefaultsYaml(raw) {
+  const source = String(raw || '')
+  const escape = part => String(part).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const lines = source.split('\n')
+  const markerRe = new RegExp(`^${escape(APEX_BUDGET_DEFAULTS_VERSION_KEY)}:\\s*([^#\\r]*)(?:\\s*#.*)?\\r?$`)
+  const markerLines = lines.map((line, index) => (markerRe.test(line) ? index : -1)).filter(index => index >= 0)
+
+  if (markerLines.length === 1) {
+    const markerMatch = lines[markerLines[0]].match(markerRe)
+    const version = Number.parseInt(String(markerMatch?.[1] || '').trim(), 10)
+
+    if (Number.isFinite(version) && version >= APEX_BUDGET_DEFAULTS_VERSION) {
+      return { changed: false, next: source, migrated: [], marked: true, skipped: [] }
+    }
+  } else if (markerLines.length > 1) {
+    return {
+      changed: false,
+      next: source,
+      migrated: [],
+      marked: false,
+      skipped: [APEX_BUDGET_DEFAULTS_VERSION_KEY]
+    }
+  }
+
+  const migrated = []
+  const skipped = []
+
+  const replacements = [
+    {
+      block: 'agent',
+      key: 'max_turns',
+      from: LEGACY_APEX_BUDGET_DEFAULTS['agent.max_turns'],
+      to: APEX_PRODUCT_DEFAULTS['agent.max_turns'],
+      dotted: 'agent.max_turns'
+    },
+    {
+      block: 'delegation',
+      key: 'max_iterations',
+      from: LEGACY_APEX_BUDGET_DEFAULTS['delegation.max_iterations'],
+      to: APEX_PRODUCT_DEFAULTS['delegation.max_iterations'],
+      dotted: 'delegation.max_iterations'
+    }
+  ]
+
+  for (const replacement of replacements) {
+    const blockRe = new RegExp(`^${escape(replacement.block)}:\\s*(?:#.*)?\\r?$`)
+    const blockLines = lines.map((line, index) => (blockRe.test(line) ? index : -1)).filter(index => index >= 0)
+
+    if (blockLines.length > 1) {
+      skipped.push(replacement.dotted)
+
+      continue
+    }
+
+    if (!blockLines.length) {continue}
+    const blockStart = blockLines[0]
+    let blockEnd = lines.length
+
+    for (let i = blockStart + 1; i < lines.length; i += 1) {
+      if (/^\S/.test(String(lines[i]).replace(/\r$/, ''))) {
+        blockEnd = i
+
+        break
+      }
+    }
+
+    const keyRe = new RegExp(`^(\\s{2}${escape(replacement.key)}:\\s*)([^#\\r]*?)(\\s*(?:#.*)?)?(\\r?)$`)
+    const keyLines = []
+
+    for (let i = blockStart + 1; i < blockEnd; i += 1) {
+      if (keyRe.test(lines[i])) {keyLines.push(i)}
+    }
+
+    if (keyLines.length > 1) {
+      skipped.push(replacement.dotted)
+
+      continue
+    }
+
+    if (!keyLines.length) {continue}
+    const index = keyLines[0]
+    const match = lines[index].match(keyRe)
+    const current = String(match?.[2] || '').trim()
+
+    if (current !== String(replacement.from)) {continue}
+    lines[index] = `${match?.[1]}${replacement.to}${match?.[3] || ''}${match?.[4] || ''}`
+    migrated.push(replacement.dotted)
+  }
+
+  // Do not mark a structurally ambiguous file: the guard may repair it later,
+  // at which point this migration should get another safe opportunity.
+  if (skipped.length) {
+    return { changed: false, next: source, migrated: [], marked: false, skipped }
+  }
+
+  const marked = applyConfigYamlKeys(lines.join('\n'), {
+    [APEX_BUDGET_DEFAULTS_VERSION_KEY]: APEX_BUDGET_DEFAULTS_VERSION
+  })
+
+  return {
+    changed: marked.changed,
+    next: marked.next,
+    migrated,
+    marked: true,
+    skipped: marked.skipped
+  }
 }
 
 /**
@@ -1733,6 +1864,7 @@ export {
   managedCustomProviderEntryYaml,
   managedModelConfigYaml,
   maskRelayKey,
+  migrateApexBudgetDefaultsYaml,
   MODEL_DISABLED_PROVIDERS,
   modelDisabledProvidersYaml,
   parseLoopbackCallback,

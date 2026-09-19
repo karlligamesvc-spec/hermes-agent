@@ -115,6 +115,7 @@ import {
   managedCustomProviderEntryYaml,
   managedModelConfigYaml,
   maskRelayKey,
+  migrateApexBudgetDefaultsYaml,
   MODEL_DISABLED_PROVIDERS,
   modelDisabledProvidersYaml,
   parseProvisionResponse,
@@ -17981,30 +17982,28 @@ const SEED_DISPLAY_BLOCK =
 
 // APEX product defaults appended to every seed alongside SEED_DISPLAY_BLOCK.
 // All keys exist in the runtime schema. Image/timezone match today's runtime
-// defaults; the iteration budgets intentionally differ from v0.20's generic
-// parent=500 default to pin Desktop's managed-relay cost envelope:
+// defaults; iteration budgets match Hermes' deep-work defaults:
 //   agent.image_input_mode: auto — image attachments go native only to
 //     vision-capable models, otherwise text pre-analysis (config.py agent block).
 //   timezone: '' — empty means "server-local time" (config.py top-level
 //     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
-//   agent.max_turns: 90 — main agent per-turn tool-call budget.
-//   delegation.max_iterations: 50 — independent per-child budget (same as
-//     upstream v0.20, made explicit so it cannot drift silently).
+//   agent.max_turns: 500 — main agent per-turn tool-call budget.
+//   delegation.max_iterations: 250 — independent per-child budget.
 // Top-level keys here must not collide with the other seed
 // blocks (model:/custom_providers:/display:/skills:/plugins: — see
 // seedDefaultModelConfig). skills.creation_nudge_interval is emitted by
 // seedSkillsBlockYaml so the seed still has exactly one `skills:` mapping.
 const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision;\n' +
-  '# Desktop relay budgets pinned at main=90 / child=50; durable sessions;\n' +
+  '# Hermes-aligned deep-work budgets: main=500 / child=250; durable sessions;\n' +
   '# manual approvals; periodic memory/Skill nudges and iron-proxy off;\n' +
   '# full 2,000-line tool output; empty timezone =\n' +
   '# follow the OS (server-local) clock.\n' +
   'agent:\n' +
   '  image_input_mode: auto\n' +
-  '  max_turns: 90\n' +
+  '  max_turns: 500\n' +
   'delegation:\n' +
-  '  max_iterations: 50\n' +
+  '  max_iterations: 250\n' +
   'tool_output:\n' +
   '  max_lines: 2000\n' +
   'session_reset:\n' +
@@ -18015,7 +18014,8 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '  nudge_interval: 0\n' +
   'proxy:\n' +
   '  enabled: false\n' +
-  "timezone: ''\n"
+  "timezone: ''\n" +
+  '_apex_budget_defaults_version: 2\n'
 
 // Curated domestic MoA preset (managed seed only — every slot routes through
 // the relay via the global `custom` endpoint, so BYOK installs without a relay
@@ -19968,6 +19968,21 @@ function healConfigYamlProductBlocks(reason) {
     if (skillsHeal.changed) {
       raw = skillsHeal.next
       fixed.push(`skills.disabled(+${skillsHeal.added.length})`)
+    }
+
+    // hc-837: APEX previously pinned lower 90/50 budgets than Hermes. Migrate
+    // only those exact legacy defaults once per config; custom values remain
+    // untouched and the version marker prevents the watcher from fighting a
+    // user who deliberately chooses 90/50 after the upgrade.
+    const budgetDefaultsMigration = migrateApexBudgetDefaultsYaml(raw)
+
+    if (budgetDefaultsMigration.changed) {
+      raw = budgetDefaultsMigration.next
+      fixed.push(
+        budgetDefaultsMigration.migrated.length
+          ? `budget-defaults(${budgetDefaultsMigration.migrated.join(' ')})`
+          : 'budget-defaults(version)'
+      )
     }
 
     // APEX product defaults as scalar keys (display.language,
