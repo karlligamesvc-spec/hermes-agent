@@ -72,6 +72,9 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
             <h2 className="mt-1 text-base font-semibold" id="business-start-workflows">
               {c.workflows.recommendedTitle}
             </h2>
+            <p className="mt-1 max-w-[48rem] text-xs leading-5 text-(--ui-text-tertiary)">
+              {c.workflows.homeSourceCoverage}
+            </p>
           </div>
           <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="inline" variant="textStrong">
             {c.workflows.title}

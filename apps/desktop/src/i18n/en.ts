@@ -4221,24 +4221,26 @@ export const en: Translations = {
       startGoal: 'Start a goal',
       recommendedTitle: 'Three recommended paths',
       recommendedDescription: 'Choose a proven path. Its goal opens on Start and remains editable before execution.',
+      homeSourceCoverage:
+        'Works with Douyin, Xiaohongshu, WeChat Channels, Kuaishou, Bilibili, YouTube, TikTok, and Instagram; upload the video when a direct link is unavailable.',
       additionalTitle: 'More business paths',
       pathCount: count => `${count} ${count === 1 ? 'path' : 'paths'}`,
       homePaths: {
         videoTranscript: {
           title: 'Download short-video links and transcribe',
-          summary: 'Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, Instagram',
+          summary: 'Save the original video and extract captions plus a complete verbatim transcript',
           prompt:
             'Process the short-video link I provide next. First verify whether the platform supports direct download or official captions. When available, save the original video and produce a complete verbatim transcript in original order. Cover Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram; if a platform cannot be downloaded or transcribed directly, state the limitation and ask me to upload the video file or captions.'
         },
         viralRemake: {
           title: 'Analyze and recreate a viral video shot by shot',
-          summary: 'Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, Instagram',
+          summary: 'Break down shots, pacing, captions, and action into a remake script and asset list',
           prompt:
             'Analyze the viral short-video link or file I provide next. Gather the original video, transcript, engagement data, and actual visible key frames, then break down the hook, pacing, composition, action, captions, B-roll, sound, and CTA by shot. Reuse only the abstract structure and create a clean-room script, shot list, asset list, and production plan with products, people, and media I own or am authorized to use. Do not claim frame analysis without visual evidence. Cover Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram.'
         },
         socialIntelligence: {
           title: 'Analyze products, trends, comments, and accounts',
-          summary: 'Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, Instagram',
+          summary: 'Turn public data and engagement signals into trends, opportunities, and actions',
           prompt:
             'Analyze the product, trend list, comments, or account I specify across Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram. Use only public data actually retrieved, and report sources, sample size, time range, trends, opportunities, risks, and actions. Mark platforms with no trend list or backend data explicitly; never present search results or estimates as those missing metrics.'
         }

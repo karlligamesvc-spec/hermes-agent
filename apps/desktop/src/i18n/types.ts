@@ -3622,6 +3622,7 @@ export interface Translations {
       startGoal: string
       recommendedTitle: string
       recommendedDescription: string
+      homeSourceCoverage: string
       additionalTitle: string
       pathCount: (count: number) => string
       homePaths: {

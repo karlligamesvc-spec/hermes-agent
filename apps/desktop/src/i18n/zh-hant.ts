@@ -3325,24 +3325,26 @@ export const zhHant = defineLocale({
       startGoal: '開始一個目標',
       recommendedTitle: '三條重點路徑',
       recommendedDescription: '選擇成熟路徑，目標會預填到開始頁並保持可編輯。',
+      homeSourceCoverage:
+        '可處理來源：抖音、小紅書、微信影片號、快手、嗶哩嗶哩、YouTube、TikTok、Instagram；直接連結不可用時可上傳影片。',
       additionalTitle: '其他業務路徑',
       pathCount: count => `${count} 條路徑`,
       homePaths: {
         videoTranscript: {
           title: '短影片連結下載和轉逐字稿',
-          summary: '抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram',
+          summary: '儲存原影片，擷取字幕與完整逐字稿',
           prompt:
             '請處理我接下來提供的短影片連結：先核對平台是否支援直接下載或官方字幕；能下載時儲存原影片並產出逐字、原序的完整逐字稿。支援範圍涵蓋抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram；若某平台不能直接下載或轉寫，請清楚說明限制，並請我上傳影片檔或字幕繼續。'
         },
         viralRemake: {
           title: '爆款短影片逐鏡分析和復刻',
-          summary: '抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram',
+          summary: '逐幀拆解鏡頭、節奏、字幕與動作，產出復刻腳本和素材清單',
           prompt:
             '請分析我接下來提供的爆款短影片連結或檔案：先收集原影片、逐字稿、互動資料和真實可見的關鍵畫面，再按鏡頭拆解開場鉤子、敘事節奏、構圖、動作、字幕、B-roll、音效與 CTA。然後只重用抽象結構，以我自有或已授權的產品、人物與素材產出 clean-room 復刻腳本、鏡頭表、素材清單和成片方案。沒有畫面證據時不要聲稱完成逐幀分析。'
         },
         socialIntelligence: {
           title: '產品、熱榜、評論、帳號分析',
-          summary: '抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram',
+          summary: '彙整公開資料與互動訊號，輸出趨勢、機會和行動建議',
           prompt:
             '請針對我指定的產品、熱榜、評論或帳號做跨平台分析，平台包括抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram。只使用實際取得的公開資料，列出來源、樣本量、時間範圍、趨勢、機會、風險和可執行建議；沒有熱榜或後台資料的平台請明確標示，不要用搜尋結果或推測冒充。'
         }
