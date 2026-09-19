@@ -17,25 +17,25 @@ import {
 } from '../../routes'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { projectRunDisplayState } from '../view-model/project'
-import { type BusinessWorkflowStarter, businessWorkflowStarters } from '../view-model/workflow-starters'
+import { type BusinessHomeStarter, businessHomeStarters } from '../view-model/workflow-starters'
 
 import { BusinessSection } from './business-section'
 import { WorkflowStarterCard } from './workflow-starter-card'
 
 export interface BusinessStartShelfProps {
-  onSelectWorkflow?: (workflow: BusinessWorkflowStarter) => void
+  onSelectGoal?: (starter: BusinessHomeStarter) => void
 }
 
 /**
  * Phase 1 Start shelf. Project rows and source states come from their real
  * bridges; an unavailable project API remains an explicit lifecycle message.
  */
-export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps = {}) {
+export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {}) {
   const { locale, t } = useI18n()
   const c = t.businessWorkspace
   const location = useLocation()
   const navigate = useNavigate()
-  const workflows = businessWorkflowStarters(c.workflows).filter(workflow => workflow.recommended)
+  const starters = businessHomeStarters(c.workflows)
   const projects = useWorkflowProjects(2)
   const channelStatus = useChannelStatus()
 
@@ -52,14 +52,14 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
     }
   ].filter(source => source.status.available)
 
-  const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
-    if (onSelectWorkflow) {
-      onSelectWorkflow(workflow)
+  const selectGoal = (starter: BusinessHomeStarter) => {
+    if (onSelectGoal) {
+      onSelectGoal(starter)
 
       return
     }
 
-    requestComposerInsert(workflow.prompt, { mode: 'block', target: 'main' })
+    requestComposerInsert(starter.prompt, { mode: 'block', target: 'main' })
     requestComposerFocus('main')
   }
 
@@ -79,12 +79,12 @@ export function BusinessStartShelf({ onSelectWorkflow }: BusinessStartShelfProps
         </header>
 
         <div className="apex-workflow-entry-grid grid gap-1" data-start-recommended-workflows="">
-          {workflows.map(workflow => (
+          {starters.map(starter => (
             <WorkflowStarterCard
               action={c.workflows.use}
-              key={workflow.id}
-              onSelect={() => selectWorkflow(workflow)}
-              starter={workflow}
+              key={starter.id}
+              onSelect={() => selectGoal(starter)}
+              starter={starter}
               variant="shelf"
             />
           ))}

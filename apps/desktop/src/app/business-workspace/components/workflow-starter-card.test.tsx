@@ -10,7 +10,10 @@ afterEach(cleanup)
 const recommended = [
   ['market-launch', 'assets/workflow-commerce-minimal.png'],
   ['geo-brand-audit', 'assets/workflow-geo-minimal.png'],
-  ['content-review', 'assets/workflow-content-minimal.png']
+  ['content-review', 'assets/workflow-content-minimal.png'],
+  ['video-transcript', 'assets/workflow-commerce-minimal.png'],
+  ['viral-video-remake', 'assets/workflow-geo-minimal.png'],
+  ['social-intelligence', 'assets/workflow-content-minimal.png']
 ] as const
 
 function starter(id: BusinessWorkflowStarter['id'], recommended = true): BusinessWorkflowStarter {

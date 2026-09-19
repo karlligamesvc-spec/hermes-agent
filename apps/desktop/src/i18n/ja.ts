@@ -3453,6 +3453,26 @@ export const ja = defineLocale({
       recommendedDescription: '実績あるパスを選ぶと、開始画面で目標を編集してから実行できます。',
       additionalTitle: 'その他の業務パス',
       pathCount: count => `${count} パス`,
+      homePaths: {
+        videoTranscript: {
+          title: 'ショート動画リンクの保存と文字起こし',
+          summary: 'Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram',
+          prompt:
+            '次に送るショート動画リンクを処理してください。まず直接ダウンロードまたは公式字幕に対応しているか確認し、可能なら元動画を保存して発話どおり・元の順序の完全な文字起こしを作成してください。対象は Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram です。直接保存や文字起こしができない場合は制限を明示し、動画ファイルまたは字幕のアップロードを依頼してください。'
+        },
+        viralRemake: {
+          title: '人気ショート動画のショット分析と再構成',
+          summary: 'Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram',
+          prompt:
+            '次に送る人気ショート動画のリンクまたはファイルを分析してください。元動画、文字起こし、反応データ、実際に確認できるキーフレームを集め、フック、テンポ、構図、動き、字幕、B-roll、音、CTA をショット単位で分解してください。その後、抽象的な構造だけを再利用し、私が所有または利用許諾を持つ商品・人物・素材で clean-room の台本、ショットリスト、素材一覧、制作案を作成してください。画面の証拠がない場合はフレーム分析を完了したと主張しないでください。'
+        },
+        socialIntelligence: {
+          title: '商品・トレンド・コメント・アカウント分析',
+          summary: 'Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram',
+          prompt:
+            '指定する商品、トレンド、コメント、またはアカウントを Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram 横断で分析してください。実際に取得した公開データだけを使い、出典、サンプル数、期間、傾向、機会、リスク、実行案を示してください。トレンド一覧や管理画面データがないプラットフォームは明記し、検索結果や推測で代用しないでください。'
+        }
+      },
       commerce: {
         title: '市場機会から販売素材まで',
         summary: 'データ収集、機会分析、位置付け、制作',

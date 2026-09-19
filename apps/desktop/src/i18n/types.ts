@@ -3624,6 +3624,11 @@ export interface Translations {
       recommendedDescription: string
       additionalTitle: string
       pathCount: (count: number) => string
+      homePaths: {
+        videoTranscript: { title: string; summary: string; prompt: string }
+        viralRemake: { title: string; summary: string; prompt: string }
+        socialIntelligence: { title: string; summary: string; prompt: string }
+      }
       commerce: { title: string; summary: string; prompt: string }
       insight: { title: string; summary: string; prompt: string }
       content: { title: string; summary: string; prompt: string }

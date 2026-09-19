@@ -3909,6 +3909,26 @@ export const zh = defineLocale({
       recommendedDescription: '选择一个成熟路径，目标会预填到开始页并保持可编辑。',
       additionalTitle: '其他业务路径',
       pathCount: count => `${count} 条路径`,
+      homePaths: {
+        videoTranscript: {
+          title: '短视频链接下载和转逐字稿',
+          summary: '抖音、小红书、微信视频、快手、哔哩哔哩、YouTube、TikTok、Instagram',
+          prompt:
+            '请处理我接下来提供的短视频链接：先核对平台是否支持直接下载或官方字幕；能下载时保存原视频并生成逐字、原序的完整逐字稿。支持范围覆盖抖音、小红书、微信视频、快手、哔哩哔哩、YouTube、TikTok、Instagram；如果某个平台不能直接下载或转写，请明确说明限制，并让我上传视频文件或字幕继续。'
+        },
+        viralRemake: {
+          title: '爆款短视频逐帧分析和复刻',
+          summary: '抖音、小红书、微信视频、快手、哔哩哔哩、YouTube、TikTok、Instagram',
+          prompt:
+            '请分析我接下来提供的爆款短视频链接或文件：先收集原视频、逐字稿、互动数据和真实可见的关键画面，再按镜头拆解开场钩子、叙事节奏、构图、动作、字幕、B-roll、音效与 CTA。然后只复用抽象结构，用我自有或已授权的产品、人物和素材生成 clean-room 复刻脚本、镜头表、素材清单和成片方案。没有画面证据时不要声称完成逐帧分析。平台包括抖音、小红书、微信视频、快手、哔哩哔哩、YouTube、TikTok、Instagram。'
+        },
+        socialIntelligence: {
+          title: '产品、热榜、评论、账号分析',
+          summary: '抖音、小红书、微信视频、快手、哔哩哔哩、YouTube、TikTok、Instagram',
+          prompt:
+            '请围绕我指定的产品、热榜、评论或账号做跨平台分析，平台包括抖音、小红书、微信视频、快手、哔哩哔哩、YouTube、TikTok、Instagram。只使用实际取得的公开数据，列出来源、样本量、时间范围、趋势、机会、风险和可执行建议；没有热榜或后台数据的平台请明确标注，不要用搜索结果或推测冒充。'
+        }
+      },
       commerce: {
         title: '从市场机会到上架素材',
         summary: '数据采集、机会分析、定位与生产',

@@ -10,7 +10,7 @@ import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '.
 import { startWorkflowGoal } from '../api/adapters'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
-import type { BusinessWorkflowStarter } from '../view-model/workflow-starters'
+import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
 import { businessWorkflowStarters } from '../view-model/workflow-starters'
 
 export interface BusinessStartHomeProps {
@@ -131,10 +131,11 @@ export function BusinessStartHome({
     setDomainError(false)
   }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
 
-  const selectWorkflow = (workflow: BusinessWorkflowStarter) => {
-    setSelectedWorkflow(workflow)
+  const selectGoal = (starter: BusinessHomeStarter) => {
+    setSelectedWorkflow(null)
     setSelectedWorkflowIsTestData(false)
-    setGoalDraft(workflow.prompt)
+    setDomainError(false)
+    setGoalDraft(starter.prompt)
     focusGoal()
   }
 
@@ -252,7 +253,7 @@ export function BusinessStartHome({
             {t.businessWorkspace.workflowDomain.startFailed}
           </p>
         )}
-        <BusinessStartShelf onSelectWorkflow={selectWorkflow} />
+        <BusinessStartShelf onSelectGoal={selectGoal} />
       </div>
     </div>
   )
