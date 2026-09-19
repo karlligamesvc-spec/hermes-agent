@@ -1,11 +1,13 @@
 # APEX Desktop runtime integrity and repair contract
 
-Ticket: hc-727
+Tickets: hc-727, hc-835
 
 ## Product behavior
 
 - A runtime is usable only when its source entrypoint exists and its own Python
-  can import `yaml`, `dotenv`, and `hermes_cli.config`.
+  can import the complete Desktop launch boundary: `yaml`, `dotenv`,
+  `hermes_cli.config`, `fastapi`, `uvicorn`, and the platform PTY module
+  (`winpty` on Windows; `ptyprocess` on macOS/Linux).
 - A bootstrap marker, `python.exe`, `hermes.exe`, package metadata, or a clean
   `uv sync --check` result cannot independently attest runtime health.
 - Startup must not adopt or fall back to an on-disk runtime that fails the
@@ -16,6 +18,9 @@ Ticket: hc-727
 - Source installers may fast-skip unchanged dependencies only after the same
   import probe succeeds. A metadata-clean but import-broken environment forces
   a locked reinstall and publishes no success marker until the probe passes.
+- Windows installer success is fail-closed: the baseline gate runs before the
+  venv transaction commits, and a last-resort web dependency repair targets the
+  selected interpreter explicitly and re-probes it before reporting success.
 - Runtime bundle publication smoke must execute the same config dependency
   boundary before and after relocation. A bundle missing PyYAML is not
   publishable.
@@ -32,8 +37,9 @@ Ticket: hc-727
 
 ## Failure states
 
-- Missing PyYAML or another launch dependency fails the runtime probe even if
-  the interpreter and dist-info remain on disk.
+- Missing PyYAML, FastAPI, Uvicorn, the platform PTY package, or another launch
+  dependency fails the runtime probe even if the interpreter and dist-info
+  remain on disk.
 - A failing probe prevents pre-bootstrap adoption and post-bootstrap fallback.
 - A failing probe selects repair on packaged Windows; it must not loop through
   the gentle updater against the same incomplete venv.
@@ -49,8 +55,12 @@ cd ../..
 ./scripts/run_tests.sh tests/test_install_sh_fast_update_channel.py -q
 bash -n scripts/install.sh
 node --check scripts/build-runtime-bundle.mjs
+# Windows or a CI Windows runner:
+pwsh -NoProfile -File scripts/tests/test-install-ps1-runtime-integrity.ps1
 ```
 
 The bundle smoke command requires a built platform archive and is executed by
 the runtime-bundle release workflow. The local unit smoke proves selection and
-fast-path behavior; it does not substitute for Windows signed-package repair.
+fast-path behavior. The PowerShell smoke exercises the real Windows probe, but
+neither local smoke substitutes for a packaged Windows repair run; formal
+Windows installers remain unsigned until the signing program is completed.

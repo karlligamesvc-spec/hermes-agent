@@ -87,6 +87,20 @@ test('Windows second-instance delivers the URL extracted from argv', () => {
   assert.equal(delivered[0]?.params.code, 'win-code')
 })
 
+test('login completion CTA uses a non-auth APEX deep link that is safe to deliver', () => {
+  const { delivered, router } = recorder()
+  router.markRendererReady()
+
+  const result = router.accept('apexnodes://open?source=login-complete', 'second-instance')
+
+  assert.deepEqual(result, {
+    accepted: true,
+    disposition: 'delivered',
+    payload: { kind: 'open', name: '', params: { source: 'login-complete' } }
+  })
+  assert.deepEqual(delivered, [{ kind: 'open', name: '', params: { source: 'login-complete' } }])
+})
+
 test('a login received during startup is queued and flushed exactly once', () => {
   const { delivered, router } = recorder()
 
