@@ -93,7 +93,7 @@ describe('APEX route contract', () => {
       { id: 'projects', path: '/projects' },
       { id: 'workflows', path: '/workflows' },
       { id: 'scheduled-runs', path: '/cron' },
-      { id: 'deliverables', path: '/deliverables' },
+      { id: 'deliverables', path: '/artifacts' },
       { id: 'assistant', path: '/assistant' },
       { id: 'history', path: '/history' }
     ])
