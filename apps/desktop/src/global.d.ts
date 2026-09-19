@@ -467,6 +467,7 @@ declare global {
         connectionId?: null | string
         path: string
         profile?: null | string
+        sessionId?: string
         suggestedName?: string
       }) => Promise<{
         canceled?: boolean
@@ -1889,7 +1890,7 @@ export interface DesktopWorkflowDomainDetailedDeliverable {
   projectId: string
   reviews: DesktopWorkflowDomainDetailedReview[]
   runId: string
-  schemaVersion: number
+  schemaVersion: string
   sourceCapturedAt: null | string
   status: string
   storageTarget: null | { id: string; kind: 'user_file' }

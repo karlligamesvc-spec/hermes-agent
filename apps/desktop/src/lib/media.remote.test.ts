@@ -254,9 +254,24 @@ describe('downloadGatewayMediaFile', () => {
 
     expect(saveGatewayFile).toHaveBeenCalledWith({
       connectionId: 'work-ssh',
-      path: '/Users/me/project/a b.md',
+      path: 'file:///Users/me/project/a%20b.md',
       profile: 'docker-gw',
       suggestedName: 'a b.md'
+    })
+  })
+
+  it('passes the producing session scope when downloading a historical artifact', async () => {
+    await downloadGatewayMediaFile('./output/report.md', {
+      sessionId: 'origin-session',
+      profile: 'origin-profile'
+    })
+
+    expect(saveGatewayFile).toHaveBeenCalledWith({
+      connectionId: 'work-ssh',
+      path: './output/report.md',
+      profile: 'origin-profile',
+      sessionId: 'origin-session',
+      suggestedName: 'report.md'
     })
   })
 

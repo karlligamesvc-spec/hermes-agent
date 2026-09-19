@@ -31,6 +31,7 @@ import {
   useLinkTitle
 } from '@/lib/external-link'
 import { FileImage, FileText, FolderOpen, Link2 } from '@/lib/icons'
+import { downloadGatewayMediaFile, isArtifactFilePath, isRemoteGateway } from '@/lib/media'
 import { normalize } from '@/lib/text'
 import { formatBusinessDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -42,13 +43,7 @@ import { openSession } from '../open-session'
 import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import {
-  ARTIFACT_FILTERS,
-  type ArtifactFilter,
-  artifactImageSrc,
-  type ArtifactRecord,
-  openArtifactHref
-} from './artifact-utils'
+import { ARTIFACT_FILTERS, type ArtifactFilter, artifactImageSrc, type ArtifactRecord } from './artifact-utils'
 import { loadArtifactsForSessions } from './artifact-utils'
 
 function formatArtifactTime(timestamp: number, locale: Locale): string {
@@ -93,7 +88,7 @@ function paginationItems(page: number, pageCount: number): Array<number | 'ellip
 }
 
 type CellCtx = {
-  onOpen: (href: string) => void | Promise<void>
+  onOpen: (artifact: ArtifactRecord) => void | Promise<void>
   onOpenChat: (sessionId: string) => void
 }
 
@@ -271,9 +266,27 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
   }, [artifacts])
 
   const openArtifact = useCallback(
-    async (href: string) => {
+    async (artifact: ArtifactRecord) => {
+      const { href } = artifact
+
       try {
-        await openArtifactHref(href)
+        // Gateway-local paths belong to the session that produced them. Keep
+        // relative paths and file URIs on that gateway instead of expanding
+        // them against the Desktop machine's cwd/home.
+        if (isRemoteGateway() && isArtifactFilePath(artifact.value)) {
+          await downloadGatewayMediaFile(artifact.value, {
+            sessionId: artifact.sessionId,
+            profile: artifact.profile
+          })
+
+          return
+        }
+
+        if (window.hermesDesktop?.openExternal) {
+          await window.hermesDesktop.openExternal(href)
+        } else {
+          window.open(href, '_blank', 'noopener,noreferrer')
+        }
       } catch (err) {
         notifyError(err, a.openFailed)
       }
@@ -579,7 +592,7 @@ const PrimaryCell = memo(function PrimaryCell({ artifact, ctx }: { artifact: Art
   return (
     <ArtifactCellAction
       href={isLink ? artifact.href : undefined}
-      onClick={isLink ? undefined : () => void ctx.onOpen(artifact.href)}
+      onClick={isLink ? undefined : () => void ctx.onOpen(artifact)}
       title={label}
     >
       <span className="mt-0.5 grid size-6 shrink-0 place-items-center self-start rounded-md bg-(--ui-bg-tertiary) text-(--ui-text-tertiary)">

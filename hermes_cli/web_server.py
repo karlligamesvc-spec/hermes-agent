@@ -2378,7 +2378,7 @@ _FS_MIME_TYPES = {
 }
 
 
-def _fs_path(raw_path: str) -> Path:
+def _fs_path(raw_path: str, *, cwd: str | None = None) -> Path:
     raw = str(raw_path or "").strip()
     if not raw:
         raise HTTPException(status_code=400, detail="Path is required")
@@ -2387,12 +2387,18 @@ def _fs_path(raw_path: str) -> Path:
     try:
         if raw.lower().startswith("file:"):
             parsed = urllib.parse.urlparse(raw)
-            if parsed.netloc and parsed.netloc not in {"", "localhost"}:
-                raise ValueError
-            raw = urllib.request.url2pathname(parsed.path)
+            uri_path = parsed.path
+            if parsed.netloc and parsed.netloc.lower() != "localhost":
+                if os.name != "nt":
+                    raise ValueError
+                uri_path = f"//{parsed.netloc}{uri_path}"
+            raw = urllib.request.url2pathname(uri_path)
         candidate = Path(raw).expanduser()
         if not candidate.is_absolute():
-            candidate = Path.cwd() / candidate
+            base = Path(cwd).expanduser() if cwd is not None else Path.cwd()
+            if not base.is_absolute():
+                raise HTTPException(status_code=400, detail="Session working directory is unavailable")
+            candidate = base / candidate
         return candidate.resolve(strict=False)
     except (OSError, RuntimeError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid path")
@@ -3217,9 +3223,27 @@ async def fs_write_text(payload: FsWriteText):
     return {"ok": True, "path": str(target), "byteSize": len(text.encode("utf-8"))}
 
 
+async def _fs_download_path(path: str, profile: Optional[str], session_id: Optional[str]) -> Path:
+    if session_id is not None:
+        if not session_id.strip():
+            raise HTTPException(status_code=404, detail="Session not found")
+        session = await get_session_detail(session_id, profile)
+        # Validate ownership even for absolute paths; never trust a client cwd.
+        return _fs_path(path, cwd=session.get("cwd") or "")
+    if profile is not None:
+        _cron_profile_home(profile)
+    return _fs_path(path)
+
+
 @app.get("/api/fs/read-data-url")
-async def fs_read_data_url(path: str):
-    target, st = _fs_regular_file(_fs_path(path))
+async def fs_read_data_url(
+    path: str,
+    profile: Optional[str] = None,
+    session_id: Optional[str] = None,
+):
+    target, st = _fs_regular_file(await _fs_download_path(path, profile, session_id))
+    if _is_sensitive_path(target):
+        raise HTTPException(status_code=403, detail="Access to sensitive files is not allowed")
     if st.st_size > _FS_DATA_URL_MAX_BYTES:
         raise HTTPException(status_code=413, detail="File too large")
     try:
@@ -3232,8 +3256,12 @@ async def fs_read_data_url(path: str):
 
 
 @app.get("/api/fs/download")
-async def fs_download(path: str):
-    target, _st = _fs_regular_file(_fs_path(path))
+async def fs_download(
+    path: str,
+    profile: Optional[str] = None,
+    session_id: Optional[str] = None,
+):
+    target, _st = _fs_regular_file(await _fs_download_path(path, profile, session_id))
     if _is_sensitive_path(target):
         raise HTTPException(status_code=403, detail="Access to sensitive files is not allowed")
     return FileResponse(

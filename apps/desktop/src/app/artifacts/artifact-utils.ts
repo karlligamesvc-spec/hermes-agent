@@ -1,7 +1,11 @@
-import { downloadGatewayMediaFile, isRemoteGateway, mediaExternalUrl } from '@/lib/media'
-import { resolveMediaDisplaySrc } from "@/lib/media"
+import {
+  downloadGatewayMediaFile,
+  isArtifactFilePath,
+  isRemoteGateway,
+  mediaExternalUrl,
+  resolveMediaDisplaySrc
+} from '@/lib/media'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
-
 
 export type ArtifactKind = 'image' | 'file' | 'link'
 export type ArtifactFilter = 'all' | ArtifactKind
@@ -14,6 +18,7 @@ export interface ArtifactRecord {
   href: string
   label: string
   sessionId: string
+  profile?: string
   sessionTitle: string
   timestamp: number
 }
@@ -155,13 +160,8 @@ function looksLikePathOrUrl(value: string): boolean {
   return (
     value.startsWith('http://') ||
     value.startsWith('https://') ||
-    value.startsWith('file://') ||
     value.startsWith('data:image/') ||
-    value.startsWith('/') ||
-    value.startsWith('./') ||
-    value.startsWith('../') ||
-    value.startsWith('~/') ||
-    isWindowsPath(value)
+    isArtifactFilePath(value)
   )
 }
 
@@ -178,14 +178,7 @@ function artifactKind(value: string): ArtifactKind {
     return 'image'
   }
 
-  if (
-    value.startsWith('/') ||
-    value.startsWith('./') ||
-    value.startsWith('../') ||
-    value.startsWith('~/') ||
-    value.startsWith('file://') ||
-    isWindowsPath(value)
-  ) {
+  if (isArtifactFilePath(value)) {
     return 'file'
   }
 
@@ -440,6 +433,7 @@ export function collectArtifactsForSession(session: SessionInfo, messages: Sessi
         href: artifactHref(value),
         label: artifactLabel(value),
         sessionId: session.id,
+        profile: session.profile,
         sessionTitle: title,
         timestamp: artifactTimestamp(message, session)
       })
