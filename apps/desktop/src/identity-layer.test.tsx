@@ -697,7 +697,7 @@ describe('identity: the APEX business shell stays user-facing', () => {
       '/projects',
       '/workflows',
       '/cron',
-      '/deliverables',
+      '/artifacts',
       '/assistant',
       '/history'
     ])

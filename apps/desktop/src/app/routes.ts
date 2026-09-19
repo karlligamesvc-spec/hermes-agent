@@ -42,7 +42,7 @@ export const APEX_PRIMARY_NAVIGATION = [
   { id: 'projects', path: PROJECTS_ROUTE },
   { id: 'workflows', path: WORKFLOWS_ROUTE },
   { id: 'scheduled-runs', path: CRON_ROUTE },
-  { id: 'deliverables', path: DELIVERABLES_ROUTE },
+  { id: 'deliverables', path: ARTIFACTS_ROUTE },
   { id: 'assistant', path: ASSISTANT_ROUTE },
   { id: 'history', path: HISTORY_ROUTE }
 ] as const
