@@ -50,54 +50,76 @@ test('canImportHermesCli returns false when binary does not exist', () => {
   assert.equal(canImportHermesCli(ghost), false)
 })
 
-test('hermes runtime import probe checks config dependencies', () => {
-  const probe = hermesRuntimeImportProbe()
+test('hermes runtime import probe checks the full Desktop launch boundary', () => {
+  const probe = hermesRuntimeImportProbe('win32')
   assert.match(probe, /\bimport yaml\b/)
   // dotenv is the first third-party import on the CLI boot path
   // (hermes_cli/env_loader.py); a mid-update venv missing python-dotenv
   // passed the old probe and produced an unrecoverable boot loop.
   assert.match(probe, /\bimport dotenv\b/)
   assert.match(probe, /\bimport hermes_cli\.config\b/)
+  assert.match(probe, /\bimport fastapi, uvicorn, winpty\b/)
+
+  assert.match(hermesRuntimeImportProbe('darwin'), /\bimport fastapi, uvicorn, ptyprocess\b/)
+  assert.match(hermesRuntimeImportProbe('linux'), /\bimport fastapi, uvicorn, ptyprocess\b/)
 })
 
-test('runtime integrity probe rejects a real interpreter environment missing PyYAML', { skip: process.platform === 'win32' }, () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-runtime-integrity-'))
-  const packageDir = path.join(root, 'hermes_cli')
-  const wrapper = path.join(root, 'python-no-site')
+test(
+  'runtime integrity probe rejects a real interpreter environment missing PyYAML',
+  { skip: process.platform === 'win32' },
+  () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-runtime-integrity-'))
+    const packageDir = path.join(root, 'hermes_cli')
+    const wrapper = path.join(root, 'python-no-site')
 
-  fs.mkdirSync(packageDir)
-  fs.writeFileSync(path.join(packageDir, '__init__.py'), '')
-  fs.writeFileSync(path.join(packageDir, 'config.py'), 'import yaml\n')
-  fs.writeFileSync(path.join(root, 'dotenv.py'), '')
-  fs.writeFileSync(wrapper, '#!/bin/sh\nexec /usr/bin/python3 -S "$@"\n')
-  fs.chmodSync(wrapper, 0o755)
+    fs.mkdirSync(packageDir)
+    fs.writeFileSync(path.join(packageDir, '__init__.py'), '')
+    fs.writeFileSync(path.join(packageDir, 'config.py'), 'import yaml\n')
+    fs.writeFileSync(path.join(root, 'dotenv.py'), '')
+    fs.writeFileSync(wrapper, '#!/bin/sh\nexec /usr/bin/python3 -S "$@"\n')
+    fs.chmodSync(wrapper, 0o755)
 
-  try {
-    const missingYaml = probeHermesRuntimeIntegrity({
-      root,
-      pythonPath: wrapper,
-      sourcePresent: true,
-      pythonPresent: true,
-      inheritedPythonPath: ''
-    })
+    try {
+      const missingYaml = probeHermesRuntimeIntegrity({
+        root,
+        pythonPath: wrapper,
+        sourcePresent: true,
+        pythonPresent: true,
+        inheritedPythonPath: ''
+      })
 
-    assert.deepEqual(missingYaml, { sourcePresent: true, runtimeImportable: false })
+      assert.deepEqual(missingYaml, { sourcePresent: true, runtimeImportable: false })
 
-    fs.writeFileSync(path.join(root, 'yaml.py'), '')
+      fs.writeFileSync(path.join(root, 'yaml.py'), '')
 
-    const complete = probeHermesRuntimeIntegrity({
-      root,
-      pythonPath: wrapper,
-      sourcePresent: true,
-      pythonPresent: true,
-      inheritedPythonPath: ''
-    })
+      const missingGateway = probeHermesRuntimeIntegrity({
+        root,
+        pythonPath: wrapper,
+        sourcePresent: true,
+        pythonPresent: true,
+        inheritedPythonPath: ''
+      })
 
-    assert.deepEqual(complete, { sourcePresent: true, runtimeImportable: true })
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true })
+      assert.deepEqual(missingGateway, { sourcePresent: true, runtimeImportable: false })
+
+      fs.writeFileSync(path.join(root, 'fastapi.py'), '')
+      fs.writeFileSync(path.join(root, 'uvicorn.py'), '')
+      fs.writeFileSync(path.join(root, 'ptyprocess.py'), '')
+
+      const complete = probeHermesRuntimeIntegrity({
+        root,
+        pythonPath: wrapper,
+        sourcePresent: true,
+        pythonPresent: true,
+        inheritedPythonPath: ''
+      })
+
+      assert.deepEqual(complete, { sourcePresent: true, runtimeImportable: true })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   }
-})
+)
 
 test('explicit Hermes override is authoritative', () => {
   assert.equal(shouldTrustHermesOverride('/nix/store/abc/bin/hermes'), true)

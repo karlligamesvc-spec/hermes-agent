@@ -3092,7 +3092,7 @@ function Test-HermesRuntimeImports {
         # and turn either a healthy or broken runtime into a false verdict.
         Push-Location $InstallDir
         $locationPushed = $true
-        & $PythonExe -c "import yaml; import dotenv; import hermes_cli.config" 2>&1 | Out-Null
+        & $PythonExe -c "import yaml; import dotenv; import hermes_cli.config; import fastapi, uvicorn, winpty" 2>&1 | Out-Null
         return ($LASTEXITCODE -eq 0)
     } finally {
         if ($locationPushed) { Pop-Location }
@@ -3428,7 +3428,7 @@ except Exception:
         # regardless of what was written to stderr).
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        & $venvPython -c "import yaml; import dotenv; import hermes_cli.config; import openai; import rich; import prompt_toolkit" 2>&1 | Out-Null
+        & $venvPython -c "import yaml; import dotenv; import hermes_cli.config; import fastapi; import uvicorn; import winpty; import openai; import rich; import prompt_toolkit" 2>&1 | Out-Null
         $importExitCode = $LASTEXITCODE
         $ErrorActionPreference = $prevEAP
         if ($importExitCode -ne 0) {
@@ -3438,7 +3438,7 @@ except Exception:
             } else {
                 "Recover with: cd '$InstallDir'; `$env:UV_PROJECT_ENVIRONMENT='$InstallDir\venv'; uv sync --extra all --locked"
             }
-            throw "Baseline imports failed in $InstallDir\venv (yaml/dotenv/hermes_cli.config/openai/rich/prompt_toolkit). The install completed but dependencies are not in the venv. $hint"
+            throw "Baseline imports failed in $InstallDir\venv (yaml/dotenv/hermes_cli.config/fastapi/uvicorn/winpty/openai/rich/prompt_toolkit). The install completed but dependencies are not in the venv. $hint"
         }
         Write-Success "Baseline imports verified in venv"
     }
@@ -3525,12 +3525,17 @@ print(','.join(scripts))
         if (-not $webOk) {
             Write-Warn "fastapi/uvicorn not importable -- `hermes dashboard` will not work."
             Write-Info "Attempting targeted install of [web] extra as last resort..."
-            & $UvCmd pip install -e ".[web]"
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "[web] extra installed; `hermes dashboard` should now work."
-            } else {
-                Write-Warn "Could not install [web] extra. Run manually: uv pip install --python `"$pythonExe`" `"fastapi>=0.104,<1`" `"uvicorn[standard]>=0.24,<1`""
+            Invoke-NativeWithRelaxedErrorAction { & $UvCmd pip install --python $pythonExe -e ".[web]" }
+            $installExitCode = $LASTEXITCODE
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            & $pythonExe -c "import fastapi, uvicorn" 2>&1 | Out-Null
+            $repairProbeExitCode = $LASTEXITCODE
+            $ErrorActionPreference = $prevEAP
+            if ($installExitCode -ne 0 -or $repairProbeExitCode -ne 0) {
+                throw "Could not repair the dashboard dependencies in $pythonExe. Re-run the installer; it will rebuild the incomplete runtime."
             }
+            Write-Success "[web] extra installed and verified."
         }
         if (-not $webServerSyntaxOk) {
             throw "dashboard backend source failed syntax check: hermes_cli/web_server.py"

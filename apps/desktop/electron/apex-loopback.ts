@@ -31,23 +31,78 @@ import { parseLoopbackCallback } from './apex-managed'
 // has to sign in in a browser tab, so this is generous.
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
 
-// Tiny self-contained HTML the browser shows after the redirect. No external
-// assets (the desktop has no web server for the loopback to reference).
-function resultPage(title, body) {
-  return (
-    '<!doctype html><html lang="zh"><head><meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    `<title>${title}</title>` +
-    '<style>html{color-scheme:light dark}body{font-family:-apple-system,BlinkMacSystemFont,' +
-    '"Segoe UI",system-ui,sans-serif;display:flex;min-height:100vh;margin:0;align-items:center;' +
-    'justify-content:center;text-align:center;padding:2rem}main{max-width:24rem}' +
-    'h1{font-size:1.125rem;margin:0 0 .5rem}p{opacity:.7;margin:0;line-height:1.5}</style>' +
-    `</head><body><main><h1>${title}</h1><p>${body}</p></main></body></html>`
+// Tabler Icons 3.44.0, already used by Desktop. Kept as data-image assets so
+// the loopback page remains self-contained and never depends on a CDN.
+const SUCCESS_ICON =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjIgMiAyMCAyMCI+PHBhdGggZmlsbD0iIzAwYzg5NiIgZD0iTTcgMy4zNGExMCAxMCAwIDEgMSAtNC45OTUgOC45ODRsLS4wMDUgLS4zMjRsLjAwNSAtLjMyNGExMCAxMCAwIDAgMSA0Ljk5NSAtOC4zMzZ6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTE1LjcwNyA5LjI5M2ExIDEgMCAwIDAgLTEuMzIgLS4wODNsLS4wOTQgLjA4M2wtMy4yOTMgMy4yOTJsLTEuMjkzIC0xLjI5MmwtLjA5NCAtLjA4M2ExIDEgMCAwIDAgLTEuNDAzIDEuNDAzbC4wODMgLjA5NGwyIDJsLjA5NCAuMDgzYTEgMSAwIDAgMCAxLjIyNiAwbC4wOTQgLS4wODNsNCAtNGwuMDgzIC0uMDk0YTEgMSAwIDAgMCAtLjA4MyAtMS4zMnoiLz48L3N2Zz4='
+
+const FAILURE_ICON =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjIgMiAyMCAyMCI+PHBhdGggZmlsbD0iI2ZmNWM3MCIgZD0iTTcgMy4zNGExMCAxMCAwIDEgMSAtNC45OTUgOC45ODRsLS4wMDUgLS4zMjRsLjAwNSAtLjMyNGExMCAxMCAwIDAgMSA0Ljk5NSAtOC4zMzZ6Ii8+PHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZD0iTTE4IDZsLTEyIDEyTTYgNmwxMiAxMiIvPjwvc3ZnPg=='
+
+const OPEN_ICON =
+  'data:image/svg+xml;base64,PHN2ZwogIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICB2aWV3Qm94PSIwIDAgMjQgMjQiCiAgZmlsbD0ibm9uZSIKICBzdHJva2U9IiMxODE4MWIiCiAgc3Ryb2tlLXdpZHRoPSIyIgogIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIKICBzdHJva2UtbGluZWpvaW49InJvdW5kIgo+PHBhdGggc3Ryb2tlPSJub25lIiBkPSJNMCAwaDI0djI0SDB6IiBmaWxsPSJub25lIiAvPjxwYXRoIGQ9Ik0xMiA2aC02YTIgMiAwIDAgMCAtMiAydjEwYTIgMiAwIDAgMCAyIDJoMTBhMiAyIDAgMCAwIDIgLTJ2LTYiIC8+PHBhdGggZD0iTTExIDEzbDkgLTkiIC8+PHBhdGggZD0iTTE1IDRoNXY1IiAvPjwvc3ZnPg=='
+
+function escapeHtml(value: string) {
+  return value.replace(
+    /[&<>"']/g,
+    char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]
   )
 }
 
-const SUCCESS_HTML = resultPage('登录成功', '已完成登录，请返回 APEX 桌面应用继续。')
-const FAILURE_HTML = resultPage('登录失败', '登录未完成，请返回桌面应用重试。')
+// Self-contained browser result page. The custom-scheme CTA returns focus to
+// the installed app; it deliberately uses `open`, never the one-time login
+// route, so it cannot replay or manufacture an auth callback.
+function resultPage({ title, body, success }: { title: string; body: string; success: boolean }) {
+  const safeTitle = escapeHtml(title)
+  const safeBody = escapeHtml(body)
+  const statusIcon = success ? SUCCESS_ICON : FAILURE_ICON
+
+  return (
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    `<title>${safeTitle} · APEX</title>` +
+    '<style>:root{color-scheme:dark;font-family:Inter,"SF Pro Display","Segoe UI",' +
+    '"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:#151515;color:#f7f7f7}' +
+    '*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:48px 40px}' +
+    'main{width:min(688px,100%);text-align:center;transform:translateY(-12px)}' +
+    '.status{display:block;width:72px;height:72px;margin:0 auto 28px}' +
+    'h1{margin:0;font-size:32px;line-height:1.25;font-weight:750;letter-spacing:-.02em}' +
+    'p{margin:23px auto 0;max-width:680px;color:#9b9b9f;font-size:27px;line-height:1.8;font-weight:600}' +
+    'a{margin-top:78px;width:100%;min-height:72px;border-radius:15px;display:flex;align-items:center;' +
+    'justify-content:center;gap:16px;background:#f1f1f2;color:#18181b;text-decoration:none;font-size:28px;' +
+    'line-height:1;font-weight:700;transition:background-color .16s ease,transform .16s ease}' +
+    'a:hover{background:#fff}a:active{transform:scale(.99)}a:focus-visible{outline:3px solid #00c896;' +
+    'outline-offset:4px}.open-icon{width:29px;height:29px}' +
+    '@media(max-width:620px){body{padding:32px 24px}.status{width:64px;height:64px;margin-bottom:28px}' +
+    'h1{font-size:28px}p{font-size:20px;line-height:1.65}a{margin-top:48px;min-height:64px;font-size:22px}}' +
+    '@media(prefers-reduced-motion:reduce){a{transition:none}}</style>' +
+    `</head><body><main><img class="status" src="${statusIcon}" alt="">` +
+    `<h1>${safeTitle}</h1><p>${safeBody}</p>` +
+    `<a href="apexnodes://open?source=login-complete"><img class="open-icon" src="${OPEN_ICON}" alt="">` +
+    '<span>打开 APEX</span></a></main></body></html>'
+  )
+}
+
+const SUCCESS_HTML = resultPage({
+  title: '登录已完成',
+  body: '授权结果正在同步到 APEX 桌面端，请返回 App 等待登录完成。',
+  success: true
+})
+
+const FAILURE_HTML = resultPage({
+  title: '登录未完成',
+  body: '授权结果未能同步，请返回 APEX 桌面端重新登录。',
+  success: false
+})
+
+const HTML_HEADERS = {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Cache-Control': 'no-store',
+  'Content-Security-Policy':
+    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff'
+}
 
 /**
  * Generate a URL-safe random state token for CSRF protection.
@@ -120,7 +175,10 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     }
 
     const fail = reason => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
+
       settled = true
       cleanup()
       const err: any = new Error(`Loopback login failed: ${reason}`)
@@ -129,7 +187,10 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
     }
 
     const succeed = token => {
-      if (settled) {return}
+      if (settled) {
+        return
+      }
+
       settled = true
       cleanup()
       resolveResult({ token })
@@ -139,7 +200,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
       const outcome = parseLoopbackCallback(req.url, state)
 
       if (outcome.ok) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+        res.writeHead(200, HTML_HEADERS)
         res.end(SUCCESS_HTML)
         succeed(outcome.token)
 
@@ -157,7 +218,7 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
 
       // The /cb callback came back but is invalid (state mismatch, missing
       // token, explicit ?error=) — show the failure page and reject the flow.
-      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.writeHead(400, HTML_HEADERS)
       res.end(FAILURE_HTML)
       fail(outcome.reason)
     })
@@ -211,8 +272,4 @@ function startLoopbackLogin(options: any = {}): Promise<any> {
   })
 }
 
-export {
-  DEFAULT_TIMEOUT_MS,
-  generateState,
-  startLoopbackLogin
-}
+export { DEFAULT_TIMEOUT_MS, generateState, startLoopbackLogin }

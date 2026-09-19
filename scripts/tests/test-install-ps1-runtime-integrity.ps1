@@ -27,6 +27,8 @@ New-Item -ItemType Directory -Path (Join-Path $tempRoot "hermes_cli") -Force | O
 Set-Content -Path (Join-Path $tempRoot "hermes_cli\__init__.py") -Value "" -Encoding Ascii
 Set-Content -Path (Join-Path $tempRoot "hermes_cli\config.py") -Value "" -Encoding Ascii
 Set-Content -Path (Join-Path $tempRoot "dotenv.py") -Value "" -Encoding Ascii
+Set-Content -Path (Join-Path $tempRoot "fastapi.py") -Value "" -Encoding Ascii
+Set-Content -Path (Join-Path $tempRoot "uvicorn.py") -Value "" -Encoding Ascii
 
 try {
     & python -m venv $venv
@@ -37,9 +39,18 @@ try {
         throw "runtime probe accepted a real venv missing PyYAML"
     }
     Set-Content -Path (Join-Path $tempRoot "yaml.py") -Value "" -Encoding Ascii
+    if (Test-HermesRuntimeImports $python) {
+        throw "runtime probe accepted a Windows runtime missing winpty"
+    }
+    Set-Content -Path (Join-Path $tempRoot "winpty.py") -Value "" -Encoding Ascii
     if (-not (Test-HermesRuntimeImports $python)) {
         throw "runtime probe rejected the complete synthetic launch boundary"
     }
+    Remove-Item -Path (Join-Path $tempRoot "fastapi.py") -Force
+    if (Test-HermesRuntimeImports $python) {
+        throw "runtime probe accepted a Windows runtime missing fastapi"
+    }
+    Set-Content -Path (Join-Path $tempRoot "fastapi.py") -Value "" -Encoding Ascii
 
     function Invoke-WithoutIndexEnv {
         param([Parameter(Mandatory)][scriptblock] $Body)
