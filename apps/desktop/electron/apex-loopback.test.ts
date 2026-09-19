@@ -17,20 +17,19 @@ import { test } from 'vitest'
 
 import { DEFAULT_TIMEOUT_MS, generateState, startLoopbackLogin } from './apex-loopback'
 
-// Fire a GET at the loopback callback and resolve with { statusCode, body }.
+// Fire a GET at the loopback callback and resolve with response metadata.
 // agent:false → no keep-alive pooling, so the client socket closes right after
 // the response (mirrors how a real browser navigation behaves and lets the
 // server's handle release cleanly between tests).
 function hitLoopback(port, pathAndQuery): Promise<any> {
   return new Promise((resolve, reject) => {
-    const req = http.request(
-      { host: '127.0.0.1', port, path: pathAndQuery, method: 'GET', agent: false },
-      res => {
-        const chunks = []
-        res.on('data', c => chunks.push(c))
-        res.on('end', () => resolve({ statusCode: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }))
-      }
-    )
+    const req = http.request({ host: '127.0.0.1', port, path: pathAndQuery, method: 'GET', agent: false }, res => {
+      const chunks = []
+      res.on('data', c => chunks.push(c))
+      res.on('end', () =>
+        resolve({ statusCode: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') })
+      )
+    })
 
     req.on('error', reject)
     req.end()
@@ -62,7 +61,13 @@ test('resolves with the token on a valid /cb callback (matching state)', async (
   const lb = await startLoopbackLogin()
   const res = await hitLoopback(lb.port, `/cb?token=jwt.success&state=${encodeURIComponent(lb.state)}`)
   assert.equal(res.statusCode, 200)
-  assert.match(res.body, /登录成功/)
+  assert.match(res.body, /登录已完成/)
+  assert.match(res.body, /授权结果正在同步到 APEX 桌面端/)
+  assert.match(res.body, /apexnodes:\/\/open\?source=login-complete/)
+  assert.match(res.body, /打开 APEX/)
+  assert.doesNotMatch(res.body, /ZCode/i)
+  assert.equal(res.headers['cache-control'], 'no-store')
+  assert.match(String(res.headers['content-security-policy']), /default-src 'none'/)
   const outcome = await lb.result
   assert.deepEqual(outcome, { token: 'jwt.success' })
 })
@@ -75,7 +80,9 @@ test('rejects (state_mismatch) on a CSRF mismatch and serves a 400 page', async 
   const rejected = assert.rejects(lb.result, (err: any) => err.reason === 'state_mismatch')
   const res = await hitLoopback(lb.port, '/cb?token=jwt.x&state=evil')
   assert.equal(res.statusCode, 400)
-  assert.match(res.body, /登录失败/)
+  assert.match(res.body, /登录未完成/)
+  assert.match(res.body, /返回 APEX 桌面端重新登录/)
+  assert.match(res.body, /打开 APEX/)
   await rejected
 })
 

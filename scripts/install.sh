@@ -2164,11 +2164,11 @@ python_deps_fingerprint() {
 
 # Probe the same launch boundary as Desktop. File presence and package metadata
 # are insufficient: a partially deleted wheel can leave uv --check green while
-# `hermes` immediately dies importing PyYAML.
+# Desktop immediately dies importing the dashboard or PTY runtime.
 runtime_imports_ok() {
     local python="$1"
     [ -x "$python" ] || return 1
-    "$python" -c 'import yaml; import dotenv; import hermes_cli.config' >/dev/null 2>&1
+    "$python" -c 'import yaml; import dotenv; import hermes_cli.config; import fastapi, uvicorn, ptyprocess' >/dev/null 2>&1
 }
 
 # True (rc 0) when the python-deps install segment would be a no-op: uv.lock
@@ -2533,7 +2533,7 @@ PY
     fi
 
     if [ "$USE_VENV" = true ] && ! runtime_imports_ok "$INSTALL_DIR/venv/bin/python"; then
-        log_error "Runtime imports failed after dependency installation (yaml/dotenv/hermes_cli.config)."
+        log_error "Runtime imports failed after dependency installation (yaml/dotenv/hermes_cli.config/fastapi/uvicorn/ptyprocess)."
         log_info "The environment is incomplete; no success marker will be written. Re-run the installer to rebuild it."
         exit 1
     fi

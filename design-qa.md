@@ -1,88 +1,38 @@
-# hc-803 Design QA — Desktop home persisted-width recovery
+# hc-835 Design QA — APEX Desktop 登录回调
 
-- User-approved prototype capture: `/Users/karl/.codex/visualizations/2026/08/30/hc803-home-fidelity/reference-prototype-1223x865@2x.png`
-- Reported drift capture: `/Users/karl/.codex/visualizations/2026/08/30/hc803-home-fidelity/reported-stale-1512x865@2x.png`
-- Final signed-package captures: `signed-packaged-1223x865@2x.png` and `signed-packaged-1512x865@2x.png` in the same evidence directory
-- Same-canvas comparisons: `reference-vs-fixed-1223x865@2x.png` and `stale-vs-fixed-1512x865@2x.png`
-- State: Simplified Chinese, light theme, Start route. The reference/report captures use the signed-in production account; isolated package captures use the real shared renderer and mock inference backend, with no fabricated business rows.
+- Source visual truth: `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-54883ee1-b83e-4c96-a840-2d81a6d700d6.png`
+- Source pixels: 856×638 at 1× density.
+- Implementation: the real `startLoopbackLogin()` success response rendered in the Codex in-app browser at 856×638 CSS pixels and 1× density.
+- Comparison evidence: a browser-rendered, same-canvas 1220×500 comparison at 0.68 scale, with the 856×638 source on the left and the live 856×638 APEX callback on the right (`http://127.0.0.1:50340/`, local QA session only).
+- State: Simplified Chinese, success callback, dark theme.
 
-## Finding and fix
+## Findings and comparison history
 
-The Start implementation had not lost the approved typography, 48rem goal
-surface, workflow row, evidence grid, or bottom Composer. The visual drift came
-from `hermes.desktop.paneStates.v1`: a 360px drag-resize override survived app
-updates and overruled the declared 237px rail, pushing the whole home to the
-right. Earlier packaged QA used a fresh profile, so it structurally could not
-exercise this upgrade state.
+1. **First pass — P2 status-icon mismatch.** The initial Tabler filled icon exposed the page background through its check, making the check black instead of the reference's white. Its painted circle also occupied only 20/24 of the image box, so it appeared smaller and shifted the visual hierarchy downward.
+2. **Fix.** The final self-contained asset composes the existing Tabler filled-circle and check paths with explicit semantic colors, crops the icon view box to its painted bounds, and adjusts the content group by 5–17 px to align the icon, title, copy, and CTA with the reference.
+3. **Post-fix evidence.** The final same-canvas comparison shows the icon, heading, two-line explanatory copy, and full-width CTA aligned within approximately 0–5 px of the reference at the source viewport. The visible product-name changes from ZCode to APEX are intentional and required.
 
-hc-803 retains the approved 237px default, introduces an explicit 180–280px
-resize contract, and clears only persisted overrides outside that range on the
-next renderer boot. Valid user choices remain intact. No conversation, project,
-open-state, account, or channel data is migrated or deleted.
+No focused crop was needed: at the normalized 0.68 comparison scale, all typography, both icons, button geometry, and copy remained clearly readable in the full-view evidence.
 
 ## Required fidelity surfaces
 
-1. **Typography and hierarchy** — Existing APEX heading, supporting copy,
-   workflow labels, real-data rows, and Composer typography are unchanged.
-2. **Spacing and geometry** — The 237px rail, 48rem goal launcher, workflow
-   dividers, evidence grid, and bottom Composer match the approved Desktop
-   prototype at the same 1223×865 window. The reported 1512×865 window no
-   longer carries a 360px rail.
-3. **Colors and assets** — Existing APEX tokens, Codicons, background texture,
-   borders, radii, and shadows are reused without new palette or fake assets.
-4. **Content and state** — No copy, locale key, workflow definition, session,
-   task, deliverable, channel, model, or account mapping changed.
-5. **Interaction** — Sidebar resizing still works in the new bounded range;
-   Start workflow staging and the canonical goal/Run submission path remain
-   intact.
+- **Fonts and typography:** platform-native Chinese/desktop font stack, 32 px/750 heading, 27 px/600 supporting copy, and 28 px/700 CTA reproduce the source hierarchy without loading a remote font.
+- **Spacing and layout rhythm:** 688 px CTA width, 72 px height, 15 px radius, centered 72 px status icon, two-line copy, and vertical positions match the 856×638 reference. A <=620 px breakpoint keeps the page usable on narrow browser windows.
+- **Colors and visual tokens:** `#151515` background, `#f7f7f7` heading, muted `#9b9b9f` copy, light CTA, and APEX green success state match the visible palette and retain accessible contrast.
+- **Image quality and asset fidelity:** status and external-link icons come from the project's pinned Tabler Icons library and are embedded as lossless data-image assets; there are no remote assets, placeholder glyphs, emoji, or handcrafted CSS icons.
+- **Copy and content:** “登录已完成”, APEX synchronization copy, and “打开 APEX” replace every ZCode reference while preserving the target meaning.
 
-## Responsive and platform verification
+## Behavior and accessibility
 
-- Packaged Start is captured and checked at 1223×865, 1440×900, 1512×865,
-  1280×800, and 900×720 with no horizontal document overflow.
-- The wide packaged geometry asserts a 237px rendered rail, 48rem (816px at the
-  packaged root scale) goal launcher, and the existing 34px intro inset.
-- The 900×720 evidence region remains reachable by scrolling.
-- macOS and Windows consume the same renderer constants and migration. This QA
-  does not claim Windows signing or hardware execution; paired Windows release
-  remains governed by the shared Desktop release workflow.
+- The CTA has a visible keyboard focus ring, hover/active states, and reduced-motion handling.
+- The CTA uses `apexnodes://open?source=login-complete`, which focuses APEX without replaying the one-time login route.
+- Success and failure responses use no-store, no-referrer, nosniff, and a restrictive content-security policy.
+- Browser console check returned no warnings or errors.
+- Automated callback tests verify the real HTTP response, APEX-only copy, deep link, headers, success/failure states, and absence of “ZCode”.
 
-## Source, consumer, and recovery inventory
+## Residual boundaries
 
-1. Geometry authority: `SIDEBAR_DEFAULT_WIDTH`, `SIDEBAR_MIN_WIDTH`, and
-   `SIDEBAR_MAX_WIDTH` in `src/store/layout.ts`.
-2. Persisted source: `chat-sidebar.widthOverride` in
-   `hermes.desktop.paneStates.v1`, owned by `src/store/panes.ts`.
-3. Consumers: contribution-tree `sessions` pane, legacy `chat-sidebar` pane,
-   `$sidebarWidth`, and `setSidebarWidth`.
-4. Recovery: `reconcileSidebarWidthOverride()` runs after pane registration;
-   only out-of-contract width overrides are cleared.
-5. Rollback: business-workspace feature rollback keeps the same corrected rail
-   contract; no parallel shell-specific constants were introduced.
-
-## Reverse validation and automated evidence
-
-- Unit injection writes a 360px override and proves it is live before recovery;
-  `reconcileSidebarWidthOverride()` must clear it and restore 237px. Removing
-  the reconcile call leaves the injected width at 360px and fails the exact
-  expectation.
-- A valid 220px override remains unchanged. New writes below 180px and above
-  280px clamp to the current bounds.
-- Targeted business/empty-state/sidebar suite: 36/36 passed.
-- Full Desktop suite: 557 files passed / 1 skipped; 5622 tests passed / 2
-  skipped.
-- Release gates: 40/40 Node tests and 10/10 package-stage tests passed.
-- Packaged business E2E: 3/3 passed, including the five viewport captures and
-  real goal submission through the existing gateway.
-- Typecheck and production build passed. Lint passed with 0 errors and the 106
-  pre-existing warnings.
-- Final package must pass strict Developer ID verification; notarization remains
-  skipped when Apple API credentials are not configured.
-
-## Boundary
-
-This slice fixes Desktop visual state recovery only. It does not change the web
-console, production Workflow data, DeepSeek Harness status, backend routing,
-account data, or Windows signing state.
+- The visual reference defines only the success state. The failure state deliberately reuses the same layout with a red Tabler status icon and recovery copy.
+- The final production artifact still requires the paired macOS/Windows release workflow; this report does not claim Windows signing or hardware execution.
 
 final result: passed
