@@ -111,6 +111,7 @@ const SHOW_CODING_STATUS_ROW: boolean = false
 
 export function ChatBar({
   busy,
+  turnLive = false,
   cwd,
   disabled,
   focusKey,
@@ -333,6 +334,7 @@ export function ChatBar({
     activeQueueSessionKey,
     attachments,
     busy,
+    turnLive,
     clearDraft,
     draftRef,
     focusInput,

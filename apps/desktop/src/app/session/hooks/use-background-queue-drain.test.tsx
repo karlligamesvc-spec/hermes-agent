@@ -130,6 +130,35 @@ describe('useBackgroundQueueDrain', () => {
     expect(getQueuedPrompts('stored-session-a')).toHaveLength(1)
   })
 
+  it('does not drain in the message.complete to running=false settle window', async () => {
+    const runtimeMap = { current: new Map([['stored-session-a', 'rt-session-a']]) }
+    const submitText = vi.fn(async () => true)
+
+    enqueueQueuedPrompt('stored-session-a', { text: 'wait for the bookend', attachments: [] })
+    publishSessionState('rt-session-a', {
+      ...createClientSessionState('stored-session-a'),
+      busy: false,
+      turnLive: true
+    })
+
+    render(<Harness runtimeMap={runtimeMap} submitText={submitText} />)
+    await new Promise(resolve => window.setTimeout(resolve, 0))
+
+    expect(submitText).not.toHaveBeenCalled()
+    expect(getQueuedPrompts('stored-session-a')).toHaveLength(1)
+
+    act(() => {
+      publishSessionState('rt-session-a', {
+        ...createClientSessionState('stored-session-a'),
+        busy: false,
+        turnLive: false
+      })
+    })
+
+    await waitFor(() => expect(submitText).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(getQueuedPrompts('stored-session-a')).toHaveLength(0))
+  })
+
   it('treats a tip working id as busy for a root queue key via lineage', async () => {
     // Queue keys use the lineage root (resolveComposerSessionKey) while
     // $workingSessionIds may hold the compression tip — strict equality misses.

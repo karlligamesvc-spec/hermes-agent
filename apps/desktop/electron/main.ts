@@ -18738,6 +18738,8 @@ const SEED_DISPLAY_BLOCK =
 // defaults; iteration budgets match Hermes' deep-work defaults:
 //   agent.image_input_mode: auto — image attachments go native only to
 //     vision-capable models, otherwise text pre-analysis (config.py agent block).
+//   agent.response_language: display — answers, progress and task lists follow
+//     the selected shell language (Simplified Chinese on a fresh APEX install).
 //   timezone: '' — empty means "server-local time" (config.py top-level
 //     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
 //   agent.max_turns: 500 — main agent per-turn tool-call budget.
@@ -18754,6 +18756,7 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# follow the OS (server-local) clock.\n' +
   'agent:\n' +
   '  image_input_mode: auto\n' +
+  '  response_language: display\n' +
   '  max_turns: 500\n' +
   'delegation:\n' +
   '  max_iterations: 250\n' +

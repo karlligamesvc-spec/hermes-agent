@@ -4,6 +4,7 @@ import type { ComposerAttachment } from './composer'
 import {
   $parkedQueueSessions,
   $queuedPromptsBySession,
+  claimQueuedPrompt,
   clearQueuedPrompts,
   dequeueQueuedPrompt,
   enqueueQueuedPrompt,
@@ -12,6 +13,7 @@ import {
   migrateQueuedPrompts,
   parkQueuedPrompts,
   promoteQueuedPrompt,
+  releaseQueuedPromptClaim,
   removeQueuedPrompt,
   shouldAutoDrain,
   unparkQueuedPrompts,
@@ -181,6 +183,11 @@ describe('shouldAutoDrain', () => {
     expect(shouldAutoDrain({ isBusy: true, queueLength: 1 })).toBe(false)
   })
 
+  it('does not drain after message completion until the backend turn bookend arrives', () => {
+    expect(shouldAutoDrain({ isBusy: false, queueLength: 1, turnLive: true })).toBe(false)
+    expect(shouldAutoDrain({ isBusy: false, queueLength: 1, turnLive: false })).toBe(true)
+  })
+
   it('does not drain an empty queue', () => {
     expect(shouldAutoDrain({ isBusy: false, queueLength: 0 })).toBe(false)
   })
@@ -193,6 +200,18 @@ describe('shouldAutoDrain', () => {
 
   it('drains again once the park is lifted', () => {
     expect(shouldAutoDrain({ isBusy: false, parked: false, queueLength: 1 })).toBe(true)
+  })
+})
+
+describe('queued prompt claims', () => {
+  it('allows only one drainer to own an entry at a time', () => {
+    expect(claimQueuedPrompt('entry-one')).toBe(true)
+    expect(claimQueuedPrompt('entry-one')).toBe(false)
+
+    releaseQueuedPromptClaim('entry-one')
+
+    expect(claimQueuedPrompt('entry-one')).toBe(true)
+    releaseQueuedPromptClaim('entry-one')
   })
 })
 

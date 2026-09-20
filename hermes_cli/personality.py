@@ -15,6 +15,38 @@ from typing import Any, Dict, Optional, Tuple
 #: Names that mean "no personality overlay".
 NEUTRAL_PERSONALITY_NAMES = frozenset({"", "none", "default", "neutral"})
 
+_RESPONSE_LANGUAGE_NAMES = {
+    "en": "English",
+    "zh": "Simplified Chinese",
+    "zh-hant": "Traditional Chinese",
+    "ja": "Japanese",
+    "de": "German",
+    "es": "Spanish",
+    "fr": "French",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "af": "Afrikaans",
+    "ko": "Korean",
+    "it": "Italian",
+    "ga": "Irish",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "hu": "Hungarian",
+    "ar": "Arabic",
+}
+
+_RESPONSE_LANGUAGE_ALIASES = {
+    "zh-cn": "zh",
+    "zh-hans": "zh",
+    "zh-sg": "zh",
+    "zh-tw": "zh-hant",
+    "zh-hk": "zh-hant",
+    "zh-mo": "zh-hant",
+    "ja-jp": "ja",
+    "en-us": "en",
+    "en-gb": "en",
+}
+
 #: Built-in personalities, available on every surface without any config.
 BUILTIN_PERSONALITIES: Dict[str, str] = {
     "helpful": "You are a helpful, friendly AI assistant.",
@@ -115,13 +147,47 @@ def active_personality_name(cfg: Optional[Dict[str, Any]]) -> str:
     return name if name and name in available_personalities(cfg) else ""
 
 
+def _resolve_response_language_prompt(cfg: Optional[Dict[str, Any]]) -> str:
+    """Return the bounded language contract for model-authored UI text."""
+    configured = str(_get(cfg, "agent", "response_language", default="auto") or "auto").strip().lower()
+    if configured in {"", "auto", "user", "match-user", "match_user"}:
+        return ""
+    if configured in {"display", "ui", "interface"}:
+        configured = str(_get(cfg, "display", "language", default="") or "").strip().lower()
+
+    configured = _RESPONSE_LANGUAGE_ALIASES.get(configured.replace("_", "-"), configured.replace("_", "-"))
+    language_name = _RESPONSE_LANGUAGE_NAMES.get(configured)
+    if not language_name:
+        return ""
+
+    return (
+        f"Use {language_name} for all user-facing communication by default, "
+        "including progress updates, todo/task-list text, questions, and final "
+        "answers. Before starting tool work for a new user request, briefly "
+        f"acknowledge what you will do in {language_name} without exposing "
+        "internal implementation details. Keep source text, code, commands, "
+        "filenames, API fields, and established technical terms unchanged when "
+        "translation would reduce precision. If the user explicitly requests "
+        "another language, follow that request instead."
+    )
+
+
 def resolve_ephemeral_system_prompt(cfg: Optional[Dict[str, Any]]) -> str:
-    """Session overlay: ``display.personality`` when it names a known personality, else the
-    user-owned ``agent.system_prompt``. Callers still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT``."""
+    """Resolve the personality/manual overlay plus the response-language contract.
+
+    ``display.personality`` wins over the user-owned ``agent.system_prompt``.
+    ``agent.response_language`` is independent and may follow the display
+    language. Callers still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT``.
+    """
     name = active_personality_name(cfg)
-    if name:
-        return render_personality_prompt(available_personalities(cfg)[name])
-    return prompt_text(_get(cfg, "agent", "system_prompt", default=""))
+    personality_prompt = (
+        render_personality_prompt(available_personalities(cfg)[name])
+        if name
+        else prompt_text(_get(cfg, "agent", "system_prompt", default=""))
+    )
+    language_prompt = _resolve_response_language_prompt(cfg)
+
+    return "\n\n".join(part for part in (personality_prompt, language_prompt) if part)
 
 
 def persist_personality(value: Any) -> bool:

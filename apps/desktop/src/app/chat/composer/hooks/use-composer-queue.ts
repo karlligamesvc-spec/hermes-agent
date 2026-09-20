@@ -9,6 +9,7 @@ import { resetBrowseState } from '@/store/composer-input-history'
 import {
   $parkedQueueSessions,
   $queuedPromptsBySession,
+  claimQueuedPrompt,
   enqueueQueuedPrompt,
   getQueuedPrompts,
   isSteerableEntry,
@@ -16,6 +17,7 @@ import {
   migrateQueuedPrompts,
   promoteQueuedPrompt,
   type QueuedPromptEntry,
+  releaseQueuedPromptClaim,
   removeQueuedPrompt,
   shouldAutoDrain,
   unparkQueuedPrompts,
@@ -32,6 +34,7 @@ interface UseComposerQueueArgs {
   activeQueueSessionKey: string | null
   attachments: ComposerAttachment[]
   busy: boolean
+  turnLive: boolean
   clearDraft: () => void
   draftRef: RefObject<string>
   focusInput: () => void
@@ -57,6 +60,7 @@ export function useComposerQueue({
   activeQueueSessionKey,
   attachments,
   busy,
+  turnLive,
   clearDraft,
   draftRef,
   focusInput,
@@ -215,6 +219,13 @@ export function useComposerQueue({
         return false
       }
 
+      // The foreground ChatBar and background drainer overlap during a
+      // selection transition. Their local refs are separate; this shared
+      // claim is the single-send boundary for the queue entry itself.
+      if (!claimQueuedPrompt(entry.id)) {
+        return true
+      }
+
       drainingQueueRef.current = true
 
       try {
@@ -244,6 +255,7 @@ export function useComposerQueue({
 
         return true
       } finally {
+        releaseQueuedPromptClaim(entry.id)
         drainingQueueRef.current = false
       }
     },
@@ -335,7 +347,7 @@ export function useComposerQueue({
   // a stale-session 404) can't strand the entry permanently nor spin-loop. The
   // drain lock serializes sends; a remount/reconnect resets the failure counts.
   const autoDrainNext = useCallback(() => {
-    if (busy || queueParked || drainingQueueRef.current || !activeQueueSessionKey) {
+    if (busy || turnLive || queueParked || drainingQueueRef.current || !activeQueueSessionKey) {
       return
     }
 
@@ -382,7 +394,7 @@ export function useComposerQueue({
       cancelled = true
       clearTimeout(retryTimer)
     }
-  }, [activeQueueSessionKey, busy, pickDrainHead, queueParked, queuedPrompts, runDrain, t])
+  }, [activeQueueSessionKey, busy, pickDrainHead, queueParked, queuedPrompts, runDrain, t, turnLive])
 
   // Re-key on a runtime session-id change. A stable stored id (queueSessionKey)
   // never churns, so a change there is a real session switch and must NOT
@@ -411,10 +423,10 @@ export function useComposerQueue({
       return
     }
 
-    if (shouldAutoDrain({ isBusy: busy, parked: queueParked, queueLength: queuedPrompts.length })) {
+    if (shouldAutoDrain({ isBusy: busy, parked: queueParked, queueLength: queuedPrompts.length, turnLive })) {
       return autoDrainNext()
     }
-  }, [autoDrainNext, busy, drainRetryTick, queueParked, queuedPrompts.length, sessionsLoading])
+  }, [autoDrainNext, busy, drainRetryTick, queueParked, queuedPrompts.length, sessionsLoading, turnLive])
 
   // Queue-edit cleanup: on session swap the scope effect already stashed the
   // edit snapshot; only restore into the composer when still on the same scope.

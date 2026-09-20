@@ -185,6 +185,8 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 //   agent.image_input_mode auto — image attachments go native only to
 //     vision-capable models, else text pre-analysis. Pinned against upstream
 //     default drift (matches today's runtime default).
+//   agent.response_language display — model-authored answers, progress and
+//     task lists follow the selected shell language; APEX starts in zh.
 //   timezone              ''   — empty = server-local clock, which on a desktop
 //     IS the OS timezone, i.e. follow-the-OS. Also pinned, not corrected.
 //
@@ -204,6 +206,7 @@ const APEX_PRODUCT_DEFAULTS = {
   'display.language': 'zh',
   'display.show_reasoning': true,
   'agent.image_input_mode': 'auto',
+  'agent.response_language': 'display',
   'agent.max_turns': 500,
   'delegation.max_iterations': 250,
   // hc-687: Desktop is the deep-work surface, so retain v0.20's full output
