@@ -192,7 +192,7 @@ export function BusinessStartHome({
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-8">
+      <div className="mx-auto flex w-full max-w-[52rem] flex-col gap-8" data-business-start-content="">
         {selectedWorkflow && (
           <section
             aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}

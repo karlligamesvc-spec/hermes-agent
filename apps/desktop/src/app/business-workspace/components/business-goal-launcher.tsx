@@ -92,7 +92,7 @@ export function BusinessGoalLauncher({
 
   return (
     <form
-      className="apex-goal-launcher pointer-events-auto w-full rounded-2xl border border-transparent p-3 text-left transition-[border-color,box-shadow]"
+      className="apex-goal-launcher pointer-events-auto w-full rounded-2xl border border-transparent p-4 text-left transition-[border-color,box-shadow]"
       data-business-goal-launcher=""
       onSubmit={handleSubmit}
     >
@@ -106,14 +106,14 @@ export function BusinessGoalLauncher({
         autoCapitalize="sentences"
         autoComplete="off"
         autoCorrect="on"
-        className="block min-h-[3rem] w-full resize-none border-0 bg-transparent p-0 text-[0.9375rem] leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50"
+        className="block min-h-[7rem] w-full resize-none overflow-y-auto border-0 bg-transparent p-0 text-[0.9375rem] leading-6 text-foreground outline-none placeholder:text-(--ui-text-tertiary) disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[8rem]"
         data-slot="business-goal-input"
         disabled={disabled || submitting}
         id={BUSINESS_GOAL_INPUT_ID}
         onChange={event => setGoal(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={copy.placeholder}
-        rows={2}
+        rows={5}
         spellCheck
         value={goal}
       />

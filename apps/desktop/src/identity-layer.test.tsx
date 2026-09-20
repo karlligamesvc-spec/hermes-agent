@@ -580,6 +580,7 @@ describe('identity: the home zero-state is ours', () => {
     expect(chat).toContain('goalDisabled: !gatewayOpen || busy')
     expect(startHome).toContain('<BusinessStartShelf onSelectGoal={selectGoal} />')
     expect(startHome).toContain('draft={goalDraft}')
+    expect(startHome).toContain('max-w-[52rem]')
     expect(startShelf).toContain('businessHomeStarters(c.workflows)')
     expect(workflows).toContain('businessWorkflowStarters(c)')
   })

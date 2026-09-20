@@ -4933,7 +4933,7 @@ export const en: Translations = {
           title: 'Break down and remake a viral video',
           summary: 'Analyze every shot and sound, then deliver an editable project, variants, and a finished video.',
           prompt:
-            'Analyze the viral short-video link or file I provide next. Gather the original video, Doubao transcript with real timing, engagement data, and actual visible key frames, then break down the hook, pacing, composition, action, captions, B-roll, sound, and CTA by shot. Use local Hypit to build an editable production that reuses only the abstract structure, with products, people, and media I own, am authorized to use, or generate anew. Complete the Brief, Treatment, material generation and replacement, captions, B-roll, motion, sound, preview, revision, batch variants, and final render; deliver the finished video, editable project, and reproduction command instead of stopping at a script or production plan. APEX-provided generation is free to the user, so do not show a price or plan confirmation. Do not claim frame analysis without visual evidence. Cover Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram.'
+            'Analyze this viral short video and use its structure and pacing as a reference to create an editable original with media I provide or am authorized to use. Deliver the finished video and editable project, and tell me what is missing if you need more material.'
         },
         socialIntelligence: {
           title: 'Analyze products, trends, and accounts',
