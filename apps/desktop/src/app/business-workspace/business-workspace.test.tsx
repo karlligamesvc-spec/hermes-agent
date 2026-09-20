@@ -289,7 +289,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Download short-video links and transcribe/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Download and transcribe a video/ }))
 
     await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('location').textContent).toBe('/')
@@ -345,13 +345,13 @@ describe('hc-685 business workspace identity', () => {
     const goal = screen.getByRole('textbox', { name: '业务目标' })
     expect(
       screen.getByText(
-        '可处理来源：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；直链不可用时可上传视频。'
+        '抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。'
       )
     ).toBeTruthy()
-    expect(screen.getByText('保存原视频，提取字幕、完整逐字稿和制作级时间轴')).toBeTruthy()
-    expect(screen.getByText('从关键帧与声音拆解到可编辑工程、批量变体和成片交付')).toBeTruthy()
-    expect(screen.getByText('汇总公开数据与互动信号，输出趋势、机会和行动建议')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /短视频链接下载和转逐字稿/ }))
+    expect(screen.getByText('粘贴链接即可保存原视频，并生成字幕、逐字稿和带时间码的文本。')).toBeTruthy()
+    expect(screen.getByText('逐帧分析画面与声音，生成可编辑工程、批量版本和最终成片。')).toBeTruthy()
+    expect(screen.getByText('汇总公开数据、评论和互动趋势，给出机会判断与下一步建议。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /下载视频并转成逐字稿/ }))
 
     await waitFor(() =>
       expect((goal as HTMLTextAreaElement).value).toContain('请处理我接下来提供的短视频链接')
@@ -808,7 +808,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    await waitFor(() => expect(screen.getByText('Available data sources')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('App connections')).toBeTruthy())
     expect(screen.getByText('Feishu / Lark')).toBeTruthy()
     expect(screen.getByText('Connected')).toBeTruthy()
     expect(screen.queryByText('DingTalk')).toBeNull()
@@ -1617,6 +1617,11 @@ describe('hc-685 business workspace identity', () => {
       window.document
         .querySelector('[data-start-recommended-workflows]')
         ?.classList.contains('apex-workflow-entry-grid')
+    ).toBe(true)
+    expect(
+      window.document
+        .querySelector('[data-start-recommended-workflows]')
+        ?.classList.contains('apex-workflow-entry-grid--stacked')
     ).toBe(true)
     expect(
       screen.getByText(

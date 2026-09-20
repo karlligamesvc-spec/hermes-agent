@@ -3887,10 +3887,10 @@ export const zh = defineLocale({
       viewRun: '打开当前运行',
       noRun: '尚未开始运行',
       legacyFallback: '本地对话与任务（兼容视图）',
-      availableSources: '可用数据源',
+      availableSources: '应用连接',
       sourceConnected: '已连接',
       sourceNotConnected: '未连接',
-      noAvailableSources: '当前版本没有可用的数据源连接出口。',
+      noAvailableSources: '暂时没有可管理的应用连接。',
       workflowsTitle: '项目工作流',
       workflowsDescription: '项目是目标容器；工作流是完成目标的一条执行路径。一个项目可以有多个工作流。',
       addWorkflow: '增加工作流',
@@ -3899,34 +3899,37 @@ export const zh = defineLocale({
       workflowsUnavailable: '项目已读取，但工作流列表暂时不可用。不会猜测运行状态。'
     },
     workflows: {
-      eyebrow: '成熟业务路径',
+      eyebrow: '任务模板',
       title: '工作流',
       description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。',
       use: '使用这个工作流',
       useShort: '使用',
       startGoal: '开始一个目标',
-      recommendedTitle: '三条重点路径',
-      recommendedDescription: '选择一个成熟路径，目标会预填到开始页并保持可编辑。',
+      recommendedTitle: '推荐工作流',
+      recommendedDescription: '选择后可以先修改目标，再开始执行。',
+      homeTitle: '选择一个任务开始',
+      homeDescription: '粘贴链接，或告诉我你想分析的内容。',
+      homeSourceLabel: '支持的平台',
       homeSourceCoverage:
-        '可处理来源：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；直链不可用时可上传视频。',
+        '抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。',
       additionalTitle: '其他业务路径',
       pathCount: count => `${count} 条路径`,
       homePaths: {
         videoTranscript: {
-          title: '短视频链接下载和转逐字稿',
-          summary: '保存原视频，提取字幕、完整逐字稿和制作级时间轴',
+          title: '下载视频并转成逐字稿',
+          summary: '粘贴链接即可保存原视频，并生成字幕、逐字稿和带时间码的文本。',
           prompt:
             '请处理我接下来提供的短视频链接：先核对平台是否支持直接下载或官方字幕；能下载时保存原视频并生成逐字、原序的完整逐字稿。支持范围覆盖抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；如果某个平台不能直接下载或转写，请明确说明限制，并让我上传视频文件或字幕继续。'
         },
         viralRemake: {
-          title: '爆款短视频逐帧分析和复刻',
-          summary: '从关键帧与声音拆解到可编辑工程、批量变体和成片交付',
+          title: '拆解并复刻爆款视频',
+          summary: '逐帧分析画面与声音，生成可编辑工程、批量版本和最终成片。',
           prompt:
             '请分析我接下来提供的爆款短视频链接或文件：先收集原视频、豆包逐字稿与真实时间轴、互动数据和真实可见的关键画面，再按镜头拆解开场钩子、叙事节奏、构图、动作、字幕、B-roll、音效与 CTA。随后使用本机 Hypit 建立可编辑工程，只复用抽象结构，用我自有、已授权或新生成的产品、人物和素材完成 Brief、Treatment、素材生成/替换、字幕、B-roll、动效、声音、预览、修订、批量变体和最终渲染，并交付成片、工程与复现命令；不要停在脚本或成片方案。APEX 提供的生成能力对用户免费，不要展示价格/套餐确认。没有画面证据时不要声称完成逐帧分析。平台包括抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram。'
         },
         socialIntelligence: {
-          title: '产品、热榜、评论、账号分析',
-          summary: '汇总公开数据与互动信号，输出趋势、机会和行动建议',
+          title: '分析产品、热榜与账号',
+          summary: '汇总公开数据、评论和互动趋势，给出机会判断与下一步建议。',
           prompt:
             '请围绕我指定的产品、热榜、评论或账号做跨平台分析，平台包括抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram。只使用实际取得的公开数据，列出来源、样本量、时间范围、趋势、机会、风险和可执行建议；没有热榜或后台数据的平台请明确标注，不要用搜索结果或推测冒充。'
         }

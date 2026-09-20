@@ -10,16 +10,17 @@ afterEach(cleanup)
 const recommended = [
   ['market-launch', 'assets/workflow-commerce-minimal.png'],
   ['geo-brand-audit', 'assets/workflow-geo-minimal.png'],
-  ['content-review', 'assets/workflow-content-minimal.png'],
-  ['video-transcript', 'assets/workflow-commerce-minimal.png'],
-  ['viral-video-remake', 'assets/workflow-geo-minimal.png'],
-  ['social-intelligence', 'assets/workflow-content-minimal.png']
+  ['content-review', 'assets/workflow-content-minimal.png']
 ] as const
 
-function starter(id: BusinessWorkflowStarter['id'], recommended = true): BusinessWorkflowStarter {
+function starter(
+  id: BusinessWorkflowStarter['id'],
+  recommended = true,
+  icon: BusinessWorkflowStarter['icon'] = 'globe'
+): BusinessWorkflowStarter {
   return {
     businessPath: id,
-    icon: 'globe',
+    icon,
     id,
     prompt: `prompt ${id}`,
     recommended,
@@ -60,8 +61,7 @@ describe('APEX workflow starter artwork', () => {
     const summary = container.querySelector('[data-workflow-card-summary]')
     const action = container.querySelector('[data-workflow-card-action]')
 
-    expect(card.classList.contains('gap-2')).toBe(true)
-    expect(card.classList.contains('gap-2.5')).toBe(false)
+    expect(card.classList.contains('gap-3.5')).toBe(true)
     expect(copy).toBeTruthy()
     expect(copy?.classList.contains('ml-3')).toBe(false)
     expect(title?.textContent).toBe('title market-launch')
@@ -70,6 +70,19 @@ describe('APEX workflow starter artwork', () => {
     expect(summary?.classList.contains('line-clamp-2')).toBe(false)
     expect(action).toBeTruthy()
     expect(action?.classList.contains('ml-2')).toBe(false)
+  })
+
+  it.each([
+    ['video-transcript', 'download'],
+    ['viral-video-remake', 'scan'],
+    ['social-intelligence', 'chart']
+  ] as const)('uses a task-specific %s icon instead of recycled workflow artwork', (id, icon) => {
+    const { container } = render(
+      <WorkflowStarterCard action="使用" onSelect={vi.fn()} starter={starter(id, true, icon)} variant="shelf" />
+    )
+
+    expect(container.querySelector('[data-workflow-artwork]')).toBeNull()
+    expect(container.querySelector(`[data-workflow-icon="${icon}"] svg`)).toBeTruthy()
   })
 
   it('keeps additional real catalog paths compact instead of borrowing featured artwork', () => {

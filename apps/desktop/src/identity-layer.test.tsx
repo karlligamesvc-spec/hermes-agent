@@ -489,11 +489,11 @@ describe('identity: the home zero-state is ours', () => {
       expect(screen.getByRole('button', { name: '附加' }).hasAttribute('disabled')).toBe(false)
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
       expect(container.querySelector('[data-slot="composer-root"]')).toBeNull()
-      expect(screen.getByRole('button', { name: /短视频链接下载和转逐字稿/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /下载视频并转成逐字稿/ })).toBeTruthy()
       expect(container.querySelector('[data-business-start-shelf]')).toBeTruthy()
       expect(container.querySelectorAll('[data-workflow-starter="shelf"]')).toHaveLength(3)
       expect(await screen.findByText('项目服务尚未连接。真实数据可用后，最近项目会显示在这里。')).toBeTruthy()
-      expect(screen.getByText('当前版本没有可用的数据源连接出口。')).toBeTruthy()
+      expect(screen.getByText('暂时没有可管理的应用连接。')).toBeTruthy()
       expect(screen.queryByText(/0\s*\/\s*0/)).toBeNull()
     } finally {
       Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
