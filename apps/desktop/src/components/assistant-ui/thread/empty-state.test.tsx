@@ -74,7 +74,7 @@ describe('thread zero state', () => {
     renderEmptyThread()
 
     expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /短视频链接下载和转逐字稿/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /下载视频并转成逐字稿/ })).toBeTruthy()
   })
 
   it('keeps the top of an over-tall zero state reachable', () => {

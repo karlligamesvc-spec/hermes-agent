@@ -1,38 +1,32 @@
-# hc-835 Design QA — APEX Desktop 登录回调
+# hc-840 Desktop 首页任务入口 Design QA
 
-- Source visual truth: `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-54883ee1-b83e-4c96-a840-2d81a6d700d6.png`
-- Source pixels: 856×638 at 1× density.
-- Implementation: the real `startLoopbackLogin()` success response rendered in the Codex in-app browser at 856×638 CSS pixels and 1× density.
-- Comparison evidence: a browser-rendered, same-canvas 1220×500 comparison at 0.68 scale, with the 856×638 source on the left and the live 856×638 APEX callback on the right (`http://127.0.0.1:50340/`, local QA session only).
-- State: Simplified Chinese, success callback, dark theme.
+## Evidence
 
-## Findings and comparison history
+- Source screenshot: `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-21b88b44-1fcb-486c-93a9-c2c94ec9f358.png`
+- Rendered implementation: `/tmp/hc840-design-qa/start-video-tasks-1220x800.png`
+- Full-view comparison: `/tmp/hc840-design-qa/source-vs-implementation.png`
+- Focused comparison: `/tmp/hc840-design-qa/cards-focus-before-after.png`
+- Reference dimensions: 2230 × 1614 px
+- Implementation dimensions: 2440 × 1600 px (1220 × 800 Electron window at 2× density)
+- State: zh-CN, signed-in isolated local-review fixture, Start page, light theme, local test project data
 
-1. **First pass — P2 status-icon mismatch.** The initial Tabler filled icon exposed the page background through its check, making the check black instead of the reference's white. Its painted circle also occupied only 20/24 of the image box, so it appeared smaller and shifted the visual hierarchy downward.
-2. **Fix.** The final self-contained asset composes the existing Tabler filled-circle and check paths with explicit semantic colors, crops the icon view box to its painted bounds, and adjusts the content group by 5–17 px to align the icon, title, copy, and CTA with the reference.
-3. **Post-fix evidence.** The final same-canvas comparison shows the icon, heading, two-line explanatory copy, and full-width CTA aligned within approximately 0–5 px of the reference at the source viewport. The visible product-name changes from ZCode to APEX are intentional and required.
+## Findings and iteration history
 
-No focused crop was needed: at the normalized 0.68 comparison scale, all typography, both icons, button geometry, and copy remained clearly readable in the full-view evidence.
+1. The source used two stacked labels, “成熟业务路径” and “三条重点路径”, before the actual choices. They repeated the same idea and made the section read like generated marketing copy. Replaced them with the direct heading “选择一个任务开始” and the instruction “粘贴链接，或告诉我你想分析的内容。”
+2. The source reused three decorative raster illustrations whose metaphors did not match download/transcription, frame analysis, or data analysis. Replaced them with semantic download, scan, and trend-chart icons and distinct low-emphasis color treatments.
+3. The three-column layout constrained Chinese titles and summaries to narrow tracks, producing awkward wraps and uneven card heights. The Start page now keeps all three entries in one full-width vertical stack at every approved width; the general workflow catalog retains its responsive multi-column layout.
+4. Card copy was rewritten as plain actions and outcomes. Platform coverage is secondary metadata immediately after the task rows under the natural label “支持的平台”; the lower source-management section is renamed from “可用数据源” to “应用连接”.
+5. The first rendered icon pass used SVG dimensions that could be overridden by the shared button selector. Explicit size utility classes were added so all three semantic icons render at the intended 22 px size.
 
-## Required fidelity surfaces
+## Verification
 
-- **Fonts and typography:** platform-native Chinese/desktop font stack, 32 px/750 heading, 27 px/600 supporting copy, and 28 px/700 CTA reproduce the source hierarchy without loading a remote font.
-- **Spacing and layout rhythm:** 688 px CTA width, 72 px height, 15 px radius, centered 72 px status icon, two-line copy, and vertical positions match the 856×638 reference. A <=620 px breakpoint keeps the page usable on narrow browser windows.
-- **Colors and visual tokens:** `#151515` background, `#f7f7f7` heading, muted `#9b9b9f` copy, light CTA, and APEX green success state match the visible palette and retain accessible contrast.
-- **Image quality and asset fidelity:** status and external-link icons come from the project's pinned Tabler Icons library and are embedded as lossless data-image assets; there are no remote assets, placeholder glyphs, emoji, or handcrafted CSS icons.
-- **Copy and content:** “登录已完成”, APEX synchronization copy, and “打开 APEX” replace every ZCode reference while preserving the target meaning.
+- Packaged visual regression: `hc-840 Start presents three readable video task rows with matching icons` — passed.
+- Responsive geometry matrix: 700, 752, 899, 900, 1000, 1220, and 1235 px — passed with one task row per grid row, no clipped title/summary, and no horizontal overflow.
+- Full UI suite: 771 files / 7,663 tests — passed.
+- TypeScript, ESLint, and production renderer build — passed (repository-wide pre-existing lint warnings only).
+- Interaction coverage: selecting a task still inserts its full prompt into the primary goal composer; keyboard focus order remains textbox → “开始执行”.
+- Reverse verification: removing the stacked-grid class made `keeps Start scoped to three recommended paths...` fail at the layout assertion; restoring the class returned the test to green.
 
-## Behavior and accessibility
+## Final result
 
-- The CTA has a visible keyboard focus ring, hover/active states, and reduced-motion handling.
-- The CTA uses `apexnodes://open?source=login-complete`, which focuses APEX without replaying the one-time login route.
-- Success and failure responses use no-store, no-referrer, nosniff, and a restrictive content-security policy.
-- Browser console check returned no warnings or errors.
-- Automated callback tests verify the real HTTP response, APEX-only copy, deep link, headers, success/failure states, and absence of “ZCode”.
-
-## Residual boundaries
-
-- The visual reference defines only the success state. The failure state deliberately reuses the same layout with a red Tabler status icon and recovery copy.
-- The final production artifact still requires the paired macOS/Windows release workflow; this report does not claim Windows signing or hardware execution.
-
-final result: passed
+passed

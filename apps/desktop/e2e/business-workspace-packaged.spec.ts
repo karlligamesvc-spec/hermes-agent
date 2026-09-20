@@ -732,6 +732,56 @@ test('Start mounts exactly one accessible and focusable primary input', async ()
   await page.getByRole('textbox', { name: '业务目标' }).fill('')
 })
 
+test('hc-840 Start presents three readable video task rows with matching icons', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0]
+
+    win?.unmaximize()
+    win?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+    win?.show()
+    win?.focus()
+  })
+  await page.bringToFront()
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+  await expect(page.getByRole('heading', { name: '选择一个任务开始', level: 2 })).toBeVisible()
+
+  const taskRows = page.locator('[data-start-recommended-workflows] [data-workflow-starter="shelf"]')
+  await expect(taskRows).toHaveCount(3)
+  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-icon="download"]')).toBeVisible()
+  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-icon="scan"]')).toBeVisible()
+  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-icon="chart"]')).toBeVisible()
+  await expect(
+    page.getByText(
+      '支持的平台：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。'
+    )
+  ).toBeVisible()
+
+  const rowGeometry = await taskRows.evaluateAll(rows =>
+    rows.map(row => {
+      const box = row.getBoundingClientRect()
+
+      return { bottom: box.bottom, left: box.left, right: box.right, top: box.top }
+    })
+  )
+
+  expect(rowGeometry[1].top).toBeGreaterThan(rowGeometry[0].bottom)
+  expect(rowGeometry[2].top).toBeGreaterThan(rowGeometry[1].bottom)
+  expect(new Set(rowGeometry.map(row => Math.round(row.left))).size).toBe(1)
+  expect(new Set(rowGeometry.map(row => Math.round(row.right))).size).toBe(1)
+
+  const screenshotRoot = process.env.HC840_SCREENSHOT_DIR
+  const screenshotPath = screenshotRoot
+    ? path.join(screenshotRoot, 'start-video-tasks-1220x800.png')
+    : test.info().outputPath('start-video-tasks-1220x800.png')
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+  await page.screenshot({ animations: 'disabled', caret: 'hide', path: screenshotPath })
+})
+
 test('packaged workflow entries follow each real content container around the sidebar edge', async () => {
   const { app, page } = fixture!
 
@@ -744,11 +794,11 @@ test('packaged workflow entries follow each real content container around the si
       cases: [
         { columns: 1, width: 700 },
         { columns: 1, width: 752 },
-        { columns: 3, width: 899 },
-        { columns: 2, width: 900 },
-        { columns: 2, width: 1000 },
-        { columns: 3, width: 1220 },
-        { columns: 3, width: 1235 }
+        { columns: 1, width: 899 },
+        { columns: 1, width: 900 },
+        { columns: 1, width: 1000 },
+        { columns: 1, width: 1220 },
+        { columns: 1, width: 1235 }
       ],
       key: 'start',
       nav: '开始',

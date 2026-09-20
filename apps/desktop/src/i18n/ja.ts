@@ -3430,10 +3430,10 @@ export const ja = defineLocale({
       viewRun: '現在の実行を開く',
       noRun: '実行はまだ開始されていません',
       legacyFallback: 'ローカル会話とタスク（互換ビュー）',
-      availableSources: '利用可能なデータソース',
+      availableSources: 'アプリ連携',
       sourceConnected: '接続済み',
       sourceNotConnected: '未接続',
-      noAvailableSources: 'このビルドで利用できるデータソース接続はありません。',
+      noAvailableSources: '管理できるアプリ連携はまだありません。',
       workflowsTitle: 'プロジェクトのワークフロー',
       workflowsDescription:
         'プロジェクトは目標を保持し、ワークフローは実行経路です。1つのプロジェクトに複数追加できます。',
@@ -3443,34 +3443,37 @@ export const ja = defineLocale({
       workflowsUnavailable: 'プロジェクトは読み込めましたが、ワークフロー一覧を利用できません。実行状態は推測しません。'
     },
     workflows: {
-      eyebrow: '実績ある業務パス',
+      eyebrow: 'タスクテンプレート',
       title: 'ワークフロー',
       description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。',
       use: 'このワークフローを使う',
       useShort: '使用',
       startGoal: '目標を始める',
-      recommendedTitle: '3つの重点パス',
-      recommendedDescription: '実績あるパスを選ぶと、開始画面で目標を編集してから実行できます。',
+      recommendedTitle: 'おすすめのワークフロー',
+      recommendedDescription: '目標を編集してから、準備ができたら実行できます。',
+      homeTitle: 'やりたいことを選んで開始',
+      homeDescription: 'リンクを貼るか、分析したい内容を APEX に伝えてください。',
+      homeSourceLabel: '対応プラットフォーム',
       homeSourceCoverage:
-        '対応元：Douyin、小紅書、WeChat Channels、快手、Bilibili、YouTube、TikTok、Instagram。直接リンクが使えない場合は動画をアップロードできます。',
+        'Douyin、小紅書、WeChat Channels、快手、Bilibili、YouTube、TikTok、Instagram。動画ファイルを直接アップロードすることもできます。',
       additionalTitle: 'その他の業務パス',
       pathCount: count => `${count} パス`,
       homePaths: {
         videoTranscript: {
-          title: 'ショート動画リンクの保存と文字起こし',
-          summary: '元動画を保存し、字幕、完全な文字起こし、制作向けタイムラインを抽出',
+          title: '動画を保存して文字起こし',
+          summary: 'リンクから元動画を保存し、字幕、文字起こし、タイムコード付きテキストを作成します。',
           prompt:
             '次に送るショート動画リンクを処理してください。まず直接ダウンロードまたは公式字幕に対応しているか確認し、可能なら元動画を保存して発話どおり・元の順序の完全な文字起こしを作成してください。対象は Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram です。直接保存や文字起こしができない場合は制限を明示し、動画ファイルまたは字幕のアップロードを依頼してください。'
         },
         viralRemake: {
-          title: '人気ショート動画のショット分析と再構成',
-          summary: '映像と音の分析から、編集可能な工程、量産バリエーション、完成動画まで制作',
+          title: '人気動画を分析して再構成',
+          summary: '映像と音をショットごとに分析し、編集可能な工程、複数案、完成動画を作成します。',
           prompt:
             '次に送る人気ショート動画のリンクまたはファイルを分析してください。元動画、実時間付きの Doubao 文字起こし、反応データ、実際に確認できるキーフレームを集め、フック、テンポ、構図、動き、字幕、B-roll、音、CTA をショット単位で分解してください。その後、ローカル Hypit で編集可能な制作工程を作り、抽象的な構造だけを再利用し、私が所有・利用許諾を持つ、または新規生成した商品・人物・素材で Brief、Treatment、素材生成/置換、字幕、B-roll、モーション、音、プレビュー、修正、量産バリエーション、最終レンダーまで完了してください。台本や制作案で止めず、完成動画、編集可能な工程、再現コマンドを納品してください。APEX 提供の生成機能はユーザー無料なので、価格やプラン確認を表示しないでください。画面の証拠がない場合はフレーム分析を完了したと主張しないでください。'
         },
         socialIntelligence: {
-          title: '商品・トレンド・コメント・アカウント分析',
-          summary: '公開データと反応シグナルを、傾向・機会・実行案に変換',
+          title: '商品・トレンド・アカウントを分析',
+          summary: '公開データ、コメント、反応の傾向をまとめ、機会と次のアクションを提案します。',
           prompt:
             '指定する商品、トレンド、コメント、またはアカウントを Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram 横断で分析してください。実際に取得した公開データだけを使い、出典、サンプル数、期間、傾向、機会、リスク、実行案を示してください。トレンド一覧や管理画面データがないプラットフォームは明記し、検索結果や推測で代用しないでください。'
         }

@@ -1,6 +1,6 @@
 import type { Translations } from '@/i18n'
 
-export type BusinessWorkflowIcon = 'globe' | 'graph' | 'megaphone'
+export type BusinessWorkflowIcon = 'chart' | 'download' | 'globe' | 'graph' | 'megaphone' | 'scan'
 
 export interface BusinessStarterCard {
   icon: BusinessWorkflowIcon
@@ -33,21 +33,21 @@ type WorkflowCopy = Translations['businessWorkspace']['workflows']
 export function businessHomeStarters(copy: WorkflowCopy): BusinessHomeStarter[] {
   return [
     {
-      icon: 'globe',
+      icon: 'download',
       id: 'video-transcript',
       prompt: copy.homePaths.videoTranscript.prompt,
       summary: copy.homePaths.videoTranscript.summary,
       title: copy.homePaths.videoTranscript.title
     },
     {
-      icon: 'graph',
+      icon: 'scan',
       id: 'viral-video-remake',
       prompt: copy.homePaths.viralRemake.prompt,
       summary: copy.homePaths.viralRemake.summary,
       title: copy.homePaths.viralRemake.title
     },
     {
-      icon: 'megaphone',
+      icon: 'chart',
       id: 'social-intelligence',
       prompt: copy.homePaths.socialIntelligence.prompt,
       summary: copy.homePaths.socialIntelligence.summary,

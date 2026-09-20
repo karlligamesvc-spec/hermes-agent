@@ -3305,10 +3305,10 @@ export const zhHant = defineLocale({
       viewRun: '開啟目前執行',
       noRun: '尚未開始執行',
       legacyFallback: '本機對話與任務（相容視圖）',
-      availableSources: '可用資料來源',
+      availableSources: '應用程式連線',
       sourceConnected: '已連接',
       sourceNotConnected: '未連接',
-      noAvailableSources: '目前版本沒有可用的資料來源連接出口。',
+      noAvailableSources: '目前沒有可管理的應用程式連線。',
       workflowsTitle: '專案工作流程',
       workflowsDescription: '專案是目標容器；工作流程是完成目標的一條執行路徑。一個專案可有多個工作流程。',
       addWorkflow: '增加工作流程',
@@ -3317,34 +3317,37 @@ export const zhHant = defineLocale({
       workflowsUnavailable: '專案已讀取，但工作流程清單暫時無法使用。不會猜測執行狀態。'
     },
     workflows: {
-      eyebrow: '成熟業務路徑',
+      eyebrow: '任務範本',
       title: '工作流程',
       description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。',
       use: '使用此工作流程',
       useShort: '使用',
       startGoal: '開始一個目標',
-      recommendedTitle: '三條重點路徑',
-      recommendedDescription: '選擇成熟路徑，目標會預填到開始頁並保持可編輯。',
+      recommendedTitle: '推薦工作流程',
+      recommendedDescription: '選擇後可先修改目標，再開始執行。',
+      homeTitle: '選擇一項任務開始',
+      homeDescription: '貼上連結，或告訴我你想分析的內容。',
+      homeSourceLabel: '支援的平台',
       homeSourceCoverage:
-        '可處理來源：抖音、小紅書、微信影片號、快手、嗶哩嗶哩、YouTube、TikTok、Instagram；直接連結不可用時可上傳影片。',
+        '抖音、小紅書、微信影片號、快手、嗶哩嗶哩、YouTube、TikTok 和 Instagram；也可以直接上傳影片。',
       additionalTitle: '其他業務路徑',
       pathCount: count => `${count} 條路徑`,
       homePaths: {
         videoTranscript: {
-          title: '短影片連結下載和轉逐字稿',
-          summary: '儲存原影片，擷取字幕、完整逐字稿與製作級時間軸',
+          title: '下載影片並轉成逐字稿',
+          summary: '貼上連結即可儲存原影片，並產出字幕、逐字稿和帶時間碼的文字。',
           prompt:
             '請處理我接下來提供的短影片連結：先核對平台是否支援直接下載或官方字幕；能下載時儲存原影片並產出逐字、原序的完整逐字稿。支援範圍涵蓋抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram；若某平台不能直接下載或轉寫，請清楚說明限制，並請我上傳影片檔或字幕繼續。'
         },
         viralRemake: {
-          title: '爆款短影片逐鏡分析和復刻',
-          summary: '從關鍵畫面與聲音拆解到可編輯工程、批次變體和成片交付',
+          title: '拆解並復刻爆款影片',
+          summary: '逐幀分析畫面與聲音，產出可編輯工程、批次版本和最終成片。',
           prompt:
             '請分析我接下來提供的爆款短影片連結或檔案：先收集原影片、豆包逐字稿與真實時間軸、互動資料和真實可見的關鍵畫面，再按鏡頭拆解開場鉤子、敘事節奏、構圖、動作、字幕、B-roll、音效與 CTA。接著使用本機 Hypit 建立可編輯工程，只重用抽象結構，以我自有、已授權或新生成的產品、人物與素材完成 Brief、Treatment、素材生成/替換、字幕、B-roll、動效、聲音、預覽、修訂、批次變體和最終渲染，並交付成片、工程與重現命令；不要停在腳本或成片方案。APEX 提供的生成能力對使用者免費，不要顯示價格或方案確認。沒有畫面證據時不要聲稱完成逐幀分析。'
         },
         socialIntelligence: {
-          title: '產品、熱榜、評論、帳號分析',
-          summary: '彙整公開資料與互動訊號，輸出趨勢、機會和行動建議',
+          title: '分析產品、熱榜與帳號',
+          summary: '彙整公開資料、評論和互動趨勢，提供機會判斷與下一步建議。',
           prompt:
             '請針對我指定的產品、熱榜、評論或帳號做跨平台分析，平台包括抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram。只使用實際取得的公開資料，列出來源、樣本量、時間範圍、趨勢、機會、風險和可執行建議；沒有熱榜或後台資料的平台請明確標示，不要用搜尋結果或推測冒充。'
         }

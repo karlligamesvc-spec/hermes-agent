@@ -1160,6 +1160,10 @@
   .apex-workflow-entry-grid {
     grid-template-columns: repeat(auto-fit, minmax(14.25rem, 1fr));
   }
+
+  .apex-workflow-entry-grid.apex-workflow-entry-grid--stacked {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 button {

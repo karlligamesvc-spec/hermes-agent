@@ -66,14 +66,13 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
   return (
     <div className="pointer-events-auto flex w-full flex-col gap-8 pb-10 text-left" data-business-start-shelf="">
       <section aria-labelledby="business-start-workflows">
-        <header className="mb-2.5 flex items-end justify-between gap-4">
+        <header className="mb-3 flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-medium text-primary">{c.workflows.eyebrow}</p>
-            <h2 className="mt-1 text-base font-semibold" id="business-start-workflows">
-              {c.workflows.recommendedTitle}
+            <h2 className="text-base font-semibold" id="business-start-workflows">
+              {c.workflows.homeTitle}
             </h2>
             <p className="mt-1 max-w-[48rem] text-xs leading-5 text-(--ui-text-tertiary)">
-              {c.workflows.homeSourceCoverage}
+              {c.workflows.homeDescription}
             </p>
           </div>
           <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="inline" variant="textStrong">
@@ -81,7 +80,10 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
           </Button>
         </header>
 
-        <div className="apex-workflow-entry-grid grid gap-1" data-start-recommended-workflows="">
+        <div
+          className="apex-workflow-entry-grid apex-workflow-entry-grid--stacked grid gap-2.5"
+          data-start-recommended-workflows=""
+        >
           {starters.map(starter => (
             <WorkflowStarterCard
               action={c.workflows.use}
@@ -92,6 +94,17 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
             />
           ))}
         </div>
+
+        <p
+          className="mt-3 flex max-w-[52rem] items-start gap-2 px-1 text-xs leading-5 text-(--ui-text-tertiary)"
+          data-start-source-coverage=""
+        >
+          <Codicon className="mt-1 shrink-0 text-primary" name="globe" size="0.75rem" />
+          <span>
+            <strong className="font-medium text-(--ui-text-secondary)">{c.workflows.homeSourceLabel}：</strong>
+            {c.workflows.homeSourceCoverage}
+          </span>
+        </p>
       </section>
 
       <div className="grid gap-8 border-t border-(--ui-stroke-tertiary) pt-6 min-[900px]:grid-cols-2">
