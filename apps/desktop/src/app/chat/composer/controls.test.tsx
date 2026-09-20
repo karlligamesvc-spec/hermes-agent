@@ -22,7 +22,6 @@ function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerC
       <ComposerControls
         autoSpeak={false}
         busy={false}
-        busyAction="stop"
         canSubmit={true}
         conversation={{
           active: false,
@@ -37,7 +36,6 @@ function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerC
         disabled={false}
         hasComposerPayload={true}
         onDictate={vi.fn()}
-        onQueue={vi.fn()}
         onToggleAutoSpeak={vi.fn()}
         state={state}
         voiceStatus="idle"
@@ -125,7 +123,7 @@ describe('narrow tiles', () => {
   })
 
   it('keeps Stop reachable mid-turn at the tightest width', () => {
-    renderControls({ busy: true, busyAction: 'stop', foldVoice: true, hasComposerPayload: false, minimal: true })
+    renderControls({ busy: true, foldVoice: true, hasComposerPayload: false, minimal: true })
 
     expect(screen.getByLabelText('Stop')).toBeTruthy()
   })
@@ -139,21 +137,21 @@ describe('ComposerControls shortcut tooltips', () => {
   })
 
   it('keeps Send (not Steer) while a turn is running if there is a payload', async () => {
-    renderControls({ busy: true, busyAction: 'steer' })
+    renderControls({ busy: true })
 
     await expectShortcutTooltip('Send', '↵')
   })
 
   it('shows Stop only when the composer is empty mid-turn', async () => {
-    renderControls({ busy: true, busyAction: 'stop', canSubmit: true, hasComposerPayload: false })
+    renderControls({ busy: true, canSubmit: true, hasComposerPayload: false })
 
     await expectShortcutTooltip('Stop', '↵')
   })
 
-  it('shows Ctrl+Enter for Queue as the secondary mid-turn action', async () => {
-    renderControls({ busy: true, busyAction: 'queue' })
+  it('does not expose a separate queue action for a mid-turn payload', () => {
+    renderControls({ busy: true })
 
-    await expectShortcutTooltip('Queue message', 'Ctrl+↵')
+    expect(screen.queryByLabelText('Queue message')).toBeNull()
   })
 })
 
@@ -164,7 +162,7 @@ describe('wake-word ear visibility', () => {
 
   it('stays mounted during a busy agent turn', () => {
     applyWakeStatus({ available: true, enabled: true, listening: true, phrase: 'hey hermes' })
-    renderControls({ busy: true, busyAction: 'stop' })
+    renderControls({ busy: true })
 
     expect(screen.getByLabelText('APEX voice activation — listening')).toBeTruthy()
   })

@@ -80,16 +80,10 @@ export function useComposerDraft({
   // Which composer this is on the focus bus + which attachment set it owns.
   const { attachments: attachmentScope, target } = useComposerScope()
 
-  // Coarse edges only — these flip rarely (empty↔non-empty, the `?` help sigil,
-  // steerable-vs-slash), so typing within a line costs no render.
+  // Coarse edges only — these flip rarely (empty↔non-empty and the `?` help
+  // sigil), so typing within a line costs no render.
   const hasText = useAuiState(s => s.composer.text.trim().length > 0)
   const isHelpHint = useAuiState(s => s.composer.text === '?')
-
-  const isSteerableText = useAuiState(s => {
-    const trimmed = s.composer.text.trim()
-
-    return trimmed.length > 0 && !SLASH_COMMAND_RE.test(trimmed)
-  })
 
   // assistant-ui's composer mutators throw when the core isn't bound yet (a
   // startup/thread-swap window); the DOM + draftRef hold the text and the
@@ -514,7 +508,6 @@ export function useComposerDraft({
     insertInlineRefs,
     insertText,
     isHelpHint,
-    isSteerableText,
     loadIntoComposer,
     requestMainFocus,
     sessionIdRef,

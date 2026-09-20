@@ -5,7 +5,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Ear, EarOff, iconSize, Layers3, Loader2, Square, Volume2, VolumeX } from '@/lib/icons'
+import { Ear, EarOff, iconSize, Loader2, Square, Volume2, VolumeX } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
 import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
@@ -36,7 +36,6 @@ interface ConversationProps {
 export function ComposerControls({
   autoSpeak,
   busy,
-  busyAction,
   canSubmit,
   compactModelPill = false,
   conversation,
@@ -48,12 +47,10 @@ export function ComposerControls({
   state,
   voiceStatus,
   onDictate,
-  onQueue,
   onToggleAutoSpeak
 }: {
   autoSpeak: boolean
   busy: boolean
-  busyAction: 'steer' | 'queue' | 'stop'
   canSubmit: boolean
   compactModelPill?: boolean
   conversation: ConversationProps
@@ -65,7 +62,6 @@ export function ComposerControls({
   state: ChatBarState
   voiceStatus: VoiceStatus
   onDictate: () => void
-  onQueue: () => void
   onToggleAutoSpeak: () => void
 }) {
   const { t } = useI18n()
@@ -80,7 +76,6 @@ export function ComposerControls({
   // Steer is just send: a payload keeps the Send affordance mid-turn. Stop
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
-  const showQueueButton = busyAction !== 'stop' && hasComposerPayload
   // The HUD is a Spotlight bar a few hundred pixels wide, so the four separate
   // voice toggles fold into one menu there and leave the row to the input. A
   // narrow tile hits the same wall from the other direction and folds for the
@@ -120,21 +115,6 @@ export function ComposerControls({
           {voiceControls}
         </>
       )}
-      {showQueueButton ? (
-        <Tip label={<TipKeybindLabel actionId="composer.queue" text={c.queueMessage} />}>
-          <Button
-            aria-label={c.queueMessage}
-            className={GHOST_ICON_BTN}
-            disabled={disabled}
-            onClick={onQueue}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <Layers3 className={iconSize.sm} />
-          </Button>
-        </Tip>
-      ) : null}
       {showVoicePrimary ? (
         <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
       ) : (

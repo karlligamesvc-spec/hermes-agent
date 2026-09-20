@@ -32,6 +32,7 @@ import {
   touchSessionActivity
 } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
+import { clearActiveSessionTodos } from '@/store/todos'
 
 import type { ClientSessionState } from '../../../types'
 import { sessionContextDrift } from '../session-context-drift'
@@ -391,6 +392,11 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       // Idempotent optimistic insert — re-running with the resolved sessionId
       // after createBackendSessionForSend just overwrites with the same id.
       const seedOptimistic = (sid: string) => {
+        // A user message starts a distinct turn. If the previous turn ended
+        // without a final todo update, do not carry its unfinished plan into
+        // this one; the new turn can publish its own todo list immediately.
+        clearActiveSessionTodos(sid)
+
         // Recents jump on send — not stream start, not turn resolve.
         const activity = bubbleText.trim() ? { preview: bubbleText.trim() } : undefined
         touchSessionActivity(sid, activity)

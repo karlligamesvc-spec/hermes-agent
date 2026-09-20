@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   acceptsTriggerCompletion,
   implicitSlashAcceptIndex,
+  isComposerSubmitKey,
   isPendingDraftPersistCurrent,
   type PendingDraftPersist,
   pickPlaceholder,
@@ -35,6 +36,22 @@ describe('shouldDisableComposerInput', () => {
       expect(shouldDisableComposerInput(false, gatewayState)).toBe(false)
     }
   )
+})
+
+describe('isComposerSubmitKey', () => {
+  const press = (overrides: Partial<Parameters<typeof isComposerSubmitKey>[0]> = {}) =>
+    isComposerSubmitKey({ ctrlKey: false, key: 'Enter', metaKey: false, shiftKey: false, ...overrides })
+
+  it('keeps Enter on the primary submit path even with a platform modifier', () => {
+    expect(press()).toBe(true)
+    expect(press({ metaKey: true })).toBe(true)
+    expect(press({ ctrlKey: true })).toBe(true)
+  })
+
+  it('reserves Shift+Enter for a newline', () => {
+    expect(press({ shiftKey: true })).toBe(false)
+    expect(press({ key: 'a' })).toBe(false)
+  })
 })
 
 describe('slashArgStage', () => {
