@@ -24,8 +24,13 @@ const semanticStarterIcons = {
 const recommendedStarterAssets: Partial<Record<string, string>> = {
   'market-launch': 'assets/workflow-commerce-minimal.png',
   'geo-brand-audit': 'assets/workflow-geo-minimal.png',
-  'content-review': 'assets/workflow-content-minimal.png'
+  'content-review': 'assets/workflow-content-minimal.png',
+  'video-transcript': 'assets/workflow-video-transcript.png',
+  'viral-video-remake': 'assets/workflow-video-remake.png',
+  'social-intelligence': 'assets/workflow-social-intelligence.png'
 }
+
+const transparentStarterArtwork = new Set(['video-transcript', 'viral-video-remake', 'social-intelligence'])
 
 const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
@@ -42,6 +47,7 @@ export function WorkflowStarterCard({ action, onSelect, starter, variant }: Work
   const shelf = variant === 'shelf'
   const artwork = recommendedStarterAssets[starter.id]
   const imageLed = Boolean(artwork) && (featured || shelf)
+  const transparentArtwork = transparentStarterArtwork.has(starter.id)
   const SemanticIcon = semanticStarterIcons[starter.icon as keyof typeof semanticStarterIcons]
 
   return (
@@ -64,11 +70,16 @@ export function WorkflowStarterCard({ action, onSelect, starter, variant }: Work
         <img
           alt=""
           aria-hidden="true"
-          className="size-[4.75rem] shrink-0 rounded-[1.125rem] object-cover shadow-xs"
+          className={cn(
+            'shrink-0',
+            transparentArtwork
+              ? 'size-16 scale-[1.45] object-contain dark:invert'
+              : 'size-[4.75rem] rounded-[1.125rem] object-cover shadow-xs'
+          )}
           data-workflow-artwork={starter.id}
-          height={76}
+          height={transparentArtwork ? 64 : 76}
           src={assetPath(artwork!)}
-          width={76}
+          width={transparentArtwork ? 64 : 76}
         />
       ) : (
         <span

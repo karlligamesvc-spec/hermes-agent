@@ -73,16 +73,21 @@ describe('APEX workflow starter artwork', () => {
   })
 
   it.each([
-    ['video-transcript', 'download'],
-    ['viral-video-remake', 'scan'],
-    ['social-intelligence', 'chart']
-  ] as const)('uses a task-specific %s icon instead of recycled workflow artwork', (id, icon) => {
+    ['video-transcript', 'assets/workflow-video-transcript.png'],
+    ['viral-video-remake', 'assets/workflow-video-remake.png'],
+    ['social-intelligence', 'assets/workflow-social-intelligence.png']
+  ] as const)('uses task-specific generated artwork for %s', (id, asset) => {
     const { container } = render(
-      <WorkflowStarterCard action="使用" onSelect={vi.fn()} starter={starter(id, true, icon)} variant="shelf" />
+      <WorkflowStarterCard action="使用" onSelect={vi.fn()} starter={starter(id)} variant="shelf" />
     )
 
-    expect(container.querySelector('[data-workflow-artwork]')).toBeNull()
-    expect(container.querySelector(`[data-workflow-icon="${icon}"] svg`)).toBeTruthy()
+    const image = container.querySelector<HTMLImageElement>(`[data-workflow-artwork="${id}"]`)
+
+    expect(image?.getAttribute('src')).toContain(asset)
+    expect(image?.getAttribute('width')).toBe('64')
+    expect(image?.getAttribute('height')).toBe('64')
+    expect(image?.classList.contains('dark:invert')).toBe(true)
+    expect(container.querySelector('[data-workflow-icon]')).toBeNull()
   })
 
   it('keeps additional real catalog paths compact instead of borrowing featured artwork', () => {

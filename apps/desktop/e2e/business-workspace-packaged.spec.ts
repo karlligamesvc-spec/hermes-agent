@@ -732,7 +732,7 @@ test('Start mounts exactly one accessible and focusable primary input', async ()
   await page.getByRole('textbox', { name: '业务目标' }).fill('')
 })
 
-test('hc-840 Start presents three readable video task rows with matching icons', async () => {
+test('hc-840 Start presents three readable video task rows with generated artwork', async () => {
   const { app, page } = fixture!
 
   await app.evaluate(({ BrowserWindow }) => {
@@ -749,9 +749,11 @@ test('hc-840 Start presents three readable video task rows with matching icons',
 
   const taskRows = page.locator('[data-start-recommended-workflows] [data-workflow-starter="shelf"]')
   await expect(taskRows).toHaveCount(3)
-  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-icon="download"]')).toBeVisible()
-  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-icon="scan"]')).toBeVisible()
-  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-icon="chart"]')).toBeVisible()
+  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-artwork="video-transcript"]')).toBeVisible()
+  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-artwork="viral-video-remake"]')).toBeVisible()
+  await expect(
+    page.locator('[data-start-recommended-workflows] [data-workflow-artwork="social-intelligence"]')
+  ).toBeVisible()
   await expect(
     page.getByText(
       '支持的平台：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。'
