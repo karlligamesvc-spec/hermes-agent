@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 4,
- "ticket": "hc-563, hc-600, hc-659",
+ "contract_version": 5,
+ "ticket": "hc-563, hc-600, hc-659, hc-840",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -85,6 +85,9 @@
   "media_transcribe": {
    "schema": {
     "params": {
+     "force_refresh": {
+      "type": "boolean"
+     },
      "url": {
       "type": "string"
      },
@@ -109,6 +112,13 @@
       "legacy"
      ]
     },
+    "force_refresh_passthrough": {
+     "legs": [
+      "legacy",
+      "gateway"
+     ],
+     "note": "An explicit force_refresh=true reaches either transcribe endpoint; omission stays omitted so the client does not invent a default field."
+    },
     "asr_upload_modes": {
      "legs": [
       "gateway"
@@ -122,7 +132,7 @@
     },
     "result_cache_idempotent": {
      "legs": [],
-     "note": "hc-570 server-side promise (no plugin leg to probe, hence legs=[]): a same-tenant retry of the same audio content (same output-affecting params) within the cache TTL is answered from the server's result cache with cache_hit=true, ZERO vendor call and ZERO new billing; force_refresh=true (accepted by BOTH transcribe endpoints) skips the cache; cached results are strictly tenant-scoped (never served cross-user). Enforced by hermes-cloud tests/test_hc570_asr_result_cache.py; the plugin needs no change (the server fingerprints every upload mode)."
+     "note": "hc-570 server-side promise (no plugin leg to probe, hence legs=[]): a same-tenant retry of the same audio content (same output-affecting params) within the cache TTL is answered from the server's result cache with cache_hit=true, ZERO vendor call and ZERO new billing; force_refresh=true (accepted by BOTH transcribe endpoints and exposed by the paired plugins) skips the cache; cached results are strictly tenant-scoped (never served cross-user). Enforced by hermes-cloud tests/test_hc570_asr_result_cache.py."
     }
    }
   },

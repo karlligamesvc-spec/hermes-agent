@@ -191,13 +191,21 @@ MEDIA_TRANSCRIBE_SCHEMA = {
     "description": (
         "转写已下载的 video_path 或社媒视频链接 url（抖音/小红书/快手/B站，可直接传用户的原始分享文本，一步下载并转写）。"
         "用户要视频文案/逐字稿/拆解脚本时用本工具，禁止用浏览器或其他平台替代，也不要自行安装或运行本地转写工具（如 whisper）。"
-        "返回完整转写和 transcript_path。"
+        "返回完整转写、transcript_path，以及豆包分句/字词级时间轴 segments。"
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "video_path": {"type": "string", "description": "Video path returned by social_download."},
             "url": {"type": "string", "description": "Optional social video share text/URL; downloads and transcribes in one call."},
+            "force_refresh": {
+                "type": "boolean",
+                "description": (
+                    "Skip old transcript caches and run ASR again. Use only when a production needs "
+                    "word/utterance timing but an older cached response has no segments."
+                ),
+                "default": False,
+            },
         },
     },
 }
@@ -294,7 +302,11 @@ def _gateway_social_download(url: str) -> str:
     return tool_result(**result)
 
 
-def _gateway_media_transcribe(video_path: str | None, url: str | None) -> str:
+def _gateway_media_transcribe(
+    video_path: str | None,
+    url: str | None,
+    force_refresh: bool | None = None,
+) -> str:
     meta: dict[str, Any] = {}
     local_path: Path | None = None
     media_url = ""
@@ -321,13 +333,18 @@ def _gateway_media_transcribe(video_path: str | None, url: str | None) -> str:
             # ≤阈值 multipart / >阈值 COS 直传三跳,直传通道故障自动回退 multipart。
             upload_path = _gateway.extract_audio_for_asr(local_path) or local_path
             response = _gateway.transcribe_upload(
-                upload_path, timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS
+                upload_path,
+                timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS,
+                force_refresh=force_refresh,
             )
         elif media_url:
+            payload: dict[str, Any] = {"media_url": media_url}
+            if force_refresh is not None:
+                payload["force_refresh"] = force_refresh
             response = _gateway.request_json(
                 "POST",
                 "/tools/v1/asr/transcribe",
-                {"media_url": media_url},
+                payload,
                 timeout=_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS,
             )
         else:
@@ -538,11 +555,14 @@ def _handle_media_transcribe(args: dict, **_kwargs) -> str:
         return tool_error("media_transcribe expects a JSON object argument")
     video_path = str(args.get("video_path") or "").strip() or None
     url = str(args.get("url") or args.get("share_url") or "").strip() or None
+    force_refresh = bool(args.get("force_refresh")) if "force_refresh" in args else None
     if not video_path and not url:
         return tool_error("请提供 video_path 或视频分享链接")
     if _use_gateway():
-        return _gateway_media_transcribe(video_path, url)
+        return _gateway_media_transcribe(video_path, url, force_refresh)
     payload: dict[str, Any] = {"video_path": video_path, "url": url}
+    if force_refresh is not None:
+        payload["force_refresh"] = force_refresh
     if _routed_intent(args):
         payload["routed_intent"] = _routed_intent(args)
     try:

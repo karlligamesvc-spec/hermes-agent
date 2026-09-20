@@ -37,8 +37,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 
 # 与 cloud 侧 tests/test_hc563_plugin_tools_contract.py 内嵌的是同一个值。
-EXPECTED_CONTRACT_SHA256 = "4154dd9ea8e07a54864c6a2a761da37153c20a92ef2b01d04e820548a0a8d636"
-EXPECTED_CONTRACT_VERSION = 4
+EXPECTED_CONTRACT_SHA256 = "5a18b7dfd887150f6a2075799fa682195cf009266d414e0ff26d7f1f2cb81456"
+EXPECTED_CONTRACT_VERSION = 5
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -177,11 +177,12 @@ class RecordedCall:
     """统一的出网记录:legacy=urlopen(body=JSON 请求体);gateway=request_json
     (body=payload,files=multipart)。path 一律相对各自 base。"""
 
-    def __init__(self, *, method: str, path: str, body=None, files=None):
+    def __init__(self, *, method: str, path: str, body=None, files=None, form_data=None):
         self.method = method
         self.path = path
         self.body = body
         self.files = files
+        self.form_data = form_data
 
 
 class LegacyHarness:
@@ -252,7 +253,15 @@ class GatewayHarness:
         harness = self
 
         def _fake_request_json(method, path, payload=None, *, timeout=90, files=None, form_data=None):
-            harness.calls.append(RecordedCall(method=method, path=path, body=payload, files=files))
+            harness.calls.append(
+                RecordedCall(
+                    method=method,
+                    path=path,
+                    body=payload,
+                    files=files,
+                    form_data=form_data,
+                )
+            )
             return harness._canned(path)
 
         def _fake_download_media(url, *, headers=None, filename_hint=""):
@@ -405,6 +414,22 @@ def _check_delivery_format_normalized_passthrough(h, tool_name, _spec):
     assert plain_calls[-1].body["delivery_format"] is None  # 显式 None,不造默认值
 
 
+def _check_force_refresh_passthrough(h, tool_name, _spec):
+    args = h.probe_args(tool_name)
+    args["force_refresh"] = True
+    _result, calls = h.invoke(tool_name, args)
+    asr_call = next(call for call in reversed(calls) if call.path.endswith("/transcribe"))
+    if h.leg == "gateway" and asr_call.files is not None:
+        assert asr_call.form_data == {"force_refresh": "true"}
+    else:
+        assert asr_call.body["force_refresh"] is True
+
+    _result, plain_calls = h.invoke(tool_name, h.probe_args(tool_name))
+    plain_asr = next(call for call in reversed(plain_calls) if call.path.endswith("/transcribe"))
+    assert "force_refresh" not in (plain_asr.body or {})
+    assert not plain_asr.form_data
+
+
 def _required_args_check(error_args: dict):
     def check(h, tool_name, _spec):
         result, calls = h.invoke(tool_name, dict(error_args))
@@ -486,6 +511,7 @@ def _check_no_foreign_paths_in_result(h, tool_name, spec):
 BEHAVIOR_CHECKS = {
     "routed_intent_passthrough": _check_routed_intent_passthrough,
     "delivery_format_normalized_passthrough": _check_delivery_format_normalized_passthrough,
+    "force_refresh_passthrough": _check_force_refresh_passthrough,
     "urls_or_creator_url_required": _required_args_check({}),
     "url_or_image_urls_required": _required_args_check({}),
     "job_id_required": _required_args_check({}),

@@ -9,6 +9,8 @@
 
 - Preserved the existing APEX Start-page hierarchy, typography, spacing, colors, card assets, and responsive wrapping.
 - Replaced the three visible path titles and summaries with the requested short-video tasks and eight-platform scope.
+- Refined the transcript card to promise a production timeline, and the viral-video card to promise an editable project, batch variants, and a finished result rather than stopping at a script/asset list.
+- The viral-video starter now explicitly routes the local Agent through the complete Hypit production lifecycle while keeping the APEX shell, navigation, card art, and interaction model unchanged.
 - Confirmed all titles and platform lists remain legible without clipping in the narrower two-column layout.
 - Confirmed the full Start page remains keyboard and accessibility navigable.
 - Confirmed selecting “短视频链接下载和转逐字稿” fills the business-goal composer with an actionable Agent prompt and enables execution; it does not masquerade as an existing production Workflow template.

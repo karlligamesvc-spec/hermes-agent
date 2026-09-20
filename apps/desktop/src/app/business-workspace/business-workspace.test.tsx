@@ -348,8 +348,8 @@ describe('hc-685 business workspace identity', () => {
         '可处理来源：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；直链不可用时可上传视频。'
       )
     ).toBeTruthy()
-    expect(screen.getByText('保存原视频，提取字幕与完整逐字稿')).toBeTruthy()
-    expect(screen.getByText('逐帧拆解镜头、节奏、字幕与动作，生成复刻脚本和素材清单')).toBeTruthy()
+    expect(screen.getByText('保存原视频，提取字幕、完整逐字稿和制作级时间轴')).toBeTruthy()
+    expect(screen.getByText('从关键帧与声音拆解到可编辑工程、批量变体和成片交付')).toBeTruthy()
     expect(screen.getByText('汇总公开数据与互动信号，输出趋势、机会和行动建议')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /短视频链接下载和转逐字稿/ }))
 
