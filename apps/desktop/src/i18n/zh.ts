@@ -3934,6 +3934,48 @@ export const zh = defineLocale({
             '请围绕我指定的产品、热榜、评论或账号做跨平台分析，平台包括抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram。只使用实际取得的公开数据，列出来源、样本量、时间范围、趋势、机会、风险和可执行建议；没有热榜或后台数据的平台请明确标注，不要用搜索结果或推测冒充。'
         }
       },
+      videoStages: {
+        full: {
+          title: '完整短视频制作流程',
+          summary: '从原视频证据开始，依次完成分析、制作、渲染和工程交付。',
+          prompt: '分析我提供的短视频，并交付完成校验的成片、可编辑工程和复现说明。'
+        },
+        source: {
+          title: '1. 采集视频与数据',
+          summary: '保存原视频、来源信息和可公开读取的互动数据。',
+          prompt: '采集我提供的短视频及其真实来源和公开数据，并整理成可继续处理的资料包。'
+        },
+        transcript: {
+          title: '2. 逐字稿与关键帧',
+          summary: '生成真实时间轴、字幕、关键帧和画面索引。',
+          prompt: '为我提供的视频生成带真实时间码的逐字稿、字幕和关键画面索引。'
+        },
+        analysis: {
+          title: '3. 镜头分析报告',
+          summary: '按真实画面拆解钩子、节奏、构图、字幕和声音。',
+          prompt: '依据真实画面和时间轴，完成有证据可回溯的镜头分析报告。'
+        },
+        project: {
+          title: '4. Brief 与可编辑工程',
+          summary: '把抽象结构转成可修改的创意方案与制作工程。',
+          prompt: '根据已有分析建立原创 Brief、Treatment、镜头计划和可编辑工程。'
+        },
+        assets: {
+          title: '5. 素材生成与质检',
+          summary: '准备画面、字幕、声音和动效，并检查素材质量。',
+          prompt: '按工程要求生成或替换已授权素材，并完成可追溯的质量检查。'
+        },
+        render: {
+          title: '6. 预览、修订与渲染',
+          summary: '先预览校对，再完成修改、变体和最终渲染。',
+          prompt: '打开现有工程完成预览、修订、批量版本和最终成片渲染。'
+        },
+        delivery: {
+          title: '7. 交付成片与工程',
+          summary: '核验并打包成片、工程、素材清单和复现说明。',
+          prompt: '核验现有成片和工程，并整理为可以打开、检查和复现的交付包。'
+        }
+      },
       commerce: {
         title: '从市场机会到上架素材',
         summary: '数据采集、机会分析、定位与生产',
@@ -4141,7 +4183,20 @@ export const zh = defineLocale({
         refreshFailedDescription: '最新刷新失败，正在显示上一次成功读取的 Run 数据。',
         requestChanges: '要求修改',
         retry: '重新读取',
+        retryingStage: '正在重试…',
+        retryStage: '重试此阶段',
+        stageCount: (completed, total) => `已完成 ${completed}/${total} 个阶段`,
+        stageEvidence: count => `${count} 份产物凭证`,
         stageProgress: '阶段进度',
+        stageStatus: status =>
+          ({
+            cancelled: '已取消',
+            failed: '失败',
+            pending: '待开始',
+            running: '进行中',
+            skipped: '已跳过',
+            succeeded: '已完成'
+          })[status] || '未知状态',
         started: '启动时间',
         status: status =>
           ({

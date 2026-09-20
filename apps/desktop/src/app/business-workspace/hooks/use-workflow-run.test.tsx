@@ -22,7 +22,8 @@ function overview(status: string): WorkflowRunOverview {
       status,
       triggerRef: 'Review a real workflow Run',
       updatedAt: '2026-09-06T10:02:00Z'
-    }
+    },
+    steps: []
   }
 }
 

@@ -3352,6 +3352,48 @@ export const zhHant = defineLocale({
             '請針對我指定的產品、熱榜、評論或帳號做跨平台分析，平台包括抖音、小紅書、微信影片、快手、嗶哩嗶哩、YouTube、TikTok、Instagram。只使用實際取得的公開資料，列出來源、樣本量、時間範圍、趨勢、機會、風險和可執行建議；沒有熱榜或後台資料的平台請明確標示，不要用搜尋結果或推測冒充。'
         }
       },
+      videoStages: {
+        full: {
+          title: '完整短影片製作流程',
+          summary: '從原影片證據開始，依序完成分析、製作、渲染和可編輯工程交付。',
+          prompt: '分析我提供的短影片，並交付完成核驗的成片、可編輯工程和重現說明。'
+        },
+        source: {
+          title: '1. 採集影片與資料',
+          summary: '儲存原影片、來源資訊和可公開讀取的互動資料。',
+          prompt: '採集我提供的短影片及其真實來源和公開資料，整理成可繼續處理的資料包。'
+        },
+        transcript: {
+          title: '2. 逐字稿與關鍵影格',
+          summary: '產出真實時間軸、字幕、關鍵影格和畫面索引。',
+          prompt: '為我提供的影片產出帶真實時間碼的逐字稿、字幕和關鍵畫面索引。'
+        },
+        analysis: {
+          title: '3. 鏡頭分析報告',
+          summary: '按真實畫面拆解鉤子、節奏、構圖、字幕和聲音。',
+          prompt: '依據真實畫面和時間軸，完成有證據可追溯的鏡頭分析報告。'
+        },
+        project: {
+          title: '4. Brief 與可編輯工程',
+          summary: '把抽象結構轉成原創方案與可修改的製作工程。',
+          prompt: '根據既有分析建立原創 Brief、Treatment、鏡頭計畫和可編輯工程。'
+        },
+        assets: {
+          title: '5. 素材生成與質檢',
+          summary: '準備畫面、字幕、聲音和動效，並檢查素材品質。',
+          prompt: '按工程要求生成或替換已授權素材，並完成可追溯的品質檢查。'
+        },
+        render: {
+          title: '6. 預覽、修訂與渲染',
+          summary: '先預覽校對，再完成修改、變體和最終渲染。',
+          prompt: '開啟既有工程，完成預覽、修訂、批次版本和最終成片渲染。'
+        },
+        delivery: {
+          title: '7. 交付成片與工程',
+          summary: '核驗並打包成片、工程、素材清單和重現說明。',
+          prompt: '核驗既有成片和工程，整理成可開啟、檢查和重現的交付包。'
+        }
+      },
       commerce: {
         title: '從市場機會到上架素材',
         summary: '資料採集、機會分析、定位與生產',
@@ -3559,7 +3601,20 @@ export const zhHant = defineLocale({
         refreshFailedDescription: '最新重新整理失敗，正在顯示上一次成功讀取的 Run 資料。',
         requestChanges: '要求修改',
         retry: '重新讀取',
+        retryingStage: '正在重試…',
+        retryStage: '重試此階段',
+        stageCount: (completed, total) => `已完成 ${completed}/${total} 個階段`,
+        stageEvidence: count => `${count} 份產物憑證`,
         stageProgress: '階段進度',
+        stageStatus: status =>
+          ({
+            cancelled: '已取消',
+            failed: '失敗',
+            pending: '待開始',
+            running: '進行中',
+            skipped: '已略過',
+            succeeded: '已完成'
+          })[status] || '未知狀態',
         started: '啟動時間',
         status: status =>
           ({

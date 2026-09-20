@@ -13,6 +13,17 @@ const RUN_ACTIVITY_STATUSES = new Set([
   'waiting_review'
 ])
 const REVIEW_STATUSES = new Set(['approved', 'changes_requested', 'pending', 'rejected'])
+const RUN_STEP_STATUSES = new Set(['cancelled', 'failed', 'pending', 'running', 'skipped', 'succeeded'])
+const VIDEO_WORKFLOW_TEMPLATE_IDS = new Set([
+  'viral-video-remake',
+  'video-source-collection',
+  'video-transcript-keyframes',
+  'video-shot-analysis',
+  'video-creative-project',
+  'video-assets-qc',
+  'video-preview-render',
+  'video-delivery-package'
+])
 
 type JsonObject = Record<string, unknown>
 
@@ -480,6 +491,33 @@ export function projectWorkflowDomainRunOverview(value: unknown): JsonObject {
     throw new Error('Invalid workflow domain run overview response')
   }
 
+  const steps = (Array.isArray(overview.steps) ? overview.steps : [])
+    .map(value => {
+      const step = requireObject(value, 'run step')
+      const status = requireText(step.status, 'run step status', 48)
+
+      if (!RUN_STEP_STATUSES.has(status)) {
+        throw new Error('Invalid workflow domain run step status')
+      }
+
+      return {
+        attempt: requireInteger(step.attempt, 'run step attempt', 1),
+        completedAt: optionalText(step.completedAt, 80),
+        createdAt: requireText(step.createdAt, 'run step creation time', 80),
+        evidenceCount: requireInteger(step.evidenceCount ?? 0, 'run step evidence count'),
+        id: requireText(step.id, 'run step id', 160),
+        key: requireText(step.key, 'run step key', 120),
+        position: requireInteger(step.position, 'run step position'),
+        runId: requireText(step.runId, 'run step run id', 160),
+        startedAt: optionalText(step.startedAt, 80),
+        status,
+        summary: optionalText(step.summary, 1000),
+        title: requireText(step.title, 'run step title', 200),
+        updatedAt: requireText(step.updatedAt, 'run step update time', 80)
+      }
+    })
+    .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id))
+
   const events = overview.events
     .map(value => {
       const event = requireObject(value, 'run event')
@@ -540,7 +578,8 @@ export function projectWorkflowDomainRunOverview(value: unknown): JsonObject {
       status: requireText(run.status, 'run status', 48),
       triggerRef: optionalText(run.triggerRef, 4000),
       updatedAt: requireText(run.updatedAt, 'run update time', 80)
-    }
+    },
+    steps
   }
 }
 
@@ -652,6 +691,16 @@ export async function getWorkflowDomainCatalog(
   return requireObject(await transport.getJson(workflowDomainUrl(apiBase, 'catalog')), 'workflow catalog')
 }
 
+export async function getVideoWorkflowDomainCatalog(
+  apiBase: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+): Promise<JsonObject> {
+  return requireObject(
+    await transport.getJson(workflowDomainUrl(apiBase, 'video-workflow-templates')),
+    'video workflow catalog'
+  )
+}
+
 export async function createWorkflowDomainProject(options: CreateWorkflowDomainProjectOptions): Promise<JsonObject> {
   const name = requireText(options.name, 'project name', 200)
   const objective = requireText(options.objective, 'objective', 4000)
@@ -703,31 +752,42 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
         160
       )
 
-  const workflow = responseItem(
-    await options.transport.postJson(
-      workflowDomainUrl(options.apiBase, `projects/${encodeURIComponent(projectId)}/workflows`),
-      {
-        name,
-        slug,
-        description,
-        definition: {
-          entrypoint: 'hermes',
-          objective,
-          template: { id: templateId, version: templateVersion }
-        },
-        inputSchema: {
-          type: 'object',
-          required: ['objective'],
-          properties: { objective: { type: 'string' } }
-        },
-        outputSchema: {
-          type: 'object',
-          properties: { summary: { type: 'string' }, evidence: { type: 'array' } }
-        }
-      }
-    ),
-    'workflow'
-  )
+  const workflow = VIDEO_WORKFLOW_TEMPLATE_IDS.has(templateId)
+    ? responseItem(
+        await options.transport.postJson(
+          workflowDomainUrl(
+            options.apiBase,
+            `projects/${encodeURIComponent(projectId)}/workflow-templates/${encodeURIComponent(templateId)}`
+          ),
+          { objective }
+        ),
+        'workflow template'
+      )
+    : responseItem(
+        await options.transport.postJson(
+          workflowDomainUrl(options.apiBase, `projects/${encodeURIComponent(projectId)}/workflows`),
+          {
+            name,
+            slug,
+            description,
+            definition: {
+              entrypoint: 'hermes',
+              objective,
+              template: { id: templateId, version: templateVersion }
+            },
+            inputSchema: {
+              type: 'object',
+              required: ['objective'],
+              properties: { objective: { type: 'string' } }
+            },
+            outputSchema: {
+              type: 'object',
+              properties: { summary: { type: 'string' }, evidence: { type: 'array' } }
+            }
+          }
+        ),
+        'workflow'
+      )
 
   const workflowId = requireText(workflow.id, 'workflow id', 160)
 
@@ -837,6 +897,27 @@ export async function cancelWorkflowDomainRun(
   return responseItem(
     await transport.postJson(workflowDomainUrl(apiBase, `runs/${encodeURIComponent(normalizedRunId)}/cancel`), {}),
     'cancelled run'
+  )
+}
+
+export async function retryWorkflowDomainRunStep(
+  apiBase: string,
+  runId: string,
+  stepKey: string,
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+): Promise<JsonObject> {
+  const normalizedRunId = requireText(runId, 'run id', 160)
+  const normalizedStepKey = requireText(stepKey, 'run step key', 120)
+
+  return responseItem(
+    await transport.postJson(
+      workflowDomainUrl(
+        apiBase,
+        `runs/${encodeURIComponent(normalizedRunId)}/steps/${encodeURIComponent(normalizedStepKey)}/retry`
+      ),
+      {}
+    ),
+    'retried run'
   )
 }
 

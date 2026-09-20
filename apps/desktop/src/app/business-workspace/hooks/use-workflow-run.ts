@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { cancelWorkflowRun, getWorkflowRun, reviewWorkflowDeliverable } from '../api/adapters'
+import { cancelWorkflowRun, getWorkflowRun, retryWorkflowRunStep, reviewWorkflowDeliverable } from '../api/adapters'
 import type { WorkflowRunOverview } from '../api/types'
 import { businessStatusPresentation } from '../view-model/display-status'
 
@@ -12,6 +12,7 @@ export interface WorkflowRunController {
   load: () => Promise<void>
   loading: boolean
   overview: null | WorkflowRunOverview
+  retryStep: (stepKey: string) => Promise<void>
   review: (deliverableId: string, status: 'approved' | 'changes_requested') => Promise<void>
 }
 
@@ -191,5 +192,24 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
     }
   }
 
-  return { actionFailed, actionId, cancel, failed, load, loading, overview, review }
+  const retryStep = async (stepKey: string) => {
+    setActionFailed(false)
+    setActionId(`step:${stepKey}:retry`)
+
+    try {
+      if (!(await retryWorkflowRunStep(runId, stepKey))) {
+        setActionFailed(true)
+
+        return
+      }
+
+      await refresh(true)
+    } catch {
+      setActionFailed(true)
+    } finally {
+      setActionId(null)
+    }
+  }
+
+  return { actionFailed, actionId, cancel, failed, load, loading, overview, retryStep, review }
 }

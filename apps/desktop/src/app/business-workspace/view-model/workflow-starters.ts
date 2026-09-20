@@ -24,6 +24,14 @@ export interface BusinessWorkflowStarter extends BusinessHomeStarter {
     | 'geo-brand-audit'
     | 'market-launch'
     | 'review-insights'
+    | 'viral-video-remake'
+    | 'video-assets-qc'
+    | 'video-creative-project'
+    | 'video-delivery-package'
+    | 'video-preview-render'
+    | 'video-shot-analysis'
+    | 'video-source-collection'
+    | 'video-transcript-keyframes'
   version: number
 }
 
@@ -125,5 +133,44 @@ export function businessWorkflowStarters(copy: WorkflowCopy): BusinessWorkflowSt
       title: copy.businessReview.title,
       version: 1
     }
+  ]
+}
+
+/** Server-owned hc-842 templates: seven resumable stages plus the full path. */
+export function videoWorkflowStarters(copy: WorkflowCopy): BusinessWorkflowStarter[] {
+  const stages = copy.videoStages
+  const atomic = [
+    ['source', 'video-source-collection', 'download'],
+    ['transcript', 'video-transcript-keyframes', 'download'],
+    ['analysis', 'video-shot-analysis', 'scan'],
+    ['project', 'video-creative-project', 'megaphone'],
+    ['assets', 'video-assets-qc', 'scan'],
+    ['render', 'video-preview-render', 'scan'],
+    ['delivery', 'video-delivery-package', 'download']
+  ] as const
+
+  return [
+    {
+      businessPath: 'video_production',
+      icon: 'scan',
+      id: 'viral-video-remake',
+      prompt: stages.full.prompt,
+      recommended: true,
+      slug: 'viral-video-remake',
+      summary: stages.full.summary,
+      title: stages.full.title,
+      version: 1
+    },
+    ...atomic.map(([copyKey, id, icon]) => ({
+      businessPath: 'video_production',
+      icon,
+      id,
+      prompt: stages[copyKey].prompt,
+      recommended: false,
+      slug: id,
+      summary: stages[copyKey].summary,
+      title: stages[copyKey].title,
+      version: 1
+    }))
   ]
 }

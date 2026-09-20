@@ -3633,6 +3633,16 @@ export interface Translations {
         viralRemake: { title: string; summary: string; prompt: string }
         socialIntelligence: { title: string; summary: string; prompt: string }
       }
+      videoStages: {
+        full: { title: string; summary: string; prompt: string }
+        source: { title: string; summary: string; prompt: string }
+        transcript: { title: string; summary: string; prompt: string }
+        analysis: { title: string; summary: string; prompt: string }
+        project: { title: string; summary: string; prompt: string }
+        assets: { title: string; summary: string; prompt: string }
+        render: { title: string; summary: string; prompt: string }
+        delivery: { title: string; summary: string; prompt: string }
+      }
       commerce: { title: string; summary: string; prompt: string }
       insight: { title: string; summary: string; prompt: string }
       content: { title: string; summary: string; prompt: string }
@@ -3783,7 +3793,12 @@ export interface Translations {
         refreshFailedDescription: string
         requestChanges: string
         retry: string
+        retryingStage: string
+        retryStage: string
+        stageCount: (completed: number, total: number) => string
+        stageEvidence: (count: number) => string
         stageProgress: string
+        stageStatus: (status: string) => string
         started: string
         status: (status: string) => string
         timeline: string

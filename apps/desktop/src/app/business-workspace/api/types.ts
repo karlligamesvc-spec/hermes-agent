@@ -8,6 +8,7 @@ export interface WorkflowDomainBridge {
   }) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getProject?: (projectId: string) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getCatalog?: () => Promise<WorkflowCatalogResult>
+  getVideoCatalog?: () => Promise<WorkflowVideoCatalogResult>
   getDeliverable?: (deliverableId: string) => Promise<WorkflowDeliverableDetailResult>
   getRun: (runId: string) => Promise<{ ok: boolean; overview?: WorkflowRunOverview }>
   listActivity?: (options?: { cursor?: string; kinds?: string; limit?: number }) => Promise<WorkflowActivityListResult>
@@ -30,6 +31,7 @@ export interface WorkflowDomainBridge {
     notes?: string
     status: 'approved' | 'changes_requested'
   }) => Promise<{ ok: boolean }>
+  retryRunStep?: (payload: { runId: string; stepKey: string }) => Promise<{ ok: boolean }>
   openUserFile?: (fileId: string) => Promise<{ ok: boolean }>
   startGoal: (payload: {
     objective: string
@@ -200,6 +202,24 @@ export interface WorkflowCatalogResult {
   version?: string
 }
 
+export interface WorkflowVideoCatalogItem {
+  id: string
+  kind: 'pipeline' | 'stage'
+  name: string
+  position: number
+  recommended: boolean
+  slug: string
+  stepCount: number
+  summary: string
+  version: number
+}
+
+export interface WorkflowVideoCatalogResult {
+  items?: WorkflowVideoCatalogItem[]
+  ok: boolean
+  version?: string
+}
+
 export interface WorkflowRunOverview {
   deliverables: Array<{
     createdAt: string
@@ -235,6 +255,21 @@ export interface WorkflowRunOverview {
     triggerRef: null | string
     updatedAt: string
   }
+  steps: Array<{
+    attempt: number
+    completedAt: null | string
+    createdAt: string
+    evidenceCount: number
+    id: string
+    key: string
+    position: number
+    runId: string
+    startedAt: null | string
+    status: 'cancelled' | 'failed' | 'pending' | 'running' | 'skipped' | 'succeeded'
+    summary: null | string
+    title: string
+    updatedAt: string
+  }>
 }
 
 export type StartWorkflowGoalOutcome = { mode: 'failed' } | { mode: 'started'; runId: string } | { mode: 'unavailable' }

@@ -2,19 +2,22 @@ import { useEffect, useState } from 'react'
 
 import {
   getWorkflowProject,
+  listVideoWorkflowCatalog,
   listWorkflowCatalog,
   listWorkflowDefinitions,
   listWorkflowProjects,
   type WorkflowCatalogOutcome,
   type WorkflowDefinitionListOutcome,
   type WorkflowProjectListOutcome,
-  type WorkflowProjectOutcome
+  type WorkflowProjectOutcome,
+  type WorkflowVideoCatalogOutcome
 } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
 
 type ProjectListState = WorkflowProjectListOutcome | { mode: 'loading' }
 type ProjectState = WorkflowProjectOutcome | { mode: 'loading' }
 type WorkflowCatalogState = WorkflowCatalogOutcome | { mode: 'loading' }
+type WorkflowVideoCatalogState = WorkflowVideoCatalogOutcome | { mode: 'loading' }
 type WorkflowListState = WorkflowDefinitionListOutcome | { mode: 'loading' }
 
 export function useWorkflowProjects(limit = 50): ProjectListState {
@@ -80,6 +83,29 @@ export function useWorkflowCatalog(reloadToken = 0): WorkflowCatalogState {
 
     setState({ mode: 'loading' })
     void listWorkflowCatalog().then(result => {
+      if (active) {
+        setState(result)
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [reloadToken])
+
+  return state
+}
+
+export function useVideoWorkflowCatalog(reloadToken = 0): WorkflowVideoCatalogState {
+  const [state, setState] = useState<WorkflowVideoCatalogState>(() =>
+    workflowDomainBridge()?.getVideoCatalog ? { mode: 'loading' } : { mode: 'unavailable' }
+  )
+
+  useEffect(() => {
+    let active = true
+
+    setState({ mode: 'loading' })
+    void listVideoWorkflowCatalog().then(result => {
       if (active) {
         setState(result)
       }

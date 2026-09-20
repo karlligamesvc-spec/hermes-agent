@@ -897,6 +897,65 @@ describe('hc-685 business workspace identity', () => {
     expect(startGoal).not.toHaveBeenCalled()
   })
 
+  it('shows the server-owned video pipeline even when the legacy catalog is unavailable', async () => {
+    const getVideoCatalog = vi.fn(async () => ({
+      items: [
+        {
+          id: 'viral-video-remake',
+          kind: 'pipeline' as const,
+          name: 'server text is not executable prompt text',
+          position: 0,
+          recommended: true,
+          slug: 'viral-video-remake',
+          stepCount: 7,
+          summary: 'server summary',
+          version: 1
+        },
+        {
+          id: 'video-source-collection',
+          kind: 'stage' as const,
+          name: 'server stage',
+          position: 1,
+          recommended: false,
+          slug: 'video-source-collection',
+          stepCount: 1,
+          summary: 'server stage summary',
+          version: 1
+        }
+      ],
+      ok: true,
+      version: 'video-workflow-catalog/v1'
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getCatalog: vi.fn(async () => ({ ok: false })),
+      getRun: vi.fn(),
+      getVideoCatalog,
+      listWorkflows: vi.fn(async () => ({ items: [], ok: true })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <WorkflowsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByRole('button', { name: /完整短视频制作流程/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /采集视频与数据/ })).toBeTruthy()
+    expect(screen.queryByText('server text is not executable prompt text')).toBeNull()
+    expect(getVideoCatalog).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /采集视频与数据/ }))
+    await waitFor(() => expect(screen.getByTestId('business-workflow-slug').textContent).toBe('video-source-collection'))
+  })
+
   it('offers executable recovery actions and never substitutes test templates when the catalog is unavailable', async () => {
     render(
       <MemoryRouter initialEntries={['/workflows']}>

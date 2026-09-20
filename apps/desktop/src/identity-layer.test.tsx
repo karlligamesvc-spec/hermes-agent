@@ -766,7 +766,8 @@ describe('identity: the APEX business shell stays user-facing', () => {
                 status: 'succeeded',
                 triggerRef: 'Verify identity',
                 updatedAt: '2026-09-03T00:01:00Z'
-              }
+              },
+              steps: []
             }
           })
         }
@@ -811,18 +812,22 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(main).toContain('import {\n  cancelWorkflowDomainRun,')
     expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getVideoCatalog'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getProject'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:listDeliverables'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getDeliverable'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:listActivity'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:openUserFile'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:reviewDeliverable'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:retryRunStep'")
     expect(cancelHandler).not.toContain('return { ok: true, run }')
     expect(reviewHandler).not.toContain('return { ok: true, review }')
 
     expect(preload).toContain('workflowDomain: {')
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getRun', runId)")
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getVideoCatalog')")
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:retryRunStep', payload)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)")
     expect(preload).not.toContain('accessToken')
   })

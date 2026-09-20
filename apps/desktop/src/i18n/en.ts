@@ -4248,6 +4248,48 @@ export const en: Translations = {
             'Analyze the product, trend list, comments, or account I specify across Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram. Use only public data actually retrieved, and report sources, sample size, time range, trends, opportunities, risks, and actions. Mark platforms with no trend list or backend data explicitly; never present search results or estimates as those missing metrics.'
         }
       },
+      videoStages: {
+        full: {
+          title: 'Complete short-video production',
+          summary: 'Move from source evidence through analysis, production, rendering, and editable delivery.',
+          prompt: 'Analyze the short video I provide and deliver a verified final video, editable project, and reproduction guide.'
+        },
+        source: {
+          title: '1. Collect video and data',
+          summary: 'Save the source video, provenance, and public engagement data.',
+          prompt: 'Collect the short video I provide with its real source and public data, then prepare a reusable source bundle.'
+        },
+        transcript: {
+          title: '2. Transcript and key frames',
+          summary: 'Create real timing, captions, key frames, and a visual index.',
+          prompt: 'Create a transcript, captions, and key-frame index with real time codes for the video I provide.'
+        },
+        analysis: {
+          title: '3. Shot analysis report',
+          summary: 'Break down hooks, pacing, composition, captions, and sound from visible evidence.',
+          prompt: 'Use the real frames and timeline to create an evidence-linked shot analysis report.'
+        },
+        project: {
+          title: '4. Brief and editable project',
+          summary: 'Turn the abstract structure into an original creative plan and editable project.',
+          prompt: 'Use the existing analysis to build an original Brief, Treatment, shot plan, and editable project.'
+        },
+        assets: {
+          title: '5. Asset production and QC',
+          summary: 'Prepare visuals, captions, audio, and motion, then verify their quality.',
+          prompt: 'Generate or replace authorized assets for the project and complete traceable quality checks.'
+        },
+        render: {
+          title: '6. Preview, revise, and render',
+          summary: 'Review the preview, make corrections, create variants, and render the final video.',
+          prompt: 'Open the existing project and complete preview, revision, variants, and final rendering.'
+        },
+        delivery: {
+          title: '7. Deliver video and project',
+          summary: 'Verify and package the final video, project, asset manifest, and reproduction guide.',
+          prompt: 'Verify the existing video and project, then package them for inspection and reproduction.'
+        }
+      },
       commerce: {
         title: 'Market opportunity to launch assets',
         summary: 'Data, opportunity analysis, positioning, and production',
@@ -4463,7 +4505,20 @@ export const en: Translations = {
         refreshFailedDescription: 'The latest refresh failed. Showing the last successful Run data.',
         requestChanges: 'Request changes',
         retry: 'Read again',
+        retryingStage: 'Retrying…',
+        retryStage: 'Retry this stage',
+        stageCount: (completed, total) => `${completed}/${total} stages complete`,
+        stageEvidence: count => `${count} artifact receipts`,
         stageProgress: 'Stage progress',
+        stageStatus: status =>
+          ({
+            cancelled: 'Cancelled',
+            failed: 'Failed',
+            pending: 'Not started',
+            running: 'In progress',
+            skipped: 'Skipped',
+            succeeded: 'Completed'
+          })[status] || 'Unknown status',
         started: 'Started',
         status: status =>
           ({

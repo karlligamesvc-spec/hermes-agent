@@ -59,19 +59,22 @@ const overview: WorkflowRunOverview = {
     status: 'waiting_review',
     triggerRef: 'Analyze the US pet market',
     updatedAt: '2026-08-27T10:03:00Z'
-  }
+  },
+  steps: []
 }
 
 describe('hc-795 real workflow Run view', () => {
   const cancelRun = vi.fn(async () => ({ ok: true }))
   const getRun = vi.fn(async () => ({ ok: true, overview }))
   const reviewDeliverable = vi.fn(async () => ({ ok: true }))
+  const retryRunStep = vi.fn(async () => ({ ok: true }))
 
   beforeEach(() => {
     cancelRun.mockClear()
     getRun.mockClear()
     getRun.mockResolvedValue({ ok: true, overview })
     reviewDeliverable.mockClear()
+    retryRunStep.mockClear()
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
@@ -79,6 +82,7 @@ describe('hc-795 real workflow Run view', () => {
           access: vi.fn(),
           cancelRun,
           getRun,
+          retryRunStep,
           reviewDeliverable,
           startGoal: vi.fn()
         }
@@ -168,6 +172,56 @@ describe('hc-795 real workflow Run view', () => {
     expect(reviewDeliverable).not.toHaveBeenCalled()
   })
 
+  it('offers Run approval only on the final delivery package', async () => {
+    getRun.mockResolvedValue({
+      ok: true,
+      overview: {
+        ...overview,
+        deliverables: [
+          { ...overview.deliverables[0], id: 'source-bundle', kind: 'video_source_bundle', title: '原视频与数据' },
+          {
+            ...overview.deliverables[0],
+            id: 'delivery-package',
+            kind: 'video_delivery_package',
+            title: '成片与工程包'
+          }
+        ],
+        steps: [
+          {
+            attempt: 1,
+            completedAt: '2026-08-27T10:03:00Z',
+            createdAt: '2026-08-27T10:00:00Z',
+            evidenceCount: 2,
+            id: 'delivery-step',
+            key: 'delivery_package',
+            position: 6,
+            runId: 'run-795',
+            startedAt: '2026-08-27T10:02:00Z',
+            status: 'succeeded',
+            summary: '交付包已校验',
+            title: '交付成片与工程',
+            updatedAt: '2026-08-27T10:03:00Z'
+          }
+        ]
+      }
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('1 个真实交付物等待你的决定。')).toBeTruthy()
+    expect(screen.getByText('原视频与数据')).toBeTruthy()
+    expect(screen.getByText('成片与工程包')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: '批准交付物' })).toHaveLength(1)
+  })
+
   it('offers cancellation only for a cancellable Run and refreshes after the mutation succeeds', async () => {
     const runningOverview = { ...overview, run: { ...overview.run, status: 'running' } }
     getRun.mockResolvedValue({ ok: true, overview: runningOverview })
@@ -185,6 +239,59 @@ describe('hc-795 real workflow Run view', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel run' }))
 
     await waitFor(() => expect(cancelRun).toHaveBeenCalledWith('run-795'))
+    await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
+  })
+
+  it('renders persisted stage truth and retries only the failed stage', async () => {
+    const stepTitles = [
+      '采集视频与数据',
+      '逐字稿与关键帧',
+      '镜头分析报告',
+      'Brief 与可编辑工程',
+      '素材生成与质检',
+      '预览、修订与渲染',
+      '交付成片与工程'
+    ]
+    const failedOverview: WorkflowRunOverview = {
+      ...overview,
+      deliverables: [],
+      run: { ...overview.run, status: 'failed' },
+      steps: stepTitles.map((title, position) => ({
+        attempt: 1,
+        completedAt: position === 0 ? '2026-08-27T10:01:00Z' : null,
+        createdAt: '2026-08-27T10:00:00Z',
+        evidenceCount: position === 0 ? 3 : 0,
+        id: `step-${position}`,
+        key: `step_${position}`,
+        position,
+        runId: 'run-795',
+        startedAt: position < 2 ? '2026-08-27T10:00:02Z' : null,
+        status: position === 0 ? 'succeeded' : position === 1 ? 'failed' : 'pending',
+        summary: position === 0 ? '已保存原视频与互动数据' : null,
+        title,
+        updatedAt: '2026-08-27T10:03:00Z'
+      }))
+    }
+    getRun.mockResolvedValue({ ok: true, overview: failedOverview })
+
+    render(
+      <MemoryRouter initialEntries={['/workflow-runs/run-795']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<WorkflowRunView />} path="workflow-runs/:runId" />
+          </Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('已完成 1/7 个阶段')).toBeTruthy()
+    expect(screen.getByText('逐字稿与关键帧')).toBeTruthy()
+    expect(screen.getByText('3 份产物凭证')).toBeTruthy()
+    expect(screen.queryByText('暂时没有可展示的阶段进度')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '重试此阶段' }))
+
+    await waitFor(() => expect(retryRunStep).toHaveBeenCalledWith({ runId: 'run-795', stepKey: 'step_1' }))
     await waitFor(() => expect(getRun).toHaveBeenCalledTimes(2))
   })
 

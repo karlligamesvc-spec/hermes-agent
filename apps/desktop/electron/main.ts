@@ -156,6 +156,7 @@ import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } fr
 import {
   cancelWorkflowDomainRun,
   createWorkflowDomainProject,
+  getVideoWorkflowDomainCatalog,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
@@ -166,6 +167,7 @@ import {
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startWorkflowDomainGoal
 } from './apex-workflow-domain'
@@ -21451,6 +21453,22 @@ ipcMain.handle('hermes:workflowDomain:getCatalog', async () => {
   }
 })
 
+ipcMain.handle('hermes:workflowDomain:getVideoCatalog', async () => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const result = await getVideoWorkflowDomainCatalog(context.apiBase, context.transport)
+
+    return { ok: true, ...result }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
 ipcMain.handle('hermes:workflowDomain:listDeliverables', async (_event, options) => {
   const context = workflowDomainIpcContext()
 
@@ -21544,6 +21562,22 @@ ipcMain.handle('hermes:workflowDomain:cancelRun', async (_event, runId) => {
 
   try {
     await cancelWorkflowDomainRun(context.apiBase, runId, context.transport)
+
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:retryRunStep', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    await retryWorkflowDomainRunStep(context.apiBase, payload?.runId, payload?.stepKey, context.transport)
 
     return { ok: true }
   } catch (error) {
