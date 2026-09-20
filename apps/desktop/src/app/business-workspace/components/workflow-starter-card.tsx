@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { cn } from '@/lib/utils'
 
-import type { BusinessWorkflowStarter } from '../view-model/workflow-starters'
+import type { BusinessStarterCard } from '../view-model/workflow-starters'
 
 const starterTone = {
   globe: 'bg-violet-500/10 text-violet-600 dark:text-violet-300',
@@ -10,10 +10,13 @@ const starterTone = {
   megaphone: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
 } as const
 
-const recommendedStarterAssets: Partial<Record<BusinessWorkflowStarter['id'], string>> = {
+const recommendedStarterAssets: Partial<Record<string, string>> = {
   'market-launch': 'assets/workflow-commerce-minimal.png',
   'geo-brand-audit': 'assets/workflow-geo-minimal.png',
-  'content-review': 'assets/workflow-content-minimal.png'
+  'content-review': 'assets/workflow-content-minimal.png',
+  'video-transcript': 'assets/workflow-commerce-minimal.png',
+  'viral-video-remake': 'assets/workflow-geo-minimal.png',
+  'social-intelligence': 'assets/workflow-content-minimal.png'
 }
 
 const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
@@ -21,7 +24,7 @@ const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/
 export interface WorkflowStarterCardProps {
   action: string
   onSelect: () => void
-  starter: BusinessWorkflowStarter
+  starter: BusinessStarterCard
   variant: 'compact' | 'featured' | 'shelf'
 }
 

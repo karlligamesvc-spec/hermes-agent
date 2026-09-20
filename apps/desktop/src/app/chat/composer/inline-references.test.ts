@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { refAttrs, refAttrsHtml } from '@/components/assistant-ui/directive-text'
@@ -9,6 +12,13 @@ import { REFERENCE_STYLES, referenceKind, referenceStyle } from '@/components/as
  * all the same markup, styled by the `.ref` rules in styles.css.
  */
 describe('the inline reference contract', () => {
+  it('ships the shared reference layout and explicit SVG dimensions', () => {
+    const styles = readFileSync(resolve(__dirname, '../../../styles.css'), 'utf8')
+
+    expect(styles).toMatch(/\.ref\s*>\s*svg\s*\{[^}]*width:\s*0\.875em;[^}]*height:\s*0\.875em;/s)
+    expect(styles).toMatch(/\[data-ref=['"]url['"]\][^{]*\{[^}]*--ref-color:/s)
+  })
+
   it('marks any element as a reference of a given kind', () => {
     expect(refAttrs('file')).toEqual({ className: 'ref', 'data-ref': 'file' })
     expect(refAttrsHtml('skill')).toBe('class="ref" data-ref="skill"')

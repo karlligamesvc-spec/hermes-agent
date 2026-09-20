@@ -2,11 +2,19 @@ import type { Translations } from '@/i18n'
 
 export type BusinessWorkflowIcon = 'globe' | 'graph' | 'megaphone'
 
-export interface BusinessWorkflowStarter {
-  businessPath: string
+export interface BusinessStarterCard {
   icon: BusinessWorkflowIcon
   id: string
+  summary: string
+  title: string
+}
+
+export interface BusinessHomeStarter extends BusinessStarterCard {
   prompt: string
+}
+
+export interface BusinessWorkflowStarter extends BusinessHomeStarter {
+  businessPath: string
   recommended: boolean
   slug:
     | 'business-review'
@@ -16,14 +24,39 @@ export interface BusinessWorkflowStarter {
     | 'geo-brand-audit'
     | 'market-launch'
     | 'review-insights'
-  summary: string
-  title: string
   version: number
 }
 
 type WorkflowCopy = Translations['businessWorkspace']['workflows']
 
-/** The six approved Phase 1 paths shared by Start and Workflows. */
+/** Start-page shortcuts are Agent goals, not production Workflow templates. */
+export function businessHomeStarters(copy: WorkflowCopy): BusinessHomeStarter[] {
+  return [
+    {
+      icon: 'globe',
+      id: 'video-transcript',
+      prompt: copy.homePaths.videoTranscript.prompt,
+      summary: copy.homePaths.videoTranscript.summary,
+      title: copy.homePaths.videoTranscript.title
+    },
+    {
+      icon: 'graph',
+      id: 'viral-video-remake',
+      prompt: copy.homePaths.viralRemake.prompt,
+      summary: copy.homePaths.viralRemake.summary,
+      title: copy.homePaths.viralRemake.title
+    },
+    {
+      icon: 'megaphone',
+      id: 'social-intelligence',
+      prompt: copy.homePaths.socialIntelligence.prompt,
+      summary: copy.homePaths.socialIntelligence.summary,
+      title: copy.homePaths.socialIntelligence.title
+    }
+  ]
+}
+
+/** The six approved Phase 1 templates in the production Workflows catalog. */
 export function businessWorkflowStarters(copy: WorkflowCopy): BusinessWorkflowStarter[] {
   return [
     {

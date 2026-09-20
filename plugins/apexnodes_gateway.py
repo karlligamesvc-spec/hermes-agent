@@ -506,7 +506,12 @@ def asr_direct_upload_threshold_bytes() -> int:
     return ASR_DIRECT_UPLOAD_THRESHOLD_BYTES
 
 
-def transcribe_upload(upload_path: Path | str, *, timeout: float) -> dict[str, Any]:
+def transcribe_upload(
+    upload_path: Path | str,
+    *,
+    timeout: float,
+    force_refresh: bool | None = None,
+) -> dict[str, Any]:
     """把一个本地音频文件提交转写(插件转写路径的唯一提交口)。
 
     >阈值走「upload-url → PUT 直传 COS → JSON media_url 提交」三跳(大文件不过
@@ -517,16 +522,32 @@ def transcribe_upload(upload_path: Path | str, *, timeout: float) -> dict[str, A
     source = Path(upload_path)
     size = source.stat().st_size
     if size > asr_direct_upload_threshold_bytes():
-        result = _transcribe_via_direct_upload(source, size, timeout=timeout)
+        result = _transcribe_via_direct_upload(
+            source,
+            size,
+            timeout=timeout,
+            force_refresh=force_refresh,
+        )
         if result is not None:
             return result
     with open(source, "rb") as fh:
         files = {"file": (source.name, fh, guess_media_content_type(source))}
-        return request_json("POST", "/tools/v1/asr/transcribe", files=files, timeout=timeout)
+        form_data = None if force_refresh is None else {"force_refresh": str(force_refresh).lower()}
+        return request_json(
+            "POST",
+            "/tools/v1/asr/transcribe",
+            files=files,
+            form_data=form_data,
+            timeout=timeout,
+        )
 
 
 def _transcribe_via_direct_upload(
-    source: Path, size: int, *, timeout: float
+    source: Path,
+    size: int,
+    *,
+    timeout: float,
+    force_refresh: bool | None = None,
 ) -> dict[str, Any] | None:
     """三跳直传;返回 ``None`` 表示直传通道不可用(调用方回退 multipart)。
 
@@ -561,9 +582,10 @@ def _transcribe_via_direct_upload(
     except GatewayError:
         logger.info("asr direct PUT failed after retry; falling back to multipart")
         return None
-    return request_json(
-        "POST", "/tools/v1/asr/transcribe", {"media_url": media_url}, timeout=timeout
-    )
+    payload: dict[str, Any] = {"media_url": media_url}
+    if force_refresh is not None:
+        payload["force_refresh"] = force_refresh
+    return request_json("POST", "/tools/v1/asr/transcribe", payload, timeout=timeout)
 
 
 def _put_presigned(put_url: str, source: Path, size: int, *, timeout: float) -> None:

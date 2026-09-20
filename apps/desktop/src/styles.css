@@ -737,6 +737,70 @@
   background: repeating-conic-gradient(currentColor 0% 25%, transparent 0% 50%) 0 0 / 0.125rem 0.125rem;
 }
 
+/* Inline references share one text treatment across composer and transcript.
+   Keep the glyph dimensions explicit: an unsized inline SVG falls back to the
+   browser's 300×150 replaced-element size, which turns a URL's chain icon into
+   a giant black arc inside the sent-message bubble. */
+[data-ref] {
+  --ref-color: var(--dt-primary);
+}
+
+[data-ref='file'],
+[data-ref='folder'],
+[data-ref='line'],
+[data-ref='terminal'] {
+  --ref-color: var(--ui-text-secondary);
+}
+
+[data-ref='url'],
+[data-ref='image'],
+[data-ref='session'],
+[data-ref='theme'] {
+  --ref-color: color-mix(in srgb, var(--ui-accent-secondary) 82%, var(--foreground));
+}
+
+[data-ref='command'],
+[data-ref='tool'] {
+  --ref-color: color-mix(in srgb, var(--ui-accent) 82%, var(--foreground));
+}
+
+[data-ref='skill'],
+[data-ref='git'],
+[data-ref='diff'],
+[data-ref='staged'] {
+  --ref-color: color-mix(in srgb, var(--ui-warm) 82%, var(--foreground));
+}
+
+.ref {
+  --ref-color: var(--dt-primary);
+  color: var(--ref-color);
+  font-weight: inherit;
+  text-decoration: none;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+:where(a, button).ref:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.ref > :where(svg, i.codicon) {
+  margin-inline-end: 0.25em;
+  opacity: 0.8;
+}
+
+.ref > svg {
+  display: inline-block;
+  width: 0.875em;
+  height: 0.875em;
+  vertical-align: -0.1em;
+}
+
+.ref > i.codicon {
+  font-size: 0.875em;
+}
+
 /* Hover-reveal suppression — the shared, declarative escape hatch.
    A collapsed pane slides in when the pointer dwells on its thin edge trigger.
    Controls that sit over that edge gutter would drag the panel in by accident.

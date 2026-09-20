@@ -4221,8 +4221,30 @@ export const en: Translations = {
       startGoal: 'Start a goal',
       recommendedTitle: 'Three recommended paths',
       recommendedDescription: 'Choose a proven path. Its goal opens on Start and remains editable before execution.',
+      homeSourceCoverage:
+        'Works with Douyin, Xiaohongshu, WeChat Channels, Kuaishou, Bilibili, YouTube, TikTok, and Instagram; upload the video when a direct link is unavailable.',
       additionalTitle: 'More business paths',
       pathCount: count => `${count} ${count === 1 ? 'path' : 'paths'}`,
+      homePaths: {
+        videoTranscript: {
+          title: 'Download short-video links and transcribe',
+          summary: 'Save the original video and extract captions, a verbatim transcript, and production timing',
+          prompt:
+            'Process the short-video link I provide next. First verify whether the platform supports direct download or official captions. When available, save the original video and produce a complete verbatim transcript in original order. Cover Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram; if a platform cannot be downloaded or transcribed directly, state the limitation and ask me to upload the video file or captions.'
+        },
+        viralRemake: {
+          title: 'Analyze and recreate a viral video shot by shot',
+          summary: 'Turn frame-and-sound analysis into an editable project, batch variants, and a finished video',
+          prompt:
+            'Analyze the viral short-video link or file I provide next. Gather the original video, Doubao transcript with real timing, engagement data, and actual visible key frames, then break down the hook, pacing, composition, action, captions, B-roll, sound, and CTA by shot. Use local Hypit to build an editable production that reuses only the abstract structure, with products, people, and media I own, am authorized to use, or generate anew. Complete the Brief, Treatment, material generation and replacement, captions, B-roll, motion, sound, preview, revision, batch variants, and final render; deliver the finished video, editable project, and reproduction command instead of stopping at a script or production plan. APEX-provided generation is free to the user, so do not show a price or plan confirmation. Do not claim frame analysis without visual evidence. Cover Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram.'
+        },
+        socialIntelligence: {
+          title: 'Analyze products, trends, comments, and accounts',
+          summary: 'Turn public data and engagement signals into trends, opportunities, and actions',
+          prompt:
+            'Analyze the product, trend list, comments, or account I specify across Douyin, Xiaohongshu, WeChat Video, Kuaishou, Bilibili, YouTube, TikTok, and Instagram. Use only public data actually retrieved, and report sources, sample size, time range, trends, opportunities, risks, and actions. Mark platforms with no trend list or backend data explicitly; never present search results or estimates as those missing metrics.'
+        }
+      },
       commerce: {
         title: 'Market opportunity to launch assets',
         summary: 'Data, opportunity analysis, positioning, and production',

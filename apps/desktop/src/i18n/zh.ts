@@ -3907,8 +3907,30 @@ export const zh = defineLocale({
       startGoal: '开始一个目标',
       recommendedTitle: '三条重点路径',
       recommendedDescription: '选择一个成熟路径，目标会预填到开始页并保持可编辑。',
+      homeSourceCoverage:
+        '可处理来源：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；直链不可用时可上传视频。',
       additionalTitle: '其他业务路径',
       pathCount: count => `${count} 条路径`,
+      homePaths: {
+        videoTranscript: {
+          title: '短视频链接下载和转逐字稿',
+          summary: '保存原视频，提取字幕、完整逐字稿和制作级时间轴',
+          prompt:
+            '请处理我接下来提供的短视频链接：先核对平台是否支持直接下载或官方字幕；能下载时保存原视频并生成逐字、原序的完整逐字稿。支持范围覆盖抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；如果某个平台不能直接下载或转写，请明确说明限制，并让我上传视频文件或字幕继续。'
+        },
+        viralRemake: {
+          title: '爆款短视频逐帧分析和复刻',
+          summary: '从关键帧与声音拆解到可编辑工程、批量变体和成片交付',
+          prompt:
+            '请分析我接下来提供的爆款短视频链接或文件：先收集原视频、豆包逐字稿与真实时间轴、互动数据和真实可见的关键画面，再按镜头拆解开场钩子、叙事节奏、构图、动作、字幕、B-roll、音效与 CTA。随后使用本机 Hypit 建立可编辑工程，只复用抽象结构，用我自有、已授权或新生成的产品、人物和素材完成 Brief、Treatment、素材生成/替换、字幕、B-roll、动效、声音、预览、修订、批量变体和最终渲染，并交付成片、工程与复现命令；不要停在脚本或成片方案。APEX 提供的生成能力对用户免费，不要展示价格/套餐确认。没有画面证据时不要声称完成逐帧分析。平台包括抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram。'
+        },
+        socialIntelligence: {
+          title: '产品、热榜、评论、账号分析',
+          summary: '汇总公开数据与互动信号，输出趋势、机会和行动建议',
+          prompt:
+            '请围绕我指定的产品、热榜、评论或账号做跨平台分析，平台包括抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram。只使用实际取得的公开数据，列出来源、样本量、时间范围、趋势、机会、风险和可执行建议；没有热榜或后台数据的平台请明确标注，不要用搜索结果或推测冒充。'
+        }
+      },
       commerce: {
         title: '从市场机会到上架素材',
         summary: '数据采集、机会分析、定位与生产',

@@ -289,7 +289,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Market opportunity to launch assets/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Download short-video links and transcribe/ }))
 
     await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('location').textContent).toBe('/')
@@ -329,7 +329,7 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.queryByText(/Local test data/)).toBeNull()
   })
 
-  it('stages a Start workflow in the canonical goal field before real submission', async () => {
+  it('stages a Start short-video goal for the Agent without claiming a production Workflow template', async () => {
     const insert = vi.fn()
     const submit = vi.fn(async () => true)
     window.addEventListener('hermes:composer-insert', insert)
@@ -343,16 +343,27 @@ describe('hc-685 business workspace identity', () => {
     )
 
     const goal = screen.getByRole('textbox', { name: '业务目标' })
-    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
+    expect(
+      screen.getByText(
+        '可处理来源：抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram；直链不可用时可上传视频。'
+      )
+    ).toBeTruthy()
+    expect(screen.getByText('保存原视频，提取字幕、完整逐字稿和制作级时间轴')).toBeTruthy()
+    expect(screen.getByText('从关键帧与声音拆解到可编辑工程、批量变体和成片交付')).toBeTruthy()
+    expect(screen.getByText('汇总公开数据与互动信号，输出趋势、机会和行动建议')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /短视频链接下载和转逐字稿/ }))
 
     await waitFor(() =>
-      expect((goal as HTMLTextAreaElement).value).toBe('分析美国宠物用品市场，并生成选品报告和上架素材')
+      expect((goal as HTMLTextAreaElement).value).toContain('请处理我接下来提供的短视频链接')
     )
     expect(window.document.activeElement).toBe(goal)
     expect(insert).not.toHaveBeenCalled()
+    expect(screen.queryByText('启动前确认')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
-    await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场，并生成选品报告和上架素材'))
+    await waitFor(() =>
+      expect(submit).toHaveBeenCalledWith(expect.stringContaining('请处理我接下来提供的短视频链接'))
+    )
     await waitFor(() => expect((goal as HTMLTextAreaElement).value).toBe(''))
     window.removeEventListener('hermes:composer-insert', insert)
   })
@@ -375,7 +386,17 @@ describe('hc-685 business workspace identity', () => {
     }
 
     render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessWorkflowCatalogProvenance: 'production',
+              businessWorkflowSlug: 'market-launch'
+            }
+          }
+        ]}
+      >
         <I18nProvider configClient={null} initialLocale="zh">
           <BusinessStartHome onSubmitGoal={submit} />
           <LocationProbe />
@@ -383,7 +404,6 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
     fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
       target: { value: '分析美国宠物用品市场，并生成选品报告和上架素材（已编辑）' }
     })
@@ -1407,7 +1427,17 @@ describe('hc-685 business workspace identity', () => {
     }
 
     render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessWorkflowCatalogProvenance: 'production',
+              businessWorkflowSlug: 'market-launch'
+            }
+          }
+        ]}
+      >
         <I18nProvider configClient={null} initialLocale="zh">
           <AttachmentDraftHarness />
         </I18nProvider>
@@ -1415,7 +1445,6 @@ describe('hc-685 business workspace identity', () => {
     )
 
     const goal = screen.getByRole('textbox', { name: '业务目标' })
-    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
     fireEvent.change(goal, { target: { value: '保留这个目标' } })
     const submitButton = screen.getByRole('button', { name: '开始执行' })
 
@@ -1457,7 +1486,17 @@ describe('hc-685 business workspace identity', () => {
     }
 
     render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessWorkflowCatalogProvenance: 'production',
+              businessWorkflowSlug: 'market-launch'
+            }
+          }
+        ]}
+      >
         <I18nProvider configClient={null} initialLocale="zh">
           <BusinessStartHome onSubmitGoal={submit} />
         </I18nProvider>
@@ -1465,7 +1504,6 @@ describe('hc-685 business workspace identity', () => {
     )
 
     const goal = screen.getByRole('textbox', { name: '业务目标' })
-    fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
     fireEvent.change(goal, { target: { value: '保留这个目标' } })
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
