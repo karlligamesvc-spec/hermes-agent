@@ -583,7 +583,11 @@ export function useMessageStream({
             pendingBranchGroup: null,
             streamId: null,
             turnStartedAt: null,
-            turnLive: false
+            // `message.complete` closes the assistant payload, but the
+            // gateway emits it before the agent loop's finally/post-turn
+            // work. Keep the lifecycle latch until session.info confirms
+            // running=false; queued next turns gate on this distinction.
+            turnLive: state.turnLive
           }
         }
 
@@ -767,7 +771,9 @@ export function useMessageStream({
           needsInput: false,
           interimBoundaryPending: false,
           turnStartedAt: null,
-          turnLive: false
+          // See the interrupted branch above: the authoritative turn bookend
+          // is session.info running=false, not the earlier message.complete.
+          turnLive: state.turnLive
         }
       })
 

@@ -133,6 +133,27 @@ describe('session.info settles an incomplete live turn', () => {
   const startTurn = (sessionId: string) =>
     act(() => stream.handleEvent({ payload: {}, session_id: sessionId, type: 'message.start' }))
 
+  it('keeps the backend lifecycle open after message.complete until running=false', () => {
+    mountStream()
+
+    startTurn(ACTIVE_SID)
+    act(() =>
+      stream.handleEvent({ payload: { text: 'first answer' }, session_id: ACTIVE_SID, type: 'message.complete' })
+    )
+
+    expect(sessionStates!.get(ACTIVE_SID)?.busy).toBe(false)
+    expect(sessionStates!.get(ACTIVE_SID)?.turnLive).toBe(true)
+
+    // completeAssistantMessage may hydrate when this synthetic test omits the
+    // normal streamed delta. We only care that the later authoritative
+    // running=false bookend is not misclassified as a broken-turn recovery.
+    hydrateFromStoredSession.mockClear()
+    sessionInfo(ACTIVE_SID, { running: false })
+
+    expect(sessionStates!.get(ACTIVE_SID)?.turnLive).toBe(false)
+    expect(hydrateFromStoredSession).not.toHaveBeenCalled()
+  })
+
   it('leaves the session sendable after a started turn ends with no payload', async () => {
     mountStream()
 

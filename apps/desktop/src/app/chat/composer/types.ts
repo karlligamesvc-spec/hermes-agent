@@ -38,6 +38,10 @@ export interface ChatBarState {
 
 export interface ChatBarProps {
   busy: boolean
+  /** Backend-confirmed turn lifecycle. It intentionally outlives the final
+   *  assistant message until `session.info running=false`, so queued prompts
+   *  cannot slip into the post-turn settle window. */
+  turnLive?: boolean
   disabled: boolean
   focusKey?: string | null
   maxRecordingSeconds?: number

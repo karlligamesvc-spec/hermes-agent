@@ -27,6 +27,7 @@ import {
   setSessions
 } from '@/store/session'
 import { dropSessionState, publishSessionState } from '@/store/session-states'
+import { $todosBySession, clearSessionTodos, setSessionTodos } from '@/store/todos'
 import { $wakeWord, resetWakeWordState } from '@/store/wake-word'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -1934,6 +1935,7 @@ describe('usePromptActions desktop slash pickers', () => {
 describe('usePromptActions submit / queue drain semantics', () => {
   afterEach(() => {
     cleanup()
+    clearSessionTodos(RUNTIME_SESSION_ID)
     $connection.set(null)
     vi.mocked(requestGatewayForAgent).mockReset()
     vi.restoreAllMocks()
@@ -1994,6 +1996,33 @@ describe('usePromptActions submit / queue drain semantics', () => {
         session_id: RUNTIME_SESSION_ID,
         text: 'hello after a stop'
       },
+      1_800_000
+    )
+  })
+
+  it('clears an unfinished todo list when a distinct user turn starts', async () => {
+    setSessionTodos(RUNTIME_SESSION_ID, [
+      { content: 'old completed step', id: 'old-1', status: 'completed' },
+      { content: 'old unfinished step', id: 'old-2', status: 'in_progress' }
+    ])
+    expect($todosBySession.get()[RUNTIME_SESSION_ID]).toHaveLength(2)
+
+    const requestGateway = vi.fn(async () => ({}) as never)
+    let handle: HarnessHandle | null = null
+
+    await actRender(
+      <Harness
+        onReady={h => (handle = h)}
+        refreshSessions={async () => undefined}
+        requestGateway={requestGateway}
+      />
+    )
+
+    expect(await handle!.submitText('start a simple edit')).toBe(true)
+    expect($todosBySession.get()[RUNTIME_SESSION_ID]).toBeUndefined()
+    expect(requestGateway).toHaveBeenCalledWith(
+      'prompt.submit',
+      { session_id: RUNTIME_SESSION_ID, text: 'start a simple edit' },
       1_800_000
     )
   })

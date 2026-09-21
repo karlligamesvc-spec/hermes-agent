@@ -446,6 +446,7 @@ const ChatViewContent = memo(function ChatViewContent({
   const sessionAnchor = isPrimary ? 'workspace' : `session-tile:${storedId ?? ''}`
   const awaitingResponse = useStore(view.$awaitingResponse)
   const busy = useStore(view.$busy)
+  const turnLive = useStore(view.$turnLive)
   const activeGatewayProfile = useStore($activeGatewayProfile)
   const contextSuggestions = useStore($contextSuggestions)
   // Per-session (SessionView) reads — a tile IS its session, so these come
@@ -842,6 +843,7 @@ const ChatViewContent = memo(function ChatViewContent({
               queueSessionKey={queueSessionKey}
               sessionId={activeSessionId}
               state={chatBarState}
+              turnLive={turnLive}
             />
           </Suspense>
         )}

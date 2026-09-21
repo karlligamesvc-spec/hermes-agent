@@ -46,6 +46,9 @@ export interface SessionView {
   $storedId: ReadableAtom<string | null>
   $messages: ReadableAtom<ChatMessage[]>
   $busy: ReadableAtom<boolean>
+  /** True from backend turn start until the authoritative running=false
+   *  bookend, including the short post-message completion window. */
+  $turnLive: ReadableAtom<boolean>
   $awaitingResponse: ReadableAtom<boolean>
   $messagesEmpty: ReadableAtom<boolean>
   $lastVisibleIsUser: ReadableAtom<boolean>
@@ -80,6 +83,7 @@ function primaryField<T>(select: (state: ClientSessionState) => T, $draft: Reada
 }
 
 const $primaryMessages = primaryField<ChatMessage[]>(state => state.messages, $messages)
+const $primaryTurnLive = computed($primaryState, state => Boolean(state?.turnLive))
 
 /**
  * Turn-busy for the workspace pane. A selected stored session that has no
@@ -106,6 +110,7 @@ export const PRIMARY_SESSION_VIEW: SessionView = {
   $reasoningEffort: primaryField<string>(state => state.reasoningEffort, $currentReasoningEffort),
   $runtimeId: $activeSessionId,
   $storedId: $selectedStoredSessionId,
+  $turnLive: $primaryTurnLive,
   $turnStartedAt: primaryField<number | null>(state => state.turnStartedAt, $turnStartedAt)
 }
 

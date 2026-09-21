@@ -152,6 +152,7 @@ function buildTileView(storedSessionId: string): SessionView {
     $runtimeId,
     // Constant for the tile's lifetime — a plain atom, not a computed.
     $storedId: atom(storedSessionId),
+    $turnLive: computed($state, state => Boolean(state?.turnLive)),
     $turnStartedAt: computed($state, state => state?.turnStartedAt ?? null)
   }
 }

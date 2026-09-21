@@ -26,7 +26,7 @@ export const COMPOSER_COMPACT_PILL_PX = 560
 // The ladder keeps going below the stack breakpoint — a pane can be far
 // narrower than even the stacked controls row. Both rungs are budgeted
 // against that row's real cost: menu ~24 + surface padding 16 + the cluster
-// (~190; ~218 mid-turn with the queue button).
+// (~190, including the always-available send/stop control).
 //
 // At 260 the three voice toggles fold into the one menu HUD mode already
 // uses, clearing the mid-turn worst case with margin. Each stage sits clear
@@ -65,6 +65,17 @@ export function shouldDisableComposerInput(disabled: boolean, gatewayState: Conn
   return disabled && gatewayState === 'open'
 }
 
+export interface ComposerSubmitKeyInput {
+  ctrlKey: boolean
+  key: string
+  metaKey: boolean
+  shiftKey: boolean
+}
+
+/** Enter always follows the primary send path. Modifiers must not silently
+ * turn a live-turn correction into a queued follow-up; Shift+Enter remains the
+ * one exception because it inserts a newline. */
+export const isComposerSubmitKey = ({ key, shiftKey }: ComposerSubmitKeyInput) => key === 'Enter' && !shiftKey
 export const pickPlaceholder = (pool: readonly string[]) => pool[Math.floor(Math.random() * pool.length)]
 
 /** Completion items can carry an `action` (set in use-slash-completions) that

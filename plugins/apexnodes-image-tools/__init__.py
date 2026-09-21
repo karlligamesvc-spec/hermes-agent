@@ -146,17 +146,31 @@ GENERATE_IMAGE_SCHEMA = {
             },
             "n": {
                 "type": "integer",
-                "description": "Number of images to generate, 1-4. Default 1.",
+                "description": "Number of images to generate. Default 1; selected catalog models accept one image per call.",
                 "default": 1,
+            },
+            "model": {
+                "type": "string",
+                "enum": [
+                    "qwen-image-3.0-pro",
+                    "gemini-2.5-flash-image",
+                    "agnes-image-2.5-flash",
+                    "gpt-image-2.5-flare",
+                    "gpt-image-2.5-sunburst",
+                ],
+                "description": (
+                    "用户在 APEX 中选择的图片模型。名称依次为 Qwen Image 3.0 Pro、"
+                    "Gemini Image 2.5、Agnes Image 2.5、GPT Image 2.5 Flare、"
+                    "GPT Image 2.5 Sunburst。未指定时使用平台默认模型。"
+                ),
             },
             "provider": {
                 "type": "string",
                 "enum": ["agnes", "agnes-overlay", "nanobanana-flash", "nanobanana-pro"],
                 "description": (
-                    "Optional image engine. Default agnes (free). agnes-overlay=FREE cover: Agnes "
-                    "makes a text-free background and the server prints the title on top with perfect "
-                    "Chinese text at ¥0 (pass title/subtitle/template). nanobanana-pro/-flash render "
-                    "text INSIDE the image (paid, higher polish) for 图文一体 covers. Empty=normal 配图."
+                    "Optional legacy image engine. Leave empty when model is selected. "
+                    "agnes-overlay makes a text-free background and the server prints the title on top; "
+                    "nanobanana-pro/-flash render text inside the image. Empty means normal 配图."
                 ),
             },
             "purpose": {
@@ -252,6 +266,7 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
         "aspect_ratio": str(args.get("aspect_ratio") or "square").strip() or "square",
         "size": str(args.get("size") or "").strip() or None,
         "n": args.get("n") or 1,
+        "model": str(args.get("model") or "").strip() or None,
         # hc-432: optional engine + use-case hint (vendor key still stays master-side;
         # the plugin only forwards the provider string).
         "provider": str(args.get("provider") or "").strip() or None,

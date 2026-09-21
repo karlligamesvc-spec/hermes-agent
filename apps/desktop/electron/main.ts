@@ -1277,25 +1277,30 @@ let rendererTitleBarTheme = null
 // correctly before the renderer has even loaded.
 const NATIVE_THEME_CONFIG_PATH = path.join(app.getPath('userData'), 'native-theme.json')
 const THEME_SOURCES = new Set(['dark', 'light', 'system'])
+const APEX_NATIVE_THEME_POLICY_VERSION = 2
 
 function readPersistedThemeSource() {
   try {
     const parsed = JSON.parse(fs.readFileSync(NATIVE_THEME_CONFIG_PATH, 'utf8'))
 
-    if (parsed && THEME_SOURCES.has(parsed.themeSource)) {
+    if (parsed && parsed.policyVersion === APEX_NATIVE_THEME_POLICY_VERSION && THEME_SOURCES.has(parsed.themeSource)) {
       return parsed.themeSource
     }
   } catch {
-    // Missing / malformed → follow the OS like a fresh install.
+    // Missing / malformed → APEX's white identity.
   }
 
-  return 'system'
+  return 'light'
 }
 
 function writePersistedThemeSource(mode) {
   try {
     fs.mkdirSync(path.dirname(NATIVE_THEME_CONFIG_PATH), { recursive: true })
-    fs.writeFileSync(NATIVE_THEME_CONFIG_PATH, JSON.stringify({ themeSource: mode }, null, 2), 'utf8')
+    fs.writeFileSync(
+      NATIVE_THEME_CONFIG_PATH,
+      JSON.stringify({ policyVersion: APEX_NATIVE_THEME_POLICY_VERSION, themeSource: mode }, null, 2),
+      'utf8'
+    )
   } catch (error) {
     rememberLog(`[theme] write native theme failed: ${error.message}`)
   }
@@ -18738,6 +18743,8 @@ const SEED_DISPLAY_BLOCK =
 // defaults; iteration budgets match Hermes' deep-work defaults:
 //   agent.image_input_mode: auto — image attachments go native only to
 //     vision-capable models, otherwise text pre-analysis (config.py agent block).
+//   agent.response_language: display — answers, progress and task lists follow
+//     the selected shell language (Simplified Chinese on a fresh APEX install).
 //   timezone: '' — empty means "server-local time" (config.py top-level
 //     timezone), which on a desktop IS the OS timezone, i.e. follow-the-OS.
 //   agent.max_turns: 500 — main agent per-turn tool-call budget.
@@ -18754,6 +18761,7 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# follow the OS (server-local) clock.\n' +
   'agent:\n' +
   '  image_input_mode: auto\n' +
+  '  response_language: display\n' +
   '  max_turns: 500\n' +
   'delegation:\n' +
   '  max_iterations: 250\n' +

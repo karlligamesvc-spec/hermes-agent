@@ -282,7 +282,7 @@ export function handleSessionInfoEvent(ctx: GatewayEventContext): boolean {
         state => {
           const busy = Boolean(payload!.running)
 
-          if (state.busy === busy && (busy || !state.awaitingResponse)) {
+          if (state.busy === busy && (busy || (!state.awaitingResponse && !state.turnLive))) {
             return state
           }
 
@@ -354,7 +354,7 @@ export function handleSessionInfoEvent(ctx: GatewayEventContext): boolean {
           // per-session busy flag is authoritative for isTargetSessionBusy,
           // so submitPrompt and the slash dispatcher silently returned false
           // and the session accepted no further input.
-          recoveredIncompleteTurn = state.turnLive
+          recoveredIncompleteTurn = state.turnLive && (state.awaitingResponse || Boolean(state.streamId))
 
           return {
             ...state,

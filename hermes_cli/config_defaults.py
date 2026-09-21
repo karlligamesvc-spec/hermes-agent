@@ -53,6 +53,11 @@ DEFAULT_CONFIG = {
         # Optional one-time model-visible checkpoint warning before a finite turn cap is exhausted.
         # null = off; set a ratio strictly between 0 and 1 (for example, 0.75).
         "budget_warning_ratio": None,
+        # Language for model-authored, user-facing text (answers, progress,
+        # questions and todo/task-list items). ``auto`` keeps the historical
+        # behavior of following the user's message. ``display`` follows
+        # ``display.language``; a supported language code pins that language.
+        "response_language": "auto",
         # Wall-clock budget (seconds) per run. null = off. When set: one-time wrap-up notice at 80%
         # elapsed; implicit provider stale timeouts capped to remaining budget. CLI equivalent:
         # `hermes chat --run-budget N`.
@@ -831,8 +836,11 @@ DEFAULT_CONFIG = {
         "focus_view": False,
         "focus_saved_tool_progress": "all",
         "skin": "default",
-        # UI language for static messages (approval prompts, some gateway slash replies); not agent
-        # responses/logs/tool outputs. en, zh, ja, de, es, fr, tr, uk; unknown → en.
+        # UI language for static user-facing messages (approval prompts, a
+        # handful of gateway slash-command replies). Agent responses follow
+        # this only when agent.response_language is ``display``; log lines,
+        # tool outputs and slash-command descriptions remain unchanged.
+        # Supported: en, zh, ja, de, es, fr, tr, uk.  Unknown values fall back to en.
         "language": "en",
         # TUI busy indicator: kaomoji | emoji | unicode (braille) | ascii. `/indicator <style>`.
         "tui_status_indicator": "kaomoji",

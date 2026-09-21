@@ -125,6 +125,17 @@ describe('identity: the first screen is ours', () => {
 })
 
 describe('identity: brand assets and chrome', () => {
+  it('keeps the APEX shell white by default even when the OS uses dark mode', () => {
+    const theme = readSource('src', 'themes', 'context.tsx')
+    const main = readSource('electron', 'main.ts')
+
+    expect(theme).toContain("? value : 'light'")
+    expect(theme).toContain("persistString(MODE_KEY, 'light')")
+    expect(theme).toContain('migrateApexThemeModeDefaults()')
+    expect(main).toContain("return 'light'")
+    expect(main).toContain('APEX_NATIVE_THEME_POLICY_VERSION = 2')
+  })
+
   it('names the window APEX', () => {
     expect(readSource('index.html')).toContain('<title>APEX</title>')
   })
