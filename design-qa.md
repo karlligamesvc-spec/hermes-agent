@@ -31,3 +31,28 @@
 ## Final result
 
 passed
+
+---
+
+# hc-845 Desktop 白色主题与模型选择 Design QA
+
+Reference: the established APEX Desktop white shell and compact composer menu.
+
+## Scope
+
+- Restore the white/light APEX identity for fresh and previously system-following installs.
+- Keep an explicit user choice of system theme after the one-time migration.
+- Add compact image and video model submenus under the composer add button.
+- Keep one persisted selection for images and one for videos.
+
+## Visual verification
+
+- P0: the running macOS Desktop shell is white; the navy regression is absent.
+- P0: the composer add menu exposes image and video rows with the active friendly model names.
+- P0: each submenu shows exactly one selected model and all requested model labels.
+- P1: menu density, spacing, borders, and monochrome icons match the existing APEX white UI.
+- P2: no price, package, quota, or raw provider identifier is displayed in these menus.
+
+Verification was performed against the real Electron development build with the local gateway ready.
+
+final result: passed

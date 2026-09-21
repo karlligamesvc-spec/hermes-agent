@@ -10,7 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Kbd } from '@/components/ui/kbd'
@@ -21,10 +26,16 @@ import { cn } from '@/lib/utils'
 import { useComposerAttachmentProviders } from './contrib'
 import { GHOST_ICON_BTN } from './controls'
 import { requestComposerFocus, requestComposerInsert } from './focus'
+import {
+  type GenerationKind,
+  generationModels,
+  generationStarter,
+  selectedGenerationModel,
+  selectGenerationModel
+} from './generation-models'
 import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillScope, useSkillCatalog } from './skill-catalog'
 import type { ChatBarState } from './types'
-
 
 // hc-572 made the composer "+" a unified CAPABILITY entry instead of an
 // attachment picker. hc-572-followup (real-machine feedback, both rounds): the
@@ -51,6 +62,8 @@ export function ContextMenu({ state }: ContextMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [browseOpen, setBrowseOpen] = useState(false)
   const [browseScope, setBrowseScope] = useState<SkillScope>('enabled')
+  const [imageModel, setImageModel] = useState(() => selectedGenerationModel('image'))
+  const [videoModel, setVideoModel] = useState(() => selectedGenerationModel('video'))
   const attachmentProviders = useComposerAttachmentProviders()
 
   // Seed the composer with a generation opener and focus it, then close the
@@ -60,6 +73,18 @@ export function ContextMenu({ state }: ContextMenuProps) {
     requestComposerInsert(starter, { mode: 'block', target: 'main' })
     requestComposerFocus('main')
     setMenuOpen(false)
+  }
+
+  const chooseGenerationModel = (kind: GenerationKind, id: string) => {
+    const selected = selectGenerationModel(kind, id)
+
+    if (kind === 'image') {
+      setImageModel(selected)
+      startGeneration(generationStarter(cap.generateImageStarter, selected))
+    } else {
+      setVideoModel(selected)
+      startGeneration(generationStarter(cap.generateVideoStarter, selected))
+    }
   }
 
   const openBrowse = (scope: SkillScope) => {
@@ -103,12 +128,22 @@ export function ContextMenu({ state }: ContextMenuProps) {
           <DropdownMenuLabel className="px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
             {cap.generateLabel}
           </DropdownMenuLabel>
-          <ContextMenuItem icon={ImageIcon} onSelect={() => startGeneration(cap.generateImageStarter)}>
-            {cap.generateImage}
-          </ContextMenuItem>
-          <ContextMenuItem icon={Video} onSelect={() => startGeneration(cap.generateVideoStarter)}>
-            {cap.generateVideo}
-          </ContextMenuItem>
+          <GenerationModelSubmenu
+            icon={ImageIcon}
+            kind="image"
+            label={cap.generateImage}
+            onSelect={id => chooseGenerationModel('image', id)}
+            selectedId={imageModel.id}
+            selectedLabel={imageModel.label}
+          />
+          <GenerationModelSubmenu
+            icon={Video}
+            kind="video"
+            label={cap.generateVideo}
+            onSelect={id => chooseGenerationModel('video', id)}
+            selectedId={videoModel.id}
+            selectedLabel={videoModel.label}
+          />
 
           <DropdownMenuSeparator />
 
@@ -144,7 +179,9 @@ export function ContextMenu({ state }: ContextMenuProps) {
             <DropdownMenuItem
               className={CAPABILITY_ROW}
               key={provider.key}
-              onSelect={() => void provider.run({ insertText: text => requestComposerInsert(text, { target: 'main' }) })}
+              onSelect={() =>
+                void provider.run({ insertText: text => requestComposerInsert(text, { target: 'main' }) })
+              }
             >
               <Codicon name={provider.icon ?? 'plug'} size="0.875rem" />
               <span>{provider.label}</span>
@@ -178,6 +215,34 @@ export function ContextMenuItem({ children, disabled, icon: Icon, onSelect }: Co
   )
 }
 
+function GenerationModelSubmenu({
+  icon: Icon,
+  kind,
+  label,
+  onSelect,
+  selectedId,
+  selectedLabel
+}: GenerationModelSubmenuProps) {
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className={CAPABILITY_ROW}>
+        <Icon />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className="max-w-28 truncate text-[0.7rem] text-(--ui-text-tertiary)">{selectedLabel}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-56">
+        <DropdownMenuRadioGroup onValueChange={onSelect} value={selectedId}>
+          {generationModels(kind).map(model => (
+            <DropdownMenuRadioItem className={CAPABILITY_ROW} key={model.id} value={model.id}>
+              <span className="truncate">{model.label}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
 interface ContextMenuItemProps {
   children: string
   disabled?: boolean
@@ -187,4 +252,13 @@ interface ContextMenuItemProps {
 
 interface ContextMenuProps {
   state: ChatBarState
+}
+
+interface GenerationModelSubmenuProps {
+  icon: IconComponent
+  kind: GenerationKind
+  label: string
+  onSelect: (id: string) => void
+  selectedId: string
+  selectedLabel: string
 }

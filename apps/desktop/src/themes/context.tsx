@@ -36,6 +36,7 @@ const MODE_KEY = 'hermes-desktop-mode-v1'
 // profile inherits the global default until it's given its own appearance.
 const PROFILE_SKINS_KEY = 'hermes-desktop-profile-themes-v1'
 const PROFILE_MODES_KEY = 'hermes-desktop-profile-modes-v1'
+const APEX_MODE_POLICY_KEY = 'apex-desktop-theme-policy-v2'
 // Last active profile, recorded so the boot-time paint can pick that profile's
 // theme before the gateway reports which profile actually launched.
 const LAST_PROFILE_KEY = 'hermes-desktop-active-profile-v1'
@@ -54,15 +55,40 @@ const normalizeSkin = (name: string | null): string =>
   name && resolveTheme(name) && !RETIRED_SKINS.has(name) ? name : DEFAULT_SKIN_NAME
 
 /**
- * A stored mode, or `system` when there isn't one.
- *
- * A fresh profile follows the OS. Defaulting to `light` meant someone whose
- * desktop is dark got a white window on first launch and had to go find the
- * setting — and with per-appearance translucency it also handed them light's
- * much heavier tint, tuned for a bright desktop they don't have.
+ * A stored mode, or APEX's white identity when there isn't one.
  */
 const normalizeMode = (value: string | null): ThemeMode =>
-  value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
+  value === 'light' || value === 'dark' || value === 'system' ? value : 'light'
+
+/**
+ * hc-845: v0.17.30 inherited upstream's new `system` default, which turned
+ * APEX navy on dark-mode Macs. Migrate that inherited value once. A user can
+ * still explicitly choose `system` afterwards because the policy marker is
+ * already present and the migration will not run again.
+ */
+export function migrateApexThemeModeDefaults() {
+  if (storedString(APEX_MODE_POLICY_KEY) === 'light-default') {
+    return
+  }
+
+  const global = storedString(MODE_KEY)
+
+  if (global === null || global === 'system') {
+    persistString(MODE_KEY, 'light')
+  }
+
+  const profiles = storedStringRecord(PROFILE_MODES_KEY)
+
+  const migrated = Object.fromEntries(
+    Object.entries(profiles).map(([profile, mode]) => [profile, mode === 'system' ? 'light' : mode])
+  )
+
+  if (Object.keys(migrated).length > 0) {
+    persistStringRecord(PROFILE_MODES_KEY, migrated)
+  }
+
+  persistString(APEX_MODE_POLICY_KEY, 'light-default')
+}
 
 // ─── Per-profile appearance persistence ─────────────────────────────────────
 // Skin and mode are each stored per profile. "default" isn't a real profile —
@@ -353,6 +379,7 @@ const syncNativeTheme = (pref: ThemeMode, rendered: 'light' | 'dark') =>
 // active profile's appearance so a non-default profile relaunch paints its own
 // skin + light/dark mode.
 if (typeof window !== 'undefined') {
+  migrateApexThemeModeDefaults()
   applyPlatform()
   const profile = readBootProfileKey()
   const pref = modePref.resolve(profile)
@@ -434,7 +461,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   )
 
   const [mode, setModeState] = useState<ThemeMode>(() =>
-    typeof window === 'undefined' ? 'system' : modePref.resolve(readBootProfileKey())
+    typeof window === 'undefined' ? 'light' : modePref.resolve(readBootProfileKey())
   )
 
   // Follow profile switches: paint the profile's assigned skin + mode and

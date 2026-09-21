@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { modePref, skinPref } from './context'
+import { migrateApexThemeModeDefaults, modePref, skinPref } from './context'
 import { DEFAULT_SKIN_NAME } from './presets'
 
 // Skin and mode share one per-profile contract, so assert it once over both.
@@ -18,7 +18,7 @@ const cases = [
     b: 'catppuccin',
     junk: 'nope'
   },
-  { name: 'mode', pref: modePref as unknown as Pref, fallback: 'system', a: 'dark', b: 'light', junk: 'dusk' }
+  { name: 'mode', pref: modePref as unknown as Pref, fallback: 'light', a: 'dark', b: 'light', junk: 'dusk' }
 ]
 
 describe.each(cases)('per-profile $name', ({ pref, fallback, a, b, junk }) => {
@@ -47,16 +47,27 @@ describe.each(cases)('per-profile $name', ({ pref, fallback, a, b, junk }) => {
   })
 })
 
-// A fresh profile follows the OS. This defaulted to `light`, so a dark-mode
-// desktop got a white window on first launch — and, once translucency became
-// per-appearance, light's much heavier tint along with it. Main already
-// defaulted its own themeSource to 'system', so the two disagreed at boot.
+// APEX is a white-first product. Upstream's system default made the whole app
+// navy on a dark-mode Mac, so fresh and migrated profiles start in light mode.
 describe('a profile that has never chosen a mode', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('follows the OS rather than forcing light', () => {
+  it('uses the APEX light identity', () => {
+    expect(modePref.resolve('default')).toBe('light')
+    expect(modePref.resolve('work')).toBe('light')
+  })
+
+  it('migrates the inherited system mode once but preserves a later explicit system choice', () => {
+    window.localStorage.setItem('hermes-desktop-mode-v1', 'system')
+    window.localStorage.setItem('hermes-desktop-profile-modes-v1', JSON.stringify({ work: 'system', dark: 'dark' }))
+    migrateApexThemeModeDefaults()
+    expect(modePref.resolve('default')).toBe('light')
+    expect(modePref.resolve('work')).toBe('light')
+    expect(modePref.resolve('dark')).toBe('dark')
+
+    modePref.assign('default', 'system')
+    migrateApexThemeModeDefaults()
     expect(modePref.resolve('default')).toBe('system')
-    expect(modePref.resolve('work')).toBe('system')
   })
 
   it('still honours an explicit choice', () => {

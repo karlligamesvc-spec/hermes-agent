@@ -1,7 +1,7 @@
 {
  "contract_name": "apexnodes-plugin-tools-parity",
- "contract_version": 5,
- "ticket": "hc-563, hc-600, hc-659, hc-840",
+ "contract_version": 6,
+ "ticket": "hc-563, hc-600, hc-659, hc-840, hc-845",
  "sync_policy": {
   "copies": [
    "hermes-cloud: tests/contracts/plugin_tools_contract.json (source of truth)",
@@ -682,6 +682,16 @@
        "landscape",
        "square",
        "portrait"
+      ]
+     },
+     "model": {
+      "type": "string",
+      "enum": [
+       "doubao-seedance-2-5-260628",
+       "doubao-seedance-2-0-260128",
+       "doubao-seedance-2-0-fast-260128",
+       "doubao-seedance-2-0-mini-260615",
+       "MiniMax-H3"
       ]
      },
      "prompt": {
