@@ -88,6 +88,18 @@ class TestFormatters:
 # ---------------------------------------------------------------------------
 
 class TestSpawnAsyncDiagnostic:
+    def test_returns_spawned_process_pid(self, tmp_path, monkeypatch):
+        class SpawnedProcess:
+            pid = 4242
+
+        monkeypatch.setattr(sf.sys, "platform", "darwin")
+        monkeypatch.setattr(sf.shutil, "which", lambda _name: None)
+        monkeypatch.setattr(sf.subprocess, "Popen", lambda *_args, **_kwargs: SpawnedProcess())
+
+        pid = sf.spawn_async_diagnostic(tmp_path / "diag.log", "SIGTERM")
+
+        assert pid == 4242
+
     # The diagnostic wraps its script in GNU coreutils ``timeout`` and the script
     # body is Linux-only (``ps auxf --sort``, ``/proc/loadavg``, ``dmesg``,
     # ``pstree``). On hosts without ``timeout`` (macOS) Popen raises and the

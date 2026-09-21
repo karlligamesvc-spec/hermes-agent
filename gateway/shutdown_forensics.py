@@ -178,6 +178,8 @@ def spawn_async_diagnostic(log_path: Path, signal_name: str, *,
         with contextlib.suppress(OSError):  # subprocess inherited the fd; drop our handle
             os.close(fd)
 
+    return proc.pid
+
 
 def format_context_for_log(ctx: Dict[str, Any]) -> str:
     """Render a shutdown context dict as one scannable log line (parent cmdline is key)."""

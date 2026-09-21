@@ -86,6 +86,11 @@ GitHub 的真实 Windows runner 进一步发现安装日志仍引用配置的 Py
 不是上游缺能力。本票已恢复上游行为，并对两个 Node 入口分别验证“有 xz 选 xz、无 xz
 选 gzip”，防止只修一个入口。
 
+Linux 全量分片随后发现 shutdown diagnostic 虽然成功创建了子进程，融合结果却漏掉了
+稳定标签和原 APEX 分支都存在的 `return proc.pid`，使调用方恒收到 `None`。本票恢复该
+返回契约，并新增跨平台、确定性的 PID 守卫；反向删除返回语句时守卫稳定变红，Linux
+真实子进程用例继续负责验证日志实际落盘。
+
 远端全量门禁还暴露了稳定标签自身的高并发测试抖动。对照 upstream/main 后确认其中
 三项已有标签后的上游修复：delegate 超时事件窗口（`bd607f3835`）、远程 kernel 注册表
 并发快照（`16bddc88dd`）、local-model quickstart 固定硬件预算（`86b809934a`）。本票只
@@ -119,6 +124,7 @@ GitHub 的真实 Windows runner 进一步发现安装日志仍引用配置的 Py
 | GitHub Windows-only runner | 真实 Windows 门禁通过（含 managed Python fallback） |
 | Node archive 双入口故障注入 | `install.sh` 与 `node-bootstrap.sh` 均通过有/无 xz 两侧验证 |
 | APEX 身份 / 语音偏好守卫 | 2 files / 45 tests 通过；修复前对应 3 项会稳定变红 |
+| shutdown diagnostic 返回契约 | 确定性 PID 守卫通过；删除 `return proc.pid` 后稳定变红 |
 | Desktop production build | 通过（Vite renderer + Electron main/preload + native/updater deps） |
 | Desktop packaged/fresh-env gate | 本票不产出发布包；留给 Mac/Windows 成对发布票执行 |
 
