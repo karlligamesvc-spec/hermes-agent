@@ -2869,6 +2869,8 @@ export const ar = defineLocale({
       errorSignInAgain: provider => `تسجيل الدخول إلى ${provider} مجدداً`,
       errorOauthExpired: provider =>
         `انتهت صلاحية تسجيل دخولك إلى ${provider} أو تم إلغاؤه. سجّل الدخول مجدداً لمتابعة المحادثة.`,
+      errorDiagnosticsTitle: 'السجلات والتشخيصات',
+      errorDiagnosticsHint: 'استخدم هذه الخيارات فقط إذا لم تؤدِ إعادة المحاولة إلى حل المشكلة.',
       errorOpenLogs: 'فتح السجلات',
       errorOpenLogsFailed: 'تعذّر فتح مجلد السجلات',
       errorOpenDesktopLogs: 'فتح سجلات سطح المكتب',

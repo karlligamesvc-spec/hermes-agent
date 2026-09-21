@@ -3763,7 +3763,12 @@ export const zh = defineLocale({
         streaming: '流式连接错误'
       },
       errorRetry: '重试',
+      errorStartNewSession: '开始新会话',
       errorSwitchProvider: '切换提供方',
+      errorSignInAgain: provider => `重新登录 ${provider}`,
+      errorOauthExpired: provider => `${provider} 的登录状态已失效，请重新登录后继续。`,
+      errorDiagnosticsTitle: '日志与诊断',
+      errorDiagnosticsHint: '仅在重试后仍然失败时使用，便于查看或提交故障信息。',
       errorOpenLogs: '打开日志',
       errorOpenLogsFailed: '无法打开日志文件夹',
       errorOpenDesktopLogs: '打开桌面端日志',
