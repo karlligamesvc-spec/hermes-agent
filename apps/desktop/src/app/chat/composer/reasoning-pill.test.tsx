@@ -30,6 +30,7 @@ const tileView = (reasoningEffort: string): SessionView => ({
   $reasoningEffort: atom(reasoningEffort),
   $runtimeId: atom('tile-runtime'),
   $storedId: atom('stored-tile'),
+  $turnLive: atom(false),
   $turnStartedAt: atom<number | null>(null)
 })
 

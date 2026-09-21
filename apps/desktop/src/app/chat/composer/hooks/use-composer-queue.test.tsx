@@ -80,7 +80,7 @@ describe('useComposerQueue park integration', () => {
       const entry = enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'recoverable' })!
       const { hook, onSubmit } = renderQueueHook({ busy: true })
       onSubmit.mockResolvedValue(false)
-      hook.rerender({ busy: false })
+      hook.rerender({ busy: false, turnLive: false })
       await act(async () => {
         await Promise.resolve()
       })
@@ -114,7 +114,7 @@ describe('useComposerQueue park integration', () => {
       enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'keep on disconnect' })
       const { hook, onSubmit } = renderQueueHook({ busy: true })
       onSubmit.mockRejectedValue(new Error('unavailable'))
-      hook.rerender({ busy: false })
+      hook.rerender({ busy: false, turnLive: false })
       await act(async () => {
         await Promise.resolve()
       })
@@ -303,7 +303,7 @@ describe('useComposerQueue park integration', () => {
     expect(onSubmit).not.toHaveBeenCalled()
 
     setSessionsLoading(false)
-    hook.rerender({ busy: false })
+    hook.rerender({ busy: false, turnLive: false })
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(0)
