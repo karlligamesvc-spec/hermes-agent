@@ -26,8 +26,8 @@ describe('APEX generation model picker', () => {
       'doubao-seedance-2-0-mini-260615',
       'MiniMax-H3'
     ])
-    expect(selectedGenerationModel('image').id).toBe('qwen-image-3.0-pro')
-    expect(selectedGenerationModel('video').id).toBe('doubao-seedance-2-5-260628')
+    expect(selectedGenerationModel('image').id).toBe('gpt-image-2.5-flare')
+    expect(selectedGenerationModel('video').id).toBe('doubao-seedance-2-0-mini-260615')
   })
 
   it('persists exactly one selection per media kind', () => {

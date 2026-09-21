@@ -28,6 +28,11 @@ const MODEL_KEYS: Record<GenerationKind, string> = {
   video: 'apex-generation-video-model-v1'
 }
 
+const DEFAULT_MODEL_IDS: Record<GenerationKind, string> = {
+  image: 'gpt-image-2.5-flare',
+  video: 'doubao-seedance-2-0-mini-260615'
+}
+
 export const generationModels = (kind: GenerationKind): readonly GenerationModel[] =>
   kind === 'image' ? IMAGE_GENERATION_MODELS : VIDEO_GENERATION_MODELS
 
@@ -35,7 +40,11 @@ export function selectedGenerationModel(kind: GenerationKind): GenerationModel {
   const models = generationModels(kind)
   const stored = storedString(MODEL_KEYS[kind])
 
-  return models.find(model => model.id === stored) ?? models[0]
+  return (
+    models.find(model => model.id === stored) ??
+    models.find(model => model.id === DEFAULT_MODEL_IDS[kind]) ??
+    models[0]
+  )
 }
 
 export function selectGenerationModel(kind: GenerationKind, id: string): GenerationModel {

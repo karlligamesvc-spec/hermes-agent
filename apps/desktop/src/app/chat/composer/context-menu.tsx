@@ -234,6 +234,7 @@ function GenerationModelSubmenu({
         <DropdownMenuRadioGroup onValueChange={onSelect} value={selectedId}>
           {generationModels(kind).map(model => (
             <DropdownMenuRadioItem className={CAPABILITY_ROW} key={model.id} value={model.id}>
+              <Icon aria-hidden="true" className="text-(--ui-text-tertiary)" />
               <span className="truncate">{model.label}</span>
             </DropdownMenuRadioItem>
           ))}
