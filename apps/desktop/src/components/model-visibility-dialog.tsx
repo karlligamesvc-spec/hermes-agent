@@ -1,36 +1,40 @@
+import type { ModelOptionProvider, ModelOptionsResult } from '@hermes/shared'
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
-import { ProviderIcon } from '@/components/ui/provider-icon'
+import { HighlightMatches } from '@/components/ui/highlight-matches'
 import { Switch } from '@/components/ui/switch'
 import type { HermesGateway } from '@/hermes'
-import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { Search } from '@/lib/icons'
 import { isMoaProviderSlug, SHOW_EXPLICIT_MOA_UI } from '@/lib/moa-compose'
-import { modelOptionsQueryKey } from '@/lib/model-options'
+import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
-import { modelVendor } from '@/lib/model-vendor'
 import { dropAliasedCustomRow, providerDisplayName } from '@/lib/provider-allowlist'
-import { normalize } from '@/lib/text'
+import { foldIncludes, normalize } from '@/lib/text'
 import {
   $visibleModels,
   collapseModelFamilies,
   effectiveVisibleKeys,
   modelVisibilityKey,
+  setProviderVisibility,
   setVisibleModels,
   toggleModelVisibility
 } from '@/store/model-visibility'
-import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
+import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
 
 interface ModelVisibilityDialogProps {
   gw?: HermesGateway
   onOpenChange: (open: boolean) => void
   onOpenProviders: () => void
   open: boolean
+  ownerConnectionId?: string
   profile?: string
   sessionId?: string | null
 }
@@ -40,6 +44,7 @@ export function ModelVisibilityDialog({
   onOpenChange,
   onOpenProviders,
   open,
+  ownerConnectionId,
   profile = 'default',
   sessionId
 }: ModelVisibilityDialogProps) {
@@ -47,46 +52,22 @@ export function ModelVisibilityDialog({
   const copy = t.modelVisibility
   const [search, setSearch] = useState('')
   const stored = useStore($visibleModels)
+  const collapsedProviders = useStore($collapsedProviders)
 
   const modelOptions = useQuery({
-    queryKey: modelOptionsQueryKey(profile, sessionId),
-    queryFn: (): Promise<ModelOptionsResponse> => {
-      if (gw && sessionId) {
-        return gw.request<ModelOptionsResponse>('model.options', {
-          session_id: sessionId,
-          explicit_only: true
-        })
-      }
-
-      return getGlobalModelOptions()
-    },
+    queryKey: modelOptionsQueryKey(profile, sessionId, ownerConnectionId),
+    queryFn: (): Promise<ModelOptionsResult> => requestModelOptions({ gateway: gw, profile, sessionId }),
     enabled: open
   })
 
-  // The catalog ships MoA presets as a virtual `moa` provider row, which this
-  // dialog used to render like any other: a "MIXTURE OF AGENTS" heading over
-  // `default` / `apex-moa` / `__auto__`, each with its own visibility switch.
-  // That names the mechanism MOA-INVISIBLE-DESIGN exists to hide (and offers a
-  // toggle for the reserved preset the silent multi-select synthesizes), so the
-  // row is held shut behind the same SHOW_EXPLICIT_MOA_UI as the settings
-  // editor and the composer menu (hc-589 leg 6). Gated rather than dropped
-  // outright, so upstream's row returns with the flag — and so the guard test
-  // has something to go red on.
-  const providers = useMemo(() => {
-    // hc-598: drop the managed endpoint's anonymous bare-`custom` alias, the
-    // same way the composer picker does — otherwise it opens a second "CUSTOM
-    // ENDPOINT" section here, with its own visibility switches, for an endpoint
-    // already listed above under its real name.
-    const rows = dropAliasedCustomRow(modelOptions.data?.providers ?? []).filter(
-      provider => (provider.models ?? []).length > 0
-    )
-
-    if (SHOW_EXPLICIT_MOA_UI) {
-      return rows
-    }
-
-    return rows.filter(provider => !isMoaProviderSlug(provider.slug))
-  }, [modelOptions.data])
+  const providers = useMemo(
+    () =>
+      dropAliasedCustomRow(modelOptions.data?.providers ?? []).filter(
+        provider =>
+          (provider.models ?? []).length > 0 && (SHOW_EXPLICIT_MOA_UI || !isMoaProviderSlug(provider.slug))
+      ),
+    [modelOptions.data]
+  )
 
   const visible = effectiveVisibleKeys(stored, providers)
 
@@ -94,10 +75,14 @@ export function ModelVisibilityDialog({
     setVisibleModels(toggleModelVisibility($visibleModels.get(), providers, provider.slug, model))
   }
 
+  const setProviderVisible = (provider: ModelOptionProvider, next: boolean) => {
+    setVisibleModels(setProviderVisibility($visibleModels.get(), providers, provider.slug, next))
+  }
+
   const q = normalize(search)
 
   const matches = (provider: ModelOptionProvider, model: string) =>
-    !q || `${model} ${provider.name} ${provider.slug} ${displayModelName(model)}`.toLowerCase().includes(q)
+    !q || foldIncludes(`${model} ${provider.name} ${provider.slug} ${displayModelName(model)}`, q)
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -106,7 +91,8 @@ export function ModelVisibilityDialog({
           <DialogTitle className="text-[0.8125rem]">{copy.title}</DialogTitle>
         </DialogHeader>
 
-        <div className="px-3 py-1.5">
+        <div className="flex items-center gap-1.5 px-3 py-1.5">
+          <Search className="pointer-events-none size-3.5 shrink-0 text-muted-foreground/70" />
           <input
             autoFocus
             className="h-5 w-full bg-transparent text-xs text-foreground placeholder:text-(--ui-text-tertiary) focus:outline-none"
@@ -130,29 +116,64 @@ export function ModelVisibilityDialog({
                 return null
               }
 
+              const allFamilies = collapseModelFamilies(provider.models ?? [])
+
+              const onCount = allFamilies.filter(family =>
+                visible.has(modelVisibilityKey(provider.slug, family.id))
+              ).length
+
+              const checkState = onCount === 0 ? false : onCount === allFamilies.length ? true : 'indeterminate'
+
+              const collapsed = collapsedProviders.includes(provider.slug) && !q
+
               return (
                 <div className="py-0.5" key={provider.slug}>
-                  <div className="px-3 pb-0.5 pt-1 text-[0.625rem] font-medium uppercase tracking-wide text-(--ui-text-tertiary)">
-                    {providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
+                  <div className="flex items-center gap-2 px-3 pb-0.5 pt-1">
+                    <button
+                      className="group/label flex w-full items-center gap-1 pb-0.5 pt-0.5 text-left text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary) hover:bg-transparent"
+                      onClick={() => toggleCollapsedProvider(provider.slug)}
+                      type="button"
+                    >
+                      <span className="min-w-0 truncate">
+                        <HighlightMatches
+                          foldSeparators
+                          query={search}
+                          text={providerDisplayName(provider, t.shell.modelMenu.unnamedEndpoint)}
+                        />
+                      </span>
+                      <DisclosureCaret
+                        className="shrink-0 opacity-0 transition group-hover/label:opacity-100"
+                        open={!collapsed}
+                        size="0.625rem"
+                      />
+                    </button>
+                    <Checkbox
+                      checked={checkState}
+                      onCheckedChange={next => setProviderVisible(provider, next !== false)}
+                    />
                   </div>
-                  {models.map(family => {
-                    const { name, tag } = modelDisplayParts(family.id)
-                    const key = modelVisibilityKey(provider.slug, family.id)
+                  {!collapsed &&
+                    models.map(family => {
+                      const { name, tag } = modelDisplayParts(family.id)
+                      const key = modelVisibilityKey(provider.slug, family.id)
 
-                    return (
-                      <label
-                        className="flex cursor-pointer items-center gap-2 px-3 py-1 text-xs hover:bg-accent/50"
-                        key={key}
-                      >
-                        <ProviderIcon vendor={modelVendor(family.id, provider.name)} />
-                        <span className="min-w-0 flex-1 truncate">
-                          {name}
-                          {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
-                        </span>
-                        <Switch checked={visible.has(key)} onCheckedChange={() => toggle(provider, family.id)} />
-                      </label>
-                    )
-                  })}
+                      return (
+                        <label
+                          className="flex cursor-pointer items-center gap-2 px-3 py-1 text-xs hover:bg-(--ui-control-active-background)"
+                          key={key}
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            <HighlightMatches foldSeparators query={search} text={name} />
+                            {tag ? <span className="text-(--ui-text-tertiary)"> {tag}</span> : null}
+                          </span>
+                          <Switch
+                            checked={visible.has(key)}
+                            onCheckedChange={() => toggle(provider, family.id)}
+                            size="xs"
+                          />
+                        </label>
+                      )
+                    })}
                 </div>
               )
             })

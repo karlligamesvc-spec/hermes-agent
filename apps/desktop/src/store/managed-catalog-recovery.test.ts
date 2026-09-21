@@ -17,12 +17,11 @@
  * signal to re-query, and a repeat call inside the shared dedupe cannot storm
  * the relay.
  */
+import type { ModelOptionProvider } from '@hermes/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { managedCatalogCollapsed } from '@/lib/managed-catalog'
 import { recoverManagedCatalogAuth } from '@/store/managed-recovery'
-import type { ModelOptionProvider } from '@/types/hermes'
-
 // The self-heal bridge the electron main process exposes to the renderer.
 type SelfHeal = () => Promise<{
   ok: boolean

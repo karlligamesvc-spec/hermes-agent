@@ -131,8 +131,8 @@ describe('model-status-label', () => {
       expect(currentPickerSelection(false, store, options)).toEqual(store)
     })
 
-    it('lets the live session model.options win when a session exists', () => {
-      expect(currentPickerSelection(true, store, options)).toEqual(options)
+    it('keeps the live SessionView pair when model.options is stale', () => {
+      expect(currentPickerSelection(true, store, options)).toEqual(store)
     })
 
     it('falls back to options when the store is empty', () => {

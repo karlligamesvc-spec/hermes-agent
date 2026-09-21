@@ -18,23 +18,24 @@ describe('hc-828 assistant entry identity', () => {
   it('names the primary Chinese tab as 会话 and localizes the assistant pane title', () => {
     const controller = readSource('src', 'app', 'contrib', 'controller.tsx')
     const plugin = readSource('src', 'plugins', 'hermes-bots', 'plugin.tsx')
-    const roster = readSource('src', 'plugins', 'hermes-bots', 'roster-pane.tsx')
+    const toolbar = readSource('src', 'plugins', 'hermes-bots', 'roster-pane-toolbar.tsx')
 
     expect(controller).toContain('tabTitle: () => <SessionsPaneTabTitle />')
     expect(controller).toContain('const SessionsPaneTabTitle = () => <>{useI18n().t.sidebar.sessions}</>')
     expect(readSource('src', 'i18n', 'zh.ts')).toMatch(/sessions: '会话'/)
     expect(plugin).toContain('tabTitle: () => <BotsPaneTabTitle />')
     expect(plugin).toContain('const BotsPaneTabTitle = () => <>{useBots().roster.title}</>')
-    expect(roster).toContain('{b.roster.title}')
+    expect(toolbar).toContain('{b.roster.title}')
   })
 
   it('keeps the create-group entry enabled and routes a shortage to an honest recovery dialog', () => {
-    const roster = readSource('src', 'plugins', 'hermes-bots', 'roster-pane.tsx')
+    const toolbar = readSource('src', 'plugins', 'hermes-bots', 'roster-pane-toolbar.tsx')
+    const dialogs = readSource('src', 'plugins', 'hermes-bots', 'roster-pane-dialogs.tsx')
     const dialog = readSource('src', 'plugins', 'hermes-bots', 'create-dialog.tsx')
 
-    expect(roster).toContain('<DropdownMenuItem onSelect={() => setGroupCreateOpen(true)}>')
-    expect(roster).not.toContain('disabled={activeSourceRoster.length < 2}')
-    expect(roster).toContain('onAddAssistant={() => {')
+    expect(toolbar).toContain('<DropdownMenuItem onSelect={() => setGroupCreateOpen(true)}>')
+    expect(toolbar).not.toContain('disabled={activeSourceRoster.length < 2}')
+    expect(dialogs).toContain('onAddAssistant={() => {')
     expect(dialog).toContain('{b.group.minimumMembers(selectableRoster.length)}')
     expect(dialog).toContain('{b.group.addAssistant}')
     expect(dialog).toContain('disabled={!canCreate}')

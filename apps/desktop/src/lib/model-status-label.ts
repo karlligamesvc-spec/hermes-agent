@@ -4,19 +4,37 @@ import { reasoningEffortLabel } from '@/lib/reasoning-effort'
 // rung vocabulary now. User-facing callers pass their localized compact map.
 export { reasoningEffortLabel } from '@/lib/reasoning-effort'
 
-/** Which model/provider a picker should mark "current". With a live session the
- *  gateway's `model.options` is authoritative; pre-session there is no server
- *  "current", so the sticky composer pick wins over the profile default the
- *  global options query returns — else the checkmark snaps back to the default
- *  and the pick looks ignored. */
+/** Which model/provider pair a picker should mark "current". SessionView state
+ *  also drives the composer label, so a complete pair there wins over an older
+ *  `model.options` response. During initial hydration, options remain the
+ *  fallback. Pick one complete pair before mixing fields so a model is never
+ *  shown under a different provider. */
 export function currentPickerSelection(
-  hasSession: boolean,
+  _hasSession: boolean,
   store: { model: string; provider: string },
   options?: { model?: string; provider?: string }
 ): { model: string; provider: string } {
+  const storeSelection = {
+    model: String(store.model || ''),
+    provider: String(store.provider || '')
+  }
+
+  const optionsSelection = {
+    model: String(options?.model || ''),
+    provider: String(options?.provider || '')
+  }
+
+  if (storeSelection.model && storeSelection.provider) {
+    return storeSelection
+  }
+
+  if (optionsSelection.model && optionsSelection.provider) {
+    return optionsSelection
+  }
+
   return {
-    model: String((hasSession && options?.model) || store.model || options?.model || ''),
-    provider: String((hasSession && options?.provider) || store.provider || options?.provider || '')
+    model: storeSelection.model || optionsSelection.model,
+    provider: storeSelection.provider || optionsSelection.provider
   }
 }
 
@@ -86,21 +104,31 @@ const APEX_SENTINEL_SUFFIX = /-APEX$/i
  *  tag, so distinct ids (e.g. `…-4.8` vs `…-4.8-fast`) don't collapse. */
 export function modelDisplayParts(model: string): { name: string; tag: string } {
   let base = modelBaseId(model)
-  let tag = ''
+  const tags: string[] = []
 
   // Managed-relay sentinel: strip the brand suffix into the tag slot so the
   // NAME matches the bare routed id's name exactly (one display everywhere).
   if (APEX_SENTINEL_SUFFIX.test(base)) {
-    tag = 'APEX'
+    tags.push('APEX')
     base = base.replace(APEX_SENTINEL_SUFFIX, '')
   }
 
-  for (const [pattern, label] of VARIANT_TAGS) {
-    if (pattern.test(base)) {
-      tag = tag ? `${label} ${tag}` : label
-      base = base.replace(pattern, '')
+  // Local GGUF ids carry a quant suffix (`…-UD-Q4_K_XL`, `…-Q8_0`). Render it
+  // as a quiet tag instead of leaking the raw quant string into the model name.
+  const quant = base.match(/-(?:UD-)?(Q\d(?:_[A-Z0-9]+)*|IQ\d(?:_[A-Z0-9]+)*|F16|BF16)$/i)
 
-      break
+  if (quant) {
+    tags.unshift(quant[1].split('_')[0].toUpperCase())
+    base = base.slice(0, -quant[0].length)
+    base = base.replace(/-(?:Instruct|Chat)(?:-\d{4})?$/i, '')
+  } else {
+    for (const [pattern, label] of VARIANT_TAGS) {
+      if (pattern.test(base)) {
+        tags.unshift(label)
+        base = base.replace(pattern, '')
+
+        break
+      }
     }
   }
 
@@ -111,7 +139,7 @@ export function modelDisplayParts(model: string): { name: string; tag: string } 
   // both widths are stripped by one pattern.
   base = base.replace(/-\d{6}(\d{2})?$/, '')
 
-  return { name: prettifyBase(base) || model.trim() || 'No model', tag }
+  return { name: prettifyBase(base) || model.trim() || 'No model', tag: tags.join(' ') }
 }
 
 // ApexNodes managed-LLM display mapping. The managed default seeds
@@ -132,6 +160,18 @@ export function managedModelDisplayName(model: string): string {
 /** Friendly one-line model name for menus and the status bar. */
 export function displayModelName(model: string): string {
   return modelDisplayParts(model).name
+}
+
+/** Composer model label. Reasoning has its own control beside the model pill,
+ *  so duplicating it here wastes the width needed by long model names. */
+export function formatModelPillLabel(model: string, options?: { fastMode?: boolean }): string {
+  const name = displayModelName(model)
+
+  if (model.trim() && (options?.fastMode || /-fast$/i.test(modelBaseId(model)))) {
+    return `${name} · Fast`
+  }
+
+  return name
 }
 
 /** Status bar trigger label — model name plus the live session state (effort/fast).

@@ -155,7 +155,10 @@ export const zh = defineLocale({
       errorTitle: 'MCP 服务器无法连接',
       errorMessage: name => `${name} MCP 健康检查失败。`,
       signIn: '登录',
-      view: '查看'
+      view: '查看',
+      disable: '禁用',
+      disabledMessage: name => `已禁用 ${name} MCP。可随时在「能力 → MCP」中重新启用。`,
+      disableFailed: name => `无法禁用 ${name} MCP。`
     },
     errors: {
       elevenLabsNeedsKey: 'ElevenLabs STT 需要 ELEVENLABS_API_KEY。',
@@ -164,7 +167,8 @@ export const zh = defineLocale({
       microphonePermission: '麦克风权限已被拒绝。',
       openaiRejectedApiKey: 'OpenAI 拒绝了该 API key。',
       openaiRejectedApiKeyWithStatus: status => `OpenAI 拒绝了该 API key (${status} invalid_api_key)。`,
-      openaiTtsNeedsKey: 'OpenAI TTS 需要 VOICE_TOOLS_OPENAI_KEY 或 OPENAI_API_KEY。'
+      openaiTtsNeedsKey: 'OpenAI TTS 需要 VOICE_TOOLS_OPENAI_KEY 或 OPENAI_API_KEY。',
+      codeSkewRestartRequired: '更新后此后端仍在运行旧代码。请重启以加载新代码。'
     },
     voice: {
       configureSpeechToText: '配置语音转文字后即可使用语音模式。',
@@ -183,7 +187,11 @@ export const zh = defineLocale({
       transcriptionFailed: '语音转写失败',
       transcriptionUnavailable: '语音转写暂不可用。',
       tryRecordingAgain: '请再录一次。',
-      unavailable: '语音不可用'
+      unavailable: '语音不可用',
+      liveEnded: '实时语音会话已结束',
+      liveError: '实时语音',
+      liveDelegationFailed: '无法将请求交给 Hermes',
+      liveUnavailable: reason => `GPT-Live 语音聊天不可用：${reason}。已改用语音转文字。`
     },
     native: {
       approvalTitle: '需要批准',
@@ -345,6 +353,7 @@ export const zh = defineLocale({
       providerAccounts: '账号',
       providerApiKeys: 'API 密钥',
       providerCustomEndpoints: '自定义端点',
+      providerLocalModels: '本地模型',
       gateway: '网关',
       apiKeys: '工具与密钥',
       keybinds: '键盘快捷键',
@@ -355,7 +364,79 @@ export const zh = defineLocale({
       about: '关于',
       billing: '账单',
       notifications: '通知',
-      plugins: '插件'
+      vault: '密码与登录'
+    },
+    vault: {
+      title: '密码与登录',
+      blurb:
+        '说一句“登录 GitHub”，智能体就会代你登录。第一次遇到登录页时它会当场向你要登录信息，之后就自动完成。密码在本机加密保存并直接填入页面——模型永远看不到。',
+      count: n => `已保存 ${n} 项`,
+      loadFailed: '无法加载保险库条目',
+      empty: '尚未保存任何内容',
+      emptyDesc: '这里不必手动添加。让智能体登录某个网站时，它会当场向你询问一次登录信息。若想提前录入，可点“添加”。',
+      add: '添加',
+      addTitle: '添加登录信息、银行卡或地址',
+      addDescription: '加密保存在本机。代理永远不会看到密码。',
+      added: '已保存。',
+      adding: '保存中…',
+      addConfirm: '保存',
+      kindField: '类型',
+      kinds: { login: '登录', payment: '支付卡', address: '地址' },
+      labelField: '标签',
+      labelPlaceholder: '例如：GitHub 工作账号',
+      labelRequired: '标签为必填项。',
+      originField: '站点来源',
+      originPlaceholder: 'https://github.com',
+      originPlaceholderCheckout: 'https://shop.example.com',
+      originInvalid: '请输入有效的 URL，例如 https://example.com。',
+      identifierTypeField: '标识符类型',
+      identifierTypes: { email: '邮箱', phone: '电话', username: '用户名' },
+      identifierField: '标识符',
+      identifierShown: identifier => identifier,
+      passwordField: '密码',
+      loginFieldsRequired: '标识符和密码为必填项。',
+      cardNumberField: '卡号',
+      cardNameField: '持卡人姓名',
+      expMonthField: '到期月份',
+      expYearField: '到期年份',
+      cvcField: 'CVC',
+      postalField: '邮政编码',
+      addressLine1Field: '地址第 1 行',
+      addressLine2Field: '地址第 2 行',
+      cityField: '城市',
+      stateField: '省 / 州',
+      countryField: '国家/地区',
+      optional: '（可选）',
+      createdOn: date => `添加于 ${date}`,
+      deleteAction: '移除已保存项',
+      otpField: '验证器密钥',
+      otpPlaceholder: 'Base32 密钥或 otpauth:// 链接',
+      otpHint: '启用两步验证时网站显示的“设置密钥”。保存后 Hermes 会自动生成验证码。',
+      twoFactorBadge: '自动 2FA',
+      deleteTitle: '删除此项？',
+      deleteDescription: label => `“${label}”将从加密保险库中移除。此操作无法撤销。`,
+      deleteConfirm: '删除',
+      sources: {
+        title: '密码管理器',
+        blurb:
+          '已安装的密码管理器会被自动识别。智能体第一次需要其中的登录信息时会请你解锁（每个会话一次）；内存中只保留会话令牌，智能体永远看不到你的主密码或任何登录信息。',
+        toggleFailed: '无法更新密码管理器',
+        notInstalled: name => `未检测到。安装 ${name} 命令行工具并登录后，Hermes 会自动识别。`,
+        disabledDesc: '已检测到，但已为 Hermes 关闭。',
+        lockedDesc: '已检测到。智能体需要登录信息时会请你解锁，也可立即解锁。',
+        unlockedDesc: '本会话已解锁。闲置 30 分钟或关闭 Hermes 后会自动锁定。',
+        statusLocked: '已锁定',
+        statusNotDetected: '未检测到',
+        statusOff: '已关闭',
+        statusUnlocked: '已解锁',
+        unlock: '解锁',
+        unlocking: '解锁中…',
+        lock: '锁定',
+        unlocked: name => `${name} 已在本会话中解锁。`,
+        unlockTitle: name => `解锁 ${name}`,
+        unlockDescription: '输入主密码。它会交给本机的密码管理器后立即丢弃，不会被存储、记录或展示给智能体。',
+        masterPasswordPlaceholder: '主密码'
+      }
     },
     plugins: {
       title: '桌面插件',
@@ -370,30 +451,31 @@ export const zh = defineLocale({
       failed: '失败',
       empty: '尚未安装桌面插件。',
       kinds: { bundled: '内置', disk: '磁盘', runtime: '运行时' },
-      agent: {
-        title: '智能体插件',
-        blurb:
-          '你安装到 Hermes 后端的插件——工具、技能、MCP 服务器、钩子和斜杠命令。「便携」插件是 Agent Plugins 标准包（技能 + MCP 组合，也可在其他智能体中使用）。开关在新会话中生效。',
-        appliesTo: '应用于：',
-        empty: '尚未安装智能体插件。',
-        loadFailed: '无法加载智能体插件',
-        portable: '便携',
-        search: '搜索插件…',
-        noMatches: '没有匹配的插件。',
-        toggleFailed: (name: string) => `无法切换 ${name}`,
-        updateBackendToManage: '请更新 Hermes 后端以便在桌面端管理此插件。',
-        sources: { bundled: '内置', user: '用户', git: 'git', project: '项目', entrypoint: 'pip' }
-      },
+      agentHalfMissing: '此处缺少 agent 部分',
+      agentHalfMissingTip:
+        '这是捆绑插件的桌面部分，但其 agent 部分未安装在当前连接的后端/配置上。请在 能力 → 插件 中安装。',
       installModal: {
+        installFromGit: '从 Git 安装',
+        reviewRepository: '检查仓库',
+        repoPlaceholder: 'https://github.com/owner/repo',
         title: '安装插件',
         description: '在安装前查看此仓库包含哪些组件。',
         repoLabel: '仓库',
         includesHeading: '此包包含',
         agentLabel: '智能体插件',
         desktopLabel: '桌面 UI',
-        agentTargetLocal: profile => `安装到 ${profile} 后端（~/.hermes/plugins/）`,
+        agentTargetLocal: (profile, dir) => `安装到 ${profile} 后端（${dir}）`,
         agentTargetRemote: profile => `安装到已连接的 ${profile} 后端`,
+        catalogPinned: (name, sha) =>
+          `Hermes 目录条目「${name}」— agent 部分将安装在经过审核的固定提交${sha ? ` ${sha}` : ''}，而不是分支最新代码。`,
+        reviewedHeading: '经过审核的目录条目',
+        reviewedIntro: '此条目已在其固定提交处经过人工审核。你仍可在下方检查确切代码。',
+        restartToApply: '重启网关后插件才会生效。',
+        restartNow: '重启网关',
+        missingEnvAction: '去设置',
+        alreadyInstalled: (name: string) => `${name} 已安装。`,
         desktopTarget: '安装到此应用的本地 desktop-plugins 文件夹',
+        desktopTargetFromPackage: '从上方的包加载到本应用 — 所有配置相同',
         desktopOnlyNote: '仅桌面包不会安装后端智能体插件。',
         insecureWarning: '此 URL 使用了不安全的本地 scheme。生产环境请优先使用 https:// 或 git@。',
         securityHeading: '安装前须知',
@@ -404,6 +486,11 @@ export const zh = defineLocale({
         gitCloneLabel: 'Git 克隆地址',
         enableAgent: '安装后启用智能体插件',
         forceReinstall: '强制重装（替换已存在的安装）',
+        pinToCommit: '固定到提交（可选）',
+        pinToCommitPlaceholder: '完整的 40 位提交 SHA',
+        pinToCommitHint:
+          '安装同一 SHA 的所有人都会得到相同的代码；固定后插件将拒绝更新，直到重新固定。留空则安装最新提交。',
+        pinToCommitInvalid: '必须是完整的 40 位提交 SHA（不接受分支和标签）。',
         install: '安装',
         installing: '正在安装…',
         probing: '正在检查仓库…',
@@ -526,12 +613,15 @@ export const zh = defineLocale({
       embedsAlways: '总是',
       embedsOff: '关闭',
       embedsReset: (count: number) => `重置 ${count} 个已允许的服务`,
+      resumeLastSessionTitle: '启动时恢复上次会话',
+      resumeLastSessionDesc: '开启后，应用冷启动时重新打开最近的聊天。关闭则始终从空白新会话开始。',
       product: '产品',
       productDesc: '易读的工具活动与简洁摘要。',
       technical: '技术',
       technicalDesc: '包含原始工具参数/结果及底层细节。',
       themeTitle: '主题',
       themeDesc: '仅桌面端调色板。所选模式叠加其上。',
+      themeSearchPlaceholder: '搜索本地主题或 VS Code 市场…',
       themeProfileNote: profile => `已为「${profile}」配置文件保存——每个配置文件保留各自的主题。`,
       installTitle: '从 VS Code 安装',
       installDesc: '粘贴 Marketplace 扩展 ID（例如 dracula-theme.theme-dracula），将其配色主题转换为桌面调色板。',
@@ -640,11 +730,17 @@ export const zh = defineLocale({
       voice: {
         recordKey: '语音快捷键',
         maxRecordingSeconds: '最长录音时长',
-        autoTts: '朗读回复'
+        autoTts: '朗读回复',
+        voiceChatMode: '语音聊天模式',
+        gptLive: {
+          voice: 'GPT-Live 音色',
+          instructions: 'GPT-Live 人设'
+        }
       },
       stt: {
         enabled: '语音转文字',
         provider: '语音转文字提供方',
+        echoTranscripts: '回显转写文本',
         local: {
           model: '本地转写模型',
           language: '转写语言'
@@ -677,6 +773,10 @@ export const zh = defineLocale({
         elevenlabs: {
           voiceId: 'ElevenLabs 语音',
           modelId: 'ElevenLabs 模型'
+        },
+        deepinfra: {
+          model: 'DeepInfra TTS 模型',
+          voice: 'DeepInfra 语音'
         },
         xai: {
           voiceId: 'xAI (Grok) 语音',
@@ -755,7 +855,11 @@ export const zh = defineLocale({
       terminal: {
         cwd: '工具与终端操作的默认项目目录。',
         persistentShell: '当后端支持时，在命令之间保留 Shell 状态。',
-        envPassthrough: '传入工具执行的环境变量。'
+        envPassthrough: '传入工具执行的环境变量。',
+        dockerImage: '当执行后端为 Docker 时使用的容器镜像。',
+        singularityImage: '当执行后端为 Singularity 时使用的镜像。',
+        modalImage: '当执行后端为 Modal 时使用的镜像。',
+        daytonaImage: '当执行后端为 Daytona 时使用的镜像。'
       },
       codeExecution: {
         mode: '代码执行被限定到当前项目的严格程度。'
@@ -788,12 +892,33 @@ export const zh = defineLocale({
         enabled: '当对话变大时对较早的上下文进行摘要。'
       },
       voice: {
-        autoTts: '自动朗读助手回复。'
+        autoTts: '自动朗读助手回复。',
+        voiceChatMode:
+          'chained：语音转文字 → Hermes → 文字转语音，使用下方的提供商。gpt-live：一个全双工的 OpenAI 语音模型（gpt-live-1）负责听和说，并把每个实际请求交给 Hermes——由你选择的任意模型带着完整工具集作答。需要 OpenAI API 密钥；语音层按每分钟 $0.05 计费。',
+        gptLive: {
+          voice: 'GPT-Live 模式使用的音色，可填写自定义音色 ID。',
+          instructions: '附加到实时语音人设的句子（语气、语速、语言）。Hermes 保留自己的系统提示词。'
+        }
       },
       stt: {
         enabled: '启用本地或提供方支持的语音转写。',
+        echoTranscripts: '将语音消息的原始 🎙️ 转写文本发回聊天。',
         elevenlabs: {
           languageCode: '可选的 ISO-639-3 语言代码。留空让 ElevenLabs 自动检测。'
+        }
+      },
+      tts: {
+        xai: {
+          voiceId: 'xAI 语音 ID（如 eve）或自定义语音 ID。',
+          language: '口语语言代码（如 en、pt-BR），或填 "auto" 自动检测。',
+          speed: '播放速度。0.7 = 较慢，1.0 = 正常，1.5 = 较快。',
+          autoSpeechTags: '合成前让 LLM 在文稿中插入表现力音频标签（如 [laughing]、[sighs]）。',
+          optimizeStreamingLatency: '延迟与质量的权衡。0 = 最佳质量，2 = 最低延迟。',
+          sampleRate: '音频采样率（Hz）。越高音质越好、文件越大。',
+          bitRate: 'MP3 比特率（bps）。仅当编码为 mp3 时生效。'
+        },
+        neutts: {
+          device: 'NeuTTS 的本地推理设备。'
         }
       },
       updates: {
@@ -801,6 +926,30 @@ export const zh = defineLocale({
           'APEX 从应用内更新时（无终端提示），保留本地源码修改（暂存）或丢弃（放弃）。通过终端更新时始终会询问。'
       }
     }),
+    uninstallSection: {
+      dangerZone: '危险操作',
+      confirmUninstall: '确认卸载',
+      uninstallHermes: '卸载 Hermes'
+    },
+    poolLimits: {
+      warmBotBackendsAria: '预热机器人后端',
+      warmBotBackendsTitle: '预热机器人后端',
+      backendIdleTimeoutAria: '后端空闲超时（毫秒）',
+      backendIdleTimeoutTitle: '后端空闲超时（毫秒）'
+    },
+    customEndpoints: {
+      title: '自定义端点',
+      deleteEndpoint: '删除端点',
+      emptyDescription: '在下方添加兼容 OpenAI 的端点。',
+      emptyTitle: '暂无自定义端点',
+      namePlaceholder: '我的代理',
+      contextPlaceholder: '自动'
+    },
+    computerUse: {
+      accessibility: '辅助功能',
+      screenRecording: '屏幕录制',
+      driverHealth: '驱动健康状态'
+    },
     about: {
       heading: 'APEX 桌面版',
       version: value => `版本 ${value}`,
@@ -809,6 +958,9 @@ export const zh = defineLocale({
       bundleOutOfSyncDesc:
         'Hermes 运行时已更新,但桌面应用本身仍是旧构建——在应用更新之前,新的界面功能(如 Bot Mode)不会显示。请运行下方的更新以重新构建应用。如果此警告仍未消除,请从最新的桌面安装程序重新安装。',
       bundleOutOfSyncAction: '获取安装程序',
+      bundleSwapPending: '重启以完成更新',
+      bundleSwapPendingDesc: '更新后的应用已安装完成，只需重启 Hermes 即可加载新版本。聊天记录和设置不会受到影响。',
+      bundleSwapPendingAction: '重启 Hermes',
       updates: '更新',
       checkNow: '立即检查',
       checking: '检查中…',
@@ -877,7 +1029,8 @@ export const zh = defineLocale({
       failedLoad: '设置加载失败',
       autosaveFailed: '自动保存失败',
       imported: '配置已导入',
-      invalidJson: '配置 JSON 无效'
+      invalidJson: '配置 JSON 无效',
+      showOptions: '显示选项'
     },
     credentials: {
       pasteKey: '粘贴密钥',
@@ -1018,6 +1171,10 @@ export const zh = defineLocale({
       },
       cloudRefresh: '刷新',
       cloudConnect: '连接',
+      cloudSavedTitle: '已保存的云网关',
+      cloudSavedDesc: '使用已保存的网关，不更改默认网关。在下方登录以添加实例。在已保存的连接列表中管理名称和登录。',
+      cloudUseSaved: '使用网关',
+      cloudActive: '当前窗口正在使用',
       cloudConnecting: '正在连接…',
       cloudDiscoverFailed: '无法加载你的 Hermes Cloud 智能体',
       cloudConnectFailed: '无法连接到该智能体',
@@ -1199,12 +1356,18 @@ export const zh = defineLocale({
       reasoning: '推理',
       reasoningOff: '关闭',
       defaultsFailed: '保存模型默认值失败',
+      loadFailed: '无法加载模型',
+      restartRequired: '更新后此后端仍在运行旧代码。请重启以加载新代码。',
+      restartBackend: '重启后端',
+      restartingBackend: '正在重启后端...',
+      restartFailed: '无法重启后端',
       auxiliaryTitle: '辅助模型',
       resetAllToMain: '全部重置为主模型',
       auxiliaryDesc: '辅助任务默认使用主模型。你可以为任意任务指定专用模型。',
       setToMain: '设为主模型',
       change: '更改',
       autoUseMain: '自动 · 使用主模型',
+      inheritMainEffort: '继承 · 主模型推理强度',
       providerDefault: '(提供方默认)',
       fallbackAdd: '添加备用模型',
       fallbackEmpty: '未配置备用模型 — 默认模型失败时才会使用备用模型。',
@@ -1224,6 +1387,9 @@ export const zh = defineLocale({
         mcp: { label: 'MCP', hint: 'MCP 工具路由' },
         title_generation: { label: '标题生成', hint: '会话标题' },
         review: { label: '评审', hint: '/review 评审子智能体' },
+        triage_specifier: { label: '分类指定', hint: '看板任务规格补全' },
+        kanban_decomposer: { label: '看板分解', hint: '任务拆解' },
+        profile_describer: { label: '配置描述', hint: '自动生成配置描述' },
         curator: { label: '维护器', hint: '技能使用审查' }
       }
     },
@@ -1389,7 +1555,17 @@ export const zh = defineLocale({
         enabledMessage: '新会话将使用默认浏览器配置文件的快照进行浏览。',
         disabledTitle: '真实配置文件浏览：已关闭',
         disabledMessage: '配置文件快照将被删除；新会话使用干净的浏览器。',
-        failedSave: '无法保存真实配置文件设置'
+        failedSave: '无法保存真实配置文件设置',
+        prompt: {
+          title: '让网站保持登录状态',
+          body: '让 Hermes 使用默认浏览器配置文件的快照进行浏览，网站打开时即已登录。',
+          bulletSnapshot: 'Cookie 和登录信息会复制到托管快照中。',
+          bulletLiveProfile: '绝不会直接打开你的真实浏览器配置文件。',
+          bulletLocal: '所有数据都不会离开这台电脑。',
+          dontShowAgain: '不再显示',
+          notNow: '暂不',
+          enable: '使用我的配置文件'
+        }
       }
     },
     agentAuth: {
@@ -1544,6 +1720,50 @@ export const zh = defineLocale({
     archive: '归档',
     skillArchivedTitle: '技能已归档',
     skillArchivedMessage: '可通过 hermes curator restore 恢复。',
+    tabPlugins: '插件',
+    plugins: {
+      agentTitle: 'Agent 插件',
+      agentBlurb: '为所选配置扩展 agent — 工具、钩子、模型提供方。重启网关后生效。',
+      pageBlurb: '每个插件一行。插件可以扩展本应用、agent，或两者 — 每一半都有自己的开关。',
+      halfDesktop: '桌面',
+      halfDesktopHint: '本应用，所有配置相同',
+      halfAgent: 'Agent',
+      halfAgentIn: (profile: string) => `${profile} 中的 Agent`,
+      defaultProfile: 'Hermes（默认）',
+      kindAgent: 'Agent',
+      kindDesktop: '桌面',
+      kindBoth: 'Agent + 桌面',
+      installAgentHere: '在此安装',
+      installAgentHereTip: (profile: string) =>
+        `桌面部分已加载到本应用，但 agent 部分尚未安装到 ${profile}。在那里安装它。`,
+      installAgentHereNoOrigin:
+        '此配置未安装 agent 部分，且该包是手动复制的（无目录条目或 git 远程），无法从此处安装。请将其文件夹复制到该配置或从 Git 重新安装。',
+      desktopHalfPending: '复制中…',
+      desktopHalfPendingTip: '此包附带的桌面部分尚未复制到应用中。请重新扫描或重启应用。',
+      emptyAll: '还没有插件。',
+      empty: '此配置尚未安装任何 agent 插件。',
+      emptyHint: '在下方目录中浏览，一键安装经过审核的插件。',
+      loadFailed: '无法加载 agent 插件',
+      toggleFailed: (name: string) => `无法切换 ${name}`,
+      legacyBackend: '此后端版本较旧，不支持按键名切换插件 — 请更新 Hermes 后再在此管理。',
+      portableBadge: '便携',
+      catalogTitle: '插件目录',
+      catalogBrowse: '浏览',
+      catalogHide: '隐藏目录浏览器',
+      catalogHint:
+        '点击任意插件上的「+ Add to this Agent」— 经过审核的条目会以其固定提交安装到所选配置。捆绑的 agent+桌面插件会同时提供两部分。',
+      alreadyInstalled: (name: string) => `${name} 已安装在此配置中。`,
+      catalogProvenance: (sha: string) => `从 Hermes 目录安装${sha ? `，固定提交 ${sha}` : ''}。`,
+      pinnedProvenance: (sha: string) => `已固定到提交 ${sha}。重新固定前将拒绝更新。`,
+      pinnedBadge: (sha: string) => `固定 @ ${sha}`,
+      tierOfficial: '官方',
+      tierCommunity: '社区',
+      updateToPin: (sha: string) => `更新到 ${sha}`,
+      updateFailed: (name: string) => `无法更新 ${name}`,
+      updated: (name: string) => `${name} 已更新到当前目录固定提交。重启网关后生效。`
+    },
+    officialCatalog: '可安装',
+    officialPill: '官方',
     hub: {
       searchPlaceholder: '搜索技能中心',
       search: '搜索',
@@ -1626,6 +1846,10 @@ export const zh = defineLocale({
     resetToMine: '返回我的图谱'
   },
   agents: {
+    extendedTranscript: '扩展记录',
+    transcriptTruncated: '显示最新 16 KiB',
+    transcriptUnavailable: '实时记录不可用',
+
     close: '关闭代理',
     title: '派生树',
     subtitle: '当前回合的子代理实时活动。',
@@ -1637,6 +1861,14 @@ export const zh = defineLocale({
     streaming: '流式传输',
     files: '文件',
     moreFiles: count => `还有 ${count} 个文件`,
+    moreAgents: count => `还有 ${count} 个子代理`,
+    queued: '排队中',
+    waitingActivity: '等待活动',
+    steer: '引导',
+    steerPlaceholder: '此子代理的指令',
+    steerQueued: '已排队，等待下一个检查点',
+    stopRequested: '已请求停止',
+    requestRejected: '子代理未接受请求',
     delegation: index => `派发 ${index}`,
     workers: count => `${count} 个工作单元`,
     workersActive: count => `${count} 个活跃`,
@@ -1863,6 +2095,7 @@ export const zh = defineLocale({
     },
     unknown: '未知',
     hintPendingRestart: '在状态栏重启网关以应用此更改。',
+    sharedListenerUrl: '通过共享网关监听器提供，地址为',
     hintGatewayStopped: '在状态栏启动网关以建立连接。',
     credentialsSet: '凭据已设置',
     needsSetup: '需要设置',
@@ -1889,6 +2122,8 @@ export const zh = defineLocale({
     restartToApply: '此更改将在网关重启后生效。',
     setupSaved: name => `${name} 设置已保存`,
     restartToReconnect: '新凭据将在网关重启后生效。',
+    appliedLive: '已应用到正在运行的网关。',
+    connectingLive: '正在运行的网关正在使用新凭据连接。',
     keyCleared: key => `${key} 已清除`,
     setupUpdated: name => `${name} 设置已更新。`,
     failedUpdate: name => `更新 ${name} 失败`,
@@ -2072,8 +2307,8 @@ export const zh = defineLocale({
     title: '定时任务',
     count: count => `${count} 个任务`,
     modelImpact: {
-      title: '定时任务需要检查',
-      message: count => `在您检查模型设置之前，${count} 个定时任务将被跳过。`,
+      title: '定时任务将继续使用原模型',
+      message: count => `${count} 个未固定的定时任务将继续使用创建时的模型运行。固定它们或设置 cron.model 以迁移。`,
       detailMore: (names, remaining) => `${names}，以及另外 ${remaining} 个`,
       review: '检查定时任务',
       saveFailed: 'Hermes 未保存该模型更改。',
@@ -2232,6 +2467,17 @@ export const zh = defineLocale({
   },
 
   sidebar: {
+    gatewayGroups: {
+      grouping: '网关与配置',
+      rename: '重命名分组',
+      aliasLabel: '显示名称',
+      aliasHint: '仅更改显示名称；网关和配置档名称保持不变。',
+      resetName: '重置名称',
+      moveUp: '上移',
+      moveDown: '下移',
+      reorder: '调整分组顺序',
+      actions: '分组操作'
+    },
     nav: {
       'new-session': '开始',
       start: '开始',
@@ -2265,9 +2511,11 @@ export const zh = defineLocale({
     shiftClickHint: 'Shift+ 单击对话以置顶 · 拖动以重新排序',
     noWorkspace: '无工作区',
     projectEmpty: '暂无会话',
+    projectLoadFailed: '会话加载失败',
     noSessions: '暂无会话',
     noFilterMatches: '没有会话符合这些筛选条件',
     projects: {
+      showAllSessions: '显示所有会话',
       sectionLabel: '项目',
       newButton: '新建项目',
       createTitle: '新建项目',
@@ -2461,6 +2709,13 @@ export const zh = defineLocale({
     stopDictation: '停止听写',
     transcribingDictation: '正在转写听写',
     voiceControls: '语音',
+    voiceEngine: '语音聊天引擎',
+    voiceEngineChained: '语音转文字 + Hermes 语音',
+    voiceEngineLive: 'GPT-Live（全双工，委托给 Hermes）',
+    voiceEngineLiveNeedsKey: '需要 OpenAI API 密钥',
+    voiceEngineChangeFailed: '无法更改语音聊天引擎',
+    voiceEngineChainedShort: '语音转文字',
+    voiceEngineLiveShort: 'GPT-Live',
     voiceDictation: '语音听写',
     speakReplies: '朗读回复',
     stopSpeakingReplies: '停止朗读回复',
@@ -2642,6 +2897,95 @@ export const zh = defineLocale({
     stop: '停止',
     dismiss: '关闭',
     exit: code => `退出码 ${code}`,
+    control: {
+      goalActiveTurns: (turn, maxTurns) => `第 ${turn}/${maxTurns} 轮`,
+      goalDoneTurns: turns => `共 ${turns} 轮`,
+      goalTurn: turn => `第 ${turn} 轮`,
+      goalActions: '目标操作',
+      viewDetails: '查看详情',
+      addCriterion: '添加条件',
+      addCriterionDialogTitle: '添加条件',
+      addCriterionPlaceholder: '输入条件内容...',
+      criterionLabel: '条件',
+      pauseGoal: '暂停目标',
+      resumeGoal: '恢复目标',
+      resumeNow: '立即恢复',
+      clearGoal: '清除目标',
+      clearGoalConfirmTitle: '清除目标？',
+      clearGoalConfirmBody: '确定要清除当前活跃的目标吗？此操作无法撤销。',
+      copyCriterion: index => `复制条件 ${index}`,
+      removeCriterion: index => `移除条件 ${index}`,
+      removeCriterionConfirmTitle: index => `移除条件 ${index}？`,
+      removeCriterionConfirmBody: index => `确定要移除条件 ${index} 吗？`,
+      clearCriteria: '清除全部条件',
+      clearCriteriaConfirmTitle: '清除全部条件？',
+      clearCriteriaConfirmBody: '确定要移除此目标下的所有条件吗？',
+      criteriaHeader: count => `标准 · ${count}`,
+      noCriteria: '无条件',
+      goalDetailsTitle: '目标详情',
+      objectiveLabel: '目标内容',
+      contractOutcome: '预期结果',
+      contractVerification: '验证方式',
+      contractConstraints: '约束条件',
+      contractBoundaries: '边界条件',
+      contractStopWhen: '停止条件',
+      waitBarrierTitle: '等待状态',
+      waitUntil: target => `等待至 ${target}`,
+      waitSession: target => `等待会话 ${target}`,
+      waitPid: pid => `等待进程 ${pid}`,
+      qualityGatesTitle: '质量关卡',
+      gateCommand: '命令',
+      gateAttempts: (attempts, max) => `尝试 ${attempts}/${max}`,
+      gateTimeout: seconds => `超时 ${seconds} 秒`,
+      gateLastExit: code => (code === null ? '等待中' : `退出代码: ${code}`),
+      loopActive: '循环活跃',
+      loopPaused: '循环暂停',
+      loopDeferred: '循环已推迟',
+      loopFinished: '循环已完成',
+      loopRuns: runs => `运行 ${runs} 次`,
+      loopRunCount: (current, total) => `运行 ${current}/${total}`,
+      loopNext: time => `下次 ${time}`,
+      loopEverySeconds: seconds => `每 ${seconds} 秒`,
+      loopEveryMinutes: minutes => `每 ${minutes} 分钟`,
+      loopEveryHours: hours => `每 ${hours} 小时`,
+      loopSelfPaced: '自节奏',
+      loopActions: '循环操作',
+      pauseLoop: '暂停循环',
+      resumeLoop: '恢复循环',
+      stopLoop: '停止循环',
+      stopLoopConfirmTitle: '停止循环？',
+      stopLoopConfirmBody: '确定要停止此循环吗？',
+      dismissLoop: '关闭循环',
+      loopPromptLabel: '提示词',
+      loopCadenceLabel: '节奏',
+      loopUntilLabel: '终止条件',
+      loopDeferredNotice: '活跃目标当前正在控制会话。',
+      loopAwaitingResponse: '等待响应中',
+      heartbeatActive: '心跳活跃',
+      heartbeatPaused: '心跳暂停',
+      heartbeatEveryMinutes: minutes => `每 ${minutes} 分钟`,
+      heartbeatEveryHours: hours => `每 ${hours} 小时`,
+      heartbeatEverySeconds: seconds => `每 ${seconds} 秒`,
+      heartbeatNext: time => `下次 ${time}`,
+      heartbeatDueWaitingForIdle: '已到期，等待会话空闲',
+      heartbeatActions: '心跳操作',
+      pauseHeartbeat: '暂停心跳',
+      resumeHeartbeat: '恢复心跳',
+      clearHeartbeat: '清除心跳',
+      clearHeartbeatConfirmTitle: '清除心跳？',
+      clearHeartbeatConfirmBody: '确定要清除该心跳吗？',
+      heartbeatFiredCount: count => `已触发 ${count} 次`,
+      actionFailed: msg => `操作失败: ${msg}`,
+      actionSucceeded: '操作成功',
+      copySuccess: '已将条件复制到剪贴板',
+      copyFailure: '复制条件到剪贴板失败',
+      continuationFailed: '提交目标后续内容失败',
+      continuationQueued: '目标已恢复 — 后续内容已排队，将在当前回合结束后发送',
+      continuationBusy: '目标已恢复 — 会话正忙，请 /interrupt 当前回合以继续',
+      controlUnavailable: msg => `会话控制不可用: ${msg}`,
+      dismissError: '关闭错误',
+      add: '添加'
+    },
     coding: {
       title: '工作区',
       noBranch: '无分支',
@@ -2763,6 +3107,10 @@ export const zh = defineLocale({
     }
   },
 
+  guidedGreeting: {
+    line: '来了，进来吧。我是 Hermes。给我两分钟，把这里按你的习惯收拾一下，然后我们找件你真正想做的事来做。\n\n先说，我该怎么称呼你？',
+    nameSuggestion: (name: string) => `（如果你愿意，我也可以直接叫你 ${name}。）`
+  },
   install: {
     stageStates: {
       pending: '等待中',
@@ -2894,6 +3242,8 @@ export const zh = defineLocale({
     connected: '已连接',
     featuredPitch: '一个订阅，300+ 前沿模型 — 运行 APEX 的推荐方式',
     fireworksPitch: '直接模型 API — Fireworks 托管的前沿模型',
+    localModelsTitle: '本地运行模型',
+    localModelsPitch: '无需账号——下载模型，在本机运行',
     openRouterPitch: '一个密钥，数百个模型 — 稳妥的默认选择',
     apiKeyOptions: {
       fireworks: { short: '直接模型 API', description: '直接访问 Fireworks AI 托管的模型。' },
@@ -2924,6 +3274,8 @@ export const zh = defineLocale({
     connectedProvider: provider => `${provider} 已连接`,
     connectedPicking: provider => `${provider} 已连接。正在选择默认模型...`,
     signInFailed: '登录失败，请重试。',
+    signInExpired:
+      '等待授权超时。通常是因为登录页面在打开的标签页中卡住（服务端问题）——请在该页面完成登录后重试。若仍失败，请改用 API 密钥或 CLI 方式。',
     pickDifferentProvider: '选择其他提供方',
     signInWith: provider => `使用 ${provider} 登录`,
     openedBrowser: provider => `已在浏览器中打开 ${provider}。`,
@@ -2964,6 +3316,51 @@ export const zh = defineLocale({
     }
   },
 
+  // Not yet translated — English fallbacks so the free-tier surfaces stay
+  // readable until a zh pass lands.
+  freeTier: {
+    providerRowTitle: 'Nous · 免费层',
+    providerRowPitch: '登录 Nous 账户以解锁更多模型和工具。',
+    readyTitle: 'Hermes 已就绪。',
+    readyCaption: '免费 · 含连接器',
+    begin: '开始',
+    signInInstead: '改为登录 Nous 账户',
+    otherProviders: '其他提供方',
+    stripTitle: '免费的 Nous 推理和连接器现已可用。',
+    stripBody: '打开模型选择器试用，或登录 Nous 账户。',
+    openModelPicker: '打开模型选择器',
+    dismiss: '关闭',
+    providerName: 'Nous',
+    statusLabel: model => `Nous · ${model}`,
+    signIn: '登录',
+    signInHeading: '登录 Nous 账户以解锁更多模型和工具。',
+    settingUp: '正在设置免费推理…',
+    codeBody: '在浏览器中输入此代码以完成登录。',
+    copyLink: '复制链接',
+    doNotShare: '请勿分享此代码。',
+    waiting: '等待登录…',
+    finishingHeading: '正在完成登录…',
+    finishingBody: '已在浏览器中批准。正在获取账户令牌。',
+    signedInAs: email => `已登录为 ${email}`,
+    signedIn: '已登录。',
+    completedBody: '现在由你的账户提供推理和工具。',
+    defaultModel: '默认模型',
+    change: '更改',
+    done: '完成',
+    notNow: '暂不',
+    tryAgain: '重试',
+    startAgain: '重新开始',
+    didNotComplete: '登录未完成',
+    rejectedBody: '登录在浏览器中被拒绝。你仍在免费层。',
+    supersededBody: '一个更新的登录代码替换了此代码。',
+    timedOutHeading: '登录超时',
+    timedOutBody: '代码未在有效期内使用。你仍在免费层。',
+    retiredBody: '此免费层身份已被使用或已过期；下次启动时会重新设置。',
+    errorBody: '登录未完成；请重试。',
+    alreadySignedInHeading: '已登录。',
+    alreadySignedInBody: '此 Hermes 已登录 Nous 账户。'
+  },
+
   modelPicker: {
     title: '切换模型',
     current: '当前：',
@@ -2972,6 +3369,9 @@ export const zh = defineLocale({
     noModels: '未找到模型。',
     addProvider: '添加提供方',
     loadFailed: '无法加载模型',
+    loadingIntoMemory: '正在载入内存',
+    downloading: '下载中',
+    localDownloadsHeading: '本地',
     noAuthenticatedProviders: '没有已认证的提供方。',
     pro: 'Pro',
     proNeedsSubscription: 'Pro 模型需要付费 Nous 订阅。',
@@ -3086,6 +3486,15 @@ export const zh = defineLocale({
       turnRunning: '运行中',
       currentTurnElapsed: '当前回合已用时间',
       contextUsage: '上下文用量',
+      systemResources: {
+        title: '系统资源',
+        loading: '资源…',
+        gpuUtilization: 'GPU 利用率',
+        gpuMemory: '显存',
+        ram: '内存',
+        unifiedNote: '统一内存——GPU 与系统共享此内存池。',
+        toggle: '系统资源'
+      },
       contextUsagePanel: {
         categories: {
           conversation: '对话',
@@ -3244,7 +3653,17 @@ export const zh = defineLocale({
       loadFailedConsole: (code, message) => `加载失败${code ? ` (${code})` : ''}: ${message}`,
       unreachableDescription: '无法访问预览页面。',
       openTarget: url => `打开 ${url}`,
-      fallbackTitle: '预览'
+      fallbackTitle: '预览',
+      annotate: '标注',
+      annotateOn: '停止标注',
+      annotateNeedPage: '请先在内置浏览器中打开页面。',
+      annotateFailed: '无法开始标注',
+      commenting: '标注中',
+      addComments: count => (count === 1 ? '添加 1 条批注' : `添加 ${count} 条批注`),
+      commentPlaceholder: '添加批注…',
+      commentTitle: n => `批注 ${n}`,
+      saveComment: '保存',
+      cancelComment: '取消批注'
     }
   },
 
@@ -3265,7 +3684,7 @@ export const zh = defineLocale({
     closeToRight: '关闭右侧',
     closeAll: '全部关闭',
     pluginDisabled: pluginId => `插件“${pluginId}”已禁用`,
-    pluginDisabledBody: '在 设置 → 插件 中重新启用即可恢复面板。',
+    pluginDisabledBody: '在 技能与工具 → 插件 中重新启用即可恢复面板。',
     missingPane: paneId => `缺少面板：${paneId}`,
     editTitle: '布局',
     editHint: '选择一个布局，或在区域之间拖动面板。右键点击区域可拆分。',
@@ -3432,6 +3851,19 @@ export const zh = defineLocale({
       copyQuery: '复制查询',
       copyFile: '复制文件',
       copyPath: '复制路径',
+      failedCalls: (count: number) => `${count} 次工具调用失败`,
+      skillActivity: {
+        loading: '正在加载技能',
+        loaded: '已加载技能',
+        loadFailed: '技能加载失败',
+        readingResource: '正在读取技能资源',
+        readResource: '已读取技能资源',
+        resourceFailed: '技能资源读取失败',
+        listing: '正在列出技能',
+        listed: '已列出技能',
+        listFailed: '技能列表获取失败',
+        unavailable: '技能结果不可用'
+      },
       outputAlt: '工具输出',
       rawResponse: '原始响应',
       copyActivity: '复制活动',
@@ -3542,6 +3974,9 @@ export const zh = defineLocale({
     readOnlyTranscriptSendBlocked: '该会话目前以只读记录方式打开——发送已禁用。',
     resumeStrandedTitle: '无法加载此会话',
     resumeStrandedBody: '与此会话的连接失败，自动重试已停止。请确认网关正在运行，然后重试。',
+    poolSlotTimeoutBody:
+      '所有本地配置后端槽位都在使用中。请在“设置”→“高级”中增加 Warm Bot Backends，或等待空闲后端被驱逐后重试。',
+    poolSlotTimeoutOpenSettings: '打开高级设置',
     resumeRetry: '重试',
     nothingToBranch: '没有可分支的内容',
     branchNeedsChat: '分支前请先开始或恢复一个对话。',
@@ -3572,6 +4007,8 @@ export const zh = defineLocale({
     imageAttach: '附加图片',
     imageWriteFailed: '无法将图片写入磁盘。',
     imageAttachFailed: '附加图片失败',
+    pastedContent: '粘贴内容',
+    pasteAttachFailed: '无法附加粘贴的文本',
     attachImages: '附加图片',
     clipboard: '剪贴板',
     noClipboardImage: '剪贴板中没有图片',
@@ -3621,9 +4058,10 @@ export const zh = defineLocale({
         title: '附件与命令',
         text: '输入 @ 把文件带入对话，输入 / 运行命令。'
       },
-      'model-switch': {
-        title: '对话中随时换模型',
-        text: '模型名称就是按钮。工作性质变了就换一个。'
+      'local-setup': {
+        title: '这台电脑可以本地运行模型',
+        text: '你的硬件可以运行本地模型。对话不离开你的电脑，而且完全免费。',
+        action: '立即设置'
       },
       'right-pane': {
         title: '工作面板',

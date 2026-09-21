@@ -1,25 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useState } from "react"
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useModelControls } from '@/app/session/hooks/use-model-controls'
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu'
 import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
 import { $activeSessionId, $currentModel, $currentProvider } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 
 import { ModelMenuPanel } from './model-menu-panel'
-
-
-const notify = vi.fn((..._args: unknown[]) => 'confirm-toast-1')
-const notifyError = vi.fn((..._args: unknown[]) => undefined)
-const dismissNotification = vi.fn((..._args: unknown[]) => undefined)
-
-vi.mock('@/store/notifications', () => ({
-  dismissNotification: (...args: unknown[]) => dismissNotification(...args),
-  notify: (...args: unknown[]) => notify(...args),
-  notifyError: (...args: unknown[]) => notifyError(...args)
-}))
 
 // Radix calls these on open; jsdom doesn't implement them.
 beforeAll(() => {
@@ -29,15 +17,9 @@ beforeAll(() => {
 })
 
 const getGlobalModelOptions = vi.fn()
-const getMoaModels = vi.fn()
-const saveMoaModels = vi.fn()
-const setModelAssignment = vi.fn()
 
 vi.mock('@/hermes', () => ({
   getGlobalModelOptions: (...args: unknown[]) => getGlobalModelOptions(...args),
-  getMoaModels: (...args: unknown[]) => getMoaModels(...args),
-  saveMoaModels: (...args: unknown[]) => saveMoaModels(...args),
-  setModelAssignment: (...args: unknown[]) => setModelAssignment(...args),
   setApiRequestProfile: vi.fn()
 }))
 
@@ -52,24 +34,21 @@ const DEEPSEEK_PROVIDER = {
   slug: 'deepseek'
 }
 
-const GOOGLE_PROVIDER = {
-  models: ['gemini-3.1-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'],
-  name: 'Google',
-  slug: 'google'
+const QWEN_PROVIDER = {
+  models: ['qwen3.7-max', 'qwen3.5-plus', 'qwen3-max'],
+  name: 'Qwen Cloud',
+  slug: 'alibaba'
 }
 
-const MOCK_PROVIDERS = [DEEPSEEK_PROVIDER, GOOGLE_PROVIDER, MOA_PROVIDER]
+const MOCK_PROVIDERS = [DEEPSEEK_PROVIDER, QWEN_PROVIDER, MOA_PROVIDER]
 
 beforeEach(() => {
+  $sessionStates.set({})
   $activeSessionId.set('runtime-1')
   $currentModel.set('')
   $currentProvider.set('')
   $collapsedProviders.set([])
-  getGlobalModelOptions.mockReset().mockResolvedValue({ providers: MOCK_PROVIDERS })
-  getMoaModels.mockReset().mockResolvedValue(null)
-  saveMoaModels.mockReset().mockImplementation((config: unknown) => Promise.resolve({ ...(config as object), ok: true }))
-  setModelAssignment.mockReset().mockResolvedValue({ ok: true })
-  notifyError.mockReset()
+  getGlobalModelOptions.mockResolvedValue({ providers: MOCK_PROVIDERS })
 })
 
 afterEach(() => {
@@ -80,11 +59,19 @@ afterEach(() => {
 function renderPanel(onSelectModel = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
+  const requestGateway = vi.fn(async (method: string) => {
+    if (method === 'model.options') {
+      return getGlobalModelOptions()
+    }
+
+    throw new Error(`unexpected gateway method: ${method}`)
+  })
+
   const content = render(
     <QueryClientProvider client={client}>
       <DropdownMenu open>
         <DropdownMenuContent>
-          <ModelMenuPanel onSelectModel={onSelectModel} requestGateway={vi.fn() as never} />
+          <ModelMenuPanel onSelectModel={onSelectModel} requestGateway={requestGateway as never} />
         </DropdownMenuContent>
       </DropdownMenu>
     </QueryClientProvider>
@@ -93,30 +80,137 @@ function renderPanel(onSelectModel = vi.fn()) {
   return { onSelectModel, content }
 }
 
-// Radix DropdownMenu portals its content to document.body, so these assert
-// against the body (not content.container) to see the rendered items.
-describe('ModelMenuPanel China-first + invisible MoA', () => {
-  it('never names MoA, even though the catalog ships the virtual provider row', async () => {
-    // MOA-INVISIBLE-DESIGN: upstream lists the `moa` row's models as named
-    // presets ("MoA presets" / "MoA: BeastMode"). Multi-select composes the
-    // same thing silently, so none of that vocabulary may reach the menu.
+describe('ModelMenuPanel product catalog', () => {
+  it('keeps the upstream MoA mechanism and foreign providers out of APEX chrome', async () => {
     const { content } = renderPanel()
 
     await content.findByText('DeepSeek')
-
+    expect(content.getByText('Qwen Cloud')).toBeTruthy()
     // eslint-disable-next-line no-restricted-globals
-    expect(document.body.textContent).not.toMatch(/mixture of agents|aggregator|preset|__auto__|\bmoa\b/i)
+    expect(document.body.textContent).not.toMatch(/mixture of agents|moa presets|beastmode|google|gemini/i)
+  })
+})
+
+describe('ModelMenuPanel current selection', () => {
+  it('keeps the checkmark on the live SessionView model when a stale options response disagrees', async () => {
+    $currentProvider.set('alibaba')
+    $currentModel.set('qwen3.7-max')
+    getGlobalModelOptions.mockResolvedValue({
+      model: 'deepseek-chat',
+      provider: 'deepseek',
+      providers: MOCK_PROVIDERS
+    })
+
+    const { content } = renderPanel()
+
+    const currentRow = (await content.findByText(/Qwen3\.7 Max/i)).closest('[role="menuitem"]')
+    const staleRow = content.getByText('DeepSeek Chat').closest('[role="menuitem"]')
+
+    expect(currentRow?.querySelector('.codicon-check')).not.toBeNull()
+    expect(staleRow?.querySelector('.codicon-check')).toBeNull()
+  })
+})
+
+describe('ModelMenuPanel search', () => {
+  // The pinned current model must NOT ride along on a query it doesn't match:
+  // it reads like the top result, so Enter/click picks the wrong model (the
+  // "type grok, get fable" bug). Every surveyed picker (VS Code, Zed, Open
+  // WebUI, Cherry Studio) drops the pin while filtering.
+  // Highlighted labels are split across <mark> nodes, so single-text-node
+  // queries miss them — match on the row span's composed textContent.
+  const rowWithText = (content: ReturnType<typeof renderPanel>['content'], pattern: RegExp) =>
+    content.queryByText((_, element) => element?.tagName === 'SPAN' && pattern.test(element.textContent ?? ''))
+
+  it('hides the non-matching current model while a query is active', async () => {
+    $currentProvider.set('deepseek')
+    $currentModel.set('deepseek-v4-pro')
+    const { content } = renderPanel()
+
+    await content.findByText(/DeepSeek V4 Pro/i)
+
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    fireEvent.change(input, { target: { value: 'qwen' } })
+
+    await vi.waitFor(() => {
+      expect(rowWithText(content, /Qwen3\.7 Max/i)).not.toBeNull()
+    })
+    expect(rowWithText(content, /DeepSeek V4 Pro/i)).toBeNull()
   })
 
-  it('hides foreign providers the user cannot reach from the mainland', async () => {
-    const { content } = renderPanel()
+  it('Enter in the search field commits the first match', async () => {
+    const { content, onSelectModel } = renderPanel()
 
     await content.findByText('DeepSeek')
 
-    // eslint-disable-next-line no-restricted-globals
-    expect(document.body.textContent).not.toContain('Google')
-    expect(content.queryByText('Gemini 3.1 Pro')).toBeNull()
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    fireEvent.change(input, { target: { value: 'qwen' } })
+
+    await vi.waitFor(() => {
+      expect(rowWithText(content, /Qwen3\.7 Max/i)).not.toBeNull()
+    })
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    // First matching family of the first (alphabetical) matching provider.
+    await vi.waitFor(() => {
+      expect(onSelectModel).toHaveBeenCalledWith({
+        model: 'qwen3.7-max',
+        provider: 'alibaba',
+        sessionId: 'runtime-1'
+      })
+    })
   })
+
+  it('Enter with no matches is a no-op (menu stays put, nothing selected)', async () => {
+    const { content, onSelectModel } = renderPanel()
+
+    await content.findByText('DeepSeek')
+
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    fireEvent.change(input, { target: { value: 'zzz-no-such-model' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(onSelectModel).not.toHaveBeenCalled()
+  })
+
+  it('arrows move the selection without leaving the input; Enter commits the stepped row', async () => {
+    const { content, onSelectModel } = renderPanel()
+
+    await content.findByText('DeepSeek')
+
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    fireEvent.change(input, { target: { value: 'qwen' } })
+
+    await vi.waitFor(() => {
+      expect(rowWithText(content, /Qwen3\.7 Max/i)).not.toBeNull()
+    })
+
+    // First match auto-selected; ↓ steps to the second match.
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await vi.waitFor(() => {
+      expect(onSelectModel).toHaveBeenCalledWith({
+        model: 'qwen3.5-plus',
+        provider: 'alibaba',
+        sessionId: 'runtime-1'
+      })
+    })
+  })
+
+  it('with no query the selection sits on the current model, so Enter closes without switching', async () => {
+    $currentProvider.set('alibaba')
+    $currentModel.set('qwen3.7-max')
+    const { content, onSelectModel } = renderPanel()
+
+    await content.findByText('DeepSeek')
+
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(onSelectModel).not.toHaveBeenCalled()
+  })
+
 })
 
 describe('ModelMenuPanel provider collapse', () => {
@@ -153,7 +247,7 @@ describe('ModelMenuPanel provider collapse', () => {
     })
   })
 
-  it('auto-expands the active provider even when collapsed', async () => {
+  it('collapses the active provider too (no forced auto-expand)', async () => {
     $currentProvider.set('deepseek')
     $currentModel.set('deepseek-v4-pro')
     const { content } = renderPanel()
@@ -161,8 +255,11 @@ describe('ModelMenuPanel provider collapse', () => {
     const header = await content.findByText('DeepSeek')
     fireEvent.click(header)
 
-    // Should still show models because it's the active provider
-    expect(content.queryByText('DeepSeek V4 Pro')).not.toBeNull()
+    // The current provider is collapsible like any other — clicking its header
+    // hides its models rather than forcing them to stay open.
+    await vi.waitFor(() => {
+      expect(content.queryByText('DeepSeek V4 Pro')).toBeNull()
+    })
   })
 
   it('bypasses collapse when search is active', async () => {
@@ -177,9 +274,15 @@ describe('ModelMenuPanel provider collapse', () => {
     expect(input).not.toBeNull()
     fireEvent.change(input, { target: { value: 'deepseek' } })
 
-    // Should show models — search bypasses collapse
+    // Should show models — search bypasses collapse. The matched letters render
+    // inside a <mark>, splitting the label across nodes, so match on the row
+    // span's composed textContent instead of a single text node.
     await vi.waitFor(() => {
-      expect(content.queryByText('DeepSeek V4 Pro')).not.toBeNull()
+      expect(
+        content.queryByText(
+          (_, element) => element?.tagName === 'SPAN' && (element.textContent ?? '').startsWith('DeepSeek V4 Pro')
+        )
+      ).not.toBeNull()
     })
   })
 
@@ -203,8 +306,8 @@ describe('ModelMenuPanel provider collapse', () => {
   // up again later, the previous collapse is preserved.
   it('preserves the collapsed set across a profile switch whose catalog lacks the slug', async () => {
     toggleCollapsedProvider('deepseek')
-    toggleCollapsedProvider('google')
-    expect($collapsedProviders.get()).toEqual(['deepseek', 'google'])
+    toggleCollapsedProvider('alibaba')
+    expect($collapsedProviders.get()).toEqual(['deepseek', 'alibaba'])
 
     // Profile A: both providers present, render + unmount.
     getGlobalModelOptions.mockResolvedValueOnce({ providers: MOCK_PROVIDERS })
@@ -212,19 +315,19 @@ describe('ModelMenuPanel provider collapse', () => {
     await a.content.findByText('DeepSeek')
     a.content.unmount()
 
-    // Profile B: google is not in the catalog (simulates a profile whose
-    // configured providers differ). The previously-collapsed 'google' slug
+    // Profile B: Qwen is not in the catalog (simulates a profile whose
+    // configured providers differ). The previously-collapsed slug
     // must survive — pruning it would lose state across a profile switch.
     getGlobalModelOptions.mockResolvedValueOnce({ providers: [DEEPSEEK_PROVIDER, MOA_PROVIDER] })
     const b = renderPanel()
     await b.content.findByText('DeepSeek')
 
-    expect($collapsedProviders.get()).toEqual(['deepseek', 'google'])
+    expect($collapsedProviders.get()).toEqual(['deepseek', 'alibaba'])
   })
 
   it('preserves the collapsed set when Refresh Models drops a provider', async () => {
     toggleCollapsedProvider('deepseek')
-    toggleCollapsedProvider('google')
+    toggleCollapsedProvider('alibaba')
 
     // First load: both providers present.
     getGlobalModelOptions.mockResolvedValueOnce({ providers: MOCK_PROVIDERS })
@@ -232,19 +335,21 @@ describe('ModelMenuPanel provider collapse', () => {
     await a.content.findByText('DeepSeek')
     a.content.unmount()
 
-    // Refresh Models returns a catalog that drops google (revoked key,
-    // plugin disabled, backend policy change). 'google' must survive — the
+    // Refresh Models returns a catalog that drops Qwen (revoked key,
+    // plugin disabled, backend policy change). Its slug must survive — the
     // user explicitly collapsed it, and the global set is not tied to any
     // single refresh.
     getGlobalModelOptions.mockResolvedValueOnce({ providers: [DEEPSEEK_PROVIDER, MOA_PROVIDER] })
     const b = renderPanel()
     await b.content.findByText('DeepSeek')
 
-    expect($collapsedProviders.get()).toContain('google')
+    expect($collapsedProviders.get()).toContain('alibaba')
     expect($collapsedProviders.get()).toContain('deepseek')
   })
 
-  it('switches the session model when Refresh Models drops the current pick', async () => {
+  it('keeps the current pick when Refresh Models no longer lists it', async () => {
+    // Rows are hints (discovered / curated / capped); a custom slug the row
+    // lacks is still what the user selected. Only the gateway may reject it.
     $currentProvider.set('zai')
     $currentModel.set('glm-4.5-air')
     getGlobalModelOptions
@@ -266,12 +371,11 @@ describe('ModelMenuPanel provider collapse', () => {
     fireEvent.click(await content.findByText('Refresh Models'))
 
     await vi.waitFor(() => {
-      expect(onSelectModel).toHaveBeenCalledWith({
-        model: 'deepseek-v4-pro',
-        provider: 'deepseek',
-        sessionId: 'runtime-1'
-      })
+      expect(getGlobalModelOptions).toHaveBeenCalledTimes(2)
     })
+    expect(onSelectModel).not.toHaveBeenCalled()
+    expect($currentModel.get()).toBe('glm-4.5-air')
+    expect($currentProvider.get()).toBe('zai')
   })
 
   it('does not switch when Refresh Models still lists the current pick', async () => {
@@ -281,7 +385,7 @@ describe('ModelMenuPanel provider collapse', () => {
 
     const { content, onSelectModel } = renderPanel()
 
-    await content.findByText(/Deepseek V4 Pro/i)
+    await content.findByText(/DeepSeek V4 Pro/i)
     fireEvent.click(await content.findByText('Refresh Models'))
 
     await vi.waitFor(() => {
@@ -289,392 +393,63 @@ describe('ModelMenuPanel provider collapse', () => {
     })
     expect(onSelectModel).not.toHaveBeenCalled()
   })
-})
 
-describe('ModelMenuPanel refresh reconcile × guarded-switch confirm handshake', () => {
-  // #95446 fix (reconcile after Refresh Models) composes with the
-  // confirm-handshake guard: when the reconcile target is itself a GUARDED
-  // model (contributor tier / expensive), the switch must surface the confirm
-  // flow — one config.set, a warning with a Confirm action, rollback until
-  // confirmed — never a silent retry loop and never a silently-painted pick.
-  function ConfirmHarness({
-    requestGateway
-  }: {
-    requestGateway: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>
-  }) {
-    const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }))
-    const controls = useModelControls({ queryClient: client, requestGateway })
-
-    return (
-      <QueryClientProvider client={client}>
-        <DropdownMenu open>
-          <DropdownMenuContent>
-            <ModelMenuPanel onSelectModel={controls.selectModel} requestGateway={requestGateway as never} />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </QueryClientProvider>
-    )
-  }
-
-  it('reconcile-triggered switch to a guarded model surfaces confirm, not a silent retry', async () => {
-    $activeSessionId.set('runtime-1')
+  it('does not rewrite the provider when Refresh Models lists the same model id elsewhere', async () => {
     $currentProvider.set('zai')
     $currentModel.set('glm-4.5-air')
-    getGlobalModelOptions
-      .mockResolvedValueOnce({
-        providers: [{ models: ['glm-4.5-air'], name: 'Zhipu', slug: 'zai' }, MOA_PROVIDER]
-      })
-      // Refresh drops the current pick; the only remaining model is guarded.
-      .mockResolvedValueOnce({
-        providers: [{ models: ['muse-spark-1.2-contributor'], name: 'OpenCode', slug: 'opencode-go' }, MOA_PROVIDER]
-      })
 
-    // Method-aware gateway: the panel's catalog reads (`model.options`) fall
-    // back to the REST mock; `config.set` runs the guarded handshake —
-    // confirm_required first, success on the confirmed resend.
-    let configSets = 0
+    const catalog = {
+      model: 'glm-4.5-air',
+      provider: 'zai',
+      providers: [
+        { models: ['glm-4.5-air', 'gpt-5.5'], name: 'My proxy', slug: 'custom:my-proxy' },
+        { models: ['glm-4.5-air', 'glm-5-turbo'], name: '智谱2', slug: 'zai' },
+        MOA_PROVIDER
+      ]
+    }
 
-    const requestGateway = vi.fn(async (method: string, _params?: Record<string, unknown>) => {
-      if (method !== 'config.set') {
-        throw new Error('use REST catalog')
-      }
+    getGlobalModelOptions.mockResolvedValue(catalog)
 
-      configSets += 1
+    const { content, onSelectModel } = renderPanel()
 
-      if (configSets === 1) {
-        return {
-          confirm_message: 'CONTRIBUTOR TIER: this model may train on your data.',
-          confirm_required: true,
-          key: 'model',
-          value: 'muse-spark-1.2-contributor'
-        }
-      }
-
-      return { key: 'model', scope: 'global', value: 'muse-spark-1.2-contributor' }
-    })
-
-    const content = render(<ConfirmHarness requestGateway={requestGateway as never} />)
-
-    await content.findByText(/Glm 4\.5 Air/i)
+    await content.findAllByText(/Glm 4\.5 Air/i)
     fireEvent.click(await content.findByText('Refresh Models'))
 
-    // The reconcile fired exactly ONE switch attempt and it came back
-    // confirm_required → the confirm toast is up, nothing retried silently.
     await vi.waitFor(() => {
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: expect.objectContaining({ label: expect.any(String) }),
-          kind: 'warning',
-          message: 'CONTRIBUTOR TIER: this model may train on your data.'
-        })
-      )
+      expect(getGlobalModelOptions).toHaveBeenCalledTimes(2)
     })
-
-    const configSetCalls = requestGateway.mock.calls.filter(([method]) => method === 'config.set')
-    expect(configSetCalls).toHaveLength(1)
-    expect(configSetCalls[0][1]).not.toHaveProperty('confirm_expensive_model')
-
-    // Pending confirmation = rolled back, not silently painted.
-    expect($currentModel.get()).toBe('glm-4.5-air')
-    expect($currentProvider.get()).toBe('zai')
-
-    // User confirms → ONE resend carrying confirm_expensive_model: true.
-    const lastNotify = notify.mock.calls.at(-1)?.[0] as { action: { onClick: () => Promise<void> } }
-
-    await act(async () => {
-      await lastNotify.action.onClick()
-    })
-
-    await vi.waitFor(() => {
-      const resend = requestGateway.mock.calls.filter(([method]) => method === 'config.set')
-      expect(resend).toHaveLength(2)
-      expect(resend[1][1]).toMatchObject({ confirm_expensive_model: true, session_id: 'runtime-1' })
-    })
-    expect($currentModel.get()).toBe('muse-spark-1.2-contributor')
-    expect($currentProvider.get()).toBe('opencode-go')
-    expect(notifyError).not.toHaveBeenCalled()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// hc-598 — one endpoint, one row, in product language
-// ---------------------------------------------------------------------------
-
-// The managed relay is registered under the BARE `custom` slug with a named
-// `custom_providers` entry beside it, so the runtime lists the endpoint as
-// `custom:apex-nodes.com` AND synthesizes a second, anonymous row for the
-// "missing" bare slug (hermes_cli/inventory.py `_append_unconfigured_rows`).
-const RELAY_PROVIDER = {
-  api_url: 'https://apex-nodes.com/relay/v1',
-  models: ['deepseek-v4-pro-APEX', 'glm-5.2', 'qwen3.7-max'],
-  name: 'Apex-nodes.com',
-  slug: 'custom:apex-nodes.com'
-}
-
-const RELAY_ALIAS_ROW = {
-  authenticated: false,
-  models: ['deepseek-v4-pro-APEX'],
-  name: 'Custom endpoint',
-  slug: 'custom',
-  warning: 'Configured provider is not authenticated; run `hermes model` to reactivate.'
-}
-
-describe('ModelMenuPanel endpoint naming', () => {
-  it('never shows the implementation word, and lists one endpoint once', async () => {
-    getGlobalModelOptions.mockResolvedValue({ providers: [RELAY_PROVIDER, RELAY_ALIAS_ROW, MOA_PROVIDER] })
-
-    const { content } = renderPanel()
-
-    await content.findByText('Apex-nodes.com')
-
-    // eslint-disable-next-line no-restricted-globals
-    expect(document.body.textContent).not.toMatch(/custom endpoint/i)
-    // One section header for the endpoint, not two.
-    expect(content.queryAllByText('Apex-nodes.com')).toHaveLength(1)
-    // …and its single model isn't duplicated by the alias row either.
-    expect(content.queryAllByText('DeepSeek V4 Pro')).toHaveLength(1)
+    expect(onSelectModel).not.toHaveBeenCalled()
   })
 
-  it('names an unnamed endpoint by its address rather than by its slug', async () => {
-    // A user's own OpenAI-compatible endpoint: no named `custom_providers`
-    // entry, so the runtime labels the row "Custom endpoint".
+  it('marks only the matching provider row current when two providers share a model id', async () => {
+    $currentProvider.set('zai')
+    $currentModel.set('glm-4.5-air')
     getGlobalModelOptions.mockResolvedValue({
-      providers: [{ api_url: 'http://127.0.0.1:11434/v1', models: ['qwen3'], name: 'Custom endpoint', slug: 'custom' }]
+      model: 'glm-4.5-air',
+      provider: 'zai',
+      providers: [
+        { models: ['glm-4.5-air', 'gpt-5.5'], name: 'My proxy', slug: 'custom:my-proxy' },
+        { models: ['glm-4.5-air', 'glm-5-turbo'], name: '智谱2', slug: 'zai' },
+        MOA_PROVIDER
+      ]
     })
 
-    const { content } = renderPanel()
+    const { content, onSelectModel } = renderPanel()
 
-    await content.findByText('127.0.0.1:11434')
+    const rows = await content.findAllByText(/Glm 4\.5 Air/i)
+    const items = [...new Set(rows.map(row => row.closest('[role="menuitem"]')))]
 
-    // eslint-disable-next-line no-restricted-globals
-    expect(document.body.textContent).not.toMatch(/custom endpoint/i)
-  })
-})
+    expect(items).toHaveLength(2)
 
-// ---------------------------------------------------------------------------
-// hc-599 — rapid multi-select must not lose a checkmark
-// ---------------------------------------------------------------------------
+    const checked = items.filter(item => item?.querySelector('.codicon-check'))
+    expect(checked).toHaveLength(1)
+    expect(checked[0]?.closest('[role="group"]')?.textContent).toContain('智谱2')
+    expect(
+      items.find(item => !item?.querySelector('.codicon-check'))?.closest('[role="group"]')?.textContent
+    ).toContain('My proxy')
 
-/** Display names of the rows currently showing a check mark. The name is the
- *  row label's first text node — the trailing effort/fast meta is a sibling. */
-function checkedRows(): string[] {
-  // eslint-disable-next-line no-restricted-globals
-  return Array.from(document.querySelectorAll('.codicon-check'))
-    .map(
-      icon =>
-        icon.closest('[role="menuitem"]')?.querySelector('span.truncate')?.childNodes[0]?.textContent?.trim() ?? ''
-    )
-    .filter(Boolean)
-}
-
-/** A promise plus its resolve/reject handles, for ordering async writes by hand. */
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-
-  return { promise, reject, resolve }
-}
-
-/** Member model ids of the last composed preset handed to saveMoaModels. */
-function lastSavedMembers(): string[] {
-  const config = saveMoaModels.mock.calls.at(-1)?.[0] as
-    | { presets: Record<string, { aggregator: { model: string }; reference_models: { model: string }[] }> }
-    | undefined
-
-  const preset = config?.presets?.__auto__
-
-  if (!preset) {
-    return []
-  }
-
-  return [preset.aggregator.model, ...preset.reference_models.map(slot => slot.model)].sort()
-}
-
-describe('ModelMenuPanel multi-select commits on dismiss (hc-637)', () => {
-  beforeEach(() => {
-    getGlobalModelOptions.mockResolvedValue({ providers: [RELAY_PROVIDER, MOA_PROVIDER] })
-  })
-
-  async function openWithRelayRows(onSelectModel = vi.fn()) {
-    const rendered = renderPanel(onSelectModel)
-
-    await rendered.content.findByText('Apex-nodes.com')
-    await rendered.content.findByText('GLM 5.2')
-
-    return rendered
-  }
-
-  /** Let queued microtasks drain. */
-  const settle = () => act(async () => undefined)
-
-  /** Dismissing the menu unmounts the panel — that IS the commit. */
-  const dismiss = async (content: ReturnType<typeof renderPanel>['content']) => {
-    content.unmount()
-    await settle()
-  }
-
-  it('writes nothing while the menu is open', async () => {
-    // The core of hc-637. Writing per click put three things in contention —
-    // the user's clicks, a serialized write chain, and a seed effect reading a
-    // server snapshot taken mid-write. Staging removes the contention by
-    // removing the in-flight write.
-    const { content } = await openWithRelayRows()
-
-    fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-    await settle()
-    fireEvent.click(content.getByText('GLM 5.2'))
-    await settle()
-    fireEvent.click(content.getByText('Qwen3.7 Max'))
-    await settle()
-
-    expect(saveMoaModels).not.toHaveBeenCalled()
-    expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'GLM 5.2', 'Qwen3.7 Max'])
-  })
-
-  it('commits once on dismiss, carrying the final set', async () => {
-    const { content } = await openWithRelayRows()
-
-    fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-    fireEvent.click(content.getByText('GLM 5.2'))
-    fireEvent.click(content.getByText('Qwen3.7 Max'))
-    await settle()
-
-    await dismiss(content)
-
-    await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
-    expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'glm-5.2', 'qwen3.7-max'])
-  })
-
-  it('toggling a model back off before dismissing leaves it out of the write', async () => {
-    // Staging means intermediate states never reach the server: only what the
-    // user is looking at when the menu closes does.
-    const { content } = await openWithRelayRows()
-
-    fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-    fireEvent.click(content.getByText('GLM 5.2'))
-    fireEvent.click(content.getByText('Qwen3.7 Max'))
-    fireEvent.click(content.getByText('GLM 5.2'))
-    await settle()
-
-    await dismiss(content)
-
-    await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
-    expect(lastSavedMembers()).toEqual(['deepseek-v4-pro', 'qwen3.7-max'])
-  })
-
-  it('opening and closing without touching anything writes nothing', async () => {
-    // Committing on dismiss must not turn every glance at the menu into a
-    // model switch — the commit diffs against what was seeded.
-    const { content, onSelectModel } = await openWithRelayRows()
-
-    await dismiss(content)
-
-    expect(saveMoaModels).not.toHaveBeenCalled()
+    const input = screen.getByRole('textbox', { name: 'Search models' })
+    fireEvent.keyDown(input, { key: 'Enter' })
     expect(onSelectModel).not.toHaveBeenCalled()
-  })
-
-  it('reopening an existing composition and closing it writes nothing', async () => {
-    // The empty-seed case above cannot reach the "did anything change?" guard —
-    // it returns earlier, on the empty set. This is the case that needs it: a
-    // real selection is seeded, the user only looks, and dismissing must not
-    // re-write (which would churn the profile and the agent on every glance).
-    getMoaModels.mockResolvedValue({
-      active_preset: '__auto__',
-      default_preset: '__auto__',
-      presets: {
-        __auto__: {
-          aggregator: { model: 'qwen3.7-max', provider: 'custom:apex-nodes.com' },
-          reference_models: [{ model: 'glm-5.2', provider: 'custom:apex-nodes.com' }]
-        }
-      }
-    })
-    $currentProvider.set('moa')
-    $currentModel.set('__auto__')
-
-    const { content, onSelectModel } = await openWithRelayRows()
-
-    await vi.waitFor(() => expect(checkedRows()).toEqual(['GLM 5.2', 'Qwen3.7 Max']))
-    await dismiss(content)
-
-    expect(saveMoaModels).not.toHaveBeenCalled()
-    expect(onSelectModel).not.toHaveBeenCalled()
-  })
-
-  it('a single staged model commits through the session path, not a profile write', async () => {
-    const { content, onSelectModel } = await openWithRelayRows()
-
-    fireEvent.click(content.getByText('GLM 5.2'))
-    await settle()
-    await dismiss(content)
-
-    await vi.waitFor(() => expect(onSelectModel).toHaveBeenCalled())
-    expect(saveMoaModels).not.toHaveBeenCalled()
-    expect(setModelAssignment).not.toHaveBeenCalled()
-  })
-
-  it('a composition is assigned at SESSION scope, like a single pick', async () => {
-    // The bug this fixes: the composition was written with
-    // setModelAssignment({ scope: 'main' }) — the profile default — while a
-    // single pick wrote a session override. A session override shadows the
-    // profile default, so on any session that had ever had a model picked the
-    // composition was stored and had no effect: the pill kept the old single
-    // model and reopening collapsed back to one checkmark, with no error
-    // anywhere because neither write failed.
-    const { content, onSelectModel } = await openWithRelayRows()
-
-    fireEvent.click(content.getByText('GLM 5.2'))
-    fireEvent.click(content.getByText('Qwen3.7 Max'))
-    await settle()
-    await dismiss(content)
-
-    await vi.waitFor(() => expect(saveMoaModels).toHaveBeenCalledTimes(1))
-    expect(setModelAssignment).not.toHaveBeenCalled()
-    expect(onSelectModel).toHaveBeenCalledWith(expect.objectContaining({ model: '__auto__', provider: 'moa' }))
-  })
-
-  it('seeds from the saved preset when the menu opens, then leaves it alone', async () => {
-    // Unchanged contract: the composed selection lives in the profile's
-    // `__auto__` preset, and the menu must show it back on open.
-    getMoaModels.mockResolvedValue({
-      active_preset: '__auto__',
-      default_preset: '__auto__',
-      presets: {
-        __auto__: {
-          aggregator: { model: 'qwen3.7-max', provider: 'custom:apex-nodes.com' },
-          reference_models: [{ model: 'glm-5.2', provider: 'custom:apex-nodes.com' }]
-        }
-      }
-    })
-    $currentProvider.set('moa')
-    $currentModel.set('__auto__')
-
-    const { content } = await openWithRelayRows()
-
-    await vi.waitFor(() => expect(checkedRows()).toEqual(['GLM 5.2', 'Qwen3.7 Max']))
-
-    fireEvent.click(content.getByText('DeepSeek V4 Pro'))
-    await settle()
-
-    expect(checkedRows()).toEqual(['DeepSeek V4 Pro', 'GLM 5.2', 'Qwen3.7 Max'])
-  })
-
-  it('a failed commit surfaces the error instead of failing silently', async () => {
-    // The panel is gone by the time the write runs, so there are no checkmarks
-    // to roll back — the user must at least be told.
-    saveMoaModels.mockRejectedValue(new Error('relay rejected the preset'))
-
-    const { content } = await openWithRelayRows()
-
-    fireEvent.click(content.getByText('GLM 5.2'))
-    fireEvent.click(content.getByText('Qwen3.7 Max'))
-    await settle()
-    await dismiss(content)
-
-    await vi.waitFor(() => expect(notifyError).toHaveBeenCalled())
   })
 })
