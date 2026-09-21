@@ -1277,25 +1277,30 @@ let rendererTitleBarTheme = null
 // correctly before the renderer has even loaded.
 const NATIVE_THEME_CONFIG_PATH = path.join(app.getPath('userData'), 'native-theme.json')
 const THEME_SOURCES = new Set(['dark', 'light', 'system'])
+const APEX_NATIVE_THEME_POLICY_VERSION = 2
 
 function readPersistedThemeSource() {
   try {
     const parsed = JSON.parse(fs.readFileSync(NATIVE_THEME_CONFIG_PATH, 'utf8'))
 
-    if (parsed && THEME_SOURCES.has(parsed.themeSource)) {
+    if (parsed && parsed.policyVersion === APEX_NATIVE_THEME_POLICY_VERSION && THEME_SOURCES.has(parsed.themeSource)) {
       return parsed.themeSource
     }
   } catch {
-    // Missing / malformed → follow the OS like a fresh install.
+    // Missing / malformed → APEX's white identity.
   }
 
-  return 'system'
+  return 'light'
 }
 
 function writePersistedThemeSource(mode) {
   try {
     fs.mkdirSync(path.dirname(NATIVE_THEME_CONFIG_PATH), { recursive: true })
-    fs.writeFileSync(NATIVE_THEME_CONFIG_PATH, JSON.stringify({ themeSource: mode }, null, 2), 'utf8')
+    fs.writeFileSync(
+      NATIVE_THEME_CONFIG_PATH,
+      JSON.stringify({ policyVersion: APEX_NATIVE_THEME_POLICY_VERSION, themeSource: mode }, null, 2),
+      'utf8'
+    )
   } catch (error) {
     rememberLog(`[theme] write native theme failed: ${error.message}`)
   }
