@@ -4274,6 +4274,8 @@ export const en: Translations = {
       errorSignInAgain: provider => `Sign in to ${provider} again`,
       errorOauthExpired: provider =>
         `Your ${provider} sign-in has expired or was revoked. Sign in again to keep chatting.`,
+      errorDiagnosticsTitle: 'Logs and diagnostics',
+      errorDiagnosticsHint: 'Use these only if retrying does not resolve the problem.',
       errorOpenLogs: 'Open logs',
       errorOpenLogsFailed: 'Could not open the logs folder',
       errorOpenDesktopLogs: 'Open Desktop logs',

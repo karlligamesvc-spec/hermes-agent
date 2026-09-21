@@ -1,6 +1,6 @@
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -58,7 +58,7 @@ function userMessage(id: string, text: string): ThreadMessage {
   } as ThreadMessage
 }
 
-function assistantErrorMessage(error: string): ThreadMessage {
+function assistantErrorMessage(error: string, errorSurface?: Record<string, unknown>): ThreadMessage {
   return {
     id: 'assistant-error',
     role: 'assistant',
@@ -70,7 +70,7 @@ function assistantErrorMessage(error: string): ThreadMessage {
       unstable_annotations: [],
       unstable_data: [],
       steps: [],
-      custom: {}
+      custom: errorSurface ? { errorSurface } : {}
     }
   } as ThreadMessage
 }
@@ -150,14 +150,40 @@ describe('thread meta lines speak the user language', () => {
       }
     })
 
-    renderThread([assistantErrorMessage('local test failure')])
+    const { container } = renderThread([assistantErrorMessage('local test failure')])
 
     expect(await screen.findByText('本轮执行失败')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy()
+    const retry = screen.getByRole('button', { name: '重试' })
+    const diagnostics = container.querySelector('details')
+
+    expect(retry.getAttribute('data-variant')).toBe('default')
+    expect(screen.getByText('日志与诊断')).toBeTruthy()
+    expect(diagnostics?.open).toBe(false)
+
+    fireEvent.click(screen.getByText('日志与诊断'))
+
+    expect(diagnostics?.open).toBe(true)
     expect(screen.getByRole('button', { name: '打开日志' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '发送诊断信息' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '复制错误详情' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Open logs' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Send diagnostics' })).toBeNull()
+  })
+
+  it('makes Retry primary and Switch provider secondary for recoverable provider errors', async () => {
+    renderThread([
+      assistantErrorMessage('模型服务暂时不可用，请稍后重试。', {
+        code: 'provider_unavailable',
+        layer: 'provider',
+        retryable: true
+      })
+    ])
+
+    const retry = await screen.findByRole('button', { name: '重试' })
+    const switchProvider = screen.getByRole('button', { name: '切换提供方' })
+
+    expect(retry.getAttribute('data-variant')).toBe('default')
+    expect(switchProvider.getAttribute('data-variant')).toBe('outline')
   })
 })
