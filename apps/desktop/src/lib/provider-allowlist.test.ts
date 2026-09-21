@@ -2,7 +2,9 @@ import type { ModelOptionProvider } from '@hermes/shared'
 import { describe, expect, it } from 'vitest'
 
 import {
+  APEX_PUBLIC_LLM_MODELS,
   dropAliasedCustomRow,
+  filterApexLlmShelf,
   filterPickerProviders,
   isPickerVisibleProvider,
   providerDisplayName
@@ -86,6 +88,65 @@ describe('provider-allowlist', () => {
     ]
 
     expect(filterPickerProviders(input).map(p => p.slug)).toEqual(['deepseek', 'custom:apex-nodes.com', 'zai'])
+  })
+})
+
+describe('filterApexLlmShelf', () => {
+  const managed: ModelOptionProvider = {
+    name: 'Apex-nodes.com',
+    slug: 'custom:apex-nodes.com',
+    models: [
+      'kimi-k3',
+      'glm-5.2',
+      'qwen3.7-max',
+      'deepseek-v4-pro-APEX',
+      ...APEX_PUBLIC_LLM_MODELS
+    ],
+    featured_models: ['kimi-k3', 'deepseek-flash'],
+    unavailable_models: ['glm-5.2', 'hy4-preview'],
+    capabilities: {
+      'kimi-k3': { fast: false, reasoning: true },
+      'deepseek-flash': { fast: true, reasoning: true }
+    },
+    pricing: {
+      'qwen3.7-max': { input: '', output: '', free: true },
+      'deepseek-flash': { input: '', output: '', free: true }
+    }
+  }
+
+  it('publishes exactly the ordered hc-845 shelf and strips legacy metadata', () => {
+    const [result] = filterApexLlmShelf([managed])
+
+    expect(result?.models).toEqual(APEX_PUBLIC_LLM_MODELS)
+    expect(result?.featured_models).toEqual(['deepseek-flash'])
+    expect(result?.unavailable_models).toEqual(['hy4-preview'])
+    expect(Object.keys(result?.capabilities ?? {})).toEqual(['deepseek-flash'])
+    expect(Object.keys(result?.pricing ?? {})).toEqual(['deepseek-flash'])
+    expect(result?.total_models).toBe(7)
+  })
+
+  it('prefers the managed row so matching BYOK ids do not duplicate the shelf', () => {
+    const deepseek = {
+      name: 'DeepSeek',
+      slug: 'deepseek',
+      models: ['deepseek-flash', 'deepseek-v4-pro']
+    }
+
+    expect(filterApexLlmShelf([deepseek, managed]).map(row => row.slug)).toEqual([
+      'custom:apex-nodes.com'
+    ])
+  })
+
+  it('preserves domestic BYOK providers when the managed row is unavailable', () => {
+    const fallback = filterApexLlmShelf([
+      { name: 'DeepSeek', slug: 'deepseek', models: ['deepseek-chat', 'deepseek-flash'] },
+      { name: 'Qwen', slug: 'alibaba', models: ['qwen3.7-max', 'qwen3.8-flash'] }
+    ])
+
+    expect(fallback.map(row => row.models)).toEqual([
+      ['deepseek-chat', 'deepseek-flash'],
+      ['qwen3.7-max', 'qwen3.8-flash']
+    ])
   })
 })
 

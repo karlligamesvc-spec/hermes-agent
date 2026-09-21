@@ -44,6 +44,8 @@ Reference: the established APEX Desktop white shell and compact composer menu.
 - Keep an explicit user choice of system theme after the one-time migration.
 - Add compact image and video model submenus under the composer add button.
 - Keep one persisted selection for images and one for videos.
+- Restrict the managed LLM picker to the seven hc-845 text models; cached or
+  older relay responses must not reintroduce Kimi K3, GLM 5.2, or Qwen 3.7 Max.
 
 ## Visual verification
 
@@ -52,6 +54,9 @@ Reference: the established APEX Desktop white shell and compact composer menu.
 - P0: each submenu shows exactly one selected model and all requested model labels.
 - P1: menu density, spacing, borders, and monochrome icons match the existing APEX white UI.
 - P2: no price, package, quota, or raw provider identifier is displayed in these menus.
+- P0: the live picker connected to the pre-deployment relay no longer shows any
+  legacy model. It currently shows the two approved ids already advertised by
+  production; the other five become visible when the paired cloud PR deploys.
 
 Verification was performed against the real Electron development build with the local gateway ready.
 

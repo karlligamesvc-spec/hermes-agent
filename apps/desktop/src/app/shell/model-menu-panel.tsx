@@ -7,7 +7,7 @@ import { DropdownMenuItem, dropdownMenuRow } from '@/components/ui/dropdown-menu
 import { useI18n } from '@/i18n'
 import { SHOW_EXPLICIT_MOA_UI } from '@/lib/moa-compose'
 import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
-import { filterPickerProviders } from '@/lib/provider-allowlist'
+import { filterApexLlmShelf } from '@/lib/provider-allowlist'
 import { cn } from '@/lib/utils'
 
 import { ModelCatalogMenu } from './model-catalog-menu'
@@ -16,10 +16,8 @@ import { type ModelMenuHostProps, useModelMenuController } from './use-model-men
 export { ModelMenuCloseContext } from './model-catalog-menu'
 export type { ModelSelection } from './use-model-menu-controller'
 
-const filterApexCatalog = (providers: ModelOptionProvider[]): ModelOptionProvider[] => [
-  ...filterPickerProviders(providers),
-  ...providers.filter(provider => provider.slug.toLowerCase() === 'llamacpp')
-]
+const filterApexCatalog = (providers: ModelOptionProvider[]): ModelOptionProvider[] =>
+  filterApexLlmShelf(providers)
 
 /**
  * The composer's model menu: `ModelCatalogMenu` (the shared renderer) plus the
