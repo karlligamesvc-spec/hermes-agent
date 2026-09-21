@@ -123,7 +123,10 @@ test('the Runtime cache allowlist is exact and tied to the Runtime-owned generat
     ' M .bytecode-fingerprint'
   )
 
-  const runtimeSource = readFileSync(new URL('../../../hermes_cli/main.py', import.meta.url), 'utf8')
+  // Upstream 0.21.3 split the web-build and bytecode maintenance helpers out
+  // of main.py. Bind the packaging allowlist to the generator's current owner
+  // so a harmless module extraction cannot make the release gate stale.
+  const runtimeSource = readFileSync(new URL('../../../hermes_cli/main_web_build.py', import.meta.url), 'utf8')
   assert.match(runtimeSource, /_BYTECODE_FINGERPRINT_FILE = "\.bytecode-fingerprint"/)
   assert.match(runtimeSource, /tmp_path\.write_text\(fingerprint, encoding="utf-8"\)/)
 })

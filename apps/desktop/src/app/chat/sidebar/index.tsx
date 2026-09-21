@@ -27,7 +27,6 @@ import { useContributions } from '@/contrib/react/use-contributions'
 import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { comboTokens } from '@/lib/keybinds/combo'
-import { profileColor } from '@/lib/profile-color'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
 import { cn } from '@/lib/utils'
@@ -40,6 +39,7 @@ import {
   type SidebarNavigationContract,
   visibleSidebarNavItems
 } from '@/store/business-workspace'
+import { $activeConnectionId } from '@/store/connections'
 import { $cronJobs } from '@/store/cron'
 import { $bindings } from '@/store/keybinds'
 import {
@@ -50,6 +50,7 @@ import {
   $sidebarCronOpen,
   $sidebarMessagingOpenIds,
   $sidebarPinsOpen,
+  $sidebarProjectFilter,
   $sidebarProjectOrderIds,
   $sidebarProjectsOpen,
   $sidebarRecentsOpen,
@@ -83,12 +84,10 @@ import {
   $projectScope,
   $projectTree,
   $projectTreeLoading,
-  $removedSessionIds,
   $reposScanning,
   ALL_PROJECTS,
   enterProject,
   exitProjectScope,
-  fetchProjectSessions,
   openProjectCreate,
   refreshProjects,
   refreshProjectTree,
@@ -109,19 +108,27 @@ import {
   sessionPinId,
   setCurrentCwd
 } from '@/store/session'
-import { $focusedStoredSessionId, $workingSessionIds, type SplitDir } from '@/store/session-states'
+import { $removedSessionIds } from '@/store/session-removal'
+import {
+  $focusedSessionIsTile,
+  $focusedStoredSessionId,
+  $workingSessionIds
+} from '@/store/session-states'
 import { markSessionUnread } from '@/store/session-unread-remote'
 
 import { type AppView, SIDEBAR_NAV_AREA, type SidebarNavContribution } from '../../routes'
 import { SIDEBAR_BLANK_STATE_PITCH, SIDEBAR_PROJECTS_SECTION, SIDEBAR_SEARCH_FIELD } from '../../shell/chrome-gates'
 import type { SidebarNavItem } from '../../types'
+import type { NewSessionSplitHandler } from '../new-session-drag'
 
 import { AccountPanel } from './account-panel'
 import { SidebarCronJobsSection } from './cron-jobs-section'
 import { DesktopUpdatePill } from './desktop-update-pill'
+import { useGatewaySessionGroups } from './gateway-group-model'
 import { SidebarLoadMoreRow } from './load-more-row'
 import { orderByIds, reconcileOrderIds, resolveManualSessionOrderIds, sameIds } from './order'
 import { ProjectDialog } from './project-dialog'
+import { resolveLiveProjectFilter } from './project-filter'
 import {
   excludeProjectSessions,
   orderProjectsByIds,
@@ -131,6 +138,7 @@ import {
   ProjectBackRow,
   ProjectMenu,
   projectTreeCwd,
+  reconcileEnteredProjectSessions,
   sessionRecency as sessionTime,
   type SidebarProjectTree,
   type SidebarSessionGroup,
@@ -143,6 +151,7 @@ import { SidebarBlankState, SidebarPinnedEmptyState, SidebarSessionSkeletons } f
 import { buildSessionByAnyId } from './session-index'
 import { SidebarSessionsSection, VIRTUALIZE_THRESHOLD } from './sessions-section'
 import { CONTEXT_SPLIT_KIT, SplitSubmenu } from './split-submenu'
+import { useEnteredProjectSessions } from './use-entered-project-sessions'
 import { isProjectCwd, workspaceGroupsFor } from './workspace-groups'
 
 // Non-session groups (messaging platforms) stay compact: show a few rows up
@@ -253,14 +262,19 @@ interface ChatSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onArchiveSession: (sessionId: string) => void
   onBranchSession: (sessionId: string) => void
   onNewSessionInWorkspace: (path: null | string) => void
-  /** Create a brand-new session and open it as a tile on `dir`. */
-  onNewSessionSplit: (dir: SplitDir) => void
+  /** Create a brand-new session and open it as a tile. `dir` is the dock edge
+   *  (or `center` to stack a tab); `anchor`/`before` optionally pin it to a
+   *  specific zone / tab-strip slot, and `cwd` pins it to a project's path —
+   *  used by the new-session drags (the "New session" row and the project "+"
+   *  buttons), which land a fresh session exactly where it's dropped. The
+   *  context-menu "Open in split" path passes just a `dir`. */
+  onNewSessionSplit: NewSessionSplitHandler
   onManageCronJob: (jobId: string) => void
   onTriggerCronJob: (jobId: string) => void
 }
 
 export function ChatSidebar({
-  currentView,
+  currentView: routeView,
   onNavigate,
   onLoadMoreSessions,
   onLoadMoreProfileSessions,
@@ -314,6 +328,8 @@ export function ChatSidebar({
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
   const selectedSessionId = useStore($focusedStoredSessionId)
+  const focusedSessionIsTile = useStore($focusedSessionIsTile)
+  const currentView = focusedSessionIsTile ? 'chat' : routeView
   const sessions = useStore($sessions)
   const cronSessions = useStore($cronSessions)
   const cronJobs = useStore($cronJobs)
@@ -350,6 +366,17 @@ export function ChatSidebar({
   const projectOrderIds = useStore($sidebarProjectOrderIds)
   const projects = useStore($projects)
   const projectTree = useStore($projectTree)
+  const persistedProjectFilter = useStore($sidebarProjectFilter)
+
+  // The persisted project filter's storage is shared across profiles, so ids
+  // picked in another profile don't resolve in the active one and the raw
+  // membership whitelist empties every tier of the sidebar (#96246). Narrow
+  // to ids the ACTIVE tree resolves; dead ids are inert, not fatal.
+  const projectFilter = useMemo(
+    () => resolveLiveProjectFilter(persistedProjectFilter, projectTree),
+    [persistedProjectFilter, projectTree]
+  )
+
   const projectTreeLoading = useStore($projectTreeLoading)
   const removedSessionIds = useStore($removedSessionIds)
   const reposScanning = useStore($reposScanning)
@@ -357,6 +384,7 @@ export function ChatSidebar({
   const projectScope = useStore($projectScope)
   const currentCwd = useStore($currentCwd)
   const gatewayState = useStore($gatewayState)
+  const activeConnectionId = useStore($activeConnectionId)
   const dismissedAutoProjects = useStore($dismissedAutoProjectIds)
   const newSessionCombo = useStore($bindings)['session.new']?.[0]
   const newSessionKbd = newSessionCombo ? comboTokens(newSessionCombo) : []
@@ -720,29 +748,12 @@ export function ChatSidebar({
 
   // Entering a project lazily hydrates its full lanes (repo -> lane -> sessions)
   // from the backend — same grouping/ids as the overview, just with rows.
-  const [enteredProjectTree, setEnteredProjectTree] = useState<SidebarProjectTree | null>(null)
-
-  useEffect(() => {
-    if (!enteredProjectId || !gatewayReady) {
-      setEnteredProjectTree(null)
-
-      return
-    }
-
-    let cancelled = false
-
-    void fetchProjectSessions(enteredProjectId).then(project => {
-      if (!cancelled) {
-        setEnteredProjectTree(project)
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-    // `projectTree` in deps: re-hydrate after a tree refresh so the entered view
-    // stays current with new/ended sessions.
-  }, [enteredProjectId, gatewayReady, projectTree])
+  const {
+    project: enteredProjectTree,
+    failed: projectLoadFailed,
+    loading: projectLoading,
+    retry: retryProject
+  } = useEnteredProjectSessions(enteredProjectId, gatewayReady, projectTree, `${activeConnectionId}:${profileScope}`)
 
   // Prefer the hydrated tree; fall back to the overview node (empty lanes) while
   // the drill-in fetch is in flight, so the header/structure render immediately.
@@ -769,14 +780,22 @@ export function ChatSidebar({
     )
   }, [overviewEnteredProject, enteredProjectTree, orderRepos, isPinnedSession])
 
+  const enteredProjectOverlaySessions = useMemo(
+    () => reconcileEnteredProjectSessions(agentSessions, overviewEnteredProject?.previewSessions),
+    [agentSessions, overviewEnteredProject?.previewSessions]
+  )
+
   // Overlay live `$sessions` onto the entered project so a just-created session
   // (which the backend snapshot hasn't folded in yet) counts as content and
-  // renders immediately — same optimistic layer as the overview previews. The
-  // backend now seeds each project folder as an (empty) repo, so the overlay
-  // always has a lane to place a new in-project session into.
+  // renders immediately. Also carry over the overview's current preview rows:
+  // its project tree and the separately hydrated drill-in can resolve at
+  // different times, but a row visible in the overview must not disappear on
+  // entry. The backend seeds each project folder as an (empty) repo, so the
+  // overlay always has a lane to place a missing in-project session into.
   const enteredProjectContent = useMemo(
-    () => (enteredProject ? overlayLiveLanes(enteredProject, agentSessions, removedSessionIds) : undefined),
-    [enteredProject, agentSessions, removedSessionIds]
+    () =>
+      enteredProject ? overlayLiveLanes(enteredProject, enteredProjectOverlaySessions, removedSessionIds) : undefined,
+    [enteredProject, enteredProjectOverlaySessions, removedSessionIds]
   )
 
   const scopedRepoPaths = useMemo(
@@ -997,51 +1016,10 @@ export function ChatSidebar({
       .sort((a, b) => sessionTime(b.sessions[0]) - sessionTime(a.sessions[0]))
   }, [messagingSessions, messagingPlatformTotals, messagingTruncated, isPinnedSession])
 
-  // ALL-profiles view: one collapsible group per profile, color on the header
-  // (not on every row). Default profile floats to the top, the rest alpha.
-  const profileGroups = useMemo<SidebarSessionGroup[] | undefined>(() => {
-    if (!showAllProfiles) {
-      return undefined
-    }
-
-    const groups = new Map<string, SidebarSessionGroup>()
-
-    for (const session of agentSessions) {
-      const key = normalizeProfileKey(session.profile)
-
-      const group = groups.get(key) ?? {
-        color: profileColor(key),
-        id: key,
-        label: key,
-        mode: 'profile',
-        path: null,
-        sessions: []
-      }
-
-      group.sessions.push(session)
-
-      groups.set(key, group)
-    }
-
-    return (
-      [...groups.values()]
-        .map(group => ({
-          ...group,
-          loadingMore: Boolean(profileLoadMorePending[group.id]),
-          onLoadMore: onLoadMoreProfileSessions ? () => loadMoreForProfileGroup(group.id) : undefined,
-          hasMore: Boolean(sessionProfilesTruncated[group.id])
-        }))
-        // default (root) first, then the rest alphabetically.
-        .sort((a, b) => (a.id === 'default' ? -1 : b.id === 'default' ? 1 : a.label.localeCompare(b.label)))
-    )
-  }, [
-    showAllProfiles,
-    agentSessions,
-    loadMoreForProfileGroup,
-    onLoadMoreProfileSessions,
-    profileLoadMorePending,
-    sessionProfilesTruncated
-  ])
+  // A profile name is not globally unique once Desktop can browse multiple
+  // gateways. Preserve the upstream connection owner in every group so usage,
+  // navigation, and new-session actions can never bleed across runtimes.
+  const profileGroups = useGatewaySessionGroups(agentSessions, showAllProfiles)
 
   // The flat Sessions list always shows ALL recent sessions; Projects is a
   // parallel grouped view, not a filter on this one — nothing is hidden here.
@@ -1392,7 +1370,7 @@ export function ChatSidebar({
                 )}
                 dndSensors={dndSensors}
                 emptyState={
-                  showSessionSkeletons ? (
+                  inProject && projectLoadFailed ? null : showSessionSkeletons || (inProject && projectLoading) ? (
                     <SidebarSessionSkeletons />
                   ) : (
                     <div className="grid min-h-16 place-items-center rounded-lg px-2 text-center text-xs text-(--ui-text-tertiary)">

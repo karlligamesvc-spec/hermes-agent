@@ -13,6 +13,7 @@ import {
   HUD_SURFACE,
   HUD_TEXT
 } from '@/app/floating-hud'
+import { SESSION_IMPORT_ROUTE } from '@/app/routes'
 import { codiconIcon } from '@/components/ui/codicon'
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { HighlightMatches } from '@/components/ui/highlight-matches'
@@ -384,15 +385,7 @@ const toSessionEntry = (session: SessionRow): SessionEntry => ({
 })
 
 type NonConfigSettingsLabel =
-  | 'about'
-  | 'archivedChats'
-  | 'gateway'
-  | 'keysSettings'
-  | 'keysTools'
-  | 'mcp'
-  | 'plugins'
-  | 'providerAccounts'
-  | 'providerApiKeys'
+  'about' | 'archivedChats' | 'gateway' | 'keysSettings' | 'keysTools' | 'mcp' | 'providerAccounts' | 'providerApiKeys'
 
 const NON_CONFIG_SETTINGS: ReadonlyArray<{
   icon: IconComponent
@@ -441,12 +434,6 @@ const NON_CONFIG_SETTINGS: ReadonlyArray<{
     keywords: ['gateway', 'proxy', 'server', 'webhook', 'env', 'egress proxy', 'iron proxy'],
     labelKey: 'keysSettings',
     tab: 'keys&kview=settings'
-  },
-  {
-    icon: Package,
-    keywords: ['plugins', 'extensions', 'desktop plugins', 'addon', 'add-on'],
-    labelKey: 'plugins',
-    tab: 'plugins'
   },
   { icon: Archive, keywords: ['history', 'archived'], labelKey: 'archivedChats', tab: 'sessions' },
   { icon: Info, keywords: ['version', 'about'], labelKey: 'about', tab: 'about' }
@@ -873,6 +860,13 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             run: go(`${COMMAND_CENTER_ROUTE}?section=sessions`)
           },
           {
+            icon: Download,
+            id: 'session-import',
+            keywords: ['import', 'claude', 'codex', 'conversation'],
+            label: t.sessionImport.action,
+            run: go(SESSION_IMPORT_ROUTE)
+          },
+          {
             icon: Activity,
             id: 'cc-system',
             keywords: ['command center', 'system', 'status', 'logs'],
@@ -1065,6 +1059,13 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
           keywords: ['mcp', 'servers', 'tools', 'capabilities', 'model context protocol'],
           label: `${capLabel}: ${t.skills.tabMcp}`,
           run: go(`${SKILLS_ROUTE}?tab=mcp`)
+        },
+        {
+          icon: Package,
+          id: 'cap-plugins',
+          keywords: ['plugins', 'extensions', 'desktop plugins', 'agent plugins', 'catalog', 'addon', 'add-on'],
+          label: `${capLabel}: ${t.skills.tabPlugins}`,
+          run: go(`${SKILLS_ROUTE}?tab=plugins`)
         }
       ]
     })
@@ -1156,8 +1157,15 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
 
     if (settingsCatalog.pluginEntries.length > 0) {
       result.push({
-        heading: t.settings.nav.plugins,
-        items: settingsCatalog.pluginEntries.map(settingsEntryItem)
+        heading: t.skills.tabPlugins,
+        items: settingsCatalog.pluginEntries.map(entry => ({
+          detail: entry.context,
+          icon: entry.icon,
+          id: `sp-${entry.id}`,
+          keywords: [entry.context, entry.description ?? '', ...entry.keywords],
+          label: entry.label,
+          run: go(`${SKILLS_ROUTE}?tab=plugins&plugin=${encodeURIComponent(entry.plugin)}`)
+        }))
       })
     }
 
@@ -1265,13 +1273,6 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
         heading: cc.settingsFields,
         items: [...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
       })
-
-      if (settingsCatalog.pluginEntries.length > 0) {
-        result.push({
-          heading: t.settings.nav.plugins,
-          items: settingsCatalog.pluginEntries.map(settingsEntryItem)
-        })
-      }
 
       if (settingsCatalog.credentialEntries.length > 0) {
         result.push({

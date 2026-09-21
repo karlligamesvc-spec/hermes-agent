@@ -102,6 +102,21 @@ export function isSupportedLocaleValue(value: unknown): boolean {
   return typeof value === 'string' && LOCALE_ALIASES[normalize(value)] != null
 }
 
+/** Resolve startup language without persisting inference. An explicit shell
+ *  default (APEX passes `zh`) wins; otherwise use a supported OS locale and
+ *  finally the universal English fallback. */
+export function resolveInitialLocale(saved: unknown, osLocale: unknown): Locale {
+  if (isSupportedLocaleValue(saved)) {
+    return normalizeLocale(saved)
+  }
+
+  if (isSupportedLocaleValue(osLocale)) {
+    return normalizeLocale(osLocale)
+  }
+
+  return DEFAULT_LOCALE
+}
+
 export function localeConfigValue(locale: Locale): string {
   return LOCALE_OPTIONS.find(item => item.id === locale)?.configValue ?? DEFAULT_LOCALE
 }

@@ -10,6 +10,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture
+def short_runtime_dir():
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory(prefix="hv-", dir="/tmp") as directory:
+        yield Path(directory)
+
+
 def _non_wsl_proc_version(real_open):
     """Return an open() shim that makes host WSL detection deterministic."""
     def _fake_open(file, *args, **kwargs):
@@ -121,10 +130,10 @@ def fake_clock(monkeypatch):
 # ============================================================================
 
 class TestPulseSocketReachable:
-    def test_stale_socket_file_not_reachable(self, monkeypatch, tmp_path):
+    def test_stale_socket_file_not_reachable(self, monkeypatch, short_runtime_dir):
         """A socket file with no listener should not count as reachable."""
         import socket as _socket
-        sock_path = tmp_path / "pulse" / "native"
+        sock_path = short_runtime_dir / "pulse" / "native"
         sock_path.parent.mkdir(parents=True)
         # Create + bind, then close so the path is a stale socket file.
         s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
@@ -132,14 +141,14 @@ class TestPulseSocketReachable:
         s.close()
         monkeypatch.delenv("PULSE_SERVER", raising=False)
         monkeypatch.delenv("PULSE_RUNTIME_PATH", raising=False)
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(short_runtime_dir))
         from tools.voice_mode import _pulse_socket_reachable
         assert _pulse_socket_reachable() is False
 
-    def test_listening_socket_reachable_via_xdg_runtime(self, monkeypatch, tmp_path):
+    def test_listening_socket_reachable_via_xdg_runtime(self, monkeypatch, short_runtime_dir):
         """A live PulseAudio-style socket under XDG_RUNTIME_DIR is reachable (#35622)."""
         import socket as _socket
-        sock_path = tmp_path / "pulse" / "native"
+        sock_path = short_runtime_dir / "pulse" / "native"
         sock_path.parent.mkdir(parents=True)
         server = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
         server.bind(str(sock_path))
@@ -147,7 +156,7 @@ class TestPulseSocketReachable:
         try:
             monkeypatch.delenv("PULSE_SERVER", raising=False)
             monkeypatch.delenv("PULSE_RUNTIME_PATH", raising=False)
-            monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+            monkeypatch.setenv("XDG_RUNTIME_DIR", str(short_runtime_dir))
             from tools.voice_mode import _pulse_socket_reachable
             assert _pulse_socket_reachable() is True
         finally:
@@ -1067,6 +1076,38 @@ class TestStreamLeakOnStartFailure:
             recorder._ensure_stream()
 
         mock_stream.close.assert_called_once()
+
+
+class TestStreamStartTimeoutRetry:
+    """PortAudio paTimedOut (-9987) on a cold bridge: retry the open once (#109303)."""
+
+    def test_timed_out_start_retries_once_and_succeeds(self, mock_sd):
+        cold = MagicMock()
+        cold.start.side_effect = OSError("Error starting stream: Wait timed out [PaErrorCode -9987]")
+        warm = MagicMock()
+        mock_sd.InputStream.side_effect = [cold, warm]
+
+        from tools.voice_mode import AudioRecorder
+        recorder = AudioRecorder()
+        recorder._ensure_stream()
+
+        assert recorder._stream is warm
+        cold.close.assert_called_once()
+        warm.close.assert_not_called()
+
+    def test_persistent_timeout_raises_after_second_attempt(self, mock_sd):
+        mock_stream = MagicMock()
+        mock_stream.start.side_effect = OSError("Wait timed out [PaErrorCode -9987]")
+        mock_sd.InputStream.return_value = mock_stream
+
+        from tools.voice_mode import AudioRecorder
+        recorder = AudioRecorder()
+        with pytest.raises(RuntimeError, match="Wait timed out"):
+            recorder._ensure_stream()
+
+        assert mock_sd.InputStream.call_count == 2
+        assert mock_stream.close.call_count == 2
+        assert recorder._stream is None
 
 
 # ============================================================================

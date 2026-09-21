@@ -77,7 +77,7 @@ def test_seam_registry_is_the_gateway_creation_path_for_feishu():
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[2]
-    src = (repo / "gateway" / "run.py").read_text(encoding="utf-8")
+    src = (repo / "gateway" / "run_adapters.py").read_text(encoding="utf-8")
     assert "platform_registry.create_adapter(" in src, (
         "gateway/run.py no longer creates plugin adapters via "
         "platform_registry.create_adapter — the Feishu seam interception "

@@ -146,7 +146,7 @@ def test_browser_navigate_returns_policy_block(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        browser_tool,
+        browser_tool._session,
         "_run_browser_command",
         lambda *args, **kwargs: pytest.fail("browser command should not run for blocked URL"),
     )

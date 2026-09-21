@@ -1,6 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { atom } from 'nanostores'
-import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ConfirmHost } from '@/components/confirm-host'
@@ -10,19 +9,30 @@ import type { EnvVarInfo, OAuthProvider } from '@/types/hermes'
 const listOAuthProviders = vi.fn()
 const disconnectOAuthProvider = vi.fn()
 const getEnvVars = vi.fn()
+const setEnvVar = vi.fn()
 const startManualProviderOAuth = vi.fn()
 const startManualLocalEndpoint = vi.fn()
 const onboarding = atom({ manual: false })
 
+vi.mock('@/store/profile', () => ({
+  $activeGatewayProfile: atom('alpha'),
+  $profiles: atom([]),
+  refreshProfiles: async () => {},
+  normalizeProfileKey: (p: string | null) => p || 'default'
+}))
+
 vi.mock('@/hermes', () => ({
-  disconnectOAuthProvider: (providerId: string) => disconnectOAuthProvider(providerId),
-  getEnvVars: () => getEnvVars(),
-  listOAuthProviders: () => listOAuthProviders()
+  setApiRequestProfile: vi.fn(),
+  getProfiles: async () => ({ profiles: (await import('@/store/profile')).$profiles.get() }),
+  setEnvVar: (key: string, value: string, profile?: string) => setEnvVar(key, value, profile),
+  disconnectOAuthProvider: (...args: unknown[]) => disconnectOAuthProvider(...args),
+  getEnvVars: (...args: unknown[]) => getEnvVars(...args),
+  listOAuthProviders: (...args: unknown[]) => listOAuthProviders(...args)
 }))
 
 vi.mock('@/store/onboarding', () => ({
   $desktopOnboarding: onboarding,
-  startManualProviderOAuth: (providerId: string) => startManualProviderOAuth(providerId),
+  startManualProviderOAuth: (...args: unknown[]) => startManualProviderOAuth(...args),
   startManualLocalEndpoint: (reason: null | string) => startManualLocalEndpoint(reason)
 }))
 
@@ -33,7 +43,7 @@ function provider(id: string, loggedIn: boolean, patch: Partial<OAuthProvider> =
     docs_url: '',
     flow: 'device_code',
     id,
-    name: id === 'minimax-oauth' ? 'MiniMax' : id,
+    name: id === 'nous' ? 'Nous Portal' : 'MiniMax',
     status: {
       logged_in: loggedIn
     },
@@ -63,9 +73,9 @@ function keyVar(patch: Partial<EnvVarInfo> = {}): EnvVarInfo {
 beforeEach(() => {
   onboarding.set({ manual: false })
   getEnvVars.mockResolvedValue({})
-  disconnectOAuthProvider.mockResolvedValue({ ok: true, provider: 'minimax-oauth' })
+  disconnectOAuthProvider.mockResolvedValue({ ok: true, provider: 'nous' })
   listOAuthProviders.mockResolvedValue({
-    providers: [provider('minimax-oauth', true), provider('qwen-oauth', false)]
+    providers: [provider('nous', true), provider('minimax-oauth', false)]
   })
 })
 
@@ -76,18 +86,17 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-// The accounts view hosts the ApexNodes connection cards; the IM-entry one
-// navigates to /im-entry, so this view needs a router in scope. The cards
-// themselves render nothing here (no window.hermesDesktop bridge in jsdom).
+// Removal goes through confirm() from @/store/confirm, so the host has to be
+// mounted for the prompt to render — same as in the real app shell.
 async function renderProvidersSettings() {
   const { ProvidersSettings } = await import('./providers-settings')
   let result: ReturnType<typeof render>
   await act(async () => {
     result = render(
-      <MemoryRouter>
+      <>
         <ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="accounts" />
         <ConfirmHost />
-      </MemoryRouter>
+      </>
     )
   })
 
@@ -95,14 +104,72 @@ async function renderProvidersSettings() {
 }
 
 describe('ProvidersSettings', () => {
+  it('reads and saves API keys for the shared Settings target and reloads when it changes', async () => {
+    const { $settingsScopeOverride } = await import('@/store/settings-scope')
+    const { $activeGatewayProfile, $profiles } = await import('@/store/profile')
+    $activeGatewayProfile.set('profile-a')
+    $settingsScopeOverride.set('profile-b')
+    $profiles.set(
+      ['profile-a', 'profile-b'].map(name => ({
+        name,
+        has_env: false,
+        is_default: false,
+        model: null,
+        path: '',
+        provider: null,
+        skill_count: 0
+      }))
+    )
+    getEnvVars.mockResolvedValue({ WIDGET_API_KEY: keyVar({ provider: 'widget', provider_label: 'Widget' }) })
+    const { ProvidersSettings } = await import('./providers-settings')
+
+    try {
+      const { container } = render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
+      await screen.findByText('Widget')
+      expect(getEnvVars).toHaveBeenLastCalledWith('profile-b')
+      expect(screen.getByText('Applies to')).toBeTruthy()
+      const input = container.querySelector('input[type="password"]')!
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: 'fixture-key' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(setEnvVar).toHaveBeenCalledWith('WIDGET_API_KEY', 'fixture-key', 'profile-b'))
+      fireEvent.click(screen.getByRole('button', { name: 'profile-a' }))
+      await waitFor(() => expect(getEnvVars).toHaveBeenLastCalledWith(undefined))
+    } finally {
+      cleanup()
+      $settingsScopeOverride.set(null)
+      $activeGatewayProfile.set('default')
+      $profiles.set([])
+    }
+  })
+
+  it('uses the settings target for account reads, removal and sign-in', async () => {
+    const { $settingsScopeOverride } = await import('@/store/settings-scope')
+    $settingsScopeOverride.set('beta')
+
+    try {
+      await renderProvidersSettings()
+      expect(getEnvVars).toHaveBeenCalledWith('beta')
+      expect(listOAuthProviders).toHaveBeenCalledWith('beta')
+      fireEvent.click(await screen.findByText('Nous Portal'))
+      expect(startManualProviderOAuth).toHaveBeenCalledWith('nous', 'beta')
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove Nous Portal' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Disconnect' }))
+      await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('nous', 'beta'))
+    } finally {
+      $settingsScopeOverride.set(null)
+    }
+  })
+
   it('disconnects a connected provider account and refreshes the accounts list', async () => {
     await renderProvidersSettings()
 
-    const remove = await screen.findByRole('button', { name: 'Remove MiniMax' })
+    const remove = await screen.findByRole('button', { name: 'Remove Nous Portal' })
     await act(async () => {
       fireEvent.click(remove)
     })
 
+    // Removal is confirmed first — nothing has been disconnected yet.
     expect(await screen.findByRole('dialog')).toBeTruthy()
     expect(disconnectOAuthProvider).not.toHaveBeenCalled()
 
@@ -110,7 +177,7 @@ describe('ProvidersSettings', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
     })
 
-    await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('minimax-oauth'))
+    await waitFor(() => expect(disconnectOAuthProvider).toHaveBeenCalledWith('nous', undefined))
     expect(listOAuthProviders).toHaveBeenCalledTimes(2)
   })
 
@@ -118,7 +185,7 @@ describe('ProvidersSettings', () => {
     await renderProvidersSettings()
 
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Remove MiniMax' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove Nous Portal' }))
     })
 
     await act(async () => {
@@ -132,25 +199,11 @@ describe('ProvidersSettings', () => {
     await renderProvidersSettings()
 
     await act(async () => {
-      fireEvent.click(await screen.findByText('MiniMax'))
+      fireEvent.click(await screen.findByText('Nous Portal'))
     })
 
-    expect(startManualProviderOAuth).toHaveBeenCalledWith('minimax-oauth')
+    expect(startManualProviderOAuth).toHaveBeenCalledWith('nous', undefined)
     expect(disconnectOAuthProvider).not.toHaveBeenCalled()
-  })
-
-  it('hides foreign provider accounts from the China-first accounts list', async () => {
-    // Consumer build: only domestic sign-ins render. Nous / Anthropic /
-    // OpenAI-style accounts disappear even when the backend reports them.
-    listOAuthProviders.mockResolvedValue({
-      providers: [provider('nous', true), provider('anthropic', false), provider('minimax-oauth', true)]
-    })
-
-    await renderProvidersSettings()
-
-    expect(await screen.findByText('MiniMax')).toBeTruthy()
-    expect(screen.queryByText('nous')).toBeNull()
-    expect(screen.queryByText(/anthropic/)).toBeNull()
   })
 
   it('does not offer removal for externally managed providers', async () => {
@@ -173,17 +226,16 @@ describe('ProvidersSettings', () => {
     expect(screen.getByText(/managed by its own CLI/)).toBeTruthy()
   })
 
-  it('renders a Keys card for a domestic backend-tagged provider with no PROVIDER_GROUPS prefix', async () => {
+  it('renders a Keys card for a backend-tagged provider with no PROVIDER_GROUPS prefix', async () => {
     // A provider the backend catalog tags (provider/provider_label) but that has
     // no desktop PROVIDER_GROUPS prefix row must still render its own card —
     // this is the GUI/CLI drift fix: membership comes from the backend, not
-    // from the hand-maintained prefix list. `tencent-tokenhub` is in
-    // DOMESTIC_PROVIDER_SLUGS, so it survives the China-first filter too.
+    // from the hand-maintained prefix list.
     getEnvVars.mockResolvedValue({
-      TENCENT_TOKENHUB_API_KEY: keyVar({
-        provider: 'tencent-tokenhub',
-        provider_label: 'Tencent TokenHub',
-        url: 'https://tokenhub.example/keys'
+      WIDGETAI_API_KEY: keyVar({
+        provider: 'widgetai',
+        provider_label: 'WidgetAI',
+        url: 'https://widgetai.example/keys'
       })
     })
     listOAuthProviders.mockResolvedValue({ providers: [] })
@@ -193,37 +245,17 @@ describe('ProvidersSettings', () => {
       render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
     })
 
-    expect(await screen.findByText('Tencent TokenHub')).toBeTruthy()
-  })
-
-  it('hides foreign provider key cards from the China-first Keys view', async () => {
-    // Foreign vendors (prefix-grouped like Anthropic) and unknown
-    // backend-tagged providers never render a card, keys set or not; the
-    // domestic card still does.
-    getEnvVars.mockResolvedValue({
-      ANTHROPIC_API_KEY: keyVar({ is_set: true }),
-      WIDGETAI_API_KEY: keyVar({ provider: 'widgetai', provider_label: 'WidgetAI' }),
-      DEEPSEEK_API_KEY: keyVar()
-    })
-    listOAuthProviders.mockResolvedValue({ providers: [] })
-
-    const { ProvidersSettings } = await import('./providers-settings')
-    render(<ProvidersSettings onClose={vi.fn()} onViewChange={vi.fn()} view="keys" />)
-
-    expect(await screen.findByText('DeepSeek')).toBeTruthy()
-    expect(screen.queryByText('Anthropic')).toBeNull()
-    expect(screen.queryByText('WidgetAI')).toBeNull()
+    expect(await screen.findByText('WidgetAI')).toBeTruthy()
   })
 
   it('orders API-key providers by priority then name, and filters them via search', async () => {
-    // These three domestic backend-tagged providers have no curated
-    // PROVIDER_GROUPS priority, so they share the default priority and fall
-    // back to alphabetical among themselves (Acme, Middle, Zebra) — exercising
-    // the name tiebreak of the priority sort.
+    // These three providers have no curated PROVIDER_GROUPS priority, so they
+    // share the default priority and fall back to alphabetical among themselves
+    // (Acme, Middle, Zebra) — exercising the name tiebreak of the priority sort.
     getEnvVars.mockResolvedValue({
-      ZEBRA_API_KEY: keyVar({ provider: 'zai', provider_label: 'Zebra' }),
-      ACME_API_KEY: keyVar({ provider: 'deepseek', provider_label: 'Acme' }),
-      MIDDLE_API_KEY: keyVar({ provider: 'stepfun', provider_label: 'Middle' })
+      ZEBRA_API_KEY: keyVar({ provider: 'zebra', provider_label: 'Zebra' }),
+      ACME_API_KEY: keyVar({ provider: 'acme', provider_label: 'Acme' }),
+      MIDDLE_API_KEY: keyVar({ provider: 'middle', provider_label: 'Middle' })
     })
     listOAuthProviders.mockResolvedValue({ providers: [] })
 

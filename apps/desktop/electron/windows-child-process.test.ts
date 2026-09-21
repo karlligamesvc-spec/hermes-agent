@@ -48,8 +48,8 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   requireHiddenChildOptions(source, 'spawn(resolveGitBinary()')
   requireHiddenChildOptions(source, "execFileSync('taskkill'")
   requireHiddenChildOptions(source, "spawn('curl'")
-  requireHiddenChildOptions(source, 'spawn(backend.command, backend.args')
-  requireHiddenChildOptions(source, 'hermesProcess = spawn(backend.command, backend.args')
+  requireHiddenChildOptions(source, 'const child = spawnOwnedBackend(backend.command, backend.args')
+  requireHiddenChildOptions(source, 'hermesProcess = spawnOwnedBackend(backend.command, backend.args')
   requireHiddenChildOptions(source, "spawn(py, ['-m', 'hermes_cli.main', 'uninstall', '--gui-summary']")
   // hc-537 tail (2026-07-15): the three sites the original sweep missed.
   requireHiddenChildOptions(source, 'spawn(tarExe')

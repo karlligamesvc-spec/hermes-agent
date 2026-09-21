@@ -8,7 +8,7 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import type * as HermesApi from '@/hermes'
-import { $modelPresets, getModelPreset } from '@/store/model-presets'
+import { $modelPresets, getModelPreset, setModelPreset } from '@/store/model-presets'
 import {
   $activeSessionId,
   $currentFastMode,
@@ -53,7 +53,7 @@ function renderSubmenu(opts: {
   fastControl: FastControl
   model?: string
   reasoning: boolean
-  requestGateway: () => Promise<unknown>
+  requestGateway: (method: string, params?: Record<string, unknown>) => Promise<unknown>
 }) {
   return render(
     <DropdownMenu open>
@@ -61,14 +61,37 @@ function renderSubmenu(opts: {
         <DropdownMenuSub open>
           <DropdownMenuSubTrigger>edit</DropdownMenuSubTrigger>
           <ModelEditSubmenu
+            defaultEffort="medium"
             effort={opts.effort ?? 'medium'}
             fastControl={opts.fastControl}
             isActive
             model={opts.model ?? 'm1'}
             onSelectModel={vi.fn()}
+            onSetOptions={patch => {
+              const model = opts.model ?? 'm1'
+              setModelPreset('p1', model, patch)
+              setCurrentModelSource('manual')
+
+              if (patch.fast !== undefined) {
+                setCurrentFastMode(patch.fast)
+              }
+
+              if (patch.effort !== undefined) {
+                setCurrentReasoningEffort(patch.effort)
+              }
+
+              const sessionId = $activeSessionId.get()
+
+              if (sessionId && patch.fast !== undefined) {
+                void opts.requestGateway('config.set', {
+                  key: 'fast',
+                  session_id: sessionId,
+                  value: patch.fast ? 'fast' : 'normal'
+                })
+              }
+            }}
             provider="p1"
             reasoning={opts.reasoning}
-            requestGateway={opts.requestGateway as never}
           />
         </DropdownMenuSub>
       </DropdownMenuContent>

@@ -1,6 +1,5 @@
-import { isOperationTool, operationInfo } from '@/lib/operation-tool'
+import { reportFirstBuildToolComplete } from '@/components/onboarding-chat/first-build'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
-import { clearActiveOperation, setActiveOperation } from '@/store/active-operation'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { flashPetActivity, setPetActivity } from '@/store/pet'
 import { pruneDelegateFallbackSubagents, upsertSubagent } from '@/store/subagents'
@@ -15,7 +14,7 @@ import { SUBAGENT_EVENT_TYPES, toTodoPayload } from '../utils'
 
 import type { GatewayEventContext } from './types'
 
-/** tool.generating / tool.start / tool.progress / tool.complete / subagent.*. */
+/** tool.generating / tool.start / tool.complete / subagent.*. */
 export function handleToolEvent(ctx: GatewayEventContext): boolean {
   const { deps, event, payload, sessionId, isActiveEvent, occurredAt } = ctx
   const { flushQueuedDeltas, nativeSubagentSessionsRef, sessionInterrupted, updateSessionState, upsertToolCall } = deps
@@ -51,30 +50,13 @@ export function handleToolEvent(ctx: GatewayEventContext): boolean {
     return true
   }
 
-  if (event.type === 'tool.start' || event.type === 'tool.progress') {
+  if (event.type === 'tool.start') {
     if (!sessionId) {
       return true
     }
 
     flushQueuedDeltas(sessionId)
     upsertToolCall(sessionId, toTodoPayload(payload) ?? payload, 'running', event.type, occurredAt)
-
-    if (event.type === 'tool.start' && isOperationTool(payload?.name)) {
-      const info = operationInfo(payload!.name!, payload?.args ?? payload?.arguments, undefined, {
-        running: true,
-        error: false
-      })
-
-      if (info) {
-        setActiveOperation(sessionId, {
-          action: info.action,
-          surface: info.surface,
-          target: info.target,
-          toolCallId: String(payload?.tool_id || payload?.tool_call_id || payload?.id || payload!.name!),
-          toolName: payload!.name!
-        })
-      }
-    }
 
     if (isActiveEvent) {
       setPetActivity({ reasoning: false, toolRunning: true })
@@ -87,6 +69,9 @@ export function handleToolEvent(ctx: GatewayEventContext): boolean {
     if (sessionId) {
       flushQueuedDeltas(sessionId)
       upsertToolCall(sessionId, toTodoPayload(payload) ?? payload, 'complete', event.type, occurredAt)
+      // Onboarding's first build paces its check-ins off real work done
+      // (no-op in every other session).
+      reportFirstBuildToolComplete(sessionId)
 
       if (isActiveEvent) {
         setPetActivity({ toolRunning: false })
@@ -97,13 +82,6 @@ export function handleToolEvent(ctx: GatewayEventContext): boolean {
         if (payload?.error) {
           flashPetActivity({ error: true })
         }
-      }
-
-      if (isOperationTool(payload?.name)) {
-        clearActiveOperation(
-          sessionId,
-          String(payload?.tool_id || payload?.tool_call_id || payload?.id || payload?.name || '')
-        )
       }
 
       // A pending clarify blocks the turn, so the first tool.complete after

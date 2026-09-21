@@ -1,4 +1,4 @@
-import type { ModelOptionProvider } from '@/types/hermes'
+import type { ModelOptionProvider } from '@hermes/shared'
 
 // ApexNodes is a China-first managed product, so the model picker only surfaces
 // two kinds of provider:

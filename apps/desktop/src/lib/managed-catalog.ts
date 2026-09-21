@@ -1,4 +1,4 @@
-import type { ModelOptionProvider } from '@/types/hermes'
+import type { ModelOptionProvider } from '@hermes/shared'
 
 /**
  * hc-602 — "the model list collapsed" as a value the code can act on.

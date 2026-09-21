@@ -1,10 +1,11 @@
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { useTourMarker } from '@/app/chat/tour-marker'
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
+import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
@@ -15,15 +16,14 @@ import { getMoaModels } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { composedMemberCount } from '@/lib/moa-compose'
-import { formatModelStatusLabel } from '@/lib/model-status-label'
+import { formatModelPillLabel } from '@/lib/model-status-label'
 import { modelVendor } from '@/lib/model-vendor'
-import { reasoningEffortLabel } from '@/lib/reasoning-effort'
-import { displayedReasoningEffort } from '@/lib/reasoning-efforts'
 import { cn } from '@/lib/utils'
-import { $currentModelSource, $defaultReasoningEffort, setModelPickerOpen } from '@/store/session'
+import { $currentModelSource, setModelPickerOpen } from '@/store/session'
 import type { MoaConfigResponse } from '@/types/hermes'
 
 import { onComposerModelMenuRequest } from './focus'
+import { RICH_INPUT_SLOT } from './rich-editor'
 import { useComposerScope } from './scope'
 import type { ChatBarState } from './types'
 
@@ -54,8 +54,6 @@ export function ModelPill({
 }) {
   const { t } = useI18n()
   const copy = t.shell.statusbar
-  const modelOptionsCopy = t.shell.modelOptions
-  const effortCopy = t.shell.modelMenu
   const tourMarker = useTourMarker('model-pill')
   const view = useSessionView()
   // Prefer the chat-bar snapshot (already view-scoped by ChatView); fall back
@@ -65,11 +63,10 @@ export function ModelPill({
   const currentModel = model.model || viewModel
   const currentProvider = model.provider || viewProvider
   const fastMode = useStore(view.$fast)
-  const reasoningEffort = useStore(view.$reasoningEffort)
   const modelSource = useStore($currentModelSource)
-  const defaultEffort = useStore($defaultReasoningEffort)
   const runtimeId = useStore(view.$runtimeId)
   const [open, setOpen] = useState(false)
+  const restoreSelection = useRef<(() => void) | null>(null)
   const scope = useComposerScope()
   const hasLiveMenu = Boolean(model.modelMenuContent)
 
@@ -85,6 +82,34 @@ export function ModelPill({
         }
 
         if (hasLiveMenu) {
+          const editor = document.activeElement
+          const selection = window.getSelection()
+
+          if (
+            editor instanceof HTMLElement &&
+            editor.dataset.slot === RICH_INPUT_SLOT &&
+            selection?.anchorNode &&
+            selection.focusNode &&
+            editor.contains(selection.anchorNode) &&
+            editor.contains(selection.focusNode)
+          ) {
+            const { anchorNode, anchorOffset, focusNode, focusOffset } = selection
+
+            restoreSelection.current = () => {
+              if (
+                !editor.isConnected ||
+                isElementInHiddenPane(editor) ||
+                !editor.contains(anchorNode) ||
+                !editor.contains(focusNode)
+              ) {
+                return
+              }
+
+              editor.focus({ preventScroll: true })
+              window.getSelection()?.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+            }
+          }
+
           setOpen(prev => !prev)
         } else {
           setModelPickerOpen(true)
@@ -116,9 +141,6 @@ export function ModelPill({
   // aggregator/reference split underneath stays invisible everywhere.
   const composedCount = currentProvider === 'moa' ? composedMemberCount(moaOptions.data?.presets?.[currentModel]) : 0
 
-  const displayEffort = displayedReasoningEffort(reasoningEffort, currentModel, currentProvider, defaultEffort)
-  const effortLabel = reasoningEffortLabel(displayEffort, effortCopy)
-
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text
   // color at half opacity) until a model lands.
@@ -132,13 +154,7 @@ export function ModelPill({
         <>
           <ProviderIcon size={12} vendor={modelVendor(currentModel, currentProvider)} />
           <span className="truncate">
-            {formatModelStatusLabel(currentModel, {
-              defaultEffort,
-              effortLabel,
-              fastLabel: modelOptionsCopy.fast,
-              fastMode,
-              reasoningEffort
-            })}
+            {formatModelPillLabel(currentModel, { fastMode })}
           </span>
         </>
       ) : (
@@ -221,7 +237,22 @@ export function ModelPill({
           </Button>
         </DropdownMenuTrigger>
       </Tip>
-      <DropdownMenuContent align="end" className="w-64 p-0" side="top" sideOffset={8}>
+      <DropdownMenuContent
+        align="end"
+        className="w-64 p-0"
+        onCloseAutoFocus={event => {
+          if (restoreSelection.current) {
+            event.preventDefault()
+            restoreSelection.current()
+            restoreSelection.current = null
+          }
+        }}
+        onInteractOutside={() => {
+          restoreSelection.current = null
+        }}
+        side="top"
+        sideOffset={8}
+      >
         <ModelMenuCloseContext.Provider value={() => setMenuOpen(false)}>
           {model.modelMenuContent}
         </ModelMenuCloseContext.Provider>

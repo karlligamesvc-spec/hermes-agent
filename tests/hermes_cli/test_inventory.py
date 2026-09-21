@@ -173,7 +173,7 @@ def test_hc705_managed_model_options_keeps_all_12_live_models(monkeypatch, refre
     monkeypatch.setattr("hermes_cli.providers.HERMES_OVERLAYS", {})
     monkeypatch.setattr("hermes_cli.models.fetch_api_models", _fetch)
     monkeypatch.setattr(
-        "hermes_cli.model_switch._save_discovered_models_to_config",
+        "hermes_cli.model_switch_providers._save_discovered_models_to_config",
         lambda *_args, **_kwargs: None,
     )
     ctx = ConfigContext(
@@ -365,11 +365,11 @@ def test_anthropic_oauth_presence_accepts_pool_only_oauth_entry():
 
     with (
         patch(
-            "agent.anthropic_adapter.read_hermes_oauth_credentials",
+            "agent.anthropic_credentials.read_hermes_oauth_credentials",
             return_value=None,
         ),
         patch(
-            "agent.anthropic_adapter.read_claude_code_credentials",
+            "agent.anthropic_credentials.read_claude_code_credentials",
             return_value=None,
         ),
         patch(
@@ -385,11 +385,11 @@ def test_anthropic_oauth_presence_accepts_pool_only_oauth_entry():
     # (they are handled by the explicit-config gate / env var paths).
     with (
         patch(
-            "agent.anthropic_adapter.read_hermes_oauth_credentials",
+            "agent.anthropic_credentials.read_hermes_oauth_credentials",
             return_value=None,
         ),
         patch(
-            "agent.anthropic_adapter.read_claude_code_credentials",
+            "agent.anthropic_credentials.read_claude_code_credentials",
             return_value=None,
         ),
         patch(
@@ -735,5 +735,4 @@ def _apply_featured_with_dates(rows, dates: dict[str, str]):
 
     with patch("agent.models_dev.get_model_info", side_effect=_fake_get_model_info):
         inventory._apply_featured(rows)
-
 
