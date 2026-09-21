@@ -9,13 +9,22 @@ import { saveHermesConfig } from '@/hermes'
 
 import { $voiceStopPhrase, applyVoiceStopPhraseFromConfig } from './voice-prefs'
 
+function storageSpyTarget(): Storage {
+  const storage = window.localStorage
+  const storageConstructor = window.Storage
+
+  return typeof storageConstructor === 'function' && storage instanceof storageConstructor
+    ? storageConstructor.prototype
+    : storage
+}
+
 it('keeps the desktop toggle local across config refreshes', async () => {
   for (const fails of [false, true]) {
     for (const enabled of [false, true]) {
       localStorage.clear()
       vi.resetModules()
       const prefs = await import('./voice-prefs')
-      const write = vi.spyOn(Object.getPrototypeOf(window.localStorage), 'setItem')
+      const write = vi.spyOn(storageSpyTarget(), 'setItem')
 
       if (fails) {
         write.mockImplementation(() => {
@@ -44,7 +53,7 @@ it('migrates the legacy preference once, not on every refresh', async () => {
       localStorage.clear()
       vi.resetModules()
       const prefs = await import('./voice-prefs')
-      const write = vi.spyOn(Object.getPrototypeOf(window.localStorage), 'setItem')
+      const write = vi.spyOn(storageSpyTarget(), 'setItem')
 
       if (fails) {
         write.mockImplementation(() => {

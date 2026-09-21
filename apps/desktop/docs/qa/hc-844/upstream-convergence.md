@@ -96,7 +96,8 @@ Linux 全量分片随后发现 shutdown diagnostic 虽然成功创建了子进�
 并发快照（`16bddc88dd`）、local-model quickstart 固定硬件预算（`86b809934a`）。本票只
 吸收这些测试稳定化，不混入标签后的产品功能；同形的 sidebar single-flight 事件测试也
 改为等待真实事件并保证释放。另将 APEX 身份守卫迁到 v0.21 的 `main_desktop.py` seam，
-并让语音偏好故障测试拦截实际 localStorage prototype，避免守卫测试自身失真。
+并让语音偏好故障测试根据当前 DOM runtime 选择真实 Storage surface，兼容本地与 GitHub
+runner 不同的 localStorage 原型形状，避免守卫测试自身失真。
 
 ## 上游标签之后的已知项
 
