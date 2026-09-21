@@ -4213,8 +4213,7 @@ export const zh = defineLocale({
   },
 
   home: {
-    title: '今天想推进什么业务？',
-    description: '描述目标，APEX 会组织数据、推进过程并交付结果。'
+    title: '今天想推进什么业务？'
   },
 
   businessWorkspace: {
@@ -4224,7 +4223,8 @@ export const zh = defineLocale({
       confirmationTemplate: '工作流：',
       changeWorkflow: '更换工作流',
       label: '业务目标',
-      placeholder: '例如：分析美国宠物用品市场，并生成选品报告和上架素材',
+      placeholder:
+        '例如：分析美国宠物用品市场，并生成选品报告和上架素材，也可以直接丢图片、视频、文件给我，我来帮你分析。',
       hint: 'Enter 开始执行 · Shift+Enter 换行',
       submit: '开始执行',
       workflowAttachmentsUnsupported:

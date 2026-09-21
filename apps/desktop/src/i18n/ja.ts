@@ -3652,8 +3652,7 @@ export const ja = defineLocale({
   },
 
   home: {
-    title: '今日はどの業務を前に進めますか？',
-    description: '目標を説明すると、APEX が根拠を整理し、作業を進め、成果を届けます。'
+    title: '今日はどの業務を前に進めますか？'
   },
 
   businessWorkspace: {
@@ -3663,7 +3662,8 @@ export const ja = defineLocale({
       confirmationTemplate: 'ワークフロー：',
       changeWorkflow: 'ワークフローを変更',
       label: '業務目標',
-      placeholder: '例：米国のペット用品市場を分析し、商品選定レポートと販売素材を作成する',
+      placeholder:
+        '例：米国のペット用品市場を分析し、商品選定レポートと販売素材を作成する。画像・動画・ファイルをそのまま追加しても、分析をお手伝いします。',
       hint: 'Enter で開始 · Shift+Enter で改行',
       submit: '目標を開始',
       workflowAttachmentsUnsupported:

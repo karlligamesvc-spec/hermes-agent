@@ -4771,8 +4771,7 @@ export const en: Translations = {
   },
 
   home: {
-    title: 'What business should we move forward today?',
-    description: 'Describe the goal. APEX organizes the evidence, moves the work forward, and delivers the result.'
+    title: 'What business should we move forward today?'
   },
 
   businessWorkspace: {
@@ -4782,7 +4781,8 @@ export const en: Translations = {
       confirmationTemplate: 'Workflow: ',
       changeWorkflow: 'Change workflow',
       label: 'Business goal',
-      placeholder: 'For example: analyze the US pet supplies market and produce a selection report and launch assets',
+      placeholder:
+        'For example: analyze the US pet supplies market and produce a selection report and launch assets. You can also drop in images, videos, or files and I’ll help you analyze them.',
       hint: 'Enter to start · Shift+Enter for a new line',
       submit: 'Start goal',
       workflowAttachmentsUnsupported:

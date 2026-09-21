@@ -4165,7 +4165,6 @@ export interface Translations {
 
   home: {
     title: string
-    description: string
   }
 
   businessWorkspace: {

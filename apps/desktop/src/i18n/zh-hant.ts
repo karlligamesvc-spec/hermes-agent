@@ -3586,8 +3586,7 @@ export const zhHant = defineLocale({
   },
 
   home: {
-    title: '今天想推進什麼業務？',
-    description: '描述目標，APEX 會組織資料、推進流程並交付結果。'
+    title: '今天想推進什麼業務？'
   },
 
   businessWorkspace: {
@@ -3597,7 +3596,8 @@ export const zhHant = defineLocale({
       confirmationTemplate: '工作流程：',
       changeWorkflow: '更換工作流程',
       label: '業務目標',
-      placeholder: '例如：分析美國寵物用品市場，並產出選品報告和上架素材',
+      placeholder:
+        '例如：分析美國寵物用品市場，並產出選品報告和上架素材，也可以直接丟圖片、影片、檔案給我，我來幫你分析。',
       hint: 'Enter 開始執行 · Shift+Enter 換行',
       submit: '開始執行',
       workflowAttachmentsUnsupported:

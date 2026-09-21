@@ -179,7 +179,6 @@ export function BusinessStartHome({
           <h1 className="m-0 text-balance text-[clamp(2rem,4vw,2.625rem)] font-semibold leading-[1.12] tracking-[-0.035em] text-foreground">
             {t.home.title}
           </h1>
-          <p className="mt-2.5 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
         </div>
         <Button
           className="shrink-0 self-start sm:absolute sm:right-0 sm:top-0"

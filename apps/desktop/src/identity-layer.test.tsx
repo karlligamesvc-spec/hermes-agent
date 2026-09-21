@@ -496,8 +496,11 @@ describe('identity: the home zero-state is ours', () => {
       const { container } = renderIntro()
 
       expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
+      expect(screen.queryByText('描述目标，APEX 会组织数据、推进过程并交付结果。')).toBeNull()
       expect(screen.getByRole('button', { name: '开始一个目标' })).toBeTruthy()
-      expect(screen.getByRole('textbox', { name: '业务目标' })).toBeTruthy()
+      expect(screen.getByRole('textbox', { name: '业务目标' }).getAttribute('placeholder')).toBe(
+        '例如：分析美国宠物用品市场，并生成选品报告和上架素材，也可以直接丢图片、视频、文件给我，我来帮你分析。'
+      )
       expect(screen.getAllByRole('textbox')).toHaveLength(1)
       expect(screen.getByRole('button', { name: '附加' }).hasAttribute('disabled')).toBe(false)
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()

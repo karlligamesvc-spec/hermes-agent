@@ -65,7 +65,6 @@ export function Intro({
             <h1 className="m-0 text-balance text-[1.875rem] font-medium leading-tight tracking-[-0.01em] text-foreground">
               {t.home.title}
             </h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
           </div>
           <ScenarioShelf />
         </>

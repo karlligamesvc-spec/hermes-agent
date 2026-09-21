@@ -80,15 +80,16 @@ final result: passed
 3. The visible viral-video brief is now two plain-language sentences. Vendor names, local tooling, implementation phases, reproduction commands, pricing, and plan-confirmation language remain outside the user-visible prompt.
 4. Heading hierarchy, attachment control, send action, keyboard focus order, monochrome task artwork, and the single-column task shelf are unchanged.
 5. At 1440 × 900, the third task entry reaches the lower edge of the first viewport because the user explicitly prioritized a taller editor. It remains on the same page and immediately reachable by normal scrolling; there is no nested scroll trap or horizontal overflow.
+6. The redundant subtitle under the main question is removed. The empty goal field now tells users that they can either describe a goal or drop in an image, video, or file for analysis; all four Desktop locales carry the same behavior and tone.
 
 ## Verification
 
 - Packaged Electron geometry and copy regression: `hc-841 Start keeps the primary task brief readable without exposing internal execution details` — passed.
-- Full UI suite: 771 files / 7,665 tests — passed.
+- Full UI suite after rebasing onto current Desktop main: 889 files / 8,488 tests — passed.
 - TypeScript — passed.
 - ESLint — 0 errors (repository-wide pre-existing warnings only).
-- Production renderer build and macOS unpacked package/signing — passed; notarization was skipped because local notarization credentials are not configured.
-- Reverse verification: restoring the old 44rem width and injecting `Hypit` produced three targeted test failures; restoring hc-841 returned the suite to green.
+- Production renderer build — passed. The earlier packaged macOS geometry evidence remains attached to this change.
+- Reverse verification: restoring the removed subtitle made the identity guard fail on the exact visible copy; restoring hc-841 returned it to green. The earlier width/internal-copy reverse checks remain covered.
 
 ## Final result
 
