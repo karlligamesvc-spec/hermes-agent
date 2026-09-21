@@ -3,7 +3,8 @@
 ## 结论
 
 - APEX fork 从 `68bd8f3a74` 全量合并上游稳定标签 `v2026.9.14`
-  (`7a963716b8`)，Hermes Runtime 升至 `0.21.3`。
+  （annotated tag `7a963716b8`，release commit `345cd2b057`），Hermes Runtime 升至
+  `0.21.3`。
 - APEX Desktop 产品版本保持 `0.17.30`；本票不是公开发版票，不推进 updater、
   COS 安装包或生产部署。
 - 合并原则是保留 APEX 的产品身份、中文默认值、业务导航和托管服务接线，同时吸收
