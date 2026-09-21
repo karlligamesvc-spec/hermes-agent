@@ -164,7 +164,9 @@ describe('identity: brand assets and chrome', () => {
     const e2e = readSource('e2e', 'fixtures.ts')
     const installSh = readSource('..', '..', 'scripts', 'install.sh')
     const installPs1 = readSource('..', '..', 'scripts', 'install.ps1')
-    const cli = readSource('..', '..', 'hermes_cli', 'main.py')
+    // v0.21 split desktop launch discovery out of the CLI monolith. Pin the
+    // implementation seam that now owns packaged-app lookup, not main.py.
+    const desktopCli = readSource('..', '..', 'hermes_cli', 'main_desktop.py')
 
     expect(pkg.productName).toBe('APEX')
     expect(pkg.build.productName).toBe('APEX')
@@ -179,8 +181,8 @@ describe('identity: brand assets and chrome', () => {
     expect(main).not.toContain("'Hermes.app'")
     expect(installSh).toContain('/mac-arm64/APEX.app')
     expect(installPs1).toContain('\\release\\win-unpacked\\APEX.exe')
-    expect(cli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
-    expect(cli).toContain('"APEX.exe"')
+    expect(desktopCli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
+    expect(desktopCli).toContain('"APEX.exe"')
   })
 
   it('uses the APEX name for every native window and default notification', () => {

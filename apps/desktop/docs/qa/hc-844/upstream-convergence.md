@@ -86,10 +86,19 @@ GitHub 的真实 Windows runner 进一步发现安装日志仍引用配置的 Py
 不是上游缺能力。本票已恢复上游行为，并对两个 Node 入口分别验证“有 xz 选 xz、无 xz
 选 gzip”，防止只修一个入口。
 
+远端全量门禁还暴露了稳定标签自身的高并发测试抖动。对照 upstream/main 后确认其中
+三项已有标签后的上游修复：delegate 超时事件窗口（`bd607f3835`）、远程 kernel 注册表
+并发快照（`16bddc88dd`）、local-model quickstart 固定硬件预算（`86b809934a`）。本票只
+吸收这些测试稳定化，不混入标签后的产品功能；同形的 sidebar single-flight 事件测试也
+改为等待真实事件并保证释放。另将 APEX 身份守卫迁到 v0.21 的 `main_desktop.py` seam，
+并让语音偏好故障测试拦截实际 localStorage prototype，避免守卫测试自身失真。
+
 ## 上游标签之后的已知项
 
 - upstream/main 的 `0e5da5e9ec` 包含 duplicate-final 修复，但不在稳定标签
   `v2026.9.14` 内；不混入本次稳定标签合并，后续单独评估 backport。
+- 已选择性吸收 upstream/main 的三项纯测试稳定化提交：`bd607f3835`、`16bddc88dd`、
+  `86b809934a`；没有因此把 main 上其余未发布功能带入本票。
 - hc-843 是 APEX 队列消息 exactly-once 修复，仍须在本票合并后 rebase / replay；
   upstream 0.21.3 的队列保护不能替代它。
 
@@ -106,8 +115,10 @@ GitHub 的真实 Windows runner 进一步发现安装日志仍引用配置的 Py
 | Python bytecode compile | 通过 |
 | Python runtime 全量 suite | 4,210 files / 50,069 passed / 0 failed / 608 OS-specific skipped；退出码 0 |
 | Python 重负载 flake 收敛 | 4 files / 22 tests 通过 |
+| 新暴露并发测试定向循环 | 4 files / 31 tests × 10 轮连续通过 |
 | GitHub Windows-only runner | 真实 Windows 门禁通过（含 managed Python fallback） |
 | Node archive 双入口故障注入 | `install.sh` 与 `node-bootstrap.sh` 均通过有/无 xz 两侧验证 |
+| APEX 身份 / 语音偏好守卫 | 2 files / 45 tests 通过；修复前对应 3 项会稳定变红 |
 | Desktop production build | 通过（Vite renderer + Electron main/preload + native/updater deps） |
 | Desktop packaged/fresh-env gate | 本票不产出发布包；留给 Mac/Windows 成对发布票执行 |
 
