@@ -1133,10 +1133,17 @@ install_node_line() {
     local node_dist_base="${HERMES_NODE_DIST_BASE:-https://nodejs.org/dist}"
     node_dist_base="${node_dist_base%/}"
     local index_url="${node_dist_base}/latest-v${node_line}.x/"
-    local tarball_name
-    tarball_name=$(curl -fsSL "$index_url" \
-        | grep -oE "node-v${node_line}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.xz" \
-        | head -1)
+    local tarball_name=""
+    # `tar xf` shells out to xz for .tar.xz; minimal Debian/DietPi/WSL images
+    # ship tar without it and extraction dies mid-way. Prefer xz only when the
+    # decoder is actually available, while keeping the APEX-selected dist base.
+    if command -v xz >/dev/null 2>&1; then
+        tarball_name=$(curl -fsSL "$index_url" \
+            | grep -oE "node-v${node_line}\.[0-9]+\.[0-9]+-${node_os}-${node_arch}\.tar\.xz" \
+            | head -1)
+    else
+        log_info "xz not found — using the .tar.gz Node.js archive"
+    fi
 
     # Fallback to .tar.gz if .tar.xz not available (or xz is missing)
     if [ -z "$tarball_name" ]; then

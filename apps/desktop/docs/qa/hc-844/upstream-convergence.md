@@ -9,8 +9,10 @@
   COS 安装包或生产部署。
 - 合并原则是保留 APEX 的产品身份、中文默认值、业务导航和托管服务接线，同时吸收
   上游 runtime、Desktop shell、会话、队列、通知、provider 与安装器的稳定性改进。
-- 对账发现一项旧补丁已被上游完整替代；其余平台特有能力继续保留或迁移到上游的新
-  seam。另发现两处上游 0.21.3 尚未覆盖的 macOS 系统代理边界，已补回归。
+- 对账发现一项旧补丁已被上游完整替代；远端实机门禁还发现两项已经由上游修复、但在
+  下游融合时被旧 APEX 分支覆盖的安装器行为，现已按上游语义恢复并保留 APEX seam。
+  其余平台特有能力继续保留或迁移到上游的新 seam。另发现两处上游 0.21.3 尚未覆盖
+  的 macOS 系统代理边界，已补回归。
 
 ## 补丁去留
 
@@ -22,6 +24,8 @@
 | 微信 reset banner 过滤与过期会话真实状态 | 保留并手工融合 | 属于 APEX 渠道产品契约，上游没有等价实现 |
 | hc-684 Tirith 临时下载重试 | 保留 | 上游没有覆盖该网络故障路径 |
 | 中国区 COS / 镜像安装链路 | 保留 | 上游新增 Python、Termux、Node archive 修复，但不替代 APEX 的 COS-first 路径 |
+| Windows managed Python 版本报告与 venv 判定 | 采用上游并融合 | 上游已统一使用实际解析出的 `$resolvedPython.Version`；融合时曾退回配置版本，现恢复上游语义并保留 APEX 安装流程 |
+| Linux Node archive 无 xz 回退 | 采用上游并融合 | 上游两个安装入口均已在缺少 `xz` 时选择 `.tar.gz`；现同时恢复，并保留 `HERMES_NODE_DIST_BASE` / COS 下载基址 |
 | Desktop 通知主进程实现 | 采用上游 | 上游已抽成 `notification-ipc.ts`，旧内联实现不再保留 |
 | 旧 bot chat pointer 兼容测试 | 删除 | 上游 canonical session registry 已替代旧指针模型 |
 | APEX Desktop 身份层、中文默认值、业务首页、托管 relay、国内 provider 目录 | 保留 | 产品层契约，不由通用上游替代 |
@@ -41,6 +45,10 @@
 - `plugins/web/searxng/provider.py`：以新的 Base provider 为基线，融合 APEX 网关认证、
   self-hosted keyless 与可操作错误信息。
 - `tools/environments/local.py`：以新环境清洗流程为基线，保留 APEX 用户 bin PATH 增广。
+- `scripts/install.ps1`：采用上游按实际解析出的 Python 版本报告和判断 venv 的行为，
+  保留 APEX 的 Windows 安装与镜像接线。
+- `scripts/install.sh`、`scripts/lib/node-bootstrap.sh`：恢复上游的 xz 能力探测和 gzip
+  回退，同时继续使用 APEX 可配置的 Node 分发基址。
 - `apps/desktop/electron/main.ts`：采用上游 notification / ambient claim / SSH profile
   清洗，同时保留 APEX 环境桥、Windows updater preflight 与安全打开策略。
 - Desktop renderer：采用上游 canonical session group、队列 retry tick、hidden display kind、
@@ -72,6 +80,12 @@ LSP 退出改为先等待 100 ms 的协议级自然退出，避免退出与 PID 
 测试改为分别等待真正的 watchdog、为非超时断言保留调度余量、让 WebSocket 超时发生在
 请求进入阻塞 provider 后。对应 22 项定向回归通过。
 
+GitHub 的真实 Windows runner 进一步发现安装日志仍引用配置的 Python minor，而不是
+最终解析出的解释器版本；Linux Python slice 则通过“移除 xz”故障注入发现两个 Node
+安装入口仍会挑选 `.tar.xz`。两项在上游稳定标签中都已经修复，说明问题来自融合覆盖，
+不是上游缺能力。本票已恢复上游行为，并对两个 Node 入口分别验证“有 xz 选 xz、无 xz
+选 gzip”，防止只修一个入口。
+
 ## 上游标签之后的已知项
 
 - upstream/main 的 `0e5da5e9ec` 包含 duplicate-final 修复，但不在稳定标签
@@ -92,6 +106,8 @@ LSP 退出改为先等待 100 ms 的协议级自然退出，避免退出与 PID 
 | Python bytecode compile | 通过 |
 | Python runtime 全量 suite | 4,210 files / 50,069 passed / 0 failed / 608 OS-specific skipped；退出码 0 |
 | Python 重负载 flake 收敛 | 4 files / 22 tests 通过 |
+| GitHub Windows-only runner | 真实 Windows 门禁通过（含 managed Python fallback） |
+| Node archive 双入口故障注入 | `install.sh` 与 `node-bootstrap.sh` 均通过有/无 xz 两侧验证 |
 | Desktop production build | 通过（Vite renderer + Electron main/preload + native/updater deps） |
 | Desktop packaged/fresh-env gate | 本票不产出发布包；留给 Mac/Windows 成对发布票执行 |
 
