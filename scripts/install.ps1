@@ -2798,7 +2798,7 @@ function Install-Venv {
         throw "Hermes-managed Python is unavailable. Run install.ps1 -Stage python first."
     }
 
-    Write-Info "Creating virtual environment with Python $PythonVersion..."
+    Write-Info "Creating virtual environment with Python $($resolvedPython.Version)..."
 
     Push-Location $InstallDir
 
@@ -2812,14 +2812,14 @@ function Install-Venv {
         try {
             $venvVer = (& $venvPythonExe -c "import sys;print('%d.%d'%sys.version_info[:2])" 2>$null)
         } catch { }
-        if ($venvVer -eq $PythonVersion) {
+        if ($venvVer -eq $resolvedPython.Version) {
             $env:UV_PYTHON = $venvPythonExe
             Pop-Location
             Write-Success "Virtual environment already present (Python $venvVer) -- skipping"
             $script:_StageSkippedReason = "venv already present (Python $venvVer)"
             return
         }
-        Write-Info "Existing venv is Python $venvVer, need $PythonVersion -- recreating..."
+        Write-Info "Existing venv is Python $venvVer, need $($resolvedPython.Version) -- recreating..."
     }
 
     # Tasks we disabled below and must re-enable no matter how this stage
