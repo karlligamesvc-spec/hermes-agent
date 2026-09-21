@@ -30,6 +30,24 @@ describe('APEX generation model picker', () => {
     expect(selectedGenerationModel('video').id).toBe('doubao-seedance-2-0-mini-260615')
   })
 
+  it('gives every listed model a distinct visual identity', () => {
+    const models = [...IMAGE_GENERATION_MODELS, ...VIDEO_GENERATION_MODELS]
+
+    expect(models.map(model => model.icon)).toEqual([
+      'qwen',
+      'gemini',
+      'agnes',
+      'gpt-flare',
+      'gpt-sunburst',
+      'seedance-2.5',
+      'seedance-2',
+      'seedance-2-fast',
+      'seedance-2-mini',
+      'minimax'
+    ])
+    expect(new Set(models.map(model => model.icon))).toHaveLength(models.length)
+  })
+
   it('persists exactly one selection per media kind', () => {
     selectGenerationModel('image', 'gpt-image-2.5-flare')
     selectGenerationModel('video', 'MiniMax-H3')

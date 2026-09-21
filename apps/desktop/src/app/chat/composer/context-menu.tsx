@@ -19,8 +19,20 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Kbd } from '@/components/ui/kbd'
+import { ProviderIcon } from '@/components/ui/provider-icon'
 import { useI18n } from '@/i18n'
-import { type IconComponent, ImageIcon, MessageCircle, Package, Sparkles, Video } from '@/lib/icons'
+import {
+  CircleLetterA,
+  type IconComponent,
+  ImageIcon,
+  MessageCircle,
+  Package,
+  Sparkles,
+  Sun,
+  Video,
+  Zap
+} from '@/lib/icons'
+import type { VendorKey } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
 
 import { useComposerAttachmentProviders } from './contrib'
@@ -28,6 +40,8 @@ import { GHOST_ICON_BTN } from './controls'
 import { requestComposerFocus, requestComposerInsert } from './focus'
 import {
   type GenerationKind,
+  type GenerationModel,
+  type GenerationModelIconKey,
   generationModels,
   generationStarter,
   selectedGenerationModel,
@@ -234,13 +248,78 @@ function GenerationModelSubmenu({
         <DropdownMenuRadioGroup onValueChange={onSelect} value={selectedId}>
           {generationModels(kind).map(model => (
             <DropdownMenuRadioItem className={CAPABILITY_ROW} key={model.id} value={model.id}>
-              <Icon aria-hidden="true" className="text-(--ui-text-tertiary)" />
+              <GenerationModelIcon model={model} />
               <span className="truncate">{model.label}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
+  )
+}
+
+type GenerationIconBadgeKind = '2' | '2.5' | 'fast' | 'flare' | 'mini' | 'sunburst'
+
+const GENERATION_ICON_SPECS: Record<
+  Exclude<GenerationModelIconKey, 'agnes'>,
+  { badge?: GenerationIconBadgeKind; vendor: VendorKey }
+> = {
+  gemini: { vendor: 'gemini' },
+  'gpt-flare': { badge: 'flare', vendor: 'openai' },
+  'gpt-sunburst': { badge: 'sunburst', vendor: 'openai' },
+  minimax: { vendor: 'minimax' },
+  qwen: { vendor: 'qwen' },
+  'seedance-2': { badge: '2', vendor: 'doubao' },
+  'seedance-2-fast': { badge: 'fast', vendor: 'doubao' },
+  'seedance-2-mini': { badge: 'mini', vendor: 'doubao' },
+  'seedance-2.5': { badge: '2.5', vendor: 'doubao' }
+}
+
+/**
+ * Generation models need their own visual identity, not one repeated media
+ * glyph. The provider mark keeps the family recognizable; the small neutral
+ * corner badge distinguishes variants from the same provider without turning
+ * the compact menu into a row of colorful illustrations.
+ */
+export function GenerationModelIcon({ model }: { model: GenerationModel }) {
+  if (model.icon === 'agnes') {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex h-5 w-7 shrink-0 items-center justify-start"
+        data-generation-model-icon={model.icon}
+      >
+        <span className="inline-flex size-4.5 items-center justify-center rounded-[5px] bg-[#7456D8] text-white ring-1 ring-inset ring-black/10">
+          <CircleLetterA size={12} stroke={1.8} />
+        </span>
+      </span>
+    )
+  }
+
+  const spec = GENERATION_ICON_SPECS[model.icon]
+
+  return (
+    <span
+      aria-hidden="true"
+      className="relative inline-flex h-5 w-7 shrink-0 items-center justify-start"
+      data-generation-model-icon={model.icon}
+    >
+      <ProviderIcon size={18} vendor={spec.vendor} />
+      {spec.badge ? <GenerationIconBadge badge={spec.badge} /> : null}
+    </span>
+  )
+}
+
+function GenerationIconBadge({ badge }: { badge: GenerationIconBadgeKind }) {
+  return (
+    <span className="absolute right-0 top-1/2 inline-flex h-3 min-w-3 -translate-y-1/2 items-center justify-center rounded-full border border-(--ui-border) bg-(--ui-bg-primary) px-px text-[6px] font-bold leading-none text-(--ui-text-secondary) shadow-xs">
+      {badge === 'flare' ? <Sparkles size={8} stroke={2.2} /> : null}
+      {badge === 'sunburst' ? <Sun size={8} stroke={2.2} /> : null}
+      {badge === 'fast' ? <Zap size={8} stroke={2.2} /> : null}
+      {badge === 'mini' ? 'M' : null}
+      {badge === '2' ? '2' : null}
+      {badge === '2.5' ? '25' : null}
+    </span>
   )
 }
 
