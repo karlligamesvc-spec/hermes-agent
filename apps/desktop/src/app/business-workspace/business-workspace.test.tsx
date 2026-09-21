@@ -4,6 +4,10 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { en } from '@/i18n/en'
+import { ja } from '@/i18n/ja'
+import { zh } from '@/i18n/zh'
+import { zhHant } from '@/i18n/zh-hant'
 import {
   activateSidebarNavigation,
   BUSINESS_HISTORY_ROUTE,
@@ -325,7 +329,7 @@ describe('hc-685 business workspace identity', () => {
     expect((goal as HTMLTextAreaElement).value).toContain('Monitor my key competitors')
     expect(startHome?.classList.contains('text-left')).toBe(true)
     expect(headingColumn?.className).toContain('max-w-[44rem]')
-    expect(launcherColumn?.className).toContain('max-w-[44rem]')
+    expect(launcherColumn?.className).toContain('max-w-[52rem]')
     expect(screen.queryByText(/Local test data/)).toBeNull()
   })
 
@@ -344,28 +348,48 @@ describe('hc-685 business workspace identity', () => {
 
     const goal = screen.getByRole('textbox', { name: '业务目标' })
     expect(
-      screen.getByText(
-        '抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。'
-      )
+      screen.getByText('抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。')
     ).toBeTruthy()
     expect(screen.getByText('粘贴链接即可保存原视频，并生成字幕、逐字稿和带时间码的文本。')).toBeTruthy()
     expect(screen.getByText('逐帧分析画面与声音，生成可编辑工程、批量版本和最终成片。')).toBeTruthy()
     expect(screen.getByText('汇总公开数据、评论和互动趋势，给出机会判断与下一步建议。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /下载视频并转成逐字稿/ }))
 
-    await waitFor(() =>
-      expect((goal as HTMLTextAreaElement).value).toContain('请处理我接下来提供的短视频链接')
-    )
+    await waitFor(() => expect((goal as HTMLTextAreaElement).value).toContain('请处理我接下来提供的短视频链接'))
     expect(window.document.activeElement).toBe(goal)
     expect(insert).not.toHaveBeenCalled()
     expect(screen.queryByText('启动前确认')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
-    await waitFor(() =>
-      expect(submit).toHaveBeenCalledWith(expect.stringContaining('请处理我接下来提供的短视频链接'))
-    )
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.stringContaining('请处理我接下来提供的短视频链接')))
     await waitFor(() => expect((goal as HTMLTextAreaElement).value).toBe(''))
     window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('keeps the viral-remake starter concise while the bundled Skill owns internal execution details', () => {
+    const prompts = [zh, zhHant, en, ja].map(locale => locale.businessWorkspace.workflows.homePaths.viralRemake.prompt)
+
+    const internalTerms =
+      /豆包|Doubao|Hypit|WhisperX|Brief|Treatment|复现命令|重現命令|再現コマンド|price|pricing|套餐|方案確認|プラン確認/i
+
+    for (const prompt of prompts) {
+      expect(prompt.length).toBeLessThan(260)
+      expect(prompt).not.toMatch(internalTerms)
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' }) as HTMLTextAreaElement
+    expect(goal.value).toBe(zh.businessWorkspace.workflows.homePaths.viralRemake.prompt)
+    expect(goal.value).not.toMatch(internalTerms)
   })
 
   it('starts the selected workflow through the authenticated domain bridge and opens its real Run', async () => {
@@ -1547,6 +1571,24 @@ describe('hc-685 business workspace identity', () => {
       .map(element => element.getAttribute('aria-label'))
 
     expect(keyboardOrder).toEqual(['业务目标', '开始执行', '附加'])
+  })
+
+  it('keeps the Start goal field wide and tall enough to review a multi-line brief', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    const content = goal.closest('[data-business-start-content]')
+
+    expect(goal.getAttribute('rows')).toBe('5')
+    expect(goal.className).toContain('min-h-[7rem]')
+    expect(goal.className).toContain('sm:min-h-[8rem]')
+    expect(content?.className).toContain('max-w-[52rem]')
   })
 
   it('preserves the draft for a rejected goal and leaves Shift+Enter to the textarea', async () => {

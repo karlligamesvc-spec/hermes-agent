@@ -179,7 +179,6 @@ export function BusinessStartHome({
           <h1 className="m-0 text-balance text-[clamp(2rem,4vw,2.625rem)] font-semibold leading-[1.12] tracking-[-0.035em] text-foreground">
             {t.home.title}
           </h1>
-          <p className="mt-2.5 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
         </div>
         <Button
           className="shrink-0 self-start sm:absolute sm:right-0 sm:top-0"
@@ -192,7 +191,7 @@ export function BusinessStartHome({
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-8">
+      <div className="mx-auto flex w-full max-w-[52rem] flex-col gap-8" data-business-start-content="">
         {selectedWorkflow && (
           <section
             aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}

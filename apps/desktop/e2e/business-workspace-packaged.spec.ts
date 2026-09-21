@@ -732,6 +732,64 @@ test('Start mounts exactly one accessible and focusable primary input', async ()
   await page.getByRole('textbox', { name: '业务目标' }).fill('')
 })
 
+test('hc-841 Start keeps the primary task brief readable without exposing internal execution details', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0]
+
+    win?.unmaximize()
+    win?.setBounds({ height: 900, width: 1440, x: 0, y: 0 }, false)
+    win?.show()
+    win?.focus()
+  })
+  await page.bringToFront()
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+
+  const content = page.locator('[data-business-start-content]')
+  const launcher = page.locator('[data-business-goal-launcher]')
+  const textbox = page.getByRole('textbox', { name: '业务目标' })
+
+  await expect(content).toBeVisible()
+  await expect(launcher).toBeVisible()
+  await expect(textbox).toBeVisible()
+
+  const geometry = await page.evaluate(() => {
+    const contentBox = document.querySelector('[data-business-start-content]')!.getBoundingClientRect()
+    const launcherBox = document.querySelector('[data-business-goal-launcher]')!.getBoundingClientRect()
+    const textboxBox = document.querySelector('[data-slot="business-goal-input"]')!.getBoundingClientRect()
+
+    return {
+      contentWidth: contentBox.width,
+      launcherWidth: launcherBox.width,
+      textboxHeight: textboxBox.height
+    }
+  })
+
+  expect(geometry.contentWidth).toBeGreaterThanOrEqual(860)
+  expect(geometry.contentWidth).toBeLessThanOrEqual(900)
+  expect(geometry.launcherWidth).toBeCloseTo(geometry.contentWidth, 0)
+  expect(geometry.textboxHeight).toBeGreaterThanOrEqual(128)
+
+  await page.getByRole('button', { name: /拆解并复刻爆款视频/ }).click()
+  await expect(textbox).toHaveValue(
+    '请分析这个爆款短视频，并参考它的结构和节奏，用我提供或已获授权的素材制作一条可编辑的同类视频。完成后交付成片和工程文件；如果素材不足，请直接告诉我需要补充什么。'
+  )
+  await expect(textbox).not.toHaveValue(/豆包|Hypit|WhisperX|Brief|Treatment|复现命令|价格|套餐/u)
+
+  const screenshotRoot = process.env.HC841_SCREENSHOT_DIR
+
+  const screenshotPath = screenshotRoot
+    ? path.join(screenshotRoot, 'start-task-brief-1440x900.png')
+    : test.info().outputPath('start-task-brief-1440x900.png')
+
+  if (screenshotRoot) {
+    fs.mkdirSync(screenshotRoot, { recursive: true })
+  }
+
+  await page.screenshot({ animations: 'disabled', caret: 'hide', path: screenshotPath })
+})
+
 test('hc-840 Start presents three readable video task rows with generated artwork', async () => {
   const { app, page } = fixture!
 
@@ -749,8 +807,12 @@ test('hc-840 Start presents three readable video task rows with generated artwor
 
   const taskRows = page.locator('[data-start-recommended-workflows] [data-workflow-starter="shelf"]')
   await expect(taskRows).toHaveCount(3)
-  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-artwork="video-transcript"]')).toBeVisible()
-  await expect(page.locator('[data-start-recommended-workflows] [data-workflow-artwork="viral-video-remake"]')).toBeVisible()
+  await expect(
+    page.locator('[data-start-recommended-workflows] [data-workflow-artwork="video-transcript"]')
+  ).toBeVisible()
+  await expect(
+    page.locator('[data-start-recommended-workflows] [data-workflow-artwork="viral-video-remake"]')
+  ).toBeVisible()
   await expect(
     page.locator('[data-start-recommended-workflows] [data-workflow-artwork="social-intelligence"]')
   ).toBeVisible()

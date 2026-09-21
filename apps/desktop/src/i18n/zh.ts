@@ -4213,8 +4213,7 @@ export const zh = defineLocale({
   },
 
   home: {
-    title: '今天想推进什么业务？',
-    description: '描述目标，APEX 会组织数据、推进过程并交付结果。'
+    title: '今天想推进什么业务？'
   },
 
   businessWorkspace: {
@@ -4224,7 +4223,8 @@ export const zh = defineLocale({
       confirmationTemplate: '工作流：',
       changeWorkflow: '更换工作流',
       label: '业务目标',
-      placeholder: '例如：分析美国宠物用品市场，并生成选品报告和上架素材',
+      placeholder:
+        '例如：分析美国宠物用品市场，并生成选品报告和上架素材，也可以直接丢图片、视频、文件给我，我来帮你分析。',
       hint: 'Enter 开始执行 · Shift+Enter 换行',
       submit: '开始执行',
       workflowAttachmentsUnsupported:
@@ -4368,7 +4368,7 @@ export const zh = defineLocale({
           title: '拆解并复刻爆款视频',
           summary: '逐帧分析画面与声音，生成可编辑工程、批量版本和最终成片。',
           prompt:
-            '请分析我接下来提供的爆款短视频链接或文件：先收集原视频、豆包逐字稿与真实时间轴、互动数据和真实可见的关键画面，再按镜头拆解开场钩子、叙事节奏、构图、动作、字幕、B-roll、音效与 CTA。随后使用本机 Hypit 建立可编辑工程，只复用抽象结构，用我自有、已授权或新生成的产品、人物和素材完成 Brief、Treatment、素材生成/替换、字幕、B-roll、动效、声音、预览、修订、批量变体和最终渲染，并交付成片、工程与复现命令；不要停在脚本或成片方案。APEX 提供的生成能力对用户免费，不要展示价格/套餐确认。没有画面证据时不要声称完成逐帧分析。平台包括抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok、Instagram。'
+            '请分析这个爆款短视频，并参考它的结构和节奏，用我提供或已获授权的素材制作一条可编辑的同类视频。完成后交付成片和工程文件；如果素材不足，请直接告诉我需要补充什么。'
         },
         socialIntelligence: {
           title: '分析产品、热榜与账号',

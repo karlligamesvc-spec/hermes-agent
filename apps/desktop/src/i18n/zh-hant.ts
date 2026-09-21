@@ -3586,8 +3586,7 @@ export const zhHant = defineLocale({
   },
 
   home: {
-    title: '今天想推進什麼業務？',
-    description: '描述目標，APEX 會組織資料、推進流程並交付結果。'
+    title: '今天想推進什麼業務？'
   },
 
   businessWorkspace: {
@@ -3597,7 +3596,8 @@ export const zhHant = defineLocale({
       confirmationTemplate: '工作流程：',
       changeWorkflow: '更換工作流程',
       label: '業務目標',
-      placeholder: '例如：分析美國寵物用品市場，並產出選品報告和上架素材',
+      placeholder:
+        '例如：分析美國寵物用品市場，並產出選品報告和上架素材，也可以直接丟圖片、影片、檔案給我，我來幫你分析。',
       hint: 'Enter 開始執行 · Shift+Enter 換行',
       submit: '開始執行',
       workflowAttachmentsUnsupported:
@@ -3741,7 +3741,7 @@ export const zhHant = defineLocale({
           title: '拆解並復刻爆款影片',
           summary: '逐幀分析畫面與聲音，產出可編輯工程、批次版本和最終成片。',
           prompt:
-            '請分析我接下來提供的爆款短影片連結或檔案：先收集原影片、豆包逐字稿與真實時間軸、互動資料和真實可見的關鍵畫面，再按鏡頭拆解開場鉤子、敘事節奏、構圖、動作、字幕、B-roll、音效與 CTA。接著使用本機 Hypit 建立可編輯工程，只重用抽象結構，以我自有、已授權或新生成的產品、人物與素材完成 Brief、Treatment、素材生成/替換、字幕、B-roll、動效、聲音、預覽、修訂、批次變體和最終渲染，並交付成片、工程與重現命令；不要停在腳本或成片方案。APEX 提供的生成能力對使用者免費，不要顯示價格或方案確認。沒有畫面證據時不要聲稱完成逐幀分析。'
+            '請分析這支爆款短影片，並參考它的結構與節奏，使用我提供或已獲授權的素材製作一支可編輯的同類影片。完成後交付成片與工程檔；若素材不足，請直接告訴我需要補充什麼。'
         },
         socialIntelligence: {
           title: '分析產品、熱榜與帳號',
