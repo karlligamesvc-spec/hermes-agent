@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { stubMenuDomApis } from '@/test/jsdom'
 
 import { OverlayView } from './overlay-view'
+
+beforeAll(stubMenuDomApis)
+
+const stylesSource = readFileSync('src/styles.css', 'utf8')
 
 afterEach(() => {
   cleanup()
@@ -29,6 +38,52 @@ function OverlayHarness() {
 }
 
 describe('OverlayView responsive product surfaces', () => {
+  it('defines the complete overlay z-index ladder used by shared primitives', () => {
+    const tokens = [
+      'modal-backdrop',
+      'modal',
+      'modal-popover',
+      'over-modal',
+      'over-modal-content',
+      'switcher-backdrop',
+      'switcher',
+      'connecting',
+      'onboarding',
+      'onboarding-popover',
+      'setup',
+      'crash'
+    ]
+
+    for (const token of tokens) {
+      expect(stylesSource).toMatch(new RegExp(`--z-${token}:\\s*\\d+;`))
+    }
+  })
+
+  it('keeps an open select inside the overlay focus scope without clipping it', () => {
+    render(
+      <OverlayView onClose={vi.fn()} title="Security settings">
+        <Select defaultOpen defaultValue="smart">
+          <SelectTrigger aria-label="Approval mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="smart">Smart</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
+          </SelectContent>
+        </Select>
+      </OverlayView>
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Security settings' })
+    const option = screen.getByRole('option', { name: 'Manual' })
+    const clipBox = dialog.querySelector('[data-overlay-clip]')
+
+    expect(dialog.contains(option)).toBe(true)
+    expect(clipBox?.contains(option)).toBe(false)
+    expect(dialog.className).not.toContain('overflow-hidden')
+    expect(clipBox?.className).toContain('overflow-hidden')
+  })
+
   it('makes opted-in surfaces truly full-screen in a 752px native window at product zoom', () => {
     render(
       <OverlayView compactFullscreen onClose={vi.fn()} title="Compact dialog">
