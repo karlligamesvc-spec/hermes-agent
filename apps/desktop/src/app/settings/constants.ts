@@ -43,36 +43,11 @@ interface ProviderPrefix {
 export const EMPTY_SELECT_VALUE = '__hermes_empty__'
 export const CONTROL_TEXT = 'text-xs'
 
-// ── Consumer (China-first) settings surface ─────────────────────────────────
-// APEX Desktop ships a consumer-sized settings IA: 个性化 / 外观 / 浏览器 /
-// 提供方 / 已归档对话. Every pro/technical section below is HIDDEN — not deleted — from
-// the settings nav, the settings-field search index and the ⌘K command
-// palette, all of which consult this one set. Pages and their `?tab=` deep
-// links keep working, so re-enabling a section later is a one-line delete
-// here.
-export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set([
-  'config:model', // 模型 — platform config drives model choice for now
-  'config:chat', // 对话 — 人格 moved into 个性化; the rest became defaults
-  'config:workspace', // 工作区
-  'config:safety', // 安全
-  'config:memory', // 记忆与上下文
-  'config:voice', // 语音
-  'config:advanced', // 高级
-  'notifications', // 通知
-  'gateway', // 网关
-  'keys', // 工具与密钥 (tools list + key settings)
-  'mcp', // MCP servers
-  'messaging', // 消息平台 jump entry inside settings
-  // Upstream v0.19.0 added four more nav rows. None of them passed the consumer
-  // bar, so they are HIDDEN here rather than deleted — the pages and their
-  // `?tab=` deep links keep working, and re-enabling one is a one-line delete.
-  'billing', // 账单 — upstream's account billing page, 100% hardcoded English
-  'keybinds', // 键盘快捷键 — localized, but a power-user surface
-  'plugins', // 插件 — exposes ~/.hermes/desktop-plugins + "reveal in Finder"
-  'about', // 关于 — its content lives inside 个性化 (AboutSettingsBody)
-  // Sub-views are keyed `<parent>:<pview>` so one set still drives everything.
-  'providers:custom-endpoints' // 自定义端点 — 402 lines, zero i18n, `http://127.0.0.1:8081/v1` samples
-])
+// ── APEX settings surface ────────────────────────────────────────────────────
+// APEX exposes the current Hermes settings surface so users can inspect and
+// try upstream capabilities. Keep Nous account billing hidden because APEX
+// does not expose that product model.
+export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['billing'])
 
 export const isConsumerHiddenSection = (view: string): boolean => CONSUMER_HIDDEN_SECTIONS.has(view)
 
