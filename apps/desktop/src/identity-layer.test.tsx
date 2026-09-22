@@ -125,6 +125,17 @@ describe('identity: the first screen is ours', () => {
 })
 
 describe('identity: brand assets and chrome', () => {
+  it('keeps the APEX shell white by default even when the OS uses dark mode', () => {
+    const theme = readSource('src', 'themes', 'context.tsx')
+    const main = readSource('electron', 'main.ts')
+
+    expect(theme).toContain("? value : 'light'")
+    expect(theme).toContain("persistString(MODE_KEY, 'light')")
+    expect(theme).toContain('migrateApexThemeModeDefaults()')
+    expect(main).toContain("return 'light'")
+    expect(main).toContain('APEX_NATIVE_THEME_POLICY_VERSION = 2')
+  })
+
   it('names the window APEX', () => {
     expect(readSource('index.html')).toContain('<title>APEX</title>')
   })
@@ -164,7 +175,9 @@ describe('identity: brand assets and chrome', () => {
     const e2e = readSource('e2e', 'fixtures.ts')
     const installSh = readSource('..', '..', 'scripts', 'install.sh')
     const installPs1 = readSource('..', '..', 'scripts', 'install.ps1')
-    const cli = readSource('..', '..', 'hermes_cli', 'main.py')
+    // v0.21 split desktop launch discovery out of the CLI monolith. Pin the
+    // implementation seam that now owns packaged-app lookup, not main.py.
+    const desktopCli = readSource('..', '..', 'hermes_cli', 'main_desktop.py')
 
     expect(pkg.productName).toBe('APEX')
     expect(pkg.build.productName).toBe('APEX')
@@ -179,8 +192,8 @@ describe('identity: brand assets and chrome', () => {
     expect(main).not.toContain("'Hermes.app'")
     expect(installSh).toContain('/mac-arm64/APEX.app')
     expect(installPs1).toContain('\\release\\win-unpacked\\APEX.exe')
-    expect(cli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
-    expect(cli).toContain('"APEX.exe"')
+    expect(desktopCli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
+    expect(desktopCli).toContain('"APEX.exe"')
   })
 
   it('uses the APEX name for every native window and default notification', () => {
@@ -483,8 +496,11 @@ describe('identity: the home zero-state is ours', () => {
       const { container } = renderIntro()
 
       expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
+      expect(screen.queryByText('描述目标，APEX 会组织数据、推进过程并交付结果。')).toBeNull()
       expect(screen.getByRole('button', { name: '开始一个目标' })).toBeTruthy()
-      expect(screen.getByRole('textbox', { name: '业务目标' })).toBeTruthy()
+      expect(screen.getByRole('textbox', { name: '业务目标' }).getAttribute('placeholder')).toBe(
+        '例如：分析美国宠物用品市场，并生成选品报告和上架素材，也可以直接丢图片、视频、文件给我，我来帮你分析。'
+      )
       expect(screen.getAllByRole('textbox')).toHaveLength(1)
       expect(screen.getByRole('button', { name: '附加' }).hasAttribute('disabled')).toBe(false)
       expect(screen.getByRole('button', { name: '开始执行' })).toBeTruthy()
@@ -567,6 +583,7 @@ describe('identity: the home zero-state is ours', () => {
     expect(chat).toContain('goalDisabled: !gatewayOpen || busy')
     expect(startHome).toContain('<BusinessStartShelf onSelectGoal={selectGoal} />')
     expect(startHome).toContain('draft={goalDraft}')
+    expect(startHome).toContain('max-w-[52rem]')
     expect(startShelf).toContain('businessHomeStarters(c.workflows)')
     expect(workflows).toContain('businessWorkflowStarters(c)')
   })
@@ -841,7 +858,7 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     const historyView = readSource('src', 'app', 'business-workspace', 'pages', 'history-page.tsx')
 
     expect(startHome).toContain('if (!selectedWorkflow) {')
-    expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, selectedWorkflow, projectId)')
+    expect(startHome).toContain('const outcome = await startWorkflowGoal(goal, starter, projectId)')
     expect(startHome).not.toContain("slug: 'desktop-goal'")
     expect(startHome).toContain('navigate(workflowRunRoute(outcome.runId), {')
     expect(startHome).toContain('state: routeDrawerNavigationState(location)')

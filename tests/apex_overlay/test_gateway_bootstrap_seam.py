@@ -187,9 +187,9 @@ def test_plugin_register_applies_gateway_bootstrap_seam():
 def test_plugin_discovery_precedes_first_adapter_creation():
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parents[2] / "gateway" / "run.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[2] / "gateway" / "run_startup.py").read_text(encoding="utf-8")
     discover_idx = src.find("discover_plugins()")
-    create_idx = src.find("adapter = self._create_adapter(", discover_idx)
+    create_idx = src.find("self._create_adapter(", discover_idx)
     assert discover_idx != -1 and create_idx != -1 and discover_idx < create_idx
 
 

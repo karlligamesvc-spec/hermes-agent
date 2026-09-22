@@ -146,7 +146,7 @@ def test_browser_navigate_returns_policy_block(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        browser_tool,
+        browser_tool._session,
         "_run_browser_command",
         lambda *args, **kwargs: pytest.fail("browser command should not run for blocked URL"),
     )
@@ -296,7 +296,7 @@ def test_check_website_access_fails_open_on_malformed_config(tmp_path, monkeypat
     # Simulate default path by pointing HERMES_HOME to tmp_path
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     from tools import website_policy
-    website_policy.invalidate_cache()
+    monkeypatch.setattr(website_policy, "_cached_policy", None)
 
     # With default path, errors are caught and fail open
     result = check_website_access("https://example.com")
@@ -441,7 +441,7 @@ def test_web_search_tool_keeps_all_results_when_blocklist_disabled(monkeypatch):
         ["https://allowed.test/a", "https://blocked.test/b"],
     )
     # Fresh per-test HERMES_HOME has no config.yaml → policy disabled.
-    website_policy.invalidate_cache()
+    monkeypatch.setattr(website_policy, "_cached_policy", None)
 
     result = json.loads(web_tools.web_search_tool("q", limit=5))
 

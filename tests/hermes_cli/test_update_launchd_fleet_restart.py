@@ -213,6 +213,14 @@ class TestGetServicePidsScoping:
         monkeypatch.setattr(
             gw, "_locate_launchd_gateway_service", lambda label: located[label]
         )
+        # The all-profile production path also protects prefix-discovered
+        # LaunchAgents. Keep this unit test isolated from the developer
+        # machine's real launchd fleet.
+        monkeypatch.setattr(
+            gw.subprocess,
+            "run",
+            lambda *args, **kwargs: _completed(0, ""),
+        )
 
     def test_all_profiles_returns_every_gateway_service_pid(self, monkeypatch):
         """The update sweep's exclude-set must protect ALL freshly-restarted
@@ -293,7 +301,7 @@ def _fleet(monkeypatch, tmp_path, *, current, labels, located,
     monkeypatch.setattr(
         gw,
         "_graceful_restart_via_sigusr1",
-        lambda pid, drain_timeout: (rec.drains.append(pid), (drain_results or {}).get(pid, False))[1],
+        lambda pid, drain_timeout, **_: (rec.drains.append(pid), (drain_results or {}).get(pid, False))[1],
     )
 
     def fake_kickstart(label, domain):

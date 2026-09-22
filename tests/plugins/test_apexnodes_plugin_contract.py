@@ -37,8 +37,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "tests" / "contracts" / "plugin_tools_contract.json"
 
 # 与 cloud 侧 tests/test_hc563_plugin_tools_contract.py 内嵌的是同一个值。
-EXPECTED_CONTRACT_SHA256 = "5a18b7dfd887150f6a2075799fa682195cf009266d414e0ff26d7f1f2cb81456"
-EXPECTED_CONTRACT_VERSION = 5
+EXPECTED_CONTRACT_SHA256 = "fb502ead41570632b6378237fcf841e8d2ff19e093c44a510788695aab932926"
+EXPECTED_CONTRACT_VERSION = 6
 
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 

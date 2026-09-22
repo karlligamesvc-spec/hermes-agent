@@ -7,11 +7,11 @@ import { useI18n } from '@/i18n'
 import type { ComposerAttachment } from '@/store/composer'
 
 import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
-import { startWorkflowGoal } from '../api/adapters'
+import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
-import { businessWorkflowStarters } from '../view-model/workflow-starters'
+import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/workflow-starters'
 
 export interface BusinessStartHomeProps {
   attachments?: ComposerAttachment[]
@@ -42,7 +42,14 @@ export function BusinessStartHome({
   const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
-  const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
+
+  const workflows = useMemo(
+    () => [
+      ...businessWorkflowStarters(t.businessWorkspace.workflows),
+      ...videoWorkflowStarters(t.businessWorkspace.workflows)
+    ],
+    [t]
+  )
 
   const launchState = location.state as null | {
     businessGoalDraft?: unknown
@@ -90,6 +97,7 @@ export function BusinessStartHome({
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
+  const [homeVideoWorkflowSelected, setHomeVideoWorkflowSelected] = useState(false)
 
   const [selectedWorkflowIsTestData, setSelectedWorkflowIsTestData] = useState(
     launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
@@ -122,6 +130,7 @@ export function BusinessStartHome({
   // entry clears the template and its provenance before the next submit.
   useEffect(() => {
     setSelectedWorkflow(launchedWorkflow)
+    setHomeVideoWorkflowSelected(false)
     setSelectedWorkflowIsTestData(
       launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
     )
@@ -131,8 +140,23 @@ export function BusinessStartHome({
     setDomainError(false)
   }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
 
+  // A local attachment cannot be silently dropped by the cloud Workflow API.
+  // Keep the existing attachment-capable chat route for a home-card draft.
+  useEffect(() => {
+    if (homeVideoWorkflowSelected && attachments.length > 0) {
+      setSelectedWorkflow(null)
+      setHomeVideoWorkflowSelected(false)
+    }
+  }, [attachments.length, homeVideoWorkflowSelected])
+
   const selectGoal = (starter: BusinessHomeStarter) => {
-    setSelectedWorkflow(null)
+    const videoWorkflow =
+      starter.id === 'viral-video-remake' && attachments.length === 0
+        ? workflows.find(workflow => workflow.id === starter.id) ?? null
+        : null
+
+    setSelectedWorkflow(videoWorkflow)
+    setHomeVideoWorkflowSelected(videoWorkflow !== null)
     setSelectedWorkflowIsTestData(false)
     setDomainError(false)
     setGoalDraft(starter.prompt)
@@ -147,8 +171,23 @@ export function BusinessStartHome({
     setDomainError(false)
     setDomainStarting(true)
 
+    let starter = selectedWorkflow
+
+    if (homeVideoWorkflowSelected) {
+      const catalog = await listVideoWorkflowCatalog()
+      const available = catalog.mode === 'ready' ? catalog.items.find(item => item.id === starter.id) : null
+
+      if (!available) {
+        setDomainStarting(false)
+
+        return (await onSubmitGoal?.(goal)) ?? false
+      }
+
+      starter = { ...starter, version: available.version }
+    }
+
     const projectId = routedProjectId || undefined
-    const outcome = await startWorkflowGoal(goal, selectedWorkflow, projectId)
+    const outcome = await startWorkflowGoal(goal, starter, projectId)
 
     setDomainStarting(false)
 
@@ -179,7 +218,6 @@ export function BusinessStartHome({
           <h1 className="m-0 text-balance text-[clamp(2rem,4vw,2.625rem)] font-semibold leading-[1.12] tracking-[-0.035em] text-foreground">
             {t.home.title}
           </h1>
-          <p className="mt-2.5 text-sm leading-6 text-muted-foreground">{t.home.description}</p>
         </div>
         <Button
           className="shrink-0 self-start sm:absolute sm:right-0 sm:top-0"
@@ -192,7 +230,7 @@ export function BusinessStartHome({
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-8">
+      <div className="mx-auto flex w-full max-w-[52rem] flex-col gap-8" data-business-start-content="">
         {selectedWorkflow && (
           <section
             aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}

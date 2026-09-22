@@ -1,45 +1,53 @@
 """Single owner for personality overlays.
 
-Every surface (CLI ``/personality``, gateway ``/personality``, TUI + desktop
-``config.set personality`` RPC, agent-startup overlay resolution) goes through
-this module. Nothing else may:
-
-* define built-in personalities,
-* decide what counts as a "neutral" name,
-* render a personality definition into prompt text,
-* resolve the active overlay from config, or
-* persist the selection.
-
-History: personality state used to be written differently per surface — the
-old CLI/gateway wrote rendered personality TEXT into ``agent.system_prompt``
-while the TUI/desktop wrote the NAME to ``display.personality``. When
-``display.personality`` became authoritative (PR #81946), years of stale
-per-surface state resurrected personalities users had turned off. The v34
-config migration resets the selection once; this module ensures the split
-cannot happen again.
-
-Contract:
-
 * ``display.personality`` holds the selected NAME (empty = no overlay).
-* ``agent.system_prompt`` is the user-owned manual overlay. Personality code
-  never writes it.
-* ``agent.personalities`` holds user-defined/overridden personalities; they
-  overlay the built-ins by name.
-
-This module deliberately has no module-level imports from ``hermes_cli.config``
-(that module imports us), keeping the import direction acyclic.
+* ``agent.system_prompt`` is the user-owned manual overlay; personality code never writes it.
+* ``agent.personalities`` holds user-defined/overridden personalities, overlaying built-ins by name.
+  The schema also exposes a top-level ``personalities:`` block (the original #643 shape); both are
+  honoured, ``agent.personalities`` winning on a name clash.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, Optional, Tuple
 
 #: Names that mean "no personality overlay".
 NEUTRAL_PERSONALITY_NAMES = frozenset({"", "none", "default", "neutral"})
 
-#: Built-in personalities, available on every surface (CLI, gateway, TUI,
-#: desktop) without any config. User entries in ``agent.personalities``
-#: overlay these by name.
+_RESPONSE_LANGUAGE_NAMES = {
+    "en": "English",
+    "zh": "Simplified Chinese",
+    "zh-hant": "Traditional Chinese",
+    "ja": "Japanese",
+    "de": "German",
+    "es": "Spanish",
+    "fr": "French",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "af": "Afrikaans",
+    "ko": "Korean",
+    "it": "Italian",
+    "ga": "Irish",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "hu": "Hungarian",
+    "ar": "Arabic",
+}
+
+_RESPONSE_LANGUAGE_ALIASES = {
+    "zh-cn": "zh",
+    "zh-hans": "zh",
+    "zh-sg": "zh",
+    "zh-tw": "zh-hant",
+    "zh-hk": "zh-hant",
+    "zh-mo": "zh-hant",
+    "ja-jp": "ja",
+    "en-us": "en",
+    "en-gb": "en",
+}
+
+#: Built-in personalities, available on every surface without any config.
 BUILTIN_PERSONALITIES: Dict[str, str] = {
     "helpful": "You are a helpful, friendly AI assistant.",
     "concise": "You are a concise assistant. Keep responses brief and to the point.",
@@ -108,10 +116,12 @@ def normalize_personality_name(value: Any) -> str:
 
 
 def available_personalities(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Built-ins overlaid by the user's ``agent.personalities`` (user wins)."""
+    """Built-ins overlaid by the user's personalities: root ``personalities`` then
+    ``agent.personalities`` (later wins). Root entries were silently ignored (#9636)."""
     merged: Dict[str, Any] = dict(BUILTIN_PERSONALITIES)
-    user = _get(cfg, "agent", "personalities", default={})
-    if isinstance(user, dict):
+    for user in (_get(cfg, "personalities", default={}), _get(cfg, "agent", "personalities", default={})):
+        if not isinstance(user, dict):
+            continue
         for name, definition in user.items():
             key = str(name).strip().lower()
             if key and key not in NEUTRAL_PERSONALITY_NAMES:
@@ -119,54 +129,71 @@ def available_personalities(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, A
     return merged
 
 
-def resolve_personality(
-    value: Any, cfg: Optional[Dict[str, Any]] = None
-) -> Tuple[str, str]:
-    """Resolve a requested personality to ``(canonical_name, prompt_text)``.
-
-    Neutral names resolve to ``("", "")``. Unknown names raise ``ValueError``
-    with an availability listing usable verbatim in user-facing errors.
-    """
+def resolve_personality(value: Any, cfg: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
+    """Resolve a requested personality to ``(canonical_name, prompt_text)``."""
     name = normalize_personality_name(value)
     if not name:
         return "", ""
     personalities = available_personalities(cfg)
     if name not in personalities:
         names = ", ".join(f"`{n}`" for n in sorted(personalities))
-        raise ValueError(
-            f"Unknown personality: `{str(value).strip()}`.\n\nAvailable: `none`, {names}"
-        )
+        raise ValueError(f"Unknown personality: `{str(value).strip()}`.\n\nAvailable: `none`, {names}")
     return name, render_personality_prompt(personalities[name])
 
 
 def active_personality_name(cfg: Optional[Dict[str, Any]]) -> str:
     """The currently selected personality name ('' when none is active)."""
     name = normalize_personality_name(_get(cfg, "display", "personality", default=""))
-    if name and name in available_personalities(cfg):
-        return name
-    return ""
+    return name if name and name in available_personalities(cfg) else ""
+
+
+def _resolve_response_language_prompt(cfg: Optional[Dict[str, Any]]) -> str:
+    """Return the bounded language contract for model-authored UI text."""
+    configured = str(_get(cfg, "agent", "response_language", default="auto") or "auto").strip().lower()
+    if configured in {"", "auto", "user", "match-user", "match_user"}:
+        return ""
+    if configured in {"display", "ui", "interface"}:
+        configured = str(_get(cfg, "display", "language", default="") or "").strip().lower()
+
+    configured = _RESPONSE_LANGUAGE_ALIASES.get(configured.replace("_", "-"), configured.replace("_", "-"))
+    language_name = _RESPONSE_LANGUAGE_NAMES.get(configured)
+    if not language_name:
+        return ""
+
+    return (
+        f"Use {language_name} for all user-facing communication by default, "
+        "including progress updates, todo/task-list text, questions, and final "
+        "answers. Before starting tool work for a new user request, briefly "
+        f"acknowledge what you will do in {language_name} without exposing "
+        "internal implementation details. Keep source text, code, commands, "
+        "filenames, API fields, and established technical terms unchanged when "
+        "translation would reduce precision. If the user explicitly requests "
+        "another language, follow that request instead."
+    )
 
 
 def resolve_ephemeral_system_prompt(cfg: Optional[Dict[str, Any]]) -> str:
-    """Resolve the session overlay from config.
+    """Resolve the personality/manual overlay plus the response-language contract.
 
-    ``display.personality`` wins when it names a known personality; otherwise
-    the user-owned ``agent.system_prompt`` applies. Callers should still
-    prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT`` when that env var is set.
+    ``display.personality`` wins over the user-owned ``agent.system_prompt``.
+    ``agent.response_language`` is independent and may follow the display
+    language. Callers still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT``.
     """
     name = active_personality_name(cfg)
-    if name:
-        return render_personality_prompt(available_personalities(cfg)[name])
-    return prompt_text(_get(cfg, "agent", "system_prompt", default=""))
+    personality_prompt = (
+        render_personality_prompt(available_personalities(cfg)[name])
+        if name
+        else prompt_text(_get(cfg, "agent", "system_prompt", default=""))
+    )
+    language_prompt = _resolve_response_language_prompt(cfg)
+
+    return "\n\n".join(part for part in (personality_prompt, language_prompt) if part)
 
 
 def persist_personality(value: Any) -> bool:
-    """Persist the personality selection — the ONLY sanctioned write path.
-
-    Writes the canonical name (or '') to ``display.personality`` in the active
-    HERMES_HOME config.yaml atomically, preserving comments and ordering.
-    Never touches ``agent.system_prompt``. Returns True on success.
-    """
+    """Persist the selection — the ONLY sanctioned write path. Writes the canonical name (or '')
+    to ``display.personality`` atomically (comments/ordering preserved); never touches
+    ``agent.system_prompt``. Returns True on success."""
     name = normalize_personality_name(value)
     try:
         from hermes_constants import get_hermes_home
@@ -176,8 +203,6 @@ def persist_personality(value: Any) -> bool:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_roundtrip_yaml_update(config_path, "display.personality", name)
         try:
-            import os
-
             os.chmod(config_path, 0o600)
         except (OSError, NotImplementedError):
             pass

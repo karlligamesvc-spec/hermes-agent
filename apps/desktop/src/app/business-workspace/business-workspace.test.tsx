@@ -4,6 +4,10 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { en } from '@/i18n/en'
+import { ja } from '@/i18n/ja'
+import { zh } from '@/i18n/zh'
+import { zhHant } from '@/i18n/zh-hant'
 import {
   activateSidebarNavigation,
   BUSINESS_HISTORY_ROUTE,
@@ -325,7 +329,7 @@ describe('hc-685 business workspace identity', () => {
     expect((goal as HTMLTextAreaElement).value).toContain('Monitor my key competitors')
     expect(startHome?.classList.contains('text-left')).toBe(true)
     expect(headingColumn?.className).toContain('max-w-[44rem]')
-    expect(launcherColumn?.className).toContain('max-w-[44rem]')
+    expect(launcherColumn?.className).toContain('max-w-[52rem]')
     expect(screen.queryByText(/Local test data/)).toBeNull()
   })
 
@@ -344,28 +348,177 @@ describe('hc-685 business workspace identity', () => {
 
     const goal = screen.getByRole('textbox', { name: '业务目标' })
     expect(
-      screen.getByText(
-        '抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。'
-      )
+      screen.getByText('抖音、小红书、微信视频号、快手、哔哩哔哩、YouTube、TikTok 和 Instagram；也可以直接上传视频。')
     ).toBeTruthy()
     expect(screen.getByText('粘贴链接即可保存原视频，并生成字幕、逐字稿和带时间码的文本。')).toBeTruthy()
     expect(screen.getByText('逐帧分析画面与声音，生成可编辑工程、批量版本和最终成片。')).toBeTruthy()
     expect(screen.getByText('汇总公开数据、评论和互动趋势，给出机会判断与下一步建议。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /下载视频并转成逐字稿/ }))
 
-    await waitFor(() =>
-      expect((goal as HTMLTextAreaElement).value).toContain('请处理我接下来提供的短视频链接')
-    )
+    await waitFor(() => expect((goal as HTMLTextAreaElement).value).toContain('请处理我接下来提供的短视频链接'))
     expect(window.document.activeElement).toBe(goal)
     expect(insert).not.toHaveBeenCalled()
     expect(screen.queryByText('启动前确认')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
-    await waitFor(() =>
-      expect(submit).toHaveBeenCalledWith(expect.stringContaining('请处理我接下来提供的短视频链接'))
-    )
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.stringContaining('请处理我接下来提供的短视频链接')))
     await waitFor(() => expect((goal as HTMLTextAreaElement).value).toBe(''))
     window.removeEventListener('hermes:composer-insert', insert)
+  })
+
+  it('keeps the viral-remake starter concise while the bundled Skill owns internal execution details', () => {
+    const prompts = [zh, zhHant, en, ja].map(locale => locale.businessWorkspace.workflows.homePaths.viralRemake.prompt)
+
+    const internalTerms =
+      /豆包|Doubao|Hypit|WhisperX|Brief|Treatment|复现命令|重現命令|再現コマンド|price|pricing|套餐|方案確認|プラン確認/i
+
+    for (const prompt of prompts) {
+      expect(prompt.length).toBeLessThan(260)
+      expect(prompt).not.toMatch(internalTerms)
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' }) as HTMLTextAreaElement
+    expect(goal.value).toBe(zh.businessWorkspace.workflows.homePaths.viralRemake.prompt)
+    expect(goal.value).not.toMatch(internalTerms)
+  })
+
+  it('starts the home viral-video card as the real seven-stage workflow when the catalog is available', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn(async () => ({ ok: true, run: domainRun('run-video', '拆解链接视频') }))
+
+    const getVideoCatalog = vi.fn(async () => ({
+      items: [
+        {
+          id: 'viral-video-remake',
+          kind: 'pipeline' as const,
+          name: '拆解并复刻爆款视频',
+          position: 0,
+          recommended: true,
+          slug: 'viral-video-remake',
+          stepCount: 7,
+          summary: '分阶段制作',
+          version: 1
+        }
+      ],
+      ok: true,
+      version: 'video-workflow-catalog/v1'
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog,
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
+      target: { value: '拆解链接视频：https://example.com/video' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-video'))
+    expect(getVideoCatalog).toHaveBeenCalledTimes(1)
+    expect(startGoal).toHaveBeenCalledWith({
+      objective: '拆解链接视频：https://example.com/video',
+      starter: expect.objectContaining({ id: 'viral-video-remake', slug: 'viral-video-remake', version: 1 })
+    })
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('restores a routed video template and keeps chat fallback for an older server', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn()
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog: vi.fn(async () => ({ code: 'request_failed' as const, ok: false })),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessWorkflowCatalogProvenance: 'production',
+              businessWorkflowSlug: 'video-source-collection'
+            }
+          }
+        ]}
+      >
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('启动前确认').closest('section')?.textContent).toContain('采集视频与数据')
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
+      target: { value: '使用旧服务端处理视频链接' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('使用旧服务端处理视频链接'))
+    expect(startGoal).not.toHaveBeenCalled()
+  })
+
+  it('keeps an attached home-card video on the attachment-capable chat path', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn()
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome
+            attachments={[{ id: 'source-video', kind: 'file', label: 'source.mp4' }]}
+            onSubmitGoal={submit}
+          />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    expect(screen.queryByText('启动前确认')).toBeNull()
+    expect(screen.getByRole('button', { name: '开始执行' }).hasAttribute('disabled')).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+    expect(startGoal).not.toHaveBeenCalled()
   })
 
   it('starts the selected workflow through the authenticated domain bridge and opens its real Run', async () => {
@@ -1606,6 +1759,24 @@ describe('hc-685 business workspace identity', () => {
       .map(element => element.getAttribute('aria-label'))
 
     expect(keyboardOrder).toEqual(['业务目标', '开始执行', '附加'])
+  })
+
+  it('keeps the Start goal field wide and tall enough to review a multi-line brief', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const goal = screen.getByRole('textbox', { name: '业务目标' })
+    const content = goal.closest('[data-business-start-content]')
+
+    expect(goal.getAttribute('rows')).toBe('5')
+    expect(goal.className).toContain('min-h-[7rem]')
+    expect(goal.className).toContain('sm:min-h-[8rem]')
+    expect(content?.className).toContain('max-w-[52rem]')
   })
 
   it('preserves the draft for a rejected goal and leaves Shift+Enter to the textarea', async () => {

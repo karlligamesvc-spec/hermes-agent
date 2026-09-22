@@ -18,6 +18,8 @@ describe('modelVendor', () => {
     ['hy3', 'hunyuan'],
     ['step-3.7-flash', 'stepfun'],
     ['mimo-v2.5-pro', 'mimo'],
+    ['mimo-v2.6-flash', 'mimo'],
+    ['mimo-v2.6-pro', 'mimo'],
     ['minimax-m3', 'minimax'],
     ['longcat-2.0', 'longcat'],
     // BYOK side

@@ -1,6 +1,5 @@
+import { SLASH_COMMAND_RE } from '@hermes/shared'
 import { atom } from 'nanostores'
-
-import { SLASH_COMMAND_RE } from '@/lib/chat-runtime'
 
 import type { ComposerAttachment } from './composer'
 
@@ -11,6 +10,9 @@ export interface QueuedPromptEntry {
    *  text the agent receives. A queued `/skill` invocation carries the whole
    *  expanded skill body as `text` — the UI shows the invocation instead. */
   displayText?: string
+  /** A hidden note (a setup line for the model) parked while the turn ran. The panel
+   *  shows a neutral label and the drain submits it hidden again. */
+  displayKind?: 'hidden'
   attachments: ComposerAttachment[]
   queuedAt: number
 }
@@ -60,6 +62,31 @@ const save = (state: QueueState) => {
 }
 
 export const $queuedPromptsBySession = atom<QueueState>(load())
+
+/**
+ * Cross-component claims for queued entries currently being submitted.
+ *
+ * The visible ChatBar and the off-screen background drainer intentionally
+ * overlap for a render while selection changes. Component-local refs cannot
+ * serialize that hand-off, so both could submit the same still-present entry
+ * before the winner removed it. Entry ids are process-unique and survive
+ * session-key migration, making them the smallest reliable claim key.
+ */
+const claimedQueuedPromptIds = new Set<string>()
+
+export const claimQueuedPrompt = (id: string): boolean => {
+  if (claimedQueuedPromptIds.has(id)) {
+    return false
+  }
+
+  claimedQueuedPromptIds.add(id)
+
+  return true
+}
+
+export const releaseQueuedPromptClaim = (id: string): void => {
+  claimedQueuedPromptIds.delete(id)
+}
 
 /**
  * Sessions whose queue the user explicitly halted (Stop button / Esc). A parked
@@ -125,7 +152,7 @@ export const getQueuedPrompts = (key: string | null | undefined): QueuedPromptEn
 
 export const enqueueQueuedPrompt = (
   key: string | null | undefined,
-  payload: { text: string; attachments: ComposerAttachment[]; displayText?: string }
+  payload: { text: string; attachments: ComposerAttachment[]; displayText?: string; displayKind?: 'hidden' }
 ): null | QueuedPromptEntry => {
   const sid = sidOf(key)
 
@@ -137,6 +164,7 @@ export const enqueueQueuedPrompt = (
     id: nextId(),
     text: payload.text,
     ...(payload.displayText ? { displayText: payload.displayText } : {}),
+    ...(payload.displayKind ? { displayKind: payload.displayKind } : {}),
     attachments: cloneAttachments(payload.attachments),
     queuedAt: Date.now()
   }
@@ -339,6 +367,11 @@ export const isQueueParked = (key: string | null | undefined): boolean => {
 /** Inputs to {@link shouldAutoDrain}. */
 export interface AutoDrainInput {
   isBusy: boolean
+  /** The gateway has started a turn but has not emitted its authoritative
+   *  `session.info running=false` bookend yet. `message.complete` arrives
+   *  earlier, while post-turn work can still be running, so it is not enough
+   *  to release a queued next turn. */
+  turnLive?: boolean
   /** The user explicitly halted this session's queue (Stop / Esc). */
   parked?: boolean
   queueLength: number
@@ -361,8 +394,8 @@ export interface AutoDrainInput {
  * queue faster (send-now-while-busy) never park, so they keep draining through
  * this same gate.
  */
-export const shouldAutoDrain = ({ isBusy, parked, queueLength }: AutoDrainInput): boolean =>
-  !isBusy && !parked && queueLength > 0
+export const shouldAutoDrain = ({ isBusy, parked, queueLength, turnLive }: AutoDrainInput): boolean =>
+  !isBusy && !turnLive && !parked && queueLength > 0
 
 /** Auto-drain attempts for one entry before we stop retrying and toast. The
  * entry stays queued for a manual send; a remount/reconnect resets the count. */

@@ -1,7 +1,7 @@
 """Seam-test + behavior test for apex_overlay.custom_base_url_guard.
 
 Pins the upstream symbol the seam monkey-patches
-(``hermes_cli.web_server._apply_main_model_assignment``) so an upstream
+(``hermes_cli.web_server_config._apply_main_model_assignment``) so an upstream
 rename/move turns a silently-disarmed seam into a loud CI failure, and proves
 the regression it exists for:
 
@@ -48,6 +48,15 @@ MANAGED_ROW = {
 }
 
 
+def _switch_result(provider: str, model: str, base_url: str = ""):
+    """Minimal canonical result consumed by the v0.21 assignment chokepoint."""
+    from hermes_cli.model_switch import ModelSwitchResult
+
+    return ModelSwitchResult(
+        success=True, target_provider=provider, new_model=model, base_url=base_url,
+    )
+
+
 @pytest.fixture
 def hermes_config():
     """Write a config.yaml into the (hermetic) HERMES_HOME and read it back.
@@ -79,18 +88,18 @@ def restore_meta_path():
 # ---------------------------------------------------------------------------
 
 def test_seam_target_apply_main_model_assignment_exists():
-    """apex_overlay patches hermes_cli.web_server._apply_main_model_assignment.
+    """apex_overlay patches hermes_cli.web_server_config._apply_main_model_assignment.
 
     It is the single chokepoint every main-slot assignment goes through
     (``/api/model/set``, custom-endpoint activate, profile writes). If upstream
     renames/moves it, custom-family switches silently start erasing
     ``model.base_url`` again.
     """
-    from hermes_cli import web_server
+    from hermes_cli import web_server_config
 
-    fn = getattr(web_server, custom_base_url_guard._TARGET_ASSIGN_FN, None)
+    fn = getattr(web_server_config, custom_base_url_guard._TARGET_ASSIGN_FN, None)
     assert fn is not None, (
-        "hermes_cli.web_server._apply_main_model_assignment is gone — the "
+        "hermes_cli.web_server_config._apply_main_model_assignment is gone — the "
         "custom base_url guard can no longer attach. Update "
         "apex_overlay.custom_base_url_guard._TARGET_ASSIGN_FN and the wrapper."
     )
@@ -98,11 +107,11 @@ def test_seam_target_apply_main_model_assignment_exists():
         name for name, param in inspect.signature(fn).parameters.items()
         if param.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
     ]
-    assert positional[:5] == [
-        "model_cfg", "provider", "model", "base_url", "api_key",
+    assert positional[:3] == [
+        "model_cfg", "result", "api_key",
     ], (
-        "the wrapper forwards these five positionally — upstream now starts "
-        f"with {positional[:5]}"
+        "the wrapper forwards these three positionally — upstream now starts "
+        f"with {positional[:3]}"
     )
 
 
@@ -259,9 +268,9 @@ def test_repair_config_base_url_skips_a_managed_install(hermes_config, monkeypat
 @pytest.fixture
 def raw_assign():
     """Upstream's own assignment function, with any seam wrapper peeled off."""
-    from hermes_cli import web_server
+    from hermes_cli import web_server_config
 
-    return inspect.unwrap(web_server._apply_main_model_assignment)
+    return inspect.unwrap(web_server_config._apply_main_model_assignment)
 
 
 @pytest.fixture
@@ -310,7 +319,9 @@ _ASSIGNMENTS = [
 def test_guarded_assignment_base_url(
     guarded_assign, start, provider, model, base_url, expected_url
 ):
-    result = guarded_assign(copy.deepcopy(start), provider, model, base_url)
+    result = guarded_assign(
+        copy.deepcopy(start), _switch_result(provider, model, base_url)
+    )
 
     assert result.get("base_url", "") == expected_url
     # Upstream's own effects are untouched.
@@ -322,7 +333,7 @@ def test_upstream_erases_the_relay_url_without_the_guard(raw_assign):
     """Regression fixture: the exact behavior this seam exists to correct."""
     model_cfg = raw_assign(
         {"provider": "moa", "default": "__auto__", "base_url": ""},
-        "custom", MANAGED_MODEL,
+        _switch_result("custom", MANAGED_MODEL),
     )
     assert model_cfg.get("base_url", "") == "", (
         "upstream is expected to leave the bare custom provider with no address"
@@ -334,7 +345,9 @@ def test_guard_does_nothing_without_a_saved_endpoint(raw_assign, hermes_config):
     hermes_config({"model": {"provider": "moa"}, "custom_providers": []})
     guarded = custom_base_url_guard._wrap_apply_main_model_assignment(raw_assign)
 
-    result = guarded({"provider": "moa", "base_url": ""}, "custom", "x")
+    result = guarded(
+        {"provider": "moa", "base_url": ""}, _switch_result("custom", "x")
+    )
 
     assert result.get("base_url", "") == ""
 
@@ -351,14 +364,14 @@ def test_guard_never_raises_into_the_host_path(monkeypatch):
 
     monkeypatch.setattr(custom_base_url_guard, "routed_endpoint_url", boom)
 
-    assert guarded({}, "custom", "x") is sentinel
+    assert guarded({}, _switch_result("custom", "x")) is sentinel
 
 
 def test_guard_passes_through_a_non_dict_result():
     guarded = custom_base_url_guard._wrap_apply_main_model_assignment(
         lambda *a, **k: "not-a-dict"
     )
-    assert guarded({}, "custom", "x") == "not-a-dict"
+    assert guarded({}, _switch_result("custom", "x")) == "not-a-dict"
 
 
 def test_wrapper_is_marked_for_idempotence():
@@ -380,6 +393,7 @@ def test_boot_repair_restores_the_full_picker_catalog(hermes_config):
     from unittest.mock import patch
 
     from hermes_cli import model_switch
+    from hermes_cli import model_switch_providers
     from hermes_cli.config import load_config
 
     live_catalog = ["deepseek-v4-pro", "glm-5.2", "qwen3.7-max", "kimi-k3"]
@@ -389,10 +403,12 @@ def test_boot_repair_restores_the_full_picker_catalog(hermes_config):
         config = load_config()
         model = config["model"]
         with patch.object(
-            model_switch,
+            model_switch_providers,
             "_fetch_picker_live_models",
             lambda *args, **kwargs: list(live_catalog),
-        ), patch.object(model_switch, "_save_discovered_models_to_config", lambda *a, **k: None):
+        ), patch.object(
+            model_switch_providers, "_save_discovered_models_to_config", lambda *a, **k: None
+        ):
             rows = raw_list_providers(
                 current_provider=model.get("provider", ""),
                 current_base_url=model.get("base_url", ""),
@@ -429,21 +445,21 @@ def test_boot_repair_restores_the_full_picker_catalog(hermes_config):
 # ---------------------------------------------------------------------------
 
 def test_apply_patches_an_already_loaded_web_server(monkeypatch, restore_meta_path):
-    from hermes_cli import web_server
+    from hermes_cli import web_server_config
 
-    original = web_server._apply_main_model_assignment
+    original = web_server_config._apply_main_model_assignment
     monkeypatch.setattr(custom_base_url_guard, "_APPLIED", False)
     try:
         assert custom_base_url_guard.apply() is True
-        patched = web_server._apply_main_model_assignment
+        patched = web_server_config._apply_main_model_assignment
         assert getattr(patched, custom_base_url_guard._MARK, False) is True
 
         # Second apply is a no-op (already applied).
         monkeypatch.setattr(custom_base_url_guard, "_APPLIED", False)
         assert custom_base_url_guard.apply() is True
-        assert web_server._apply_main_model_assignment is patched
+        assert web_server_config._apply_main_model_assignment is patched
     finally:
-        web_server._apply_main_model_assignment = original
+        web_server_config._apply_main_model_assignment = original
 
 
 def test_apply_arms_an_import_hook_instead_of_importing(
@@ -452,9 +468,8 @@ def test_apply_arms_an_import_hook_instead_of_importing(
     """The dashboard module must not be dragged into gateway/CLI processes."""
     module_name = "_apex_overlay_fake_dashboard_under_test"
     (tmp_path / f"{module_name}.py").write_text(
-        "def _apply_main_model_assignment(model_cfg, provider, model, "
-        "base_url='', api_key=''):\n"
-        "    return {'provider': provider, 'base_url': base_url}\n",
+        "def _apply_main_model_assignment(model_cfg, result, api_key=''):\n"
+        "    return {'provider': result.target_provider, 'base_url': result.base_url}\n",
         encoding="utf-8",
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -476,7 +491,9 @@ def test_apply_arms_an_import_hook_instead_of_importing(
             "the hook is one-shot and must unhook itself after firing"
         )
         # The patched function still behaves like the module's own.
-        assert module._apply_main_model_assignment({}, "custom", "x")["provider"] == "custom"
+        assert module._apply_main_model_assignment(
+            {}, _switch_result("custom", "x")
+        )["provider"] == "custom"
     finally:
         sys.modules.pop(module_name, None)
 

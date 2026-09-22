@@ -70,6 +70,7 @@ def test_seam_target_list_authenticated_providers_exists():
     instead.
     """
     from hermes_cli import model_switch
+    from hermes_cli import model_switch_providers
 
     fn = getattr(model_switch, picker_probe_widening._TARGET_LIST_FN, None)
     assert fn is not None, (
@@ -313,15 +314,16 @@ def _managed_models(list_providers, current_provider, current_base_url, current_
         return list(LIVE_CATALOG)
 
     from hermes_cli import model_switch
+    from hermes_cli import model_switch_providers
 
     # v0.21 routes every picker probe through this helper so native catalogs
     # and the generic discovery cache share one boundary. Patch that
     # authoritative boundary: patching models.fetch_api_models directly no
     # longer observes a picker probe and can be masked by a warm cache.
     with patch.object(
-        model_switch, "_fetch_picker_live_models", fake_fetch
+        model_switch_providers, "_fetch_picker_live_models", fake_fetch
     ), patch.object(
-        model_switch, "_save_discovered_models_to_config", lambda *a, **k: None
+        model_switch_providers, "_save_discovered_models_to_config", lambda *a, **k: None
     ):
         rows = list_providers(
             current_provider=current_provider,

@@ -1,3 +1,5 @@
+import { REASONING_EFFORTS } from '@hermes/shared'
+
 import {
   Box,
   Brain,
@@ -13,7 +15,6 @@ import {
   Sun,
   Wrench
 } from '@/lib/icons'
-import { REASONING_EFFORTS } from '@/lib/reasoning-effort'
 import type { ThemeMode } from '@/themes/context'
 
 // Single source of truth for built-in personality names lives in
@@ -42,36 +43,11 @@ interface ProviderPrefix {
 export const EMPTY_SELECT_VALUE = '__hermes_empty__'
 export const CONTROL_TEXT = 'text-xs'
 
-// ── Consumer (China-first) settings surface ─────────────────────────────────
-// APEX Desktop ships a consumer-sized settings IA: 个性化 / 外观 / 浏览器 /
-// 提供方 / 已归档对话. Every pro/technical section below is HIDDEN — not deleted — from
-// the settings nav, the settings-field search index and the ⌘K command
-// palette, all of which consult this one set. Pages and their `?tab=` deep
-// links keep working, so re-enabling a section later is a one-line delete
-// here.
-export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set([
-  'config:model', // 模型 — platform config drives model choice for now
-  'config:chat', // 对话 — 人格 moved into 个性化; the rest became defaults
-  'config:workspace', // 工作区
-  'config:safety', // 安全
-  'config:memory', // 记忆与上下文
-  'config:voice', // 语音
-  'config:advanced', // 高级
-  'notifications', // 通知
-  'gateway', // 网关
-  'keys', // 工具与密钥 (tools list + key settings)
-  'mcp', // MCP servers
-  'messaging', // 消息平台 jump entry inside settings
-  // Upstream v0.19.0 added four more nav rows. None of them passed the consumer
-  // bar, so they are HIDDEN here rather than deleted — the pages and their
-  // `?tab=` deep links keep working, and re-enabling one is a one-line delete.
-  'billing', // 账单 — upstream's account billing page, 100% hardcoded English
-  'keybinds', // 键盘快捷键 — localized, but a power-user surface
-  'plugins', // 插件 — exposes ~/.hermes/desktop-plugins + "reveal in Finder"
-  'about', // 关于 — its content lives inside 个性化 (AboutSettingsBody)
-  // Sub-views are keyed `<parent>:<pview>` so one set still drives everything.
-  'providers:custom-endpoints' // 自定义端点 — 402 lines, zero i18n, `http://127.0.0.1:8081/v1` samples
-])
+// ── APEX settings surface ────────────────────────────────────────────────────
+// APEX exposes the current Hermes settings surface so users can inspect and
+// try upstream capabilities. Keep Nous account billing hidden because APEX
+// does not expose that product model.
+export const CONSUMER_HIDDEN_SECTIONS: ReadonlySet<string> = new Set(['billing'])
 
 export const isConsumerHiddenSection = (view: string): boolean => CONSUMER_HIDDEN_SECTIONS.has(view)
 
@@ -316,6 +292,25 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   // Speech-to-text backends — kept in sync with the stt block in
   // hermes_cli/config.py (local/groq/openai/mistral/elevenlabs).
   'stt.provider': ['local', 'groq', 'openai', 'mistral', 'xai', 'elevenlabs'],
+  // How the desktop voice conversation is wired — tools/voice_live.py owns the
+  // gpt-live branch (one full-duplex voice model delegating to Hermes).
+  'voice.voice_chat_mode': ['chained', 'gpt-live'],
+  'voice.gpt_live.voice': [
+    'marin',
+    'cedar',
+    'quartz',
+    'ripple',
+    'vesper',
+    'willow',
+    'stone',
+    'gleam',
+    'meridian',
+    'bossa',
+    'tempo',
+    'beacon',
+    'delta',
+    'cinder'
+  ],
   // OpenAI TTS voices — the union across models (per the OpenAI TTS API
   // docs). Model-specific narrowing happens in enumOptionsFor():
   // tts-1 / tts-1-hd support 9 voices; gpt-4o-mini-tts supports all 13.
@@ -420,6 +415,7 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
 // suggestions rather than a gate for these keys.
 export const FREE_INPUT_KEYS = new Set([
   'tts.edge.voice',
+  'voice.gpt_live.voice',
   'tts.openai.model',
   'tts.openai.voice',
   'tts.elevenlabs.voice_id',
@@ -502,7 +498,12 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   voice: {
     recordKey: 'Voice Shortcut',
     maxRecordingSeconds: 'Max Recording Length',
-    autoTts: 'Read Responses Aloud'
+    autoTts: 'Read Responses Aloud',
+    voiceChatMode: 'Voice Chat Mode',
+    gptLive: {
+      voice: 'GPT-Live Voice',
+      instructions: 'GPT-Live Persona'
+    }
   },
   stt: {
     enabled: 'Speech To Text',
@@ -663,7 +664,14 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
     enabled: 'Summarize older context when conversations get large.'
   },
   voice: {
-    autoTts: 'Automatically speak assistant responses.'
+    autoTts: 'Automatically speak assistant responses.',
+    voiceChatMode:
+      'chained: speech-to-text → Hermes → text-to-speech with the providers below. gpt-live: one full-duplex OpenAI voice model (gpt-live-1) listens and talks, and hands every real request to Hermes — any model you have selected answers with the full toolset. Needs an OpenAI API key; the voice layer bills $0.05 per minute.',
+    gptLive: {
+      voice: 'Voice for GPT-Live mode. Custom voice IDs are accepted.',
+      instructions:
+        'Extra sentences for the live voice persona (tone, pace, language). Hermes keeps its own system prompt.'
+    }
   },
   tts: {
     xai: {
@@ -783,6 +791,9 @@ export const SECTIONS: DesktopConfigSection[] = [
     label: 'Voice',
     icon: Mic,
     keys: [
+      'voice.voice_chat_mode',
+      'voice.gpt_live.voice',
+      'voice.gpt_live.instructions',
       'tts.provider',
       'stt.enabled',
       'stt.echo_transcripts',

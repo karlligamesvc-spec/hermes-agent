@@ -7,8 +7,10 @@ import {
   enqueueQueuedPrompt,
   getQueuedPrompts,
   isQueueParked,
+  MAX_AUTO_DRAIN_ATTEMPTS,
   parkQueuedPrompts
 } from '@/store/composer-queue'
+import { setSessionsLoading } from '@/store/session'
 
 import type { QueueEditState } from '../composer-utils'
 import type { ChatBarProps } from '../types'
@@ -23,18 +25,21 @@ import { useComposerQueue } from './use-composer-queue'
 
 const SESSION_KEY = 'stored-session-queue-hook'
 
-function renderQueueHook(overrides: { busy?: boolean; onCancel?: () => void; onSteer?: ChatBarProps['onSteer'] } = {}) {
+function renderQueueHook(
+  overrides: { busy?: boolean; onCancel?: () => void; onSteer?: ChatBarProps['onSteer']; turnLive?: boolean } = {}
+) {
   const onSubmit = vi.fn<ChatBarProps['onSubmit']>(async () => true)
   const onCancel = overrides.onCancel ?? vi.fn()
   const onSteer = overrides.onSteer
   const queueEditRef: { current: QueueEditState | null } = { current: null }
 
   const hook = renderHook(
-    ({ busy }: { busy: boolean }) =>
+    ({ busy, turnLive }: { busy: boolean; turnLive: boolean }) =>
       useComposerQueue({
         activeQueueSessionKey: SESSION_KEY,
         attachments: [],
         busy,
+        turnLive,
         clearDraft: () => undefined,
         draftRef: { current: '' },
         focusInput: () => undefined,
@@ -46,7 +51,7 @@ function renderQueueHook(overrides: { busy?: boolean; onCancel?: () => void; onS
         queueSessionKey: SESSION_KEY,
         sessionId: 'rt-session-queue-hook'
       }),
-    { initialProps: { busy: overrides.busy ?? false } }
+    { initialProps: { busy: overrides.busy ?? false, turnLive: overrides.turnLive ?? false } }
   )
 
   return { hook, onCancel, onSubmit }
@@ -57,6 +62,7 @@ describe('useComposerQueue park integration', () => {
     window.localStorage.clear()
     $queuedPromptsBySession.set({})
     $parkedQueueSessions.set({})
+    setSessionsLoading(false)
   })
 
   afterEach(() => {
@@ -64,6 +70,64 @@ describe('useComposerQueue park integration', () => {
     vi.restoreAllMocks()
     $queuedPromptsBySession.set({})
     $parkedQueueSessions.set({})
+    setSessionsLoading(true)
+  })
+
+  it('reschedules rejected foreground drains to a bounded stop and keeps manual recovery', async () => {
+    vi.useFakeTimers()
+
+    try {
+      const entry = enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'recoverable' })!
+      const { hook, onSubmit } = renderQueueHook({ busy: true })
+      onSubmit.mockResolvedValue(false)
+      hook.rerender({ busy: false, turnLive: false })
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      for (let attempt = 1; attempt < MAX_AUTO_DRAIN_ATTEMPTS; attempt++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(30_000)
+        })
+      }
+
+      expect(onSubmit).toHaveBeenCalledTimes(MAX_AUTO_DRAIN_ATTEMPTS)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300_000)
+      })
+      expect(onSubmit).toHaveBeenCalledTimes(MAX_AUTO_DRAIN_ATTEMPTS)
+      expect(getQueuedPrompts(SESSION_KEY).map(item => item.text)).toEqual(['recoverable'])
+      onSubmit.mockResolvedValue(true)
+      await act(async () => {
+        await hook.result.current.sendQueuedNow(entry.id)
+      })
+      expect(getQueuedPrompts(SESSION_KEY)).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels a pending retry on unmount without losing the queued entry', async () => {
+    vi.useFakeTimers()
+
+    try {
+      enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'keep on disconnect' })
+      const { hook, onSubmit } = renderQueueHook({ busy: true })
+      onSubmit.mockRejectedValue(new Error('unavailable'))
+      hook.rerender({ busy: false, turnLive: false })
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+      hook.unmount()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300_000)
+      })
+      expect(onSubmit).toHaveBeenCalledTimes(1)
+      expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('auto-drains an unparked queue once idle', async () => {
@@ -75,6 +139,23 @@ describe('useComposerQueue park integration', () => {
     expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(0)
   })
 
+  it('waits for session.info running=false after message.complete before auto-draining', async () => {
+    enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'next turn' })
+
+    const { hook, onSubmit } = renderQueueHook({ busy: true, turnLive: true })
+
+    // message.complete has rendered the first answer, but the gateway agent
+    // loop is still in its finally/post-turn window.
+    hook.rerender({ busy: false, turnLive: true })
+    await act(async () => Promise.resolve())
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    // session.info running=false is the authoritative turn bookend.
+    hook.rerender({ busy: false, turnLive: false })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0]?.[0]).toBe('next turn')
+  })
+
   it('holds a parked queue at the idle settle (the Stop edge)', async () => {
     enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'halted' })
     parkQueuedPrompts(SESSION_KEY)
@@ -82,7 +163,7 @@ describe('useComposerQueue park integration', () => {
     const { hook, onSubmit } = renderQueueHook({ busy: true })
 
     // The Stop settle: busy flips false with the park in place.
-    hook.rerender({ busy: false })
+    hook.rerender({ busy: false, turnLive: false })
 
     await act(async () => {
       await Promise.resolve()
@@ -124,7 +205,7 @@ describe('useComposerQueue park integration', () => {
     expect(isQueueParked(SESSION_KEY)).toBe(false)
 
     // Turn settles → the promoted entry drains.
-    hook.rerender({ busy: false })
+    hook.rerender({ busy: false, turnLive: false })
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0]?.[0]).toBe('send me now')
@@ -158,7 +239,7 @@ describe('useComposerQueue park integration', () => {
     expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(1)
 
     // Turn settles → the surviving entry drains normally.
-    hook.rerender({ busy: false })
+    hook.rerender({ busy: false, turnLive: false })
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0]?.[0]).toBe('kept on reject')
   })
@@ -194,5 +275,37 @@ describe('useComposerQueue park integration', () => {
 
     expect(isQueueParked(SESSION_KEY)).toBe(false)
     expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(1)
+  })
+
+  it('does not auto-drain restored queues while the session list is still loading', async () => {
+    setSessionsLoading(true)
+    enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'wait for session list' })
+
+    const { onSubmit } = renderQueueHook()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(1)
+  })
+
+  it('auto-drains a restored queue once the session list finishes loading', async () => {
+    setSessionsLoading(true)
+    enqueueQueuedPrompt(SESSION_KEY, { attachments: [], text: 'send after load' })
+
+    const { hook, onSubmit } = renderQueueHook()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    setSessionsLoading(false)
+    hook.rerender({ busy: false, turnLive: false })
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(getQueuedPrompts(SESSION_KEY)).toHaveLength(0)
   })
 })

@@ -8,7 +8,7 @@ The managed ApexNodes relay is registered as the **bare** ``custom`` provider
 Bare ``custom`` has no registry entry and no default host: its entire endpoint
 identity is ``model.base_url``.
 
-``hermes_cli/web_server.py`` ``_apply_main_model_assignment`` clears
+``hermes_cli/web_server_config.py`` ``_apply_main_model_assignment`` clears
 ``base_url`` whenever the provider changes::
 
     elif model_cfg.get("base_url") and new_provider != prev_provider:
@@ -63,14 +63,14 @@ value:
 
 Why a seam (and not an in-place edit)
 =====================================
-``hermes_cli/web_server.py`` is a hot upstream file; the overlay discipline
+``hermes_cli/web_server_config.py`` is a hot upstream file; the overlay discipline
 (config > plugin > upstream PR > in-place) keeps it byte-for-byte upstream and
 re-applies our behavior at load time.
 
 Unlike the other seams, the wrapped symbol lives in the **dashboard** module,
 which the gateway and plain-CLI processes never import (a whole FastAPI app,
 +215 modules) — and ``apply()`` runs from inside plugin discovery, while
-``web_server`` imports ``plugins.memory.config_schema`` at module scope, so
+``web_server_config`` imports dashboard configuration dependencies at module scope, so
 importing it eagerly would also re-enter the package discovery is walking.
 Hence the one-shot import hook below: patch it now if it is already loaded,
 otherwise patch it the instant something imports it, and cost nothing in the
@@ -92,7 +92,7 @@ logger = logging.getLogger(__name__)
 # The upstream symbols this seam binds against. Centralized so the seam-test
 # can assert they still exist with a compatible shape. If upstream renames or
 # moves them, both the patch AND the seam-test break loudly.
-_TARGET_WEB_MODULE = "hermes_cli.web_server"
+_TARGET_WEB_MODULE = "hermes_cli.web_server_config"
 _TARGET_ASSIGN_FN = "_apply_main_model_assignment"
 
 # Guard so apply() is idempotent even if called from multiple boot paths.
@@ -202,21 +202,23 @@ def _wrap_apply_main_model_assignment(orig: Callable) -> Callable:
     """
 
     @functools.wraps(orig)
-    def wrapper(model_cfg, provider, model, base_url="", api_key="", **kwargs):
-        result = orig(model_cfg, provider, model, base_url, api_key, **kwargs)
+    def wrapper(model_cfg, result, api_key="", **kwargs):
+        assigned = orig(model_cfg, result, api_key, **kwargs)
         try:
-            if str(base_url or "").strip():
-                return result  # caller was explicit — never second-guess it
-            if not isinstance(result, dict):
-                return result
-            if str(result.get("base_url") or "").strip():
-                return result  # upstream kept one — nothing was lost
+            provider = str(getattr(result, "target_provider", "") or "").strip()
+            resolved_base_url = str(getattr(result, "base_url", "") or "").strip()
+            if resolved_base_url:
+                return assigned  # canonical switch result was explicit/resolved — never second-guess it
+            if not isinstance(assigned, dict):
+                return assigned
+            if str(assigned.get("base_url") or "").strip():
+                return assigned  # upstream kept one — nothing was lost
             if not in_custom_family(provider):
-                return result  # registry provider: the clear is correct
+                return assigned  # registry provider: the clear is correct
 
             routed_url = routed_endpoint_url(provider)
             if routed_url:
-                result["base_url"] = routed_url
+                assigned["base_url"] = routed_url
                 logger.debug(
                     "apex_overlay: kept model.base_url on the custom-family "
                     "switch to %r (%s) — clearing it would erase the endpoint",
@@ -227,7 +229,7 @@ def _wrap_apply_main_model_assignment(orig: Callable) -> Callable:
             # assignment already landed and is returned untouched.
             logger.debug("apex_overlay: custom base_url guard skipped", exc_info=True)
 
-        return result
+        return assigned
 
     setattr(wrapper, _MARK, True)
     return wrapper

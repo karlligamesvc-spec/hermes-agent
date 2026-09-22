@@ -165,7 +165,7 @@ def test_web_status_endpoint_funnels_through_patched_dispatcher():
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[2]
-    src = (repo / "hermes_cli" / "web_server.py").read_text(encoding="utf-8")
+    src = (repo / "hermes_cli" / "web_routers" / "oauth.py").read_text(encoding="utf-8")
     assert "hauth.get_auth_status(provider_id)" in src, (
         "web_server's provider-status fallback no longer calls "
         "hauth.get_auth_status(provider_id) — the hc-621 deny gate no longer "

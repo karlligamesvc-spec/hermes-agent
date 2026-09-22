@@ -142,13 +142,12 @@ class TestXiaomiModelCatalog:
     def test_static_model_list_fallback(self):
         """Static _PROVIDER_MODELS fallback must exist for model picker.
 
-        We only assert the provider key is present — the specific model
-        names are data that changes with upstream releases and doesn't
-        belong in tests.
+        MiMo 2.6 is an APEX product shelf contract, so both approved ids must
+        survive even when live discovery is unavailable.
         """
         from hermes_cli.models import _PROVIDER_MODELS
         assert "xiaomi" in _PROVIDER_MODELS
-        assert len(_PROVIDER_MODELS["xiaomi"]) >= 1
+        assert {"mimo-v2.6-flash", "mimo-v2.6-pro"} <= set(_PROVIDER_MODELS["xiaomi"])
 
     def test_list_agentic_models_mock(self, monkeypatch):
         """When models.dev returns Xiaomi data, list_agentic_models should return models."""
@@ -214,6 +213,8 @@ class TestXiaomiNormalization:
 
 
     @pytest.mark.parametrize("input_name,expected", [
+        ("MiMo-V2.6-Flash", "mimo-v2.6-flash"),
+        ("MiMo-V2.6-Pro", "mimo-v2.6-pro"),
         ("MiMo-V2.5-Pro", "mimo-v2.5-pro"),
         ("MIMO-V2.5-PRO", "mimo-v2.5-pro"),
         ("MiMo-v2.5-pro", "mimo-v2.5-pro"),

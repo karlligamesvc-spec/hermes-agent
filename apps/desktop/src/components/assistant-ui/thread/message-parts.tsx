@@ -10,6 +10,7 @@ import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useSta
 
 import { requestComposerSubmit } from '@/app/chat/composer/focus'
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
+import { ConnectorExecution, ConnectorTool } from '@/components/assistant-ui/connector-tool'
 import { MarkdownText, MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
 import { McpSetupTool } from '@/components/assistant-ui/mcp-setup-tool'
 import { AgentDeliveryNotice, deliveryTargetFromCommand } from '@/components/assistant-ui/thread/agent-delivery'
@@ -22,16 +23,23 @@ import { GenLadderCard } from '@/components/chat/gen-ladder-card'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
 import { SCAFFOLD_LABEL_CLASS, SCAFFOLD_META_CLASS, ScaffoldRow } from '@/components/chat/scaffold-row'
 import { useI18n } from '@/i18n'
+import { connectorCalls } from '@/lib/connector-tools'
 import { genLadderCardFromResult } from '@/lib/gen-ladder'
 import { generatedImageFromResult } from '@/lib/generated-images'
+import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { separateGluedReasoningBlocks } from '@/lib/reasoning-blocks'
+import { isTodoToolName } from '@/lib/todos'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
-import { $reasoningCollapsedByDefault } from "@/store/reasoning-disclosure"
+import { $reasoningCollapsedByDefault } from '@/store/reasoning-disclosure'
 import { $gatewayState } from '@/store/session'
 
-
 type TimelineToolCallProps = ToolCallMessagePartProps & { completedAt?: number; timestamp?: number }
+
+// A call sealed without a result (turn stopped, completion event lost) is
+// neither pending nor successful; only the generic row can say so.
+const settledWithoutResult = ({ completedAt, result }: TimelineToolCallProps): boolean =>
+  result === undefined && completedAt !== undefined
 
 const ImageGenerateTool: FC<TimelineToolCallProps> = props => {
   const { args, completedAt, result, timestamp } = props
@@ -40,7 +48,7 @@ const ImageGenerateTool: FC<TimelineToolCallProps> = props => {
   // The image card owns successful generations. Failed or malformed results
   // still need the normal tool row: it extracts the error text and gives the
   // user an honest, expandable failure rather than silently dropping the call.
-  if (result !== undefined && !generatedImageFromResult(result)) {
+  if (settledWithoutResult(props) || (result !== undefined && !generatedImageFromResult(result))) {
     return <ToolFallback {...props} />
   }
 
@@ -52,10 +60,9 @@ const ImageGenerateTool: FC<TimelineToolCallProps> = props => {
   )
 }
 
-// The generation-ladder tool (`gen_ladder`) returns a `gen-ladder/1` card as its
-// result; the desktop draws it inline and forwards any control tap back to the
-// agent as a fresh user turn. Envelope `directive`/`internal` fields are dropped
-// by `genLadderCardFromResult` — the render layer only ever consumes `card`.
+// APEX's generation ladder is an interactive business result, not a generic
+// tool log. Preserve its card while taking upstream's connector and sealed-call
+// handling; private envelope fields never reach the renderer.
 const GenLadderTool: FC<ToolCallMessagePartProps> = ({ result }) => {
   const gatewayState = useStore($gatewayState)
   const card = genLadderCardFromResult(result)
@@ -73,20 +80,16 @@ const GenLadderTool: FC<ToolCallMessagePartProps> = ({ result }) => {
   )
 }
 
-const DelegateToolPart: FC<ToolCallMessagePartProps> = props => {
+const DelegateToolPart: FC<TimelineToolCallProps> = props => {
   // A call that failed outright dispatched nothing — there are no children to
   // list, only an error. The generic row extracts and expands it properly.
-  if (props.isError) {
+  if (props.isError || settledWithoutResult(props)) {
     return <ToolFallback {...props} />
   }
 
   return (
     <>
-      <TimelineTimestamp
-        className="mb-0.5 block"
-        completedAt={(props as TimelineToolCallProps).completedAt}
-        timestamp={(props as TimelineToolCallProps).timestamp}
-      />
+      <TimelineTimestamp className="mb-0.5 block" completedAt={props.completedAt} timestamp={props.timestamp} />
       <DelegateTool args={props.args} result={props.result} toolCallId={props.toolCallId} />
     </>
   )
@@ -94,7 +97,7 @@ const DelegateToolPart: FC<ToolCallMessagePartProps> = props => {
 
 const ChainToolFallback: FC<TimelineToolCallProps> = props => {
   // todo parts are hoisted to a dedicated panel above the message content.
-  if (props.toolName === 'todo') {
+  if (isTodoToolName(props.toolName)) {
     return null
   }
 
@@ -102,7 +105,7 @@ const ChainToolFallback: FC<TimelineToolCallProps> = props => {
   // compact "Messaged X" / "Message from X" notices, not a transcript row
   // (Grok-bots parity; the receiving side already renders notices via
   // AGENT_MESSAGE_RE). Non-delivery terminal calls fall through unchanged.
-  if (props.toolName === 'terminal' && !props.isError) {
+  if (props.toolName === 'terminal' && !props.isError && !settledWithoutResult(props)) {
     const command = typeof props.args?.command === 'string' ? props.args.command : ''
 
     if (deliveryTargetFromCommand(command)) {
@@ -136,6 +139,14 @@ const ChainToolFallback: FC<TimelineToolCallProps> = props => {
         <ClarifyTool {...props} />
       </>
     )
+  }
+
+  if (isOnboardingEnabled() && props.toolName === 'manage_connections') {
+    return <ConnectorTool {...props} />
+  }
+
+  if (isOnboardingEnabled() && connectorCalls(props.toolName, props.args).length > 0) {
+    return <ConnectorExecution {...props} />
   }
 
   if (props.toolName === 'setup_mcp') {
@@ -367,8 +378,8 @@ const ReasoningTextPart: ReasoningMessagePartComponent = () => {
     <MarkdownTextContent
       containerClassName="text-xs leading-snug text-muted-foreground/85"
       containerProps={{ 'data-slot': 'aui_reasoning-text' } as ComponentProps<'div'>}
-      disableArtifacts
       isRunning={status.type === 'running' || messageRunning}
+      scratchpad
       text={separateGluedReasoningBlocks(text.trimStart())}
     />
   )

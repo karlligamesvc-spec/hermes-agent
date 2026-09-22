@@ -4,7 +4,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { SkillInfo } from '@/types/hermes'
 
-import { ContextMenu } from './context-menu'
+import { ContextMenu, GenerationModelIcon } from './context-menu'
+import { generationModels } from './generation-models'
 import type { ChatBarState } from './types'
 
 const getSkills = vi.fn()
@@ -137,5 +138,20 @@ describe('ContextMenu — collapsed skill rows (hc-572 followup)', () => {
     openMenu()
     expect(await screen.findByText('13')).toBeTruthy()
     expect(screen.getByText('19')).toBeTruthy()
+  })
+})
+
+describe('GenerationModelIcon', () => {
+  it('uses one clean provider mark without numeric or letter variant badges', () => {
+    for (const model of [...generationModels('image'), ...generationModels('video')]) {
+      const { container, unmount } = render(<GenerationModelIcon model={model} />)
+      const icon = container.querySelector(`[data-generation-model-icon="${model.icon}"]`)
+
+      expect(icon).toBeTruthy()
+      expect(icon?.querySelectorAll(':scope > *')).toHaveLength(1)
+      expect(icon?.textContent).toBe('')
+
+      unmount()
+    }
   })
 })

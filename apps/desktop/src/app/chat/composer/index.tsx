@@ -5,6 +5,9 @@ import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useCallback, u
 import { useTourMarker } from '@/app/chat/tour-marker'
 import { useHudComposerDrag } from '@/app/hud/composer-drag'
 import { composerFill, composerFloatingStrip, composerSurfaceGlass } from '@/components/chat/composer-dock'
+import { $chatOnboardingSolo, $chatOnboardingThreadIds } from '@/components/onboarding-chat/assembly'
+import { OnboardingSkip } from '@/components/onboarding-chat/skip'
+import { OnboardingStart } from '@/components/onboarding-chat/start'
 import { Button } from '@/components/ui/button'
 import { Slot as ContribSlot } from '@/contrib/react/slot'
 import { useI18n } from '@/i18n'
@@ -21,7 +24,6 @@ import { browseBackward, browseForward, deriveUserHistory, isBrowsingHistory } f
 import { POPOUT_WIDTH_REM } from '@/store/composer-popout'
 import { parkQueuedPrompts, removeQueuedPrompt, unparkQueuedPrompts } from '@/store/composer-queue'
 import { $hudMode } from '@/store/hud'
-import { sessionBlockingPrompt } from '@/store/prompts'
 import { toggleReview } from '@/store/review'
 import { $gatewayState } from '@/store/session'
 import { $botChatSessionIds, $sessionStates, $sessionTiles, isBotChatSession } from '@/store/session-states'
@@ -37,7 +39,9 @@ import {
   acceptsTriggerCompletion,
   COMPOSER_FADE_BACKGROUND,
   implicitSlashAcceptIndex,
+  isComposerSubmitKey,
   type QueueEditState,
+  shouldDisableComposerInput,
   slashArgStage
 } from './composer-utils'
 import { ContextMenu } from './context-menu'
@@ -65,6 +69,7 @@ import { useEmojiCompletions } from './hooks/use-emoji-completions'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
 import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
+import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
 import { ProjectPicker } from './project-picker'
@@ -87,7 +92,13 @@ import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
 import { isRedoShortcut, isUndoShortcut } from './undo-history'
 import { UrlDialog } from './url-dialog'
-import { chipTypedUrlOnSpace, linkifyUrls } from './url-refs'
+import {
+  chipTypedUrlOnSpace,
+  linkifyUrls,
+  markdownLinkFor,
+  resolveExactLinkPaste,
+  selectionLinkLabel
+} from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
 
 // Upstream v0.19.0 pins a git strip (branch name, ±diff, ahead/behind, Review,
@@ -100,6 +111,7 @@ const SHOW_CODING_STATUS_ROW: boolean = false
 
 export function ChatBar({
   busy,
+  turnLive = false,
   cwd,
   disabled,
   focusKey,
@@ -114,12 +126,14 @@ export function ChatBar({
   onAttachDroppedItems,
   onAttachImageBlob,
   onAttachPrCommentUrl,
+  onAttachPastedText,
   onPasteClipboardImage,
   onPickFiles,
   onPickFolders,
   onPickImages,
   onRemoveAttachment,
   onSteer,
+  onSteerHidden,
   onSubmit: onSubmitProp,
   onTranscribeAudio
 }: ChatBarProps) {
@@ -181,16 +195,19 @@ export function ChatBar({
   // would discard a question the user may want to come back to. The blocking
   // prompt owns its own dismissal (Skip, Reject, dialog close).
   const awaitingInput = useStore(scope.$awaitingInput)
-  // Parked on an approval/sudo/secret prompt: typing can't answer those, so the
-  // busy submit routes text to the queue instead of a steer (which would sit
-  // undelivered behind the blocked tool batch). Drives the button affordance.
-  const blockingPrompt = useStore(useMemo(() => sessionBlockingPrompt(sessionId ?? null), [sessionId]))
   const activeQueueSessionKey = queueSessionKey || sessionId || null
 
   // Status items (subagents, background processes) are keyed by the RUNTIME
   // session id — gateway events and process.list both speak that id. Only the
   // queue uses the stored-session fallback key (prompts can queue pre-resume).
   const statusSessionId = sessionId ?? null
+
+  // The guide uses the setup profile's inference route; the model pill and
+  // git controls would expose settings unrelated to its conversational steps.
+  // Solo covers startup before the guide's session ids are known.
+  const onboardingThreadIds = useStore($chatOnboardingThreadIds)
+  const chatOnboardingSolo = useStore($chatOnboardingSolo)
+  const guidedChat = chatOnboardingSolo || (sessionId != null && onboardingThreadIds.includes(sessionId))
 
   const composerTourMarker = useTourMarker('composer')
 
@@ -233,8 +250,8 @@ export function ChatBar({
 
   const { t } = useI18n()
   const gatewayState = useStore($gatewayState)
-  const reconnecting = gatewayState === 'closed' || gatewayState === 'error'
-  const inputDisabled = disabled && !reconnecting
+  const reconnecting = gatewayState !== 'open'
+  const inputDisabled = shouldDisableComposerInput(disabled, gatewayState)
 
   // The draft engine — detached source of truth (DOM + draftRef + edge
   // selectors); typing never re-renders the chrome. ChatBar owns `queueEditRef`
@@ -249,7 +266,6 @@ export function ChatBar({
     insertInlineRefs,
     insertText,
     isHelpHint,
-    isSteerableText,
     loadIntoComposer,
     requestMainFocus,
     sessionIdRef,
@@ -318,6 +334,7 @@ export function ChatBar({
     activeQueueSessionKey,
     attachments,
     busy,
+    turnLive,
     clearDraft,
     draftRef,
     focusInput,
@@ -364,23 +381,9 @@ export function ChatBar({
   const hasComposerPayload = hasText || attachments.length > 0
   const canSubmit = busy || hasComposerPayload
 
-  // Steer only makes sense mid-turn, text-only (the gateway can't carry images
-  // into a tool result) and never for a slash command (those execute inline).
-  // A blocking prompt (approval/sudo/secret) also rules it out: the tool batch
-  // is parked on the user, so a steer can't reach the model — text queues.
-  const canSteer = busy && !compacting && !blockingPrompt && !!onSteer && attachments.length === 0 && isSteerableText
-
-  // While busy: text redirects the live turn (Cursor-style stop-and-correct),
-  // attachments queue for the next turn, an empty composer stops.
-  const busyAction: 'steer' | 'queue' | 'stop' = canSteer
-    ? 'steer'
-    : compacting || hasComposerPayload
-      ? 'queue'
-      : 'stop'
-
   // The submit engine — the orchestration seam where draft + queue meet. Owns
   // the submit decision tree, the send-with-restore primitive, and steer.
-  const { queueDraft, steerDraft, submitDraft } = useComposerSubmit({
+  const { steerDraft, submitDraft } = useComposerSubmit({
     activeQueueSessionKey,
     activeQueueSessionKeyRef,
     attachments,
@@ -399,6 +402,7 @@ export function ChatBar({
     // empty composer) — an explicit halt, so it parks the queue.
     onCancel: haltRun,
     onSteer,
+    onSteerHidden,
     onSubmit,
     queueCurrentDraft,
     queueEdit,
@@ -568,6 +572,48 @@ export function ChatBar({
     }
 
     event.preventDefault()
+
+    // Pasting exactly one link while composer text is selected turns that text
+    // into a markdown link instead of replacing it — the behavior every rich
+    // editor ships (ported from block/buzz#6684). Selections that span chips
+    // or lines fall through to the normal replace-with-chip path.
+    const exactLink = resolveExactLinkPaste(pastedText)
+
+    if (exactLink) {
+      const label = selectionLinkLabel(event.currentTarget)
+
+      if (label) {
+        recordUndoPoint()
+        insertComposerContentsAtCaret(event.currentTarget, markdownLinkFor(label, exactLink))
+        scheduleFlushEditorToDraft(event.currentTarget)
+
+        return
+      }
+    }
+
+    // A paste past the large-paste threshold becomes a `.txt` attachment chip
+    // instead of flooding the composer.
+    // The instruction the user types stays in the input; the pasted source
+    // material rides along as a file. Falls back to inline insertion if the
+    // attachment can't be created (missing bridge, write failure) so the
+    // paste is never lost.
+    if (onAttachPastedText && shouldConvertPasteToAttachment(pastedText)) {
+      const editor = event.currentTarget
+
+      void Promise.resolve(onAttachPastedText(pastedText)).then(attached => {
+        if (attached) {
+          triggerHaptic('selection')
+
+          return
+        }
+
+        recordUndoPoint()
+        insertComposerContentsAtCaret(editor, pathifyRefs(linkifyUrls(pastedText)), openDirectiveScope(editor))
+        scheduleFlushEditorToDraft(editor)
+      })
+
+      return
+    }
 
     // Links in the paste land as `@url:` chips rather than a wall of URL text —
     // the same reference the "Add URL" dialog inserts, parsed in place so a link
@@ -869,28 +915,7 @@ export function ChatBar({
       return
     }
 
-    // Cmd/Ctrl+Enter queues a follow-up while a turn runs. Plain Enter steers
-    // a text-only draft, so both live-turn actions stay reachable by keyboard.
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
-      event.preventDefault()
-
-      if (busy && !disabled) {
-        // As with plain Enter, source the just-typed content from the DOM so a
-        // fast keypress cannot queue a stale draft.
-        const editorText = editorRef.current ? composerPlainText(editorRef.current) : draftRef.current
-
-        if (editorText !== draftRef.current) {
-          draftRef.current = editorText
-          setComposerText(editorText)
-        }
-
-        queueDraft()
-      }
-
-      return
-    }
-
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (isComposerSubmitKey(event)) {
       event.preventDefault()
 
       // Decide from the DOM, not React state. `hasComposerPayload` is derived
@@ -1027,7 +1052,6 @@ export function ChatBar({
     <ComposerControls
       autoSpeak={autoSpeak}
       busy={busy}
-      busyAction={busyAction}
       canSubmit={canSubmit}
       compactModelPill={poppedOut || compactPill}
       conversation={{
@@ -1043,9 +1067,9 @@ export function ChatBar({
       disabled={disabled}
       foldVoice={foldVoice}
       hasComposerPayload={hasComposerPayload}
+      hideModelPill={guidedChat}
       minimal={minimal}
       onDictate={dictate}
-      onQueue={queueDraft}
       onToggleAutoSpeak={handleToggleAutoSpeak}
       state={state}
       voiceStatus={voiceStatus}
@@ -1205,6 +1229,8 @@ export function ChatBar({
           <div className={cn(composerFloatingStrip, 'px-[5px] pb-1.5 empty:hidden')}>
             <ActionBadges sessionId={statusSessionId} />
             <SuggestionPills sessionId={statusSessionId} />
+            <OnboardingSkip />
+            <OnboardingStart />
           </div>
           {/* Session-scoped status stack (todos, subagents, background tasks,
               queue). An in-flow dock child: the dock is bottom-anchored, so it

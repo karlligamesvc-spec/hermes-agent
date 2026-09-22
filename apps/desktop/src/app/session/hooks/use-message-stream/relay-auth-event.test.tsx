@@ -10,6 +10,7 @@
  * the model catalog — so a running app 401ed on every send until the user quit
  * and signed in again.
  */
+import type { GatewayEvent as RpcEvent } from '@hermes/shared'
 import { QueryClient } from '@tanstack/react-query'
 import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { useEffect, useRef } from 'react'
@@ -19,7 +20,6 @@ import type { ClientSessionState } from '@/app/types'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import type * as ManagedRecovery from '@/store/managed-recovery'
 import { $notifications, clearNotifications } from '@/store/notifications'
-import type { RpcEvent } from '@/types/hermes'
 
 import { useMessageStream } from './index'
 

@@ -1,4 +1,5 @@
 import type { Unstable_TriggerItem } from '@assistant-ui/core'
+import type { ConnectionState } from '@hermes/shared'
 
 import type { SlashChipKind } from '@/components/assistant-ui/directive-text'
 import type { ComposerAttachment } from '@/store/composer'
@@ -25,7 +26,7 @@ export const COMPOSER_COMPACT_PILL_PX = 560
 // The ladder keeps going below the stack breakpoint — a pane can be far
 // narrower than even the stacked controls row. Both rungs are budgeted
 // against that row's real cost: menu ~24 + surface padding 16 + the cluster
-// (~190; ~218 mid-turn with the queue button).
+// (~190, including the always-available send/stop control).
 //
 // At 260 the three voice toggles fold into the one menu HUD mode already
 // uses, clearing the mid-turn worst case with margin. Each stage sits clear
@@ -52,6 +53,29 @@ export const COMPOSER_FADE_BACKGROUND =
 // unmount/pagehide flushes bypass it.
 export const DRAFT_PERSIST_DEBOUNCE_MS = 400
 
+/**
+ * Keep a reconnecting draft editable so transient gateway dials cannot blur
+ * the editor and discard the user's caret. Submission still reads the
+ * independent `disabled` prop, so non-open states cannot send.
+ *
+ * An `open` state paired with `disabled=true` is a transient disagreement
+ * between the connection atoms; fail closed until they converge.
+ */
+export function shouldDisableComposerInput(disabled: boolean, gatewayState: ConnectionState): boolean {
+  return disabled && gatewayState === 'open'
+}
+
+export interface ComposerSubmitKeyInput {
+  ctrlKey: boolean
+  key: string
+  metaKey: boolean
+  shiftKey: boolean
+}
+
+/** Enter always follows the primary send path. Modifiers must not silently
+ * turn a live-turn correction into a queued follow-up; Shift+Enter remains the
+ * one exception because it inserts a newline. */
+export const isComposerSubmitKey = ({ key, shiftKey }: ComposerSubmitKeyInput) => key === 'Enter' && !shiftKey
 export const pickPlaceholder = (pool: readonly string[]) => pool[Math.floor(Math.random() * pool.length)]
 
 /** Completion items can carry an `action` (set in use-slash-completions) that

@@ -924,8 +924,10 @@ async function fetchManifest({
   activeRoot,
   installStamp,
   pinCommit,
+  abortSignal,
   extraEnv
 }: any) {
+  abortSignal?.throwIfAborted()
   const isPosix = installerKind === 'posix'
 
   const args = isPosix
@@ -935,6 +937,7 @@ async function fetchManifest({
   const result = await (isPosix ? spawnBash : spawnPowerShell)(scriptPath, args, {
     emit,
     stageName: '__manifest__',
+    abortSignal,
     hermesHome,
     extraEnv
   })
@@ -1261,8 +1264,11 @@ async function runBootstrap(opts) {
       activeRoot,
       installStamp,
       pinCommit,
+      abortSignal,
       extraEnv
     })
+
+    abortSignal?.throwIfAborted()
 
     emit({
       type: 'manifest',
@@ -1394,6 +1400,12 @@ async function runBootstrap(opts) {
 
     return { ok: true, marker }
   } catch (err) {
+    if (abortSignal?.aborted) {
+      emit({ type: 'failed', error: 'bootstrap cancelled by user' })
+
+      return { ok: false, cancelled: true }
+    }
+
     emit({ type: 'failed', error: err.message || String(err) })
     fireTelemetry(sendTelemetry, {
       ...telemetryBase,
@@ -1405,7 +1417,7 @@ async function runBootstrap(opts) {
     return { ok: false, error: err.message || String(err) }
   } finally {
     try {
-      runLog.stream.end()
+      await new Promise<void>(resolve => runLog.stream.end(resolve))
     } catch {
       void 0
     }

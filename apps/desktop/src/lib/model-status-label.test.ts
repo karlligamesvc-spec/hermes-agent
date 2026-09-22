@@ -90,6 +90,8 @@ describe('model-status-label', () => {
     ['glm-5.2', 'GLM 5.2'],
     ['kimi-k2.6', 'Kimi K2.6'],
     ['kimi-k2.7-code', 'Kimi K2.7 Code'],
+    ['mimo-v2.6-flash', 'MiMo V2.6 Flash'],
+    ['mimo-v2.6-pro', 'MiMo V2.6 Pro'],
     ['qwen3.7-max', 'Qwen3.7 Max'],
     ['step-3.7-flash', 'Step 3.7 Flash'],
     ['hy3', 'Hy3']
@@ -131,8 +133,8 @@ describe('model-status-label', () => {
       expect(currentPickerSelection(false, store, options)).toEqual(store)
     })
 
-    it('lets the live session model.options win when a session exists', () => {
-      expect(currentPickerSelection(true, store, options)).toEqual(options)
+    it('keeps the live SessionView pair when model.options is stale', () => {
+      expect(currentPickerSelection(true, store, options)).toEqual(store)
     })
 
     it('falls back to options when the store is empty', () => {

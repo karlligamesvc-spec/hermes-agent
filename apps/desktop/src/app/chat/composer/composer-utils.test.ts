@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 import {
   acceptsTriggerCompletion,
   implicitSlashAcceptIndex,
+  isComposerSubmitKey,
   isPendingDraftPersistCurrent,
   type PendingDraftPersist,
   pickPlaceholder,
+  shouldDisableComposerInput,
   slashArgStage,
   slashChipKindForItem,
   slashCommandToken,
@@ -15,6 +17,42 @@ import {
 
 const item = (group: string): Unstable_TriggerItem =>
   ({ id: 'x', type: 'slash', label: 'x', metadata: { group } }) as unknown as Unstable_TriggerItem
+
+describe('shouldDisableComposerInput', () => {
+  it.each(['idle', 'connecting', 'closed', 'error'] as const)(
+    'keeps the draft editable while the gateway is %s',
+    gatewayState => {
+      expect(shouldDisableComposerInput(true, gatewayState)).toBe(false)
+    }
+  )
+
+  it('fails closed when connection atoms disagree about an open gateway', () => {
+    expect(shouldDisableComposerInput(true, 'open')).toBe(true)
+  })
+
+  it.each(['idle', 'connecting', 'open', 'closed', 'error'] as const)(
+    'never disables an otherwise enabled composer while the gateway is %s',
+    gatewayState => {
+      expect(shouldDisableComposerInput(false, gatewayState)).toBe(false)
+    }
+  )
+})
+
+describe('isComposerSubmitKey', () => {
+  const press = (overrides: Partial<Parameters<typeof isComposerSubmitKey>[0]> = {}) =>
+    isComposerSubmitKey({ ctrlKey: false, key: 'Enter', metaKey: false, shiftKey: false, ...overrides })
+
+  it('keeps Enter on the primary submit path even with a platform modifier', () => {
+    expect(press()).toBe(true)
+    expect(press({ metaKey: true })).toBe(true)
+    expect(press({ ctrlKey: true })).toBe(true)
+  })
+
+  it('reserves Shift+Enter for a newline', () => {
+    expect(press({ shiftKey: true })).toBe(false)
+    expect(press({ key: 'a' })).toBe(false)
+  })
+})
 
 describe('slashArgStage', () => {
   it('is true only once the query is past the command name', () => {

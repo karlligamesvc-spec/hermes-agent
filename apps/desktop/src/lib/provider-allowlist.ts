@@ -1,4 +1,4 @@
-import type { ModelOptionProvider } from '@/types/hermes'
+import type { ModelOptionProvider } from '@hermes/shared'
 
 // ApexNodes is a China-first managed product, so the model picker only surfaces
 // two kinds of provider:
@@ -58,6 +58,24 @@ export const DOMESTIC_PROVIDER_SLUGS: ReadonlySet<string> = new Set([
  *  the default carries it) distinguishes them — the slug does. */
 export const MANAGED_PROVIDER_SLUG = 'custom:apex-nodes.com'
 
+/** The complete APEX first-party LLM shelf. Keep this ordered list aligned
+ *  with the relay's `desktop_public_models` contract (hc-845). The Desktop
+ *  filters the managed row as well: an older relay, cached provider response,
+ *  or runtime fallback must not reintroduce retired models into the picker. */
+export const APEX_PUBLIC_LLM_MODELS = [
+  'kimi-k2.7-code',
+  'deepseek-flash',
+  'deepseek-v4-pro',
+  'gemini-3.8-flash',
+  'qwen3.8-flash',
+  'hy4-preview',
+  'glm-5.3-flash',
+  'mimo-v2.6-flash',
+  'mimo-v2.6-pro'
+] as const
+
+const APEX_PUBLIC_LLM_MODEL_SET: ReadonlySet<string> = new Set(APEX_PUBLIC_LLM_MODELS)
+
 /** True when a provider row is the ApexNodes managed relay (platform models),
  *  as opposed to a user's own BYO provider. Keyed on the slug, with the display
  *  name as a belt-and-suspenders fallback (mirrors model-menu-panel's label). */
@@ -100,6 +118,77 @@ export function isPickerVisibleProvider(slug: string): boolean {
  *  Order is preserved. */
 export function filterPickerProviders(providers: ModelOptionProvider[]): ModelOptionProvider[] {
   return dropAliasedCustomRow(providers.filter(provider => isPickerVisibleProvider(provider.slug)))
+}
+
+function shelfModel(model: string): string | null {
+  const normalized = String(model || '')
+    .trim()
+    .replace(/-APEX$/i, '')
+    .toLowerCase()
+
+  return APEX_PUBLIC_LLM_MODEL_SET.has(normalized)
+    ? APEX_PUBLIC_LLM_MODELS.find(candidate => candidate === normalized) ?? null
+    : null
+}
+
+function filterModelRecord<T>(record: Record<string, T> | null | undefined): Record<string, T> | undefined {
+  if (!record) {
+    return undefined
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).flatMap(([model, value]) => {
+      const canonical = shelfModel(model)
+
+      return canonical ? [[canonical, value]] : []
+    })
+  )
+}
+
+function filterProviderToApexShelf(provider: ModelOptionProvider): ModelOptionProvider | null {
+  const available = new Set((provider.models ?? []).map(model => shelfModel(model)).filter(Boolean))
+  const models = APEX_PUBLIC_LLM_MODELS.filter(model => available.has(model))
+
+  if (models.length === 0) {
+    return null
+  }
+
+  const featuredModels = (provider.featured_models ?? [])
+    .map(model => shelfModel(model))
+    .filter((model): model is string => Boolean(model))
+
+  const unavailableModels = (provider.unavailable_models ?? [])
+    .map(model => shelfModel(model))
+    .filter((model): model is string => Boolean(model))
+
+  return {
+    ...provider,
+    models: [...models],
+    total_models: models.length,
+    featured_models: featuredModels,
+    unavailable_models: unavailableModels,
+    capabilities: filterModelRecord(provider.capabilities),
+    pricing: filterModelRecord(provider.pricing)
+  }
+}
+
+/** Publish exactly the nine product-approved LLMs in the conversation picker.
+ *
+ * Prefer the managed APEX row so identical model ids from configured BYOK
+ * providers do not create duplicate entries. If the managed row is absent,
+ * preserve the existing domestic/custom BYOK catalog: that is a development or
+ * signed-out fallback, not the first-party APEX shelf. */
+export function filterApexLlmShelf(providers: ModelOptionProvider[]): ModelOptionProvider[] {
+  const visible = filterPickerProviders(providers)
+  const managed = visible.find(provider => isManagedProviderSlug(provider.slug, provider.name))
+
+  if (managed) {
+    const filtered = filterProviderToApexShelf(managed)
+
+    return filtered ? [filtered] : []
+  }
+
+  return visible
 }
 
 const normalizeSlug = (slug: string | null | undefined): string =>

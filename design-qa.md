@@ -31,3 +31,66 @@
 ## Final result
 
 passed
+
+---
+
+# hc-845 Desktop 白色主题与模型选择 Design QA
+
+Reference: the established APEX Desktop white shell and compact composer menu.
+
+## Scope
+
+- Restore the white/light APEX identity for fresh and previously system-following installs.
+- Keep an explicit user choice of system theme after the one-time migration.
+- Add compact image and video model submenus under the composer add button.
+- Keep one persisted selection for images and one for videos.
+- Restrict the managed LLM picker to the seven hc-845 text models; cached or
+  older relay responses must not reintroduce Kimi K3, GLM 5.2, or Qwen 3.7 Max.
+
+## Visual verification
+
+- P0: the running macOS Desktop shell is white; the navy regression is absent.
+- P0: the composer add menu exposes image and video rows with the active friendly model names.
+- P0: each submenu shows exactly one selected model and all requested model labels.
+- P1: menu density, spacing, borders, and monochrome icons match the existing APEX white UI.
+- P2: no price, package, quota, or raw provider identifier is displayed in these menus.
+- P0: the live picker connected to the pre-deployment relay no longer shows any
+  legacy model. It currently shows the two approved ids already advertised by
+  production; the other five become visible when the paired cloud PR deploys.
+
+Verification was performed against the real Electron development build with the local gateway ready.
+
+final result: passed
+
+---
+
+# hc-841 Desktop 首页任务输入区 Design QA
+
+## Evidence
+
+- Source screenshot: `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-63d9c42d-9c81-42b0-99f6-645520ddb4a5.png`
+- Packaged implementation: `apps/desktop/.artifacts/hc-841/start-task-brief-1440x900.png`
+- Side-by-side comparison: `apps/desktop/.artifacts/hc-841/reference-vs-implementation.png`
+- Review state: macOS packaged APEX, 1440 × 900, zh-CN, signed-in isolated local-review fixture, Start → “拆解并复刻爆款视频”
+
+## Findings
+
+1. The primary task area now uses the same 52rem content axis as the three task entries. The packaged width is 884px at the app's 17px root size, up from the previous 44rem container.
+2. The textarea now starts at five rows with a minimum height of 8rem on regular desktop windows and 7rem on narrow windows. The selected task remains fully readable with room for user edits.
+3. The visible viral-video brief is now two plain-language sentences. Vendor names, local tooling, implementation phases, reproduction commands, pricing, and plan-confirmation language remain outside the user-visible prompt.
+4. Heading hierarchy, attachment control, send action, keyboard focus order, monochrome task artwork, and the single-column task shelf are unchanged.
+5. At 1440 × 900, the third task entry reaches the lower edge of the first viewport because the user explicitly prioritized a taller editor. It remains on the same page and immediately reachable by normal scrolling; there is no nested scroll trap or horizontal overflow.
+6. The redundant subtitle under the main question is removed. The empty goal field now tells users that they can either describe a goal or drop in an image, video, or file for analysis; all four Desktop locales carry the same behavior and tone.
+
+## Verification
+
+- Packaged Electron geometry and copy regression: `hc-841 Start keeps the primary task brief readable without exposing internal execution details` — passed.
+- Full UI suite after rebasing onto current Desktop main: 889 files / 8,488 tests — passed.
+- TypeScript — passed.
+- ESLint — 0 errors (repository-wide pre-existing warnings only).
+- Production renderer build — passed. The earlier packaged macOS geometry evidence remains attached to this change.
+- Reverse verification: restoring the removed subtitle made the identity guard fail on the exact visible copy; restoring hc-841 returned it to green. The earlier width/internal-copy reverse checks remain covered.
+
+## Final result
+
+passed

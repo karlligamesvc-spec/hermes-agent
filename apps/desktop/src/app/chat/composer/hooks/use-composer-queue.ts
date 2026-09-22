@@ -9,6 +9,7 @@ import { resetBrowseState } from '@/store/composer-input-history'
 import {
   $parkedQueueSessions,
   $queuedPromptsBySession,
+  claimQueuedPrompt,
   enqueueQueuedPrompt,
   getQueuedPrompts,
   isSteerableEntry,
@@ -16,12 +17,14 @@ import {
   migrateQueuedPrompts,
   promoteQueuedPrompt,
   type QueuedPromptEntry,
+  releaseQueuedPromptClaim,
   removeQueuedPrompt,
   shouldAutoDrain,
   unparkQueuedPrompts,
   updateQueuedPrompt
 } from '@/store/composer-queue'
 import { notify } from '@/store/notifications'
+import { $sessionsLoading } from '@/store/session'
 
 import { cloneAttachments, type QueueEditState } from '../composer-utils'
 import { useComposerScope } from '../scope'
@@ -31,6 +34,7 @@ interface UseComposerQueueArgs {
   activeQueueSessionKey: string | null
   attachments: ComposerAttachment[]
   busy: boolean
+  turnLive: boolean
   clearDraft: () => void
   draftRef: RefObject<string>
   focusInput: () => void
@@ -56,6 +60,7 @@ export function useComposerQueue({
   activeQueueSessionKey,
   attachments,
   busy,
+  turnLive,
   clearDraft,
   draftRef,
   focusInput,
@@ -80,6 +85,7 @@ export function useComposerQueue({
   // is fine; the auto-drain effect below reads it as a gate.
   const parkedSessions = useStore($parkedQueueSessions)
   const queueParked = Boolean(activeQueueSessionKey && parkedSessions[activeQueueSessionKey])
+  const sessionsLoading = useStore($sessionsLoading)
 
   const [queueEdit, setQueueEdit] = useState<QueueEditState | null>(null)
   queueEditRef.current = queueEdit
@@ -97,6 +103,7 @@ export function useComposerQueue({
   const prevQueueKeyRef = useRef(activeQueueSessionKey)
   const drainingQueueRef = useRef(false)
   const drainFailuresRef = useRef(new Map<string, number>())
+  const [drainRetryTick, setDrainRetryTick] = useState(0)
 
   const beginQueuedEdit = (entry: QueuedPromptEntry) => {
     if (!activeQueueSessionKey || queueEdit) {
@@ -212,6 +219,13 @@ export function useComposerQueue({
         return false
       }
 
+      // The foreground ChatBar and background drainer overlap during a
+      // selection transition. Their local refs are separate; this shared
+      // claim is the single-send boundary for the queue entry itself.
+      if (!claimQueuedPrompt(entry.id)) {
+        return true
+      }
+
       drainingQueueRef.current = true
 
       try {
@@ -219,6 +233,7 @@ export function useComposerQueue({
           onSubmit(entry.text, {
             attachments: entry.attachments,
             ...(entry.displayText ? { displayText: entry.displayText } : {}),
+            ...(entry.displayKind ? { displayKind: entry.displayKind } : {}),
             fromQueue: true,
             sessionId: drainRuntimeSessionId,
             storedSessionId: drainQueueSessionKey
@@ -240,6 +255,7 @@ export function useComposerQueue({
 
         return true
       } finally {
+        releaseQueuedPromptClaim(entry.id)
         drainingQueueRef.current = false
       }
     },
@@ -331,7 +347,7 @@ export function useComposerQueue({
   // a stale-session 404) can't strand the entry permanently nor spin-loop. The
   // drain lock serializes sends; a remount/reconnect resets the failure counts.
   const autoDrainNext = useCallback(() => {
-    if (busy || queueParked || drainingQueueRef.current || !activeQueueSessionKey) {
+    if (busy || turnLive || queueParked || drainingQueueRef.current || !activeQueueSessionKey) {
       return
     }
 
@@ -341,7 +357,14 @@ export function useComposerQueue({
       return
     }
 
+    let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+
     const onFail = () => {
+      if (cancelled) {
+        return
+      }
+
       const fails = (drainFailuresRef.current.get(entry.id) ?? 0) + 1
       drainFailuresRef.current.set(entry.id, fails)
 
@@ -352,6 +375,8 @@ export function useComposerQueue({
           title: t.composer.queueStuckTitle,
           message: t.composer.queueStuckBody
         })
+      } else {
+        retryTimer = setTimeout(() => setDrainRetryTick(tick => tick + 1), 750 * fails)
       }
     }
 
@@ -362,7 +387,14 @@ export function useComposerQueue({
         }
       })
       .catch(onFail)
-  }, [activeQueueSessionKey, busy, pickDrainHead, queueParked, queuedPrompts, runDrain, t])
+
+    // A pending rejection must not schedule into a different session, a parked
+    // queue, or an unmounted composer.
+    return () => {
+      cancelled = true
+      clearTimeout(retryTimer)
+    }
+  }, [activeQueueSessionKey, busy, pickDrainHead, queueParked, queuedPrompts, runDrain, t, turnLive])
 
   // Re-key on a runtime session-id change. A stable stored id (queueSessionKey)
   // never churns, so a change there is a real session switch and must NOT
@@ -385,10 +417,16 @@ export function useComposerQueue({
   // strand them. A park (explicit Stop/Esc) is the one gate: those entries wait
   // for the user. To cancel queued turns, the user deletes them from the panel.
   useEffect(() => {
-    if (shouldAutoDrain({ isBusy: busy, parked: queueParked, queueLength: queuedPrompts.length })) {
-      autoDrainNext()
+    // Match the background drainer: preserve the retry budget while session
+    // discovery runs at boot, on a gateway/profile switch, or over an empty list.
+    if (sessionsLoading) {
+      return
     }
-  }, [autoDrainNext, busy, queueParked, queuedPrompts.length])
+
+    if (shouldAutoDrain({ isBusy: busy, parked: queueParked, queueLength: queuedPrompts.length, turnLive })) {
+      return autoDrainNext()
+    }
+  }, [autoDrainNext, busy, drainRetryTick, queueParked, queuedPrompts.length, sessionsLoading, turnLive])
 
   // Queue-edit cleanup: on session swap the scope effect already stashed the
   // edit snapshot; only restore into the composer when still on the same scope.

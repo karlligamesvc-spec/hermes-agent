@@ -141,15 +141,27 @@ GENERATE_VIDEO_SCHEMA = {
                 "type": "integer",
                 "description": "Optional clip length in seconds. Leave empty to use the platform default; longer clips take longer to render.",
             },
+            "model": {
+                "type": "string",
+                "enum": [
+                    "doubao-seedance-2-5-260628",
+                    "doubao-seedance-2-0-260128",
+                    "doubao-seedance-2-0-fast-260128",
+                    "doubao-seedance-2-0-mini-260615",
+                    "MiniMax-H3",
+                ],
+                "description": (
+                    "用户在 APEX 中选择的视频模型。名称依次为 Seedance 2.5、Seedance 2.0、"
+                    "Seedance 2.0 Fast、Seedance 2.0 Mini、MiniMax H3。"
+                    "未指定时使用平台默认模型。"
+                ),
+            },
             "provider": {
                 "type": "string",
                 "enum": ["agnes", "chinaapi"],
                 "description": (
-                    "Optional rendering engine. Leave empty for the platform default (free tier). "
-                    "'chinaapi' is the paid higher-quality tier billed per second — only pass it when "
-                    "the user explicitly asked for the paid/HD tier, or a generation-ladder directive "
-                    "told you to. It may be unavailable, in which case the tool says so; do not retry "
-                    "with it and do not silently fall back."
+                    "Optional legacy rendering route. Leave empty when model is selected. "
+                    "It may be unavailable, in which case the tool says so; do not silently fall back."
                 ),
             },
         },
@@ -194,6 +206,7 @@ def _handle_generate_video(args: dict, **_kwargs) -> str:
         "aspect_ratio": str(args.get("aspect_ratio") or "landscape").strip() or "landscape",
         "size": str(args.get("size") or "").strip() or None,
         "seconds": args.get("seconds"),
+        "model": str(args.get("model") or "").strip() or None,
         # hc-659: forwarded verbatim; the master picks/validates the leg (the plugin
         # never learns which engines exist, and never holds a vendor key).
         "provider": str(args.get("provider") or "").strip() or None,

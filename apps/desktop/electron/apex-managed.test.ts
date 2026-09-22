@@ -769,6 +769,7 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.deepEqual(r.added.sort(), [
     'agent.image_input_mode',
     'agent.max_turns',
+    'agent.response_language',
     'approvals.mode',
     'delegation.max_iterations',
     'display.language',
@@ -786,7 +787,8 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.match(r.next, /^display:\n(?: {2}\S+: \S+\n){2}\S/m)
   assert.match(r.next, /^ {2}language: zh$/m)
   assert.match(r.next, /^ {2}show_reasoning: true$/m)
-  assert.match(r.next, /^agent:\n(?: {2}\S+: \S+\n){2}\S/m)
+  assert.match(r.next, /^agent:\n(?: {2}\S+: \S+\n){3}\S/m)
+  assert.match(r.next, /^ {2}response_language: display$/m)
   assert.match(r.next, /^ {2}max_turns: 500$/m)
   assert.match(r.next, /^delegation:\n {2}max_iterations: 250$/m)
   assert.match(r.next, /^tool_output:\n {2}max_lines: 2000$/m)
@@ -810,6 +812,7 @@ test('ensureProductDefaultsYaml never overrules a value the user set', () => {
     '  skin: mono\n' +
     'agent:\n' +
     '  image_input_mode: text\n' +
+    '  response_language: auto\n' +
     '  max_turns: 120\n' +
     'delegation:\n' +
     '  max_iterations: 25\n' +
@@ -845,6 +848,7 @@ test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', 
   assert.deepEqual(r.added.sort(), [
     'agent.image_input_mode',
     'agent.max_turns',
+    'agent.response_language',
     'approvals.mode',
     'delegation.max_iterations',
     'display.language',
@@ -873,7 +877,7 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
   // it: the reconcile is a catch-up path, never a second opinion.
   const seeded =
     'display:\n  language: zh\n  show_reasoning: true\n' +
-    'agent:\n  image_input_mode: auto\n  max_turns: 500\n' +
+    'agent:\n  image_input_mode: auto\n  response_language: display\n  max_turns: 500\n' +
     'delegation:\n  max_iterations: 250\n' +
     'tool_output:\n  max_lines: 2000\n' +
     'session_reset:\n  mode: none\n' +
@@ -922,6 +926,19 @@ test('Desktop follows Hermes parent and child budgets without overwriting explic
   assert.equal(explicit.changed, true)
   assert.match(explicit.next, /^ {2}max_turns: 140$/m)
   assert.match(explicit.next, /^ {2}max_iterations: 20$/m)
+})
+
+test('Desktop model-authored text follows the selected UI language by default', () => {
+  const existingChineseInstall = ensureProductDefaultsYaml('display:\n  language: zh\n')
+  const existingEnglishInstall = ensureProductDefaultsYaml('display:\n  language: en\n')
+  const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
+  const seedBlocks = main.slice(main.indexOf('const SEED_DISPLAY_BLOCK'), main.indexOf('const SEED_MOA_BLOCK'))
+
+  assert.equal(APEX_PRODUCT_DEFAULTS['agent.response_language'], 'display')
+  assert.match(existingChineseInstall.next, /^ {2}response_language: display$/m)
+  assert.match(existingEnglishInstall.next, /^ {2}response_language: display$/m)
+  assert.match(existingEnglishInstall.next, /^ {2}language: en$/m)
+  assert.ok(seedBlocks.includes("'  response_language: display\\n'"))
 })
 
 test('hc-837 migrates only the old APEX 90/50 defaults once per config', () => {

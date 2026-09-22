@@ -27,16 +27,22 @@ import { AGENT_MESSAGE_RE } from '@/components/assistant-ui/thread/user-message'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { formatElapsed } from '@/components/chat/activity-timer'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
+import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
-import { type ErrorSurface, formatErrorDiagnostics } from '@/lib/error-surface'
+import { type ErrorSurface, formatErrorDiagnostics, isOAuthReauthSurface } from '@/lib/error-surface'
 import { triggerHaptic } from '@/lib/haptics'
 import {
+  AlertCircle,
   AudioLines,
+  ChevronDown,
+  FolderOpen,
   GitForkIcon,
+  KeyRound,
   Loader2Icon,
   RefreshCwIcon,
+  Settings2,
   SmilePlusIcon,
   Upload,
   VolumeXIcon,
@@ -48,6 +54,8 @@ import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
 import { notifyError } from '@/store/notifications'
+import { startManualProviderOAuth } from '@/store/onboarding'
+import { $activeGatewayProfile, normalizeProfileKey, requestFreshSession } from '@/store/profile'
 import { requestSendDiagnostics } from '@/store/send-diagnostics'
 import { $connection, $currentModel } from '@/store/session'
 import { $voicePlayback } from '@/store/voice-playback'
@@ -238,13 +246,16 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
             <AssistantPreviewEmbeds />
             <MessagePrimitive.Error>
               <ErrorPrimitive.Root
-                className="mt-1.5 flex flex-col gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--dt-destructive)_35%,transparent)] bg-[color-mix(in_srgb,var(--dt-destructive)_7%,transparent)] px-3 py-2 text-[0.78rem] leading-5 text-[color-mix(in_srgb,var(--dt-destructive)_78%,var(--ui-text-secondary))]"
+                className="mt-2 flex flex-col gap-3 rounded-xl border border-[color-mix(in_srgb,var(--dt-destructive)_32%,transparent)] bg-[color-mix(in_srgb,var(--dt-destructive)_5%,var(--ui-bg-elevated))] px-4 py-3.5 text-[0.8125rem] leading-5 shadow-[0_0.5rem_1.5rem_color-mix(in_srgb,var(--dt-destructive)_5%,transparent)]"
                 role="alert"
               >
-                <div className="flex items-start gap-1.5">
+                <div className="flex items-start gap-2.5">
+                  <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-[color-mix(in_srgb,var(--dt-destructive)_11%,transparent)] text-(--dt-destructive)">
+                    <AlertCircle className="size-4" />
+                  </span>
                   <div className="min-w-0 flex-1">
                     <ErrorLayerLabel />
-                    <ErrorPrimitive.Message className="min-w-0" />
+                    <ErrorPrimitive.Message className="mt-0.5 block min-w-0 text-(--ui-text-secondary)" />
                   </div>
                   {onDismissError && (
                     <TooltipIconButton
@@ -469,19 +480,36 @@ const ErrorLayerLabel: FC = () => {
   const labels = t.assistant.thread.errorLayers
   const label = (surface && labels[surface.layer]) || labels.generic
 
-  return <div className="font-medium">{label}</div>
+  return (
+    <>
+      <div className="text-[0.875rem] font-semibold text-[color-mix(in_srgb,var(--dt-destructive)_82%,var(--ui-text-primary))]">
+        {label}
+      </div>
+      {isOAuthReauthSurface(surface) && (
+        <div className="mt-0.5 text-(--ui-text-secondary)">
+          {t.assistant.thread.errorOauthExpired(surface.providerLabel || surface.provider)}
+        </div>
+      )}
+    </>
+  )
 }
 
 // Isolated because useNavigate() THROWS outside a <Router> (bare test
 // harnesses, embedded panes render threads router-free). The parent gates
 // this child's mount on useInRouterContext(), which is safe anywhere.
-const SwitchProviderAction: FC<{ label: string }> = ({ label }) => {
+const SwitchProviderAction: FC<{ label: string; primary?: boolean }> = ({ label, primary = false }) => {
   const navigate = useNavigate()
 
   return (
-    <button className="aui-error-action" onClick={() => navigate(`${SETTINGS_ROUTE}?tab=config:model`)} type="button">
+    <Button
+      onClick={() => navigate(`${SETTINGS_ROUTE}?tab=config:model`)}
+      size="sm"
+      type="button"
+      variant={primary ? 'default' : 'outline'}
+    >
+      <Settings2 className="size-3.5" />
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -509,14 +537,39 @@ const ErrorRecoveryActions: FC = () => {
   // runtime's logs.
   const remoteConnection = connection?.mode === 'remote'
 
+  // An expired/revoked OAuth grant (HTTP 401 on nous / openai-codex / ...):
+  // the one-click fix is re-running that provider's sign-in, which the
+  // onboarding overlay already owns end to end (device code → poll →
+  // reload.env → model confirm). Scoped to the gateway profile the failed
+  // session runs on, so a Bot profile's grant is renewed, not the primary's.
+  const oauthReauth = isOAuthReauthSurface(surface)
+  const gatewayProfile = useStore($activeGatewayProfile)
+
+  const signInAgain = useCallback(() => {
+    if (!oauthReauth) {
+      return
+    }
+
+    triggerHaptic('submit')
+    const key = normalizeProfileKey(gatewayProfile)
+    startManualProviderOAuth(surface.provider, key === 'default' ? undefined : key)
+  }, [gatewayProfile, oauthReauth, surface])
+
   // Retry = assistant-ui reload (same wiring as the footer's refresh action):
   // re-runs the failed turn's prompt in place. Suppressed when the classifier
-  // says the failure is deterministic (retrying reproduces it).
-  const retryable = !surface || surface.retryable
+  // says the failure is deterministic (retrying reproduces it) — except for an
+  // OAuth rejection, where signing in again changes the outcome and Retry is
+  // the natural second click.
+  const retryable = !surface || surface.retryable || oauthReauth
+
+  // Another surface holds this session's lease (#106217): Retry would hit the
+  // same refusal, so the way out is a fresh session on this surface.
+  const ownershipRefusal = surface?.code === 'SESSION_NOT_OWNED'
 
   // Switch Provider deep-links Settings → Models for the layers where the fix
   // is provider/endpoint/auth config, not a retry.
   const showSwitchProvider = surface != null && ['auth', 'billing', 'endpoint', 'provider'].includes(surface.layer)
+  const switchProviderIsPrimary = showSwitchProvider && !retryable && !oauthReauth
 
   const openLogs = useCallback(async () => {
     try {
@@ -548,32 +601,71 @@ const ErrorRecoveryActions: FC = () => {
     [errorText, model, surface]
   )
 
+  const startNewSession = useCallback(() => {
+    triggerHaptic('submit')
+    requestFreshSession()
+  }, [])
+
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {retryable && (
-        <ActionBarPrimitive.Reload asChild>
-          <button className="aui-error-action" onClick={() => triggerHaptic('submit')} type="button">
-            <RefreshCwIcon className="size-3" />
-            {copy.errorRetry}
-          </button>
-        </ActionBarPrimitive.Reload>
-      )}
-      {showSwitchProvider && inRouter && <SwitchProviderAction label={copy.errorSwitchProvider} />}
-      {window.hermesDesktop?.logsRoot && (
-        <button className="aui-error-action" onClick={() => void openLogs()} type="button">
-          {remoteConnection ? copy.errorOpenDesktopLogs : copy.errorOpenLogs}
-        </button>
-      )}
-      <button className="aui-error-action" onClick={() => requestSendDiagnostics(diagnosticsText())} type="button">
-        <Upload className="size-3" />
-        {copy.errorSendDiagnostics}
-      </button>
-      <CopyButton
-        appearance="inline"
-        className="aui-error-action"
-        label={copy.errorCopyDiagnostics}
-        text={diagnosticsText}
-      />
+    <div className="flex flex-col gap-2.5" data-slot="aui_error-recovery">
+      <div className="flex flex-wrap items-center gap-2" data-slot="aui_error-recovery-actions">
+        {ownershipRefusal && (
+          <Button onClick={startNewSession} size="sm" type="button">
+            {copy.errorStartNewSession}
+          </Button>
+        )}
+        {oauthReauth && (
+          <Button onClick={signInAgain} size="sm" type="button">
+            <KeyRound className="size-3.5" />
+            {copy.errorSignInAgain(surface.providerLabel || surface.provider)}
+          </Button>
+        )}
+        {retryable && (
+          <ActionBarPrimitive.Reload asChild>
+            <Button
+              onClick={() => triggerHaptic('submit')}
+              size="sm"
+              type="button"
+              variant={oauthReauth ? 'outline' : 'default'}
+            >
+              <RefreshCwIcon className="size-3.5" />
+              {copy.errorRetry}
+            </Button>
+          </ActionBarPrimitive.Reload>
+        )}
+        {showSwitchProvider && inRouter && (
+          <SwitchProviderAction label={copy.errorSwitchProvider} primary={switchProviderIsPrimary} />
+        )}
+      </div>
+
+      <details className="group/error-diagnostics border-t border-[color-mix(in_srgb,var(--dt-destructive)_16%,var(--ui-stroke-secondary))] pt-2">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1 py-0.5 font-medium text-(--ui-text-secondary) outline-none transition-colors hover:text-(--ui-text-primary) focus-visible:ring-2 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden">
+          {copy.errorDiagnosticsTitle}
+          <ChevronDown className="size-3.5 transition-transform group-open/error-diagnostics:rotate-180" />
+        </summary>
+        <div className="mt-2 flex flex-col gap-2">
+          <p className="text-[0.75rem] leading-4 text-(--ui-text-tertiary)">{copy.errorDiagnosticsHint}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {window.hermesDesktop?.logsRoot && (
+              <Button onClick={() => void openLogs()} size="xs" type="button" variant="ghost">
+                <FolderOpen className="size-3.5" />
+                {remoteConnection ? copy.errorOpenDesktopLogs : copy.errorOpenLogs}
+              </Button>
+            )}
+            <Button onClick={() => requestSendDiagnostics(diagnosticsText())} size="xs" type="button" variant="ghost">
+              <Upload className="size-3.5" />
+              {copy.errorSendDiagnostics}
+            </Button>
+            <CopyButton
+              appearance="button"
+              buttonSize="xs"
+              buttonVariant="ghost"
+              label={copy.errorCopyDiagnostics}
+              text={diagnosticsText}
+            />
+          </div>
+        </div>
+      </details>
     </div>
   )
 }
