@@ -63,7 +63,8 @@ const titleCase = (text: string): string => text.replace(/\b\w/g, char => char.t
 // after titleCase.
 const ACRONYM_WORDS: Record<string, string> = {
   Deepseek: 'DeepSeek',
-  Glm: 'GLM'
+  Glm: 'GLM',
+  Mimo: 'MiMo'
 }
 
 const fixAcronyms = (text: string): string => text.replace(/\b[A-Z][a-z]+\b/g, word => ACRONYM_WORDS[word] ?? word)

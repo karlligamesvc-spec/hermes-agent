@@ -69,7 +69,9 @@ export const APEX_PUBLIC_LLM_MODELS = [
   'gemini-3.8-flash',
   'qwen3.8-flash',
   'hy4-preview',
-  'glm-5.3-flash'
+  'glm-5.3-flash',
+  'mimo-v2.6-flash',
+  'mimo-v2.6-pro'
 ] as const
 
 const APEX_PUBLIC_LLM_MODEL_SET: ReadonlySet<string> = new Set(APEX_PUBLIC_LLM_MODELS)
@@ -170,7 +172,7 @@ function filterProviderToApexShelf(provider: ModelOptionProvider): ModelOptionPr
   }
 }
 
-/** Publish exactly the seven product-approved LLMs in the conversation picker.
+/** Publish exactly the nine product-approved LLMs in the conversation picker.
  *
  * Prefer the managed APEX row so identical model ids from configured BYOK
  * providers do not create duplicate entries. If the managed row is absent,
