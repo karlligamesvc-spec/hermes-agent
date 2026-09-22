@@ -390,6 +390,22 @@ class TestDefaultContextLengths:
                     f"{model_id}: expected {expected_ctx}, got {actual}"
                 )
 
+    def test_mimo_v26_models_1m_context(self):
+        from agent.model_metadata import get_model_context_length
+        from unittest.mock import patch as mock_patch
+
+        expected = {
+            "mimo-v2.6-flash": 1_000_000,
+            "mimo-v2.6-pro": 1_000_000,
+        }
+        with mock_patch("agent.model_metadata.fetch_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.fetch_endpoint_model_metadata", return_value={}), \
+             mock_patch("agent.model_metadata.get_cached_context_length", return_value=None):
+            for model_id, context_length in expected.items():
+                assert DEFAULT_CONTEXT_LENGTHS[model_id] == context_length
+                assert get_model_context_length(model_id) == context_length
+                assert get_model_context_length(f"xiaomi/{model_id}") == context_length
+
 
 
 

@@ -7173,6 +7173,8 @@ class TestSupportsReasoningExtraBody:
     def test_xiaomi_models_are_treated_as_reasoning_capable(self):
         agent = self._make_agent()
         for model in (
+            "xiaomi/mimo-v2.6-flash",
+            "xiaomi/mimo-v2.6-pro",
             "xiaomi/mimo-v2.5-pro",
             "xiaomi/mimo-v2.5",
             "xiaomi/mimo-v2-omni",

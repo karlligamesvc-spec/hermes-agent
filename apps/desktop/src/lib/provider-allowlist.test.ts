@@ -122,7 +122,7 @@ describe('filterApexLlmShelf', () => {
     expect(result?.unavailable_models).toEqual(['hy4-preview'])
     expect(Object.keys(result?.capabilities ?? {})).toEqual(['deepseek-flash'])
     expect(Object.keys(result?.pricing ?? {})).toEqual(['deepseek-flash'])
-    expect(result?.total_models).toBe(7)
+    expect(result?.total_models).toBe(9)
   })
 
   it('prefers the managed row so matching BYOK ids do not duplicate the shelf', () => {
