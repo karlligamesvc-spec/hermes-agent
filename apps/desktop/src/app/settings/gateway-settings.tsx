@@ -69,6 +69,7 @@ export interface GatewaySettingsState {
 }
 
 const SSH_HOST_CUSTOM = '__custom__'
+export const APEX_WEBSITE_URL = 'https://www.apex-nodes.com/'
 
 const EMPTY_STATE: GatewaySettingsState = {
   envOverride: false,
@@ -1148,11 +1149,11 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
             title={g.localTitle}
           />
           <ModeCard
-            active={state.mode === 'cloud'}
+            active={false}
             description={g.cloudDesc}
             disabled={state.envOverride}
             icon={Cloud}
-            onSelect={() => setState(current => ({ ...current, mode: 'cloud' }))}
+            onSelect={() => void window.hermesDesktop?.openExternal?.(APEX_WEBSITE_URL)}
             title={g.cloudTitle}
           />
           <ModeCard

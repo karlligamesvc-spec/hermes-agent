@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Collect the component graph before the behavioral test deadline starts.
-import { GatewaySettings } from './gateway-settings'
+import { APEX_WEBSITE_URL, GatewaySettings } from './gateway-settings'
 
 const { registry, activeId, selectConnection } = vi.hoisted(() => ({
   registry: { value: null as any },
@@ -47,7 +47,7 @@ beforeEach(() => {
   saveConnectionConfig.mockResolvedValue(localConnection)
   Object.defineProperty(window, 'hermesDesktop', {
     configurable: true,
-    value: { getConnectionConfig, saveConnectionConfig }
+    value: { getConnectionConfig, openExternal: vi.fn(), saveConnectionConfig }
   })
 })
 
@@ -57,6 +57,15 @@ afterEach(() => {
 })
 
 describe('GatewaySettings', () => {
+  it('opens the APEX website instead of presenting the upstream Hermes Cloud entry', async () => {
+    render(<GatewaySettings />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /APEX website/ }))
+
+    expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith(APEX_WEBSITE_URL)
+    expect(screen.queryByRole('button', { name: 'Hermes Cloud' })).toBeNull()
+  })
+
   it('keeps saved Cloud instances usable without discovery and marks the live source, not the default', async () => {
     getConnectionConfig.mockResolvedValue({ ...localConnection, mode: 'cloud', remoteUrl: 'https://a.example' })
     registry.value = {

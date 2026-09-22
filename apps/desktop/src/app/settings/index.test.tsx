@@ -7,7 +7,6 @@ import { I18nProvider } from '@/i18n'
 
 vi.mock('./about-settings', () => ({ AboutSettings: () => <div>about-view</div> }))
 vi.mock('./appearance-settings', () => ({ AppearanceSettings: () => <div>appearance-view</div> }))
-vi.mock('./billing', () => ({ BillingSettings: () => <div>billing-view</div> }))
 vi.mock('./config-settings', () => ({
   ConfigSettings: ({ activeSectionId }: { activeSectionId: string }) => <div>config-{activeSectionId}</div>
 }))
@@ -47,18 +46,29 @@ afterEach(() => {
 })
 
 describe('SettingsView account surface', () => {
-  it('renders the Chinese customer IA inside a named APEX settings dialog', () => {
+  it('shows the current settings surface while keeping APEX-only exclusions out', () => {
     renderSettings()
 
     const dialog = screen.getByRole('dialog', { name: '设置' })
     expect(dialog.querySelector('.p5-settings')).toBeTruthy()
     expect(screen.getByRole('heading', { level: 1, name: '设置' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: '个性化' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '模型' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '对话' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: '外观' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '工作区' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '安全' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: '浏览器' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '记忆与上下文' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '语音' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '高级' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: '提供方' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '网关' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: '已归档对话' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: '关于' }).length).toBeGreaterThan(0)
     expect(screen.getByText('personalization-view')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '账单' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '搜索' })).toBeNull()
 
     const visibleText = dialog.textContent ?? ''
     expect(visibleText).not.toContain('Hermes')
@@ -73,10 +83,10 @@ describe('SettingsView account surface', () => {
     expect(screen.queryByText('sessions-view')).toBeNull()
   })
 
-  it('keeps hidden technical pages reachable by an intentional deep link', () => {
-    renderSettings('/settings?tab=about')
+  it('does not render the upstream billing surface from a direct link', () => {
+    renderSettings('/settings?tab=billing')
 
-    expect(screen.getByText('about-view')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '关于' })).toBeNull()
+    expect(screen.getByText('personalization-view')).toBeTruthy()
+    expect(screen.queryByText('billing-view')).toBeNull()
   })
 })

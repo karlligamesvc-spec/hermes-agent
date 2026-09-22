@@ -1,9 +1,10 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { type CSSProperties, type ReactNode, useEffect, useRef } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { TITLEBAR_HEIGHT } from '@/app/shell/titlebar'
 import { TitlebarIcon } from '@/app/shell/titlebar-icon'
 import { Button } from '@/components/ui/button'
+import { DialogPortalContainerContext } from '@/components/ui/dialog-portal-context'
 import { translateNow } from '@/i18n'
 import { ESCAPE_PRIORITY, isTopEscapeLayer, pushEscapeLayer } from '@/lib/escape-layers'
 import { triggerHaptic } from '@/lib/haptics'
@@ -76,6 +77,7 @@ export function OverlayView({
   const returnFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null
   )
+  const [contentNode, setContentNode] = useState<HTMLElement | null>(null)
 
   const closeOverlay = () => {
     triggerHaptic('close')
@@ -111,7 +113,7 @@ export function OverlayView({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           className={cn(
-            'fixed inset-0 z-50 bg-black/22 backdrop-blur-[0.125rem]',
+            'fixed inset-0 z-(--z-modal-backdrop) bg-black/22 backdrop-blur-[0.125rem]',
             compactFullscreen &&
               'max-[53rem]:bg-(--ui-chat-surface-background) max-[53rem]:backdrop-blur-none'
           )}
@@ -119,7 +121,7 @@ export function OverlayView({
         />
         <div
           className={cn(
-            'pointer-events-none fixed inset-0 z-50 p-[calc(var(--titlebar-height)+0.625rem)]',
+            'pointer-events-none fixed inset-0 z-(--z-modal) p-[calc(var(--titlebar-height)+0.625rem)]',
             'sm:p-[calc(var(--titlebar-height)+0.875rem)]',
             compactFullscreen && 'max-[53rem]:!p-0'
           )}
@@ -133,7 +135,10 @@ export function OverlayView({
               aria-labelledby={ariaLabelledBy}
               aria-modal="true"
               className={cn(
-                'pointer-events-auto relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-chat-surface-background) shadow-md outline-none',
+                // This shell is also the portal container for Select, Popover,
+                // and DropdownMenu. It must not clip its descendants; the inner
+                // box below owns the rounded-corner clipping instead.
+                'pointer-events-auto relative h-full min-h-0 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-chat-surface-background) shadow-md outline-none',
                 compactFullscreen &&
                   'max-[53rem]:rounded-none max-[53rem]:border-0 max-[53rem]:shadow-none',
                 rootClassName
@@ -148,36 +153,46 @@ export function OverlayView({
                   event.preventDefault()
                 }
               }}
+              ref={setContentNode}
             >
-              {!ariaLabelledBy && <DialogPrimitive.Title className="sr-only">{title ?? closeLabel}</DialogPrimitive.Title>}
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[calc(var(--titlebar-height)+0.1875rem)] [-webkit-app-region:drag]">
-                {headerContent && (
-                  <div className="pointer-events-auto absolute left-1/2 top-[calc(0.5rem+var(--titlebar-height)/2)] -translate-x-1/2 -translate-y-1/2 [-webkit-app-region:no-drag]">
-                    {headerContent}
+              <DialogPortalContainerContext.Provider value={contentNode}>
+                <div
+                  className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[inherit]"
+                  data-overlay-clip=""
+                >
+                  {!ariaLabelledBy && (
+                    <DialogPrimitive.Title className="sr-only">{title ?? closeLabel}</DialogPrimitive.Title>
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[calc(var(--titlebar-height)+0.1875rem)] [-webkit-app-region:drag]">
+                    {headerContent && (
+                      <div className="pointer-events-auto absolute left-1/2 top-[calc(0.5rem+var(--titlebar-height)/2)] -translate-x-1/2 -translate-y-1/2 [-webkit-app-region:no-drag]">
+                        {headerContent}
+                      </div>
+                    )}
+
+                    <div className="pointer-events-auto absolute right-3 top-[calc(0.1875rem+var(--titlebar-height)/2)] flex -translate-y-1/2 items-center gap-1.5 [-webkit-app-region:no-drag]">
+                      {titlebarActions}
+
+                      <DialogPrimitive.Close asChild>
+                        <Button
+                          aria-label={closeLabel}
+                          className="text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground"
+                          data-overlay-close=""
+                          size="icon-titlebar"
+                          variant="ghost"
+                        >
+                          <TitlebarIcon name="close" />
+                        </Button>
+                      </DialogPrimitive.Close>
+                    </div>
                   </div>
-                )}
 
-                <div className="pointer-events-auto absolute right-3 top-[calc(0.1875rem+var(--titlebar-height)/2)] flex -translate-y-1/2 items-center gap-1.5 [-webkit-app-region:no-drag]">
-                  {titlebarActions}
-
-                  <DialogPrimitive.Close asChild>
-                    <Button
-                      aria-label={closeLabel}
-                      className="text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground"
-                      data-overlay-close=""
-                      size="icon-titlebar"
-                      variant="ghost"
-                    >
-                      <TitlebarIcon name="close" />
-                    </Button>
-                  </DialogPrimitive.Close>
+                  {/* No top padding here: the split-layout columns own their own
+                      titlebar clearance so their backgrounds run flush to the card top
+                      (otherwise the card surface shows as a gap above the sidebar). */}
+                  <div className={cn('min-h-0 flex flex-1 flex-col', contentClassName)}>{children}</div>
                 </div>
-              </div>
-
-              {/* No top padding here: the split-layout columns own their own
-                  titlebar clearance so their backgrounds run flush to the card top
-                  (otherwise the card surface shows as a gap above the sidebar). */}
-              <div className={cn('min-h-0 flex flex-1 flex-col', contentClassName)}>{children}</div>
+              </DialogPortalContainerContext.Provider>
             </DialogPrimitive.Content>
 
             {/* Sibling of the card, not a child: the card clips its own overflow

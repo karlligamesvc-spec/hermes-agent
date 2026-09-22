@@ -45,7 +45,7 @@ import {
 } from './helpers'
 import { MemoryConnect } from './memory/connect'
 import { ProviderConfigPanel } from './memory/provider-config-panel'
-import { ModelSettings, ModelSettingsSkeleton } from './model-settings'
+import { ModelSettings } from './model-settings'
 import { PoolLimitsSetting } from './pool-limits-setting'
 import { EmptyState, ListRow, SettingsContent, SettingsSkeleton, ToggleRow } from './primitives'
 import { SettingsProfileScope } from './profile-scope'
@@ -339,6 +339,22 @@ function ConfigSettingsInner({
   }
 
   if (!config || !schema) {
+    // The model picker has focused APIs and its own recovery state. Do not keep
+    // the entire page behind the generic config/schema request: during a
+    // backend restart or shell/runtime version skew, model selection can be
+    // healthy before /api/config/schema is ready. The two schema-backed fields
+    // join the page after the shared queries arrive.
+    if (activeSectionId === 'model') {
+      return (
+        <SettingsContent>
+          <SettingsProfileScope className="mb-5" />
+          <div className="mb-6">
+            <ModelSettings onMainModelChanged={onMainModelChanged} scopeProfile={scopeProfile} />
+          </div>
+        </SettingsContent>
+      )
+    }
+
     // A failed config/schema fetch must surface a retry, not spin forever.
     if ((configLoadFailed && !config) || (schemaFailed && !schema)) {
       return (
@@ -359,19 +375,6 @@ function ConfigSettingsInner({
             title={c.failedLoad}
           />
         </div>
-      )
-    }
-
-    // Every section keeps its shape via a skeleton; model gets its bespoke one
-    // (its catalog fetch is the slow part), the rest the shared field rhythm.
-    if (activeSectionId === 'model') {
-      return (
-        <SettingsContent>
-          <SettingsProfileScope className="mb-5" />
-          <div className="mb-6">
-            <ModelSettingsSkeleton />
-          </div>
-        </SettingsContent>
       )
     }
 

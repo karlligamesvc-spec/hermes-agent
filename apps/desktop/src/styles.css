@@ -135,6 +135,23 @@
   :root {
     color-scheme: light;
 
+    /* Shared overlay ladder. Menus opened inside a modal must paint above its
+       surface and backdrop, while product-level takeover states remain above
+       ordinary dialogs. Keep these tokens numeric: Tailwind's z-(--token)
+       utilities pass them directly to z-index. */
+    --z-modal-backdrop: 50;
+    --z-modal: 51;
+    --z-modal-popover: 52;
+    --z-over-modal: 60;
+    --z-over-modal-content: 61;
+    --z-switcher-backdrop: 70;
+    --z-switcher: 71;
+    --z-connecting: 80;
+    --z-onboarding: 90;
+    --z-onboarding-popover: 91;
+    --z-setup: 100;
+    --z-crash: 110;
+
     /* ── Claude-style light identity ──────────────────────────────────────
        Gray-white neutrals are the surface system; the ApexNodes brand violet
        (#7E6CEF) is the single accent, but every derived token mixes it into

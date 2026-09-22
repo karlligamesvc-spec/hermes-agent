@@ -899,6 +899,10 @@ export const ja = defineLocale({
       remoteTitle: 'リモートゲートウェイ',
       remoteDesc:
         'このデスクトップシェルをリモートの APEX バックエンドに接続します。ホスト型ゲートウェイは OAuth またはユーザー名とパスワードを使用します。自己ホスト型はセッショントークンを使用する場合があります。',
+      cloudTitle: 'APEX 公式サイト',
+      cloudDesc: 'APEX 公式サイトを開き、アカウントとクラウドサービスを管理します。',
+      sshTitle: 'SSH で接続',
+      sshDesc: 'SSH 経由でリモートホスト上の APEX を起動し、このデスクトップへ安全に接続します。鍵認証の設定が必要です。',
       remoteUrlTitle: 'リモート URL',
       remoteUrlDesc:
         'リモートダッシュボードバックエンドのベース URL。/hermes などのパスプレフィックスもサポートしています。',

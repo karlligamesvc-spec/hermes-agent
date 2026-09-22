@@ -24,6 +24,10 @@ vi.mock('../hooks/use-on-profile-switch', () => ({
   useOnProfileSwitch: () => {}
 }))
 
+vi.mock('./model-settings', () => ({
+  ModelSettings: () => <div>model-settings-ready</div>
+}))
+
 // The real stores pull in the gateway/profile stack, which needs a live
 // backend connection. This page only reads the "applies to" scope override
 // and the repo-discovery signature, neither of which this test touches.
@@ -58,14 +62,14 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function renderConfigSettings() {
+function renderConfigSettings(activeSectionId = 'safety') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const importInputRef = createRef<HTMLInputElement>()
 
   render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
-        <ConfigSettings activeSectionId="safety" importInputRef={importInputRef} />
+        <ConfigSettings activeSectionId={activeSectionId} importInputRef={importInputRef} />
       </QueryClientProvider>
     </MemoryRouter>
   )
@@ -74,6 +78,15 @@ function renderConfigSettings() {
 }
 
 describe('ConfigSettings autosave', () => {
+  it('shows the model controls without waiting for the generic config schema', () => {
+    getHermesConfigRecord.mockReturnValue(new Promise(() => {}))
+    getHermesConfigSchema.mockReturnValue(new Promise(() => {}))
+
+    renderConfigSettings('model')
+
+    expect(screen.getByText('model-settings-ready')).toBeTruthy()
+  })
+
   it('sends a later revert instead of diffing it away against the stale page-load baseline', async () => {
     getHermesConfigRecord.mockResolvedValue({ checkpoints: { enabled: false }, other: 'untouched' })
 
