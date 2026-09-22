@@ -10,8 +10,16 @@ import { useI18n } from '@/i18n'
 import { NEW_CHAT_ROUTE, projectDetailRoute, routeDrawerNavigationState } from '../../routes'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
-import { useWorkflowCatalog, useWorkflowDefinitions } from '../hooks/use-workflow-domain-lists'
-import { type BusinessWorkflowStarter, businessWorkflowStarters } from '../view-model/workflow-starters'
+import {
+  useVideoWorkflowCatalog,
+  useWorkflowCatalog,
+  useWorkflowDefinitions
+} from '../hooks/use-workflow-domain-lists'
+import {
+  type BusinessWorkflowStarter,
+  businessWorkflowStarters,
+  videoWorkflowStarters
+} from '../view-model/workflow-starters'
 
 export function WorkflowsView() {
   const { t } = useI18n()
@@ -20,8 +28,10 @@ export function WorkflowsView() {
   const navigate = useNavigate()
   const [reloadToken, setReloadToken] = useState(0)
   const catalog = useWorkflowCatalog(reloadToken)
+  const videoCatalog = useVideoWorkflowCatalog(reloadToken)
   const workflows = useWorkflowDefinitions({ limit: 50 }, reloadToken)
   const localStarters = businessWorkflowStarters(c)
+  const localVideoStarters = videoWorkflowStarters(c)
   const launchContext = location.state as null | { businessGoalDraft?: unknown; businessProjectId?: unknown }
 
   const targetProjectId =
@@ -30,8 +40,8 @@ export function WorkflowsView() {
   const targetObjective =
     typeof launchContext?.businessGoalDraft === 'string' ? launchContext.businessGoalDraft.slice(0, 4000) : ''
 
-  const starters =
-    catalog.mode === 'ready'
+  const starters = [
+    ...(catalog.mode === 'ready'
       ? catalog.items
           .slice()
           .sort((left, right) => left.position - right.position)
@@ -42,9 +52,25 @@ export function WorkflowsView() {
               ? [{ ...local, businessPath: item.businessPath, recommended: item.recommended, version: item.version }]
               : []
           })
-      : []
+      : []),
+    ...(videoCatalog.mode === 'ready'
+      ? videoCatalog.items
+          .slice()
+          .sort((left, right) => left.position - right.position)
+          .flatMap(item => {
+            const local = localVideoStarters.find(starter => starter.id === item.id && starter.slug === item.slug)
 
-  const testCatalog = catalog.mode === 'ready' && /(?:local|test|staging|review)/i.test(catalog.version ?? '')
+            return local ? [{ ...local, recommended: item.recommended, version: item.version }] : []
+          })
+      : [])
+  ]
+
+  const catalogReady = catalog.mode === 'ready' || videoCatalog.mode === 'ready'
+  const catalogLoading = !catalogReady && (catalog.mode === 'loading' || videoCatalog.mode === 'loading')
+  const catalogUnavailable = catalog.mode === 'unavailable' && videoCatalog.mode === 'unavailable'
+  const testCatalog = [catalog, videoCatalog].some(
+    state => state.mode === 'ready' && /(?:local|test|staging|review)/i.test(state.version ?? '')
+  )
 
   const recommended = starters.filter(starter => starter.recommended)
   const additional = starters.filter(starter => !starter.recommended)
@@ -151,12 +177,12 @@ export function WorkflowsView() {
           </div>
         )}
       </section>
-      {catalog.mode === 'loading' ? (
+      {catalogLoading ? (
         <div className="mx-auto flex min-h-72 w-full max-w-[65.625rem] items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader className="size-8" label={c.title} type="lemniscate-bloom" />
           <span>{c.title}</span>
         </div>
-      ) : catalog.mode !== 'ready' ? (
+      ) : !catalogReady ? (
         <div
           className="mx-auto grid min-h-72 w-full max-w-[65.625rem] place-items-center py-10 text-center"
           data-workflow-recovery=""
@@ -164,7 +190,7 @@ export function WorkflowsView() {
           <div>
             <Codicon className="mx-auto text-amber-500" name="warning" size="1.75rem" />
             <EmptyState
-              description={catalog.mode === 'unavailable' ? c.localCatalogNotice : c.catalogUnavailableDescription}
+              description={catalogUnavailable ? c.localCatalogNotice : c.catalogUnavailableDescription}
               title={c.catalogUnavailable}
             />
             <div className="flex flex-wrap justify-center gap-2">

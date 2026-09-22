@@ -11,7 +11,8 @@ import type {
   WorkflowDeliverableDetail,
   WorkflowDomainBridge,
   WorkflowProject,
-  WorkflowRunOverview
+  WorkflowRunOverview,
+  WorkflowVideoCatalogItem
 } from './types'
 
 export type WorkflowProjectListOutcome =
@@ -24,6 +25,11 @@ export type WorkflowProjectOutcome =
 
 export type WorkflowCatalogOutcome =
   { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string } | { mode: 'failed' } | { mode: 'unavailable' }
+
+export type WorkflowVideoCatalogOutcome =
+  | { items: WorkflowVideoCatalogItem[]; mode: 'ready'; version: null | string }
+  | { mode: 'failed' }
+  | { mode: 'unavailable' }
 
 export type WorkflowDefinitionListOutcome =
   { items: WorkflowDefinition[]; mode: 'ready' } | { mode: 'failed' } | { mode: 'unavailable' }
@@ -190,6 +196,30 @@ export async function listWorkflowCatalog(
   }
 }
 
+export async function listVideoWorkflowCatalog(
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowVideoCatalogOutcome> {
+  if (!bridge?.getVideoCatalog) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    const access = await bridge.access()
+
+    if (!access.available) {
+      return { mode: 'unavailable' }
+    }
+
+    const catalog = await bridge.getVideoCatalog()
+
+    return catalog.ok && Array.isArray(catalog.items)
+      ? { items: catalog.items, mode: 'ready', version: catalog.version ?? null }
+      : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
 export async function listWorkflowDefinitions(
   options: { limit?: number; projectId?: string; status?: string } = {},
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
@@ -304,6 +334,12 @@ export async function cancelWorkflowRun(runId: string): Promise<boolean> {
   const bridge = workflowDomainBridge()
 
   return bridge ? (await bridge.cancelRun(runId)).ok : false
+}
+
+export async function retryWorkflowRunStep(runId: string, stepKey: string): Promise<boolean> {
+  const bridge = workflowDomainBridge()
+
+  return bridge?.retryRunStep ? (await bridge.retryRunStep({ runId, stepKey })).ok : false
 }
 
 export async function reviewWorkflowDeliverable(

@@ -392,6 +392,135 @@ describe('hc-685 business workspace identity', () => {
     expect(goal.value).not.toMatch(internalTerms)
   })
 
+  it('starts the home viral-video card as the real seven-stage workflow when the catalog is available', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn(async () => ({ ok: true, run: domainRun('run-video', '拆解链接视频') }))
+
+    const getVideoCatalog = vi.fn(async () => ({
+      items: [
+        {
+          id: 'viral-video-remake',
+          kind: 'pipeline' as const,
+          name: '拆解并复刻爆款视频',
+          position: 0,
+          recommended: true,
+          slug: 'viral-video-remake',
+          stepCount: 7,
+          summary: '分阶段制作',
+          version: 1
+        }
+      ],
+      ok: true,
+      version: 'video-workflow-catalog/v1'
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog,
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
+      target: { value: '拆解链接视频：https://example.com/video' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-video'))
+    expect(getVideoCatalog).toHaveBeenCalledTimes(1)
+    expect(startGoal).toHaveBeenCalledWith({
+      objective: '拆解链接视频：https://example.com/video',
+      starter: expect.objectContaining({ id: 'viral-video-remake', slug: 'viral-video-remake', version: 1 })
+    })
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('restores a routed video template and keeps chat fallback for an older server', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn()
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog: vi.fn(async () => ({ code: 'request_failed' as const, ok: false })),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              businessWorkflowCatalogProvenance: 'production',
+              businessWorkflowSlug: 'video-source-collection'
+            }
+          }
+        ]}
+      >
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('启动前确认').closest('section')?.textContent).toContain('采集视频与数据')
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
+      target: { value: '使用旧服务端处理视频链接' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(submit).toHaveBeenCalledWith('使用旧服务端处理视频链接'))
+    expect(startGoal).not.toHaveBeenCalled()
+  })
+
+  it('keeps an attached home-card video on the attachment-capable chat path', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn()
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog: vi.fn(),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome
+            attachments={[{ id: 'source-video', kind: 'file', label: 'source.mp4' }]}
+            onSubmitGoal={submit}
+          />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    expect(screen.queryByText('启动前确认')).toBeNull()
+    expect(screen.getByRole('button', { name: '开始执行' }).hasAttribute('disabled')).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+    expect(startGoal).not.toHaveBeenCalled()
+  })
+
   it('starts the selected workflow through the authenticated domain bridge and opens its real Run', async () => {
     const submit = vi.fn(async () => true)
     const access = vi.fn(async () => ({ available: true }))
@@ -919,6 +1048,65 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByTestId('business-workflow-id').textContent).toBe('competitor-monitoring')
     expect(screen.getByTestId('business-workflow-version').textContent).toBe('7')
     expect(startGoal).not.toHaveBeenCalled()
+  })
+
+  it('shows the server-owned video pipeline even when the legacy catalog is unavailable', async () => {
+    const getVideoCatalog = vi.fn(async () => ({
+      items: [
+        {
+          id: 'viral-video-remake',
+          kind: 'pipeline' as const,
+          name: 'server text is not executable prompt text',
+          position: 0,
+          recommended: true,
+          slug: 'viral-video-remake',
+          stepCount: 7,
+          summary: 'server summary',
+          version: 1
+        },
+        {
+          id: 'video-source-collection',
+          kind: 'stage' as const,
+          name: 'server stage',
+          position: 1,
+          recommended: false,
+          slug: 'video-source-collection',
+          stepCount: 1,
+          summary: 'server stage summary',
+          version: 1
+        }
+      ],
+      ok: true,
+      version: 'video-workflow-catalog/v1'
+    }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getCatalog: vi.fn(async () => ({ ok: false })),
+      getRun: vi.fn(),
+      getVideoCatalog,
+      listWorkflows: vi.fn(async () => ({ items: [], ok: true })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <WorkflowsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByRole('button', { name: /完整短视频制作流程/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /采集视频与数据/ })).toBeTruthy()
+    expect(screen.queryByText('server text is not executable prompt text')).toBeNull()
+    expect(getVideoCatalog).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /采集视频与数据/ }))
+    await waitFor(() => expect(screen.getByTestId('business-workflow-slug').textContent).toBe('video-source-collection'))
   })
 
   it('offers executable recovery actions and never substitutes test templates when the catalog is unavailable', async () => {

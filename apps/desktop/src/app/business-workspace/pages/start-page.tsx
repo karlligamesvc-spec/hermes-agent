@@ -7,11 +7,11 @@ import { useI18n } from '@/i18n'
 import type { ComposerAttachment } from '@/store/composer'
 
 import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
-import { startWorkflowGoal } from '../api/adapters'
+import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
-import { businessWorkflowStarters } from '../view-model/workflow-starters'
+import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/workflow-starters'
 
 export interface BusinessStartHomeProps {
   attachments?: ComposerAttachment[]
@@ -42,7 +42,14 @@ export function BusinessStartHome({
   const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
-  const workflows = useMemo(() => businessWorkflowStarters(t.businessWorkspace.workflows), [t])
+
+  const workflows = useMemo(
+    () => [
+      ...businessWorkflowStarters(t.businessWorkspace.workflows),
+      ...videoWorkflowStarters(t.businessWorkspace.workflows)
+    ],
+    [t]
+  )
 
   const launchState = location.state as null | {
     businessGoalDraft?: unknown
@@ -90,6 +97,7 @@ export function BusinessStartHome({
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
+  const [homeVideoWorkflowSelected, setHomeVideoWorkflowSelected] = useState(false)
 
   const [selectedWorkflowIsTestData, setSelectedWorkflowIsTestData] = useState(
     launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
@@ -122,6 +130,7 @@ export function BusinessStartHome({
   // entry clears the template and its provenance before the next submit.
   useEffect(() => {
     setSelectedWorkflow(launchedWorkflow)
+    setHomeVideoWorkflowSelected(false)
     setSelectedWorkflowIsTestData(
       launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
     )
@@ -131,8 +140,23 @@ export function BusinessStartHome({
     setDomainError(false)
   }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
 
+  // A local attachment cannot be silently dropped by the cloud Workflow API.
+  // Keep the existing attachment-capable chat route for a home-card draft.
+  useEffect(() => {
+    if (homeVideoWorkflowSelected && attachments.length > 0) {
+      setSelectedWorkflow(null)
+      setHomeVideoWorkflowSelected(false)
+    }
+  }, [attachments.length, homeVideoWorkflowSelected])
+
   const selectGoal = (starter: BusinessHomeStarter) => {
-    setSelectedWorkflow(null)
+    const videoWorkflow =
+      starter.id === 'viral-video-remake' && attachments.length === 0
+        ? workflows.find(workflow => workflow.id === starter.id) ?? null
+        : null
+
+    setSelectedWorkflow(videoWorkflow)
+    setHomeVideoWorkflowSelected(videoWorkflow !== null)
     setSelectedWorkflowIsTestData(false)
     setDomainError(false)
     setGoalDraft(starter.prompt)
@@ -147,8 +171,23 @@ export function BusinessStartHome({
     setDomainError(false)
     setDomainStarting(true)
 
+    let starter = selectedWorkflow
+
+    if (homeVideoWorkflowSelected) {
+      const catalog = await listVideoWorkflowCatalog()
+      const available = catalog.mode === 'ready' ? catalog.items.find(item => item.id === starter.id) : null
+
+      if (!available) {
+        setDomainStarting(false)
+
+        return (await onSubmitGoal?.(goal)) ?? false
+      }
+
+      starter = { ...starter, version: available.version }
+    }
+
     const projectId = routedProjectId || undefined
-    const outcome = await startWorkflowGoal(goal, selectedWorkflow, projectId)
+    const outcome = await startWorkflowGoal(goal, starter, projectId)
 
     setDomainStarting(false)
 

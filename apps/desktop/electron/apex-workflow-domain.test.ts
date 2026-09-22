@@ -7,6 +7,7 @@ type JsonObject = Record<string, unknown>
 import {
   cancelWorkflowDomainRun,
   createWorkflowDomainProject,
+  getVideoWorkflowDomainCatalog,
   getWorkflowDomainAccess,
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
@@ -17,6 +18,7 @@ import {
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startWorkflowDomainGoal,
   workflowDomainUrl,
@@ -114,6 +116,40 @@ test('starts one canonical Project to Workflow to Hermes Run chain', async () =>
     executorType: 'hermes',
     maxAttempts: 2
   })
+})
+
+test('starts the server-owned video Workflow without accepting a client-authored definition', async () => {
+  const calls: Array<{ body: Record<string, unknown>; url: string }> = []
+
+  const run = await startWorkflowDomainGoal({
+    apiBase: 'https://api.apex-nodes.com',
+    objective: '拆解并复刻这条视频',
+    projectId: 'project-video',
+    starter: {
+      description: 'Renderer copy must not become the execution definition',
+      id: 'viral-video-remake',
+      name: '拆解并复刻爆款视频',
+      slug: 'viral-video-remake',
+      version: 1
+    },
+    transport: {
+      getJson: async () => ({}),
+      postJson: async (url, body) => {
+        calls.push({ body, url })
+
+        return url.endsWith('/runs') ? { item: { id: 'run-video' } } : { item: { id: 'workflow-video' } }
+      }
+    },
+    uuid: () => '00000000-0000-4000-8000-000000000842'
+  })
+
+  assert.deepEqual(run, { id: 'run-video' })
+  assert.equal(
+    calls[0]?.url,
+    'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-video/workflow-templates/viral-video-remake'
+  )
+  assert.deepEqual(calls[0]?.body, { objective: '拆解并复刻这条视频' })
+  assert.equal(JSON.stringify(calls[0]?.body).includes('Renderer copy'), false)
 })
 
 test('creates an honest empty Project with its optional local folder', async () => {
@@ -219,6 +255,7 @@ test('keeps Project, Workflow, and catalog reads on bounded authenticated exits'
     transport
   )
   await getWorkflowDomainCatalog('https://api.apex-nodes.com', transport)
+  await getVideoWorkflowDomainCatalog('https://api.apex-nodes.com', transport)
   await getWorkflowDomainProject('https://api.apex-nodes.com', 'project/1', transport)
 
   assert.equal(
@@ -230,7 +267,8 @@ test('keeps Project, Workflow, and catalog reads on bounded authenticated exits'
     'https://api.apex-nodes.com/api/v1/workflow-domain/workflows?cursor=workflow+cursor&limit=50&projectId=project%2F1&status=paused'
   )
   assert.equal(gets[2], 'https://api.apex-nodes.com/api/v1/workflow-domain/catalog')
-  assert.equal(gets[3], 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project%2F1')
+  assert.equal(gets[3], 'https://api.apex-nodes.com/api/v1/workflow-domain/video-workflow-templates')
+  assert.equal(gets[4], 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project%2F1')
 })
 
 test('keeps access, cancel, and review on their exact typed exits', async () => {
@@ -253,6 +291,10 @@ test('keeps access, cancel, and review on their exact typed exits', async () => 
   assert.deepEqual(await getWorkflowDomainAccess('https://api.apex-nodes.com', transport), { enabled: true })
   assert.deepEqual(await cancelWorkflowDomainRun('https://api.apex-nodes.com', 'run/1', transport), { id: 'saved' })
   assert.deepEqual(
+    await retryWorkflowDomainRunStep('https://api.apex-nodes.com', 'run/1', 'shot/analysis', transport),
+    { id: 'saved' }
+  )
+  assert.deepEqual(
     await reviewWorkflowDomainDeliverable(
       'https://api.apex-nodes.com',
       'deliverable/1',
@@ -265,7 +307,8 @@ test('keeps access, cancel, and review on their exact typed exits', async () => 
 
   assert.equal(gets[0], 'https://api.apex-nodes.com/api/v1/workflow-domain/access')
   assert.equal(posts[0]?.url.endsWith('/runs/run%2F1/cancel'), true)
-  assert.deepEqual(posts[1]?.body, {
+  assert.equal(posts[1]?.url.endsWith('/runs/run%2F1/steps/shot%2Fanalysis/retry'), true)
+  assert.deepEqual(posts[2]?.body, {
     status: 'changes_requested',
     metrics: {},
     notes: 'Cite the primary source.',
@@ -301,7 +344,7 @@ test('keeps access, cancel, and review on their exact typed exits', async () => 
     ),
     /review notes/
   )
-  assert.equal(posts.length, 2)
+  assert.equal(posts.length, 3)
 })
 
 test('projects Run detail into a sequence-stable renderer model without raw or tenant-sensitive fields', async () => {
@@ -389,7 +432,39 @@ test('projects Run detail into a sequence-stable renderer model without raw or t
           sequence: 1
         }
       ],
-      steps: [{ progress: 88, title: 'Fabricated stage from unsupported response data' }],
+      steps: [
+        {
+          attempt: 1,
+          completedAt: null,
+          createdAt: '2026-09-06T10:01:00Z',
+          evidenceCount: 0,
+          id: 'step-2',
+          internalPrompt: 'private-stage-prompt',
+          key: 'shot_analysis',
+          position: 2,
+          runId: 'run-1',
+          startedAt: null,
+          status: 'pending',
+          summary: null,
+          title: '镜头分析报告',
+          updatedAt: '2026-09-06T10:01:00Z'
+        },
+        {
+          attempt: 1,
+          completedAt: '2026-09-06T10:01:00Z',
+          createdAt: '2026-09-06T10:00:00Z',
+          evidenceCount: 3,
+          id: 'step-1',
+          key: 'source_collection',
+          position: 0,
+          runId: 'run-1',
+          startedAt: '2026-09-06T10:00:00Z',
+          status: 'succeeded',
+          summary: '已保存原视频和互动数据',
+          title: '采集视频与数据',
+          updatedAt: '2026-09-06T10:01:00Z'
+        }
+      ],
       run: {
         attempt: 1,
         completedAt: null,
@@ -419,7 +494,10 @@ test('projects Run detail into a sequence-stable renderer model without raw or t
     ),
     [1, 2, 3]
   )
-  assert.equal('steps' in projected, false)
+  assert.deepEqual(
+    (projected.steps as Array<{ key: string }>).map(step => step.key),
+    ['source_collection', 'shot_analysis']
+  )
 
   const rendererJson = JSON.stringify(projected)
 
@@ -434,7 +512,7 @@ test('projects Run detail into a sequence-stable renderer model without raw or t
     'private-review-note',
     'verifier-secret',
     'private stack',
-    'Fabricated stage from unsupported response data'
+    'private-stage-prompt'
   ]) {
     assert.equal(rendererJson.includes(forbidden), false)
   }

@@ -279,11 +279,13 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     getProject: projectId => ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId),
     listWorkflows: options => ipcRenderer.invoke('hermes:workflowDomain:listWorkflows', options),
     getCatalog: () => ipcRenderer.invoke('hermes:workflowDomain:getCatalog'),
+    getVideoCatalog: () => ipcRenderer.invoke('hermes:workflowDomain:getVideoCatalog'),
     listDeliverables: options => ipcRenderer.invoke('hermes:workflowDomain:listDeliverables', options),
     getDeliverable: deliverableId => ipcRenderer.invoke('hermes:workflowDomain:getDeliverable', deliverableId),
     listActivity: options => ipcRenderer.invoke('hermes:workflowDomain:listActivity', options),
     getRun: runId => ipcRenderer.invoke('hermes:workflowDomain:getRun', runId),
     cancelRun: runId => ipcRenderer.invoke('hermes:workflowDomain:cancelRun', runId),
+    retryRunStep: payload => ipcRenderer.invoke('hermes:workflowDomain:retryRunStep', payload),
     reviewDeliverable: payload => ipcRenderer.invoke('hermes:workflowDomain:reviewDeliverable', payload),
     openUserFile: fileId => ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)
   },

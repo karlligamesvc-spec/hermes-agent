@@ -307,6 +307,7 @@ declare global {
           status?: string
         }) => Promise<DesktopWorkflowDomainWorkflowListResult>
         getCatalog?: () => Promise<DesktopWorkflowDomainCatalogResult>
+        getVideoCatalog?: () => Promise<DesktopWorkflowDomainVideoCatalogResult>
         listDeliverables?: (options?: {
           cursor?: string
           kind?: string
@@ -322,6 +323,10 @@ declare global {
         }) => Promise<DesktopWorkflowDomainActivityListResult>
         getRun: (runId: string) => Promise<DesktopWorkflowDomainRunResult>
         cancelRun: (runId: string) => Promise<DesktopWorkflowDomainMutationResult>
+        retryRunStep?: (payload: {
+          runId: string
+          stepKey: string
+        }) => Promise<DesktopWorkflowDomainMutationResult>
         reviewDeliverable: (payload: {
           deliverableId: string
           notes?: string
@@ -1883,6 +1888,25 @@ export interface DesktopWorkflowDomainCatalogResult {
   version?: string
 }
 
+export interface DesktopWorkflowDomainVideoCatalogItem {
+  id: string
+  kind: 'pipeline' | 'stage'
+  name: string
+  position: number
+  recommended: boolean
+  slug: string
+  stepCount: number
+  summary: string
+  version: number
+}
+
+export interface DesktopWorkflowDomainVideoCatalogResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  items?: DesktopWorkflowDomainVideoCatalogItem[]
+  ok: boolean
+  version?: string
+}
+
 export interface DesktopWorkflowDomainRun {
   attempt: number
   completedAt: null | string
@@ -1922,10 +1946,27 @@ export interface DesktopWorkflowDomainDeliverable {
   updatedAt: string
 }
 
+export interface DesktopWorkflowDomainRunStep {
+  attempt: number
+  completedAt: null | string
+  createdAt: string
+  evidenceCount: number
+  id: string
+  key: string
+  position: number
+  runId: string
+  startedAt: null | string
+  status: 'cancelled' | 'failed' | 'pending' | 'running' | 'skipped' | 'succeeded'
+  summary: null | string
+  title: string
+  updatedAt: string
+}
+
 export interface DesktopWorkflowDomainOverview {
   deliverables: DesktopWorkflowDomainDeliverable[]
   events: DesktopWorkflowDomainEvent[]
   run: DesktopWorkflowDomainRun
+  steps: DesktopWorkflowDomainRunStep[]
 }
 
 export interface DesktopWorkflowDomainDetailedReview {

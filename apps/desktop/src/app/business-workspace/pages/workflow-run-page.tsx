@@ -25,7 +25,8 @@ export function WorkflowRunView() {
   const { runId = '' } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const { actionFailed, actionId, cancel, failed, load, loading, overview, review } = useWorkflowRun(runId)
+  const { actionFailed, actionId, cancel, failed, load, loading, overview, retryStep, review } =
+    useWorkflowRun(runId)
   const [activeView, setActiveView] = useState('progress')
   const scrollRef = useRef<HTMLElement | null>(null)
 
@@ -65,30 +66,29 @@ export function WorkflowRunView() {
     )
   }
 
-  const { deliverables, events, run } = overview
+  const { deliverables, events, run, steps = [] } = overview
   const runPresentation = businessStatusPresentation('run', run.status)
   const canCancel = runPresentation.canCancel
   const waitingForReview = runPresentation.canonical === 'waiting_review'
 
-  const pendingReviewCount = waitingForReview
-    ? deliverables.filter(deliverable => {
-        const status = deliverable.reviews.at(-1)?.status || deliverable.status
-
-        return status !== 'approved' && status !== 'rejected'
-      }).length
-    : 0
-
-  const pendingDeliverables = waitingForReview
-    ? deliverables.filter(deliverable => {
-        const status = deliverable.reviews.at(-1)?.status || deliverable.status
-
-        return status !== 'approved' && status !== 'rejected'
-      })
+  const reviewCandidates = waitingForReview
+    ? steps.length > 0
+      ? [deliverables.find(deliverable => deliverable.kind === 'video_delivery_package') || deliverables.at(-1)].filter(
+          (deliverable): deliverable is RunDeliverable => Boolean(deliverable)
+        )
+      : deliverables
     : []
+  const pendingDeliverables = reviewCandidates.filter(deliverable => {
+    const status = deliverable.reviews.at(-1)?.status || deliverable.status
+
+    return status !== 'approved' && status !== 'rejected'
+  })
+  const pendingReviewCount = pendingDeliverables.length
 
   const otherDeliverables = deliverables.filter(
     deliverable => !pendingDeliverables.some(pending => pending.id === deliverable.id)
   )
+  const completedStepCount = steps.filter(step => step.status === 'succeeded' || step.status === 'skipped').length
 
   const selectView = (value: string) => {
     setActiveView(value)
@@ -221,10 +221,71 @@ export function WorkflowRunView() {
             )}
 
             <RunSection title={copy.stageProgress}>
-              <div className="py-4" data-stage-empty-state="compact">
-                <p className="text-sm font-medium">{copy.noStageProgressTitle}</p>
-                <p className="mt-1 text-xs leading-5 text-(--ui-text-secondary)">{copy.noStageProgressDescription}</p>
-              </div>
+              {steps.length > 0 ? (
+                <div data-stage-progress="">
+                  <p className="border-b border-(--ui-stroke-tertiary) py-3 text-xs text-(--ui-text-secondary)">
+                    {copy.stageCount(completedStepCount, steps.length)}
+                  </p>
+                  {steps.map(step => {
+                    const presentation = businessStatusPresentation('run', step.status)
+                    const retryBusy = actionId === `step:${step.key}:retry`
+                    const canRetry =
+                      step.status === 'failed' &&
+                      step.attempt < run.maxAttempts &&
+                      (run.status === 'failed' || run.status === 'timed_out')
+
+                    return (
+                      <article
+                        className="flex items-start gap-3 border-b border-(--ui-stroke-tertiary) py-4 last:border-b-0"
+                        data-run-step={step.key}
+                        key={step.id}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`mt-1 flex size-5 shrink-0 items-center justify-center rounded-full border text-[0.625rem] font-medium ${businessStatusToneClass(
+                            presentation.tone
+                          )}`}
+                        >
+                          {step.position + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="text-sm font-medium">{step.title}</h3>
+                            <span className={`text-xs ${businessStatusToneClass(presentation.tone)}`}>
+                              {copy.stageStatus(step.status)}
+                            </span>
+                          </div>
+                          {step.summary && (
+                            <p className="mt-1 text-xs leading-5 text-(--ui-text-secondary)">{step.summary}</p>
+                          )}
+                          <p className="mt-1 text-xs text-(--ui-text-tertiary)">
+                            {copy.stageEvidence(step.evidenceCount)}
+                          </p>
+                          {canRetry && (
+                            <Button
+                              className="mt-3"
+                              disabled={actionId !== null}
+                              onClick={() => void retryStep(step.key)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <Codicon name="refresh" />
+                              {retryBusy ? copy.retryingStage : copy.retryStage}
+                            </Button>
+                          )}
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="py-4" data-stage-empty-state="compact">
+                  <p className="text-sm font-medium">{copy.noStageProgressTitle}</p>
+                  <p className="mt-1 text-xs leading-5 text-(--ui-text-secondary)">
+                    {copy.noStageProgressDescription}
+                  </p>
+                </div>
+              )}
             </RunSection>
 
             {pendingReviewCount === 0 && (

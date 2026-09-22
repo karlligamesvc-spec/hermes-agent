@@ -3824,6 +3824,48 @@ export const ja = defineLocale({
             '指定する商品、トレンド、コメント、またはアカウントを Douyin、小紅書、WeChat Video、快手、Bilibili、YouTube、TikTok、Instagram 横断で分析してください。実際に取得した公開データだけを使い、出典、サンプル数、期間、傾向、機会、リスク、実行案を示してください。トレンド一覧や管理画面データがないプラットフォームは明記し、検索結果や推測で代用しないでください。'
         }
       },
+      videoStages: {
+        full: {
+          title: 'ショート動画制作の全工程',
+          summary: '元動画の根拠から分析、制作、レンダー、編集可能な納品まで進めます。',
+          prompt: '提供するショート動画を分析し、検証済みの完成動画、編集可能な工程、再現手順を納品してください。'
+        },
+        source: {
+          title: '1. 動画とデータの収集',
+          summary: '元動画、出典情報、公開されている反応データを保存します。',
+          prompt: '提供する動画と実際の出典・公開データを収集し、再利用できる資料一式にしてください。'
+        },
+        transcript: {
+          title: '2. 文字起こしとキーフレーム',
+          summary: '実時間軸、字幕、キーフレーム、画面索引を作成します。',
+          prompt: '提供する動画から実時間コード付きの文字起こし、字幕、キーフレーム索引を作成してください。'
+        },
+        analysis: {
+          title: '3. ショット分析レポート',
+          summary: '実際の画面からフック、テンポ、構図、字幕、音を分析します。',
+          prompt: '実際のフレームと時間軸に基づき、根拠を追跡できるショット分析レポートを作成してください。'
+        },
+        project: {
+          title: '4. Brief と編集可能な工程',
+          summary: '抽象構造を独自の企画と編集可能な制作工程に変換します。',
+          prompt: '既存の分析から独自の Brief、Treatment、ショット計画、編集可能な工程を作成してください。'
+        },
+        assets: {
+          title: '5. 素材制作と品質確認',
+          summary: '映像、字幕、音、モーションを準備し、品質を確認します。',
+          prompt: '工程に必要な許諾済み素材を生成または置換し、追跡可能な品質確認を完了してください。'
+        },
+        render: {
+          title: '6. プレビュー、修正、レンダー',
+          summary: 'プレビューを確認し、修正、派生版、最終レンダーまで完了します。',
+          prompt: '既存工程を開き、プレビュー、修正、派生版、最終動画のレンダーを完了してください。'
+        },
+        delivery: {
+          title: '7. 完成動画と工程の納品',
+          summary: '完成動画、工程、素材一覧、再現手順を検証してまとめます。',
+          prompt: '既存の完成動画と工程を検証し、確認と再現ができる納品パッケージにしてください。'
+        }
+      },
       commerce: {
         title: '市場機会から販売素材まで',
         summary: 'データ収集、機会分析、位置付け、制作',
@@ -4037,7 +4079,20 @@ export const ja = defineLocale({
         refreshFailedDescription: '最新の更新に失敗しました。最後に取得できた Run データを表示しています。',
         requestChanges: '修正を依頼',
         retry: '再読み込み',
+        retryingStage: '再試行中…',
+        retryStage: 'この段階を再試行',
+        stageCount: (completed, total) => `${completed}/${total} 段階が完了`,
+        stageEvidence: count => `${count} 件の成果物証跡`,
         stageProgress: '段階の進捗',
+        stageStatus: status =>
+          ({
+            cancelled: 'キャンセル済み',
+            failed: '失敗',
+            pending: '未開始',
+            running: '実行中',
+            skipped: 'スキップ済み',
+            succeeded: '完了'
+          })[status] || '不明な状態',
         started: '開始日時',
         status: status =>
           ({
