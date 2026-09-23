@@ -3610,7 +3610,8 @@ export const zhHant = defineLocale({
       videoToolsMissing: tools => `本機尚缺 ${tools}。可以先分析影片；製作和渲染前需備妥這些工具。`,
       videoToolsPresent: '本機基礎影片工具已就緒；Hypit 專案依賴和渲染瀏覽器會在專案中另行檢查。',
       videoToolsUnknown: '暫時無法檢查本機影片工具，開始製作前請確認 Node、npm 和 FFmpeg 可用。',
-      videoRemoteConnection: '目前連接的不是本機閘道。Hypit 製作需要切換到本機閘道；遠端會話仍可做資料分析。'
+      videoRemoteConnection: '目前連接的不是本機閘道。Hypit 製作需要切換到本機閘道；遠端會話仍可做資料分析。',
+      videoLocalChatMode: '分階段影片工作流程尚未開放，這次將從本機對話開始。'
     },
     projects: {
       eyebrow: '從目標到交付',

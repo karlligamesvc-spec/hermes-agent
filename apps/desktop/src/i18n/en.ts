@@ -4791,7 +4791,8 @@ export const en: Translations = {
       videoToolsMissing: tools => `Missing local tools: ${tools}. You can analyze the video now, but need these tools before production and rendering.`,
       videoToolsPresent: 'Basic video tools are available. Hypit project dependencies and the render browser still need a project-level check.',
       videoToolsUnknown: 'Could not check local video tools. Confirm Node, npm, and FFmpeg before production.',
-      videoRemoteConnection: 'This is not a local gateway. Switch to the local gateway for Hypit production; remote sessions can still analyze references.'
+      videoRemoteConnection: 'This is not a local gateway. Switch to the local gateway for Hypit production; remote sessions can still analyze references.',
+      videoLocalChatMode: 'The staged video workflow is not available yet. This request will start in local chat.'
     },
     projects: {
       eyebrow: 'From goal to delivery',

@@ -460,14 +460,18 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    await waitFor(() => expect(getVideoCatalog).toHaveBeenCalledTimes(1))
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+      expect(screen.queryByText('启动前确认')).not.toBeNull()
+    })
     fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
       target: { value: '拆解链接视频：https://example.com/video' }
     })
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-video'))
-    expect(getVideoCatalog).toHaveBeenCalledTimes(1)
+    expect(getVideoCatalog).toHaveBeenCalledTimes(2)
     expect(startGoal).toHaveBeenCalledWith({
       objective: '拆解链接视频：https://example.com/video',
       starter: expect.objectContaining({ id: 'viral-video-remake', slug: 'viral-video-remake', version: 1 })
@@ -539,6 +543,8 @@ describe('hc-685 business workspace identity', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    expect(screen.getByRole('status').textContent).toContain('分阶段视频工作流尚未开放')
+    expect(screen.queryByText('启动前确认')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))

@@ -4183,6 +4183,7 @@ export interface Translations {
       videoToolsPresent: string
       videoToolsUnknown: string
       videoRemoteConnection: string
+      videoLocalChatMode: string
     }
     projects: {
       eyebrow: string

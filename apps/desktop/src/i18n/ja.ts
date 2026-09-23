@@ -3676,7 +3676,8 @@ export const ja = defineLocale({
       videoToolsMissing: tools => `ローカルに ${tools} がありません。分析は先に進められますが、制作・レンダリング前に準備が必要です。`,
       videoToolsPresent: '基本的な動画ツールは利用できます。Hypit のプロジェクト依存関係とレンダリング用ブラウザーは別途確認します。',
       videoToolsUnknown: 'ローカル動画ツールを確認できません。制作前に Node、npm、FFmpeg を確認してください。',
-      videoRemoteConnection: '現在の接続先はローカルゲートウェイではありません。Hypit 制作にはローカルへ切り替えてください。リモートでは資料分析を続けられます。'
+      videoRemoteConnection: '現在の接続先はローカルゲートウェイではありません。Hypit 制作にはローカルへ切り替えてください。リモートでは資料分析を続けられます。',
+      videoLocalChatMode: '段階式の動画ワークフローはまだ利用できません。今回はローカルチャットで開始します。'
     },
     projects: {
       eyebrow: '目標から納品まで',
