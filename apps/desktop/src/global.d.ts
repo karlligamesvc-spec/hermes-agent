@@ -290,6 +290,12 @@ declare global {
       // into the renderer. Optional for compatibility with older shells.
       workflowDomain?: {
         access: () => Promise<DesktopWorkflowDomainAccess>
+        localVideoReadiness?: () => Promise<{
+          basicToolsReady: boolean
+          missing: Array<'node' | 'npm' | 'ffmpeg' | 'ffprobe'>
+          ok: boolean
+          renderVerified: false
+        }>
         createProject?: (
           payload: DesktopWorkflowDomainCreateProjectInput
         ) => Promise<DesktopWorkflowDomainProjectResult>

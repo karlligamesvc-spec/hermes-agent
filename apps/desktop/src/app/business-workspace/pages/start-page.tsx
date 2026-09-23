@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -5,9 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 import type { ComposerAttachment } from '@/store/composer'
+import { $connection } from '@/store/session'
 
 import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
+import { workflowDomainBridge } from '../api/bridge'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
@@ -42,6 +45,7 @@ export function BusinessStartHome({
   const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
+  const connection = useStore($connection)
 
   const workflows = useMemo(
     () => [
@@ -105,7 +109,54 @@ export function BusinessStartHome({
 
   const [domainError, setDomainError] = useState(false)
   const [domainStarting, setDomainStarting] = useState(false)
+
+  const [videoReadiness, setVideoReadiness] = useState<
+    | { state: 'checking' | 'unknown' | 'present' }
+    | { state: 'missing'; tools: string[] }
+  >({ state: 'checking' })
+
   const templateAttachmentBlocked = selectedWorkflow !== null && attachments.length > 0
+
+  useEffect(() => {
+    if (selectedWorkflow?.id !== 'viral-video-remake' || connection?.mode === 'remote') {
+      return
+    }
+
+    const check = workflowDomainBridge()?.localVideoReadiness
+
+    if (!check) {
+      setVideoReadiness({ state: 'unknown' })
+
+      return
+    }
+
+    let cancelled = false
+
+    setVideoReadiness({ state: 'checking' })
+    void check()
+      .then(result => {
+        if (cancelled) {
+          return
+        }
+
+        setVideoReadiness(
+          !result.ok
+            ? { state: 'unknown' }
+            : result.basicToolsReady
+              ? { state: 'present' }
+              : { state: 'missing', tools: result.missing }
+        )
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVideoReadiness({ state: 'unknown' })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [connection?.mode, selectedWorkflow?.id])
 
   const focusGoal = () => {
     window.document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
@@ -249,6 +300,19 @@ export function BusinessStartHome({
               {selectedWorkflowIsTestData && (
                 <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-200" role="status">
                   {t.businessWorkspace.workflows.testDataNotice}
+                </p>
+              )}
+              {selectedWorkflow.id === 'viral-video-remake' && (
+                <p className="mt-2 text-xs text-(--ui-text-secondary)" role="status">
+                  {connection?.mode === 'remote'
+                    ? t.businessWorkspace.goalLauncher.videoRemoteConnection
+                    : videoReadiness.state === 'checking'
+                      ? t.businessWorkspace.goalLauncher.videoToolsChecking
+                      : videoReadiness.state === 'missing'
+                        ? t.businessWorkspace.goalLauncher.videoToolsMissing(videoReadiness.tools.join(', '))
+                        : videoReadiness.state === 'present'
+                          ? t.businessWorkspace.goalLauncher.videoToolsPresent
+                          : t.businessWorkspace.goalLauncher.videoToolsUnknown}
                 </p>
               )}
             </div>

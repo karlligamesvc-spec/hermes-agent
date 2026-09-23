@@ -4178,6 +4178,11 @@ export interface Translations {
       hint: string
       submit: string
       workflowAttachmentsUnsupported: string
+      videoToolsChecking: string
+      videoToolsMissing: (tools: string) => string
+      videoToolsPresent: string
+      videoToolsUnknown: string
+      videoRemoteConnection: string
     }
     projects: {
       eyebrow: string

@@ -79,6 +79,7 @@ import {
   parseFeishuCredentialsResponse
 } from './apex-feishu'
 import { buildGatewayRunArgs, imEntryStoreHasBinding } from './apex-gateway'
+import { checkLocalVideoReadiness, probeLocalVideoTool } from './apex-hypit-readiness'
 import {
   buildImEntrySpawnEnv,
   feishuProvisionPollUrl,
@@ -22102,6 +22103,17 @@ ipcMain.handle('hermes:workflowDomain:access', async () => {
     const code = workflowDomainIpcError(error)
 
     return { available: false, code }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:localVideoReadiness', async () => {
+  try {
+    return {
+      ok: true,
+      ...(await checkLocalVideoReadiness(tool => probeLocalVideoTool(tool, pathWithHermesManagedNode())))
+    }
+  } catch {
+    return { ok: false, basicToolsReady: false, missing: [], renderVerified: false }
   }
 })
 
