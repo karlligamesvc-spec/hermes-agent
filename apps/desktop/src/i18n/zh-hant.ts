@@ -3605,7 +3605,13 @@ export const zhHant = defineLocale({
       hint: 'Enter 開始執行 · Shift+Enter 換行',
       submit: '開始執行',
       workflowAttachmentsUnsupported:
-        '此工作流程暫不支援隨目標提交附件。目標、工作流程選擇和目前附件會保留，直到你移除附件後繼續。'
+        '此工作流程暫不支援隨目標提交附件。目標、工作流程選擇和目前附件會保留，直到你移除附件後繼續。',
+      videoToolsChecking: '正在檢查本機影片工具…',
+      videoToolsMissing: tools => `本機尚缺 ${tools}。可以先分析影片；製作和渲染前需備妥這些工具。`,
+      videoToolsPresent: '本機基礎影片工具已就緒；Hypit 專案依賴和渲染瀏覽器會在專案中另行檢查。',
+      videoToolsUnknown: '暫時無法檢查本機影片工具，開始製作前請確認 Node、npm 和 FFmpeg 可用。',
+      videoRemoteConnection: '目前連接的不是本機閘道。Hypit 製作需要切換到本機閘道；遠端會話仍可做資料分析。',
+      videoLocalChatMode: '分階段影片工作流程尚未開放，這次將從本機對話開始。'
     },
     projects: {
       eyebrow: '從目標到交付',

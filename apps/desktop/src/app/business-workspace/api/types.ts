@@ -1,5 +1,11 @@
 export interface WorkflowDomainBridge {
   access: () => Promise<{ available: boolean }>
+  localVideoReadiness?: () => Promise<{
+    basicToolsReady: boolean
+    missing: Array<'node' | 'npm' | 'ffmpeg' | 'ffprobe'>
+    ok: boolean
+    renderVerified: false
+  }>
   cancelRun: (runId: string) => Promise<{ ok: boolean }>
   createProject?: (payload: {
     localPath?: string

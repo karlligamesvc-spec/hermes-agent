@@ -4230,7 +4230,13 @@ export const zh = defineLocale({
       hint: 'Enter 开始执行 · Shift+Enter 换行',
       submit: '开始执行',
       workflowAttachmentsUnsupported:
-        '此工作流暂不支持随目标提交附件。目标、工作流选择和当前附件会保留，直到你移除附件后继续。'
+        '此工作流暂不支持随目标提交附件。目标、工作流选择和当前附件会保留，直到你移除附件后继续。',
+      videoToolsChecking: '正在检查本机视频工具…',
+      videoToolsMissing: tools => `本机尚缺 ${tools}。可以先分析视频；制作和渲染前需备好这些工具。`,
+      videoToolsPresent: '本机基础视频工具已就绪；Hypit 工程依赖和渲染浏览器将在项目中另行检查。',
+      videoToolsUnknown: '暂时无法检查本机视频工具，开始制作前请确认 Node、npm 和 FFmpeg 可用。',
+      videoRemoteConnection: '当前连接的不是本机网关。Hypit 制作需要切换到本机网关；远程会话仍可做资料分析。',
+      videoLocalChatMode: '分阶段视频工作流尚未开放，本次将从本机对话开始。'
     },
     projects: {
       eyebrow: '从目标到交付',

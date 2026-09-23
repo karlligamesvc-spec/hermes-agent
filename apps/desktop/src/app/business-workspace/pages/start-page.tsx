@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -5,11 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
 import type { ComposerAttachment } from '@/store/composer'
+import { $connection } from '@/store/session'
 
 import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
+import { workflowDomainBridge } from '../api/bridge'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
+import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
 import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/workflow-starters'
 
@@ -42,6 +46,8 @@ export function BusinessStartHome({
   const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
+  const connection = useStore($connection)
+  const videoCatalog = useVideoWorkflowCatalog()
 
   const workflows = useMemo(
     () => [
@@ -105,7 +111,54 @@ export function BusinessStartHome({
 
   const [domainError, setDomainError] = useState(false)
   const [domainStarting, setDomainStarting] = useState(false)
+
+  const [videoReadiness, setVideoReadiness] = useState<
+    | { state: 'checking' | 'unknown' | 'present' }
+    | { state: 'missing'; tools: string[] }
+  >({ state: 'checking' })
+
   const templateAttachmentBlocked = selectedWorkflow !== null && attachments.length > 0
+
+  useEffect(() => {
+    if ((!homeVideoWorkflowSelected && selectedWorkflow?.id !== 'viral-video-remake') || connection?.mode === 'remote') {
+      return
+    }
+
+    const check = workflowDomainBridge()?.localVideoReadiness
+
+    if (!check) {
+      setVideoReadiness({ state: 'unknown' })
+
+      return
+    }
+
+    let cancelled = false
+
+    setVideoReadiness({ state: 'checking' })
+    void check()
+      .then(result => {
+        if (cancelled) {
+          return
+        }
+
+        setVideoReadiness(
+          !result.ok
+            ? { state: 'unknown' }
+            : result.basicToolsReady
+              ? { state: 'present' }
+              : { state: 'missing', tools: result.missing }
+        )
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVideoReadiness({ state: 'unknown' })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [connection?.mode, homeVideoWorkflowSelected, selectedWorkflow?.id])
 
   const focusGoal = () => {
     window.document.getElementById(BUSINESS_GOAL_INPUT_ID)?.focus()
@@ -150,13 +203,18 @@ export function BusinessStartHome({
   }, [attachments.length, homeVideoWorkflowSelected])
 
   const selectGoal = (starter: BusinessHomeStarter) => {
+    const isVideoStarter = starter.id === 'viral-video-remake'
+
     const videoWorkflow =
-      starter.id === 'viral-video-remake' && attachments.length === 0
+      isVideoStarter &&
+      attachments.length === 0 &&
+      videoCatalog.mode === 'ready' &&
+      videoCatalog.items.some(item => item.id === starter.id)
         ? workflows.find(workflow => workflow.id === starter.id) ?? null
         : null
 
     setSelectedWorkflow(videoWorkflow)
-    setHomeVideoWorkflowSelected(videoWorkflow !== null)
+    setHomeVideoWorkflowSelected(isVideoStarter)
     setSelectedWorkflowIsTestData(false)
     setDomainError(false)
     setGoalDraft(starter.prompt)
@@ -208,6 +266,17 @@ export function BusinessStartHome({
     return (await onSubmitGoal?.(goal)) ?? false
   }
 
+  const videoReadinessMessage =
+    connection?.mode === 'remote'
+      ? t.businessWorkspace.goalLauncher.videoRemoteConnection
+      : videoReadiness.state === 'checking'
+        ? t.businessWorkspace.goalLauncher.videoToolsChecking
+        : videoReadiness.state === 'missing'
+          ? t.businessWorkspace.goalLauncher.videoToolsMissing(videoReadiness.tools.join(', '))
+          : videoReadiness.state === 'present'
+            ? t.businessWorkspace.goalLauncher.videoToolsPresent
+            : t.businessWorkspace.goalLauncher.videoToolsUnknown
+
   return (
     <div
       className="pointer-events-auto mx-auto flex w-full max-w-[52rem] min-w-0 flex-col gap-7 pb-4 text-left"
@@ -251,6 +320,11 @@ export function BusinessStartHome({
                   {t.businessWorkspace.workflows.testDataNotice}
                 </p>
               )}
+              {selectedWorkflow.id === 'viral-video-remake' && (
+                <p className="mt-2 text-xs text-(--ui-text-secondary)" role="status">
+                  {videoReadinessMessage}
+                </p>
+              )}
             </div>
             <Button
               onClick={() =>
@@ -286,6 +360,11 @@ export function BusinessStartHome({
             templateAttachmentBlocked ? t.businessWorkspace.goalLauncher.workflowAttachmentsUnsupported : undefined
           }
         />
+        {homeVideoWorkflowSelected && !selectedWorkflow && (
+          <p className="-mt-4 text-xs text-(--ui-text-secondary)" role="status">
+            {t.businessWorkspace.goalLauncher.videoLocalChatMode} {videoReadinessMessage}
+          </p>
+        )}
         {domainError && (
           <p className="-mt-4 text-xs text-destructive" role="alert">
             {t.businessWorkspace.workflowDomain.startFailed}

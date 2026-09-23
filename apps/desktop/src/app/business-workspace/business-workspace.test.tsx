@@ -392,6 +392,34 @@ describe('hc-685 business workspace identity', () => {
     expect(goal.value).not.toMatch(internalTerms)
   })
 
+  it('reports missing local video tools without claiming that a render was verified', async () => {
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      localVideoReadiness: vi.fn(async () => ({
+        basicToolsReady: false,
+        missing: ['ffmpeg' as const, 'ffprobe' as const],
+        ok: true,
+        renderVerified: false as const
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('ffmpeg, ffprobe'))
+    expect(screen.getByRole('status').textContent).not.toContain('渲染完成')
+  })
+
   it('starts the home viral-video card as the real seven-stage workflow when the catalog is available', async () => {
     const submit = vi.fn(async () => true)
     const startGoal = vi.fn(async () => ({ ok: true, run: domainRun('run-video', '拆解链接视频') }))
@@ -432,14 +460,18 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    await waitFor(() => expect(getVideoCatalog).toHaveBeenCalledTimes(1))
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+      expect(screen.queryByText('启动前确认')).not.toBeNull()
+    })
     fireEvent.change(screen.getByRole('textbox', { name: '业务目标' }), {
       target: { value: '拆解链接视频：https://example.com/video' }
     })
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-video'))
-    expect(getVideoCatalog).toHaveBeenCalledTimes(1)
+    expect(getVideoCatalog).toHaveBeenCalledTimes(2)
     expect(startGoal).toHaveBeenCalledWith({
       objective: '拆解链接视频：https://example.com/video',
       starter: expect.objectContaining({ id: 'viral-video-remake', slug: 'viral-video-remake', version: 1 })
@@ -486,6 +518,36 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
     await waitFor(() => expect(submit).toHaveBeenCalledWith('使用旧服务端处理视频链接'))
+    expect(startGoal).not.toHaveBeenCalled()
+  })
+
+  it('keeps the home video card on local chat when the server holds back unfinished video templates', async () => {
+    const submit = vi.fn(async () => true)
+    const startGoal = vi.fn()
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      getVideoCatalog: vi.fn(async () => ({ items: [], ok: true, version: 'video-workflow-catalog/v1' })),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <BusinessStartHome onSubmitGoal={submit} />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
+    expect(screen.getByRole('status').textContent).toContain('分阶段视频工作流尚未开放')
+    expect(screen.queryByText('启动前确认')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
+
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
     expect(startGoal).not.toHaveBeenCalled()
   })
 

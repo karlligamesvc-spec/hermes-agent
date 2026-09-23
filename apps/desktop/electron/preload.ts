@@ -273,6 +273,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   workflowDomain: {
     access: () => ipcRenderer.invoke('hermes:workflowDomain:access'),
+    localVideoReadiness: () => ipcRenderer.invoke('hermes:workflowDomain:localVideoReadiness'),
     createProject: payload => ipcRenderer.invoke('hermes:workflowDomain:createProject', payload),
     startGoal: payload => ipcRenderer.invoke('hermes:workflowDomain:startGoal', payload),
     listProjects: options => ipcRenderer.invoke('hermes:workflowDomain:listProjects', options),
