@@ -147,8 +147,12 @@ jobs:
           name: apexnodes-desktop-windows
           # Installers ship through COS; this artifact is only the per-run handoff to the
           # publish job and a short-lived diagnostic copy. The 90-day default kept ~52 GB
-          # and exhausted the account-wide artifact quota on 2026-09-23.
-          retention-days: 7
+          # and exhausted the account-wide artifact quota on 2026-09-23. 7 days was still
+          # too much: at ~3 builds a week, ~0.8 GB per three-platform set, it keeps ~2.4 GB,
+          # above the account's included storage, which is judged on GB-hours accumulated
+          # over the month. 3 days (Owner, 2026-09-25) keeps it under ~1 GB; re-running the
+          # publish job more than 3 days after the build needs a fresh build.
+          retention-days: 3
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.msi
