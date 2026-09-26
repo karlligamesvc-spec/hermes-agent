@@ -26,7 +26,7 @@ def image_plugin():
     [
         ("gpt-image-2.5-flare", None, "gpt-image-2.5-flare"),
         ("qwen-image-3.0-pro", None, "qwen-image-3.0-pro"),
-        ("gpt-image-2.5-flare", "gemini-2.5-flash-image", "gemini-2.5-flash-image"),
+        ("gpt-image-2.5-flare", "gemini-2.5-flash-image", "gpt-image-2.5-flare"),
     ],
 )
 def test_bundled_image_plugin_uses_picker_on_gateway_and_legacy(

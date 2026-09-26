@@ -197,7 +197,7 @@ GENERATE_IMAGE_SCHEMA = {
                 "description": (
                     "用户在 APEX 中选择的图片模型。名称依次为 Qwen Image 3.0 Pro、"
                     "Gemini Image 2.5、Agnes Image 2.5、GPT Image 2.5 Flare、"
-                    "GPT Image 2.5 Sunburst。未指定时使用 Desktop 当前选择的图片模型。"
+                    "GPT Image 2.5 Sunburst。Desktop 当前选择的图片模型始终优先。"
                 ),
             },
             "provider": {
@@ -298,7 +298,7 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
     if not prompt:
         return tool_error("请提供图片描述")
     try:
-        selected_model = str(args.get("model") or "").strip() or _desktop_image_model()
+        selected_model = _desktop_image_model() or str(args.get("model") or "").strip() or None
     except RuntimeError as exc:
         return tool_error(f"图片生成失败: {exc}")
     payload = {
