@@ -203,6 +203,10 @@ const MODEL_DISABLED_PROVIDERS = ['copilot']
 // provider, and back-filling the MoA preset onto an install that dropped it
 // would hand back an expensive default nobody asked for.
 const APEX_PRODUCT_DEFAULTS = {
+  // The image tool reads this preference at call time. Keep it in the runtime
+  // config rather than renderer-only storage so a plain chat request uses the
+  // model shown in the Desktop picker.
+  'apex.generation_image_model': 'gpt-image-2.5-flare',
   'display.language': 'zh',
   'display.show_reasoning': true,
   'agent.image_input_mode': 'auto',

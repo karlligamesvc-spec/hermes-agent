@@ -18742,7 +18742,8 @@ const SEED_DISPLAY_BLOCK =
   '  show_reasoning: true\n'
 
 // APEX product defaults appended to every seed alongside SEED_DISPLAY_BLOCK.
-// All keys exist in the runtime schema. Image/timezone match today's runtime
+// The apex.generation_image_model extension is read by the APEX image tool;
+// the other keys exist in the runtime schema. Image-input/timezone match today's runtime
 // defaults; iteration budgets match Hermes' deep-work defaults:
 //   agent.image_input_mode: auto — image attachments go native only to
 //     vision-capable models, otherwise text pre-analysis (config.py agent block).
@@ -18758,6 +18759,8 @@ const SEED_DISPLAY_BLOCK =
 // seedSkillsBlockYaml so the seed still has exactly one `skills:` mapping.
 const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision;\n' +
+  'apex:\n' +
+  '  generation_image_model: gpt-image-2.5-flare\n' +
   '# Hermes-aligned deep-work budgets: main=500 / child=250; durable sessions;\n' +
   '# manual approvals; periodic memory/Skill nudges and iron-proxy off;\n' +
   '# full 2,000-line tool output; empty timezone =\n' +

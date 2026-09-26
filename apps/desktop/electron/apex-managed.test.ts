@@ -770,6 +770,7 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
     'agent.image_input_mode',
     'agent.max_turns',
     'agent.response_language',
+    'apex.generation_image_model',
     'approvals.mode',
     'delegation.max_iterations',
     'display.language',
@@ -790,6 +791,7 @@ test('ensureProductDefaultsYaml fills the missing product keys on a config the s
   assert.match(r.next, /^agent:\n(?: {2}\S+: \S+\n){3}\S/m)
   assert.match(r.next, /^ {2}response_language: display$/m)
   assert.match(r.next, /^ {2}max_turns: 500$/m)
+  assert.match(r.next, /^apex:\n {2}generation_image_model: gpt-image-2.5-flare$/m)
   assert.match(r.next, /^delegation:\n {2}max_iterations: 250$/m)
   assert.match(r.next, /^tool_output:\n {2}max_lines: 2000$/m)
   assert.match(r.next, /^session_reset:\n {2}mode: none$/m)
@@ -806,6 +808,8 @@ test('ensureProductDefaultsYaml never overrules a value the user set', () => {
   // The whole point of add-only. Someone who picked English keeps English;
   // someone who turned reasoning off keeps it off; a real timezone survives.
   const raw =
+    'apex:\n' +
+    '  generation_image_model: qwen-image-3.0-pro\n' +
     'display:\n' +
     '  language: en\n' +
     '  show_reasoning: false\n' +
@@ -849,6 +853,7 @@ test('ensureProductDefaultsYaml fills only the gaps in a partially-set config', 
     'agent.image_input_mode',
     'agent.max_turns',
     'agent.response_language',
+    'apex.generation_image_model',
     'approvals.mode',
     'delegation.max_iterations',
     'display.language',
@@ -876,6 +881,7 @@ test('ensureProductDefaultsYaml is idempotent and leaves a fresh seed alone', ()
   // And what seedDefaultModelConfig writes on a first install already satisfies
   // it: the reconcile is a catch-up path, never a second opinion.
   const seeded =
+    'apex:\n  generation_image_model: gpt-image-2.5-flare\n' +
     'display:\n  language: zh\n  show_reasoning: true\n' +
     'agent:\n  image_input_mode: auto\n  response_language: display\n  max_turns: 500\n' +
     'delegation:\n  max_iterations: 250\n' +
@@ -1096,6 +1102,7 @@ test('ensureProductDefaultsYaml refuses to write a child under an inline mapping
   const r = ensureProductDefaultsYaml(raw)
 
   assert.deepEqual(r.added.sort(), [
+    'apex.generation_image_model',
     'approvals.mode',
     'delegation.max_iterations',
     'memory.nudge_interval',
@@ -1130,6 +1137,7 @@ test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks
       `seed blocks do not carry ${dotted}: ${rendered}`
     )
   }
+  assert.equal(APEX_PRODUCT_DEFAULTS['apex.generation_image_model'], 'gpt-image-2.5-flare')
 })
 
 // --- defaultModelPath ---

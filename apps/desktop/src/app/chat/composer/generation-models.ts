@@ -1,3 +1,4 @@
+import { saveHermesConfig } from '@/api/config'
 import { persistString, storedString } from '@/lib/storage'
 
 export type GenerationKind = 'image' | 'video'
@@ -68,6 +69,26 @@ export function selectGenerationModel(kind: GenerationKind, id: string): Generat
   persistString(MODEL_KEYS[kind], selected.id)
 
   return selected
+}
+
+export function previouslySelectedImageModel(): GenerationModel | null {
+  const stored = storedString(MODEL_KEYS.image)
+  return IMAGE_GENERATION_MODELS.find(model => model.id === stored) ?? null
+}
+
+export async function saveImageGenerationModel(id: string): Promise<GenerationModel> {
+  const selected = IMAGE_GENERATION_MODELS.find(model => model.id === id)
+  if (!selected) {
+    throw new Error(`Unknown image generation model: ${id}`)
+  }
+
+  // Persist at the gateway before changing the visible selection. The image
+  // tool reads this same value when the model omits its optional model arg.
+  const result = await saveHermesConfig({ apex: { generation_image_model: selected.id } })
+  if (!result.ok) {
+    throw new Error('Could not save the image generation model')
+  }
+  return selectGenerationModel('image', selected.id)
 }
 
 export function generationStarter(starter: string, model: GenerationModel): string {
