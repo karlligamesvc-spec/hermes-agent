@@ -752,6 +752,7 @@ const ChatViewContent = memo(function ChatViewContent({
                 ? {
                     goalDisabled: !gatewayOpen || busy,
                     attachments: introAttachments,
+                    model: chatBarState.model,
                     onPickFiles,
                     onPickFolders,
                     onPickImages,

@@ -8,6 +8,7 @@ import { useI18n } from '@/i18n'
 import type { ComposerAttachment } from '@/store/composer'
 import { $connection } from '@/store/session'
 
+import type { ChatBarState } from '../../chat/composer/types'
 import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
@@ -20,6 +21,7 @@ import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/w
 export interface BusinessStartHomeProps {
   attachments?: ComposerAttachment[]
   goalDisabled?: boolean
+  model?: ChatBarState['model']
   onPickFiles?: () => void
   onPickFolders?: () => void
   onPickImages?: () => void
@@ -37,6 +39,7 @@ export interface BusinessStartHomeProps {
 export function BusinessStartHome({
   attachments = [],
   goalDisabled = false,
+  model,
   onPickFiles,
   onPickFolders,
   onPickImages,
@@ -348,6 +351,7 @@ export function BusinessStartHome({
           attachments={attachments}
           disabled={goalDisabled || domainStarting}
           draft={goalDraft}
+          model={model}
           onDraftChange={draft => {
             setGoalDraft(draft)
           }}
