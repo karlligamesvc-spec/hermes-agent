@@ -17,7 +17,6 @@ import json
 import os
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from tools.registry import tool_error, tool_result
@@ -113,21 +112,20 @@ def _check() -> bool:
 
 def _desktop_image_model() -> str | None:
     """Read the Desktop picker preference at call time, including live changes."""
-    home = os.getenv("HERMES_HOME")
-    if not home:
-        try:
-            from hermes_constants import get_hermes_home
+    from hermes_cli.config import (
+        get_config_path,
+        load_config_readonly,
+        require_readable_config_before_write,
+    )
 
-            home = str(get_hermes_home())
-        except ImportError:
-            home = str(Path.home() / ".hermes")
-    config_path = Path(home) / "config.yaml"
+    config_path = get_config_path()
     if not config_path.exists():
         return None
     try:
-        import yaml
-
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        # The strict preflight prevents the config loader's last-known-good
+        # fallback from silently routing a malformed picker to Agnes.
+        require_readable_config_before_write(config_path)
+        config = load_config_readonly()
         if not isinstance(config, dict) or "apex" not in config:
             return None
         apex = config["apex"]
@@ -140,7 +138,7 @@ def _desktop_image_model() -> str | None:
         if not isinstance(model, str) or model not in allowed:
             raise RuntimeError("当前图片模型设置不是可用的模型")
         return model
-    except (OSError, ValueError, yaml.YAMLError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         raise RuntimeError(f"无法读取当前图片模型设置: {exc}") from exc
 
 
