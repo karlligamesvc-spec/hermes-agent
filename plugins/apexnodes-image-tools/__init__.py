@@ -17,6 +17,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from tools.registry import tool_error, tool_result
@@ -110,14 +111,49 @@ def _check() -> bool:
     return _legacy_check()
 
 
+def _desktop_image_model() -> str | None:
+    """Read the Desktop picker preference at call time, including live changes."""
+    home = os.getenv("HERMES_HOME")
+    if not home:
+        try:
+            from hermes_constants import get_hermes_home
+
+            home = str(get_hermes_home())
+        except ImportError:
+            home = str(Path.home() / ".hermes")
+    config_path = Path(home) / "config.yaml"
+    if not config_path.exists():
+        return None
+    try:
+        import yaml
+
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(config, dict) or "apex" not in config:
+            return None
+        apex = config["apex"]
+        if not isinstance(apex, dict):
+            raise RuntimeError("当前图片模型设置格式无效")
+        if "generation_image_model" not in apex:
+            return None
+        model = apex["generation_image_model"]
+        allowed = GENERATE_IMAGE_SCHEMA["parameters"]["properties"]["model"]["enum"]
+        if not isinstance(model, str) or model not in allowed:
+            raise RuntimeError("当前图片模型设置不是可用的模型")
+        return model
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise RuntimeError(f"无法读取当前图片模型设置: {exc}") from exc
+
+
 GENERATE_IMAGE_SCHEMA = {
     "name": "generate_image",
     "description": (
         "Generate an image from a text prompt through the platform image service. "
         "Use when the user explicitly asks to 配图/做张图/生成海报/画一张/生成图片. "
-        "Returns image_url/image_path/media_tag. After success, show the image with "
-        "markdown `![description](image_url)`; on IM entries, include `MEDIA:<path>` "
-        "when native file delivery is needed. Never claim success unless the tool returns ok."
+        "Returns image_url/image_path/media_tag and the actual model. After success, "
+        "show one image: use markdown `![description](image_url)` in Desktop, or "
+        "`MEDIA:<path>` for native IM delivery. Never output both for the same image. "
+        "When asked which model was used, report the returned model. "
+        "Never claim success unless the tool returns ok."
     ),
     "parameters": {
         "type": "object",
@@ -161,7 +197,7 @@ GENERATE_IMAGE_SCHEMA = {
                 "description": (
                     "用户在 APEX 中选择的图片模型。名称依次为 Qwen Image 3.0 Pro、"
                     "Gemini Image 2.5、Agnes Image 2.5、GPT Image 2.5 Flare、"
-                    "GPT Image 2.5 Sunburst。未指定时使用平台默认模型。"
+                    "GPT Image 2.5 Sunburst。未指定时使用 Desktop 当前选择的图片模型。"
                 ),
             },
             "provider": {
@@ -261,12 +297,16 @@ def _handle_generate_image(args: dict, **_kwargs) -> str:
     prompt = str(args.get("prompt") or "").strip()
     if not prompt:
         return tool_error("请提供图片描述")
+    try:
+        selected_model = str(args.get("model") or "").strip() or _desktop_image_model()
+    except RuntimeError as exc:
+        return tool_error(f"图片生成失败: {exc}")
     payload = {
         "prompt": prompt,
         "aspect_ratio": str(args.get("aspect_ratio") or "square").strip() or "square",
         "size": str(args.get("size") or "").strip() or None,
         "n": args.get("n") or 1,
-        "model": str(args.get("model") or "").strip() or None,
+        "model": selected_model,
         # hc-432: optional engine + use-case hint (vendor key still stays master-side;
         # the plugin only forwards the provider string).
         "provider": str(args.get("provider") or "").strip() or None,
