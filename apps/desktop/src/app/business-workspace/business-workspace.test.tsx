@@ -1,8 +1,10 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { I18nProvider } from '@/i18n'
 import { en } from '@/i18n/en'
 import { ja } from '@/i18n/ja'
@@ -1801,6 +1803,36 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(submit).toHaveBeenCalledWith('分析美国宠物用品市场'))
     expect((goal as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('offers the conversation model menu on the Start composer without sending the draft', async () => {
+    const selectModel = vi.fn()
+    const submit = vi.fn(async () => true)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <I18nProvider configClient={null} initialLocale="zh">
+            <BusinessStartHome
+              model={{
+                canSwitch: true,
+                model: 'kimi-k2.7-code',
+                provider: 'apexnodes',
+                modelMenuContent: <DropdownMenuItem onSelect={selectModel}>DeepSeek V4 Pro</DropdownMenuItem>
+              }}
+              onSubmitGoal={submit}
+            />
+          </I18nProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /kimi-k2\.7-code/i }), { button: 0, pointerId: 1 })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'DeepSeek V4 Pro' }))
+
+    expect(selectModel).toHaveBeenCalledOnce()
+    expect(submit).not.toHaveBeenCalled()
   })
 
   it('puts the primary Start action immediately after the only goal field in keyboard order', () => {

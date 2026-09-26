@@ -220,6 +220,7 @@ describe('ChatView render isolation', () => {
     expect(threadProps.current?.intro).toEqual(
       expect.objectContaining({
         attachments: [expect.objectContaining({ id: 'brief', label: 'brief.pdf' })],
+        model: expect.objectContaining({ model: 'test-model', provider: 'test-provider', canSwitch: true }),
         onPickFiles,
         onPickFolders,
         onPickImages,

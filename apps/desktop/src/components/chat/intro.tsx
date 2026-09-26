@@ -1,4 +1,5 @@
 import { BusinessStartHome } from '@/app/business-workspace/start-home'
+import type { ChatBarState } from '@/app/chat/composer/types'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
 import { useI18n } from '@/i18n'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
@@ -9,6 +10,7 @@ import type { ComposerAttachment } from '@/store/composer'
 export type IntroProps = {
   attachments?: ComposerAttachment[]
   goalDisabled?: boolean
+  model?: ChatBarState['model']
   onPickFiles?: () => void
   onPickFolders?: () => void
   onPickImages?: () => void
@@ -35,6 +37,7 @@ export type IntroProps = {
 export function Intro({
   attachments = [],
   goalDisabled = false,
+  model,
   onPickFiles,
   onPickFolders,
   onPickImages,
@@ -53,6 +56,7 @@ export function Intro({
         <BusinessStartHome
           attachments={attachments}
           goalDisabled={goalDisabled}
+          model={model}
           onPickFiles={onPickFiles}
           onPickFolders={onPickFolders}
           onPickImages={onPickImages}

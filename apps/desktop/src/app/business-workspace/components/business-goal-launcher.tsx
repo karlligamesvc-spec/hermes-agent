@@ -7,11 +7,14 @@ import { useI18n } from '@/i18n'
 import type { ComposerAttachment } from '@/store/composer'
 
 import { AttachmentList } from '../../chat/composer/attachments'
+import { ModelPill } from '../../chat/composer/model-pill'
+import type { ChatBarState } from '../../chat/composer/types'
 
 export interface BusinessGoalLauncherProps {
   attachments?: ComposerAttachment[]
   disabled?: boolean
   draft?: string
+  model?: ChatBarState['model']
   onDraftChange?: (draft: string) => void
   onPickFiles?: () => void
   onPickFolders?: () => void
@@ -29,6 +32,7 @@ export function BusinessGoalLauncher({
   attachments = [],
   disabled = false,
   draft,
+  model,
   onDraftChange,
   onPickFiles,
   onPickFolders,
@@ -126,13 +130,13 @@ export function BusinessGoalLauncher({
           {submitBlockedReason}
         </p>
       )}
-      <div className="mt-1 flex items-center justify-between gap-3">
+      <div className="mt-1 flex items-center gap-3">
         <span className="sr-only">{copy.hint}</span>
         <Button
           aria-busy={submitting}
           aria-describedby={submitBlockedReason ? BUSINESS_GOAL_BLOCKED_REASON_ID : undefined}
           aria-label={copy.submit}
-          className="order-2 ml-auto rounded-full"
+          className={`order-3 rounded-full ${model ? '' : 'ml-auto'}`}
           disabled={!canSubmit}
           size="icon"
           type="submit"
@@ -169,6 +173,11 @@ export function BusinessGoalLauncher({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {model && (
+          <div className="order-2 ml-auto min-w-0">
+            <ModelPill disabled={disabled || submitting || !model.canSwitch} model={model} />
+          </div>
+        )}
       </div>
     </form>
   )
