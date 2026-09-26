@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { IM_ENTRY_ROUTE } from '@/app/routes'
@@ -32,6 +32,7 @@ import {
 } from '@/lib/icons'
 import type { VendorKey } from '@/lib/model-vendor'
 import { cn } from '@/lib/utils'
+import { notifyError } from '@/store/notifications'
 
 import { useComposerAttachmentProviders } from './contrib'
 import { GHOST_ICON_BTN } from './controls'
@@ -42,6 +43,8 @@ import {
   type GenerationModelIconKey,
   generationModels,
   generationStarter,
+  previouslySelectedImageModel,
+  saveImageGenerationModel,
   selectedGenerationModel,
   selectGenerationModel
 } from './generation-models'
@@ -78,6 +81,16 @@ export function ContextMenu({ state }: ContextMenuProps) {
   const [videoModel, setVideoModel] = useState(() => selectedGenerationModel('video'))
   const attachmentProviders = useComposerAttachmentProviders()
 
+  // Earlier releases only stored this choice in localStorage. Migrate that
+  // visible selection into the runtime preference as soon as chat is ready.
+  useEffect(() => {
+    const previous = previouslySelectedImageModel()
+    if (!state.tools.enabled || !previous) {
+      return
+    }
+    void saveImageGenerationModel(previous.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))
+  }, [state.tools.enabled, t.settings.config.autosaveFailed])
+
   // Seed the composer with a generation opener and focus it, then close the
   // menu. Prefill (not auto-send) so the user finishes describing the idea —
   // the ladder's stage 0. The agent picks it up and returns the first card.
@@ -87,13 +100,17 @@ export function ContextMenu({ state }: ContextMenuProps) {
     setMenuOpen(false)
   }
 
-  const chooseGenerationModel = (kind: GenerationKind, id: string) => {
-    const selected = selectGenerationModel(kind, id)
-
+  const chooseGenerationModel = async (kind: GenerationKind, id: string) => {
     if (kind === 'image') {
-      setImageModel(selected)
-      startGeneration(generationStarter(cap.generateImageStarter, selected))
+      try {
+        const selected = await saveImageGenerationModel(id)
+        setImageModel(selected)
+        startGeneration(generationStarter(cap.generateImageStarter, selected))
+      } catch (error) {
+        notifyError(error, t.settings.config.autosaveFailed)
+      }
     } else {
+      const selected = selectGenerationModel(kind, id)
       setVideoModel(selected)
       startGeneration(generationStarter(cap.generateVideoStarter, selected))
     }
