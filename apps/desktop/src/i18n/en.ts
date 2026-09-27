@@ -4938,7 +4938,7 @@ export const en: Translations = {
     workflows: {
       eyebrow: 'Workflow templates',
       title: 'Workflows',
-      description: 'Choose an outcome path. APEX clarifies the goal in chat and organizes the work.',
+      description: 'Review a template, choose a project, and add the workflow. You start its run from the project.',
       use: 'Use this workflow',
       useShort: 'Use',
       startGoal: 'Start a goal',
@@ -4970,7 +4970,7 @@ export const en: Translations = {
       saveFailed: 'The workflow was not saved. Check whether this project already has the same template.',
       alreadyAdded: 'This project already has that workflow. View or run it from the list above.',
       recommendedTitle: 'Recommended workflows',
-      recommendedDescription: 'Choose one, edit the goal, and start when you are ready.',
+      recommendedDescription: 'Review the template, choose a project, and confirm the goal. Adding it will not start a run.',
       homeTitle: 'Choose a task to get started',
       homeDescription: 'Paste a link, or tell APEX what you want to analyze.',
       homeSourceLabel: 'Supported platforms',

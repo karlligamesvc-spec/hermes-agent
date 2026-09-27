@@ -4372,7 +4372,7 @@ export const zh = defineLocale({
     workflows: {
       eyebrow: '任务模板',
       title: '工作流',
-      description: '选择结果路径，APEX 会在对话中澄清目标并组织执行。',
+      description: '先了解模板，再选择项目并加入工作流；运行由你在项目中启动。',
       use: '使用这个工作流',
       useShort: '使用',
       startGoal: '开始一个目标',
@@ -4403,7 +4403,7 @@ export const zh = defineLocale({
       saveFailed: '未能保存工作流。若项目已有相同模板，请先查看项目工作流。',
       alreadyAdded: '这个项目已有相同的工作流，请在上方列表中查看或运行。',
       recommendedTitle: '推荐工作流',
-      recommendedDescription: '选择后可以先修改目标，再开始执行。',
+      recommendedDescription: '查看模板详情，选择项目并确认目标；加入后不会自动运行。',
       homeTitle: '选择一个任务开始',
       homeDescription: '粘贴链接，或告诉我你想分析的内容。',
       homeSourceLabel: '支持的平台',

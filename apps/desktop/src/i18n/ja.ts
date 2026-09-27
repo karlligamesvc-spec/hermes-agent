@@ -3822,7 +3822,7 @@ export const ja = defineLocale({
     workflows: {
       eyebrow: 'タスクテンプレート',
       title: 'ワークフロー',
-      description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。',
+      description: 'テンプレートを確認してプロジェクトに追加します。実行はプロジェクトから開始します。',
       use: 'このワークフローを使う',
       useShort: '使用',
       startGoal: '目標を始める',
@@ -3853,7 +3853,7 @@ export const ja = defineLocale({
       saveFailed: 'ワークフローを保存できませんでした。同じテンプレートが既にあるか確認してください。',
       alreadyAdded: 'このプロジェクトには同じワークフローがあります。上の一覧から確認・実行してください。',
       recommendedTitle: 'おすすめのワークフロー',
-      recommendedDescription: '目標を編集してから、準備ができたら実行できます。',
+      recommendedDescription: '詳細を確認し、プロジェクトと目標を選びます。追加だけでは実行されません。',
       homeTitle: 'やりたいことを選んで開始',
       homeDescription: 'リンクを貼るか、分析したい内容を APEX に伝えてください。',
       homeSourceLabel: '対応プラットフォーム',

@@ -3747,7 +3747,7 @@ export const zhHant = defineLocale({
     workflows: {
       eyebrow: '任務範本',
       title: '工作流程',
-      description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。',
+      description: '先了解範本，再選擇專案並加入工作流程；執行由你在專案中啟動。',
       use: '使用此工作流程',
       useShort: '使用',
       startGoal: '開始一個目標',
@@ -3778,7 +3778,7 @@ export const zhHant = defineLocale({
       saveFailed: '未能儲存工作流程。若專案已有相同範本，請先查看專案工作流程。',
       alreadyAdded: '此專案已有相同的工作流程，請在上方清單查看或執行。',
       recommendedTitle: '推薦工作流程',
-      recommendedDescription: '選擇後可先修改目標，再開始執行。',
+      recommendedDescription: '查看範本詳情，選擇專案並確認目標；加入後不會自動執行。',
       homeTitle: '選擇一項任務開始',
       homeDescription: '貼上連結，或告訴我你想分析的內容。',
       homeSourceLabel: '支援的平台',
