@@ -29,6 +29,7 @@ export const STARMAP_ROUTE = '/starmap'
 // a field stacked on top of the sidebar, which pushes every conversation down.
 export const SEARCH_ROUTE = '/search'
 export const PROJECTS_ROUTE = '/projects'
+export const ANALYSIS_ROUTE = '/analysis'
 export const PROJECT_DETAIL_ROUTE_PREFIX = '/projects/'
 export const WORKFLOWS_ROUTE = '/workflows'
 export const WORKFLOW_RUN_ROUTE_PREFIX = '/workflow-runs/'
@@ -41,6 +42,7 @@ export const LEGACY_ACCOUNTS_ROUTE = '/accounts'
 export const APEX_PRIMARY_NAVIGATION = [
   { id: 'start', path: NEW_CHAT_ROUTE },
   { id: 'projects', path: PROJECTS_ROUTE },
+  { id: 'analysis', path: ANALYSIS_ROUTE },
   { id: 'scheduled-runs', path: CRON_ROUTE },
   { id: 'deliverables', path: ARTIFACTS_ROUTE },
   { id: 'assistant', path: ASSISTANT_ROUTE },
@@ -262,6 +264,7 @@ export type AppView =
   | 'history'
   | 'im-entry'
   | 'projects'
+  | 'analysis'
   | 'workflows'
   | 'profile'
   | 'tasks'
@@ -290,6 +293,7 @@ export type AppRouteId =
   | 'history'
   | 'im-entry'
   | 'projects'
+  | 'analysis'
   | 'workflows'
   | 'messaging'
   | 'new'
@@ -327,6 +331,7 @@ export const APP_ROUTES = [
   { id: 'profile', path: PROFILE_STATS_ROUTE, view: 'profile' },
   { id: 'search', path: SEARCH_ROUTE, view: 'search' },
   { id: 'projects', path: PROJECTS_ROUTE, view: 'projects' },
+  { id: 'analysis', path: ANALYSIS_ROUTE, view: 'analysis' },
   { id: 'workflows', path: WORKFLOWS_ROUTE, view: 'workflows' },
   { id: 'assistant', path: ASSISTANT_ROUTE, view: 'assistant' },
   { id: 'history', path: HISTORY_ROUTE, view: 'history' },

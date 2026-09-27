@@ -4,6 +4,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 
+import type { AnalysisDocumentsBridge } from './app/business-workspace/analysis-types'
 import type { WakeIndicatorState } from './lib/wake-indicator'
 import type {
   PetOverlayBounds,
@@ -349,6 +350,7 @@ declare global {
         }) => Promise<DesktopWorkflowDomainMutationResult>
         openUserFile?: (fileId: string) => Promise<DesktopWorkflowDomainMutationResult>
       }
+      analysisDocuments?: AnalysisDocumentsBridge
       // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
       // Feishu app credential (from the cloud agent_entries) down to the local
       // runtime so the Feishu adapter + lark doc/drive tools light up. No secret

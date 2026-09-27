@@ -703,6 +703,7 @@ describe('identity: the APEX business shell stays user-facing', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.id)).toEqual([
       'start',
       'projects',
+      'analysis',
       'scheduled-runs',
       'deliverables',
       'assistant',
@@ -711,6 +712,7 @@ describe('identity: the APEX business shell stays user-facing', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.path)).toEqual([
       '/',
       '/projects',
+      '/analysis',
       '/cron',
       '/artifacts',
       '/assistant',

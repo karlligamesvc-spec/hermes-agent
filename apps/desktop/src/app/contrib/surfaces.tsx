@@ -24,6 +24,7 @@ import { ChatSidebar } from '../chat/sidebar'
 import { RouteDrivenDrawer } from '../overlays/responsive-route-drawer'
 import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
 import {
+  ANALYSIS_ROUTE,
   ASSISTANT_ROUTE,
   contributedRoutes,
   deliverableIdForPath,
@@ -62,6 +63,7 @@ const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksV
 // 搜索 is a page, not a sidebar field (see SEARCH_ROUTE).
 const SearchView = lazy(async () => ({ default: (await import('../search')).SearchView }))
 const ProjectsView = lazy(async () => ({ default: (await import('../business-workspace')).ProjectsView }))
+const AnalysisView = lazy(async () => ({ default: (await import('../business-workspace/pages/analysis-page')).AnalysisView }))
 const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
 const DeliverablesView = lazy(async () => ({ default: (await import('../business-workspace')).DeliverablesView }))
 const HistoryView = lazy(async () => ({ default: (await import('../business-workspace')).HistoryView }))
@@ -317,6 +319,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
         <Route element={page(<HistoryView />)} path={HISTORY_ROUTE.slice(1)} />
         <Route element={page(<ProjectsView />)} path="projects" />
+        <Route element={page(<AnalysisView />)} path={ANALYSIS_ROUTE.slice(1)} />
         <Route element={page(<WorkflowsView />)} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />

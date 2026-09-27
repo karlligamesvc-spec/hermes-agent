@@ -296,6 +296,18 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     reviewDeliverable: payload => ipcRenderer.invoke('hermes:workflowDomain:reviewDeliverable', payload),
     openUserFile: fileId => ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)
   },
+  analysisDocuments: {
+    policy: () => ipcRenderer.invoke('hermes:analysis:policy'),
+    list: () => ipcRenderer.invoke('hermes:analysis:list'),
+    importFile: () => ipcRenderer.invoke('hermes:analysis:import'),
+    get: id => ipcRenderer.invoke('hermes:analysis:get', id),
+    ask: (id, question) => ipcRenderer.invoke('hermes:analysis:ask', id, question),
+    addNote: (id, body, anchorId) => ipcRenderer.invoke('hermes:analysis:addNote', id, body, anchorId),
+    deleteNote: (id, noteId) => ipcRenderer.invoke('hermes:analysis:deleteNote', id, noteId),
+    retry: id => ipcRenderer.invoke('hermes:analysis:retry', id),
+    delete: id => ipcRenderer.invoke('hermes:analysis:delete', id),
+    openSource: id => ipcRenderer.invoke('hermes:analysis:openSource', id)
+  },
   // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
   // Feishu app credential down to light up the Feishu adapter + lark tools. See
   // electron/apex-feishu.cjs. No secret crosses to the renderer: status returns

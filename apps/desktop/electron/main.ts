@@ -42,6 +42,15 @@ import {
   resolveAgentProxyEnv,
   systemProxyToUrls
 } from './apex-agent-proxy'
+import {
+  addLocalNote,
+  answerLocalDocument,
+  createLocalDocument,
+  deleteLocalDocument,
+  getLocalDocument,
+  listLocalDocuments,
+  removeLocalNote
+} from './apex-analysis-local'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
@@ -10384,9 +10393,11 @@ async function buildRemoteConnection(
 }
 
 const sshConnections = new Map<string, any>()
+
 const sshIsolatedKeepalives = createSshIsolatedKeepaliveRegistry({
   log: chunk => sshRememberLog(chunk)
 })
+
 const desktopInstallationId = loadOrCreateInstallationId(DESKTOP_INSTALLATION_PATH)
 
 // Managed SSH update lifecycle (#93042): while an update owns a registered
@@ -18529,6 +18540,7 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
       if (settled) {
         return
       }
+
       settled = true
       resolve(value)
     }
@@ -18563,6 +18575,7 @@ function rollbackRuntimePinOverride(reason) {
   if (!override) {
     return false
   }
+
   rememberLog(`[runtime-update] rolling back opt-in update (${reason || 'failed'})`)
 
   try {
@@ -18615,6 +18628,7 @@ function extractBundleArchive(archivePath, destDir) {
       ['-xzf', archivePath, '-C', destDir],
       hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] })
     )
+
     let stderr = ''
     child.stderr.on('data', d => {
       stderr = (stderr + String(d)).slice(-2000)
@@ -18674,6 +18688,7 @@ function reconcileAndGcBundleRuntime() {
     if (rec.reconciled) {
       rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)
     }
+
     // Watermark-aware GC: normal keep current+previous, or drop previous when
     // versions/ blew past its disk budget. One pass (the watermark check runs GC).
     const water = bundleDiskspace.enforceVersionsWatermark(HERMES_HOME)
@@ -18689,6 +18704,7 @@ function reconcileAndGcBundleRuntime() {
     if (water.warning) {
       rememberLog(`[bundle] ${water.warning}`)
     }
+
     // Reap the legacy in-place fallback once the sentinel has left the pointer.
     const asideGc = bundleMigrate.gcLegacyAside(HERMES_HOME)
 
@@ -18863,6 +18879,7 @@ function seedDefaultModelConfig() {
     if (fs.existsSync(configPath)) {
       return
     }
+
     fs.mkdirSync(HERMES_HOME, { recursive: true })
 
     const managed = resolveManagedConfig()
@@ -19134,11 +19151,13 @@ function probeLoginShellPath() {
   if (_loginShellPathProbe !== undefined) {
     return _loginShellPathProbe
   }
+
   _loginShellPathProbe = null
 
   if (IS_WINDOWS) {
     return _loginShellPathProbe
   }
+
   const shell = String(process.env.SHELL || '').trim() || '/bin/zsh'
 
   try {
@@ -19168,6 +19187,7 @@ function augmentDesktopProcessPath() {
   if (IS_WINDOWS) {
     return 0
   }
+
   const before = String(process.env.PATH || '')
   let after = before
 
@@ -19388,6 +19408,7 @@ function persistRenewedLoginToken(token) {
     if (!next) {
       return false
     }
+
     const managed = resolveManagedConfig()
 
     if (!managed.key || !managed.accessToken) {
@@ -19397,6 +19418,7 @@ function persistRenewedLoginToken(token) {
     if (next === managed.accessToken) {
       return false
     }
+
     writeManagedConfig({
       apiKey: managed.key,
       baseUrl: managed.baseUrl,
@@ -20054,6 +20076,7 @@ function runLocalAgentJob(job) {
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(killTimer)
       resolve(value)
@@ -20219,6 +20242,7 @@ function scheduleDaemonConnection(delay) {
   if (!daemonRuntime.started) {
     return
   }
+
   clearTimeout(daemonRuntime.connLoopTimer)
   daemonRuntime.connLoopTimer = setTimeout(() => {
     void daemonConnectionTick()
@@ -20229,6 +20253,7 @@ function scheduleDaemonPoll(delay) {
   if (!daemonRuntime.started) {
     return
   }
+
   clearTimeout(daemonRuntime.pollLoopTimer)
   daemonRuntime.pollLoopTimer = setTimeout(() => {
     void daemonPollTick()
@@ -20649,6 +20674,7 @@ function healConfigYamlProductBlocks(reason) {
     if (!fs.existsSync(configPath)) {
       return 'absent'
     }
+
     let raw = fs.readFileSync(configPath, 'utf8')
     // What we based this pass on. The runtime saves config.yaml atomically
     // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
@@ -20840,6 +20866,7 @@ function watchConfigYamlProductBlocks() {
     if (!fs.existsSync(configPath)) {
       return
     }
+
     fs.watch(configPath, { persistent: false }, () => {
       clearTimeout(configGuardTimer)
       configGuardTimer = setTimeout(() => guardConfigYamlProductBlocks('watch'), 2_000)
@@ -20924,6 +20951,7 @@ function applyClientConfigToRuntime(reason) {
       if (changed) {
         fs.writeFileSync(configPath, next, { encoding: 'utf8' })
       }
+
       rememberLog(
         `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
           (preserved.length ? `; preserved user preferences: ${preserved.join(', ')}` : '') +
@@ -20993,6 +21021,7 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -21026,6 +21055,7 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -21033,6 +21063,7 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
     if (payload) {
       request.write(payload)
     }
+
     request.end()
   })
 }
@@ -21088,6 +21119,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -21121,6 +21153,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -21175,6 +21208,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(timer)
       reject(error)
@@ -21214,6 +21248,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
         if (settled) {
           return
         }
+
         settled = true
         clearTimeout(timer)
         const statusCode = res.statusCode || 500
@@ -21252,6 +21287,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
     const base = String(baseUrl || '')
       .trim()
       .replace(/\/+$/, '')
+
     const relayKey = String(key || '').trim()
 
     if (!base || !relayKey) {
@@ -21283,6 +21319,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(timer)
       resolve(result)
@@ -22078,6 +22115,277 @@ function workflowDomainIpcContext() {
     }
   }
 }
+
+function analysisUploadFile(url: string, bearer: string, filename: string, bytes: Buffer): Promise<any> {
+
+  if (bytes.length > 15 * 1024 * 1024) {throw new Error('file_too_large')}
+  const boundary = `apex-${crypto.randomUUID()}`
+  const safeFilename = filename.replace(/[\r\n"]/g, '_')
+
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+    bytes,
+    Buffer.from(`\r\n--${boundary}--\r\n`)
+  ])
+
+  return new Promise((resolve, reject) => {
+    const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
+    request.setHeader('Authorization', `Bearer ${bearer}`)
+    request.setHeader('Content-Type', `multipart/form-data; boundary=${boundary}`)
+    request.setHeader('Content-Length', String(body.length))
+    request.setHeader('Accept', 'application/json')
+    let settled = false
+
+    const timer = setTimeout(() => {
+      request.abort()
+
+      if (!settled) { settled = true; reject(new Error('analysis_upload_timeout')) }
+    }, 90_000)
+
+    request.on('response', response => {
+      const chunks: Buffer[] = []
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      response.on('end', () => {
+        if (settled) {return}
+        settled = true
+        clearTimeout(timer)
+        const text = Buffer.concat(chunks).toString('utf8')
+
+        if ((response.statusCode || 500) >= 400) {
+          const error: any = new Error(text.slice(0, 300))
+          error.statusCode = response.statusCode
+          reject(error)
+
+          return
+        }
+
+        persistRenewedLoginToken(renewedTokenFromHeaders(response.headers))
+
+        try { resolve(JSON.parse(text)) } catch { reject(new Error('analysis_invalid_response')) }
+      })
+    })
+    request.on('error', error => {
+      if (settled) {return}
+      settled = true
+      clearTimeout(timer)
+      reject(error)
+    })
+    request.end(body)
+  })
+}
+
+function analysisUserIdFromToken(token: string): string | null {
+  try {
+    const subject = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))?.sub
+
+    return /^[0-9a-f-]{36}$/i.test(String(subject || '')) ? String(subject) : null
+  } catch {
+    return null
+  }
+}
+
+async function analysisIpcContext(needPolicy = false) {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {throw new Error('sign_in')}
+  const bearer = String(resolveManagedConfig().accessToken || '')
+  const userId = analysisUserIdFromToken(bearer)
+
+  if (!userId) {throw new Error('sign_in')}
+  // Local reads/notes keep working offline. New imports still fetch the current
+  // server policy, and all cloud operations are authorized by the server.
+  const policy: any = needPolicy
+    ? await context.transport.getJson(`${context.apiBase}/api/v1/account/analysis/storage-policy`)
+    : { user_id: userId, mode: 'local', cloud_storage_configured: false }
+
+  if (String(policy?.user_id || '').toLowerCase() !== userId.toLowerCase()) {throw new Error('analysis_policy_unavailable')}
+
+  return { ...context, policy, root: app.getPath('userData'), url: `${context.apiBase}/api/v1/account/analysis/documents`, bearer }
+}
+
+function analysisIpcError(error: any): string {
+  const detail = (() => {
+    const message = String(error?.message || '')
+    const json = message.slice(message.indexOf('{'))
+
+    try { return JSON.parse(json)?.detail?.code } catch { return null }
+  })()
+
+  if (typeof detail === 'string') {return detail}
+
+  if (error?.statusCode === 401) {return 'sign_in'}
+
+  if (error?.statusCode === 403) {return 'permission_denied'}
+
+  return String(error?.message || 'request_failed').slice(0, 80)
+}
+
+function localAnalysisForRenderer(document: any) {
+  if (!document) {return null}
+  const { sourcePath: _sourcePath, ...safe } = document
+
+  return safe
+}
+
+ipcMain.handle('hermes:analysis:policy', async () => {
+  try {
+    const { policy } = await analysisIpcContext(true)
+
+    return { ok: true, policy }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:list', async () => {
+  try {
+    const context = await analysisIpcContext()
+    const local = listLocalDocuments(context.root, context.policy.user_id).map(localAnalysisForRenderer)
+    let cloud: any[] = []
+    let cloudUnavailable = false
+
+    try {
+      const remote: any = await context.transport.getJson(context.url)
+      cloud = (remote.items || []).map(item => ({ ...item, storageMode: 'cloud' }))
+    } catch { cloudUnavailable = true }
+
+    return { ok: true, cloudUnavailable, items: [...local, ...cloud].sort((a, b) => String(b.createdAt || b.created_at).localeCompare(String(a.createdAt || a.created_at))) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:import', async event => {
+  try {
+    const context = await analysisIpcContext(true)
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
+      properties: ['openFile'],
+      filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'xlsx', 'txt', 'md'] }]
+    })
+
+    if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+    const filePath = chosen.filePaths[0]
+    const size = fs.statSync(filePath).size
+
+    if (!size || size > 15 * 1024 * 1024) {return { ok: false, code: size ? 'file_too_large' : 'empty_file' }}
+
+    const bytes = fs.readFileSync(filePath)
+    const filename = path.basename(filePath)
+
+    if (context.policy.mode === 'cloud') {
+      const response = await analysisUploadFile(context.url, context.bearer, filename, bytes)
+
+      return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
+    }
+
+    const parsed = await analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes)
+    const item = createLocalDocument(context.root, context.policy.user_id, bytes, parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:get', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, id)
+
+      return item ? { ok: true, item: localAnalysisForRenderer(item) } : { ok: false, code: 'source_not_found' }
+    }
+
+    const [detail, notes, questions]: any[] = await Promise.all([
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`),
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/notes`),
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/questions`)
+    ])
+
+    return { ok: true, item: { ...detail.item, storageMode: 'cloud', notes: notes.items, questions: questions.items } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:ask', async (_event, id, question) => {
+  try {
+    const context = await analysisIpcContext()
+    const input = String(question || '').trim()
+
+    if (input.length < 2 || input.length > 1000) {return { ok: false, code: 'invalid_question' }}
+
+    const item = String(id).startsWith('local-')
+      ? answerLocalDocument(context.root, context.policy.user_id, id, input)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/questions`, { question: input }) as any).item
+
+    return item ? { ok: true, item } : { ok: false, code: 'source_not_found' }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:addNote', async (_event, id, body, anchorId) => {
+  try {
+    const context = await analysisIpcContext()
+    const text = String(body || '').trim()
+
+    if (!text || text.length > 5000) {return { ok: false, code: 'invalid_note' }}
+
+    const item = String(id).startsWith('local-')
+      ? addLocalNote(context.root, context.policy.user_id, id, text, anchorId || null)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/notes`, { body: text, anchor_id: anchorId || null }) as any).item
+
+    return item ? { ok: true, item } : { ok: false, code: 'source_not_found' }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:deleteNote', async (_event, id, noteId) => {
+  try {
+    const context = await analysisIpcContext()
+
+    const ok = String(id).startsWith('local-')
+      ? removeLocalNote(context.root, context.policy.user_id, id, noteId)
+      : Boolean(await apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, { bearer: context.bearer }))
+
+    return { ok }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:retry', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {return { ok: false, code: 'select_file_again' }}
+    const response: any = await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/retry`, {})
+
+    return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:delete', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    const ok = String(id).startsWith('local-')
+      ? deleteLocalDocument(context.root, context.policy.user_id, id)
+      : Boolean(await apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}`, { bearer: context.bearer }))
+
+    return { ok }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, id)
+
+      if (!item) {return { ok: false, code: 'source_not_found' }}
+
+      return { ok: !(await shell.openPath(item.sourcePath)) }
+    }
+
+    const response: any = await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/download`)
+    await shell.openExternal(response.download_url)
+
+    return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
 
 function workflowDomainIpcError(error) {
   const statusCode = Number(error && error.statusCode) || 0
@@ -23505,6 +23813,7 @@ async function connectAgentAccount(family) {
       if (settled) {
         return
       }
+
       settled = true
       resolve({ ...result, guideCommand: spec.guide })
     }
@@ -23530,16 +23839,19 @@ async function connectAgentAccount(family) {
     if (child.stderr) {
       child.stderr.on('data', onChunk)
     }
+
     child.on('error', err => {
       if (activeAgentLogin[family] === child) {
         activeAgentLogin[family] = null
       }
+
       finish({ ok: false, mode: err && err.code === 'ENOENT' ? 'no_cli' : 'guide', reason: 'spawn_error' })
     })
     child.on('exit', code => {
       if (activeAgentLogin[family] === child) {
         activeAgentLogin[family] = null
       }
+
       // Exited before we saw/opened a URL: 0 = already completed; else degrade.
       finish(code === 0 ? { ok: true, mode: 'completed' } : { ok: false, mode: 'guide', reason: 'exited' })
     })

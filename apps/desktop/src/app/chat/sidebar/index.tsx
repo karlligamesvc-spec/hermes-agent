@@ -160,6 +160,7 @@ const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
   'new-session': props => <Codicon name="edit" {...props} />,
   start: props => <Codicon name="edit" {...props} />,
   projects: props => <Codicon name="folder" {...props} />,
+  analysis: props => <Codicon name="book" {...props} />,
   cron: props => <Codicon name="calendar" {...props} />,
   'scheduled-runs': props => <Codicon name="calendar" {...props} />,
   artifacts: props => <Codicon name="package" {...props} />,

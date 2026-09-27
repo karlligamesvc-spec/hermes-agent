@@ -2484,6 +2484,7 @@ export const zh = defineLocale({
       'new-session': '开始',
       start: '开始',
       projects: '项目',
+      analysis: '沉浸式分析',
       workflows: '工作流',
       assistant: '连接助手',
       history: '历史会话',

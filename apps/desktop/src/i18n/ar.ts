@@ -1897,6 +1897,7 @@ export const ar = defineLocale({
       'new-session': 'جلسة جديدة',
       start: 'ابدأ',
       projects: 'المشاريع',
+      analysis: 'تحليل المستندات',
       workflows: 'سير العمل',
       assistant: 'المساعد',
       history: 'السجل',

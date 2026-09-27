@@ -2042,6 +2042,7 @@ export const ja = defineLocale({
       'new-session': '開始',
       start: '開始',
       projects: 'プロジェクト',
+      analysis: '資料分析',
       workflows: 'ワークフロー',
       assistant: 'アシスタント接続',
       history: '会話履歴',

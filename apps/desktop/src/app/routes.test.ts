@@ -102,6 +102,7 @@ describe('APEX route contract', () => {
     expect(APEX_PRIMARY_NAVIGATION).toEqual([
       { id: 'start', path: '/' },
       { id: 'projects', path: '/projects' },
+      { id: 'analysis', path: '/analysis' },
       { id: 'scheduled-runs', path: '/cron' },
       { id: 'deliverables', path: '/artifacts' },
       { id: 'assistant', path: '/assistant' },

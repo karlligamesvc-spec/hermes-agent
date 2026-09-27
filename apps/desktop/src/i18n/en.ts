@@ -2849,6 +2849,7 @@ export const en: Translations = {
       'new-session': 'Start',
       start: 'Start',
       projects: 'Projects',
+      analysis: 'Immersive analysis',
       workflows: 'Workflows',
       assistant: 'Connect assistants',
       history: 'Session history',

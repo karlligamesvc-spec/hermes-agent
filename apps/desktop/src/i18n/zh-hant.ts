@@ -2025,6 +2025,7 @@ export const zhHant = defineLocale({
       'new-session': '開始',
       start: '開始',
       projects: '專案',
+      analysis: '沉浸式分析',
       workflows: '工作流程',
       assistant: '連接助手',
       history: '歷史會話',
