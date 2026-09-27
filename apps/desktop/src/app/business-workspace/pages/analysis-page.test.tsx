@@ -50,4 +50,26 @@ describe('document analysis evidence', () => {
     await waitFor(() => expect(screen.getAllByText('正在解析原文…').length).toBeGreaterThan(0))
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
   })
+
+  it('keeps links unanswerable and distinguishes Feishu permission from unsupported URLs', async () => {
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [] })
+      },
+      openExternal: vi.fn()
+    } as never
+
+    render(<AnalysisView />)
+    const input = screen.getByRole('textbox', { name: '粘贴资料链接' })
+    fireEvent.change(input, { target: { value: 'https://acme.feishu.cn/wiki/abc' } })
+    expect(screen.getByText(/正文尚未获授权读取/)).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+
+    fireEvent.change(input, { target: { value: 'https://example.com/report.pdf' } })
+    expect(screen.getByText(/暂不支持直接读取此链接/)).toBeTruthy()
+    expect(screen.queryByText(/正文尚未获授权读取/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '在原站打开' }))
+    expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith('https://example.com/report.pdf')
+  })
 })

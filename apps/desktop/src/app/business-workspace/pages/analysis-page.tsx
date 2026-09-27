@@ -18,7 +18,7 @@ const COPY = {
     note: '保存笔记', notePlaceholder: '记录你的发现', notes: '笔记', evidence: '原文证据', source: '资料记录',
     noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', deleteNote: '删除笔记',
     error: '操作失败，请重试。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
-    anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处'
+    anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。'
   },
   'zh-hant': {
     title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件',
@@ -32,7 +32,7 @@ const COPY = {
     note: '儲存筆記', notePlaceholder: '記錄你的發現', notes: '筆記', evidence: '原文證據', source: '資料記錄',
     noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', deleteNote: '刪除筆記',
     error: '操作失敗，請重試。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
-    anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處'
+    anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。'
   },
   en: {
     title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document',
@@ -46,7 +46,7 @@ const COPY = {
     note: 'Save note', notePlaceholder: 'Record your finding', notes: 'Notes', evidence: 'Original evidence', source: 'Source history',
     noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', deleteNote: 'Delete note',
     error: 'The action failed. Try again.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
-    anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source'
+    anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.'
   },
   ja: {
     title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書を読み込む',
@@ -60,7 +60,7 @@ const COPY = {
     note: 'メモを保存', notePlaceholder: '発見を記録', notes: 'メモ', evidence: '原文の根拠', source: '資料履歴',
     noSourceText: '読める本文がありません。', select: '資料を選択してください。', deleteNote: 'メモを削除',
     error: '失敗しました。再試行してください。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
-    anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動'
+    anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。'
   },
   ar: {
     title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند',
@@ -74,7 +74,7 @@ const COPY = {
     note: 'حفظ ملاحظة', notePlaceholder: 'سجل ما وجدته', notes: 'ملاحظات', evidence: 'الأدلة الأصلية', source: 'سجل المصادر',
     noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', deleteNote: 'حذف الملاحظة',
     error: 'فشلت العملية. حاول مجددًا.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
-    anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر'
+    anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.'
   }
 } as const
 
@@ -88,6 +88,18 @@ function locationLabel(location: Record<string, number | string>, copy: { page: 
 
 function bridge(): AnalysisDocumentsBridge | null {
   return window.hermesDesktop?.analysisDocuments ?? null
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {return new URL(value).protocol === 'https:'} catch {return false}
+}
+
+function isFeishuUrl(value: string): boolean {
+  if (!isHttpsUrl(value)) {return false}
+
+  const host = new URL(value).hostname.toLowerCase()
+
+  return host === 'feishu.cn' || host.endsWith('.feishu.cn') || host === 'larksuite.com' || host.endsWith('.larksuite.com')
 }
 
 function humanError(code: string, copy: { cloudUnavailable: string; empty: string; error: string; failed: string; noSourceText: string; permission: string }): string {
@@ -199,9 +211,9 @@ export function AnalysisView() {
           await openDocument(result.item.id)
         })} type="button">{c.import}</button>
         <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => setLink(event.target.value)} placeholder={c.link} type="url" value={link} />
-        {/^https:\/\/(?:[a-z0-9-]+\.)*(?:feishu\.cn|larksuite\.com)\//i.test(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(link)} type="button">{c.openLink}</button>}
+        {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(link)} type="button">{c.openLink}</button>}
       </div>
-      {link && <p className="text-sm text-(--ui-text-secondary)">{c.permission} {c.linkHint}</p>}
+      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? `${c.permission} ${c.linkHint}` : c.unsupportedLink}</p>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="space-y-2">

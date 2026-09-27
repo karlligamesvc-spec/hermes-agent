@@ -22253,7 +22253,7 @@ ipcMain.handle('hermes:analysis:list', async () => {
 
 ipcMain.handle('hermes:analysis:import', async event => {
   try {
-    const context = await analysisIpcContext(true)
+    await analysisIpcContext(true)
     const ownerWindow = BrowserWindow.fromWebContents(event.sender)
 
     const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
@@ -22269,6 +22269,7 @@ ipcMain.handle('hermes:analysis:import', async event => {
 
     const bytes = fs.readFileSync(filePath)
     const filename = path.basename(filePath)
+    const context = await analysisIpcContext(true)
 
     if (context.policy.mode === 'cloud') {
       const response = await analysisUploadFile(context.url, context.bearer, filename, bytes)
@@ -22277,6 +22278,12 @@ ipcMain.handle('hermes:analysis:import', async event => {
     }
 
     const parsed = await analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes)
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
     const item = createLocalDocument(context.root, context.policy.user_id, bytes, parsed)
 
     return { ok: true, item: localAnalysisForRenderer(item) }
@@ -22381,7 +22388,8 @@ ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
     }
 
     const response: any = await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/download`)
-    await shell.openExternal(response.download_url)
+
+    if (!openExternalUrl(response.download_url)) {return { ok: false, code: 'download_unavailable' }}
 
     return { ok: true }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
