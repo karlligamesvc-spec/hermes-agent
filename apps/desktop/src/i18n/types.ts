@@ -4316,6 +4316,18 @@ export interface Translations {
       projectUnavailable: string
       projectSavedEmpty: string
       selectForProject: string
+      templateScope: string
+      templateExample: string
+      templateSteps: string
+      templateStepProject: string
+      templateStepGoal: string
+      templateStepRun: string
+      templateExecutionNote: string
+      joinCurrentProject: string
+      joinExistingProject: string
+      newProjectAndJoin: string
+      chooseProjectDescription: string
+      noActiveProjects: string
       createEyebrow: string
       createForProject: (name: string) => string
       objectiveLabel: string

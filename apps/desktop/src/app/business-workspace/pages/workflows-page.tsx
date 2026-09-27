@@ -3,6 +3,14 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,13 +18,16 @@ import { useI18n } from '@/i18n'
 
 import { NEW_CHAT_ROUTE, projectDetailRoute, PROJECTS_ROUTE, routeDrawerNavigationState } from '../../routes'
 import { createWorkflowDefinition } from '../api/adapters'
+import type { WorkflowProject } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
+import { ProjectCreateDialog } from '../components/project-create-dialog'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
 import {
   useVideoWorkflowCatalog,
   useWorkflowCatalog,
   useWorkflowDefinitions,
-  useWorkflowProject
+  useWorkflowProject,
+  useWorkflowProjects
 } from '../hooks/use-workflow-domain-lists'
 import {
   type BusinessWorkflowStarter,
@@ -32,6 +43,10 @@ export function WorkflowsView() {
   const [reloadToken, setReloadToken] = useState(0)
   const [selectedStarter, setSelectedStarter] = useState<BusinessWorkflowStarter | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [selectedProject, setSelectedProject] = useState<WorkflowProject | null>(null)
+  const [templateOpen, setTemplateOpen] = useState(false)
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false)
+  const [projectCreateOpen, setProjectCreateOpen] = useState(false)
   const [objectiveDraft, setObjectiveDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
@@ -45,12 +60,14 @@ export function WorkflowsView() {
     (typeof launchContext?.businessProjectId === 'string' ? launchContext.businessProjectId.trim() : '')
   const project = useWorkflowProject(targetProjectId || undefined)
   const projectItem = project.mode === 'ready' && project.item.id === targetProjectId ? project.item : null
+  const projects = useWorkflowProjects(50, 'active')
+  const chosenProject = selectedProjectId && selectedProjectId !== targetProjectId ? selectedProject : projectItem
 
   const targetObjective =
     typeof launchContext?.businessGoalDraft === 'string' ? launchContext.businessGoalDraft.slice(0, 4000) : ''
 
   const workflows = useWorkflowDefinitions(
-    { limit: 50, ...(targetProjectId ? { projectId: targetProjectId } : {}) },
+    { limit: 50, ...((selectedProjectId || targetProjectId) ? { projectId: selectedProjectId || targetProjectId } : {}) },
     reloadToken
   )
   const alreadyAdded =
@@ -96,36 +113,38 @@ export function WorkflowsView() {
 
   const recommended = starters.filter(starter => starter.recommended)
   const additional = starters.filter(starter => !starter.recommended)
+  const videoStages = selectedStarter?.businessPath === 'video_production'
+    ? selectedStarter.id === 'viral-video-remake'
+      ? [
+          c.videoStages.source.title,
+          c.videoStages.transcript.title,
+          c.videoStages.analysis.title,
+          c.videoStages.project.title,
+          c.videoStages.assets.title,
+          c.videoStages.render.title,
+          c.videoStages.delivery.title
+        ]
+      : [selectedStarter.title]
+    : null
 
   const selectStarter = (starter: BusinessWorkflowStarter) => {
-    if (targetProjectId) {
-      if (!projectItem) {
-        return
-      }
-
-      setSelectedStarter(starter)
-      setSelectedProjectId(targetProjectId)
-      setObjectiveDraft(projectItem.objective || targetObjective || starter.prompt)
-      setSaveError(false)
-
+    if (targetProjectId && !projectItem) {
       return
     }
 
-    navigate(NEW_CHAT_ROUTE, {
-      state: {
-        businessGoalDraft: targetObjective || starter.prompt,
-        ...(targetProjectId ? { businessProjectId: targetProjectId } : {}),
-        businessWorkflowCatalogProvenance: testCatalog ? 'test' : 'production',
-        businessWorkflowId: starter.id,
-        businessWorkflowVersion: starter.version,
-        businessWorkflowSlug: starter.slug
-      }
-    })
+    setSelectedStarter(starter)
+    setSelectedProjectId('')
+    setSelectedProject(null)
+    setObjectiveDraft(projectItem?.objective || targetObjective || starter.prompt)
+    setSaveError(false)
+    setTemplateOpen(true)
   }
 
   const openProject = () => {
-    if (targetProjectId && projectItem) {
-      navigate(projectDetailRoute(targetProjectId), { state: routeDrawerNavigationState(location) })
+    const projectId = selectedProjectId || targetProjectId
+
+    if (projectId) {
+      navigate(projectDetailRoute(projectId), { state: routeDrawerNavigationState(location) })
     } else {
       navigate(PROJECTS_ROUTE)
     }
@@ -134,8 +153,8 @@ export function WorkflowsView() {
   const saveToProject = async () => {
     if (
       !selectedStarter ||
-      !projectItem ||
-      selectedProjectId !== targetProjectId ||
+      !chosenProject ||
+      selectedProjectId !== chosenProject.id ||
       !objectiveDraft.trim() ||
       alreadyAdded ||
       saving
@@ -145,7 +164,7 @@ export function WorkflowsView() {
 
     setSaving(true)
     setSaveError(false)
-    const outcome = await createWorkflowDefinition(objectiveDraft.trim(), selectedStarter, projectItem.id)
+    const outcome = await createWorkflowDefinition(objectiveDraft.trim(), selectedStarter, chosenProject.id)
     setSaving(false)
 
     if (outcome.mode !== 'created') {
@@ -157,7 +176,26 @@ export function WorkflowsView() {
     setSelectedStarter(null)
     setSelectedProjectId('')
     setReloadToken(token => token + 1)
-    openProject()
+    navigate(projectDetailRoute(chosenProject.id), { state: routeDrawerNavigationState(location) })
+  }
+
+  const onProjectCreated = async (created: WorkflowProject) => {
+    setSelectedProject(created)
+    setSelectedProjectId(created.id)
+    setObjectiveDraft(created.objective || selectedStarter?.prompt || '')
+    setProjectCreateOpen(false)
+    if (!selectedStarter) {
+      return
+    }
+
+    setSaving(true)
+    const outcome = await createWorkflowDefinition(created.objective || selectedStarter.prompt, selectedStarter, created.id)
+    setSaving(false)
+    if (outcome.mode === 'created') {
+      navigate(projectDetailRoute(created.id), { state: routeDrawerNavigationState(location) })
+    } else {
+      setSaveError(true)
+    }
   }
 
   return (
@@ -211,14 +249,14 @@ export function WorkflowsView() {
           )}
         </section>
       )}
-      {targetProjectId && selectedProjectId === targetProjectId && selectedStarter && projectItem && (
+      {selectedProjectId && selectedStarter && chosenProject && !templateOpen && (
         <section
           className="mx-auto mt-5 w-full max-w-[65.625rem] rounded-2xl border border-primary/40 bg-(--ui-bg-elevated) p-5 shadow-sm"
           data-project-workflow-create=""
         >
           <p className="text-xs font-medium text-primary">{c.createEyebrow}</p>
           <h2 className="mt-1 text-lg font-semibold">{selectedStarter.title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{c.createForProject(projectItem.name)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{c.createForProject(chosenProject.name)}</p>
           <label className="mt-4 grid gap-2 text-sm font-medium" htmlFor="project-workflow-objective">
             {c.objectiveLabel}
             <Textarea
@@ -254,6 +292,94 @@ export function WorkflowsView() {
           </div>
         </section>
       )}
+      <Dialog onOpenChange={setTemplateOpen} open={templateOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{selectedStarter?.title || c.title}</DialogTitle>
+            <DialogDescription>{selectedStarter?.summary}</DialogDescription>
+          </DialogHeader>
+          {selectedStarter && (
+            <div className="space-y-4 text-sm">
+              <p className="text-xs text-muted-foreground">{c.version(selectedStarter.version)}</p>
+              <div>
+                <h3 className="font-medium">{c.templateScope}</h3>
+                <p className="mt-1 text-muted-foreground">{selectedStarter.summary}</p>
+              </div>
+              <div>
+                <h3 className="font-medium">{c.templateExample}</h3>
+                <p className="mt-1 whitespace-pre-wrap rounded-lg bg-(--ui-bg-elevated) p-3 text-muted-foreground">{selectedStarter.prompt}</p>
+              </div>
+              <div>
+                <h3 className="font-medium">{c.templateSteps}</h3>
+                {videoStages ? (
+                  <ol className="mt-1 list-inside list-decimal space-y-1 text-muted-foreground">
+                    {videoStages.map(stage => <li key={stage}>{stage}</li>)}
+                  </ol>
+                ) : (
+                  <>
+                    <ol className="mt-1 list-inside list-decimal space-y-1 text-muted-foreground">
+                      <li>{c.templateStepProject}</li>
+                      <li>{c.templateStepGoal}</li>
+                      <li>{c.templateStepRun}</li>
+                    </ol>
+                    <p className="mt-2 text-xs text-muted-foreground">{c.templateExecutionNote}</p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setTemplateOpen(false)} size="sm" variant="ghost">{t.common.cancel}</Button>
+            {targetProjectId && (
+              <Button onClick={() => {
+                setSelectedProjectId(targetProjectId)
+                setTemplateOpen(false)
+              }} size="sm" variant="outline">{c.joinCurrentProject}</Button>
+            )}
+            <Button onClick={() => {
+              setTemplateOpen(false)
+              setProjectPickerOpen(true)
+            }} size="sm" variant="outline">{c.joinExistingProject}</Button>
+            <Button onClick={() => {
+              setTemplateOpen(false)
+              setProjectCreateOpen(true)
+            }} size="sm">{c.newProjectAndJoin}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog onOpenChange={setProjectPickerOpen} open={projectPickerOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{c.joinExistingProject}</DialogTitle>
+            <DialogDescription>{c.chooseProjectDescription}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            {projects.mode === 'ready' && projects.items.length ? (
+              projects.items.map(item => (
+                <Button className="w-full justify-start text-left" key={item.id} onClick={() => {
+                  setSelectedProject(item)
+                  setSelectedProjectId(item.id)
+                  setObjectiveDraft(item.objective || selectedStarter?.prompt || '')
+                  setProjectPickerOpen(false)
+                }} variant="outline">{item.name}</Button>
+              ))
+            ) : (
+              <p className="py-4 text-sm text-muted-foreground">
+                {projects.mode === 'loading'
+                  ? c.projectLoading
+                  : projects.mode === 'ready'
+                    ? c.noActiveProjects
+                    : c.projectUnavailable}
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <ProjectCreateDialog
+        onCreated={created => void onProjectCreated(created)}
+        onOpenChange={setProjectCreateOpen}
+        open={projectCreateOpen}
+      />
       <section
         className="mx-auto w-full max-w-[65.625rem] border-b border-(--ui-stroke-tertiary) py-6"
         data-saved-workflows=""

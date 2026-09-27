@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Codicon } from '@/components/ui/codicon'
 import {
   Dialog,
   DialogContent,
@@ -13,7 +12,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/i18n'
-import { pickProjectFolder } from '@/store/projects'
 
 import { createWorkflowProject } from '../api/adapters'
 import type { WorkflowProject } from '../api/types'
@@ -24,15 +22,13 @@ interface ProjectCreateDialogProps {
   open: boolean
 }
 
-/** Creates an honest, initially empty workflow-domain Project. A Workflow and
- * Run are only added after the user explicitly chooses a path from the project
- * detail, so the dialog never fabricates progress or silently starts work. */
+/** Creates only a canonical Project. The caller may add the selected Workflow
+ * after success; neither this form nor template joining starts a Run. */
 export function ProjectCreateDialog({ onCreated, onOpenChange, open }: ProjectCreateDialogProps) {
   const { t } = useI18n()
   const copy = t.businessWorkspace.projects.create
   const [name, setName] = useState('')
   const [objective, setObjective] = useState('')
-  const [localPath, setLocalPath] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -44,19 +40,10 @@ export function ProjectCreateDialog({ onCreated, onOpenChange, open }: ProjectCr
 
     setName('')
     setObjective('')
-    setLocalPath('')
     setSubmitting(false)
     setError(false)
     window.setTimeout(() => nameRef.current?.focus(), 0)
   }, [open])
-
-  const chooseFolder = async () => {
-    const path = await pickProjectFolder()
-
-    if (path) {
-      setLocalPath(path)
-    }
-  }
 
   const submit = async () => {
     const normalizedName = name.trim()
@@ -69,11 +56,7 @@ export function ProjectCreateDialog({ onCreated, onOpenChange, open }: ProjectCr
     setSubmitting(true)
     setError(false)
 
-    const result = await createWorkflowProject({
-      ...(localPath ? { localPath } : {}),
-      name: normalizedName,
-      objective: normalizedObjective
-    })
+    const result = await createWorkflowProject({ name: normalizedName, objective: normalizedObjective })
 
     setSubmitting(false)
 
@@ -117,18 +100,6 @@ export function ProjectCreateDialog({ onCreated, onOpenChange, open }: ProjectCr
               value={objective}
             />
           </label>
-          <div className="grid gap-1.5">
-            <span className="text-xs font-medium">{copy.folderLabel}</span>
-            <div className="flex min-w-0 items-center gap-2">
-              <Button onClick={() => void chooseFolder()} size="sm" type="button" variant="outline">
-                <Codicon name="folder-opened" size="0.875rem" />
-                {copy.chooseFolder}
-              </Button>
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={localPath}>
-                {localPath || copy.folderOptional}
-              </span>
-            </div>
-          </div>
           {error && (
             <p className="text-xs text-destructive" role="alert">
               {copy.failed}

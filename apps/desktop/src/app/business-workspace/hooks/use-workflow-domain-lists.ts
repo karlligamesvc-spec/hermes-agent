@@ -23,7 +23,7 @@ type WorkflowCatalogState = WorkflowCatalogOutcome | { mode: 'loading' }
 type WorkflowVideoCatalogState = WorkflowVideoCatalogOutcome | { mode: 'loading' }
 type WorkflowListState = WorkflowDefinitionListOutcome | { mode: 'loading' }
 
-export function useWorkflowProjects(limit = 50): ProjectListState {
+export function useWorkflowProjects(limit = 50, status?: string): ProjectListState {
   const [state, setState] = useState<ProjectListState>(() =>
     workflowDomainBridge()?.listProjects ? { mode: 'loading' } : { mode: 'unavailable' }
   )
@@ -31,7 +31,7 @@ export function useWorkflowProjects(limit = 50): ProjectListState {
   useEffect(() => {
     let active = true
 
-    void listWorkflowProjects({ limit }).then(result => {
+    void listWorkflowProjects({ limit, ...(status ? { status } : {}) }).then(result => {
       if (active) {
         setState(result)
       }
@@ -40,7 +40,7 @@ export function useWorkflowProjects(limit = 50): ProjectListState {
     return () => {
       active = false
     }
-  }, [limit])
+  }, [limit, status])
 
   return state
 }
