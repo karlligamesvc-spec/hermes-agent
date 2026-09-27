@@ -118,7 +118,7 @@ describe('hc-685 business workspace identity', () => {
   })
 
   it('keeps Workflows below Projects rather than in the primary navigation', () => {
-    expect(BUSINESS_NAV_IDS).toEqual(['start', 'projects', 'scheduled-runs', 'deliverables', 'assistant', 'history'])
+    expect(BUSINESS_NAV_IDS).toEqual(['start', 'projects', 'analysis', 'scheduled-runs', 'deliverables', 'assistant', 'history'])
     expect(isBusinessNavigationContract([...BUSINESS_NAV_IDS, 'skills'])).toBe(false)
     expect(isBusinessNavigationContract(BUSINESS_NAV_IDS)).toBe(true)
   })
@@ -167,7 +167,7 @@ describe('hc-685 business workspace identity', () => {
   it('keeps contributed rows out of business mode and restores them in rollback mode', () => {
     const contributed = [{ id: 'kanban', route: '/kanban' }]
 
-    expect(visibleSidebarNavItems(BUSINESS_SIDEBAR_NAV_CONTRACT, contributed, true)).toHaveLength(6)
+    expect(visibleSidebarNavItems(BUSINESS_SIDEBAR_NAV_CONTRACT, contributed, true)).toHaveLength(7)
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false)).toHaveLength(7)
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false).at(-1)).toEqual(contributed[0])
   })
