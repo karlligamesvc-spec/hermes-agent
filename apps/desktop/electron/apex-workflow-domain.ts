@@ -49,6 +49,22 @@ export interface StartWorkflowDomainGoalOptions {
   uuid: () => string
 }
 
+export interface CreateWorkflowDomainDefinitionOptions {
+  apiBase: string
+  objective: string
+  projectId: string
+  starter: WorkflowDomainStarter
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+}
+
+export interface StartExistingWorkflowDomainRunOptions {
+  apiBase: string
+  objective: string
+  workflowId: string
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+  uuid: () => string
+}
+
 export interface CreateWorkflowDomainProjectOptions {
   apiBase: string
   createdFrom?: 'desktop_projects' | 'desktop_start'
@@ -721,20 +737,8 @@ export async function createWorkflowDomainProject(options: CreateWorkflowDomainP
 
 export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOptions): Promise<JsonObject> {
   const objective = requireText(options.objective, 'objective', 4000)
-  const name = requireText(options.starter.name, 'workflow name', 200)
-  const templateId = requireText(options.starter.id, 'workflow template id', 120)
-  const slug = requireText(options.starter.slug, 'workflow slug', 120)
-  const description = requireText(options.starter.description, 'workflow description', 4000)
-  const templateVersion = Number(options.starter.version)
-
-  if (
-    !/^[a-z0-9-]+$/.test(slug) ||
-    !/^[a-z0-9-]+$/.test(templateId) ||
-    !Number.isInteger(templateVersion) ||
-    templateVersion < 1
-  ) {
-    throw new Error('Invalid workflow domain workflow slug')
-  }
+  // Invalid catalog data must not leave a newly-created Project orphaned.
+  validatedWorkflowStarter(options.starter)
 
   const projectId = options.projectId
     ? requireText(options.projectId, 'project id', 160)
@@ -751,6 +755,50 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
         'project id',
         160
       )
+
+  const workflow = await createWorkflowDomainDefinition({
+    apiBase: options.apiBase,
+    objective,
+    projectId,
+    starter: options.starter,
+    transport: options.transport
+  })
+
+  return startExistingWorkflowDomainRun({
+    apiBase: options.apiBase,
+    objective,
+    workflowId: requireText(workflow.id, 'workflow id', 160),
+    transport: options.transport,
+    uuid: options.uuid
+  })
+}
+
+function validatedWorkflowStarter(starter: WorkflowDomainStarter) {
+  const name = requireText(starter.name, 'workflow name', 200)
+  const templateId = requireText(starter.id, 'workflow template id', 120)
+  const slug = requireText(starter.slug, 'workflow slug', 120)
+  const description = requireText(starter.description, 'workflow description', 4000)
+  const templateVersion = Number(starter.version)
+
+  if (
+    !/^[a-z0-9-]+$/.test(slug) ||
+    !/^[a-z0-9-]+$/.test(templateId) ||
+    !Number.isInteger(templateVersion) ||
+    templateVersion < 1
+  ) {
+    throw new Error('Invalid workflow domain workflow slug')
+  }
+
+  return { description, name, slug, templateId, templateVersion }
+}
+
+/** Persist a Project-owned Workflow without implicitly starting a Run. */
+export async function createWorkflowDomainDefinition(
+  options: CreateWorkflowDomainDefinitionOptions
+): Promise<JsonObject> {
+  const objective = requireText(options.objective, 'objective', 4000)
+  const projectId = requireText(options.projectId, 'project id', 160)
+  const { description, name, slug, templateId, templateVersion } = validatedWorkflowStarter(options.starter)
 
   const workflow = VIDEO_WORKFLOW_TEMPLATE_IDS.has(templateId)
     ? responseItem(
@@ -789,13 +837,21 @@ export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOp
         'workflow'
       )
 
-  const workflowId = requireText(workflow.id, 'workflow id', 160)
+  requireText(workflow.id, 'workflow id', 160)
 
+  return workflow
+}
+
+export async function startExistingWorkflowDomainRun(
+  options: StartExistingWorkflowDomainRunOptions
+): Promise<JsonObject> {
+  const objective = trimmed(options.objective).slice(0, 160)
+  const workflowId = requireText(options.workflowId, 'workflow id', 160)
   const run = responseItem(
     await options.transport.postJson(workflowDomainUrl(options.apiBase, 'runs'), {
       workflowId,
       idempotencyKey: `desktop:${options.uuid()}`,
-      triggerRef: objective.slice(0, 160),
+      ...(objective ? { triggerRef: objective } : {}),
       executorType: 'hermes',
       maxAttempts: 2
     }),

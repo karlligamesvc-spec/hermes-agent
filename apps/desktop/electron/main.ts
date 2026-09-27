@@ -155,6 +155,7 @@ import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import {
   cancelWorkflowDomainRun,
+  createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
   getWorkflowDomainAccess,
@@ -169,6 +170,7 @@ import {
   listWorkflowDomainWorkflows,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
+  startExistingWorkflowDomainRun,
   startWorkflowDomainGoal
 } from './apex-workflow-domain'
 import {
@@ -12861,33 +12863,33 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
           ...process.env,
           HERMES_HOME,
           ...backend.env,
-        // hc-444: inject the signed-in user's mirrored Feishu credential
-        // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
-        // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
-        // {} (no keys) when not connected; add-only vs an explicit parent-env
-        // credential.
-        ...desktopFeishuSpawnEnv(),
-        // hc-417: inject any IM 入口 channel binding (feishu first) — decrypted
-        // just in time. Spread AFTER the hc-444 bridge so an hc-417 feishu app
-        // wins the FEISHU_* keys → only one Feishu app credential reaches the
-        // runtime (the dual-app WS collision the spike warned about can't happen).
-        ...desktopImEntrySpawnEnv(),
-        // hc-604: the platform-tool credential + endpoints (图片/视频生成、
-        // 图片 OCR、媒体转写、社媒数据). {} when signed out.
-        ...desktopPlatformToolSpawnEnv(),
-        // Pin the gateway's tool/terminal cwd to the same directory we chose for
-        // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
-        // can still point at the install dir even when spawn cwd is home.
-        TERMINAL_CWD: hermesCwd,
-        HERMES_DASHBOARD_SESSION_TOKEN: token,
-        // Marks this dashboard backend as desktop-spawned so it runs the cron
-        // scheduler tick loop (the gateway isn't running under the app).
-        HERMES_DESKTOP: '1',
-        // Exact parent identity lets the backend self-exit after an unclean
-        // Desktop death without mistaking a reused PID for its owner. If the
-        // optional marker probe fails, retain legacy PID-only tracking.
-        ...parentIdentityEnv,
-        HERMES_WEB_DIST: webDist,
+          // hc-444: inject the signed-in user's mirrored Feishu credential
+          // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
+          // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
+          // {} (no keys) when not connected; add-only vs an explicit parent-env
+          // credential.
+          ...desktopFeishuSpawnEnv(),
+          // hc-417: inject any IM 入口 channel binding (feishu first) — decrypted
+          // just in time. Spread AFTER the hc-444 bridge so an hc-417 feishu app
+          // wins the FEISHU_* keys → only one Feishu app credential reaches the
+          // runtime (the dual-app WS collision the spike warned about can't happen).
+          ...desktopImEntrySpawnEnv(),
+          // hc-604: the platform-tool credential + endpoints (图片/视频生成、
+          // 图片 OCR、媒体转写、社媒数据). {} when signed out.
+          ...desktopPlatformToolSpawnEnv(),
+          // Pin the gateway's tool/terminal cwd to the same directory we chose for
+          // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
+          // can still point at the install dir even when spawn cwd is home.
+          TERMINAL_CWD: hermesCwd,
+          HERMES_DASHBOARD_SESSION_TOKEN: token,
+          // Marks this dashboard backend as desktop-spawned so it runs the cron
+          // scheduler tick loop (the gateway isn't running under the app).
+          HERMES_DESKTOP: '1',
+          // Exact parent identity lets the backend self-exit after an unclean
+          // Desktop death without mistaking a reused PID for its owner. If the
+          // optional marker probe fails, retain legacy PID-only tracking.
+          ...parentIdentityEnv,
+          HERMES_WEB_DIST: webDist,
           ...(readyFile ? { HERMES_DESKTOP_READY_FILE: readyFile } : {})
         },
         GUEST_ONBOARDING
@@ -13305,39 +13307,39 @@ async function runHermesStart() {
         env: desktopBackendSpawnEnv(
           {
             ...process.env,
-          // Explicitly pin HERMES_HOME for the child so Python's get_hermes_home()
-          // resolves to the SAME location our resolveHermesHome() picked. Without
-          // this pin, Python falls back to ~/.hermes on every platform — fine on
-          // mac/linux (where our default matches), but on Windows our default is
-          // %LOCALAPPDATA%\hermes, which differs from C:\Users\<u>\.hermes.
-          // Mismatch would split config / sessions / .env / logs across two
-          // directories. install.ps1 sets HERMES_HOME via setx; the desktop
-          // can't reliably do that, so we set it inline for every spawn.
-          HERMES_HOME,
-          ...backend.env,
-          // hc-444: inject the signed-in user's mirrored Feishu credential
-          // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
-          // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
-          // {} (no keys) when not connected; add-only vs an explicit parent-env
-          // credential.
-          ...desktopFeishuSpawnEnv(),
-          // hc-417: inject any IM 入口 channel binding (feishu first) — decrypted
-          // just in time. Spread AFTER the hc-444 bridge so an hc-417 feishu app
-          // wins the FEISHU_* keys → only one Feishu app credential reaches the
-          // runtime (the dual-app WS collision the spike warned about can't happen).
-          ...desktopImEntrySpawnEnv(),
-          // hc-604: platform-tool credential + endpoints (see the pool spawn).
-          ...desktopPlatformToolSpawnEnv(),
-          TERMINAL_CWD: hermesCwd,
-          HERMES_DASHBOARD_SESSION_TOKEN: token,
-          // Marks this dashboard backend as desktop-spawned so it runs the cron
-          // scheduler tick loop (the gateway isn't running under the app).
-          HERMES_DESKTOP: '1',
-          // Exact parent identity lets the backend self-exit after an unclean
-          // Desktop death without mistaking a reused PID for its owner. If the
-          // optional marker probe fails, retain legacy PID-only tracking.
-          ...parentIdentityEnv,
-          HERMES_WEB_DIST: webDist,
+            // Explicitly pin HERMES_HOME for the child so Python's get_hermes_home()
+            // resolves to the SAME location our resolveHermesHome() picked. Without
+            // this pin, Python falls back to ~/.hermes on every platform — fine on
+            // mac/linux (where our default matches), but on Windows our default is
+            // %LOCALAPPDATA%\hermes, which differs from C:\Users\<u>\.hermes.
+            // Mismatch would split config / sessions / .env / logs across two
+            // directories. install.ps1 sets HERMES_HOME via setx; the desktop
+            // can't reliably do that, so we set it inline for every spawn.
+            HERMES_HOME,
+            ...backend.env,
+            // hc-444: inject the signed-in user's mirrored Feishu credential
+            // (FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_DOMAIN, decrypted just in
+            // time) so the runtime's Feishu adapter + lark doc/drive tools light up.
+            // {} (no keys) when not connected; add-only vs an explicit parent-env
+            // credential.
+            ...desktopFeishuSpawnEnv(),
+            // hc-417: inject any IM 入口 channel binding (feishu first) — decrypted
+            // just in time. Spread AFTER the hc-444 bridge so an hc-417 feishu app
+            // wins the FEISHU_* keys → only one Feishu app credential reaches the
+            // runtime (the dual-app WS collision the spike warned about can't happen).
+            ...desktopImEntrySpawnEnv(),
+            // hc-604: platform-tool credential + endpoints (see the pool spawn).
+            ...desktopPlatformToolSpawnEnv(),
+            TERMINAL_CWD: hermesCwd,
+            HERMES_DASHBOARD_SESSION_TOKEN: token,
+            // Marks this dashboard backend as desktop-spawned so it runs the cron
+            // scheduler tick loop (the gateway isn't running under the app).
+            HERMES_DESKTOP: '1',
+            // Exact parent identity lets the backend self-exit after an unclean
+            // Desktop death without mistaking a reused PID for its owner. If the
+            // optional marker probe fails, retain legacy PID-only tracking.
+            ...parentIdentityEnv,
+            HERMES_WEB_DIST: webDist,
             ...(readyFile ? { HERMES_DESKTOP_READY_FILE: readyFile } : {})
           },
           GUEST_ONBOARDING
@@ -22133,6 +22135,50 @@ ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
       objective: payload?.objective,
       projectId: payload?.projectId,
       starter: payload?.starter || {},
+      transport: context.transport,
+      uuid: () => crypto.randomUUID()
+    })
+
+    return { ok: true, run }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:createWorkflow', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await createWorkflowDomainDefinition({
+      apiBase: context.apiBase,
+      objective: payload?.objective,
+      projectId: payload?.projectId,
+      starter: payload?.starter || {},
+      transport: context.transport
+    })
+
+    return { ok: true, workflow: { id: item.id } }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:startRun', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const run = await startExistingWorkflowDomainRun({
+      apiBase: context.apiBase,
+      objective: payload?.objective,
+      workflowId: payload?.workflowId,
       transport: context.transport,
       uuid: () => crypto.randomUUID()
     })

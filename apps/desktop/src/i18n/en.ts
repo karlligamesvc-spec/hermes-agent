@@ -4788,10 +4788,13 @@ export const en: Translations = {
       workflowAttachmentsUnsupported:
         'This workflow cannot accept goal attachments yet. Your goal, workflow selection, and current attachments stay in place until you remove the attachments and continue.',
       videoToolsChecking: 'Checking video tools on this computer…',
-      videoToolsMissing: tools => `Missing local tools: ${tools}. You can analyze the video now, but need these tools before production and rendering.`,
-      videoToolsPresent: 'Basic video tools are available. Hypit project dependencies and the render browser still need a project-level check.',
+      videoToolsMissing: tools =>
+        `Missing local tools: ${tools}. You can analyze the video now, but need these tools before production and rendering.`,
+      videoToolsPresent:
+        'Basic video tools are available. Hypit project dependencies and the render browser still need a project-level check.',
       videoToolsUnknown: 'Could not check local video tools. Confirm Node, npm, and FFmpeg before production.',
-      videoRemoteConnection: 'This is not a local gateway. Switch to the local gateway for Hypit production; remote sessions can still analyze references.',
+      videoRemoteConnection:
+        'This is not a local gateway. Switch to the local gateway for Hypit production; remote sessions can still analyze references.',
       videoLocalChatMode: 'The staged video workflow is not available yet. This request will start in local chat.'
     },
     projects: {
@@ -4910,7 +4913,10 @@ export const en: Translations = {
       addWorkflow: 'Add workflow',
       loadingWorkflows: 'Loading project workflows…',
       noWorkflows: 'This project has no workflows, Runs, or progress yet.',
-      workflowsUnavailable: 'The project loaded, but its workflow list is unavailable. APEX will not infer run state.'
+      workflowsUnavailable: 'The project loaded, but its workflow list is unavailable. APEX will not infer run state.',
+      startWorkflow: 'Run',
+      startingWorkflow: 'Starting…',
+      runWorkflowFailed: 'The workflow could not start. Please try again.'
     },
     workflows: {
       eyebrow: 'Workflow templates',
@@ -4919,6 +4925,21 @@ export const en: Translations = {
       use: 'Use this workflow',
       useShort: 'Use',
       startGoal: 'Start a goal',
+      backToProject: 'Back to project',
+      projectContext: 'Current project · Add workflow',
+      projectDescription: 'Choose a template and save it to this project. Saving will not start a run.',
+      projectLoading: 'Loading project details…',
+      projectUnavailable:
+        'The project could not be verified, so workflow creation is paused. Return to Projects and try again.',
+      projectSavedEmpty: 'This project has no workflows yet. Choose a template below and save it here.',
+      selectForProject: 'Select and configure',
+      createEyebrow: 'Add to project',
+      createForProject: name => `This will be saved to “${name}” without starting a run.`,
+      objectiveLabel: 'Workflow objective',
+      saveWorkflow: 'Save workflow',
+      savingWorkflow: 'Saving…',
+      saveFailed: 'The workflow was not saved. Check whether this project already has the same template.',
+      alreadyAdded: 'This project already has that workflow. View or run it from the list above.',
       recommendedTitle: 'Recommended workflows',
       recommendedDescription: 'Choose one, edit the goal, and start when you are ready.',
       homeTitle: 'Choose a task to get started',
@@ -4952,12 +4973,14 @@ export const en: Translations = {
         full: {
           title: 'Complete short-video production',
           summary: 'Move from source evidence through analysis, production, rendering, and editable delivery.',
-          prompt: 'Analyze the short video I provide and deliver a verified final video, editable project, and reproduction guide.'
+          prompt:
+            'Analyze the short video I provide and deliver a verified final video, editable project, and reproduction guide.'
         },
         source: {
           title: '1. Collect video and data',
           summary: 'Save the source video, provenance, and public engagement data.',
-          prompt: 'Collect the short video I provide with its real source and public data, then prepare a reusable source bundle.'
+          prompt:
+            'Collect the short video I provide with its real source and public data, then prepare a reusable source bundle.'
         },
         transcript: {
           title: '2. Transcript and key frames',

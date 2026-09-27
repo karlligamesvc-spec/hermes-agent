@@ -34,6 +34,12 @@ export type WorkflowVideoCatalogOutcome =
 export type WorkflowDefinitionListOutcome =
   { items: WorkflowDefinition[]; mode: 'ready' } | { mode: 'failed' } | { mode: 'unavailable' }
 
+export type CreateWorkflowDefinitionOutcome =
+  { mode: 'created'; workflowId: string } | { mode: 'failed' } | { mode: 'unavailable' }
+
+export type StartExistingWorkflowRunOutcome =
+  { mode: 'started'; runId: string } | { mode: 'failed' } | { mode: 'unavailable' }
+
 export type WorkflowDeliverableListOutcome =
   | { items: WorkflowDeliverable[]; mode: 'ready'; nextCursor: null | string }
   | { mode: 'failed' }
@@ -86,6 +92,63 @@ export async function startWorkflowGoal(
       }
     })
 
+    const runId = result.run?.id?.trim()
+
+    return result.ok && runId ? { mode: 'started', runId } : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function createWorkflowDefinition(
+  objective: string,
+  starter: BusinessWorkflowStarter,
+  projectId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<CreateWorkflowDefinitionOutcome> {
+  if (!bridge?.createWorkflow || !projectId.trim()) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    if (!(await bridge.access()).available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.createWorkflow({
+      objective,
+      projectId: projectId.trim(),
+      starter: {
+        description: starter.summary,
+        id: starter.id,
+        name: starter.title,
+        slug: starter.slug,
+        version: starter.version
+      }
+    })
+    const workflowId = result.workflow?.id?.trim()
+
+    return result.ok && workflowId ? { mode: 'created', workflowId } : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function startExistingWorkflowRun(
+  objective: string,
+  workflowId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<StartExistingWorkflowRunOutcome> {
+  if (!bridge?.startRun || !workflowId.trim()) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    if (!(await bridge.access()).available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.startRun({ objective, workflowId: workflowId.trim() })
     const runId = result.run?.id?.trim()
 
     return result.ok && runId ? { mode: 'started', runId } : { mode: 'failed' }

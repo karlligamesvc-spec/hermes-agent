@@ -36,13 +36,20 @@ const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/
 
 export interface WorkflowStarterCardProps {
   action: string
+  disabled?: boolean
   onSelect: () => void
   starter: BusinessStarterCard
   variant: 'compact' | 'featured' | 'shelf'
 }
 
 /** Phase 1 workflow entry shared by Start and the catalog page. */
-export function WorkflowStarterCard({ action, onSelect, starter, variant }: WorkflowStarterCardProps) {
+export function WorkflowStarterCard({
+  action,
+  disabled = false,
+  onSelect,
+  starter,
+  variant
+}: WorkflowStarterCardProps) {
   const featured = variant === 'featured'
   const shelf = variant === 'shelf'
   const artwork = recommendedStarterAssets[starter.id]
@@ -62,6 +69,7 @@ export function WorkflowStarterCard({ action, onSelect, starter, variant }: Work
             : 'min-h-20 items-center gap-2 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-3.5 py-3 shadow-sm hover:border-primary/30 hover:bg-(--chrome-action-hover)'
       )}
       data-workflow-starter={variant}
+      disabled={disabled}
       onClick={onSelect}
       type="button"
       variant="ghost"
@@ -91,11 +99,7 @@ export function WorkflowStarterCard({ action, onSelect, starter, variant }: Work
           data-workflow-icon={starter.icon}
         >
           {SemanticIcon ? (
-            <SemanticIcon
-              aria-hidden="true"
-              className={shelf ? 'size-[1.375rem]' : 'size-[1.0625rem]'}
-              stroke={1.75}
-            />
+            <SemanticIcon aria-hidden="true" className={shelf ? 'size-[1.375rem]' : 'size-[1.0625rem]'} stroke={1.75} />
           ) : (
             <Codicon name={starter.icon} size="1rem" />
           )}

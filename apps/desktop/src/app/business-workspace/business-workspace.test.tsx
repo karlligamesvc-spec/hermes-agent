@@ -1351,6 +1351,7 @@ describe('hc-685 business workspace identity', () => {
         <I18nProvider configClient={null} initialLocale="zh">
           <Routes>
             <Route element={<ProjectDetailView />} path="projects/:projectId" />
+            <Route element={<WorkflowsView />} path="workflows" />
           </Routes>
           <LocationProbe />
         </I18nProvider>
@@ -1361,36 +1362,252 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByText('这个项目还没有工作流，也没有 Run 或进度。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '增加工作流' }))
 
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflows'))
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toBe('/workflows?projectId=project-existing')
+    )
     expect(screen.getByTestId('business-project-id').textContent).toBe('project-existing')
     expect(screen.getByTestId('business-goal-draft').textContent).toBe('继续已有项目目标')
+    expect(await screen.findByRole('heading', { name: '已有项目' })).toBeTruthy()
   })
 
-  it('shows only the selected Project workflows after opening its catalog', async () => {
+  it('keeps Project identity through catalog selection and saves without redirecting to Start or creating a Run', async () => {
     const listWorkflows = vi.fn(async () => ({ items: [], ok: true }))
+    const createWorkflow = vi.fn(async () => ({ ok: true, workflow: { id: 'workflow-new' } }))
+    const startGoal = vi.fn()
+    const project = {
+      createdAt: '2026-09-01T10:00:00Z',
+      id: 'project-existing',
+      name: '已有项目',
+      objective: '继续已有项目目标',
+      status: 'active',
+      updatedAt: '2026-09-04T10:00:00Z'
+    }
 
     window.hermesDesktop!.workflowDomain = {
       access: vi.fn(async () => ({ available: true })),
       cancelRun: vi.fn(),
+      createWorkflow,
+      getCatalog: vi.fn(async () => ({
+        items: [
+          {
+            businessPath: 'cross_border_launch',
+            id: 'market-launch',
+            position: 0,
+            recommended: true,
+            slug: 'market-launch',
+            version: 1
+          }
+        ],
+        ok: true,
+        version: 'workflow-catalog/v1'
+      })),
+      getProject: vi.fn(async () => ({ item: project, ok: true })),
       getRun: vi.fn(),
       listWorkflows,
       reviewDeliverable: vi.fn(),
-      startGoal: vi.fn()
+      startGoal
     }
 
     render(
-      <MemoryRouter initialEntries={[{ pathname: '/workflows', state: { businessProjectId: 'project-existing' } }]}>
+      <MemoryRouter initialEntries={['/workflows?projectId=project-existing']}>
         <I18nProvider configClient={null} initialLocale="zh">
-          <WorkflowsView />
+          <Routes>
+            <Route element={<WorkflowsView />} path="/workflows" />
+            <Route element={<ProjectDetailView />} path="/projects/:projectId" />
+          </Routes>
           <LocationProbe />
         </I18nProvider>
       </MemoryRouter>
     )
 
     await waitFor(() => expect(listWorkflows).toHaveBeenCalledWith({ limit: 50, projectId: 'project-existing' }))
-    expect(screen.getByText('正在为当前项目选择新的执行路径。')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '开始一个目标' }))
-    expect(screen.getByTestId('business-project-id').textContent).toBe('project-existing')
+    expect(await screen.findByRole('heading', { name: '已有项目' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '开始一个目标' })).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: /从市场机会到上架素材 · 选择并配置/ }))
+    expect(screen.getByText('将保存到「已有项目」，不会立即运行。')).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: '工作流目标' }), { target: { value: '项目内的新目标' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存工作流' }))
+
+    await waitFor(() => expect(createWorkflow).toHaveBeenCalledTimes(1))
+    expect(createWorkflow).toHaveBeenCalledWith({
+      objective: '项目内的新目标',
+      projectId: 'project-existing',
+      starter: expect.objectContaining({ id: 'market-launch', slug: 'market-launch', version: 1 })
+    })
+    expect(startGoal).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/projects/project-existing'))
+    expect(screen.getByTestId('route-drawer-source').textContent).toBe('/workflows')
+  })
+
+  it('starts a saved Project workflow from Project detail without recreating it', async () => {
+    const startRun = vi.fn(async () => ({ ok: true, run: { id: 'run-new' } }))
+    const createWorkflow = vi.fn()
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      createWorkflow,
+      getProject: vi.fn(async () => ({
+        item: {
+          createdAt: '2026-09-01T10:00:00Z',
+          id: 'project-existing',
+          name: '已有项目',
+          objective: '继续已有项目目标',
+          status: 'active',
+          updatedAt: '2026-09-04T10:00:00Z'
+        },
+        ok: true
+      })),
+      getRun: vi.fn(),
+      listWorkflows: vi.fn(async () => ({
+        items: [
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            description: '已有工作流',
+            id: 'workflow-existing',
+            name: '已有工作流',
+            projectId: 'project-existing',
+            slug: 'market-launch',
+            status: 'active',
+            updatedAt: '2026-09-04T10:00:00Z',
+            version: 1
+          }
+        ],
+        ok: true
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn(),
+      startRun
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects/project-existing']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<ProjectDetailView />} path="/projects/:projectId" />
+          </Routes>
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '运行' }))
+    await waitFor(() =>
+      expect(startRun).toHaveBeenCalledWith({ objective: '继续已有项目目标', workflowId: 'workflow-existing' })
+    )
+    expect(createWorkflow).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-new'))
+  })
+
+  it('does not create a workflow when the Project in the URL cannot be verified', async () => {
+    const createWorkflow = vi.fn()
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      createWorkflow,
+      getCatalog: vi.fn(async () => ({
+        items: [
+          {
+            businessPath: 'cross_border_launch',
+            id: 'market-launch',
+            position: 0,
+            recommended: true,
+            slug: 'market-launch',
+            version: 1
+          }
+        ],
+        ok: true,
+        version: 'workflow-catalog/v1'
+      })),
+      getProject: vi.fn(async () => ({ ok: false })),
+      getRun: vi.fn(),
+      listWorkflows: vi.fn(async () => ({ items: [], ok: true })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows?projectId=project-missing']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <WorkflowsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('无法确认项目归属，已暂停创建。请返回项目后重试。')).toBeTruthy()
+    const starter = await screen.findByRole('button', { name: /从市场机会到上架素材 · 选择并配置/ })
+    expect(starter.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(starter)
+    expect(createWorkflow).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: '保存工作流' })).toBeNull()
+  })
+
+  it('does not offer a second copy of a workflow already saved in the Project', async () => {
+    const createWorkflow = vi.fn()
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      createWorkflow,
+      getCatalog: vi.fn(async () => ({
+        items: [
+          {
+            businessPath: 'cross_border_launch',
+            id: 'market-launch',
+            position: 0,
+            recommended: true,
+            slug: 'market-launch',
+            version: 1
+          }
+        ],
+        ok: true,
+        version: 'workflow-catalog/v1'
+      })),
+      getProject: vi.fn(async () => ({
+        item: {
+          createdAt: '2026-09-01T10:00:00Z',
+          id: 'project-existing',
+          name: '已有项目',
+          objective: '继续已有项目目标',
+          status: 'active',
+          updatedAt: '2026-09-04T10:00:00Z'
+        },
+        ok: true
+      })),
+      getRun: vi.fn(),
+      listWorkflows: vi.fn(async () => ({
+        items: [
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            description: '已经保存',
+            id: 'workflow-existing',
+            name: '从市场机会到上架素材',
+            projectId: 'project-existing',
+            slug: 'market-launch',
+            status: 'active',
+            updatedAt: '2026-09-04T10:00:00Z',
+            version: 1
+          }
+        ],
+        ok: true
+      })),
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows?projectId=project-existing']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <WorkflowsView />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: /从市场机会到上架素材 · 选择并配置/ }))
+    expect(screen.getByText('这个项目已有相同的工作流，请在上方列表中查看或运行。')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '保存工作流' }).hasAttribute('disabled')).toBe(true)
+    expect(createWorkflow).not.toHaveBeenCalled()
   })
 
   it('opens a legacy Project detail without a summary and never dereferences a missing Run', async () => {

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
@@ -11,11 +12,12 @@ import { formatBusinessDayTime } from '@/lib/time'
 import {
   NEW_CHAT_ROUTE,
   PROJECTS_ROUTE,
+  projectWorkflowsRoute,
   routeDrawerBackgroundLocation,
   routeDrawerNavigationState,
-  workflowRunRoute,
-  WORKFLOWS_ROUTE
+  workflowRunRoute
 } from '../../routes'
+import { startExistingWorkflowRun } from '../api/adapters'
 import type { WorkflowProjectSummary } from '../api/types'
 import { useWorkflowDefinitions, useWorkflowProject } from '../hooks/use-workflow-domain-lists'
 import { distinctProjectObjective, projectCurrentRunId } from '../view-model/project'
@@ -47,6 +49,8 @@ export function ProjectDetailView() {
   const project = useWorkflowProject(projectId)
   const workflows = useWorkflowDefinitions({ limit: 50, projectId })
   const routeSummary = routedProjectSummary(location.state)
+  const [startingWorkflowId, setStartingWorkflowId] = useState<string | null>(null)
+  const [runError, setRunError] = useState(false)
 
   if (project.mode === 'loading') {
     return (
@@ -57,7 +61,7 @@ export function ProjectDetailView() {
     )
   }
 
-  if (project.mode !== 'ready') {
+  if (project.mode !== 'ready' || project.item.id !== projectId) {
     return (
       <div className="grid h-full place-items-center overflow-y-auto px-6 py-10 text-center">
         <div>
@@ -77,16 +81,35 @@ export function ProjectDetailView() {
   const currentRunId = projectCurrentRunId(summary)
   const currentRunStatus = summary?.currentRunStatus ?? null
 
-  const openRun = () => {
-    if (!currentRunId) {
-      return
-    }
-
+  const openWorkflowRun = (runId: string) => {
     const state = routeDrawerBackgroundLocation(location.state)
       ? location.state
       : routeDrawerNavigationState({ hash: '', pathname: PROJECTS_ROUTE, search: '', state: null })
 
-    navigate(workflowRunRoute(currentRunId), { replace: true, state })
+    navigate(workflowRunRoute(runId), { replace: true, state })
+  }
+
+  const openRun = () => {
+    if (currentRunId) {
+      openWorkflowRun(currentRunId)
+    }
+  }
+
+  const startWorkflow = async (workflowId: string) => {
+    if (startingWorkflowId) {
+      return
+    }
+
+    setStartingWorkflowId(workflowId)
+    setRunError(false)
+    const outcome = await startExistingWorkflowRun(item.objective, workflowId)
+    setStartingWorkflowId(null)
+
+    if (outcome.mode === 'started') {
+      openWorkflowRun(outcome.runId)
+    } else {
+      setRunError(true)
+    }
   }
 
   const continueGoal = () =>
@@ -95,7 +118,10 @@ export function ProjectDetailView() {
     })
 
   return (
-    <section className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-6 pb-8 pt-12" data-project-detail="">
+    <section
+      className="h-full overflow-y-auto bg-(--ui-chat-surface-background) px-6 pb-8 pt-12"
+      data-project-detail=""
+    >
       <div className="mx-auto w-full max-w-xl">
         <p className="text-xs font-medium text-primary">{copy.detailEyebrow}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2 pr-8">
@@ -156,7 +182,7 @@ export function ProjectDetailView() {
             </div>
             <Button
               onClick={() =>
-                navigate(WORKFLOWS_ROUTE, {
+                navigate(projectWorkflowsRoute(item.id), {
                   state: { businessGoalDraft: item.objective, businessProjectId: item.id }
                 })
               }
@@ -179,16 +205,34 @@ export function ProjectDetailView() {
                   <span className="min-w-0">
                     <strong className="block truncate text-sm font-medium">{workflow.name}</strong>
                     {workflow.description && (
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{workflow.description}</span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {workflow.description}
+                      </span>
                     )}
                   </span>
-                  <Badge variant="muted">{copy.lifecycle(workflow.status)}</Badge>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <Badge variant="muted">{copy.lifecycle(workflow.status)}</Badge>
+                    <Button
+                      aria-busy={startingWorkflowId === workflow.id || undefined}
+                      disabled={startingWorkflowId !== null || workflow.status !== 'active'}
+                      onClick={() => void startWorkflow(workflow.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {startingWorkflowId === workflow.id ? copy.startingWorkflow : copy.startWorkflow}
+                    </Button>
+                  </span>
                 </div>
               ))}
             </div>
           ) : (
             <p className="mt-4 rounded-xl border border-dashed border-(--ui-stroke-secondary) px-4 py-4 text-xs leading-5 text-muted-foreground">
               {workflows.mode === 'ready' ? copy.noWorkflows : copy.workflowsUnavailable}
+            </p>
+          )}
+          {runError && (
+            <p className="mt-3 text-xs text-destructive" role="alert">
+              {copy.runWorkflowFailed}
             </p>
           )}
         </section>

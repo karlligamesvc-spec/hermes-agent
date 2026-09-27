@@ -6,6 +6,7 @@ type JsonObject = Record<string, unknown>
 
 import {
   cancelWorkflowDomainRun,
+  createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
   getWorkflowDomainAccess,
@@ -20,6 +21,7 @@ import {
   listWorkflowDomainWorkflows,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
+  startExistingWorkflowDomainRun,
   startWorkflowDomainGoal,
   workflowDomainUrl,
   workflowProjectName
@@ -116,6 +118,113 @@ test('starts one canonical Project to Workflow to Hermes Run chain', async () =>
     executorType: 'hermes',
     maxAttempts: 2
   })
+})
+
+test('saves a workflow inside the selected Project without creating a Run', async () => {
+  const calls: Array<{ body: JsonObject; url: string }> = []
+  const workflow = await createWorkflowDomainDefinition({
+    apiBase: 'https://api.apex-nodes.com',
+    objective: 'Project-specific objective',
+    projectId: 'project-existing',
+    starter: {
+      description: 'Evidence-backed market research',
+      id: 'market-launch',
+      name: 'Market launch',
+      slug: 'market-launch',
+      version: 1
+    },
+    transport: {
+      postJson: async (url, body) => {
+        calls.push({ body, url })
+
+        return { item: { id: 'workflow-new' } }
+      }
+    }
+  })
+
+  assert.equal(workflow.id, 'workflow-new')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-existing/workflows')
+  assert.deepEqual(calls[0]?.body.definition, {
+    entrypoint: 'hermes',
+    objective: 'Project-specific objective',
+    template: { id: 'market-launch', version: 1 }
+  })
+})
+
+test('saves a video template inside the selected Project without starting its Run', async () => {
+  const calls: Array<{ body: JsonObject; url: string }> = []
+  await createWorkflowDomainDefinition({
+    apiBase: 'https://api.apex-nodes.com',
+    objective: 'Produce a short video',
+    projectId: 'project-video',
+    starter: {
+      description: 'Full video workflow',
+      id: 'viral-video-remake',
+      name: 'Viral video remake',
+      slug: 'viral-video-remake',
+      version: 1
+    },
+    transport: {
+      postJson: async (url, body) => {
+        calls.push({ body, url })
+
+        return { item: { id: 'workflow-video' } }
+      }
+    }
+  })
+
+  assert.deepEqual(calls, [
+    {
+      body: { objective: 'Produce a short video' },
+      url: 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-video/workflow-templates/viral-video-remake'
+    }
+  ])
+})
+
+test('rejects a malformed starter before creating an empty Project', async () => {
+  let postCount = 0
+
+  await assert.rejects(
+    startWorkflowDomainGoal({
+      apiBase: 'https://api.apex-nodes.com',
+      objective: 'Analyze the market',
+      starter: { description: 'Description', id: 'bad/id', name: 'Bad', slug: 'bad/id', version: 1 },
+      transport: {
+        getJson: async () => ({}),
+        postJson: async () => {
+          postCount += 1
+
+          return { item: { id: 'should-not-exist' } }
+        }
+      },
+      uuid: () => '00000000-0000-4000-8000-000000000852'
+    }),
+    /workflow slug/
+  )
+  assert.equal(postCount, 0)
+})
+
+test('runs an existing Project workflow without creating another Project or Workflow', async () => {
+  const calls: Array<{ body: JsonObject; url: string }> = []
+  const run = await startExistingWorkflowDomainRun({
+    apiBase: 'https://api.apex-nodes.com',
+    objective: 'Project-specific objective',
+    workflowId: 'workflow-new',
+    transport: {
+      postJson: async (url, body) => {
+        calls.push({ body, url })
+
+        return { item: { id: 'run-new' } }
+      }
+    },
+    uuid: () => '00000000-0000-4000-8000-000000000852'
+  })
+
+  assert.deepEqual(run, { id: 'run-new' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/runs')
+  assert.equal(calls[0]?.body.workflowId, 'workflow-new')
 })
 
 test('starts the server-owned video Workflow without accepting a client-authored definition', async () => {

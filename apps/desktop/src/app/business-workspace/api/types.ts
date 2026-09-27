@@ -12,6 +12,11 @@ export interface WorkflowDomainBridge {
     name: string
     objective: string
   }) => Promise<{ item?: WorkflowProject; ok: boolean }>
+  createWorkflow?: (payload: {
+    objective: string
+    projectId: string
+    starter: { description: string; id: string; name: string; slug: string; version: number }
+  }) => Promise<{ ok: boolean; workflow?: { id: string } }>
   getProject?: (projectId: string) => Promise<{ item?: WorkflowProject; ok: boolean }>
   getCatalog?: () => Promise<WorkflowCatalogResult>
   getVideoCatalog?: () => Promise<WorkflowVideoCatalogResult>
@@ -44,6 +49,7 @@ export interface WorkflowDomainBridge {
     projectId?: string
     starter: { description: string; id: string; name: string; slug: string; version: number }
   }) => Promise<{ ok: boolean; run?: { id: string } }>
+  startRun?: (payload: { objective: string; workflowId: string }) => Promise<{ ok: boolean; run?: { id: string } }>
 }
 
 export interface WorkflowReview {

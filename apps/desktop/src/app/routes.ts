@@ -77,6 +77,11 @@ export function projectDetailRoute(projectId: string): string {
   return `${PROJECT_DETAIL_ROUTE_PREFIX}${encodeURIComponent(projectId)}`
 }
 
+/** Keep Project ownership visible and reload-safe while browsing its Workflow catalog. */
+export function projectWorkflowsRoute(projectId: string): string {
+  return `${WORKFLOWS_ROUTE}?${new URLSearchParams({ projectId }).toString()}`
+}
+
 export function deliverableDetailRoute(deliverableId: string): string {
   return `${DELIVERABLE_DETAIL_ROUTE_PREFIX}${encodeURIComponent(deliverableId)}`
 }

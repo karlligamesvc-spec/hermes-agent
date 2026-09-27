@@ -9,7 +9,7 @@ import type { ComposerAttachment } from '@/store/composer'
 import { $connection } from '@/store/session'
 
 import type { ChatBarState } from '../../chat/composer/types'
-import { routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
+import { projectWorkflowsRoute, routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
@@ -116,14 +116,16 @@ export function BusinessStartHome({
   const [domainStarting, setDomainStarting] = useState(false)
 
   const [videoReadiness, setVideoReadiness] = useState<
-    | { state: 'checking' | 'unknown' | 'present' }
-    | { state: 'missing'; tools: string[] }
+    { state: 'checking' | 'unknown' | 'present' } | { state: 'missing'; tools: string[] }
   >({ state: 'checking' })
 
   const templateAttachmentBlocked = selectedWorkflow !== null && attachments.length > 0
 
   useEffect(() => {
-    if ((!homeVideoWorkflowSelected && selectedWorkflow?.id !== 'viral-video-remake') || connection?.mode === 'remote') {
+    if (
+      (!homeVideoWorkflowSelected && selectedWorkflow?.id !== 'viral-video-remake') ||
+      connection?.mode === 'remote'
+    ) {
       return
     }
 
@@ -213,7 +215,7 @@ export function BusinessStartHome({
       attachments.length === 0 &&
       videoCatalog.mode === 'ready' &&
       videoCatalog.items.some(item => item.id === starter.id)
-        ? workflows.find(workflow => workflow.id === starter.id) ?? null
+        ? (workflows.find(workflow => workflow.id === starter.id) ?? null)
         : null
 
     setSelectedWorkflow(videoWorkflow)
@@ -331,7 +333,7 @@ export function BusinessStartHome({
             </div>
             <Button
               onClick={() =>
-                navigate(WORKFLOWS_ROUTE, {
+                navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
                   state: {
                     businessGoalDraft: goalDraft,
                     ...(typeof launchState?.businessProjectId === 'string'

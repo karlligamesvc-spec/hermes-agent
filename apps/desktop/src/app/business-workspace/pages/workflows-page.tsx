@@ -5,12 +5,19 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Loader } from '@/components/ui/loader'
+import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/i18n'
 
-import { NEW_CHAT_ROUTE, projectDetailRoute, routeDrawerNavigationState } from '../../routes'
+import { NEW_CHAT_ROUTE, projectDetailRoute, PROJECTS_ROUTE, routeDrawerNavigationState } from '../../routes'
+import { createWorkflowDefinition } from '../api/adapters'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
-import { useVideoWorkflowCatalog, useWorkflowCatalog, useWorkflowDefinitions } from '../hooks/use-workflow-domain-lists'
+import {
+  useVideoWorkflowCatalog,
+  useWorkflowCatalog,
+  useWorkflowDefinitions,
+  useWorkflowProject
+} from '../hooks/use-workflow-domain-lists'
 import {
   type BusinessWorkflowStarter,
   businessWorkflowStarters,
@@ -23,12 +30,21 @@ export function WorkflowsView() {
   const location = useLocation()
   const navigate = useNavigate()
   const [reloadToken, setReloadToken] = useState(0)
+  const [selectedStarter, setSelectedStarter] = useState<BusinessWorkflowStarter | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [objectiveDraft, setObjectiveDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const catalog = useWorkflowCatalog(reloadToken)
   const videoCatalog = useVideoWorkflowCatalog(reloadToken)
   const launchContext = location.state as null | { businessGoalDraft?: unknown; businessProjectId?: unknown }
 
+  const routeProjectId = new URLSearchParams(location.search).get('projectId')?.trim() ?? ''
   const targetProjectId =
-    typeof launchContext?.businessProjectId === 'string' ? launchContext.businessProjectId.trim() : ''
+    routeProjectId ||
+    (typeof launchContext?.businessProjectId === 'string' ? launchContext.businessProjectId.trim() : '')
+  const project = useWorkflowProject(targetProjectId || undefined)
+  const projectItem = project.mode === 'ready' && project.item.id === targetProjectId ? project.item : null
 
   const targetObjective =
     typeof launchContext?.businessGoalDraft === 'string' ? launchContext.businessGoalDraft.slice(0, 4000) : ''
@@ -37,6 +53,10 @@ export function WorkflowsView() {
     { limit: 50, ...(targetProjectId ? { projectId: targetProjectId } : {}) },
     reloadToken
   )
+  const alreadyAdded =
+    selectedStarter !== null &&
+    workflows.mode === 'ready' &&
+    workflows.items.some(item => item.slug === selectedStarter.slug)
 
   const localStarters = businessWorkflowStarters(c)
   const localVideoStarters = videoWorkflowStarters(c)
@@ -78,6 +98,19 @@ export function WorkflowsView() {
   const additional = starters.filter(starter => !starter.recommended)
 
   const selectStarter = (starter: BusinessWorkflowStarter) => {
+    if (targetProjectId) {
+      if (!projectItem) {
+        return
+      }
+
+      setSelectedStarter(starter)
+      setSelectedProjectId(targetProjectId)
+      setObjectiveDraft(projectItem.objective || targetObjective || starter.prompt)
+      setSaveError(false)
+
+      return
+    }
+
     navigate(NEW_CHAT_ROUTE, {
       state: {
         businessGoalDraft: targetObjective || starter.prompt,
@@ -90,22 +123,61 @@ export function WorkflowsView() {
     })
   }
 
+  const openProject = () => {
+    if (targetProjectId && projectItem) {
+      navigate(projectDetailRoute(targetProjectId), { state: routeDrawerNavigationState(location) })
+    } else {
+      navigate(PROJECTS_ROUTE)
+    }
+  }
+
+  const saveToProject = async () => {
+    if (
+      !selectedStarter ||
+      !projectItem ||
+      selectedProjectId !== targetProjectId ||
+      !objectiveDraft.trim() ||
+      alreadyAdded ||
+      saving
+    ) {
+      return
+    }
+
+    setSaving(true)
+    setSaveError(false)
+    const outcome = await createWorkflowDefinition(objectiveDraft.trim(), selectedStarter, projectItem.id)
+    setSaving(false)
+
+    if (outcome.mode !== 'created') {
+      setSaveError(true)
+
+      return
+    }
+
+    setSelectedStarter(null)
+    setSelectedProjectId('')
+    setReloadToken(token => token + 1)
+    openProject()
+  }
+
   return (
     <section className="apex-business-surface apex-business-page apex-primary-page" data-business-workflows-page="">
       <div className="apex-primary-page-column">
         <BusinessPageHeader
-          action={{
-            icon: 'play',
-            label: c.startGoal,
-            onClick: () =>
-              navigate(NEW_CHAT_ROUTE, {
-                state: {
-                  businessGoalFocus: true,
-                  ...(targetProjectId ? { businessProjectId: targetProjectId } : {})
+          action={
+            targetProjectId
+              ? {
+                  icon: 'arrow-left',
+                  label: projectItem ? c.backToProject : t.businessWorkspace.projects.backToProjects,
+                  onClick: openProject
                 }
-              })
-          }}
-          description={c.description}
+              : {
+                  icon: 'play',
+                  label: c.startGoal,
+                  onClick: () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalFocus: true } })
+                }
+          }
+          description={targetProjectId ? c.projectDescription : c.description}
           eyebrow={c.eyebrow}
           icon="list-unordered"
           title={c.title}
@@ -121,13 +193,76 @@ export function WorkflowsView() {
           }
         />
       </div>
+      {targetProjectId && (
+        <section
+          className="mx-auto w-full max-w-[65.625rem] rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-5 py-4"
+          data-project-workflow-context=""
+        >
+          <p className="text-xs font-medium text-primary">{c.projectContext}</p>
+          {projectItem ? (
+            <>
+              <h2 className="mt-1 text-lg font-semibold">{projectItem.name}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{projectItem.objective}</p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground" role="status">
+              {project.mode === 'loading' ? c.projectLoading : c.projectUnavailable}
+            </p>
+          )}
+        </section>
+      )}
+      {targetProjectId && selectedProjectId === targetProjectId && selectedStarter && projectItem && (
+        <section
+          className="mx-auto mt-5 w-full max-w-[65.625rem] rounded-2xl border border-primary/40 bg-(--ui-bg-elevated) p-5 shadow-sm"
+          data-project-workflow-create=""
+        >
+          <p className="text-xs font-medium text-primary">{c.createEyebrow}</p>
+          <h2 className="mt-1 text-lg font-semibold">{selectedStarter.title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{c.createForProject(projectItem.name)}</p>
+          <label className="mt-4 grid gap-2 text-sm font-medium" htmlFor="project-workflow-objective">
+            {c.objectiveLabel}
+            <Textarea
+              className="min-h-24 resize-y"
+              id="project-workflow-objective"
+              maxLength={4000}
+              onChange={event => setObjectiveDraft(event.target.value)}
+              value={objectiveDraft}
+            />
+          </label>
+          {alreadyAdded && (
+            <p className="mt-3 text-sm text-amber-700" role="status">
+              {c.alreadyAdded}
+            </p>
+          )}
+          {saveError && (
+            <p className="mt-3 text-sm text-destructive" role="alert">
+              {c.saveFailed}
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button disabled={saving} onClick={() => setSelectedStarter(null)} size="sm" variant="ghost">
+              {t.common.cancel}
+            </Button>
+            <Button
+              aria-busy={saving || undefined}
+              disabled={!objectiveDraft.trim() || saving || alreadyAdded}
+              onClick={() => void saveToProject()}
+              size="sm"
+            >
+              {saving ? c.savingWorkflow : c.saveWorkflow}
+            </Button>
+          </div>
+        </section>
+      )}
       <section
         className="mx-auto w-full max-w-[65.625rem] border-b border-(--ui-stroke-tertiary) py-6"
         data-saved-workflows=""
       >
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold">{c.savedTitle}</h2>
+            <h2 className="text-base font-semibold">
+              {targetProjectId ? t.businessWorkspace.projects.workflowsTitle : c.savedTitle}
+            </h2>
             {targetProjectId && <p className="mt-1 text-xs text-muted-foreground">{c.addingToProject}</p>}
           </div>
           {workflows.mode === 'ready' && (
@@ -168,7 +303,7 @@ export function WorkflowsView() {
           </div>
         ) : workflows.mode === 'ready' ? (
           <p className="mt-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-5 text-xs text-muted-foreground">
-            {c.savedEmpty}
+            {targetProjectId ? c.projectSavedEmpty : c.savedEmpty}
           </p>
         ) : (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300/45 bg-amber-50/40 px-4 py-4 text-xs text-amber-800 dark:bg-amber-950/15 dark:text-amber-200">
@@ -206,8 +341,12 @@ export function WorkflowsView() {
                 <Codicon name="refresh" size="0.875rem" />
                 {c.retryCatalog}
               </Button>
-              <Button onClick={() => navigate(NEW_CHAT_ROUTE)} size="sm" variant="ghost">
-                {c.backToStart}
+              <Button
+                onClick={targetProjectId ? openProject : () => navigate(NEW_CHAT_ROUTE)}
+                size="sm"
+                variant="ghost"
+              >
+                {targetProjectId ? c.backToProject : c.backToStart}
               </Button>
             </div>
           </div>
@@ -225,7 +364,8 @@ export function WorkflowsView() {
             <div className="apex-workflow-entry-grid grid gap-1" data-recommended-workflows="">
               {recommended.map(starter => (
                 <WorkflowStarterCard
-                  action={c.use}
+                  action={targetProjectId ? c.selectForProject : c.use}
+                  disabled={Boolean(targetProjectId) && (!projectItem || saving)}
                   key={starter.id}
                   onSelect={() => selectStarter(starter)}
                   starter={starter}
@@ -244,7 +384,8 @@ export function WorkflowsView() {
             >
               {additional.map(starter => (
                 <WorkflowStarterCard
-                  action={c.useShort}
+                  action={targetProjectId ? c.selectForProject : c.useShort}
+                  disabled={Boolean(targetProjectId) && (!projectItem || saving)}
                   key={starter.id}
                   onSelect={() => selectStarter(starter)}
                   starter={starter}
