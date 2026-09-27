@@ -3621,6 +3621,23 @@ export const zhHant = defineLocale({
       emptyDescription: '先描述一個業務目標，APEX 會據此建立真實專案並組織工作流程。',
       action: '開始一個目標',
       newProject: '新增專案',
+      editProject: '編輯專案',
+      edit: {
+        title: '編輯專案',
+        description: '修改專案名稱和目標，儲存後會同步到其他裝置。',
+        save: '儲存修改',
+        saving: '正在儲存…',
+        failed: '儲存失敗。輸入內容已保留，請重試。'
+      },
+      awaitingAcceptance: '待驗收',
+      notStarted: '待開始',
+      completionProgress: (succeeded, total) => `已完成 ${succeeded} / ${total} 條工作流程`,
+      completionUnavailable: '暫時無法讀取全部工作流程狀態，請重新整理後再驗收。',
+      completionFailed: '專案狀態未更新，請檢查連線並重試。',
+      completionNotReady: '仍有工作流程未成功完成，請檢查執行結果後重試。',
+      completeProject: '完成專案',
+      reopenProject: '重新開啟專案',
+      reopenFirst: '請先重新開啟專案，才能加入或啟動工作流程。',
       create: {
         title: '新增專案',
         description: '先定義專案名稱與目標。建立後不會自動啟動工作流程或虛構進度。',

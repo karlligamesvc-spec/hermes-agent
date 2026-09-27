@@ -29,6 +29,7 @@ type JsonObject = Record<string, unknown>
 
 export interface WorkflowDomainTransport {
   getJson: (url: string) => Promise<unknown>
+  patchJson?: (url: string, body: JsonObject) => Promise<unknown>
   postJson: (url: string, body: JsonObject) => Promise<unknown>
 }
 
@@ -678,6 +679,85 @@ export async function getWorkflowDomainProject(
 
   return responseItem(
     await transport.getJson(workflowDomainUrl(apiBase, `projects/${encodeURIComponent(normalizedProjectId)}`)),
+    'project'
+  )
+}
+
+export async function getWorkflowDomainProjectCompletion(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+) {
+  const id = uuidText(projectId, 'project id')
+  const body = requireObject(
+    await transport.getJson(workflowDomainUrl(apiBase, `projects/${id}/completion`)),
+    'project completion'
+  )
+  const states = body.workflowStates
+
+  if (!Array.isArray(states) || typeof body.readyForReview !== 'boolean' || typeof body.canComplete !== 'boolean') {
+    throw new Error('Invalid workflow domain project completion response')
+  }
+
+  return {
+    projectStatus: requireText(body.projectStatus, 'project status', 24),
+    workflowTotal: requireInteger(body.workflowTotal, 'workflow total'),
+    workflowSucceeded: requireInteger(body.workflowSucceeded, 'workflow succeeded'),
+    readyForReview: body.readyForReview,
+    canComplete: body.canComplete,
+    workflowStates: states.map(value => {
+      const state = requireObject(value, 'workflow state')
+
+      return {
+        workflowId: uuidText(state.workflowId, 'workflow id'),
+        runId: state.runId ? uuidText(state.runId, 'run id') : null,
+        runStatus: optionalText(state.runStatus, 24)
+      }
+    })
+  }
+}
+
+export async function updateWorkflowDomainProject(
+  apiBase: string,
+  input: { name: string; objective: string; projectId: string },
+  transport: WorkflowDomainTransport & { patchJson: (url: string, body: JsonObject) => Promise<unknown> }
+): Promise<JsonObject> {
+  const id = uuidText(input.projectId, 'project id')
+  const name = requireText(input.name, 'project name', 200)
+  const objective = trimmed(input.objective)
+
+  if (objective.length > 4000) {
+    throw new Error('Invalid workflow domain objective')
+  }
+
+  return responseItem(
+    await transport.patchJson(workflowDomainUrl(apiBase, `projects/${id}`), { name, objective }),
+    'project'
+  )
+}
+
+export async function completeWorkflowDomainProject(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+): Promise<JsonObject> {
+  const id = uuidText(projectId, 'project id')
+
+  return responseItem(
+    await transport.postJson(workflowDomainUrl(apiBase, `projects/${id}/complete`), {}),
+    'project'
+  )
+}
+
+export async function reopenWorkflowDomainProject(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+): Promise<JsonObject> {
+  const id = uuidText(projectId, 'project id')
+
+  return responseItem(
+    await transport.postJson(workflowDomainUrl(apiBase, `projects/${id}/reopen`), {}),
     'project'
   )
 }

@@ -38,10 +38,6 @@ type ProjectFilter = 'active' | 'all' | 'completed'
 
 const completedProjectStates = new Set(['archived', 'cancelled', 'completed', 'succeeded'])
 
-function projectStatus(project: { status: string; summary?: { currentRunStatus: null | string } }) {
-  return project.summary?.currentRunStatus || project.status
-}
-
 function isCompletedProject(status: string) {
   return completedProjectStates.has(status)
 }
@@ -73,17 +69,17 @@ export function ProjectsView() {
           }
 
           return filter === 'completed'
-            ? isCompletedProject(projectStatus(project))
-            : !isCompletedProject(projectStatus(project))
+            ? isCompletedProject(project.status)
+            : !isCompletedProject(project.status)
         })
       : []
 
   const counts =
     projects.mode === 'ready'
       ? {
-          active: projects.items.filter(project => !isCompletedProject(projectStatus(project))).length,
+          active: projects.items.filter(project => !isCompletedProject(project.status)).length,
           all: projects.total,
-          completed: projects.items.filter(project => isCompletedProject(projectStatus(project))).length
+          completed: projects.items.filter(project => isCompletedProject(project.status)).length
         }
       : { active: 0, all: 0, completed: 0 }
 
@@ -144,7 +140,7 @@ export function ProjectsView() {
             <div className="overflow-hidden rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-sm">
               {visibleProjects.map(project => {
                 const summary = project.summary
-                const status = projectStatus(project)
+                const status = project.status
                 const runDisplay = projectRunDisplayState(summary)
                 const objective = distinctProjectObjective(project)
 

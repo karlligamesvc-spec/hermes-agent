@@ -767,7 +767,7 @@ describe('hc-685 business workspace identity', () => {
             id: 'completed-project',
             name: '已完成的真实项目',
             objective: '已完成的真实目标',
-            status: 'active',
+            status: 'completed',
             summary: {
               attention: 'none' as const,
               currentRunId: 'run-complete',
@@ -778,10 +778,27 @@ describe('hc-685 business workspace identity', () => {
               stepTotal: 0
             },
             updatedAt: '2026-09-03T10:00:00Z'
+          },
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'review-project',
+            name: '待人工验收的真实项目',
+            objective: '等待负责人确认',
+            status: 'active',
+            summary: {
+              attention: 'review' as const,
+              currentRunId: 'run-reviewed',
+              currentRunStatus: 'succeeded',
+              currentStepTitle: null,
+              deliverableCount: 1,
+              stepCompleted: 0,
+              stepTotal: 0
+            },
+            updatedAt: '2026-09-02T10:00:00Z'
           }
         ],
         ok: true,
-        total: 2
+        total: 3
       })),
       reviewDeliverable: vi.fn(),
       startGoal: vi.fn()
@@ -797,10 +814,11 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByText('进行中的真实项目')).toBeTruthy())
     expect(screen.queryByText('0 个交付物')).toBeNull()
-    expect(screen.getByRole('button', { name: /全部2/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: /全部3/ }).getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(screen.getByRole('button', { name: /已完成1/ }))
     expect(screen.queryByText('进行中的真实项目')).toBeNull()
+    expect(screen.queryByText('待人工验收的真实项目')).toBeNull()
     expect(screen.getByText('已完成的真实项目')).toBeTruthy()
     expect(screen.getByText('1 个交付物')).toBeTruthy()
     expect(screen.queryByText(/0 \/ 0/)).toBeNull()
@@ -1368,6 +1386,106 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByTestId('business-project-id').textContent).toBe('project-existing')
     expect(screen.getByTestId('business-goal-draft').textContent).toBe('继续已有项目目标')
     expect(await screen.findByRole('heading', { name: '已有项目' })).toBeTruthy()
+  })
+
+  it('requires real workflow completion before manual project finish and supports edit and reopen', async () => {
+    let project = {
+      createdAt: '2026-09-01T10:00:00Z',
+      id: 'project-lifecycle',
+      name: '原项目',
+      objective: '原目标',
+      status: 'active',
+      updatedAt: '2026-09-04T10:00:00Z'
+    }
+    let runStatus: null | string = null
+    const updateProject = vi.fn(async (payload: { name: string; objective: string }) => {
+      project = { ...project, name: payload.name, objective: payload.objective }
+
+      return { item: project, ok: true }
+    })
+    const completeProject = vi.fn(async () => {
+      project = { ...project, status: 'completed' }
+
+      return { item: project, ok: true }
+    })
+    const reopenProject = vi.fn(async () => {
+      project = { ...project, status: 'active' }
+
+      return { item: project, ok: true }
+    })
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      completeProject,
+      getProject: vi.fn(async () => ({ item: project, ok: true })),
+      getProjectCompletion: vi.fn(async () => ({
+        completion: {
+          canComplete: project.status === 'active' && runStatus === 'succeeded',
+          projectStatus: project.status,
+          readyForReview: runStatus === 'succeeded',
+          workflowSucceeded: runStatus === 'succeeded' ? 1 : 0,
+          workflowTotal: 1,
+          workflowStates: [{ workflowId: 'workflow-lifecycle', runId: runStatus ? 'run-lifecycle' : null, runStatus }]
+        },
+        ok: true
+      })),
+      getRun: vi.fn(),
+      listWorkflows: vi.fn(async () => ({
+        items: [{
+          createdAt: '2026-09-01T10:00:00Z', description: '真实工作流',
+          id: 'workflow-lifecycle', name: '真实工作流', projectId: project.id,
+          slug: 'real-workflow', status: 'active', updatedAt: '2026-09-04T10:00:00Z', version: 1
+        }], ok: true
+      })),
+      reopenProject,
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn(),
+      updateProject
+    }
+
+    const view = render(
+      <MemoryRouter initialEntries={['/projects/project-lifecycle']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes><Route element={<ProjectDetailView />} path="projects/:projectId" /></Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const finish = await screen.findByRole('button', { name: '完成项目' })
+
+    expect(finish.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('已完成 0 / 1 条工作流')).toBeTruthy()
+    expect(completeProject).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑项目' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '新项目' } })
+    fireEvent.change(screen.getByRole('textbox', { name: '项目描述与目标' }), { target: { value: '新目标' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }))
+    await waitFor(() => expect(updateProject).toHaveBeenCalledWith({
+      name: '新项目', objective: '新目标', projectId: 'project-lifecycle'
+    }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '新项目' })).toBeTruthy())
+
+    runStatus = 'succeeded'
+    // A new opening of the project reads the server again; the Run alone never marks it complete.
+    view.unmount()
+    render(
+      <MemoryRouter initialEntries={['/projects/project-lifecycle']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes><Route element={<ProjectDetailView />} path="projects/:projectId" /></Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect((await screen.findAllByText('待验收')).length).toBeGreaterThan(0)
+    fireEvent.click(await screen.findByRole('button', { name: '完成项目' }))
+    await waitFor(() => expect(completeProject).toHaveBeenCalledWith('project-lifecycle'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '重新打开项目' })).toBeTruthy())
+    expect(screen.getByRole('button', { name: '增加工作流' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '重新打开项目' }))
+    await waitFor(() => expect(reopenProject).toHaveBeenCalledWith('project-lifecycle'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '增加工作流' }).hasAttribute('disabled')).toBe(false))
   })
 
   it('keeps Project identity through catalog selection and saves without redirecting to Start or creating a Run', async () => {

@@ -3691,6 +3691,23 @@ export const ja = defineLocale({
       emptyDescription: '業務目標を入力すると、APEX が実際のプロジェクトを作成し、ワークフローを構成します。',
       action: '目標を始める',
       newProject: '新規プロジェクト',
+      editProject: 'プロジェクトを編集',
+      edit: {
+        title: 'プロジェクトを編集',
+        description: '名前と目標を変更します。保存後は他の端末にも反映されます。',
+        save: '変更を保存',
+        saving: '保存中…',
+        failed: '保存できませんでした。入力内容は保持されています。再試行してください。'
+      },
+      awaitingAcceptance: '確認待ち',
+      notStarted: '未開始',
+      completionProgress: (succeeded, total) => `${total} 件中 ${succeeded} 件のワークフローが完了`,
+      completionUnavailable: 'ワークフローの状態を読み込めません。更新してから完了してください。',
+      completionFailed: 'プロジェクトを更新できませんでした。接続を確認して再試行してください。',
+      completionNotReady: '未完了のワークフローがあります。実行結果を確認して再試行してください。',
+      completeProject: 'プロジェクトを完了',
+      reopenProject: 'プロジェクトを再開',
+      reopenFirst: 'ワークフローの追加や開始には、先にプロジェクトを再開してください。',
       create: {
         title: '新規プロジェクト',
         description: 'ワークフローを追加する前に名前と目標を定義します。作成だけでは実行や進捗は生成されません。',

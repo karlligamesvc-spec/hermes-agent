@@ -4246,6 +4246,23 @@ export const zh = defineLocale({
       emptyDescription: '先描述一个业务目标，APEX 会据此创建真实项目并组织工作流。',
       action: '开始一个目标',
       newProject: '新建项目',
+      editProject: '编辑项目',
+      edit: {
+        title: '编辑项目',
+        description: '修改项目名称和目标，保存后会同步到其他设备。',
+        save: '保存修改',
+        saving: '正在保存…',
+        failed: '保存失败。输入内容已保留，请重试。'
+      },
+      awaitingAcceptance: '待验收',
+      notStarted: '待开始',
+      completionProgress: (succeeded, total) => `已完成 ${succeeded} / ${total} 条工作流`,
+      completionUnavailable: '暂时无法读取全部工作流状态，请刷新后再验收。',
+      completionFailed: '项目状态未更新，请检查连接并重试。',
+      completionNotReady: '仍有工作流未成功完成，请检查运行结果后重试。',
+      completeProject: '完成项目',
+      reopenProject: '重新打开项目',
+      reopenFirst: '先重新打开项目，才能加入或启动工作流。',
       create: {
         title: '新建项目',
         description: '先定义项目名称和目标。创建后不会自动启动工作流或伪造进度。',

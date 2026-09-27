@@ -310,6 +310,14 @@ declare global {
           status?: string
         }) => Promise<DesktopWorkflowDomainProjectListResult>
         getProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
+        getProjectCompletion?: (projectId: string) => Promise<DesktopWorkflowDomainProjectCompletionResult>
+        updateProject?: (payload: {
+          name: string
+          objective: string
+          projectId: string
+        }) => Promise<DesktopWorkflowDomainProjectResult>
+        completeProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
+        reopenProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
         listWorkflows?: (options?: {
           cursor?: string
           limit?: number
@@ -1853,6 +1861,21 @@ export interface DesktopWorkflowDomainProject {
   updatedAt: string
 }
 
+export interface DesktopWorkflowDomainProjectCompletion {
+  canComplete: boolean
+  projectStatus: string
+  readyForReview: boolean
+  workflowSucceeded: number
+  workflowTotal: number
+  workflowStates: Array<{ runId: null | string; runStatus: null | string; workflowId: string }>
+}
+
+export interface DesktopWorkflowDomainProjectCompletionResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  completion?: DesktopWorkflowDomainProjectCompletion
+  ok: boolean
+}
+
 export interface DesktopWorkflowDomainWorkflow {
   createdAt: string
   description: null | string
@@ -1885,7 +1908,7 @@ export interface DesktopWorkflowDomainProjectListResult {
 }
 
 export interface DesktopWorkflowDomainProjectResult {
-  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  code?: 'project_completed' | 'project_not_ready' | 'request_failed' | 'sign_in' | 'unavailable'
   item?: DesktopWorkflowDomainProject
   ok: boolean
 }

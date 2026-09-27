@@ -4807,6 +4807,23 @@ export const en: Translations = {
         'Describe a business goal. APEX creates a real project and organizes its workflow from that goal.',
       action: 'Start a goal',
       newProject: 'New project',
+      editProject: 'Edit project',
+      edit: {
+        title: 'Edit project',
+        description: 'Update the project name and objective. Changes sync across devices.',
+        save: 'Save changes',
+        saving: 'Saving…',
+        failed: 'Changes could not be saved. Your entries are still here; retry.'
+      },
+      awaitingAcceptance: 'Ready for review',
+      notStarted: 'Not started',
+      completionProgress: (succeeded, total) => `${succeeded} of ${total} workflows succeeded`,
+      completionUnavailable: 'Workflow status is unavailable. Refresh before completing this project.',
+      completionFailed: 'The project was not updated. Check the connection and retry.',
+      completionNotReady: 'Some workflows have not succeeded. Check their runs and retry.',
+      completeProject: 'Complete project',
+      reopenProject: 'Reopen project',
+      reopenFirst: 'Reopen this project before adding or starting workflows.',
       create: {
         title: 'New project',
         description: 'Define the project before adding a workflow. Creating it does not start work or invent progress.',

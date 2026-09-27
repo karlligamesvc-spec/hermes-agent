@@ -12,6 +12,17 @@ export interface WorkflowDomainBridge {
     name: string
     objective: string
   }) => Promise<{ item?: WorkflowProject; ok: boolean }>
+  updateProject?: (payload: { name: string; objective: string; projectId: string }) => Promise<{
+    code?: string
+    item?: WorkflowProject
+    ok: boolean
+  }>
+  completeProject?: (projectId: string) => Promise<{ code?: string; item?: WorkflowProject; ok: boolean }>
+  reopenProject?: (projectId: string) => Promise<{ code?: string; item?: WorkflowProject; ok: boolean }>
+  getProjectCompletion?: (projectId: string) => Promise<{
+    completion?: WorkflowProjectCompletion
+    ok: boolean
+  }>
   createWorkflow?: (payload: {
     objective: string
     projectId: string
@@ -172,6 +183,15 @@ export interface WorkflowProject {
   // those real projects without inventing run/progress data.
   summary?: WorkflowProjectSummary
   updatedAt: string
+}
+
+export interface WorkflowProjectCompletion {
+  canComplete: boolean
+  projectStatus: string
+  readyForReview: boolean
+  workflowSucceeded: number
+  workflowTotal: number
+  workflowStates: Array<{ runId: null | string; runStatus: null | string; workflowId: string }>
 }
 
 export interface WorkflowProjectListResult {

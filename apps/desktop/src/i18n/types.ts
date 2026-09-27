@@ -4193,6 +4193,23 @@ export interface Translations {
       emptyDescription: string
       action: string
       newProject: string
+      editProject: string
+      edit: {
+        title: string
+        description: string
+        save: string
+        saving: string
+        failed: string
+      }
+      awaitingAcceptance: string
+      notStarted: string
+      completionProgress: (succeeded: number, total: number) => string
+      completionUnavailable: string
+      completionFailed: string
+      completionNotReady: string
+      completeProject: string
+      reopenProject: string
+      reopenFirst: string
       create: {
         title: string
         description: string

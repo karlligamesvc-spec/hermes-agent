@@ -155,6 +155,7 @@ import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import {
   cancelWorkflowDomainRun,
+  completeWorkflowDomainProject,
   createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
@@ -162,16 +163,19 @@ import {
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
   getWorkflowDomainProject,
+  getWorkflowDomainProjectCompletion,
   getWorkflowDomainRun,
   getWorkflowDomainUserFileDownload,
   listWorkflowDomainActivity,
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  reopenWorkflowDomainProject,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startExistingWorkflowDomainRun,
-  startWorkflowDomainGoal
+  startWorkflowDomainGoal,
+  updateWorkflowDomainProject
 } from './apex-workflow-domain'
 import {
   destroyKeepaliveAgents,
@@ -20942,7 +20946,7 @@ function applyClientConfigToRuntime(reason) {
 // Electron's net stack, the same transport fetchJsonViaOauthSession uses — but
 // WITHOUT the OAuth cookie session (managed-LLM auth is JWT Bearer, a separate
 // concern from the remote-gateway cookie jar).
-function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
+function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -20961,7 +20965,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
     }
 
     const payload = serializeJsonBody(body)
-    const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
+    const request = electronNet.request({ method, url, redirect: 'follow' })
     setJsonRequestHeaders(request)
 
     if (bearer) {
@@ -22069,6 +22073,7 @@ function workflowDomainIpcContext() {
     apiBase,
     transport: {
       getJson: url => apexAuthGetJson(url, { bearer }),
+      patchJson: (url, body) => apexAuthPostJson(url, { bearer, body, method: 'PATCH' }),
       postJson: (url, body) => apexAuthPostJson(url, { bearer, body })
     }
   }
@@ -22088,6 +22093,18 @@ function workflowDomainIpcError(error) {
 
   if (statusCode === 403 || statusCode === 404) {
     return 'unavailable'
+  }
+
+  if (statusCode === 409 && typeof error?.message === 'string') {
+    try {
+      const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2))?.detail?.code
+
+      if (detail === 'project_not_ready' || detail === 'project_completed') {
+        return detail
+      }
+    } catch {
+      // Return the generic failure below for malformed server responses.
+    }
   }
 
   return 'request_failed'
@@ -22236,6 +22253,70 @@ ipcMain.handle('hermes:workflowDomain:getProject', async (_event, projectId) => 
 
   try {
     const item = await getWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getProjectCompletion', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const completion = await getWorkflowDomainProjectCompletion(context.apiBase, projectId, context.transport)
+
+    return { completion, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:updateProject', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await updateWorkflowDomainProject(context.apiBase, payload, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:completeProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await completeWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:reopenProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await reopenWorkflowDomainProject(context.apiBase, projectId, context.transport)
 
     return { item, ok: true }
   } catch (error) {

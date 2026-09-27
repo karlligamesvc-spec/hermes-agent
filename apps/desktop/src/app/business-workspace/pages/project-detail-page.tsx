@@ -17,9 +17,14 @@ import {
   routeDrawerNavigationState,
   workflowRunRoute
 } from '../../routes'
-import { startExistingWorkflowRun } from '../api/adapters'
+import { completeWorkflowProject, reopenWorkflowProject, startExistingWorkflowRun } from '../api/adapters'
 import type { WorkflowProjectSummary } from '../api/types'
-import { useWorkflowDefinitions, useWorkflowProject } from '../hooks/use-workflow-domain-lists'
+import { ProjectEditDialog } from '../components/project-edit-dialog'
+import {
+  useWorkflowDefinitions,
+  useWorkflowProject,
+  useWorkflowProjectCompletion
+} from '../hooks/use-workflow-domain-lists'
 import { distinctProjectObjective, projectCurrentRunId } from '../view-model/project'
 
 function routedProjectSummary(state: unknown): WorkflowProjectSummary | undefined {
@@ -46,11 +51,16 @@ export function ProjectDetailView() {
   const { projectId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const project = useWorkflowProject(projectId)
-  const workflows = useWorkflowDefinitions({ limit: 50, projectId })
+  const [reloadToken, setReloadToken] = useState(0)
+  const project = useWorkflowProject(projectId, reloadToken)
+  const completion = useWorkflowProjectCompletion(projectId, reloadToken)
+  const workflows = useWorkflowDefinitions({ limit: 50, projectId }, reloadToken)
   const routeSummary = routedProjectSummary(location.state)
   const [startingWorkflowId, setStartingWorkflowId] = useState<string | null>(null)
   const [runError, setRunError] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [lifecyclePending, setLifecyclePending] = useState(false)
+  const [lifecycleError, setLifecycleError] = useState<'not-ready' | 'failed' | null>(null)
 
   if (project.mode === 'loading') {
     return (
@@ -80,6 +90,16 @@ export function ProjectDetailView() {
   const summary = routeSummary ?? item.summary
   const currentRunId = projectCurrentRunId(summary)
   const currentRunStatus = summary?.currentRunStatus ?? null
+  const completionFacts = completion.mode === 'ready' ? completion.completion : null
+  const workflowStates = new Map(completionFacts?.workflowStates.map(state => [state.workflowId, state]) ?? [])
+  const stage =
+    item.status === 'completed'
+      ? copy.lifecycle(item.status)
+      : completionFacts?.readyForReview
+        ? copy.awaitingAcceptance
+        : completionFacts?.workflowTotal === 0
+          ? copy.notStarted
+          : copy.lifecycle(item.status)
 
   const openWorkflowRun = (runId: string) => {
     const state = routeDrawerBackgroundLocation(location.state)
@@ -96,7 +116,7 @@ export function ProjectDetailView() {
   }
 
   const startWorkflow = async (workflowId: string) => {
-    if (startingWorkflowId) {
+    if (startingWorkflowId || item.status === 'completed') {
       return
     }
 
@@ -110,6 +130,28 @@ export function ProjectDetailView() {
     } else {
       setRunError(true)
     }
+  }
+
+  const changeLifecycle = async () => {
+    if (lifecyclePending) {
+      return
+    }
+
+    setLifecyclePending(true)
+    setLifecycleError(null)
+    const result = item.status === 'completed'
+      ? await reopenWorkflowProject(item.id)
+      : await completeWorkflowProject(item.id)
+    setLifecyclePending(false)
+
+    if (result.mode === 'updated') {
+      setReloadToken(token => token + 1)
+
+      return
+    }
+
+    setLifecycleError(result.mode === 'failed' && result.code === 'project_not_ready' ? 'not-ready' : 'failed')
+    setReloadToken(token => token + 1)
   }
 
   const continueGoal = () =>
@@ -126,9 +168,13 @@ export function ProjectDetailView() {
         <p className="text-xs font-medium text-primary">{copy.detailEyebrow}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2 pr-8">
           <h1 className="min-w-0 text-balance text-2xl font-semibold tracking-tight">{item.name}</h1>
-          <Badge variant="muted">{copy.lifecycle(item.status)}</Badge>
+          <Badge variant="muted">{stage}</Badge>
         </div>
         {objective && <p className="mt-3 text-sm leading-6 text-muted-foreground">{objective}</p>}
+        <Button className="mt-3" onClick={() => setEditOpen(true)} size="sm" variant="ghost">
+          <Codicon name="edit" size="0.875rem" />
+          {copy.editProject}
+        </Button>
 
         <dl className="mt-6 grid gap-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-4 text-xs sm:grid-cols-2">
           <div>
@@ -140,6 +186,38 @@ export function ProjectDetailView() {
             <dd className="mt-1 text-foreground">{formatBusinessDayTime(new Date(item.updatedAt), locale)}</dd>
           </div>
         </dl>
+
+        <section className="mt-6 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-4" data-project-completion="">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">{stage}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {completionFacts
+                  ? copy.completionProgress(completionFacts.workflowSucceeded, completionFacts.workflowTotal)
+                  : copy.completionUnavailable}
+              </p>
+            </div>
+            {item.status === 'completed' ? (
+              <Button aria-busy={lifecyclePending || undefined} disabled={lifecyclePending} onClick={() => void changeLifecycle()} size="sm" variant="outline">
+                {copy.reopenProject}
+              </Button>
+            ) : completionFacts ? (
+              <Button
+                aria-busy={lifecyclePending || undefined}
+                disabled={!completionFacts.canComplete || lifecyclePending}
+                onClick={() => void changeLifecycle()}
+                size="sm"
+              >
+                {copy.completeProject}
+              </Button>
+            ) : null}
+          </div>
+          {lifecycleError && (
+            <p className="mt-3 text-xs text-destructive" role="alert">
+              {lifecycleError === 'not-ready' ? copy.completionNotReady : copy.completionFailed}
+            </p>
+          )}
+        </section>
 
         <div className="mt-6 border-t border-(--ui-stroke-tertiary) pt-6">
           {currentRunId ? (
@@ -181,6 +259,7 @@ export function ProjectDetailView() {
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{copy.workflowsDescription}</p>
             </div>
             <Button
+              disabled={item.status === 'completed'}
               onClick={() =>
                 navigate(projectWorkflowsRoute(item.id), {
                   state: { businessGoalDraft: item.objective, businessProjectId: item.id }
@@ -193,12 +272,16 @@ export function ProjectDetailView() {
               {copy.addWorkflow}
             </Button>
           </div>
+          {item.status === 'completed' && <p className="mt-3 text-xs text-muted-foreground">{copy.reopenFirst}</p>}
           {workflows.mode === 'loading' ? (
             <p className="mt-4 text-xs text-muted-foreground">{copy.loadingWorkflows}</p>
           ) : workflows.mode === 'ready' && workflows.items.length > 0 ? (
             <div className="mt-4 overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated)">
-              {workflows.items.map(workflow => (
-                <div
+              {workflows.items.map(workflow => {
+                const run = workflowStates.get(workflow.id)
+                const runId = run?.runId
+
+                return <div
                   className="flex items-center justify-between gap-3 border-b border-(--ui-stroke-tertiary) px-4 py-3 last:border-b-0"
                   key={workflow.id}
                 >
@@ -211,10 +294,15 @@ export function ProjectDetailView() {
                     )}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <Badge variant="muted">{copy.lifecycle(workflow.status)}</Badge>
+                    <Badge variant="muted">{run?.runStatus ? copy.lifecycle(run.runStatus) : copy.notStarted}</Badge>
+                    {runId && (
+                      <Button onClick={() => openWorkflowRun(runId)} size="sm" variant="ghost">
+                        {copy.viewRun}
+                      </Button>
+                    )}
                     <Button
                       aria-busy={startingWorkflowId === workflow.id || undefined}
-                      disabled={startingWorkflowId !== null || workflow.status !== 'active'}
+                      disabled={item.status === 'completed' || startingWorkflowId !== null || workflow.status !== 'active'}
                       onClick={() => void startWorkflow(workflow.id)}
                       size="sm"
                       variant="outline"
@@ -223,7 +311,7 @@ export function ProjectDetailView() {
                     </Button>
                   </span>
                 </div>
-              ))}
+              })}
             </div>
           ) : (
             <p className="mt-4 rounded-xl border border-dashed border-(--ui-stroke-secondary) px-4 py-4 text-xs leading-5 text-muted-foreground">
@@ -236,6 +324,12 @@ export function ProjectDetailView() {
             </p>
           )}
         </section>
+        <ProjectEditDialog
+          onOpenChange={setEditOpen}
+          onSaved={() => setReloadToken(token => token + 1)}
+          open={editOpen}
+          project={item}
+        />
       </div>
     </section>
   )

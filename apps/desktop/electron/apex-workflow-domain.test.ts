@@ -6,6 +6,7 @@ type JsonObject = Record<string, unknown>
 
 import {
   cancelWorkflowDomainRun,
+  completeWorkflowDomainProject,
   createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
@@ -13,16 +14,19 @@ import {
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
   getWorkflowDomainProject,
+  getWorkflowDomainProjectCompletion,
   getWorkflowDomainRun,
   getWorkflowDomainUserFileDownload,
   listWorkflowDomainActivity,
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  reopenWorkflowDomainProject,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startExistingWorkflowDomainRun,
   startWorkflowDomainGoal,
+  updateWorkflowDomainProject,
   workflowDomainUrl,
   workflowProjectName
 } from './apex-workflow-domain'
@@ -289,6 +293,62 @@ test('creates an honest empty Project with its optional local folder', async () 
       url: 'https://api.apex-nodes.com/api/v1/workflow-domain/projects'
     }
   ])
+})
+
+test('keeps project edits and completion actions on authenticated project exits', async () => {
+  const projectId = '00000000-0000-4000-8000-000000000853'
+  const workflowId = '00000000-0000-4000-8000-000000000854'
+  const runId = '00000000-0000-4000-8000-000000000855'
+  const calls: Array<{ body?: JsonObject; method: string; url: string }> = []
+  const transport = {
+    getJson: async (url: string) => {
+      calls.push({ method: 'GET', url })
+
+      return {
+        projectStatus: 'active', workflowTotal: 1, workflowSucceeded: 1,
+        readyForReview: true, canComplete: true,
+        workflowStates: [{ workflowId, runId, runStatus: 'succeeded' }]
+      }
+    },
+    patchJson: async (url: string, body: JsonObject) => {
+      calls.push({ body, method: 'PATCH', url })
+
+      return { item: { id: projectId, name: body.name } }
+    },
+    postJson: async (url: string, body: JsonObject) => {
+      calls.push({ body, method: 'POST', url })
+
+      return { item: { id: projectId, status: url.endsWith('/complete') ? 'completed' : 'active' } }
+    }
+  }
+
+  const completion = await getWorkflowDomainProjectCompletion('https://api.apex-nodes.com', projectId, transport)
+  const updated = await updateWorkflowDomainProject(
+    'https://api.apex-nodes.com', { projectId, name: ' Revised ', objective: '  Goal  ' }, transport
+  )
+  const completed = await completeWorkflowDomainProject('https://api.apex-nodes.com', projectId, transport)
+  const reopened = await reopenWorkflowDomainProject('https://api.apex-nodes.com', projectId, transport)
+
+  assert.equal(completion.canComplete, true)
+  assert.deepEqual(completion.workflowStates, [{ workflowId, runId, runStatus: 'succeeded' }])
+  assert.equal(updated.name, 'Revised')
+  assert.equal(completed.status, 'completed')
+  assert.equal(reopened.status, 'active')
+  assert.deepEqual(calls, [
+    { method: 'GET', url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}/completion` },
+    {
+      body: { name: 'Revised', objective: 'Goal' }, method: 'PATCH',
+      url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}`
+    },
+    { body: {}, method: 'POST', url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}/complete` },
+    { body: {}, method: 'POST', url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}/reopen` }
+  ])
+
+  await assert.rejects(
+    getWorkflowDomainProjectCompletion('https://api.apex-nodes.com', '../another-project', transport),
+    /project id/
+  )
+  assert.equal(calls.length, 4)
 })
 
 test('adds a Workflow and Run to an existing Project without creating a duplicate Project', async () => {

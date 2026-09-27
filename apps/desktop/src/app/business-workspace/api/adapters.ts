@@ -11,6 +11,7 @@ import type {
   WorkflowDeliverableDetail,
   WorkflowDomainBridge,
   WorkflowProject,
+  WorkflowProjectCompletion,
   WorkflowRunOverview,
   WorkflowVideoCatalogItem
 } from './types'
@@ -22,6 +23,16 @@ export type WorkflowProjectListOutcome =
 
 export type WorkflowProjectOutcome =
   { item: WorkflowProject; mode: 'ready' } | { mode: 'failed' } | { mode: 'unavailable' }
+
+export type WorkflowProjectCompletionOutcome =
+  | { completion: WorkflowProjectCompletion; mode: 'ready' }
+  | { mode: 'failed' }
+  | { mode: 'unavailable' }
+
+export type WorkflowProjectMutationOutcome =
+  | { item: WorkflowProject; mode: 'updated' }
+  | { code?: string; mode: 'failed' }
+  | { mode: 'unavailable' }
 
 export type WorkflowCatalogOutcome =
   { items: WorkflowCatalogItem[]; mode: 'ready'; version: null | string } | { mode: 'failed' } | { mode: 'unavailable' }
@@ -230,6 +241,92 @@ export async function getWorkflowProject(
     const result = await bridge.getProject(normalizedProjectId)
 
     return result.ok && result.item ? { item: result.item, mode: 'ready' } : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function getWorkflowProjectCompletion(
+  projectId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowProjectCompletionOutcome> {
+  if (!bridge?.getProjectCompletion || !projectId.trim()) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    if (!(await bridge.access()).available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.getProjectCompletion(projectId.trim())
+
+    return result.ok && result.completion
+      ? { completion: result.completion, mode: 'ready' }
+      : { mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function updateWorkflowProject(
+  input: { name: string; objective: string; projectId: string },
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowProjectMutationOutcome> {
+  if (!bridge?.updateProject) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    if (!(await bridge.access()).available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.updateProject(input)
+
+    return result.ok && result.item ? { item: result.item, mode: 'updated' } : { code: result.code, mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function completeWorkflowProject(
+  projectId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowProjectMutationOutcome> {
+  if (!bridge?.completeProject) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    if (!(await bridge.access()).available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.completeProject(projectId)
+
+    return result.ok && result.item ? { item: result.item, mode: 'updated' } : { code: result.code, mode: 'failed' }
+  } catch {
+    return { mode: 'failed' }
+  }
+}
+
+export async function reopenWorkflowProject(
+  projectId: string,
+  bridge: null | WorkflowDomainBridge = workflowDomainBridge()
+): Promise<WorkflowProjectMutationOutcome> {
+  if (!bridge?.reopenProject) {
+    return { mode: 'unavailable' }
+  }
+
+  try {
+    if (!(await bridge.access()).available) {
+      return { mode: 'unavailable' }
+    }
+
+    const result = await bridge.reopenProject(projectId)
+
+    return result.ok && result.item ? { item: result.item, mode: 'updated' } : { code: result.code, mode: 'failed' }
   } catch {
     return { mode: 'failed' }
   }
