@@ -97,6 +97,38 @@ function renderMenu() {
 // the kanban board would end up disagreeing about what "my models" means —
 // which is exactly the drift extracting this component was meant to prevent.
 describe('the catalog owns model curation', () => {
+  it('shows each APEX LLM with its own vendor icon in the model list', async () => {
+    const models = [
+      ['kimi-k2.7-code', 'Kimi', 'rgb(23, 131, 255)'],
+      ['deepseek-flash', 'DeepSeek Flash', 'rgb(77, 107, 254)'],
+      ['deepseek-v4-pro', 'DeepSeek V4 Pro', 'rgb(77, 107, 254)'],
+      ['gemini-3.8-flash', 'Gemini 3.8', 'rgb(49, 134, 255)'],
+      ['qwen3.8-flash', 'Qwen3.8', 'rgb(99, 54, 231)'],
+      ['hy4-preview', 'Hy4', 'rgb(0, 85, 233)'],
+      ['glm-5.3-flash', 'GLM 5.3', 'rgb(56, 89, 255)'],
+      ['mimo-v2.6-flash', 'MiMo V2.6 Flash', 'rgb(255, 105, 0)'],
+      ['mimo-v2.6-pro', 'MiMo V2.6 Pro', 'rgb(255, 105, 0)']
+    ] as const
+
+    getGlobalModelOptions.mockResolvedValue({
+      providers: [{ models: models.map(([id]) => id), name: 'APEX-NODES.COM', slug: 'custom:apex-nodes.com' }]
+    })
+    setVisibleModels(new Set(models.map(([id]) => modelVisibilityKey('custom:apex-nodes.com', id))))
+    renderMenu()
+
+    await screen.findByText(/Kimi K2\.7 Code/i)
+    const rows = [...window.document.querySelectorAll('[role="menuitem"]')]
+
+    for (const [, label, color] of models) {
+      const row = rows.find(item => item.textContent?.includes(label))
+      const icon = row?.querySelector('span[aria-hidden="true"]') as HTMLElement | null
+
+      expect(row, `${label} row`).toBeDefined()
+      expect(icon?.querySelector('svg'), `${label} icon`).toBeTruthy()
+      expect(icon?.style.backgroundColor, `${label} vendor color`).toBe(color)
+    }
+  })
+
   it('honours the stored Edit Models shortlist', async () => {
     setVisibleModels(new Set([modelVisibilityKey('google', 'gemini-2.5-flash')]))
 

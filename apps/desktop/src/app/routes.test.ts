@@ -87,11 +87,10 @@ describe('deliverableDetailRoute', () => {
 })
 
 describe('APEX route contract', () => {
-  it('declares the seven user destinations in their fixed product order', () => {
+  it('keeps workflows inside Projects rather than as a peer destination', () => {
     expect(APEX_PRIMARY_NAVIGATION).toEqual([
       { id: 'start', path: '/' },
       { id: 'projects', path: '/projects' },
-      { id: 'workflows', path: '/workflows' },
       { id: 'scheduled-runs', path: '/cron' },
       { id: 'deliverables', path: '/artifacts' },
       { id: 'assistant', path: '/assistant' },

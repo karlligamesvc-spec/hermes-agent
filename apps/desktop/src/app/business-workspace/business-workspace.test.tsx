@@ -117,16 +117,8 @@ describe('hc-685 business workspace identity', () => {
     })
   })
 
-  it('exposes the seven outcome-oriented destinations in order', () => {
-    expect(BUSINESS_NAV_IDS).toEqual([
-      'start',
-      'projects',
-      'workflows',
-      'scheduled-runs',
-      'deliverables',
-      'assistant',
-      'history'
-    ])
+  it('keeps Workflows below Projects rather than in the primary navigation', () => {
+    expect(BUSINESS_NAV_IDS).toEqual(['start', 'projects', 'scheduled-runs', 'deliverables', 'assistant', 'history'])
     expect(isBusinessNavigationContract([...BUSINESS_NAV_IDS, 'skills'])).toBe(false)
     expect(isBusinessNavigationContract(BUSINESS_NAV_IDS)).toBe(true)
   })
@@ -175,7 +167,7 @@ describe('hc-685 business workspace identity', () => {
   it('keeps contributed rows out of business mode and restores them in rollback mode', () => {
     const contributed = [{ id: 'kanban', route: '/kanban' }]
 
-    expect(visibleSidebarNavItems(BUSINESS_SIDEBAR_NAV_CONTRACT, contributed, true)).toHaveLength(7)
+    expect(visibleSidebarNavItems(BUSINESS_SIDEBAR_NAV_CONTRACT, contributed, true)).toHaveLength(6)
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false)).toHaveLength(7)
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false).at(-1)).toEqual(contributed[0])
   })
@@ -299,6 +291,11 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('location').textContent).toBe('/')
+    const workflowHeader = window.document.querySelector('[aria-labelledby="business-start-workflows"]')
+
+    expect(workflowHeader).toBeTruthy()
+    fireEvent.click(within(workflowHeader as HTMLElement).getByRole('button', { name: 'Projects' }))
+    expect(screen.getByTestId('location').textContent).toBe('/projects')
     window.removeEventListener('hermes:composer-insert', insert)
   })
 
@@ -847,7 +844,7 @@ describe('hc-685 business workspace identity', () => {
     const newProjectActions = screen.getAllByRole('button', { name: '新建项目' })
 
     expect(newProjectActions.every(button => button.getAttribute('data-variant') === 'default')).toBe(true)
-    expect(screen.getByRole('button', { name: '选择工作流' }).getAttribute('data-variant')).toBe('outline')
+    expect(screen.queryByRole('button', { name: '选择工作流' })).toBeNull()
     fireEvent.click(newProjectActions[0]!)
 
     expect(screen.getByRole('dialog')).toBeTruthy()
@@ -1170,7 +1167,9 @@ describe('hc-685 business workspace identity', () => {
     expect(getVideoCatalog).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /采集视频与数据/ }))
-    await waitFor(() => expect(screen.getByTestId('business-workflow-slug').textContent).toBe('video-source-collection'))
+    await waitFor(() =>
+      expect(screen.getByTestId('business-workflow-slug').textContent).toBe('video-source-collection')
+    )
   })
 
   it('offers executable recovery actions and never substitutes test templates when the catalog is unavailable', async () => {
@@ -1223,6 +1222,7 @@ describe('hc-685 business workspace identity', () => {
       <MemoryRouter initialEntries={['/workflows']}>
         <I18nProvider configClient={null} initialLocale="zh">
           <WorkflowsView />
+          <LocationProbe />
         </I18nProvider>
       </MemoryRouter>
     )
@@ -1364,6 +1364,33 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflows'))
     expect(screen.getByTestId('business-project-id').textContent).toBe('project-existing')
     expect(screen.getByTestId('business-goal-draft').textContent).toBe('继续已有项目目标')
+  })
+
+  it('shows only the selected Project workflows after opening its catalog', async () => {
+    const listWorkflows = vi.fn(async () => ({ items: [], ok: true }))
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      getRun: vi.fn(),
+      listWorkflows,
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn()
+    }
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/workflows', state: { businessProjectId: 'project-existing' } }]}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <WorkflowsView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => expect(listWorkflows).toHaveBeenCalledWith({ limit: 50, projectId: 'project-existing' }))
+    expect(screen.getByText('正在为当前项目选择新的执行路径。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '开始一个目标' }))
+    expect(screen.getByTestId('business-project-id').textContent).toBe('project-existing')
   })
 
   it('opens a legacy Project detail without a summary and never dereferences a missing Run', async () => {

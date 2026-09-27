@@ -8,13 +8,7 @@ import { formatBusinessDayTime } from '@/lib/time'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
 import { useChannelStatus } from '../../chat/scenarios/use-channel-status'
-import {
-  IM_ENTRY_ROUTE,
-  projectDetailRoute,
-  PROJECTS_ROUTE,
-  routeDrawerNavigationState,
-  WORKFLOWS_ROUTE
-} from '../../routes'
+import { IM_ENTRY_ROUTE, projectDetailRoute, PROJECTS_ROUTE, routeDrawerNavigationState } from '../../routes'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { projectRunDisplayState } from '../view-model/project'
 import { type BusinessHomeStarter, businessHomeStarters } from '../view-model/workflow-starters'
@@ -75,8 +69,8 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
               {c.workflows.homeDescription}
             </p>
           </div>
-          <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="inline" variant="textStrong">
-            {c.workflows.title}
+          <Button onClick={() => navigate(PROJECTS_ROUTE)} size="inline" variant="textStrong">
+            {c.projects.title}
           </Button>
         </header>
 

@@ -10,11 +10,7 @@ import { useI18n } from '@/i18n'
 import { NEW_CHAT_ROUTE, projectDetailRoute, routeDrawerNavigationState } from '../../routes'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
-import {
-  useVideoWorkflowCatalog,
-  useWorkflowCatalog,
-  useWorkflowDefinitions
-} from '../hooks/use-workflow-domain-lists'
+import { useVideoWorkflowCatalog, useWorkflowCatalog, useWorkflowDefinitions } from '../hooks/use-workflow-domain-lists'
 import {
   type BusinessWorkflowStarter,
   businessWorkflowStarters,
@@ -29,9 +25,6 @@ export function WorkflowsView() {
   const [reloadToken, setReloadToken] = useState(0)
   const catalog = useWorkflowCatalog(reloadToken)
   const videoCatalog = useVideoWorkflowCatalog(reloadToken)
-  const workflows = useWorkflowDefinitions({ limit: 50 }, reloadToken)
-  const localStarters = businessWorkflowStarters(c)
-  const localVideoStarters = videoWorkflowStarters(c)
   const launchContext = location.state as null | { businessGoalDraft?: unknown; businessProjectId?: unknown }
 
   const targetProjectId =
@@ -39,6 +32,14 @@ export function WorkflowsView() {
 
   const targetObjective =
     typeof launchContext?.businessGoalDraft === 'string' ? launchContext.businessGoalDraft.slice(0, 4000) : ''
+
+  const workflows = useWorkflowDefinitions(
+    { limit: 50, ...(targetProjectId ? { projectId: targetProjectId } : {}) },
+    reloadToken
+  )
+
+  const localStarters = businessWorkflowStarters(c)
+  const localVideoStarters = videoWorkflowStarters(c)
 
   const starters = [
     ...(catalog.mode === 'ready'
@@ -68,6 +69,7 @@ export function WorkflowsView() {
   const catalogReady = catalog.mode === 'ready' || videoCatalog.mode === 'ready'
   const catalogLoading = !catalogReady && (catalog.mode === 'loading' || videoCatalog.mode === 'loading')
   const catalogUnavailable = catalog.mode === 'unavailable' && videoCatalog.mode === 'unavailable'
+
   const testCatalog = [catalog, videoCatalog].some(
     state => state.mode === 'ready' && /(?:local|test|staging|review)/i.test(state.version ?? '')
   )
@@ -95,7 +97,13 @@ export function WorkflowsView() {
           action={{
             icon: 'play',
             label: c.startGoal,
-            onClick: () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalFocus: true } })
+            onClick: () =>
+              navigate(NEW_CHAT_ROUTE, {
+                state: {
+                  businessGoalFocus: true,
+                  ...(targetProjectId ? { businessProjectId: targetProjectId } : {})
+                }
+              })
           }}
           description={c.description}
           eyebrow={c.eyebrow}

@@ -699,11 +699,10 @@ describe('identity: the brand skin survives', () => {
 })
 
 describe('identity: the APEX business shell stays user-facing', () => {
-  it('pins all seven primary destinations in order and names the long-term surface assistant', () => {
+  it('pins primary destinations in order with workflows owned by Projects', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.id)).toEqual([
       'start',
       'projects',
-      'workflows',
       'scheduled-runs',
       'deliverables',
       'assistant',
@@ -712,7 +711,6 @@ describe('identity: the APEX business shell stays user-facing', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.path)).toEqual([
       '/',
       '/projects',
-      '/workflows',
       '/cron',
       '/artifacts',
       '/assistant',
