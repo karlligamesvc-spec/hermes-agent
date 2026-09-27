@@ -4281,6 +4281,9 @@ export interface Translations {
       loadingWorkflows: string
       noWorkflows: string
       workflowsUnavailable: string
+      startWorkflow: string
+      startingWorkflow: string
+      runWorkflowFailed: string
     }
     workflows: {
       eyebrow: string
@@ -4289,6 +4292,20 @@ export interface Translations {
       use: string
       useShort: string
       startGoal: string
+      backToProject: string
+      projectContext: string
+      projectDescription: string
+      projectLoading: string
+      projectUnavailable: string
+      projectSavedEmpty: string
+      selectForProject: string
+      createEyebrow: string
+      createForProject: (name: string) => string
+      objectiveLabel: string
+      saveWorkflow: string
+      savingWorkflow: string
+      saveFailed: string
+      alreadyAdded: string
       recommendedTitle: string
       recommendedDescription: string
       homeTitle: string

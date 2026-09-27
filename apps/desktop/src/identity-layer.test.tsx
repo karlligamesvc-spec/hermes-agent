@@ -827,6 +827,8 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(main).toContain('import {\n  cancelWorkflowDomainRun,')
     expect(main).toContain("const bearer = String(managed.accessToken || '').trim()")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startGoal'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:createWorkflow'")
+    expect(main).toContain("ipcMain.handle('hermes:workflowDomain:startRun'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getVideoCatalog'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:getProject'")
     expect(main).toContain("ipcMain.handle('hermes:workflowDomain:listDeliverables'")
@@ -839,6 +841,8 @@ describe('identity: hc-795 uses the authenticated workflow domain without exposi
     expect(reviewHandler).not.toContain('return { ok: true, review }')
 
     expect(preload).toContain('workflowDomain: {')
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:createWorkflow', payload)")
+    expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:startRun', payload)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getRun', runId)")
     expect(preload).toContain("ipcRenderer.invoke('hermes:workflowDomain:getVideoCatalog')")

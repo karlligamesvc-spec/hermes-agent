@@ -14,6 +14,7 @@ import {
   primaryRouteSelectedSessionId,
   projectDetailRoute,
   projectIdForPath,
+  projectWorkflowsRoute,
   routeDrawerBackgroundLocation,
   routeDrawerNavigationState,
   routeDrawerReturnFocusKey,
@@ -66,6 +67,16 @@ describe('projectDetailRoute', () => {
     expect(projectIdForPath('/projects/')).toBeNull()
     expect(projectIdForPath('/projects/a/b')).toBeNull()
     expect(projectIdForPath('/projects/%E0%A4%A')).toBeNull()
+  })
+})
+
+describe('projectWorkflowsRoute', () => {
+  it('keeps Project scope in the URL so a reload cannot silently switch to the generic catalog', () => {
+    const route = projectWorkflowsRoute('project/a b')
+
+    expect(route).toBe('/workflows?projectId=project%2Fa+b')
+    expect(appViewForPath(route)).toBe('workflows')
+    expect(routeSessionId(route)).toBeNull()
   })
 })
 

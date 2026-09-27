@@ -300,6 +300,10 @@ declare global {
           payload: DesktopWorkflowDomainCreateProjectInput
         ) => Promise<DesktopWorkflowDomainProjectResult>
         startGoal: (payload: DesktopWorkflowDomainStartGoalInput) => Promise<DesktopWorkflowDomainStartResult>
+        createWorkflow?: (
+          payload: DesktopWorkflowDomainCreateWorkflowInput
+        ) => Promise<DesktopWorkflowDomainCreateWorkflowResult>
+        startRun?: (payload: { objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
         listProjects?: (options?: {
           cursor?: string
           limit?: number
@@ -329,10 +333,7 @@ declare global {
         }) => Promise<DesktopWorkflowDomainActivityListResult>
         getRun: (runId: string) => Promise<DesktopWorkflowDomainRunResult>
         cancelRun: (runId: string) => Promise<DesktopWorkflowDomainMutationResult>
-        retryRunStep?: (payload: {
-          runId: string
-          stepKey: string
-        }) => Promise<DesktopWorkflowDomainMutationResult>
+        retryRunStep?: (payload: { runId: string; stepKey: string }) => Promise<DesktopWorkflowDomainMutationResult>
         reviewDeliverable: (payload: {
           deliverableId: string
           notes?: string
@@ -1813,6 +1814,16 @@ export interface DesktopWorkflowDomainStartGoalInput {
     slug: string
     version: number
   }
+}
+
+export interface DesktopWorkflowDomainCreateWorkflowInput extends DesktopWorkflowDomainStartGoalInput {
+  projectId: string
+}
+
+export interface DesktopWorkflowDomainCreateWorkflowResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  ok: boolean
+  workflow?: { id: string }
 }
 
 export interface DesktopWorkflowDomainCreateProjectInput {

@@ -902,7 +902,8 @@ export const ja = defineLocale({
       cloudTitle: 'APEX 公式サイト',
       cloudDesc: 'APEX 公式サイトを開き、アカウントとクラウドサービスを管理します。',
       sshTitle: 'SSH で接続',
-      sshDesc: 'SSH 経由でリモートホスト上の APEX を起動し、このデスクトップへ安全に接続します。鍵認証の設定が必要です。',
+      sshDesc:
+        'SSH 経由でリモートホスト上の APEX を起動し、このデスクトップへ安全に接続します。鍵認証の設定が必要です。',
       remoteUrlTitle: 'リモート URL',
       remoteUrlDesc:
         'リモートダッシュボードバックエンドのベース URL。/hermes などのパスプレフィックスもサポートしています。',
@@ -3673,10 +3674,13 @@ export const ja = defineLocale({
       workflowAttachmentsUnsupported:
         'このワークフローでは目標への添付をまだ送信できません。添付を削除して続行するまで、目標、ワークフローの選択、現在の添付は保持されます。',
       videoToolsChecking: 'このコンピューターの動画ツールを確認中…',
-      videoToolsMissing: tools => `ローカルに ${tools} がありません。分析は先に進められますが、制作・レンダリング前に準備が必要です。`,
-      videoToolsPresent: '基本的な動画ツールは利用できます。Hypit のプロジェクト依存関係とレンダリング用ブラウザーは別途確認します。',
+      videoToolsMissing: tools =>
+        `ローカルに ${tools} がありません。分析は先に進められますが、制作・レンダリング前に準備が必要です。`,
+      videoToolsPresent:
+        '基本的な動画ツールは利用できます。Hypit のプロジェクト依存関係とレンダリング用ブラウザーは別途確認します。',
       videoToolsUnknown: 'ローカル動画ツールを確認できません。制作前に Node、npm、FFmpeg を確認してください。',
-      videoRemoteConnection: '現在の接続先はローカルゲートウェイではありません。Hypit 制作にはローカルへ切り替えてください。リモートでは資料分析を続けられます。',
+      videoRemoteConnection:
+        '現在の接続先はローカルゲートウェイではありません。Hypit 制作にはローカルへ切り替えてください。リモートでは資料分析を続けられます。',
       videoLocalChatMode: '段階式の動画ワークフローはまだ利用できません。今回はローカルチャットで開始します。'
     },
     projects: {
@@ -3792,7 +3796,11 @@ export const ja = defineLocale({
       addWorkflow: 'ワークフローを追加',
       loadingWorkflows: 'プロジェクトのワークフローを読み込み中…',
       noWorkflows: 'このプロジェクトにはワークフロー、Run、進捗がまだありません。',
-      workflowsUnavailable: 'プロジェクトは読み込めましたが、ワークフロー一覧を利用できません。実行状態は推測しません。'
+      workflowsUnavailable:
+        'プロジェクトは読み込めましたが、ワークフロー一覧を利用できません。実行状態は推測しません。',
+      startWorkflow: '実行',
+      startingWorkflow: '開始中…',
+      runWorkflowFailed: 'ワークフローを開始できませんでした。もう一度お試しください。'
     },
     workflows: {
       eyebrow: 'タスクテンプレート',
@@ -3801,6 +3809,20 @@ export const ja = defineLocale({
       use: 'このワークフローを使う',
       useShort: '使用',
       startGoal: '目標を始める',
+      backToProject: 'プロジェクトに戻る',
+      projectContext: '現在のプロジェクト · ワークフローを追加',
+      projectDescription: 'テンプレートを選んでこのプロジェクトに保存します。保存だけでは実行されません。',
+      projectLoading: 'プロジェクトを読み込み中…',
+      projectUnavailable: 'プロジェクトを確認できないため作成を停止しました。プロジェクトに戻って再試行してください。',
+      projectSavedEmpty: 'このプロジェクトにはワークフローがありません。下のテンプレートを選んで保存してください。',
+      selectForProject: '選択して設定',
+      createEyebrow: 'プロジェクトに追加',
+      createForProject: name => `「${name}」に保存します。すぐには実行されません。`,
+      objectiveLabel: 'ワークフローの目標',
+      saveWorkflow: 'ワークフローを保存',
+      savingWorkflow: '保存中…',
+      saveFailed: 'ワークフローを保存できませんでした。同じテンプレートが既にあるか確認してください。',
+      alreadyAdded: 'このプロジェクトには同じワークフローがあります。上の一覧から確認・実行してください。',
       recommendedTitle: 'おすすめのワークフロー',
       recommendedDescription: '目標を編集してから、準備ができたら実行できます。',
       homeTitle: 'やりたいことを選んで開始',
