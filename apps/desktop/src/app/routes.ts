@@ -41,7 +41,6 @@ export const LEGACY_ACCOUNTS_ROUTE = '/accounts'
 export const APEX_PRIMARY_NAVIGATION = [
   { id: 'start', path: NEW_CHAT_ROUTE },
   { id: 'projects', path: PROJECTS_ROUTE },
-  { id: 'workflows', path: WORKFLOWS_ROUTE },
   { id: 'scheduled-runs', path: CRON_ROUTE },
   { id: 'deliverables', path: ARTIFACTS_ROUTE },
   { id: 'assistant', path: ASSISTANT_ROUTE },

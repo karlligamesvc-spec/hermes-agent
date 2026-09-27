@@ -109,11 +109,7 @@ import {
   setCurrentCwd
 } from '@/store/session'
 import { $removedSessionIds } from '@/store/session-removal'
-import {
-  $focusedSessionIsTile,
-  $focusedStoredSessionId,
-  $workingSessionIds
-} from '@/store/session-states'
+import { $focusedSessionIsTile, $focusedStoredSessionId, $workingSessionIds } from '@/store/session-states'
 import { markSessionUnread } from '@/store/session-unread-remote'
 
 import { type AppView, SIDEBAR_NAV_AREA, type SidebarNavContribution } from '../../routes'
@@ -164,7 +160,6 @@ const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
   'new-session': props => <Codicon name="edit" {...props} />,
   start: props => <Codicon name="edit" {...props} />,
   projects: props => <Codicon name="folder" {...props} />,
-  workflows: props => <Codicon name="list-tree" {...props} />,
   cron: props => <Codicon name="calendar" {...props} />,
   'scheduled-runs': props => <Codicon name="calendar" {...props} />,
   artifacts: props => <Codicon name="package" {...props} />,
@@ -1161,6 +1156,7 @@ export function ChatSidebar({
 
     const active =
       (item.id === 'start' && pathname === '/') ||
+      (item.id === 'projects' && currentView === 'workflows') ||
       item.id === currentView ||
       (Boolean(item.route) && pathname === item.route)
 

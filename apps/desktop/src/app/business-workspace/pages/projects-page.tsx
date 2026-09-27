@@ -22,8 +22,7 @@ import {
   projectDetailRoute,
   routeDrawerNavigationState,
   taskDetailRoute,
-  TASKS_ROUTE,
-  WORKFLOWS_ROUTE
+  TASKS_ROUTE
 } from '../../routes'
 import { jobTitleShort, taskPhase } from '../../tasks/task-model'
 import { openWorkspaceArtifact } from '../api/artifacts-adapter'
@@ -109,13 +108,10 @@ export function ProjectsView() {
           <div>
             <Codicon className="mx-auto text-primary" name="folder" size="1.75rem" />
             <EmptyState description={c.emptyDescription} title={c.emptyTitle} />
-            <div className="flex flex-wrap justify-center gap-2">
+            <div className="flex justify-center">
               <Button onClick={newProject} size="sm">
                 <Codicon name="edit" size="0.875rem" />
                 {c.action}
-              </Button>
-              <Button onClick={() => navigate(WORKFLOWS_ROUTE)} size="sm" variant="outline">
-                {c.chooseWorkflow}
               </Button>
             </div>
           </div>

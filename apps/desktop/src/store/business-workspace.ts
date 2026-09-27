@@ -28,7 +28,6 @@ export const BUSINESS_HISTORY_ROUTE = HISTORY_ROUTE
 export const BUSINESS_SIDEBAR_NAV_CONTRACT = [
   { id: 'start', action: 'new-session', route: NEW_CHAT_ROUTE, keybindActionId: 'session.new' },
   { id: 'projects', route: PROJECTS_ROUTE },
-  { id: 'workflows', route: WORKFLOWS_ROUTE },
   { id: 'scheduled-runs', route: CRON_ROUTE, keybindActionId: 'nav.cron' },
   { id: 'deliverables', route: ARTIFACTS_ROUTE, keybindActionId: 'nav.artifacts' },
   { id: 'assistant', route: ASSISTANT_ROUTE },

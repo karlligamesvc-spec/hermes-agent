@@ -108,19 +108,19 @@ describe('ChatSidebar navigation activity', () => {
 
   it('keeps navigation and session activity coherent with the focused pane', () => {
     renderSidebar('/workflows', 'workflows')
-    expectOnlyCurrent('Workflows')
+    expectOnlyCurrent('Projects')
     expectOnlySelectedSession(null)
 
     focus('tile-one-group')
-    expectOnlyCurrent('Workflows')
+    expectOnlyCurrent(null)
     expectOnlySelectedSession('Tile one')
 
     focus('tile-two-group')
-    expectOnlyCurrent('Workflows')
+    expectOnlyCurrent(null)
     expectOnlySelectedSession('Tile two')
 
     focus(null)
-    expectOnlyCurrent('Workflows')
+    expectOnlyCurrent('Projects')
     expectOnlySelectedSession(null)
 
     focus('tile-two-group')
@@ -128,7 +128,7 @@ describe('ChatSidebar navigation activity', () => {
       $removedSessionIds.set(new Set(['tile-two']))
       $sessions.set([sessionRows[0]])
     })
-    expectOnlyCurrent('Workflows')
+    expectOnlyCurrent(null)
     expectOnlySelectedSession(null)
 
     act(() => {
