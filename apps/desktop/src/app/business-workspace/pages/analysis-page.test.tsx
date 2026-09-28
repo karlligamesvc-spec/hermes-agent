@@ -14,6 +14,7 @@ describe('document analysis evidence', () => {
   it('jumps from a cited answer to the original page excerpt', async () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
+
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       filename: 'source.pdf', kind: 'pdf', status: 'ready', storageMode: 'local',
@@ -21,6 +22,7 @@ describe('document analysis evidence', () => {
       notes: [],
       questions: [{ id: 'q1', question: 'Revenue?', answer: 'Revenue 423 units', answer_type: 'source_excerpts', citations: [{ anchor_id: 'a1', location: { page: 2 } }] }]
     }
+
     window.hermesDesktop = {
       analysisDocuments: {
         policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
@@ -103,6 +105,7 @@ describe('document analysis evidence', () => {
       status: 'ready', storageMode: 'local', anchors: [{ id: 'block12345', location: { block: 'block12345', paragraph: 1 }, text: 'Revenue grew' }],
       notes: [], questions: []
     }
+
     const importLink = vi.fn().mockResolvedValueOnce({ ok: false, code: 'feishu_authorization_required' }).mockResolvedValueOnce({ ok: true, item })
     window.hermesDesktop = {
       analysisDocuments: {

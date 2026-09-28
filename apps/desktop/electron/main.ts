@@ -22195,6 +22195,7 @@ async function analysisIpcContext(needPolicy = false) {
   const userId = analysisUserIdFromToken(bearer)
 
   if (!userId) {throw new Error('sign_in')}
+
   // Local reads/notes keep working offline. New imports still fetch the current
   // server policy, and all cloud operations are authorized by the server.
   const policy: any = needPolicy
@@ -22441,6 +22442,7 @@ ipcMain.handle('hermes:analysis:retry', async (_event, id) => {
 
       return { ok: true, item: localAnalysisForRenderer(retry.document) }
     }
+
     const response: any = await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/retry`, {})
 
     return { ok: true, item: { ...response.item, storageMode: 'cloud' } }

@@ -170,17 +170,21 @@ export function AnalysisView() {
 
   useEffect(() => {
     if (!authFlow) {return}
+
     const timer = window.setTimeout(() => {
       void bridge()?.pollFeishu(authFlow.id).then(result => {
         if (!result?.ok) {setAuthFlow(null); setError(result?.code ?? c.error);
 
  return }
+
         if (result.status === 'authorized') {setAuthFlow(null); setFeishuAuthorized(true);
 
  return }
+
         if (result.status !== 'pending') {setAuthFlow(null); setError('feishu_authorization_required');
 
  return }
+
         setAuthFlow({ ...authFlow, interval: result.interval ?? authFlow.interval })
       })
     }, authFlow.interval * 1000)

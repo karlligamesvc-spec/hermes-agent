@@ -59,6 +59,7 @@ describe('account-scoped local analysis', () => {
     roots.push(root)
     const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
     const item = createLocalFeishuDocument(root, owner, {
       filename: 'Quarterly report', kind: 'feishu', source_url: 'https://team.feishu.cn/docx/docxtoken123',
       anchors: [{ id: 'block12345', location: { block: 'block12345', paragraph: 1 }, text: 'Revenue grew' }]
@@ -75,6 +76,7 @@ describe('account-scoped local analysis', () => {
       filename: 'Root-domain document', kind: 'feishu', source_url: 'https://feishu.cn/docx/docxtoken456',
       anchors: [{ id: 'block67890', location: { block: 'block67890', paragraph: 1 }, text: 'Evidence' }]
     })
+
     expect(getLocalDocument(root, owner, rootDomain.id)?.sourceUrl).toBe('https://feishu.cn/docx/docxtoken456')
   })
 

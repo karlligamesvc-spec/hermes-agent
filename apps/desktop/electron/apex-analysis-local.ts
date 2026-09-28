@@ -97,7 +97,9 @@ export function createLocalPendingDocument(root: string, userId: string, filenam
   const kind = ({ '.pdf': 'pdf', '.docx': 'word', '.xlsx': 'excel', '.txt': 'text', '.md': 'text' } as Record<string, string>)[ext]
 
   if (!kind) {throw new Error('unsupported_format')}
+
   if (!sourceBytes.length) {throw new Error('empty_file')}
+
   if (sourceBytes.length > 15 * 1024 * 1024) {throw new Error('file_too_large')}
 
   const id = `local-${crypto.randomUUID()}`
@@ -106,11 +108,13 @@ export function createLocalPendingDocument(root: string, userId: string, filenam
 
   try {
     const now = new Date().toISOString()
+
     const document: LocalDocument = {
       id, filename: path.basename(filename), kind, status: 'processing', storageMode: 'local',
       anchors: [], notes: [], questions: [], createdAt: now, updatedAt: now,
       sourcePath: storedSource, parseAttempt: crypto.randomUUID()
     }
+
     save(root, userId, document)
 
     return document
@@ -124,6 +128,7 @@ export function completeLocalDocument(root: string, userId: string, id: string, 
   const document = getLocalDocument(root, userId, id)
 
   if (!document || document.status !== 'processing' || document.parseAttempt !== attempt) {return false}
+
   if (parsed && parsed.kind === document.kind && Array.isArray(parsed.anchors) && parsed.anchors.length > 0) {
     document.status = 'ready'
     document.anchors = parsed.anchors
@@ -157,11 +162,13 @@ export function retryLocalDocument(root: string, userId: string, id: string): { 
 
 export function createLocalFeishuDocument(root: string, userId: string, parsed: { filename: string; kind: string; source_url: string; anchors: AnalysisAnchor[] }): LocalDocument {
   if (parsed.kind !== 'feishu' || !Array.isArray(parsed.anchors) || parsed.anchors.length === 0) {throw new Error('No readable Feishu body')}
+
   const item: LocalDocument = {
     id: `local-${crypto.randomUUID()}`, filename: parsed.filename, kind: 'feishu', status: 'ready',
     storageMode: 'local', anchors: parsed.anchors, notes: [], questions: [],
     createdAt: new Date().toISOString(), sourcePath: '', sourceUrl: parsed.source_url
   }
+
   save(root, userId, item)
 
   return item
@@ -207,12 +214,14 @@ export function deleteLocalDocument(root: string, userId: string, id: string): b
 
   if (!document) {return false}
   const directory = accountDirectory(root, userId)
+
   if (document.kind !== 'feishu') {
     const storedSource = path.resolve(document.sourcePath)
 
     if (!storedSource.startsWith(`${directory}${path.sep}`)) {throw new Error('Invalid source path')}
     fs.rmSync(storedSource, { force: true })
   }
+
   fs.rmSync(documentPath(root, userId, id), { force: true })
 
   return true
