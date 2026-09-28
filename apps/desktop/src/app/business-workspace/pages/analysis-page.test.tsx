@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AnalysisView } from './analysis-page'
@@ -94,6 +94,45 @@ describe('document analysis evidence', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看出处 · 1:02 起' }))
     expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
     expect(screen.getAllByText('Revenue rose 20 percent').length).toBeGreaterThan(0)
+  })
+
+  it('automatically indexes only owned, timed video speech and jumps sampled passages without a visual claim', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const video = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'video-transcript.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      anchors: [
+        { id: 'a5', location: { start_seconds: 80, end_seconds: 84 }, text: '结束原文' },
+        { id: 'a3', location: { start_seconds: 40, end_seconds: 43 }, text: '中段原文' },
+        { id: 'bad', location: { start_seconds: 50, end_seconds: 49 }, text: '无效时间码' },
+        { id: 'a1', location: { start_seconds: 5, end_seconds: 8 }, text: '开场原文' },
+        { id: 'a4', location: { start_seconds: 60, end_seconds: 64 }, text: '后段原文' },
+        { id: 'a2', location: { start_seconds: 20, end_seconds: 24 }, text: '前段原文' }
+      ], notes: [], questions: []
+    }
+    const captions = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'captions.srt', parseVersion: undefined, anchors: [video.anchors[0]] }
+    const ask = vi.fn()
+    window.hermesDesktop = { analysisDocuments: {
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      list: vi.fn().mockResolvedValue({ ok: true, items: [video, captions] }),
+      get: vi.fn(async (id: string) => ({ ok: true, item: id === video.id ? video : captions })), ask
+    } } as never
+
+    render(<AnalysisView />)
+    expect(screen.queryByRole('region', { name: '视频声音速览' })).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: /video-transcript.srt/ }))
+    const overview = await screen.findByRole('region', { name: '视频声音速览' })
+    expect(within(overview).getByText('已取得 5 条带时间码的语音片段，覆盖 0:05–1:24。')).toBeTruthy()
+    expect(within(overview).getByText(/尚未生成内容概括，也没有画面或镜头证据/)).toBeTruthy()
+    expect(within(overview).getAllByRole('button')).toHaveLength(3)
+    expect(within(overview).queryByText('无效时间码')).toBeNull()
+    fireEvent.click(within(overview).getByRole('button', { name: /跳到此片段 · 0:40 起/ }))
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    expect(ask).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /captions.srt/ }))
+    await screen.findByRole('heading', { name: 'captions.srt' })
+    expect(screen.queryByRole('region', { name: '视频声音速览' })).toBeNull()
   })
 
   it('seeks a manually paired local video from a real subtitle citation and releases it on source switch', async () => {
@@ -355,8 +394,10 @@ describe('document analysis evidence', () => {
     expect(screen.getByRole('button', { name: /正在获取媒体和转写/ })).toBeTruthy()
     expect(screen.getByRole('textbox', { name: '粘贴资料链接' }).hasAttribute('disabled')).toBe(true)
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '视频声音速览' })).toBeNull()
     finishTranscription({ ok: true, item })
     await waitFor(() => expect(screen.getByText(/仅依据真实视频声音转写及时间码/)).toBeTruthy())
+    expect(screen.getByRole('region', { name: '视频声音速览' })).toBeTruthy()
     expect(transcribeVideoLink).toHaveBeenCalledWith(url)
     expect(screen.getByRole('textbox', { name: '针对当前资料提问' })).toBeTruthy()
     expect(screen.getByText('0:01 起')).toBeTruthy()
