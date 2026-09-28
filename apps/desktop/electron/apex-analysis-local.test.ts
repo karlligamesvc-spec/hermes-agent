@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { addLocalNote, answerLocalDocument, createLocalDocument, createLocalFeishuDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, removeLocalNote } from './apex-analysis-local'
+import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
 
 const roots: string[] = []
 
@@ -13,6 +13,47 @@ afterEach(() => {
 })
 
 describe('account-scoped local analysis', () => {
+  it('records an asynchronous parse failure, retries stored bytes, and only answers ready text', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-pending-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const pending = createLocalPendingDocument(root, owner, 'report.txt', Buffer.from('Revenue 423 units'))
+    const firstAttempt = pending.parseAttempt!
+
+    expect(pending.status).toBe('processing')
+    expect(listLocalDocuments(root, other)).toEqual([])
+    expect(answerLocalDocument(root, owner, pending.id, 'Revenue')).toBeNull()
+    expect(completeLocalDocument(root, owner, pending.id, firstAttempt, null, 'parse_failed')).toBe(true)
+    expect(getLocalDocument(root, owner, pending.id)?.error_code).toBe('parse_failed')
+
+    const retry = retryLocalDocument(root, owner, pending.id)!
+    expect(retry.bytes.toString('utf8')).toBe('Revenue 423 units')
+    expect(retry.document.status).toBe('processing')
+    expect(completeLocalDocument(root, owner, pending.id, firstAttempt, { kind: 'text', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'stale' }] })).toBe(false)
+    expect(completeLocalDocument(root, owner, pending.id, retry.attempt, { kind: 'text', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'Revenue 423 units' }] })).toBe(true)
+    expect(answerLocalDocument(root, owner, pending.id, 'Revenue')?.citations[0].anchor_id).toBe('a1')
+    expect(retryLocalDocument(root, owner, pending.id)).toBeNull()
+    expect(deleteLocalDocument(root, owner, pending.id)).toBe(true)
+    expect(fs.existsSync(pending.sourcePath)).toBe(false)
+  })
+
+  it('turns an interrupted local parse into a retryable failure and cannot resurrect a deleted source', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-interrupted-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const pending = createLocalPendingDocument(root, owner, 'report.txt', Buffer.from('Evidence'))
+    const metadata = path.join(root, 'analysis-documents', owner, `${pending.id}.json`)
+    fs.writeFileSync(metadata, JSON.stringify({ ...pending, updatedAt: '2000-01-01T00:00:00.000Z' }))
+
+    expect(getLocalDocument(root, owner, pending.id)?.status).toBe('failed')
+    expect(getLocalDocument(root, owner, pending.id)?.error_code).toBe('parse_interrupted')
+    const retry = retryLocalDocument(root, owner, pending.id)!
+    expect(deleteLocalDocument(root, owner, pending.id)).toBe(true)
+    expect(completeLocalDocument(root, owner, pending.id, retry.attempt, { kind: 'text', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'Evidence' }] })).toBe(false)
+    expect(getLocalDocument(root, owner, pending.id)).toBeNull()
+  })
+
   it('stores a Feishu source snapshot for one account without a fake local file', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-feishu-test-'))
     roots.push(root)

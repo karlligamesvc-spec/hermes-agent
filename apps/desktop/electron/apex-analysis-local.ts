@@ -14,7 +14,10 @@ export interface LocalDocument {
   id: string
   filename: string
   kind: string
-  status: 'ready'
+  status: 'processing' | 'ready' | 'failed'
+  error_code?: string | null
+  parseAttempt?: string
+  updatedAt?: string
   storageMode: 'local'
   anchors: AnalysisAnchor[]
   notes: Array<{ id: string; body: string; anchor_id: string | null }>
@@ -77,10 +80,79 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
       return null
     }
 
+    if (item.status === 'processing' && item.updatedAt && Date.now() - Date.parse(item.updatedAt) > 10 * 60_000) {
+      item.status = 'failed'
+      item.error_code = 'parse_interrupted'
+      save(root, userId, item)
+    }
+
     return item
   } catch {
     return null
   }
+}
+
+export function createLocalPendingDocument(root: string, userId: string, filename: string, sourceBytes: Buffer): LocalDocument {
+  const ext = path.extname(filename).toLowerCase()
+  const kind = ({ '.pdf': 'pdf', '.docx': 'word', '.xlsx': 'excel', '.txt': 'text', '.md': 'text' } as Record<string, string>)[ext]
+
+  if (!kind) {throw new Error('unsupported_format')}
+  if (!sourceBytes.length) {throw new Error('empty_file')}
+  if (sourceBytes.length > 15 * 1024 * 1024) {throw new Error('file_too_large')}
+
+  const id = `local-${crypto.randomUUID()}`
+  const storedSource = path.join(accountDirectory(root, userId), `${id}${ext}`)
+  fs.writeFileSync(storedSource, sourceBytes, { flag: 'wx', mode: 0o600 })
+
+  try {
+    const now = new Date().toISOString()
+    const document: LocalDocument = {
+      id, filename: path.basename(filename), kind, status: 'processing', storageMode: 'local',
+      anchors: [], notes: [], questions: [], createdAt: now, updatedAt: now,
+      sourcePath: storedSource, parseAttempt: crypto.randomUUID()
+    }
+    save(root, userId, document)
+
+    return document
+  } catch (error) {
+    fs.rmSync(storedSource, { force: true })
+    throw error
+  }
+}
+
+export function completeLocalDocument(root: string, userId: string, id: string, attempt: string, parsed: { kind: string; anchors: AnalysisAnchor[] } | null, errorCode?: string): boolean {
+  const document = getLocalDocument(root, userId, id)
+
+  if (!document || document.status !== 'processing' || document.parseAttempt !== attempt) {return false}
+  if (parsed && parsed.kind === document.kind && Array.isArray(parsed.anchors) && parsed.anchors.length > 0) {
+    document.status = 'ready'
+    document.anchors = parsed.anchors
+    document.error_code = null
+  } else {
+    document.status = 'failed'
+    document.anchors = []
+    document.error_code = errorCode || 'parse_failed'
+  }
+
+  document.updatedAt = new Date().toISOString()
+  delete document.parseAttempt
+  save(root, userId, document)
+
+  return true
+}
+
+export function retryLocalDocument(root: string, userId: string, id: string): { document: LocalDocument; bytes: Buffer; attempt: string } | null {
+  const document = getLocalDocument(root, userId, id)
+
+  if (!document || document.kind === 'feishu' || document.status !== 'failed') {return null}
+  const bytes = fs.readFileSync(document.sourcePath)
+  document.status = 'processing'
+  document.error_code = null
+  document.updatedAt = new Date().toISOString()
+  document.parseAttempt = crypto.randomUUID()
+  save(root, userId, document)
+
+  return { document, bytes, attempt: document.parseAttempt }
 }
 
 export function createLocalFeishuDocument(root: string, userId: string, parsed: { filename: string; kind: string; source_url: string; anchors: AnalysisAnchor[] }): LocalDocument {
@@ -175,7 +247,7 @@ export function removeLocalNote(root: string, userId: string, id: string, noteId
 export function answerLocalDocument(root: string, userId: string, id: string, question: string) {
   const document = getLocalDocument(root, userId, id)
 
-  if (!document) {return null}
+  if (!document || document.status !== 'ready') {return null}
   const lowered = question.toLowerCase()
   const terms = new Set(lowered.match(/[a-z0-9_]{2,}/g) ?? [])
   const stopwords = new Set(['about', 'an', 'are', 'at', 'does', 'for', 'from', 'have', 'how', 'in', 'is', 'it', 'of', 'on', 'please', 'that', 'the', 'this', 'to', 'what', 'when', 'where', 'which', 'with', '什么', '如何', '多少', '请问', '关于', '是否', '能否', '这份', '文档', '资料', '内容'])

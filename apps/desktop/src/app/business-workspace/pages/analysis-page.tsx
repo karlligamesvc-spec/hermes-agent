@@ -111,7 +111,7 @@ function humanError(code: string, copy: { cloudUnavailable: string; empty: strin
 
   if (code === 'unsupported_format') {return copy.empty}
 
-  if (code === 'parse_failed') {return copy.failed}
+  if (['parse_failed', 'parse_interrupted'].includes(code)) {return copy.failed}
 
   return copy.error
 }
@@ -279,7 +279,11 @@ export function AnalysisView() {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
               <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p></div>
               <div className="flex gap-2">
-                <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void bridge()?.openSource(selected.id)} type="button">{c.open}</button>
+                <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
+                  const result = await bridge()?.openSource(selected.id)
+
+                  if (!result?.ok) {setError(result?.code ?? c.error)}
+                })} type="button">{selected.kind === 'feishu' ? c.openLink : c.open}</button>
                 {selected.status === 'failed' && <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
                   const result = await bridge()?.retry(selected.id)
 
@@ -288,7 +292,7 @@ export function AnalysisView() {
  return }
 
                   await openDocument(selected.id)
-                })} type="button">{selected.storageMode === 'local' ? c.chooseAgain : c.retry}</button>}
+                })} type="button">{c.retry}</button>}
                 <button className="rounded-lg border px-3 py-2 text-sm text-destructive" onClick={() => void perform(async () => {
                   const result = await bridge()?.delete(selected.id)
 

@@ -45,12 +45,14 @@ import {
 import {
   addLocalNote,
   answerLocalDocument,
-  createLocalDocument,
+  completeLocalDocument,
   createLocalFeishuDocument,
+  createLocalPendingDocument,
   deleteLocalDocument,
   getLocalDocument,
   listLocalDocuments,
-  removeLocalNote
+  removeLocalNote,
+  retryLocalDocument
 } from './apex-analysis-local'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
@@ -22228,6 +22230,29 @@ function localAnalysisForRenderer(document: any) {
   return safe
 }
 
+async function processLocalAnalysisDocument(context: Awaited<ReturnType<typeof analysisIpcContext>>, id: string, attempt: string, filename: string, bytes: Buffer): Promise<void> {
+  let parsed: any = null
+  let errorCode = 'parse_failed'
+
+  try {
+    parsed = await analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes)
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      throw new Error('analysis_policy_changed')
+    }
+  } catch (error) {
+    parsed = null
+    errorCode = analysisIpcError(error)
+  }
+
+  try {
+    completeLocalDocument(context.root, context.policy.user_id, id, attempt, parsed, errorCode)
+  } catch (error) {
+    rememberLog(`[analysis] local parse result could not be saved: ${analysisIpcError(error)}`)
+  }
+}
+
 ipcMain.handle('hermes:analysis:policy', async () => {
   try {
     const { policy } = await analysisIpcContext(true)
@@ -22278,14 +22303,8 @@ ipcMain.handle('hermes:analysis:import', async event => {
       return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
     }
 
-    const parsed = await analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes)
-    const current = await analysisIpcContext(true)
-
-    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
-      return { ok: false, code: 'analysis_policy_changed' }
-    }
-
-    const item = createLocalDocument(context.root, context.policy.user_id, bytes, parsed)
+    const item = createLocalPendingDocument(context.root, context.policy.user_id, filename, bytes)
+    void processLocalAnalysisDocument(context, item.id, item.parseAttempt!, filename, bytes)
 
     return { ok: true, item: localAnalysisForRenderer(item) }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
@@ -22411,9 +22430,17 @@ ipcMain.handle('hermes:analysis:deleteNote', async (_event, id, noteId) => {
 
 ipcMain.handle('hermes:analysis:retry', async (_event, id) => {
   try {
-    const context = await analysisIpcContext()
+    const context = await analysisIpcContext(String(id).startsWith('local-'))
 
-    if (String(id).startsWith('local-')) {return { ok: false, code: 'select_file_again' }}
+    if (String(id).startsWith('local-')) {
+      if (context.policy.mode !== 'local') {return { ok: false, code: 'analysis_policy_changed' }}
+      const retry = retryLocalDocument(context.root, context.policy.user_id, String(id))
+
+      if (!retry) {return { ok: false, code: 'source_not_found' }}
+      void processLocalAnalysisDocument(context, retry.document.id, retry.attempt, retry.document.filename, retry.bytes)
+
+      return { ok: true, item: localAnalysisForRenderer(retry.document) }
+    }
     const response: any = await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/retry`, {})
 
     return { ok: true, item: { ...response.item, storageMode: 'cloud' } }

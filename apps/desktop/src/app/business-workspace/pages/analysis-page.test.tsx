@@ -51,6 +51,27 @@ describe('document analysis evidence', () => {
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
   })
 
+  it('retries a failed local source from its saved record without asking for a new file', async () => {
+    const failed = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'scan.pdf', kind: 'pdf', status: 'failed', storageMode: 'local', error_code: 'parse_interrupted' }
+    const processing = { ...failed, status: 'processing', error_code: null }
+    const retry = vi.fn().mockResolvedValue({ ok: true, item: processing })
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [failed] }),
+        get: vi.fn().mockResolvedValueOnce({ ok: true, item: failed }).mockResolvedValue({ ok: true, item: processing }),
+        retry
+      }
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.click(await screen.findByRole('button', { name: /scan.pdf/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '重试解析' }))
+    await waitFor(() => expect(screen.getAllByText('正在解析原文…').length).toBeGreaterThan(0))
+    expect(retry).toHaveBeenCalledWith(failed.id)
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+  })
+
   it('keeps links unanswerable and distinguishes Feishu permission from unsupported URLs', async () => {
     window.hermesDesktop = {
       analysisDocuments: {
