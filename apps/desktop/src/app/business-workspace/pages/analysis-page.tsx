@@ -19,7 +19,8 @@ const COPY = {
     noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', deleteNote: '删除笔记',
     error: '操作失败，请重试。', subtitleInvalid: '字幕时间码或格式无效，请检查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 预览暂不可用，可打开原件。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。',
-    videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前只能在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起'
+    videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前无法提问；可在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起',
+    videoAnalyze: '转写视频声音', videoAnalyzing: '正在获取媒体和转写，可能需要数分钟…', videoNoTiming: '已尝试转写，但当前服务未返回可靠时间码。可上传 SRT/VTT 字幕继续分析。', videoTranscriptNotice: '以下仅依据真实视频声音转写及时间码，尚未分析画面；时间码引用定位到转写片段。', videoProcessingDisclosure: '视频链接由 APEX 媒体服务下载和转写；生成的字幕证据按上方模式保存，服务端媒体缓存遵循现有生命周期。'
   },
   'zh-hant': {
     title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件或字幕',
@@ -34,7 +35,8 @@ const COPY = {
     noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', deleteNote: '刪除筆記',
     error: '操作失敗，請重試。', subtitleInvalid: '字幕時間碼或格式無效，請檢查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 預覽暫時無法使用，可開啟原件。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。',
-    videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前只能在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起'
+    videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前無法提問；可在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起',
+    videoAnalyze: '轉寫影片聲音', videoAnalyzing: '正在取得媒體與轉寫，可能需要數分鐘…', videoNoTiming: '已嘗試轉寫，但目前服務未回傳可靠時間碼。可匯入 SRT/VTT 字幕繼續分析。', videoTranscriptNotice: '以下僅依據真實影片聲音轉寫與時間碼，尚未分析畫面；時間碼引用定位到轉寫片段。', videoProcessingDisclosure: '影片連結由 APEX 媒體服務下載與轉寫；產生的字幕證據依上方模式儲存，伺服器媒體快取遵循既有生命週期。'
   },
   en: {
     title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document or captions',
@@ -49,7 +51,8 @@ const COPY = {
     noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', deleteNote: 'Delete note',
     error: 'The action failed. Try again.', subtitleInvalid: 'Invalid subtitle timing or format. Check the SRT/VTT file.', pdfOriginal: 'Original PDF', pdfPreviewUnavailable: 'PDF preview is unavailable. You can open the original.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.',
-    videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read; open the original for now.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}'
+    videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read, so questions are unavailable; you can open the original site.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}',
+    videoAnalyze: 'Transcribe video audio', videoAnalyzing: 'Fetching media and transcribing; this may take several minutes…', videoNoTiming: 'Transcription was attempted, but the provider returned no reliable timecodes. Import SRT/VTT captions to continue.', videoTranscriptNotice: 'These excerpts use real video-audio transcription and timing only. Frames were not analyzed; timecode citations locate transcript passages.', videoProcessingDisclosure: 'APEX downloads and transcribes linked media. Generated caption evidence follows the save mode above; server media cache follows its existing lifecycle.'
   },
   ja: {
     title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書・字幕を読み込む',
@@ -64,7 +67,8 @@ const COPY = {
     noSourceText: '読める本文がありません。', select: '資料を選択してください。', deleteNote: 'メモを削除',
     error: '失敗しました。再試行してください。', subtitleInvalid: '字幕の時間または形式が無効です。SRT/VTT ファイルを確認してください。', pdfOriginal: '元の PDF', pdfPreviewUnavailable: 'PDF をプレビューできません。元のファイルを開けます。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
     anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。',
-    videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため、今は元サイトで確認してください。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から'
+    videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため質問はできません。元サイトで確認できます。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から',
+    videoAnalyze: '動画音声を文字起こし', videoAnalyzing: 'メディアを取得して文字起こし中です。数分かかる場合があります…', videoNoTiming: '文字起こしを試みましたが、信頼できる時間情報が返りませんでした。SRT/VTT 字幕を取り込んでください。', videoTranscriptNotice: '以下は実際の動画音声の文字起こしと時間情報のみを根拠とします。映像は解析していません。', videoProcessingDisclosure: 'リンク先のメディアは APEX が取得・文字起こしします。生成された字幕の保存先は上の設定に従い、サーバーのメディアキャッシュには既存の保存期間が適用されます。'
   },
   ar: {
     title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند أو ترجمة',
@@ -79,7 +83,8 @@ const COPY = {
     noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', deleteNote: 'حذف الملاحظة',
     error: 'فشلت العملية. حاول مجددًا.', subtitleInvalid: 'توقيت الترجمة أو تنسيقها غير صالح. تحقق من ملف SRT/VTT.', pdfOriginal: 'ملف PDF الأصلي', pdfPreviewUnavailable: 'معاينة PDF غير متاحة. يمكنك فتح الملف الأصلي.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.',
-    videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد؛ افتح الموقع الأصلي الآن.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}'
+    videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد، فلا يمكن طرح الأسئلة؛ يمكنك فتح الموقع الأصلي.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}',
+    videoAnalyze: 'تفريغ صوت الفيديو', videoAnalyzing: 'يجري جلب الوسائط وتفريغ الصوت؛ قد يستغرق ذلك عدة دقائق…', videoNoTiming: 'جرت محاولة التفريغ، لكن الخدمة لم تُرجع توقيتًا موثوقًا. استورد ترجمة SRT/VTT للمتابعة.', videoTranscriptNotice: 'تعتمد هذه المقاطع على تفريغ صوت الفيديو الحقيقي وتوقيته فقط. لم تُحلل الإطارات.', videoProcessingDisclosure: 'تنزّل APEX الوسائط المرتبطة وتفرّغ صوتها. تُحفظ أدلة الترجمة وفق الوضع أعلاه، وتخضع ذاكرة الوسائط المؤقتة لدورة حياتها الحالية.'
   }
 } as const
 
@@ -118,7 +123,7 @@ function isFeishuUrl(value: string): boolean {
   return host === 'feishu.cn' || host.endsWith('.feishu.cn') || host === 'larksuite.com' || host.endsWith('.larksuite.com')
 }
 
-function humanError(code: string, copy: { cloudUnavailable: string; empty: string; error: string; failed: string; noSourceText: string; permission: string; subtitleInvalid: string }): string {
+function humanError(code: string, copy: { cloudUnavailable: string; empty: string; error: string; failed: string; noSourceText: string; permission: string; subtitleInvalid: string; videoNoTiming: string }): string {
   if (['no_readable_text', 'empty_file'].includes(code)) {return copy.noSourceText}
 
   if (['analysis_cloud_storage_unavailable', 'cloud_upload_failed', 'download_unavailable'].includes(code)) {return copy.cloudUnavailable}
@@ -128,6 +133,8 @@ function humanError(code: string, copy: { cloudUnavailable: string; empty: strin
   if (code === 'unsupported_format') {return copy.empty}
 
   if (['invalid_subtitle', 'invalid_subtitle_timing'].includes(code)) {return copy.subtitleInvalid}
+
+  if (['timed_evidence_unavailable', 'timed_evidence_invalid'].includes(code)) {return copy.videoNoTiming}
 
   if (['parse_failed', 'parse_interrupted'].includes(code)) {return copy.failed}
 
@@ -144,6 +151,7 @@ export function AnalysisView() {
   const [error, setError] = useState('')
   const [link, setLink] = useState('')
   const [videoResolution, setVideoResolution] = useState<AnalysisVideoResolution | null>(null)
+  const [transcribingVideo, setTranscribingVideo] = useState(false)
   const [authFlow, setAuthFlow] = useState<{ id: string; interval: number } | null>(null)
   const [feishuAuthorized, setFeishuAuthorized] = useState(false)
   const [question, setQuestion] = useState('')
@@ -336,9 +344,27 @@ export function AnalysisView() {
 
           setVideoResolution(result.resolution)
         })} type="button">{c.videoCheck}</button>}
+        {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async () => {
+          setTranscribingVideo(true)
+
+          try {
+            const result = await bridge()?.transcribeVideoLink(videoResolution.source_url!)
+
+            if (!result?.ok || !result.item) {
+              setError(result?.code ?? c.error)
+              return
+            }
+
+            setLink('')
+            setVideoResolution(null)
+            await refreshList()
+            await openDocument(result.item.id)
+          } finally {setTranscribingVideo(false)}
+        })} type="button">{transcribingVideo ? c.videoAnalyzing : c.videoAnalyze}</button>}
         {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(videoResolution?.source_url ?? link)} type="button">{c.openLink}</button>}
       </div>
       {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : videoResolution ? videoResolution.status === 'unreadable' ? c.videoUnreadable : (videoResolution.status === 'upload_required' ? c.videoUpload : c.videoCandidate).replace('{platform}', videoResolution.platform ?? '') : c.unsupportedLink}</p>}
+      {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <p className="text-xs text-(--ui-text-tertiary)">{c.videoProcessingDisclosure}</p>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="space-y-2">
@@ -353,13 +379,13 @@ export function AnalysisView() {
           {!selected && <p className="rounded-xl border p-6 text-sm text-(--ui-text-secondary)">{c.select}</p>}
           {selected && <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{c.subtitleNotice}</p>}</div>
+              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{selected.source_url || selected.sourceUrl ? c.videoTranscriptNotice : c.subtitleNotice}</p>}</div>
               <div className="flex gap-2">
                 <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
                   const result = await bridge()?.openSource(selected.id)
 
                   if (!result?.ok) {setError(result?.code ?? c.error)}
-                })} type="button">{selected.kind === 'feishu' ? c.openLink : c.open}</button>
+                })} type="button">{selected.kind === 'feishu' || (selected.kind === 'subtitle' && (selected.source_url || selected.sourceUrl)) ? c.openLink : c.open}</button>
                 {selected.status === 'failed' && <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
                   const result = await bridge()?.retry(selected.id)
 

@@ -48,6 +48,7 @@ import {
   completeLocalDocument,
   createLocalFeishuDocument,
   createLocalPendingDocument,
+  createLocalVideoTranscript,
   deleteLocalDocument,
   getLocalDocument,
   listLocalDocuments,
@@ -22380,6 +22381,33 @@ ipcMain.handle('hermes:analysis:resolveVideoLink', async (_event, sourceUrl) => 
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 
+ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext(true)
+    const url = String(sourceUrl || '').trim()
+
+    if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
+
+    const response: any = await apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
+      body: { url, storage_mode: context.policy.mode }, bearer: context.bearer, timeoutMs: 1_850_000
+    })
+
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== context.policy.mode || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    if (context.policy.mode === 'cloud') {
+      return response.item ? { ok: true, item: { ...response.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
+    }
+
+    const item = createLocalVideoTranscript(context.root, context.policy.user_id, response.parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
 ipcMain.handle('hermes:analysis:get', async (_event, id) => {
   try {
     const context = await analysisIpcContext()
@@ -22483,7 +22511,7 @@ ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
 
       if (!item) {return { ok: false, code: 'source_not_found' }}
 
-      return item.kind === 'feishu'
+      return item.kind === 'feishu' || (item.kind === 'subtitle' && item.sourceUrl)
         ? { ok: openExternalUrl(item.sourceUrl) }
         : { ok: !(await shell.openPath(item.sourcePath)) }
     }

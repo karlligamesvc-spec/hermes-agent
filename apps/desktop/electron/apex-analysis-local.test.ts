@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, readLocalPdfPreview, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
+import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, createLocalVideoTranscript, deleteLocalDocument, getLocalDocument, listLocalDocuments, readLocalPdfPreview, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
 
 const roots: string[] = []
 
@@ -13,6 +13,39 @@ afterEach(() => {
 })
 
 describe('account-scoped local analysis', () => {
+  it('keeps real ASR timecodes and the original video URL under one local account', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-video-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const location = { start_seconds: 1, end_seconds: 2 }
+    const sourceUrl = 'https://www.iesdouyin.com/share/video/123456'
+
+    const item = createLocalVideoTranscript(root, owner, {
+      filename: 'douyin-transcript.srt', source_url: sourceUrl,
+      srt: '1\n00:00:01,000 --> 00:00:02,000\n真实片段\n',
+      anchors: [{ id: 'a1', location, text: '真实片段' }]
+    })
+
+    expect(getLocalDocument(root, other, item.id)).toBeNull()
+    expect(getLocalDocument(root, owner, item.id)?.sourceUrl).toBe(sourceUrl)
+    expect(answerLocalDocument(root, owner, item.id, '真实片段')?.citations).toEqual([{ anchor_id: 'a1', location }])
+    expect(fs.readFileSync(item.sourcePath, 'utf8')).toContain('00:00:01,000 --> 00:00:02,000')
+    expect(deleteLocalDocument(root, owner, item.id)).toBe(true)
+    expect(fs.existsSync(item.sourcePath)).toBe(false)
+  })
+
+  it('refuses a fabricated local video source URL before writing a transcript', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-video-url-test-'))
+    roots.push(root)
+    expect(() => createLocalVideoTranscript(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', {
+      filename: 'douyin-transcript.srt', source_url: 'https://example.com/private',
+      srt: '1\n00:00:01,000 --> 00:00:02,000\n真实片段\n',
+      anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }]
+    })).toThrow('unsupported_video_link')
+    expect(fs.readdirSync(root)).toEqual([])
+  })
+
   it('previews only ready PDF bytes owned by the account and rejects a replaced symlink', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-pdf-test-'))
     roots.push(root)

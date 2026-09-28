@@ -194,7 +194,7 @@ export function createLocalDocument(
   root: string,
   userId: string,
   sourceBytes: Buffer,
-  parsed: { filename: string; kind: string; anchors: AnalysisAnchor[] }
+  parsed: { filename: string; kind: string; anchors: AnalysisAnchor[]; sourceUrl?: string }
 ): LocalDocument {
   const id = `local-${crypto.randomUUID()}`
   const directory = accountDirectory(root, userId)
@@ -210,6 +210,7 @@ export function createLocalDocument(
       status: 'ready',
       storageMode: 'local',
       anchors: parsed.anchors,
+      sourceUrl: parsed.sourceUrl,
       notes: [],
       questions: [],
       createdAt: new Date().toISOString(),
@@ -223,6 +224,26 @@ export function createLocalDocument(
     fs.rmSync(storedSource, { force: true })
     throw error
   }
+}
+
+/** Persist only the bounded transcript produced by the account-owned ASR path. */
+export function createLocalVideoTranscript(
+  root: string,
+  userId: string,
+  parsed: { filename: string; source_url: string; srt: string; anchors: AnalysisAnchor[] }
+): LocalDocument {
+  const url = new URL(parsed.source_url)
+  const allowed = new Set(['v.douyin.com', 'www.douyin.com', 'www.iesdouyin.com', 'xhslink.com', 'xhslink.cn', 'www.xiaohongshu.com', 'b23.tv', 'www.bilibili.com'])
+
+  if (url.protocol !== 'https:' || !allowed.has(url.hostname) || url.username || url.password || url.port) {throw new Error('unsupported_video_link')}
+
+  if (!parsed.filename.endsWith('.srt') || !parsed.srt || !Array.isArray(parsed.anchors) || !parsed.anchors.length) {throw new Error('timed_evidence_invalid')}
+
+  const item = createLocalDocument(root, userId, Buffer.from(parsed.srt, 'utf8'), {
+    filename: parsed.filename, kind: 'subtitle', anchors: parsed.anchors, sourceUrl: parsed.source_url
+  })
+
+  return item
 }
 
 export function deleteLocalDocument(root: string, userId: string, id: string): boolean {

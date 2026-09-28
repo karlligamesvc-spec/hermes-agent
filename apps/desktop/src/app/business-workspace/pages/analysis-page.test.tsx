@@ -240,6 +240,65 @@ describe('document analysis evidence', () => {
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
   })
 
+  it('makes a supported video answerable only after timed ASR evidence is saved', async () => {
+    const url = 'https://www.iesdouyin.com/share/video/123456'
+
+    const item = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'douyin-transcript.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local', sourceUrl: url,
+      anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }],
+      notes: [], questions: []
+    }
+
+    const resolveVideoLink = vi.fn().mockResolvedValue({
+      ok: true, resolution: { platform: 'douyin', status: 'original_site_only', capability: 'download_candidate',
+        source_url: url, evidence_status: 'not_read', can_answer: false, can_play_in_app: false }
+    })
+
+    const transcribeVideoLink = vi.fn().mockResolvedValue({ ok: true, item })
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValueOnce({ ok: true, items: [] }).mockResolvedValue({ ok: true, items: [item] }),
+        get: vi.fn().mockResolvedValue({ ok: true, item }), resolveVideoLink, transcribeVideoLink
+      }, openExternal: vi.fn()
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: url } })
+    fireEvent.click(screen.getByRole('button', { name: '检查视频链接' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '转写视频声音' })).toBeTruthy())
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '转写视频声音' }))
+    await waitFor(() => expect(screen.getByText(/仅依据真实视频声音转写及时间码/)).toBeTruthy())
+    expect(transcribeVideoLink).toHaveBeenCalledWith(url)
+    expect(screen.getByRole('textbox', { name: '针对当前资料提问' })).toBeTruthy()
+    expect(screen.getByText('0:01 起')).toBeTruthy()
+  })
+
+  it('keeps a failed untimed ASR result out of source history and Q&A', async () => {
+    const url = 'https://www.iesdouyin.com/share/video/123456'
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [] }),
+        resolveVideoLink: vi.fn().mockResolvedValue({ ok: true, resolution: {
+          platform: 'douyin', status: 'original_site_only', capability: 'download_candidate', source_url: url,
+          evidence_status: 'not_read', can_answer: false, can_play_in_app: false
+        } }),
+        transcribeVideoLink: vi.fn().mockResolvedValue({ ok: false, code: 'timed_evidence_unavailable' })
+      }, openExternal: vi.fn()
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: url } })
+    fireEvent.click(screen.getByRole('button', { name: '检查视频链接' }))
+    fireEvent.click(await screen.findByRole('button', { name: '转写视频声音' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/未返回可靠时间码/))
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+    expect(screen.getByText(/尚无资料/)).toBeTruthy()
+  })
+
   it('only makes a Feishu link answerable after authorized body import', async () => {
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'Quarterly report', kind: 'feishu',
