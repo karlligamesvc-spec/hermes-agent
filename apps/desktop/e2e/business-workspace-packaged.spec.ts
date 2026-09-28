@@ -11,9 +11,14 @@ import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppRe
 import { expect, test } from './test'
 
 const BUSINESS_NAV_LABELS = ['开始', '项目', '沉浸式分析', '定时运行'] as const
+
 const PACKAGED_VERSION = JSON.parse(
   fs.readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf8')
 ).version as string
+
+const ANALYSIS_REVIEW_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const ANALYSIS_REVIEW_TOKEN = `local.${Buffer.from(JSON.stringify({ sub: ANALYSIS_REVIEW_USER_ID })).toString('base64url')}.review`
+const ANALYSIS_REVIEW_VIDEO_URL = 'https://www.iesdouyin.com/share/video/123456'
 
 async function openWorkflowCatalog(page: Page) {
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
@@ -364,7 +369,7 @@ async function startPhase1ReviewApi() {
 
     if (request.method === 'POST' && url.pathname === '/api/v1/auth/login') {
       json(200, {
-        access_token: 'local.phase1.review',
+        access_token: ANALYSIS_REVIEW_TOKEN,
         email: 'phase1-review@local.test',
         name: '本地 UI 评审',
         plan: 'review'
@@ -382,6 +387,66 @@ async function startPhase1ReviewApi() {
         name: '本地 UI 评审',
         plan: 'review'
       })
+
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/storage-policy') {
+      json(200, { user_id: ANALYSIS_REVIEW_USER_ID, mode: 'local', cloud_storage_configured: false })
+
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/documents') {
+      json(200, { items: [] })
+
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/account/analysis/video-links/resolve') {
+      const chunks: Buffer[] = []
+
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+
+      const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { url?: string }
+
+      if (input.url !== ANALYSIS_REVIEW_VIDEO_URL || request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}`) {
+        json(400, { detail: { code: 'invalid_analysis_review_request' } })
+
+        return
+      }
+
+      json(200, {
+        platform: 'douyin', status: 'original_site_only', capability: 'download_candidate',
+        source_url: ANALYSIS_REVIEW_VIDEO_URL, evidence_status: 'not_read', can_answer: false,
+        can_play_in_app: false
+      })
+
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/account/analysis/video-links/transcribe') {
+      const chunks: Buffer[] = []
+
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+
+      const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { url?: string; storage_mode?: string }
+
+      if (input.url !== ANALYSIS_REVIEW_VIDEO_URL || input.storage_mode !== 'local' ||
+        request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}`) {
+        json(400, { detail: { code: 'invalid_analysis_review_request' } })
+
+        return
+      }
+
+      json(200, { parsed: {
+        filename: 'local-review-video-transcript.srt', source_url: ANALYSIS_REVIEW_VIDEO_URL,
+        srt: '1\n00:00:01,000 --> 00:00:03,000\n[本地测试] 开头原文\n\n2\n00:00:40,000 --> 00:00:43,000\n[本地测试] 中段原文\n',
+        anchors: [
+          { id: 'a1', location: { start_seconds: 1, end_seconds: 3 }, text: '[本地测试] 开头原文' },
+          { id: 'a2', location: { start_seconds: 40, end_seconds: 43 }, text: '[本地测试] 中段原文' }
+        ]
+      } })
 
       return
     }
@@ -1735,4 +1800,48 @@ test('packaged plain goal stays separate from a previewed workflow and starts a 
     await composerStopButton.click()
     await expect(composerStopButton).toHaveCount(0, { timeout: 15_000 })
   }
+})
+
+test('hc-872 packaged analysis stores timed speech locally and prepares a reviewable deep draft', async () => {
+  const { app, page } = fixture!
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
+  )
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
+
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+  await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toBeVisible()
+  await expect(page.getByText('本地保存', { exact: true }).first()).toBeVisible()
+  await page.getByRole('textbox', { name: '粘贴资料链接' }).fill(ANALYSIS_REVIEW_VIDEO_URL)
+  await page.getByRole('button', { name: '检查并尝试转写视频' }).click()
+
+  const overview = page.getByRole('region', { name: '视频声音速览' })
+
+  await expect(overview).toBeVisible({ timeout: 15_000 })
+  await expect(overview).toContainText('已取得 2 条带时间码的语音片段，覆盖 0:01–0:43')
+  await expect(overview).toContainText('[本地测试] 中段原文')
+  await expect(page.getByText('尚未生成内容概括，也没有画面或镜头证据。')).toBeVisible()
+  const localItems = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+
+  expect(localItems?.ok).toBe(true)
+  expect(localItems?.items).toEqual(expect.arrayContaining([
+    expect.objectContaining({ filename: 'local-review-video-transcript.srt', storageMode: 'local' })
+  ]))
+
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+  await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  await expect(overview).toBeVisible()
+  await overview.getByRole('button', { name: '准备深度拆解' }).click()
+
+  const goal = page.getByRole('textbox', { name: '业务目标' })
+
+  await expect(goal).toBeVisible()
+  await expect(goal).toHaveValue(/先读取当前可用的 short-video-studio 与 Hypit Skill/)
+  await expect(goal).toHaveValue(/\[0:40–0:43\] "\[本地测试\] 中段原文"/)
+  await expect(goal).toHaveValue(/https:\/\/www\.iesdouyin\.com\/share\/video\/123456/)
+  await expect(goal).toHaveValue(/只有实际检查原视频或截图后才分析镜头/)
+  await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
+  await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
 })
