@@ -303,6 +303,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     importLink: url => ipcRenderer.invoke('hermes:analysis:importLink', url),
     authorizeFeishu: () => ipcRenderer.invoke('hermes:analysis:authorizeFeishu'),
     pollFeishu: flowId => ipcRenderer.invoke('hermes:analysis:pollFeishu', flowId),
+    forgetFeishu: () => ipcRenderer.invoke('hermes:analysis:forgetFeishu'),
     get: id => ipcRenderer.invoke('hermes:analysis:get', id),
     ask: (id, question) => ipcRenderer.invoke('hermes:analysis:ask', id, question),
     addNote: (id, body, anchorId) => ipcRenderer.invoke('hermes:analysis:addNote', id, body, anchorId),

@@ -8,7 +8,7 @@ import { BusinessPageHeader } from '../components/business-page-header'
 const COPY = {
   zh: {
     title: '沉浸式分析', description: '导入资料，沿着原文证据提问和记笔记。', import: '导入文档',
-    link: '粘贴资料链接', linkHint: '飞书文档需要本人授权及读取权限。', openLink: '在原站打开', importLink: '读取链接', authorize: '授权飞书', authorizing: '等待飞书授权…', authorized: '已授权，可读取链接',
+    link: '粘贴资料链接', linkHint: '飞书文档需要本人授权及读取权限。', openLink: '在原站打开', importLink: '读取链接', authorize: '授权飞书', forget: '取消飞书授权', authorizing: '等待飞书授权…', authorized: '已授权，可读取链接',
     local: '本地保存', cloud: '云端保存', localDisclosure: '本地保存：导入文件的原件、飞书正文快照、证据和笔记留在这台设备；解析请求会经过 APEX，飞书授权令牌由 APEX 加密保管。',
     cloudDisclosure: '云端保存：导入文件的原件或飞书正文快照，以及证据和笔记保存在当前账号下，可跨设备回看。飞书授权令牌由 APEX 加密保管。',
     cloudUnavailable: '云端资料存储尚未配置，请联系平台管理员。',
@@ -22,7 +22,7 @@ const COPY = {
   },
   'zh-hant': {
     title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件',
-    link: '貼上資料連結', linkHint: '飛書文件需要本人授權及讀取權限。', openLink: '在原站開啟', importLink: '讀取連結', authorize: '授權飛書', authorizing: '等待飛書授權…', authorized: '已授權，可讀取連結',
+    link: '貼上資料連結', linkHint: '飛書文件需要本人授權及讀取權限。', openLink: '在原站開啟', importLink: '讀取連結', authorize: '授權飛書', forget: '取消飛書授權', authorizing: '等待飛書授權…', authorized: '已授權，可讀取連結',
     local: '本機儲存', cloud: '雲端儲存', localDisclosure: '本機儲存：匯入文件原件、飛書正文快照、證據和筆記留在此裝置；解析請求會經過 APEX，飛書授權令牌由 APEX 加密保管。',
     cloudDisclosure: '雲端儲存：匯入文件原件或飛書正文快照，以及證據和筆記保存在目前帳號下，可跨裝置回看。飛書授權令牌由 APEX 加密保管。',
     cloudUnavailable: '雲端資料儲存尚未設定，請聯絡平台管理員。',
@@ -36,7 +36,7 @@ const COPY = {
   },
   en: {
     title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document',
-    link: 'Paste a source link', linkHint: 'Feishu documents require your authorization and read access.', openLink: 'Open original site', importLink: 'Read link', authorize: 'Authorize Feishu', authorizing: 'Waiting for Feishu authorization…', authorized: 'Authorized. You can read the link.',
+    link: 'Paste a source link', linkHint: 'Feishu documents require your authorization and read access.', openLink: 'Open original site', importLink: 'Read link', authorize: 'Authorize Feishu', forget: 'Remove Feishu access', authorizing: 'Waiting for Feishu authorization…', authorized: 'Authorized. You can read the link.',
     local: 'Saved locally', cloud: 'Saved in cloud', localDisclosure: 'Local save: imported files, Feishu text snapshots, evidence, and notes stay on this device. Parsing passes through APEX; Feishu authorization tokens are encrypted on APEX.',
     cloudDisclosure: 'Cloud save: imported files or Feishu text snapshots, evidence, and notes are stored under your account across devices. Feishu authorization tokens are encrypted on APEX.',
     cloudUnavailable: 'Cloud document storage is not configured. Contact the platform administrator.',
@@ -50,7 +50,7 @@ const COPY = {
   },
   ja: {
     title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書を読み込む',
-    link: '資料リンクを貼り付け', linkHint: 'Feishu 文書には本人の認証と閲覧権限が必要です。', openLink: '元サイトを開く', importLink: 'リンクを読む', authorize: 'Feishu を認証', authorizing: 'Feishu の認証を待機中…', authorized: '認証済み。リンクを読めます。',
+    link: '資料リンクを貼り付け', linkHint: 'Feishu 文書には本人の認証と閲覧権限が必要です。', openLink: '元サイトを開く', importLink: 'リンクを読む', authorize: 'Feishu を認証', forget: 'Feishu 認証を解除', authorizing: 'Feishu の認証を待機中…', authorized: '認証済み。リンクを読めます。',
     local: 'ローカル保存', cloud: 'クラウド保存', localDisclosure: 'ローカル保存：読み込んだファイル、Feishu の本文、根拠、メモはこの端末に保存されます。解析は APEX を経由し、Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudDisclosure: 'クラウド保存：ファイルまたは Feishu の本文、根拠、メモをアカウントに保存します。Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudUnavailable: 'クラウド保存が設定されていません。管理者に連絡してください。',
@@ -64,7 +64,7 @@ const COPY = {
   },
   ar: {
     title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند',
-    link: 'ألصق رابط المصدر', linkHint: 'تتطلب مستندات Feishu موافقتك وصلاحية القراءة.', openLink: 'فتح الموقع الأصلي', importLink: 'قراءة الرابط', authorize: 'تفويض Feishu', authorizing: 'بانتظار تفويض Feishu…', authorized: 'تم التفويض؛ يمكنك قراءة الرابط.',
+    link: 'ألصق رابط المصدر', linkHint: 'تتطلب مستندات Feishu موافقتك وصلاحية القراءة.', openLink: 'فتح الموقع الأصلي', importLink: 'قراءة الرابط', authorize: 'تفويض Feishu', forget: 'إزالة تفويض Feishu', authorizing: 'بانتظار تفويض Feishu…', authorized: 'تم التفويض؛ يمكنك قراءة الرابط.',
     local: 'حفظ محلي', cloud: 'حفظ سحابي', localDisclosure: 'الحفظ المحلي: تبقى الملفات المستوردة ونسخة نص Feishu والأدلة والملاحظات على هذا الجهاز. تمر القراءة عبر APEX، وتُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudDisclosure: 'الحفظ السحابي: تُخزن الملفات أو نسخة نص Feishu والأدلة والملاحظات ضمن حسابك عبر الأجهزة. تُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudUnavailable: 'لم يتم إعداد التخزين السحابي. تواصل مع مسؤول المنصة.',
@@ -251,6 +251,15 @@ export function AnalysisView() {
 
           setAuthFlow({ id: result.flow_id, interval: result.interval ?? 5 }); setFeishuAuthorized(false)
         })} type="button">{c.authorize}</button>}
+        {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
+          const result = await bridge()?.forgetFeishu()
+
+          if (!result?.ok) {setError(result?.code ?? c.error);
+
+ return }
+
+          setAuthFlow(null); setFeishuAuthorized(false)
+        })} type="button">{c.forget}</button>}
         {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(link)} type="button">{c.openLink}</button>}
       </div>
       {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : c.unsupportedLink}</p>}

@@ -22312,6 +22312,15 @@ ipcMain.handle('hermes:analysis:pollFeishu', async (_event, flowId) => {
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 
+ipcMain.handle('hermes:analysis:forgetFeishu', async () => {
+  try {
+    const context = await analysisIpcContext()
+    await apexAuthDeleteJson(`${context.url}/feishu/authorize`, { bearer: context.bearer })
+
+    return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
 ipcMain.handle('hermes:analysis:importLink', async (_event, sourceUrl) => {
   try {
     const context = await analysisIpcContext(true)

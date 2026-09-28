@@ -66,6 +66,7 @@ describe('document analysis evidence', () => {
     expect(screen.getByText(/需要本人授权及读取权限/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '读取链接' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '授权飞书' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '取消飞书授权' })).toBeTruthy()
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
 
     fireEvent.change(input, { target: { value: 'https://example.com/report.pdf' } })

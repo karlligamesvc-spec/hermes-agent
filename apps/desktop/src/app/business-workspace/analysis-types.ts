@@ -41,6 +41,7 @@ export interface AnalysisDocumentsBridge {
   importLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   authorizeFeishu: () => Promise<{ ok: boolean; code?: string; flow_id?: string; verification_url?: string; interval?: number }>
   pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
+  forgetFeishu: () => Promise<{ ok: boolean; code?: string }>
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   ask: (id: string, question: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>
   addNote: (id: string, body: string, anchorId: string | null) => Promise<{ ok: boolean; code?: string; item?: AnalysisNote }>
