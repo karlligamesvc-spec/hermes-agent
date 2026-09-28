@@ -1829,10 +1829,26 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
     expect.objectContaining({ filename: 'local-review-video-transcript.srt', storageMode: 'local' })
   ]))
 
+  await page.getByLabel('选择本地视频播放').setInputFiles(path.resolve(import.meta.dirname, 'media/local-frame-evidence.webm'))
+  const player = page.getByLabel('本地视频: local-frame-evidence.webm')
+
+  await expect.poll(() => player.evaluate(video => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2)
+  await player.evaluate(video => new Promise<void>(resolve => {
+    video.addEventListener('seeked', () => resolve(), { once: true }); (video as HTMLVideoElement).currentTime = 1
+  }))
+  await page.getByRole('button', { name: '截取当前画面' }).click()
+  const frame = page.getByRole('img', { name: /本次查看的画面截图 · 0:01/ })
+  const frameDataUrl = await frame.getAttribute('src')
+
+  expect(frameDataUrl?.startsWith('data:image/jpeg;base64,')).toBe(true)
+  expect(frameDataUrl!.length).toBeGreaterThan(1000)
+  await expect(page.getByText(/尚未经过模型分析/)).toBeVisible()
+
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(overview).toBeVisible()
+  await expect(page.getByRole('region', { name: '本次查看的画面截图' })).toHaveCount(0)
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
 
   const goal = page.getByRole('textbox', { name: '业务目标' })

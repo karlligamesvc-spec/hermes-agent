@@ -217,6 +217,57 @@ describe('document analysis evidence', () => {
     expect(screen.queryByLabelText('本地视频: clip.mp4')).toBeNull()
   })
 
+  it('captures only decoded local frames with actual player time and clears them on source switch', async () => {
+    const createObjectURL = vi.fn(() => 'blob:chosen-video')
+    vi.stubGlobal('URL', class extends URL { static createObjectURL = createObjectURL; static revokeObjectURL = vi.fn() })
+    const drawImage = vi.fn()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
+    const encode = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,ZmFrZQ==')
+    const video = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local', anchors: [{ id: 'a1', location: { start_seconds: 12, end_seconds: 15 }, text: 'spoken words' }], notes: [], questions: [] }
+    const other = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'other.srt' }
+    window.hermesDesktop = { analysisDocuments: {
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      list: vi.fn().mockResolvedValue({ ok: true, items: [video, other] }),
+      get: vi.fn(async (id: string) => ({ ok: true, item: id === video.id ? video : other }))
+    } } as never
+
+    render(<AnalysisView />)
+    fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
+    await screen.findByRole('heading', { name: 'clip.srt' })
+    fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [new File(['video'], 'clip.mp4', { type: 'video/mp4' })] } })
+    const player = screen.getByLabelText('本地视频: clip.mp4') as HTMLVideoElement
+    const capture = screen.getByRole('button', { name: '截取当前画面' })
+    Object.defineProperties(player, {
+      videoWidth: { configurable: true, value: 1920 },
+      videoHeight: { configurable: true, value: 1080 },
+      currentTime: { configurable: true, value: 12.5, writable: true }
+    })
+
+    fireEvent.click(capture)
+    expect(encode).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('当前画面无法截取')
+
+    Object.defineProperties(player, {
+      readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA }
+    })
+    for (let index = 0; index < 4; index++) {
+      player.currentTime = 12.5 + index
+      fireEvent.click(capture)
+    }
+
+    const frames = within(screen.getByRole('region', { name: '本次查看的画面截图' })).getAllByRole('img')
+    expect(frames).toHaveLength(3)
+    expect(frames[0].getAttribute('alt')).toContain('0:13')
+    expect(frames[2].getAttribute('alt')).toContain('0:15')
+    expect(frames[0].getAttribute('src')).toBe('data:image/jpeg;base64,ZmFrZQ==')
+    expect(drawImage).toHaveBeenCalledWith(player, 0, 0, 640, 360)
+    expect(screen.getByText(/尚未经过模型分析/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /other.srt/ }))
+    await screen.findByRole('heading', { name: 'other.srt' })
+    expect(screen.queryByRole('region', { name: '本次查看的画面截图' })).toBeNull()
+  })
+
   it('does not seek past the selected video duration or turn an invalid file into a player', async () => {
     vi.stubGlobal('URL', class extends URL { static createObjectURL = vi.fn(() => 'blob:chosen-video'); static revokeObjectURL = vi.fn() })
     Element.prototype.scrollIntoView = vi.fn()
