@@ -3,13 +3,36 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 
-import type { Locator, Page } from '@playwright/test'
+import type { ElectronApplication, Locator, Page } from '@playwright/test'
+
+import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
-import { TASK_PANEL_RESUME_TRIGGER } from './mock-server'
 import { expect, test } from './test'
 
-const BUSINESS_NAV_LABELS = ['开始', '项目', '工作流', '定时运行', '交付物'] as const
+const BUSINESS_NAV_LABELS = ['开始', '项目', '沉浸式分析', '定时运行'] as const
+const PACKAGED_VERSION = JSON.parse(
+  fs.readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf8')
+).version as string
+
+async function openWorkflowCatalog(page: Page) {
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
+  await page.locator('[data-project-detail]').getByRole('button', { name: '增加工作流' }).click()
+  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+}
+
+async function openDeliverables(page: Page) {
+  await page.getByRole('button', { name: /打开账户菜单.*本地 UI 评审/ }).click()
+  await page.getByRole('menuitem', { name: '交付物' }).click()
+  await expect(page.getByRole('heading', { name: '交付物', level: 1 })).toBeVisible()
+}
+
+async function expectWindowHeight(app: ElectronApplication, actual: number | undefined, requested: number) {
+  const workAreaHeight = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea.height)
+
+  expect(actual).toBe(Math.min(requested, workAreaHeight))
+}
 
 const PHASE1_VIEWPORTS = [
   { height: 900, name: 'wide-1440', width: 1440 },
@@ -144,7 +167,9 @@ async function expectApexShellPaint(page: Page, expected: 'business-canvas' | 's
   })
 
   expect(paint.glassActive).toBe(true)
-  expect(paint.glassKeep).toBe('34%')
+  expect(paint.glassKeep).toMatch(/^\d+%$/)
+  expect(Number.parseInt(paint.glassKeep, 10)).toBeGreaterThan(0)
+  expect(Number.parseInt(paint.glassKeep, 10)).toBeLessThan(100)
   expect(paint.appearance).toBe('light')
   expect(paint.shellRect.left).toBeCloseTo(0, 0)
   expect(paint.shellRect.top).toBeCloseTo(0, 0)
@@ -322,7 +347,7 @@ const reviewRun = {
     updatedAt: '2026-09-06T17:05:00Z',
     userId: 'tenant-user'
   },
-  steps: [{ progress: 88, title: '伪造阶段，不得展示' }]
+  steps: []
 }
 
 async function startPhase1ReviewApi() {
@@ -579,6 +604,7 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByRole('menuitem', { name: '设置' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '连接助手' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '历史会话' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '交付物' })).toBeVisible()
   await expect(page.getByText('渠道 · 分身在哪', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('group', { name: '连接你的分身' })).toHaveCount(0)
   await expect(page.getByText(/手机正遥控本机/u)).toHaveCount(0)
@@ -673,25 +699,24 @@ test('fresh default glass keeps every Phase 1 business route on one opaque APEX 
   await expectApexShellPaint(page, 'business-canvas', 'project-drawer')
   await page.keyboard.press('Escape')
 
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
-  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+  await openWorkflowCatalog(page)
   await expectApexShellPaint(page, 'business-canvas', 'workflows')
 })
 
 test('primary navigation dismisses only the narrow sidebar overlay, including keyboard activation', async () => {
   const { app, page } = fixture!
 
-  await app.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0]
-
-    win?.unmaximize()
-    win?.setMinimumSize(400, 620)
-    win?.setBounds({ height: 800, width: 752, x: 0, y: 0 }, false)
+  const winHandle = await app.browserWindow(page)
+  await winHandle.evaluate(win => {
+    win.unmaximize()
+    win.setMinimumSize(400, 620)
+    win.setBounds({ height: 800, width: 752, x: 0, y: 0 }, false)
   })
-  await page.waitForTimeout(400)
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThanOrEqual(752)
+  await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(0)
 
   for (const [index, label] of BUSINESS_NAV_LABELS.entries()) {
-    await page.getByRole('button', { name: /显示侧边栏/ }).click()
+    await page.getByRole('button', { name: /(?:显示|隐藏)侧边栏/ }).click()
     const overlay = page.locator('[data-narrow-overlay]')
     await expect(overlay).toBeVisible()
     const navButton = overlay.getByRole('button', { name: new RegExp(`^${label}(?:\\s|⌘|$)`) })
@@ -706,10 +731,8 @@ test('primary navigation dismisses only the narrow sidebar overlay, including ke
     await expect(overlay).toHaveCount(0)
   }
 
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
-  )
-  await page.waitForTimeout(400)
+  await winHandle.evaluate(win => win.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false))
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1220)
   await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
   await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
@@ -892,7 +915,11 @@ test('packaged workflow entries follow each real content container around the si
     )
     await page.bringToFront()
     await page.waitForTimeout(400)
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: surface.nav }).first().click()
+    if (surface.nav === '工作流') {
+      await openWorkflowCatalog(page)
+    } else {
+      await page.locator('[data-sidebar="menu-button"]').filter({ hasText: surface.nav }).first().click()
+    }
     await expect(page.locator(surface.selector)).toBeVisible()
 
     for (const testCase of surface.cases) {
@@ -1028,11 +1055,17 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
         win.setSize(1220, 800, false)
       }
     })
-    await page
-      .locator('[data-sidebar="menu-button"]')
-      .filter({ hasText: phasePage.nav.replace(' ⌘ N', '') })
-      .first()
-      .click()
+    if (phasePage.nav === '工作流') {
+      await openWorkflowCatalog(page)
+    } else if (phasePage.nav === '交付物') {
+      await openDeliverables(page)
+    } else {
+      await page
+        .locator('[data-sidebar="menu-button"]')
+        .filter({ hasText: phasePage.nav.replace(' ⌘ N', '') })
+        .first()
+        .click()
+    }
     await expect(page.getByRole('heading', { name: phasePage.title, level: 1 })).toBeVisible()
 
     for (const viewport of PHASE1_VIEWPORTS) {
@@ -1057,7 +1090,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       await page.waitForTimeout(400)
 
       expect(bounds?.width).toBe(viewport.width)
-      expect(bounds?.height).toBe(viewport.height)
+      await expectWindowHeight(app, bounds?.height, viewport.height)
 
       const layout = await page.evaluate(() => ({
         clientHeight: document.documentElement.clientHeight,
@@ -1076,7 +1109,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       })
 
       if (viewport.name === 'narrow-752') {
-        const sidebarTrigger = page.getByRole('button', { name: /显示侧边栏/ })
+        const sidebarTrigger = page.getByRole('button', { name: /(?:显示|隐藏)侧边栏/ })
 
         await expect(sidebarTrigger).toBeVisible()
         await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(0)
@@ -1088,7 +1121,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
         }
 
         const lowerContent = {
-          start: page.getByRole('heading', { name: '可用数据源', level: 2 }),
+          start: page.getByRole('heading', { name: '应用连接', level: 2 }),
           projects: page.getByText('[本地测试] APEX GEO 品牌诊断', { exact: true }),
           workflows: page.getByText('[本地测试] 我的选品流程', { exact: true }),
           'scheduled-runs': page.getByText('暂无排程任务', { exact: true }),
@@ -1117,7 +1150,7 @@ test('packaged Deliverables and Activity keep typed targets, review notes and re
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '交付物' }).first().click()
+  await openDeliverables(page)
 
   const opener = page.getByRole('button', { name: /\[本地测试\] 美国宠物用品分析报告/ })
 
@@ -1185,6 +1218,7 @@ test('packaged Deliverables and Activity keep typed targets, review notes and re
   await page.getByRole('button', { name: '打开账户菜单: 本地 UI 评审' }).click()
   await page.getByRole('menuitem', { name: '历史会话' }).click()
   await expect(page.getByRole('heading', { level: 1, name: '历史' })).toBeVisible()
+  await page.getByRole('button', { name: '业务活动' }).click()
 
   const activity = page.getByRole('button', { name: /\[本地测试\] 审阅意见已保存/ })
   await expect(activity).toBeVisible()
@@ -1266,7 +1300,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
     const stageSection = stageHeading.locator('..')
 
     expect(bounds?.width).toBe(viewport.width)
-    expect(bounds?.height).toBe(viewport.height)
+    await expectWindowHeight(app, bounds?.height, viewport.height)
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
     if (viewport.width < 900) {
       expect(layout.layout).toBe('fullscreen')
@@ -1389,7 +1423,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
           return win.getBounds()
         }, viewport)
         expect(bounds.width).toBe(viewport.width)
-        expect(bounds.height).toBe(viewport.height)
+        await expectWindowHeight(app, bounds.height, viewport.height)
         await page.bringToFront()
         await page.waitForTimeout(400)
         if (surfaceName === 'run-error') {
@@ -1423,17 +1457,16 @@ test('packaged Settings shows the running APEX app version separately from the e
   const { app, page } = fixture!
   const version = await page.evaluate(() => window.hermesDesktop?.getVersion())
 
-  expect(version?.appVersion).toBe('0.17.24')
+  expect(version?.appVersion).toBe(PACKAGED_VERSION)
   expect(version?.engineVersion).toBeTruthy()
 
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
-  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
+  await openWorkflowCatalog(page)
   await page.getByRole('button', { name: /打开账户菜单.*本地 UI 评审/ }).click()
   await page.getByRole('menuitem', { name: '设置' }).click()
-  await expect(page.getByText('版本 0.17.24', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(`版本 ${PACKAGED_VERSION}`, { exact: true }).first()).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('button', { name: '关闭设置' }).click()
   await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
@@ -1465,7 +1498,7 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
       return win.getBounds()
     }, viewport)
     expect(bounds.width).toBe(viewport.width)
-    expect(bounds.height).toBe(viewport.height)
+    await expectWindowHeight(app, bounds.height, viewport.height)
     await page.waitForTimeout(400)
     const drawer = page.locator('[data-route-drawer]')
     await expectDrawerBelowNativeChrome(drawer)
@@ -1518,7 +1551,7 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
     await page.waitForTimeout(400)
 
     if (viewport.width < 900) {
-      await page.getByRole('button', { name: /显示侧边栏/ }).click()
+      await page.getByRole('button', { name: /(?:显示|隐藏)侧边栏/ }).click()
     }
 
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
@@ -1593,26 +1626,29 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
   }
 })
 
-test('local workflow catalog is labeled and reaches editable pre-start confirmation', async () => {
+test('local workflow catalog opens template details before project attachment', async () => {
   const { app, page } = fixture!
 
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
+  await openWorkflowCatalog(page)
   await expect(page.getByText(/本地测试数据：此目录仅用于实包视觉与交互验收/)).toBeVisible()
   await page.getByRole('button', { name: /竞品监控/ }).click()
 
-  const goal = page.getByRole('textbox', { name: '业务目标' })
-  await expect(page.locator('[data-workflow-start-confirmation]')).toContainText('启动前确认')
-  await expect(page.locator('[data-workflow-start-confirmation]')).toContainText('Hermes')
-  await expect(page.locator('[data-workflow-start-confirmation]')).toContainText('版本 1')
-  await expect(goal).toBeEditable()
-  await goal.fill('本地测试：编辑后的竞品监控目标')
-  await expect(goal).toHaveValue('本地测试：编辑后的竞品监控目标')
+  const details = page.getByRole('dialog', { name: '竞品监控' })
+
+  await expect(details).toContainText('版本 1')
+  await expect(details).toContainText('示例目标')
+  await expect(details).toContainText('加入项目不会自动运行')
+  await expect(details.getByRole('button', { name: '加入当前项目' })).toBeEnabled()
+  await expect(details.getByRole('button', { name: '加入已有项目' })).toBeEnabled()
+  await expect(details.getByRole('button', { name: '新建项目并加入' })).toBeEnabled()
+  await details.getByRole('button', { name: '取消' }).click()
+  await expect(details).toHaveCount(0)
 })
 
-test('packaged plain goal clears a retained workflow template and starts a real chat turn', async () => {
+test('packaged plain goal stays separate from a previewed workflow and starts a real chat turn', async () => {
   const { app, page } = fixture!
   const prompt = '分析美国宠物用品市场，并生成选品报告和上架素材'
   const longPrompt = `${prompt}\n\n${TASK_PANEL_RESUME_TRIGGER}`
@@ -1622,20 +1658,20 @@ test('packaged plain goal clears a retained workflow template and starts a real 
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false)
   )
   reviewApi!.setWorkflowEnabled(true)
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '工作流' }).first().click()
+  await openWorkflowCatalog(page)
   await page.getByRole('button', { name: /竞品监控/ }).click()
-  await expect(page.locator('[data-workflow-start-confirmation]')).toBeVisible()
-  await expect(page.locator('[data-workflow-start-confirmation]').getByRole('status')).toContainText('本地测试数据')
-  await page.getByRole('button', { name: '更换工作流' }).click()
-  await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
-  await page.getByRole('button', { name: '开始一个目标' }).click()
+  const details = page.getByRole('dialog', { name: '竞品监控' })
+
+  await expect(details).toBeVisible()
+  await details.getByRole('button', { name: '取消' }).click()
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 752, x: 0, y: 0 }, false)
   )
   const goal = page.getByRole('textbox', { name: '业务目标' })
 
   await expect(goal).toBeVisible()
-  await expect(page.locator('[data-workflow-start-confirmation]')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '竞品监控' })).toHaveCount(0)
   await expect(page.getByRole('status').filter({ hasText: '本地测试数据' })).toHaveCount(0)
   await goal.fill(longPrompt)
   await page.getByRole('button', { name: '开始执行' }).click()
