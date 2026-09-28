@@ -29,6 +29,12 @@ describe('account-scoped local analysis', () => {
     expect(answerLocalDocument(root, owner, item.id, 'Revenue')?.citations[0].anchor_id).toBe('block12345')
     expect(deleteLocalDocument(root, owner, item.id)).toBe(true)
     expect(getLocalDocument(root, owner, item.id)).toBeNull()
+
+    const rootDomain = createLocalFeishuDocument(root, owner, {
+      filename: 'Root-domain document', kind: 'feishu', source_url: 'https://feishu.cn/docx/docxtoken456',
+      anchors: [{ id: 'block67890', location: { block: 'block67890', paragraph: 1 }, text: 'Evidence' }]
+    })
+    expect(getLocalDocument(root, owner, rootDomain.id)?.sourceUrl).toBe('https://feishu.cn/docx/docxtoken456')
   })
 
   it('persists original bytes, cited questions and notes only for the owner, then deletes both', () => {

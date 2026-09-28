@@ -72,7 +72,7 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
     }
 
     if (!Array.isArray(item.anchors) || (item.kind === 'feishu'
-      ? item.sourcePath !== '' || !item.sourceUrl || !/^https:\/\/[^/]+\.(?:feishu\.cn|larksuite\.com)\/(?:docx|wiki)\/[A-Za-z0-9_-]+/.test(item.sourceUrl)
+      ? item.sourcePath !== '' || !item.sourceUrl || !/^https:\/\/(?:[a-z0-9-]+\.)*(?:feishu\.cn|larksuite\.com)\/(?:docx|wiki)\/[A-Za-z0-9_-]{8,128}$/i.test(item.sourceUrl)
       : item.sourcePath !== path.join(directory, `${id}${ext}`))) {
       return null
     }
