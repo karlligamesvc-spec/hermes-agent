@@ -19,7 +19,7 @@ const COPY = {
     noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', opening: '正在打开资料…', deleteNote: '删除笔记',
     error: '操作失败，请重试。', subtitleInvalid: '字幕时间码或格式无效，请检查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 预览暂不可用，可打开原件。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。',
-    videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前无法提问；可在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起',
+    videoCheck: '检查并尝试转写视频', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前无法提问；可在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起',
     videoAnalyze: '转写视频声音', videoAnalyzing: '正在获取媒体和转写，可能需要数分钟…', videoNoTiming: '已尝试转写，但当前服务未返回可靠时间码。可上传 SRT/VTT 字幕继续分析。', videoTranscriptNotice: '以下仅依据真实视频声音转写及时间码，尚未分析画面；时间码引用定位到转写片段。', videoProcessingDisclosure: '视频链接由 APEX 媒体服务下载和转写；生成的字幕证据按上方模式保存，服务端媒体缓存遵循现有生命周期。',
     attachVideo: '选择本地视频播放', videoPlayer: '本地视频', videoPairing: '视频仅在本次查看期间留在这台设备，不会上传或保存。请确认所选视频与字幕对应；时间码来自字幕，不代表已分析画面。', videoUnsupported: '请选择视频文件。', videoPlaybackFailed: '此设备无法播放所选视频格式，请更换文件。', videoTimeOutside: '字幕时间码超出所选视频时长，请确认视频与字幕对应。'
   },
@@ -36,7 +36,7 @@ const COPY = {
     noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', opening: '正在開啟資料…', deleteNote: '刪除筆記',
     error: '操作失敗，請重試。', subtitleInvalid: '字幕時間碼或格式無效，請檢查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 預覽暫時無法使用，可開啟原件。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。',
-    videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前無法提問；可在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起',
+    videoCheck: '檢查並嘗試轉寫影片', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前無法提問；可在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起',
     videoAnalyze: '轉寫影片聲音', videoAnalyzing: '正在取得媒體與轉寫，可能需要數分鐘…', videoNoTiming: '已嘗試轉寫，但目前服務未回傳可靠時間碼。可匯入 SRT/VTT 字幕繼續分析。', videoTranscriptNotice: '以下僅依據真實影片聲音轉寫與時間碼，尚未分析畫面；時間碼引用定位到轉寫片段。', videoProcessingDisclosure: '影片連結由 APEX 媒體服務下載與轉寫；產生的字幕證據依上方模式儲存，伺服器媒體快取遵循既有生命週期。',
     attachVideo: '選擇本機影片播放', videoPlayer: '本機影片', videoPairing: '影片僅在本次查看期間留在此裝置，不會上傳或儲存。請確認所選影片與字幕對應；時間碼來自字幕，不代表已分析畫面。', videoUnsupported: '請選擇影片檔案。', videoPlaybackFailed: '此裝置無法播放所選影片格式，請更換檔案。', videoTimeOutside: '字幕時間碼超出所選影片長度，請確認影片與字幕對應。'
   },
@@ -53,7 +53,7 @@ const COPY = {
     noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', opening: 'Opening source…', deleteNote: 'Delete note',
     error: 'The action failed. Try again.', subtitleInvalid: 'Invalid subtitle timing or format. Check the SRT/VTT file.', pdfOriginal: 'Original PDF', pdfPreviewUnavailable: 'PDF preview is unavailable. You can open the original.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.',
-    videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read, so questions are unavailable; you can open the original site.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}',
+    videoCheck: 'Check and transcribe video', videoCandidate: '{platform} link recognized. Media and captions have not been read, so questions are unavailable; you can open the original site.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}',
     videoAnalyze: 'Transcribe video audio', videoAnalyzing: 'Fetching media and transcribing; this may take several minutes…', videoNoTiming: 'Transcription was attempted, but the provider returned no reliable timecodes. Import SRT/VTT captions to continue.', videoTranscriptNotice: 'These excerpts use real video-audio transcription and timing only. Frames were not analyzed; timecode citations locate transcript passages.', videoProcessingDisclosure: 'APEX downloads and transcribes linked media. Generated caption evidence follows the save mode above; server media cache follows its existing lifecycle.',
     attachVideo: 'Choose local video to play', videoPlayer: 'Local video', videoPairing: 'The video stays on this device for this viewing session; it is not uploaded or saved. Confirm it matches the captions. Timecodes come from captions and do not imply frame analysis.', videoUnsupported: 'Choose a video file.', videoPlaybackFailed: 'This device cannot play the selected video format. Choose another file.', videoTimeOutside: 'The caption timecode exceeds this video’s duration. Confirm that the video matches the captions.'
   },
@@ -70,7 +70,7 @@ const COPY = {
     noSourceText: '読める本文がありません。', select: '資料を選択してください。', opening: '資料を開いています…', deleteNote: 'メモを削除',
     error: '失敗しました。再試行してください。', subtitleInvalid: '字幕の時間または形式が無効です。SRT/VTT ファイルを確認してください。', pdfOriginal: '元の PDF', pdfPreviewUnavailable: 'PDF をプレビューできません。元のファイルを開けます。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
     anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。',
-    videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため質問はできません。元サイトで確認できます。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から',
+    videoCheck: '動画を確認して文字起こし', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため質問はできません。元サイトで確認できます。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から',
     videoAnalyze: '動画音声を文字起こし', videoAnalyzing: 'メディアを取得して文字起こし中です。数分かかる場合があります…', videoNoTiming: '文字起こしを試みましたが、信頼できる時間情報が返りませんでした。SRT/VTT 字幕を取り込んでください。', videoTranscriptNotice: '以下は実際の動画音声の文字起こしと時間情報のみを根拠とします。映像は解析していません。', videoProcessingDisclosure: 'リンク先のメディアは APEX が取得・文字起こしします。生成された字幕の保存先は上の設定に従い、サーバーのメディアキャッシュには既存の保存期間が適用されます。',
     attachVideo: 'ローカル動画を選んで再生', videoPlayer: 'ローカル動画', videoPairing: '動画はこの閲覧中、この端末だけに残り、アップロード・保存されません。字幕に対応する動画か確認してください。時間情報は字幕に由来し、映像解析を意味しません。', videoUnsupported: '動画ファイルを選択してください。', videoPlaybackFailed: 'この端末では選択した動画形式を再生できません。別のファイルを選んでください。', videoTimeOutside: '字幕の時間情報が動画の長さを超えています。動画と字幕の対応を確認してください。'
   },
@@ -87,7 +87,7 @@ const COPY = {
     noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', opening: 'جارٍ فتح المصدر…', deleteNote: 'حذف الملاحظة',
     error: 'فشلت العملية. حاول مجددًا.', subtitleInvalid: 'توقيت الترجمة أو تنسيقها غير صالح. تحقق من ملف SRT/VTT.', pdfOriginal: 'ملف PDF الأصلي', pdfPreviewUnavailable: 'معاينة PDF غير متاحة. يمكنك فتح الملف الأصلي.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.',
-    videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد، فلا يمكن طرح الأسئلة؛ يمكنك فتح الموقع الأصلي.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}',
+    videoCheck: 'تحقق من الفيديو وحاول تفريغ صوته', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد، فلا يمكن طرح الأسئلة؛ يمكنك فتح الموقع الأصلي.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}',
     videoAnalyze: 'تفريغ صوت الفيديو', videoAnalyzing: 'يجري جلب الوسائط وتفريغ الصوت؛ قد يستغرق ذلك عدة دقائق…', videoNoTiming: 'جرت محاولة التفريغ، لكن الخدمة لم تُرجع توقيتًا موثوقًا. استورد ترجمة SRT/VTT للمتابعة.', videoTranscriptNotice: 'تعتمد هذه المقاطع على تفريغ صوت الفيديو الحقيقي وتوقيته فقط. لم تُحلل الإطارات.', videoProcessingDisclosure: 'تنزّل APEX الوسائط المرتبطة وتفرّغ صوتها. تُحفظ أدلة الترجمة وفق الوضع أعلاه، وتخضع ذاكرة الوسائط المؤقتة لدورة حياتها الحالية.',
     attachVideo: 'اختر فيديو محليًا لتشغيله', videoPlayer: 'فيديو محلي', videoPairing: 'يبقى الفيديو على هذا الجهاز أثناء هذه المشاهدة فقط، ولا يُرفع أو يُحفظ. تأكد من مطابقته للترجمة؛ التوقيت مأخوذ من الترجمة ولا يعني تحليل الإطارات.', videoUnsupported: 'اختر ملف فيديو.', videoPlaybackFailed: 'لا يستطيع هذا الجهاز تشغيل صيغة الفيديو المختارة. اختر ملفًا آخر.', videoTimeOutside: 'يتجاوز توقيت الترجمة مدة الفيديو المختار. تأكد من تطابق الفيديو والترجمة.'
   }
@@ -159,6 +159,7 @@ export function AnalysisView() {
   const openedDocumentIdRef = useRef<string | null>(null)
   const openRequestRef = useRef(0)
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [error, setError] = useState('')
   const [link, setLink] = useState('')
   const [videoResolution, setVideoResolution] = useState<AnalysisVideoResolution | null>(null)
@@ -322,10 +323,40 @@ export function AnalysisView() {
   }, [authFlow, c.error])
 
   const perform = async (action: () => Promise<void>) => {
+    if (busyRef.current) {return}
+
+    busyRef.current = true
     setBusy(true)
     setError('')
 
-    try { await action() } catch { setError(c.error) } finally { setBusy(false) }
+    try { await action() } catch { setError(c.error) } finally { busyRef.current = false; setBusy(false) }
+  }
+
+  const transcribeResolvedVideo = async (sourceUrl: string) => {
+    setTranscribingVideo(true)
+
+    try {
+      const result = await bridge()?.transcribeVideoLink(sourceUrl)
+
+      if (!result?.ok || !result.item) {
+        setError(result?.code ?? c.error)
+
+        return
+      }
+
+      const timedEvidence = result.item.kind === 'subtitle' && result.item.status === 'ready' && result.item.anchors?.some(anchor =>
+        typeof anchor.location.start_seconds === 'number' && Number.isFinite(anchor.location.start_seconds)
+        && anchor.location.start_seconds >= 0
+        && typeof anchor.location.end_seconds === 'number' && Number.isFinite(anchor.location.end_seconds)
+        && anchor.location.end_seconds > anchor.location.start_seconds && !!anchor.text.trim())
+
+      if (!timedEvidence) {setError('timed_evidence_unavailable'); return}
+
+      setLink('')
+      setVideoResolution(null)
+      await refreshList()
+      await openDocument(result.item.id, true)
+    } finally {setTranscribingVideo(false)}
   }
 
   const jump = (id: string) => {
@@ -383,7 +414,7 @@ export function AnalysisView() {
           await refreshList()
           await openDocument(result.item.id, true)
         })} type="button">{c.import}</button>
-        <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => { setLink(event.target.value); setVideoResolution(null) }} placeholder={c.link} type="url" value={link} />
+        <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" disabled={busy} onChange={event => { setLink(event.target.value); setVideoResolution(null) }} placeholder={c.link} type="url" value={link} />
         {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
           const result = await bridge()?.importLink(link.trim())
 
@@ -419,28 +450,20 @@ export function AnalysisView() {
  return }
 
           setVideoResolution(result.resolution)
+          if (!result.resolution.source_url || !['download_candidate', 'audio_candidate'].includes(result.resolution.capability ?? '')) {return}
+
+          const effectivePolicy = policy ?? (await bridge()?.policy())?.policy
+
+          if (effectivePolicy && (effectivePolicy.mode === 'local' || effectivePolicy.cloud_storage_configured)) {
+            await transcribeResolvedVideo(result.resolution.source_url)
+          }
         })} type="button">{c.videoCheck}</button>}
         {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async () => {
-          setTranscribingVideo(true)
-
-          try {
-            const result = await bridge()?.transcribeVideoLink(videoResolution.source_url!)
-
-            if (!result?.ok || !result.item) {
-              setError(result?.code ?? c.error)
-
-              return
-            }
-
-            setLink('')
-            setVideoResolution(null)
-            await refreshList()
-            await openDocument(result.item.id, true)
-          } finally {setTranscribingVideo(false)}
+          await transcribeResolvedVideo(videoResolution.source_url!)
         })} type="button">{transcribingVideo ? c.videoAnalyzing : c.videoAnalyze}</button>}
         {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(videoResolution?.source_url ?? link)} type="button">{c.openLink}</button>}
       </div>
-      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : videoResolution ? videoResolution.status === 'unreadable' ? c.videoUnreadable : (videoResolution.status === 'upload_required' ? c.videoUpload : c.videoCandidate).replace('{platform}', videoResolution.platform ?? '') : c.unsupportedLink}</p>}
+      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : videoResolution ? transcribingVideo ? c.videoAnalyzing : videoResolution.status === 'unreadable' ? c.videoUnreadable : (videoResolution.status === 'upload_required' ? c.videoUpload : c.videoCandidate).replace('{platform}', videoResolution.platform ?? '') : c.unsupportedLink}</p>}
       {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <p className="text-xs text-(--ui-text-tertiary)">{c.videoProcessingDisclosure}</p>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
