@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, createLocalVideoTranscript, deleteLocalDocument, getLocalDocument, listLocalDocuments, readLocalPdfPreview, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
+import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, createLocalUploadedVideoTranscript, createLocalVideoTranscript, deleteLocalDocument, getLocalDocument, listLocalDocuments, readLocalPdfPreview, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
 
 const roots: string[] = []
 
@@ -13,6 +13,39 @@ afterEach(() => {
 })
 
 describe('account-scoped local analysis', () => {
+  it('retains uploaded-video timed SRT only for its owner, without a remote URL or video original', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-uploaded-video-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const item = createLocalUploadedVideoTranscript(root, owner, {
+      filename: 'clip-audio-transcript.srt', evidence_origin: 'uploaded_video_audio',
+      srt: '1\n00:00:01,000 --> 00:00:02,000\n真实片段\n',
+      anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }]
+    })
+
+    expect(getLocalDocument(root, owner, item.id)?.parseVersion).toBe('uploaded_video_audio_v1')
+    expect(getLocalDocument(root, owner, item.id)?.sourceUrl).toBeUndefined()
+    expect(getLocalDocument(root, other, item.id)).toBeNull()
+    expect(fs.readFileSync(item.sourcePath, 'utf8')).toContain('真实片段')
+    expect(listLocalDocuments(root, owner)).toHaveLength(1)
+    expect(deleteLocalDocument(root, owner, item.id)).toBe(true)
+    expect(fs.existsSync(item.sourcePath)).toBe(false)
+  })
+
+  it('rejects uploaded-video evidence with no real timecodes before writing local history', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-uploaded-video-invalid-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+    expect(() => createLocalUploadedVideoTranscript(root, owner, {
+      filename: 'clip-audio-transcript.srt', evidence_origin: 'uploaded_video_audio',
+      srt: '1\n00:00:01,000 --> 00:00:02,000\nUnverified text\n',
+      anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'Unverified text' }]
+    })).toThrow('timed_evidence_invalid')
+    expect(listLocalDocuments(root, owner)).toEqual([])
+  })
+
   it('keeps real ASR timecodes and the original video URL under one local account', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-video-test-'))
     roots.push(root)

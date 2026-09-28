@@ -48,6 +48,7 @@ import {
   completeLocalDocument,
   createLocalFeishuDocument,
   createLocalPendingDocument,
+  createLocalUploadedVideoTranscript,
   createLocalVideoTranscript,
   deleteLocalDocument,
   getLocalDocument,
@@ -56,6 +57,7 @@ import {
   removeLocalNote,
   retryLocalDocument
 } from './apex-analysis-local'
+import { uploadAnalysisVideo } from './apex-analysis-video-upload'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
@@ -22403,6 +22405,51 @@ ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) 
     }
 
     const item = createLocalVideoTranscript(context.root, context.policy.user_id, response.parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:uploadVideo', async event => {
+  try {
+    const initial = await analysisIpcContext(true)
+
+    if (initial.policy.mode === 'cloud' && !initial.policy.cloud_storage_configured) {
+      return { ok: false, code: 'analysis_cloud_storage_unavailable' }
+    }
+
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender)
+    const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
+      properties: ['openFile'],
+      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'flv'] }]
+    })
+
+    if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+
+    const context = await analysisIpcContext(true)
+
+    if (context.policy.mode !== initial.policy.mode || context.policy.user_id !== initial.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    const response = await uploadAnalysisVideo(
+      `${context.apiBase}/api/v1/account/analysis/video-links/upload-transcribe`,
+      context.bearer, chosen.filePaths[0], context.policy.mode,
+      (url, init) => electronNet.fetch(url, init)
+    )
+    persistRenewedLoginToken(response.renewedToken)
+
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== context.policy.mode || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    if (context.policy.mode === 'cloud') {
+      return response.body?.item ? { ok: true, item: { ...response.body.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
+    }
+
+    const item = createLocalUploadedVideoTranscript(context.root, context.policy.user_id, response.body?.parsed)
 
     return { ok: true, item: localAnalysisForRenderer(item) }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }

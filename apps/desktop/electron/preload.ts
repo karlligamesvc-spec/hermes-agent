@@ -303,6 +303,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     importLink: url => ipcRenderer.invoke('hermes:analysis:importLink', url),
     resolveVideoLink: url => ipcRenderer.invoke('hermes:analysis:resolveVideoLink', url),
     transcribeVideoLink: url => ipcRenderer.invoke('hermes:analysis:transcribeVideoLink', url),
+    uploadVideo: () => ipcRenderer.invoke('hermes:analysis:uploadVideo'),
     authorizeFeishu: () => ipcRenderer.invoke('hermes:analysis:authorizeFeishu'),
     pollFeishu: flowId => ipcRenderer.invoke('hermes:analysis:pollFeishu', flowId),
     forgetFeishu: () => ipcRenderer.invoke('hermes:analysis:forgetFeishu'),

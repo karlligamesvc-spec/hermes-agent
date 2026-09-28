@@ -25,6 +25,7 @@ export interface LocalDocument {
   createdAt: string
   sourcePath: string
   sourceUrl?: string
+  parseVersion?: string
 }
 
 function accountDirectory(root: string, userId: string): string {
@@ -194,7 +195,7 @@ export function createLocalDocument(
   root: string,
   userId: string,
   sourceBytes: Buffer,
-  parsed: { filename: string; kind: string; anchors: AnalysisAnchor[]; sourceUrl?: string }
+  parsed: { filename: string; kind: string; anchors: AnalysisAnchor[]; sourceUrl?: string; parseVersion?: string }
 ): LocalDocument {
   const id = `local-${crypto.randomUUID()}`
   const directory = accountDirectory(root, userId)
@@ -211,6 +212,7 @@ export function createLocalDocument(
       storageMode: 'local',
       anchors: parsed.anchors,
       sourceUrl: parsed.sourceUrl,
+      parseVersion: parsed.parseVersion,
       notes: [],
       questions: [],
       createdAt: new Date().toISOString(),
@@ -244,6 +246,28 @@ export function createLocalVideoTranscript(
   })
 
   return item
+}
+
+/** An uploaded video is transient on the server; only its verified SRT stays here. */
+export function createLocalUploadedVideoTranscript(
+  root: string,
+  userId: string,
+  parsed: { filename: string; evidence_origin: string; srt: string; anchors: AnalysisAnchor[] }
+): LocalDocument {
+  if (!parsed || parsed.evidence_origin !== 'uploaded_video_audio' || typeof parsed.filename !== 'string' || !parsed.filename.endsWith('.srt')
+    || !parsed.srt || !Array.isArray(parsed.anchors) || !parsed.anchors.length
+    || !parsed.anchors.every(anchor => typeof anchor.text === 'string' && !!anchor.text.trim()
+      && typeof anchor.location?.start_seconds === 'number' && Number.isFinite(anchor.location.start_seconds)
+      && anchor.location.start_seconds >= 0
+      && typeof anchor.location?.end_seconds === 'number' && Number.isFinite(anchor.location.end_seconds)
+      && anchor.location.end_seconds > anchor.location.start_seconds)) {
+    throw new Error('timed_evidence_invalid')
+  }
+
+  return createLocalDocument(root, userId, Buffer.from(parsed.srt, 'utf8'), {
+    filename: parsed.filename, kind: 'subtitle', anchors: parsed.anchors,
+    parseVersion: 'uploaded_video_audio_v1'
+  })
 }
 
 export function deleteLocalDocument(root: string, userId: string, id: string): boolean {

@@ -32,6 +32,8 @@ export interface AnalysisDocument {
   questions?: AnalysisQuestion[]
   createdAt?: string
   created_at?: string
+  parse_version?: string
+  parseVersion?: string
 }
 
 export interface AnalysisVideoResolution {
@@ -51,6 +53,7 @@ export interface AnalysisDocumentsBridge {
   importLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   resolveVideoLink: (url: string) => Promise<{ ok: boolean; code?: string; resolution?: AnalysisVideoResolution }>
   transcribeVideoLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  uploadVideo: () => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   authorizeFeishu: () => Promise<{ ok: boolean; code?: string; flow_id?: string; verification_url?: string; interval?: number }>
   pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>

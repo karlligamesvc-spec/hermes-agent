@@ -433,7 +433,37 @@ describe('document analysis evidence', () => {
     await waitFor(() => expect(screen.getByText(/尚未读取媒体或字幕/)).toBeTruthy())
     expect(transcribeVideoLink).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '转写视频声音' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: '选择本地视频转写' }).hasAttribute('disabled')).toBe(true)
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+  })
+
+  it('opens uploaded-video audio evidence only after a timed transcript is returned', async () => {
+    const item = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip-audio-transcript.srt',
+      kind: 'subtitle', status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }],
+      notes: [], questions: []
+    }
+    let finishUpload!: (value: { ok: boolean; item: typeof item }) => void
+    const uploadVideo = vi.fn().mockReturnValue(new Promise(resolve => {finishUpload = resolve}))
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValueOnce({ ok: true, items: [] }).mockResolvedValue({ ok: true, items: [item] }),
+        get: vi.fn().mockResolvedValue({ ok: true, item }), uploadVideo
+      }
+    } as never
+
+    render(<AnalysisView />)
+    expect(screen.getByText(/本地视频将临时上传到 APEX/)).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: '选择本地视频转写' }))
+    expect(uploadVideo).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+    expect(screen.getByRole('button', { name: /正在上传并转写视频/ })).toBeTruthy()
+    finishUpload({ ok: true, item })
+    await waitFor(() => expect(screen.getByText(/仅依据真实视频声音转写及时间码/)).toBeTruthy())
+    expect(screen.getByRole('textbox', { name: '针对当前资料提问' })).toBeTruthy()
+    expect(screen.getByText('0:01 起')).toBeTruthy()
   })
 
   it('only makes a Feishu link answerable after authorized body import', async () => {
