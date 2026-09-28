@@ -96,12 +96,13 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
     if ($connection.get()?.mode === 'remote') {return}
     const previousSessionId = $selectedStoredSessionId.get()
     const acceptedFrames: ComposerAttachment[] = []
+    const routedFrames: Array<{ id: string; occurrenceId: string; seconds: number }> = []
 
     // An abandoned draft can leave its image chips in the main composer.
     // Remove only earlier analysis frames; keep the user's other attachments.
     mainComposerScope.removeOccurrences($composerAttachments.get().filter(item => item.analysisFrameSourceId))
 
-    const draft = await prepareVideoBreakdownHandoff(document, locale, frames, async blob => {
+    const draft = await prepareVideoBreakdownHandoff(document, locale, frames, async (blob, seconds) => {
       const before = new Set($composerAttachments.get().map(item => item.occurrenceId))
       const accepted = await actions.onAttachImageBlob(blob)
 
@@ -113,6 +114,7 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
       if (!added || !mainComposerScope.updateIfCurrent(added, { analysisFrameSourceId: document.id })) {return false}
 
       acceptedFrames.push({ ...added, analysisFrameSourceId: document.id })
+      routedFrames.push({ id: added.id, occurrenceId: added.occurrenceId!, seconds })
 
       return true
     })
@@ -134,7 +136,8 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
 
     navigate(NEW_CHAT_ROUTE, { state: {
       businessGoalDraft: draft, businessGoalFocus: true,
-      analysisFrameHandoff: Boolean(previousSessionId)
+      analysisFrameHandoff: Boolean(previousSessionId),
+      analysisFrameDraft: { locale, sourceId: document.id, attemptedFrames: Math.min(3, frames.length), frames: routedFrames }
     } })
   }} />
 }

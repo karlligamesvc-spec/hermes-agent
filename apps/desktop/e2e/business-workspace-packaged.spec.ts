@@ -1852,6 +1852,12 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.locator('[data-slot="composer-attachments"]')).toContainText(/apex-frame-1-0s_[a-f0-9]{6}\.jpg/)
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
 
+  await page.getByRole('button', { name: /移除.*apex-frame-1-0s_[a-f0-9]{6}\.jpg/ }).click()
+  await expect(goalWithFrame).not.toHaveValue(/已附画面截图/)
+  await expect(goalWithFrame).not.toHaveValue(/0:01\.0/)
+  await expect(goalWithFrame).toHaveValue(/已从草稿移除 1 张截图/)
+  await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
+
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(overview).toBeVisible()
@@ -1864,7 +1870,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(goal).toHaveValue(/先读取当前可用的 short-video-studio 与 Hypit Skill/)
   await expect(goal).toHaveValue(/\[0:40–0:43\] "\[本地测试\] 中段原文"/)
   await expect(goal).toHaveValue(/https:\/\/www\.iesdouyin\.com\/share\/video\/123456/)
-  await expect(goal).toHaveValue(/只有实际检查原视频或截图后才分析镜头/)
+  await expect(goal).toHaveValue(/只有实际检查本条消息仍附着的原视频或截图后才分析镜头/)
   await expect(goal).not.toHaveValue(/已附画面截图/)
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()

@@ -13,7 +13,7 @@ export async function prepareVideoBreakdownHandoff(
   document: AnalysisDocument,
   locale: VideoBreakdownLocale,
   frames: ReadonlyArray<CapturedVideoFrame>,
-  attachImageBlob: (blob: Blob) => Promise<boolean | void> | boolean | void
+  attachImageBlob: (blob: Blob, seconds: number) => Promise<boolean | void> | boolean | void
 ): Promise<string | null> {
   if (!videoDeepBreakdownDraft(document, locale)) {return null}
 
@@ -31,7 +31,7 @@ export async function prepareVideoBreakdownHandoff(
     const name = `apex-frame-${frame.seconds.toFixed(1).replace('.', '-')}s.jpg`
 
     try {
-      if (await attachImageBlob(new File([blob], name, { type: 'image/jpeg' })) === true) {
+      if (await attachImageBlob(new File([blob], name, { type: 'image/jpeg' }), frame.seconds) === true) {
         attachedSeconds.push(frame.seconds)
       }
     } catch {

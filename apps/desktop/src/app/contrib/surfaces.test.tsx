@@ -78,6 +78,7 @@ function LocationProbe() {
     <>
       <output data-testid="location">{`${location.pathname}${location.search}${location.hash}`}</output>
       <output data-testid="goal-draft">{(location.state as { businessGoalDraft?: string } | null)?.businessGoalDraft ?? ''}</output>
+      <output data-testid="frame-handoff">{JSON.stringify((location.state as { analysisFrameDraft?: unknown } | null)?.analysisFrameDraft ?? null)}</output>
       <button onClick={() => navigate(1)} type="button">
         Forward
       </button>
@@ -132,6 +133,10 @@ describe('ChatRoutesSurface', () => {
     expect(screen.getByTestId('goal-draft').textContent).toContain('Attached frames')
     expect(screen.getByTestId('goal-draft').textContent).toContain('0:12.5')
     expect(screen.getByTestId('goal-draft').textContent).toContain('[0:03–0:05] "verified speech"')
+    expect(JSON.parse(screen.getByTestId('frame-handoff').textContent ?? '')).toEqual({
+      locale: 'en', sourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', attemptedFrames: 1,
+      frames: [{ id: 'image:1', occurrenceId: 'frame-1', seconds: 12.5 }]
+    })
     expect($composerAttachments.get()).toHaveLength(1)
     expect($composerAttachments.get()[0]?.analysisFrameSourceId).toBe('local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 

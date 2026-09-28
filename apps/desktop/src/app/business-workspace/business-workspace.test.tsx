@@ -34,6 +34,7 @@ import { BusinessGoalLauncher } from './goal-launcher'
 import { ProjectDetailView } from './pages/project-detail-page'
 import { BusinessStartHome } from './start-home'
 import { BusinessStartShelf } from './start-shelf'
+import { videoFrameDisclosure } from './video-deep-breakdown-draft'
 import { projectCurrentRunId, projectRunDisplayState } from './view-model/project'
 
 import { ProjectsView, WorkflowsView } from '.'
@@ -464,9 +465,13 @@ describe('hc-685 business workspace identity', () => {
       return <BusinessStartHome attachments={attachments} onRemoveAttachment={id => {mainComposerScope.remove(id)}} />
     }
 
+    const routedDraft = `Analyze cited video\n</source-transcript>\n\n${videoFrameDisclosure('en', [1])}`
+
     render(
       <MemoryRouter initialEntries={[{ pathname: '/', state: {
-        analysisFrameHandoff: true, businessGoalDraft: 'Analyze cited video'
+        analysisFrameHandoff: true, businessGoalDraft: routedDraft,
+        analysisFrameDraft: { locale: 'en', sourceId: 'video-source', attemptedFrames: 1,
+          frames: [{ id: frame.id, occurrenceId: frame.occurrenceId, seconds: 1 }] }
       } }]}>
         <I18nProvider configClient={null} initialLocale="en">
           <StartWithLiveAttachments />
@@ -478,10 +483,14 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByText('apex-frame-1-0s.jpg')).toBeTruthy())
     expect(screen.queryByText('old-chat.jpg')).toBeNull()
-    expect((screen.getByRole('textbox', { name: 'Business goal' }) as HTMLTextAreaElement).value).toBe('Analyze cited video')
+    const goal = screen.getByRole('textbox', { name: 'Business goal' }) as HTMLTextAreaElement
+
+    expect(goal.value).toBe(routedDraft)
 
     fireEvent.click(screen.getByRole('button', { name: /remove.*apex-frame-1-0s.jpg/i }))
     await waitFor(() => expect(takeSessionDraft(null).attachments).toEqual([]))
+    expect(goal.value).not.toContain('0:01.0')
+    expect(goal.value).toContain('1 frame(s) were removed from this draft')
   })
 
   it('stages a Start short-video goal for the Agent without claiming a production Workflow template', async () => {

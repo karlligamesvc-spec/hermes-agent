@@ -15,6 +15,7 @@ import { workflowDomainBridge } from '../api/bridge'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
+import { draftAfterVideoFrameRemoval, isVideoFrameDraftHandoff } from '../video-frame-draft-sync'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
 import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/workflow-starters'
 
@@ -62,6 +63,7 @@ export function BusinessStartHome({
   )
 
   const launchState = location.state as null | {
+    analysisFrameDraft?: unknown
     analysisFrameHandoff?: unknown
     businessGoalDraft?: unknown
     businessGoalFocus?: unknown
@@ -98,6 +100,7 @@ export function BusinessStartHome({
 
   const routedGoalDraft =
     typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : ''
+  const frameDraft = isVideoFrameDraftHandoff(launchState?.analysisFrameDraft) ? launchState.analysisFrameDraft : null
 
   // A catalog selection owns its approved prompt. A routed draft is only
   // authoritative when the user is adding that workflow to an existing
@@ -383,7 +386,10 @@ export function BusinessStartHome({
           onPickFiles={onPickFiles}
           onPickFolders={onPickFolders}
           onPickImages={onPickImages}
-          onRemoveAttachment={onRemoveAttachment}
+          onRemoveAttachment={onRemoveAttachment ? id => {
+            if (frameDraft) {setGoalDraft(current => draftAfterVideoFrameRemoval(current, frameDraft, attachments, id))}
+            onRemoveAttachment(id)
+          } : undefined}
           onSubmit={submitGoal}
           submitBlockedReason={
             templateAttachmentBlocked ? t.businessWorkspace.goalLauncher.workflowAttachmentsUnsupported : undefined
