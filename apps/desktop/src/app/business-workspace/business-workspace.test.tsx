@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
@@ -21,9 +22,9 @@ import {
   runSessionSearchShortcut,
   visibleSidebarNavItems
 } from '@/store/business-workspace'
-import { mainComposerScope } from '@/store/composer'
+import { $composerAttachments, clearSessionDraft, mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $cronJobs } from '@/store/cron'
-import { setSessions, setSessionsLoading } from '@/store/session'
+import { $selectedStoredSessionId, setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
 import { TasksView } from '../tasks'
@@ -108,6 +109,8 @@ describe('hc-685 business workspace identity', () => {
     $sessionStates.set({})
     $cronJobs.set([])
     mainComposerScope.clear()
+    clearSessionDraft(null)
+    $selectedStoredSessionId.set(null)
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
@@ -442,6 +445,43 @@ describe('hc-685 business workspace identity', () => {
     expect(headingColumn?.className).toContain('max-w-[44rem]')
     expect(launcherColumn?.className).toContain('max-w-[52rem]')
     expect(screen.queryByText(/Local test data/)).toBeNull()
+  })
+
+  it('hydrates a video handoff only after the old session clears, and keeps removal in the new draft', async () => {
+    const frame = {
+      id: 'image:frame', occurrenceId: 'frame-1', kind: 'image' as const,
+      label: 'apex-frame-1-0s.jpg', analysisFrameSourceId: 'video-source'
+    }
+    const oldImage = { id: 'image:old', occurrenceId: 'old-1', kind: 'image' as const, label: 'old-chat.jpg' }
+
+    stashSessionDraft(null, '', [frame])
+    mainComposerScope.add(oldImage)
+    $selectedStoredSessionId.set('previous-chat')
+
+    function StartWithLiveAttachments() {
+      const attachments = useStore($composerAttachments)
+
+      return <BusinessStartHome attachments={attachments} onRemoveAttachment={id => {mainComposerScope.remove(id)}} />
+    }
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/', state: {
+        analysisFrameHandoff: true, businessGoalDraft: 'Analyze cited video'
+      } }]}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <StartWithLiveAttachments />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    act(() => {$selectedStoredSessionId.set(null)})
+
+    await waitFor(() => expect(screen.getByText('apex-frame-1-0s.jpg')).toBeTruthy())
+    expect(screen.queryByText('old-chat.jpg')).toBeNull()
+    expect((screen.getByRole('textbox', { name: 'Business goal' }) as HTMLTextAreaElement).value).toBe('Analyze cited video')
+
+    fireEvent.click(screen.getByRole('button', { name: /remove.*apex-frame-1-0s.jpg/i }))
+    await waitFor(() => expect(takeSessionDraft(null).attachments).toEqual([]))
   })
 
   it('stages a Start short-video goal for the Agent without claiming a production Workflow template', async () => {

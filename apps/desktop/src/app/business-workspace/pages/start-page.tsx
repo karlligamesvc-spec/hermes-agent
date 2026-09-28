@@ -5,8 +5,8 @@ import { useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
-import type { ComposerAttachment } from '@/store/composer'
-import { $connection } from '@/store/session'
+import { type ComposerAttachment, mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
+import { $connection, $selectedStoredSessionId } from '@/store/session'
 
 import type { ChatBarState } from '../../chat/composer/types'
 import { projectWorkflowsRoute, routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
@@ -50,6 +50,7 @@ export function BusinessStartHome({
   const location = useLocation()
   const navigate = useNavigate()
   const connection = useStore($connection)
+  const selectedSessionId = useStore($selectedStoredSessionId)
   const videoCatalog = useVideoWorkflowCatalog()
 
   const workflows = useMemo(
@@ -61,6 +62,7 @@ export function BusinessStartHome({
   )
 
   const launchState = location.state as null | {
+    analysisFrameHandoff?: unknown
     businessGoalDraft?: unknown
     businessGoalFocus?: unknown
     businessProjectId?: unknown
@@ -105,6 +107,7 @@ export function BusinessStartHome({
     : launchedWorkflow?.prompt || routedGoalDraft
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
+  const [hydratedHandoffKey, setHydratedHandoffKey] = useState<string | null>(null)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
   const [homeVideoWorkflowSelected, setHomeVideoWorkflowSelected] = useState(false)
 
@@ -120,6 +123,26 @@ export function BusinessStartHome({
   >({ state: 'checking' })
 
   const templateAttachmentBlocked = selectedWorkflow !== null && attachments.length > 0
+
+  // The business Start launcher has no ChatBar. When a routed handoff leaves
+  // an existing chat, restore the prepared new-chat chips after route resume
+  // clears the old selection; then keep removals in that draft's stash.
+  const handoffKey = launchState?.analysisFrameHandoff === true ? location.key : null
+
+  useEffect(() => {
+    if (!handoffKey || selectedSessionId !== null || hydratedHandoffKey === handoffKey) {return}
+
+    mainComposerScope.$attachments.set(takeSessionDraft(null).attachments)
+    setHydratedHandoffKey(handoffKey)
+  }, [handoffKey, hydratedHandoffKey, selectedSessionId])
+
+  useEffect(() => {
+    if (!handoffKey || hydratedHandoffKey !== handoffKey || selectedSessionId !== null) {return}
+
+    const fresh = takeSessionDraft(null)
+
+    stashSessionDraft(null, fresh.text, attachments)
+  }, [attachments, handoffKey, hydratedHandoffKey, selectedSessionId])
 
   useEffect(() => {
     if (

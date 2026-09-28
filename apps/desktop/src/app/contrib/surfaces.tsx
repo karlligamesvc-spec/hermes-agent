@@ -132,7 +132,10 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
       mainComposerScope.removeOccurrences(acceptedFrames)
     }
 
-    navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: draft, businessGoalFocus: true } })
+    navigate(NEW_CHAT_ROUTE, { state: {
+      businessGoalDraft: draft, businessGoalFocus: true,
+      analysisFrameHandoff: Boolean(previousSessionId)
+    } })
   }} />
 }
 
