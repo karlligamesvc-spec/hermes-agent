@@ -59,6 +59,7 @@ const MessagingView = lazy(async () => ({ default: (await import('../messaging')
 const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
 // ApexNodes full-page views — same lazy split, same workspace pane.
 const ImEntryView = lazy(async () => ({ default: (await import('../im-entry')).ImEntryView }))
+const AssistantWorkspaceView = lazy(async () => ({ default: (await import('../business-workspace/pages/assistant-page')).AssistantWorkspaceView }))
 const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksView }))
 // 搜索 is a page, not a sidebar field (see SEARCH_ROUTE).
 const SearchView = lazy(async () => ({ default: (await import('../search')).SearchView }))
@@ -302,13 +303,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
             Reached from the composer "+" menu's connectors row, the sidebar's
             channel strip, and Settings → 提供方. */}
         <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
-        {/* Phase 0 keeps the canonical assistant URL on the current truthful
-            connection surface. The dedicated assistant workspace arrives in
-            Phase 3 without another route migration. */}
-        <Route
-          element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)}
-          path={ASSISTANT_ROUTE.slice(1)}
-        />
+        <Route element={page(<AssistantWorkspaceView />)} path={ASSISTANT_ROUTE.slice(1)} />
         <Route element={<LegacyAccountsRedirect />} path={LEGACY_ACCOUNTS_ROUTE.slice(1)} />
         <Route
           element={page(

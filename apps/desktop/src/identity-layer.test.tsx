@@ -698,6 +698,13 @@ describe('identity: the brand skin survives', () => {
     expect(zh).toContain("deliverables: '交付物'")
     expect(zh).not.toContain('渠道 · 分身在哪')
   })
+
+  it('mounts the connected assistant workspace at the account-menu destination', () => {
+    const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
+
+    expect(surfaces).toContain("(await import('../business-workspace/pages/assistant-page')).AssistantWorkspaceView")
+    expect(surfaces).toContain('<Route element={page(<AssistantWorkspaceView />)} path={ASSISTANT_ROUTE.slice(1)} />')
+  })
 })
 
 describe('identity: the APEX business shell stays user-facing', () => {
