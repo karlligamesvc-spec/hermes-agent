@@ -66,7 +66,7 @@ describe('document analysis evidence', () => {
     expect(screen.getByText(/需要本人授权及读取权限/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '读取链接' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '授权飞书' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '取消飞书授权' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '移除平台保存的飞书授权' })).toBeTruthy()
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
 
     fireEvent.change(input, { target: { value: 'https://example.com/report.pdf' } })
@@ -74,5 +74,35 @@ describe('document analysis evidence', () => {
     expect(screen.queryByText(/需要本人授权及读取权限/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '在原站打开' }))
     expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith('https://example.com/report.pdf')
+  })
+
+  it('only makes a Feishu link answerable after authorized body import', async () => {
+    const item = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'Quarterly report', kind: 'feishu',
+      status: 'ready', storageMode: 'local', anchors: [{ id: 'block12345', location: { block: 'block12345', paragraph: 1 }, text: 'Revenue grew' }],
+      notes: [], questions: []
+    }
+    const importLink = vi.fn().mockResolvedValueOnce({ ok: false, code: 'feishu_authorization_required' }).mockResolvedValueOnce({ ok: true, item })
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [item] }),
+        get: vi.fn().mockResolvedValue({ ok: true, item }),
+        importLink,
+        authorizeFeishu: vi.fn().mockResolvedValue({ ok: true, flow_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', interval: 0 }),
+        pollFeishu: vi.fn().mockResolvedValue({ ok: true, status: 'authorized' })
+      }
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: 'https://team.feishu.cn/docx/docxtoken123' } })
+    fireEvent.click(screen.getByRole('button', { name: '读取链接' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/正文尚未获授权读取/))
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '授权飞书' }))
+    await waitFor(() => expect(screen.getByText('已授权，可读取链接')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '读取链接' }))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '针对当前资料提问' })).toBeTruthy())
+    expect(importLink).toHaveBeenCalledTimes(2)
   })
 })
