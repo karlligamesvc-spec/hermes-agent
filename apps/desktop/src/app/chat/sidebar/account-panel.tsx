@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { $authState, type AuthAccount, signOutAccount } from '@/store/auth'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
-import { ASSISTANT_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
+import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 
 // The signed-in display name: prefer an explicit name, else the email's local
 // part, else a generic fallback ("账户"). The avatar shows its first letter.
@@ -41,9 +41,9 @@ function initialOf(name: string): string {
 // Bottom-left account panel (Codex account row, high-fidelity). The row is
 // avatar (initial) + a two-line stack: display name over the signed-in email —
 // no plan badge, no phone icon, no caret, matching the Codex reference. Click →
-// a popover menu with 个人资料, 设置, 连接助手, 历史会话, optional real usage,
-// and 退出登录. The four destinations share one information-architecture group
-// instead of spending permanent sidebar height on two additional rows. Rendered
+// a popover menu with 个人资料, 设置, 连接助手, 历史会话, 交付物, optional real usage,
+// and 退出登录. These destinations share one information-architecture group
+// instead of spending permanent sidebar height on additional rows. Rendered
 // only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
 export function AccountPanel() {
@@ -144,6 +144,10 @@ export function AccountPanel() {
         <DropdownMenuItem onSelect={() => navigate(HISTORY_ROUTE)}>
           <Codicon name="history" size="0.875rem" />
           <span>{nav.history}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate(DELIVERABLES_ROUTE)}>
+          <Codicon name="files" size="0.875rem" />
+          <span>{nav.deliverables}</span>
         </DropdownMenuItem>
         {usageLabel ? (
           <DropdownMenuItem onSelect={() => navigate(`${SETTINGS_ROUTE}`)}>

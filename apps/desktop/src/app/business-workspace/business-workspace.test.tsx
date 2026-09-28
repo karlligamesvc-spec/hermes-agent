@@ -139,13 +139,16 @@ describe('hc-685 business workspace identity', () => {
     ])
   })
 
-  it('opens real generated files from Deliverables while retaining workflow deliverable routes', () => {
+  it('opens canonical workflow deliverables from the business navigation while retaining legacy artifacts', () => {
     const deliverables = BUSINESS_SIDEBAR_NAV_CONTRACT.find(item => item.id === 'deliverables')
     const navigate = vi.fn()
 
-    expect(deliverables).toEqual({ id: 'deliverables', route: '/artifacts', keybindActionId: 'nav.artifacts' })
+    expect(deliverables).toEqual({ id: 'deliverables', route: '/deliverables' })
     activateSidebarNavigation(deliverables!, navigate, vi.fn())
-    expect(navigate).toHaveBeenCalledWith('/artifacts')
+    expect(navigate).toHaveBeenCalledWith('/deliverables')
+    expect(LEGACY_SIDEBAR_NAV_CONTRACT.at(-1)).toEqual({
+      id: 'artifacts', route: '/artifacts', keybindActionId: 'nav.artifacts'
+    })
   })
 
   it('uses one canonical route for History clicks and the search shortcut', () => {

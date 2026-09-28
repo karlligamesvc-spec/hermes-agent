@@ -3,6 +3,7 @@ import {
   ARTIFACTS_ROUTE,
   ASSISTANT_ROUTE,
   CRON_ROUTE,
+  DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   NEW_CHAT_ROUTE,
   projectIdForPath,
@@ -31,7 +32,7 @@ export const BUSINESS_SIDEBAR_NAV_CONTRACT = [
   { id: 'projects', route: PROJECTS_ROUTE },
   { id: 'analysis', route: ANALYSIS_ROUTE },
   { id: 'scheduled-runs', route: CRON_ROUTE, keybindActionId: 'nav.cron' },
-  { id: 'deliverables', route: ARTIFACTS_ROUTE, keybindActionId: 'nav.artifacts' },
+  { id: 'deliverables', route: DELIVERABLES_ROUTE },
   { id: 'assistant', route: ASSISTANT_ROUTE },
   { id: 'history', route: BUSINESS_HISTORY_ROUTE, keybindActionId: 'session.focusSearch' }
 ] as const satisfies readonly SidebarNavigationContract[]
