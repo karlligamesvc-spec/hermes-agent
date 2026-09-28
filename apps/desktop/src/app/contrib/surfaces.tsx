@@ -14,11 +14,11 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 're
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { $composerAttachments, mainComposerScope } from '@/store/composer'
+import { $composerAttachments, type ComposerAttachment, mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
-import { $connection, $freshDraftReady, $gatewayState } from '@/store/session'
+import { $connection, $freshDraftReady, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 
 import { prepareVideoBreakdownHandoff } from '../business-workspace/video-deep-breakdown-handoff'
 import { ChatView } from '../chat'
@@ -94,6 +94,8 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
 
   return <AnalysisView onDeepBreakdown={async (document, locale, frames) => {
     if ($connection.get()?.mode === 'remote') {return}
+    const previousSessionId = $selectedStoredSessionId.get()
+    const acceptedFrames: ComposerAttachment[] = []
 
     // An abandoned draft can leave its image chips in the main composer.
     // Remove only earlier analysis frames; keep the user's other attachments.
@@ -108,10 +110,27 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
       const added = $composerAttachments.get().find(item =>
         item.kind === 'image' && item.occurrenceId && !before.has(item.occurrenceId))
 
-      return added ? mainComposerScope.updateIfCurrent(added, { analysisFrameSourceId: document.id }) : false
+      if (!added || !mainComposerScope.updateIfCurrent(added, { analysisFrameSourceId: document.id })) {return false}
+
+      acceptedFrames.push({ ...added, analysisFrameSourceId: document.id })
+
+      return true
     })
 
     if (!draft || $connection.get()?.mode === 'remote') {return}
+
+    if (previousSessionId) {
+      // The main composer still owns the previous chat until route resume
+      // switches it to the fresh draft. Move only accepted analysis frames;
+      // otherwise the session swap files them under that previous chat.
+      const fresh = takeSessionDraft(null)
+
+      stashSessionDraft(null, fresh.text, [
+        ...fresh.attachments.filter(item => !item.analysisFrameSourceId),
+        ...acceptedFrames
+      ])
+      mainComposerScope.removeOccurrences(acceptedFrames)
+    }
 
     navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: draft, businessGoalFocus: true } })
   }} />

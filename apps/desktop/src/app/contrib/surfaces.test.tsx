@@ -6,9 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesGateway } from '@/hermes'
 import { I18nProvider } from '@/i18n'
-import { $composerAttachments } from '@/store/composer'
+import { $composerAttachments, clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
+import { $selectedStoredSessionId } from '@/store/session'
 
 import { routeDrawerNavigationState } from '../routes'
 
@@ -22,7 +23,8 @@ vi.mock('@/store/profile', () => ({ $activeGatewayProfile: atom('default') }))
 vi.mock('@/store/session', () => ({
   $connection: atom({ mode: 'local' }),
   $freshDraftReady: atom(false),
-  $gatewayState: atom('open')
+  $gatewayState: atom('open'),
+  $selectedStoredSessionId: atom<string | null>(null)
 }))
 vi.mock('../chat', () => ({
   ChatView: ({ gateway }: { gateway: { id?: string } | null }) => <div data-testid="gateway">{gateway?.id}</div>
@@ -102,6 +104,8 @@ afterEach(() => {
   $gateway.set(null)
   $activeGatewayProfile.set('default')
   $composerAttachments.set([])
+  $selectedStoredSessionId.set(null)
+  clearSessionDraft(null)
 })
 
 describe('ChatRoutesSurface', () => {
@@ -136,6 +140,32 @@ describe('ChatRoutesSurface', () => {
     await waitFor(() => expect(onAttachImageBlob).toHaveBeenCalledTimes(2))
     expect($composerAttachments.get()).toHaveLength(1)
     expect($composerAttachments.get()[0]?.occurrenceId).toBe('frame-2')
+  })
+
+  it('moves accepted frames into the new draft when a prior chat is selected', async () => {
+    $selectedStoredSessionId.set('previous-chat')
+    $composerAttachments.set([{ id: 'user-image', occurrenceId: 'user-1', kind: 'image', label: 'own.jpg' }])
+    stashSessionDraft(null, 'existing fresh text', [
+      { id: 'old-frame', occurrenceId: 'old-1', kind: 'image', label: 'old.jpg', analysisFrameSourceId: 'old-source' }
+    ])
+    const onAttachImageBlob = vi.fn(async (_blob: Blob) => {
+      $composerAttachments.set([...$composerAttachments.get(), {
+        id: 'new-frame', occurrenceId: 'new-1', kind: 'image', label: 'new.jpg'
+      }])
+
+      return true
+    })
+
+    renderRoutes(['/analysis'], { onAttachImageBlob })
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare video' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect($composerAttachments.get().map(item => item.id)).toEqual(['user-image'])
+    expect(takeSessionDraft(null)).toMatchObject({
+      text: 'existing fresh text',
+      attachments: [{ id: 'new-frame', analysisFrameSourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }]
+    })
+    expect(screen.getByTestId('goal-draft').textContent).toContain('Attached frames')
   })
 
   it('passes the live gateway after an open-to-open profile switch', () => {
