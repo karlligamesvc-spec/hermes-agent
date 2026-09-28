@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { $connection } from '@/store/session'
+
 import { AnalysisView } from './analysis-page'
 
 vi.mock('@/i18n', () => ({ useI18n: () => ({ locale: 'zh' }) }))
@@ -9,6 +11,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  $connection.set(null)
 })
 
 describe('document analysis evidence', () => {
@@ -113,26 +116,57 @@ describe('document analysis evidence', () => {
     }
     const captions = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'captions.srt', parseVersion: undefined, anchors: [video.anchors[0]] }
     const ask = vi.fn()
+    const onDeepBreakdown = vi.fn()
     window.hermesDesktop = { analysisDocuments: {
       policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
       list: vi.fn().mockResolvedValue({ ok: true, items: [video, captions] }),
       get: vi.fn(async (id: string) => ({ ok: true, item: id === video.id ? video : captions })), ask
     } } as never
 
-    render(<AnalysisView />)
+    render(<AnalysisView onDeepBreakdown={onDeepBreakdown} />)
     expect(screen.queryByRole('region', { name: '视频声音速览' })).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: /video-transcript.srt/ }))
     const overview = await screen.findByRole('region', { name: '视频声音速览' })
     expect(within(overview).getByText('已取得 5 条带时间码的语音片段，覆盖 0:05–1:24。')).toBeTruthy()
     expect(within(overview).getByText(/尚未生成内容概括，也没有画面或镜头证据/)).toBeTruthy()
-    expect(within(overview).getAllByRole('button')).toHaveLength(3)
+    expect(within(overview).getAllByRole('button', { name: /跳到此片段/ })).toHaveLength(3)
     expect(within(overview).queryByText('无效时间码')).toBeNull()
+    expect(onDeepBreakdown).not.toHaveBeenCalled()
+    fireEvent.click(within(overview).getByRole('button', { name: '准备深度拆解' }))
+    expect(onDeepBreakdown).toHaveBeenCalledOnce()
+    expect(onDeepBreakdown.mock.calls[0][0]).toContain('先读取当前可用的 short-video-studio 与 Hypit Skill')
+    expect(onDeepBreakdown.mock.calls[0][0]).toContain('[0:40–0:43] 中段原文')
+    expect(onDeepBreakdown.mock.calls[0][0]).not.toContain('无效时间码')
     fireEvent.click(within(overview).getByRole('button', { name: /跳到此片段 · 0:40 起/ }))
     expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
     expect(ask).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: /captions.srt/ }))
     await screen.findByRole('heading', { name: 'captions.srt' })
     expect(screen.queryByRole('region', { name: '视频声音速览' })).toBeNull()
+  })
+
+  it('keeps a remote connection from presenting a local Hypit breakdown as runnable', async () => {
+    $connection.set({ mode: 'remote' } as never)
+    const item = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 3 }, text: '真实口播' }],
+      notes: [], questions: []
+    }
+    const onDeepBreakdown = vi.fn()
+    window.hermesDesktop = { analysisDocuments: {
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      list: vi.fn().mockResolvedValue({ ok: true, items: [item] }),
+      get: vi.fn().mockResolvedValue({ ok: true, item })
+    } } as never
+
+    render(<AnalysisView onDeepBreakdown={onDeepBreakdown} />)
+    fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
+    const action = await screen.findByRole('button', { name: '准备深度拆解' })
+    expect(action.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('深度拆解需要连接本机助手。')).toBeTruthy()
+    fireEvent.click(action)
+    expect(onDeepBreakdown).not.toHaveBeenCalled()
   })
 
   it('seeks a manually paired local video from a real subtitle citation and releases it on source switch', async () => {

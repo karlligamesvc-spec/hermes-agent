@@ -1,9 +1,12 @@
+import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { $connection } from '@/store/session'
 
 import type { AnalysisDocument, AnalysisDocumentsBridge, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
 import { BusinessPageHeader } from '../components/business-page-header'
+import { videoDeepBreakdownDraft } from '../video-deep-breakdown-draft'
 import { videoQuickOverview } from '../video-quick-overview'
 
 const COPY = {
@@ -24,7 +27,8 @@ const COPY = {
     videoAnalyze: '转写视频声音', videoAnalyzing: '正在获取媒体和转写，可能需要数分钟…', videoNoTiming: '已尝试转写，但当前服务未返回可靠时间码。可上传 SRT/VTT 字幕继续分析。', videoTranscriptNotice: '以下仅依据真实视频声音转写及时间码，尚未分析画面；时间码引用定位到转写片段。', videoProcessingDisclosure: '视频链接由 APEX 媒体服务下载和转写；生成的字幕证据按上方模式保存，服务端媒体缓存遵循现有生命周期。',
     videoUploadLocal: '选择本地视频转写', videoUploading: '正在上传并转写视频，可能需要数分钟…', videoUploadDisclosure: '本地视频将临时上传到 APEX 获取语音时间码；处理后删除视频原件，只按上方模式保存字幕证据。暂不分析画面。', videoFileTooLarge: '视频文件不得超过 128 MB。', videoFileUnsupported: '请选择 MP4、MOV、M4V、WebM、MKV、AVI 或 FLV 视频。', videoEmpty: '视频文件为空。', mediaQuota: '媒体空间配额不足。',
     attachVideo: '选择本地视频播放', videoPlayer: '本地视频', videoPairing: '视频仅在本次查看期间留在这台设备，不会上传或保存。请确认所选视频与字幕对应；时间码来自字幕，不代表已分析画面。', videoUnsupported: '请选择视频文件。', videoPlaybackFailed: '此设备无法播放所选视频格式，请更换文件。', videoTimeOutside: '字幕时间码超出所选视频时长，请确认视频与字幕对应。',
-    quickTitle: '视频声音速览', quickCoverage: '已取得 {count} 条带时间码的语音片段，覆盖 {start}–{end}。', quickBoundary: '以下为原文时间轴抽样，可跳回出处；尚未生成内容概括，也没有画面或镜头证据。', quickJump: '跳到此片段'
+    quickTitle: '视频声音速览', quickCoverage: '已取得 {count} 条带时间码的语音片段，覆盖 {start}–{end}。', quickBoundary: '以下为原文时间轴抽样，可跳回出处；尚未生成内容概括，也没有画面或镜头证据。', quickJump: '跳到此片段',
+    deepAction: '准备深度拆解', deepDisclosure: '将可用的转写片段放入本机助手草稿；检查后由你点击发送。若需分析画面，请在聊天中附上原视频。', deepLocalOnly: '深度拆解需要连接本机助手。'
   },
   'zh-hant': {
     title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件或字幕',
@@ -43,7 +47,8 @@ const COPY = {
     videoAnalyze: '轉寫影片聲音', videoAnalyzing: '正在取得媒體與轉寫，可能需要數分鐘…', videoNoTiming: '已嘗試轉寫，但目前服務未回傳可靠時間碼。可匯入 SRT/VTT 字幕繼續分析。', videoTranscriptNotice: '以下僅依據真實影片聲音轉寫與時間碼，尚未分析畫面；時間碼引用定位到轉寫片段。', videoProcessingDisclosure: '影片連結由 APEX 媒體服務下載與轉寫；產生的字幕證據依上方模式儲存，伺服器媒體快取遵循既有生命週期。',
     videoUploadLocal: '選擇本機影片轉寫', videoUploading: '正在上傳並轉寫影片，可能需要數分鐘…', videoUploadDisclosure: '本機影片會暫時上傳至 APEX 取得語音時間碼；處理後刪除影片原檔，僅依上方模式儲存字幕證據。暫不分析畫面。', videoFileTooLarge: '影片檔案不得超過 128 MB。', videoFileUnsupported: '請選擇 MP4、MOV、M4V、WebM、MKV、AVI 或 FLV 影片。', videoEmpty: '影片檔案為空。', mediaQuota: '媒體空間配額不足。',
     attachVideo: '選擇本機影片播放', videoPlayer: '本機影片', videoPairing: '影片僅在本次查看期間留在此裝置，不會上傳或儲存。請確認所選影片與字幕對應；時間碼來自字幕，不代表已分析畫面。', videoUnsupported: '請選擇影片檔案。', videoPlaybackFailed: '此裝置無法播放所選影片格式，請更換檔案。', videoTimeOutside: '字幕時間碼超出所選影片長度，請確認影片與字幕對應。',
-    quickTitle: '影片聲音速覽', quickCoverage: '已取得 {count} 段有時間碼的語音，涵蓋 {start}–{end}。', quickBoundary: '以下是原文時間軸取樣，可跳回出處；尚未產生內容摘要，也沒有畫面或鏡頭證據。', quickJump: '跳至此片段'
+    quickTitle: '影片聲音速覽', quickCoverage: '已取得 {count} 段有時間碼的語音，涵蓋 {start}–{end}。', quickBoundary: '以下是原文時間軸取樣，可跳回出處；尚未產生內容摘要，也沒有畫面或鏡頭證據。', quickJump: '跳至此片段',
+    deepAction: '準備深度拆解', deepDisclosure: '可用的逐字稿片段會放入本機助手草稿；檢查後由你按傳送。如需分析畫面，請在聊天中附上原影片。', deepLocalOnly: '深度拆解需要連接本機助手。'
   },
   en: {
     title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document or captions',
@@ -62,7 +67,8 @@ const COPY = {
     videoAnalyze: 'Transcribe video audio', videoAnalyzing: 'Fetching media and transcribing; this may take several minutes…', videoNoTiming: 'Transcription was attempted, but the provider returned no reliable timecodes. Import SRT/VTT captions to continue.', videoTranscriptNotice: 'These excerpts use real video-audio transcription and timing only. Frames were not analyzed; timecode citations locate transcript passages.', videoProcessingDisclosure: 'APEX downloads and transcribes linked media. Generated caption evidence follows the save mode above; server media cache follows its existing lifecycle.',
     videoUploadLocal: 'Choose local video to transcribe', videoUploading: 'Uploading and transcribing the video; this may take several minutes…', videoUploadDisclosure: 'The video is uploaded temporarily to APEX for timed audio transcription, then deleted. Only caption evidence follows the save mode above. Frames are not analyzed.', videoFileTooLarge: 'The video must be at most 128 MB.', videoFileUnsupported: 'Choose an MP4, MOV, M4V, WebM, MKV, AVI, or FLV video.', videoEmpty: 'The video file is empty.', mediaQuota: 'Media storage quota is insufficient.',
     attachVideo: 'Choose local video to play', videoPlayer: 'Local video', videoPairing: 'The video stays on this device for this viewing session; it is not uploaded or saved. Confirm it matches the captions. Timecodes come from captions and do not imply frame analysis.', videoUnsupported: 'Choose a video file.', videoPlaybackFailed: 'This device cannot play the selected video format. Choose another file.', videoTimeOutside: 'The caption timecode exceeds this video’s duration. Confirm that the video matches the captions.',
-    quickTitle: 'Video audio at a glance', quickCoverage: '{count} timed speech passages found, spanning {start}–{end}.', quickBoundary: 'These are samples from the original transcript timeline. No content summary, frame, or shot analysis has been produced.', quickJump: 'Jump to passage'
+    quickTitle: 'Video audio at a glance', quickCoverage: '{count} timed speech passages found, spanning {start}–{end}.', quickBoundary: 'These are samples from the original transcript timeline. No content summary, frame, or shot analysis has been produced.', quickJump: 'Jump to passage',
+    deepAction: 'Prepare deep breakdown', deepDisclosure: 'Available transcript excerpts go into a local Agent draft for your review and submission. Attach the original video in chat for frame analysis.', deepLocalOnly: 'Deep breakdown needs a local Agent connection.'
   },
   ja: {
     title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書・字幕を読み込む',
@@ -81,7 +87,8 @@ const COPY = {
     videoAnalyze: '動画音声を文字起こし', videoAnalyzing: 'メディアを取得して文字起こし中です。数分かかる場合があります…', videoNoTiming: '文字起こしを試みましたが、信頼できる時間情報が返りませんでした。SRT/VTT 字幕を取り込んでください。', videoTranscriptNotice: '以下は実際の動画音声の文字起こしと時間情報のみを根拠とします。映像は解析していません。', videoProcessingDisclosure: 'リンク先のメディアは APEX が取得・文字起こしします。生成された字幕の保存先は上の設定に従い、サーバーのメディアキャッシュには既存の保存期間が適用されます。',
     videoUploadLocal: 'ローカル動画を文字起こし', videoUploading: '動画をアップロードして文字起こし中です。数分かかる場合があります…', videoUploadDisclosure: '音声の時間情報を得るため動画を一時的に APEX に送信し、処理後に元動画を削除します。字幕の根拠のみ上記の保存設定に従います。映像は解析しません。', videoFileTooLarge: '動画は 128 MB 以下にしてください。', videoFileUnsupported: 'MP4、MOV、M4V、WebM、MKV、AVI または FLV を選択してください。', videoEmpty: '動画ファイルが空です。', mediaQuota: 'メディア容量が不足しています。',
     attachVideo: 'ローカル動画を選んで再生', videoPlayer: 'ローカル動画', videoPairing: '動画はこの閲覧中、この端末だけに残り、アップロード・保存されません。字幕に対応する動画か確認してください。時間情報は字幕に由来し、映像解析を意味しません。', videoUnsupported: '動画ファイルを選択してください。', videoPlaybackFailed: 'この端末では選択した動画形式を再生できません。別のファイルを選んでください。', videoTimeOutside: '字幕の時間情報が動画の長さを超えています。動画と字幕の対応を確認してください。',
-    quickTitle: '動画音声の概要', quickCoverage: '時間付きの発話 {count} 件を取得しました。範囲: {start}–{end}。', quickBoundary: '以下は原文の時間軸からの抜粋です。内容の要約や映像・ショット分析はまだ行っていません。', quickJump: 'この箇所へ移動'
+    quickTitle: '動画音声の概要', quickCoverage: '時間付きの発話 {count} 件を取得しました。範囲: {start}–{end}。', quickBoundary: '以下は原文の時間軸からの抜粋です。内容の要約や映像・ショット分析はまだ行っていません。', quickJump: 'この箇所へ移動',
+    deepAction: '詳細な分解を準備', deepDisclosure: '利用可能な文字起こしの抜粋をローカル Agent の下書きに入れます。確認してから送信してください。映像を分析する場合は元動画をチャットに添付してください。', deepLocalOnly: '詳細な分解にはローカル Agent 接続が必要です。'
   },
   ar: {
     title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند أو ترجمة',
@@ -100,7 +107,8 @@ const COPY = {
     videoAnalyze: 'تفريغ صوت الفيديو', videoAnalyzing: 'يجري جلب الوسائط وتفريغ الصوت؛ قد يستغرق ذلك عدة دقائق…', videoNoTiming: 'جرت محاولة التفريغ، لكن الخدمة لم تُرجع توقيتًا موثوقًا. استورد ترجمة SRT/VTT للمتابعة.', videoTranscriptNotice: 'تعتمد هذه المقاطع على تفريغ صوت الفيديو الحقيقي وتوقيته فقط. لم تُحلل الإطارات.', videoProcessingDisclosure: 'تنزّل APEX الوسائط المرتبطة وتفرّغ صوتها. تُحفظ أدلة الترجمة وفق الوضع أعلاه، وتخضع ذاكرة الوسائط المؤقتة لدورة حياتها الحالية.',
     videoUploadLocal: 'اختر فيديو محليًا لتفريغ صوته', videoUploading: 'يجري رفع الفيديو وتفريغ صوته؛ قد يستغرق ذلك عدة دقائق…', videoUploadDisclosure: 'يُرفع الفيديو مؤقتًا إلى APEX لاستخراج نص صوتي بتوقيت، ثم يُحذف الأصل بعد المعالجة. تُحفظ أدلة الترجمة فقط وفق وضع الحفظ أعلاه. لا تُحلّل الإطارات.', videoFileTooLarge: 'يجب ألا يتجاوز الفيديو 128 ميغابايت.', videoFileUnsupported: 'اختر فيديو MP4 أو MOV أو M4V أو WebM أو MKV أو AVI أو FLV.', videoEmpty: 'ملف الفيديو فارغ.', mediaQuota: 'مساحة الوسائط المتاحة غير كافية.',
     attachVideo: 'اختر فيديو محليًا لتشغيله', videoPlayer: 'فيديو محلي', videoPairing: 'يبقى الفيديو على هذا الجهاز أثناء هذه المشاهدة فقط، ولا يُرفع أو يُحفظ. تأكد من مطابقته للترجمة؛ التوقيت مأخوذ من الترجمة ولا يعني تحليل الإطارات.', videoUnsupported: 'اختر ملف فيديو.', videoPlaybackFailed: 'لا يستطيع هذا الجهاز تشغيل صيغة الفيديو المختارة. اختر ملفًا آخر.', videoTimeOutside: 'يتجاوز توقيت الترجمة مدة الفيديو المختار. تأكد من تطابق الفيديو والترجمة.',
-    quickTitle: 'نظرة على صوت الفيديو', quickCoverage: 'تم العثور على {count} مقطعًا صوتيًا بتوقيت من {start} إلى {end}.', quickBoundary: 'هذه عينات من النص الأصلي المرتبط بالوقت. لم يُنتج ملخص للمحتوى أو تحليل للإطارات واللقطات.', quickJump: 'الانتقال إلى المقطع'
+    quickTitle: 'نظرة على صوت الفيديو', quickCoverage: 'تم العثور على {count} مقطعًا صوتيًا بتوقيت من {start} إلى {end}.', quickBoundary: 'هذه عينات من النص الأصلي المرتبط بالوقت. لم يُنتج ملخص للمحتوى أو تحليل للإطارات واللقطات.', quickJump: 'الانتقال إلى المقطع',
+    deepAction: 'تحضير التحليل المعمق', deepDisclosure: 'ستُدرج مقتطفات النص المتاحة في مسودة للوكيل المحلي لمراجعتها وإرسالها بنفسك. أرفق الفيديو الأصلي في المحادثة لتحليل الإطارات.', deepLocalOnly: 'يتطلب التحليل المعمق الاتصال بوكيل محلي.'
   }
 } as const
 
@@ -165,9 +173,10 @@ function humanError(code: string, copy: { cloudUnavailable: string; empty: strin
   return copy.error
 }
 
-export function AnalysisView() {
+export function AnalysisView({ onDeepBreakdown }: { onDeepBreakdown?: (draft: string) => void }) {
   const { locale } = useI18n()
   const c = COPY[locale]
+  const connection = useStore($connection)
   const [policy, setPolicy] = useState<{ mode: 'cloud' | 'local'; cloud_storage_configured: boolean } | null>(null)
   const [items, setItems] = useState<AnalysisDocument[]>([])
   const [listStatus, setListStatus] = useState<'error' | 'loading' | 'ready'>('loading')
@@ -583,6 +592,14 @@ export function AnalysisView() {
                 <h3 className="font-medium">{c.quickTitle}</h3>
                 <p className="text-sm text-(--ui-text-secondary)">{c.quickCoverage.replace('{count}', String(quickOverview.count)).replace('{start}', timestamp(quickOverview.firstSeconds)).replace('{end}', timestamp(quickOverview.lastSeconds))}</p>
                 <p className="text-xs text-(--ui-text-tertiary)">{c.quickBoundary}</p>
+                {onDeepBreakdown && <div className="space-y-1">
+                  <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={connection?.mode === 'remote'} onClick={() => {
+                    const draft = videoDeepBreakdownDraft(selected, locale)
+
+                    if (draft) {onDeepBreakdown(draft)}
+                  }} type="button">{c.deepAction}</button>
+                  <p className="text-xs text-(--ui-text-tertiary)">{connection?.mode === 'remote' ? c.deepLocalOnly : c.deepDisclosure}</p>
+                </div>}
                 <div className="grid gap-2 md:grid-cols-3">
                   {quickOverview.samples.map(anchor => <button className="min-w-0 rounded-lg border p-3 text-left text-sm hover:bg-(--ui-row-active-background)" key={anchor.id} onClick={() => jump(anchor.id)} type="button">
                     <span className="block text-xs text-(--ui-text-secondary)">{c.quickJump} · {locationLabel(anchor.location, c)}</span>

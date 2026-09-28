@@ -9,7 +9,7 @@
 
 import { useStore } from '@nanostores/react'
 import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router'
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
@@ -85,6 +85,14 @@ export function LegacySessionRedirect() {
   const { sessionId } = useParams()
 
   return <Navigate replace to={sessionId ? sessionRoute(sessionId) : NEW_CHAT_ROUTE} />
+}
+
+function AnalysisRouteView() {
+  const navigate = useNavigate()
+
+  return <AnalysisView onDeepBreakdown={draft => navigate(NEW_CHAT_ROUTE, {
+    state: { businessGoalDraft: draft, businessGoalFocus: true }
+  })} />
 }
 
 export function LegacyAccountsRedirect() {
@@ -314,7 +322,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
         <Route element={page(<HistoryView />)} path={HISTORY_ROUTE.slice(1)} />
         <Route element={page(<ProjectsView />)} path="projects" />
-        <Route element={page(<AnalysisView />)} path={ANALYSIS_ROUTE.slice(1)} />
+        <Route element={page(<AnalysisRouteView />)} path={ANALYSIS_ROUTE.slice(1)} />
         <Route element={page(<WorkflowsView />)} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />
