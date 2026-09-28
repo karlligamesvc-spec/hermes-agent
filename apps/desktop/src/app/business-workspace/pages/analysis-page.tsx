@@ -121,6 +121,12 @@ function timestamp(seconds: number): string {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
+function frameTimestamp(seconds: number): string {
+  const tenths = Math.floor(seconds * 10 + 1e-6)
+
+  return `${timestamp(Math.floor(tenths / 10))}.${tenths % 10}`
+}
+
 function locationLabel(location: Record<string, number | string>, copy: { page: string; paragraph: string; sheet: string; timestamp: string }): string {
   if (typeof location.start_seconds === 'number') {return copy.timestamp.replace('{time}', timestamp(location.start_seconds))}
 
@@ -628,8 +634,8 @@ export function AnalysisView({ onDeepBreakdown }: { onDeepBreakdown?: (draft: st
                 <p className="text-xs text-(--ui-text-tertiary)">{c.frameBoundary}</p>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {frames.filter(frame => frame.videoUrl === activeVideo.url).map(frame => <figure className="rounded-lg border p-2" key={frame.id}>
-                    <img alt={`${c.frameEvidence} · ${timestamp(frame.seconds)}`} className="w-full rounded bg-black" src={frame.dataUrl} />
-                    <figcaption className="mt-1 text-xs text-(--ui-text-secondary)">{timestamp(frame.seconds)}</figcaption>
+                    <img alt={`${c.frameEvidence} · ${frameTimestamp(frame.seconds)}`} className="w-full rounded bg-black" src={frame.dataUrl} />
+                    <figcaption className="mt-1 text-xs text-(--ui-text-secondary)">{frameTimestamp(frame.seconds)}</figcaption>
                   </figure>)}
                 </div>
               </div>}
