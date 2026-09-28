@@ -45,14 +45,25 @@ function stamp(seconds: number): string {
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
+function safeSourceUrl(value: string | null | undefined): string | null {
+  if (!value || value.length > 500) {return null}
+
+  try {
+    const parsed = new URL(value)
+
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password && !parsed.port
+      ? parsed.toString() : null
+  } catch {return null}
+}
+
 export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Locale): string | null {
   if (!videoQuickOverview(document)) {return null}
 
   const copy = PROMPT[locale]
-  const sourceUrl = document.source_url ?? document.sourceUrl
-  const source = sourceUrl && sourceUrl.length <= 500 && /^https:\/\//i.test(sourceUrl)
+  const sourceUrl = safeSourceUrl(document.source_url ?? document.sourceUrl)
+  const source = sourceUrl
     ? `${copy.source}: ${sourceUrl}` : copy.noSource
-  const prefix = `${copy.intro}\n\n${copy.rules}\n\n${source}\n\n${copy.transcript}:\n`
+  const prefix = `${copy.intro}\n\n${copy.rules}\n\n${source}\n\n${copy.transcript}:\n<source-transcript>\n`
   const timed = (document.anchors ?? []).filter(anchor => {
     const start = anchor.location.start_seconds
     const end = anchor.location.end_seconds
@@ -61,12 +72,13 @@ export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Loca
       typeof end === 'number' && Number.isFinite(end) && end > start && Boolean(anchor.text.trim())
   }).sort((a, b) => Number(a.location.start_seconds) - Number(b.location.start_seconds))
   const lines: string[] = []
-  const transcriptBudget = Math.max(0, 3900 - prefix.length - copy.partial.length - 4)
+  const suffix = '\n</source-transcript>'
+  const transcriptBudget = Math.max(0, 3900 - prefix.length - suffix.length - copy.partial.length - 4)
   let used = 0
 
   for (const anchor of timed) {
-    const fullLine = `[${stamp(Number(anchor.location.start_seconds))}–${stamp(Number(anchor.location.end_seconds))}] ${anchor.text.trim()}`
-    const line = fullLine.length > 500 ? `${fullLine.slice(0, 499)}…` : fullLine
+    const text = anchor.text.trim().replace(/\s+/g, ' ')
+    const line = `[${stamp(Number(anchor.location.start_seconds))}–${stamp(Number(anchor.location.end_seconds))}] ${JSON.stringify(text.slice(0, 350))}${text.length > 350 ? ' …' : ''}`
 
     if (used + line.length + 1 > transcriptBudget) {break}
 
@@ -74,7 +86,7 @@ export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Loca
     used += line.length + 1
   }
 
-  const partial = lines.length < timed.length || timed.some(anchor => anchor.text.trim().length + 14 > 500)
+  const partial = lines.length < timed.length || timed.some(anchor => anchor.text.trim().length > 350)
 
-  return `${prefix}${lines.join('\n')}${partial ? `\n\n${copy.partial}` : ''}`
+  return `${prefix}${lines.join('\n')}${suffix}${partial ? `\n\n${copy.partial}` : ''}`
 }

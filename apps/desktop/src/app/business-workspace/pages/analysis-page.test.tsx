@@ -135,7 +135,7 @@ describe('document analysis evidence', () => {
     fireEvent.click(within(overview).getByRole('button', { name: '准备深度拆解' }))
     expect(onDeepBreakdown).toHaveBeenCalledOnce()
     expect(onDeepBreakdown.mock.calls[0][0]).toContain('先读取当前可用的 short-video-studio 与 Hypit Skill')
-    expect(onDeepBreakdown.mock.calls[0][0]).toContain('[0:40–0:43] 中段原文')
+    expect(onDeepBreakdown.mock.calls[0][0]).toContain('[0:40–0:43] "中段原文"')
     expect(onDeepBreakdown.mock.calls[0][0]).not.toContain('无效时间码')
     fireEvent.click(within(overview).getByRole('button', { name: /跳到此片段 · 0:40 起/ }))
     expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
