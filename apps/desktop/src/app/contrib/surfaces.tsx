@@ -14,11 +14,13 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 're
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
+import { $composerAttachments, mainComposerScope } from '@/store/composer'
 import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
-import { $freshDraftReady, $gatewayState } from '@/store/session'
+import { $connection, $freshDraftReady, $gatewayState } from '@/store/session'
 
+import { prepareVideoBreakdownHandoff } from '../business-workspace/video-deep-breakdown-handoff'
 import { ChatView } from '../chat'
 import { ChatSidebar } from '../chat/sidebar'
 import { RouteDrivenDrawer } from '../overlays/responsive-route-drawer'
@@ -87,12 +89,32 @@ export function LegacySessionRedirect() {
   return <Navigate replace to={sessionId ? sessionRoute(sessionId) : NEW_CHAT_ROUTE} />
 }
 
-function AnalysisRouteView() {
+function AnalysisRouteView({ actions }: { actions: WiringActions }) {
   const navigate = useNavigate()
 
-  return <AnalysisView onDeepBreakdown={draft => navigate(NEW_CHAT_ROUTE, {
-    state: { businessGoalDraft: draft, businessGoalFocus: true }
-  })} />
+  return <AnalysisView onDeepBreakdown={async (document, locale, frames) => {
+    if ($connection.get()?.mode === 'remote') {return}
+
+    // An abandoned draft can leave its image chips in the main composer.
+    // Remove only earlier analysis frames; keep the user's other attachments.
+    mainComposerScope.removeOccurrences($composerAttachments.get().filter(item => item.analysisFrameSourceId))
+
+    const draft = await prepareVideoBreakdownHandoff(document, locale, frames, async blob => {
+      const before = new Set($composerAttachments.get().map(item => item.occurrenceId))
+      const accepted = await actions.onAttachImageBlob(blob)
+
+      if (accepted !== true) {return false}
+
+      const added = $composerAttachments.get().find(item =>
+        item.kind === 'image' && item.occurrenceId && !before.has(item.occurrenceId))
+
+      return added ? mainComposerScope.updateIfCurrent(added, { analysisFrameSourceId: document.id }) : false
+    })
+
+    if (!draft || $connection.get()?.mode === 'remote') {return}
+
+    navigate(NEW_CHAT_ROUTE, { state: { businessGoalDraft: draft, businessGoalFocus: true } })
+  }} />
 }
 
 export function LegacyAccountsRedirect() {
@@ -322,7 +344,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
         <Route element={page(<HistoryView />)} path={HISTORY_ROUTE.slice(1)} />
         <Route element={page(<ProjectsView />)} path="projects" />
-        <Route element={page(<AnalysisRouteView />)} path={ANALYSIS_ROUTE.slice(1)} />
+        <Route element={page(<AnalysisRouteView actions={actions} />)} path={ANALYSIS_ROUTE.slice(1)} />
         <Route element={page(<WorkflowsView />)} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />

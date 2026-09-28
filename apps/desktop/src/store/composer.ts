@@ -19,6 +19,8 @@ export interface ComposerAttachment {
   /** Downscaled data URL for the attachment card and optimistic bubble only. */
   thumbnailUrl?: string
   path?: string
+  /** A screenshot explicitly staged from an analysis source for the new-chat draft. */
+  analysisFrameSourceId?: string
   attachedSessionId?: string
   /** Set while the file/image bytes are being staged into the session
    * workspace (remote upload or local stage), and 'error' if that failed.

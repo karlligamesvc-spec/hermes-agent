@@ -1844,7 +1844,14 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   expect(frameDataUrl!.length).toBeGreaterThan(1000)
   await expect(page.getByText(/尚未经过模型分析/)).toBeVisible()
 
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
+  await overview.getByRole('button', { name: '准备深度拆解' }).click()
+  const goalWithFrame = page.getByRole('textbox', { name: '业务目标' })
+
+  await expect(goalWithFrame).toHaveValue(/已附画面截图/)
+  await expect(goalWithFrame).toHaveValue(/0:01\.0/)
+  await expect(page.locator('[data-slot="composer-attachments"]')).toContainText('apex-frame-1-0s.jpg')
+  await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
+
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(overview).toBeVisible()
@@ -1858,6 +1865,8 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(goal).toHaveValue(/\[0:40–0:43\] "\[本地测试\] 中段原文"/)
   await expect(goal).toHaveValue(/https:\/\/www\.iesdouyin\.com\/share\/video\/123456/)
   await expect(goal).toHaveValue(/只有实际检查原视频或截图后才分析镜头/)
+  await expect(goal).not.toHaveValue(/已附画面截图/)
+  await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
 })

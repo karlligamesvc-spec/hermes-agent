@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesGateway } from '@/hermes'
 import { I18nProvider } from '@/i18n'
+import { $composerAttachments } from '@/store/composer'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 
@@ -19,6 +20,7 @@ vi.mock('@/store/connections', () => ({ $activeConnectionId: atom('local') }))
 vi.mock('@/store/gateway', () => ({ $gateway: atom<unknown>(null) }))
 vi.mock('@/store/profile', () => ({ $activeGatewayProfile: atom('default') }))
 vi.mock('@/store/session', () => ({
+  $connection: atom({ mode: 'local' }),
   $freshDraftReady: atom(false),
   $gatewayState: atom('open')
 }))
@@ -55,6 +57,16 @@ vi.mock('../business-workspace/pages/deliverable-detail-page', () => ({
 vi.mock('../business-workspace/pages/workflow-run-page', () => ({
   WorkflowRunView: () => <div>workflow-run-view</div>
 }))
+vi.mock('../business-workspace/pages/analysis-page', () => ({
+  AnalysisView: ({ onDeepBreakdown }: {
+    onDeepBreakdown: (document: unknown, locale: 'en', frames: Array<{ seconds: number; dataUrl: string }>) => Promise<void>
+  }) => <button onClick={() => void onDeepBreakdown({
+    id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+    status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+    anchors: [{ id: 'a1', location: { start_seconds: 3, end_seconds: 5 }, text: 'verified speech' }],
+    notes: [], questions: []
+  }, 'en', [{ seconds: 12.5, dataUrl: `data:image/jpeg;base64,${btoa('frame')}` }])} type="button">Prepare video</button>
+}))
 
 function LocationProbe() {
   const location = useLocation()
@@ -63,15 +75,17 @@ function LocationProbe() {
   return (
     <>
       <output data-testid="location">{`${location.pathname}${location.search}${location.hash}`}</output>
+      <output data-testid="goal-draft">{(location.state as { businessGoalDraft?: string } | null)?.businessGoalDraft ?? ''}</output>
       <button onClick={() => navigate(1)} type="button">
         Forward
       </button>
+      <button onClick={() => navigate('/analysis')} type="button">Analysis</button>
     </>
   )
 }
 
-function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initialEntries']) {
-  const actions = { getGateway: () => $gateway.get() } as unknown as WiringActions
+function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initialEntries'], suppliedActions?: Partial<WiringActions>) {
+  const actions = { getGateway: () => $gateway.get(), ...suppliedActions } as unknown as WiringActions
 
   return render(
     <MemoryRouter initialEntries={initialEntries} initialIndex={(initialEntries?.length ?? 1) - 1}>
@@ -87,9 +101,43 @@ afterEach(() => {
   cleanup()
   $gateway.set(null)
   $activeGatewayProfile.set('default')
+  $composerAttachments.set([])
 })
 
 describe('ChatRoutesSurface', () => {
+  it('adds a captured frame to the local composer before opening the reviewable Agent draft', async () => {
+    let sequence = 0
+    const onAttachImageBlob = vi.fn(async (_blob: Blob) => {
+      sequence += 1
+      $composerAttachments.set([...$composerAttachments.get(), {
+        id: `image:${sequence}`, occurrenceId: `frame-${sequence}`, kind: 'image', label: `frame-${sequence}.jpg`
+      }])
+
+      return true
+    })
+
+    renderRoutes(['/analysis'], { onAttachImageBlob })
+    expect(await screen.findByRole('button', { name: 'Prepare video' })).toBeTruthy()
+    expect(onAttachImageBlob).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare video' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(onAttachImageBlob).toHaveBeenCalledOnce()
+    expect(onAttachImageBlob.mock.calls[0][0]).toBeInstanceOf(File)
+    expect(screen.getByTestId('goal-draft').textContent).toContain('Attached frames')
+    expect(screen.getByTestId('goal-draft').textContent).toContain('0:12.5')
+    expect(screen.getByTestId('goal-draft').textContent).toContain('[0:03–0:05] "verified speech"')
+    expect($composerAttachments.get()).toHaveLength(1)
+    expect($composerAttachments.get()[0]?.analysisFrameSourceId).toBe('local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analysis' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare video' }))
+    await waitFor(() => expect(onAttachImageBlob).toHaveBeenCalledTimes(2))
+    expect($composerAttachments.get()).toHaveLength(1)
+    expect($composerAttachments.get()[0]?.occurrenceId).toBe('frame-2')
+  })
+
   it('passes the live gateway after an open-to-open profile switch', () => {
     const gatewayA = { id: 'a' } as unknown as HermesGateway
     const gatewayB = { id: 'b' } as unknown as HermesGateway

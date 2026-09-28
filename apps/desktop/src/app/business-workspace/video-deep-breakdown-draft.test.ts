@@ -33,12 +33,13 @@ describe('video deep breakdown handoff', () => {
     }))
     const draft = videoDeepBreakdownDraft(source(anchors), 'zh')!
 
-    expect(draft).toContain('在聊天中重新附上原视频')
+    expect(draft).toContain('在聊天中附上原视频')
     expect(draft).toContain('以下只包含部分原文')
     expect(draft).not.toContain('第 80 段真实口播')
     expect(draft.length).toBeLessThanOrEqual(4000)
     for (const locale of ['zh', 'zh-hant', 'en', 'ja', 'ar'] as const) {
       expect(videoDeepBreakdownDraft(source(anchors), locale)!.length).toBeLessThanOrEqual(4000)
+      expect(videoDeepBreakdownDraft(source(anchors), locale, [1.2, 8.4, 15.6], 3)!.length).toBeLessThanOrEqual(4000)
     }
   })
 

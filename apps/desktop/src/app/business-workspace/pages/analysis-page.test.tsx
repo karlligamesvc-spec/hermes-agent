@@ -134,9 +134,9 @@ describe('document analysis evidence', () => {
     expect(onDeepBreakdown).not.toHaveBeenCalled()
     fireEvent.click(within(overview).getByRole('button', { name: '准备深度拆解' }))
     expect(onDeepBreakdown).toHaveBeenCalledOnce()
-    expect(onDeepBreakdown.mock.calls[0][0]).toContain('先读取当前可用的 short-video-studio 与 Hypit Skill')
-    expect(onDeepBreakdown.mock.calls[0][0]).toContain('[0:40–0:43] "中段原文"')
-    expect(onDeepBreakdown.mock.calls[0][0]).not.toContain('无效时间码')
+    expect(onDeepBreakdown.mock.calls[0][0]).toEqual(video)
+    expect(onDeepBreakdown.mock.calls[0][1]).toBe('zh')
+    expect(onDeepBreakdown.mock.calls[0][2]).toEqual([])
     fireEvent.click(within(overview).getByRole('button', { name: /跳到此片段 · 0:40 起/ }))
     expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
     expect(ask).not.toHaveBeenCalled()
@@ -224,7 +224,8 @@ describe('document analysis evidence', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
     const encode = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,ZmFrZQ==')
     const video = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
-      status: 'ready', storageMode: 'local', anchors: [{ id: 'a1', location: { start_seconds: 12, end_seconds: 15 }, text: 'spoken words' }], notes: [], questions: [] }
+      status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      anchors: [{ id: 'a1', location: { start_seconds: 12, end_seconds: 15 }, text: 'spoken words' }], notes: [], questions: [] }
     const other = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'other.srt' }
     window.hermesDesktop = { analysisDocuments: {
       policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
@@ -232,7 +233,9 @@ describe('document analysis evidence', () => {
       get: vi.fn(async (id: string) => ({ ok: true, item: id === video.id ? video : other }))
     } } as never
 
-    render(<AnalysisView />)
+    const onDeepBreakdown = vi.fn()
+
+    render(<AnalysisView onDeepBreakdown={onDeepBreakdown} />)
     fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
     await screen.findByRole('heading', { name: 'clip.srt' })
     fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [new File(['video'], 'clip.mp4', { type: 'video/mp4' })] } })
@@ -263,6 +266,10 @@ describe('document analysis evidence', () => {
     expect(frames[0].getAttribute('src')).toBe('data:image/jpeg;base64,ZmFrZQ==')
     expect(drawImage).toHaveBeenCalledWith(player, 0, 0, 640, 360)
     expect(screen.getByText(/尚未经过模型分析/)).toBeTruthy()
+    expect(screen.getByText(/已截取的画面会写入此设备的聊天附件目录/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '准备深度拆解' }))
+    expect(onDeepBreakdown).toHaveBeenCalledOnce()
+    expect(onDeepBreakdown.mock.calls[0][2].map((frame: { seconds: number }) => frame.seconds)).toEqual([13.5, 14.5, 15.5])
     fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [new File(['replacement'], 'new.webm', { type: 'video/webm' })] } })
     expect(screen.queryByRole('region', { name: '本次查看的画面截图' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /other.srt/ }))
