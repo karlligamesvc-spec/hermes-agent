@@ -1802,6 +1802,7 @@ export const ar = defineLocale({
     created: 'تم الإنشاء',
     updated: 'تم التحديث',
     failedLoad: 'فشل تحميل المهام',
+    failedLoadRuns: 'فشل تحميل سجل التشغيل',
     failedUpdate: 'فشل التحديث',
     failedTrigger: 'فشل التشغيل',
     failedDelete: 'فشل الحذف',

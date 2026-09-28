@@ -46,7 +46,11 @@ export async function getCronJobRuns(jobId: string, limit = 20): Promise<Session
     path: `/api/cron/jobs/${encodeURIComponent(jobId)}/runs?limit=${limit}`
   })
 
-  return runs ?? []
+  if (!Array.isArray(runs)) {
+    throw new Error('Invalid cron run history response')
+  }
+
+  return runs
 }
 
 // The single source of truth for cron delivery targets (local + configured

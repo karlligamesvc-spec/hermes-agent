@@ -1943,6 +1943,7 @@ export const zhHant = defineLocale({
     created: '排程工作已建立',
     updated: '排程工作已更新',
     failedLoad: '載入排程工作失敗',
+    failedLoadRuns: '載入執行記錄失敗',
     failedUpdate: '更新排程工作失敗',
     failedTrigger: '觸發排程工作失敗',
     failedDelete: '刪除排程工作失敗',

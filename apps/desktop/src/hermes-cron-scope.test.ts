@@ -21,7 +21,7 @@ import {
 // show up" bug), the counterpart to the backend-action-helper fix in
 // hermes-profile-scope.test.ts.
 describe('cron helpers are profile-scoped', () => {
-  const api = vi.fn(async (_req: { path: string; profile?: string }) => ({}) as never)
+  const api = vi.fn(async (_req: { path: string; profile?: string }) => ({ runs: [] }) as never)
 
   beforeEach(() => {
     ;(window as { hermesDesktop?: unknown }).hermesDesktop = { api }
@@ -62,6 +62,12 @@ describe('cron helpers are profile-scoped', () => {
   it('omits connectionId when the local pool serves the active gateway', () => {
     void getCronJobRuns('job-1')
     expect(api.mock.calls.at(-1)?.[0]).not.toHaveProperty('connectionId')
+  })
+
+  it('treats a malformed run-history response as a read failure', async () => {
+    api.mockResolvedValueOnce({} as never)
+
+    await expect(getCronJobRuns('job-1')).rejects.toThrow('Invalid cron run history response')
   })
 
   // Contract: with a registered gateway connection active, cron run sessions

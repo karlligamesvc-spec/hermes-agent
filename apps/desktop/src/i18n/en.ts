@@ -2728,6 +2728,7 @@ export const en: Translations = {
     created: 'Cron created',
     updated: 'Cron updated',
     failedLoad: 'Failed to load cron jobs',
+    failedLoadRuns: 'Failed to load run history',
     failedUpdate: 'Failed to update cron job',
     failedTrigger: 'Failed to trigger cron job',
     failedDelete: 'Failed to delete cron job',
