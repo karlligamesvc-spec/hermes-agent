@@ -34,11 +34,22 @@ export interface AnalysisDocument {
   created_at?: string
 }
 
+export interface AnalysisVideoResolution {
+  platform: string | null
+  status: 'original_site_only' | 'upload_required' | 'unreadable'
+  capability: 'download_candidate' | 'audio_candidate' | 'captions_candidate' | 'upload_required' | null
+  source_url: string | null
+  evidence_status: 'not_read'
+  can_answer: false
+  can_play_in_app: false
+}
+
 export interface AnalysisDocumentsBridge {
   policy: () => Promise<{ ok: boolean; code?: string; policy?: { mode: 'cloud' | 'local'; cloud_storage_configured: boolean } }>
   list: () => Promise<{ ok: boolean; code?: string; cloudUnavailable?: boolean; items?: AnalysisDocument[] }>
   importFile: () => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   importLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  resolveVideoLink: (url: string) => Promise<{ ok: boolean; code?: string; resolution?: AnalysisVideoResolution }>
   authorizeFeishu: () => Promise<{ ok: boolean; code?: string; flow_id?: string; verification_url?: string; interval?: number }>
   pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>

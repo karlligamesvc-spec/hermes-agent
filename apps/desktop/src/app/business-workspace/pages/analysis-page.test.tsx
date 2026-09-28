@@ -99,6 +99,60 @@ describe('document analysis evidence', () => {
     expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith('https://example.com/report.pdf')
   })
 
+  it('shows a server-checked video link as unread evidence and keeps the original-site fallback', async () => {
+    const resolveVideoLink = vi.fn().mockResolvedValue({
+      ok: true,
+      resolution: {
+        platform: 'youtube', status: 'original_site_only', capability: 'captions_candidate',
+        source_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', evidence_status: 'not_read',
+        can_answer: false, can_play_in_app: false
+      }
+    })
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [] }),
+        resolveVideoLink
+      },
+      openExternal: vi.fn()
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: 'https://youtu.be/dQw4w9WgXcQ' } })
+    fireEvent.click(screen.getByRole('button', { name: '检查视频链接' }))
+    await waitFor(() => expect(screen.getByText(/尚未读取媒体或字幕/)).toBeTruthy())
+    expect(resolveVideoLink).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ')
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '在原站打开' }))
+    expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+  })
+
+  it('distinguishes upload-required video from an unreadable link', async () => {
+    const resolveVideoLink = vi.fn()
+      .mockResolvedValueOnce({ ok: true, resolution: { platform: 'tiktok', status: 'upload_required', capability: 'upload_required', source_url: 'https://vm.tiktok.com/Z12345abc', evidence_status: 'not_read', can_answer: false, can_play_in_app: false } })
+      .mockResolvedValueOnce({ ok: true, resolution: { platform: null, status: 'unreadable', capability: null, source_url: null, evidence_status: 'not_read', can_answer: false, can_play_in_app: false } })
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [] }),
+        resolveVideoLink
+      },
+      openExternal: vi.fn()
+    } as never
+
+    render(<AnalysisView />)
+    const input = screen.getByRole('textbox', { name: '粘贴资料链接' })
+    fireEvent.change(input, { target: { value: 'https://vm.tiktok.com/Z12345abc' } })
+    fireEvent.click(screen.getByRole('button', { name: '检查视频链接' }))
+    await waitFor(() => expect(screen.getByText(/需要上传视频或字幕/)).toBeTruthy())
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+
+    fireEvent.change(input, { target: { value: 'https://example.com/video' } })
+    fireEvent.click(screen.getByRole('button', { name: '检查视频链接' }))
+    await waitFor(() => expect(screen.getByText(/无法确认可读取的视频链接/)).toBeTruthy())
+    expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
+  })
+
   it('only makes a Feishu link answerable after authorized body import', async () => {
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'Quarterly report', kind: 'feishu',

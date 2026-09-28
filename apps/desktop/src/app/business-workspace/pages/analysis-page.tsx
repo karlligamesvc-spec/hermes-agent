@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { useI18n } from '@/i18n'
 
-import type { AnalysisDocument, AnalysisDocumentsBridge, AnalysisQuestion } from '../analysis-types'
+import type { AnalysisDocument, AnalysisDocumentsBridge, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
 import { BusinessPageHeader } from '../components/business-page-header'
 
 const COPY = {
@@ -18,7 +18,8 @@ const COPY = {
     note: '保存笔记', notePlaceholder: '记录你的发现', notes: '笔记', evidence: '原文证据', source: '资料记录',
     noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', deleteNote: '删除笔记',
     error: '操作失败，请重试。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
-    anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。'
+    anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。',
+    videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前只能在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。'
   },
   'zh-hant': {
     title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件',
@@ -32,7 +33,8 @@ const COPY = {
     note: '儲存筆記', notePlaceholder: '記錄你的發現', notes: '筆記', evidence: '原文證據', source: '資料記錄',
     noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', deleteNote: '刪除筆記',
     error: '操作失敗，請重試。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
-    anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。'
+    anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。',
+    videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前只能在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。'
   },
   en: {
     title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document',
@@ -46,7 +48,8 @@ const COPY = {
     note: 'Save note', notePlaceholder: 'Record your finding', notes: 'Notes', evidence: 'Original evidence', source: 'Source history',
     noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', deleteNote: 'Delete note',
     error: 'The action failed. Try again.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
-    anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.'
+    anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.',
+    videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read; open the original for now.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.'
   },
   ja: {
     title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書を読み込む',
@@ -60,7 +63,8 @@ const COPY = {
     note: 'メモを保存', notePlaceholder: '発見を記録', notes: 'メモ', evidence: '原文の根拠', source: '資料履歴',
     noSourceText: '読める本文がありません。', select: '資料を選択してください。', deleteNote: 'メモを削除',
     error: '失敗しました。再試行してください。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
-    anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。'
+    anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。',
+    videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため、今は元サイトで確認してください。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。'
   },
   ar: {
     title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند',
@@ -74,7 +78,8 @@ const COPY = {
     note: 'حفظ ملاحظة', notePlaceholder: 'سجل ما وجدته', notes: 'ملاحظات', evidence: 'الأدلة الأصلية', source: 'سجل المصادر',
     noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', deleteNote: 'حذف الملاحظة',
     error: 'فشلت العملية. حاول مجددًا.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
-    anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.'
+    anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.',
+    videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد؛ افتح الموقع الأصلي الآن.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.'
   }
 } as const
 
@@ -125,6 +130,7 @@ export function AnalysisView() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [link, setLink] = useState('')
+  const [videoResolution, setVideoResolution] = useState<AnalysisVideoResolution | null>(null)
   const [authFlow, setAuthFlow] = useState<{ id: string; interval: number } | null>(null)
   const [feishuAuthorized, setFeishuAuthorized] = useState(false)
   const [question, setQuestion] = useState('')
@@ -236,7 +242,7 @@ export function AnalysisView() {
           await refreshList()
           await openDocument(result.item.id)
         })} type="button">{c.import}</button>
-        <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => setLink(event.target.value)} placeholder={c.link} type="url" value={link} />
+        <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => { setLink(event.target.value); setVideoResolution(null) }} placeholder={c.link} type="url" value={link} />
         {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
           const result = await bridge()?.importLink(link.trim())
 
@@ -264,9 +270,18 @@ export function AnalysisView() {
 
           setAuthFlow(null); setFeishuAuthorized(false)
         })} type="button">{c.forget}</button>}
-        {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(link)} type="button">{c.openLink}</button>}
+        {isHttpsUrl(link) && !isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
+          const result = await bridge()?.resolveVideoLink(link.trim())
+
+          if (!result?.ok || !result.resolution) {setError(result?.code ?? c.error);
+
+ return }
+
+          setVideoResolution(result.resolution)
+        })} type="button">{c.videoCheck}</button>}
+        {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(videoResolution?.source_url ?? link)} type="button">{c.openLink}</button>}
       </div>
-      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : c.unsupportedLink}</p>}
+      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : videoResolution ? videoResolution.status === 'unreadable' ? c.videoUnreadable : (videoResolution.status === 'upload_required' ? c.videoUpload : c.videoCandidate).replace('{platform}', videoResolution.platform ?? '') : c.unsupportedLink}</p>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="space-y-2">

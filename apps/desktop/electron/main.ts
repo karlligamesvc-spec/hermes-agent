@@ -22367,6 +22367,18 @@ ipcMain.handle('hermes:analysis:importLink', async (_event, sourceUrl) => {
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 
+ipcMain.handle('hermes:analysis:resolveVideoLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext()
+    const url = String(sourceUrl || '').trim()
+
+    if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
+    const resolution = await context.transport.postJson(`${context.apiBase}/api/v1/account/analysis/video-links/resolve`, { url })
+
+    return { ok: true, resolution }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
 ipcMain.handle('hermes:analysis:get', async (_event, id) => {
   try {
     const context = await analysisIpcContext()
