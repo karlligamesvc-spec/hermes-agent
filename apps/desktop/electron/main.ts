@@ -46,6 +46,7 @@ import {
   addLocalNote,
   answerLocalDocument,
   createLocalDocument,
+  createLocalFeishuDocument,
   deleteLocalDocument,
   getLocalDocument,
   listLocalDocuments,
@@ -22290,6 +22291,53 @@ ipcMain.handle('hermes:analysis:import', async event => {
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 
+ipcMain.handle('hermes:analysis:authorizeFeishu', async () => {
+  try {
+    const context = await analysisIpcContext(true)
+    const response: any = await context.transport.postJson(`${context.url}/feishu/authorize`, {})
+
+    if (!response.flow_id || !openExternalUrl(response.verification_url)) {return { ok: false, code: 'feishu_auth_invalid' }}
+
+    return { ok: true, flow_id: response.flow_id, verification_url: response.verification_url, interval: response.interval }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:pollFeishu', async (_event, flowId) => {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(String(flowId))) {return { ok: false, code: 'feishu_flow_not_found' }}
+    const context = await analysisIpcContext()
+    const response: any = await context.transport.getJson(`${context.url}/feishu/authorize/${flowId}`)
+
+    return { ok: true, status: response.status, interval: response.interval }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:importLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext(true)
+    const url = String(sourceUrl || '').trim()
+
+    if (url.length > 2048) {return { ok: false, code: 'unsupported_feishu_link' }}
+
+    if (context.policy.mode === 'cloud') {
+      const result: any = await context.transport.postJson(`${context.url}/feishu`, { url })
+
+      return { ok: true, item: { ...result.item, storageMode: 'cloud' } }
+    }
+
+    const parsed: any = await context.transport.postJson(`${context.url}/feishu/parse`, { url })
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    const item = createLocalFeishuDocument(context.root, context.policy.user_id, parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
 ipcMain.handle('hermes:analysis:get', async (_event, id) => {
   try {
     const context = await analysisIpcContext()
@@ -22384,12 +22432,14 @@ ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
 
       if (!item) {return { ok: false, code: 'source_not_found' }}
 
-      return { ok: !(await shell.openPath(item.sourcePath)) }
+      return item.kind === 'feishu'
+        ? { ok: openExternalUrl(item.sourceUrl) }
+        : { ok: !(await shell.openPath(item.sourcePath)) }
     }
 
     const response: any = await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/download`)
 
-    if (!openExternalUrl(response.download_url)) {return { ok: false, code: 'download_unavailable' }}
+    if (!openExternalUrl(response.source_url || response.download_url)) {return { ok: false, code: 'download_unavailable' }}
 
     return { ok: true }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }

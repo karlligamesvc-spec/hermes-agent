@@ -8,9 +8,9 @@ import { BusinessPageHeader } from '../components/business-page-header'
 const COPY = {
   zh: {
     title: '沉浸式分析', description: '导入资料，沿着原文证据提问和记笔记。', import: '导入文档',
-    link: '粘贴资料链接', linkHint: '飞书链接需要授权读取；当前请在原站打开，文档导入可直接使用。', openLink: '在原站打开',
-    local: '本地保存', cloud: '云端保存', localDisclosure: '本地保存：原文件、证据和笔记保存在这台设备；解析时文件会临时发送到 APEX 服务端。',
-    cloudDisclosure: '云端保存：原文件、证据和笔记保存在当前账号下，可跨设备回看。',
+    link: '粘贴资料链接', linkHint: '飞书文档需要本人授权及读取权限。', openLink: '在原站打开', importLink: '读取链接', authorize: '授权飞书', authorizing: '等待飞书授权…', authorized: '已授权，可读取链接',
+    local: '本地保存', cloud: '云端保存', localDisclosure: '本地保存：导入文件的原件、飞书正文快照、证据和笔记留在这台设备；解析请求会经过 APEX，飞书授权令牌由 APEX 加密保管。',
+    cloudDisclosure: '云端保存：导入文件的原件或飞书正文快照，以及证据和笔记保存在当前账号下，可跨设备回看。飞书授权令牌由 APEX 加密保管。',
     cloudUnavailable: '云端资料存储尚未配置，请联系平台管理员。',
     empty: '尚无资料。导入 PDF、Word、Excel 或文本文件开始。', processing: '正在解析原文…', ready: '可提问', failed: '解析失败',
     retry: '重试解析', chooseAgain: '重新选择文件', open: '打开原文件', remove: '删除资料',
@@ -22,9 +22,9 @@ const COPY = {
   },
   'zh-hant': {
     title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件',
-    link: '貼上資料連結', linkHint: '飛書連結需要授權讀取；目前請在原站開啟，文件可直接匯入。', openLink: '在原站開啟',
-    local: '本機儲存', cloud: '雲端儲存', localDisclosure: '本機儲存：原文件、證據和筆記保存在此裝置；解析時文件會暫時傳送至 APEX 服務端。',
-    cloudDisclosure: '雲端儲存：原文件、證據和筆記保存在目前帳號下，可跨裝置回看。',
+    link: '貼上資料連結', linkHint: '飛書文件需要本人授權及讀取權限。', openLink: '在原站開啟', importLink: '讀取連結', authorize: '授權飛書', authorizing: '等待飛書授權…', authorized: '已授權，可讀取連結',
+    local: '本機儲存', cloud: '雲端儲存', localDisclosure: '本機儲存：匯入文件原件、飛書正文快照、證據和筆記留在此裝置；解析請求會經過 APEX，飛書授權令牌由 APEX 加密保管。',
+    cloudDisclosure: '雲端儲存：匯入文件原件或飛書正文快照，以及證據和筆記保存在目前帳號下，可跨裝置回看。飛書授權令牌由 APEX 加密保管。',
     cloudUnavailable: '雲端資料儲存尚未設定，請聯絡平台管理員。',
     empty: '尚無資料。匯入 PDF、Word、Excel 或文字文件開始。', processing: '正在解析原文…', ready: '可提問', failed: '解析失敗',
     retry: '重試解析', chooseAgain: '重新選擇文件', open: '開啟原文件', remove: '刪除資料',
@@ -36,9 +36,9 @@ const COPY = {
   },
   en: {
     title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document',
-    link: 'Paste a source link', linkHint: 'Feishu links require read access. Open the original site for now, or import a document.', openLink: 'Open original site',
-    local: 'Saved locally', cloud: 'Saved in cloud', localDisclosure: 'Local save: the source, evidence, and notes stay on this device. The file is sent temporarily to APEX for parsing.',
-    cloudDisclosure: 'Cloud save: the source, evidence, and notes are stored under your account for access across devices.',
+    link: 'Paste a source link', linkHint: 'Feishu documents require your authorization and read access.', openLink: 'Open original site', importLink: 'Read link', authorize: 'Authorize Feishu', authorizing: 'Waiting for Feishu authorization…', authorized: 'Authorized. You can read the link.',
+    local: 'Saved locally', cloud: 'Saved in cloud', localDisclosure: 'Local save: imported files, Feishu text snapshots, evidence, and notes stay on this device. Parsing passes through APEX; Feishu authorization tokens are encrypted on APEX.',
+    cloudDisclosure: 'Cloud save: imported files or Feishu text snapshots, evidence, and notes are stored under your account across devices. Feishu authorization tokens are encrypted on APEX.',
     cloudUnavailable: 'Cloud document storage is not configured. Contact the platform administrator.',
     empty: 'No sources yet. Import a PDF, Word, Excel, or text file.', processing: 'Reading original text…', ready: 'Ready for questions', failed: 'Parsing failed',
     retry: 'Retry parsing', chooseAgain: 'Choose file again', open: 'Open original file', remove: 'Delete source',
@@ -50,9 +50,9 @@ const COPY = {
   },
   ja: {
     title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書を読み込む',
-    link: '資料リンクを貼り付け', linkHint: 'Feishu リンクには閲覧権限が必要です。現在は元サイトを開くか文書を読み込んでください。', openLink: '元サイトを開く',
-    local: 'ローカル保存', cloud: 'クラウド保存', localDisclosure: 'ローカル保存：原本、根拠、メモはこの端末に保存されます。解析時のみ APEX サーバーへ一時送信します。',
-    cloudDisclosure: 'クラウド保存：原本、根拠、メモはアカウントに保存され、別の端末でも閲覧できます。',
+    link: '資料リンクを貼り付け', linkHint: 'Feishu 文書には本人の認証と閲覧権限が必要です。', openLink: '元サイトを開く', importLink: 'リンクを読む', authorize: 'Feishu を認証', authorizing: 'Feishu の認証を待機中…', authorized: '認証済み。リンクを読めます。',
+    local: 'ローカル保存', cloud: 'クラウド保存', localDisclosure: 'ローカル保存：読み込んだファイル、Feishu の本文、根拠、メモはこの端末に保存されます。解析は APEX を経由し、Feishu 認証トークンは APEX で暗号化して保管します。',
+    cloudDisclosure: 'クラウド保存：ファイルまたは Feishu の本文、根拠、メモをアカウントに保存します。Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudUnavailable: 'クラウド保存が設定されていません。管理者に連絡してください。',
     empty: '資料はまだありません。PDF、Word、Excel、テキストを読み込んでください。', processing: '原文を解析中…', ready: '質問できます', failed: '解析に失敗',
     retry: '解析を再試行', chooseAgain: 'ファイルを選び直す', open: '原本を開く', remove: '資料を削除',
@@ -64,9 +64,9 @@ const COPY = {
   },
   ar: {
     title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند',
-    link: 'ألصق رابط المصدر', linkHint: 'تتطلب روابط Feishu إذن القراءة. افتح الموقع الأصلي الآن أو استورد مستندًا.', openLink: 'فتح الموقع الأصلي',
-    local: 'حفظ محلي', cloud: 'حفظ سحابي', localDisclosure: 'الحفظ المحلي: يبقى الأصل والأدلة والملاحظات على هذا الجهاز. يُرسل الملف مؤقتًا إلى APEX للتحليل.',
-    cloudDisclosure: 'الحفظ السحابي: تُخزن الملفات والأدلة والملاحظات ضمن حسابك للوصول من أجهزة أخرى.',
+    link: 'ألصق رابط المصدر', linkHint: 'تتطلب مستندات Feishu موافقتك وصلاحية القراءة.', openLink: 'فتح الموقع الأصلي', importLink: 'قراءة الرابط', authorize: 'تفويض Feishu', authorizing: 'بانتظار تفويض Feishu…', authorized: 'تم التفويض؛ يمكنك قراءة الرابط.',
+    local: 'حفظ محلي', cloud: 'حفظ سحابي', localDisclosure: 'الحفظ المحلي: تبقى الملفات المستوردة ونسخة نص Feishu والأدلة والملاحظات على هذا الجهاز. تمر القراءة عبر APEX، وتُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
+    cloudDisclosure: 'الحفظ السحابي: تُخزن الملفات أو نسخة نص Feishu والأدلة والملاحظات ضمن حسابك عبر الأجهزة. تُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudUnavailable: 'لم يتم إعداد التخزين السحابي. تواصل مع مسؤول المنصة.',
     empty: 'لا توجد مصادر بعد. استورد ملف PDF أو Word أو Excel أو نصًا.', processing: 'جارٍ قراءة النص الأصلي…', ready: 'جاهز للأسئلة', failed: 'فشل التحليل',
     retry: 'إعادة التحليل', chooseAgain: 'اختر ملفًا مجددًا', open: 'فتح الملف الأصلي', remove: 'حذف المصدر',
@@ -107,7 +107,7 @@ function humanError(code: string, copy: { cloudUnavailable: string; empty: strin
 
   if (['analysis_cloud_storage_unavailable', 'cloud_upload_failed', 'download_unavailable'].includes(code)) {return copy.cloudUnavailable}
 
-  if (['permission_denied', 'analysis_cloud_storage_disabled'].includes(code)) {return copy.permission}
+  if (['permission_denied', 'analysis_cloud_storage_disabled', 'feishu_permission_denied', 'feishu_authorization_required', 'feishu_identity_mismatch', 'feishu_binding_required', 'feishu_scope_unavailable'].includes(code)) {return copy.permission}
 
   if (code === 'unsupported_format') {return copy.empty}
 
@@ -125,6 +125,8 @@ export function AnalysisView() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [link, setLink] = useState('')
+  const [authFlow, setAuthFlow] = useState<{ id: string; interval: number } | null>(null)
+  const [feishuAuthorized, setFeishuAuthorized] = useState(false)
   const [question, setQuestion] = useState('')
   const [note, setNote] = useState('')
   const [anchorId, setAnchorId] = useState<string | null>(null)
@@ -165,6 +167,26 @@ export function AnalysisView() {
 
     return () => window.clearInterval(timer)
   }, [selected?.id, selected?.status, openDocument, refreshList])
+
+  useEffect(() => {
+    if (!authFlow) {return}
+    const timer = window.setTimeout(() => {
+      void bridge()?.pollFeishu(authFlow.id).then(result => {
+        if (!result?.ok) {setAuthFlow(null); setError(result?.code ?? c.error);
+
+ return }
+        if (result.status === 'authorized') {setAuthFlow(null); setFeishuAuthorized(true);
+
+ return }
+        if (result.status !== 'pending') {setAuthFlow(null); setError('feishu_authorization_required');
+
+ return }
+        setAuthFlow({ ...authFlow, interval: result.interval ?? authFlow.interval })
+      })
+    }, authFlow.interval * 1000)
+
+    return () => window.clearTimeout(timer)
+  }, [authFlow, c.error])
 
   const perform = async (action: () => Promise<void>) => {
     setBusy(true)
@@ -211,9 +233,27 @@ export function AnalysisView() {
           await openDocument(result.item.id)
         })} type="button">{c.import}</button>
         <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => setLink(event.target.value)} placeholder={c.link} type="url" value={link} />
+        {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
+          const result = await bridge()?.importLink(link.trim())
+
+          if (!result?.ok || !result.item) {setError(result?.code ?? c.error);
+
+ return }
+
+          setLink(''); await refreshList(); await openDocument(result.item.id)
+        })} type="button">{c.importLink}</button>}
+        {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !!authFlow} onClick={() => void perform(async () => {
+          const result = await bridge()?.authorizeFeishu()
+
+          if (!result?.ok || !result.flow_id) {setError(result?.code ?? c.error);
+
+ return }
+
+          setAuthFlow({ id: result.flow_id, interval: result.interval ?? 5 }); setFeishuAuthorized(false)
+        })} type="button">{c.authorize}</button>}
         {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(link)} type="button">{c.openLink}</button>}
       </div>
-      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? `${c.permission} ${c.linkHint}` : c.unsupportedLink}</p>}
+      {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : c.unsupportedLink}</p>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="space-y-2">

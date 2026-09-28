@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { addLocalNote, answerLocalDocument, createLocalDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, removeLocalNote } from './apex-analysis-local'
+import { addLocalNote, answerLocalDocument, createLocalDocument, createLocalFeishuDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, removeLocalNote } from './apex-analysis-local'
 
 const roots: string[] = []
 
@@ -13,6 +13,24 @@ afterEach(() => {
 })
 
 describe('account-scoped local analysis', () => {
+  it('stores a Feishu source snapshot for one account without a fake local file', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-feishu-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const item = createLocalFeishuDocument(root, owner, {
+      filename: 'Quarterly report', kind: 'feishu', source_url: 'https://team.feishu.cn/docx/docxtoken123',
+      anchors: [{ id: 'block12345', location: { block: 'block12345', paragraph: 1 }, text: 'Revenue grew' }]
+    })
+
+    expect(item.sourcePath).toBe('')
+    expect(getLocalDocument(root, owner, item.id)?.anchors[0].id).toBe('block12345')
+    expect(getLocalDocument(root, other, item.id)).toBeNull()
+    expect(answerLocalDocument(root, owner, item.id, 'Revenue')?.citations[0].anchor_id).toBe('block12345')
+    expect(deleteLocalDocument(root, owner, item.id)).toBe(true)
+    expect(getLocalDocument(root, owner, item.id)).toBeNull()
+  })
+
   it('persists original bytes, cited questions and notes only for the owner, then deletes both', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-test-'))
     roots.push(root)

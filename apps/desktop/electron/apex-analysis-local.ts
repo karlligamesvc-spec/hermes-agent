@@ -21,6 +21,7 @@ export interface LocalDocument {
   questions: Array<{ id: string; question: string; answer: string; citations: Array<{ anchor_id: string; location: Record<string, number | string> }>; answer_type: 'source_excerpts' | 'no_evidence' }>
   createdAt: string
   sourcePath: string
+  sourceUrl?: string
 }
 
 function accountDirectory(root: string, userId: string): string {
@@ -66,11 +67,13 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
     const directory = accountDirectory(root, userId)
     const ext = path.extname(item.filename).toLowerCase()
 
-    if (item.id !== id || item.storageMode !== 'local' || !['.pdf', '.docx', '.xlsx', '.txt', '.md'].includes(ext)) {
+    if (item.id !== id || item.storageMode !== 'local' || (item.kind !== 'feishu' && !['.pdf', '.docx', '.xlsx', '.txt', '.md'].includes(ext))) {
       return null
     }
 
-    if (item.sourcePath !== path.join(directory, `${id}${ext}`) || !Array.isArray(item.anchors)) {
+    if (!Array.isArray(item.anchors) || (item.kind === 'feishu'
+      ? item.sourcePath !== '' || !item.sourceUrl || !/^https:\/\/[^/]+\.(?:feishu\.cn|larksuite\.com)\/(?:docx|wiki)\/[A-Za-z0-9_-]+/.test(item.sourceUrl)
+      : item.sourcePath !== path.join(directory, `${id}${ext}`))) {
       return null
     }
 
@@ -78,6 +81,18 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
   } catch {
     return null
   }
+}
+
+export function createLocalFeishuDocument(root: string, userId: string, parsed: { filename: string; kind: string; source_url: string; anchors: AnalysisAnchor[] }): LocalDocument {
+  if (parsed.kind !== 'feishu' || !Array.isArray(parsed.anchors) || parsed.anchors.length === 0) {throw new Error('No readable Feishu body')}
+  const item: LocalDocument = {
+    id: `local-${crypto.randomUUID()}`, filename: parsed.filename, kind: 'feishu', status: 'ready',
+    storageMode: 'local', anchors: parsed.anchors, notes: [], questions: [],
+    createdAt: new Date().toISOString(), sourcePath: '', sourceUrl: parsed.source_url
+  }
+  save(root, userId, item)
+
+  return item
 }
 
 export function createLocalDocument(
@@ -120,10 +135,12 @@ export function deleteLocalDocument(root: string, userId: string, id: string): b
 
   if (!document) {return false}
   const directory = accountDirectory(root, userId)
-  const storedSource = path.resolve(document.sourcePath)
+  if (document.kind !== 'feishu') {
+    const storedSource = path.resolve(document.sourcePath)
 
-  if (!storedSource.startsWith(`${directory}${path.sep}`)) {throw new Error('Invalid source path')}
-  fs.rmSync(storedSource, { force: true })
+    if (!storedSource.startsWith(`${directory}${path.sep}`)) {throw new Error('Invalid source path')}
+    fs.rmSync(storedSource, { force: true })
+  }
   fs.rmSync(documentPath(root, userId, id), { force: true })
 
   return true

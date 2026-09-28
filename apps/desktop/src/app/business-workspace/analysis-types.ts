@@ -21,10 +21,12 @@ export interface AnalysisNote {
 export interface AnalysisDocument {
   id: string
   filename: string
-  kind: 'pdf' | 'word' | 'excel' | 'text'
+  kind: 'pdf' | 'word' | 'excel' | 'text' | 'feishu'
   status: 'processing' | 'ready' | 'failed'
   storageMode: 'cloud' | 'local'
   error_code?: string | null
+  source_url?: string | null
+  sourceUrl?: string
   anchors?: AnalysisAnchor[]
   notes?: AnalysisNote[]
   questions?: AnalysisQuestion[]
@@ -36,6 +38,9 @@ export interface AnalysisDocumentsBridge {
   policy: () => Promise<{ ok: boolean; code?: string; policy?: { mode: 'cloud' | 'local'; cloud_storage_configured: boolean } }>
   list: () => Promise<{ ok: boolean; code?: string; cloudUnavailable?: boolean; items?: AnalysisDocument[] }>
   importFile: () => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  importLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  authorizeFeishu: () => Promise<{ ok: boolean; code?: string; flow_id?: string; verification_url?: string; interval?: number }>
+  pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   ask: (id: string, question: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>
   addNote: (id: string, body: string, anchorId: string | null) => Promise<{ ok: boolean; code?: string; item?: AnalysisNote }>
