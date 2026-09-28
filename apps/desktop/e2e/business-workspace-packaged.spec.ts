@@ -1849,7 +1849,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
 
   await expect(goalWithFrame).toHaveValue(/已附画面截图/)
   await expect(goalWithFrame).toHaveValue(/0:01\.0/)
-  await expect(page.locator('[data-slot="composer-attachments"]')).toContainText('apex-frame-1-0s.jpg')
+  await expect(page.locator('[data-slot="composer-attachments"]')).toContainText(/apex-frame-1-0s_[a-f0-9]{6}\.jpg/)
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
 
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
