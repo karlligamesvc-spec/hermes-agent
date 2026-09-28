@@ -77,7 +77,7 @@ describe('document analysis evidence', () => {
       status: 'ready', storageMode: 'local',
       anchors: [{ id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 }, text: 'Revenue rose 20 percent' }],
       notes: [], questions: [{ id: 'q1', question: 'Revenue?', answer: 'Revenue rose 20 percent',
-        answer_type: 'source_excerpts', citations: [{ anchor_id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 } }] }]
+        answer_type: 'source_excerpts', citations: [{ anchor_id: 'a1', location: { start_seconds: 2, end_seconds: 3 } }] }]
     }
 
     window.hermesDesktop = {
@@ -94,6 +94,82 @@ describe('document analysis evidence', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看出处 · 1:02 起' }))
     expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
     expect(screen.getAllByText('Revenue rose 20 percent').length).toBeGreaterThan(0)
+  })
+
+  it('seeks a manually paired local video from a real subtitle citation and releases it on source switch', async () => {
+    const createObjectURL = vi.fn(() => 'blob:chosen-video')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = createObjectURL
+      static revokeObjectURL = revokeObjectURL
+    })
+    Element.prototype.scrollIntoView = vi.fn()
+
+    const subtitle = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local',
+      anchors: [{ id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 }, text: 'Revenue rose 20 percent' }],
+      notes: [], questions: [{ id: 'q1', question: 'Revenue?', answer: 'Revenue rose 20 percent',
+        answer_type: 'source_excerpts', citations: [{ anchor_id: 'a1', location: { start_seconds: 2, end_seconds: 3 } }] }]
+    }
+
+    const document = { id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'report.txt', kind: 'text',
+      status: 'ready', storageMode: 'local', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'Report' }], notes: [], questions: [] }
+
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [subtitle, document] }),
+        get: vi.fn().mockImplementation(async (id: string) => ({ ok: true, item: id === subtitle.id ? subtitle : document }))
+      }
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
+    expect(screen.queryByRole('video')).toBeNull()
+    expect(await screen.findByText(/视频仅在本次查看期间留在这台设备/)).toBeTruthy()
+
+    const videoFile = new File(['real video bytes'], 'clip.mp4', { type: 'video/mp4' })
+    fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [videoFile] } })
+    const player = screen.getByLabelText('本地视频: clip.mp4') as HTMLVideoElement
+    Object.defineProperty(player, 'readyState', { configurable: true, value: HTMLMediaElement.HAVE_METADATA })
+    Object.defineProperty(player, 'duration', { configurable: true, value: 120 })
+    expect(player.src).toContain('blob:chosen-video')
+    expect(createObjectURL).toHaveBeenCalledWith(videoFile)
+    fireEvent.click(screen.getByRole('button', { name: '查看出处 · 1:02 起' }))
+    expect(player.currentTime).toBe(62.5)
+
+    fireEvent.click(screen.getByRole('button', { name: /report.txt/ }))
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:chosen-video'))
+    expect(screen.queryByLabelText('本地视频: clip.mp4')).toBeNull()
+  })
+
+  it('does not seek past the selected video duration or turn an invalid file into a player', async () => {
+    vi.stubGlobal('URL', class extends URL { static createObjectURL = vi.fn(() => 'blob:chosen-video'); static revokeObjectURL = vi.fn() })
+    Element.prototype.scrollIntoView = vi.fn()
+
+    const item = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle', status: 'ready', storageMode: 'local',
+      anchors: [{ id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 }, text: 'Revenue rose' }], notes: [],
+      questions: [{ id: 'q1', question: 'Revenue?', answer: 'Revenue rose', answer_type: 'source_excerpts',
+        citations: [{ anchor_id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 } }] }] }
+
+    window.hermesDesktop = { analysisDocuments: {
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      list: vi.fn().mockResolvedValue({ ok: true, items: [item] }), get: vi.fn().mockResolvedValue({ ok: true, item })
+    } } as never
+
+    render(<AnalysisView />)
+    fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
+    fireEvent.change(await screen.findByLabelText('选择本地视频播放'), { target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] } })
+    expect(screen.getByRole('alert').textContent).toContain('请选择视频文件')
+    expect(screen.queryByLabelText(/本地视频: /)).toBeNull()
+    fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [new File(['x'], 'clip.mp4', { type: 'video/mp4' })] } })
+    const player = screen.getByLabelText('本地视频: clip.mp4') as HTMLVideoElement
+    Object.defineProperty(player, 'readyState', { configurable: true, value: HTMLMediaElement.HAVE_METADATA })
+    Object.defineProperty(player, 'duration', { configurable: true, value: 20 })
+    fireEvent.click(screen.getByRole('button', { name: '查看出处 · 1:02 起' }))
+    expect(player.currentTime).toBe(0)
+    expect(screen.getByRole('alert').textContent).toContain('字幕时间码超出所选视频时长')
   })
 
   it('jumps from a cited answer to the original page excerpt', async () => {
