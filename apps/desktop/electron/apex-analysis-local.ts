@@ -92,6 +92,22 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
   }
 }
 
+export function readLocalPdfPreview(root: string, userId: string, id: string): Buffer | null {
+  const item = getLocalDocument(root, userId, id)
+
+  if (!item || item.kind !== 'pdf' || item.status !== 'ready') {return null}
+
+  try {
+    const stat = fs.lstatSync(item.sourcePath)
+
+    if (!stat.isFile() || !stat.size || stat.size > 15 * 1024 * 1024) {return null}
+
+    const bytes = fs.readFileSync(item.sourcePath)
+
+    return bytes.subarray(0, 5).equals(Buffer.from('%PDF-')) ? bytes : null
+  } catch {return null}
+}
+
 export function createLocalPendingDocument(root: string, userId: string, filename: string, sourceBytes: Buffer): LocalDocument {
   const ext = path.extname(filename).toLowerCase()
   const kind = ({ '.pdf': 'pdf', '.docx': 'word', '.xlsx': 'excel', '.txt': 'text', '.md': 'text', '.srt': 'subtitle', '.vtt': 'subtitle' } as Record<string, string>)[ext]

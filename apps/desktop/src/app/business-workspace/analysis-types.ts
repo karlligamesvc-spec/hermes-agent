@@ -60,4 +60,5 @@ export interface AnalysisDocumentsBridge {
   retry: (id: string) => Promise<{ ok: boolean; code?: string }>
   delete: (id: string) => Promise<{ ok: boolean; code?: string }>
   openSource: (id: string) => Promise<{ ok: boolean; code?: string }>
+  previewPdf: (id: string) => Promise<{ ok: boolean; code?: string; data_url?: string }>
 }

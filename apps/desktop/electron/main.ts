@@ -51,6 +51,7 @@ import {
   deleteLocalDocument,
   getLocalDocument,
   listLocalDocuments,
+  readLocalPdfPreview,
   removeLocalNote,
   retryLocalDocument
 } from './apex-analysis-local'
@@ -22492,6 +22493,40 @@ ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
     if (!openExternalUrl(response.source_url || response.download_url)) {return { ok: false, code: 'download_unavailable' }}
 
     return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:previewPdf', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+    const sourceId = String(id || '')
+    let bytes: Buffer
+
+    if (sourceId.startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, sourceId)
+
+      if (!item) {return { ok: false, code: 'source_not_found' }}
+
+      if (item.kind !== 'pdf' || item.status !== 'ready') {return { ok: false, code: 'preview_unsupported' }}
+
+      const localBytes = readLocalPdfPreview(context.root, context.policy.user_id, sourceId)
+
+      if (!localBytes) {return { ok: false, code: 'preview_unavailable' }}
+
+      bytes = localBytes
+    } else {
+      if (!/^[0-9a-f-]{36}$/i.test(sourceId)) {return { ok: false, code: 'source_not_found' }}
+
+      bytes = await apexAuthGetBuffer(`${context.url}/${sourceId}/preview`, {
+        bearer: context.bearer, maxBytes: 15 * 1024 * 1024
+      })
+    }
+
+    if (!bytes.length || !bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+      return { ok: false, code: 'preview_unavailable' }
+    }
+
+    return { ok: true, data_url: `data:application/pdf;base64,${bytes.toString('base64')}` }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 

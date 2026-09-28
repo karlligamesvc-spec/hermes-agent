@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
+import { addLocalNote, answerLocalDocument, completeLocalDocument, createLocalDocument, createLocalFeishuDocument, createLocalPendingDocument, deleteLocalDocument, getLocalDocument, listLocalDocuments, readLocalPdfPreview, removeLocalNote, retryLocalDocument } from './apex-analysis-local'
 
 const roots: string[] = []
 
@@ -13,6 +13,28 @@ afterEach(() => {
 })
 
 describe('account-scoped local analysis', () => {
+  it('previews only ready PDF bytes owned by the account and rejects a replaced symlink', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-pdf-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const bytes = Buffer.from('%PDF-1.4\noriginal')
+    const pending = createLocalPendingDocument(root, owner, 'source.pdf', bytes)
+
+    expect(readLocalPdfPreview(root, owner, pending.id)).toBeNull()
+    expect(completeLocalDocument(root, owner, pending.id, pending.parseAttempt!, {
+      kind: 'pdf', anchors: [{ id: 'a1', location: { page: 1 }, text: 'original' }]
+    })).toBe(true)
+    expect(readLocalPdfPreview(root, other, pending.id)).toBeNull()
+    expect(readLocalPdfPreview(root, owner, pending.id)).toEqual(bytes)
+
+    const substitute = path.join(root, 'substitute.pdf')
+    fs.writeFileSync(substitute, bytes)
+    fs.rmSync(pending.sourcePath)
+    fs.symlinkSync(substitute, pending.sourcePath)
+    expect(readLocalPdfPreview(root, owner, pending.id)).toBeNull()
+  })
+
   it('retains subtitle bytes and cited timecodes under only the importing account', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-subtitle-test-'))
     roots.push(root)

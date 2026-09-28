@@ -17,7 +17,7 @@ const COPY = {
     question: '针对当前资料提问', ask: '查找证据', noEvidence: '这份资料中未找到相关原文证据。', excerpts: '匹配的原文片段',
     note: '保存笔记', notePlaceholder: '记录你的发现', notes: '笔记', evidence: '原文证据', source: '资料记录',
     noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', deleteNote: '删除笔记',
-    error: '操作失败，请重试。', subtitleInvalid: '字幕时间码或格式无效，请检查 SRT/VTT 文件。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
+    error: '操作失败，请重试。', subtitleInvalid: '字幕时间码或格式无效，请检查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 预览暂不可用，可打开原件。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。',
     videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前只能在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起'
   },
@@ -32,7 +32,7 @@ const COPY = {
     question: '針對目前資料提問', ask: '尋找證據', noEvidence: '這份資料中未找到相關原文證據。', excerpts: '匹配的原文片段',
     note: '儲存筆記', notePlaceholder: '記錄你的發現', notes: '筆記', evidence: '原文證據', source: '資料記錄',
     noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', deleteNote: '刪除筆記',
-    error: '操作失敗，請重試。', subtitleInvalid: '字幕時間碼或格式無效，請檢查 SRT/VTT 文件。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
+    error: '操作失敗，請重試。', subtitleInvalid: '字幕時間碼或格式無效，請檢查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 預覽暫時無法使用，可開啟原件。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。',
     videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前只能在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起'
   },
@@ -47,7 +47,7 @@ const COPY = {
     question: 'Ask about this source', ask: 'Find evidence', noEvidence: 'No matching original text was found in this source.', excerpts: 'Matching original passages',
     note: 'Save note', notePlaceholder: 'Record your finding', notes: 'Notes', evidence: 'Original evidence', source: 'Source history',
     noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', deleteNote: 'Delete note',
-    error: 'The action failed. Try again.', subtitleInvalid: 'Invalid subtitle timing or format. Check the SRT/VTT file.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
+    error: 'The action failed. Try again.', subtitleInvalid: 'Invalid subtitle timing or format. Check the SRT/VTT file.', pdfOriginal: 'Original PDF', pdfPreviewUnavailable: 'PDF preview is unavailable. You can open the original.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.',
     videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read; open the original for now.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}'
   },
@@ -62,7 +62,7 @@ const COPY = {
     question: 'この資料について質問', ask: '根拠を探す', noEvidence: '一致する原文は見つかりませんでした。', excerpts: '一致した原文',
     note: 'メモを保存', notePlaceholder: '発見を記録', notes: 'メモ', evidence: '原文の根拠', source: '資料履歴',
     noSourceText: '読める本文がありません。', select: '資料を選択してください。', deleteNote: 'メモを削除',
-    error: '失敗しました。再試行してください。', subtitleInvalid: '字幕の時間または形式が無効です。SRT/VTT ファイルを確認してください。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
+    error: '失敗しました。再試行してください。', subtitleInvalid: '字幕の時間または形式が無効です。SRT/VTT ファイルを確認してください。', pdfOriginal: '元の PDF', pdfPreviewUnavailable: 'PDF をプレビューできません。元のファイルを開けます。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
     anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。',
     videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため、今は元サイトで確認してください。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から'
   },
@@ -77,7 +77,7 @@ const COPY = {
     question: 'اسأل عن هذا المصدر', ask: 'البحث عن أدلة', noEvidence: 'لم يُعثر على نص أصلي مطابق في هذا المصدر.', excerpts: 'مقاطع من النص الأصلي',
     note: 'حفظ ملاحظة', notePlaceholder: 'سجل ما وجدته', notes: 'ملاحظات', evidence: 'الأدلة الأصلية', source: 'سجل المصادر',
     noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', deleteNote: 'حذف الملاحظة',
-    error: 'فشلت العملية. حاول مجددًا.', subtitleInvalid: 'توقيت الترجمة أو تنسيقها غير صالح. تحقق من ملف SRT/VTT.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
+    error: 'فشلت العملية. حاول مجددًا.', subtitleInvalid: 'توقيت الترجمة أو تنسيقها غير صالح. تحقق من ملف SRT/VTT.', pdfOriginal: 'ملف PDF الأصلي', pdfPreviewUnavailable: 'معاينة PDF غير متاحة. يمكنك فتح الملف الأصلي.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.',
     videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد؛ افتح الموقع الأصلي الآن.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}'
   }
@@ -149,6 +149,12 @@ export function AnalysisView() {
   const [question, setQuestion] = useState('')
   const [note, setNote] = useState('')
   const [anchorId, setAnchorId] = useState<string | null>(null)
+  const [pdfPreview, setPdfPreview] = useState<{ id: string; url: string } | null>(null)
+  const [pdfPage, setPdfPage] = useState(1)
+  const [pdfError, setPdfError] = useState(false)
+  const selectedId = selected?.id
+  const selectedKind = selected?.kind
+  const selectedStatus = selected?.status
 
   const refreshList = useCallback(async () => {
     const result = await bridge()?.list()
@@ -188,6 +194,40 @@ export function AnalysisView() {
   }, [selected?.id, selected?.status, openDocument, refreshList])
 
   useEffect(() => {
+    setPdfPreview(null)
+    setPdfPage(1)
+    setPdfError(false)
+
+    if (!selectedId || selectedKind !== 'pdf' || selectedStatus !== 'ready') {return}
+
+    let active = true
+    let objectUrl = ''
+
+    void bridge()?.previewPdf?.(selectedId).then(result => {
+      if (!active) {return}
+
+      try {
+        const prefix = 'data:application/pdf;base64,'
+
+        if (!result.ok || !result.data_url?.startsWith(prefix) || typeof URL.createObjectURL !== 'function') {throw new Error('preview_unavailable')}
+
+        const binary = atob(result.data_url.slice(prefix.length))
+
+        if (!binary.startsWith('%PDF-')) {throw new Error('preview_unavailable')}
+
+        objectUrl = URL.createObjectURL(new Blob([Uint8Array.from(binary, char => char.charCodeAt(0))], { type: 'application/pdf' }))
+        setPdfPreview({ id: selectedId, url: objectUrl })
+      } catch {setPdfError(true)}
+    }).catch(() => {if (active) {setPdfError(true)}})
+
+    return () => {
+      active = false
+
+      if (objectUrl) {URL.revokeObjectURL(objectUrl)}
+    }
+  }, [selectedId, selectedKind, selectedStatus])
+
+  useEffect(() => {
     if (!authFlow) {return}
 
     const timer = window.setTimeout(() => {
@@ -218,7 +258,11 @@ export function AnalysisView() {
     try { await action() } catch { setError(c.error) } finally { setBusy(false) }
   }
 
-  const jump = (id: string) => document.getElementById(`analysis-anchor-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const jump = (id: string, location?: Record<string, number | string>) => {
+    if (selected?.kind === 'pdf' && typeof location?.page === 'number') {setPdfPage(location.page)}
+
+    document.getElementById(`analysis-anchor-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 
   const answer = (item: AnalysisQuestion) => (
     <article className="rounded-xl border border-(--ui-border) p-4" key={item.id}>
@@ -226,7 +270,7 @@ export function AnalysisView() {
       <p className="mt-2 whitespace-pre-wrap text-sm text-(--ui-text-secondary)">{item.answer_type === 'no_evidence' ? c.noEvidence : item.answer}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {item.citations.map(citation => (
-          <button className="rounded-lg border px-2 py-1 text-xs" key={citation.anchor_id} onClick={() => jump(citation.anchor_id)} type="button">
+          <button className="rounded-lg border px-2 py-1 text-xs" key={citation.anchor_id} onClick={() => jump(citation.anchor_id, citation.location)} type="button">
             {c.citation} · {locationLabel(citation.location, c)}
           </button>
         ))}
@@ -337,6 +381,11 @@ export function AnalysisView() {
                 })} type="button">{c.remove}</button>
               </div>
             </div>
+            {selected.kind === 'pdf' && selected.status === 'ready' && <section className="rounded-xl border p-4">
+              <h3 className="mb-3 font-medium">{c.pdfOriginal} · {c.page.replace('{n}', String(pdfPage))}</h3>
+              {pdfPreview?.id === selected.id && <iframe aria-label={c.pdfOriginal} className="h-96 w-full rounded-lg border bg-white" key={`${pdfPreview.url}-${pdfPage}`} src={`${pdfPreview.url}#page=${pdfPage}`} title={c.pdfOriginal} />}
+              {pdfError && <p className="text-sm text-(--ui-text-secondary)">{c.pdfPreviewUnavailable}</p>}
+            </section>}
             {selected.status === 'ready' && <>
               <section className="space-y-3 rounded-xl border p-4">
                 <h3 className="font-medium">{c.question}</h3>

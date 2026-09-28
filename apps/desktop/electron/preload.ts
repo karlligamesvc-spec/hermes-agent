@@ -311,7 +311,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     deleteNote: (id, noteId) => ipcRenderer.invoke('hermes:analysis:deleteNote', id, noteId),
     retry: id => ipcRenderer.invoke('hermes:analysis:retry', id),
     delete: id => ipcRenderer.invoke('hermes:analysis:delete', id),
-    openSource: id => ipcRenderer.invoke('hermes:analysis:openSource', id)
+    openSource: id => ipcRenderer.invoke('hermes:analysis:openSource', id),
+    previewPdf: id => ipcRenderer.invoke('hermes:analysis:previewPdf', id)
   },
   // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
   // Feishu app credential down to light up the Feishu adapter + lark tools. See
