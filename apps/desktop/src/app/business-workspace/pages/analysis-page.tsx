@@ -12,11 +12,11 @@ const COPY = {
     local: '本地保存', cloud: '云端保存', localDisclosure: '本地保存：导入文件的原件、飞书正文快照、证据和笔记留在这台设备；解析请求会经过 APEX，飞书授权令牌由 APEX 加密保管。',
     cloudDisclosure: '云端保存：导入文件的原件或飞书正文快照，以及证据和笔记保存在当前账号下，可跨设备回看。飞书授权令牌由 APEX 加密保管。',
     cloudUnavailable: '云端资料存储尚未配置，请联系平台管理员。',
-    empty: '尚无资料。导入文档或 SRT/VTT 字幕开始。', processing: '正在解析原文…', ready: '可提问', failed: '解析失败',
+    empty: '尚无资料。导入文档或 SRT/VTT 字幕开始。', loadingSources: '正在读取资料记录…', failedList: '资料记录读取失败。', retryList: '重试读取', processing: '正在解析原文…', ready: '可提问', failed: '解析失败',
     retry: '重试解析', chooseAgain: '重新选择文件', open: '打开原文件', remove: '删除资料',
     question: '针对当前资料提问', ask: '查找证据', noEvidence: '这份资料中未找到相关原文证据。', excerpts: '匹配的原文片段',
     note: '保存笔记', notePlaceholder: '记录你的发现', notes: '笔记', evidence: '原文证据', source: '资料记录',
-    noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', deleteNote: '删除笔记',
+    noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', opening: '正在打开资料…', deleteNote: '删除笔记',
     error: '操作失败，请重试。', subtitleInvalid: '字幕时间码或格式无效，请检查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 预览暂不可用，可打开原件。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。',
     videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前无法提问；可在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起',
@@ -29,11 +29,11 @@ const COPY = {
     local: '本機儲存', cloud: '雲端儲存', localDisclosure: '本機儲存：匯入文件原件、飛書正文快照、證據和筆記留在此裝置；解析請求會經過 APEX，飛書授權令牌由 APEX 加密保管。',
     cloudDisclosure: '雲端儲存：匯入文件原件或飛書正文快照，以及證據和筆記保存在目前帳號下，可跨裝置回看。飛書授權令牌由 APEX 加密保管。',
     cloudUnavailable: '雲端資料儲存尚未設定，請聯絡平台管理員。',
-    empty: '尚無資料。匯入文件或 SRT/VTT 字幕開始。', processing: '正在解析原文…', ready: '可提問', failed: '解析失敗',
+    empty: '尚無資料。匯入文件或 SRT/VTT 字幕開始。', loadingSources: '正在讀取資料記錄…', failedList: '資料記錄讀取失敗。', retryList: '重試讀取', processing: '正在解析原文…', ready: '可提問', failed: '解析失敗',
     retry: '重試解析', chooseAgain: '重新選擇文件', open: '開啟原文件', remove: '刪除資料',
     question: '針對目前資料提問', ask: '尋找證據', noEvidence: '這份資料中未找到相關原文證據。', excerpts: '匹配的原文片段',
     note: '儲存筆記', notePlaceholder: '記錄你的發現', notes: '筆記', evidence: '原文證據', source: '資料記錄',
-    noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', deleteNote: '刪除筆記',
+    noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', opening: '正在開啟資料…', deleteNote: '刪除筆記',
     error: '操作失敗，請重試。', subtitleInvalid: '字幕時間碼或格式無效，請檢查 SRT/VTT 文件。', pdfOriginal: 'PDF 原件', pdfPreviewUnavailable: 'PDF 預覽暫時無法使用，可開啟原件。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。',
     videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前無法提問；可在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起',
@@ -46,11 +46,11 @@ const COPY = {
     local: 'Saved locally', cloud: 'Saved in cloud', localDisclosure: 'Local save: imported files, Feishu text snapshots, evidence, and notes stay on this device. Parsing passes through APEX; Feishu authorization tokens are encrypted on APEX.',
     cloudDisclosure: 'Cloud save: imported files or Feishu text snapshots, evidence, and notes are stored under your account across devices. Feishu authorization tokens are encrypted on APEX.',
     cloudUnavailable: 'Cloud document storage is not configured. Contact the platform administrator.',
-    empty: 'No sources yet. Import a document or SRT/VTT captions.', processing: 'Reading original text…', ready: 'Ready for questions', failed: 'Parsing failed',
+    empty: 'No sources yet. Import a document or SRT/VTT captions.', loadingSources: 'Loading source history…', failedList: 'Could not load source history.', retryList: 'Retry loading', processing: 'Reading original text…', ready: 'Ready for questions', failed: 'Parsing failed',
     retry: 'Retry parsing', chooseAgain: 'Choose file again', open: 'Open original file', remove: 'Delete source',
     question: 'Ask about this source', ask: 'Find evidence', noEvidence: 'No matching original text was found in this source.', excerpts: 'Matching original passages',
     note: 'Save note', notePlaceholder: 'Record your finding', notes: 'Notes', evidence: 'Original evidence', source: 'Source history',
-    noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', deleteNote: 'Delete note',
+    noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', opening: 'Opening source…', deleteNote: 'Delete note',
     error: 'The action failed. Try again.', subtitleInvalid: 'Invalid subtitle timing or format. Check the SRT/VTT file.', pdfOriginal: 'Original PDF', pdfPreviewUnavailable: 'PDF preview is unavailable. You can open the original.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.',
     videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read, so questions are unavailable; you can open the original site.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}',
@@ -63,11 +63,11 @@ const COPY = {
     local: 'ローカル保存', cloud: 'クラウド保存', localDisclosure: 'ローカル保存：読み込んだファイル、Feishu の本文、根拠、メモはこの端末に保存されます。解析は APEX を経由し、Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudDisclosure: 'クラウド保存：ファイルまたは Feishu の本文、根拠、メモをアカウントに保存します。Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudUnavailable: 'クラウド保存が設定されていません。管理者に連絡してください。',
-    empty: '資料はまだありません。文書または SRT/VTT 字幕を読み込んでください。', processing: '原文を解析中…', ready: '質問できます', failed: '解析に失敗',
+    empty: '資料はまだありません。文書または SRT/VTT 字幕を読み込んでください。', loadingSources: '資料履歴を読み込み中…', failedList: '資料履歴を読み込めませんでした。', retryList: '再読み込み', processing: '原文を解析中…', ready: '質問できます', failed: '解析に失敗',
     retry: '解析を再試行', chooseAgain: 'ファイルを選び直す', open: '原本を開く', remove: '資料を削除',
     question: 'この資料について質問', ask: '根拠を探す', noEvidence: '一致する原文は見つかりませんでした。', excerpts: '一致した原文',
     note: 'メモを保存', notePlaceholder: '発見を記録', notes: 'メモ', evidence: '原文の根拠', source: '資料履歴',
-    noSourceText: '読める本文がありません。', select: '資料を選択してください。', deleteNote: 'メモを削除',
+    noSourceText: '読める本文がありません。', select: '資料を選択してください。', opening: '資料を開いています…', deleteNote: 'メモを削除',
     error: '失敗しました。再試行してください。', subtitleInvalid: '字幕の時間または形式が無効です。SRT/VTT ファイルを確認してください。', pdfOriginal: '元の PDF', pdfPreviewUnavailable: 'PDF をプレビューできません。元のファイルを開けます。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
     anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。',
     videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため質問はできません。元サイトで確認できます。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から',
@@ -80,11 +80,11 @@ const COPY = {
     local: 'حفظ محلي', cloud: 'حفظ سحابي', localDisclosure: 'الحفظ المحلي: تبقى الملفات المستوردة ونسخة نص Feishu والأدلة والملاحظات على هذا الجهاز. تمر القراءة عبر APEX، وتُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudDisclosure: 'الحفظ السحابي: تُخزن الملفات أو نسخة نص Feishu والأدلة والملاحظات ضمن حسابك عبر الأجهزة. تُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudUnavailable: 'لم يتم إعداد التخزين السحابي. تواصل مع مسؤول المنصة.',
-    empty: 'لا توجد مصادر بعد. استورد مستندًا أو ترجمة SRT/VTT.', processing: 'جارٍ قراءة النص الأصلي…', ready: 'جاهز للأسئلة', failed: 'فشل التحليل',
+    empty: 'لا توجد مصادر بعد. استورد مستندًا أو ترجمة SRT/VTT.', loadingSources: 'جارٍ تحميل سجل المصادر…', failedList: 'تعذر تحميل سجل المصادر.', retryList: 'إعادة التحميل', processing: 'جارٍ قراءة النص الأصلي…', ready: 'جاهز للأسئلة', failed: 'فشل التحليل',
     retry: 'إعادة التحليل', chooseAgain: 'اختر ملفًا مجددًا', open: 'فتح الملف الأصلي', remove: 'حذف المصدر',
     question: 'اسأل عن هذا المصدر', ask: 'البحث عن أدلة', noEvidence: 'لم يُعثر على نص أصلي مطابق في هذا المصدر.', excerpts: 'مقاطع من النص الأصلي',
     note: 'حفظ ملاحظة', notePlaceholder: 'سجل ما وجدته', notes: 'ملاحظات', evidence: 'الأدلة الأصلية', source: 'سجل المصادر',
-    noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', deleteNote: 'حذف الملاحظة',
+    noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', opening: 'جارٍ فتح المصدر…', deleteNote: 'حذف الملاحظة',
     error: 'فشلت العملية. حاول مجددًا.', subtitleInvalid: 'توقيت الترجمة أو تنسيقها غير صالح. تحقق من ملف SRT/VTT.', pdfOriginal: 'ملف PDF الأصلي', pdfPreviewUnavailable: 'معاينة PDF غير متاحة. يمكنك فتح الملف الأصلي.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.',
     videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد، فلا يمكن طرح الأسئلة؛ يمكنك فتح الموقع الأصلي.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}',
@@ -151,7 +151,13 @@ export function AnalysisView() {
   const c = COPY[locale]
   const [policy, setPolicy] = useState<{ mode: 'cloud' | 'local'; cloud_storage_configured: boolean } | null>(null)
   const [items, setItems] = useState<AnalysisDocument[]>([])
+  const [listStatus, setListStatus] = useState<'error' | 'loading' | 'ready'>('loading')
+  const listRequestRef = useRef(0)
   const [selected, setSelected] = useState<AnalysisDocument | null>(null)
+  const [openingId, setOpeningId] = useState<string | null>(null)
+  const selectedDocumentIdRef = useRef<string | null>(null)
+  const openedDocumentIdRef = useRef<string | null>(null)
+  const openRequestRef = useRef(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [link, setLink] = useState('')
@@ -178,25 +184,64 @@ export function AnalysisView() {
   }, [localVideo])
 
   const refreshList = useCallback(async () => {
-    const result = await bridge()?.list()
+    const request = ++listRequestRef.current
+    setListStatus('loading')
 
-    if (result?.ok) {
-      setItems(result.items ?? [])
+    try {
+      const result = await bridge()?.list()
 
-      if (result.cloudUnavailable) {setError(c.error)}
+      if (request !== listRequestRef.current) {return}
+
+      if (result?.ok && Array.isArray(result.items)) {
+        setItems(result.items)
+        setListStatus('ready')
+
+        if (result.cloudUnavailable) {setError(c.error)}
+      } else {setListStatus('error')}
+    } catch {
+      if (request === listRequestRef.current) {setListStatus('error')}
     }
-    else {setError(result?.code ?? c.error)}
   }, [c.error])
 
-  const openDocument = useCallback(async (id: string) => {
-    const result = await bridge()?.get(id)
+  const openDocument = useCallback(async (id: string, select = false) => {
+    if (select) {
+      const switchingSource = openedDocumentIdRef.current !== id
+      selectedDocumentIdRef.current = id
 
-    if (result?.ok && result.item) {
-      setSelected(result.item)
-      setLocalVideo(current => current?.documentId === result.item?.id ? current : null)
-      setVideoError('')
+      if (switchingSource) {
+        openedDocumentIdRef.current = null
+        setSelected(null)
+        setOpeningId(id)
+        setLocalVideo(null)
+        setVideoError('')
+        setQuestion('')
+        setNote('')
+        setAnchorId(null)
+        setError('')
+      }
+    } else if (selectedDocumentIdRef.current !== id) {
+      return
     }
-    else {setError(result?.code ?? c.error)}
+
+    const request = ++openRequestRef.current
+
+    try {
+      const result = await bridge()?.get(id)
+
+      if (request !== openRequestRef.current || selectedDocumentIdRef.current !== id) {return}
+
+      if (result?.ok && result.item?.id === id) {
+        openedDocumentIdRef.current = id
+        setSelected(result.item)
+        setVideoError('')
+      } else {
+        setError(result?.code ?? c.error)
+      }
+    } catch {
+      if (request === openRequestRef.current && selectedDocumentIdRef.current === id) {setError(c.error)}
+    } finally {
+      if (request === openRequestRef.current && selectedDocumentIdRef.current === id) {setOpeningId(null)}
+    }
   }, [c.error])
 
   useEffect(() => {
@@ -336,7 +381,7 @@ export function AnalysisView() {
  return }
 
           await refreshList()
-          await openDocument(result.item.id)
+          await openDocument(result.item.id, true)
         })} type="button">{c.import}</button>
         <input aria-label={c.link} className="min-w-52 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => { setLink(event.target.value); setVideoResolution(null) }} placeholder={c.link} type="url" value={link} />
         {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
@@ -346,7 +391,7 @@ export function AnalysisView() {
 
  return }
 
-          setLink(''); await refreshList(); await openDocument(result.item.id)
+          setLink(''); await refreshList(); await openDocument(result.item.id, true)
         })} type="button">{c.importLink}</button>}
         {isFeishuUrl(link) && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !!authFlow} onClick={() => void perform(async () => {
           const result = await bridge()?.authorizeFeishu()
@@ -390,7 +435,7 @@ export function AnalysisView() {
             setLink('')
             setVideoResolution(null)
             await refreshList()
-            await openDocument(result.item.id)
+            await openDocument(result.item.id, true)
           } finally {setTranscribingVideo(false)}
         })} type="button">{transcribingVideo ? c.videoAnalyzing : c.videoAnalyze}</button>}
         {isHttpsUrl(link) && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(videoResolution?.source_url ?? link)} type="button">{c.openLink}</button>}
@@ -401,41 +446,53 @@ export function AnalysisView() {
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="space-y-2">
           <h3 className="font-medium">{c.source}</h3>
-          {items.length === 0 && <p className="text-sm text-(--ui-text-secondary)">{c.empty}</p>}
-          {items.map(item => <button className={`block w-full rounded-xl border p-3 text-left ${selected?.id === item.id ? 'bg-(--ui-row-active-background)' : ''}`} key={item.id} onClick={() => void openDocument(item.id)} type="button">
+          {listStatus === 'loading' && <p className="text-sm text-(--ui-text-secondary)">{c.loadingSources}</p>}
+          {listStatus === 'error' && <div className="space-y-2 text-sm text-destructive" role="alert"><p>{c.failedList}</p><button className="rounded-lg border px-3 py-1" onClick={() => void refreshList()} type="button">{c.retryList}</button></div>}
+          {items.length === 0 && listStatus === 'ready' && <p className="text-sm text-(--ui-text-secondary)">{c.empty}</p>}
+          {items.map(item => <button className={`block w-full rounded-xl border p-3 text-left ${(openingId ?? selected?.id) === item.id ? 'bg-(--ui-row-active-background)' : ''}`} key={item.id} onClick={() => void openDocument(item.id, true)} type="button">
             <span className="block truncate font-medium">{item.filename}</span>
             <span className="text-xs text-(--ui-text-secondary)">{item.storageMode === 'cloud' ? c.cloud : c.local} · {item.status === 'ready' ? c.ready : item.status === 'processing' ? c.processing : c.failed}</span>
           </button>)}
         </aside>
         <main className="min-w-0 space-y-5">
-          {!selected && <p className="rounded-xl border p-6 text-sm text-(--ui-text-secondary)">{c.select}</p>}
+          {!selected && <p className="rounded-xl border p-6 text-sm text-(--ui-text-secondary)">{openingId ? c.opening : c.select}</p>}
           {selected && <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
               <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{selected.source_url || selected.sourceUrl ? c.videoTranscriptNotice : c.subtitleNotice}</p>}</div>
               <div className="flex gap-2">
                 <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
-                  const result = await bridge()?.openSource(selected.id)
+                  const sourceId = selected.id
+                  const result = await bridge()?.openSource(sourceId)
 
-                  if (!result?.ok) {setError(result?.code ?? c.error)}
+                  if (!result?.ok && selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
                 })} type="button">{selected.kind === 'feishu' || (selected.kind === 'subtitle' && (selected.source_url || selected.sourceUrl)) ? c.openLink : c.open}</button>
                 {selected.status === 'failed' && <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
-                  const result = await bridge()?.retry(selected.id)
+                  const sourceId = selected.id
+                  const result = await bridge()?.retry(sourceId)
 
-                  if (!result?.ok) { setError(result?.code ?? c.error);
+                  if (!result?.ok) { if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
 
  return }
 
-                  await openDocument(selected.id)
+                  await openDocument(sourceId)
                 })} type="button">{c.retry}</button>}
                 <button className="rounded-lg border px-3 py-2 text-sm text-destructive" onClick={() => void perform(async () => {
-                  const result = await bridge()?.delete(selected.id)
+                  const sourceId = selected.id
+                  const result = await bridge()?.delete(sourceId)
 
-                  if (!result?.ok) { setError(result?.code ?? c.error);
+                  if (!result?.ok) { if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
 
  return }
 
-                  setSelected(null)
-                  setLocalVideo(null)
+                  if (selectedDocumentIdRef.current === sourceId) {
+                    selectedDocumentIdRef.current = null
+                    openedDocumentIdRef.current = null
+                    openRequestRef.current += 1
+                    setSelected(null)
+                    setOpeningId(null)
+                    setLocalVideo(null)
+                  }
+
                   await refreshList()
                 })} type="button">{c.remove}</button>
               </div>
@@ -473,14 +530,15 @@ export function AnalysisView() {
               <section className="space-y-3 rounded-xl border p-4">
                 <h3 className="font-medium">{c.question}</h3>
                 <div className="flex gap-2"><input aria-label={c.question} className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => setQuestion(event.target.value)} value={question} /><button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || question.trim().length < 2} onClick={() => void perform(async () => {
-                  const result = await bridge()?.ask(selected.id, question)
+                  const sourceId = selected.id
+                  const result = await bridge()?.ask(sourceId, question)
 
-                  if (!result?.ok) { setError(result?.code ?? c.error);
+                  if (!result?.ok) { if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
 
  return }
 
-                  setQuestion('')
-                  await openDocument(selected.id)
+                  if (selectedDocumentIdRef.current === sourceId) {setQuestion('')}
+                  await openDocument(sourceId)
                 })} type="button">{c.ask}</button></div>
                 {(selected.questions ?? []).map(answer)}
               </section>
@@ -489,15 +547,26 @@ export function AnalysisView() {
                 {anchorId && <p className="text-xs text-(--ui-text-secondary)">{c.selectedAnchor}: {anchorId}</p>}
                 <textarea aria-label={c.notePlaceholder} className="min-h-20 w-full rounded-lg border bg-transparent p-3" onChange={event => setNote(event.target.value)} placeholder={c.notePlaceholder} value={note} />
                 <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !note.trim()} onClick={() => void perform(async () => {
-                  const result = await bridge()?.addNote(selected.id, note, anchorId)
+                  const sourceId = selected.id
+                  const result = await bridge()?.addNote(sourceId, note, anchorId)
 
-                  if (!result?.ok) { setError(result?.code ?? c.error);
+                  if (!result?.ok) { if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
 
  return }
 
-                  setNote(''); setAnchorId(null); await openDocument(selected.id)
+                  if (selectedDocumentIdRef.current === sourceId) {setNote(''); setAnchorId(null)}
+                  await openDocument(sourceId)
                 })} type="button">{c.note}</button>
-                {(selected.notes ?? []).map(item => <div className="flex justify-between gap-3 rounded-lg border p-3 text-sm" key={item.id}><div><p>{item.body}</p>{item.anchor_id && <button className="text-xs underline" onClick={() => jump(item.anchor_id!)} type="button">{c.citation} · {item.anchor_id}</button>}</div><button aria-label={c.deleteNote} onClick={() => void perform(async () => { await bridge()?.deleteNote(selected.id, item.id); await openDocument(selected.id) })} type="button">×</button></div>)}
+                {(selected.notes ?? []).map(item => <div className="flex justify-between gap-3 rounded-lg border p-3 text-sm" key={item.id}><div><p>{item.body}</p>{item.anchor_id && <button className="text-xs underline" onClick={() => jump(item.anchor_id!)} type="button">{c.citation} · {item.anchor_id}</button>}</div><button aria-label={c.deleteNote} onClick={() => void perform(async () => {
+                  const sourceId = selected.id
+                  const result = await bridge()?.deleteNote(sourceId, item.id)
+
+                  if (!result?.ok) {if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
+
+ return}
+
+                  await openDocument(sourceId)
+                })} type="button">×</button></div>)}
               </section>
               <section className="space-y-3"><h3 className="font-medium">{c.evidence}</h3>
                 {(selected.anchors ?? []).length === 0 && <p>{c.noSourceText}</p>}
