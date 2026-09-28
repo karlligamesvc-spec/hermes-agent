@@ -70,7 +70,7 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
     const directory = accountDirectory(root, userId)
     const ext = path.extname(item.filename).toLowerCase()
 
-    if (item.id !== id || item.storageMode !== 'local' || (item.kind !== 'feishu' && !['.pdf', '.docx', '.xlsx', '.txt', '.md'].includes(ext))) {
+    if (item.id !== id || item.storageMode !== 'local' || (item.kind !== 'feishu' && !['.pdf', '.docx', '.xlsx', '.txt', '.md', '.srt', '.vtt'].includes(ext))) {
       return null
     }
 
@@ -94,7 +94,7 @@ export function getLocalDocument(root: string, userId: string, id: string): Loca
 
 export function createLocalPendingDocument(root: string, userId: string, filename: string, sourceBytes: Buffer): LocalDocument {
   const ext = path.extname(filename).toLowerCase()
-  const kind = ({ '.pdf': 'pdf', '.docx': 'word', '.xlsx': 'excel', '.txt': 'text', '.md': 'text' } as Record<string, string>)[ext]
+  const kind = ({ '.pdf': 'pdf', '.docx': 'word', '.xlsx': 'excel', '.txt': 'text', '.md': 'text', '.srt': 'subtitle', '.vtt': 'subtitle' } as Record<string, string>)[ext]
 
   if (!kind) {throw new Error('unsupported_format')}
 

@@ -13,6 +13,26 @@ afterEach(() => {
 })
 
 describe('account-scoped local analysis', () => {
+  it('retains subtitle bytes and cited timecodes under only the importing account', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-subtitle-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const bytes = Buffer.from('1\n00:01:02,500 --> 00:01:05,000\nRevenue rose\n')
+    const pending = createLocalPendingDocument(root, owner, 'clip.srt', bytes)
+    const location = { start_seconds: 62.5, end_seconds: 65 }
+
+    expect(pending.kind).toBe('subtitle')
+    expect(getLocalDocument(root, other, pending.id)).toBeNull()
+    expect(completeLocalDocument(root, owner, pending.id, pending.parseAttempt!, {
+      kind: 'subtitle', anchors: [{ id: 'a1', location, text: 'Revenue rose' }]
+    })).toBe(true)
+    expect(answerLocalDocument(root, owner, pending.id, 'Revenue')?.citations).toEqual([{ anchor_id: 'a1', location }])
+    expect(fs.readFileSync(pending.sourcePath)).toEqual(bytes)
+    expect(deleteLocalDocument(root, owner, pending.id)).toBe(true)
+    expect(fs.existsSync(pending.sourcePath)).toBe(false)
+  })
+
   it('records an asynchronous parse failure, retries stored bytes, and only answers ready text', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-pending-test-'))
     roots.push(root)

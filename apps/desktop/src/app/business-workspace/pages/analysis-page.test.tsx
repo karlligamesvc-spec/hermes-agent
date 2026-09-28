@@ -11,6 +11,32 @@ afterEach(() => {
 })
 
 describe('document analysis evidence', () => {
+  it('labels subtitle-only evidence and jumps a timestamp citation to the original cue', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const item = {
+      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local',
+      anchors: [{ id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 }, text: 'Revenue rose 20 percent' }],
+      notes: [], questions: [{ id: 'q1', question: 'Revenue?', answer: 'Revenue rose 20 percent',
+        answer_type: 'source_excerpts', citations: [{ anchor_id: 'a1', location: { start_seconds: 62.5, end_seconds: 65 } }] }]
+    }
+    window.hermesDesktop = {
+      analysisDocuments: {
+        policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+        list: vi.fn().mockResolvedValue({ ok: true, items: [item] }),
+        get: vi.fn().mockResolvedValue({ ok: true, item })
+      }
+    } as never
+
+    render(<AnalysisView />)
+    fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
+    expect(await screen.findByText(/仅依据导入的字幕原文/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '查看出处 · 1:02 起' }))
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    expect(screen.getAllByText('Revenue rose 20 percent').length).toBeGreaterThan(0)
+  })
+
   it('jumps from a cited answer to the original page excerpt', async () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll

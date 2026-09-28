@@ -21,7 +21,7 @@ export interface AnalysisNote {
 export interface AnalysisDocument {
   id: string
   filename: string
-  kind: 'pdf' | 'word' | 'excel' | 'text' | 'feishu'
+  kind: 'pdf' | 'word' | 'excel' | 'text' | 'feishu' | 'subtitle'
   status: 'processing' | 'ready' | 'failed'
   storageMode: 'cloud' | 'local'
   error_code?: string | null

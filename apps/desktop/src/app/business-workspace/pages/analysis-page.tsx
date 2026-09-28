@@ -7,83 +7,94 @@ import { BusinessPageHeader } from '../components/business-page-header'
 
 const COPY = {
   zh: {
-    title: '沉浸式分析', description: '导入资料，沿着原文证据提问和记笔记。', import: '导入文档',
+    title: '沉浸式分析', description: '导入资料，沿着原文证据提问和记笔记。', import: '导入文档或字幕',
     link: '粘贴资料链接', linkHint: '飞书文档需要本人授权及读取权限。', openLink: '在原站打开', importLink: '读取链接', authorize: '授权飞书', forget: '移除平台保存的飞书授权', authorizing: '等待飞书授权…', authorized: '已授权，可读取链接',
     local: '本地保存', cloud: '云端保存', localDisclosure: '本地保存：导入文件的原件、飞书正文快照、证据和笔记留在这台设备；解析请求会经过 APEX，飞书授权令牌由 APEX 加密保管。',
     cloudDisclosure: '云端保存：导入文件的原件或飞书正文快照，以及证据和笔记保存在当前账号下，可跨设备回看。飞书授权令牌由 APEX 加密保管。',
     cloudUnavailable: '云端资料存储尚未配置，请联系平台管理员。',
-    empty: '尚无资料。导入 PDF、Word、Excel 或文本文件开始。', processing: '正在解析原文…', ready: '可提问', failed: '解析失败',
+    empty: '尚无资料。导入文档或 SRT/VTT 字幕开始。', processing: '正在解析原文…', ready: '可提问', failed: '解析失败',
     retry: '重试解析', chooseAgain: '重新选择文件', open: '打开原文件', remove: '删除资料',
     question: '针对当前资料提问', ask: '查找证据', noEvidence: '这份资料中未找到相关原文证据。', excerpts: '匹配的原文片段',
     note: '保存笔记', notePlaceholder: '记录你的发现', notes: '笔记', evidence: '原文证据', source: '资料记录',
     noSourceText: '尚未取得可读取的正文。', select: '选择一份资料查看原文。', deleteNote: '删除笔记',
-    error: '操作失败，请重试。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
+    error: '操作失败，请重试。', subtitleInvalid: '字幕时间码或格式无效，请检查 SRT/VTT 文件。', permission: '此链接的正文尚未获授权读取，无法生成问答。', page: '第 {n} 页', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '记到此处', selectedAnchor: '当前引用', citation: '查看出处', unsupportedLink: '暂不支持直接读取此链接，请下载文档后导入。',
-    videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前只能在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。'
+    videoCheck: '检查视频链接', videoCandidate: '已识别为 {platform}。尚未读取媒体或字幕，当前只能在原站查看。', videoUpload: '已识别为 {platform}。目前需要上传视频或字幕才能分析。', videoUnreadable: '无法确认可读取的视频链接，请核对地址或在原站打开。', subtitleNotice: '以下仅依据导入的字幕原文，不代表已分析视频画面。', timestamp: '{time} 起'
   },
   'zh-hant': {
-    title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件',
+    title: '沉浸式分析', description: '匯入資料，沿著原文證據提問和記筆記。', import: '匯入文件或字幕',
     link: '貼上資料連結', linkHint: '飛書文件需要本人授權及讀取權限。', openLink: '在原站開啟', importLink: '讀取連結', authorize: '授權飛書', forget: '移除平台儲存的飛書授權', authorizing: '等待飛書授權…', authorized: '已授權，可讀取連結',
     local: '本機儲存', cloud: '雲端儲存', localDisclosure: '本機儲存：匯入文件原件、飛書正文快照、證據和筆記留在此裝置；解析請求會經過 APEX，飛書授權令牌由 APEX 加密保管。',
     cloudDisclosure: '雲端儲存：匯入文件原件或飛書正文快照，以及證據和筆記保存在目前帳號下，可跨裝置回看。飛書授權令牌由 APEX 加密保管。',
     cloudUnavailable: '雲端資料儲存尚未設定，請聯絡平台管理員。',
-    empty: '尚無資料。匯入 PDF、Word、Excel 或文字文件開始。', processing: '正在解析原文…', ready: '可提問', failed: '解析失敗',
+    empty: '尚無資料。匯入文件或 SRT/VTT 字幕開始。', processing: '正在解析原文…', ready: '可提問', failed: '解析失敗',
     retry: '重試解析', chooseAgain: '重新選擇文件', open: '開啟原文件', remove: '刪除資料',
     question: '針對目前資料提問', ask: '尋找證據', noEvidence: '這份資料中未找到相關原文證據。', excerpts: '匹配的原文片段',
     note: '儲存筆記', notePlaceholder: '記錄你的發現', notes: '筆記', evidence: '原文證據', source: '資料記錄',
     noSourceText: '尚未取得可讀取的正文。', select: '選擇一份資料查看原文。', deleteNote: '刪除筆記',
-    error: '操作失敗，請重試。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
+    error: '操作失敗，請重試。', subtitleInvalid: '字幕時間碼或格式無效，請檢查 SRT/VTT 文件。', permission: '此連結的正文尚未獲授權讀取，無法產生問答。', page: '第 {n} 頁', paragraph: '第 {n} 段', sheet: '{sheet} · {cell}',
     anchorNote: '記到此處', selectedAnchor: '目前引用', citation: '查看出處', unsupportedLink: '目前無法直接讀取此連結，請下載文件後匯入。',
-    videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前只能在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。'
+    videoCheck: '檢查影片連結', videoCandidate: '已識別為 {platform}。尚未讀取影片或字幕，目前只能在原站查看。', videoUpload: '已識別為 {platform}。目前需上傳影片或字幕才能分析。', videoUnreadable: '無法確認可讀取的影片連結，請檢查網址或在原站開啟。', subtitleNotice: '以下僅依據匯入的字幕原文，不代表已分析影片畫面。', timestamp: '{time} 起'
   },
   en: {
-    title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document',
+    title: 'Immersive analysis', description: 'Import a document, ask against its original text, and keep notes.', import: 'Import document or captions',
     link: 'Paste a source link', linkHint: 'Feishu documents require your authorization and read access.', openLink: 'Open original site', importLink: 'Read link', authorize: 'Authorize Feishu', forget: 'Remove saved Feishu access', authorizing: 'Waiting for Feishu authorization…', authorized: 'Authorized. You can read the link.',
     local: 'Saved locally', cloud: 'Saved in cloud', localDisclosure: 'Local save: imported files, Feishu text snapshots, evidence, and notes stay on this device. Parsing passes through APEX; Feishu authorization tokens are encrypted on APEX.',
     cloudDisclosure: 'Cloud save: imported files or Feishu text snapshots, evidence, and notes are stored under your account across devices. Feishu authorization tokens are encrypted on APEX.',
     cloudUnavailable: 'Cloud document storage is not configured. Contact the platform administrator.',
-    empty: 'No sources yet. Import a PDF, Word, Excel, or text file.', processing: 'Reading original text…', ready: 'Ready for questions', failed: 'Parsing failed',
+    empty: 'No sources yet. Import a document or SRT/VTT captions.', processing: 'Reading original text…', ready: 'Ready for questions', failed: 'Parsing failed',
     retry: 'Retry parsing', chooseAgain: 'Choose file again', open: 'Open original file', remove: 'Delete source',
     question: 'Ask about this source', ask: 'Find evidence', noEvidence: 'No matching original text was found in this source.', excerpts: 'Matching original passages',
     note: 'Save note', notePlaceholder: 'Record your finding', notes: 'Notes', evidence: 'Original evidence', source: 'Source history',
     noSourceText: 'No readable body has been obtained.', select: 'Select a source to inspect its text.', deleteNote: 'Delete note',
-    error: 'The action failed. Try again.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
+    error: 'The action failed. Try again.', subtitleInvalid: 'Invalid subtitle timing or format. Check the SRT/VTT file.', permission: 'The body of this link has not been authorized for reading. Questions are unavailable.', page: 'Page {n}', paragraph: 'Paragraph {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'Note this passage', selectedAnchor: 'Current citation', citation: 'Jump to source', unsupportedLink: 'Direct reading is unavailable for this link. Download the document and import it.',
-    videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read; open the original for now.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.'
+    videoCheck: 'Check video link', videoCandidate: '{platform} link recognized. Media and captions have not been read; open the original for now.', videoUpload: '{platform} link recognized. Upload the video or captions to analyze it.', videoUnreadable: 'This video link cannot be verified. Check the address or open the original site.', subtitleNotice: 'These excerpts come only from the imported captions; video frames have not been analyzed.', timestamp: 'From {time}'
   },
   ja: {
-    title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書を読み込む',
+    title: '資料分析', description: '原文の根拠を確認しながら質問し、メモを残せます。', import: '文書・字幕を読み込む',
     link: '資料リンクを貼り付け', linkHint: 'Feishu 文書には本人の認証と閲覧権限が必要です。', openLink: '元サイトを開く', importLink: 'リンクを読む', authorize: 'Feishu を認証', forget: '保存済みの Feishu 認証を削除', authorizing: 'Feishu の認証を待機中…', authorized: '認証済み。リンクを読めます。',
     local: 'ローカル保存', cloud: 'クラウド保存', localDisclosure: 'ローカル保存：読み込んだファイル、Feishu の本文、根拠、メモはこの端末に保存されます。解析は APEX を経由し、Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudDisclosure: 'クラウド保存：ファイルまたは Feishu の本文、根拠、メモをアカウントに保存します。Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudUnavailable: 'クラウド保存が設定されていません。管理者に連絡してください。',
-    empty: '資料はまだありません。PDF、Word、Excel、テキストを読み込んでください。', processing: '原文を解析中…', ready: '質問できます', failed: '解析に失敗',
+    empty: '資料はまだありません。文書または SRT/VTT 字幕を読み込んでください。', processing: '原文を解析中…', ready: '質問できます', failed: '解析に失敗',
     retry: '解析を再試行', chooseAgain: 'ファイルを選び直す', open: '原本を開く', remove: '資料を削除',
     question: 'この資料について質問', ask: '根拠を探す', noEvidence: '一致する原文は見つかりませんでした。', excerpts: '一致した原文',
     note: 'メモを保存', notePlaceholder: '発見を記録', notes: 'メモ', evidence: '原文の根拠', source: '資料履歴',
     noSourceText: '読める本文がありません。', select: '資料を選択してください。', deleteNote: 'メモを削除',
-    error: '失敗しました。再試行してください。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
+    error: '失敗しました。再試行してください。', subtitleInvalid: '字幕の時間または形式が無効です。SRT/VTT ファイルを確認してください。', permission: 'このリンクの本文を読む権限がないため、質問できません。', page: '{n} ページ', paragraph: '{n} 段落', sheet: '{sheet} · {cell}',
     anchorNote: 'ここにメモ', selectedAnchor: '選択中の引用', citation: '出典へ移動', unsupportedLink: 'このリンクは直接読み込めません。文書をダウンロードしてから読み込んでください。',
-    videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため、今は元サイトで確認してください。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。'
+    videoCheck: '動画リンクを確認', videoCandidate: '{platform} のリンクです。動画や字幕は未取得のため、今は元サイトで確認してください。', videoUpload: '{platform} のリンクです。分析するには動画または字幕をアップロードしてください。', videoUnreadable: '動画リンクを確認できません。URL を確認するか元サイトを開いてください。', subtitleNotice: '以下は読み込んだ字幕のみを根拠とし、映像は解析していません。', timestamp: '{time} から'
   },
   ar: {
-    title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند',
+    title: 'تحليل المستندات', description: 'اطرح أسئلة مستندة إلى النص الأصلي واحفظ ملاحظاتك.', import: 'استيراد مستند أو ترجمة',
     link: 'ألصق رابط المصدر', linkHint: 'تتطلب مستندات Feishu موافقتك وصلاحية القراءة.', openLink: 'فتح الموقع الأصلي', importLink: 'قراءة الرابط', authorize: 'تفويض Feishu', forget: 'إزالة تفويض Feishu المحفوظ', authorizing: 'بانتظار تفويض Feishu…', authorized: 'تم التفويض؛ يمكنك قراءة الرابط.',
     local: 'حفظ محلي', cloud: 'حفظ سحابي', localDisclosure: 'الحفظ المحلي: تبقى الملفات المستوردة ونسخة نص Feishu والأدلة والملاحظات على هذا الجهاز. تمر القراءة عبر APEX، وتُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudDisclosure: 'الحفظ السحابي: تُخزن الملفات أو نسخة نص Feishu والأدلة والملاحظات ضمن حسابك عبر الأجهزة. تُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudUnavailable: 'لم يتم إعداد التخزين السحابي. تواصل مع مسؤول المنصة.',
-    empty: 'لا توجد مصادر بعد. استورد ملف PDF أو Word أو Excel أو نصًا.', processing: 'جارٍ قراءة النص الأصلي…', ready: 'جاهز للأسئلة', failed: 'فشل التحليل',
+    empty: 'لا توجد مصادر بعد. استورد مستندًا أو ترجمة SRT/VTT.', processing: 'جارٍ قراءة النص الأصلي…', ready: 'جاهز للأسئلة', failed: 'فشل التحليل',
     retry: 'إعادة التحليل', chooseAgain: 'اختر ملفًا مجددًا', open: 'فتح الملف الأصلي', remove: 'حذف المصدر',
     question: 'اسأل عن هذا المصدر', ask: 'البحث عن أدلة', noEvidence: 'لم يُعثر على نص أصلي مطابق في هذا المصدر.', excerpts: 'مقاطع من النص الأصلي',
     note: 'حفظ ملاحظة', notePlaceholder: 'سجل ما وجدته', notes: 'ملاحظات', evidence: 'الأدلة الأصلية', source: 'سجل المصادر',
     noSourceText: 'لم يُحصل على نص قابل للقراءة.', select: 'اختر مصدرًا لقراءة النص.', deleteNote: 'حذف الملاحظة',
-    error: 'فشلت العملية. حاول مجددًا.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
+    error: 'فشلت العملية. حاول مجددًا.', subtitleInvalid: 'توقيت الترجمة أو تنسيقها غير صالح. تحقق من ملف SRT/VTT.', permission: 'لم يُمنح إذن قراءة محتوى هذا الرابط، فلا يمكن طرح الأسئلة.', page: 'صفحة {n}', paragraph: 'فقرة {n}', sheet: '{sheet} · {cell}',
     anchorNote: 'ملاحظة لهذا المقطع', selectedAnchor: 'المرجع الحالي', citation: 'انتقل إلى المصدر', unsupportedLink: 'لا يمكن قراءة هذا الرابط مباشرةً. نزّل المستند ثم استورده.',
-    videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد؛ افتح الموقع الأصلي الآن.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.'
+    videoCheck: 'تحقق من رابط الفيديو', videoCandidate: 'تم التعرف على رابط {platform}. لم تُقرأ الوسائط أو الترجمة بعد؛ افتح الموقع الأصلي الآن.', videoUpload: 'تم التعرف على رابط {platform}. ارفع الفيديو أو الترجمة لتحليله.', videoUnreadable: 'تعذر التحقق من رابط الفيديو. تحقق من العنوان أو افتح الموقع الأصلي.', subtitleNotice: 'تستند المقاطع التالية إلى الترجمة المستوردة فقط؛ لم تُحلل إطارات الفيديو.', timestamp: 'من {time}'
   }
 } as const
 
-function locationLabel(location: Record<string, number | string>, copy: { page: string; paragraph: string; sheet: string }): string {
+function timestamp(seconds: number): string {
+  const total = Math.floor(seconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const rest = total % 60
+
+  return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function locationLabel(location: Record<string, number | string>, copy: { page: string; paragraph: string; sheet: string; timestamp: string }): string {
+  if (typeof location.start_seconds === 'number') {return copy.timestamp.replace('{time}', timestamp(location.start_seconds))}
+
   if (location.page) {return copy.page.replace('{n}', String(location.page))}
 
   if (location.sheet) {return copy.sheet.replace('{sheet}', String(location.sheet)).replace('{cell}', String(location.cell))}
@@ -107,7 +118,7 @@ function isFeishuUrl(value: string): boolean {
   return host === 'feishu.cn' || host.endsWith('.feishu.cn') || host === 'larksuite.com' || host.endsWith('.larksuite.com')
 }
 
-function humanError(code: string, copy: { cloudUnavailable: string; empty: string; error: string; failed: string; noSourceText: string; permission: string }): string {
+function humanError(code: string, copy: { cloudUnavailable: string; empty: string; error: string; failed: string; noSourceText: string; permission: string; subtitleInvalid: string }): string {
   if (['no_readable_text', 'empty_file'].includes(code)) {return copy.noSourceText}
 
   if (['analysis_cloud_storage_unavailable', 'cloud_upload_failed', 'download_unavailable'].includes(code)) {return copy.cloudUnavailable}
@@ -115,6 +126,8 @@ function humanError(code: string, copy: { cloudUnavailable: string; empty: strin
   if (['permission_denied', 'analysis_cloud_storage_disabled', 'feishu_permission_denied', 'feishu_authorization_required', 'feishu_identity_mismatch', 'feishu_binding_required', 'feishu_scope_unavailable'].includes(code)) {return copy.permission}
 
   if (code === 'unsupported_format') {return copy.empty}
+
+  if (['invalid_subtitle', 'invalid_subtitle_timing'].includes(code)) {return copy.subtitleInvalid}
 
   if (['parse_failed', 'parse_interrupted'].includes(code)) {return copy.failed}
 
@@ -296,7 +309,7 @@ export function AnalysisView() {
           {!selected && <p className="rounded-xl border p-6 text-sm text-(--ui-text-secondary)">{c.select}</p>}
           {selected && <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p></div>
+              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{c.subtitleNotice}</p>}</div>
               <div className="flex gap-2">
                 <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
                   const result = await bridge()?.openSource(selected.id)

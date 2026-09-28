@@ -22285,7 +22285,7 @@ ipcMain.handle('hermes:analysis:import', async event => {
 
     const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
       properties: ['openFile'],
-      filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'xlsx', 'txt', 'md'] }]
+      filters: [{ name: 'Documents and subtitles', extensions: ['pdf', 'docx', 'xlsx', 'txt', 'md', 'srt', 'vtt'] }]
     })
 
     if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
