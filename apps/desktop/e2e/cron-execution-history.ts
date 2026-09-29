@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import type { IncomingMessage } from 'node:http'
 import path from 'node:path'
 
 import type { Page } from '@playwright/test'
@@ -11,6 +12,78 @@ import { expect, test } from './test'
 type CronRequest = { path: string; method?: string; body?: Record<string, unknown> }
 type Job = { id: string; enabled: boolean; hermes_home: string; next_run_at: null | string }
 type History = { runs: unknown[]; executions: Array<{ id: string; status: string; finished_at: null | string }> }
+
+/** Hold an actual HTTP 404 while the user leaves the missing conversation. */
+export async function verifyLateSessionRecovery(fixture: PackagedMockBackendFixture) {
+  const { page, app } = fixture
+  const missingId = 'hc889-missing-session'
+  type Probe = { release: () => void; restore: () => void; read: () => { held: boolean; completed: string[]; statuses: number[] } }
+
+  await app.evaluate((_, id) => {
+    const http = process.getBuiltinModule('http')
+    const original = http.request
+    const completed: string[] = []
+    const statuses: number[] = []
+    let held = false
+
+    let release = () => {}
+    const host = globalThis as typeof globalThis & { recoveryProbe?: Probe }
+
+    http.request = ((...args: unknown[]) => {
+      const input = args[0] as URL | { path?: string }
+      const pathname = input instanceof URL ? input.pathname : input.path ?? ''
+      const index = args.length - 1
+      const callback = args[index] as (response: IncomingMessage) => void
+
+      if (pathname.includes(`/api/sessions/${id}`) && typeof callback === 'function') {
+        args[index] = (response: IncomingMessage) => {
+          statuses.push(response.statusCode ?? 0)
+          response.once('end', () => completed.push(pathname))
+
+          if (!held) {
+            held = true
+
+            release = () => { release = () => {}; callback(response) }
+          } else {
+            callback(response)
+          }
+        }
+      }
+
+      return Reflect.apply(original, http, args)
+    }) as typeof http.request
+    host.recoveryProbe = { release: () => release(), restore: () => { http.request = original; release() },
+      read: () => ({ held, completed, statuses }) }
+  }, missingId)
+
+  try {
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    await page.evaluate(id => { window.location.hash = `#/${id}` }, missingId)
+    await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { recoveryProbe?: Probe }).recoveryProbe?.read().held), { timeout: 20_000 }).toBe(true)
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    const target = await page.evaluate(() => window.location.hash)
+
+    expect(target).toContain('/cron')
+    await app.evaluate(() => (globalThis as typeof globalThis & { recoveryProbe?: Probe }).recoveryProbe?.release())
+    // Recovery rechecks ownership after the failed transcript read. Wait for
+    // that second real metadata response, then let its IPC and React paint land.
+    await expect.poll(() => app.evaluate((_, id) => (globalThis as typeof globalThis & { recoveryProbe?: Probe })
+      .recoveryProbe?.read().completed.filter(pathname => pathname === `/api/sessions/${id}`).length ?? 0, missingId), { timeout: 20_000 }).toBeGreaterThanOrEqual(2)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    expect(await page.evaluate(() => window.location.hash)).toBe(target)
+    await expect(page.getByRole('button', { name: '新建定时任务', exact: true }).first()).toBeVisible()
+    const evidence = await app.evaluate(() => (globalThis as typeof globalThis & { recoveryProbe?: Probe }).recoveryProbe?.read())
+
+    expect(evidence?.statuses.every(status => status === 404)).toBe(true)
+    await test.info().attach('late-session-recovery', { body: JSON.stringify({ missingId, target, evidence }), contentType: 'application/json' })
+  } finally {
+    await app.evaluate(() => {
+      const host = globalThis as typeof globalThis & { recoveryProbe?: Probe }
+      host.recoveryProbe?.restore()
+      delete host.recoveryProbe
+    })
+  }
+}
 
 async function api<T>(page: Page, request: CronRequest): Promise<T> {
   return page.evaluate(async input => {

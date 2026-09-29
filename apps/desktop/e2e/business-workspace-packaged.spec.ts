@@ -12,7 +12,7 @@ import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/anal
 
 import { verifySourceAnswer } from './analysis-source-answer'
 import { verifyWorkspaceReport } from './analysis-workspace-report'
-import { verifyCronExecutionHistory, verifyCronTimerExecution } from './cron-execution-history'
+import { verifyCronExecutionHistory, verifyCronTimerExecution, verifyLateSessionRecovery } from './cron-execution-history'
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
@@ -2500,4 +2500,9 @@ test('hc-889 packaged cron records actual script success and failure without cha
 test('hc-889 packaged timer fires a future occurrence and leaves a paused sibling untouched', async () => {
   if (!fixture) {throw new Error('Packaged fixture unavailable')}
   await verifyCronTimerExecution(fixture)
+})
+
+test('hc-889 packaged late session recovery preserves the chosen cron page', async () => {
+  if (!fixture) {throw new Error('Packaged fixture unavailable')}
+  await verifyLateSessionRecovery(fixture)
 })
