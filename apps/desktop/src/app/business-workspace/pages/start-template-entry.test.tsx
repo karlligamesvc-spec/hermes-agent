@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 
+import type { WorkflowDomainBridge } from '../api/types'
+
 import { BusinessStartHome } from './start-page'
 import { WorkflowsView } from './workflows-page'
 
@@ -29,7 +31,7 @@ function installBridge() {
     getVideoCatalog: vi.fn(async () => ({ items: [], ok: true, version: 'video/v1' })),
     listProjects: vi.fn(async () => ({ items: [], ok: true, total: 0 })),
     listWorkflows: vi.fn(async () => ({ items: [], ok: true })),
-    startGoal: vi.fn(async () => ({ ok: false, run: undefined as undefined | { id: string } }))
+    startGoal: vi.fn<WorkflowDomainBridge['startGoal']>(async () => ({ ok: false, run: undefined as undefined | { id: string } }))
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { workflowDomain: bridge } })
@@ -76,6 +78,7 @@ describe('actual Start template-selection entry', () => {
     expect(goal.value).toBe('用户已写好的目标')
     expect(submit.hasAttribute('disabled')).toBe(false)
     expect(bridge.startGoal).toHaveBeenCalledExactlyOnceWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '用户已写好的目标',
       starter: expect.objectContaining({ id: 'competitor-monitoring', slug: 'competitor-monitoring', version: 3 })
     })
@@ -83,6 +86,7 @@ describe('actual Start template-selection entry', () => {
     fireEvent.click(submit)
     await waitFor(() => expect(screen.getByTestId('location').textContent).toContain('run-confirmed'))
     expect(bridge.startGoal).toHaveBeenCalledTimes(2)
+    expect(bridge.startGoal.mock.calls[0]?.[0].idempotencyKey).toBe(bridge.startGoal.mock.calls[1]?.[0].idempotencyKey)
   })
 
   it('returns from changing a template with the edited brief and prior selection intact', async () => {

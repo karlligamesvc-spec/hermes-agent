@@ -6,6 +6,7 @@ import { ImEntryView } from '../../im-entry'
 import { deliverableDetailRoute, DELIVERABLES_ROUTE, HISTORY_ROUTE, projectDetailRoute, PROJECTS_ROUTE, workflowRunRoute } from '../../routes'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { useWorkflowDeliverables } from '../hooks/use-workflow-deliverables'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 
@@ -24,11 +25,13 @@ export function AssistantWorkspaceView() {
   const projects = useWorkflowProjects()
   const { state: deliverables } = useWorkflowDeliverables()
   const projectItems = projects.mode === 'ready' ? projects.items : []
+
   const running = projectItems.flatMap(item => {
     const runId = item.summary?.currentRunId
 
     return runId && ['queued', 'running'].includes(item.summary?.currentRunStatus ?? '') ? [{ item, runId }] : []
   }).slice(0, 3)
+
   const needsAttention = projectItems.filter(item => item.summary?.attention === 'failed' || item.summary?.attention === 'review').slice(0, 3)
   const incompleteSummary = projectItems.some(item => !item.summary)
   const recent = deliverables.mode === 'ready' ? [...deliverables.items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3) : []
@@ -38,6 +41,8 @@ export function AssistantWorkspaceView() {
   return (
     <section className="apex-business-surface apex-business-page apex-primary-page overflow-y-auto" data-assistant-workspace="">
       <div className="apex-primary-page-column space-y-6 pb-10">
+        <WorkflowRefreshNotice state={projects} />
+        <WorkflowRefreshNotice state={deliverables} />
         <BusinessPageHeader description={c.description} eyebrow={c.title} icon="organization" title={c.title} />
         <BusinessSection action={c.history} onAction={() => navigate(HISTORY_ROUTE)} title={c.connections}>
           <ImEntryView className="w-full" embedded />

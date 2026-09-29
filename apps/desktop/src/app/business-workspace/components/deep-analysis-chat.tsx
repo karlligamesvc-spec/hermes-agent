@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -9,6 +10,7 @@ import { setSessionOwnerHint } from '@/store/session'
 import { type AnalysisChatLink, sameAnalysisChatLink } from '../../../../shared/analysis-chat-link'
 import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
+import { $workflowDomainRevision } from '../api/read-revision'
 import { ANALYSIS_CHAT_COPY, analysisChatContextMatches } from '../video-analysis-chat-handoff'
 
 import { DeepAnalysisTurn } from './deep-analysis-turn'
@@ -19,6 +21,8 @@ export function DeepAnalysisChat({ source, locale, bridge }: {
   const navigate = useNavigate()
   const copy = ANALYSIS_CHAT_COPY[locale]
   const generation = useRef(0)
+  const previousSource = useRef('')
+  const revision = useStore($workflowDomainRevision)
   const [link, setLink] = useState<AnalysisChatLink | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
@@ -29,17 +33,22 @@ export function DeepAnalysisChat({ source, locale, bridge }: {
   useEffect(() => {
     let active = true
     generation.current += 1
-    setState('loading'); setLink(null); setError('')
+    const key = `${source.analysis_scope}:${source.id}:${source.analysis_revision}`
+
+    if (previousSource.current !== key) {setState('loading'); setLink(null); setError('')}
+    previousSource.current = key
     const read = bridge?.readDeepChat
 
     if (!read || !source.analysis_scope || !source.analysis_revision) {return}
     void read(source.id, source.analysis_scope, source.analysis_revision).then(result => {
       if (!active) {return}
-      setLink(result.item ?? null); setState(result.ok ? 'ready' : 'error')
+
+      if (result.ok) {setLink(result.item ?? null); setState('ready')}
+      else {setState('error')}
     }).catch(() => {if (active) {setState('error')}})
 
     return () => { active = false; generation.current += 1 }
-  }, [bridge, source.id, source.analysis_scope, source.analysis_revision, attempt])
+  }, [bridge, source.id, source.analysis_scope, source.analysis_revision, attempt, revision])
 
   if (!bridge?.readDeepChat) {return null}
 

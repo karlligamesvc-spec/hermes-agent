@@ -43,6 +43,7 @@ export interface WorkflowDomainStarter {
 
 export interface StartWorkflowDomainGoalOptions {
   apiBase: string
+  idempotencyKey?: string
   objective: string
   projectId?: string
   starter: WorkflowDomainStarter
@@ -60,6 +61,7 @@ export interface CreateWorkflowDomainDefinitionOptions {
 
 export interface StartExistingWorkflowDomainRunOptions {
   apiBase: string
+  idempotencyKey?: string
   objective: string
   workflowId: string
   transport: Pick<WorkflowDomainTransport, 'postJson'>
@@ -817,40 +819,16 @@ export async function createWorkflowDomainProject(options: CreateWorkflowDomainP
 
 export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOptions): Promise<JsonObject> {
   const objective = requireText(options.objective, 'objective', 4000)
-  // Invalid catalog data must not leave a newly-created Project orphaned.
-  validatedWorkflowStarter(options.starter)
-
-  const projectId = options.projectId
-    ? requireText(options.projectId, 'project id', 160)
-    : requireText(
-        (
-          await createWorkflowDomainProject({
-            apiBase: options.apiBase,
-            createdFrom: 'desktop_start',
-            name: workflowProjectName(objective),
-            objective,
-            transport: options.transport
-          })
-        ).id,
-        'project id',
-        160
-      )
-
-  const workflow = await createWorkflowDomainDefinition({
-    apiBase: options.apiBase,
+  const { description, name, slug, templateId, templateVersion } = validatedWorkflowStarter(options.starter)
+  const projectId = options.projectId ? requireText(options.projectId, 'project id', 160) : undefined
+  const run = responseItem(await options.transport.postJson(workflowDomainUrl(options.apiBase, 'start-goal'), {
     objective,
-    projectId,
-    starter: options.starter,
-    transport: options.transport
-  })
+    ...(projectId ? { projectId } : {}),
+    starter: { description, name, slug, id: templateId, version: templateVersion },
+    idempotencyKey: requireText(options.idempotencyKey ?? `desktop:${options.uuid()}`, 'idempotency key', 160)
+  }), 'run')
 
-  return startExistingWorkflowDomainRun({
-    apiBase: options.apiBase,
-    objective,
-    workflowId: requireText(workflow.id, 'workflow id', 160),
-    transport: options.transport,
-    uuid: options.uuid
-  })
+  return { id: requireText(run.id, 'run id', 160) }
 }
 
 function validatedWorkflowStarter(starter: WorkflowDomainStarter) {
@@ -930,7 +908,7 @@ export async function startExistingWorkflowDomainRun(
   const run = responseItem(
     await options.transport.postJson(workflowDomainUrl(options.apiBase, 'runs'), {
       workflowId,
-      idempotencyKey: `desktop:${options.uuid()}`,
+      idempotencyKey: requireText(options.idempotencyKey ?? `desktop:${options.uuid()}`, 'idempotency key', 160),
       ...(objective ? { triggerRef: objective } : {}),
       executorType: 'hermes',
       maxAttempts: 2

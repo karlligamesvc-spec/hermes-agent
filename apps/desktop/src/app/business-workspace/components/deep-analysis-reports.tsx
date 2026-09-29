@@ -100,7 +100,7 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
         <summary className="cursor-pointer text-sm">{report.filename} · {new Date(report.created_at).toLocaleString(locale === 'zh-hant' ? 'zh-TW' : locale)}</summary>
         {report.revision !== source.analysis_revision && <p className="my-2 text-xs" role="status">{c.old}</p>}
         <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-sm">{report.body}</pre>
-        <DeepReportReview disabled={busy || report.revision !== source.analysis_revision || source.status !== 'ready'} key={`${report.id}:${report.review?.reviewed_at ?? ''}`} locale={locale}
+        <DeepReportReview disabled={busy || report.revision !== source.analysis_revision || source.status !== 'ready'} key={report.id} locale={locale}
           onReview={bridge?.reviewDeepReport && source.analysis_scope ? (decision, note) => void perform(async () => {
             const result = await bridge.reviewDeepReport!(source.id, source.analysis_scope!, report.id,
               { revision: source.analysis_revision!, sha256: report.sha256, decision, note })

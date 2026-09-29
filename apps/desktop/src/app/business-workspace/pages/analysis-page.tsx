@@ -1,14 +1,19 @@
 import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-state'
 import { useI18n } from '@/i18n'
 import { $connection } from '@/store/session'
 
-import type { AnalysisDocument, AnalysisDocumentsBridge, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
+import { analysisDocumentsBridge } from '../analysis-bridge'
+import type { AnalysisDocument, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
+import { $workflowDomainAccountScope, $workflowDomainRevision, workflowDomainUrgentRevision, workflowWindowIsViewed } from '../api/read-revision'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { DeepAnalysisReports } from '../components/deep-analysis-reports'
 import { SOURCE_ANSWER_COPY, SourceQuestionAction } from '../components/source-question-answer'
 import { VideoSemanticOverviewPanel } from '../components/video-semantic-overview'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 import { captureVideoFrame, sampleVideoFrames } from '../video-frame-evidence'
 import { videoQuickOverview } from '../video-quick-overview'
@@ -22,6 +27,7 @@ const COPY = {
     local: '本地保存', cloud: '云端保存', localDisclosure: '本地保存：导入文件的原件、飞书正文快照、证据和笔记留在这台设备；解析请求会经过 APEX，飞书授权令牌由 APEX 加密保管。',
     cloudDisclosure: '云端保存：导入文件的原件或飞书正文快照，以及证据和笔记保存在当前账号下，可跨设备回看。飞书授权令牌由 APEX 加密保管。',
     cloudUnavailable: '云端资料存储尚未配置，请联系平台管理员。',
+    policyLoading: '正在读取保存设置…', policyUnavailable: '保存设置尚未读取', policyReadFailed: '无法读取资料保存设置，请检查连接后重试。', policyRetry: '重试保存设置', policySignIn: '请先登录 APEX，再重新读取资料保存设置。', policyDenied: '当前账号无权读取资料保存设置，请检查账号权限。',
     empty: '尚无资料。导入文档或 SRT/VTT 字幕开始。', loadingSources: '正在读取资料记录…', failedList: '资料记录读取失败。', retryList: '重试读取', processing: '正在解析原文…', ready: '可提问', failed: '解析失败',
     retry: '重试解析', chooseAgain: '重新选择文件', open: '打开原文件', remove: '删除资料',
     question: '针对当前资料提问', ask: '查找证据', noEvidence: '这份资料中未找到相关原文证据。', excerpts: '匹配的原文片段',
@@ -42,6 +48,7 @@ const COPY = {
     local: '本機儲存', cloud: '雲端儲存', localDisclosure: '本機儲存：匯入文件原件、飛書正文快照、證據和筆記留在此裝置；解析請求會經過 APEX，飛書授權令牌由 APEX 加密保管。',
     cloudDisclosure: '雲端儲存：匯入文件原件或飛書正文快照，以及證據和筆記保存在目前帳號下，可跨裝置回看。飛書授權令牌由 APEX 加密保管。',
     cloudUnavailable: '雲端資料儲存尚未設定，請聯絡平台管理員。',
+    policyLoading: '正在讀取儲存設定…', policyUnavailable: '儲存設定尚未讀取', policyReadFailed: '無法讀取資料儲存設定，請檢查連接後重試。', policyRetry: '重試儲存設定', policySignIn: '請先登入 APEX，再重新讀取資料儲存設定。', policyDenied: '目前帳號無權讀取資料儲存設定，請檢查帳號權限。',
     empty: '尚無資料。匯入文件或 SRT/VTT 字幕開始。', loadingSources: '正在讀取資料記錄…', failedList: '資料記錄讀取失敗。', retryList: '重試讀取', processing: '正在解析原文…', ready: '可提問', failed: '解析失敗',
     retry: '重試解析', chooseAgain: '重新選擇文件', open: '開啟原文件', remove: '刪除資料',
     question: '針對目前資料提問', ask: '尋找證據', noEvidence: '這份資料中未找到相關原文證據。', excerpts: '匹配的原文片段',
@@ -62,6 +69,7 @@ const COPY = {
     local: 'Saved locally', cloud: 'Saved in cloud', localDisclosure: 'Local save: imported files, Feishu text snapshots, evidence, and notes stay on this device. Parsing passes through APEX; Feishu authorization tokens are encrypted on APEX.',
     cloudDisclosure: 'Cloud save: imported files or Feishu text snapshots, evidence, and notes are stored under your account across devices. Feishu authorization tokens are encrypted on APEX.',
     cloudUnavailable: 'Cloud document storage is not configured. Contact the platform administrator.',
+    policyLoading: 'Reading save settings…', policyUnavailable: 'Save settings have not loaded', policyReadFailed: 'Could not read source save settings. Check your connection and retry.', policyRetry: 'Retry save settings', policySignIn: 'Sign in to APEX, then retry reading source save settings.', policyDenied: 'This account cannot read source save settings. Check your account permissions.',
     empty: 'No sources yet. Import a document or SRT/VTT captions.', loadingSources: 'Loading source history…', failedList: 'Could not load source history.', retryList: 'Retry loading', processing: 'Reading original text…', ready: 'Ready for questions', failed: 'Parsing failed',
     retry: 'Retry parsing', chooseAgain: 'Choose file again', open: 'Open original file', remove: 'Delete source',
     question: 'Ask about this source', ask: 'Find evidence', noEvidence: 'No matching original text was found in this source.', excerpts: 'Matching original passages',
@@ -82,6 +90,7 @@ const COPY = {
     local: 'ローカル保存', cloud: 'クラウド保存', localDisclosure: 'ローカル保存：読み込んだファイル、Feishu の本文、根拠、メモはこの端末に保存されます。解析は APEX を経由し、Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudDisclosure: 'クラウド保存：ファイルまたは Feishu の本文、根拠、メモをアカウントに保存します。Feishu 認証トークンは APEX で暗号化して保管します。',
     cloudUnavailable: 'クラウド保存が設定されていません。管理者に連絡してください。',
+    policyLoading: '保存設定を読み込み中…', policyUnavailable: '保存設定を読み込めません', policyReadFailed: '資料の保存設定を読み込めませんでした。接続を確認して再試行してください。', policyRetry: '保存設定を再試行', policySignIn: 'APEX にサインインしてから保存設定を再試行してください。', policyDenied: 'このアカウントには保存設定を読む権限がありません。権限を確認してください。',
     empty: '資料はまだありません。文書または SRT/VTT 字幕を読み込んでください。', loadingSources: '資料履歴を読み込み中…', failedList: '資料履歴を読み込めませんでした。', retryList: '再読み込み', processing: '原文を解析中…', ready: '質問できます', failed: '解析に失敗',
     retry: '解析を再試行', chooseAgain: 'ファイルを選び直す', open: '原本を開く', remove: '資料を削除',
     question: 'この資料について質問', ask: '根拠を探す', noEvidence: '一致する原文は見つかりませんでした。', excerpts: '一致した原文',
@@ -102,6 +111,7 @@ const COPY = {
     local: 'حفظ محلي', cloud: 'حفظ سحابي', localDisclosure: 'الحفظ المحلي: تبقى الملفات المستوردة ونسخة نص Feishu والأدلة والملاحظات على هذا الجهاز. تمر القراءة عبر APEX، وتُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudDisclosure: 'الحفظ السحابي: تُخزن الملفات أو نسخة نص Feishu والأدلة والملاحظات ضمن حسابك عبر الأجهزة. تُحفظ رموز تفويض Feishu مشفرة لدى APEX.',
     cloudUnavailable: 'لم يتم إعداد التخزين السحابي. تواصل مع مسؤول المنصة.',
+    policyLoading: 'جارٍ قراءة إعدادات الحفظ…', policyUnavailable: 'لم تُحمّل إعدادات الحفظ', policyReadFailed: 'تعذرت قراءة إعدادات حفظ المصادر. تحقق من الاتصال ثم أعد المحاولة.', policyRetry: 'إعادة قراءة إعدادات الحفظ', policySignIn: 'سجّل الدخول إلى APEX ثم أعد قراءة إعدادات حفظ المصادر.', policyDenied: 'هذا الحساب لا يملك صلاحية قراءة إعدادات حفظ المصادر. تحقق من صلاحيات الحساب.',
     empty: 'لا توجد مصادر بعد. استورد مستندًا أو ترجمة SRT/VTT.', loadingSources: 'جارٍ تحميل سجل المصادر…', failedList: 'تعذر تحميل سجل المصادر.', retryList: 'إعادة التحميل', processing: 'جارٍ قراءة النص الأصلي…', ready: 'جاهز للأسئلة', failed: 'فشل التحليل',
     retry: 'إعادة التحليل', chooseAgain: 'اختر ملفًا مجددًا', open: 'فتح الملف الأصلي', remove: 'حذف المصدر',
     question: 'اسأل عن هذا المصدر', ask: 'البحث عن أدلة', noEvidence: 'لم يُعثر على نص أصلي مطابق في هذا المصدر.', excerpts: 'مقاطع من النص الأصلي',
@@ -143,9 +153,7 @@ function locationLabel(location: Record<string, number | string>, copy: { page: 
   return copy.paragraph.replace('{n}', String(location.paragraph || 1))
 }
 
-function bridge(): AnalysisDocumentsBridge | null {
-  return window.hermesDesktop?.analysisDocuments ?? null
-}
+const bridge = analysisDocumentsBridge
 
 function isHttpsUrl(value: string): boolean {
   try {return new URL(value).protocol === 'https:'} catch {return false}
@@ -191,15 +199,25 @@ export function AnalysisView({ onDeepBreakdown }: {
   const { locale } = useI18n()
   const c = COPY[locale]
   const connection = useStore($connection)
+  const revision = useStore($workflowDomainRevision)
+  const accountScope = useStore($workflowDomainAccountScope)
+  const seenRevision = useRef({ revision, urgent: workflowDomainUrgentRevision() })
   const [policy, setPolicy] = useState<{ mode: 'cloud' | 'local'; cloud_storage_configured: boolean } | null>(null)
+  const [policyLoading, setPolicyLoading] = useState(true)
+  const [policyError, setPolicyError] = useState('')
+  const policyRequestRef = useRef(0)
   const [items, setItems] = useState<AnalysisDocument[]>([])
   const [listStatus, setListStatus] = useState<'error' | 'loading' | 'ready'>('loading')
   const listRequestRef = useRef(0)
+  const listPending = useRef<{ owner: string; urgent: number; request: number } | null>(null)
+  const [listRefreshFailed, setListRefreshFailed] = useState(false)
+  const [detailRefreshFailed, setDetailRefreshFailed] = useState(false)
   const [selected, setSelected] = useState<AnalysisDocument | null>(null)
   const [openingId, setOpeningId] = useState<string | null>(null)
   const selectedDocumentIdRef = useRef<string | null>(null)
   const openedDocumentIdRef = useRef<string | null>(null)
   const openRequestRef = useRef(0)
+  const detailPending = useRef<{ owner: string; urgent: number; request: number; id: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [error, setError] = useState('')
@@ -230,27 +248,73 @@ export function AnalysisView({ onDeepBreakdown }: {
     if (localVideo) {URL.revokeObjectURL(localVideo.url)}
   }, [localVideo])
 
-  const refreshList = useCallback(async () => {
+  const refreshPolicy = useCallback(async (background = false) => {
+    const request = ++policyRequestRef.current
+    const owner = $workflowDomainAccountScope.get()
+    setPolicyLoading(true)
+    setPolicyError('')
+
+    if (!background) {setPolicy(null)}
+
+    try {
+      const result = await bridge()?.policy()
+
+      if (request !== policyRequestRef.current || owner !== $workflowDomainAccountScope.get()) {return null}
+
+      if (result?.ok && result.policy && ['cloud', 'local'].includes(result.policy.mode) && typeof result.policy.cloud_storage_configured === 'boolean') {
+        setPolicy(result.policy)
+
+        return result.policy
+      }
+
+      setPolicyError(result?.code ?? 'analysis_policy_unavailable')
+      setPolicy(null)
+    } catch {
+      if (request === policyRequestRef.current && owner === $workflowDomainAccountScope.get()) {
+        setPolicyError('analysis_policy_unavailable'); setPolicy(null)
+      }
+    } finally {
+      if (request === policyRequestRef.current && owner === $workflowDomainAccountScope.get()) {setPolicyLoading(false)}
+    }
+
+    return null
+  }, [])
+
+  const refreshList = useCallback(async (background = false) => {
+    const owner = $workflowDomainAccountScope.get()
+    const urgent = workflowDomainUrgentRevision()
+
+    if (background && listPending.current?.owner === owner && listPending.current.urgent === urgent) {return}
     const request = ++listRequestRef.current
-    setListStatus('loading')
+    listPending.current = { owner, urgent, request }
+
+    if (!background) {setListStatus('loading')}
 
     try {
       const result = await bridge()?.list()
 
-      if (request !== listRequestRef.current) {return}
+      if (request !== listRequestRef.current || owner !== $workflowDomainAccountScope.get() || urgent !== workflowDomainUrgentRevision()) {return}
 
       if (result?.ok && Array.isArray(result.items)) {
-        setItems(result.items)
+        const incoming = result.items
+        setItems(current => result.cloudUnavailable ? [...incoming.filter(item => item.storageMode === 'local'), ...current.filter(item => item.storageMode === 'cloud')] : incoming)
         setListStatus('ready')
-
-        if (result.cloudUnavailable) {setError(c.error)}
-      } else {setListStatus('error')}
+        setListRefreshFailed(Boolean(result.cloudUnavailable))
+      } else {
+        if (!background) {setListStatus('error')}
+        setListRefreshFailed(true)
+      }
     } catch {
-      if (request === listRequestRef.current) {setListStatus('error')}
+      if (request === listRequestRef.current && owner === $workflowDomainAccountScope.get() && urgent === workflowDomainUrgentRevision()) {
+        if (!background) {setListStatus('error')}
+        setListRefreshFailed(true)
+      }
+    } finally {
+      if (listPending.current?.request === request) {listPending.current = null}
     }
-  }, [c.error])
+  }, [])
 
-  const openDocument = useCallback(async (id: string, select = false) => {
+  const openDocument = useCallback(async (id: string, select = false, background = false) => {
     if (select) {
       const switchingSource = openedDocumentIdRef.current !== id
       selectedDocumentIdRef.current = id
@@ -266,46 +330,95 @@ export function AnalysisView({ onDeepBreakdown }: {
         setNote('')
         setAnchorId(null)
         setError('')
+        setDetailRefreshFailed(false)
       }
     } else if (selectedDocumentIdRef.current !== id) {
       return
     }
 
+    const owner = $workflowDomainAccountScope.get()
+    const urgent = workflowDomainUrgentRevision()
+
+    if (background && detailPending.current?.id === id && detailPending.current.owner === owner && detailPending.current.urgent === urgent) {return}
     const request = ++openRequestRef.current
+    detailPending.current = { owner, urgent, request, id }
 
     try {
       const result = await bridge()?.get(id)
 
-      if (request !== openRequestRef.current || selectedDocumentIdRef.current !== id) {return}
+      if (request !== openRequestRef.current || selectedDocumentIdRef.current !== id || owner !== $workflowDomainAccountScope.get() || urgent !== workflowDomainUrgentRevision()) {return}
 
       if (result?.ok && result.item?.id === id) {
         openedDocumentIdRef.current = id
         setSelected(result.item)
-        setVideoError('')
+        setDetailRefreshFailed(false)
+
+        if (!background) {setVideoError('')}
+      } else if (result?.code === 'source_not_found') {
+        selectedDocumentIdRef.current = null
+        openedDocumentIdRef.current = null
+        setSelected(null); setOpeningId(null); setLocalVideo(null); setFrames([])
+        setItems(current => current.filter(item => item.id !== id))
+        setDetailRefreshFailed(false)
       } else {
-        setError(result?.code ?? c.error)
+        if (background) {setDetailRefreshFailed(true)}
+        else {setError(result?.code ?? c.error)}
       }
     } catch {
-      if (request === openRequestRef.current && selectedDocumentIdRef.current === id) {setError(c.error)}
+      if (request === openRequestRef.current && selectedDocumentIdRef.current === id && owner === $workflowDomainAccountScope.get() && urgent === workflowDomainUrgentRevision()) {
+        if (background) {setDetailRefreshFailed(true)} else {setError(c.error)}
+      }
     } finally {
-      if (request === openRequestRef.current && selectedDocumentIdRef.current === id) {setOpeningId(null)}
+      if (detailPending.current?.request === request) {detailPending.current = null}
+
+      if (request === openRequestRef.current && selectedDocumentIdRef.current === id && owner === $workflowDomainAccountScope.get()) {setOpeningId(null)}
     }
   }, [c.error])
 
+  // eslint-disable-next-line no-restricted-syntax -- Request generation invalidates late reads when the account workspace unmounts.
   useEffect(() => {
-    void bridge()?.policy().then(result => {
-      if (result.ok && result.policy) {setPolicy(result.policy)}
-      else {setError(result.code ?? c.error)}
-    })
+    void refreshPolicy()
+
+    return () => {policyRequestRef.current += 1}
+  }, [accountScope, refreshPolicy])
+
+  // eslint-disable-next-line no-restricted-syntax -- Request and selected-object lifetime, without mirroring an atom.
+  useEffect(() => {
+    setItems([]); setSelected(null); setOpeningId(null); setLocalVideo(null); setFrames([])
+    setQuestion(''); setNote(''); setAnchorId(null); setLink(''); setVideoResolution(null); setError(''); setVideoError(''); setAuthFlow(null); setFeishuAuthorized(false)
+    selectedDocumentIdRef.current = null; openedDocumentIdRef.current = null
+    setListRefreshFailed(false); setDetailRefreshFailed(false)
     void refreshList()
-  }, [c.error, refreshList])
+
+    return () => {listRequestRef.current += 1; openRequestRef.current += 1}
+  }, [accountScope, refreshList])
+
+  const refreshSources = useCallback(() => {
+    void refreshList(true)
+    const id = selectedDocumentIdRef.current
+
+    if (id) {void openDocument(id, false, true)}
+  }, [openDocument, refreshList])
+
+  // eslint-disable-next-line no-restricted-syntax -- Track consumed invalidations; callback ownership reads the account atom directly.
+  useEffect(() => {
+    const urgent = workflowDomainUrgentRevision()
+    const changed = seenRevision.current.revision !== revision
+    const forced = seenRevision.current.urgent !== urgent
+    seenRevision.current = { revision, urgent }
+
+    if (!changed || (selectedStatus === 'processing' && !forced)) {return}
+    refreshSources()
+    void refreshPolicy(true)
+  }, [refreshPolicy, refreshSources, revision, selectedStatus])
 
   useEffect(() => {
     if (selected?.status !== 'processing') {return}
 
     const timer = window.setInterval(() => {
-      void openDocument(selected.id)
-      void refreshList()
+      if (!workflowWindowIsViewed()) {return}
+      void openDocument(selected.id, false, true)
+      void refreshList(true)
     }, 2000)
 
     return () => window.clearInterval(timer)
@@ -467,9 +580,13 @@ export function AnalysisView({ onDeepBreakdown }: {
     <div className="apex-primary-page-column space-y-5 pb-10">
       <BusinessPageHeader description={c.description} eyebrow={c.source} icon="book" title={c.title} />
       <div className="rounded-xl border border-(--ui-border) p-4 text-sm">
-        <div className="font-medium">{policy ? policy.mode === 'cloud' ? c.cloud : c.local : c.error}</div>
+        <div className="font-medium">{policy ? policy.mode === 'cloud' ? c.cloud : c.local : policyLoading ? c.policyLoading : c.policyUnavailable}</div>
         {policy && <p className="mt-1 text-(--ui-text-secondary)">{policy.mode === 'cloud' ? c.cloudDisclosure : c.localDisclosure}</p>}
         {policy?.mode === 'cloud' && !policy.cloud_storage_configured && <p className="mt-2 text-destructive">{c.cloudUnavailable}</p>}
+        {policyError && <ErrorBanner className="mt-3">
+          <span role="alert">{policyError === 'sign_in' ? c.policySignIn : policyError === 'permission_denied' ? c.policyDenied : c.policyReadFailed}</span>
+          <Button className="mt-2" disabled={policyLoading} onClick={() => void refreshPolicy()} size="sm" variant="outline">{c.policyRetry}</Button>
+        </ErrorBanner>}
       </div>
       <div className="flex flex-wrap gap-2">
         <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50" disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async () => {
@@ -529,7 +646,7 @@ export function AnalysisView({ onDeepBreakdown }: {
 
           if (!result.resolution.source_url || !['download_candidate', 'audio_candidate'].includes(result.resolution.capability ?? '')) {return}
 
-          const effectivePolicy = policy ?? (await bridge()?.policy())?.policy
+          const effectivePolicy = policy ?? await refreshPolicy()
 
           if (effectivePolicy && (effectivePolicy.mode === 'local' || effectivePolicy.cloud_storage_configured)) {
             await transcribeResolvedVideo(result.resolution.source_url)
@@ -544,12 +661,13 @@ export function AnalysisView({ onDeepBreakdown }: {
       {link && <p className="text-sm text-(--ui-text-secondary)">{isFeishuUrl(link) ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : videoResolution ? transcribingVideo ? c.videoAnalyzing : videoResolution.status === 'unreadable' ? c.videoUnreadable : (videoResolution.status === 'upload_required' ? c.videoUpload : c.videoCandidate).replace('{platform}', videoResolution.platform ?? '') : c.unsupportedLink}</p>}
       {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <p className="text-xs text-(--ui-text-tertiary)">{c.videoProcessingDisclosure}</p>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
+      <WorkflowRefreshNotice state={{ refreshFailed: listRefreshFailed || detailRefreshFailed, retry: refreshSources }} />
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="space-y-2">
           <h3 className="font-medium">{c.source}</h3>
           {listStatus === 'loading' && <p className="text-sm text-(--ui-text-secondary)">{c.loadingSources}</p>}
           {listStatus === 'error' && <div className="space-y-2 text-sm text-destructive" role="alert"><p>{c.failedList}</p><button className="rounded-lg border px-3 py-1" onClick={() => void refreshList()} type="button">{c.retryList}</button></div>}
-          {items.length === 0 && listStatus === 'ready' && <p className="text-sm text-(--ui-text-secondary)">{c.empty}</p>}
+          {items.length === 0 && listStatus === 'ready' && !listRefreshFailed && <p className="text-sm text-(--ui-text-secondary)">{c.empty}</p>}
           {items.map(item => <button className={`block w-full rounded-xl border p-3 text-left ${(openingId ?? selected?.id) === item.id ? 'bg-(--ui-row-active-background)' : ''}`} key={item.id} onClick={() => void openDocument(item.id, true)} type="button">
             <span className="block truncate font-medium">{item.filename}</span>
             <span className="text-xs text-(--ui-text-secondary)">{item.storageMode === 'cloud' ? c.cloud : c.local} · {item.status === 'ready' ? c.ready : item.status === 'processing' ? c.processing : c.failed}</span>
@@ -567,7 +685,7 @@ export function AnalysisView({ onDeepBreakdown }: {
 
                   if (!result?.ok && selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
                 })} type="button">{selected.kind === 'feishu' || (selected.kind === 'subtitle' && (selected.source_url || selected.sourceUrl)) ? c.openLink : c.open}</button>
-                {selected.status === 'failed' && <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
+                {(selected.storageMode === 'cloud' ? (selected.can_retry ?? selected.status === 'failed') : selected.status === 'failed') && <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={() => void perform(async () => {
                   const sourceId = selected.id
                   const result = await bridge()?.retry(sourceId)
 

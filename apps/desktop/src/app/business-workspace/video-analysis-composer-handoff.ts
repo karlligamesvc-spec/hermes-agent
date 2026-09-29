@@ -4,6 +4,7 @@ import { $composerAttachments, type ComposerAttachment, createComposerAttachment
 
 import type { WiringActions } from '../contrib/types'
 
+import { analysisDocumentsBridge } from './analysis-bridge'
 import type { AnalysisDocument } from './analysis-types'
 import type { VideoBreakdownLocale } from './video-deep-breakdown-draft'
 import { type CapturedVideoFrame, prepareVideoBreakdownHandoff } from './video-deep-breakdown-handoff'
@@ -16,7 +17,7 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
   const accepted: ComposerAttachment[] = []
   const routedFrames: Array<{ id: string; occurrenceId: string; seconds: number }> = []
   let transcript: VideoTranscriptDraftHandoff | undefined
-  const read = window.hermesDesktop?.analysisDocuments?.transcriptForDraft
+  const read = analysisDocumentsBridge()?.transcriptForDraft
 
   const readTranscript = async () => {
     if (!isCurrent()) {throw new Error('analysis_context_changed')}
@@ -76,7 +77,7 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
       }
     }
 
-    const prepareWorkspace = window.hermesDesktop?.analysisDocuments?.prepareDeepWorkspace
+    const prepareWorkspace = analysisDocumentsBridge()?.prepareDeepWorkspace
     let workspaceNote = ''
     let workspaceDirectory: string | undefined
     let workspaceId: string | undefined

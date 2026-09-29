@@ -4268,6 +4268,8 @@ export interface Translations {
       recentProjects: string
       loadingProjects: string
       projectLoadFailed: string
+      refreshFailed: string
+      refreshRetry: string
       projectDomainUnavailable: string
       detailTitle: string
       detailEyebrow: string
@@ -4289,6 +4291,7 @@ export interface Translations {
       updatedAt: (date: string) => string
       currentStep: (title: string) => string
       lifecycle: (status: string) => string
+      runLifecycle: (status: string) => string
       viewRun: string
       noRun: string
       legacyFallback: string

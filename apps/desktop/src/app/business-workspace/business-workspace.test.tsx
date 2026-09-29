@@ -633,6 +633,7 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-video'))
     expect(getVideoCatalog).toHaveBeenCalledTimes(2)
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '拆解链接视频：https://example.com/video',
       starter: expect.objectContaining({ id: 'viral-video-remake', slug: 'viral-video-remake', version: 1 })
     })
@@ -788,6 +789,7 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByTestId('route-drawer-source').textContent).toBe('/')
     expect(access).toHaveBeenCalledTimes(1)
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '分析美国宠物用品市场，并生成选品报告和上架素材（已编辑）',
       starter: {
         description: '数据采集、机会分析、定位与生产',
@@ -1082,7 +1084,7 @@ describe('hc-685 business workspace identity', () => {
     const projectRow = screen.getByRole('button', { name: /Phase 0 真实项目/ })
 
     expect(within(projectRow).getByText('尚未开始运行')).toBeTruthy()
-    expect(within(projectRow).queryByText('进行中')).toBeNull()
+    expect(within(projectRow).getByText('进行中')).toBeTruthy()
     expect(screen.queryByText('0 个交付物')).toBeNull()
     expect(screen.queryByText(/0 \/ 0/)).toBeNull()
 
@@ -1125,11 +1127,11 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByText('Start 真实项目')).toBeTruthy())
     expect(screen.getByText('尚未开始运行')).toBeTruthy()
-    expect(screen.queryByText('进行中')).toBeNull()
+    expect(screen.getByText('进行中')).toBeTruthy()
     expect(screen.queryByText(/0 \/ 0/)).toBeNull()
   })
 
-  it('shows an unavailable Run status in both Project summary outlets without falling back to lifecycle', async () => {
+  it('shows an unavailable Run status alongside the known Project lifecycle in both summary outlets', async () => {
     window.hermesDesktop!.workflowDomain = {
       access: vi.fn(async () => ({ available: true })),
       cancelRun: vi.fn(),
@@ -1174,7 +1176,7 @@ describe('hc-685 business workspace identity', () => {
 
     for (const projectRow of screen.getAllByRole('button', { name: /运行状态缺失项目/ })) {
       expect(within(projectRow).getByText('运行状态暂时不可读')).toBeTruthy()
-      expect(within(projectRow).queryByText('进行中')).toBeNull()
+      expect(within(projectRow).getByText('进行中')).toBeTruthy()
     }
   })
 
@@ -1773,7 +1775,7 @@ describe('hc-685 business workspace identity', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '运行' }))
     await waitFor(() =>
-      expect(startRun).toHaveBeenCalledWith({ objective: '继续已有项目目标', workflowId: 'workflow-existing' })
+      expect(startRun).toHaveBeenCalledWith({ idempotencyKey: expect.stringMatching(/^desktop:/), objective: '继续已有项目目标', workflowId: 'workflow-existing' })
     )
     expect(createWorkflow).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-new'))
@@ -2092,6 +2094,7 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(startGoal).toHaveBeenCalledTimes(1))
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: 'edited catalog goal',
       projectId: 'project-existing',
       starter: expect.objectContaining({ id: 'competitor-monitoring', slug: 'competitor-monitoring', version: 7 })
@@ -2270,6 +2273,7 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(submitButton)
     await waitFor(() => expect(startGoal).toHaveBeenCalledTimes(1))
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '保留这个目标',
       starter: expect.objectContaining({ id: 'market-launch', slug: 'market-launch', version: 1 })
     })

@@ -16,6 +16,7 @@ import { openSession } from '../../open-session'
 import { deliverableDetailRoute, routeDrawerNavigationState, SEARCH_ROUTE, workflowRunRoute } from '../../routes'
 import type { WorkflowActivityItem } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { useWorkflowActivity } from '../hooks/use-workflow-deliverables'
 
 type ActivityFilter = 'all' | 'deliverable' | 'review' | 'run'
@@ -171,6 +172,7 @@ function ActivityHistoryContent() {
   return (
     <>
       <div className="apex-primary-page-column">
+        {state.mode === 'ready' && <WorkflowRefreshNotice state={state} />}
         <BusinessPageHeader
           action={{ icon: 'refresh', label: copy.refresh, onClick: refresh }}
           description={copy.description}

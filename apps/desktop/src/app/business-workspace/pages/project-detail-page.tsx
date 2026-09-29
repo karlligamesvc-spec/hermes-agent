@@ -20,6 +20,7 @@ import {
 import { completeWorkflowProject, reopenWorkflowProject, startExistingWorkflowRun } from '../api/adapters'
 import type { WorkflowProjectSummary } from '../api/types'
 import { ProjectEditDialog } from '../components/project-edit-dialog'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import {
   useWorkflowDefinitions,
   useWorkflowProject,
@@ -77,6 +78,7 @@ export function ProjectDetailView() {
         <div>
           <Codicon className="mx-auto text-amber-500" name="warning" size="1.75rem" />
           <EmptyState description={copy.detailUnavailableDescription} title={copy.detailUnavailableTitle} />
+          <WorkflowRefreshNotice state={project} />
           <Button onClick={() => navigate(PROJECTS_ROUTE)} size="sm" variant="outline">
             {copy.backToProjects}
           </Button>
@@ -87,13 +89,14 @@ export function ProjectDetailView() {
 
   const item = project.item
   const objective = distinctProjectObjective(item)
-  const summary = routeSummary ?? item.summary
+  const summary = item.summary ?? routeSummary
   const currentRunId = projectCurrentRunId(summary)
   const currentRunStatus = summary?.currentRunStatus ?? null
   const completionFacts = completion.mode === 'ready' ? completion.completion : null
   const workflowStates = new Map(completionFacts?.workflowStates.map(state => [state.workflowId, state]) ?? [])
+
   const stage =
-    item.status === 'completed'
+    item.status !== 'active'
       ? copy.lifecycle(item.status)
       : completionFacts?.readyForReview
         ? copy.awaitingAcceptance
@@ -139,9 +142,11 @@ export function ProjectDetailView() {
 
     setLifecyclePending(true)
     setLifecycleError(null)
+
     const result = item.status === 'completed'
       ? await reopenWorkflowProject(item.id)
       : await completeWorkflowProject(item.id)
+
     setLifecyclePending(false)
 
     if (result.mode === 'updated') {
@@ -166,6 +171,7 @@ export function ProjectDetailView() {
     >
       <div className="mx-auto w-full max-w-xl">
         <p className="text-xs font-medium text-primary">{copy.detailEyebrow}</p>
+        <WorkflowRefreshNotice state={project} />
         <div className="mt-2 flex flex-wrap items-center gap-2 pr-8">
           <h1 className="min-w-0 text-balance text-2xl font-semibold tracking-tight">{item.name}</h1>
           <Badge variant="muted">{stage}</Badge>
@@ -188,6 +194,7 @@ export function ProjectDetailView() {
         </dl>
 
         <section className="mt-6 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-4 py-4" data-project-completion="">
+          <WorkflowRefreshNotice state={completion} />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">{stage}</h2>
@@ -226,7 +233,7 @@ export function ProjectDetailView() {
                 <div>
                   <p className="text-xs font-medium text-primary">{copy.currentRunTitle}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {currentRunStatus ? copy.lifecycle(currentRunStatus) : copy.runStatusUnavailable}
+                    {currentRunStatus ? copy.runLifecycle(currentRunStatus) : copy.runStatusUnavailable}
                   </p>
                 </div>
                 <Button onClick={openRun} size="sm">
@@ -253,6 +260,7 @@ export function ProjectDetailView() {
         </div>
 
         <section className="mt-6 border-t border-(--ui-stroke-tertiary) pt-6" data-project-workflows="">
+          <WorkflowRefreshNotice state={workflows} />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">{copy.workflowsTitle}</h2>
@@ -294,7 +302,7 @@ export function ProjectDetailView() {
                     )}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <Badge variant="muted">{run?.runStatus ? copy.lifecycle(run.runStatus) : copy.notStarted}</Badge>
+                    <Badge variant="muted">{run?.runStatus ? copy.runLifecycle(run.runStatus) : copy.notStarted}</Badge>
                     {runId && (
                       <Button onClick={() => openWorkflowRun(runId)} size="sm" variant="ghost">
                         {copy.viewRun}

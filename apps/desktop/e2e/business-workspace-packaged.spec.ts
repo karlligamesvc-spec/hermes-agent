@@ -406,6 +406,8 @@ async function startPhase1ReviewApi() {
   let workflowEnabled = true
   let analysisMode: 'cloud' | 'local' = 'local'
   let cloudStorageConfigured = false
+  let failAnalysisPolicy = false
+  let failCloudDetail = false
 
   let cloudDocument: null | {
     id: string; filename: string; kind: string; status: 'processing' | 'ready';
@@ -467,6 +469,13 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/storage-policy') {
+      if (failAnalysisPolicy) {
+        failAnalysisPolicy = false
+        json(503, { detail: { code: 'analysis_policy_unavailable' } })
+
+        return
+      }
+
       const token = String(request.headers.authorization || '').replace(/^Bearer /, '')
       const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
       json(200, { user_id: claims.sub, mode: analysisMode, cloud_storage_configured: cloudStorageConfigured, fixture_renewed: Boolean(claims.renewed) })
@@ -520,6 +529,13 @@ async function startPhase1ReviewApi() {
       }
 
       if (url.pathname === cloudPath && request.method === 'GET') {
+        if (failCloudDetail) {
+          failCloudDetail = false
+          json(503, { detail: { code: 'source_unavailable' } })
+
+          return
+        }
+
         cloudDetailReads += 1
 
         if (cloudDetailReads >= 2) { cloudDocument.status = 'ready' }
@@ -890,6 +906,14 @@ async function startPhase1ReviewApi() {
       analysisMode = mode
       cloudStorageConfigured = configured
     },
+    failNextAnalysisPolicy: () => {failAnalysisPolicy = true},
+    setCloudSourceSnapshot: (label: string | null) => {
+      cloudDocument = label ? { id: ANALYSIS_REVIEW_CLOUD_ID, filename: `${label}.txt`, kind: 'text', status: 'ready',
+        created_at: '2026-09-29T01:00:00Z', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: `${label} original evidence` }] } : null
+      cloudNotes = label ? [{ id: 'external-note', body: `${label} note from another device`, anchor_id: null }] : []
+      cloudQuestions = []
+    },
+    failNextCloudDetail: () => {failCloudDetail = true},
     setWorkflowEnabled: (value: boolean) => {
       workflowEnabled = value
     },
@@ -2319,6 +2343,72 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
   await verifyWorkspaceReport(app, page)
   expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
+})
+
+test('hc-901 packaged native policy HTTP 503 recovers with explicit retry and preserves the cloud storage gate', async () => {
+  const { page } = fixture!
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  reviewApi!.setAnalysisPolicy('local')
+  reviewApi!.failNextAnalysisPolicy()
+
+  try {
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await expect(page.getByRole('alert').filter({ hasText: '无法读取资料保存设置，请检查连接后重试。' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '选择本地视频转写' })).toBeDisabled()
+    await page.getByRole('button', { name: '重试保存设置' }).click()
+    await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: '选择本地视频转写' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: '重试保存设置' })).toHaveCount(0)
+    await expect(page.getByText('本地保存', { exact: true }).first()).toBeVisible()
+
+    reviewApi!.setAnalysisPolicy('cloud', false)
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await expect(page.getByText('云端资料存储尚未配置，请联系平台管理员。')).toBeVisible()
+    await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '重试保存设置' })).toHaveCount(0)
+  } finally {
+    reviewApi!.setAnalysisPolicy('local')
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  }
+})
+
+test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving drafts through native HTTP failure and retry', async () => {
+  const { page } = fixture!
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  reviewApi!.setAnalysisPolicy('cloud')
+  reviewApi!.setCloudSourceSnapshot('Original cloud source')
+
+  try {
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await page.getByRole('button', { name: /Original cloud source.txt/ }).click()
+    await expect(page.getByText('Original cloud source note from another device')).toBeVisible()
+    await page.getByRole('textbox', { name: '针对当前资料提问' }).fill('Unsaved question')
+    await page.getByRole('textbox', { name: '记录你的发现' }).fill('Unsaved note')
+    reviewApi!.setCloudSourceSnapshot('Other device')
+    await expect(page.getByRole('heading', { name: 'Other device.txt' })).toBeVisible({ timeout: 25_000 })
+    await expect(page.locator('#analysis-anchor-a1')).toContainText('Other device original evidence')
+    await expect(page.getByText('Other device note from another device')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '针对当前资料提问' })).toHaveValue('Unsaved question')
+    await expect(page.getByRole('textbox', { name: '记录你的发现' })).toHaveValue('Unsaved note')
+
+    reviewApi!.failNextCloudDetail()
+    await expect(page.getByText('暂时无法刷新最新状态，请检查连接后重试。')).toBeVisible({ timeout: 25_000 })
+    await expect(page.getByText('Other device note from another device')).toBeVisible()
+    reviewApi!.setCloudSourceSnapshot('Reconnected')
+    await page.getByRole('button', { name: '重试刷新' }).click()
+    await expect(page.getByRole('heading', { name: 'Reconnected.txt' })).toBeVisible()
+    await expect(page.getByText('Reconnected note from another device')).toBeVisible()
+    await expect(page.getByRole('button', { name: '重试刷新' })).toHaveCount(0)
+    await expect(page.getByRole('textbox', { name: '记录你的发现' })).toHaveValue('Unsaved note')
+    await page.getByRole('button', { name: '删除资料' }).click()
+    await expect(page.getByRole('heading', { name: 'Reconnected.txt' })).toHaveCount(0)
+  } finally {
+    reviewApi!.setCloudSourceSnapshot(null)
+    reviewApi!.setAnalysisPolicy('local')
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  }
 })
 
 test('hc-878 packaged local document import persists cited answers and notes under the signed-in account', async () => {

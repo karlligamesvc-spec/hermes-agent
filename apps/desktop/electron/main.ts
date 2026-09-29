@@ -22792,6 +22792,7 @@ ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   try {
     const run = await startWorkflowDomainGoal({
       apiBase: context.apiBase,
+      idempotencyKey: payload?.idempotencyKey,
       objective: payload?.objective,
       projectId: payload?.projectId,
       starter: payload?.starter || {},
@@ -22837,6 +22838,7 @@ ipcMain.handle('hermes:workflowDomain:startRun', async (_event, payload) => {
   try {
     const run = await startExistingWorkflowDomainRun({
       apiBase: context.apiBase,
+      idempotencyKey: payload?.idempotencyKey,
       objective: payload?.objective,
       workflowId: payload?.workflowId,
       transport: context.transport,

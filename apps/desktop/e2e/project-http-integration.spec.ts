@@ -87,6 +87,10 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
 
     if (input.phase === 'create') {
       await projects()
+      const seededRow = page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })
+      await expect(seededRow).not.toContainText('已完成')
+      await expect(seededRow.locator('[data-project-status]')).toHaveText('进行中')
+      await expect(seededRow.locator('[data-project-run-status]')).toHaveText('运行成功')
       await page.getByRole('button', { name: '新建项目', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: '新建项目' })
       await dialog.getByRole('textbox', { name: '项目名称', exact: true }).fill('Created UI project')
@@ -145,6 +149,7 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
       if (input.phase === 'complete') {
         await expect(lifecycle).toContainText('待验收')
         await expect(lifecycle.getByRole('button', { name: '完成项目', exact: true })).toBeEnabled()
+        await expect(detail.locator('[data-project-workflows]')).toContainText('运行成功')
         await detail.locator('[data-project-workflows]').getByRole('button', { name: '打开当前运行', exact: true }).click()
         const run = page.locator('[data-run-scroll-container]')
         await expect(run).toContainText('Hermes')
@@ -170,7 +175,10 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
 
         await expect(completedFilter).toHaveText('已完成1')
         await completedFilter.click()
-        await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })).toBeVisible()
+        const completedRow = page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })
+        await expect(completedRow).toBeVisible()
+        await expect(completedRow.locator('[data-project-status]')).toHaveText('已完成')
+        await expect(completedRow.locator('[data-project-run-status]')).toHaveText('运行成功')
         await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Edited UI project' })).toHaveCount(0)
       } else {
         await expect(lifecycle.getByRole('button', { name: '重新打开项目', exact: true })).toBeEnabled()
@@ -182,6 +190,10 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
         await expect(retainedFilter).toHaveAttribute('aria-pressed', 'true')
         await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })).toHaveCount(0)
         await expect(page.getByRole('group', { name: '项目状态筛选' }).getByRole('button', { name: /^已完成/ })).toHaveText('已完成0')
+        await page.getByRole('group', { name: '项目状态筛选' }).getByRole('button', { name: /^进行中/ }).click()
+        const reopenedRow = page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })
+        await expect(reopenedRow.locator('[data-project-status]')).toHaveText('进行中')
+        await expect(reopenedRow.locator('[data-project-run-status]')).toHaveText('运行成功')
         await openDeliverables()
         await page.locator('[data-deliverables-page]').getByRole('button').filter({ hasText: 'Fixture deliverable' }).click()
         await assertDeliverable()

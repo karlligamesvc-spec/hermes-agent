@@ -20,7 +20,8 @@ export function DeepReportReview({ report, locale, disabled, onReview }: {
   onReview?: (decision: DeepReportReviewInput['decision'], note: string) => void
 }) {
   const c = COPY[locale]
-  const [note, setNote] = useState(report.review?.note ?? '')
+  const [draft, setDraft] = useState<string | null>(null)
+  const note = draft ?? report.review?.note ?? ''
   const overLimit = new TextEncoder().encode(note).length > 2000
   const collection = report.collection
   const formatTime = (value: string) => new Date(value).toLocaleString(locale === 'zh-hant' ? 'zh-TW' : locale)
@@ -33,7 +34,7 @@ export function DeepReportReview({ report, locale, disabled, onReview }: {
     <p className="text-(--ui-text-tertiary)">{c.disclosure}</p>
     <p role="status">{report.review ? c[report.review.decision] : c.pending}{report.review && <> · <time dateTime={report.review.reviewed_at}>{formatTime(report.review.reviewed_at)}</time></>}</p>
     <label className="block space-y-1"><span>{c.note}</span>
-      <textarea className="block w-full rounded border bg-transparent p-2 text-sm" disabled={disabled || !onReview} onChange={event => setNote(event.target.value)} rows={2} value={note} />
+      <textarea className="block w-full rounded border bg-transparent p-2 text-sm" disabled={disabled || !onReview} onChange={event => setDraft(event.target.value)} rows={2} value={note} />
     </label>
     {overLimit && <p className="text-destructive" role="alert">{c.limit}</p>}
     {onReview ? <div className="flex flex-wrap gap-2">

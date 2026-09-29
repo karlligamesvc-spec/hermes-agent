@@ -3775,6 +3775,8 @@ export const ja = defineLocale({
       recentProjects: '最近のプロジェクト',
       loadingProjects: 'プロジェクトを読み込み中…',
       projectLoadFailed: 'プロジェクトを読み込めません。下にローカル作業の互換ビューを残しています。',
+      refreshFailed: '最新の状態を更新できませんでした。接続を確認して再試行してください。',
+      refreshRetry: '更新を再試行',
       projectDomainUnavailable:
         'プロジェクトサービスはまだ接続されていません。実際のデータが利用可能になると、ここに表示されます。',
       detailTitle: 'プロジェクト概要',
@@ -3804,12 +3806,23 @@ export const ja = defineLocale({
           archived: 'アーカイブ済み',
           cancelled: 'キャンセル済み',
           completed: '完了',
+          paused: '一時停止',
           failed: '対応が必要',
           queued: 'Hermes の実行待ち',
           running: 'Hermes が実行中',
           succeeded: '完了',
           timed_out: 'タイムアウト',
           waiting_review: 'レビュー待ち'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: '実行キャンセル済み',
+          failed: '実行への対応が必要',
+          queued: 'Hermes の実行待ち',
+          running: 'Hermes が実行中',
+          succeeded: '実行成功',
+          timed_out: '実行タイムアウト',
+          waiting_review: '実行レビュー待ち'
         })[status] || status,
       viewRun: '現在の実行を開く',
       noRun: '実行はまだ開始されていません',

@@ -1,7 +1,9 @@
 import type { BusinessWorkflowStarter } from '../view-model/workflow-starters'
 
 import { workflowDomainBridge } from './bridge'
+import { captureWorkflowMutationScope } from './mutation-scope'
 import { workflowDomainChanged } from './read-revision'
+import { pendingStartIntents, startIntentAccount } from './start-intents'
 import type {
   CreateWorkflowProjectOutcome,
   StartWorkflowGoalOutcome,
@@ -71,6 +73,8 @@ export async function startWorkflowGoal(
   projectIdOrBridge?: null | string | WorkflowDomainBridge,
   fallbackBridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<StartWorkflowGoalOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   const projectId = typeof projectIdOrBridge === 'string' ? projectIdOrBridge : undefined
 
   const bridge =
@@ -82,18 +86,20 @@ export async function startWorkflowGoal(
 
   let access
 
+  const accountId = startIntentAccount()
+
   try {
     access = await bridge.access()
   } catch {
     return { mode: 'unavailable' }
   }
 
-  if (!access.available) {
+  if (!access.available || !isCurrentScope()) {
     return { mode: 'unavailable' }
   }
 
   try {
-    const result = await bridge.startGoal({
+    const request = {
       objective,
       ...(projectId?.trim() ? { projectId: projectId.trim() } : {}),
       starter: {
@@ -103,14 +109,23 @@ export async function startWorkflowGoal(
         slug: starter.slug,
         version: starter.version
       }
-    })
+    }
+
+    const intent = await pendingStartIntents.begin(accountId, { kind: 'goal', objective: objective.trim(), projectId: request.projectId ?? null,
+      starter: { id: starter.id, slug: starter.slug, version: starter.version } })
+
+    if (!isCurrentScope()) {return { mode: 'failed' }}
+    const result = await bridge.startGoal({ ...request, idempotencyKey: intent.idempotencyKey })
 
     const runId = result.run?.id?.trim()
 
-    if (!result.ok || !runId) {
+    if (!result.ok || !runId || !isCurrentScope()) {
       return { mode: 'failed' }
     }
 
+    await pendingStartIntents.confirm(accountId, intent)
+
+    if (!isCurrentScope()) {return { mode: 'failed' }}
     workflowDomainChanged()
 
     return { mode: 'started', runId }
@@ -125,12 +140,14 @@ export async function createWorkflowDefinition(
   projectId: string,
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<CreateWorkflowDefinitionOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   if (!bridge?.createWorkflow || !projectId.trim()) {
     return { mode: 'unavailable' }
   }
 
   try {
-    if (!(await bridge.access()).available) {
+    if (!(await bridge.access()).available || !isCurrentScope()) {
       return { mode: 'unavailable' }
     }
 
@@ -148,7 +165,7 @@ export async function createWorkflowDefinition(
 
     const workflowId = result.workflow?.id?.trim()
 
-    if (!result.ok || !workflowId) {
+    if (!result.ok || !workflowId || !isCurrentScope()) {
       return { mode: 'failed' }
     }
 
@@ -165,22 +182,33 @@ export async function startExistingWorkflowRun(
   workflowId: string,
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<StartExistingWorkflowRunOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   if (!bridge?.startRun || !workflowId.trim()) {
     return { mode: 'unavailable' }
   }
 
+  const accountId = startIntentAccount()
+
   try {
-    if (!(await bridge.access()).available) {
+    if (!(await bridge.access()).available || !isCurrentScope()) {
       return { mode: 'unavailable' }
     }
 
-    const result = await bridge.startRun({ objective, workflowId: workflowId.trim() })
+    const request = { objective: objective.trim(), workflowId: workflowId.trim() }
+    const intent = await pendingStartIntents.begin(accountId, { kind: 'run', ...request })
+
+    if (!isCurrentScope()) {return { mode: 'failed' }}
+    const result = await bridge.startRun({ ...request, idempotencyKey: intent.idempotencyKey })
     const runId = result.run?.id?.trim()
 
-    if (!result.ok || !runId) {
+    if (!result.ok || !runId || !isCurrentScope()) {
       return { mode: 'failed' }
     }
 
+    await pendingStartIntents.confirm(accountId, intent)
+
+    if (!isCurrentScope()) {return { mode: 'failed' }}
     workflowDomainChanged()
 
     return { mode: 'started', runId }
@@ -193,6 +221,8 @@ export async function createWorkflowProject(
   input: { localPath?: string; name: string; objective: string },
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<CreateWorkflowProjectOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   if (!bridge?.createProject) {
     return { mode: 'unavailable' }
   }
@@ -200,13 +230,13 @@ export async function createWorkflowProject(
   try {
     const access = await bridge.access()
 
-    if (!access.available) {
+    if (!access.available || !isCurrentScope()) {
       return { mode: 'unavailable' }
     }
 
     const result = await bridge.createProject(input)
 
-    if (!result.ok || !result.item) {
+    if (!result.ok || !result.item || !isCurrentScope()) {
       return { mode: 'failed' }
     }
 
@@ -300,18 +330,20 @@ export async function updateWorkflowProject(
   input: { name: string; objective: string; projectId: string },
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<WorkflowProjectMutationOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   if (!bridge?.updateProject) {
     return { mode: 'unavailable' }
   }
 
   try {
-    if (!(await bridge.access()).available) {
+    if (!(await bridge.access()).available || !isCurrentScope()) {
       return { mode: 'unavailable' }
     }
 
     const result = await bridge.updateProject(input)
 
-    if (!result.ok || !result.item) {
+    if (!result.ok || !result.item || !isCurrentScope()) {
       return { code: result.code, mode: 'failed' }
     }
 
@@ -327,18 +359,20 @@ export async function completeWorkflowProject(
   projectId: string,
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<WorkflowProjectMutationOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   if (!bridge?.completeProject) {
     return { mode: 'unavailable' }
   }
 
   try {
-    if (!(await bridge.access()).available) {
+    if (!(await bridge.access()).available || !isCurrentScope()) {
       return { mode: 'unavailable' }
     }
 
     const result = await bridge.completeProject(projectId)
 
-    if (!result.ok || !result.item) {
+    if (!result.ok || !result.item || !isCurrentScope()) {
       return { code: result.code, mode: 'failed' }
     }
 
@@ -354,18 +388,20 @@ export async function reopenWorkflowProject(
   projectId: string,
   bridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<WorkflowProjectMutationOutcome> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   if (!bridge?.reopenProject) {
     return { mode: 'unavailable' }
   }
 
   try {
-    if (!(await bridge.access()).available) {
+    if (!(await bridge.access()).available || !isCurrentScope()) {
       return { mode: 'unavailable' }
     }
 
     const result = await bridge.reopenProject(projectId)
 
-    if (!result.ok || !result.item) {
+    if (!result.ok || !result.item || !isCurrentScope()) {
       return { code: result.code, mode: 'failed' }
     }
 
@@ -536,27 +572,31 @@ export async function listWorkflowActivity(
 }
 
 export async function cancelWorkflowRun(runId: string): Promise<boolean> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   const bridge = workflowDomainBridge()
 
   const ok = bridge ? (await bridge.cancelRun(runId)).ok : false
 
-  if (ok) {
+  if (ok && isCurrentScope()) {
     workflowDomainChanged()
   }
 
-  return ok
+  return ok && isCurrentScope()
 }
 
 export async function retryWorkflowRunStep(runId: string, stepKey: string): Promise<boolean> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   const bridge = workflowDomainBridge()
 
   const ok = bridge?.retryRunStep ? (await bridge.retryRunStep({ runId, stepKey })).ok : false
 
-  if (ok) {
+  if (ok && isCurrentScope()) {
     workflowDomainChanged()
   }
 
-  return ok
+  return ok && isCurrentScope()
 }
 
 export async function reviewWorkflowDeliverable(
@@ -564,15 +604,17 @@ export async function reviewWorkflowDeliverable(
   status: 'approved' | 'changes_requested',
   notes?: string
 ): Promise<boolean> {
+  const isCurrentScope = captureWorkflowMutationScope()
+
   const bridge = workflowDomainBridge()
 
   const ok = bridge ? (await bridge.reviewDeliverable({ deliverableId, notes, status })).ok : false
 
-  if (ok) {
+  if (ok && isCurrentScope()) {
     workflowDomainChanged()
   }
 
-  return ok
+  return ok && isCurrentScope()
 }
 
 export async function openWorkflowUserFile(fileId: string): Promise<boolean> {

@@ -4892,6 +4892,8 @@ export const en: Translations = {
       recentProjects: 'Recent projects',
       loadingProjects: 'Loading projects…',
       projectLoadFailed: 'Projects could not be read. Your local work remains available below.',
+      refreshFailed: 'The latest state could not be refreshed. Check your connection and retry.',
+      refreshRetry: 'Retry refresh',
       projectDomainUnavailable:
         'The project service is not connected yet. Recent projects appear here when real data is available.',
       detailTitle: 'Project overview',
@@ -4921,12 +4923,23 @@ export const en: Translations = {
           archived: 'Archived',
           cancelled: 'Cancelled',
           completed: 'Completed',
+          paused: 'Paused',
           failed: 'Needs attention',
           queued: 'Queued for Hermes',
           running: 'Hermes is working',
           succeeded: 'Completed',
           timed_out: 'Timed out',
           waiting_review: 'Ready for review'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: 'Run cancelled',
+          failed: 'Run needs attention',
+          queued: 'Queued for Hermes',
+          running: 'Hermes is working',
+          succeeded: 'Run succeeded',
+          timed_out: 'Run timed out',
+          waiting_review: 'Run awaiting review'
         })[status] || status,
       viewRun: 'Open current run',
       noRun: 'No run has started yet',

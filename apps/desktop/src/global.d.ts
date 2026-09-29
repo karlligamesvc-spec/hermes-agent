@@ -304,7 +304,7 @@ declare global {
         createWorkflow?: (
           payload: DesktopWorkflowDomainCreateWorkflowInput
         ) => Promise<DesktopWorkflowDomainCreateWorkflowResult>
-        startRun?: (payload: { objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
+        startRun?: (payload: { idempotencyKey?: string; objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
         listProjects?: (options?: {
           cursor?: string
           limit?: number
@@ -1818,6 +1818,7 @@ export interface DesktopWorkflowDomainAccess {
 }
 
 export interface DesktopWorkflowDomainStartGoalInput {
+  idempotencyKey?: string
   objective: string
   projectId?: string
   starter: {

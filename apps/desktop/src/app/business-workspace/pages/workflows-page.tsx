@@ -21,6 +21,7 @@ import { createWorkflowDefinition } from '../api/adapters'
 import type { WorkflowProject } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { ProjectCreateDialog } from '../components/project-create-dialog'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
 import {
   useVideoWorkflowCatalog,
@@ -214,6 +215,9 @@ export function WorkflowsView() {
   return (
     <section className="apex-business-surface apex-business-page apex-primary-page" data-business-workflows-page="">
       <div className="apex-primary-page-column">
+        <WorkflowRefreshNotice state={project} />
+        <WorkflowRefreshNotice state={projects} />
+        <WorkflowRefreshNotice state={workflows} />
         <BusinessPageHeader
           action={
             startSelection

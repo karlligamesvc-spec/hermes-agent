@@ -56,11 +56,12 @@ export interface WorkflowDomainBridge {
   retryRunStep?: (payload: { runId: string; stepKey: string }) => Promise<{ ok: boolean }>
   openUserFile?: (fileId: string) => Promise<{ ok: boolean }>
   startGoal: (payload: {
+    idempotencyKey?: string
     objective: string
     projectId?: string
     starter: { description: string; id: string; name: string; slug: string; version: number }
   }) => Promise<{ ok: boolean; run?: { id: string } }>
-  startRun?: (payload: { objective: string; workflowId: string }) => Promise<{ ok: boolean; run?: { id: string } }>
+  startRun?: (payload: { idempotencyKey?: string; objective: string; workflowId: string }) => Promise<{ ok: boolean; run?: { id: string } }>
 }
 
 export interface WorkflowReview {

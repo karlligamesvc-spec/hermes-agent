@@ -3705,6 +3705,8 @@ export const zhHant = defineLocale({
       recentProjects: '最近專案',
       loadingProjects: '正在讀取專案…',
       projectLoadFailed: '暫時無法讀取專案，下方仍保留本機工作的相容視圖。',
+      refreshFailed: '暫時無法重新整理最新狀態，請檢查連接後重試。',
+      refreshRetry: '重試重新整理',
       projectDomainUnavailable: '專案服務尚未連接。真實資料可用後，最近專案會顯示在這裡。',
       detailTitle: '專案概覽',
       detailEyebrow: '專案概覽',
@@ -3731,12 +3733,23 @@ export const zhHant = defineLocale({
           archived: '已封存',
           cancelled: '已取消',
           completed: '已完成',
+          paused: '已暫停',
           failed: '需要處理',
           queued: '等待 Hermes 執行',
           running: 'Hermes 正在執行',
           succeeded: '已完成',
           timed_out: '已逾時',
           waiting_review: '等待審閱'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: '執行已取消',
+          failed: '執行需要處理',
+          queued: '等待 Hermes 執行',
+          running: 'Hermes 正在執行',
+          succeeded: '執行成功',
+          timed_out: '執行已逾時',
+          waiting_review: '執行等待審閱'
         })[status] || status,
       viewRun: '開啟目前執行',
       noRun: '尚未開始執行',

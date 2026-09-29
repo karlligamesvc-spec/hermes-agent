@@ -22,6 +22,7 @@ export interface AnalysisDocument {
   filename: string
   kind: 'pdf' | 'word' | 'excel' | 'text' | 'feishu' | 'subtitle'
   status: 'processing' | 'ready' | 'failed'
+  can_retry?: boolean
   storageMode: 'cloud' | 'local'
   error_code?: string | null
   source_url?: string | null

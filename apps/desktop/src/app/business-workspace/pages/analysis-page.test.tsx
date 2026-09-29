@@ -8,7 +8,11 @@ import { sampleVideoFrames } from '../video-frame-evidence'
 
 import { AnalysisView } from './analysis-page'
 
-vi.mock('@/i18n', () => ({ useI18n: () => ({ locale: 'zh' }) }))
+vi.mock('@/i18n', async () => {
+  const { zh } = await import('@/i18n/zh')
+
+  return { useI18n: () => ({ locale: 'zh', t: zh }) }
+})
 vi.mock('../video-frame-evidence', async importOriginal => {
   const actual = await importOriginal<typeof VideoFrameEvidenceModule>()
 

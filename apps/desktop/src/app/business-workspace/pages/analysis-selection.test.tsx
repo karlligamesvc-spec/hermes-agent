@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AnalysisView } from './analysis-page'
 
-vi.mock('@/i18n', () => ({ useI18n: () => ({ locale: 'zh' }) }))
+vi.mock('@/i18n', async () => {
+  const { zh } = await import('@/i18n/zh')
+
+  return { useI18n: () => ({ locale: 'zh', t: zh }) }
+})
 
 afterEach(() => {
   cleanup()
@@ -45,7 +49,7 @@ describe('analysis source selection', () => {
 
   it('does not replace a newer source list with an older response', async () => {
     const first = deferred<{ items: ReturnType<typeof source>[]; ok: true }>()
-    const list = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce({ ok: true, items: [source('b')] })
+    const list = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue({ ok: true, items: [source('b')] })
     setBridge(vi.fn(async (id: string) => ({ ok: true, item: source(id) })), {
       importFile: vi.fn().mockResolvedValue({ ok: true, item: source('b') }),
       list

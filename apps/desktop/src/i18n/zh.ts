@@ -4330,6 +4330,8 @@ export const zh = defineLocale({
       recentProjects: '最近项目',
       loadingProjects: '正在读取项目…',
       projectLoadFailed: '暂时无法读取项目，下面仍保留本地工作兼容视图。',
+      refreshFailed: '暂时无法刷新最新状态，请检查连接后重试。',
+      refreshRetry: '重试刷新',
       projectDomainUnavailable: '项目服务尚未连接。真实数据可用后，最近项目会显示在这里。',
       detailTitle: '项目概览',
       detailEyebrow: '项目概览',
@@ -4356,12 +4358,23 @@ export const zh = defineLocale({
           archived: '已归档',
           cancelled: '已取消',
           completed: '已完成',
+          paused: '已暂停',
           failed: '需要处理',
           queued: '等待 Hermes 执行',
           running: 'Hermes 正在执行',
           succeeded: '已完成',
           timed_out: '已超时',
           waiting_review: '等待审阅'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: '运行已取消',
+          failed: '运行需要处理',
+          queued: '等待 Hermes 执行',
+          running: 'Hermes 正在执行',
+          succeeded: '运行成功',
+          timed_out: '运行已超时',
+          waiting_review: '运行等待审阅'
         })[status] || status,
       viewRun: '打开当前运行',
       noRun: '尚未开始运行',

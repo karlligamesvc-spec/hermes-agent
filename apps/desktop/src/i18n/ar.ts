@@ -95,7 +95,32 @@ export const ar = defineLocale({
     off: 'معطل'
   },
   businessWorkspace: {
-    projects: { chooseWorkflow: 'اختيار سير عمل' },
+    projects: {
+      chooseWorkflow: 'اختيار سير عمل',
+      awaitingAcceptance: 'بانتظار القبول',
+      notStarted: 'لم يبدأ بعد',
+      completeProject: 'إكمال المشروع',
+      reopenProject: 'إعادة فتح المشروع',
+      refreshFailed: 'تعذر تحديث أحدث حالة. تحقق من الاتصال ثم أعد المحاولة.',
+      refreshRetry: 'إعادة محاولة التحديث',
+      lifecycle: status =>
+        ({
+          active: 'قيد العمل',
+          archived: 'مؤرشف',
+          completed: 'مكتمل',
+          paused: 'متوقف مؤقتًا'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: 'تم إلغاء التشغيل',
+          failed: 'التشغيل يحتاج إلى معالجة',
+          queued: 'بانتظار تشغيل Hermes',
+          running: 'Hermes يعمل',
+          succeeded: 'نجح التشغيل',
+          timed_out: 'انتهت مهلة التشغيل',
+          waiting_review: 'التشغيل بانتظار المراجعة'
+        })[status] || status
+    },
     workflows: {
       use: 'استخدام سير العمل هذا',
       goalSelectionDescription: 'اختر قالبًا ثم عد إلى صفحة البدء لتأكيد هدفك. يتم إنشاء المشروع والتشغيل فقط عند الضغط على زر بدء العمل.'

@@ -7,6 +7,8 @@ import { $connection } from '@/store/session'
 import { validAnalysisWorkspaceId } from '../../../shared/analysis-chat-link'
 import type { OverviewLocale } from '../../../shared/analysis-video-overview'
 
+import { analysisDocumentsBridge } from './analysis-bridge'
+
 export const ANALYSIS_CHAT_COPY = {
   zh: { open: '打开最近发送的拆解会话', hint: '仅在本机记录已发送的会话；不代表报告已完成或内容已核验。', none: '本机尚无已发送的拆解会话。', failed: '无法读取或打开拆解会话，请重试。', recordFailed: '消息已发送，但资料的会话链接保存失败。请从历史会话查看；不要重复发送。', context: '请切回准备草稿时的本机连接和档案，再发送或打开会话。' },
   'zh-hant': { open: '開啟最近傳送的拆解對話', hint: '僅在本機記錄已傳送的對話；不代表報告已完成或內容已核驗。', none: '本機尚無已傳送的拆解對話。', failed: '無法讀取或開啟拆解對話，請重試。', recordFailed: '訊息已傳送，但資料的對話連結儲存失敗。請從歷史對話查看，勿重複傳送。', context: '請切回準備草稿時的本機連線及設定檔，再傳送或開啟對話。' },
@@ -43,7 +45,7 @@ export function analysisChatSubmitOptions(value: unknown, text: string): SubmitT
     return false
   }
 
-  const record = window.hermesDesktop?.analysisDocuments?.recordDeepChat
+  const record = analysisDocumentsBridge()?.recordDeepChat
 
   if (!record) {return undefined} // Older native bridge: ordinary explicit send, no claimed receipt.
 
