@@ -27,7 +27,7 @@ it.each(['complete', 'error', 'interrupted', 'running', 'unavailable'] as const)
   expect(api.updateDeepChatOutcome).toHaveBeenCalledExactlyOnceWith('source', 'owner', 'rev', link, status)
   expect(result.outcome?.status).toBe(status)
 })
-it.each(['turn', 'status', 'unmounted', 'profile', 'source'] as const)('rejects a mismatched or late outcome: %s', async mode => {
+it.each(['turn', 'status', 'unmounted', 'profile', 'source', 'workspace'] as const)('rejects a mismatched or late outcome: %s', async mode => {
   const api = bridge()
   let active = true
   vi.mocked(requestGatewayForAgent).mockImplementation(async () => {
@@ -37,6 +37,8 @@ it.each(['turn', 'status', 'unmounted', 'profile', 'source'] as const)('rejects 
 
     return { turn_id: mode === 'turn' ? 'another-turn' : 'turn-one', status: mode === 'status' ? 'idle' : 'complete' }
   })
+
+  if (mode === 'workspace') {api.readDeepChat.mockResolvedValue({ ok: true, item: { ...link, workspaceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } })}
 
   if (mode === 'source') {api.readDeepChat.mockResolvedValue({ ok: true, item: { ...link, turn: { id: 'another-turn', runtimeSessionId: 'runtime' } } })}
   await expect(refreshAnalysisTurnOutcome(source, link, api as unknown as AnalysisDocumentsBridge, () => active)).rejects.toThrow()

@@ -66,3 +66,13 @@ it('collects only the clicked workspace filename, explains missing output and su
   await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith([...reports.slice(1), report]))
   expect(collectDeepReport).toHaveBeenLastCalledWith('local-a', 'owner', 'rev-a', 'ANALYSIS.md')
 })
+
+
+it('explains that a prepared but unsent draft cannot collect yet', async () => {
+  const onChange = vi.fn()
+  const collectDeepReport = vi.fn().mockResolvedValue({ ok: false, code: 'workspace_submission_missing' })
+  render(<DeepAnalysisReports bridge={{ collectDeepReport } as unknown as AnalysisDocumentsBridge} locale="en" onChange={onChange} source={{ ...source, deep_reports: [] }} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Collect ANALYSIS.md' }))
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Send the breakdown draft first. Its folder is bound only after the send is accepted.')
+  expect(onChange).not.toHaveBeenCalled()
+})

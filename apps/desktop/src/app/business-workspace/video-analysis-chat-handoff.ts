@@ -4,6 +4,7 @@ import { notify } from '@/store/notifications'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $connection } from '@/store/session'
 
+import { validAnalysisWorkspaceId } from '../../../shared/analysis-chat-link'
 import type { OverviewLocale } from '../../../shared/analysis-video-overview'
 
 export const ANALYSIS_CHAT_COPY = {
@@ -27,13 +28,14 @@ export function analysisChatSubmitOptions(value: unknown, text: string): SubmitT
   if (typeof draft.sourceId !== 'string' || typeof draft.scope !== 'string' || typeof draft.revision !== 'string' ||
     typeof draft.directory !== 'string' || !draft.directory || typeof draft.profile !== 'string' ||
     (draft.connectionId !== null && typeof draft.connectionId !== 'string') ||
+    (draft.workspaceId !== undefined && !validAnalysisWorkspaceId(draft.workspaceId)) ||
     typeof draft.locale !== 'string' || !Object.hasOwn(ANALYSIS_CHAT_COPY, draft.locale)) {return undefined}
 
   // If the user replaces the draft, the new message must not inherit this source association.
   if (!text.includes(JSON.stringify(draft.directory))) {return undefined}
   const { sourceId, scope, revision, connectionId, profile } = draft
   const copy = ANALYSIS_CHAT_COPY[draft.locale as OverviewLocale]
-  const target = { connectionId, profile }
+  const target = { connectionId, profile, ...(typeof draft.workspaceId === 'string' ? { workspaceId: draft.workspaceId } : {}) }
 
   if (!analysisChatContextMatches(target)) {
     notify({ kind: 'error', title: copy.context, message: '' })

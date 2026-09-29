@@ -79,6 +79,7 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
     const prepareWorkspace = window.hermesDesktop?.analysisDocuments?.prepareDeepWorkspace
     let workspaceNote = ''
     let workspaceDirectory: string | undefined
+    let workspaceId: string | undefined
 
     if (prepareWorkspace) {
       if (!isCurrent()) {throw new Error('analysis_context_changed')}
@@ -88,6 +89,7 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
 
       if (!result.ok || !result.directory) {throw new Error(result.code ?? 'workspace_invalid')}
       workspaceDirectory = result.directory
+      workspaceId = result.workspaceId
       workspaceNote = videoWorkspaceDraft(locale, result.directory)
     }
 
@@ -105,7 +107,7 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
 
     if (!draft) {throw new Error('transcript_evidence_invalid')}
 
-    return { draft, attachments: accepted, frames: routedFrames, transcript, workspaceDirectory }
+    return { draft, attachments: accepted, frames: routedFrames, transcript, workspaceDirectory, workspaceId }
   } catch (error) {
     mainComposerScope.removeOccurrences(accepted)
     throw error

@@ -4,15 +4,18 @@ import path from 'node:path'
 
 import { type AnalysisChatLink, type AnalysisChatTarget, type AnalysisTurnState, sameAnalysisChatLink, validAnalysisChatTarget, validAnalysisTurnState } from '../shared/analysis-chat-link'
 
-import { ownedAnalysisWorkspace } from './apex-analysis-workspace'
+import { ownedAnalysisAttempt, ownedAnalysisWorkspace } from './apex-analysis-workspace'
 
 /** Only the latest accepted submission is retained, on this Desktop, inside its source workspace. */
 export function writeAnalysisChatLink(root: string, scope: string, id: string, revision: string, target: AnalysisChatTarget): AnalysisChatLink {
   if (!validAnalysisChatTarget(target)) {throw new Error('workspace_invalid')}
   const directory = ownedAnalysisWorkspace(root, scope, id, revision)
 
+  if (target.workspaceId) {ownedAnalysisAttempt(root, scope, id, revision, target.workspaceId)}
+
   const item: AnalysisChatLink = { sessionId: target.sessionId, connectionId: target.connectionId,
     profile: target.profile, submittedAt: new Date().toISOString(),
+    ...(target.workspaceId ? { workspaceId: target.workspaceId } : {}),
     ...(target.turn ? { turn: { id: target.turn.id, runtimeSessionId: target.turn.runtimeSessionId } } : {}) }
 
   commitChatReceipt(directory, scope, id, revision, item)
@@ -81,6 +84,7 @@ export function readAnalysisChatLink(root: string, scope: string, id: string, re
 
     return { sessionId: record.item.sessionId, connectionId: record.item.connectionId,
       profile: record.item.profile, submittedAt: record.item.submittedAt,
+      ...(record.item.workspaceId ? { workspaceId: record.item.workspaceId } : {}),
       ...(record.item.turn ? { turn: { id: record.item.turn.id, runtimeSessionId: record.item.turn.runtimeSessionId } } : {}),
       ...(record.item.outcome ? { outcome: { status: record.item.outcome.status, observedAt: record.item.outcome.observedAt } } : {}) }
   } catch {throw new Error('workspace_invalid')} finally {if (fd !== undefined) {fs.closeSync(fd)}}

@@ -49,3 +49,18 @@ it('preserves the runtime-issued attempt separately from the durable chat target
   await options.onAccepted!({ storedSessionId: 'durable', turn })
   expect(record).toHaveBeenCalledExactlyOnceWith('source', 'owner', 'revision', { sessionId: 'durable', connectionId: 'local', profile: 'default', turn })
 })
+
+
+it('carries the exact prepared workspace only on acceptance and refuses malformed IDs', async () => {
+  const workspaceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const options = analysisChatSubmitOptions({ ...draft, workspaceId }, prompt)
+
+  if (!options) {throw new Error('missing options')}
+  expect(record).not.toHaveBeenCalled()
+  await options.onAccepted!({ storedSessionId: 'accepted' })
+  expect(record).toHaveBeenCalledExactlyOnceWith('source', 'owner', 'revision', { sessionId: 'accepted', connectionId: 'local', profile: 'default', workspaceId })
+
+  for (const invalid of ['../outside', '', null, 123]) {
+    expect(analysisChatSubmitOptions({ ...draft, workspaceId: invalid }, prompt)).toBeUndefined()
+  }
+})

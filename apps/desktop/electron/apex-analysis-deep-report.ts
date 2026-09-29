@@ -2,13 +2,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { AnalysisChatLink, AnalysisChatTarget, AnalysisTurnState } from '../shared/analysis-chat-link'
+import { type AnalysisChatLink, type AnalysisChatTarget, type AnalysisTurnState, sameAnalysisChatLink } from '../shared/analysis-chat-link'
 import { type DeepReportInput, MAX_REPORT_BYTES, validateDeepReport, validateDeepReportSource } from '../shared/analysis-deep-report'
 import type { OverviewSource } from '../shared/analysis-video-overview'
 
 import { readAnalysisChatLink, updateAnalysisChatOutcome, writeAnalysisChatLink } from './apex-analysis-chat-link'
 import { removeLocalDeepReport, saveLocalDeepReport } from './apex-analysis-local'
-import { analysisWorkspaceReport, prepareAnalysisWorkspace } from './apex-analysis-workspace'
+import { analysisWorkspaceReport, hasAnalysisAttempts, prepareAnalysisAttempt } from './apex-analysis-workspace'
 
 interface ReportContext {
   context: { root: string; url: string; bearer: string; transport: { postJson: (url: string, body: unknown) => Promise<unknown> } }
@@ -60,14 +60,27 @@ export function createDeepReportHandlers(deps: Dependencies) {
       const before = await deps.context(id, scope)
 
       if (before.item.analysis_revision !== revision) {throw new Error('report_source_changed')}
-      const filePath = await choose(before)
+      const submitted = workspaceFilename ? readAnalysisChatLink(before.context.root, scope, id, revision) : null
+
+      if (workspaceFilename && !submitted && hasAnalysisAttempts(before.context.root, scope, id, revision)) {throw new Error('workspace_submission_missing')}
+
+      const filePath = workspaceFilename
+        ? analysisWorkspaceReport(before.context.root, scope, id, revision, workspaceFilename, submitted?.workspaceId)
+        : await choose(before)
 
       if (!filePath) {return { ok: false, code: 'cancelled' }}
       const current = await deps.context(id, scope)
 
       if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
+
+      if (workspaceFilename) {
+        const latest = readAnalysisChatLink(current.context.root, scope, id, revision)
+
+        if (submitted ? !sameAnalysisChatLink(latest, submitted) : latest !== null) {throw new Error('analysis_context_changed')}
+      }
+
       // Recheck the confined path after awaits and after reading. A project/file symlink is never an output.
-      const ownedPath = () => analysisWorkspaceReport(current.context.root, scope, id, revision, workspaceFilename!)
+      const ownedPath = () => analysisWorkspaceReport(current.context.root, scope, id, revision, workspaceFilename!, submitted?.workspaceId)
 
       if (workspaceFilename && ownedPath() !== filePath) {throw new Error('workspace_invalid')}
       const input: DeepReportInput = { ...readDeepReportFile(filePath, Boolean(workspaceFilename)), revision }
@@ -89,15 +102,15 @@ export function createDeepReportHandlers(deps: Dependencies) {
     importReport: (event: unknown, id: string, scope: string, revision: string) =>
       saveSelected(id, scope, revision, () => deps.chooseFile(event)),
     collectReport: (_event: unknown, id: string, scope: string, revision: string, filename: string) =>
-      saveSelected(id, scope, revision, async before => analysisWorkspaceReport(before.context.root, scope, id, revision, filename), filename),
-    prepareWorkspace: async (_event: unknown, id: string, scope: string, revision: string) => {
+      saveSelected(id, scope, revision, async () => null, filename),
+    prepareWorkspace: async (_event: unknown, id: string, scope: string, revision: string): Promise<{ ok: boolean; code?: string; directory?: string; workspaceId?: string }> => {
       try {
         const { context, item } = await deps.context(id, scope)
         validateDeepReportSource(item, revision, item.analysis_revision ?? '')
 
         if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
 
-        return { ok: true, directory: prepareAnalysisWorkspace(context.root, scope, id, revision) }
+        return { ok: true, ...prepareAnalysisAttempt(context.root, scope, id, revision) }
       } catch (error) {return { ok: false, code: deps.error(error) }}
     },
     recordChat: async (_event: unknown, id: string, scope: string, revision: string, target: AnalysisChatTarget) => {

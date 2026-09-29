@@ -27,8 +27,12 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   const directory = JSON.parse(prompt.trim().split('\n').at(-1)!) as string
 
   const source = JSON.parse(fs.readFileSync(path.join(directory, 'apex-source.json'), 'utf8')) as {
-    source_id: string; scope: string; revision: string
+    source_id: string; scope: string; revision: string; workspace_id: string
   }
+
+  expect(path.basename(directory)).toBe(source.workspace_id)
+  expect(path.basename(path.dirname(directory))).toBe('attempts')
+  const receiptDirectory = path.resolve(directory, '../..')
 
   const read = () => page.evaluate(async input => {
     const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
@@ -37,7 +41,7 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   }, source)
 
   expect(await read()).toEqual({ ok: true, item: null })
-  expect(fs.existsSync(path.join(directory, 'apex-chat.json'))).toBe(false)
+  expect(fs.existsSync(path.join(receiptDirectory, 'apex-chat.json'))).toBe(false)
 
   if (outcome !== 'complete') {await goal.fill(`${outcome === 'error' ? 'HC891_PROVIDER_FAILURE' : 'HC891_PROVIDER_HOLD'}\n${prompt}`)}
   const before = mock.receivedPrompts.length
@@ -45,6 +49,7 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await expect.poll(async () => (await read()).item?.sessionId, { timeout: 30_000 }).toBeTruthy()
   const link = (await read()).item as AnalysisChatLink
   await expect.poll(() => mock.receivedPrompts.slice(before).some(text => text.includes(directory)), { timeout: 60_000 }).toBe(true)
+  expect(link.workspaceId).toBe(source.workspace_id)
   expect(link.turn?.id).toMatch(/^[0-9a-f-]{36}$/)
   expect(link.turn?.runtimeSessionId).toBeTruthy()
 
@@ -64,7 +69,7 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   expect(result.status, result.stderr).toBe(0)
   const rows = JSON.parse(result.stdout) as Array<{ role: string; content: string }>
   expect(rows.some(row => row.role === 'user' && row.content.includes(directory))).toBe(true)
-  expect(JSON.parse(fs.readFileSync(path.join(directory, 'apex-chat.json'), 'utf8')).item).toEqual(link)
+  expect(JSON.parse(fs.readFileSync(path.join(receiptDirectory, 'apex-chat.json'), 'utf8')).item).toEqual(link)
   // A receipt cannot manufacture output files or analysis completion.
   expect(fs.existsSync(path.join(directory, 'ANALYSIS.md'))).toBe(false)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
@@ -98,7 +103,7 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await expect(reports.getByRole('button', { name: '打开最近发送的拆解会话' })).toBeVisible()
   await expect(reports).toContainText(expected)
   expect((await read()).item).toMatchObject({ ...link, outcome: { status: outcome } })
-  const persisted = JSON.parse(fs.readFileSync(path.join(directory, 'apex-chat.json'), 'utf8')).item
+  const persisted = JSON.parse(fs.readFileSync(path.join(receiptDirectory, 'apex-chat.json'), 'utf8')).item
   expect(persisted).toMatchObject({ ...link, outcome: { status: outcome } })
   expect(fs.existsSync(path.join(directory, 'ANALYSIS.md'))).toBe(false)
   await test.info().attach(`hc891-${outcome}-observed`, { body: JSON.stringify(persisted), contentType: 'application/json' })

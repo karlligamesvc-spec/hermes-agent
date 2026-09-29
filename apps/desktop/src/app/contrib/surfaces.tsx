@@ -140,7 +140,7 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
         analysisFrameHandoff: Boolean(previousSessionId),
         analysisTranscriptDraft: staged.transcript,
         analysisChatDraft: staged.workspaceDirectory ? { sourceId: document.id, scope: document.analysis_scope,
-          revision: document.analysis_revision, directory: staged.workspaceDirectory, locale,
+          revision: document.analysis_revision, directory: staged.workspaceDirectory, workspaceId: staged.workspaceId, locale,
           connectionId, profile: profile || 'default' } : undefined,
         analysisFrameDraft: { locale, sourceId: document.id, attemptedFrames: Math.min(3, frames.length), frames: staged.frames }
       } })

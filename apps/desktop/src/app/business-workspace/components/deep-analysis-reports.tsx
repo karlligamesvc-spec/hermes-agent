@@ -9,11 +9,11 @@ import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-type
 import { DeepAnalysisChat } from './deep-analysis-chat'
 
 const WORKSPACE_COPY = {
-  zh: { collect: '收取', hint: '助手完成后，可从本资料的本机输出目录收取指定文件；不会搜索其他项目，也不代表已核验报告。', missing: '请先准备本资料的深度拆解草稿。', pending: '指定报告尚未生成。请在助手完成后重试。', invalid: '输出目录或文件不符合绑定要求，请重新核对。' },
-  'zh-hant': { collect: '收取', hint: '助手完成後，可從本資料的本機輸出目錄收取指定檔案；不會搜尋其他專案，也不代表已核驗報告。', missing: '請先準備本資料的深度拆解草稿。', pending: '指定報告尚未產生，請在助手完成後重試。', invalid: '輸出目錄或檔案不符合綁定要求，請重新核對。' },
-  en: { collect: 'Collect', hint: 'After the Agent finishes, collect a named file from this source’s local output folder. Other projects are never searched; report claims remain unverified.', missing: 'Prepare a deep breakdown draft for this source first.', pending: 'This report has not been written yet. Retry after the Agent finishes.', invalid: 'The output folder or file no longer matches its binding. Please check it.' },
-  ja: { collect: '取得', hint: '助手の完了後、この資料専用のローカル出力フォルダから指定ファイルを取得します。他のプロジェクトは検索せず、内容は未検証です。', missing: '先にこの資料の詳細分析の下書きを準備してください。', pending: '指定レポートはまだありません。助手の完了後に再試行してください。', invalid: '出力フォルダまたはファイルが登録情報と一致しません。確認してください。' },
-  ar: { collect: 'جمع', hint: 'بعد انتهاء الوكيل، اجمع الملف المحدد من مجلد إخراج هذا المصدر المحلي. لا تُبحث مشاريع أخرى وتظل ادعاءات التقرير غير متحققة.', missing: 'جهز مسودة تحليل متعمق لهذا المصدر أولًا.', pending: 'لم يُكتب هذا التقرير بعد. أعد المحاولة بعد انتهاء الوكيل.', invalid: 'لم يعد مجلد الإخراج أو الملف يطابق الارتباط. يرجى التحقق منه.' }
+  zh: { collect: '收取', hint: '从最近一次已发送草稿的独立目录收取文件；旧版发送仍用原目录。准备新草稿不会改变收取目标，报告内容仍未经核验。', missing: '请先准备本资料的深度拆解草稿。', unsent: '请先发送深拆草稿，发送成功后才会绑定收取目录。', pending: '指定报告尚未生成。请在助手完成后重试。', invalid: '输出目录或文件不符合绑定要求，请重新核对。' },
+  'zh-hant': { collect: '收取', hint: '從最近一次已傳送草稿的獨立目錄收取檔案；舊版傳送仍用原目錄。準備新草稿不會改變收取目標，報告內容仍未經核驗。', missing: '請先準備本資料的深度拆解草稿。', unsent: '請先傳送深拆草稿，傳送成功後才會綁定收取目錄。', pending: '指定報告尚未產生，請在助手完成後重試。', invalid: '輸出目錄或檔案不符合綁定要求，請重新核對。' },
+  en: { collect: 'Collect', hint: 'Collect from the latest submitted draft’s folder; older submissions use their original folder. Preparing a new draft does not change the target. Report claims remain unverified.', missing: 'Prepare a deep breakdown draft for this source first.', unsent: 'Send the breakdown draft first. Its folder is bound only after the send is accepted.', pending: 'This report has not been written yet. Retry after the Agent finishes.', invalid: 'The output folder or file no longer matches its binding. Please check it.' },
+  ja: { collect: '取得', hint: '最後に送信した下書きの専用フォルダから取得します。旧版の送信は元のフォルダを使います。新しい下書きの準備だけでは取得先は変わりません。内容は未検証です。', missing: '先にこの資料の詳細分析の下書きを準備してください。', unsent: '先に分析の下書きを送信してください。送信が受理されてから取得先を登録します。', pending: '指定レポートはまだありません。助手の完了後に再試行してください。', invalid: '出力フォルダまたはファイルが登録情報と一致しません。確認してください。' },
+  ar: { collect: 'جمع', hint: 'اجمع من مجلد آخر مسودة مرسلة؛ الإرسالات القديمة تستخدم مجلدها الأصلي. تجهيز مسودة جديدة لا يغير هدف الجمع. تظل ادعاءات التقرير غير متحققة.', missing: 'جهز مسودة تحليل متعمق لهذا المصدر أولًا.', unsent: 'أرسل مسودة التحليل أولًا. يُربط المجلد بعد قبول الإرسال فقط.', pending: 'لم يُكتب هذا التقرير بعد. أعد المحاولة بعد انتهاء الوكيل.', invalid: 'لم يعد مجلد الإخراج أو الملف يطابق الارتباط. يرجى التحقق منه.' }
 }
 
 const COPY = {
@@ -53,7 +53,7 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
 
-      const workspaceError = ({ workspace_missing: w.missing, workspace_report_missing: w.pending, workspace_invalid: w.invalid } as Record<string, string>)[code]
+      const workspaceError = ({ workspace_missing: w.missing, workspace_submission_missing: w.unsent, workspace_report_missing: w.pending, workspace_invalid: w.invalid } as Record<string, string>)[code]
 
       const message = workspaceError ?? (code === 'report_too_large' ? c.large : code === 'report_limit' ? c.limit
         : ['report_invalid', 'report_unreadable'].includes(code) ? c.invalid

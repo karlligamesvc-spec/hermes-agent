@@ -64,7 +64,7 @@ export interface AnalysisDocumentsBridge {
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   importDeepReport: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
-  prepareDeepWorkspace: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; directory?: string }>
+  prepareDeepWorkspace: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; directory?: string; workspaceId?: string }>
   recordDeepChat?: (id: string, scope: string, revision: string, target: AnalysisChatTarget) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink }>
   updateDeepChatOutcome?: (id: string, scope: string, revision: string, expected: AnalysisChatLink, status: AnalysisTurnState) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink }>
   readDeepChat?: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink | null }>

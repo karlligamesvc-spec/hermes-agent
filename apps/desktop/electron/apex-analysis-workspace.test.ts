@@ -44,12 +44,16 @@ it('binds a real output folder, collects only explicitly selected outputs, prese
   expect(prepared.ok).toBe(true)
   const directory = prepared.directory!
   const receipt = JSON.parse(fs.readFileSync(path.join(directory, 'apex-source.json'), 'utf8'))
-  expect(receipt).toEqual({ schema: 1, scope: owner, source_id: source.id, revision })
+  expect(receipt).toEqual({ schema: 1, scope: owner, source_id: source.id, revision, workspace_id: prepared.workspaceId })
+  expect(await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).toEqual({ ok: false, code: 'workspace_submission_missing' })
+  expect((await handlers.recordChat(null, source.id, owner, revision, { sessionId: 'accepted', connectionId: null, profile: 'default', workspaceId: prepared.workspaceId })).ok).toBe(true)
   expect(await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).toEqual({ ok: false, code: 'workspace_report_missing' })
   fs.writeFileSync(path.join(root, 'ANALYSIS.md'), 'Wrong project')
   fs.writeFileSync(path.join(directory, 'ANALYSIS.md'), '# Actual output\n<script>unverified</script>')
   fs.writeFileSync(path.join(directory, 'TIMELINE.md'), '0:00 — spoken words')
-  expect((await handlers.prepareWorkspace(null, source.id, owner, revision)).directory).toBe(directory)
+  const unsent = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  expect(unsent.directory).not.toBe(directory)
+  fs.writeFileSync(path.join(unsent.directory!, 'ANALYSIS.md'), 'Never sent')
   expect((await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).ok).toBe(true)
   expect((await handlers.collectReport(null, source.id, owner, revision, 'TIMELINE.md')).ok).toBe(true)
   expect((await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).ok).toBe(true)
@@ -119,4 +123,103 @@ it('rejects substituted paths, receipts, revisions, oversized files and context 
 
   const { root, source, revision } = setup()
   expect(() => analysisWorkspaceReport(root, owner, source.id, revision, '/etc/passwd')).toThrow('report_invalid')
+})
+
+it('gives each preparation a fresh output directory without consuming a previous report', async () => {
+  const { source, revision, handlers } = setup()
+  const first = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  expect(first.ok).toBe(true)
+  fs.writeFileSync(path.join(first.directory!, 'ANALYSIS.md'), 'Old attempt output')
+  const second = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  expect(second.ok).toBe(true)
+  expect(second.directory).not.toBe(first.directory)
+  expect(fs.existsSync(path.join(second.directory!, 'ANALYSIS.md'))).toBe(false)
+  expect(fs.readFileSync(path.join(first.directory!, 'ANALYSIS.md'), 'utf8')).toBe('Old attempt output')
+})
+
+
+it('uses only the latest accepted output, keeps unsent drafts inert, and never falls back to old or legacy files', async () => {
+  const { root, source, revision, handlers } = setup()
+  const first = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  const target = { sessionId: 'same-chat', connectionId: null, profile: 'default' }
+  await handlers.recordChat(null, source.id, owner, revision, { ...target, workspaceId: first.workspaceId })
+  fs.writeFileSync(path.join(first.directory!, 'ANALYSIS.md'), 'First accepted')
+  fs.writeFileSync(path.join(prepareAnalysisWorkspace(root, owner, source.id, revision), 'ANALYSIS.md'), 'Legacy stale')
+  const second = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  expect((await handlers.readChat(null, source.id, owner, revision)).item?.workspaceId).toBe(first.workspaceId)
+  expect((await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).ok).toBe(true)
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports!.map(report => report.body)).toEqual(['First accepted'])
+  expect((await handlers.recordChat(null, source.id, owner, revision, { ...target, workspaceId: second.workspaceId })).ok).toBe(true)
+  expect(await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).toEqual({ ok: false, code: 'workspace_report_missing' })
+  fs.writeFileSync(path.join(second.directory!, 'ANALYSIS.md'), 'Second accepted')
+  expect((await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).ok).toBe(true)
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports!.map(report => report.body)).toEqual(['First accepted', 'Second accepted'])
+  expect(fs.readFileSync(path.join(first.directory!, 'ANALYSIS.md'), 'utf8')).toBe('First accepted')
+})
+
+it('rejects a different workspace binding while collection is awaiting context, even in the same chat and timestamp', async () => {
+  const { root, source, revision, deps, handlers } = setup()
+  const first = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  const second = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  const target = { sessionId: 'same-chat', connectionId: null, profile: 'default', workspaceId: first.workspaceId }
+  await handlers.recordChat(null, source.id, owner, revision, target)
+  fs.writeFileSync(path.join(first.directory!, 'ANALYSIS.md'), 'Do not save the stale selection')
+  const current = await deps.context(source.id, owner)
+  deps.context.mockResolvedValueOnce(current).mockImplementationOnce(async () => {
+    const receipt = path.join(prepareAnalysisWorkspace(root, owner, source.id, revision), 'apex-chat.json')
+    const binding = JSON.parse(fs.readFileSync(receipt, 'utf8'))
+    binding.item.workspaceId = second.workspaceId
+    fs.writeFileSync(receipt, JSON.stringify(binding))
+
+    return current
+  })
+  expect(await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).toEqual({ ok: false, code: 'analysis_context_changed' })
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports).toBeUndefined()
+})
+
+it.each(['id', 'scope', 'revision', 'receipt', 'attempt_link', 'parent_link'] as const)('refuses a substituted %s before associating or collecting an attempt', async failure => {
+  const { root, source, revision, handlers } = setup()
+  const first = await handlers.prepareWorkspace(null, source.id, owner, revision)
+  const directory = first.directory!
+  fs.writeFileSync(path.join(directory, 'ANALYSIS.md'), 'Must not save')
+  const target = { sessionId: 'chat', connectionId: null, profile: 'default', workspaceId: first.workspaceId }
+  expect((await handlers.recordChat(null, source.id, owner, revision, target)).ok).toBe(true)
+  let changedId = target.workspaceId
+
+  if (failure === 'id') {changedId = '../../other'}
+
+  if (['scope', 'revision', 'receipt'].includes(failure)) {
+    const file = path.join(directory, 'apex-source.json')
+    const receipt = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+    if (failure === 'scope') {receipt.scope = other}
+
+    if (failure === 'revision') {receipt.revision = 'c'.repeat(64)}
+
+    if (failure === 'receipt') {receipt.workspace_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'}
+    fs.writeFileSync(file, JSON.stringify(receipt))
+  }
+
+  if (failure === 'attempt_link' || failure === 'parent_link') {
+    const replaced = failure === 'attempt_link' ? directory : path.dirname(directory)
+    const outside = path.join(root, 'outside')
+    fs.renameSync(replaced, outside)
+    fs.symlinkSync(outside, replaced, 'junction')
+  }
+
+  expect(await handlers.recordChat(null, source.id, owner, revision, { ...target, workspaceId: changedId })).toEqual({ ok: false, code: 'workspace_invalid' })
+
+  if (failure !== 'id') {expect(await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).toEqual({ ok: false, code: 'workspace_invalid' })}
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports).toBeUndefined()
+})
+
+it('keeps previously submitted legacy folders readable while a new draft is still unsent', async () => {
+  const { root, source, revision, handlers } = setup()
+  const legacy = prepareAnalysisWorkspace(root, owner, source.id, revision)
+  fs.writeFileSync(path.join(legacy, 'ANALYSIS.md'), 'Legacy selected file')
+  expect((await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).ok).toBe(true)
+  await handlers.recordChat(null, source.id, owner, revision, { sessionId: 'legacy-chat', connectionId: null, profile: 'default' })
+  await handlers.prepareWorkspace(null, source.id, owner, revision)
+  expect((await handlers.collectReport(null, source.id, owner, revision, 'ANALYSIS.md')).ok).toBe(true)
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports!.map(report => report.body)).toEqual(['Legacy selected file'])
 })

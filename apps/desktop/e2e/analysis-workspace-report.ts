@@ -12,8 +12,17 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   const draft = await page.getByRole('textbox', { name: '业务目标' }).inputValue()
   const directory = JSON.parse(draft.trim().split('\n').at(-1)!) as string
   expect(draft.length).toBeLessThan(4000)
-  expect(path.basename(path.dirname(path.dirname(path.dirname(directory))))).toBe('analysis-workspaces')
+  expect(path.basename(path.dirname(directory))).toBe('attempts')
   const binding = JSON.parse(fs.readFileSync(path.join(directory, 'apex-source.json'), 'utf8'))
+  expect(binding.workspace_id).toBe(path.basename(directory))
+  const read = () => page.evaluate(async input => {
+    const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
+
+    return api.readDeepChat!(input.source_id, input.scope, input.revision)
+  }, binding)
+  expect((await read()).item).toBeNull()
+  await page.getByRole('button', { name: '开始执行', exact: true }).click()
+  await expect.poll(async () => (await read()).item?.workspaceId, { timeout: 30_000 }).toBe(binding.workspace_id)
   const body = '# [本地测试] 工作目录报告\n<script>window.workspaceExecuted = true</script>'
   fs.writeFileSync(path.join(directory, 'ANALYSIS.md'), body)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
@@ -46,7 +55,38 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   expect(saved.deep_reports![0].body).toBe(body)
   await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
   await expect(reports.locator('summary')).toHaveCount(1)
+  // Preparing alone leaves the accepted output selected. A second accepted draft must never consume it.
+  await page.getByRole('region', { name: '视频声音速览' }).getByRole('button', { name: '准备深度拆解' }).click()
+  const secondDraft = await page.getByRole('textbox', { name: '业务目标' }).inputValue()
+  const secondDirectory = JSON.parse(secondDraft.trim().split('\n').at(-1)!) as string
+  const secondBinding = JSON.parse(fs.readFileSync(path.join(secondDirectory, 'apex-source.json'), 'utf8'))
+  expect(secondDirectory).not.toBe(directory)
+  expect(fs.existsSync(path.join(secondDirectory, 'ANALYSIS.md'))).toBe(false)
+  expect((await read()).item?.workspaceId).toBe(binding.workspace_id)
+  const pendingCollection = await page.evaluate(async input => {
+    const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
+
+    return api.collectDeepReport!(input.source_id, input.scope, input.revision, 'ANALYSIS.md')
+  }, binding)
+  expect(pendingCollection.item?.body).toBe(body)
+  await page.getByRole('button', { name: '开始执行', exact: true }).click()
+  await expect.poll(async () => (await read()).item?.workspaceId, { timeout: 30_000 }).toBe(secondBinding.workspace_id)
+  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+  await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
+  await expect(reports.getByRole('alert')).toHaveText('指定报告尚未生成。请在助手完成后重试。')
+  await expect(reports.locator('summary')).toHaveCount(1)
+  const secondBody = '# [本地测试] Second submission output'
+  fs.writeFileSync(path.join(secondDirectory, 'ANALYSIS.md'), secondBody)
+  await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
+  await expect(reports.locator('summary')).toHaveCount(2)
+  await reports.locator('summary').last().click()
+  await expect(reports.locator('pre').last()).toHaveText(secondBody)
+  expect(fs.readFileSync(path.join(directory, 'ANALYSIS.md'), 'utf8')).toBe(body)
+  await test.info().attach('hc892-separated-outputs', { body: JSON.stringify({ binding, secondBinding, pendingCollection, accepted: (await read()).item, secondBody, outputAuthor: 'test fixture' }), contentType: 'application/json' })
+  await test.info().attach('hc892-output-ui', { body: await page.screenshot(), contentType: 'image/png' })
   await page.getByRole('button', { name: '删除资料' }).click()
+  expect(fs.existsSync(secondDirectory)).toBe(false)
   await expect(page.getByRole('button', { name: /local-review-video-transcript.srt/ })).toHaveCount(0)
   expect(fs.existsSync(directory)).toBe(false)
   await test.info().attach('hc887-workspace-report', { body: JSON.stringify({ binding, report: saved.deep_reports![0], removedWithSource: true, outputAuthor: 'test fixture' }), contentType: 'application/json' })

@@ -89,11 +89,13 @@ it('binds output instructions within the draft limit in every locale, without co
 
   for (const locale of ['zh', 'zh-hant', 'en', 'ja', 'ar'] as const) {
     bridge()
-    const prepare = vi.fn().mockResolvedValue({ ok: true, directory })
+    const workspaceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const prepare = vi.fn().mockResolvedValue({ ok: true, directory, workspaceId })
     window.hermesDesktop!.analysisDocuments!.prepareDeepWorkspace = prepare
     const staged = await stageVideoAnalysisDraft(longSource, locale, [], actions, () => true)
     expect(prepare).toHaveBeenCalledExactlyOnceWith(source.id, 'owner', 'current')
     expect(staged.draft.length).toBeLessThan(4000)
+    expect(staged.workspaceId).toBe(workspaceId)
     expect(staged.draft).toContain(JSON.stringify(directory))
     expect(staged.draft).toContain('--workspace')
     expect(staged.draft).toContain('ANALYSIS.md')
