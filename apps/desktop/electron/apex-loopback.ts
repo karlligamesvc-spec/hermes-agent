@@ -25,6 +25,7 @@
 import crypto from 'node:crypto'
 import http from 'node:http'
 
+import { APEX_LOGIN_WORDMARK, APEX_LOGIN_WORDMARK_DARK } from './apex-login-brand'
 import { parseLoopbackCallback } from './apex-managed'
 
 // How long to wait for the browser to redirect back before giving up. The user
@@ -61,31 +62,35 @@ function resultPage({ title, body, success }: { title: string; body: string; suc
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     `<title>${safeTitle} · APEX</title>` +
-    '<style>:root{color-scheme:dark;font-family:Inter,"SF Pro Display","Segoe UI",' +
-    '"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:#151515;color:#f7f7f7}' +
-    '*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:48px 40px}' +
-    'main{width:min(688px,100%);text-align:center;transform:translateY(-12px)}' +
-    '.status{display:block;width:72px;height:72px;margin:0 auto 28px}' +
-    'h1{margin:0;font-size:32px;line-height:1.25;font-weight:750;letter-spacing:-.02em}' +
-    'p{margin:23px auto 0;max-width:680px;color:#9b9b9f;font-size:27px;line-height:1.8;font-weight:600}' +
-    'a{margin-top:78px;width:100%;min-height:72px;border-radius:15px;display:flex;align-items:center;' +
-    'justify-content:center;gap:16px;background:#f1f1f2;color:#18181b;text-decoration:none;font-size:28px;' +
-    'line-height:1;font-weight:700;transition:background-color .16s ease,transform .16s ease}' +
-    'a:hover{background:#fff}a:active{transform:scale(.99)}a:focus-visible{outline:3px solid #00c896;' +
-    'outline-offset:4px}.open-icon{width:29px;height:29px}' +
-    '@media(max-width:620px){body{padding:32px 24px}.status{width:64px;height:64px;margin-bottom:28px}' +
-    'h1{font-size:28px}p{font-size:20px;line-height:1.65}a{margin-top:48px;min-height:64px;font-size:22px}}' +
-    '@media(prefers-reduced-motion:reduce){a{transition:none}}</style>' +
-    `</head><body><main><img class="status" src="${statusIcon}" alt="">` +
+    '<style>:root{color-scheme:light;--auth-bg:#fff;--auth-text:#171b26;--auth-muted:#666b76;' +
+    '--auth-line:#e2e4e8;--auth-focus:#8b82ef;font-family:Inter,-apple-system,BlinkMacSystemFont,' +
+    '"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--auth-bg);color:var(--auth-text)}' +
+    '*{box-sizing:border-box}body{min-height:100svh;margin:0;display:flex;flex-direction:column}' +
+    'header{display:flex;align-items:center;gap:12px;padding:24px 40px}.brand{width:112px;height:auto}' +
+    '.desktop{padding-left:12px;border-left:1px solid var(--auth-line);font-size:12px;letter-spacing:.12em;color:var(--auth-muted)}' +
+    '.content{display:flex;flex:1;align-items:center;justify-content:center;padding:32px 24px 96px}' +
+    'main{width:min(400px,100%);text-align:center}.status{display:block;width:36px;height:36px;margin:0 auto 24px}' +
+    'h1{margin:0;font-size:28px;line-height:1.3;font-weight:600;letter-spacing:-.02em}' +
+    'p{margin:16px 0 0;color:var(--auth-muted);font-size:15px;line-height:1.75}' +
+    'a{margin-top:36px;width:100%;min-height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;' +
+    'gap:10px;background:var(--auth-text);color:var(--auth-bg);text-decoration:none;font-size:14px;font-weight:500}' +
+    'a:hover{opacity:.9}a:focus-visible{outline:3px solid var(--auth-focus);outline-offset:4px}.open-icon{width:18px;height:18px;filter:invert(1)}' +
+    '.hint{margin-top:20px;font-size:12px;line-height:1.7}footer{padding:0 24px 24px;text-align:center;font-size:12px;' +
+    'line-height:1.7;color:var(--auth-muted)}@media(max-width:620px){header{padding:24px}.content{padding-bottom:64px}h1{font-size:24px}}' +
+    '@media(prefers-color-scheme:dark){:root{color-scheme:dark;--auth-bg:#13151b;--auth-text:#f3f4f6;--auth-muted:#9d9fa7;' +
+    '--auth-line:#30333d}.open-icon{filter:none}}</style>' +
+    `</head><body><header><picture><source media="(prefers-color-scheme: dark)" srcset="${APEX_LOGIN_WORDMARK_DARK}"><img class="brand" src="${APEX_LOGIN_WORDMARK}" alt="APEX"></picture><span class="desktop">DESKTOP</span></header>` +
+    `<div class="content"><main><img class="status" src="${statusIcon}" alt="">` +
     `<h1>${safeTitle}</h1><p>${safeBody}</p>` +
-    `<a href="apexnodes://open?source=login-complete"><img class="open-icon" src="${OPEN_ICON}" alt="">` +
-    '<span>打开 APEX</span></a></main></body></html>'
+    `<a href="apexnodes://open?source=login-complete"><span>打开 APEX</span><img class="open-icon" src="${OPEN_ICON}" alt=""></a>` +
+    '<p class="hint">如果应用没有自动切回，点击上方按钮。<br>你也可以关闭此页面，手动返回桌面应用。</p>' +
+    '</main></div><footer>仅在你发起登录的 APEX 桌面应用中继续。</footer></body></html>'
   )
 }
 
 const SUCCESS_HTML = resultPage({
   title: '登录已完成',
-  body: '授权结果正在同步到 APEX 桌面端，请返回 App 等待登录完成。',
+  body: '授权结果正在同步到 APEX 桌面端，请返回应用继续。',
   success: true
 })
 
