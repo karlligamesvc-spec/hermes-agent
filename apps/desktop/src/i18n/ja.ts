@@ -3836,6 +3836,7 @@ export const ja = defineLocale({
       description: 'テンプレートを確認してプロジェクトに追加します。実行はプロジェクトから開始します。',
       use: 'このワークフローを使う',
       useShort: '使用',
+      goalSelectionDescription: 'テンプレートを選んで開始ページに戻り、目標を確認します。「実行開始」を押すとプロジェクトと実行が作成されます。',
       startGoal: '目標を始める',
       backToProject: 'プロジェクトに戻る',
       projectContext: '現在のプロジェクト · ワークフローを追加',

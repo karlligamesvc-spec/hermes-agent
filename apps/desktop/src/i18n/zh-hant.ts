@@ -3761,6 +3761,7 @@ export const zhHant = defineLocale({
       description: '先了解範本，再選擇專案並加入工作流程；執行由你在專案中啟動。',
       use: '使用此工作流程',
       useShort: '使用',
+      goalSelectionDescription: '選擇範本後返回開始頁確認目標；點擊「開始執行」才會建立專案並啟動執行。',
       startGoal: '開始一個目標',
       backToProject: '返回專案',
       projectContext: '目前專案 · 新增工作流程',

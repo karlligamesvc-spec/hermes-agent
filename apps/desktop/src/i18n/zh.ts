@@ -4386,6 +4386,7 @@ export const zh = defineLocale({
       description: '先了解模板，再选择项目并加入工作流；运行由你在项目中启动。',
       use: '使用这个工作流',
       useShort: '使用',
+      goalSelectionDescription: '选择模板后返回开始页确认目标；点击“开始执行”才会创建项目并启动运行。',
       startGoal: '开始一个目标',
       backToProject: '返回项目',
       projectContext: '当前项目 · 添加工作流',

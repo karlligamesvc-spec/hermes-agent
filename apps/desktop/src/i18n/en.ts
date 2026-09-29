@@ -4952,6 +4952,7 @@ export const en: Translations = {
       description: 'Review a template, choose a project, and add the workflow. You start its run from the project.',
       use: 'Use this workflow',
       useShort: 'Use',
+      goalSelectionDescription: 'Choose a template and return to Start to confirm your goal. The project and run are created only when you click Start working.',
       startGoal: 'Start a goal',
       backToProject: 'Back to project',
       projectContext: 'Current project · Add workflow',

@@ -72,6 +72,7 @@ export function BusinessStartHome({
     analysisFrameHandoff?: unknown
     businessGoalDraft?: unknown
     businessGoalFocus?: unknown
+    businessStartSelection?: unknown
     businessProjectId?: unknown
     businessWorkflowCatalogProvenance?: unknown
     businessWorkflowId?: unknown
@@ -109,10 +110,11 @@ export function BusinessStartHome({
   const transcriptDraft = isVideoTranscriptHandoff(launchState?.analysisTranscriptDraft) ? launchState.analysisTranscriptDraft : null
   const frameDraft = isVideoFrameDraftHandoff(launchState?.analysisFrameDraft) ? launchState.analysisFrameDraft : null
 
-  // A catalog selection owns its approved prompt. A routed draft is only
-  // authoritative when the user is adding that workflow to an existing
-  // Project, where their Project objective must survive the round trip.
-  const initialDraft = routedProjectId
+  // An explicit trip from Start owns the user's brief. Legacy catalog routes
+  // still use the approved prompt unless they carry an existing Project.
+  const preserveRoutedGoal = Boolean(routedProjectId) || launchState?.businessStartSelection === true
+
+  const initialDraft = preserveRoutedGoal
     ? routedGoalDraft || launchedWorkflow?.prompt || ''
     : launchedWorkflow?.prompt || routedGoalDraft
 
@@ -225,11 +227,23 @@ export function BusinessStartHome({
     setSelectedWorkflowIsTestData(
       launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
     )
-    setGoalDraft(
-      routedProjectId ? routedGoalDraft || launchedWorkflow?.prompt || '' : launchedWorkflow?.prompt || routedGoalDraft
-    )
+    setGoalDraft(initialDraft)
     setDomainError(false)
-  }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
+  }, [initialDraft, launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key])
+
+  const openWorkflowSelection = () => navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
+    state: {
+      businessStartSelection: true,
+      businessGoalDraft: goalDraft,
+      ...(routedProjectId ? { businessProjectId: routedProjectId } : {}),
+      ...(selectedWorkflow ? {
+        businessWorkflowId: selectedWorkflow.id,
+        businessWorkflowSlug: selectedWorkflow.slug,
+        businessWorkflowVersion: selectedWorkflow.version,
+        businessWorkflowCatalogProvenance: selectedWorkflowIsTestData ? 'test' : 'production'
+      } : {})
+    }
+  })
 
   // A local attachment cannot be silently dropped by the cloud Workflow API.
   // Keep the existing attachment-capable chat route for a home-card draft.
@@ -371,16 +385,7 @@ export function BusinessStartHome({
               )}
             </div>
             <Button
-              onClick={() =>
-                navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
-                  state: {
-                    businessGoalDraft: goalDraft,
-                    ...(typeof launchState?.businessProjectId === 'string'
-                      ? { businessProjectId: launchState.businessProjectId }
-                      : {})
-                  }
-                })
-              }
+              onClick={openWorkflowSelection}
               size="sm"
               variant="ghost"
             >
@@ -419,6 +424,13 @@ export function BusinessStartHome({
           <p className="-mt-4 text-xs text-destructive" role="alert">
             {t.businessWorkspace.workflowDomain.startFailed}
           </p>
+        )}
+        {!selectedWorkflow && (
+          <div className="-mt-4">
+            <Button disabled={domainStarting} onClick={openWorkflowSelection} size="sm" variant="outline">
+              {t.businessWorkspace.projects.chooseWorkflow}
+            </Button>
+          </div>
         )}
         <BusinessStartShelf onSelectGoal={selectGoal} />
       </div>

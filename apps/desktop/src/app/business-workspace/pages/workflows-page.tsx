@@ -52,12 +52,21 @@ export function WorkflowsView() {
   const [saveError, setSaveError] = useState(false)
   const catalog = useWorkflowCatalog(reloadToken)
   const videoCatalog = useVideoWorkflowCatalog(reloadToken)
-  const launchContext = location.state as null | { businessGoalDraft?: unknown; businessProjectId?: unknown }
+
+  const launchContext = location.state as null | {
+    businessGoalDraft?: unknown
+    businessProjectId?: unknown
+    businessStartSelection?: unknown
+  }
+
+  const startSelection = launchContext?.businessStartSelection === true
 
   const routeProjectId = new URLSearchParams(location.search).get('projectId')?.trim() ?? ''
+
   const targetProjectId =
     routeProjectId ||
     (typeof launchContext?.businessProjectId === 'string' ? launchContext.businessProjectId.trim() : '')
+
   const project = useWorkflowProject(targetProjectId || undefined)
   const projectItem = project.mode === 'ready' && project.item.id === targetProjectId ? project.item : null
   const projects = useWorkflowProjects(50, 'active')
@@ -70,6 +79,7 @@ export function WorkflowsView() {
     { limit: 50, ...((selectedProjectId || targetProjectId) ? { projectId: selectedProjectId || targetProjectId } : {}) },
     reloadToken
   )
+
   const alreadyAdded =
     selectedStarter !== null &&
     workflows.mode === 'ready' &&
@@ -113,6 +123,7 @@ export function WorkflowsView() {
 
   const recommended = starters.filter(starter => starter.recommended)
   const additional = starters.filter(starter => !starter.recommended)
+
   const videoStages = selectedStarter?.businessPath === 'video_production'
     ? selectedStarter.id === 'viral-video-remake'
       ? [
@@ -184,6 +195,7 @@ export function WorkflowsView() {
     setSelectedProjectId(created.id)
     setObjectiveDraft(created.objective || selectedStarter?.prompt || '')
     setProjectCreateOpen(false)
+
     if (!selectedStarter) {
       return
     }
@@ -191,6 +203,7 @@ export function WorkflowsView() {
     setSaving(true)
     const outcome = await createWorkflowDefinition(created.objective || selectedStarter.prompt, selectedStarter, created.id)
     setSaving(false)
+
     if (outcome.mode === 'created') {
       navigate(projectDetailRoute(created.id), { state: routeDrawerNavigationState(location) })
     } else {
@@ -203,7 +216,13 @@ export function WorkflowsView() {
       <div className="apex-primary-page-column">
         <BusinessPageHeader
           action={
-            targetProjectId
+            startSelection
+              ? {
+                  icon: 'arrow-left',
+                  label: t.common.back,
+                  onClick: () => navigate(NEW_CHAT_ROUTE, { state: launchContext })
+                }
+              : targetProjectId
               ? {
                   icon: 'arrow-left',
                   label: projectItem ? c.backToProject : t.businessWorkspace.projects.backToProjects,
@@ -215,7 +234,7 @@ export function WorkflowsView() {
                   onClick: () => navigate(NEW_CHAT_ROUTE, { state: { businessGoalFocus: true } })
                 }
           }
-          description={targetProjectId ? c.projectDescription : c.description}
+          description={startSelection ? c.goalSelectionDescription : targetProjectId ? c.projectDescription : c.description}
           eyebrow={c.eyebrow}
           icon="list-unordered"
           title={c.title}
@@ -330,20 +349,37 @@ export function WorkflowsView() {
           )}
           <DialogFooter>
             <Button onClick={() => setTemplateOpen(false)} size="sm" variant="ghost">{t.common.cancel}</Button>
-            {targetProjectId && (
-              <Button onClick={() => {
-                setSelectedProjectId(targetProjectId)
-                setTemplateOpen(false)
-              }} size="sm" variant="outline">{c.joinCurrentProject}</Button>
+            {startSelection ? (
+              <Button disabled={!selectedStarter} onClick={() => {
+                if (!selectedStarter) {return}
+
+                navigate(NEW_CHAT_ROUTE, { state: {
+                  ...launchContext,
+                  businessStartSelection: true,
+                  businessWorkflowId: selectedStarter.id,
+                  businessWorkflowSlug: selectedStarter.slug,
+                  businessWorkflowVersion: selectedStarter.version,
+                  businessWorkflowCatalogProvenance: testCatalog ? 'test' : 'production'
+                } })
+              }} size="sm">{c.use}</Button>
+            ) : (
+              <>
+                {targetProjectId && (
+                  <Button onClick={() => {
+                    setSelectedProjectId(targetProjectId)
+                    setTemplateOpen(false)
+                  }} size="sm" variant="outline">{c.joinCurrentProject}</Button>
+                )}
+                <Button onClick={() => {
+                  setTemplateOpen(false)
+                  setProjectPickerOpen(true)
+                }} size="sm" variant="outline">{c.joinExistingProject}</Button>
+                <Button onClick={() => {
+                  setTemplateOpen(false)
+                  setProjectCreateOpen(true)
+                }} size="sm">{c.newProjectAndJoin}</Button>
+              </>
             )}
-            <Button onClick={() => {
-              setTemplateOpen(false)
-              setProjectPickerOpen(true)
-            }} size="sm" variant="outline">{c.joinExistingProject}</Button>
-            <Button onClick={() => {
-              setTemplateOpen(false)
-              setProjectCreateOpen(true)
-            }} size="sm">{c.newProjectAndJoin}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

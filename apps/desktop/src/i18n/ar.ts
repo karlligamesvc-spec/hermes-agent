@@ -95,6 +95,11 @@ export const ar = defineLocale({
     off: 'معطل'
   },
   businessWorkspace: {
+    projects: { chooseWorkflow: 'اختيار سير عمل' },
+    workflows: {
+      use: 'استخدام سير العمل هذا',
+      goalSelectionDescription: 'اختر قالبًا ثم عد إلى صفحة البدء لتأكيد هدفك. يتم إنشاء المشروع والتشغيل فقط عند الضغط على زر بدء العمل.'
+    },
     goalLauncher: {
       label: 'هدف العمل',
       placeholder: 'مثال: حلّل سوق مستلزمات الحيوانات الأليفة في الولايات المتحدة وأنشئ تقرير اختيار ومواد إطلاق',

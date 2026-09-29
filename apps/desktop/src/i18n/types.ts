@@ -4313,6 +4313,7 @@ export interface Translations {
       use: string
       useShort: string
       startGoal: string
+      goalSelectionDescription: string
       backToProject: string
       projectContext: string
       projectDescription: string
