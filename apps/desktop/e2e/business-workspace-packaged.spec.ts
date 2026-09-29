@@ -12,6 +12,10 @@ import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/anal
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
+// Browser evaluation uses the same analysis contract as the production bridge.
+// Keep the renderer's unrelated ambient declarations out of this Node E2E project.
+type AnalysisReviewWindow = Window & { hermesDesktop?: { analysisDocuments?: AnalysisDocumentsBridge } }
+
 const BUSINESS_NAV_LABELS = ['开始', '项目', '沉浸式分析', '定时运行'] as const
 
 const PACKAGED_VERSION = JSON.parse(
@@ -817,6 +821,7 @@ test.setTimeout(180_000)
 
 test.beforeAll(
   async () => {
+    test.setTimeout(180_000)
     reviewApi = await startPhase1ReviewApi()
     fixture = await setupPackagedMockBackend({
       APEXNODES_API_BASE: reviewApi.url,
@@ -834,15 +839,16 @@ test.beforeAll(
     }
     await waitForAppReady(fixture, 120_000)
     const signIn = await fixture.page.evaluate(() =>
-      window.hermesDesktop?.managed?.signIn({ email: 'phase1-review@local.test', password: 'local-review-only' })
+      (window as Window & { hermesDesktop?: { managed?: {
+        signIn: (input: { email: string; password: string }) => Promise<{ ok: boolean; hasRelayKey: boolean }>
+      } } }).hermesDesktop?.managed?.signIn({ email: 'phase1-review@local.test', password: 'local-review-only' })
     )
 
     expect(signIn?.ok).toBe(true)
     expect(signIn?.hasRelayKey).toBe(true)
     await fixture.page.reload()
     await waitForAppReady(fixture, 120_000)
-  },
-  { timeout: 180_000 }
+  }
 )
 
 test.afterAll(async () => {
@@ -1724,7 +1730,9 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
 
 test('packaged Settings shows the running APEX app version separately from the engine', async () => {
   const { app, page } = fixture!
-  const version = await page.evaluate(() => window.hermesDesktop?.getVersion())
+  const version = await page.evaluate(() => (window as Window & { hermesDesktop?: {
+    getVersion: () => Promise<{ appVersion: string; engineVersion: string }>
+  } }).hermesDesktop?.getVersion())
 
   expect(version?.appVersion).toBe(PACKAGED_VERSION)
   expect(version?.engineVersion).toBeTruthy()
@@ -2074,7 +2082,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await semantic.getByRole('button', { name: '查看出处 · 0:40 起' }).click()
   await expect(page.locator('#analysis-anchor-a2')).toBeInViewport()
 
-  const localItems = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+  const localItems = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
 
   expect(localItems?.ok).toBe(true)
   expect(localItems?.items).toEqual(expect.arrayContaining([
@@ -2209,14 +2217,14 @@ test('hc-878 packaged local document import persists cited answers and notes und
     await page.getByRole('button', { name: '导入文档或字幕' }).click()
     await expect(page.getByRole('heading', { name: 'local-review-document.txt' })).toBeVisible()
     await expect.poll(async () => {
-      const result = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+      const result = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
       const current = result?.items?.find(source => source.filename === 'local-review-document.txt')
 
       return current?.status === 'failed' ? `failed:${current.error_code}` : current?.status
     }).toBe('ready')
     await expect(page.locator('#analysis-anchor-a2')).toContainText('Revenue 423 units')
 
-    const imported = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+    const imported = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
     const item = imported?.items?.find(source => source.filename === 'local-review-document.txt')
 
     expect(item?.storageMode).toBe('local')
@@ -2246,7 +2254,7 @@ test('hc-878 packaged local document import persists cited answers and notes und
 
     await page.getByRole('button', { name: '删除资料' }).click()
     await expect(page.getByRole('button', { name: /local-review-document.txt/ })).toHaveCount(0)
-    const afterDelete = await page.evaluate(id => window.hermesDesktop.analysisDocuments?.get(id), item!.id)
+    const afterDelete = await page.evaluate(id => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.get(id), item!.id)
 
     expect(afterDelete).toEqual({ ok: false, code: 'source_not_found' })
   } finally {
@@ -2285,7 +2293,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     await expect(page.getByRole('textbox', { name: '针对当前资料提问' })).toBeVisible()
     await expect(page.locator('#analysis-anchor-a1')).toContainText('Cloud revenue 817 units')
 
-    const listed = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+    const listed = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
     const cloudItem = listed?.items?.find(item => item.filename === 'cloud-review-document.txt')
 
     expect(cloudItem?.id).toBe(ANALYSIS_REVIEW_CLOUD_ID)
@@ -2311,7 +2319,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
 
     await page.getByRole('button', { name: '删除资料' }).click()
     await expect(page.getByRole('button', { name: /cloud-review-document.txt/ })).toHaveCount(0)
-    const afterDelete = await page.evaluate(id => window.hermesDesktop.analysisDocuments?.get(id), ANALYSIS_REVIEW_CLOUD_ID)
+    const afterDelete = await page.evaluate(id => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.get(id), ANALYSIS_REVIEW_CLOUD_ID)
 
     expect(afterDelete).toEqual({ ok: false, code: 'source_not_found' })
 
@@ -2319,10 +2327,10 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
-    const refused = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.importFile())
+    const refused = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.importFile())
 
     expect(refused).toEqual({ ok: false, code: 'analysis_cloud_write_disabled' })
-    const afterRefusal = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+    const afterRefusal = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
 
     expect(afterRefusal?.items?.filter(item => item.filename === 'cloud-review-document.txt')).toEqual([])
   } finally {
@@ -2362,7 +2370,7 @@ test('hc-880 packaged PDF Word and Excel imports keep real file bytes and cited 
       await expect(page.getByRole('heading', { name: sample.filename })).toBeVisible()
       await expect(page.locator(`#analysis-anchor-${sample.anchorId}`)).toContainText(sample.evidence)
 
-      const listed = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+      const listed = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
       const item = listed?.items?.find(source => source.filename === sample.filename)
 
       expect(item?.storageMode).toBe('local')

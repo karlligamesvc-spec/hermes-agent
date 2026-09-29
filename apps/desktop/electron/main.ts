@@ -30,7 +30,6 @@ import {
 } from 'electron'
 
 import { overviewEvidence } from '../shared/analysis-video-overview'
-import { fullVideoTranscript } from './apex-analysis-transcript'
 
 import {
   AGENT_STATE,
@@ -63,6 +62,7 @@ import {
   retryLocalDocument,
   saveLocalVideoOverview
 } from './apex-analysis-local'
+import { fullVideoTranscript } from './apex-analysis-transcript'
 import { uploadAnalysisVideo } from './apex-analysis-video-upload'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
