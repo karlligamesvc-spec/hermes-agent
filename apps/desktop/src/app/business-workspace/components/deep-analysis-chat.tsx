@@ -4,11 +4,17 @@ import { useNavigate } from 'react-router'
 import { openSession } from '@/app/open-session'
 import { Button } from '@/components/ui/button'
 import { getSession } from '@/hermes'
+import { setSessionOwnerHint } from '@/store/session'
 
 import type { AnalysisChatLink } from '../../../../shared/analysis-chat-link'
 import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
 import { ANALYSIS_CHAT_COPY, analysisChatContextMatches } from '../video-analysis-chat-handoff'
+
+function sameChatLink(current: AnalysisChatLink | null | undefined, expected: AnalysisChatLink): boolean {
+  return current?.sessionId === expected.sessionId && current.connectionId === expected.connectionId &&
+    current.profile === expected.profile && current.submittedAt === expected.submittedAt
+}
 
 export function DeepAnalysisChat({ source, locale, bridge }: {
   source: AnalysisDocument; locale: OverviewLocale; bridge: AnalysisDocumentsBridge | null | undefined
@@ -56,7 +62,7 @@ export function DeepAnalysisChat({ source, locale, bridge }: {
         // Re-read source ownership before opening; then verify this durable session on its original backend/profile.
         const current = await bridge!.readDeepChat!(source.id, source.analysis_scope!, source.analysis_revision!)
 
-        if (!current.ok || current.item?.sessionId !== link.sessionId) {throw new Error('analysis_context_changed')}
+        if (!current.ok || !sameChatLink(current.item, link)) {throw new Error('analysis_context_changed')}
         await getSession(link.sessionId, { connectionId: link.connectionId, profile: link.profile })
 
         if (started !== generation.current) {return}
@@ -69,8 +75,11 @@ export function DeepAnalysisChat({ source, locale, bridge }: {
 
         if (started !== generation.current) {return}
 
-        if (!verified.ok || verified.item?.sessionId !== link.sessionId || !analysisChatContextMatches(link)) {throw new Error('analysis_context_changed')}
-        openSession(link.sessionId, navigate)
+        if (!verified.ok || !sameChatLink(verified.item, link) || !analysisChatContextMatches(link)) {throw new Error('analysis_context_changed')}
+        const ownerRoute = link.connectionId ? { connectionId: link.connectionId, profile: link.profile, mode: 'local' as const } : undefined
+
+        if (ownerRoute) {setSessionOwnerHint(link.sessionId, ownerRoute)}
+        openSession(link.sessionId, navigate, 'in-place', { workspaceMode: 'sessions', ownerRoute })
       } catch {setError(copy.failed)} finally {setOpening(false)}
     })() }} size="sm" variant="outline">{copy.open}</Button>}
     {error && <p role="alert">{error}</p>}

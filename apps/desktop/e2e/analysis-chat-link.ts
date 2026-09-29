@@ -67,6 +67,7 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await expect(reports.getByRole('button', { name: '打开最近发送的拆解会话' })).toBeVisible()
   expect((await read()).item).toEqual(link)
   await test.info().attach('hc890-real-submitted-chat', { body: JSON.stringify({ link, userRows: rows.filter(row => row.role === 'user').length }), contentType: 'application/json' })
+  await reports.scrollIntoViewIfNeeded()
   await test.info().attach('hc890-chat-source-ui', { body: await page.screenshot(), contentType: 'image/png' })
   await page.getByRole('button', { name: '删除资料', exact: true }).click()
   await expect.poll(() => fs.existsSync(directory)).toBe(false)

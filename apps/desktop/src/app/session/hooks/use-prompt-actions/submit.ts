@@ -850,7 +850,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
           scope.removeAttachments(syncedAttachments)
         }
 
-        if (submitResult?.result.status === 'streaming' && targetStoredSessionId && options?.onAccepted) {
+        if (submitResult?.result?.status === 'streaming' && targetStoredSessionId && options?.onAccepted) {
           try {await options.onAccepted({ storedSessionId: targetStoredSessionId })} catch (error) {
             console.warn('[submit-receipt-observer]', error)
           }

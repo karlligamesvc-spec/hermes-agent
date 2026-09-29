@@ -5915,13 +5915,15 @@ describe('usePromptActions live-owner refusal (#106217)', () => {
 })
 
 // hc-890: observers receive the actual accepted durable target, never current selection or a failed send.
-it.each(['accepted', 'refused', 'not_streaming', 'selection_changed', 'observer_failed'] as const)('reports submit acceptance without changing send semantics: %s', async mode => {
+it.each(['accepted', 'refused', 'not_streaming', 'empty_ack', 'selection_changed', 'observer_failed'] as const)('reports submit acceptance without changing send semantics: %s', async mode => {
   const selected = { current: 'stored-target' as string | null }
   const onAccepted = vi.fn(async () => {if (mode === 'observer_failed') {throw new Error('receipt disk failed')}})
 
   const requestGateway = vi.fn(async (method: string) => {
     if (method === 'prompt.submit') {
       if (mode === 'refused') {throw new Error('submit refused')}
+
+      if (mode === 'empty_ack') {return undefined}
 
       if (mode === 'selection_changed') {selected.current = 'another-chat'}
 
@@ -5938,6 +5940,6 @@ it.each(['accepted', 'refused', 'not_streaming', 'selection_changed', 'observer_
   await act(async () => {sent = await handle!.submitTextRaw('A reviewed request', { onAccepted })})
   expect(sent).toBe(mode !== 'refused')
 
-  if (mode === 'refused' || mode === 'not_streaming') {expect(onAccepted).not.toHaveBeenCalled()}
+  if (mode === 'refused' || mode === 'not_streaming' || mode === 'empty_ack') {expect(onAccepted).not.toHaveBeenCalled()}
   else {expect(onAccepted).toHaveBeenCalledExactlyOnceWith({ storedSessionId: 'stored-target' })}
 })
