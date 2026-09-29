@@ -128,7 +128,8 @@ export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Vide
     used += line.length + 1
   }
 
-  const partial = lines.size < timed.length || timed.some(anchor => anchor.text.trim().length > 350)
+  const partial = lines.size < timed.length || timed.length < (document.anchors ?? []).length ||
+    timed.some(anchor => anchor.text.trim().length > 350)
   const excerpts = [...lines.entries()].sort(([left], [right]) => left - right).map(([, line]) => line)
 
   return `${prefix}${excerpts.join('\n')}${suffix}${partial ? `\n\n${copy.partial}` : ''}${frameNote ? `\n\n${frameNote}` : ''}`
