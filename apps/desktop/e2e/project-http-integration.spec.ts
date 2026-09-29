@@ -157,6 +157,8 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
         await page.locator('[data-deliverables-page]').getByRole('button').filter({ hasText: 'Fixture deliverable' }).click()
         await assertDeliverable()
         await page.keyboard.press('Escape')
+        await projects()
+        await retainedFilter.click()
         await openProject('Fixture lifecycle project', input.projectId)
         await lifecycle.getByRole('button', { name: '完成项目', exact: true }).click()
         await expect(lifecycle.getByRole('button', { name: '重新打开项目', exact: true })).toBeEnabled()
