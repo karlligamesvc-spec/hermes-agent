@@ -3,11 +3,12 @@ import { resolve } from 'node:path'
 
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
+import { $authState } from '@/store/auth'
 
 import { Thread } from '.'
 
@@ -67,14 +68,28 @@ function renderEmptyThread() {
   )
 }
 
-afterEach(cleanup)
+const initialAuth = $authState.get()
+
+beforeEach(() => {
+  $authState.set({ ...initialAuth, enabled: true, status: 'signed-in', accountId: 'fixture-owner',
+    account: { email: 'owner@fixture.test', name: 'Fixture user', plan: '' } })
+})
+
+afterEach(() => {
+  cleanup()
+  $authState.set(initialAuth)
+})
 
 describe('thread zero state', () => {
-  it('shows the greeting and the real business start shelf', () => {
+  it('shows the signed-in business shelf and removes it when the account gate closes', () => {
     renderEmptyThread()
 
     expect(screen.getByRole('heading', { name: '今天想推进什么业务？' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /下载视频并转成逐字稿/ })).toBeTruthy()
+
+    act(() => $authState.set({ ...$authState.get(), status: 'signed-out', accountId: null }))
+    expect(screen.queryByRole('heading', { name: '今天想推进什么业务？' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /下载视频并转成逐字稿/ })).toBeNull()
   })
 
   it('keeps the top of an over-tall zero state reachable', () => {
