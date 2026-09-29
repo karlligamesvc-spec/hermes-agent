@@ -2089,10 +2089,16 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
     const source = opened.item!
     const rejected = await api.saveOverview(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', source.video_overviews!.zh)
 
-    return { summary: source.video_overviews!.zh, rejected }
+    const staleTranscript = await api.transcriptForDraft(id, source.analysis_scope!, 'stale')
+    const wrongOwnerTranscript = await api.transcriptForDraft(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', source.analysis_revision!)
+
+    return { summary: source.video_overviews!.zh, rejected, staleTranscript, wrongOwnerTranscript,
+      anchors: source.anchors!.map(anchor => ({ id: anchor.id, ...anchor.location, text: anchor.text })) }
   })
   expect(retained.summary.points[0].anchor_ids).toEqual(['a1', 'a2'])
   expect(retained.rejected).toMatchObject({ ok: false, code: 'analysis_account_changed' })
+  expect(retained.staleTranscript).toMatchObject({ ok: false, code: 'transcript_source_changed' })
+  expect(retained.wrongOwnerTranscript).toMatchObject({ ok: false, code: 'analysis_account_changed' })
 
   await verifySelectedDeepReport(app, page)
 
@@ -2127,9 +2133,19 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByText(/尚未经过模型分析/)).toBeVisible()
 
+  const pasteDirectory = path.join(await app.evaluate(({ app }) => app.getPath('userData')), 'composer-pastes')
+  const previousPastes = new Set(fs.existsSync(pasteDirectory) ? fs.readdirSync(pasteDirectory) : [])
+  await expect(overview).toContainText('仅在你点击发送后交给助手')
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
   const goalWithFrame = page.getByRole('textbox', { name: '业务目标' })
 
+  await expect(goalWithFrame).toHaveValue(/已附完整的已保存语音转写/)
+  await expect(page.getByRole('button', { name: /移除.*完整语音转写/ })).toHaveCount(1)
+  const newPastes = fs.readdirSync(pasteDirectory).filter(file => !previousPastes.has(file))
+  expect(newPastes).toHaveLength(1)
+  const fullTranscript = JSON.parse(fs.readFileSync(path.join(pasteDirectory, newPastes[0]), 'utf8'))
+  expect(fullTranscript.anchors).toEqual(retained.anchors)
+  expect(fullTranscript.evidence_kind).toBe('stored_audio_transcript')
   await expect(goalWithFrame).toHaveValue(/已附画面截图/)
   await expect(goalWithFrame).toHaveValue(/0:01\.0/)
   await expect(page.locator('[data-slot="composer-attachments"]')).toContainText(/apex-frame-1-0s_[a-f0-9]{6}\.jpg/)
@@ -2142,6 +2158,10 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(goalWithFrame).not.toHaveValue(/已附画面截图/)
   await expect(goalWithFrame).not.toHaveValue(/0:01\.0/)
   await expect(goalWithFrame).toHaveValue(/已从草稿移除 2 张截图/)
+  await expect(goalWithFrame).toHaveValue(/已附完整的已保存语音转写/)
+  await page.getByRole('button', { name: /移除.*完整语音转写/ }).click()
+  await expect(goalWithFrame).not.toHaveValue(/已附完整的已保存语音转写/)
+  await expect(goalWithFrame).toHaveValue(/未附完整转写/)
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
 
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
@@ -2160,6 +2180,10 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(goal).toHaveValue(/https:\/\/www\.iesdouyin\.com\/share\/video\/123456/)
   await expect(goal).toHaveValue(/只有实际检查本条消息仍附着的原视频或截图后才分析镜头/)
   await expect(goal).not.toHaveValue(/已附画面截图/)
+  await expect(goal).toHaveValue(/已附完整的已保存语音转写/)
+  await expect(page.getByRole('button', { name: /移除.*完整语音转写/ })).toHaveCount(1)
+  await page.getByRole('button', { name: /移除.*完整语音转写/ }).click()
+  await expect(goal).toHaveValue(/未附完整转写/)
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)

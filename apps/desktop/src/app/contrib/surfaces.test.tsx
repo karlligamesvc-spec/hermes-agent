@@ -16,6 +16,8 @@ import { routeDrawerNavigationState } from '../routes'
 import { ChatRoutesSurface } from './surfaces'
 import type { WiringActions } from './types'
 
+const originalBridge = window.hermesDesktop
+
 vi.mock('@/contrib/react/use-contributions', () => ({ useContributions: vi.fn() }))
 vi.mock('@/store/connections', () => ({ $activeConnectionId: atom('local') }))
 vi.mock('@/store/gateway', () => ({ $gateway: atom<unknown>(null) }))
@@ -65,9 +67,10 @@ vi.mock('../business-workspace/pages/analysis-page', () => ({
   }) => <button onClick={() => void onDeepBreakdown({
     id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
     status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
+    analysis_scope: 'owner', analysis_revision: 'current',
     anchors: [{ id: 'a1', location: { start_seconds: 3, end_seconds: 5 }, text: 'verified speech' }],
     notes: [], questions: []
-  }, 'en', [{ seconds: 12.5, dataUrl: `data:image/jpeg;base64,${btoa('frame')}` }])} type="button">Prepare video</button>
+  }, 'en', [{ seconds: 12.5, dataUrl: `data:image/jpeg;base64,${btoa('frame')}` }]).catch(() => undefined)} type="button">Prepare video</button>
 }))
 
 function LocationProbe() {
@@ -102,6 +105,7 @@ function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initi
 
 afterEach(() => {
   cleanup()
+  Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
   $gateway.set(null)
   $activeGatewayProfile.set('default')
   $composerAttachments.set([])
@@ -148,6 +152,10 @@ describe('ChatRoutesSurface', () => {
   })
 
   it('moves accepted frames into the new draft when a prior chat is selected', async () => {
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+      analysisDocuments: { transcriptForDraft: vi.fn().mockResolvedValue({ ok: true, text: 'complete transcript' }) },
+      savePastedText: vi.fn().mockResolvedValue('/local/transcript.txt')
+    } })
     $selectedStoredSessionId.set('previous-chat')
     $composerAttachments.set([{ id: 'user-image', occurrenceId: 'user-1', kind: 'image', label: 'own.jpg' }])
     stashSessionDraft(null, 'existing fresh text', [
@@ -168,9 +176,30 @@ describe('ChatRoutesSurface', () => {
     expect($composerAttachments.get().map(item => item.id)).toEqual(['user-image'])
     expect(takeSessionDraft(null)).toMatchObject({
       text: 'existing fresh text',
-      attachments: [{ id: 'new-frame', analysisFrameSourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }]
+      attachments: [
+        { kind: 'file', path: '/local/transcript.txt', analysisTranscriptSourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+        { id: 'new-frame', analysisFrameSourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }
+      ]
     })
     expect(screen.getByTestId('goal-draft').textContent).toContain('Attached frames')
+  })
+
+  it('does not route or attach a late transcript after a profile switch', async () => {
+    let finish!: (path: string) => void
+    const savePastedText = vi.fn(() => new Promise<string>(resolve => {finish = resolve}))
+    const transcriptForDraft = vi.fn().mockResolvedValue({ ok: true, text: 'owned transcript' })
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+      analysisDocuments: { transcriptForDraft }, savePastedText
+    } })
+    $composerAttachments.set([{ id: 'user-file', occurrenceId: 'user-1', kind: 'file', label: 'own.txt' }])
+    renderRoutes(['/analysis'], { onAttachImageBlob: vi.fn() })
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare video' }))
+    await waitFor(() => expect(savePastedText).toHaveBeenCalledOnce())
+    await act(async () => { $activeGatewayProfile.set('other-profile'); finish('/late/transcript.txt') })
+    expect(screen.getByTestId('location').textContent).toBe('/analysis')
+    expect($composerAttachments.get().map(item => item.id)).toEqual(['user-file'])
+    expect(transcriptForDraft).toHaveBeenCalledOnce()
+    expect(screen.getByTestId('goal-draft').textContent).toBe('')
   })
 
   it('passes the live gateway after an open-to-open profile switch', () => {

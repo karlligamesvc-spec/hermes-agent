@@ -30,6 +30,7 @@ import {
 } from 'electron'
 
 import { overviewEvidence } from '../shared/analysis-video-overview'
+import { fullVideoTranscript } from './apex-analysis-transcript'
 
 import {
   AGENT_STATE,
@@ -22501,6 +22502,14 @@ async function analysisDerivedContext(id: string, scope: string, write = true) {
 
   return { context, item, local }
 }
+
+ipcMain.handle('hermes:analysis:transcriptForDraft', async (_event, id, scope, revision) => {
+  try {
+    const { item } = await analysisDerivedContext(id, scope)
+
+    return { ok: true, text: fullVideoTranscript(item, scope, revision) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
 
 ipcMain.handle('hermes:analysis:overviewContext', async (_event, id, scope) => {
   try {

@@ -16,6 +16,7 @@ import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/busi
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
 import { draftAfterVideoFrameRemoval, isVideoFrameDraftHandoff } from '../video-frame-draft-sync'
+import { isVideoTranscriptHandoff, syncVideoTranscriptDraft } from '../video-transcript-draft'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
 import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/workflow-starters'
 
@@ -63,6 +64,7 @@ export function BusinessStartHome({
   )
 
   const launchState = location.state as null | {
+    analysisTranscriptDraft?: unknown
     analysisFrameDraft?: unknown
     analysisFrameHandoff?: unknown
     businessGoalDraft?: unknown
@@ -100,6 +102,8 @@ export function BusinessStartHome({
 
   const routedGoalDraft =
     typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : ''
+
+  const transcriptDraft = isVideoTranscriptHandoff(launchState?.analysisTranscriptDraft) ? launchState.analysisTranscriptDraft : null
   const frameDraft = isVideoFrameDraftHandoff(launchState?.analysisFrameDraft) ? launchState.analysisFrameDraft : null
 
   // A catalog selection owns its approved prompt. A routed draft is only
@@ -254,7 +258,7 @@ export function BusinessStartHome({
 
   const submitGoal = async (goal: string): Promise<boolean> => {
     if (!selectedWorkflow) {
-      return (await onSubmitGoal?.(goal)) ?? false
+      return (await onSubmitGoal?.(transcriptDraft ? syncVideoTranscriptDraft(goal, transcriptDraft, attachments) : goal)) ?? false
     }
 
     setDomainError(false)
@@ -388,6 +392,8 @@ export function BusinessStartHome({
           onPickImages={onPickImages}
           onRemoveAttachment={onRemoveAttachment ? id => {
             if (frameDraft) {setGoalDraft(current => draftAfterVideoFrameRemoval(current, frameDraft, attachments, id))}
+
+            if (transcriptDraft) {setGoalDraft(current => syncVideoTranscriptDraft(current, transcriptDraft, attachments.filter(item => item.id !== id)))}
             onRemoveAttachment(id)
           } : undefined}
           onSubmit={submitGoal}

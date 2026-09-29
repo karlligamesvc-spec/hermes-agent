@@ -21,6 +21,7 @@ export interface ComposerAttachment {
   path?: string
   /** A screenshot explicitly staged from an analysis source for the new-chat draft. */
   analysisFrameSourceId?: string
+  analysisTranscriptSourceId?: string
   attachedSessionId?: string
   /** Set while the file/image bytes are being staged into the session
    * workspace (remote upload or local stage), and 'error' if that failed.

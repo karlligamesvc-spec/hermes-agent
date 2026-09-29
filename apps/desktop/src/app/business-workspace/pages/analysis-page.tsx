@@ -11,6 +11,7 @@ import { VideoSemanticOverviewPanel } from '../components/video-semantic-overvie
 import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 import { captureVideoFrame, sampleVideoFrames } from '../video-frame-evidence'
 import { videoQuickOverview } from '../video-quick-overview'
+import { VIDEO_TRANSCRIPT_COPY } from '../video-transcript-draft'
 
 const COPY = {
   zh: {
@@ -389,7 +390,9 @@ export function AnalysisView({ onDeepBreakdown }: {
       && typeof anchor.location.end_seconds === 'number' && Number.isFinite(anchor.location.end_seconds)
       && anchor.location.end_seconds > anchor.location.start_seconds && !!anchor.text.trim())
 
-    if (!timedEvidence) {setError('timed_evidence_unavailable'); return}
+    if (!timedEvidence) {setError('timed_evidence_unavailable');
+
+ return}
 
     setLink('')
     setVideoResolution(null)
@@ -519,6 +522,7 @@ export function AnalysisView({ onDeepBreakdown }: {
  return }
 
           setVideoResolution(result.resolution)
+
           if (!result.resolution.source_url || !['download_candidate', 'audio_candidate'].includes(result.resolution.capability ?? '')) {return}
 
           const effectivePolicy = policy ?? (await bridge()?.policy())?.policy
@@ -650,17 +654,20 @@ export function AnalysisView({ onDeepBreakdown }: {
                         .map(anchor => Number(anchor.location.start_seconds) + Math.min(0.25, (Number(anchor.location.end_seconds) - Number(anchor.location.start_seconds)) / 2))
                         .filter(second => visualEvidence.every(frame => Math.abs(frame.seconds - second) > 0.1))
                         .slice(0, 3 - visualEvidence.length)
+
                       const sampled = await sampleVideoFrames(activeVideo.url, seconds)
 
                       if (selectedDocumentIdRef.current !== selected.id || videoRef.current?.src !== activeVideo.url) {return}
 
                       visualEvidence = [...visualEvidence, ...sampled.map(frame => ({ ...frame, id: ++frameIdRef.current, videoUrl: activeVideo.url }))].slice(-3)
+
                       if (sampled.length) {setFrames(visualEvidence); setVideoError('')}
                       else if (!visualEvidence.length) {setVideoError(c.frameFailed)}
                     }
 
                     await onDeepBreakdown(selected, locale, visualEvidence)
                   })} type="button">{c.deepAction}</button>
+                  {connection?.mode !== 'remote' && <p className="text-xs text-(--ui-text-tertiary)">{VIDEO_TRANSCRIPT_COPY[locale].notice}</p>}
                   <p className="text-xs text-(--ui-text-tertiary)">{connection?.mode === 'remote' ? c.deepLocalOnly : activeVideo ? frames.some(frame => frame.videoUrl === activeVideo.url) ? c.deepFrameDisclosure : c.deepAutoFrameDisclosure : c.deepDisclosure}</p>
                 </div>}
                 <div className="grid gap-2 md:grid-cols-3">

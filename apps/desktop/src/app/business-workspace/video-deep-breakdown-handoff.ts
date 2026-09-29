@@ -13,7 +13,8 @@ export async function prepareVideoBreakdownHandoff(
   document: AnalysisDocument,
   locale: VideoBreakdownLocale,
   frames: ReadonlyArray<CapturedVideoFrame>,
-  attachImageBlob: (blob: Blob, seconds: number) => Promise<boolean | void> | boolean | void
+  attachImageBlob: (blob: Blob, seconds: number) => Promise<boolean | void> | boolean | void,
+  transcriptNote = ''
 ): Promise<string | null> {
   if (!videoDeepBreakdownDraft(document, locale)) {return null}
 
@@ -40,5 +41,5 @@ export async function prepareVideoBreakdownHandoff(
     }
   }
 
-  return videoDeepBreakdownDraft(document, locale, attachedSeconds, attemptedFrames)
+  return videoDeepBreakdownDraft(document, locale, attachedSeconds, attemptedFrames, transcriptNote)
 }

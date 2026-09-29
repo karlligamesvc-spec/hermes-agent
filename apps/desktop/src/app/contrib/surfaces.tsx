@@ -8,19 +8,20 @@
  */
 
 import { useStore } from '@nanostores/react'
-import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
+import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useEffect, useMemo, useRef } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { $composerAttachments, type ComposerAttachment, mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
+import { $authState } from '@/store/auth'
+import { mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $connection, $freshDraftReady, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 
-import { prepareVideoBreakdownHandoff } from '../business-workspace/video-deep-breakdown-handoff'
+import { stageVideoAnalysisDraft } from '../business-workspace/video-analysis-composer-handoff'
 import { ChatView } from '../chat'
 import { ChatSidebar } from '../chat/sidebar'
 import { RouteDrivenDrawer } from '../overlays/responsive-route-drawer'
@@ -91,54 +92,54 @@ export function LegacySessionRedirect() {
 
 function AnalysisRouteView({ actions }: { actions: WiringActions }) {
   const navigate = useNavigate()
+  const mounted = useRef(true)
+  const preparing = useRef(false)
+
+  // This ref tracks component lifetime, never a mirrored atom value.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    mounted.current = true
+
+    return () => { mounted.current = false }
+  }, [])
 
   return <AnalysisView onDeepBreakdown={async (document, locale, frames) => {
-    if ($connection.get()?.mode === 'remote') {return}
+    if ($connection.get()?.mode === 'remote' || preparing.current) {return}
     const previousSessionId = $selectedStoredSessionId.get()
-    const acceptedFrames: ComposerAttachment[] = []
-    const routedFrames: Array<{ id: string; occurrenceId: string; seconds: number }> = []
+    const gateway = $gateway.get()
+    const connectionId = $activeConnectionId.get()
+    const profile = $activeGatewayProfile.get()
+    const auth = $authState.get()
 
-    // An abandoned draft can leave its image chips in the main composer.
-    // Remove only earlier analysis frames; keep the user's other attachments.
-    mainComposerScope.removeOccurrences($composerAttachments.get().filter(item => item.analysisFrameSourceId))
+    const isCurrent = () => mounted.current && $connection.get()?.mode !== 'remote' &&
+      previousSessionId === $selectedStoredSessionId.get() && gateway === $gateway.get() &&
+      connectionId === $activeConnectionId.get() && profile === $activeGatewayProfile.get() &&
+      auth.status === $authState.get().status && auth.account.email === $authState.get().account.email
 
-    const draft = await prepareVideoBreakdownHandoff(document, locale, frames, async (blob, seconds) => {
-      const before = new Set($composerAttachments.get().map(item => item.occurrenceId))
-      const accepted = await actions.onAttachImageBlob(blob)
+    preparing.current = true
 
-      if (accepted !== true) {return false}
+    try {
+      const staged = await stageVideoAnalysisDraft(document, locale, frames, actions, isCurrent)
 
-      const added = $composerAttachments.get().find(item =>
-        item.kind === 'image' && item.occurrenceId && !before.has(item.occurrenceId))
+      if (!isCurrent()) { mainComposerScope.removeOccurrences(staged.attachments); return }
 
-      if (!added || !mainComposerScope.updateIfCurrent(added, { analysisFrameSourceId: document.id })) {return false}
+      if (previousSessionId) {
+        const fresh = takeSessionDraft(null)
 
-      acceptedFrames.push({ ...added, analysisFrameSourceId: document.id })
-      routedFrames.push({ id: added.id, occurrenceId: added.occurrenceId!, seconds })
+        stashSessionDraft(null, fresh.text, [
+          ...fresh.attachments.filter(item => !item.analysisFrameSourceId && !item.analysisTranscriptSourceId),
+          ...staged.attachments
+        ])
+        mainComposerScope.removeOccurrences(staged.attachments)
+      }
 
-      return true
-    })
-
-    if (!draft || $connection.get()?.mode === 'remote') {return}
-
-    if (previousSessionId) {
-      // The main composer still owns the previous chat until route resume
-      // switches it to the fresh draft. Move only accepted analysis frames;
-      // otherwise the session swap files them under that previous chat.
-      const fresh = takeSessionDraft(null)
-
-      stashSessionDraft(null, fresh.text, [
-        ...fresh.attachments.filter(item => !item.analysisFrameSourceId),
-        ...acceptedFrames
-      ])
-      mainComposerScope.removeOccurrences(acceptedFrames)
-    }
-
-    navigate(NEW_CHAT_ROUTE, { state: {
-      businessGoalDraft: draft, businessGoalFocus: true,
-      analysisFrameHandoff: Boolean(previousSessionId),
-      analysisFrameDraft: { locale, sourceId: document.id, attemptedFrames: Math.min(3, frames.length), frames: routedFrames }
-    } })
+      navigate(NEW_CHAT_ROUTE, { state: {
+        businessGoalDraft: staged.draft, businessGoalFocus: true,
+        analysisFrameHandoff: Boolean(previousSessionId),
+        analysisTranscriptDraft: staged.transcript,
+        analysisFrameDraft: { locale, sourceId: document.id, attemptedFrames: Math.min(3, frames.length), frames: staged.frames }
+      } })
+    } finally { preparing.current = false }
   }} />
 }
 

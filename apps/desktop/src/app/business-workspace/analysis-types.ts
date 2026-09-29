@@ -68,6 +68,7 @@ export interface AnalysisDocumentsBridge {
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   importDeepReport: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
   deleteDeepReport: (id: string, scope: string, reportId: string) => Promise<{ ok: boolean; code?: string }>
+  transcriptForDraft: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; text?: string }>
   overviewContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   saveOverview: (id: string, scope: string, overview: VideoSemanticOverview) => Promise<{ ok: boolean; code?: string; item?: VideoSemanticOverview }>
   ask: (id: string, question: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>

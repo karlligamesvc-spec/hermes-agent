@@ -75,7 +75,7 @@ export function videoFrameDisclosure(locale: VideoBreakdownLocale, attachedFrame
   ].filter(Boolean).join('\n')
 }
 
-export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: VideoBreakdownLocale, attachedFrameSeconds: number[] = [], attemptedFrames = attachedFrameSeconds.length): string | null {
+export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: VideoBreakdownLocale, attachedFrameSeconds: number[] = [], attemptedFrames = attachedFrameSeconds.length, transcriptNote = ''): string | null {
   if (!videoQuickOverview(document)) {return null}
 
   const copy = PROMPT[locale]
@@ -95,7 +95,7 @@ export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Vide
   }).sort((a, b) => Number(a.location.start_seconds) - Number(b.location.start_seconds))
   const lines = new Map<number, string>()
   const suffix = '\n</source-transcript>'
-  const transcriptBudget = Math.max(0, 3900 - prefix.length - suffix.length - copy.partial.length - frameNote.length - 8)
+  const transcriptBudget = Math.max(0, 3900 - prefix.length - suffix.length - copy.partial.length - frameNote.length - transcriptNote.length - 12)
   let used = 0
 
   // Give the beginning, end and successively smaller spans a chance at the
@@ -132,5 +132,5 @@ export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Vide
     timed.some(anchor => anchor.text.trim().length > 350)
   const excerpts = [...lines.entries()].sort(([left], [right]) => left - right).map(([, line]) => line)
 
-  return `${prefix}${excerpts.join('\n')}${suffix}${partial ? `\n\n${copy.partial}` : ''}${frameNote ? `\n\n${frameNote}` : ''}`
+  return `${prefix}${excerpts.join('\n')}${suffix}${partial ? `\n\n${copy.partial}` : ''}${frameNote ? `\n\n${frameNote}` : ''}${transcriptNote ? `\n\n${transcriptNote}` : ''}`
 }
