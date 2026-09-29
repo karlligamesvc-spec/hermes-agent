@@ -2106,7 +2106,9 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
     await reports.locator('summary').click()
     await expect(reports.locator('pre')).toHaveText(body)
     await expect(reports.locator('script')).toHaveCount(0)
-    await expect(reports).toContainText('Hypit 执行状态尚未核验')
+    await expect(reports).toContainText('应用不核验文件作者或 Hypit 执行，验收只代表你的判断。')
+    await expect(reports).toContainText('未记录对应发送（手动导入或旧版报告）。')
+    await expect(reports).toContainText('待你验收')
     await reports.getByRole('button', { name: '删除副本 · ANALYSIS.md' }).click()
     await expect(reports).toContainText('尚未保存报告。')
 
