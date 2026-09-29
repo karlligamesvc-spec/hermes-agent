@@ -789,16 +789,17 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         // other session-scoped RPC (attach, /compress, rewind, interrupt) goes
         // through the same helper so one policy covers the whole bug class.
         let submitErr: unknown = null
+        let submitResult: { result: { status?: string } } | undefined
 
         try {
           const recoverStoredSessionId = targetStoredSessionId ?? selectedStoredSessionIdRef.current
 
-          await withSessionNotFoundResume(
+          submitResult = await withSessionNotFoundResume(
             sessionId,
             recoverStoredSessionId,
             liveId =>
               withSessionBusyRetry(() =>
-                requestGateway('prompt.submit', submitParams(liveId), PROMPT_SUBMIT_REQUEST_TIMEOUT_MS)
+                requestGateway<{ status?: string }>('prompt.submit', submitParams(liveId), PROMPT_SUBMIT_REQUEST_TIMEOUT_MS)
               ),
             {
               requestGateway,
@@ -847,6 +848,12 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
           // match by exact object identity, so a newer same-id replacement is
           // preserved while the staged object for a submitted file is removed.
           scope.removeAttachments(syncedAttachments)
+        }
+
+        if (submitResult?.result.status === 'streaming' && targetStoredSessionId && options?.onAccepted) {
+          try {await options.onAccepted({ storedSessionId: targetStoredSessionId })} catch (error) {
+            console.warn('[submit-receipt-observer]', error)
+          }
         }
 
         // Submit landed — the turn now runs (busy stays true), but the submit

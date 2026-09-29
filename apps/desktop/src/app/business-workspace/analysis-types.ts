@@ -1,4 +1,5 @@
 import type { SourceAnswerInput, StoredSourceAnswer } from '../../../shared/analysis-answer'
+import type { AnalysisChatLink, AnalysisChatTarget } from '../../../shared/analysis-chat-link'
 import type { DeepAnalysisReport } from '../../../shared/analysis-deep-report'
 import type { VideoSemanticOverview } from '../../../shared/analysis-video-overview'
 
@@ -64,6 +65,8 @@ export interface AnalysisDocumentsBridge {
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   importDeepReport: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
   prepareDeepWorkspace: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; directory?: string }>
+  recordDeepChat?: (id: string, scope: string, revision: string, target: AnalysisChatTarget) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink }>
+  readDeepChat?: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink | null }>
   collectDeepReport: (id: string, scope: string, revision: string, filename: 'ANALYSIS.md' | 'TIMELINE.md') => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
   deleteDeepReport: (id: string, scope: string, reportId: string) => Promise<{ ok: boolean; code?: string }>
   transcriptForDraft: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; text?: string }>

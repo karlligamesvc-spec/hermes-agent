@@ -2,9 +2,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import type { AnalysisChatTarget } from '../shared/analysis-chat-link'
 import { type DeepReportInput, MAX_REPORT_BYTES, validateDeepReport, validateDeepReportSource } from '../shared/analysis-deep-report'
 import type { OverviewSource } from '../shared/analysis-video-overview'
 
+import { readAnalysisChatLink, writeAnalysisChatLink } from './apex-analysis-chat-link'
 import { removeLocalDeepReport, saveLocalDeepReport } from './apex-analysis-local'
 import { analysisWorkspaceReport, prepareAnalysisWorkspace } from './apex-analysis-workspace'
 
@@ -96,6 +98,26 @@ export function createDeepReportHandlers(deps: Dependencies) {
         if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
 
         return { ok: true, directory: prepareAnalysisWorkspace(context.root, scope, id, revision) }
+      } catch (error) {return { ok: false, code: deps.error(error) }}
+    },
+    recordChat: async (_event: unknown, id: string, scope: string, revision: string, target: AnalysisChatTarget) => {
+      try {
+        const { context, item } = await deps.context(id, scope)
+        validateDeepReportSource(item, revision, item.analysis_revision ?? '')
+
+        if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
+
+        return { ok: true, item: writeAnalysisChatLink(context.root, scope, id, revision, target) }
+      } catch (error) {return { ok: false, code: deps.error(error) }}
+    },
+    readChat: async (_event: unknown, id: string, scope: string, revision: string) => {
+      try {
+        const { context, item } = await deps.context(id, scope, false)
+        validateDeepReportSource(item, revision, item.analysis_revision ?? '')
+
+        if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
+
+        return { ok: true, item: readAnalysisChatLink(context.root, scope, id, revision) }
       } catch (error) {return { ok: false, code: deps.error(error) }}
     },
     deleteReport: async (_event: unknown, id: string, scope: string, reportId: string) => {

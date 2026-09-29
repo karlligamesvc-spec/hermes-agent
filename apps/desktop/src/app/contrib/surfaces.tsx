@@ -121,7 +121,9 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
     try {
       const staged = await stageVideoAnalysisDraft(document, locale, frames, actions, isCurrent)
 
-      if (!isCurrent()) { mainComposerScope.removeOccurrences(staged.attachments); return }
+      if (!isCurrent()) { mainComposerScope.removeOccurrences(staged.attachments);
+
+ return }
 
       if (previousSessionId) {
         const fresh = takeSessionDraft(null)
@@ -137,6 +139,9 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
         businessGoalDraft: staged.draft, businessGoalFocus: true,
         analysisFrameHandoff: Boolean(previousSessionId),
         analysisTranscriptDraft: staged.transcript,
+        analysisChatDraft: staged.workspaceDirectory ? { sourceId: document.id, scope: document.analysis_scope,
+          revision: document.analysis_revision, directory: staged.workspaceDirectory, locale,
+          connectionId, profile: profile || 'default' } : undefined,
         analysisFrameDraft: { locale, sourceId: document.id, attemptedFrames: Math.min(3, frames.length), frames: staged.frames }
       } })
     } finally { preparing.current = false }

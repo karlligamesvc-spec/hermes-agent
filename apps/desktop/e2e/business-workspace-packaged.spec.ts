@@ -10,6 +10,7 @@ import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server
 import type { SourceAnswerInput } from '../shared/analysis-answer'
 import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
+import { verifyAnalysisChatLink } from './analysis-chat-link'
 import { verifySourceAnswer } from './analysis-source-answer'
 import { verifyWorkspaceReport } from './analysis-workspace-report'
 import { verifyCronExecutionHistory, verifyCronTimerExecution, verifyLateSessionRecovery } from './cron-execution-history'
@@ -2505,4 +2506,9 @@ test('hc-889 packaged timer fires a future occurrence and leaves a paused siblin
 test('hc-889 packaged late session recovery preserves the chosen cron page', async () => {
   if (!fixture) {throw new Error('Packaged fixture unavailable')}
   await verifyLateSessionRecovery(fixture)
+})
+
+
+test('hc-890 packaged analysis links only an accepted chat and reopens its durable conversation', async () => {
+  await verifyAnalysisChatLink(fixture!)
 })

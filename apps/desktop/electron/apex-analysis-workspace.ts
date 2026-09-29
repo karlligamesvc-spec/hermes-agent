@@ -70,6 +70,14 @@ export function prepareAnalysisWorkspace(root: string, scope: string, id: string
   return directory
 }
 
+/** Resolve an existing, source-bound directory without creating it. */
+export function ownedAnalysisWorkspace(root: string, scope: string, id: string, revision: string): string {
+  const directory = workspaceDirectory(root, scope, id, revision)
+  verifyReceipt(directory, scope, id, revision)
+
+  return directory
+}
+
 /** A filename is a user choice from two known outputs, never a renderer-supplied path. */
 export function analysisWorkspaceReport(root: string, scope: string, id: string, revision: string, filename: string): string {
   if (!WORKSPACE_REPORTS.includes(filename as typeof WORKSPACE_REPORTS[number])) {throw new Error('report_invalid')}

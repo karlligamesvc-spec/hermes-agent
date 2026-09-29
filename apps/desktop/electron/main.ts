@@ -22569,6 +22569,8 @@ const deepReportHandlers = createDeepReportHandlers({
 
 ipcMain.handle('hermes:analysis:importDeepReport', deepReportHandlers.importReport)
 ipcMain.handle('hermes:analysis:prepareDeepWorkspace', deepReportHandlers.prepareWorkspace)
+ipcMain.handle('hermes:analysis:recordDeepChat', deepReportHandlers.recordChat)
+ipcMain.handle('hermes:analysis:readDeepChat', deepReportHandlers.readChat)
 ipcMain.handle('hermes:analysis:collectDeepReport', deepReportHandlers.collectReport)
 ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
 

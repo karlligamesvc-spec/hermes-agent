@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
@@ -15,6 +16,7 @@ import { workflowDomainBridge } from '../api/bridge'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
+import { analysisChatSubmitOptions } from '../video-analysis-chat-handoff'
 import { draftAfterVideoFrameRemoval, isVideoFrameDraftHandoff } from '../video-frame-draft-sync'
 import { isVideoTranscriptHandoff, syncVideoTranscriptDraft } from '../video-transcript-draft'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
@@ -28,7 +30,7 @@ export interface BusinessStartHomeProps {
   onPickFolders?: () => void
   onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
-  onSubmitGoal?: (goal: string) => Promise<boolean> | boolean
+  onSubmitGoal?: (goal: string, options?: SubmitTextOptions) => Promise<boolean> | boolean
 }
 
 /**
@@ -64,6 +66,7 @@ export function BusinessStartHome({
   )
 
   const launchState = location.state as null | {
+    analysisChatDraft?: unknown
     analysisTranscriptDraft?: unknown
     analysisFrameDraft?: unknown
     analysisFrameHandoff?: unknown
@@ -258,7 +261,13 @@ export function BusinessStartHome({
 
   const submitGoal = async (goal: string): Promise<boolean> => {
     if (!selectedWorkflow) {
-      return (await onSubmitGoal?.(transcriptDraft ? syncVideoTranscriptDraft(goal, transcriptDraft, attachments) : goal)) ?? false
+      const text = transcriptDraft ? syncVideoTranscriptDraft(goal, transcriptDraft, attachments) : goal
+
+      const options = analysisChatSubmitOptions(launchState?.analysisChatDraft, text)
+
+      if (options === false) {return false}
+
+      return (await (options ? onSubmitGoal?.(text, options) : onSubmitGoal?.(text))) ?? false
     }
 
     setDomainError(false)

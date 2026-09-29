@@ -6,6 +6,8 @@ import { type DeepAnalysisReport, MAX_DEEP_REPORTS } from '../../../../shared/an
 import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
 
+import { DeepAnalysisChat } from './deep-analysis-chat'
+
 const WORKSPACE_COPY = {
   zh: { collect: '收取', hint: '助手完成后，可从本资料的本机输出目录收取指定文件；不会搜索其他项目，也不代表已核验报告。', missing: '请先准备本资料的深度拆解草稿。', pending: '指定报告尚未生成。请在助手完成后重试。', invalid: '输出目录或文件不符合绑定要求，请重新核对。' },
   'zh-hant': { collect: '收取', hint: '助手完成後，可從本資料的本機輸出目錄收取指定檔案；不會搜尋其他專案，也不代表已核驗報告。', missing: '請先準備本資料的深度拆解草稿。', pending: '指定報告尚未產生，請在助手完成後重試。', invalid: '輸出目錄或檔案不符合綁定要求，請重新核對。' },
@@ -67,6 +69,7 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
 
   return <section aria-label={c.title} className="space-y-3 rounded-xl border p-4">
     <h3 className="font-medium">{c.title}</h3>
+    {bridge?.readDeepChat && <DeepAnalysisChat bridge={bridge} locale={locale} source={source} />}
     <p className="text-xs text-(--ui-text-tertiary)">{c.disclosure}</p>
     <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={busy || !bridge?.importDeepReport || !source.analysis_scope || !source.analysis_revision || source.status !== 'ready' || reports.length >= MAX_DEEP_REPORTS} onClick={() => void perform(async () => {
       const result = await bridge!.importDeepReport(source.id, source.analysis_scope!, source.analysis_revision!)

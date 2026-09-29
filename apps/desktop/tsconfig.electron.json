@@ -22,6 +22,7 @@
     "shared/analysis-answer.ts",
     "shared/analysis-video-overview.ts",
     "shared/analysis-deep-report.ts",
+    "shared/analysis-chat-link.ts",
     "../shared/src/data-url-read-max.ts",
     "../shared/src/translucency.ts"
   ],
