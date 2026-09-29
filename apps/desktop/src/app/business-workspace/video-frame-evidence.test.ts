@@ -40,14 +40,21 @@ describe('video frame evidence', () => {
     expect(video.hasAttribute('src')).toBe(false)
   })
 
-  it('refuses a metadata-only or undecoded frame', () => {
+  it.each([
+    { readyState: HTMLMediaElement.HAVE_METADATA, seeking: false },
+    { readyState: HTMLMediaElement.HAVE_CURRENT_DATA, seeking: true }
+  ])('refuses an unsettled frame ($readyState, seeking=$seeking)', ({ readyState, seeking }) => {
     const video = document.createElement('video')
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,ZmFrZQ==')
     Object.defineProperties(video, {
-      readyState: { configurable: true, value: HTMLMediaElement.HAVE_METADATA },
+      readyState: { configurable: true, value: readyState },
+      seeking: { configurable: true, value: seeking },
       videoWidth: { configurable: true, value: 1920 },
       videoHeight: { configurable: true, value: 1080 }
     })
 
     expect(() => captureVideoFrame(video)).toThrow('frame_not_decoded')
+    expect(getContext).not.toHaveBeenCalled()
   })
 })

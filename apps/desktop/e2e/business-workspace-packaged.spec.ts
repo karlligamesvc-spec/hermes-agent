@@ -9,7 +9,7 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
-import { expect, test } from './test'
+import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
 const BUSINESS_NAV_LABELS = ['开始', '项目', '沉浸式分析', '定时运行'] as const
 
@@ -2006,6 +2006,9 @@ test('packaged plain goal stays separate from a previewed workflow and starts a 
 })
 
 test('hc-872 packaged analysis stores timed speech locally and prepares a reviewable deep draft', async () => {
+  // This flow deliberately rejects one pending-seek screenshot; assert the
+  // exact observed errors below instead of suppressing unexpected failures.
+  allowErrorBanners()
   const { app, page } = fixture!
 
   await app.evaluate(({ BrowserWindow }) =>
@@ -2036,6 +2039,21 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   const player = page.getByLabel('本地视频: local-frame-evidence.webm')
 
   await expect.poll(() => player.evaluate(video => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2)
+  // A seek updates currentTime before the new frame has decoded. Capture in
+  // that same browser task so an old image cannot inherit the requested time.
+  const seekingDuringCapture = await page.getByRole('button', { name: '截取当前画面' }).evaluate(button => {
+    if (!(button instanceof HTMLButtonElement)) {throw new Error('Frame capture control must be a button')}
+    const video = document.querySelector('video')!
+    video.currentTime = 2.5
+    const seeking = video.seeking
+    button.click()
+
+    return seeking
+  })
+
+  expect(seekingDuringCapture).toBe(true)
+  await expect(page.getByRole('alert')).toContainText('当前画面无法截取')
+  await expect(page.getByRole('region', { name: '本次查看的画面截图' })).toHaveCount(0)
   await player.evaluate(video => new Promise<void>(resolve => {
     video.addEventListener('seeked', () => resolve(), { once: true }); (video as HTMLVideoElement).currentTime = 1
   }))
@@ -2045,6 +2063,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
 
   expect(frameDataUrl?.startsWith('data:image/jpeg;base64,')).toBe(true)
   expect(frameDataUrl!.length).toBeGreaterThan(1000)
+  await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByText(/尚未经过模型分析/)).toBeVisible()
 
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
@@ -2081,6 +2100,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
+  expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。'])
 })
 
 test('hc-878 packaged local document import persists cited answers and notes under the signed-in account', async () => {

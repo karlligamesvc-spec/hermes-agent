@@ -4,7 +4,7 @@ export interface VideoFrameEvidence {
 }
 
 export function captureVideoFrame(player: HTMLVideoElement): VideoFrameEvidence {
-  if (player.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+  if (player.seeking || player.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
       !Number.isFinite(player.currentTime) || player.currentTime < 0 ||
       !player.videoWidth || !player.videoHeight) {
     throw new Error('frame_not_decoded')
