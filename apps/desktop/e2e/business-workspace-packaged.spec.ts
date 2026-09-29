@@ -6,9 +6,8 @@ import path from 'node:path'
 
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
-import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
-
 import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server'
+import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
@@ -2044,7 +2043,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   ]))
 
   const retained = await page.evaluate(async () => {
-    const api = (window as Window & { hermesDesktop: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop.analysisDocuments
+    const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
     const listed = await api.list()
     const id = listed.items!.find(item => item.filename === 'local-review-video-transcript.srt')!.id
     const opened = await api.get(id)
