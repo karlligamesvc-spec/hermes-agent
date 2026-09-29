@@ -2362,6 +2362,9 @@ export interface Translations {
     updated: string
     failedLoad: string
     failedLoadRuns: string
+    runConversations: string
+    legacyRunHistory: string
+    executionStatuses: Record<'claimed' | 'running' | 'completed' | 'failed' | 'unknown', string>
     failedUpdate: string
     failedTrigger: string
     failedDelete: string

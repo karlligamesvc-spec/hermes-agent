@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getCronJobRuns, getCronJobs } from '@/hermes'
+import { getCronJobHistory, getCronJobs } from '@/hermes'
 import { I18nProvider } from '@/i18n'
 import { setCronJobs } from '@/store/cron'
 
@@ -15,7 +15,7 @@ vi.mock('@/hermes', async importOriginal => {
     ...actual,
     getAutomationBlueprints: vi.fn().mockResolvedValue([]),
     getCronDeliveryTargets: vi.fn().mockResolvedValue([]),
-    getCronJobRuns: vi.fn(),
+    getCronJobHistory: vi.fn(),
     getCronJobs: vi.fn()
   }
 })
@@ -38,7 +38,7 @@ describe('CronView read failures', () => {
   beforeEach(() => {
     setCronJobs([])
     vi.mocked(getCronJobs).mockReset()
-    vi.mocked(getCronJobRuns).mockReset()
+    vi.mocked(getCronJobHistory).mockReset()
   })
 
   it('shows a recoverable list error instead of claiming no scheduled jobs', async () => {
@@ -55,7 +55,7 @@ describe('CronView read failures', () => {
   it('keeps existing jobs visible with an error when a later list refresh fails', async () => {
     setCronJobs([job('a')])
     vi.mocked(getCronJobs).mockRejectedValue(new Error('offline'))
-    vi.mocked(getCronJobRuns).mockResolvedValue([])
+    vi.mocked(getCronJobHistory).mockResolvedValue({ runs: [], executions: [] })
     renderCronView()
 
     expect(await screen.findByText('offline')).toBeTruthy()
@@ -65,9 +65,9 @@ describe('CronView read failures', () => {
 
   it('shows a recoverable run-history error, then the real run on retry', async () => {
     vi.mocked(getCronJobs).mockResolvedValue([job('a')])
-    vi.mocked(getCronJobRuns)
+    vi.mocked(getCronJobHistory)
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce([{ id: 'cron_a_1', title: '真实运行' }] as never)
+      .mockResolvedValueOnce({ runs: [{ id: 'cron_a_1', title: '真实运行' }], executions: [] } as never)
     renderCronView()
 
     expect(await screen.findByText('加载运行记录失败')).toBeTruthy()
@@ -79,13 +79,15 @@ describe('CronView read failures', () => {
   })
 
   it('does not show the previous job run while the next job is loading', async () => {
-    let resolveSecond: (runs: unknown[]) => void = () => {}
-    const second = new Promise<unknown[]>(resolve => {
+    let resolveSecond: (runs: unknown) => void = () => {}
+
+    const second = new Promise<unknown>(resolve => {
       resolveSecond = resolve
     })
+
     vi.mocked(getCronJobs).mockResolvedValue([job('a'), job('b')])
-    vi.mocked(getCronJobRuns).mockImplementation(id =>
-      id === 'a' ? Promise.resolve([{ id: 'cron_a_1', title: 'A 的运行' }] as never) : (second as never)
+    vi.mocked(getCronJobHistory).mockImplementation(id =>
+      id === 'a' ? Promise.resolve({ runs: [{ id: 'cron_a_1', title: 'A 的运行' }] } as never) : (second as never)
     )
     renderCronView()
 
@@ -95,7 +97,26 @@ describe('CronView read failures', () => {
     expect(screen.queryByText('A 的运行')).toBeNull()
     expect(screen.queryByText('尚无运行')).toBeNull()
 
-    resolveSecond([{ id: 'cron_b_1', title: 'B 的运行' }])
+    resolveSecond({ runs: [{ id: 'cron_b_1', title: 'B 的运行' }] })
     await waitFor(() => expect(screen.getByRole('button', { name: /B 的运行/ })).toBeTruthy())
+  })
+
+  it('shows script execution outcomes without inventing navigable conversations', async () => {
+    vi.mocked(getCronJobs).mockResolvedValue([job('script')])
+    vi.mocked(getCronJobHistory).mockResolvedValue({
+      runs: [],
+      executions: ['completed', 'failed', 'unknown'].map((status, index) => ({
+        id: `execution-${index}`, status, claimed_at: '2026-09-29T12:00:00Z',
+        started_at: '2026-09-29T12:00:01Z', finished_at: '2026-09-29T12:00:02Z'
+      }))
+    } as never)
+    const { container } = renderCronView()
+
+    expect(await screen.findByText('结果未知')).toBeTruthy()
+    expect(screen.getByText('执行失败')).toBeTruthy()
+    expect(screen.getByText('已完成')).toBeTruthy()
+    expect(screen.queryByText('尚无运行')).toBeNull()
+    expect(screen.queryByText('运行对话')).toBeNull()
+    expect(container.querySelector('[data-cron-executions] button')).toBeNull()
   })
 })

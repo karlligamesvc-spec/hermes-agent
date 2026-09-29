@@ -4,6 +4,7 @@ import {
   createCronJob,
   deleteCronJob,
   getCronJob,
+  getCronJobHistory,
   getCronJobRuns,
   getCronJobs,
   pauseCronJob,
@@ -47,6 +48,7 @@ describe('cron helpers are profile-scoped', () => {
     void getCronJobs()
     void getCronJob('job-1')
     void getCronJobRuns('job-1')
+    void getCronJobHistory('job-1')
     void createCronJob({ name: 'nightly', prompt: 'run', schedule: '0 3 * * *' } as never)
     void updateCronJob('job-1', { enabled: false } as never)
     void pauseCronJob('job-1')
@@ -61,6 +63,7 @@ describe('cron helpers are profile-scoped', () => {
 
   it('omits connectionId when the local pool serves the active gateway', () => {
     void getCronJobRuns('job-1')
+    void getCronJobHistory('job-1')
     expect(api.mock.calls.at(-1)?.[0]).not.toHaveProperty('connectionId')
   })
 
@@ -68,6 +71,24 @@ describe('cron helpers are profile-scoped', () => {
     api.mockResolvedValueOnce({} as never)
 
     await expect(getCronJobRuns('job-1')).rejects.toThrow('Invalid cron run history response')
+  })
+
+  it('validates execution rows while preserving older runtime and session-only consumers', async () => {
+    const runs = [{ id: 'cron_a_1', source: 'cron' }]
+
+    const execution = {
+      id: 'execution-1', status: 'unknown', claimed_at: '2026-09-29T12:00:00Z',
+      started_at: null, finished_at: '2026-09-29T12:01:00Z'
+    }
+
+    api.mockResolvedValueOnce({ runs, executions: [execution] } as never)
+    expect(await getCronJobHistory('a')).toEqual({ runs, executions: [execution] })
+    api.mockResolvedValueOnce({ runs, executions: [execution] } as never)
+    expect(await getCronJobRuns('a')).toEqual(runs)
+    api.mockResolvedValueOnce({ runs } as never)
+    expect(await getCronJobHistory('a')).toEqual({ runs })
+    api.mockResolvedValueOnce({ runs, executions: [{ ...execution, status: 'pretend_success' }] } as never)
+    await expect(getCronJobHistory('a')).rejects.toThrow('Invalid cron execution history response')
   })
 
   // Contract: with a registered gateway connection active, cron run sessions
@@ -83,6 +104,7 @@ describe('cron helpers are profile-scoped', () => {
     void getCronJobs('research')
     void getCronJob('job-1')
     void getCronJobRuns('job-1')
+    void getCronJobHistory('job-1')
     void createCronJob({ name: 'nightly', prompt: 'run', schedule: '0 3 * * *' } as never)
     void updateCronJob('job-1', { enabled: false } as never)
     void pauseCronJob('job-1')

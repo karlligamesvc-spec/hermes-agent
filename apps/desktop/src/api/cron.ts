@@ -53,6 +53,50 @@ export async function getCronJobRuns(jobId: string, limit = 20): Promise<Session
   return runs
 }
 
+const EXECUTION_STATUSES = ['claimed', 'running', 'completed', 'failed', 'unknown'] as const
+
+export interface CronExecution {
+  id: string
+  status: (typeof EXECUTION_STATUSES)[number]
+  claimed_at: string
+  started_at: null | string
+  finished_at: null | string
+}
+
+export interface CronJobHistory {
+  runs: SessionInfo[]
+  // Absent only for older runtimes, which expose conversation history alone.
+  executions?: CronExecution[]
+}
+
+export async function getCronJobHistory(jobId: string, limit = 20): Promise<CronJobHistory> {
+  const body = await hermesApi<CronJobHistory>({
+    ...profileScoped(),
+    ...connectionScoped(),
+    path: `/api/cron/jobs/${encodeURIComponent(jobId)}/runs?limit=${limit}`
+  })
+
+  if (!body || !Array.isArray(body.runs)) {
+    throw new Error('Invalid cron run history response')
+  }
+
+  if (body.executions !== undefined) {
+    const validDate = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+
+    const valid = Array.isArray(body.executions) && body.executions.every(row =>
+      row && typeof row.id === 'string' && row.id.trim() && EXECUTION_STATUSES.includes(row.status) &&
+      validDate(row.claimed_at) && (row.started_at === null || validDate(row.started_at)) &&
+      (row.finished_at === null || validDate(row.finished_at))
+    )
+
+    if (!valid) {
+      throw new Error('Invalid cron execution history response')
+    }
+  }
+
+  return body
+}
+
 // The single source of truth for cron delivery targets (local + configured
 // gateways). Both the manual cron editor and the blueprint dialog use this so
 // they never offer a platform that isn't connected. Mirrors the dashboard.
