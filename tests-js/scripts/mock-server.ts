@@ -500,6 +500,17 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             _receivedUserTexts.push(userText)
           }
 
+          // hc-883 exercises the real runtime oneshot -> HTTP model -> native save path.
+          // This fixture is deterministic; it is not a semantic-quality evaluation.
+          if (!stream && messages.some(m => m.role === 'system' && typeof m.content === 'string' &&
+            m.content.startsWith('Summarize this video AUDIO transcript')) && userText.includes('[本地测试] 中段原文')) {
+            nonStreamingTextResponse(res, model, JSON.stringify({ points: [
+              { text: '[本地测试] 视频包含开场与中段讲述。', anchor_ids: ['a1', 'a2'] }
+            ] }))
+
+            return
+          }
+
           const isInterimTrigger = userText.includes('E2E_INTERIM_TRIGGER')
           const isSidebarTrigger = userText.includes('E2E_SIDEBAR_TRIGGER')
           const isSidebarCrossTrigger = userText.includes('E2E_SIDEBAR_CROSS')

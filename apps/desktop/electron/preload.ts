@@ -308,6 +308,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     pollFeishu: flowId => ipcRenderer.invoke('hermes:analysis:pollFeishu', flowId),
     forgetFeishu: () => ipcRenderer.invoke('hermes:analysis:forgetFeishu'),
     get: id => ipcRenderer.invoke('hermes:analysis:get', id),
+    overviewContext: (id, scope) => ipcRenderer.invoke('hermes:analysis:overviewContext', id, scope),
+    saveOverview: (id, scope, overview) => ipcRenderer.invoke('hermes:analysis:saveOverview', id, scope, overview),
     ask: (id, question) => ipcRenderer.invoke('hermes:analysis:ask', id, question),
     addNote: (id, body, anchorId) => ipcRenderer.invoke('hermes:analysis:addNote', id, body, anchorId),
     deleteNote: (id, noteId) => ipcRenderer.invoke('hermes:analysis:deleteNote', id, noteId),

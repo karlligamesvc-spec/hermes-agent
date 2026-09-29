@@ -4,6 +4,8 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { validateVideoOverview, type VideoSemanticOverview } from '../shared/analysis-video-overview'
+
 export interface AnalysisAnchor {
   id: string
   location: Record<string, number | string>
@@ -22,6 +24,7 @@ export interface LocalDocument {
   anchors: AnalysisAnchor[]
   notes: Array<{ id: string; body: string; anchor_id: string | null }>
   questions: Array<{ id: string; question: string; answer: string; citations: Array<{ anchor_id: string; location: Record<string, number | string> }>; answer_type: 'source_excerpts' | 'no_evidence' }>
+  video_overviews?: Record<string, VideoSemanticOverview>
   createdAt: string
   sourcePath: string
   sourceUrl?: string
@@ -355,6 +358,25 @@ export function answerLocalDocument(root: string, userId: string, id: string, qu
   }
 
   document.questions.push(item)
+  save(root, userId, document)
+
+  return item
+}
+
+/** Revision covers every model input; notes and questions do not invalidate it. */
+export function localOverviewRevision(document: LocalDocument): string {
+  return crypto.createHash('sha256').update(JSON.stringify([
+    document.kind, document.status, document.evidenceOrigin, document.anchors
+  ])).digest('hex')
+}
+
+export function saveLocalVideoOverview(root: string, userId: string, id: string, value: VideoSemanticOverview): VideoSemanticOverview {
+  // Re-read after inference so deleting the source cannot resurrect it, and concurrent notes survive.
+  const document = getLocalDocument(root, userId, id)
+
+  if (!document) {throw new Error('source_not_found')}
+  const item = validateVideoOverview(value, document, localOverviewRevision(document), value.locale)
+  document.video_overviews = { ...document.video_overviews, [item.locale]: item }
   save(root, userId, document)
 
   return item

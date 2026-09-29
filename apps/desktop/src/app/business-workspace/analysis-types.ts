@@ -1,3 +1,5 @@
+import type { VideoSemanticOverview } from '../../../shared/analysis-video-overview'
+
 export interface AnalysisAnchor {
   id: string
   location: Record<string, number | string>
@@ -32,6 +34,9 @@ export interface AnalysisDocument {
   questions?: AnalysisQuestion[]
   createdAt?: string
   created_at?: string
+  analysis_scope?: string
+  analysis_revision?: string
+  video_overviews?: Record<string, VideoSemanticOverview>
   parse_version?: number
   evidence_origin?: 'linked_video_audio' | 'uploaded_video_audio' | null
   evidenceOrigin?: 'linked_video_audio' | 'uploaded_video_audio'
@@ -59,6 +64,8 @@ export interface AnalysisDocumentsBridge {
   pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  overviewContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  saveOverview: (id: string, scope: string, overview: VideoSemanticOverview) => Promise<{ ok: boolean; code?: string; item?: VideoSemanticOverview }>
   ask: (id: string, question: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>
   addNote: (id: string, body: string, anchorId: string | null) => Promise<{ ok: boolean; code?: string; item?: AnalysisNote }>
   deleteNote: (id: string, noteId: string) => Promise<{ ok: boolean; code?: string }>

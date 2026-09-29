@@ -6,6 +6,8 @@ import path from 'node:path'
 
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
+import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
+
 import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
@@ -2027,13 +2029,32 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(overview).toBeVisible({ timeout: 15_000 })
   await expect(overview).toContainText('已取得 2 条带时间码的语音片段，覆盖 0:01–0:43')
   await expect(overview).toContainText('[本地测试] 中段原文')
-  await expect(page.getByText('尚未生成内容概括，也没有画面或镜头证据。')).toBeVisible()
+  await expect(page.getByText('不包含画面或镜头证据。')).toBeVisible()
+  const semantic = page.getByRole('region', { name: '语音内容摘要' })
+  await expect(semantic).toContainText('[本地测试] 视频包含开场与中段讲述。', { timeout: 90_000 })
+  await expect(semantic).toContainText('摘要已保存')
+  await semantic.getByRole('button', { name: '查看出处 · 0:40 起' }).click()
+  await expect(page.locator('#analysis-anchor-a2')).toBeInViewport()
+
   const localItems = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
 
   expect(localItems?.ok).toBe(true)
   expect(localItems?.items).toEqual(expect.arrayContaining([
     expect.objectContaining({ filename: 'local-review-video-transcript.srt', storageMode: 'local' })
   ]))
+
+  const retained = await page.evaluate(async () => {
+    const api = (window as Window & { hermesDesktop: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop.analysisDocuments
+    const listed = await api.list()
+    const id = listed.items!.find(item => item.filename === 'local-review-video-transcript.srt')!.id
+    const opened = await api.get(id)
+    const source = opened.item!
+    const rejected = await api.saveOverview(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', source.video_overviews!.zh)
+
+    return { summary: source.video_overviews!.zh, rejected }
+  })
+  expect(retained.summary.points[0].anchor_ids).toEqual(['a1', 'a2'])
+  expect(retained.rejected).toMatchObject({ ok: false, code: 'analysis_account_changed' })
 
   await page.getByLabel('选择本地视频播放').setInputFiles(path.resolve(import.meta.dirname, 'media/local-frame-evidence.webm'))
   const player = page.getByLabel('本地视频: local-frame-evidence.webm')
@@ -2086,6 +2107,8 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(overview).toBeVisible()
+  await expect(semantic).toContainText('[本地测试] 视频包含开场与中段讲述。')
+  expect(fixture!.mock.receivedPrompts.filter(text => text.includes('"transcript"') && text.includes('[本地测试] 中段原文'))).toHaveLength(1)
   await expect(page.getByRole('region', { name: '本次查看的画面截图' })).toHaveCount(0)
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
 

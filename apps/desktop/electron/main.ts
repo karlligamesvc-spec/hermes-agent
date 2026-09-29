@@ -29,6 +29,8 @@ import {
   systemPreferences
 } from 'electron'
 
+import { overviewEvidence } from '../shared/analysis-video-overview'
+
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -53,9 +55,11 @@ import {
   deleteLocalDocument,
   getLocalDocument,
   listLocalDocuments,
+  localOverviewRevision,
   readLocalPdfPreview,
   removeLocalNote,
-  retryLocalDocument
+  retryLocalDocument,
+  saveLocalVideoOverview
 } from './apex-analysis-local'
 import { uploadAnalysisVideo } from './apex-analysis-video-upload'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
@@ -22461,7 +22465,7 @@ ipcMain.handle('hermes:analysis:get', async (_event, id) => {
     if (String(id).startsWith('local-')) {
       const item = getLocalDocument(context.root, context.policy.user_id, id)
 
-      return item ? { ok: true, item: localAnalysisForRenderer(item) } : { ok: false, code: 'source_not_found' }
+      return item ? { ok: true, item: { ...localAnalysisForRenderer(item), analysis_scope: context.policy.user_id, analysis_revision: localOverviewRevision(item) } } : { ok: false, code: 'source_not_found' }
     }
 
     const [detail, notes, questions]: any[] = await Promise.all([
@@ -22470,7 +22474,52 @@ ipcMain.handle('hermes:analysis:get', async (_event, id) => {
       context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/questions`)
     ])
 
-    return { ok: true, item: { ...detail.item, storageMode: 'cloud', notes: notes.items, questions: questions.items } }
+    return { ok: true, item: { ...detail.item, analysis_scope: context.policy.user_id, storageMode: 'cloud', notes: notes.items, questions: questions.items } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+// Model inference stays on the stateless runtime RPC. Electron owns only account-scoped evidence and storage.
+async function analysisOverviewContext(id: string, scope: string) {
+  const context = await analysisIpcContext(true)
+
+  if (context.policy.user_id !== scope) {throw new Error('analysis_account_changed')}
+  const local = String(id).startsWith('local-')
+
+  if (!local && (context.policy.mode !== 'cloud' || !context.policy.cloud_storage_configured)) {
+    throw new Error('analysis_cloud_storage_disabled')
+  }
+  const source = local
+    ? getLocalDocument(context.root, scope, id)
+    : (await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`) as any)?.item
+
+  if (!source) {throw new Error('source_not_found')}
+  overviewEvidence(source)
+  // Policy/network awaits may outlive a sign-out. Never return old-account text to the new renderer.
+  if (analysisUserIdFromToken(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+  const item = { ...localAnalysisForRenderer(source), analysis_scope: scope,
+    analysis_revision: local ? localOverviewRevision(source) : source.analysis_revision }
+
+  return { context, item, local }
+}
+
+ipcMain.handle('hermes:analysis:overviewContext', async (_event, id, scope) => {
+  try {
+    const { item } = await analysisOverviewContext(id, scope)
+
+    return { ok: true, item }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overview) => {
+  try {
+    const { context, local } = await analysisOverviewContext(id, scope)
+    const item = local
+      ? saveLocalVideoOverview(context.root, scope, id, overview)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/video-overviews`, overview) as any).item
+
+    if (analysisUserIdFromToken(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+
+    return { ok: true, item }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 

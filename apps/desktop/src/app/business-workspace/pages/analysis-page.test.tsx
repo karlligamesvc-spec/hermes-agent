@@ -136,7 +136,7 @@ describe('document analysis evidence', () => {
     fireEvent.click(await screen.findByRole('button', { name: /video-transcript.srt/ }))
     const overview = await screen.findByRole('region', { name: '视频声音速览' })
     expect(within(overview).getByText('已取得 5 条带时间码的语音片段，覆盖 0:05–1:24。')).toBeTruthy()
-    expect(within(overview).getByText(/尚未生成内容概括，也没有画面或镜头证据/)).toBeTruthy()
+    expect(within(overview).getByText(/不包含画面或镜头证据/)).toBeTruthy()
     expect(within(overview).getAllByRole('button', { name: /跳到此片段/ })).toHaveLength(3)
     expect(within(overview).queryByText('无效时间码')).toBeNull()
     expect(onDeepBreakdown).not.toHaveBeenCalled()
