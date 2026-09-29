@@ -34,6 +34,13 @@ const ANALYSIS_REVIEW_TOKEN = `local.${Buffer.from(JSON.stringify({ sub: ANALYSI
 const ANALYSIS_REVIEW_VIDEO_URL = 'https://www.iesdouyin.com/share/video/123456'
 const ANALYSIS_REVIEW_CLOUD_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
+const REVIEW_PROJECT_RUNNING_ID = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'
+const REVIEW_PROJECT_COMPLETED_ID = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2'
+const REVIEW_PROJECT_EMPTY_ID = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3'
+const REVIEW_WORKFLOW_ID = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1'
+const REVIEW_RUN_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1'
+const REVIEW_COMPLETED_RUN_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2'
+
 const ANALYSIS_FORMAT_SAMPLES = [
   {
     filename: 'analysis-review.pdf', kind: 'pdf', question: 'Revenue?', citation: '第 2 页',
@@ -239,13 +246,13 @@ let reviewApi: null | Awaited<ReturnType<typeof startPhase1ReviewApi>> = null
 const reviewProjects = [
   {
     createdAt: '2026-09-05T18:00:00Z',
-    id: 'local-review-project-running',
+    id: REVIEW_PROJECT_RUNNING_ID,
     name: '[本地测试] 美国宠物用品机会分析',
     objective: '验证项目列表的长标题、真实生命周期文案与点击入口。',
     status: 'active',
     summary: {
       attention: 'none',
-      currentRunId: 'local-review-run-running',
+      currentRunId: REVIEW_RUN_ID,
       currentRunStatus: 'running',
       currentStepTitle: null,
       deliverableCount: 0,
@@ -256,13 +263,13 @@ const reviewProjects = [
   },
   {
     createdAt: '2026-09-04T16:00:00Z',
-    id: 'local-review-project-complete',
+    id: REVIEW_PROJECT_COMPLETED_ID,
     name: '[本地测试] APEX GEO 品牌诊断',
     objective: '验证已完成状态、窄窗换行与返回路径。',
     status: 'completed',
     summary: {
       attention: 'none',
-      currentRunId: 'local-review-run-complete',
+      currentRunId: REVIEW_COMPLETED_RUN_ID,
       currentRunStatus: 'succeeded',
       currentStepTitle: null,
       deliverableCount: 0,
@@ -273,7 +280,7 @@ const reviewProjects = [
   },
   {
     createdAt: '2026-09-05T19:00:00Z',
-    id: 'local-review-project-no-run',
+    id: REVIEW_PROJECT_EMPTY_ID,
     name: '[本地测试] 尚未启动的业务目标',
     objective: '[本地测试] 尚未启动的业务目标',
     status: 'active',
@@ -320,7 +327,7 @@ const reviewRun = {
         schema: 'private-schema',
         summary: '[本地测试] 有证据的美国宠物用品市场结论。'
       },
-      projectId: 'local-review-project-running',
+      projectId: REVIEW_PROJECT_RUNNING_ID,
       reviews: [
         {
           createdAt: '2026-09-06T17:05:00Z',
@@ -336,7 +343,7 @@ const reviewRun = {
           userId: 'tenant-user'
         }
       ],
-      runId: 'local-review-run-running',
+      runId: REVIEW_RUN_ID,
       schemaVersion: 1,
       sourceCapturedAt: '2026-09-06T17:03:30Z',
       status: 'ready',
@@ -385,7 +392,7 @@ const reviewRun = {
     createdAt: '2026-09-06T17:00:00Z',
     errorMessage: 'e2e-private-stack',
     executorType: 'hermes',
-    id: 'local-review-run-running',
+    id: REVIEW_RUN_ID,
     maxAttempts: 2,
     startedAt: '2026-09-06T17:01:00Z',
     status: 'waiting_review',
@@ -407,6 +414,7 @@ async function startPhase1ReviewApi() {
   let analysisMode: 'cloud' | 'local' = 'local'
   let cloudStorageConfigured = false
   let failAnalysisPolicy = false
+  const policyStatuses: number[] = []
   let failCloudDetail = false
 
   let cloudDocument: null | {
@@ -470,7 +478,7 @@ async function startPhase1ReviewApi() {
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/storage-policy') {
       if (failAnalysisPolicy) {
-        failAnalysisPolicy = false
+        policyStatuses.push(503)
         json(503, { detail: { code: 'analysis_policy_unavailable' } })
 
         return
@@ -478,6 +486,7 @@ async function startPhase1ReviewApi() {
 
       const token = String(request.headers.authorization || '').replace(/^Bearer /, '')
       const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
+      policyStatuses.push(200)
       json(200, { user_id: claims.sub, mode: analysisMode, cloud_storage_configured: cloudStorageConfigured, fixture_renewed: Boolean(claims.renewed) })
 
       return
@@ -751,8 +760,27 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/api/v1/workflow-domain/projects/')) {
-      const projectId = decodeURIComponent(url.pathname.slice('/api/v1/workflow-domain/projects/'.length))
-      const project = reviewProjects.find(item => item.id === projectId)
+      const completionRead = url.pathname.endsWith('/completion')
+      const projectId = decodeURIComponent(url.pathname.slice('/api/v1/workflow-domain/projects/'.length).replace(/\/completion$/, ''))
+      const token = String(request.headers.authorization || '').replace(/^Bearer /, '')
+      const owner = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')).sub
+      const project = owner === ANALYSIS_REVIEW_USER_ID ? reviewProjects.find(item => item.id === projectId) : undefined
+
+      if (completionRead && project) {
+        // This fixture has one workflow, attached only to the running Project.
+        const states = project.id === REVIEW_PROJECT_RUNNING_ID
+          ? [{ workflowId: REVIEW_WORKFLOW_ID, runId: REVIEW_RUN_ID, runStatus: reviewRun.run.status }]
+          : []
+
+        const succeeded = states.filter(state => state.runStatus === 'succeeded').length
+        const ready = states.length > 0 && succeeded === states.length
+
+        json(200, { projectStatus: project.status, workflowTotal: states.length,
+          workflowSucceeded: succeeded, readyForReview: ready,
+          canComplete: project.status === 'active' && ready, workflowStates: states })
+
+        return
+      }
 
       json(project ? 200 : 404, project ? { item: project } : { detail: 'not found' })
 
@@ -771,15 +799,15 @@ async function startPhase1ReviewApi() {
           {
             createdAt: '2026-09-05T18:00:00Z',
             description: '仅用于本地 Phase 1 视觉评审，不代表生产数据。',
-            id: 'local-review-workflow',
+            id: REVIEW_WORKFLOW_ID,
             name: '[本地测试] 我的选品流程',
-            projectId: 'local-review-project-running',
+            projectId: REVIEW_PROJECT_RUNNING_ID,
             slug: 'market-launch',
             status: 'active',
             updatedAt: '2026-09-05T21:05:00Z',
             version: 1
           }
-        ]
+        ].filter(item => !url.searchParams.has('projectId') || item.projectId === url.searchParams.get('projectId'))
       })
 
       return
@@ -802,9 +830,9 @@ async function startPhase1ReviewApi() {
         workflow: {
           createdAt: '2026-09-05T18:00:00Z',
           description: '仅用于本地 Phase 2B 视觉评审，不代表生产数据。',
-          id: 'local-review-workflow',
+          id: REVIEW_WORKFLOW_ID,
           name: '[本地测试] 我的选品流程',
-          projectId: 'local-review-project-running',
+          projectId: REVIEW_PROJECT_RUNNING_ID,
           slug: 'market-launch',
           status: 'active',
           updatedAt: '2026-09-05T21:05:00Z',
@@ -833,7 +861,7 @@ async function startPhase1ReviewApi() {
             kind: 'run',
             status: 'running',
             summary: '[本地测试] 正在比较公开市场证据。',
-            target: { id: 'local-review-run-running', kind: 'run' },
+            target: { id: REVIEW_RUN_ID, kind: 'run' },
             title: '[本地测试] 我的选品流程'
           }
         ],
@@ -868,7 +896,7 @@ async function startPhase1ReviewApi() {
       return
     }
 
-    if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/runs/local-review-run-running') {
+    if (request.method === 'GET' && url.pathname === `/api/v1/workflow-domain/runs/${REVIEW_RUN_ID}`) {
       json(runAvailable ? 200 : 503, runAvailable ? reviewRun : { detail: 'local test: Run unavailable' })
 
       return
@@ -906,7 +934,8 @@ async function startPhase1ReviewApi() {
       analysisMode = mode
       cloudStorageConfigured = configured
     },
-    failNextAnalysisPolicy: () => {failAnalysisPolicy = true},
+    setAnalysisPolicyUnavailable: (unavailable: boolean) => {failAnalysisPolicy = unavailable},
+    policyReadStatuses: () => [...policyStatuses],
     setCloudSourceSnapshot: (label: string | null) => {
       cloudDocument = label ? { id: ANALYSIS_REVIEW_CLOUD_ID, filename: `${label}.txt`, kind: 'text', status: 'ready',
         created_at: '2026-09-29T01:00:00Z', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: `${label} original evidence` }] } : null
@@ -1642,7 +1671,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   await expect(opener).toBeVisible()
   await opener.focus()
   await opener.click()
-  await page.getByRole('button', { name: '打开当前运行' }).click()
+  await page.locator('[data-project-detail]').getByRole('button', { name: '打开当前运行', exact: true }).and(page.locator('[data-variant="default"]')).click()
 
   const drawer = page.getByRole('dialog', { name: '工作流运行' })
 
@@ -1802,7 +1831,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
       if (surfaceName === 'run-error') {
         await page.getByRole('button', { name: '开始 ⌘ N' }).click()
         await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
-        await page.getByRole('button', { name: '打开当前运行' }).click()
+        await page.locator('[data-project-detail]').getByRole('button', { name: '打开当前运行', exact: true }).and(page.locator('[data-variant="default"]')).click()
       } else {
         await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
       }
@@ -1896,7 +1925,9 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
   await expect(detail.getByText(/当前接口没有提供运行摘要/)).toBeVisible()
   await expect(detail.getByText('[本地测试] 尚未启动的业务目标', { exact: true })).toHaveCount(1)
   await expect(page.getByRole('textbox', { name: '业务目标' })).toHaveCount(0)
-  await expect(detail.getByText(/0 \/ 0|百分比|待处理事项/)).toHaveCount(0)
+  await expect(detail.getByText(/百分比|待处理事项/)).toHaveCount(0)
+  await expect(detail.locator('[data-project-completion]')).toContainText('0 / 0')
+  await expect(detail.locator('[data-project-completion]').getByRole('button', { name: '完成项目', exact: true })).toBeDisabled()
 
   for (const viewport of [...PHASE1_VIEWPORTS, { height: 800, width: 1099 }, { height: 800, width: 1100 }]) {
     const bounds = await app.evaluate(({ BrowserWindow }, size) => {
@@ -1967,7 +1998,7 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
 
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
     await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
-    await page.getByRole('button', { name: '打开当前运行' }).click()
+    await page.locator('[data-project-detail]').getByRole('button', { name: '打开当前运行', exact: true }).and(page.locator('[data-variant="default"]')).click()
 
     const drawer = page.locator('[data-route-drawer]')
     const content = drawer.locator('section').first()
@@ -2346,37 +2377,67 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
 })
 
 test('hc-901 packaged native policy HTTP 503 recovers with explicit retry and preserves the cloud storage gate', async () => {
-  const { page } = fixture!
+  allowErrorBanners()
+  const { app, page } = fixture!
+  const host = await app.browserWindow(page)
+  await host.evaluate(win => {win.unmaximize(); win.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false); win.show(); win.focus()})
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1220)
+  const showSidebar = page.getByRole('button', { name: /^显示侧边栏/ })
+
+  if (await showSidebar.isVisible()) {await showSidebar.click()}
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   reviewApi!.setAnalysisPolicy('local')
-  reviewApi!.failNextAnalysisPolicy()
+  const policyReadsBefore = reviewApi!.policyReadStatuses().length
+  reviewApi!.setAnalysisPolicyUnavailable(true)
 
   try {
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await expect(page.getByRole('alert').filter({ hasText: '无法读取资料保存设置，请检查连接后重试。' })).toBeVisible()
     await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
     await expect(page.getByRole('button', { name: '选择本地视频转写' })).toBeDisabled()
+    const failures = reviewApi!.policyReadStatuses().slice(policyReadsBefore)
+    expect(failures.length).toBeGreaterThan(0)
+    expect(failures.every(status => status === 503)).toBe(true)
+    reviewApi!.setAnalysisPolicyUnavailable(false)
     await page.getByRole('button', { name: '重试保存设置' }).click()
     await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeEnabled()
     await expect(page.getByRole('button', { name: '选择本地视频转写' })).toBeEnabled()
     await expect(page.getByRole('button', { name: '重试保存设置' })).toHaveCount(0)
     await expect(page.getByText('本地保存', { exact: true }).first()).toBeVisible()
+    expect(reviewApi!.policyReadStatuses().at(-1)).toBe(200)
 
     reviewApi!.setAnalysisPolicy('cloud', false)
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await expect(page.getByText('云端资料存储尚未配置，请联系平台管理员。')).toBeVisible()
     await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
     await expect(page.getByRole('button', { name: '重试保存设置' })).toHaveCount(0)
+    expect(await collectErrorBanners(page)).toEqual(['无法读取资料保存设置，请检查连接后重试。'])
   } finally {
+    reviewApi!.setAnalysisPolicyUnavailable(false)
     reviewApi!.setAnalysisPolicy('local')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   }
 })
 
 test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving drafts through native HTTP failure and retry', async () => {
-  const { page } = fixture!
+  allowErrorBanners()
+  const { app, page } = fixture!
+  const host = await app.browserWindow(page)
+  await host.evaluate(win => {win.unmaximize(); win.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false); win.show(); win.focus()})
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1220)
+  const showSidebar = page.getByRole('button', { name: /^显示侧边栏/ })
+
+  if (await showSidebar.isVisible()) {await showSidebar.click()}
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   reviewApi!.setAnalysisPolicy('cloud')
   reviewApi!.setCloudSourceSnapshot('Original cloud source')
 
@@ -2402,12 +2463,15 @@ test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving
     await expect(page.getByText('Reconnected note from another device')).toBeVisible()
     await expect(page.getByRole('button', { name: '重试刷新' })).toHaveCount(0)
     await expect(page.getByRole('textbox', { name: '记录你的发现' })).toHaveValue('Unsaved note')
-    await page.getByRole('button', { name: '删除资料' }).click()
-    await expect(page.getByRole('heading', { name: 'Reconnected.txt' })).toHaveCount(0)
+    reviewApi!.setCloudSourceSnapshot(null)
+    await expect(page.getByRole('heading', { name: 'Reconnected.txt' })).toHaveCount(0, { timeout: 25_000 })
+    expect(await collectErrorBanners(page)).toEqual(['暂时无法刷新最新状态，请检查连接后重试。重试刷新'])
   } finally {
     reviewApi!.setCloudSourceSnapshot(null)
     reviewApi!.setAnalysisPolicy('local')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   }
 })
 

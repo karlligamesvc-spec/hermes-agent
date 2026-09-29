@@ -28,8 +28,8 @@ function workflowChannel(): BroadcastChannel | null {
   return channel
 }
 
-export function workflowWindowIsViewed(): boolean {
-  return document.visibilityState === 'visible' && document.hasFocus()
+export function workflowWindowIsViewed(ownerDocument: Document = document): boolean {
+  return ownerDocument.visibilityState === 'visible' && ownerDocument.hasFocus()
 }
 
 export function workflowDomainChanged(): void {
@@ -38,25 +38,29 @@ export function workflowDomainChanged(): void {
 }
 
 onMount($workflowDomainRevision, () => {
+  // Nanostores deactivates after a delay; globals can already belong to another realm.
+  const ownerWindow = window
+  const ownerDocument = document
+  const isViewed = () => workflowWindowIsViewed(ownerDocument)
   let timer: number | null = null
-  let wasViewed = workflowWindowIsViewed()
+  let wasViewed = isViewed()
   let pendingExternalChange = false
   const bus = workflowChannel()
 
   const stop = () => {
-    if (timer !== null) {window.clearInterval(timer); timer = null}
+    if (timer !== null) {ownerWindow.clearInterval(timer); timer = null}
   }
 
   const schedule = () => {
     stop()
 
-    if (workflowWindowIsViewed()) {
-      timer = window.setInterval(() => invalidate(false), WORKFLOW_DOMAIN_POLL_INTERVAL_MS)
+    if (isViewed()) {
+      timer = ownerWindow.setInterval(() => invalidate(false), WORKFLOW_DOMAIN_POLL_INTERVAL_MS)
     }
   }
 
   const sync = () => {
-    const viewed = workflowWindowIsViewed()
+    const viewed = isViewed()
 
     if (viewed && (!wasViewed || pendingExternalChange)) {
       pendingExternalChange = false
@@ -70,20 +74,20 @@ onMount($workflowDomainRevision, () => {
   const changed = (event: MessageEvent) => {
     if (event.data !== 1) {return}
 
-    if (workflowWindowIsViewed()) {invalidate()} else {pendingExternalChange = true}
+    if (isViewed()) {invalidate()} else {pendingExternalChange = true}
   }
 
   bus?.addEventListener('message', changed)
-  window.addEventListener('focus', sync)
-  window.addEventListener('blur', sync)
-  document.addEventListener('visibilitychange', sync)
+  ownerWindow.addEventListener('focus', sync)
+  ownerWindow.addEventListener('blur', sync)
+  ownerDocument.addEventListener('visibilitychange', sync)
   schedule()
 
   return () => {
     stop()
     bus?.removeEventListener('message', changed)
-    window.removeEventListener('focus', sync)
-    window.removeEventListener('blur', sync)
-    document.removeEventListener('visibilitychange', sync)
+    ownerWindow.removeEventListener('focus', sync)
+    ownerWindow.removeEventListener('blur', sync)
+    ownerDocument.removeEventListener('visibilitychange', sync)
   }
 })

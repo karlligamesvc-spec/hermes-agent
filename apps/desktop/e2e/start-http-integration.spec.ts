@@ -27,7 +27,7 @@ async function prepareStart(page: Page, brief: string) {
   await expect(page.getByRole('button', { name: '选择工作流', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '选择工作流', exact: true }).click()
   await expect(page.locator('[data-business-workflows-page]')).toBeVisible()
-  await page.getByRole('button', { name: /竞品监控/ }).click()
+  await page.getByRole('button', { name: '竞品监控 · 使用', exact: true }).click()
   const template = page.getByRole('dialog', { name: '竞品监控', exact: true })
 
   await expect(template).toBeVisible()

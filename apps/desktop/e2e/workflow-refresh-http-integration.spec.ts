@@ -60,8 +60,15 @@ async function editProject(page: Page, name: string, next: string) {
 
 async function focus(fixture: PackagedMockBackendFixture, page: Page) {
   const handle = await fixture.app.browserWindow(page)
+  await fixture.app.evaluate(({ app }) => app.focus({ steal: true }))
   await handle.evaluate(win => {win.show(); win.focus()})
   await expect.poll(() => page.evaluate(() => document.hasFocus() && document.visibilityState === 'visible')).toBe(true)
+}
+
+async function useNativeFocus(page: Page) {
+  // Playwright otherwise forces hasFocus=true even when Electron loses focus.
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: false })
 }
 
 test('mounted HTTP projections reconcile peer windows, independent clients and background writes', async ({ request }) => {
@@ -83,6 +90,8 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
 
     clients.push(receiverClient)
     await ready(receiver)
+    await useNativeFocus(receiver.page)
+    await focus(receiver, receiver.page)
     await projects(receiver.page)
     const row = receiver.page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Refresh fixture project' })
     await expect(row).toBeVisible()
@@ -92,6 +101,7 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     installErrorBannerGuard(peer)
     peerAlerts = await pageErrorHistory(peer)
     await waitForAppReady({ ...receiver, page: peer }, 120_000)
+    await useNativeFocus(peer)
     await focus(receiver, peer)
     const savePeer = await editProject(peer, 'Refresh fixture project', 'Peer window edit')
     await receiver.page.evaluate(() => {
@@ -120,8 +130,15 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
 
     clients.push(writerClient)
     await ready(writer)
+    await useNativeFocus(writer.page)
     await focus(writer, writer.page)
     const saveIndependent = await editProject(writer.page, 'Peer window edit', 'Independent client edit')
+    // Production backgroundThrottling=false keeps visibilityState=visible;
+    // native hide and real focus loss establish the background state instead.
+    const receiverWindow = await receiver.app.browserWindow(receiver.page)
+    await receiverWindow.evaluate(win => win.hide())
+    expect(await receiverWindow.evaluate(win => win.isVisible())).toBe(false)
+    await expect.poll(() => receiver.page.evaluate(() => document.hasFocus())).toBe(false)
     const progress = async () => (await request.get(`${input.base}/fixture/read-progress`)).json() as Promise<{ finished: number; pending: number }>
     await expect.poll(async () => (await progress()).pending).toBe(0)
     const beforeFocus = (await progress()).finished
@@ -156,8 +173,8 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     writerClient.closed = true
 
     // A real read503 retains confirmed rows, surfaces the error and retries through native HTTP.
-    const receiverWindow = await receiver.app.browserWindow(receiver.page)
-    await receiverWindow.evaluate(win => win.blur())
+    await receiverWindow.evaluate(win => win.hide())
+    expect(await receiverWindow.evaluate(win => win.isVisible())).toBe(false)
     await expect.poll(() => receiver.page.evaluate(() => document.hasFocus())).toBe(false)
     expect((await request.post(`${input.base}/fixture/fail-project-read`)).status()).toBe(200)
     await focus(receiver, receiver.page)
@@ -171,10 +188,15 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     await expect(receiver.page.locator('[data-workflow-project-list]')).toContainText('Independent client edit')
 
     const actual = await receiver.page.evaluate(input => (window as RefreshWindow).hermesDesktop!.workflowDomain.getProject!(input.projectId), input)
-    expect(actual.item).toMatchObject({ id: input.projectId, name: 'Independent client edit', status: 'active', summary: { currentRunId: input.runId, currentRunStatus: 'succeeded' } })
+    expect(actual.item).toMatchObject({ id: input.projectId, name: 'Independent client edit', status: 'active' })
+    // The list projection supplies the aggregate; canonical detail does not.
+    const actualList = await receiver.page.evaluate(() => (window as RefreshWindow).hermesDesktop!.workflowDomain.listProjects!())
+    expect(actualList.items?.find(project => project.id === input.projectId)).toMatchObject({
+      id: input.projectId, summary: { currentRunId: input.runId, currentRunStatus: 'succeeded' }
+    })
     fs.writeFileSync(path.join(path.dirname(input.output), 'workflow-refresh-ui.png'), await receiver.page.screenshot())
     fs.writeFileSync(input.output, JSON.stringify({ roots: clients.map(client => client.fixture.sandbox.userDataDir), signals, peerElapsed,
-      independentElapsed, actual, expectedErrors: clients.map(client => client.expectedErrors) }))
+      independentElapsed, actual, actualList, expectedErrors: clients.map(client => client.expectedErrors) }))
     completed = true
   } finally {
     const peerErrors = await peerAlerts?.() ?? []
