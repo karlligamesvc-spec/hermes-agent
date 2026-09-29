@@ -31,6 +31,7 @@ import {
 
 import { overviewEvidence } from '../shared/analysis-video-overview'
 
+import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId } from './apex-account-boundary'
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -19416,7 +19417,7 @@ function clearManagedRelayCredential() {
 // and never throws — a persist hiccup must not fail the request the user made.
 // Skips when: managed isn't signed in (no stored key), there is no existing login
 // JWT to slide (env-key path stores none), or the token is unchanged.
-function persistRenewedLoginToken(token) {
+function persistRenewedLoginToken(token, requestBearer: string) {
   try {
     const next = String(token || '').trim()
 
@@ -19430,7 +19431,7 @@ function persistRenewedLoginToken(token) {
       return false
     }
 
-    if (next === managed.accessToken) {
+    if (!canApplyManagedRenewal(managed.accessToken, requestBearer, next)) {
       return false
     }
 
@@ -21051,7 +21052,7 @@ function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_0
 
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
 
         if (!text) {
           resolve(null)
@@ -21149,7 +21150,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
 
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
 
         if (!text) {
           resolve(null)
@@ -21277,7 +21278,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
           return
         }
 
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
         resolve(body)
       })
     })
@@ -22173,7 +22174,7 @@ function analysisUploadFile(url: string, bearer: string, filename: string, bytes
           return
         }
 
-        persistRenewedLoginToken(renewedTokenFromHeaders(response.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(response.headers), bearer)
 
         try { resolve(JSON.parse(text)) } catch { reject(new Error('analysis_invalid_response')) }
       })
@@ -22188,34 +22189,31 @@ function analysisUploadFile(url: string, bearer: string, filename: string, bytes
   })
 }
 
-function analysisUserIdFromToken(token: string): string | null {
-  try {
-    const subject = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))?.sub
-
-    return /^[0-9a-f-]{36}$/i.test(String(subject || '')) ? String(subject) : null
-  } catch {
-    return null
-  }
-}
-
 async function analysisIpcContext(needPolicy = false) {
   const context = workflowDomainIpcContext()
 
   if (!context) {throw new Error('sign_in')}
   const bearer = String(resolveManagedConfig().accessToken || '')
-  const userId = analysisUserIdFromToken(bearer)
+  const userId = managedAccountId(bearer)
 
   if (!userId) {throw new Error('sign_in')}
+  const account = analysisAccountBoundary(userId, () => managedAccountId(resolveManagedConfig().accessToken))
 
   // Local reads/notes keep working offline. New imports still fetch the current
   // server policy, and all cloud operations are authorized by the server.
   const policy: any = needPolicy
-    ? await context.transport.getJson(`${context.apiBase}/api/v1/account/analysis/storage-policy`)
+    ? await account.run(() => context.transport.getJson(`${context.apiBase}/api/v1/account/analysis/storage-policy`))
     : { user_id: userId, mode: 'local', cloud_storage_configured: false }
 
   if (String(policy?.user_id || '').toLowerCase() !== userId.toLowerCase()) {throw new Error('analysis_policy_unavailable')}
 
-  return { ...context, policy, root: app.getPath('userData'), url: `${context.apiBase}/api/v1/account/analysis/documents`, bearer }
+  account.assertCurrent()
+
+  return { ...context, ...account, transport: {
+    getJson: (url: string) => account.run(() => context.transport.getJson(url)),
+    postJson: (url: string, body: unknown) => account.run(() => context.transport.postJson(url, body)),
+    patchJson: (url: string, body: unknown) => account.run(() => context.transport.patchJson(url, body))
+  }, policy, root: app.getPath('userData'), url: `${context.apiBase}/api/v1/account/analysis/documents`, bearer }
 }
 
 function analysisIpcError(error: any): string {
@@ -22247,7 +22245,7 @@ async function processLocalAnalysisDocument(context: Awaited<ReturnType<typeof a
   let errorCode = 'parse_failed'
 
   try {
-    parsed = await analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes)
+    parsed = await context.run(() => analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes))
     const current = await analysisIpcContext(true)
 
     if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
@@ -22285,13 +22283,15 @@ ipcMain.handle('hermes:analysis:list', async () => {
       cloud = (remote.items || []).map(item => ({ ...item, storageMode: 'cloud' }))
     } catch { cloudUnavailable = true }
 
+    context.assertCurrent()
+
     return { ok: true, cloudUnavailable, items: [...local, ...cloud].sort((a, b) => String(b.createdAt || b.created_at).localeCompare(String(a.createdAt || a.created_at))) }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
 
 ipcMain.handle('hermes:analysis:import', async event => {
   try {
-    await analysisIpcContext(true)
+    const initial = await analysisIpcContext(true)
     const ownerWindow = BrowserWindow.fromWebContents(event.sender)
 
     const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
@@ -22300,6 +22300,7 @@ ipcMain.handle('hermes:analysis:import', async event => {
     })
 
     if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+    initial.assertCurrent()
     const filePath = chosen.filePaths[0]
     const size = fs.statSync(filePath).size
 
@@ -22308,9 +22309,10 @@ ipcMain.handle('hermes:analysis:import', async event => {
     const bytes = fs.readFileSync(filePath)
     const filename = path.basename(filePath)
     const context = await analysisIpcContext(true)
+    initial.assertCurrent()
 
     if (context.policy.mode === 'cloud') {
-      const response = await analysisUploadFile(context.url, context.bearer, filename, bytes)
+      const response = await context.run(() => analysisUploadFile(context.url, context.bearer, filename, bytes))
 
       return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
     }
@@ -22346,7 +22348,7 @@ ipcMain.handle('hermes:analysis:pollFeishu', async (_event, flowId) => {
 ipcMain.handle('hermes:analysis:forgetFeishu', async () => {
   try {
     const context = await analysisIpcContext()
-    await apexAuthDeleteJson(`${context.url}/feishu/authorize`, { bearer: context.bearer })
+    await context.run(() => apexAuthDeleteJson(`${context.url}/feishu/authorize`, { bearer: context.bearer }))
 
     return { ok: true }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
@@ -22397,9 +22399,9 @@ ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) 
 
     if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
 
-    const response: any = await apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
+    const response: any = await context.run(() => apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
       body: { url, storage_mode: context.policy.mode }, bearer: context.bearer, timeoutMs: 1_850_000
-    })
+    }))
 
     const current = await analysisIpcContext(true)
 
@@ -22440,13 +22442,13 @@ ipcMain.handle('hermes:analysis:uploadVideo', async event => {
       return { ok: false, code: 'analysis_policy_changed' }
     }
 
-    const response = await uploadAnalysisVideo(
+    const response = await context.run(() => uploadAnalysisVideo(
       `${context.apiBase}/api/v1/account/analysis/video-links/upload-transcribe`,
       context.bearer, chosen.filePaths[0], context.policy.mode,
       (url, init) => electronNet.fetch(url, init)
-    )
+    ))
 
-    persistRenewedLoginToken(response.renewedToken)
+    persistRenewedLoginToken(response.renewedToken, context.bearer)
 
     const current = await analysisIpcContext(true)
 
@@ -22502,7 +22504,7 @@ async function analysisDerivedContext(id: string, scope: string, write = true) {
   if (!source) {throw new Error('source_not_found')}
 
   // Policy/network awaits may outlive a sign-out. Never return old-account text to the new renderer.
-  if (analysisUserIdFromToken(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+  if (managedAccountId(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
 
   const item = { ...localAnalysisForRenderer(source), analysis_scope: scope,
     analysis_revision: local ? localOverviewRevision(source) : source.analysis_revision }
@@ -22536,7 +22538,7 @@ ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overvie
       ? saveLocalVideoOverview(context.root, scope, id, overview)
       : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/video-overviews`, overview) as any).item
 
-    if (analysisUserIdFromToken(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+    if (managedAccountId(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
 
     return { ok: true, item }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
@@ -22544,7 +22546,7 @@ ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overvie
 
 const sourceAnswerHandlers = createSourceAnswerHandlers({
   context: analysisDerivedContext,
-  currentAccount: () => analysisUserIdFromToken(resolveManagedConfig().accessToken),
+  currentAccount: () => managedAccountId(resolveManagedConfig().accessToken),
   error: analysisIpcError
 })
 
@@ -22553,7 +22555,7 @@ ipcMain.handle('hermes:analysis:saveAnswer', sourceAnswerHandlers.saveAnswer)
 
 const deepReportHandlers = createDeepReportHandlers({
   context: analysisDerivedContext,
-  currentAccount: () => analysisUserIdFromToken(resolveManagedConfig().accessToken),
+  currentAccount: () => managedAccountId(resolveManagedConfig().accessToken),
   error: analysisIpcError,
   deleteCloud: (context, url) => apexAuthDeleteJson(url, { bearer: context.bearer }),
   chooseFile: async (event: any) => {
@@ -22612,7 +22614,7 @@ ipcMain.handle('hermes:analysis:deleteNote', async (_event, id, noteId) => {
 
     const ok = String(id).startsWith('local-')
       ? removeLocalNote(context.root, context.policy.user_id, id, noteId)
-      : Boolean(await apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, { bearer: context.bearer }))
+      : Boolean(await context.run(() => apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, { bearer: context.bearer })))
 
     return { ok }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
@@ -22644,7 +22646,7 @@ ipcMain.handle('hermes:analysis:delete', async (_event, id) => {
 
     const ok = String(id).startsWith('local-')
       ? deleteLocalDocument(context.root, context.policy.user_id, id)
-      : Boolean(await apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}`, { bearer: context.bearer }))
+      : Boolean(await context.run(() => apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}`, { bearer: context.bearer })))
 
     if (ok) {deleteAnalysisWorkspace(context.root, context.policy.user_id, id)}
 
@@ -22695,9 +22697,9 @@ ipcMain.handle('hermes:analysis:previewPdf', async (_event, id) => {
     } else {
       if (!/^[0-9a-f-]{36}$/i.test(sourceId)) {return { ok: false, code: 'source_not_found' }}
 
-      bytes = await apexAuthGetBuffer(`${context.url}/${sourceId}/preview`, {
+      bytes = await context.run(() => apexAuthGetBuffer(`${context.url}/${sourceId}/preview`, {
         bearer: context.bearer, maxBytes: 15 * 1024 * 1024
-      })
+      }))
     }
 
     if (!bytes.length || !bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {

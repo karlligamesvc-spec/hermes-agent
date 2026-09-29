@@ -10,6 +10,7 @@ import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server
 import type { SourceAnswerInput } from '../shared/analysis-answer'
 import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
+import { verifyAccountIsolation, verifyPickerAccountIsolation } from './analysis-account-isolation'
 import { verifyAnalysisChatLink } from './analysis-chat-link'
 import { verifySourceAnswer } from './analysis-source-answer'
 import { verifyWorkspaceReport } from './analysis-workspace-report'
@@ -395,6 +396,9 @@ const reviewRun = {
 }
 
 async function startPhase1ReviewApi() {
+  let loginUserId = ANALYSIS_REVIEW_USER_ID
+  const tokenFor = (id: string) => `local.${Buffer.from(JSON.stringify({ sub: id })).toString('base64url')}.review`
+  let heldResponse: { path: string; received: () => void; send?: () => void; renewedToken?: string } | null = null
   let lastReview: null | Record<string, unknown> = null
   let relayBaseUrl = ''
   let runAvailable = true
@@ -415,13 +419,19 @@ async function startPhase1ReviewApi() {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
 
     const json = (status: number, body: unknown) => {
-      response.writeHead(status, { 'content-type': 'application/json' })
-      response.end(JSON.stringify(body))
+      const held = heldResponse?.path === url.pathname ? heldResponse : null
+
+      const send = () => {
+        response.writeHead(status, { 'content-type': 'application/json', ...(held?.renewedToken ? { 'X-Apex-Renewed-Token': held.renewedToken } : {}) })
+        response.end(JSON.stringify(body))
+      }
+
+      if (held) { held.send = send; held.received() } else { send() }
     }
 
     if (request.method === 'POST' && url.pathname === '/api/v1/auth/login') {
       json(200, {
-        access_token: ANALYSIS_REVIEW_TOKEN,
+        access_token: tokenFor(loginUserId),
         email: 'phase1-review@local.test',
         name: '本地 UI 评审',
         plan: 'review'
@@ -444,7 +454,9 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/storage-policy') {
-      json(200, { user_id: ANALYSIS_REVIEW_USER_ID, mode: analysisMode, cloud_storage_configured: cloudStorageConfigured })
+      const token = String(request.headers.authorization || '').replace(/^Bearer /, '')
+      const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))
+      json(200, { user_id: claims.sub, mode: analysisMode, cloud_storage_configured: cloudStorageConfigured, fixture_renewed: Boolean(claims.renewed) })
 
       return
     }
@@ -837,6 +849,19 @@ async function startPhase1ReviewApi() {
   return {
     close: () => new Promise<void>(resolve => server.close(() => resolve())),
     getLastReview: () => lastReview,
+    setLoginUser: (id: string) => { loginUserId = id },
+    seedAccountSource: () => {
+      cloudDocument = { id: ANALYSIS_REVIEW_CLOUD_ID, filename: 'account-private.txt', kind: 'text', status: 'ready',
+        created_at: '2026-09-29T01:00:00Z', anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'Owner-only fixture text' }] }
+    },
+    holdAnalysisResponse: (suffix: string, renew = false) => {
+      let received!: () => void
+      const pending = new Promise<void>(resolve => { received = resolve })
+      heldResponse = { path: `/api/v1/account/analysis/${suffix}`, received,
+        ...(renew ? { renewedToken: `local.${Buffer.from(JSON.stringify({ sub: ANALYSIS_REVIEW_USER_ID, renewed: true })).toString('base64url')}.review` } : {}) }
+
+      return { received: pending, release: () => { const held = heldResponse; heldResponse = null; held?.send?.() } }
+    },
     setRelayBaseUrl: (value: string) => {
       relayBaseUrl = value
     },
@@ -2520,3 +2545,12 @@ for (const outcome of ['error', 'interrupted'] as const) {
     await verifyAnalysisChatLink(fixture!, outcome)
   })
 }
+
+
+test('hc-894 packaged account switch rejects old analysis responses and renewal headers', async () => {
+  await verifyAccountIsolation(fixture!.app, fixture!.page, reviewApi!, ANALYSIS_REVIEW_USER_ID, ANALYSIS_REVIEW_CLOUD_ID)
+})
+
+test('hc-894 packaged document picker never retargets an in-flight import to the next account', async () => {
+  await verifyPickerAccountIsolation(fixture!.app, fixture!.page, reviewApi!, ANALYSIS_REVIEW_USER_ID)
+})
