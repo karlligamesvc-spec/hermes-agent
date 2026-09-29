@@ -36,7 +36,14 @@ describe('video deep breakdown handoff', () => {
 
     expect(draft).toContain('在聊天中附上原视频')
     expect(draft).toContain('以下只包含部分原文')
-    expect(draft).not.toContain('第 80 段真实口播')
+    expect(draft).toContain('第 1 段真实口播')
+    expect(draft).toContain('第 40 段真实口播')
+    expect(draft).toContain('第 80 段真实口播')
+    const excerpts = draft.split('<source-transcript>\n')[1].split('\n</source-transcript>')[0]
+    const excerptStarts = [...excerpts.matchAll(/^\[(\d+):(\d+)–/gm)].map(([, minutes, seconds]) => Number(minutes) * 60 + Number(seconds))
+
+    expect(excerptStarts).toEqual([...excerptStarts].sort((left, right) => left - right))
+    expect(excerptStarts.length).toBeLessThan(anchors.length)
     expect(draft.length).toBeLessThanOrEqual(4000)
     for (const locale of ['zh', 'zh-hant', 'en', 'ja', 'ar'] as const) {
       expect(videoDeepBreakdownDraft(source(anchors), locale)!.length).toBeLessThanOrEqual(4000)

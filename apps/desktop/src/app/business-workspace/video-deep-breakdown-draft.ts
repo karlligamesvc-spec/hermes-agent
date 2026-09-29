@@ -93,22 +93,43 @@ export function videoDeepBreakdownDraft(document: AnalysisDocument, locale: Vide
     return typeof start === 'number' && Number.isFinite(start) && start >= 0 &&
       typeof end === 'number' && Number.isFinite(end) && end > start && Boolean(anchor.text.trim())
   }).sort((a, b) => Number(a.location.start_seconds) - Number(b.location.start_seconds))
-  const lines: string[] = []
+  const lines = new Map<number, string>()
   const suffix = '\n</source-transcript>'
   const transcriptBudget = Math.max(0, 3900 - prefix.length - suffix.length - copy.partial.length - frameNote.length - 8)
   let used = 0
 
-  for (const anchor of timed) {
+  // Give the beginning, end and successively smaller spans a chance at the
+  // bounded draft. A prefix-only fit hides the end of every long video.
+  const order = [0]
+
+  if (timed.length > 1) {
+    order.push(timed.length - 1)
+    const spans: Array<[number, number]> = [[0, timed.length - 1]]
+
+    for (let cursor = 0; cursor < spans.length; cursor += 1) {
+      const [left, right] = spans[cursor]
+      const middle = Math.floor((left + right) / 2)
+
+      if (middle <= left) {continue}
+
+      order.push(middle)
+      spans.push([left, middle], [middle, right])
+    }
+  }
+
+  for (const index of order) {
+    const anchor = timed[index]
     const text = anchor.text.trim().replace(/\s+/g, ' ')
     const line = `[${stamp(Number(anchor.location.start_seconds))}–${stamp(Number(anchor.location.end_seconds))}] ${JSON.stringify(text.slice(0, 350))}${text.length > 350 ? ' …' : ''}`
 
-    if (used + line.length + 1 > transcriptBudget) {break}
+    if (used + line.length + 1 > transcriptBudget) {continue}
 
-    lines.push(line)
+    lines.set(index, line)
     used += line.length + 1
   }
 
-  const partial = lines.length < timed.length || timed.some(anchor => anchor.text.trim().length > 350)
+  const partial = lines.size < timed.length || timed.some(anchor => anchor.text.trim().length > 350)
+  const excerpts = [...lines.entries()].sort(([left], [right]) => left - right).map(([, line]) => line)
 
-  return `${prefix}${lines.join('\n')}${suffix}${partial ? `\n\n${copy.partial}` : ''}${frameNote ? `\n\n${frameNote}` : ''}`
+  return `${prefix}${excerpts.join('\n')}${suffix}${partial ? `\n\n${copy.partial}` : ''}${frameNote ? `\n\n${frameNote}` : ''}`
 }
