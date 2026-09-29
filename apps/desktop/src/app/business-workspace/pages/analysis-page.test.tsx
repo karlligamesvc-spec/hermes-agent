@@ -3,9 +3,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
 
+import type * as VideoFrameEvidenceModule from '../video-frame-evidence'
+import { sampleVideoFrames } from '../video-frame-evidence'
+
 import { AnalysisView } from './analysis-page'
 
 vi.mock('@/i18n', () => ({ useI18n: () => ({ locale: 'zh' }) }))
+vi.mock('../video-frame-evidence', async importOriginal => {
+  const actual = await importOriginal<typeof VideoFrameEvidenceModule>()
+
+  return { ...actual, sampleVideoFrames: vi.fn(actual.sampleVideoFrames) }
+})
 
 afterEach(() => {
   cleanup()
@@ -275,6 +283,48 @@ describe('document analysis evidence', () => {
     fireEvent.click(screen.getByRole('button', { name: /other.srt/ }))
     await screen.findByRole('heading', { name: 'other.srt' })
     expect(screen.queryByRole('region', { name: '本次查看的画面截图' })).toBeNull()
+  })
+
+  it('samples paired video frames when deep breakdown is requested, then sends only decoded evidence to the draft', async () => {
+    const createObjectURL = vi.fn().mockReturnValueOnce('blob:chosen-video').mockReturnValueOnce('blob:other-video')
+    vi.stubGlobal('URL', class extends URL { static createObjectURL = createObjectURL; static revokeObjectURL = vi.fn() })
+    const video = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
+      anchors: [
+        { id: 'a1', location: { start_seconds: 1, end_seconds: 3 }, text: 'opening speech' },
+        { id: 'a2', location: { start_seconds: 5, end_seconds: 7 }, text: 'middle speech' },
+        { id: 'a3', location: { start_seconds: 9, end_seconds: 11 }, text: 'closing speech' }
+      ], notes: [], questions: [] }
+    window.hermesDesktop = { analysisDocuments: {
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      list: vi.fn().mockResolvedValue({ ok: true, items: [video] }),
+      get: vi.fn().mockResolvedValue({ ok: true, item: video })
+    } } as never
+    vi.mocked(sampleVideoFrames).mockResolvedValueOnce([
+      { seconds: 1.25, dataUrl: 'data:image/jpeg;base64,YQ==' },
+      { seconds: 5.25, dataUrl: 'data:image/jpeg;base64,Yg==' }
+    ])
+    const onDeepBreakdown = vi.fn()
+
+    render(<AnalysisView onDeepBreakdown={onDeepBreakdown} />)
+    fireEvent.click(await screen.findByRole('button', { name: /clip.srt/ }))
+    await screen.findByRole('heading', { name: 'clip.srt' })
+    fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [new File(['video'], 'clip.mp4', { type: 'video/mp4' })] } })
+    expect(screen.getByText(/将从手动配对的本地视频抽取最多 3 张画面/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '准备深度拆解' }))
+
+    await waitFor(() => expect(onDeepBreakdown).toHaveBeenCalledOnce())
+    expect(sampleVideoFrames).toHaveBeenCalledWith('blob:chosen-video', [1.25, 5.25, 9.25])
+    expect(onDeepBreakdown.mock.calls[0][2].map((frame: { seconds: number }) => frame.seconds)).toEqual([1.25, 5.25])
+    expect(within(screen.getByRole('region', { name: '本次查看的画面截图' })).getAllByRole('img')).toHaveLength(2)
+
+    fireEvent.change(screen.getByLabelText('选择本地视频播放'), { target: { files: [new File(['bad'], 'other.mp4', { type: 'video/mp4' })] } })
+    vi.mocked(sampleVideoFrames).mockResolvedValueOnce([])
+    fireEvent.click(screen.getByRole('button', { name: '准备深度拆解' }))
+    await waitFor(() => expect(onDeepBreakdown).toHaveBeenCalledTimes(2))
+    expect(sampleVideoFrames).toHaveBeenLastCalledWith('blob:other-video', [1.25, 5.25, 9.25])
+    expect(onDeepBreakdown.mock.calls[1][2]).toEqual([])
+    expect(screen.getByRole('alert').textContent).toContain('当前画面无法截取')
   })
 
   it('does not seek past the selected video duration or turn an invalid file into a player', async () => {

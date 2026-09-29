@@ -2053,12 +2053,15 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(goalWithFrame).toHaveValue(/已附画面截图/)
   await expect(goalWithFrame).toHaveValue(/0:01\.0/)
   await expect(page.locator('[data-slot="composer-attachments"]')).toContainText(/apex-frame-1-0s_[a-f0-9]{6}\.jpg/)
+  await expect(page.getByRole('button', { name: /移除.*apex-frame-.*\.jpg/ })).toHaveCount(2)
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
 
-  await page.getByRole('button', { name: /移除.*apex-frame-1-0s_[a-f0-9]{6}\.jpg/ }).click()
+  for (let index = 0; index < 2; index++) {
+    await page.getByRole('button', { name: /移除.*apex-frame-.*\.jpg/ }).first().click()
+  }
   await expect(goalWithFrame).not.toHaveValue(/已附画面截图/)
   await expect(goalWithFrame).not.toHaveValue(/0:01\.0/)
-  await expect(goalWithFrame).toHaveValue(/已从草稿移除 1 张截图/)
+  await expect(goalWithFrame).toHaveValue(/已从草稿移除 2 张截图/)
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
 
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
