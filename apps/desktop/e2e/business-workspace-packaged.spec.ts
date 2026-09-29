@@ -21,6 +21,29 @@ const ANALYSIS_REVIEW_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const ANALYSIS_REVIEW_TOKEN = `local.${Buffer.from(JSON.stringify({ sub: ANALYSIS_REVIEW_USER_ID })).toString('base64url')}.review`
 const ANALYSIS_REVIEW_VIDEO_URL = 'https://www.iesdouyin.com/share/video/123456'
 const ANALYSIS_REVIEW_CLOUD_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const ANALYSIS_FORMAT_SAMPLES = [
+  {
+    filename: 'analysis-review.pdf', kind: 'pdf', question: 'Revenue?', citation: '第 2 页',
+    anchorId: 'a2', evidence: 'Revenue 423 units',
+    anchors: [
+      { id: 'a1', location: { page: 1 }, text: 'Quarterly report' },
+      { id: 'a2', location: { page: 2 }, text: 'Revenue 423 units' }
+    ]
+  },
+  {
+    filename: 'analysis-review.docx', kind: 'word', question: 'Launch?', citation: '第 2 段',
+    anchorId: 'a2', evidence: 'Launch in October',
+    anchors: [
+      { id: 'a1', location: { paragraph: 1, heading: 'Plan' }, text: 'Plan' },
+      { id: 'a2', location: { paragraph: 2, heading: 'Plan' }, text: 'Launch in October' }
+    ]
+  },
+  {
+    filename: 'analysis-review.xlsx', kind: 'excel', question: 'North?', citation: 'Forecast · C7',
+    anchorId: 'a1', evidence: 'North region',
+    anchors: [{ id: 'a1', location: { sheet: 'Forecast', cell: 'C7' }, text: 'North region' }]
+  }
+] as const
 
 async function openWorkflowCatalog(page: Page) {
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
@@ -540,7 +563,24 @@ async function startPhase1ReviewApi() {
 
       for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
 
-      const upload = Buffer.concat(chunks).toString('utf8')
+      const uploadBytes = Buffer.concat(chunks)
+      const sample = ANALYSIS_FORMAT_SAMPLES.find(item => uploadBytes.includes(Buffer.from(`filename="${item.filename}"`)))
+
+      if (sample) {
+        const originalBytes = fs.readFileSync(path.resolve(import.meta.dirname, 'media', sample.filename))
+
+        if (request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}` || !uploadBytes.includes(originalBytes)) {
+          json(400, { detail: { code: 'invalid_analysis_review_upload' } })
+
+          return
+        }
+
+        json(200, { filename: sample.filename, user_id: ANALYSIS_REVIEW_USER_ID, kind: sample.kind, parse_version: 1, anchors: sample.anchors })
+
+        return
+      }
+
+      const upload = uploadBytes.toString('utf8')
 
       if (request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}` ||
         !upload.includes('filename="local-review-document.txt"') ||
@@ -2184,5 +2224,72 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
       delete host.restoreCloudAnalysisDialog
     })
     fs.rmSync(sourceDirectory, { recursive: true, force: true })
+  }
+})
+
+test('hc-880 packaged PDF Word and Excel imports keep real file bytes and cited locations', async () => {
+  const { app, page } = fixture!
+
+  try {
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+
+    for (const sample of ANALYSIS_FORMAT_SAMPLES) {
+      const selectedPath = path.resolve(import.meta.dirname, 'media', sample.filename)
+
+      await app.evaluate(({ dialog }, filePath) => {
+        const host = globalThis as typeof globalThis & { restoreFormatAnalysisDialog?: () => void }
+
+        if (!host.restoreFormatAnalysisDialog) {
+          const original = dialog.showOpenDialog
+
+          host.restoreFormatAnalysisDialog = () => { dialog.showOpenDialog = original }
+        }
+
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filePath] })
+      }, selectedPath)
+      await page.getByRole('button', { name: '导入文档或字幕' }).click()
+      await expect(page.getByRole('heading', { name: sample.filename })).toBeVisible()
+      await expect(page.locator(`#analysis-anchor-${sample.anchorId}`)).toContainText(sample.evidence)
+
+      const listed = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+      const item = listed?.items?.find(source => source.filename === sample.filename)
+
+      expect(item?.storageMode).toBe('local')
+      expect(item?.kind).toBe(sample.kind)
+      expect(item?.status).toBe('ready')
+      expect(item?.id).toMatch(/^local-/)
+
+      await page.getByRole('textbox', { name: '针对当前资料提问' }).fill(sample.question)
+      await page.getByRole('button', { name: '查找证据' }).click()
+      const citation = page.getByRole('button', { name: `查看出处 · ${sample.citation}` })
+
+      await expect(citation).toBeVisible()
+      await page.locator(`#analysis-anchor-${sample.anchorId}`).evaluate(element => {
+        element.scrollIntoView = () => { element.setAttribute('data-jumped', 'true') }
+      })
+      await citation.click()
+      await expect(page.locator(`#analysis-anchor-${sample.anchorId}`)).toHaveAttribute('data-jumped', 'true')
+
+      if (sample.kind === 'pdf') {
+        await expect(page.getByRole('heading', { name: 'PDF 原件 · 第 2 页' })).toBeVisible()
+        await expect(page.getByTitle('PDF 原件')).toHaveAttribute('src', /#page=2$/)
+      }
+
+      await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+      await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+      await page.getByRole('button', { name: new RegExp(sample.filename.replaceAll('.', '\\.')) }).click()
+      await expect(page.getByRole('button', { name: `查看出处 · ${sample.citation}` })).toBeVisible()
+      await expect(page.locator(`#analysis-anchor-${sample.anchorId}`)).toContainText(sample.evidence)
+      await page.getByRole('button', { name: '删除资料' }).click()
+      await expect(page.getByRole('button', { name: new RegExp(sample.filename.replaceAll('.', '\\.')) })).toHaveCount(0)
+    }
+  } finally {
+    await app.evaluate(() => {
+      const host = globalThis as typeof globalThis & { restoreFormatAnalysisDialog?: () => void }
+
+      host.restoreFormatAnalysisDialog?.()
+      delete host.restoreFormatAnalysisDialog
+    })
   }
 })
