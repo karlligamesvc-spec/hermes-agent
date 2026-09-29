@@ -136,11 +136,16 @@ function invalidateAuthRefresh() {
   refreshPromise = null
 }
 
-export function refreshChangedAccount() {
+export function refreshChangedAccount(waitForSignIn = false) {
   invalidateAuthRefresh()
   writeCachedSignedIn(false)
-  patch({ accountId: null, account: EMPTY_ACCOUNT, gateReason: null, status: 'checking' })
-  void refreshAuthStatus()
+  patch({ enabled: null, accountId: null, account: EMPTY_ACCOUNT, gateReason: null,
+    status: waitForSignIn ? 'signed-out' : 'checking' })
+
+  // Provisioning may publish a credential before this window has applied the
+  // model assignment and checked its runtime. Its existing completion owns the
+  // gate; another window or a direct native sign-in can reconcile immediately.
+  if (!waitForSignIn) {void refreshAuthStatus()}
 }
 
 // Read the managed status via the desktop bridge and reconcile the gate.

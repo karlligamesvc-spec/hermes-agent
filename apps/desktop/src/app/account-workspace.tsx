@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { Fragment, type ReactNode, useEffect } from 'react'
 
 import { $authState, refreshAuthStatus, refreshChangedAccount } from '@/store/auth'
+import { $desktopOnboarding } from '@/store/onboarding'
 
 interface AccountWorkspaceProps {
   children: ReactNode
@@ -25,7 +26,10 @@ export function AccountWorkspace({ children }: AccountWorkspaceProps) {
 /** Both shells, including secondary windows, follow the native credential owner. */
 export function useManagedAccountChanges() {
   useEffect(() => {
-    const unsubscribe = window.hermesDesktop?.onManagedAccountChanged?.(refreshChangedAccount)
+    const unsubscribe = window.hermesDesktop?.onManagedAccountChanged?.(() => {
+      refreshChangedAccount($desktopOnboarding.get().managedSubmitting)
+    })
+
     void refreshAuthStatus()
 
     return unsubscribe

@@ -18,6 +18,7 @@ interface AccountApi {
 
 export async function verifyAccountWorkspaceReset(app: ElectronApplication, page: Page, api: AccountApi, owner: string) {
   const other = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
   api.seedAccountSource()
   await page.getByRole('button', { name: '沉浸式分析', exact: true }).click()
   await page.getByRole('button', { name: /account-private.txt/ }).click()

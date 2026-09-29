@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import type { DesktopManagedStatus } from '@/global'
-import { $authState, handleAuthGate, markSignedIn, refreshAuthStatus, signOutAccount } from '@/store/auth'
+import { $authState, handleAuthGate, markSignedIn, refreshAuthStatus, refreshChangedAccount, signOutAccount } from '@/store/auth'
 
 import { AccountWorkspace } from './account-workspace'
 
@@ -40,6 +40,9 @@ it('resets account-owned view memory across logout and UUID changes, preserving 
   expect((screen.getByLabelText('account draft') as HTMLInputElement).value).toBe('')
   act(() => $authState.set({ ...base, enabled: false, status: 'signed-out' }))
   expect((screen.getByLabelText('account draft') as HTMLInputElement).value).toBe('')
+  act(() => refreshChangedAccount(true))
+  expect(screen.queryByLabelText('account draft')).toBeNull()
+  expect($authState.get()).toMatchObject({ status: 'signed-out', enabled: null, accountId: null })
 })
 
 it('never lets an old status read or its finally overwrite a completed logout or a newer sign-in refresh', async () => {
