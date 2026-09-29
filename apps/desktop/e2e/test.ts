@@ -13,7 +13,7 @@
  * per-spec setup needed.
  */
 
-import { test as base, expect, type Page, type ElectronApplication, _electron } from '@playwright/test'
+import { _electron, test as base, type ElectronApplication, expect, type Page } from '@playwright/test'
 
 // Track error messages per test so afterEach can assert + report.
 const seenErrors: string[] = []
@@ -51,6 +51,7 @@ export function installErrorBannerGuard(page: Page): void {
   // We inject this via addInitScript so it runs before any app code.
   page.addInitScript(() => {
     const seen: string[] = []
+
     ;(window as unknown as { __ERROR_BANNER_GUARD__?: string[] }).__ERROR_BANNER_GUARD__ = seen
 
     const observer = new MutationObserver(() => {
@@ -121,9 +122,9 @@ export async function collectErrorBanners(page: Page | null): Promise<string[]> 
 // Extended test fixture: wraps the default page with the error guard.
 export const test = base.extend({
   // Override the page fixture to auto-install the guard.
-  page: async ({ page }, use) => {
+  page: async ({ page }, runTest) => {
     installErrorBannerGuard(page)
-    await use(page)
+    await runTest(page)
   },
 })
 
@@ -136,18 +137,25 @@ export const test = base.extend({
 // Uses `activePage` (set by installErrorBannerGuard) instead of the
 // default `page` fixture — Electron tests create their own page via
 // app.firstWindow(), so the default `page` fixture is undefined.
+// Playwright requires fixture parameters to use object destructuring, even with no fixtures.
+// eslint-disable-next-line no-empty-pattern
 base.afterEach(async ({}, testInfo) => {
   const wasAllowed = errorBannersAllowed
   // Reset for the next test.
   errorBannersAllowed = false
 
-  if (wasAllowed) {
-    // Test opted out — clear any collected errors without asserting.
-    seenErrors.length = 0
-    return
-  }
+  const errors = wasAllowed ? [] : await collectErrorBanners(activePage)
 
-  const errors = await collectErrorBanners(activePage)
+  // Packaged suites can reuse one renderer across tests. Reset both histories
+  // after checking this test, including expected-error tests. Mutate the array
+  // in place because the observer closes over it. Keep DOM alerts intact: an
+  // error still visible in the next test must still be reported.
+  seenErrors.length = 0
+  await activePage?.evaluate(() => {
+    const history = (window as unknown as { __ERROR_BANNER_GUARD__?: string[] }).__ERROR_BANNER_GUARD__
+
+    if (history) {history.length = 0}
+  }).catch(() => undefined)
 
   if (errors.length > 0) {
     throw new Error(
@@ -163,4 +171,4 @@ base.afterAll(async () => {
   activePage = null
 })
 
-export { expect, type Page, type ElectronApplication, _electron }
+export { _electron, type ElectronApplication, expect, type Page }
