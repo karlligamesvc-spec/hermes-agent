@@ -898,11 +898,6 @@ test.afterAll(async () => {
   reviewApi = null
 })
 
-test('hc-889 packaged cron records actual script success and failure without chat sessions', async () => {
-  if (!fixture) {throw new Error('Packaged fixture unavailable')}
-  await verifyCronExecutionHistory(fixture)
-})
-
 test('fresh packaged app exposes the business workspace without implementation vocabulary', async () => {
   const page = fixture!.page
 
@@ -2495,4 +2490,9 @@ test('hc-880 packaged PDF Word and Excel imports keep real file bytes and cited 
       delete host.restoreFormatAnalysisDialog
     })
   }
+})
+
+test('hc-889 packaged cron records actual script success and failure without chat sessions', async () => {
+  if (!fixture) {throw new Error('Packaged fixture unavailable')}
+  await verifyCronExecutionHistory(fixture)
 })

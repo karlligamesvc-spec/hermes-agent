@@ -4,7 +4,6 @@ import path from 'node:path'
 import type { Page } from '@playwright/test'
 
 import type { PackagedMockBackendFixture } from './fixtures'
-import { waitForAppReady } from './fixtures'
 import { expect, test } from './test'
 
 type CronRequest = { path: string; method?: string; body?: Record<string, unknown> }
@@ -21,6 +20,7 @@ async function api<T>(page: Page, request: CronRequest): Promise<T> {
 
 export async function verifyCronExecutionHistory(fixture: PackagedMockBackendFixture) {
   const { page, app, sandbox, mock } = fixture
+  const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getBounds())
   const scripts = path.join(sandbox.hermesHome, 'scripts')
   const script = path.join(scripts, 'hc889-cron-proof.py')
   const marker = path.join(sandbox.hermesHome, 'hc889-executed.txt')
@@ -64,7 +64,8 @@ export async function verifyCronExecutionHistory(fixture: PackagedMockBackendFix
     await page.getByRole('button', { name: '暂停', exact: true }).click()
     await expect.poll(async () => (await api<Job>(page, { path: jobPath })).enabled).toBe(false)
     await page.reload()
-    await waitForAppReady(fixture)
+    // Reload can restore the business Start surface, which has no chat textarea.
+    // Let the actual navigation action wait for boot overlays to release it.
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
     await page.getByRole('button', { name: /hc-889 脚本验收/ }).first().click()
     await expect(page.locator('[data-cron-execution-id]')).toHaveCount(2)
@@ -75,5 +76,6 @@ export async function verifyCronExecutionHistory(fixture: PackagedMockBackendFix
     await test.info().attach('actual-cron-execution-history', { body: JSON.stringify(history), contentType: 'application/json' })
   } finally {
     await api(page, { path: jobPath, method: 'DELETE' })
+    await app.evaluate(({ BrowserWindow }, original) => BrowserWindow.getAllWindows()[0]?.setBounds(original), bounds)
   }
 }
