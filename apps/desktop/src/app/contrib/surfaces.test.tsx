@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesGateway } from '@/hermes'
 import { I18nProvider } from '@/i18n'
+import { $authState } from '@/store/auth'
 import { $composerAttachments, clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
@@ -90,7 +91,10 @@ function LocationProbe() {
   )
 }
 
+const originalAuth = $authState.get()
+
 function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initialEntries'], suppliedActions?: Partial<WiringActions>) {
+  $authState.set({ ...originalAuth, enabled: true, status: 'signed-in', accountId: 'owner', account: { email: 'route@fixture.test', name: 'Route fixture', plan: '' } })
   const actions = { getGateway: () => $gateway.get(), ...suppliedActions } as unknown as WiringActions
 
   return render(
@@ -105,6 +109,7 @@ function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initi
 
 afterEach(() => {
   cleanup()
+  $authState.set(originalAuth)
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
   $gateway.set(null)
   $activeGatewayProfile.set('default')
@@ -116,6 +121,7 @@ afterEach(() => {
 describe('ChatRoutesSurface', () => {
   it('adds a captured frame to the local composer before opening the reviewable Agent draft', async () => {
     let sequence = 0
+
     const onAttachImageBlob = vi.fn(async (_blob: Blob) => {
       sequence += 1
       $composerAttachments.set([...$composerAttachments.get(), {
@@ -161,6 +167,7 @@ describe('ChatRoutesSurface', () => {
     stashSessionDraft(null, 'existing fresh text', [
       { id: 'old-frame', occurrenceId: 'old-1', kind: 'image', label: 'old.jpg', analysisFrameSourceId: 'old-source' }
     ])
+
     const onAttachImageBlob = vi.fn(async (_blob: Blob) => {
       $composerAttachments.set([...$composerAttachments.get(), {
         id: 'new-frame', occurrenceId: 'new-1', kind: 'image', label: 'new.jpg'

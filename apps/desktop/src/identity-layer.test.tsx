@@ -703,7 +703,7 @@ describe('identity: the brand skin survives', () => {
     const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
 
     expect(surfaces).toContain("(await import('../business-workspace/pages/assistant-page')).AssistantWorkspaceView")
-    expect(surfaces).toContain('<Route element={page(<AssistantWorkspaceView />)} path={ASSISTANT_ROUTE.slice(1)} />')
+    expect(surfaces).toContain('<Route element={page(<AccountWorkspace><AssistantWorkspaceView /></AccountWorkspace>)} path={ASSISTANT_ROUTE.slice(1)} />')
   })
 })
 

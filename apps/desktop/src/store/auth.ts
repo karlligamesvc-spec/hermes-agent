@@ -40,6 +40,8 @@ export type AuthStatus =
   | 'expired'
 
 export interface DesktopAuthState {
+  /** Native managed JWT subject for cache ownership, never an authentication claim. */
+  accountId?: string | null
   account: AuthAccount
   /** True on builds where the managed-LLM default path is enabled. On a
    *  managed-disabled build (APEXNODES_MANAGED=0) the account gate is a no-op and
@@ -127,6 +129,19 @@ function accountFromStatus(status: DesktopManagedStatus): AuthAccount {
 }
 
 let refreshPromise: null | Promise<void> = null
+let authGeneration = 0
+
+function invalidateAuthRefresh() {
+  authGeneration += 1
+  refreshPromise = null
+}
+
+export function refreshChangedAccount() {
+  invalidateAuthRefresh()
+  writeCachedSignedIn(false)
+  patch({ accountId: null, account: EMPTY_ACCOUNT, gateReason: null, status: 'checking' })
+  void refreshAuthStatus()
+}
 
 // Read the managed status via the desktop bridge and reconcile the gate.
 //   - bridge absent (web dashboard / dev preview) → managed disabled, don't gate.
@@ -141,6 +156,8 @@ export async function refreshAuthStatus(): Promise<void> {
     return refreshPromise
   }
 
+  const generation = authGeneration
+
   const run = (async () => {
     const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
@@ -153,13 +170,15 @@ export async function refreshAuthStatus(): Promise<void> {
     try {
       const status = await bridge.status()
 
+      if (generation !== authGeneration) {return}
+
       // hc-519: mirror the rollback switch (default on) so the recovery + reconcile
       // paths read one value. undefined (older main process) → on (fail-safe).
       const loginTruth = status.loginStateTruth !== false
 
       if (!status.enabled) {
         // Managed off — the account gate doesn't apply; leave chat unblocked.
-        patch({ enabled: false, loginTruth, status: 'signed-in', account: EMPTY_ACCOUNT, gateReason: null })
+        patch({ enabled: false, loginTruth, status: 'signed-in', accountId: null, account: EMPTY_ACCOUNT, gateReason: null })
         writeCachedSignedIn(false)
 
         return
@@ -178,6 +197,7 @@ export async function refreshAuthStatus(): Promise<void> {
           enabled: true,
           loginTruth,
           status: stillExpired ? 'expired' : 'signed-in',
+          accountId: status.accountId ?? null,
           account: accountFromStatus(status),
           gateReason: stillExpired ? 'unauthorized' : null
         })
@@ -193,10 +213,13 @@ export async function refreshAuthStatus(): Promise<void> {
       patch({
         enabled: true,
         loginTruth,
+        accountId: null,
         account: EMPTY_ACCOUNT,
         status: $authState.get().status === 'disabled' ? 'disabled' : 'signed-out'
       })
     } catch {
+      if (generation !== authGeneration) {return}
+
       // status() threw (bridge error). Don't hard-block a returning user on a
       // transient IPC failure: keep a cached signed-in state, otherwise treat as
       // signed-out so the login screen can offer a retry.
@@ -214,7 +237,7 @@ export async function refreshAuthStatus(): Promise<void> {
   // preview and the test harness where the bridge toggles.) Scheduling here runs
   // the clear as a microtask after the assignment, on every path.
   void run.finally(() => {
-    refreshPromise = null
+    if (refreshPromise === run) {refreshPromise = null}
   })
 
   return run
@@ -224,9 +247,11 @@ export async function refreshAuthStatus(): Promise<void> {
 // the login screen's browser flow resolves). Optimistically unblocks chat, then
 // re-reads status so the account panel gets the real email/plan.
 export function markSignedIn(account?: Partial<AuthAccount>) {
+  invalidateAuthRefresh()
   writeCachedSignedIn(true)
   patch({
     status: 'signed-in',
+    accountId: null,
     gateReason: null,
     account: { ...EMPTY_ACCOUNT, ...(account ?? {}) }
   })
@@ -244,8 +269,10 @@ export function handleAuthGate(payload: DesktopAuthGateEvent) {
     return
   }
 
+  invalidateAuthRefresh()
   writeCachedSignedIn(false)
   patch({
+    accountId: null,
     account: EMPTY_ACCOUNT,
     gateReason: payload.reason,
     status: payload.reason === 'account_disabled' ? 'disabled' : 'signed-out'
@@ -292,7 +319,8 @@ export function clearRelayAuthExpiry() {
 // key must not be held behind an APEX account they don't want. Reversible —
 // returnToManagedLogin puts the gate back.
 export function markManagedUnavailable() {
-  patch({ enabled: false, status: 'signed-in', account: EMPTY_ACCOUNT, gateReason: null })
+  invalidateAuthRefresh()
+  patch({ enabled: false, status: 'signed-in', accountId: null, account: EMPTY_ACCOUNT, gateReason: null })
 }
 
 // The inverse: "返回登录" from the BYOK surface restores the managed account gate,
@@ -300,8 +328,9 @@ export function markManagedUnavailable() {
 // markManagedUnavailable — on a build where managed is genuinely off, nothing
 // routes here.
 export function returnToManagedLogin() {
+  invalidateAuthRefresh()
   writeCachedSignedIn(false)
-  patch({ enabled: true, status: 'signed-out', account: EMPTY_ACCOUNT, gateReason: null })
+  patch({ enabled: true, status: 'signed-out', accountId: null, account: EMPTY_ACCOUNT, gateReason: null })
 }
 
 // User chose "退出登录" (logout) in the account panel. The main process first
@@ -321,8 +350,9 @@ export async function signOutAccount(): Promise<boolean> {
     return false
   }
 
+  invalidateAuthRefresh()
   writeCachedSignedIn(false)
-  patch({ account: EMPTY_ACCOUNT, gateReason: null, status: 'signed-out' })
+  patch({ accountId: null, account: EMPTY_ACCOUNT, gateReason: null, status: 'signed-out' })
 
   return true
 }

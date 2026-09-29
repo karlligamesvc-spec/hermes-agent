@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 /**
  * Wiring surfaces — each pane is its own memoized component. Every surface
  * reads the reactive state it renders from at the leaf (its own atom
@@ -6,8 +7,6 @@
  * wiring-controller tick) never re-renders another. This is what keeps the
  * layout tree's zones independently rendered — the whole point of the shell.
  */
-
-import { useStore } from '@nanostores/react'
 import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useEffect, useMemo, useRef } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
@@ -21,6 +20,7 @@ import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $connection, $freshDraftReady, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 
+import { AccountWorkspace } from '../account-workspace'
 import { stageVideoAnalysisDraft } from '../business-workspace/video-analysis-composer-handoff'
 import { ChatView } from '../chat'
 import { ChatSidebar } from '../chat/sidebar'
@@ -114,7 +114,7 @@ function AnalysisRouteView({ actions }: { actions: WiringActions }) {
     const isCurrent = () => mounted.current && $connection.get()?.mode !== 'remote' &&
       previousSessionId === $selectedStoredSessionId.get() && gateway === $gateway.get() &&
       connectionId === $activeConnectionId.get() && profile === $activeGatewayProfile.get() &&
-      auth.status === $authState.get().status && auth.account.email === $authState.get().account.email
+      auth.status === $authState.get().status && auth.accountId === $authState.get().accountId && auth.account.email === $authState.get().account.email
 
     preparing.current = true
 
@@ -353,7 +353,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
         <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
         <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
-        <Route element={page(<DeliverablesView />)} path={DELIVERABLES_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><DeliverablesView /></AccountWorkspace>)} path={DELIVERABLES_ROUTE.slice(1)} />
         <Route
           element={page(
             <CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
@@ -364,7 +364,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
             Reached from the composer "+" menu's connectors row, the sidebar's
             channel strip, and Settings → 提供方. */}
         <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
-        <Route element={page(<AssistantWorkspaceView />)} path={ASSISTANT_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><AssistantWorkspaceView /></AccountWorkspace>)} path={ASSISTANT_ROUTE.slice(1)} />
         <Route element={<LegacyAccountsRedirect />} path={LEGACY_ACCOUNTS_ROUTE.slice(1)} />
         <Route
           element={page(
@@ -373,10 +373,10 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
           path="tasks"
         />
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
-        <Route element={page(<HistoryView />)} path={HISTORY_ROUTE.slice(1)} />
-        <Route element={page(<ProjectsView />)} path="projects" />
-        <Route element={page(<AnalysisRouteView actions={actions} />)} path={ANALYSIS_ROUTE.slice(1)} />
-        <Route element={page(<WorkflowsView />)} path="workflows" />
+        <Route element={page(<AccountWorkspace><HistoryView /></AccountWorkspace>)} path={HISTORY_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><ProjectsView /></AccountWorkspace>)} path="projects" />
+        <Route element={page(<AccountWorkspace><AnalysisRouteView actions={actions} /></AccountWorkspace>)} path={ANALYSIS_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><WorkflowsView /></AccountWorkspace>)} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />
         <Route element={null} path="command-center" />
@@ -405,17 +405,17 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
 
       {workflowRunOpen && (
         <Routes>
-          <Route element={<WorkflowRunRouteDrawer />} path="workflow-runs/:runId" />
+          <Route element={<AccountWorkspace><WorkflowRunRouteDrawer /></AccountWorkspace>} path="workflow-runs/:runId" />
         </Routes>
       )}
       {projectDetailOpen && (
         <Routes>
-          <Route element={<ProjectDetailRouteDrawer />} path="projects/:projectId" />
+          <Route element={<AccountWorkspace><ProjectDetailRouteDrawer /></AccountWorkspace>} path="projects/:projectId" />
         </Routes>
       )}
       {deliverableDetailOpen && (
         <Routes>
-          <Route element={<DeliverableDetailRouteDrawer />} path="deliverables/:deliverableId" />
+          <Route element={<AccountWorkspace><DeliverableDetailRouteDrawer /></AccountWorkspace>} path="deliverables/:deliverableId" />
         </Routes>
       )}
     </>

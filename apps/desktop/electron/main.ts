@@ -19382,6 +19382,7 @@ function resolveManagedRelayCredential() {
 // provision), so a provision that carries no token simply stores none — we never
 // resurrect a stale token, and clearing (no key) wipes the token too.
 function writeManagedConfig(provisioned) {
+  const previous = resolveManagedConfig()
   fs.mkdirSync(path.dirname(DESKTOP_MANAGED_CONFIG_PATH), { recursive: true })
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
   const account = provisioned && provisioned.account ? readManagedAccount({ account: provisioned.account }) : null
@@ -19399,11 +19400,22 @@ function writeManagedConfig(provisioned) {
     : {}
 
   writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
+
+  if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
+    broadcastManagedAccountChanged()
+  }
+}
+
+function broadcastManagedAccountChanged() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {win.webContents.send('hermes:managed-account-changed')}
+  }
 }
 
 function clearManagedRelayCredential() {
   try {
     fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true })
+    broadcastManagedAccountChanged()
   } catch {
     // Best effort.
   }
@@ -23154,6 +23166,7 @@ ipcMain.handle('hermes:managed:status', async () => {
     // the renderer reads the same env the electron self-heal does.
     loginStateTruth: isLoginStateTruthEnabled(process.env),
     signedIn: Boolean(managed.key),
+    accountId: managed.key ? managedAccountId(managed.accessToken) : null,
     // True only when a reusable login JWT is on disk — i.e. a real cloud
     // sign-in that CAN self-heal a rotated/expired relay key. A seeded/env key
     // (e.g. a `*.local` release account or a CI-provisioned test key) has a

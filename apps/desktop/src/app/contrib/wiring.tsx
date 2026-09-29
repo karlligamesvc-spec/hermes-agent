@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 /**
  * Real-featureset wiring for the contrib (layout tree) root — the minimal
  * subset of DesktopController's hook chain that makes the REAL surfaces work:
@@ -7,12 +8,11 @@
  * The wired nodes (sidebar / chat routes / terminal) are exposed through
  * context; registered panes render `<WiredPane part="…"/>` to consume them.
  */
-
-import { useStore } from '@nanostores/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { AccountWorkspace, useManagedAccountChanges } from '@/app/account-workspace'
 import { graftRefreshedTailOntoBackfill } from '@/app/chat/transcript-backfill'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
@@ -212,6 +212,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const actionsRef = useRef<WiringActions | null>(null)
 
   const authState = useStore($authState)
+  useManagedAccountChanges()
   const onboardingRequested = useStore($desktopOnboarding).requested
   const gatewayState = useStore($gatewayState)
   const activeSessionId = useStore($activeSessionId)
@@ -1355,7 +1356,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       <FindBar />
 
       {settingsOpen && (
-        <Suspense fallback={null}>
+        <AccountWorkspace><Suspense fallback={null}>
           <SettingsView
             gateway={gateway}
             onClose={closeOverlayToPreviousRoute}
@@ -1370,7 +1371,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
               void queryClient.invalidateQueries({ queryKey: ['model-options'] })
             }}
           />
-        </Suspense>
+        </Suspense></AccountWorkspace>
       )}
 
       {currentView === 'session-import' && (
@@ -1417,7 +1418,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
       {profileStatsOpen && (
         <Suspense fallback={null}>
-          <ProfileStatsView onClose={closeOverlayToPreviousRoute} onOpenSettings={() => navigate(SETTINGS_ROUTE)} />
+          <AccountWorkspace><ProfileStatsView onClose={closeOverlayToPreviousRoute} onOpenSettings={() => navigate(SETTINGS_ROUTE)} /></AccountWorkspace>
         </Suspense>
       )}
 

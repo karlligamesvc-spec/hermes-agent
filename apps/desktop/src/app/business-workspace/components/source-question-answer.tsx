@@ -52,7 +52,7 @@ export function SourceQuestionAction({ source, question, locale, bridge, onSaved
 
     const current = () => token === lifetime.current && $gateway.get() === gateway && $connection.get() === connection &&
       $activeConnectionId.get() === connectionId && $activeGatewayProfile.get() === profile &&
-      $authState.get().status === auth.status && $authState.get().account.email === auth.account.email
+      $authState.get().status === auth.status && $authState.get().accountId === auth.accountId && $authState.get().account.email === auth.account.email
 
     running.current = true
     setBusy(true)

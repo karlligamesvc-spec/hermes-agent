@@ -444,6 +444,7 @@ declare global {
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and
       // returns to the login screen. See electron/main.cjs broadcastAuthGate.
+      onManagedAccountChanged?: (callback: () => void) => () => void
       onAuthGate?: (callback: (payload: DesktopAuthGateEvent) => void) => () => void
       // Runtime 3-end consistency — desktop opt-in engine update (R5/R6).
       // checkUpdate compares the installed engine (bootstrap marker) against the
@@ -1775,6 +1776,8 @@ export interface BackendExit {
 // ---------------------------------------------------------------------------
 
 export interface DesktopManagedStatus {
+  /** UUID subject for account-owned renderer caches, never a credential. */
+  accountId?: string | null
   // The relay base_url the managed config points at (e.g.
   // https://apex-nodes.com/relay/v1).
   baseUrl: string

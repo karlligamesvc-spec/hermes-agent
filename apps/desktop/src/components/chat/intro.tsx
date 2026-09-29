@@ -1,3 +1,4 @@
+import { AccountWorkspace } from '@/app/account-workspace'
 import { BusinessStartHome } from '@/app/business-workspace/start-home'
 import type { ChatBarState } from '@/app/chat/composer/types'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
@@ -54,6 +55,7 @@ export function Intro({
       data-slot="aui_intro"
     >
       {businessWorkspaceEnabled ? (
+        <AccountWorkspace>
         <BusinessStartHome
           attachments={attachments}
           goalDisabled={goalDisabled}
@@ -64,6 +66,7 @@ export function Intro({
           onRemoveAttachment={onRemoveAttachment}
           onSubmitGoal={onSubmitGoal}
         />
+        </AccountWorkspace>
       ) : (
         <>
           <div>

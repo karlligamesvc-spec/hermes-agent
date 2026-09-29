@@ -404,6 +404,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // Continuous auth gate: main broadcasts when a backend call returns 401
   // (login lost) or 403 account_disabled (account abnormal). The renderer
   // clears auth and returns to the login screen. See main.cjs broadcastAuthGate.
+  onManagedAccountChanged: callback => {
+    const listener = () => callback()
+    ipcRenderer.on('hermes:managed-account-changed', listener)
+
+    return () => ipcRenderer.removeListener('hermes:managed-account-changed', listener)
+  },
   onAuthGate: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('hermes:auth-gate', listener)

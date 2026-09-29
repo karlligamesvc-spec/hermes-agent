@@ -10,6 +10,7 @@ import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server
 import type { SourceAnswerInput } from '../shared/analysis-answer'
 import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
+import { verifyAccountWorkspaceReset } from './account-workspace-reset'
 import { verifyAccountIsolation, verifyPickerAccountIsolation } from './analysis-account-isolation'
 import { verifyAnalysisChatLink } from './analysis-chat-link'
 import { verifySourceAnswer } from './analysis-source-answer'
@@ -419,7 +420,7 @@ async function startPhase1ReviewApi() {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
 
     const json = (status: number, body: unknown) => {
-      const held = heldResponse?.path === url.pathname ? heldResponse : null
+      const held = heldResponse?.path === url.pathname && !heldResponse.send ? heldResponse : null
 
       const send = () => {
         response.writeHead(status, { 'content-type': 'application/json', ...(held?.renewedToken ? { 'X-Apex-Renewed-Token': held.renewedToken } : {}) })
@@ -436,6 +437,18 @@ async function startPhase1ReviewApi() {
         name: '本地 UI 评审',
         plan: 'review'
       })
+
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/auth/desktop-handoff/exchange') {
+      json(200, { access_token: tokenFor(loginUserId) })
+
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/desktop/provision-key/revoke') {
+      json(200, { revoked: true })
 
       return
     }
@@ -462,7 +475,9 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/documents') {
-      json(200, { items: cloudDocument ? [{ ...cloudDocument, anchors: undefined }] : [] })
+      const token = String(request.headers.authorization || '').replace(/^Bearer /, '')
+      const owner = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')).sub
+      json(200, { items: cloudDocument && owner === ANALYSIS_REVIEW_USER_ID ? [{ ...cloudDocument, anchors: undefined }] : [] })
 
       return
     }
@@ -711,7 +726,10 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/workflow-domain/projects') {
-      json(200, { items: reviewProjects, nextCursor: null, total: reviewProjects.length })
+      const token = String(request.headers.authorization || '').replace(/^Bearer /, '')
+      const owner = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')).sub
+      const items = owner === ANALYSIS_REVIEW_USER_ID ? reviewProjects : []
+      json(200, { items, nextCursor: null, total: items.length })
 
       return
     }
@@ -2553,4 +2571,9 @@ test('hc-894 packaged account switch rejects old analysis responses and renewal 
 
 test('hc-894 packaged document picker never retargets an in-flight import to the next account', async () => {
   await verifyPickerAccountIsolation(fixture!.app, fixture!.page, reviewApi!, ANALYSIS_REVIEW_USER_ID)
+})
+
+
+test('hc-895 packaged logout and handoff sign-in discard the previous account workspace', async () => {
+  await verifyAccountWorkspaceReset(fixture!.app, fixture!.page, reviewApi!, ANALYSIS_REVIEW_USER_ID)
 })
