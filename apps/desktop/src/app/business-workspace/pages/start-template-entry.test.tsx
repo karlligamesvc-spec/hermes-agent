@@ -46,7 +46,7 @@ async function chooseFromActualStart(brief: string) {
   </I18nProvider></MemoryRouter>)
   const goal = screen.getByRole('textbox', { name: '业务目标' })
   fireEvent.change(goal, { target: { value: brief } })
-  fireEvent.click(screen.getByRole('button', { name: '选择工作流', exact: true }))
+  fireEvent.click(screen.getByRole('button', { name: '选择工作流' }))
   await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflows'))
   fireEvent.click(await screen.findByRole('button', { name: /竞品监控/ }))
   const dialog = screen.getByRole('dialog', { name: '竞品监控' })
@@ -91,7 +91,7 @@ describe('actual Start template-selection entry', () => {
     fireEvent.change(goal, { target: { value: '已经编辑的目标' } })
     fireEvent.click(screen.getByRole('button', { name: '更换工作流' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflows'))
-    fireEvent.click(screen.getByRole('button', { name: '返回', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
     expect(goal.value).toBe('已经编辑的目标')
     expect(JSON.parse(screen.getByTestId('selection').textContent!)).toMatchObject({
