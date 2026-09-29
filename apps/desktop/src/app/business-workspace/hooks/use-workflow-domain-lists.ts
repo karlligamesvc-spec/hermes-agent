@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -15,6 +16,7 @@ import {
   type WorkflowVideoCatalogOutcome
 } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
+import { $workflowDomainRevision } from '../api/read-revision'
 
 type ProjectListState = WorkflowProjectListOutcome | { mode: 'loading' }
 type ProjectState = WorkflowProjectOutcome | { mode: 'loading' }
@@ -24,6 +26,8 @@ type WorkflowVideoCatalogState = WorkflowVideoCatalogOutcome | { mode: 'loading'
 type WorkflowListState = WorkflowDefinitionListOutcome | { mode: 'loading' }
 
 export function useWorkflowProjects(limit = 50, status?: string): ProjectListState {
+  const revision = useStore($workflowDomainRevision)
+
   const [state, setState] = useState<ProjectListState>(() =>
     workflowDomainBridge()?.listProjects ? { mode: 'loading' } : { mode: 'unavailable' }
   )
@@ -40,7 +44,7 @@ export function useWorkflowProjects(limit = 50, status?: string): ProjectListSta
     return () => {
       active = false
     }
-  }, [limit, status])
+  }, [limit, revision, status])
 
   return state
 }
@@ -157,6 +161,8 @@ export function useWorkflowDefinitions(
   options: { limit?: number; projectId?: string; status?: string } = {},
   reloadToken = 0
 ): WorkflowListState {
+  const revision = useStore($workflowDomainRevision)
+
   const [state, setState] = useState<WorkflowListState>(() =>
     workflowDomainBridge()?.listWorkflows ? { mode: 'loading' } : { mode: 'unavailable' }
   )
@@ -176,7 +182,7 @@ export function useWorkflowDefinitions(
     return () => {
       active = false
     }
-  }, [limit, projectId, reloadToken, status])
+  }, [limit, projectId, reloadToken, revision, status])
 
   return state
 }

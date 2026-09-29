@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
@@ -9,6 +10,7 @@ import {
   type WorkflowDeliverableListOutcome
 } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
+import { $workflowDomainRevision } from '../api/read-revision'
 import type { WorkflowActivityItem, WorkflowDeliverable } from '../api/types'
 
 type DeliverableState =
@@ -67,8 +69,9 @@ function readyActivity(result: WorkflowActivityListOutcome, scope: string): Acti
 
 export function useWorkflowDeliverables(options: { kind?: string; status?: string } = {}) {
   const { kind, status } = options
+  const revision = useStore($workflowDomainRevision)
   const [reloadToken, setReloadToken] = useState(0)
-  const scope = `${kind ?? ''}\0${status ?? ''}\0${reloadToken}`
+  const scope = `${kind ?? ''}\0${status ?? ''}\0${reloadToken}\0${revision}`
 
   const [state, setState] = useState<DeliverableState>(() =>
     workflowDomainBridge()?.listDeliverables ? { mode: 'loading' } : { mode: 'unavailable' }
@@ -99,6 +102,10 @@ export function useWorkflowDeliverables(options: { kind?: string; status?: strin
     setState({ ...snapshot, loadingMore: true, moreFailed: false })
     const result = await listWorkflowDeliverables({ cursor: snapshot.nextCursor, kind, limit: 50, status })
 
+    if ($workflowDomainRevision.get() !== revision) {
+      return
+    }
+
     setState(current => {
       if (current.mode === 'ready' && current.scope !== snapshot.scope) {
         return current
@@ -123,7 +130,7 @@ export function useWorkflowDeliverables(options: { kind?: string; status?: strin
         scope: current.scope
       }
     })
-  }, [kind, state, status])
+  }, [kind, revision, state, status])
 
   return { loadMore, refresh: () => setReloadToken(token => token + 1), state }
 }
@@ -160,8 +167,9 @@ export function useWorkflowDeliverable(deliverableId: string | undefined, reload
 }
 
 export function useWorkflowActivity(kinds?: string) {
+  const revision = useStore($workflowDomainRevision)
   const [reloadToken, setReloadToken] = useState(0)
-  const scope = `${kinds ?? ''}\0${reloadToken}`
+  const scope = `${kinds ?? ''}\0${reloadToken}\0${revision}`
 
   const [state, setState] = useState<ActivityState>(() =>
     workflowDomainBridge()?.listActivity ? { mode: 'loading' } : { mode: 'unavailable' }
@@ -192,6 +200,10 @@ export function useWorkflowActivity(kinds?: string) {
     setState({ ...snapshot, loadingMore: true, moreFailed: false })
     const result = await listWorkflowActivity({ cursor: snapshot.nextCursor, kinds, limit: 50 })
 
+    if ($workflowDomainRevision.get() !== revision) {
+      return
+    }
+
     setState(current => {
       if (current.mode === 'ready' && current.scope !== snapshot.scope) {
         return current
@@ -216,7 +228,7 @@ export function useWorkflowActivity(kinds?: string) {
         scope: current.scope
       }
     })
-  }, [kinds, state])
+  }, [kinds, revision, state])
 
   return { loadMore, refresh: () => setReloadToken(token => token + 1), state }
 }

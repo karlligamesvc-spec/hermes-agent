@@ -121,12 +121,23 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
       await expect(edit).toHaveCount(0)
       await expect(detail.getByRole('heading', { name: 'Edited UI project', exact: true })).toBeVisible()
       await expect(detail).toContainText('Edited UI objective')
+      await page.keyboard.press('Escape')
+      const editedRow = page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Edited UI project' })
+
+      await expect(editedRow).toBeVisible()
+      await expect(editedRow).toContainText('Edited UI objective')
+      await expect(page.locator('[data-workflow-project-list]')).toContainText('共 2 个项目')
       result = { root: sandbox.userDataDir, createdId: created.id }
     } else {
       // A clean client must see the prior client's edited Project.
       await openProject('Edited UI project', input.createdId!)
       await expect(page.locator('[data-project-detail]')).toContainText('Edited UI objective')
       await page.keyboard.press('Escape')
+
+      const retainedFilter = page.getByRole('group', { name: '项目状态筛选' })
+        .getByRole('button', { name: input.phase === 'complete' ? /^进行中/ : /^已完成/ })
+
+      await retainedFilter.click()
       await openProject('Fixture lifecycle project', input.projectId)
       const detail = page.locator('[data-project-detail]')
       const lifecycle = detail.locator('[data-project-completion]')
@@ -150,6 +161,15 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
         await lifecycle.getByRole('button', { name: '完成项目', exact: true }).click()
         await expect(lifecycle.getByRole('button', { name: '重新打开项目', exact: true })).toBeEnabled()
         await expect(detail.getByRole('button', { name: '增加工作流', exact: true })).toBeDisabled()
+        await page.keyboard.press('Escape')
+        await expect(retainedFilter).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })).toHaveCount(0)
+        const completedFilter = page.getByRole('group', { name: '项目状态筛选' }).getByRole('button', { name: /^已完成/ })
+
+        await expect(completedFilter).toHaveText('已完成1')
+        await completedFilter.click()
+        await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })).toBeVisible()
+        await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Edited UI project' })).toHaveCount(0)
       } else {
         await expect(lifecycle.getByRole('button', { name: '重新打开项目', exact: true })).toBeEnabled()
         await lifecycle.getByRole('button', { name: '重新打开项目', exact: true }).click()
@@ -157,6 +177,9 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
         await expect(lifecycle.getByRole('button', { name: '完成项目', exact: true })).toBeEnabled()
         await expect(detail.getByRole('button', { name: '增加工作流', exact: true })).toBeEnabled()
         await page.keyboard.press('Escape')
+        await expect(retainedFilter).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: 'Fixture lifecycle project' })).toHaveCount(0)
+        await expect(page.getByRole('group', { name: '项目状态筛选' }).getByRole('button', { name: /^已完成/ })).toHaveText('已完成0')
         await openDeliverables()
         await page.locator('[data-deliverables-page]').getByRole('button').filter({ hasText: 'Fixture deliverable' }).click()
         await assertDeliverable()

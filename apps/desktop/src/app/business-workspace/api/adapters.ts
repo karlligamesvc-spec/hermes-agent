@@ -1,6 +1,7 @@
 import type { BusinessWorkflowStarter } from '../view-model/workflow-starters'
 
 import { workflowDomainBridge } from './bridge'
+import { workflowDomainChanged } from './read-revision'
 import type {
   CreateWorkflowProjectOutcome,
   StartWorkflowGoalOutcome,
@@ -71,6 +72,7 @@ export async function startWorkflowGoal(
   fallbackBridge: null | WorkflowDomainBridge = workflowDomainBridge()
 ): Promise<StartWorkflowGoalOutcome> {
   const projectId = typeof projectIdOrBridge === 'string' ? projectIdOrBridge : undefined
+
   const bridge =
     typeof projectIdOrBridge === 'string' || projectIdOrBridge === undefined ? fallbackBridge : projectIdOrBridge
 
@@ -105,7 +107,13 @@ export async function startWorkflowGoal(
 
     const runId = result.run?.id?.trim()
 
-    return result.ok && runId ? { mode: 'started', runId } : { mode: 'failed' }
+    if (!result.ok || !runId) {
+      return { mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { mode: 'started', runId }
   } catch {
     return { mode: 'failed' }
   }
@@ -137,9 +145,16 @@ export async function createWorkflowDefinition(
         version: starter.version
       }
     })
+
     const workflowId = result.workflow?.id?.trim()
 
-    return result.ok && workflowId ? { mode: 'created', workflowId } : { mode: 'failed' }
+    if (!result.ok || !workflowId) {
+      return { mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { mode: 'created', workflowId }
   } catch {
     return { mode: 'failed' }
   }
@@ -162,7 +177,13 @@ export async function startExistingWorkflowRun(
     const result = await bridge.startRun({ objective, workflowId: workflowId.trim() })
     const runId = result.run?.id?.trim()
 
-    return result.ok && runId ? { mode: 'started', runId } : { mode: 'failed' }
+    if (!result.ok || !runId) {
+      return { mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { mode: 'started', runId }
   } catch {
     return { mode: 'failed' }
   }
@@ -185,7 +206,13 @@ export async function createWorkflowProject(
 
     const result = await bridge.createProject(input)
 
-    return result.ok && result.item ? { item: result.item, mode: 'created' } : { mode: 'failed' }
+    if (!result.ok || !result.item) {
+      return { mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { item: result.item, mode: 'created' }
   } catch {
     return { mode: 'failed' }
   }
@@ -284,7 +311,13 @@ export async function updateWorkflowProject(
 
     const result = await bridge.updateProject(input)
 
-    return result.ok && result.item ? { item: result.item, mode: 'updated' } : { code: result.code, mode: 'failed' }
+    if (!result.ok || !result.item) {
+      return { code: result.code, mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { item: result.item, mode: 'updated' }
   } catch {
     return { mode: 'failed' }
   }
@@ -305,7 +338,13 @@ export async function completeWorkflowProject(
 
     const result = await bridge.completeProject(projectId)
 
-    return result.ok && result.item ? { item: result.item, mode: 'updated' } : { code: result.code, mode: 'failed' }
+    if (!result.ok || !result.item) {
+      return { code: result.code, mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { item: result.item, mode: 'updated' }
   } catch {
     return { mode: 'failed' }
   }
@@ -326,7 +365,13 @@ export async function reopenWorkflowProject(
 
     const result = await bridge.reopenProject(projectId)
 
-    return result.ok && result.item ? { item: result.item, mode: 'updated' } : { code: result.code, mode: 'failed' }
+    if (!result.ok || !result.item) {
+      return { code: result.code, mode: 'failed' }
+    }
+
+    workflowDomainChanged()
+
+    return { item: result.item, mode: 'updated' }
   } catch {
     return { mode: 'failed' }
   }
@@ -493,13 +538,25 @@ export async function listWorkflowActivity(
 export async function cancelWorkflowRun(runId: string): Promise<boolean> {
   const bridge = workflowDomainBridge()
 
-  return bridge ? (await bridge.cancelRun(runId)).ok : false
+  const ok = bridge ? (await bridge.cancelRun(runId)).ok : false
+
+  if (ok) {
+    workflowDomainChanged()
+  }
+
+  return ok
 }
 
 export async function retryWorkflowRunStep(runId: string, stepKey: string): Promise<boolean> {
   const bridge = workflowDomainBridge()
 
-  return bridge?.retryRunStep ? (await bridge.retryRunStep({ runId, stepKey })).ok : false
+  const ok = bridge?.retryRunStep ? (await bridge.retryRunStep({ runId, stepKey })).ok : false
+
+  if (ok) {
+    workflowDomainChanged()
+  }
+
+  return ok
 }
 
 export async function reviewWorkflowDeliverable(
@@ -509,7 +566,13 @@ export async function reviewWorkflowDeliverable(
 ): Promise<boolean> {
   const bridge = workflowDomainBridge()
 
-  return bridge ? (await bridge.reviewDeliverable({ deliverableId, notes, status })).ok : false
+  const ok = bridge ? (await bridge.reviewDeliverable({ deliverableId, notes, status })).ok : false
+
+  if (ok) {
+    workflowDomainChanged()
+  }
+
+  return ok
 }
 
 export async function openWorkflowUserFile(fileId: string): Promise<boolean> {
