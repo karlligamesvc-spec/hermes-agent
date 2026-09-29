@@ -20,6 +20,7 @@ const PACKAGED_VERSION = JSON.parse(
 const ANALYSIS_REVIEW_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const ANALYSIS_REVIEW_TOKEN = `local.${Buffer.from(JSON.stringify({ sub: ANALYSIS_REVIEW_USER_ID })).toString('base64url')}.review`
 const ANALYSIS_REVIEW_VIDEO_URL = 'https://www.iesdouyin.com/share/video/123456'
+const ANALYSIS_REVIEW_CLOUD_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 async function openWorkflowCatalog(page: Page) {
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
@@ -361,6 +362,15 @@ async function startPhase1ReviewApi() {
   let relayBaseUrl = ''
   let runAvailable = true
   let workflowEnabled = true
+  let analysisMode: 'cloud' | 'local' = 'local'
+  let cloudStorageConfigured = false
+  let cloudDocument: null | {
+    id: string; filename: string; kind: string; status: 'processing' | 'ready';
+    created_at: string; anchors: Array<{ id: string; location: { paragraph: number }; text: string }>
+  } = null
+  let cloudQuestions: Array<{ id: string; question: string; answer: string; answer_type: string; citations: Array<{ anchor_id: string; location: { paragraph: number } }> }> = []
+  let cloudNotes: Array<{ id: string; body: string; anchor_id: string | null }> = []
+  let cloudDetailReads = 0
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
     const json = (status: number, body: unknown) => {
@@ -393,15 +403,136 @@ async function startPhase1ReviewApi() {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/storage-policy') {
-      json(200, { user_id: ANALYSIS_REVIEW_USER_ID, mode: 'local', cloud_storage_configured: false })
+      json(200, { user_id: ANALYSIS_REVIEW_USER_ID, mode: analysisMode, cloud_storage_configured: cloudStorageConfigured })
 
       return
     }
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/documents') {
-      json(200, { items: [] })
+      json(200, { items: cloudDocument ? [{ ...cloudDocument, anchors: undefined }] : [] })
 
       return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/account/analysis/documents') {
+      const chunks: Buffer[] = []
+
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+
+      const upload = Buffer.concat(chunks).toString('utf8')
+
+      if (request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}` || analysisMode !== 'cloud' ||
+        !cloudStorageConfigured || !upload.includes('filename="cloud-review-document.txt"') ||
+        !upload.includes('Cloud revenue 817 units')) {
+        json(403, { detail: { code: 'analysis_cloud_write_disabled' } })
+
+        return
+      }
+
+      cloudDetailReads = 0
+      cloudQuestions = []
+      cloudNotes = []
+      cloudDocument = {
+        id: ANALYSIS_REVIEW_CLOUD_ID, filename: 'cloud-review-document.txt', kind: 'text',
+        status: 'processing', created_at: '2026-09-29T01:00:00Z',
+        anchors: [{ id: 'a1', location: { paragraph: 1 }, text: 'Cloud revenue 817 units' }]
+      }
+      json(202, { item: { ...cloudDocument, anchors: undefined } })
+
+      return
+    }
+
+    const cloudPath = `/api/v1/account/analysis/documents/${ANALYSIS_REVIEW_CLOUD_ID}`
+
+    if (url.pathname === cloudPath || url.pathname.startsWith(`${cloudPath}/`)) {
+      if (request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}` || !cloudDocument) {
+        json(404, { detail: { code: 'source_not_found' } })
+
+        return
+      }
+
+      if (url.pathname === cloudPath && request.method === 'GET') {
+        cloudDetailReads += 1
+
+        if (cloudDetailReads >= 2) { cloudDocument.status = 'ready' }
+
+        json(200, { item: { ...cloudDocument, anchors: cloudDocument.status === 'ready' ? cloudDocument.anchors : [] } })
+
+        return
+      }
+
+      if (url.pathname === `${cloudPath}/questions` && request.method === 'GET') {
+        json(200, { items: cloudQuestions })
+
+        return
+      }
+
+      if (url.pathname === `${cloudPath}/notes` && request.method === 'GET') {
+        json(200, { items: cloudNotes })
+
+        return
+      }
+
+      if (url.pathname === `${cloudPath}/questions` && request.method === 'POST') {
+        const chunks: Buffer[] = []
+
+        for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+
+        const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { question?: string }
+
+        if (cloudDocument.status !== 'ready' || input.question !== 'Cloud revenue?') {
+          json(409, { detail: { code: 'source_not_ready' } })
+
+          return
+        }
+
+        const item = {
+          id: 'cloud-question-1', question: input.question, answer: 'Cloud revenue 817 units',
+          answer_type: 'source_excerpts', citations: [{ anchor_id: 'a1', location: { paragraph: 1 } }]
+        }
+
+        cloudQuestions.push(item)
+        json(201, { item })
+
+        return
+      }
+
+      if (url.pathname === `${cloudPath}/notes` && request.method === 'POST') {
+        const chunks: Buffer[] = []
+
+        for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+
+        const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { body?: string; anchor_id?: string }
+
+        if (cloudDocument.status !== 'ready' || input.anchor_id !== 'a1' || input.body !== 'Review cloud source') {
+          json(400, { detail: { code: 'invalid_analysis_review_note' } })
+
+          return
+        }
+
+        const item = { id: 'cloud-note-1', body: input.body, anchor_id: input.anchor_id }
+
+        cloudNotes.push(item)
+        json(201, { item })
+
+        return
+      }
+
+      if (url.pathname === `${cloudPath}/notes/cloud-note-1` && request.method === 'DELETE') {
+        cloudNotes = cloudNotes.filter(item => item.id !== 'cloud-note-1')
+        json(200, { ok: true })
+
+        return
+      }
+
+      if (url.pathname === cloudPath && request.method === 'DELETE') {
+        cloudDocument = null
+        cloudQuestions = []
+        cloudNotes = []
+        json(200, { ok: true })
+
+        return
+      }
     }
 
     if (request.method === 'POST' && url.pathname === '/api/v1/account/analysis/documents/parse') {
@@ -629,6 +760,10 @@ async function startPhase1ReviewApi() {
     },
     setRunAvailable: (value: boolean) => {
       runAvailable = value
+    },
+    setAnalysisPolicy: (mode: 'cloud' | 'local', configured = mode === 'cloud') => {
+      analysisMode = mode
+      cloudStorageConfigured = configured
     },
     setWorkflowEnabled: (value: boolean) => {
       workflowEnabled = value
@@ -1970,6 +2105,83 @@ test('hc-878 packaged local document import persists cited answers and notes und
 
       host.restoreAnalysisDialog?.()
       delete host.restoreAnalysisDialog
+    })
+    fs.rmSync(sourceDirectory, { recursive: true, force: true })
+  }
+})
+
+test('hc-879 packaged cloud document import reopens server-owned evidence and fails closed without cloud storage', async () => {
+  const { app, page } = fixture!
+  const sourceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-cloud-e2e-'))
+  const sourcePath = path.join(sourceDirectory, 'cloud-review-document.txt')
+
+  fs.writeFileSync(sourcePath, 'Cloud revenue 817 units')
+  reviewApi!.setAnalysisPolicy('cloud')
+  await app.evaluate(({ dialog }, selectedPath) => {
+    const host = globalThis as typeof globalThis & { restoreCloudAnalysisDialog?: () => void }
+    const original = dialog.showOpenDialog
+
+    host.restoreCloudAnalysisDialog = () => { dialog.showOpenDialog = original }
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] })
+  }, sourcePath)
+
+  try {
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await expect(page.getByText('云端保存', { exact: true }).first()).toBeVisible()
+    await page.getByRole('button', { name: '导入文档或字幕' }).click()
+    await expect(page.getByRole('heading', { name: 'cloud-review-document.txt' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '针对当前资料提问' })).toHaveCount(0)
+    await expect(page.getByRole('textbox', { name: '针对当前资料提问' })).toBeVisible()
+    await expect(page.locator('#analysis-anchor-a1')).toContainText('Cloud revenue 817 units')
+
+    const listed = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+    const cloudItem = listed?.items?.find(item => item.filename === 'cloud-review-document.txt')
+
+    expect(cloudItem?.id).toBe(ANALYSIS_REVIEW_CLOUD_ID)
+    expect(cloudItem?.storageMode).toBe('cloud')
+    expect(cloudItem?.status).toBe('ready')
+
+    await page.getByRole('textbox', { name: '针对当前资料提问' }).fill('Cloud revenue?')
+    await page.getByRole('button', { name: '查找证据' }).click()
+    await expect(page.getByRole('button', { name: '查看出处 · 第 1 段' })).toBeVisible()
+    await page.locator('#analysis-anchor-a1').getByRole('button', { name: '记到此处' }).click()
+    await page.getByRole('textbox', { name: '记录你的发现' }).fill('Review cloud source')
+    await page.getByRole('button', { name: '保存笔记' }).click()
+    await expect(page.getByText('Review cloud source')).toBeVisible()
+
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await page.getByRole('button', { name: /cloud-review-document.txt/ }).click()
+    await expect(page.getByText('Review cloud source')).toBeVisible()
+    await expect(page.getByRole('button', { name: '查看出处 · 第 1 段' })).toBeVisible()
+    await page.getByRole('button', { name: '删除笔记' }).click()
+    await expect(page.getByText('Review cloud source')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '查看出处 · 第 1 段' })).toBeVisible()
+
+    await page.getByRole('button', { name: '删除资料' }).click()
+    await expect(page.getByRole('button', { name: /cloud-review-document.txt/ })).toHaveCount(0)
+    const afterDelete = await page.evaluate(id => window.hermesDesktop.analysisDocuments?.get(id), ANALYSIS_REVIEW_CLOUD_ID)
+
+    expect(afterDelete).toEqual({ ok: false, code: 'source_not_found' })
+
+    reviewApi!.setAnalysisPolicy('cloud', false)
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
+    const refused = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.importFile())
+
+    expect(refused).toEqual({ ok: false, code: 'analysis_cloud_write_disabled' })
+    const afterRefusal = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+
+    expect(afterRefusal?.items?.filter(item => item.filename === 'cloud-review-document.txt')).toEqual([])
+  } finally {
+    reviewApi!.setAnalysisPolicy('local')
+    await app.evaluate(() => {
+      const host = globalThis as typeof globalThis & { restoreCloudAnalysisDialog?: () => void }
+
+      host.restoreCloudAnalysisDialog?.()
+      delete host.restoreCloudAnalysisDialog
     })
     fs.rmSync(sourceDirectory, { recursive: true, force: true })
   }
