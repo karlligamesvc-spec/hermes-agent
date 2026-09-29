@@ -500,6 +500,14 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             _receivedUserTexts.push(userText)
           }
 
+          // hc-891 injects a real provider rejection; no gateway result is fabricated.
+          if (userText.includes('HC891_PROVIDER_FAILURE')) {
+            res.writeHead(401, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: { message: 'HC891 intentional provider rejection', type: 'authentication_error', code: 'invalid_api_key' } }))
+
+            return
+          }
+
           // hc-883 exercises the real runtime oneshot -> HTTP model -> native save path.
           // This fixture is deterministic; it is not a semantic-quality evaluation.
           if (!stream && messages.some(m => m.role === 'system' && typeof m.content === 'string' &&
@@ -551,7 +559,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
               }
             }
 
-            if (holdThisCompletion) {
+            if (holdThisCompletion || userText.includes('HC891_PROVIDER_HOLD')) {
               heldCompletionCount++
               resolveHeldStreamStarted?.()
               void heldStreamReleased.then(respond)
@@ -673,8 +681,8 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
 
           if (stream) {
             const holdThisStream = Boolean(
-              options.holdFirstStreamForPrompt && typeof lastUserMessage?.content === 'string' &&
-                lastUserMessage.content.includes(options.holdFirstStreamForPrompt),
+              userText.includes('HC891_PROVIDER_HOLD') || (options.holdFirstStreamForPrompt && typeof lastUserMessage?.content === 'string' &&
+                lastUserMessage.content.includes(options.holdFirstStreamForPrompt)),
             )
 
             streamTextResponse(res, model, MOCK_REPLY, holdThisStream || holdThisCompletion ? () => {
@@ -687,7 +695,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
               return heldStreamReleased
             } : undefined)
           } else {
-            if (holdThisCompletion) {
+            if (holdThisCompletion || userText.includes('HC891_PROVIDER_HOLD')) {
               heldCompletionCount++
               resolveHeldStreamStarted?.()
               void heldStreamReleased.then(() => nonStreamingTextResponse(res, model, MOCK_REPLY))

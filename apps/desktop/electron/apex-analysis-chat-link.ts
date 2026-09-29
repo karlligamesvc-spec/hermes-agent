@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { type AnalysisChatLink, type AnalysisChatTarget, validAnalysisChatTarget } from '../shared/analysis-chat-link'
+import { type AnalysisChatLink, type AnalysisChatTarget, type AnalysisTurnState, sameAnalysisChatLink, validAnalysisChatTarget, validAnalysisTurnState } from '../shared/analysis-chat-link'
 
 import { ownedAnalysisWorkspace } from './apex-analysis-workspace'
 
@@ -10,17 +10,34 @@ import { ownedAnalysisWorkspace } from './apex-analysis-workspace'
 export function writeAnalysisChatLink(root: string, scope: string, id: string, revision: string, target: AnalysisChatTarget): AnalysisChatLink {
   if (!validAnalysisChatTarget(target)) {throw new Error('workspace_invalid')}
   const directory = ownedAnalysisWorkspace(root, scope, id, revision)
-  const filename = path.join(directory, 'apex-chat.json')
-  const temp = path.join(directory, `.chat-${crypto.randomUUID()}.tmp`)
 
   const item: AnalysisChatLink = { sessionId: target.sessionId, connectionId: target.connectionId,
-    profile: target.profile, submittedAt: new Date().toISOString() }
+    profile: target.profile, submittedAt: new Date().toISOString(),
+    ...(target.turn ? { turn: { id: target.turn.id, runtimeSessionId: target.turn.runtimeSessionId } } : {}) }
+
+  commitChatReceipt(directory, scope, id, revision, item)
+
+  return item
+}
+
+function commitChatReceipt(directory: string, scope: string, id: string, revision: string, item: AnalysisChatLink): void {
+  const temp = path.join(directory, `.chat-${crypto.randomUUID()}.tmp`)
 
   try {
     fs.writeFileSync(temp, JSON.stringify({ schema: 1, scope, sourceId: id, revision, item }), { flag: 'wx', mode: 0o600 })
-    // rename replaces the directory entry, never follows an existing link.
-    fs.renameSync(temp, filename)
+    fs.renameSync(temp, path.join(directory, 'apex-chat.json'))
   } finally {fs.rmSync(temp, { force: true })}
+}
+
+export function updateAnalysisChatOutcome(root: string, scope: string, id: string, revision: string, expected: AnalysisChatLink, status: AnalysisTurnState): AnalysisChatLink {
+  if (!validAnalysisChatTarget(expected) || !expected.turn || !validAnalysisTurnState(status)) {throw new Error('workspace_invalid')}
+  const current = readAnalysisChatLink(root, scope, id, revision)
+
+  if (!current || !sameAnalysisChatLink(current, expected)) {throw new Error('analysis_context_changed')}
+
+  if (current.outcome && ['complete', 'error', 'interrupted'].includes(current.outcome.status)) {return current}
+  const item = { ...current, outcome: { status, observedAt: new Date().toISOString() } }
+  commitChatReceipt(ownedAnalysisWorkspace(root, scope, id, revision), scope, id, revision, item)
 
   return item
 }
@@ -56,11 +73,15 @@ export function readAnalysisChatLink(root: string, scope: string, id: string, re
     const record = JSON.parse(buffer.subarray(0, count).toString('utf8'))
 
     if (record.schema !== 1 || record.scope !== scope || record.sourceId !== id || record.revision !== revision ||
-      !validAnalysisChatTarget(record.item) || typeof record.item.submittedAt !== 'string' || !Number.isFinite(Date.parse(record.item.submittedAt))) {
+      !validAnalysisChatTarget(record.item) || typeof record.item.submittedAt !== 'string' || !Number.isFinite(Date.parse(record.item.submittedAt)) ||
+      (record.item.outcome !== undefined && (!record.item.turn || !record.item.outcome || !validAnalysisTurnState(record.item.outcome.status) ||
+        typeof record.item.outcome.observedAt !== 'string' || !Number.isFinite(Date.parse(record.item.outcome.observedAt))))) {
       throw new Error('workspace_invalid')
     }
 
     return { sessionId: record.item.sessionId, connectionId: record.item.connectionId,
-      profile: record.item.profile, submittedAt: record.item.submittedAt }
+      profile: record.item.profile, submittedAt: record.item.submittedAt,
+      ...(record.item.turn ? { turn: { id: record.item.turn.id, runtimeSessionId: record.item.turn.runtimeSessionId } } : {}),
+      ...(record.item.outcome ? { outcome: { status: record.item.outcome.status, observedAt: record.item.outcome.observedAt } } : {}) }
   } catch {throw new Error('workspace_invalid')} finally {if (fd !== undefined) {fs.closeSync(fd)}}
 }

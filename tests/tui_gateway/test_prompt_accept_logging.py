@@ -181,3 +181,55 @@ def test_finished_record_fires_on_returned_error(turn_env, caplog):
     finished = _records(caplog, "tui turn finished")
     assert len(finished) == 1
     assert "status=error" in finished[0].getMessage()
+
+
+@pytest.mark.parametrize("outcome", ["complete", "error", "interrupted", "exception"])
+def test_exact_prompt_outcome_survives_later_turn_and_foreign_lookup(turn_env, monkeypatch, outcome):
+    from tui_gateway.prompt_outcomes import begin_prompt_outcome
+
+    def conversation(*args, **kwargs):
+        if outcome == "exception":
+            raise RuntimeError("provider failed")
+        return {"final_response": "done", **({outcome: True} if outcome != "complete" else {})}
+
+    agent = types.SimpleNamespace(session_id="stored", run_conversation=conversation, clear_interrupt=lambda: None)
+    session = _session(agent=agent, running=True)
+    turn_id = begin_prompt_outcome(session)
+    server._run_prompt_submit("rid", "runtime", session, "reviewed evidence", turn_id=turn_id)
+    monkeypatch.setitem(server._sessions, "runtime", session)
+    monkeypatch.setitem(server._sessions, "foreign", _session())
+    query = server._methods["prompt.turn.status"]
+    expected = "error" if outcome == "exception" else outcome
+    assert query(7, {"session_id": "runtime", "turn_id": turn_id})["result"] == {
+        "turn_id": turn_id, "status": expected}
+    later = begin_prompt_outcome(session)
+    assert later != turn_id
+    assert query(8, {"session_id": "runtime", "turn_id": later})["result"]["status"] == "running"
+    assert query(9, {"session_id": "runtime", "turn_id": turn_id})["result"]["status"] == expected
+    assert query(10, {"session_id": "foreign", "turn_id": turn_id})["result"]["status"] == "unavailable"
+    assert query(11, {"session_id": "missing", "turn_id": turn_id})["error"]["code"] == 4001
+
+
+@pytest.mark.parametrize("mode,expected", [("build_failed", "error"), ("cancelled", "interrupted"), ("stopped", "error")])
+def test_exact_outcome_settles_before_agent_is_ready(turn_env, monkeypatch, mode, expected):
+    from tui_gateway.prompt_outcomes import begin_prompt_outcome, read_prompt_outcome
+    session = _session(running=mode != "stopped", _turn_cancel_requested=mode == "cancelled")
+    turn_id = begin_prompt_outcome(session)
+    monkeypatch.setattr(server, "_wait_agent_for_prompt", lambda *args: (
+        {"error": {"message": "build failed"}} if mode == "build_failed" else None))
+    server._run_after_agent_ready(1, "runtime", session, "hello", None, None, turn_id=turn_id)
+    assert read_prompt_outcome(session, turn_id) == expected
+
+
+def test_outcome_cache_is_bounded_and_terminal_states_do_not_revert():
+    from tui_gateway.prompt_outcomes import begin_prompt_outcome, finish_prompt_outcome, read_prompt_outcome
+    session = {}
+    first = begin_prompt_outcome(session)
+    finish_prompt_outcome(session, first, "interrupted")
+    finish_prompt_outcome(session, first, "complete")
+    assert read_prompt_outcome(session, first) == "interrupted"
+    for _ in range(32):
+        begin_prompt_outcome(session)
+    assert len(session["_prompt_outcomes"]) == 32
+    assert read_prompt_outcome(session, first) == "unavailable"
+    assert read_prompt_outcome({}, first) == "unavailable"

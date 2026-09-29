@@ -789,7 +789,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         // other session-scoped RPC (attach, /compress, rewind, interrupt) goes
         // through the same helper so one policy covers the whole bug class.
         let submitErr: unknown = null
-        let submitResult: { result: { status?: string } } | undefined
+        let submitResult: { result: { status?: string; turn_id?: string }; sessionId: string } | undefined
 
         try {
           const recoverStoredSessionId = targetStoredSessionId ?? selectedStoredSessionIdRef.current
@@ -799,7 +799,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
             recoverStoredSessionId,
             liveId =>
               withSessionBusyRetry(() =>
-                requestGateway<{ status?: string }>('prompt.submit', submitParams(liveId), PROMPT_SUBMIT_REQUEST_TIMEOUT_MS)
+                requestGateway<{ status?: string; turn_id?: string }>('prompt.submit', submitParams(liveId), PROMPT_SUBMIT_REQUEST_TIMEOUT_MS)
               ),
             {
               requestGateway,
@@ -851,7 +851,10 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         }
 
         if (submitResult?.result?.status === 'streaming' && targetStoredSessionId && options?.onAccepted) {
-          try {await options.onAccepted({ storedSessionId: targetStoredSessionId })} catch (error) {
+          try {await options.onAccepted({ storedSessionId: targetStoredSessionId,
+            ...(typeof submitResult.result.turn_id === 'string' && submitResult.result.turn_id ? {
+              turn: { id: submitResult.result.turn_id, runtimeSessionId: submitResult.sessionId }
+            } : {}) })} catch (error) {
             console.warn('[submit-receipt-observer]', error)
           }
         }

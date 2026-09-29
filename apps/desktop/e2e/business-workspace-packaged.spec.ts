@@ -2512,3 +2512,9 @@ test('hc-889 packaged late session recovery preserves the chosen cron page', asy
 test('hc-890 packaged analysis links only an accepted chat and reopens its durable conversation', async () => {
   await verifyAnalysisChatLink(fixture!)
 })
+
+for (const outcome of ['error', 'interrupted'] as const) {
+  test(`hc-891 packaged analysis retains the actual ${outcome} attempt outcome`, async () => {
+    await verifyAnalysisChatLink(fixture!, outcome)
+  })
+}

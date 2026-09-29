@@ -22571,6 +22571,7 @@ ipcMain.handle('hermes:analysis:importDeepReport', deepReportHandlers.importRepo
 ipcMain.handle('hermes:analysis:prepareDeepWorkspace', deepReportHandlers.prepareWorkspace)
 ipcMain.handle('hermes:analysis:recordDeepChat', deepReportHandlers.recordChat)
 ipcMain.handle('hermes:analysis:readDeepChat', deepReportHandlers.readChat)
+ipcMain.handle('hermes:analysis:updateDeepChatOutcome', deepReportHandlers.updateChatOutcome)
 ipcMain.handle('hermes:analysis:collectDeepReport', deepReportHandlers.collectReport)
 ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
 

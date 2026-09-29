@@ -7,12 +7,14 @@ import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/anal
 
 import type { PackagedMockBackendFixture } from './fixtures'
 import { resolvePackagedE2ePython } from './python-prerequisite'
-import { expect, test } from './test'
+import { allowErrorBanners, expect, test } from './test'
 
 /** Real Desktop submit -> real runtime persistence -> native receipt -> source-side reopen.
  * ASR/account/model are isolated fixtures; this does not verify a report or Hypit execution. */
-export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture) {
+export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture, outcome: 'complete' | 'error' | 'interrupted' = 'complete') {
   const { page, sandbox, mock } = fixture
+
+  if (outcome === 'error') {allowErrorBanners()}
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('textbox', { name: '粘贴资料链接' }).fill('https://www.iesdouyin.com/share/video/123456')
   await page.getByRole('button', { name: '检查并尝试转写视频' }).click()
@@ -36,11 +38,22 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
 
   expect(await read()).toEqual({ ok: true, item: null })
   expect(fs.existsSync(path.join(directory, 'apex-chat.json'))).toBe(false)
+
+  if (outcome !== 'complete') {await goal.fill(`${outcome === 'error' ? 'HC891_PROVIDER_FAILURE' : 'HC891_PROVIDER_HOLD'}\n${prompt}`)}
   const before = mock.receivedPrompts.length
   await page.getByRole('button', { name: '开始执行', exact: true }).click()
   await expect.poll(async () => (await read()).item?.sessionId, { timeout: 30_000 }).toBeTruthy()
   const link = (await read()).item as AnalysisChatLink
   await expect.poll(() => mock.receivedPrompts.slice(before).some(text => text.includes(directory)), { timeout: 60_000 }).toBe(true)
+  expect(link.turn?.id).toMatch(/^[0-9a-f-]{36}$/)
+  expect(link.turn?.runtimeSessionId).toBeTruthy()
+
+  if (outcome === 'interrupted') {
+    await mock.waitForHeldStream()
+    await page.locator('form').getByRole('button', { name: '停止', exact: true }).click()
+    mock.releaseHeldStream()
+  }
+
   const python = resolvePackagedE2ePython({ repoRoot: path.resolve(import.meta.dirname, '../../..'), explicit: process.env.HERMES_DESKTOP_PYTHON })
 
   const result = spawnSync(python, ['-I', '-c',
@@ -58,6 +71,15 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   const reports = page.getByRole('region', { name: '深度分析报告' })
   await expect(reports).toContainText('不代表报告已完成或内容已核验')
+  await expect.poll(async () => {
+    const refresh = reports.getByRole('button', { name: '刷新本次发送状态', exact: true })
+
+    if (await refresh.isVisible() && await refresh.isEnabled()) {await refresh.click()}
+
+    return (await read()).item?.outcome?.status
+  }, { timeout: 60_000 }).toBe(outcome)
+  const expected = { complete: '执行已结束；报告及内容尚未核验。', error: '本次执行失败，请打开聊天查看。', interrupted: '本次执行已中断。' }[outcome]
+  await expect(reports).toContainText(expected)
   await reports.getByRole('button', { name: '打开最近发送的拆解会话' }).click()
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(`#/${encodeURIComponent(link.sessionId)}`)
   await page.reload()
@@ -65,10 +87,15 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(reports.getByRole('button', { name: '打开最近发送的拆解会话' })).toBeVisible()
-  expect((await read()).item).toEqual(link)
+  await expect(reports).toContainText(expected)
+  expect((await read()).item).toMatchObject({ ...link, outcome: { status: outcome } })
+  const persisted = JSON.parse(fs.readFileSync(path.join(directory, 'apex-chat.json'), 'utf8')).item
+  expect(persisted).toMatchObject({ ...link, outcome: { status: outcome } })
+  expect(fs.existsSync(path.join(directory, 'ANALYSIS.md'))).toBe(false)
+  await test.info().attach(`hc891-${outcome}-observed`, { body: JSON.stringify(persisted), contentType: 'application/json' })
   await test.info().attach('hc890-real-submitted-chat', { body: JSON.stringify({ link, userRows: rows.filter(row => row.role === 'user').length }), contentType: 'application/json' })
   await reports.scrollIntoViewIfNeeded()
-  await test.info().attach('hc890-chat-source-ui', { body: await page.screenshot(), contentType: 'image/png' })
+  await test.info().attach(`hc891-${outcome}-source-ui`, { body: await page.screenshot(), contentType: 'image/png' })
   await page.getByRole('button', { name: '删除资料', exact: true }).click()
   await expect.poll(() => fs.existsSync(directory)).toBe(false)
 }

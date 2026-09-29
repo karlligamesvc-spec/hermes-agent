@@ -2,11 +2,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { AnalysisChatTarget } from '../shared/analysis-chat-link'
+import type { AnalysisChatLink, AnalysisChatTarget, AnalysisTurnState } from '../shared/analysis-chat-link'
 import { type DeepReportInput, MAX_REPORT_BYTES, validateDeepReport, validateDeepReportSource } from '../shared/analysis-deep-report'
 import type { OverviewSource } from '../shared/analysis-video-overview'
 
-import { readAnalysisChatLink, writeAnalysisChatLink } from './apex-analysis-chat-link'
+import { readAnalysisChatLink, updateAnalysisChatOutcome, writeAnalysisChatLink } from './apex-analysis-chat-link'
 import { removeLocalDeepReport, saveLocalDeepReport } from './apex-analysis-local'
 import { analysisWorkspaceReport, prepareAnalysisWorkspace } from './apex-analysis-workspace'
 
@@ -108,6 +108,16 @@ export function createDeepReportHandlers(deps: Dependencies) {
         if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
 
         return { ok: true, item: writeAnalysisChatLink(context.root, scope, id, revision, target) }
+      } catch (error) {return { ok: false, code: deps.error(error) }}
+    },
+    updateChatOutcome: async (_event: unknown, id: string, scope: string, revision: string, expected: AnalysisChatLink, status: AnalysisTurnState) => {
+      try {
+        const { context, item } = await deps.context(id, scope)
+        validateDeepReportSource(item, revision, item.analysis_revision ?? '')
+
+        if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
+
+        return { ok: true, item: updateAnalysisChatOutcome(context.root, scope, id, revision, expected, status) }
       } catch (error) {return { ok: false, code: deps.error(error) }}
     },
     readChat: async (_event: unknown, id: string, scope: string, revision: string) => {

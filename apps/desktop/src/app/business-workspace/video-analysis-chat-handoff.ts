@@ -45,10 +45,10 @@ export function analysisChatSubmitOptions(value: unknown, text: string): SubmitT
 
   if (!record) {return undefined} // Older native bridge: ordinary explicit send, no claimed receipt.
 
-  return { onAccepted: async ({ storedSessionId }) => {
+  return { onAccepted: async ({ storedSessionId, turn }) => {
     try {
       if (!analysisChatContextMatches(target)) {throw new Error('analysis_context_changed')}
-      const result = await record(sourceId, scope, revision, { ...target, sessionId: storedSessionId })
+      const result = await record(sourceId, scope, revision, { ...target, sessionId: storedSessionId, ...(turn ? { turn } : {}) })
 
       if (!result.ok) {throw new Error(result.code)}
     } catch {notify({ kind: 'error', title: copy.recordFailed, message: '' })}

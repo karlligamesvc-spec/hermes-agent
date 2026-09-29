@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, expect, it, vi } from 'vitest'
 
-import { readAnalysisChatLink, writeAnalysisChatLink } from './apex-analysis-chat-link'
+import { readAnalysisChatLink, updateAnalysisChatOutcome, writeAnalysisChatLink } from './apex-analysis-chat-link'
 import { createDeepReportHandlers } from './apex-analysis-deep-report'
 import { createLocalUploadedVideoTranscript, deleteLocalDocument, getLocalDocument, localOverviewRevision } from './apex-analysis-local'
 import { deleteAnalysisWorkspace, prepareAnalysisWorkspace } from './apex-analysis-workspace'
@@ -97,4 +97,26 @@ it.each(['account', 'foreign_source', 'revision', 'deleted', 'receipt_owner', 'l
   if (['account', 'foreign_source', 'revision', 'deleted', 'receipt_owner'].includes(failure)) {
     expect(await handlers.recordChat(null, source.id, scope, rev, target)).toEqual({ ok: false, code: expected })
   }
+})
+
+
+it('keeps a terminal outcome on its exact native receipt, never on the next accepted attempt', async () => {
+  const { root, source, revision, directory, handlers, deps } = setup()
+  const turn = { id: 'backend-turn', runtimeSessionId: 'runtime-not-stored' }
+  const receipt = (await handlers.recordChat(null, source.id, owner, revision, { ...target, turn })).item!
+  expect(receipt.turn).toEqual(turn)
+  const running = await handlers.updateChatOutcome(null, source.id, owner, revision, receipt, 'running')
+  expect(running.item?.outcome?.status).toBe('running')
+  deps.currentAccount = () => other
+  expect(await handlers.updateChatOutcome(null, source.id, owner, revision, receipt, 'complete')).toEqual({ ok: false, code: 'analysis_account_changed' })
+  deps.currentAccount = () => owner
+  const complete = await handlers.updateChatOutcome(null, source.id, owner, revision, receipt, 'complete')
+  expect(complete.item?.outcome).toEqual({ status: 'complete', observedAt: expect.any(String) })
+  expect(updateAnalysisChatOutcome(root, owner, source.id, revision, receipt, 'interrupted')).toEqual(complete.item)
+  expect(JSON.parse(fs.readFileSync(path.join(directory, 'apex-chat.json'), 'utf8')).item).toEqual(complete.item)
+  const next = (await handlers.recordChat(null, source.id, owner, revision, { ...target, turn: { ...turn, id: 'next-turn' } })).item!
+  expect(await handlers.updateChatOutcome(null, source.id, owner, revision, receipt, 'error')).toEqual({ ok: false, code: 'analysis_context_changed' })
+  expect(readAnalysisChatLink(root, owner, source.id, revision)).toEqual(next)
+  expect(next.outcome).toBeUndefined()
+  expect(getLocalDocument(root, owner, source.id)?.deep_reports).toBeUndefined()
 })

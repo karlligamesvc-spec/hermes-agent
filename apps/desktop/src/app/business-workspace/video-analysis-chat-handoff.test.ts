@@ -40,3 +40,12 @@ it('does not turn a failed receipt write into a failed or duplicate chat send', 
   expect(record).toHaveBeenCalledTimes(1)
   expect($notifications.get().some(item => item.title?.includes('do not resend'))).toBe(true)
 })
+
+it('preserves the runtime-issued attempt separately from the durable chat target', async () => {
+  const options = analysisChatSubmitOptions(draft, prompt)
+
+  if (!options) {throw new Error('missing options')}
+  const turn = { id: 'issued-turn', runtimeSessionId: 'runtime-after-resume' }
+  await options.onAccepted!({ storedSessionId: 'durable', turn })
+  expect(record).toHaveBeenCalledExactlyOnceWith('source', 'owner', 'revision', { sessionId: 'durable', connectionId: 'local', profile: 'default', turn })
+})
