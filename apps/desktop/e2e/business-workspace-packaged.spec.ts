@@ -7,8 +7,10 @@ import path from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 
 import { TASK_PANEL_RESUME_TRIGGER } from '../../../tests-js/scripts/mock-server'
+import type { SourceAnswerInput } from '../shared/analysis-answer'
 import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
+import { verifySourceAnswer } from './analysis-source-answer'
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
@@ -26,6 +28,7 @@ const ANALYSIS_REVIEW_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const ANALYSIS_REVIEW_TOKEN = `local.${Buffer.from(JSON.stringify({ sub: ANALYSIS_REVIEW_USER_ID })).toString('base64url')}.review`
 const ANALYSIS_REVIEW_VIDEO_URL = 'https://www.iesdouyin.com/share/video/123456'
 const ANALYSIS_REVIEW_CLOUD_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
 const ANALYSIS_FORMAT_SAMPLES = [
   {
     filename: 'analysis-review.pdf', kind: 'pdf', question: 'Revenue?', citation: '第 2 页',
@@ -89,6 +92,7 @@ async function expectDrawerBelowNativeChrome(drawer: Locator) {
       computedTop: style.top
     }
   })
+
   await test.info().attach('native-drawer-geometry', {
     body: JSON.stringify(geometry, null, 2),
     contentType: 'application/json'
@@ -164,11 +168,13 @@ async function expectApexShellPaint(page: Page, expected: 'business-canvas' | 's
       }
 
       const commaAlpha = color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/)
+
       if (commaAlpha) {
         return Number(commaAlpha[1])
       }
 
       const slashAlpha = color.match(/\/\s*([\d.]+)%?\s*\)$/)
+
       if (slashAlpha) {
         const alpha = Number(slashAlpha[1])
 
@@ -392,15 +398,19 @@ async function startPhase1ReviewApi() {
   let workflowEnabled = true
   let analysisMode: 'cloud' | 'local' = 'local'
   let cloudStorageConfigured = false
+
   let cloudDocument: null | {
     id: string; filename: string; kind: string; status: 'processing' | 'ready';
     created_at: string; anchors: Array<{ id: string; location: { paragraph: number }; text: string }>
   } = null
-  let cloudQuestions: Array<{ id: string; question: string; answer: string; answer_type: string; citations: Array<{ anchor_id: string; location: { paragraph: number } }> }> = []
+
+  let cloudQuestions: Array<{ id: string; question: string; answer: string; answer_type: string; source_revision?: string; citations: Array<{ anchor_id: string; location: { paragraph: number } }> }> = []
   let cloudNotes: Array<{ id: string; body: string; anchor_id: string | null }> = []
   let cloudDetailReads = 0
+
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+
     const json = (status: number, body: unknown) => {
       response.writeHead(status, { 'content-type': 'application/json' })
       response.end(JSON.stringify(body))
@@ -484,7 +494,8 @@ async function startPhase1ReviewApi() {
 
         if (cloudDetailReads >= 2) { cloudDocument.status = 'ready' }
 
-        json(200, { item: { ...cloudDocument, anchors: cloudDocument.status === 'ready' ? cloudDocument.anchors : [] } })
+        json(200, { item: { ...cloudDocument, analysis_revision: 'c'.repeat(64), source_answers_supported: true,
+          anchors: cloudDocument.status === 'ready' ? cloudDocument.anchors : [] } })
 
         return
       }
@@ -497,6 +508,29 @@ async function startPhase1ReviewApi() {
 
       if (url.pathname === `${cloudPath}/notes` && request.method === 'GET') {
         json(200, { items: cloudNotes })
+
+        return
+      }
+
+      if (url.pathname === `${cloudPath}/questions/answers` && request.method === 'POST') {
+        const chunks: Buffer[] = []
+
+        for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+        const input = JSON.parse(Buffer.concat(chunks).toString('utf8')) as SourceAnswerInput
+
+        if (cloudDocument.status !== 'ready' || !cloudStorageConfigured || input.revision !== 'c'.repeat(64) ||
+          input.anchor_ids.length !== 1 || input.anchor_ids[0] !== 'a1') {
+          json(409, { detail: { code: 'answer_output_invalid' } })
+
+          return
+        }
+
+        const item = { id: 'cloud-model-answer', question: input.question, answer: input.answer,
+          answer_type: input.answer_type, source_revision: input.revision,
+          citations: [{ anchor_id: 'a1', location: { paragraph: 1 } }] }
+
+        cloudQuestions.push(item)
+        json(200, { item })
 
         return
       }
@@ -830,14 +864,18 @@ test.beforeAll(
     reviewApi.setRelayBaseUrl(fixture.mockUrl)
     await fixture.page.getByRole('button', { name: '使用自己的密钥' }).click()
     const chooseLater = fixture.page.getByRole('button', { name: '稍后再选择提供方' })
+
     const providerPickerVisible = await chooseLater.waitFor({ state: 'visible', timeout: 3_000 }).then(
       () => true,
       () => false
     )
+
     if (providerPickerVisible) {
       await chooseLater.click()
     }
+
     await waitForAppReady(fixture, 120_000)
+
     const signIn = await fixture.page.evaluate(() =>
       (window as Window & { hermesDesktop?: { managed?: {
         signIn: (input: { email: string; password: string }) => Promise<{ ok: boolean; hasRelayKey: boolean }>
@@ -885,6 +923,7 @@ test('fresh packaged app exposes the business workspace without implementation v
   await expect(page.getByText(/手机正遥控本机/u)).toHaveCount(0)
 
   const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
   if (screenshotRoot) {
     fs.mkdirSync(screenshotRoot, { recursive: true })
     await page.screenshot({
@@ -899,10 +938,12 @@ test('fresh packaged app exposes the business workspace without implementation v
 
 test('packaged sidebar uses the APEX app mark and keeps Chinese assistant creation reachable', async () => {
   const page = fixture!.page
+
   const sessionsTab = page
     .getByRole('button', { exact: true, name: '会话' })
     .or(page.getByRole('tab', { exact: true, name: '会话' }))
     .first()
+
   const assistantsTab = page
     .getByRole('button', { exact: true, name: '助手' })
     .or(page.getByRole('tab', { exact: true, name: '助手' }))
@@ -1134,6 +1175,7 @@ test('hc-840 Start presents three readable video task rows with generated artwor
   expect(new Set(rowGeometry.map(row => Math.round(row.right))).size).toBe(1)
 
   const screenshotRoot = process.env.HC840_SCREENSHOT_DIR
+
   const screenshotPath = screenshotRoot
     ? path.join(screenshotRoot, 'start-video-tasks-1220x800.png')
     : test.info().outputPath('start-video-tasks-1220x800.png')
@@ -1141,6 +1183,7 @@ test('hc-840 Start presents three readable video task rows with generated artwor
   if (screenshotRoot) {
     fs.mkdirSync(screenshotRoot, { recursive: true })
   }
+
   await page.screenshot({ animations: 'disabled', caret: 'hide', path: screenshotPath })
 })
 
@@ -1190,11 +1233,13 @@ test('packaged workflow entries follow each real content container around the si
     )
     await page.bringToFront()
     await page.waitForTimeout(400)
+
     if (surface.nav === '工作流') {
       await openWorkflowCatalog(page)
     } else {
       await page.locator('[data-sidebar="menu-button"]').filter({ hasText: surface.nav }).first().click()
     }
+
     await expect(page.locator(surface.selector)).toBeVisible()
 
     for (const testCase of surface.cases) {
@@ -1301,6 +1346,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
   const { app, page } = fixture!
   const testInfo = test.info()
   const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
   if (screenshotRoot) {
     fs.mkdirSync(screenshotRoot, { recursive: true })
   }
@@ -1330,6 +1376,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
         win.setSize(1220, 800, false)
       }
     })
+
     if (phasePage.nav === '工作流') {
       await openWorkflowCatalog(page)
     } else if (phasePage.nav === '交付物') {
@@ -1341,6 +1388,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
         .first()
         .click()
     }
+
     await expect(page.getByRole('heading', { name: phasePage.title, level: 1 })).toBeVisible()
 
     for (const viewport of PHASE1_VIEWPORTS) {
@@ -1361,6 +1409,7 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
 
         return win.getBounds()
       }, viewport)
+
       await page.bringToFront()
       await page.waitForTimeout(400)
 
@@ -1509,6 +1558,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
   const { app, page } = fixture!
   const testInfo = test.info()
   const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+
   if (screenshotRoot) {
     fs.mkdirSync(screenshotRoot, { recursive: true })
   }
@@ -1550,6 +1600,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
 
       return win.getBounds()
     }, viewport)
+
     await page.bringToFront()
     await page.waitForTimeout(400)
 
@@ -1567,6 +1618,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
         scrollWidth: root.scrollWidth
       }
     })
+
     const runScroll = drawer.locator('[data-run-scroll-container]')
     const runTitle = drawer.getByRole('heading', { name: '工作流运行', level: 1 })
     const reviewHeading = drawer.getByRole('heading', { name: '需要审阅', level: 2 })
@@ -1577,6 +1629,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
     expect(bounds?.width).toBe(viewport.width)
     await expectWindowHeight(app, bounds?.height, viewport.height)
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
+
     if (viewport.width < 900) {
       expect(layout.layout).toBe('fullscreen')
       expect(layout.drawerWidth).toBeCloseTo(layout.clientWidth, 0)
@@ -1588,6 +1641,7 @@ test('packaged real Run drawer preserves context, safe data and focus across the
       expect(layout.drawerRight).toBeCloseTo(layout.clientWidth, 0)
       expect(layout.drawerLeft).toBeGreaterThan(0)
     }
+
     expect(layout.activeInside).toBe(true)
     expect(await runScroll.evaluate(element => element.scrollTop)).toBe(0)
     await expect(runTitle).toBeVisible()
@@ -1661,6 +1715,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
   test(`packaged ${surfaceName} preserves page gutters across native windows`, async () => {
     const { app, page } = fixture!
     const screenshotRoot = process.env.HC820_SCREENSHOT_DIR
+
     if (screenshotRoot) {
       fs.mkdirSync(screenshotRoot, { recursive: true })
     }
@@ -1686,6 +1741,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
         surfaceName === 'run-error'
           ? page.getByRole('heading', { name: '运行暂时不可用', level: 2 }).locator('..').locator('..').locator('..')
           : page.locator('[data-legacy-projects]')
+
       await expect(surface).toBeVisible()
 
       for (const viewport of PHASE1_VIEWPORTS) {
@@ -1695,15 +1751,19 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
           win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
           win.show()
           win.focus()
+
           return win.getBounds()
         }, viewport)
+
         expect(bounds.width).toBe(viewport.width)
         await expectWindowHeight(app, bounds.height, viewport.height)
         await page.bringToFront()
         await page.waitForTimeout(400)
+
         if (surfaceName === 'run-error') {
           await expectDrawerBelowNativeChrome(page.locator('[data-route-drawer]'))
         }
+
         await expectReadablePageGutters(surface)
         const name = `${surfaceName}-${viewport.width}x${viewport.height}.png`
         await page.screenshot({
@@ -1730,6 +1790,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
 
 test('packaged Settings shows the running APEX app version separately from the engine', async () => {
   const { app, page } = fixture!
+
   const version = await page.evaluate(() => (window as Window & { hermesDesktop?: {
     getVersion: () => Promise<{ appVersion: string; engineVersion: string }>
   } }).hermesDesktop?.getVersion())
@@ -1772,8 +1833,10 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
       const win = BrowserWindow.getAllWindows()[0]!
       win.unmaximize()
       win.setBounds({ height: size.height, width: size.width, x: 0, y: 0 }, false)
+
       return win.getBounds()
     }, viewport)
+
     expect(bounds.width).toBe(viewport.width)
     await expectWindowHeight(app, bounds.height, viewport.height)
     await page.waitForTimeout(400)
@@ -1792,6 +1855,7 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
     if (screenshotRoot) {
       fs.mkdirSync(screenshotRoot, { recursive: true })
     }
+
     await page.screenshot({
       animations: 'disabled',
       caret: 'hide',
@@ -1994,6 +2058,7 @@ test('packaged plain goal stays separate from a previewed workflow and starts a 
   )
 
   const screenshotRoot = process.env.PHASE1_SCREENSHOT_DIR
+
   if (screenshotRoot) {
     fs.mkdirSync(screenshotRoot, { recursive: true })
     await app.evaluate(({ BrowserWindow }) =>
@@ -2008,6 +2073,7 @@ test('packaged plain goal stays separate from a previewed workflow and starts a 
   }
 
   const composerStopButton = page.locator('form').getByRole('button', { name: '停止', exact: true })
+
   if (await composerStopButton.isVisible()) {
     await composerStopButton.click()
     await expect(composerStopButton).toHaveCount(0, { timeout: 15_000 })
@@ -2022,9 +2088,11 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
   await app.evaluate(({ dialog }, selectedPath) => {
     const host = globalThis as typeof globalThis & { restoreReportDialog?: () => void }
     const original = dialog.showOpenDialog
+
     host.restoreReportDialog = () => { dialog.showOpenDialog = original }
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] })
   }, file)
+
   try {
     const reports = page.getByRole('region', { name: '深度分析报告' })
     await reports.getByRole('button', { name: '保存报告文件' }).click()
@@ -2038,12 +2106,14 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
     await expect(reports).toContainText('Hypit 执行状态尚未核验')
     await reports.getByRole('button', { name: '删除副本 · ANALYSIS.md' }).click()
     await expect(reports).toContainText('尚未保存报告。')
+
     const retained = await page.evaluate(async () => {
       const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
       const source = (await api.list()).items!.find(item => item.filename === 'local-review-video-transcript.srt')!
 
       return (await api.get(source.id)).item!.deep_reports
     })
+
     expect(retained).toEqual([])
     expect(fs.readFileSync(file, 'utf8')).toBe(body)
     await test.info().attach('hc884-report-roundtrip', { body: JSON.stringify({ retainedReports: retained, originalPreserved: true, provenance: 'selected_file' }), contentType: 'application/json' })
@@ -2103,17 +2173,20 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
     return { summary: source.video_overviews!.zh, rejected, staleTranscript, wrongOwnerTranscript,
       anchors: source.anchors!.map(anchor => ({ id: anchor.id, ...anchor.location, text: anchor.text })) }
   })
+
   expect(retained.summary.points[0].anchor_ids).toEqual(['a1', 'a2'])
   expect(retained.rejected).toMatchObject({ ok: false, code: 'analysis_account_changed' })
   expect(retained.staleTranscript).toMatchObject({ ok: false, code: 'transcript_source_changed' })
   expect(retained.wrongOwnerTranscript).toMatchObject({ ok: false, code: 'analysis_account_changed' })
 
+  await verifySourceAnswer(page, localItems!.items!.find(item => item.filename === 'local-review-video-transcript.srt')!.id, 'a2')
   await verifySelectedDeepReport(app, page)
 
   await page.getByLabel('选择本地视频播放').setInputFiles(path.resolve(import.meta.dirname, 'media/local-frame-evidence.webm'))
   const player = page.getByLabel('本地视频: local-frame-evidence.webm')
 
   await expect.poll(() => player.evaluate(video => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2)
+
   // A seek updates currentTime before the new frame has decoded. Capture in
   // that same browser task so an old image cannot inherit the requested time.
   const seekingDuringCapture = await page.getByRole('button', { name: '截取当前画面' }).evaluate(button => {
@@ -2163,6 +2236,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   for (let index = 0; index < 2; index++) {
     await page.getByRole('button', { name: /移除.*apex-frame-.*\.jpg/ }).first().click()
   }
+
   await expect(goalWithFrame).not.toHaveValue(/已附画面截图/)
   await expect(goalWithFrame).not.toHaveValue(/0:01\.0/)
   await expect(goalWithFrame).toHaveValue(/已从草稿移除 2 张截图/)
@@ -2240,6 +2314,7 @@ test('hc-878 packaged local document import persists cited answers and notes und
     })
     await page.getByRole('button', { name: '查看出处 · 第 2 段' }).click()
     await expect(page.locator('#analysis-anchor-a2')).toHaveAttribute('data-jumped', 'true')
+    await page.locator('#analysis-anchor-a2').evaluate(element => { element.scrollIntoView = Element.prototype.scrollIntoView })
 
     await page.locator('#analysis-anchor-a2').getByRole('button', { name: '记到此处' }).click()
     await page.getByRole('textbox', { name: '记录你的发现' }).fill('Check the revenue source')
@@ -2252,6 +2327,7 @@ test('hc-878 packaged local document import persists cited answers and notes und
     await expect(page.getByText('Check the revenue source')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看出处 · 第 2 段' })).toBeVisible()
 
+    await verifySourceAnswer(page, item!.id, 'a2')
     await page.getByRole('button', { name: '删除资料' }).click()
     await expect(page.getByRole('button', { name: /local-review-document.txt/ })).toHaveCount(0)
     const afterDelete = await page.evaluate(id => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.get(id), item!.id)
@@ -2317,6 +2393,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     await expect(page.getByText('Review cloud source')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '查看出处 · 第 1 段' })).toBeVisible()
 
+    await verifySourceAnswer(page, ANALYSIS_REVIEW_CLOUD_ID, 'a1')
     await page.getByRole('button', { name: '删除资料' }).click()
     await expect(page.getByRole('button', { name: /cloud-review-document.txt/ })).toHaveCount(0)
     const afterDelete = await page.evaluate(id => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.get(id), ANALYSIS_REVIEW_CLOUD_ID)

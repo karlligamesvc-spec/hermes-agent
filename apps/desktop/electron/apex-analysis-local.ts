@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { type SourceAnswerInput, type StoredSourceAnswer, validateSourceAnswer } from '../shared/analysis-answer'
 import { type DeepAnalysisReport, type DeepReportInput, MAX_DEEP_REPORTS, validateDeepReport } from '../shared/analysis-deep-report'
 import { validateVideoOverview, type VideoSemanticOverview } from '../shared/analysis-video-overview'
 
@@ -24,7 +25,7 @@ export interface LocalDocument {
   storageMode: 'local'
   anchors: AnalysisAnchor[]
   notes: Array<{ id: string; body: string; anchor_id: string | null }>
-  questions: Array<{ id: string; question: string; answer: string; citations: Array<{ anchor_id: string; location: Record<string, number | string> }>; answer_type: 'source_excerpts' | 'no_evidence' }>
+  questions: StoredSourceAnswer[]
   deep_reports?: DeepAnalysisReport[]
   video_overviews?: Record<string, VideoSemanticOverview>
   createdAt: string
@@ -337,7 +338,7 @@ export function answerLocalDocument(root: string, userId: string, id: string, qu
   for (const word of stopwords) {terms.delete(word)}
 
   if (!terms.size) {
-    const item = { id: crypto.randomUUID(), question, answer: '', citations: [], answer_type: 'no_evidence' as const }
+    const item = { id: crypto.randomUUID(), question, answer: '', citations: [], answer_type: 'no_evidence' as const, source_revision: localOverviewRevision(document) }
     document.questions.push(item)
     save(root, userId, document)
 
@@ -355,6 +356,7 @@ export function answerLocalDocument(root: string, userId: string, id: string, qu
     id: crypto.randomUUID(),
     question,
     answer: cited.map(anchor => anchor.text.slice(0, 600)).join('\n\n'),
+    source_revision: localOverviewRevision(document),
     citations: cited.map(anchor => ({ anchor_id: anchor.id, location: anchor.location })),
     answer_type: cited.length ? 'source_excerpts' as const : 'no_evidence' as const
   }
@@ -370,6 +372,23 @@ export function localOverviewRevision(document: LocalDocument): string {
   return crypto.createHash('sha256').update(JSON.stringify([
     document.kind, document.status, document.evidenceOrigin, document.anchors
   ])).digest('hex')
+}
+
+export function saveLocalSourceAnswer(root: string, userId: string, id: string, value: SourceAnswerInput): StoredSourceAnswer {
+  const document = getLocalDocument(root, userId, id)
+
+  if (!document) {throw new Error('source_not_found')}
+  const checked = validateSourceAnswer(value, document, localOverviewRevision(document))
+  const anchors = new Map(document.anchors.map(anchor => [anchor.id, anchor]))
+
+  const item: StoredSourceAnswer = { id: crypto.randomUUID(), question: checked.question,
+    answer: checked.answer, answer_type: checked.answer_type, source_revision: checked.revision,
+    citations: checked.anchor_ids.map(anchor_id => ({ anchor_id, location: anchors.get(anchor_id)!.location })) }
+
+  document.questions.push(item)
+  save(root, userId, document)
+
+  return item
 }
 
 export function saveLocalVideoOverview(root: string, userId: string, id: string, value: VideoSemanticOverview): VideoSemanticOverview {
@@ -394,9 +413,12 @@ export function saveLocalDeepReport(root: string, userId: string, id: string, in
   const existing = reports.find(item => item.sha256 === sha256 && item.revision === valid.revision)
 
   if (existing) {return existing}
+
   if (reports.length >= MAX_DEEP_REPORTS) {throw new Error('report_limit')}
+
   const item: DeepAnalysisReport = { ...valid, id: crypto.randomUUID(), sha256,
     created_at: new Date().toISOString(), provenance: 'selected_file' }
+
   source.deep_reports = [...reports, item]
   save(root, userId, source)
 

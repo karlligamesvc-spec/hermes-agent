@@ -1,3 +1,4 @@
+import type { SourceAnswerInput, StoredSourceAnswer } from '../../../shared/analysis-answer'
 import type { DeepAnalysisReport } from '../../../shared/analysis-deep-report'
 import type { VideoSemanticOverview } from '../../../shared/analysis-video-overview'
 
@@ -7,13 +8,7 @@ export interface AnalysisAnchor {
   text: string
 }
 
-export interface AnalysisQuestion {
-  id: string
-  question: string
-  answer: string
-  answer_type: 'no_evidence' | 'source_excerpts'
-  citations: Array<{ anchor_id: string; location: Record<string, number | string> }>
-}
+export type AnalysisQuestion = StoredSourceAnswer
 
 export interface AnalysisNote {
   id: string
@@ -37,6 +32,7 @@ export interface AnalysisDocument {
   created_at?: string
   analysis_scope?: string
   analysis_revision?: string
+  source_answers_supported?: boolean
   deep_reports?: DeepAnalysisReport[]
   video_overviews?: Record<string, VideoSemanticOverview>
   parse_version?: number
@@ -71,6 +67,8 @@ export interface AnalysisDocumentsBridge {
   transcriptForDraft: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; text?: string }>
   overviewContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   saveOverview: (id: string, scope: string, overview: VideoSemanticOverview) => Promise<{ ok: boolean; code?: string; item?: VideoSemanticOverview }>
+  questionContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  saveAnswer: (id: string, scope: string, answer: SourceAnswerInput) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>
   ask: (id: string, question: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>
   addNote: (id: string, body: string, anchorId: string | null) => Promise<{ ok: boolean; code?: string; item?: AnalysisNote }>
   deleteNote: (id: string, noteId: string) => Promise<{ ok: boolean; code?: string }>

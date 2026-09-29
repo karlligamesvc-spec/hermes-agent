@@ -511,6 +511,17 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             return
           }
 
+          // Deterministic hc-886 model double: verifies routing/storage, not reasoning quality.
+          if (!stream && messages.some(m => m.role === 'system' && typeof m.content === 'string' &&
+            m.content.startsWith('Answer the question in ')) && userText.includes('HC886_SOURCE_QUESTION')) {
+            const input = JSON.parse(userText) as { evidence: Array<{ id: string }> }
+            const anchorId = input.evidence.some(anchor => anchor.id === 'a2') ? 'a2' : 'a1'
+            nonStreamingTextResponse(res, model, JSON.stringify({ answer_type: 'semantic_answer',
+              answer: '[本地测试] 当前资料的回答已附出处。', anchor_ids: [anchorId] }))
+
+            return
+          }
+
           const isInterimTrigger = userText.includes('E2E_INTERIM_TRIGGER')
           const isSidebarTrigger = userText.includes('E2E_SIDEBAR_TRIGGER')
           const isSidebarCrossTrigger = userText.includes('E2E_SIDEBAR_CROSS')

@@ -23,6 +23,24 @@ afterEach(() => {
 })
 
 describe('document analysis evidence', () => {
+  it('retains old model answers as escaped text without linking them into new evidence', async () => {
+    const item = { id: 'local-a', filename: 'facts.txt', kind: 'text', status: 'ready', storageMode: 'local',
+      analysis_revision: 'b'.repeat(64), anchors: [{ id: 'a1', text: 'New text', location: { paragraph: 1 } }], notes: [],
+      questions: [{ id: 'q1', question: 'Old question?', answer: '<img src=x onerror=alert(1)>', answer_type: 'semantic_answer',
+        source_revision: 'a'.repeat(64), citations: [{ anchor_id: 'a1', location: { paragraph: 1 } }] }] }
+
+    window.hermesDesktop = { analysisDocuments: {
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      list: vi.fn().mockResolvedValue({ ok: true, items: [item] }), get: vi.fn().mockResolvedValue({ ok: true, item })
+    } } as never
+    render(<AnalysisView />)
+    fireEvent.click(await screen.findByRole('button', { name: /facts.txt/ }))
+    expect(await screen.findByText('此回答基于旧版资料，引用已停用。')).toBeTruthy()
+    expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy()
+    expect(document.querySelector('article img')).toBeNull()
+    expect(screen.queryByRole('button', { name: /查看出处/ })).toBeNull()
+  })
+
   it('opens the owned PDF preview at the cited page and revokes it after leaving', async () => {
     const createObjectURL = vi.fn(() => 'blob:owned-pdf')
     const revokeObjectURL = vi.fn()
@@ -110,6 +128,7 @@ describe('document analysis evidence', () => {
   it('automatically indexes only owned, timed video speech and jumps sampled passages without a visual claim', async () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
+
     const video = {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'video-transcript.srt', kind: 'subtitle',
       status: 'ready', storageMode: 'cloud', parse_version: 1, evidence_origin: 'uploaded_video_audio',
@@ -122,6 +141,7 @@ describe('document analysis evidence', () => {
         { id: 'a2', location: { start_seconds: 20, end_seconds: 24 }, text: '前段原文' }
       ], notes: [], questions: []
     }
+
     const captions = { ...video, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'captions.srt', evidence_origin: undefined, anchors: [video.anchors[0]] }
     const ask = vi.fn()
     const onDeepBreakdown = vi.fn()
@@ -155,12 +175,14 @@ describe('document analysis evidence', () => {
 
   it('keeps a remote connection from presenting a local Hypit breakdown as runnable', async () => {
     $connection.set({ mode: 'remote' } as never)
+
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
       status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 3 }, text: '真实口播' }],
       notes: [], questions: []
     }
+
     const onDeepBreakdown = vi.fn()
     window.hermesDesktop = { analysisDocuments: {
       policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
@@ -231,9 +253,11 @@ describe('document analysis evidence', () => {
     const drawImage = vi.fn()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
     const encode = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,ZmFrZQ==')
+
     const video = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
       status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 12, end_seconds: 15 }, text: 'spoken words' }], notes: [], questions: [] }
+
     const other = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'other.srt' }
     window.hermesDesktop = { analysisDocuments: {
       policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
@@ -262,6 +286,7 @@ describe('document analysis evidence', () => {
     Object.defineProperties(player, {
       readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA }
     })
+
     for (let index = 0; index < 4; index++) {
       player.currentTime = 12.5 + index
       fireEvent.click(capture)
@@ -288,6 +313,7 @@ describe('document analysis evidence', () => {
   it('samples paired video frames when deep breakdown is requested, then sends only decoded evidence to the draft', async () => {
     const createObjectURL = vi.fn().mockReturnValueOnce('blob:chosen-video').mockReturnValueOnce('blob:other-video')
     vi.stubGlobal('URL', class extends URL { static createObjectURL = createObjectURL; static revokeObjectURL = vi.fn() })
+
     const video = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
       status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
       anchors: [
@@ -295,6 +321,7 @@ describe('document analysis evidence', () => {
         { id: 'a2', location: { start_seconds: 5, end_seconds: 7 }, text: 'middle speech' },
         { id: 'a3', location: { start_seconds: 9, end_seconds: 11 }, text: 'closing speech' }
       ], notes: [], questions: [] }
+
     window.hermesDesktop = { analysisDocuments: {
       policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
       list: vi.fn().mockResolvedValue({ ok: true, items: [video] }),
@@ -629,6 +656,7 @@ describe('document analysis evidence', () => {
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }],
       notes: [], questions: []
     }
+
     let finishUpload!: (value: { ok: boolean; item: typeof item }) => void
     const uploadVideo = vi.fn().mockReturnValue(new Promise(resolve => {finishUpload = resolve}))
     window.hermesDesktop = {

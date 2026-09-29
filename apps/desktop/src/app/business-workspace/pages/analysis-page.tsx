@@ -7,6 +7,7 @@ import { $connection } from '@/store/session'
 import type { AnalysisDocument, AnalysisDocumentsBridge, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { DeepAnalysisReports } from '../components/deep-analysis-reports'
+import { SOURCE_ANSWER_COPY, SourceQuestionAction } from '../components/source-question-answer'
 import { VideoSemanticOverviewPanel } from '../components/video-semantic-overview'
 import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 import { captureVideoFrame, sampleVideoFrames } from '../video-frame-evidence'
@@ -446,12 +447,14 @@ export function AnalysisView({ onDeepBreakdown }: {
   const answer = (item: AnalysisQuestion) => (
     <article className="rounded-xl border border-(--ui-border) p-4" key={item.id}>
       <h4 className="font-medium">{item.question}</h4>
-      <p className="mt-2 whitespace-pre-wrap text-sm text-(--ui-text-secondary)">{item.answer_type === 'no_evidence' ? c.noEvidence : item.answer}</p>
+      {item.answer_type.startsWith('semantic_') && <p className="text-xs text-(--ui-text-tertiary)">{SOURCE_ANSWER_COPY[locale].label}</p>}
+      {item.source_revision && item.source_revision !== selected?.analysis_revision && <p className="text-xs">{SOURCE_ANSWER_COPY[locale].stale}</p>}
+      <p className="mt-2 whitespace-pre-wrap text-sm text-(--ui-text-secondary)">{item.answer_type === 'no_evidence' ? c.noEvidence : item.answer_type === 'semantic_no_evidence' ? SOURCE_ANSWER_COPY[locale].noEvidence : item.answer}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {item.citations.map(citation => {
           const sourceAnchor = selected?.anchors?.find(anchor => anchor.id === citation.anchor_id)
 
-          return sourceAnchor && <button className="rounded-lg border px-2 py-1 text-xs" key={citation.anchor_id} onClick={() => jump(citation.anchor_id)} type="button">
+          return sourceAnchor && (!item.source_revision || item.source_revision === selected?.analysis_revision) && <button className="rounded-lg border px-2 py-1 text-xs" key={citation.anchor_id} onClick={() => jump(citation.anchor_id)} type="button">
             {c.citation} · {locationLabel(sourceAnchor.location, c)}
           </button>
         })}
@@ -690,6 +693,9 @@ export function AnalysisView({ onDeepBreakdown }: {
                   if (selectedDocumentIdRef.current === sourceId) {setQuestion('')}
                   await openDocument(sourceId)
                 })} type="button">{c.ask}</button></div>
+                <SourceQuestionAction bridge={bridge()} locale={locale} onSaved={async id => {
+                  if (selectedDocumentIdRef.current === id) {await openDocument(id)}
+                }} question={question} source={selected} />
                 {(selected.questions ?? []).map(answer)}
               </section>
               <section className="space-y-3 rounded-xl border p-4">

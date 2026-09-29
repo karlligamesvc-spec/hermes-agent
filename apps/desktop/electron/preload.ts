@@ -313,6 +313,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     transcriptForDraft: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:transcriptForDraft', id, scope, revision),
     overviewContext: (id, scope) => ipcRenderer.invoke('hermes:analysis:overviewContext', id, scope),
     saveOverview: (id, scope, overview) => ipcRenderer.invoke('hermes:analysis:saveOverview', id, scope, overview),
+    questionContext: (id, scope) => ipcRenderer.invoke('hermes:analysis:questionContext', id, scope),
+    saveAnswer: (id, scope, answer) => ipcRenderer.invoke('hermes:analysis:saveAnswer', id, scope, answer),
     ask: (id, question) => ipcRenderer.invoke('hermes:analysis:ask', id, question),
     addNote: (id, body, anchorId) => ipcRenderer.invoke('hermes:analysis:addNote', id, body, anchorId),
     deleteNote: (id, noteId) => ipcRenderer.invoke('hermes:analysis:deleteNote', id, noteId),
