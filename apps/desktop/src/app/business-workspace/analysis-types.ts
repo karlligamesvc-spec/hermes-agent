@@ -1,3 +1,4 @@
+import type { DeepAnalysisReport } from '../../../shared/analysis-deep-report'
 import type { VideoSemanticOverview } from '../../../shared/analysis-video-overview'
 
 export interface AnalysisAnchor {
@@ -36,6 +37,7 @@ export interface AnalysisDocument {
   created_at?: string
   analysis_scope?: string
   analysis_revision?: string
+  deep_reports?: DeepAnalysisReport[]
   video_overviews?: Record<string, VideoSemanticOverview>
   parse_version?: number
   evidence_origin?: 'linked_video_audio' | 'uploaded_video_audio' | null
@@ -64,6 +66,8 @@ export interface AnalysisDocumentsBridge {
   pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  importDeepReport: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
+  deleteDeepReport: (id: string, scope: string, reportId: string) => Promise<{ ok: boolean; code?: string }>
   overviewContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   saveOverview: (id: string, scope: string, overview: VideoSemanticOverview) => Promise<{ ok: boolean; code?: string; item?: VideoSemanticOverview }>
   ask: (id: string, question: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisQuestion }>

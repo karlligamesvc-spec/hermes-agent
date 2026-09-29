@@ -44,6 +44,7 @@ import {
   resolveAgentProxyEnv,
   systemProxyToUrls
 } from './apex-agent-proxy'
+import { createDeepReportHandlers } from './apex-analysis-deep-report'
 import {
   addLocalNote,
   answerLocalDocument,
@@ -22479,13 +22480,13 @@ ipcMain.handle('hermes:analysis:get', async (_event, id) => {
 })
 
 // Model inference stays on the stateless runtime RPC. Electron owns only account-scoped evidence and storage.
-async function analysisOverviewContext(id: string, scope: string) {
-  const context = await analysisIpcContext(true)
+async function analysisDerivedContext(id: string, scope: string, write = true) {
+  const context = await analysisIpcContext(write)
 
   if (context.policy.user_id !== scope) {throw new Error('analysis_account_changed')}
   const local = String(id).startsWith('local-')
 
-  if (!local && (context.policy.mode !== 'cloud' || !context.policy.cloud_storage_configured)) {
+  if (write && !local && (context.policy.mode !== 'cloud' || !context.policy.cloud_storage_configured)) {
     throw new Error('analysis_cloud_storage_disabled')
   }
   const source = local
@@ -22493,7 +22494,6 @@ async function analysisOverviewContext(id: string, scope: string) {
     : (await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`) as any)?.item
 
   if (!source) {throw new Error('source_not_found')}
-  overviewEvidence(source)
   // Policy/network awaits may outlive a sign-out. Never return old-account text to the new renderer.
   if (analysisUserIdFromToken(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
   const item = { ...localAnalysisForRenderer(source), analysis_scope: scope,
@@ -22504,7 +22504,8 @@ async function analysisOverviewContext(id: string, scope: string) {
 
 ipcMain.handle('hermes:analysis:overviewContext', async (_event, id, scope) => {
   try {
-    const { item } = await analysisOverviewContext(id, scope)
+    const { item } = await analysisDerivedContext(id, scope)
+    overviewEvidence(item)
 
     return { ok: true, item }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
@@ -22512,7 +22513,8 @@ ipcMain.handle('hermes:analysis:overviewContext', async (_event, id, scope) => {
 
 ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overview) => {
   try {
-    const { context, local } = await analysisOverviewContext(id, scope)
+    const { context, item: source, local } = await analysisDerivedContext(id, scope)
+    overviewEvidence(source)
     const item = local
       ? saveLocalVideoOverview(context.root, scope, id, overview)
       : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/video-overviews`, overview) as any).item
@@ -22522,6 +22524,23 @@ ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overvie
     return { ok: true, item }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }
 })
+
+const deepReportHandlers = createDeepReportHandlers({
+  context: analysisDerivedContext,
+  currentAccount: () => analysisUserIdFromToken(resolveManagedConfig().accessToken),
+  error: analysisIpcError,
+  deleteCloud: (context, url) => apexAuthDeleteJson(url, { bearer: context.bearer }),
+  chooseFile: async (event: any) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const chosen = await dialog.showOpenDialog(owner || undefined, {
+      properties: ['openFile'], filters: [{ name: 'Analysis report', extensions: ['md', 'txt'] }]
+    })
+
+    return chosen.canceled ? null : chosen.filePaths[0] ?? null
+  }
+})
+ipcMain.handle('hermes:analysis:importDeepReport', deepReportHandlers.importReport)
+ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
 
 ipcMain.handle('hermes:analysis:ask', async (_event, id, question) => {
   try {

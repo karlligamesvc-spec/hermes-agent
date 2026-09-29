@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { type DeepAnalysisReport, type DeepReportInput, MAX_DEEP_REPORTS, validateDeepReport } from '../shared/analysis-deep-report'
 import { validateVideoOverview, type VideoSemanticOverview } from '../shared/analysis-video-overview'
 
 export interface AnalysisAnchor {
@@ -24,6 +25,7 @@ export interface LocalDocument {
   anchors: AnalysisAnchor[]
   notes: Array<{ id: string; body: string; anchor_id: string | null }>
   questions: Array<{ id: string; question: string; answer: string; citations: Array<{ anchor_id: string; location: Record<string, number | string> }>; answer_type: 'source_excerpts' | 'no_evidence' }>
+  deep_reports?: DeepAnalysisReport[]
   video_overviews?: Record<string, VideoSemanticOverview>
   createdAt: string
   sourcePath: string
@@ -380,4 +382,33 @@ export function saveLocalVideoOverview(root: string, userId: string, id: string,
   save(root, userId, document)
 
   return item
+}
+
+export function saveLocalDeepReport(root: string, userId: string, id: string, input: DeepReportInput): DeepAnalysisReport {
+  const source = getLocalDocument(root, userId, id)
+
+  if (!source) {throw new Error('source_not_found')}
+  const valid = validateDeepReport(input, source, localOverviewRevision(source))
+  const reports = source.deep_reports ?? []
+  const sha256 = crypto.createHash('sha256').update(valid.body).digest('hex')
+  const existing = reports.find(item => item.sha256 === sha256 && item.revision === valid.revision)
+
+  if (existing) {return existing}
+  if (reports.length >= MAX_DEEP_REPORTS) {throw new Error('report_limit')}
+  const item: DeepAnalysisReport = { ...valid, id: crypto.randomUUID(), sha256,
+    created_at: new Date().toISOString(), provenance: 'selected_file' }
+  source.deep_reports = [...reports, item]
+  save(root, userId, source)
+
+  return item
+}
+
+export function removeLocalDeepReport(root: string, userId: string, id: string, reportId: string): boolean {
+  const source = getLocalDocument(root, userId, id)
+
+  if (!source?.deep_reports?.some(item => item.id === reportId)) {return false}
+  source.deep_reports = source.deep_reports.filter(item => item.id !== reportId)
+  save(root, userId, source)
+
+  return true
 }

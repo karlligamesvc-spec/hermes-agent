@@ -2006,6 +2006,45 @@ test('packaged plain goal stays separate from a previewed workflow and starts a 
   }
 })
 
+async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hc884-report-e2e-'))
+  const file = path.join(directory, 'ANALYSIS.md')
+  const body = '# [本地测试] 保存的报告\n<script>window.reportExecuted = true</script>'
+  fs.writeFileSync(file, body)
+  await app.evaluate(({ dialog }, selectedPath) => {
+    const host = globalThis as typeof globalThis & { restoreReportDialog?: () => void }
+    const original = dialog.showOpenDialog
+    host.restoreReportDialog = () => { dialog.showOpenDialog = original }
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] })
+  }, file)
+  try {
+    const reports = page.getByRole('region', { name: '深度分析报告' })
+    await reports.getByRole('button', { name: '保存报告文件' }).click()
+    await expect(reports.locator('summary')).toContainText('ANALYSIS.md')
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+    await reports.locator('summary').click()
+    await expect(reports.locator('pre')).toHaveText(body)
+    await expect(reports.locator('script')).toHaveCount(0)
+    await expect(reports).toContainText('Hypit 执行状态尚未核验')
+    await reports.getByRole('button', { name: '删除副本 · ANALYSIS.md' }).click()
+    await expect(reports).toContainText('尚未保存报告。')
+    const retained = await page.evaluate(async () => {
+      const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
+      const source = (await api.list()).items!.find(item => item.filename === 'local-review-video-transcript.srt')!
+
+      return (await api.get(source.id)).item!.deep_reports
+    })
+    expect(retained).toEqual([])
+    expect(fs.readFileSync(file, 'utf8')).toBe(body)
+    await test.info().attach('hc884-report-roundtrip', { body: JSON.stringify({ retainedReports: retained, originalPreserved: true, provenance: 'selected_file' }), contentType: 'application/json' })
+  } finally {
+    await app.evaluate(() => { (globalThis as typeof globalThis & { restoreReportDialog?: () => void }).restoreReportDialog?.() })
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+}
+
 test('hc-872 packaged analysis stores timed speech locally and prepares a reviewable deep draft', async () => {
   // This flow deliberately rejects one pending-seek screenshot; assert the
   // exact observed errors below instead of suppressing unexpected failures.
@@ -2054,6 +2093,8 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   })
   expect(retained.summary.points[0].anchor_ids).toEqual(['a1', 'a2'])
   expect(retained.rejected).toMatchObject({ ok: false, code: 'analysis_account_changed' })
+
+  await verifySelectedDeepReport(app, page)
 
   await page.getByLabel('选择本地视频播放').setInputFiles(path.resolve(import.meta.dirname, 'media/local-frame-evidence.webm'))
   const player = page.getByLabel('本地视频: local-frame-evidence.webm')

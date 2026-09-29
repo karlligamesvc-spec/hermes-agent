@@ -6,6 +6,7 @@ import { $connection } from '@/store/session'
 
 import type { AnalysisDocument, AnalysisDocumentsBridge, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
 import { BusinessPageHeader } from '../components/business-page-header'
+import { DeepAnalysisReports } from '../components/deep-analysis-reports'
 import { VideoSemanticOverviewPanel } from '../components/video-semantic-overview'
 import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 import { captureVideoFrame, sampleVideoFrames } from '../video-frame-evidence'
@@ -630,6 +631,10 @@ export function AnalysisView({ onDeepBreakdown }: {
               </div>}
               {videoError && <p className="text-sm text-destructive" role="alert">{videoError}</p>}
             </section>}
+            {(quickOverview || !!selected.deep_reports?.length) && <DeepAnalysisReports bridge={bridge()} key={`reports:${selected.analysis_scope}:${selected.id}:${selected.analysis_revision}`} locale={locale} onChange={reports => {
+              setSelected(current => current?.id === selected.id && current.analysis_scope === selected.analysis_scope && current.analysis_revision === selected.analysis_revision
+                ? { ...current, deep_reports: reports } : current)
+            }} source={selected} />}
             {selected.status === 'ready' && <>
               {quickOverview && <VideoSemanticOverviewPanel bridge={bridge()} jump={jump} key={`${selected.analysis_scope}:${selected.id}:${selected.analysis_revision}:${locale}`} label={location => locationLabel(location, c)} locale={locale} source={selected} />}
               {quickOverview && <section aria-label={c.quickTitle} className="space-y-3 rounded-xl border p-4">

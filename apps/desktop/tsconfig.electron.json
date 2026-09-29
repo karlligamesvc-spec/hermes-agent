@@ -20,6 +20,7 @@
     "diagnostic-trial-policy.json",
     "electron",
     "shared/analysis-video-overview.ts",
+    "shared/analysis-deep-report.ts",
     "../shared/src/data-url-read-max.ts",
     "../shared/src/translucency.ts"
   ],
