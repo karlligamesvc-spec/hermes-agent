@@ -67,7 +67,7 @@ it('binds a real output folder, collects only explicitly selected outputs, prese
   const owned = await deps.context(source.id, owner)
   deps.context.mockResolvedValue({ ...owned, local: false })
   expect(await handlers.collectReport(null, source.id, owner, revision, 'TIMELINE.md')).toEqual({ ok: true, item: { id: 'cloud-report' } })
-  expect(postJson).toHaveBeenCalledExactlyOnceWith(`https://api.test/documents/${source.id}/deep-reports`, { filename: 'TIMELINE.md', body: '0:00 — spoken words', revision })
+  expect(postJson).toHaveBeenCalledExactlyOnceWith(`https://api.test/documents/${source.id}/deep-reports`, { filename: 'TIMELINE.md', body: '0:00 — spoken words', revision, collection: reports[1].collection })
   postJson.mockImplementationOnce(async () => {deps.currentAccount = () => other;
 
  return { item: { id: 'late-report' } }})

@@ -125,3 +125,78 @@ it('routes cloud operations through the captured owner context and discards late
  return { item: { body: 'old account content' } } })
   expect(await handlers.importReport(null, source.id, owner, revision)).toEqual({ ok: false, code: 'analysis_account_changed' })
 })
+
+it('keeps collection identity and explicit review across reopen, retries and regeneration', async () => {
+  const { root, source, revision, deps } = setup()
+
+  const collection = { workspace_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', submitted_at: '2026-09-29T16:00:00.000Z',
+    turn_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', observed_status: 'running' as const }
+
+  const input = { filename: 'ANALYSIS.md', body: 'Selected report', revision, collection }
+  const report = saveLocalDeepReport(root, owner, source.id, input)
+  const handlers = createDeepReportHandlers(deps)
+  expect(report.collection).toEqual(collection)
+  expect(report.review).toBeUndefined()
+  const review = { revision, sha256: report.sha256, decision: 'accepted' as const, note: '  Checked references  ' }
+  const accepted = await handlers.reviewReport(null, source.id, owner, report.id, review)
+  expect(accepted.ok).toBe(true)
+  expect(accepted.item!.review).toMatchObject({ decision: 'accepted', note: 'Checked references' })
+  expect(accepted.item!.provenance).toBe('selected_file')
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports).toEqual([accepted.item])
+  expect(saveLocalDeepReport(root, owner, source.id, { ...input, collection: { ...collection, observed_status: 'complete' } })).toEqual(accepted.item)
+  const changed = saveLocalDeepReport(root, owner, source.id, { ...input, body: 'Revised findings' })
+  const next = saveLocalDeepReport(root, owner, source.id, { ...input, collection: { ...collection, workspace_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' } })
+  expect(new Set([report.id, changed.id, next.id]).size).toBe(3)
+  expect(changed.review).toBeUndefined(); expect(next.review).toBeUndefined()
+  expect((await handlers.reviewReport(null, source.id, owner, report.id, { ...review, decision: 'changes_requested', note: '<script>inert</script>' })).item!.review?.decision).toBe('changes_requested')
+  expect((await handlers.reviewReport(null, source.id, owner, report.id, { ...review, decision: 'unreviewed' })).item!.review).toBeUndefined()
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports![0].collection).toEqual(collection)
+})
+
+it.each(['account', 'deleted', 'revision', 'hash', 'missing', 'note', 'decision'] as const)('refuses review after %s changes without changing saved reports', async mode => {
+  const { root, source, revision, deps } = setup()
+  const report = saveLocalDeepReport(root, owner, source.id, { filename: 'ANALYSIS.md', body: 'Report', revision })
+  const input = { revision, sha256: report.sha256, decision: 'accepted' as const, note: '' }
+  let id = report.id
+
+  if (mode === 'account') {deps.currentAccount = () => other}
+
+  if (mode === 'deleted') {deleteLocalDocument(root, owner, source.id)}
+
+  if (mode === 'revision') {input.revision = 'stale'}
+
+  if (mode === 'hash') {input.sha256 = 'wrong'}
+
+  if (mode === 'missing') {id = 'missing'}
+
+  if (mode === 'note') {input.note = '中'.repeat(667)}
+
+  if (mode === 'decision') {Object.assign(input, { decision: 'verified' })}
+  expect((await createDeepReportHandlers(deps).reviewReport(null, source.id, owner, id, input)).ok).toBe(false)
+
+  if (mode !== 'deleted') {expect(getLocalDocument(root, owner, source.id)!.deep_reports).toEqual([report])}
+})
+
+it('uses the cloud review route with bounded fields and discards late account results', async () => {
+  const { root, source, revision, deps, postJson } = setup()
+  const report = saveLocalDeepReport(root, owner, source.id, { filename: 'ANALYSIS.md', body: 'Report', revision })
+  const current = await deps.context()
+  deps.context.mockResolvedValue({ ...current, local: false })
+  const input = { revision, sha256: report.sha256, decision: 'accepted' as const, note: 'Review' }
+  postJson.mockResolvedValue({ item: { ...report, review: { decision: 'accepted', note: 'Review', reviewed_at: '2026-09-29T16:00:00Z' } } })
+  const handlers = createDeepReportHandlers(deps)
+  expect((await handlers.reviewReport(null, source.id, owner, report.id, { ...input, private_path: '/do-not-send' } as typeof input)).ok).toBe(true)
+  expect(postJson).toHaveBeenCalledExactlyOnceWith(`https://api.test/documents/${source.id}/deep-reports/${report.id}/review`, input)
+  postJson.mockImplementationOnce(async () => {deps.currentAccount = () => other;
+
+ return { item: report }})
+  expect(await handlers.reviewReport(null, source.id, owner, report.id, input)).toEqual({ ok: false, code: 'analysis_account_changed' })
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports).toEqual([report])
+})
+
+it.each([{ workspace_id: '../escape' }, { submitted_at: '2026-02-30T16:00:00.000Z' }, { path: '/private' }, { observed_status: 'complete' }])('rejects invalid or private collection metadata', extra => {
+  const { root, source, revision } = setup()
+  const collection = { workspace_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', submitted_at: '2026-09-29T16:00:00.000Z', ...extra }
+  expect(() => saveLocalDeepReport(root, owner, source.id, { filename: 'ANALYSIS.md', body: 'Report', revision, collection } as Parameters<typeof saveLocalDeepReport>[3])).toThrow('report_invalid')
+  expect(getLocalDocument(root, owner, source.id)!.deep_reports).toBeUndefined()
+})

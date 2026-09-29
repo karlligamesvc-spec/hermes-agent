@@ -22573,6 +22573,7 @@ ipcMain.handle('hermes:analysis:recordDeepChat', deepReportHandlers.recordChat)
 ipcMain.handle('hermes:analysis:readDeepChat', deepReportHandlers.readChat)
 ipcMain.handle('hermes:analysis:updateDeepChatOutcome', deepReportHandlers.updateChatOutcome)
 ipcMain.handle('hermes:analysis:collectDeepReport', deepReportHandlers.collectReport)
+ipcMain.handle('hermes:analysis:reviewDeepReport', deepReportHandlers.reviewReport)
 ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
 
 ipcMain.handle('hermes:analysis:ask', async (_event, id, question) => {

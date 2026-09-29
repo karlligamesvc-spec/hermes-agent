@@ -76,3 +76,45 @@ it('explains that a prepared but unsent draft cannot collect yet', async () => {
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Send the breakdown draft first. Its folder is bound only after the send is accepted.')
   expect(onChange).not.toHaveBeenCalled()
 })
+
+it('records an explicit review for the exact displayed hash and leaves new report copies unreviewed', async () => {
+  const collection = { workspace_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', submitted_at: '2026-09-29T16:00:00.000Z', turn_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', observed_status: 'error' as const }
+  const current = { ...report, collection }
+  const reviewed = { ...current, review: { decision: 'accepted' as const, note: '<script>my judgment</script>', reviewed_at: '2026-09-29T17:00:00.000Z' } }
+  const onChange = vi.fn()
+  const reviewDeepReport = vi.fn().mockResolvedValue({ ok: true, item: reviewed })
+  const bridge = { reviewDeepReport } as unknown as AnalysisDocumentsBridge
+  const view = render(<DeepAnalysisReports bridge={bridge} locale="en" onChange={onChange} source={{ ...source, deep_reports: [current] }} />)
+  fireEvent.click(screen.getByText(/ANALYSIS.md ·/))
+  expect(screen.getByText('Awaiting your review')).toBeTruthy()
+  expect(screen.getByText(/Status recorded at collection: This execution failed/)).toBeTruthy()
+  expect(reviewDeepReport).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText('Review note'), { target: { value: reviewed.review.note } })
+  fireEvent.click(screen.getByRole('button', { name: 'Mark usable' }))
+  await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith([reviewed]))
+  expect(reviewDeepReport).toHaveBeenCalledExactlyOnceWith('local-a', 'owner', 'r1', { revision: 'rev-a', sha256: 'digest', decision: 'accepted', note: reviewed.review.note })
+  view.rerender(<DeepAnalysisReports bridge={bridge} locale="en" onChange={onChange} source={{ ...source, deep_reports: [reviewed] }} />)
+  expect(screen.getByText(/You marked this usable/)).toBeTruthy()
+  expect(view.container.querySelector('script')).toBeNull()
+  expect(screen.getByLabelText('Review note')).toHaveProperty('value', reviewed.review.note)
+  reviewDeepReport.mockResolvedValueOnce({ ok: true, item: current })
+  fireEvent.click(screen.getByRole('button', { name: 'Clear review' }))
+  await vi.waitFor(() => expect(onChange).toHaveBeenLastCalledWith([current]))
+  expect(reviewDeepReport).toHaveBeenLastCalledWith('local-a', 'owner', 'r1', { revision: 'rev-a', sha256: 'digest', decision: 'unreviewed', note: '' })
+})
+
+it('disables stale revision review and ignores a pending review after account/source replacement', async () => {
+  const onChange = vi.fn()
+  let finish!: (value: unknown) => void
+  const reviewDeepReport = vi.fn(() => new Promise(resolve => {finish = resolve}))
+  const bridge = { reviewDeepReport } as unknown as AnalysisDocumentsBridge
+  const view = render(<DeepAnalysisReports bridge={bridge} key="old" locale="en" onChange={onChange} source={{ ...source, analysis_revision: 'rev-b' }} />)
+  fireEvent.click(screen.getByText(/ANALYSIS.md ·/))
+  expect(screen.getByRole('button', { name: 'Mark usable' })).toHaveProperty('disabled', true)
+  view.rerender(<DeepAnalysisReports bridge={bridge} key="current" locale="en" onChange={onChange} source={source} />)
+  fireEvent.click(screen.getByText(/ANALYSIS.md ·/))
+  fireEvent.click(screen.getByRole('button', { name: 'Request changes' }))
+  view.rerender(<DeepAnalysisReports bridge={bridge} key="other" locale="en" onChange={onChange} source={{ ...source, analysis_scope: 'other', deep_reports: [] }} />)
+  await act(async () => {finish({ ok: true, item: { ...report, review: { decision: 'changes_requested', note: '', reviewed_at: '2026-09-29T17:00:00Z' } } })})
+  expect(onChange).not.toHaveBeenCalled()
+})

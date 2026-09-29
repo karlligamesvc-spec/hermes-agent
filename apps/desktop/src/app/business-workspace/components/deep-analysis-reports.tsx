@@ -7,6 +7,7 @@ import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
 
 import { DeepAnalysisChat } from './deep-analysis-chat'
+import { DeepReportReview } from './deep-report-review'
 
 const WORKSPACE_COPY = {
   zh: { collect: '收取', hint: '从最近一次已发送草稿的独立目录收取文件；旧版发送仍用原目录。准备新草稿不会改变收取目标，报告内容仍未经核验。', missing: '请先准备本资料的深度拆解草稿。', unsent: '请先发送深拆草稿，发送成功后才会绑定收取目录。', pending: '指定报告尚未生成。请在助手完成后重试。', invalid: '输出目录或文件不符合绑定要求，请重新核对。' },
@@ -17,11 +18,11 @@ const WORKSPACE_COPY = {
 }
 
 const COPY = {
-  zh: { title: '深度分析报告', save: '保存报告文件', remove: '删除副本', pending: '正在保存…', empty: '尚未保存报告。', disclosure: '选择本资料对应的 ANALYSIS.md、TIMELINE.md 或文本报告（UTF-8，最多 64 KiB，每份资料 5 份）。副本按资料的保存方式保留。文件由你选择，内容及 Hypit 执行状态尚未核验。', old: '对应较早的资料版本，请重新核对出处。', large: '报告超过 64 KiB，请缩减后重试。', invalid: '请选择非空的 UTF-8 .md 或 .txt 文件。', changed: '资料已变更，请重新打开资料后保存。', limit: '已达 5 份报告，请先删除不需要的副本。', failed: '操作失败，请检查登录和资料保存设置后重试。' },
-  'zh-hant': { title: '深度分析報告', save: '儲存報告檔案', remove: '刪除副本', pending: '正在儲存…', empty: '尚未儲存報告。', disclosure: '選擇本資料對應的 ANALYSIS.md、TIMELINE.md 或文字報告（UTF-8，最多 64 KiB，每份資料 5 份）。副本依資料的儲存方式保留。檔案由你選擇，內容及 Hypit 執行狀態尚未核驗。', old: '對應較早的資料版本，請重新核對出處。', large: '報告超過 64 KiB，請縮減後重試。', invalid: '請選擇非空的 UTF-8 .md 或 .txt 檔案。', changed: '資料已變更，請重新開啟資料後儲存。', limit: '已達 5 份報告，請先刪除不需要的副本。', failed: '操作失敗，請檢查登入和資料儲存設定後重試。' },
-  en: { title: 'Deep analysis reports', save: 'Save report file', remove: 'Delete copy', pending: 'Saving…', empty: 'No saved reports yet.', disclosure: 'Select this source’s ANALYSIS.md, TIMELINE.md, or text report (UTF-8, up to 64 KiB; 5 per source). Copies follow the source’s save mode. You selected the file; its claims and Hypit execution have not been verified.', old: 'Saved for an earlier source revision. Check its references again.', large: 'The report exceeds 64 KiB. Shorten it and retry.', invalid: 'Choose a non-empty UTF-8 .md or .txt file.', changed: 'The source changed. Reopen it before saving.', limit: 'Five reports are saved. Delete an unused copy first.', failed: 'Operation failed. Check your sign-in and source storage settings, then retry.' },
-  ja: { title: '詳細分析レポート', save: 'レポートファイルを保存', remove: 'コピーを削除', pending: '保存中…', empty: '保存済みレポートはありません。', disclosure: 'この資料の ANALYSIS.md、TIMELINE.md またはテキストレポートを選択してください（UTF-8、最大 64 KiB、資料ごとに 5 件）。コピーは資料と同じ保存先に保存されます。選択されたファイルの内容と Hypit の実行状況は未検証です。', old: '以前の資料バージョンに対応しています。出典を再確認してください。', large: '64 KiB を超えています。短くして再試行してください。', invalid: '空でない UTF-8 の .md または .txt ファイルを選択してください。', changed: '資料が変更されました。開き直してから保存してください。', limit: '5 件保存されています。不要なコピーを先に削除してください。', failed: '操作に失敗しました。ログインと保存設定を確認して再試行してください。' },
-  ar: { title: 'تقارير التحليل المتعمق', save: 'حفظ ملف التقرير', remove: 'حذف النسخة', pending: 'جارٍ الحفظ…', empty: 'لا توجد تقارير محفوظة بعد.', disclosure: 'اختر ملف ANALYSIS.md أو TIMELINE.md أو تقريرًا نصيًا لهذا المصدر (UTF-8، حتى 64 KiB؛ 5 لكل مصدر). تتبع النسخ وضع حفظ المصدر. أنت تختار الملف؛ لم يتم التحقق من محتواه أو تنفيذ Hypit.', old: 'حُفظ لإصدار سابق من المصدر. تحقق من المراجع مجددًا.', large: 'يتجاوز التقرير 64 KiB. اختصره وأعد المحاولة.', invalid: 'اختر ملف .md أو .txt غير فارغ بترميز UTF-8.', changed: 'تغير المصدر. أعد فتحه قبل الحفظ.', limit: 'تم حفظ خمسة تقارير. احذف نسخة غير ضرورية أولًا.', failed: 'فشلت العملية. تحقق من تسجيل الدخول وإعدادات حفظ المصدر ثم أعد المحاولة.' }
+  zh: { title: '深度分析报告', save: '保存报告文件', remove: '删除副本', pending: '正在保存…', empty: '尚未保存报告。', disclosure: '选择本资料对应的 ANALYSIS.md、TIMELINE.md 或文本报告（UTF-8，最多 64 KiB，每份资料 5 份）。副本按资料的保存方式保留。文件由你选择；应用不核验文件作者或 Hypit 执行，验收只代表你的判断。', old: '对应较早的资料版本，请重新核对出处。', large: '报告超过 64 KiB，请缩减后重试。', invalid: '请选择非空的 UTF-8 .md 或 .txt 文件。', changed: '资料已变更，请重新打开资料后保存。', limit: '已达 5 份报告，请先删除不需要的副本。', failed: '操作失败，请检查登录和资料保存设置后重试。' },
+  'zh-hant': { title: '深度分析報告', save: '儲存報告檔案', remove: '刪除副本', pending: '正在儲存…', empty: '尚未儲存報告。', disclosure: '選擇本資料對應的 ANALYSIS.md、TIMELINE.md 或文字報告（UTF-8，最多 64 KiB，每份資料 5 份）。副本依資料的儲存方式保留。檔案由你選擇；應用不核驗檔案作者或 Hypit 執行，驗收只代表你的判斷。', old: '對應較早的資料版本，請重新核對出處。', large: '報告超過 64 KiB，請縮減後重試。', invalid: '請選擇非空的 UTF-8 .md 或 .txt 檔案。', changed: '資料已變更，請重新開啟資料後儲存。', limit: '已達 5 份報告，請先刪除不需要的副本。', failed: '操作失敗，請檢查登入和資料儲存設定後重試。' },
+  en: { title: 'Deep analysis reports', save: 'Save report file', remove: 'Delete copy', pending: 'Saving…', empty: 'No saved reports yet.', disclosure: 'Select this source’s ANALYSIS.md, TIMELINE.md, or text report (UTF-8, up to 64 KiB; 5 per source). Copies follow the source’s save mode. You selected the file; the app does not verify authorship or Hypit execution. Review records your judgment.', old: 'Saved for an earlier source revision. Check its references again.', large: 'The report exceeds 64 KiB. Shorten it and retry.', invalid: 'Choose a non-empty UTF-8 .md or .txt file.', changed: 'The source changed. Reopen it before saving.', limit: 'Five reports are saved. Delete an unused copy first.', failed: 'Operation failed. Check your sign-in and source storage settings, then retry.' },
+  ja: { title: '詳細分析レポート', save: 'レポートファイルを保存', remove: 'コピーを削除', pending: '保存中…', empty: '保存済みレポートはありません。', disclosure: 'この資料の ANALYSIS.md、TIMELINE.md またはテキストレポートを選択してください（UTF-8、最大 64 KiB、資料ごとに 5 件）。コピーは資料と同じ保存先に保存されます。作成者や Hypit の実行をアプリは検証しません。確認記録はあなたの判断を示します。', old: '以前の資料バージョンに対応しています。出典を再確認してください。', large: '64 KiB を超えています。短くして再試行してください。', invalid: '空でない UTF-8 の .md または .txt ファイルを選択してください。', changed: '資料が変更されました。開き直してから保存してください。', limit: '5 件保存されています。不要なコピーを先に削除してください。', failed: '操作に失敗しました。ログインと保存設定を確認して再試行してください。' },
+  ar: { title: 'تقارير التحليل المتعمق', save: 'حفظ ملف التقرير', remove: 'حذف النسخة', pending: 'جارٍ الحفظ…', empty: 'لا توجد تقارير محفوظة بعد.', disclosure: 'اختر ملف ANALYSIS.md أو TIMELINE.md أو تقريرًا نصيًا لهذا المصدر (UTF-8، حتى 64 KiB؛ 5 لكل مصدر). تتبع النسخ وضع حفظ المصدر. أنت تختار الملف؛ التطبيق لا يتحقق من المؤلف أو تنفيذ Hypit. المراجعة تسجل حكمك.', old: 'حُفظ لإصدار سابق من المصدر. تحقق من المراجع مجددًا.', large: 'يتجاوز التقرير 64 KiB. اختصره وأعد المحاولة.', invalid: 'اختر ملف .md أو .txt غير فارغ بترميز UTF-8.', changed: 'تغير المصدر. أعد فتحه قبل الحفظ.', limit: 'تم حفظ خمسة تقارير. احذف نسخة غير ضرورية أولًا.', failed: 'فشلت العملية. تحقق من تسجيل الدخول وإعدادات حفظ المصدر ثم أعد المحاولة.' }
 }
 
 export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
@@ -99,6 +100,15 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
         <summary className="cursor-pointer text-sm">{report.filename} · {new Date(report.created_at).toLocaleString(locale === 'zh-hant' ? 'zh-TW' : locale)}</summary>
         {report.revision !== source.analysis_revision && <p className="my-2 text-xs" role="status">{c.old}</p>}
         <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-sm">{report.body}</pre>
+        <DeepReportReview disabled={busy || report.revision !== source.analysis_revision || source.status !== 'ready'} key={`${report.id}:${report.review?.reviewed_at ?? ''}`} locale={locale}
+          onReview={bridge?.reviewDeepReport && source.analysis_scope ? (decision, note) => void perform(async () => {
+            const result = await bridge.reviewDeepReport!(source.id, source.analysis_scope!, report.id,
+              { revision: source.analysis_revision!, sha256: report.sha256, decision, note })
+
+            if (!result.ok || !result.item) {throw new Error(result.code)}
+
+            return reports.map(item => item.id === report.id ? result.item! : item)
+          }) : undefined} report={report} />
       </details>
       <button className="text-xs underline disabled:opacity-50" disabled={busy || !bridge?.deleteDeepReport || !source.analysis_scope} onClick={() => void perform(async () => {
         const result = await bridge!.deleteDeepReport(source.id, source.analysis_scope!, report.id)

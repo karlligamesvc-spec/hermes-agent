@@ -3,16 +3,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { type AnalysisChatLink, type AnalysisChatTarget, type AnalysisTurnState, sameAnalysisChatLink } from '../shared/analysis-chat-link'
-import { type DeepReportInput, MAX_REPORT_BYTES, validateDeepReport, validateDeepReportSource } from '../shared/analysis-deep-report'
+import { type DeepAnalysisReport, type DeepReportInput, type DeepReportReviewInput, MAX_REPORT_BYTES, validateDeepReport, validateDeepReportReview, validateDeepReportSource } from '../shared/analysis-deep-report'
 import type { OverviewSource } from '../shared/analysis-video-overview'
 
 import { readAnalysisChatLink, updateAnalysisChatOutcome, writeAnalysisChatLink } from './apex-analysis-chat-link'
-import { removeLocalDeepReport, saveLocalDeepReport } from './apex-analysis-local'
+import { removeLocalDeepReport, reviewLocalDeepReport, saveLocalDeepReport } from './apex-analysis-local'
 import { analysisWorkspaceReport, hasAnalysisAttempts, prepareAnalysisAttempt } from './apex-analysis-workspace'
 
 interface ReportContext {
   context: { root: string; url: string; bearer: string; transport: { postJson: (url: string, body: unknown) => Promise<unknown> } }
-  item: OverviewSource & { analysis_revision?: string }
+  item: OverviewSource & { analysis_revision?: string; deep_reports?: DeepAnalysisReport[] }
   local: boolean
 }
 interface Dependencies {
@@ -83,7 +83,11 @@ export function createDeepReportHandlers(deps: Dependencies) {
       const ownedPath = () => analysisWorkspaceReport(current.context.root, scope, id, revision, workspaceFilename!, submitted?.workspaceId)
 
       if (workspaceFilename && ownedPath() !== filePath) {throw new Error('workspace_invalid')}
-      const input: DeepReportInput = { ...readDeepReportFile(filePath, Boolean(workspaceFilename)), revision }
+
+      const input: DeepReportInput = { ...readDeepReportFile(filePath, Boolean(workspaceFilename)), revision,
+        ...(submitted?.workspaceId ? { collection: { workspace_id: submitted.workspaceId, submitted_at: submitted.submittedAt,
+          ...(submitted.turn ? { turn_id: submitted.turn.id } : {}),
+          ...(submitted.outcome ? { observed_status: submitted.outcome.status } : {}) } } : {}) }
 
       if (workspaceFilename && ownedPath() !== filePath) {throw new Error('workspace_invalid')}
       validateDeepReport(input, current.item, current.item.analysis_revision ?? '')
@@ -141,6 +145,23 @@ export function createDeepReportHandlers(deps: Dependencies) {
         if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
 
         return { ok: true, item: readAnalysisChatLink(context.root, scope, id, revision) }
+      } catch (error) {return { ok: false, code: deps.error(error) }}
+    },
+    reviewReport: async (_event: unknown, id: string, scope: string, reportId: string, input: DeepReportReviewInput) => {
+      try {
+        const { context, item: source, local } = await deps.context(id, scope)
+
+        if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
+        validateDeepReportReview(input, source.deep_reports?.find(report => report.id === reportId), source, source.analysis_revision ?? '')
+        // Only these fields may cross the cloud boundary; the native/HTTP authority stamps time.
+        const value: DeepReportReviewInput = { revision: input.revision, sha256: input.sha256, decision: input.decision, note: input.note }
+
+        const item = local ? reviewLocalDeepReport(context.root, scope, id, reportId, value)
+          : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/deep-reports/${encodeURIComponent(reportId)}/review`, value) as { item: DeepAnalysisReport }).item
+
+        if (deps.currentAccount() !== scope) {throw new Error('analysis_account_changed')}
+
+        return { ok: true, item }
       } catch (error) {return { ok: false, code: deps.error(error) }}
     },
     deleteReport: async (_event: unknown, id: string, scope: string, reportId: string) => {

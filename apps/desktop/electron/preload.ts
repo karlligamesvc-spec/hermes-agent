@@ -302,6 +302,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     updateDeepChatOutcome: (id, scope, revision, expected, status) => ipcRenderer.invoke('hermes:analysis:updateDeepChatOutcome', id, scope, revision, expected, status),
     readDeepChat: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:readDeepChat', id, scope, revision),
     collectDeepReport: (id, scope, revision, filename) => ipcRenderer.invoke('hermes:analysis:collectDeepReport', id, scope, revision, filename),
+    reviewDeepReport: (id, scope, reportId, input) => ipcRenderer.invoke('hermes:analysis:reviewDeepReport', id, scope, reportId, input),
     policy: () => ipcRenderer.invoke('hermes:analysis:policy'),
     list: () => ipcRenderer.invoke('hermes:analysis:list'),
     importFile: () => ipcRenderer.invoke('hermes:analysis:import'),

@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { type SourceAnswerInput, type StoredSourceAnswer, validateSourceAnswer } from '../shared/analysis-answer'
-import { type DeepAnalysisReport, type DeepReportInput, MAX_DEEP_REPORTS, validateDeepReport } from '../shared/analysis-deep-report'
+import { type DeepAnalysisReport, type DeepReportInput, type DeepReportReviewInput, MAX_DEEP_REPORTS, sameReportCollection, validateDeepReport, validateDeepReportReview } from '../shared/analysis-deep-report'
 import { validateVideoOverview, type VideoSemanticOverview } from '../shared/analysis-video-overview'
 
 export interface AnalysisAnchor {
@@ -410,7 +410,7 @@ export function saveLocalDeepReport(root: string, userId: string, id: string, in
   const valid = validateDeepReport(input, source, localOverviewRevision(source))
   const reports = source.deep_reports ?? []
   const sha256 = crypto.createHash('sha256').update(valid.body).digest('hex')
-  const existing = reports.find(item => item.sha256 === sha256 && item.revision === valid.revision)
+  const existing = reports.find(item => item.sha256 === sha256 && item.revision === valid.revision && sameReportCollection(item.collection, valid.collection))
 
   if (existing) {return existing}
 
@@ -433,4 +433,22 @@ export function removeLocalDeepReport(root: string, userId: string, id: string, 
   save(root, userId, source)
 
   return true
+}
+
+
+export function reviewLocalDeepReport(root: string, userId: string, id: string, reportId: string, input: DeepReportReviewInput): DeepAnalysisReport {
+  const source = getLocalDocument(root, userId, id)
+
+  if (!source) {throw new Error('source_not_found')}
+  const report = source.deep_reports?.find(item => item.id === reportId)
+  validateDeepReportReview(input, report, source, localOverviewRevision(source))
+  const item = { ...report! }
+
+  if (input.decision === 'unreviewed') {delete item.review}
+  else {item.review = { decision: input.decision, note: input.note.trim(), reviewed_at: new Date().toISOString() }}
+
+  source.deep_reports = source.deep_reports!.map(previous => previous.id === reportId ? item : previous)
+  save(root, userId, source)
+
+  return item
 }

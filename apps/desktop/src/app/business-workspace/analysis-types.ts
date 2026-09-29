@@ -1,6 +1,6 @@
 import type { SourceAnswerInput, StoredSourceAnswer } from '../../../shared/analysis-answer'
 import type { AnalysisChatLink, AnalysisChatTarget, AnalysisTurnState } from '../../../shared/analysis-chat-link'
-import type { DeepAnalysisReport } from '../../../shared/analysis-deep-report'
+import type { DeepAnalysisReport, DeepReportReviewInput } from '../../../shared/analysis-deep-report'
 import type { VideoSemanticOverview } from '../../../shared/analysis-video-overview'
 
 export interface AnalysisAnchor {
@@ -69,6 +69,7 @@ export interface AnalysisDocumentsBridge {
   updateDeepChatOutcome?: (id: string, scope: string, revision: string, expected: AnalysisChatLink, status: AnalysisTurnState) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink }>
   readDeepChat?: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisChatLink | null }>
   collectDeepReport: (id: string, scope: string, revision: string, filename: 'ANALYSIS.md' | 'TIMELINE.md') => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
+  reviewDeepReport?: (id: string, scope: string, reportId: string, input: DeepReportReviewInput) => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
   deleteDeepReport: (id: string, scope: string, reportId: string) => Promise<{ ok: boolean; code?: string }>
   transcriptForDraft: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; text?: string }>
   overviewContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>

@@ -15,11 +15,13 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   expect(path.basename(path.dirname(directory))).toBe('attempts')
   const binding = JSON.parse(fs.readFileSync(path.join(directory, 'apex-source.json'), 'utf8'))
   expect(binding.workspace_id).toBe(path.basename(directory))
+
   const read = () => page.evaluate(async input => {
     const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
 
     return api.readDeepChat!(input.source_id, input.scope, input.revision)
   }, binding)
+
   expect((await read()).item).toBeNull()
   await page.getByRole('button', { name: '开始执行', exact: true }).click()
   await expect.poll(async () => (await read()).item?.workspaceId, { timeout: 30_000 }).toBe(binding.workspace_id)
@@ -43,6 +45,10 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   await test.info().attach('hc887-narrow-report-ui', { body: await page.screenshot(), contentType: 'image/png' })
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setBounds({ width: 1220, height: 800 }, false))
 
+  await reports.getByLabel('验收备注').fill('[本地测试] 我已核对原文引用')
+  await reports.getByRole('button', { name: '标记可用', exact: true }).click()
+  await expect(reports).toContainText('你已标记可用')
+
   const saved = await page.evaluate(async id => {
     const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
 
@@ -53,6 +59,9 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   expect(saved.analysis_revision).toBe(binding.revision)
   expect(saved.deep_reports).toHaveLength(1)
   expect(saved.deep_reports![0].body).toBe(body)
+  expect(saved.deep_reports![0].collection?.workspace_id).toBe(binding.workspace_id)
+  expect(saved.deep_reports![0].review).toMatchObject({ decision: 'accepted', note: '[本地测试] 我已核对原文引用' })
+  expect(Object.keys(saved.deep_reports![0].collection!).every(key => ['workspace_id', 'submitted_at', 'turn_id', 'observed_status'].includes(key))).toBe(true)
   await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
   await expect(reports.locator('summary')).toHaveCount(1)
   // Preparing alone leaves the accepted output selected. A second accepted draft must never consume it.
@@ -63,12 +72,15 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   expect(secondDirectory).not.toBe(directory)
   expect(fs.existsSync(path.join(secondDirectory, 'ANALYSIS.md'))).toBe(false)
   expect((await read()).item?.workspaceId).toBe(binding.workspace_id)
+
   const pendingCollection = await page.evaluate(async input => {
     const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
 
     return api.collectDeepReport!(input.source_id, input.scope, input.revision, 'ANALYSIS.md')
   }, binding)
+
   expect(pendingCollection.item?.body).toBe(body)
+  expect(pendingCollection.item?.review).toEqual(saved.deep_reports![0].review)
   await page.getByRole('button', { name: '开始执行', exact: true }).click()
   await expect.poll(async () => (await read()).item?.workspaceId, { timeout: 30_000 }).toBe(secondBinding.workspace_id)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
@@ -82,6 +94,23 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   await expect(reports.locator('summary')).toHaveCount(2)
   await reports.locator('summary').last().click()
   await expect(reports.locator('pre').last()).toHaveText(secondBody)
+  await expect(reports.locator('article').last()).toContainText('待你验收')
+  await page.reload()
+  await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  await reports.locator('summary').first().click()
+  await expect(reports.locator('article').first()).toContainText('你已标记可用')
+  await expect(reports.locator('article').first().getByLabel('验收备注')).toHaveValue('[本地测试] 我已核对原文引用')
+
+  const reopened = await page.evaluate(async id => {
+    const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
+
+    return (await api.get(id)).item!.deep_reports!
+  }, binding.source_id)
+
+  expect(reopened[0].collection?.workspace_id).toBe(binding.workspace_id)
+  expect(reopened[1].collection?.workspace_id).toBe(secondBinding.workspace_id)
+  expect(reopened[1].review).toBeUndefined()
+  await test.info().attach('hc893-reopened-review', { body: JSON.stringify(reopened), contentType: 'application/json' })
   expect(fs.readFileSync(path.join(directory, 'ANALYSIS.md'), 'utf8')).toBe(body)
   await test.info().attach('hc892-separated-outputs', { body: JSON.stringify({ binding, secondBinding, pendingCollection, accepted: (await read()).item, secondBody, outputAuthor: 'test fixture' }), contentType: 'application/json' })
   await test.info().attach('hc892-output-ui', { body: await page.screenshot(), contentType: 'image/png' })
