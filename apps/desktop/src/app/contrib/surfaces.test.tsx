@@ -64,7 +64,7 @@ vi.mock('../business-workspace/pages/analysis-page', () => ({
     onDeepBreakdown: (document: unknown, locale: 'en', frames: Array<{ seconds: number; dataUrl: string }>) => Promise<void>
   }) => <button onClick={() => void onDeepBreakdown({
     id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
-    status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+    status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
     anchors: [{ id: 'a1', location: { start_seconds: 3, end_seconds: 5 }, text: 'verified speech' }],
     notes: [], questions: []
   }, 'en', [{ seconds: 12.5, dataUrl: `data:image/jpeg;base64,${btoa('frame')}` }])} type="button">Prepare video</button>

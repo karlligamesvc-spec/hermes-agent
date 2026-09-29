@@ -6,7 +6,7 @@ import { videoDeepBreakdownDraft } from './video-deep-breakdown-draft'
 function source(anchors: AnalysisDocument['anchors'], sourceUrl?: string): AnalysisDocument {
   return {
     id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'source-video.srt', kind: 'subtitle',
-    status: 'ready', storageMode: 'local', parseVersion: sourceUrl ? undefined : 'uploaded_video_audio_v1',
+    status: 'ready', storageMode: 'local', evidenceOrigin: sourceUrl ? 'linked_video_audio' : 'uploaded_video_audio',
     sourceUrl, anchors, notes: [], questions: []
   }
 }
@@ -57,7 +57,7 @@ describe('video deep breakdown handoff', () => {
     ]), 'zh')).toBeNull()
     expect(videoDeepBreakdownDraft({ ...source([
       { id: 'a1', location: { start_seconds: 2, end_seconds: 5 }, text: '有时间码' }
-    ]), parseVersion: undefined }, 'zh')).toBeNull()
+    ]), evidenceOrigin: undefined }, 'zh')).toBeNull()
   })
 
   it('marks gaps as partial when a video source also contains unusable cues', () => {

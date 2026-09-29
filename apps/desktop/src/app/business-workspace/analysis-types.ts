@@ -32,8 +32,9 @@ export interface AnalysisDocument {
   questions?: AnalysisQuestion[]
   createdAt?: string
   created_at?: string
-  parse_version?: string
-  parseVersion?: string
+  parse_version?: number
+  evidence_origin?: 'linked_video_audio' | 'uploaded_video_audio' | null
+  evidenceOrigin?: 'linked_video_audio' | 'uploaded_video_audio'
 }
 
 export interface AnalysisVideoResolution {

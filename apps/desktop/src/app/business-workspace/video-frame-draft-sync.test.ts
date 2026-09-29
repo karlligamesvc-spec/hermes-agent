@@ -8,7 +8,7 @@ import { draftAfterVideoFrameRemoval, isVideoFrameDraftHandoff } from './video-f
 
 const source: AnalysisDocument = {
   id: 'owned-video', filename: 'clip.srt', kind: 'subtitle', status: 'ready', storageMode: 'local',
-  parseVersion: 'uploaded_video_audio_v1',
+  evidenceOrigin: 'uploaded_video_audio',
   anchors: [{ id: 'a1', location: { start_seconds: 2, end_seconds: 5 }, text: 'Verified speech' }]
 }
 

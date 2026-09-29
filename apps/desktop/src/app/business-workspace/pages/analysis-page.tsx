@@ -563,7 +563,7 @@ export function AnalysisView({ onDeepBreakdown }: {
           {!selected && <p className="rounded-xl border p-6 text-sm text-(--ui-text-secondary)">{openingId ? c.opening : c.select}</p>}
           {selected && <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{selected.source_url || selected.sourceUrl || selected.parse_version === 'uploaded_video_audio_v1' || selected.parseVersion === 'uploaded_video_audio_v1' ? c.videoTranscriptNotice : c.subtitleNotice}</p>}</div>
+              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{selected.evidence_origin || selected.evidenceOrigin ? c.videoTranscriptNotice : c.subtitleNotice}</p>}</div>
               <div className="flex gap-2">
                 <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async () => {
                   const sourceId = selected.id

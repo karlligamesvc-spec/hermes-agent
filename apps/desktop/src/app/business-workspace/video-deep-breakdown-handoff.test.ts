@@ -5,7 +5,7 @@ import { prepareVideoBreakdownHandoff } from './video-deep-breakdown-handoff'
 
 const document: AnalysisDocument = {
   id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
-  status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+  status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
   anchors: [{ id: 'a1', location: { start_seconds: 3, end_seconds: 5 }, text: 'verified speech' }],
   notes: [], questions: []
 }
@@ -46,7 +46,7 @@ describe('video frame handoff to the local Agent draft', () => {
 
   it('never stages frames for an unresolved or untimed source', async () => {
     const attach = vi.fn()
-    const draft = await prepareVideoBreakdownHandoff({ ...document, parseVersion: undefined }, 'en', [
+    const draft = await prepareVideoBreakdownHandoff({ ...document, evidenceOrigin: undefined }, 'en', [
       { seconds: 1, dataUrl: jpeg }
     ], attach)
 

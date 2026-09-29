@@ -639,7 +639,7 @@ async function startPhase1ReviewApi() {
       }
 
       json(200, { parsed: {
-        filename: 'local-review-video-transcript.srt', source_url: ANALYSIS_REVIEW_VIDEO_URL,
+        filename: 'local-review-video-transcript.srt', evidence_origin: 'linked_video_audio', source_url: ANALYSIS_REVIEW_VIDEO_URL,
         srt: '1\n00:00:01,000 --> 00:00:03,000\n[本地测试] 开头原文\n\n2\n00:00:40,000 --> 00:00:43,000\n[本地测试] 中段原文\n',
         anchors: [
           { id: 'a1', location: { start_seconds: 1, end_seconds: 3 }, text: '[本地测试] 开头原文' },

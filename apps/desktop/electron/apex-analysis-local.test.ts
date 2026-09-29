@@ -24,7 +24,7 @@ describe('account-scoped local analysis', () => {
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }]
     })
 
-    expect(getLocalDocument(root, owner, item.id)?.parseVersion).toBe('uploaded_video_audio_v1')
+    expect(getLocalDocument(root, owner, item.id)?.evidenceOrigin).toBe('uploaded_video_audio')
     expect(getLocalDocument(root, owner, item.id)?.sourceUrl).toBeUndefined()
     expect(getLocalDocument(root, other, item.id)).toBeNull()
     expect(fs.readFileSync(item.sourcePath, 'utf8')).toContain('真实片段')
@@ -55,12 +55,13 @@ describe('account-scoped local analysis', () => {
     const sourceUrl = 'https://www.iesdouyin.com/share/video/123456'
 
     const item = createLocalVideoTranscript(root, owner, {
-      filename: 'douyin-transcript.srt', source_url: sourceUrl,
+      filename: 'douyin-transcript.srt', evidence_origin: 'linked_video_audio', source_url: sourceUrl,
       srt: '1\n00:00:01,000 --> 00:00:02,000\n真实片段\n',
       anchors: [{ id: 'a1', location, text: '真实片段' }]
     })
 
     expect(getLocalDocument(root, other, item.id)).toBeNull()
+    expect(getLocalDocument(root, owner, item.id)?.evidenceOrigin).toBe('linked_video_audio')
     expect(getLocalDocument(root, owner, item.id)?.sourceUrl).toBe(sourceUrl)
     expect(answerLocalDocument(root, owner, item.id, '真实片段')?.citations).toEqual([{ anchor_id: 'a1', location }])
     expect(fs.readFileSync(item.sourcePath, 'utf8')).toContain('00:00:01,000 --> 00:00:02,000')
@@ -72,11 +73,25 @@ describe('account-scoped local analysis', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-video-url-test-'))
     roots.push(root)
     expect(() => createLocalVideoTranscript(root, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', {
-      filename: 'douyin-transcript.srt', source_url: 'https://example.com/private',
+      filename: 'douyin-transcript.srt', evidence_origin: 'linked_video_audio', source_url: 'https://example.com/private',
       srt: '1\n00:00:01,000 --> 00:00:02,000\n真实片段\n',
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }]
     })).toThrow('unsupported_video_link')
     expect(fs.readdirSync(root)).toEqual([])
+  })
+
+  it('does not promote an unmarked subtitle into video evidence', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-video-origin-test-'))
+    roots.push(root)
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+    expect(() => createLocalVideoTranscript(root, owner, {
+      filename: 'clip.srt', evidence_origin: 'uploaded_video_audio',
+      source_url: 'https://www.iesdouyin.com/share/video/123456',
+      srt: '1\n00:00:01,000 --> 00:00:02,000\n原文\n',
+      anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '原文' }]
+    })).toThrow('timed_evidence_invalid')
+    expect(listLocalDocuments(root, owner)).toEqual([])
   })
 
   it('previews only ready PDF bytes owned by the account and rejects a replaced symlink', () => {

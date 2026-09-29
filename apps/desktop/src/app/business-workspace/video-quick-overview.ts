@@ -11,8 +11,9 @@ export interface VideoQuickOverview {
 export function videoQuickOverview(document: AnalysisDocument | null): VideoQuickOverview | null {
   if (document?.kind !== 'subtitle' || document.status !== 'ready') {return null}
 
-  const fromVideo = Boolean(document.source_url || document.sourceUrl ||
-    ['uploaded_video_audio_v1'].includes(document.parse_version ?? document.parseVersion ?? ''))
+  const fromVideo = ['linked_video_audio', 'uploaded_video_audio'].includes(
+    document.evidence_origin ?? document.evidenceOrigin ?? ''
+  )
 
   if (!fromVideo) {return null}
 

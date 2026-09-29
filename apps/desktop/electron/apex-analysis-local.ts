@@ -25,7 +25,7 @@ export interface LocalDocument {
   createdAt: string
   sourcePath: string
   sourceUrl?: string
-  parseVersion?: string
+  evidenceOrigin?: 'linked_video_audio' | 'uploaded_video_audio'
 }
 
 function accountDirectory(root: string, userId: string): string {
@@ -195,7 +195,7 @@ export function createLocalDocument(
   root: string,
   userId: string,
   sourceBytes: Buffer,
-  parsed: { filename: string; kind: string; anchors: AnalysisAnchor[]; sourceUrl?: string; parseVersion?: string }
+  parsed: { filename: string; kind: string; anchors: AnalysisAnchor[]; sourceUrl?: string; evidenceOrigin?: 'linked_video_audio' | 'uploaded_video_audio' }
 ): LocalDocument {
   const id = `local-${crypto.randomUUID()}`
   const directory = accountDirectory(root, userId)
@@ -212,7 +212,7 @@ export function createLocalDocument(
       storageMode: 'local',
       anchors: parsed.anchors,
       sourceUrl: parsed.sourceUrl,
-      parseVersion: parsed.parseVersion,
+      evidenceOrigin: parsed.evidenceOrigin,
       notes: [],
       questions: [],
       createdAt: new Date().toISOString(),
@@ -232,8 +232,10 @@ export function createLocalDocument(
 export function createLocalVideoTranscript(
   root: string,
   userId: string,
-  parsed: { filename: string; source_url: string; srt: string; anchors: AnalysisAnchor[] }
+  parsed: { filename: string; evidence_origin: string; source_url: string; srt: string; anchors: AnalysisAnchor[] }
 ): LocalDocument {
+  if (parsed.evidence_origin !== 'linked_video_audio') {throw new Error('timed_evidence_invalid')}
+
   const url = new URL(parsed.source_url)
   const allowed = new Set(['v.douyin.com', 'www.douyin.com', 'www.iesdouyin.com', 'xhslink.com', 'xhslink.cn', 'www.xiaohongshu.com', 'b23.tv', 'www.bilibili.com'])
 
@@ -242,7 +244,8 @@ export function createLocalVideoTranscript(
   if (!parsed.filename.endsWith('.srt') || !parsed.srt || !Array.isArray(parsed.anchors) || !parsed.anchors.length) {throw new Error('timed_evidence_invalid')}
 
   const item = createLocalDocument(root, userId, Buffer.from(parsed.srt, 'utf8'), {
-    filename: parsed.filename, kind: 'subtitle', anchors: parsed.anchors, sourceUrl: parsed.source_url
+    filename: parsed.filename, kind: 'subtitle', anchors: parsed.anchors, sourceUrl: parsed.source_url,
+    evidenceOrigin: 'linked_video_audio'
   })
 
   return item
@@ -266,7 +269,7 @@ export function createLocalUploadedVideoTranscript(
 
   return createLocalDocument(root, userId, Buffer.from(parsed.srt, 'utf8'), {
     filename: parsed.filename, kind: 'subtitle', anchors: parsed.anchors,
-    parseVersion: 'uploaded_video_audio_v1'
+    evidenceOrigin: 'uploaded_video_audio'
   })
 }
 

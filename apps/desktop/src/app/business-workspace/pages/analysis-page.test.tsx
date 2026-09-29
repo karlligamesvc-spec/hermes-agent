@@ -103,8 +103,8 @@ describe('document analysis evidence', () => {
     const scroll = vi.fn()
     Element.prototype.scrollIntoView = scroll
     const video = {
-      id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'video-transcript.srt', kind: 'subtitle',
-      status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'video-transcript.srt', kind: 'subtitle',
+      status: 'ready', storageMode: 'cloud', parse_version: 1, evidence_origin: 'uploaded_video_audio',
       anchors: [
         { id: 'a5', location: { start_seconds: 80, end_seconds: 84 }, text: '结束原文' },
         { id: 'a3', location: { start_seconds: 40, end_seconds: 43 }, text: '中段原文' },
@@ -114,11 +114,11 @@ describe('document analysis evidence', () => {
         { id: 'a2', location: { start_seconds: 20, end_seconds: 24 }, text: '前段原文' }
       ], notes: [], questions: []
     }
-    const captions = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'captions.srt', parseVersion: undefined, anchors: [video.anchors[0]] }
+    const captions = { ...video, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'captions.srt', evidence_origin: undefined, anchors: [video.anchors[0]] }
     const ask = vi.fn()
     const onDeepBreakdown = vi.fn()
     window.hermesDesktop = { analysisDocuments: {
-      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
+      policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'cloud', cloud_storage_configured: true } }),
       list: vi.fn().mockResolvedValue({ ok: true, items: [video, captions] }),
       get: vi.fn(async (id: string) => ({ ok: true, item: id === video.id ? video : captions })), ask
     } } as never
@@ -149,7 +149,7 @@ describe('document analysis evidence', () => {
     $connection.set({ mode: 'remote' } as never)
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
-      status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 3 }, text: '真实口播' }],
       notes: [], questions: []
     }
@@ -224,7 +224,7 @@ describe('document analysis evidence', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
     const encode = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,ZmFrZQ==')
     const video = { id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
-      status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 12, end_seconds: 15 }, text: 'spoken words' }], notes: [], questions: [] }
     const other = { ...video, id: 'local-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', filename: 'other.srt' }
     window.hermesDesktop = { analysisDocuments: {
@@ -458,7 +458,7 @@ describe('document analysis evidence', () => {
 
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'douyin-transcript.srt', kind: 'subtitle',
-      status: 'ready', storageMode: 'local', sourceUrl: url,
+      status: 'ready', storageMode: 'local', sourceUrl: url, evidenceOrigin: 'linked_video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }],
       notes: [], questions: []
     }
@@ -575,7 +575,7 @@ describe('document analysis evidence', () => {
   it('opens uploaded-video audio evidence only after a timed transcript is returned', async () => {
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip-audio-transcript.srt',
-      kind: 'subtitle', status: 'ready', storageMode: 'local', parseVersion: 'uploaded_video_audio_v1',
+      kind: 'subtitle', status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }],
       notes: [], questions: []
     }
