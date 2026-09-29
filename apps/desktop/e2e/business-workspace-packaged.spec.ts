@@ -2127,8 +2127,8 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
 }
 
 test('hc-872 packaged analysis stores timed speech locally and prepares a reviewable deep draft', async () => {
-  // This flow deliberately rejects one pending-seek screenshot; assert the
-  // exact observed errors below instead of suppressing unexpected failures.
+  // This flow deliberately rejects a pending-seek screenshot and an empty
+  // accepted output folder; assert both exact errors without hiding others.
   allowErrorBanners()
   const { app, page } = fixture!
 
@@ -2273,7 +2273,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
   await verifyWorkspaceReport(app, page)
-  expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。'])
+  expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
 })
 
 test('hc-878 packaged local document import persists cited answers and notes under the signed-in account', async () => {
