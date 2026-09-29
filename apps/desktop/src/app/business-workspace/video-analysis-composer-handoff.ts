@@ -8,6 +8,7 @@ import type { AnalysisDocument } from './analysis-types'
 import type { VideoBreakdownLocale } from './video-deep-breakdown-draft'
 import { type CapturedVideoFrame, prepareVideoBreakdownHandoff } from './video-deep-breakdown-handoff'
 import { VIDEO_TRANSCRIPT_COPY, type VideoTranscriptDraftHandoff } from './video-transcript-draft'
+import { videoWorkspaceDraft } from './video-workspace-draft'
 
 /** Prepare owned evidence for explicit user submission; roll back only this attempt on a scope change. */
 export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale: VideoBreakdownLocale,
@@ -75,6 +76,19 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
       }
     }
 
+    const prepareWorkspace = window.hermesDesktop?.analysisDocuments?.prepareDeepWorkspace
+    let workspaceNote = ''
+
+    if (prepareWorkspace) {
+      if (!isCurrent()) {throw new Error('analysis_context_changed')}
+      const result = await prepareWorkspace(document.id, document.analysis_scope ?? '', document.analysis_revision ?? '')
+
+      if (!isCurrent()) {throw new Error('analysis_context_changed')}
+
+      if (!result.ok || !result.directory) {throw new Error(result.code ?? 'workspace_invalid')}
+      workspaceNote = videoWorkspaceDraft(locale, result.directory)
+    }
+
     const draft = await prepareVideoBreakdownHandoff(document, locale, frames, async (blob, seconds) => {
       const added = await attach('image', () => actions.onAttachImageBlob(blob), { analysisFrameSourceId: document.id })
 
@@ -82,7 +96,7 @@ export async function stageVideoAnalysisDraft(document: AnalysisDocument, locale
       routedFrames.push({ id: added.id, occurrenceId: added.occurrenceId!, seconds })
 
       return true
-    }, VIDEO_TRANSCRIPT_COPY[locale][transcript ? 'attached' : 'unavailable'])
+    }, VIDEO_TRANSCRIPT_COPY[locale][transcript ? 'attached' : 'unavailable'] + workspaceNote)
 
     // File writes and frame staging can outlive a sign-out, source deletion, or retry.
     await readTranscript()

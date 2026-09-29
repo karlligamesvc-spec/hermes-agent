@@ -13,6 +13,7 @@ import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 import { captureVideoFrame, sampleVideoFrames } from '../video-frame-evidence'
 import { videoQuickOverview } from '../video-quick-overview'
 import { VIDEO_TRANSCRIPT_COPY } from '../video-transcript-draft'
+import { VIDEO_WORKSPACE_COPY } from '../video-workspace-draft'
 
 const COPY = {
   zh: {
@@ -671,6 +672,7 @@ export function AnalysisView({ onDeepBreakdown }: {
                     await onDeepBreakdown(selected, locale, visualEvidence)
                   })} type="button">{c.deepAction}</button>
                   {connection?.mode !== 'remote' && <p className="text-xs text-(--ui-text-tertiary)">{VIDEO_TRANSCRIPT_COPY[locale].notice}</p>}
+                  {connection?.mode !== 'remote' && bridge()?.prepareDeepWorkspace && <p className="text-xs text-(--ui-text-tertiary)">{VIDEO_WORKSPACE_COPY[locale].notice}</p>}
                   <p className="text-xs text-(--ui-text-tertiary)">{connection?.mode === 'remote' ? c.deepLocalOnly : activeVideo ? frames.some(frame => frame.videoUrl === activeVideo.url) ? c.deepFrameDisclosure : c.deepAutoFrameDisclosure : c.deepDisclosure}</p>
                 </div>}
                 <div className="grid gap-2 md:grid-cols-3">

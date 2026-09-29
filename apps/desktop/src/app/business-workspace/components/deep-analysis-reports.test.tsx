@@ -52,3 +52,17 @@ it('merges a returned report and keeps cancel quiet', async () => {
   fireEvent.click(screen.getByRole('button', { name: '保存报告文件' }))
   await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith([report]))
 })
+
+it('collects only the clicked workspace filename, explains missing output and supports retry at report capacity', async () => {
+  const onChange = vi.fn()
+  const collectDeepReport = vi.fn().mockResolvedValueOnce({ ok: false, code: 'workspace_report_missing' }).mockResolvedValue({ ok: true, item: report })
+  const reports = Array.from({ length: 5 }, (_, index) => ({ ...report, id: `r${index + 1}` }))
+  render(<DeepAnalysisReports bridge={{ collectDeepReport } as unknown as AnalysisDocumentsBridge} locale="en" onChange={onChange} source={{ ...source, deep_reports: reports }} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Collect TIMELINE.md' }))
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'This report has not been written yet. Retry after the Agent finishes.')
+  expect(collectDeepReport).toHaveBeenLastCalledWith('local-a', 'owner', 'rev-a', 'TIMELINE.md')
+  expect(onChange).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Collect ANALYSIS.md' }))
+  await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith([...reports.slice(1), report]))
+  expect(collectDeepReport).toHaveBeenLastCalledWith('local-a', 'owner', 'rev-a', 'ANALYSIS.md')
+})

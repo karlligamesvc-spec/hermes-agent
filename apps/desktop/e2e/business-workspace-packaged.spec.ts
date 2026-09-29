@@ -11,6 +11,7 @@ import type { SourceAnswerInput } from '../shared/analysis-answer'
 import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
 import { verifySourceAnswer } from './analysis-source-answer'
+import { verifyWorkspaceReport } from './analysis-workspace-report'
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
@@ -2269,6 +2270,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
+  await verifyWorkspaceReport(app, page)
   expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。'])
 })
 

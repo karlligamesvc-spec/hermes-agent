@@ -82,3 +82,38 @@ it.each(['scope', 'source', 'disk', 'limit'])('preserves user files and tells th
 
   expect($composerAttachments.get()).toEqual([ownFile])
 })
+
+it('binds output instructions within the draft limit in every locale, without copying evidence into the workspace', async () => {
+  const directory = 'C:\\Users\\User With Spaces\\Local\\analysis-workspaces\\' + 'a'.repeat(64) + '\\' + 'b'.repeat(64)
+  const longSource = { ...source, anchors: Array.from({ length: 100 }, (_, i) => ({ id: `a${i}`, text: 'long speech '.repeat(40), location: { start_seconds: i, end_seconds: i + 1 } })) }
+
+  for (const locale of ['zh', 'zh-hant', 'en', 'ja', 'ar'] as const) {
+    bridge()
+    const prepare = vi.fn().mockResolvedValue({ ok: true, directory })
+    window.hermesDesktop!.analysisDocuments!.prepareDeepWorkspace = prepare
+    const staged = await stageVideoAnalysisDraft(longSource, locale, [], actions, () => true)
+    expect(prepare).toHaveBeenCalledExactlyOnceWith(source.id, 'owner', 'current')
+    expect(staged.draft.length).toBeLessThan(4000)
+    expect(staged.draft).toContain(JSON.stringify(directory))
+    expect(staged.draft).toContain('--workspace')
+    expect(staged.draft).toContain('ANALYSIS.md')
+    expect(staged.draft).toContain('TIMELINE.md')
+    const removed = syncVideoTranscriptDraft(staged.draft, staged.transcript!, [])
+    expect(removed).not.toContain(VIDEO_TRANSCRIPT_COPY[locale].attached)
+    expect(removed).toContain(JSON.stringify(directory))
+  }
+})
+
+it('rolls back only staged attachments if workspace preparation fails or returns into another context', async () => {
+  for (const failure of ['native', 'context']) {
+    bridge()
+    let current = true
+    window.hermesDesktop!.analysisDocuments!.prepareDeepWorkspace = vi.fn().mockImplementation(async () => {
+      if (failure === 'context') {current = false}
+
+      return failure === 'native' ? { ok: false, code: 'workspace_invalid' } : { ok: true, directory: '/late/workspace' }
+    })
+    await expect(stageVideoAnalysisDraft(source, 'en', [], actions, () => current)).rejects.toThrow(failure === 'native' ? 'workspace_invalid' : 'analysis_context_changed')
+    expect($composerAttachments.get()).toEqual([ownFile])
+  }
+})

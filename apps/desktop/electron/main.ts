@@ -65,6 +65,7 @@ import {
 } from './apex-analysis-local'
 import { fullVideoTranscript } from './apex-analysis-transcript'
 import { uploadAnalysisVideo } from './apex-analysis-video-upload'
+import { deleteAnalysisWorkspace } from './apex-analysis-workspace'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
@@ -22567,6 +22568,8 @@ const deepReportHandlers = createDeepReportHandlers({
 })
 
 ipcMain.handle('hermes:analysis:importDeepReport', deepReportHandlers.importReport)
+ipcMain.handle('hermes:analysis:prepareDeepWorkspace', deepReportHandlers.prepareWorkspace)
+ipcMain.handle('hermes:analysis:collectDeepReport', deepReportHandlers.collectReport)
 ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
 
 ipcMain.handle('hermes:analysis:ask', async (_event, id, question) => {
@@ -22638,6 +22641,8 @@ ipcMain.handle('hermes:analysis:delete', async (_event, id) => {
     const ok = String(id).startsWith('local-')
       ? deleteLocalDocument(context.root, context.policy.user_id, id)
       : Boolean(await apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}`, { bearer: context.bearer }))
+
+    if (ok) {deleteAnalysisWorkspace(context.root, context.policy.user_id, id)}
 
     return { ok }
   } catch (error) { return { ok: false, code: analysisIpcError(error) } }

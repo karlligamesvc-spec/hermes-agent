@@ -10,13 +10,17 @@ export interface DeepAnalysisReport extends DeepReportInput {
   provenance: 'selected_file'
 }
 
-/** Report imports are user-selected evidence, never proof that Hypit ran or verified its claims. */
-export function validateDeepReport(input: DeepReportInput, source: OverviewSource, revision: string): DeepReportInput {
+export function validateDeepReportSource(source: OverviewSource, requestedRevision: string, revision: string): void {
   if (source.status !== 'ready' || source.kind !== 'subtitle' ||
     !['linked_video_audio', 'uploaded_video_audio'].includes(source.evidence_origin ?? source.evidenceOrigin ?? '') ||
     !source.anchors?.length) {throw new Error('report_source_unavailable')}
 
-  if (!revision || input?.revision !== revision) {throw new Error('report_source_changed')}
+  if (!revision || requestedRevision !== revision) {throw new Error('report_source_changed')}
+}
+
+/** Report imports are user-selected evidence, never proof that Hypit ran or verified its claims. */
+export function validateDeepReport(input: DeepReportInput, source: OverviewSource, revision: string): DeepReportInput {
+  validateDeepReportSource(source, input?.revision, revision)
 
   if (typeof input.filename !== 'string' || input.filename.length > 255 ||
     /[\\/]/.test(input.filename) || [...input.filename].some(char => char.charCodeAt(0) < 32) || !/\.(md|txt)$/i.test(input.filename) ||

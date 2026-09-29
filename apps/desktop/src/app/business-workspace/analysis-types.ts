@@ -63,6 +63,8 @@ export interface AnalysisDocumentsBridge {
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>
   get: (id: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   importDeepReport: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
+  prepareDeepWorkspace: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; directory?: string }>
+  collectDeepReport: (id: string, scope: string, revision: string, filename: 'ANALYSIS.md' | 'TIMELINE.md') => Promise<{ ok: boolean; code?: string; item?: DeepAnalysisReport }>
   deleteDeepReport: (id: string, scope: string, reportId: string) => Promise<{ ok: boolean; code?: string }>
   transcriptForDraft: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; text?: string }>
   overviewContext: (id: string, scope: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>

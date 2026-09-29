@@ -297,6 +297,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     openUserFile: fileId => ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)
   },
   analysisDocuments: {
+    prepareDeepWorkspace: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:prepareDeepWorkspace', id, scope, revision),
+    collectDeepReport: (id, scope, revision, filename) => ipcRenderer.invoke('hermes:analysis:collectDeepReport', id, scope, revision, filename),
     policy: () => ipcRenderer.invoke('hermes:analysis:policy'),
     list: () => ipcRenderer.invoke('hermes:analysis:list'),
     importFile: () => ipcRenderer.invoke('hermes:analysis:import'),

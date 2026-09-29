@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
+
 import { type DeepAnalysisReport, MAX_DEEP_REPORTS } from '../../../../shared/analysis-deep-report'
 import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
+
+const WORKSPACE_COPY = {
+  zh: { collect: '收取', hint: '助手完成后，可从本资料的本机输出目录收取指定文件；不会搜索其他项目，也不代表已核验报告。', missing: '请先准备本资料的深度拆解草稿。', pending: '指定报告尚未生成。请在助手完成后重试。', invalid: '输出目录或文件不符合绑定要求，请重新核对。' },
+  'zh-hant': { collect: '收取', hint: '助手完成後，可從本資料的本機輸出目錄收取指定檔案；不會搜尋其他專案，也不代表已核驗報告。', missing: '請先準備本資料的深度拆解草稿。', pending: '指定報告尚未產生，請在助手完成後重試。', invalid: '輸出目錄或檔案不符合綁定要求，請重新核對。' },
+  en: { collect: 'Collect', hint: 'After the Agent finishes, collect a named file from this source’s local output folder. Other projects are never searched; report claims remain unverified.', missing: 'Prepare a deep breakdown draft for this source first.', pending: 'This report has not been written yet. Retry after the Agent finishes.', invalid: 'The output folder or file no longer matches its binding. Please check it.' },
+  ja: { collect: '取得', hint: '助手の完了後、この資料専用のローカル出力フォルダから指定ファイルを取得します。他のプロジェクトは検索せず、内容は未検証です。', missing: '先にこの資料の詳細分析の下書きを準備してください。', pending: '指定レポートはまだありません。助手の完了後に再試行してください。', invalid: '出力フォルダまたはファイルが登録情報と一致しません。確認してください。' },
+  ar: { collect: 'جمع', hint: 'بعد انتهاء الوكيل، اجمع الملف المحدد من مجلد إخراج هذا المصدر المحلي. لا تُبحث مشاريع أخرى وتظل ادعاءات التقرير غير متحققة.', missing: 'جهز مسودة تحليل متعمق لهذا المصدر أولًا.', pending: 'لم يُكتب هذا التقرير بعد. أعد المحاولة بعد انتهاء الوكيل.', invalid: 'لم يعد مجلد الإخراج أو الملف يطابق الارتباط. يرجى التحقق منه.' }
+}
 
 const COPY = {
   zh: { title: '深度分析报告', save: '保存报告文件', remove: '删除副本', pending: '正在保存…', empty: '尚未保存报告。', disclosure: '选择本资料对应的 ANALYSIS.md、TIMELINE.md 或文本报告（UTF-8，最多 64 KiB，每份资料 5 份）。副本按资料的保存方式保留。文件由你选择，内容及 Hypit 执行状态尚未核验。', old: '对应较早的资料版本，请重新核对出处。', large: '报告超过 64 KiB，请缩减后重试。', invalid: '请选择非空的 UTF-8 .md 或 .txt 文件。', changed: '资料已变更，请重新打开资料后保存。', limit: '已达 5 份报告，请先删除不需要的副本。', failed: '操作失败，请检查登录和资料保存设置后重试。' },
@@ -17,6 +27,7 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
   onChange: (reports: DeepAnalysisReport[]) => void
 }) {
   const c = COPY[locale]
+  const w = WORKSPACE_COPY[locale]
   const reports = source.deep_reports ?? []
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -40,9 +51,11 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
     } catch (e) {
       const code = e instanceof Error ? e.message : ''
 
-      const message = code === 'report_too_large' ? c.large : code === 'report_limit' ? c.limit
+      const workspaceError = ({ workspace_missing: w.missing, workspace_report_missing: w.pending, workspace_invalid: w.invalid } as Record<string, string>)[code]
+
+      const message = workspaceError ?? (code === 'report_too_large' ? c.large : code === 'report_limit' ? c.limit
         : ['report_invalid', 'report_unreadable'].includes(code) ? c.invalid
-          : ['source_not_found', 'report_source_changed', 'report_source_unavailable'].includes(code) ? c.changed : c.failed
+          : ['source_not_found', 'report_source_changed', 'report_source_unavailable'].includes(code) ? c.changed : c.failed)
 
       if (active.current) {setError(message)}
     } finally {
@@ -64,6 +77,18 @@ export function DeepAnalysisReports({ source, locale, bridge, onChange }: {
 
       return [...reports.filter(item => item.id !== result.item!.id), result.item]
     })} type="button">{busy ? c.pending : c.save}</button>
+    {bridge?.collectDeepReport && <>
+      <p className="text-xs text-(--ui-text-tertiary)">{w.hint}</p>
+      <div className="flex flex-wrap gap-2">
+        {(['ANALYSIS.md', 'TIMELINE.md'] as const).map(filename => <Button disabled={busy || !source.analysis_scope || !source.analysis_revision || source.status !== 'ready'} key={filename} onClick={() => void perform(async () => {
+          const result = await bridge.collectDeepReport(source.id, source.analysis_scope!, source.analysis_revision!, filename)
+
+          if (!result.ok || !result.item) {throw new Error(result.code)}
+
+          return [...reports.filter(item => item.id !== result.item!.id), result.item]
+        })} size="sm" type="button" variant="outline">{w.collect} {filename}</Button>)}
+      </div>
+    </>}
     {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
     {!reports.length && <p className="text-sm text-(--ui-text-secondary)">{c.empty}</p>}
     {reports.map(report => <article className="space-y-2 rounded-lg border p-3" key={report.id}>
