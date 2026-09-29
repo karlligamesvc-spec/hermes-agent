@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test'
 import type { WorkflowDomainBridge } from '../src/app/business-workspace/api/types'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
+import { pageErrorHistory } from './page-error-history'
 import { allowErrorBanners, expect, installErrorBannerGuard, test } from './test'
 
 interface StartWindow extends Window {
@@ -17,13 +18,6 @@ interface StartWindow extends Window {
 }
 
 const inputFile = process.env.APEX_START_INTEGRATION_INPUT
-
-async function pageAlerts(page: Page): Promise<string[]> {
-  const history = await page.evaluate(() => (window as unknown as { __ERROR_BANNER_GUARD__?: string[] }).__ERROR_BANNER_GUARD__ ?? [])
-  const current = await page.locator('[role="alert"]').allTextContents()
-
-  return [...new Set([...history, ...current.map(text => text.trim()).filter(Boolean)])]
-}
 
 async function prepareStart(page: Page, brief: string) {
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
@@ -65,6 +59,8 @@ test('actual Start selects a template and retries an unconfirmed intent through 
   expect(new URL(input.base).hostname).toBe('127.0.0.1')
   let fixture: PackagedMockBackendFixture | undefined
   let peer: Page | undefined
+  let pageAlerts: (() => Promise<string[]>) | undefined
+  let peerAlerts: (() => Promise<string[]>) | undefined
   let peerRunId: string | undefined
   const windowIds: Array<null | string> = []
   const expectedErrors = ['真实工作流启动失败，目标草稿已保留，请重试。']
@@ -73,6 +69,7 @@ test('actual Start selects a template and retries an unconfirmed intent through 
   try {
     fixture = await setupPackagedMockBackend({ APEXNODES_API_BASE: input.base, APEXNODES_AUTH_BASE: input.base })
     const { page, mockUrl, sandbox } = fixture
+    pageAlerts = await pageErrorHistory(page)
     await page.getByRole('button', { name: '使用自己的密钥' }).click()
     const later = page.getByRole('button', { name: '稍后再选择提供方' })
 
@@ -89,7 +86,7 @@ test('actual Start selects a template and retries an unconfirmed intent through 
     await submit.click()
     const failed = page.getByRole('alert').filter({ hasText: '真实工作流启动失败' })
     await expect(failed).toHaveText('真实工作流启动失败，目标草稿已保留，请重试。')
-    expect(await pageAlerts(page)).toEqual(expectedErrors)
+    expect(await pageAlerts()).toEqual(expectedErrors)
     await expect(goal).toHaveValue(brief)
     await expect(submit).toBeEnabled()
     expect(page.url()).not.toContain('/workflow-runs/')
@@ -101,6 +98,7 @@ test('actual Start selects a template and retries an unconfirmed intent through 
       expect(await page.evaluate(() => (window as StartWindow).hermesDesktop!.openWindow())).toEqual({ ok: true })
       peer = await nextWindow
       installErrorBannerGuard(peer)
+      peerAlerts = await pageErrorHistory(peer)
       await waitForAppReady({ ...fixture, page: peer }, 120_000)
       const peerWindow = await fixture.app.browserWindow(peer)
 
@@ -110,7 +108,7 @@ test('actual Start selects a template and retries an unconfirmed intent through 
 
       await peerControls.submit.click()
       peerRunId = await expectQueuedRun(peer)
-      expect(await pageAlerts(peer)).toEqual([])
+      expect(await peerAlerts()).toEqual([])
       windowIds.push(await peer.evaluate(() => sessionStorage.getItem('apex.workflow.start-window')))
       expect(windowIds[0]).toMatch(/^[0-9a-f-]{36}$/)
       expect(windowIds[1]).toMatch(/^[0-9a-f-]{36}$/)
@@ -143,16 +141,16 @@ test('actual Start selects a template and retries an unconfirmed intent through 
 
     expect(saved.projects).toMatchObject({ ok: true, total: 1, items: [{ objective: brief }] })
     expect(saved.workflows.items).toHaveLength(1)
-    expect(await pageAlerts(page)).toEqual(expectedErrors)
+    expect(await pageAlerts()).toEqual(expectedErrors)
 
-    if (peer) {expect(await pageAlerts(peer)).toEqual([])}
+    if (peerAlerts) {expect(await peerAlerts()).toEqual([])}
     fs.writeFileSync(path.join(path.dirname(input.output), 'queued-ui.png'), await page.screenshot())
     fs.writeFileSync(input.output, JSON.stringify({ root: sandbox.userDataDir, runId, peerRunId, windowIds, saved }))
     completed = true
   } finally {
     if (fixture) {
-      const banners = fixture.page.isClosed() ? undefined : await pageAlerts(fixture.page)
-      const peerBanners = peer && !peer.isClosed() ? await pageAlerts(peer) : []
+      const banners = await pageAlerts?.()
+      const peerBanners = await peerAlerts?.() ?? []
       let cleanupError: unknown
 
       try { await fixture.cleanup() } catch (error) { cleanupError = error }

@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test'
 import type { WorkflowDomainBridge } from '../src/app/business-workspace/api/types'
 
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
+import { pageErrorHistory } from './page-error-history'
 import { allowErrorBanners, expect, installErrorBannerGuard, test } from './test'
 
 interface RefreshInput {
@@ -25,28 +26,26 @@ interface RefreshClient {
   fixture: PackagedMockBackendFixture
   expectedErrors: string[]
   closed: boolean
+  alerts: () => Promise<string[]>
 }
 const inputFile = process.env.APEX_WORKFLOW_REFRESH_INTEGRATION_INPUT
-
-async function pageAlerts(page: Page): Promise<string[]> {
-  const history = await page.evaluate(() => (window as unknown as { __ERROR_BANNER_GUARD__?: string[] }).__ERROR_BANNER_GUARD__ ?? [])
-  const current = await page.locator('[role="alert"]').allTextContents()
-  return [...new Set([...history, ...current.map(text => text.trim()).filter(Boolean)])]
-}
 
 async function ready(fixture: PackagedMockBackendFixture) {
   const { page, mockUrl } = fixture
   await page.getByRole('button', { name: '使用自己的密钥' }).click()
   const later = page.getByRole('button', { name: '稍后再选择提供方' })
+
   if (await later.waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)) {await later.click()}
   await waitForAppReady(fixture, 120_000)
   const signedIn = await page.evaluate(password => (window as RefreshWindow).hermesDesktop!.managed.signIn({ email: 'owner@fixture.test', password }), mockUrl)
   expect(signedIn).toMatchObject({ ok: true, hasRelayKey: true })
 }
+
 async function projects(page: Page) {
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
   await expect(page.locator('[data-workflow-project-list]')).toBeVisible()
 }
+
 async function editProject(page: Page, name: string, next: string) {
   await projects(page)
   await page.locator('[data-workflow-project-list]').getByRole('button').filter({ hasText: name }).click()
@@ -55,8 +54,10 @@ async function editProject(page: Page, name: string, next: string) {
   const dialog = page.getByRole('dialog', { name: '编辑项目' })
   await dialog.getByRole('textbox', { name: '项目名称', exact: true }).fill(next)
   await dialog.getByRole('textbox', { name: '项目描述与目标', exact: true }).fill(`${next} objective`)
+
   return dialog.getByRole('button', { name: '保存修改', exact: true })
 }
+
 async function focus(fixture: PackagedMockBackendFixture, page: Page) {
   const handle = await fixture.app.browserWindow(page)
   await handle.evaluate(win => {win.show(); win.focus()})
@@ -72,9 +73,14 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
   const clients: RefreshClient[] = []
   let completed = false
   let peer: Page | undefined
+  let peerAlerts: (() => Promise<string[]>) | undefined
+
   try {
     const receiver = await setupPackagedMockBackend({ APEXNODES_API_BASE: input.base, APEXNODES_AUTH_BASE: input.base })
-    const receiverClient: RefreshClient = { fixture: receiver, expectedErrors: [], closed: false }
+
+    const receiverClient: RefreshClient = { fixture: receiver, expectedErrors: [], closed: false,
+      alerts: await pageErrorHistory(receiver.page) }
+
     clients.push(receiverClient)
     await ready(receiver)
     await projects(receiver.page)
@@ -84,6 +90,7 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     expect(await receiver.page.evaluate(() => (window as RefreshWindow).hermesDesktop!.openWindow())).toEqual({ ok: true })
     peer = await nextWindow
     installErrorBannerGuard(peer)
+    peerAlerts = await pageErrorHistory(peer)
     await waitForAppReady({ ...receiver, page: peer }, 120_000)
     await focus(receiver, peer)
     const savePeer = await editProject(peer, 'Refresh fixture project', 'Peer window edit')
@@ -102,12 +109,15 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     expect(peerElapsed).toBeLessThan(15_000)
     const signals = await receiver.page.evaluate(() => (window as unknown as { __workflowSignal: { observed: unknown[] } }).__workflowSignal.observed)
     expect(signals).toEqual([1])
-    expect(await pageAlerts(peer)).toEqual([])
+    expect(await peerAlerts()).toEqual([])
     await peer.close()
     peer = undefined
 
     const writer = await setupPackagedMockBackend({ APEXNODES_API_BASE: input.base, APEXNODES_AUTH_BASE: input.base })
-    const writerClient: RefreshClient = { fixture: writer, expectedErrors: [], closed: false }
+
+    const writerClient: RefreshClient = { fixture: writer, expectedErrors: [], closed: false,
+      alerts: await pageErrorHistory(writer.page) }
+
     clients.push(writerClient)
     await ready(writer)
     await focus(writer, writer.page)
@@ -119,6 +129,7 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     const independentStart = Date.now()
     await expect.poll(async () => {
       const current = await progress()
+
       return current.finished > beforeFocus && current.pending === 0
     }).toBe(true)
     await saveIndependent.dispatchEvent('click')
@@ -140,7 +151,7 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     await expect(detail.getByRole('heading', { name: 'Independent client edit', exact: true })).toBeVisible()
     expect(receiver.page.url()).toContain(input.projectId)
     await receiver.page.keyboard.press('Escape')
-    expect(await pageAlerts(writer.page)).toEqual(writerClient.expectedErrors)
+    expect(await writerClient.alerts()).toEqual(writerClient.expectedErrors)
     await writer.app.close()
     writerClient.closed = true
 
@@ -154,7 +165,7 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
     await expect(notice).toContainText('暂时无法刷新最新状态')
     await expect(receiver.page.locator('[data-workflow-project-list]')).toContainText('Independent client edit')
     receiverClient.expectedErrors.push((await notice.textContent())!.trim())
-    expect(await pageAlerts(receiver.page)).toEqual(receiverClient.expectedErrors)
+    expect(await receiverClient.alerts()).toEqual(receiverClient.expectedErrors)
     await notice.getByRole('button', { name: '重试刷新', exact: true }).click()
     await expect(notice).toHaveCount(0)
     await expect(receiver.page.locator('[data-workflow-project-list]')).toContainText('Independent client edit')
@@ -166,13 +177,17 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
       independentElapsed, actual, expectedErrors: clients.map(client => client.expectedErrors) }))
     completed = true
   } finally {
+    const peerErrors = await peerAlerts?.() ?? []
+
     if (peer && !peer.isClosed()) {await peer.close()}
     const errors: Array<{ actual: string[]; expected: string[] }> = []
+
     for (const client of clients) {
       if (!client.closed && !client.fixture.page.isClosed()) {
-        errors.push({ actual: await pageAlerts(client.fixture.page), expected: client.expectedErrors })
+        errors.push({ actual: await client.alerts(), expected: client.expectedErrors })
       }
     }
+
     for (const client of clients.reverse()) {
       if (client.closed) {
         await client.fixture.mock.close()
@@ -182,6 +197,11 @@ test('mounted HTTP projections reconcile peer windows, independent clients and b
         client.closed = true
       }
     }
-    if (completed) {for (const result of errors) {expect(result.actual).toEqual(result.expected)}}
+
+    if (completed) {
+      expect(peerErrors).toEqual([])
+
+      for (const result of errors) {expect(result.actual).toEqual(result.expected)}
+    }
   }
 })
