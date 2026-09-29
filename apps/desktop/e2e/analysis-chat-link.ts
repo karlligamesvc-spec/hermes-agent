@@ -74,7 +74,16 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await expect.poll(async () => {
     const refresh = reports.getByRole('button', { name: '刷新本次发送状态', exact: true })
 
-    if (await refresh.isVisible() && await refresh.isEnabled()) {await refresh.click()}
+    const current = (await read()).item?.outcome?.status
+
+    if (current === outcome) {return current}
+
+    if (await refresh.evaluateAll(elements => elements.some(element => !element.hasAttribute('disabled')))) {
+      try {await refresh.click({ timeout: 1000 })} catch (error) {
+        // The mount-time read can settle and remove this button between probe and click.
+        if ((await read()).item?.outcome?.status !== outcome) {throw error}
+      }
+    }
 
     return (await read()).item?.outcome?.status
   }, { timeout: 60_000 }).toBe(outcome)
