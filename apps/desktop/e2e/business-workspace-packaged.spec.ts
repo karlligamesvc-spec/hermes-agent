@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
@@ -399,6 +400,33 @@ async function startPhase1ReviewApi() {
 
     if (request.method === 'GET' && url.pathname === '/api/v1/account/analysis/documents') {
       json(200, { items: [] })
+
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/account/analysis/documents/parse') {
+      const chunks: Buffer[] = []
+
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+
+      const upload = Buffer.concat(chunks).toString('utf8')
+
+      if (request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}` ||
+        !upload.includes('filename="local-review-document.txt"') ||
+        !upload.includes('# Quarterly report\n\nRevenue 423 units')) {
+        json(400, { detail: { code: 'invalid_analysis_review_upload' } })
+
+        return
+      }
+
+      json(200, {
+        filename: 'local-review-document.txt', user_id: ANALYSIS_REVIEW_USER_ID,
+        kind: 'text', parse_version: 1,
+        anchors: [
+          { id: 'a1', location: { paragraph: 1, heading: 'Quarterly report' }, text: '# Quarterly report' },
+          { id: 'a2', location: { paragraph: 2, heading: 'Quarterly report' }, text: 'Revenue 423 units' }
+        ]
+      })
 
       return
     }
@@ -1875,4 +1903,74 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.locator('[data-slot="composer-attachments"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
+})
+
+test('hc-878 packaged local document import persists cited answers and notes under the signed-in account', async () => {
+  const { app, page } = fixture!
+  const sourceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-analysis-e2e-'))
+  const sourcePath = path.join(sourceDirectory, 'local-review-document.txt')
+
+  fs.writeFileSync(sourcePath, '# Quarterly report\n\nRevenue 423 units')
+  await app.evaluate(({ dialog }, selectedPath) => {
+    const host = globalThis as typeof globalThis & { restoreAnalysisDialog?: () => void }
+    const original = dialog.showOpenDialog
+
+    host.restoreAnalysisDialog = () => { dialog.showOpenDialog = original }
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] })
+  }, sourcePath)
+
+  try {
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await page.getByRole('button', { name: '导入文档或字幕' }).click()
+    await expect(page.getByRole('heading', { name: 'local-review-document.txt' })).toBeVisible()
+    await expect.poll(async () => {
+      const result = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+      const current = result?.items?.find(source => source.filename === 'local-review-document.txt')
+
+      return current?.status === 'failed' ? `failed:${current.error_code}` : current?.status
+    }).toBe('ready')
+    await expect(page.locator('#analysis-anchor-a2')).toContainText('Revenue 423 units')
+
+    const imported = await page.evaluate(() => window.hermesDesktop.analysisDocuments?.list())
+    const item = imported?.items?.find(source => source.filename === 'local-review-document.txt')
+
+    expect(item?.storageMode).toBe('local')
+    expect(item?.status).toBe('ready')
+    expect(item?.id).toMatch(/^local-/)
+    fs.rmSync(sourcePath)
+
+    await page.getByRole('textbox', { name: '针对当前资料提问' }).fill('Revenue?')
+    await page.getByRole('button', { name: '查找证据' }).click()
+    await expect(page.getByRole('button', { name: '查看出处 · 第 2 段' })).toBeVisible()
+    await page.locator('#analysis-anchor-a2').evaluate(element => {
+      element.scrollIntoView = () => { element.setAttribute('data-jumped', 'true') }
+    })
+    await page.getByRole('button', { name: '查看出处 · 第 2 段' }).click()
+    await expect(page.locator('#analysis-anchor-a2')).toHaveAttribute('data-jumped', 'true')
+
+    await page.locator('#analysis-anchor-a2').getByRole('button', { name: '记到此处' }).click()
+    await page.getByRole('textbox', { name: '记录你的发现' }).fill('Check the revenue source')
+    await page.getByRole('button', { name: '保存笔记' }).click()
+    await expect(page.getByText('Check the revenue source')).toBeVisible()
+
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await page.getByRole('button', { name: /local-review-document.txt/ }).click()
+    await expect(page.getByText('Check the revenue source')).toBeVisible()
+    await expect(page.getByRole('button', { name: '查看出处 · 第 2 段' })).toBeVisible()
+
+    await page.getByRole('button', { name: '删除资料' }).click()
+    await expect(page.getByRole('button', { name: /local-review-document.txt/ })).toHaveCount(0)
+    const afterDelete = await page.evaluate(id => window.hermesDesktop.analysisDocuments?.get(id), item!.id)
+
+    expect(afterDelete).toEqual({ ok: false, code: 'source_not_found' })
+  } finally {
+    await app.evaluate(() => {
+      const host = globalThis as typeof globalThis & { restoreAnalysisDialog?: () => void }
+
+      host.restoreAnalysisDialog?.()
+      delete host.restoreAnalysisDialog
+    })
+    fs.rmSync(sourceDirectory, { recursive: true, force: true })
+  }
 })

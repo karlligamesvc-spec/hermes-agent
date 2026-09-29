@@ -22139,7 +22139,6 @@ function analysisUploadFile(url: string, bearer: string, filename: string, bytes
     const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
     request.setHeader('Authorization', `Bearer ${bearer}`)
     request.setHeader('Content-Type', `multipart/form-data; boundary=${boundary}`)
-    request.setHeader('Content-Length', String(body.length))
     request.setHeader('Accept', 'application/json')
     let settled = false
 
