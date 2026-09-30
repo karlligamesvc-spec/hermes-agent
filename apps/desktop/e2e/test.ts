@@ -13,7 +13,7 @@
  * per-spec setup needed.
  */
 
-import { test as base, expect, type Page, type ElectronApplication, _electron } from '@playwright/test'
+import { _electron, test as base, type ElectronApplication, expect, type Page } from '@playwright/test'
 
 // Track error messages per test so afterEach can assert + report.
 const seenErrors: string[] = []
@@ -51,6 +51,7 @@ export function installErrorBannerGuard(page: Page): void {
   // We inject this via addInitScript so it runs before any app code.
   page.addInitScript(() => {
     const seen: string[] = []
+
     ;(window as unknown as { __ERROR_BANNER_GUARD__?: string[] }).__ERROR_BANNER_GUARD__ = seen
 
     const observer = new MutationObserver(() => {
@@ -118,49 +119,47 @@ export async function collectErrorBanners(page: Page | null): Promise<string[]> 
   }
 }
 
-// Extended test fixture: wraps the default page with the error guard.
-export const test = base.extend({
-  // Override the page fixture to auto-install the guard.
-  page: async ({ page }, use) => {
+// An automatic fixture follows the exported test across every spec file.
+// Registering base.afterEach at module import time only guards the first file
+// when Playwright reuses this module in the same worker.
+export const test = base.extend<{ _errorBannerGuard: void }>({
+  // Capture before Playwright closes its default page. Electron suites provide
+  // their own shared page, which the automatic fixture reads after the test.
+  page: async ({ page }, runTest) => {
     installErrorBannerGuard(page)
-    await use(page)
+    await runTest(page)
+    await collectErrorBanners(page)
   },
+  _errorBannerGuard: [
+    // Playwright requires destructuring even when there are no fixture dependencies.
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, runTest, testInfo) => {
+      await runTest()
+      const wasAllowed = errorBannersAllowed
+      errorBannersAllowed = false
+      const errors = wasAllowed ? [] : await collectErrorBanners(activePage)
+
+      // Reset both histories, including expected-error tests. Mutate the array
+      // in place because the observer closes over it. Keep DOM alerts intact:
+      // an error still visible in the next test must still be reported.
+      seenErrors.length = 0
+      await activePage?.evaluate(() => {
+        const history = (window as unknown as { __ERROR_BANNER_GUARD__?: string[] }).__ERROR_BANNER_GUARD__
+
+        if (history) {history.length = 0}
+      }).catch(() => undefined)
+
+      if (activePage?.isClosed()) {activePage = null}
+
+      if (errors.length > 0) {
+        throw new Error(
+          `Error banner(s) appeared during test "${testInfo.title}":\n` +
+            errors.map(e => `  • ${e}`).join('\n')
+        )
+      }
+    },
+    { auto: true }
+  ]
 })
 
-// afterEach: fail the test if any error banners appeared.
-// Always fires — even if the test already failed for another reason.
-// An error banner often IS the root cause (e.g. "resume failed" from a
-// backend bug), and suppressing it when the test also fails on an
-// assertion hides the real problem.
-//
-// Uses `activePage` (set by installErrorBannerGuard) instead of the
-// default `page` fixture — Electron tests create their own page via
-// app.firstWindow(), so the default `page` fixture is undefined.
-base.afterEach(async ({}, testInfo) => {
-  const wasAllowed = errorBannersAllowed
-  // Reset for the next test.
-  errorBannersAllowed = false
-
-  if (wasAllowed) {
-    // Test opted out — clear any collected errors without asserting.
-    seenErrors.length = 0
-    return
-  }
-
-  const errors = await collectErrorBanners(activePage)
-
-  if (errors.length > 0) {
-    throw new Error(
-      `Error banner(s) appeared during test "${testInfo.title}":\n` +
-        errors.map(e => `  • ${e}`).join('\n'),
-    )
-  }
-})
-
-// Reset for the next test file.
-base.afterAll(async () => {
-  seenErrors.length = 0
-  activePage = null
-})
-
-export { expect, type Page, type ElectronApplication, _electron }
+export { _electron, type ElectronApplication, expect, type Page }

@@ -8,7 +8,6 @@ import { PageLoader } from '@/components/page-loader'
 import { ApexPageHeader } from '@/components/ui/apex-page-header'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Codicon } from '@/components/ui/codicon'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
@@ -18,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { ErrorState } from '@/components/ui/error-state'
+import { ErrorBanner, ErrorState } from '@/components/ui/error-state'
 import { Field, FieldHint } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
@@ -39,11 +38,9 @@ import {
   deleteCronJob,
   getAutomationBlueprints,
   getCronDeliveryTargets,
-  getCronJobRuns,
   instantiateAutomationBlueprint,
   pauseCronJob,
   resumeCronJob,
-  type SessionInfo,
   updateCronJob
 } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
@@ -51,8 +48,7 @@ import { AlertTriangle } from '@/lib/icons'
 import { requestModelOptions } from '@/lib/model-options'
 import { asText } from '@/lib/text'
 import { $cronFocusJobId, $cronJobs, invalidateCronJobsRequests, setCronFocusJobId } from '@/store/cron'
-import { $changeEventsAvailable, $cronChangeTick } from '@/store/live-sync'
-import { notify, notifyError } from '@/store/notifications'
+import { notify, notifyError, readableError } from '@/store/notifications'
 import { $profileScope, ALL_PROFILES } from '@/store/profile'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
@@ -84,6 +80,7 @@ import {
   toggleCronDeliveryTarget,
   validateCronEditor
 } from './cron-job-model'
+import { CronJobRuns } from './cron-run-history'
 import { jobState, jobTitle, STATE_DOT } from './job-state'
 
 const DEFAULT_DELIVER = 'local'
@@ -354,6 +351,7 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
   const profile = cronProfileForScope(profileScope)
 
   const refresh = useCallback(async () => {
+    setLoadError(null)
     const { refreshError, stale } = await refreshCronJobs(profile)
 
     if (stale) {
@@ -362,6 +360,7 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
 
     if (refreshError) {
       notifyError(refreshError, c.failedLoad)
+      setLoadError(readableError(refreshError, c.failedLoad).message)
     }
 
     setLoading(false)
@@ -668,50 +667,63 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
             title={c.emptyTitleNew}
           />
         ) : (
-          <PanelBody>
-            <PanelList
-              onSearchChange={setQuery}
-              searchHints={jobs
-                .map(jobTitle)
-                .filter(Boolean)
-                .slice(0, 5)
-                .map(title => t.common.tryHint(title))}
-              searchLabel={c.search}
-              searchPlaceholder={c.search}
-              searchValue={query}
-            >
-              {visibleJobs.map(job => (
-                <CronJobListRow
-                  active={selectedJob?.id === job.id}
-                  job={job}
-                  key={job.id}
-                  menuItems={[
-                    { icon: 'edit', label: c.edit, onSelect: () => setEditor({ mode: 'edit', job }) },
-                    { icon: 'trash', label: t.common.delete, onSelect: () => setPendingDelete(job), tone: 'danger' }
-                  ]}
-                  menuLabel={c.manage}
-                  onSelect={() => setSelectedJobId(job.id)}
-                />
-              ))}
-              {visibleJobs.length === 0 && (
-                <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
-              )}
-              <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
-            </PanelList>
+          <>
+            {loadError ? (
+              <ErrorBanner className="mb-3">
+                <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                  <span className="min-w-0 break-words">{loadError}</span>
+                  <Button onClick={() => void refresh()} size="sm" variant="outline">
+                    {t.common.retry}
+                  </Button>
+                </span>
+              </ErrorBanner>
+            ) : null}
+            <PanelBody>
+              <PanelList
+                onSearchChange={setQuery}
+                searchHints={jobs
+                  .map(jobTitle)
+                  .filter(Boolean)
+                  .slice(0, 5)
+                  .map(title => t.common.tryHint(title))}
+                searchLabel={c.search}
+                searchPlaceholder={c.search}
+                searchValue={query}
+              >
+                {visibleJobs.map(job => (
+                  <CronJobListRow
+                    active={selectedJob?.id === job.id}
+                    job={job}
+                    key={job.id}
+                    menuItems={[
+                      { icon: 'edit', label: c.edit, onSelect: () => setEditor({ mode: 'edit', job }) },
+                      { icon: 'trash', label: t.common.delete, onSelect: () => setPendingDelete(job), tone: 'danger' }
+                    ]}
+                    menuLabel={c.manage}
+                    onSelect={() => setSelectedJobId(job.id)}
+                  />
+                ))}
+                {visibleJobs.length === 0 && (
+                  <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
+                )}
+                <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
+              </PanelList>
 
-            {selectedJob ? (
-              <CronJobDetail
-                busy={busyJobTokens.has(selectedJob.id) || triggeringJobKeys.has(`${profile}:${selectedJob.id}`)}
-                c={c}
-                job={selectedJob}
-                onOpenSession={onOpenSession}
-                onPauseResume={() => void handlePauseResume(selectedJob)}
-                onTrigger={() => void handleTrigger(selectedJob)}
-              />
-            ) : (
-              <PanelEmpty description={c.emptyDescSearch} icon="search" />
-            )}
-          </PanelBody>
+              {selectedJob ? (
+                <CronJobDetail
+                  busy={busyJobTokens.has(selectedJob.id) || triggeringJobKeys.has(`${profile}:${selectedJob.id}`)}
+                  c={c}
+                  job={selectedJob}
+                  key={`${profile}:${selectedJob.id}`}
+                  onOpenSession={onOpenSession}
+                  onPauseResume={() => void handlePauseResume(selectedJob)}
+                  onTrigger={() => void handleTrigger(selectedJob)}
+                />
+              ) : (
+                <PanelEmpty description={c.emptyDescSearch} icon="search" />
+              )}
+            </PanelBody>
+          </>
         )}
       </PanelPageBody>
 
@@ -838,112 +850,6 @@ function CronJobDetail({
 
       <CronJobRuns c={c} jobId={job.id} onOpenSession={onOpenSession} />
     </PanelDetail>
-  )
-}
-
-function formatRunTime(seconds?: null | number): string {
-  if (!seconds) {
-    return '—'
-  }
-
-  const date = new Date(seconds * 1000)
-
-  return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString()
-}
-
-// Runs are produced by the background scheduler tick. cron.changed /
-// sessions.changed broadcasts re-load immediately on event-capable backends
-// (the tick dep below), so the poll drops to a slow backstop there; older
-// backends keep the legacy cadence.
-const RUNS_POLL_INTERVAL_MS = 8000
-const RUNS_BACKSTOP_INTERVAL_MS = 60_000
-
-function CronJobRuns({
-  c,
-  jobId,
-  onOpenSession
-}: {
-  c: Translations['cron']
-  jobId: string
-  onOpenSession?: (sessionId: string) => void
-}) {
-  const [runs, setRuns] = useState<null | SessionInfo[]>(null)
-  const changeEventsAvailable = useStore($changeEventsAvailable)
-  const cronChangeTick = useStore($cronChangeTick)
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = () =>
-      getCronJobRuns(jobId)
-        .then(result => {
-          if (!cancelled) {
-            setRuns(result)
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setRuns(prev => prev ?? [])
-          }
-        })
-
-    void load()
-
-    const intervalId = window.setInterval(
-      () => {
-        if (document.visibilityState === 'visible') {
-          void load()
-        }
-      },
-      changeEventsAvailable ? RUNS_BACKSTOP_INTERVAL_MS : RUNS_POLL_INTERVAL_MS
-    )
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void load()
-      }
-    }
-
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-    // cronChangeTick: a fired run moves jobs.json bookkeeping → reload now.
-  }, [changeEventsAvailable, cronChangeTick, jobId])
-
-  return (
-    <div>
-      <PanelSectionLabel className="mb-1.5">
-        {c.runHistory}
-        {runs && runs.length > 0 ? ` · ${runs.length}` : ''}
-      </PanelSectionLabel>
-      {runs === null ? (
-        <div className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground">
-          <Codicon name="loading" size="0.75rem" spinning />
-        </div>
-      ) : runs.length === 0 ? (
-        <div className="py-1 text-xs text-muted-foreground">{c.noRuns}</div>
-      ) : (
-        <div className="flex flex-col gap-px">
-          {runs.map(run => (
-            <button
-              className="row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              key={run.id}
-              onClick={() => onOpenSession?.(run.id)}
-              type="button"
-            >
-              <span className="truncate text-foreground/85">{run.title?.trim() || run.preview?.trim() || run.id}</span>
-              <span className="shrink-0 text-[0.62rem] text-muted-foreground/55 tabular-nums">
-                {formatRunTime(run.last_active || run.started_at)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 

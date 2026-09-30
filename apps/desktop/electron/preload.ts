@@ -280,6 +280,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     startRun: payload => ipcRenderer.invoke('hermes:workflowDomain:startRun', payload),
     listProjects: options => ipcRenderer.invoke('hermes:workflowDomain:listProjects', options),
     getProject: projectId => ipcRenderer.invoke('hermes:workflowDomain:getProject', projectId),
+    getProjectCompletion: projectId => ipcRenderer.invoke('hermes:workflowDomain:getProjectCompletion', projectId),
+    updateProject: payload => ipcRenderer.invoke('hermes:workflowDomain:updateProject', payload),
+    completeProject: projectId => ipcRenderer.invoke('hermes:workflowDomain:completeProject', projectId),
+    reopenProject: projectId => ipcRenderer.invoke('hermes:workflowDomain:reopenProject', projectId),
     listWorkflows: options => ipcRenderer.invoke('hermes:workflowDomain:listWorkflows', options),
     getCatalog: () => ipcRenderer.invoke('hermes:workflowDomain:getCatalog'),
     getVideoCatalog: () => ipcRenderer.invoke('hermes:workflowDomain:getVideoCatalog'),
@@ -291,6 +295,39 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     retryRunStep: payload => ipcRenderer.invoke('hermes:workflowDomain:retryRunStep', payload),
     reviewDeliverable: payload => ipcRenderer.invoke('hermes:workflowDomain:reviewDeliverable', payload),
     openUserFile: fileId => ipcRenderer.invoke('hermes:workflowDomain:openUserFile', fileId)
+  },
+  analysisDocuments: {
+    prepareDeepWorkspace: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:prepareDeepWorkspace', id, scope, revision),
+    recordDeepChat: (id, scope, revision, target) => ipcRenderer.invoke('hermes:analysis:recordDeepChat', id, scope, revision, target),
+    updateDeepChatOutcome: (id, scope, revision, expected, status) => ipcRenderer.invoke('hermes:analysis:updateDeepChatOutcome', id, scope, revision, expected, status),
+    readDeepChat: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:readDeepChat', id, scope, revision),
+    collectDeepReport: (id, scope, revision, filename) => ipcRenderer.invoke('hermes:analysis:collectDeepReport', id, scope, revision, filename),
+    reviewDeepReport: (id, scope, reportId, input) => ipcRenderer.invoke('hermes:analysis:reviewDeepReport', id, scope, reportId, input),
+    policy: () => ipcRenderer.invoke('hermes:analysis:policy'),
+    list: () => ipcRenderer.invoke('hermes:analysis:list'),
+    importFile: () => ipcRenderer.invoke('hermes:analysis:import'),
+    importLink: url => ipcRenderer.invoke('hermes:analysis:importLink', url),
+    resolveVideoLink: url => ipcRenderer.invoke('hermes:analysis:resolveVideoLink', url),
+    transcribeVideoLink: url => ipcRenderer.invoke('hermes:analysis:transcribeVideoLink', url),
+    uploadVideo: () => ipcRenderer.invoke('hermes:analysis:uploadVideo'),
+    authorizeFeishu: () => ipcRenderer.invoke('hermes:analysis:authorizeFeishu'),
+    pollFeishu: flowId => ipcRenderer.invoke('hermes:analysis:pollFeishu', flowId),
+    forgetFeishu: () => ipcRenderer.invoke('hermes:analysis:forgetFeishu'),
+    get: id => ipcRenderer.invoke('hermes:analysis:get', id),
+    importDeepReport: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:importDeepReport', id, scope, revision),
+    deleteDeepReport: (id, scope, reportId) => ipcRenderer.invoke('hermes:analysis:deleteDeepReport', id, scope, reportId),
+    transcriptForDraft: (id, scope, revision) => ipcRenderer.invoke('hermes:analysis:transcriptForDraft', id, scope, revision),
+    overviewContext: (id, scope) => ipcRenderer.invoke('hermes:analysis:overviewContext', id, scope),
+    saveOverview: (id, scope, overview) => ipcRenderer.invoke('hermes:analysis:saveOverview', id, scope, overview),
+    questionContext: (id, scope) => ipcRenderer.invoke('hermes:analysis:questionContext', id, scope),
+    saveAnswer: (id, scope, answer) => ipcRenderer.invoke('hermes:analysis:saveAnswer', id, scope, answer),
+    ask: (id, question) => ipcRenderer.invoke('hermes:analysis:ask', id, question),
+    addNote: (id, body, anchorId) => ipcRenderer.invoke('hermes:analysis:addNote', id, body, anchorId),
+    deleteNote: (id, noteId) => ipcRenderer.invoke('hermes:analysis:deleteNote', id, noteId),
+    retry: id => ipcRenderer.invoke('hermes:analysis:retry', id),
+    delete: id => ipcRenderer.invoke('hermes:analysis:delete', id),
+    openSource: id => ipcRenderer.invoke('hermes:analysis:openSource', id),
+    previewPdf: id => ipcRenderer.invoke('hermes:analysis:previewPdf', id)
   },
   // hc-444: desktop ↔ cloud Feishu bridge — mirror the signed-in user's own
   // Feishu app credential down to light up the Feishu adapter + lark tools. See
@@ -367,6 +404,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // Continuous auth gate: main broadcasts when a backend call returns 401
   // (login lost) or 403 account_disabled (account abnormal). The renderer
   // clears auth and returns to the login screen. See main.cjs broadcastAuthGate.
+  onManagedAccountChanged: callback => {
+    const listener = () => callback()
+    ipcRenderer.on('hermes:managed-account-changed', listener)
+
+    return () => ipcRenderer.removeListener('hermes:managed-account-changed', listener)
+  },
   onAuthGate: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('hermes:auth-gate', listener)

@@ -4,6 +4,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 
+import type { AnalysisDocumentsBridge } from './app/business-workspace/analysis-types'
 import type { WakeIndicatorState } from './lib/wake-indicator'
 import type {
   PetOverlayBounds,
@@ -303,13 +304,21 @@ declare global {
         createWorkflow?: (
           payload: DesktopWorkflowDomainCreateWorkflowInput
         ) => Promise<DesktopWorkflowDomainCreateWorkflowResult>
-        startRun?: (payload: { objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
+        startRun?: (payload: { idempotencyKey?: string; objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
         listProjects?: (options?: {
           cursor?: string
           limit?: number
           status?: string
         }) => Promise<DesktopWorkflowDomainProjectListResult>
         getProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
+        getProjectCompletion?: (projectId: string) => Promise<DesktopWorkflowDomainProjectCompletionResult>
+        updateProject?: (payload: {
+          name: string
+          objective: string
+          projectId: string
+        }) => Promise<DesktopWorkflowDomainProjectResult>
+        completeProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
+        reopenProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
         listWorkflows?: (options?: {
           cursor?: string
           limit?: number
@@ -341,6 +350,7 @@ declare global {
         }) => Promise<DesktopWorkflowDomainMutationResult>
         openUserFile?: (fileId: string) => Promise<DesktopWorkflowDomainMutationResult>
       }
+      analysisDocuments?: AnalysisDocumentsBridge
       // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
       // Feishu app credential (from the cloud agent_entries) down to the local
       // runtime so the Feishu adapter + lark doc/drive tools light up. No secret
@@ -434,6 +444,7 @@ declare global {
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and
       // returns to the login screen. See electron/main.cjs broadcastAuthGate.
+      onManagedAccountChanged?: (callback: () => void) => () => void
       onAuthGate?: (callback: (payload: DesktopAuthGateEvent) => void) => () => void
       // Runtime 3-end consistency — desktop opt-in engine update (R5/R6).
       // checkUpdate compares the installed engine (bootstrap marker) against the
@@ -1765,6 +1776,8 @@ export interface BackendExit {
 // ---------------------------------------------------------------------------
 
 export interface DesktopManagedStatus {
+  /** UUID subject for account-owned renderer caches, never a credential. */
+  accountId?: string | null
   // The relay base_url the managed config points at (e.g.
   // https://apex-nodes.com/relay/v1).
   baseUrl: string
@@ -1805,6 +1818,7 @@ export interface DesktopWorkflowDomainAccess {
 }
 
 export interface DesktopWorkflowDomainStartGoalInput {
+  idempotencyKey?: string
   objective: string
   projectId?: string
   starter: {
@@ -1853,6 +1867,21 @@ export interface DesktopWorkflowDomainProject {
   updatedAt: string
 }
 
+export interface DesktopWorkflowDomainProjectCompletion {
+  canComplete: boolean
+  projectStatus: string
+  readyForReview: boolean
+  workflowSucceeded: number
+  workflowTotal: number
+  workflowStates: Array<{ runId: null | string; runStatus: null | string; workflowId: string }>
+}
+
+export interface DesktopWorkflowDomainProjectCompletionResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  completion?: DesktopWorkflowDomainProjectCompletion
+  ok: boolean
+}
+
 export interface DesktopWorkflowDomainWorkflow {
   createdAt: string
   description: null | string
@@ -1885,7 +1914,7 @@ export interface DesktopWorkflowDomainProjectListResult {
 }
 
 export interface DesktopWorkflowDomainProjectResult {
-  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  code?: 'project_completed' | 'project_not_ready' | 'request_failed' | 'sign_in' | 'unavailable'
   item?: DesktopWorkflowDomainProject
   ok: boolean
 }

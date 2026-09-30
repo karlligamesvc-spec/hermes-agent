@@ -95,6 +95,36 @@ export const ar = defineLocale({
     off: 'معطل'
   },
   businessWorkspace: {
+    projects: {
+      chooseWorkflow: 'اختيار سير عمل',
+      awaitingAcceptance: 'بانتظار القبول',
+      notStarted: 'لم يبدأ بعد',
+      completeProject: 'إكمال المشروع',
+      reopenProject: 'إعادة فتح المشروع',
+      refreshFailed: 'تعذر تحديث أحدث حالة. تحقق من الاتصال ثم أعد المحاولة.',
+      refreshRetry: 'إعادة محاولة التحديث',
+      lifecycle: status =>
+        ({
+          active: 'قيد العمل',
+          archived: 'مؤرشف',
+          completed: 'مكتمل',
+          paused: 'متوقف مؤقتًا'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: 'تم إلغاء التشغيل',
+          failed: 'التشغيل يحتاج إلى معالجة',
+          queued: 'بانتظار تشغيل Hermes',
+          running: 'Hermes يعمل',
+          succeeded: 'نجح التشغيل',
+          timed_out: 'انتهت مهلة التشغيل',
+          waiting_review: 'التشغيل بانتظار المراجعة'
+        })[status] || status
+    },
+    workflows: {
+      use: 'استخدام سير العمل هذا',
+      goalSelectionDescription: 'اختر قالبًا ثم عد إلى صفحة البدء لتأكيد هدفك. يتم إنشاء المشروع والتشغيل فقط عند الضغط على زر بدء العمل.'
+    },
     goalLauncher: {
       label: 'هدف العمل',
       placeholder: 'مثال: حلّل سوق مستلزمات الحيوانات الأليفة في الولايات المتحدة وأنشئ تقرير اختيار ومواد إطلاق',
@@ -1802,6 +1832,16 @@ export const ar = defineLocale({
     created: 'تم الإنشاء',
     updated: 'تم التحديث',
     failedLoad: 'فشل تحميل المهام',
+    failedLoadRuns: 'فشل تحميل سجل التشغيل',
+    runConversations: 'محادثات التشغيل',
+    legacyRunHistory: 'يتوفر هنا سجل المحادثات فقط؛ قد لا تنتج مهام البرامج النصية محادثة.',
+    executionStatuses: {
+      claimed: 'بانتظار التشغيل',
+      running: 'قيد التشغيل',
+      completed: 'اكتمل',
+      failed: 'فشل',
+      unknown: 'النتيجة غير معروفة',
+    },
     failedUpdate: 'فشل التحديث',
     failedTrigger: 'فشل التشغيل',
     failedDelete: 'فشل الحذف',
@@ -1897,6 +1937,7 @@ export const ar = defineLocale({
       'new-session': 'جلسة جديدة',
       start: 'ابدأ',
       projects: 'المشاريع',
+      analysis: 'تحليل المستندات',
       workflows: 'سير العمل',
       assistant: 'المساعد',
       history: 'السجل',

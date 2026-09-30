@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Loader } from '@/components/ui/loader'
@@ -14,6 +15,7 @@ import { projectRunDisplayState } from '../view-model/project'
 import { type BusinessHomeStarter, businessHomeStarters } from '../view-model/workflow-starters'
 
 import { BusinessSection } from './business-section'
+import { WorkflowRefreshNotice } from './workflow-refresh-notice'
 import { WorkflowStarterCard } from './workflow-starter-card'
 
 export interface BusinessStartShelfProps {
@@ -107,6 +109,7 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
           onAction={() => navigate(PROJECTS_ROUTE)}
           title={c.projects.recentProjects}
         >
+          <WorkflowRefreshNotice state={projects} />
           {projects.mode === 'loading' ? (
             <div className="flex min-h-20 items-center gap-3 text-xs text-muted-foreground">
               <Loader className="size-7" label={c.projects.loadingProjects} type="lemniscate-bloom" />
@@ -141,17 +144,16 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
                     }
                   />
                   <span className="min-w-0 flex-1">
-                    <strong className="block truncate text-sm font-medium text-foreground">{project.name}</strong>
+                    <span className="flex items-center gap-2">
+                      <strong className="truncate text-sm font-medium text-foreground">{project.name}</strong>
+                      <Badge variant="muted">{c.projects.lifecycle(project.status)}</Badge>
+                    </span>
                     <span className="mt-0.5 block truncate text-xs text-(--ui-text-tertiary)">
                       {runDisplay.kind === 'no-run'
                         ? c.projects.noRun
                         : runDisplay.kind === 'status-unavailable'
                           ? c.projects.runStatusUnavailable
-                          : summary?.currentStepTitle
-                            ? c.projects.currentStep(summary.currentStepTitle)
-                            : summary && summary.stepTotal > 0
-                              ? c.projects.steps(summary.stepCompleted, summary.stepTotal)
-                              : c.projects.lifecycle(runDisplay.status)}
+                          : c.projects.runLifecycle(runDisplay.status)}
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-(--ui-text-tertiary)">

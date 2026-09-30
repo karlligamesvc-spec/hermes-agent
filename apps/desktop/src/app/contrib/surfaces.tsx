@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 /**
  * Wiring surfaces — each pane is its own memoized component. Every surface
  * reads the reactive state it renders from at the leaf (its own atom
@@ -6,24 +7,27 @@
  * wiring-controller tick) never re-renders another. This is what keeps the
  * layout tree's zones independently rendered — the whole point of the shell.
  */
-
-import { useStore } from '@nanostores/react'
-import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router'
+import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useEffect, useMemo, useRef } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
+import { $authState } from '@/store/auth'
+import { mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $activeConnectionId } from '@/store/connections'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
-import { $freshDraftReady, $gatewayState } from '@/store/session'
+import { $connection, $freshDraftReady, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 
+import { AccountWorkspace } from '../account-workspace'
+import { stageVideoAnalysisDraft } from '../business-workspace/video-analysis-composer-handoff'
 import { ChatView } from '../chat'
 import { ChatSidebar } from '../chat/sidebar'
 import { RouteDrivenDrawer } from '../overlays/responsive-route-drawer'
 import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
 import {
+  ANALYSIS_ROUTE,
   ASSISTANT_ROUTE,
   contributedRoutes,
   deliverableIdForPath,
@@ -58,10 +62,12 @@ const MessagingView = lazy(async () => ({ default: (await import('../messaging')
 const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
 // ApexNodes full-page views — same lazy split, same workspace pane.
 const ImEntryView = lazy(async () => ({ default: (await import('../im-entry')).ImEntryView }))
+const AssistantWorkspaceView = lazy(async () => ({ default: (await import('../business-workspace/pages/assistant-page')).AssistantWorkspaceView }))
 const TasksView = lazy(async () => ({ default: (await import('../tasks')).TasksView }))
 // 搜索 is a page, not a sidebar field (see SEARCH_ROUTE).
 const SearchView = lazy(async () => ({ default: (await import('../search')).SearchView }))
 const ProjectsView = lazy(async () => ({ default: (await import('../business-workspace')).ProjectsView }))
+const AnalysisView = lazy(async () => ({ default: (await import('../business-workspace/pages/analysis-page')).AnalysisView }))
 const WorkflowsView = lazy(async () => ({ default: (await import('../business-workspace')).WorkflowsView }))
 const DeliverablesView = lazy(async () => ({ default: (await import('../business-workspace')).DeliverablesView }))
 const HistoryView = lazy(async () => ({ default: (await import('../business-workspace')).HistoryView }))
@@ -82,6 +88,64 @@ export function LegacySessionRedirect() {
   const { sessionId } = useParams()
 
   return <Navigate replace to={sessionId ? sessionRoute(sessionId) : NEW_CHAT_ROUTE} />
+}
+
+function AnalysisRouteView({ actions }: { actions: WiringActions }) {
+  const navigate = useNavigate()
+  const mounted = useRef(true)
+  const preparing = useRef(false)
+
+  // This ref tracks component lifetime, never a mirrored atom value.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    mounted.current = true
+
+    return () => { mounted.current = false }
+  }, [])
+
+  return <AnalysisView onDeepBreakdown={async (document, locale, frames) => {
+    if ($connection.get()?.mode === 'remote' || preparing.current) {return}
+    const previousSessionId = $selectedStoredSessionId.get()
+    const gateway = $gateway.get()
+    const connectionId = $activeConnectionId.get()
+    const profile = $activeGatewayProfile.get()
+    const auth = $authState.get()
+
+    const isCurrent = () => mounted.current && $connection.get()?.mode !== 'remote' &&
+      previousSessionId === $selectedStoredSessionId.get() && gateway === $gateway.get() &&
+      connectionId === $activeConnectionId.get() && profile === $activeGatewayProfile.get() &&
+      auth.status === $authState.get().status && auth.accountId === $authState.get().accountId && auth.account.email === $authState.get().account.email
+
+    preparing.current = true
+
+    try {
+      const staged = await stageVideoAnalysisDraft(document, locale, frames, actions, isCurrent)
+
+      if (!isCurrent()) { mainComposerScope.removeOccurrences(staged.attachments);
+
+ return }
+
+      if (previousSessionId) {
+        const fresh = takeSessionDraft(null)
+
+        stashSessionDraft(null, fresh.text, [
+          ...fresh.attachments.filter(item => !item.analysisFrameSourceId && !item.analysisTranscriptSourceId),
+          ...staged.attachments
+        ])
+        mainComposerScope.removeOccurrences(staged.attachments)
+      }
+
+      navigate(NEW_CHAT_ROUTE, { state: {
+        businessGoalDraft: staged.draft, businessGoalFocus: true,
+        analysisFrameHandoff: Boolean(previousSessionId),
+        analysisTranscriptDraft: staged.transcript,
+        analysisChatDraft: staged.workspaceDirectory ? { sourceId: document.id, scope: document.analysis_scope,
+          revision: document.analysis_revision, directory: staged.workspaceDirectory, workspaceId: staged.workspaceId, locale,
+          connectionId, profile: profile || 'default' } : undefined,
+        analysisFrameDraft: { locale, sourceId: document.id, attemptedFrames: Math.min(3, frames.length), frames: staged.frames }
+      } })
+    } finally { preparing.current = false }
+  }} />
 }
 
 export function LegacyAccountsRedirect() {
@@ -289,7 +353,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
         <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
         <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
         <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
-        <Route element={page(<DeliverablesView />)} path={DELIVERABLES_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><DeliverablesView /></AccountWorkspace>)} path={DELIVERABLES_ROUTE.slice(1)} />
         <Route
           element={page(
             <CronView onOpenSession={actions.onResumeSession} setStatusbarItemGroup={setStatusbarItemGroup} />
@@ -300,13 +364,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
             Reached from the composer "+" menu's connectors row, the sidebar's
             channel strip, and Settings → 提供方. */}
         <Route element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="im-entry" />
-        {/* Phase 0 keeps the canonical assistant URL on the current truthful
-            connection surface. The dedicated assistant workspace arrives in
-            Phase 3 without another route migration. */}
-        <Route
-          element={page(<ImEntryView setStatusbarItemGroup={setStatusbarItemGroup} />)}
-          path={ASSISTANT_ROUTE.slice(1)}
-        />
+        <Route element={page(<AccountWorkspace><AssistantWorkspaceView /></AccountWorkspace>)} path={ASSISTANT_ROUTE.slice(1)} />
         <Route element={<LegacyAccountsRedirect />} path={LEGACY_ACCOUNTS_ROUTE.slice(1)} />
         <Route
           element={page(
@@ -315,9 +373,10 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
           path="tasks"
         />
         <Route element={page(<SearchView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="search" />
-        <Route element={page(<HistoryView />)} path={HISTORY_ROUTE.slice(1)} />
-        <Route element={page(<ProjectsView />)} path="projects" />
-        <Route element={page(<WorkflowsView />)} path="workflows" />
+        <Route element={page(<AccountWorkspace><HistoryView /></AccountWorkspace>)} path={HISTORY_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><ProjectsView /></AccountWorkspace>)} path="projects" />
+        <Route element={page(<AccountWorkspace><AnalysisRouteView actions={actions} /></AccountWorkspace>)} path={ANALYSIS_ROUTE.slice(1)} />
+        <Route element={page(<AccountWorkspace><WorkflowsView /></AccountWorkspace>)} path="workflows" />
         <Route element={null} path="agents" />
         <Route element={null} path="profile" />
         <Route element={null} path="command-center" />
@@ -346,17 +405,17 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
 
       {workflowRunOpen && (
         <Routes>
-          <Route element={<WorkflowRunRouteDrawer />} path="workflow-runs/:runId" />
+          <Route element={<AccountWorkspace><WorkflowRunRouteDrawer /></AccountWorkspace>} path="workflow-runs/:runId" />
         </Routes>
       )}
       {projectDetailOpen && (
         <Routes>
-          <Route element={<ProjectDetailRouteDrawer />} path="projects/:projectId" />
+          <Route element={<AccountWorkspace><ProjectDetailRouteDrawer /></AccountWorkspace>} path="projects/:projectId" />
         </Routes>
       )}
       {deliverableDetailOpen && (
         <Routes>
-          <Route element={<DeliverableDetailRouteDrawer />} path="deliverables/:deliverableId" />
+          <Route element={<AccountWorkspace><DeliverableDetailRouteDrawer /></AccountWorkspace>} path="deliverables/:deliverableId" />
         </Routes>
       )}
     </>

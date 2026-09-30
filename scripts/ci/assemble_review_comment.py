@@ -150,7 +150,7 @@ def collect_failed_jobs(
 
     ``needs_json`` is the JSON string emitted by ``all-checks-pass`` — a
     ``{job_name: result}`` dict where result is ``success`` / ``failure``
-    / ``skipped``. Only ``failure`` entries become error items.
+    / ``skipped`` / ``cancelled``. Failures and cancellations become error items.
 
     ``exclude_sources`` is a set of ``source`` values from status objects
     declared by workflow_call jobs. Job names containing any of these
@@ -177,7 +177,7 @@ def collect_failed_jobs(
 
     items: list[ReviewItem] = []
     for name, result in sorted(needs.items()):
-        if result != "failure":
+        if result not in ("failure", "cancelled"):
             continue
         if norm_sources:
             norm = name.lower().replace("-", " ")
@@ -187,7 +187,7 @@ def collect_failed_jobs(
         items.append(ReviewItem(
             severity="error",
             title=name,
-            summary=f"Job **{name}** failed.",
+            summary=f"Job **{name}** {'was cancelled' if result == 'cancelled' else 'failed'}.",
             job_url=job_url,
         ))
     return items

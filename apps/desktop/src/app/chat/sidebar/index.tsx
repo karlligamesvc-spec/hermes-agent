@@ -160,6 +160,7 @@ const SIDEBAR_NAV_ICONS: Record<string, SidebarNavItem['icon']> = {
   'new-session': props => <Codicon name="edit" {...props} />,
   start: props => <Codicon name="edit" {...props} />,
   projects: props => <Codicon name="folder" {...props} />,
+  analysis: props => <Codicon name="book" {...props} />,
   cron: props => <Codicon name="calendar" {...props} />,
   'scheduled-runs': props => <Codicon name="calendar" {...props} />,
   artifacts: props => <Codicon name="package" {...props} />,
@@ -189,7 +190,7 @@ const SIDEBAR_NAV = BUSINESS_WORKSPACE_ENABLED ? BUSINESS_SIDEBAR_NAV : LEGACY_S
 // These destinations remain part of APEX's navigation contract, but live in
 // the bottom account menu alongside Profile and Settings. Keeping them out of
 // the standing rail gives the conversation list the full remaining height.
-const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history'])
+const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history', 'deliverables'])
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.

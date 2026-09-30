@@ -1,3 +1,5 @@
+import { startMockServer } from '../../../tests-js/scripts/mock-server'
+
 import {
   buildAppEnv,
   createSandbox,
@@ -6,13 +8,12 @@ import {
   writeEnvFile,
   writeMockProviderConfig
 } from './fixtures'
-import { startMockServer } from './mock-server'
 import { RealSessionBuilder } from './real-session-builder'
 import { expect, test } from './test'
 
 const HISTORY_PROMPT = 'HC-697 persisted customer handoff evidence'
 
-test('Projects reads a durable session and restores its current stored tip', async () => {
+test('Projects and sidebar reopen the same durable session', async () => {
   test.setTimeout(150_000)
 
   const mock = await startMockServer()
@@ -38,16 +39,18 @@ test('Projects reads a durable session and restores its current stored tip', asy
     await page.getByRole('button', { name: '使用自己的密钥' }).click()
     await waitForAppReady({ app, page, sandbox, cleanup: async () => undefined }, 120_000)
 
-    const startRow = page.getByRole('button').filter({ hasText: HISTORY_PROMPT }).first()
+    const sessionRow = page.getByRole('button', { name: 'HC-697 durable history', exact: true })
 
-    await expect(startRow).toBeVisible({ timeout: 30_000 })
+    await expect(sessionRow).toBeVisible({ timeout: 30_000 })
 
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).click()
-    const persistedRow = page.getByRole('button').filter({ hasText: HISTORY_PROMPT }).first()
+    await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
 
-    await expect(persistedRow).toBeVisible({ timeout: 30_000 })
+    await expect(sessionRow).toBeVisible()
+    const projectRow = page.getByRole('button', { name: /HC-697 durable history HC-697/ })
 
-    await persistedRow.click()
+    await expect(projectRow).toBeVisible()
+    await projectRow.click()
     await expect(page.locator('[data-slot="aui_thread-viewport"]')).toContainText(HISTORY_PROMPT, {
       timeout: 30_000
     })

@@ -1,0 +1,94 @@
+import { useStore } from '@nanostores/react'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
+
+import { openSession } from '@/app/open-session'
+import { Button } from '@/components/ui/button'
+import { getSession } from '@/hermes'
+import { setSessionOwnerHint } from '@/store/session'
+
+import { type AnalysisChatLink, sameAnalysisChatLink } from '../../../../shared/analysis-chat-link'
+import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
+import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
+import { $workflowDomainRevision } from '../api/read-revision'
+import { ANALYSIS_CHAT_COPY, analysisChatContextMatches } from '../video-analysis-chat-handoff'
+
+import { DeepAnalysisTurn } from './deep-analysis-turn'
+
+export function DeepAnalysisChat({ source, locale, bridge }: {
+  source: AnalysisDocument; locale: OverviewLocale; bridge: AnalysisDocumentsBridge | null | undefined
+}) {
+  const navigate = useNavigate()
+  const copy = ANALYSIS_CHAT_COPY[locale]
+  const generation = useRef(0)
+  const previousSource = useRef('')
+  const revision = useStore($workflowDomainRevision)
+  const [link, setLink] = useState<AnalysisChatLink | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [attempt, setAttempt] = useState(0)
+  const [opening, setOpening] = useState(false)
+  const [error, setError] = useState('')
+  // A request generation guards component lifetime; no reactive atom is mirrored.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    let active = true
+    generation.current += 1
+    const key = `${source.analysis_scope}:${source.id}:${source.analysis_revision}`
+
+    if (previousSource.current !== key) {setState('loading'); setLink(null); setError('')}
+    previousSource.current = key
+    const read = bridge?.readDeepChat
+
+    if (!read || !source.analysis_scope || !source.analysis_revision) {return}
+    void read(source.id, source.analysis_scope, source.analysis_revision).then(result => {
+      if (!active) {return}
+
+      if (result.ok) {setLink(result.item ?? null); setState('ready')}
+      else {setState('error')}
+    }).catch(() => {if (active) {setState('error')}})
+
+    return () => { active = false; generation.current += 1 }
+  }, [bridge, source.id, source.analysis_scope, source.analysis_revision, attempt, revision])
+
+  if (!bridge?.readDeepChat) {return null}
+
+  return <div className="space-y-2 text-xs">
+    <p className="text-(--ui-text-tertiary)">{copy.hint}</p>
+    {state === 'ready' && !link && <p>{copy.none}</p>}
+    {state === 'error' && <button onClick={() => setAttempt(value => value + 1)} type="button">{copy.failed}</button>}
+    {link && <Button disabled={opening} onClick={() => { void (async () => {
+      const started = generation.current
+      setOpening(true); setError('')
+
+      try {
+        if (!analysisChatContextMatches(link)) {setError(copy.context);
+
+ return}
+
+        // Re-read source ownership before opening; then verify this durable session on its original backend/profile.
+        const current = await bridge!.readDeepChat!(source.id, source.analysis_scope!, source.analysis_revision!)
+
+        if (!current.ok || !sameAnalysisChatLink(current.item, link)) {throw new Error('analysis_context_changed')}
+        await getSession(link.sessionId, { connectionId: link.connectionId, profile: link.profile })
+
+        if (started !== generation.current) {return}
+
+        if (!analysisChatContextMatches(link)) {setError(copy.context);
+
+ return}
+
+        const verified = await bridge!.readDeepChat!(source.id, source.analysis_scope!, source.analysis_revision!)
+
+        if (started !== generation.current) {return}
+
+        if (!verified.ok || !sameAnalysisChatLink(verified.item, link) || !analysisChatContextMatches(link)) {throw new Error('analysis_context_changed')}
+        const ownerRoute = link.connectionId ? { connectionId: link.connectionId, profile: link.profile, mode: 'local' as const } : undefined
+
+        if (ownerRoute) {setSessionOwnerHint(link.sessionId, ownerRoute)}
+        openSession(link.sessionId, navigate, 'in-place', { workspaceMode: 'sessions', ownerRoute })
+      } catch {setError(copy.failed)} finally {setOpening(false)}
+    })() }} size="sm" variant="outline">{copy.open}</Button>}
+    {link && <DeepAnalysisTurn bridge={bridge} key={`${source.id}:${source.analysis_revision}:${link.submittedAt}:${link.turn?.id ?? ""}`} link={link} locale={locale} source={source} />}
+    {error && <p role="alert">{error}</p>}
+  </div>
+}

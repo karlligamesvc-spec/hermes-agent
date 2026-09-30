@@ -18,6 +18,7 @@ import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 import { ImEntryBindingDialog } from './binding-dialog'
 
 interface ImEntryViewProps extends React.ComponentProps<'section'> {
+  embedded?: boolean
   setStatusbarItemGroup?: SetStatusbarItemGroup
 }
 
@@ -43,16 +44,21 @@ function liveStatus(state: string | undefined, copy: Translations['imEntry']): {
     case 'pending_restart':
       return { tone: 'warn', label: copy.liveState.pending }
 
+    case 'unavailable':
+      return { tone: 'warn', label: copy.liveState.unknown }
+
     default:
       return { tone: 'warn', label: copy.liveState.connecting }
   }
 }
 
-export function ImEntryView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: ImEntryViewProps) {
+export function ImEntryView({ embedded = false, setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: ImEntryViewProps) {
   const { t } = useI18n()
   const copy = t.imEntry
   const [bound, setBound] = useState<DesktopImEntryBinding[] | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [liveStates, setLiveStates] = useState<Record<string, string>>({})
+  const [liveUnavailable, setLiveUnavailable] = useState(false)
   const [dialogChannel, setDialogChannel] = useState<null | string>(null)
   const [busyChannel, setBusyChannel] = useState<null | string>(null)
 
@@ -63,12 +69,15 @@ export function ImEntryView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
       try {
         const result = await bridge.list()
         setBound(result.channels)
+        setLoadFailed(false)
       } catch {
         setBound([])
+        setLoadFailed(true)
       }
     } else {
-      // Web build / older shell — no local bindings to show.
+      // Web build / older shell cannot establish an honest empty binding state.
       setBound([])
+      setLoadFailed(true)
     }
 
     // Live connection health is owned by the gateway; read it separately so a
@@ -82,8 +91,9 @@ export function ImEntryView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
       }
 
       setLiveStates(next)
+      setLiveUnavailable(false)
     } catch {
-      // Gateway not up yet — keep whatever we had.
+      setLiveUnavailable(true)
     }
   }, [])
 
@@ -147,26 +157,26 @@ export function ImEntryView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
   return (
     <section className="h-full min-h-0 overflow-y-auto" {...props}>
       <div className="mx-auto max-w-2xl px-5 py-6">
-        <header className="mb-5">
+        {!embedded && <header className="mb-5">
           <h2 className="text-[1.05rem] font-semibold tracking-tight">{copy.title}</h2>
           <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
             {copy.intro}
           </p>
-        </header>
+        </header>}
 
-        <div className="grid gap-2.5 sm:grid-cols-2">
+        {loadFailed ? <div className="flex items-center gap-3 py-4 text-sm" role="alert"><span>{copy.liveState.error}</span><Button onClick={() => void refresh()} size="sm" type="button">{t.common.retry}</Button></div> : <div className="grid gap-2.5 sm:grid-cols-2">
           {IM_ENTRY_CHANNELS.map(channel => (
             <ChannelCard
               binding={boundById.get(channel.id) ?? null}
               busy={busyChannel === channel.id}
               channel={channel}
               key={channel.id}
-              liveState={liveStates[channel.id]}
+              liveState={liveUnavailable ? 'unavailable' : liveStates[channel.id]}
               onConnect={() => setDialogChannel(channel.id)}
               onUnbind={name => void handleUnbind(channel.id, name)}
             />
           ))}
-        </div>
+        </div>}
       </div>
 
       {dialogChannel && (

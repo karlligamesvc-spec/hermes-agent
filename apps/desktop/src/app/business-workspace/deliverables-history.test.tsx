@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { $sessions, $sessionsLoading } from '@/store/session'
 
 import type { WorkflowDeliverableDetail } from './api/types'
 import { DeliverableDetailView } from './pages/deliverable-detail-page'
@@ -125,9 +126,51 @@ function installBridge(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   installBridge()
+  $sessions.set([])
+  $sessionsLoading.set(false)
 })
 
 describe('hc-831 Deliverables and Activity loop', () => {
+  it('opens a real conversation by stored id and keeps business activity separate', async () => {
+    $sessions.set([{
+      archived: false,
+      id: 'chat/123',
+      last_active: Date.now() / 1000,
+      preview: 'Actual saved message',
+      title: 'Real conversation'
+    } as never])
+
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <HistoryView />
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Actual saved message')).toBeTruthy()
+    expect(screen.queryByText('Review saved')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Real conversation/ }))
+    expect(screen.getByTestId('location').textContent).toBe('/chat%2F123')
+  })
+
+  it('shows loading and an honest empty conversation state before opening business activity', async () => {
+    $sessionsLoading.set(true)
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <I18nProvider configClient={null} initialLocale="en"><HistoryView /></I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Loading recent conversations…')).toBeTruthy()
+    expect(screen.queryByText('Review saved')).toBeNull()
+    act(() => $sessionsLoading.set(false))
+    expect(screen.getByText('No real conversations yet. Start a chat to create the first one.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Business activity' }))
+    expect(await screen.findByText('Review saved')).toBeTruthy()
+  })
+
   it('keeps yesterday grouped by calendar day across a spring-forward DST boundary', () => {
     const previousTimezone = process.env.TZ
 
@@ -246,6 +289,7 @@ describe('hc-831 Deliverables and Activity loop', () => {
       </MemoryRouter>
     )
 
+    fireEvent.click(screen.getByRole('button', { name: 'Business activity' }))
     fireEvent.click(await screen.findByRole('button', { name: /Title does not contain an id/ }))
     expect(screen.getByTestId('location').textContent).toBe('/deliverables/deliverable%2F831')
     expect(screen.getByTestId('drawer-source').textContent).toBe('/history')
@@ -260,6 +304,7 @@ describe('hc-831 Deliverables and Activity loop', () => {
       </MemoryRouter>
     )
 
+    fireEvent.click(screen.getByRole('button', { name: 'Business activity' }))
     fireEvent.click(await screen.findByRole('button', { name: /Another opaque title/ }))
     expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run%2F831')
   })
@@ -394,6 +439,7 @@ describe('hc-831 Deliverables and Activity loop', () => {
       </MemoryRouter>
     )
 
+    fireEvent.click(screen.getByRole('button', { name: 'Business activity' }))
     expect(await screen.findByText('Initial activity')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
     fireEvent.click(screen.getByRole('button', { name: 'Runs' }))

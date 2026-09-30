@@ -1,7 +1,9 @@
 import {
+  ANALYSIS_ROUTE,
   ARTIFACTS_ROUTE,
   ASSISTANT_ROUTE,
   CRON_ROUTE,
+  DELIVERABLES_ROUTE,
   HISTORY_ROUTE,
   NEW_CHAT_ROUTE,
   projectIdForPath,
@@ -28,8 +30,9 @@ export const BUSINESS_HISTORY_ROUTE = HISTORY_ROUTE
 export const BUSINESS_SIDEBAR_NAV_CONTRACT = [
   { id: 'start', action: 'new-session', route: NEW_CHAT_ROUTE, keybindActionId: 'session.new' },
   { id: 'projects', route: PROJECTS_ROUTE },
+  { id: 'analysis', route: ANALYSIS_ROUTE },
   { id: 'scheduled-runs', route: CRON_ROUTE, keybindActionId: 'nav.cron' },
-  { id: 'deliverables', route: ARTIFACTS_ROUTE, keybindActionId: 'nav.artifacts' },
+  { id: 'deliverables', route: DELIVERABLES_ROUTE },
   { id: 'assistant', route: ASSISTANT_ROUTE },
   { id: 'history', route: BUSINESS_HISTORY_ROUTE, keybindActionId: 'session.focusSearch' }
 ] as const satisfies readonly SidebarNavigationContract[]
@@ -72,6 +75,7 @@ export function isBusinessCanvasRoute(pathname: string, businessWorkspaceEnabled
   return (
     path === NEW_CHAT_ROUTE ||
     path === PROJECTS_ROUTE ||
+    path === ANALYSIS_ROUTE ||
     projectIdForPath(path) !== null ||
     path === WORKFLOWS_ROUTE ||
     workflowRunIdForPath(path) !== null

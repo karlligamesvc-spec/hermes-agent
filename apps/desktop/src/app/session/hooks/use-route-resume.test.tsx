@@ -29,7 +29,7 @@ interface HarnessProps {
   runtimeIdByStoredSessionIdRef: MutableRefObject<Map<string, string>>
   selectedStoredSessionId: null | string
   selectedStoredSessionIdRef: MutableRefObject<null | string>
-  startFreshSessionDraft: (focus: boolean) => unknown
+  startFreshSessionDraft: (options: { preserveRoute: true }) => unknown
 }
 
 function RouteResumeHarness({
@@ -192,6 +192,35 @@ describe('useRouteResume', () => {
 
     expect(resumeSession).toHaveBeenCalledTimes(1)
     expect(resumeSession).toHaveBeenCalledWith('session-1', true)
+  })
+
+  it('keeps routed Start state while clearing the previous session', () => {
+    const resumeSession = vi.fn(async () => undefined)
+    const startFreshSessionDraft = vi.fn()
+    const activeSessionIdRef: MutableRefObject<null | string> = { current: 'runtime-1' }
+    const selectedStoredSessionIdRef: MutableRefObject<null | string> = { current: 'session-1' }
+
+    render(
+      <RouteResumeHarness
+        activeSessionId="runtime-1"
+        activeSessionIdRef={activeSessionIdRef}
+        creatingSessionRef={{ current: false }}
+        currentView="chat"
+        freshDraftReady={false}
+        gatewayState="open"
+        locationPathname="/"
+        resumeSession={resumeSession}
+        routedSessionId={null}
+        runtimeIdByStoredSessionIdRef={{ current: new Map() }}
+        selectedStoredSessionId="session-1"
+        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
+        startFreshSessionDraft={startFreshSessionDraft}
+      />
+    )
+
+    expect(startFreshSessionDraft).toHaveBeenCalledOnce()
+    expect(startFreshSessionDraft).toHaveBeenCalledWith({ preserveRoute: true })
+    expect(resumeSession).not.toHaveBeenCalled()
   })
 
   it('resumes when pathname changes to a routed session', () => {

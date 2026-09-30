@@ -4,6 +4,6 @@
     "types": ["node", "@playwright/test"],
     "composite": true
   },
-  "include": ["e2e", "playwright.config.ts", "../../tests-js/scripts"],
-  "exclude": ["src", "electron"]
+  "include": ["e2e", "playwright.config.ts", "../../tests-js/scripts", "src/app/business-workspace/analysis-types.ts", "src/app/business-workspace/api/types.ts", "shared/analysis-answer.ts", "shared/analysis-video-overview.ts", "shared/analysis-deep-report.ts", "shared/analysis-chat-link.ts"],
+  "exclude": ["electron"]
 }

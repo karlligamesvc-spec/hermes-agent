@@ -29,6 +29,9 @@ import {
   systemPreferences
 } from 'electron'
 
+import { overviewEvidence } from '../shared/analysis-video-overview'
+
+import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId } from './apex-account-boundary'
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -42,6 +45,28 @@ import {
   resolveAgentProxyEnv,
   systemProxyToUrls
 } from './apex-agent-proxy'
+import { createSourceAnswerHandlers } from './apex-analysis-answer'
+import { createDeepReportHandlers } from './apex-analysis-deep-report'
+import {
+  addLocalNote,
+  answerLocalDocument,
+  completeLocalDocument,
+  createLocalFeishuDocument,
+  createLocalPendingDocument,
+  createLocalUploadedVideoTranscript,
+  createLocalVideoTranscript,
+  deleteLocalDocument,
+  getLocalDocument,
+  listLocalDocuments,
+  localOverviewRevision,
+  readLocalPdfPreview,
+  removeLocalNote,
+  retryLocalDocument,
+  saveLocalVideoOverview
+} from './apex-analysis-local'
+import { fullVideoTranscript } from './apex-analysis-transcript'
+import { uploadAnalysisVideo } from './apex-analysis-video-upload'
+import { deleteAnalysisWorkspace } from './apex-analysis-workspace'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
@@ -155,6 +180,7 @@ import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import {
   cancelWorkflowDomainRun,
+  completeWorkflowDomainProject,
   createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
@@ -162,16 +188,19 @@ import {
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
   getWorkflowDomainProject,
+  getWorkflowDomainProjectCompletion,
   getWorkflowDomainRun,
   getWorkflowDomainUserFileDownload,
   listWorkflowDomainActivity,
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  reopenWorkflowDomainProject,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startExistingWorkflowDomainRun,
-  startWorkflowDomainGoal
+  startWorkflowDomainGoal,
+  updateWorkflowDomainProject
 } from './apex-workflow-domain'
 import {
   destroyKeepaliveAgents,
@@ -10380,9 +10409,11 @@ async function buildRemoteConnection(
 }
 
 const sshConnections = new Map<string, any>()
+
 const sshIsolatedKeepalives = createSshIsolatedKeepaliveRegistry({
   log: chunk => sshRememberLog(chunk)
 })
+
 const desktopInstallationId = loadOrCreateInstallationId(DESKTOP_INSTALLATION_PATH)
 
 // Managed SSH update lifecycle (#93042): while an update owns a registered
@@ -18525,6 +18556,7 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
       if (settled) {
         return
       }
+
       settled = true
       resolve(value)
     }
@@ -18559,6 +18591,7 @@ function rollbackRuntimePinOverride(reason) {
   if (!override) {
     return false
   }
+
   rememberLog(`[runtime-update] rolling back opt-in update (${reason || 'failed'})`)
 
   try {
@@ -18611,6 +18644,7 @@ function extractBundleArchive(archivePath, destDir) {
       ['-xzf', archivePath, '-C', destDir],
       hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] })
     )
+
     let stderr = ''
     child.stderr.on('data', d => {
       stderr = (stderr + String(d)).slice(-2000)
@@ -18670,6 +18704,7 @@ function reconcileAndGcBundleRuntime() {
     if (rec.reconciled) {
       rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)
     }
+
     // Watermark-aware GC: normal keep current+previous, or drop previous when
     // versions/ blew past its disk budget. One pass (the watermark check runs GC).
     const water = bundleDiskspace.enforceVersionsWatermark(HERMES_HOME)
@@ -18685,6 +18720,7 @@ function reconcileAndGcBundleRuntime() {
     if (water.warning) {
       rememberLog(`[bundle] ${water.warning}`)
     }
+
     // Reap the legacy in-place fallback once the sentinel has left the pointer.
     const asideGc = bundleMigrate.gcLegacyAside(HERMES_HOME)
 
@@ -18859,6 +18895,7 @@ function seedDefaultModelConfig() {
     if (fs.existsSync(configPath)) {
       return
     }
+
     fs.mkdirSync(HERMES_HOME, { recursive: true })
 
     const managed = resolveManagedConfig()
@@ -19130,11 +19167,13 @@ function probeLoginShellPath() {
   if (_loginShellPathProbe !== undefined) {
     return _loginShellPathProbe
   }
+
   _loginShellPathProbe = null
 
   if (IS_WINDOWS) {
     return _loginShellPathProbe
   }
+
   const shell = String(process.env.SHELL || '').trim() || '/bin/zsh'
 
   try {
@@ -19164,6 +19203,7 @@ function augmentDesktopProcessPath() {
   if (IS_WINDOWS) {
     return 0
   }
+
   const before = String(process.env.PATH || '')
   let after = before
 
@@ -19342,6 +19382,7 @@ function resolveManagedRelayCredential() {
 // provision), so a provision that carries no token simply stores none — we never
 // resurrect a stale token, and clearing (no key) wipes the token too.
 function writeManagedConfig(provisioned) {
+  const previous = resolveManagedConfig()
   fs.mkdirSync(path.dirname(DESKTOP_MANAGED_CONFIG_PATH), { recursive: true })
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
   const account = provisioned && provisioned.account ? readManagedAccount({ account: provisioned.account }) : null
@@ -19359,11 +19400,22 @@ function writeManagedConfig(provisioned) {
     : {}
 
   writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
+
+  if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
+    broadcastManagedAccountChanged()
+  }
+}
+
+function broadcastManagedAccountChanged() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {win.webContents.send('hermes:managed-account-changed')}
+  }
 }
 
 function clearManagedRelayCredential() {
   try {
     fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true })
+    broadcastManagedAccountChanged()
   } catch {
     // Best effort.
   }
@@ -19377,22 +19429,24 @@ function clearManagedRelayCredential() {
 // and never throws — a persist hiccup must not fail the request the user made.
 // Skips when: managed isn't signed in (no stored key), there is no existing login
 // JWT to slide (env-key path stores none), or the token is unchanged.
-function persistRenewedLoginToken(token) {
+function persistRenewedLoginToken(token, requestBearer: string) {
   try {
     const next = String(token || '').trim()
 
     if (!next) {
       return false
     }
+
     const managed = resolveManagedConfig()
 
     if (!managed.key || !managed.accessToken) {
       return false
     }
 
-    if (next === managed.accessToken) {
+    if (!canApplyManagedRenewal(managed.accessToken, requestBearer, next)) {
       return false
     }
+
     writeManagedConfig({
       apiKey: managed.key,
       baseUrl: managed.baseUrl,
@@ -20050,6 +20104,7 @@ function runLocalAgentJob(job) {
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(killTimer)
       resolve(value)
@@ -20215,6 +20270,7 @@ function scheduleDaemonConnection(delay) {
   if (!daemonRuntime.started) {
     return
   }
+
   clearTimeout(daemonRuntime.connLoopTimer)
   daemonRuntime.connLoopTimer = setTimeout(() => {
     void daemonConnectionTick()
@@ -20225,6 +20281,7 @@ function scheduleDaemonPoll(delay) {
   if (!daemonRuntime.started) {
     return
   }
+
   clearTimeout(daemonRuntime.pollLoopTimer)
   daemonRuntime.pollLoopTimer = setTimeout(() => {
     void daemonPollTick()
@@ -20645,6 +20702,7 @@ function healConfigYamlProductBlocks(reason) {
     if (!fs.existsSync(configPath)) {
       return 'absent'
     }
+
     let raw = fs.readFileSync(configPath, 'utf8')
     // What we based this pass on. The runtime saves config.yaml atomically
     // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
@@ -20836,6 +20894,7 @@ function watchConfigYamlProductBlocks() {
     if (!fs.existsSync(configPath)) {
       return
     }
+
     fs.watch(configPath, { persistent: false }, () => {
       clearTimeout(configGuardTimer)
       configGuardTimer = setTimeout(() => guardConfigYamlProductBlocks('watch'), 2_000)
@@ -20920,6 +20979,7 @@ function applyClientConfigToRuntime(reason) {
       if (changed) {
         fs.writeFileSync(configPath, next, { encoding: 'utf8' })
       }
+
       rememberLog(
         `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
           (preserved.length ? `; preserved user preferences: ${preserved.join(', ')}` : '') +
@@ -20942,7 +21002,7 @@ function applyClientConfigToRuntime(reason) {
 // Electron's net stack, the same transport fetchJsonViaOauthSession uses — but
 // WITHOUT the OAuth cookie session (managed-LLM auth is JWT Bearer, a separate
 // concern from the remote-gateway cookie jar).
-function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
+function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -20961,7 +21021,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
     }
 
     const payload = serializeJsonBody(body)
-    const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
+    const request = electronNet.request({ method, url, redirect: 'follow' })
     setJsonRequestHeaders(request)
 
     if (bearer) {
@@ -20989,6 +21049,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -21003,7 +21064,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
 
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
 
         if (!text) {
           resolve(null)
@@ -21022,6 +21083,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -21029,6 +21091,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
     if (payload) {
       request.write(payload)
     }
+
     request.end()
   })
 }
@@ -21084,6 +21147,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -21098,7 +21162,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
 
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
 
         if (!text) {
           resolve(null)
@@ -21117,6 +21181,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -21171,6 +21236,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(timer)
       reject(error)
@@ -21210,6 +21276,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
         if (settled) {
           return
         }
+
         settled = true
         clearTimeout(timer)
         const statusCode = res.statusCode || 500
@@ -21223,7 +21290,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
           return
         }
 
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
         resolve(body)
       })
     })
@@ -21248,6 +21315,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
     const base = String(baseUrl || '')
       .trim()
       .replace(/\/+$/, '')
+
     const relayKey = String(key || '').trim()
 
     if (!base || !relayKey) {
@@ -21279,6 +21347,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(timer)
       resolve(result)
@@ -22069,10 +22138,589 @@ function workflowDomainIpcContext() {
     apiBase,
     transport: {
       getJson: url => apexAuthGetJson(url, { bearer }),
+      patchJson: (url, body) => apexAuthPostJson(url, { bearer, body, method: 'PATCH' }),
       postJson: (url, body) => apexAuthPostJson(url, { bearer, body })
     }
   }
 }
+
+function analysisUploadFile(url: string, bearer: string, filename: string, bytes: Buffer): Promise<any> {
+
+  if (bytes.length > 15 * 1024 * 1024) {throw new Error('file_too_large')}
+  const boundary = `apex-${crypto.randomUUID()}`
+  const safeFilename = filename.replace(/[\r\n"]/g, '_')
+
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+    bytes,
+    Buffer.from(`\r\n--${boundary}--\r\n`)
+  ])
+
+  return new Promise((resolve, reject) => {
+    const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
+    request.setHeader('Authorization', `Bearer ${bearer}`)
+    request.setHeader('Content-Type', `multipart/form-data; boundary=${boundary}`)
+    request.setHeader('Accept', 'application/json')
+    let settled = false
+
+    const timer = setTimeout(() => {
+      request.abort()
+
+      if (!settled) { settled = true; reject(new Error('analysis_upload_timeout')) }
+    }, 90_000)
+
+    request.on('response', response => {
+      const chunks: Buffer[] = []
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      response.on('end', () => {
+        if (settled) {return}
+        settled = true
+        clearTimeout(timer)
+        const text = Buffer.concat(chunks).toString('utf8')
+
+        if ((response.statusCode || 500) >= 400) {
+          const error: any = new Error(text.slice(0, 300))
+          error.statusCode = response.statusCode
+          reject(error)
+
+          return
+        }
+
+        persistRenewedLoginToken(renewedTokenFromHeaders(response.headers), bearer)
+
+        try { resolve(JSON.parse(text)) } catch { reject(new Error('analysis_invalid_response')) }
+      })
+    })
+    request.on('error', error => {
+      if (settled) {return}
+      settled = true
+      clearTimeout(timer)
+      reject(error)
+    })
+    request.end(body)
+  })
+}
+
+async function analysisIpcContext(needPolicy = false) {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {throw new Error('sign_in')}
+  const bearer = String(resolveManagedConfig().accessToken || '')
+  const userId = managedAccountId(bearer)
+
+  if (!userId) {throw new Error('sign_in')}
+  const account = analysisAccountBoundary(userId, () => managedAccountId(resolveManagedConfig().accessToken))
+
+  // Local reads/notes keep working offline. New imports still fetch the current
+  // server policy, and all cloud operations are authorized by the server.
+  const policy: any = needPolicy
+    ? await account.run(() => context.transport.getJson(`${context.apiBase}/api/v1/account/analysis/storage-policy`))
+    : { user_id: userId, mode: 'local', cloud_storage_configured: false }
+
+  if (String(policy?.user_id || '').toLowerCase() !== userId.toLowerCase()) {throw new Error('analysis_policy_unavailable')}
+
+  account.assertCurrent()
+
+  return { ...context, ...account, transport: {
+    getJson: (url: string) => account.run(() => context.transport.getJson(url)),
+    postJson: (url: string, body: unknown) => account.run(() => context.transport.postJson(url, body)),
+    patchJson: (url: string, body: unknown) => account.run(() => context.transport.patchJson(url, body))
+  }, policy, root: app.getPath('userData'), url: `${context.apiBase}/api/v1/account/analysis/documents`, bearer }
+}
+
+function analysisIpcError(error: any): string {
+  const detail = (() => {
+    const message = String(error?.message || '')
+    const json = message.slice(message.indexOf('{'))
+
+    try { return JSON.parse(json)?.detail?.code } catch { return null }
+  })()
+
+  if (typeof detail === 'string') {return detail}
+
+  if (error?.statusCode === 401) {return 'sign_in'}
+
+  if (error?.statusCode === 403) {return 'permission_denied'}
+
+  return String(error?.message || 'request_failed').slice(0, 80)
+}
+
+function localAnalysisForRenderer(document: any) {
+  if (!document) {return null}
+  const { sourcePath: _sourcePath, ...safe } = document
+
+  return safe
+}
+
+async function processLocalAnalysisDocument(context: Awaited<ReturnType<typeof analysisIpcContext>>, id: string, attempt: string, filename: string, bytes: Buffer): Promise<void> {
+  let parsed: any = null
+  let errorCode = 'parse_failed'
+
+  try {
+    parsed = await context.run(() => analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes))
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      throw new Error('analysis_policy_changed')
+    }
+  } catch (error) {
+    parsed = null
+    errorCode = analysisIpcError(error)
+  }
+
+  try {
+    completeLocalDocument(context.root, context.policy.user_id, id, attempt, parsed, errorCode)
+  } catch (error) {
+    rememberLog(`[analysis] local parse result could not be saved: ${analysisIpcError(error)}`)
+  }
+}
+
+ipcMain.handle('hermes:analysis:policy', async () => {
+  try {
+    const { policy } = await analysisIpcContext(true)
+
+    return { ok: true, policy }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:list', async () => {
+  try {
+    const context = await analysisIpcContext()
+    const local = listLocalDocuments(context.root, context.policy.user_id).map(localAnalysisForRenderer)
+    let cloud: any[] = []
+    let cloudUnavailable = false
+
+    try {
+      const remote: any = await context.transport.getJson(context.url)
+      cloud = (remote.items || []).map(item => ({ ...item, storageMode: 'cloud' }))
+    } catch { cloudUnavailable = true }
+
+    context.assertCurrent()
+
+    return { ok: true, cloudUnavailable, items: [...local, ...cloud].sort((a, b) => String(b.createdAt || b.created_at).localeCompare(String(a.createdAt || a.created_at))) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:import', async event => {
+  try {
+    const initial = await analysisIpcContext(true)
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
+      properties: ['openFile'],
+      filters: [{ name: 'Documents and subtitles', extensions: ['pdf', 'docx', 'xlsx', 'txt', 'md', 'srt', 'vtt'] }]
+    })
+
+    if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+    initial.assertCurrent()
+    const filePath = chosen.filePaths[0]
+    const size = fs.statSync(filePath).size
+
+    if (!size || size > 15 * 1024 * 1024) {return { ok: false, code: size ? 'file_too_large' : 'empty_file' }}
+
+    const bytes = fs.readFileSync(filePath)
+    const filename = path.basename(filePath)
+    const context = await analysisIpcContext(true)
+    initial.assertCurrent()
+
+    if (context.policy.mode === 'cloud') {
+      const response = await context.run(() => analysisUploadFile(context.url, context.bearer, filename, bytes))
+
+      return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
+    }
+
+    const item = createLocalPendingDocument(context.root, context.policy.user_id, filename, bytes)
+    void processLocalAnalysisDocument(context, item.id, item.parseAttempt!, filename, bytes)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:authorizeFeishu', async () => {
+  try {
+    const context = await analysisIpcContext(true)
+    const response: any = await context.transport.postJson(`${context.url}/feishu/authorize`, {})
+
+    if (!response.flow_id || !openExternalUrl(response.verification_url)) {return { ok: false, code: 'feishu_auth_invalid' }}
+
+    return { ok: true, flow_id: response.flow_id, verification_url: response.verification_url, interval: response.interval }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:pollFeishu', async (_event, flowId) => {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(String(flowId))) {return { ok: false, code: 'feishu_flow_not_found' }}
+    const context = await analysisIpcContext()
+    const response: any = await context.transport.getJson(`${context.url}/feishu/authorize/${flowId}`)
+
+    return { ok: true, status: response.status, interval: response.interval }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:forgetFeishu', async () => {
+  try {
+    const context = await analysisIpcContext()
+    await context.run(() => apexAuthDeleteJson(`${context.url}/feishu/authorize`, { bearer: context.bearer }))
+
+    return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:importLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext(true)
+    const url = String(sourceUrl || '').trim()
+
+    if (url.length > 2048) {return { ok: false, code: 'unsupported_feishu_link' }}
+
+    if (context.policy.mode === 'cloud') {
+      const result: any = await context.transport.postJson(`${context.url}/feishu`, { url })
+
+      return { ok: true, item: { ...result.item, storageMode: 'cloud' } }
+    }
+
+    const parsed: any = await context.transport.postJson(`${context.url}/feishu/parse`, { url })
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    const item = createLocalFeishuDocument(context.root, context.policy.user_id, parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:resolveVideoLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext()
+    const url = String(sourceUrl || '').trim()
+
+    if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
+    const resolution = await context.transport.postJson(`${context.apiBase}/api/v1/account/analysis/video-links/resolve`, { url })
+
+    return { ok: true, resolution }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext(true)
+    const url = String(sourceUrl || '').trim()
+
+    if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
+
+    const response: any = await context.run(() => apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
+      body: { url, storage_mode: context.policy.mode }, bearer: context.bearer, timeoutMs: 1_850_000
+    }))
+
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== context.policy.mode || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    if (context.policy.mode === 'cloud') {
+      return response.item ? { ok: true, item: { ...response.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
+    }
+
+    const item = createLocalVideoTranscript(context.root, context.policy.user_id, response.parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:uploadVideo', async event => {
+  try {
+    const initial = await analysisIpcContext(true)
+
+    if (initial.policy.mode === 'cloud' && !initial.policy.cloud_storage_configured) {
+      return { ok: false, code: 'analysis_cloud_storage_unavailable' }
+    }
+
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
+      properties: ['openFile'],
+      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'flv'] }]
+    })
+
+    if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+
+    const context = await analysisIpcContext(true)
+
+    if (context.policy.mode !== initial.policy.mode || context.policy.user_id !== initial.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    const response = await context.run(() => uploadAnalysisVideo(
+      `${context.apiBase}/api/v1/account/analysis/video-links/upload-transcribe`,
+      context.bearer, chosen.filePaths[0], context.policy.mode,
+      (url, init) => electronNet.fetch(url, init)
+    ))
+
+    persistRenewedLoginToken(response.renewedToken, context.bearer)
+
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== context.policy.mode || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    if (context.policy.mode === 'cloud') {
+      return response.body?.item ? { ok: true, item: { ...response.body.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
+    }
+
+    const item = createLocalUploadedVideoTranscript(context.root, context.policy.user_id, response.body?.parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:get', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, id)
+
+      return item ? { ok: true, item: { ...localAnalysisForRenderer(item), analysis_scope: context.policy.user_id, analysis_revision: localOverviewRevision(item) } } : { ok: false, code: 'source_not_found' }
+    }
+
+    const [detail, notes, questions]: any[] = await Promise.all([
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`),
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/notes`),
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/questions`)
+    ])
+
+    return { ok: true, item: { ...detail.item, analysis_scope: context.policy.user_id, storageMode: 'cloud', notes: notes.items, questions: questions.items } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+// Model inference stays on the stateless runtime RPC. Electron owns only account-scoped evidence and storage.
+async function analysisDerivedContext(id: string, scope: string, write = true) {
+  const context = await analysisIpcContext(write)
+
+  if (context.policy.user_id !== scope) {throw new Error('analysis_account_changed')}
+  const local = String(id).startsWith('local-')
+
+  if (write && !local && (context.policy.mode !== 'cloud' || !context.policy.cloud_storage_configured)) {
+    throw new Error('analysis_cloud_storage_disabled')
+  }
+
+  const source = local
+    ? getLocalDocument(context.root, scope, id)
+    : (await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`) as any)?.item
+
+  if (!source) {throw new Error('source_not_found')}
+
+  // Policy/network awaits may outlive a sign-out. Never return old-account text to the new renderer.
+  if (managedAccountId(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+
+  const item = { ...localAnalysisForRenderer(source), analysis_scope: scope,
+    analysis_revision: local ? localOverviewRevision(source) : source.analysis_revision }
+
+  return { context, item, local }
+}
+
+ipcMain.handle('hermes:analysis:transcriptForDraft', async (_event, id, scope, revision) => {
+  try {
+    const { item } = await analysisDerivedContext(id, scope)
+
+    return { ok: true, text: fullVideoTranscript(item, scope, revision) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:overviewContext', async (_event, id, scope) => {
+  try {
+    const { item } = await analysisDerivedContext(id, scope)
+    overviewEvidence(item)
+
+    return { ok: true, item }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overview) => {
+  try {
+    const { context, item: source, local } = await analysisDerivedContext(id, scope)
+    overviewEvidence(source)
+
+    const item = local
+      ? saveLocalVideoOverview(context.root, scope, id, overview)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/video-overviews`, overview) as any).item
+
+    if (managedAccountId(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+
+    return { ok: true, item }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+const sourceAnswerHandlers = createSourceAnswerHandlers({
+  context: analysisDerivedContext,
+  currentAccount: () => managedAccountId(resolveManagedConfig().accessToken),
+  error: analysisIpcError
+})
+
+ipcMain.handle('hermes:analysis:questionContext', sourceAnswerHandlers.questionContext)
+ipcMain.handle('hermes:analysis:saveAnswer', sourceAnswerHandlers.saveAnswer)
+
+const deepReportHandlers = createDeepReportHandlers({
+  context: analysisDerivedContext,
+  currentAccount: () => managedAccountId(resolveManagedConfig().accessToken),
+  error: analysisIpcError,
+  deleteCloud: (context, url) => apexAuthDeleteJson(url, { bearer: context.bearer }),
+  chooseFile: async (event: any) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(owner || undefined, {
+      properties: ['openFile'], filters: [{ name: 'Analysis report', extensions: ['md', 'txt'] }]
+    })
+
+    return chosen.canceled ? null : chosen.filePaths[0] ?? null
+  }
+})
+
+ipcMain.handle('hermes:analysis:importDeepReport', deepReportHandlers.importReport)
+ipcMain.handle('hermes:analysis:prepareDeepWorkspace', deepReportHandlers.prepareWorkspace)
+ipcMain.handle('hermes:analysis:recordDeepChat', deepReportHandlers.recordChat)
+ipcMain.handle('hermes:analysis:readDeepChat', deepReportHandlers.readChat)
+ipcMain.handle('hermes:analysis:updateDeepChatOutcome', deepReportHandlers.updateChatOutcome)
+ipcMain.handle('hermes:analysis:collectDeepReport', deepReportHandlers.collectReport)
+ipcMain.handle('hermes:analysis:reviewDeepReport', deepReportHandlers.reviewReport)
+ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
+
+ipcMain.handle('hermes:analysis:ask', async (_event, id, question) => {
+  try {
+    const context = await analysisIpcContext()
+    const input = String(question || '').trim()
+
+    if (input.length < 2 || input.length > 1000) {return { ok: false, code: 'invalid_question' }}
+
+    const item = String(id).startsWith('local-')
+      ? answerLocalDocument(context.root, context.policy.user_id, id, input)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/questions`, { question: input }) as any).item
+
+    return item ? { ok: true, item } : { ok: false, code: 'source_not_found' }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:addNote', async (_event, id, body, anchorId) => {
+  try {
+    const context = await analysisIpcContext()
+    const text = String(body || '').trim()
+
+    if (!text || text.length > 5000) {return { ok: false, code: 'invalid_note' }}
+
+    const item = String(id).startsWith('local-')
+      ? addLocalNote(context.root, context.policy.user_id, id, text, anchorId || null)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/notes`, { body: text, anchor_id: anchorId || null }) as any).item
+
+    return item ? { ok: true, item } : { ok: false, code: 'source_not_found' }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:deleteNote', async (_event, id, noteId) => {
+  try {
+    const context = await analysisIpcContext()
+
+    const ok = String(id).startsWith('local-')
+      ? removeLocalNote(context.root, context.policy.user_id, id, noteId)
+      : Boolean(await context.run(() => apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, { bearer: context.bearer })))
+
+    return { ok }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:retry', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext(String(id).startsWith('local-'))
+
+    if (String(id).startsWith('local-')) {
+      if (context.policy.mode !== 'local') {return { ok: false, code: 'analysis_policy_changed' }}
+      const retry = retryLocalDocument(context.root, context.policy.user_id, String(id))
+
+      if (!retry) {return { ok: false, code: 'source_not_found' }}
+      void processLocalAnalysisDocument(context, retry.document.id, retry.attempt, retry.document.filename, retry.bytes)
+
+      return { ok: true, item: localAnalysisForRenderer(retry.document) }
+    }
+
+    const response: any = await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/retry`, {})
+
+    return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:delete', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    const ok = String(id).startsWith('local-')
+      ? deleteLocalDocument(context.root, context.policy.user_id, id)
+      : Boolean(await context.run(() => apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}`, { bearer: context.bearer })))
+
+    if (ok) {deleteAnalysisWorkspace(context.root, context.policy.user_id, id)}
+
+    return { ok }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, id)
+
+      if (!item) {return { ok: false, code: 'source_not_found' }}
+
+      return item.kind === 'feishu' || (item.kind === 'subtitle' && item.sourceUrl)
+        ? { ok: openExternalUrl(item.sourceUrl) }
+        : { ok: !(await shell.openPath(item.sourcePath)) }
+    }
+
+    const response: any = await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/download`)
+
+    if (!openExternalUrl(response.source_url || response.download_url)) {return { ok: false, code: 'download_unavailable' }}
+
+    return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:previewPdf', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+    const sourceId = String(id || '')
+    let bytes: Buffer
+
+    if (sourceId.startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, sourceId)
+
+      if (!item) {return { ok: false, code: 'source_not_found' }}
+
+      if (item.kind !== 'pdf' || item.status !== 'ready') {return { ok: false, code: 'preview_unsupported' }}
+
+      const localBytes = readLocalPdfPreview(context.root, context.policy.user_id, sourceId)
+
+      if (!localBytes) {return { ok: false, code: 'preview_unavailable' }}
+
+      bytes = localBytes
+    } else {
+      if (!/^[0-9a-f-]{36}$/i.test(sourceId)) {return { ok: false, code: 'source_not_found' }}
+
+      bytes = await context.run(() => apexAuthGetBuffer(`${context.url}/${sourceId}/preview`, {
+        bearer: context.bearer, maxBytes: 15 * 1024 * 1024
+      }))
+    }
+
+    if (!bytes.length || !bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+      return { ok: false, code: 'preview_unavailable' }
+    }
+
+    return { ok: true, data_url: `data:application/pdf;base64,${bytes.toString('base64')}` }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
 
 function workflowDomainIpcError(error) {
   const statusCode = Number(error && error.statusCode) || 0
@@ -22088,6 +22736,18 @@ function workflowDomainIpcError(error) {
 
   if (statusCode === 403 || statusCode === 404) {
     return 'unavailable'
+  }
+
+  if (statusCode === 409 && typeof error?.message === 'string') {
+    try {
+      const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2))?.detail?.code
+
+      if (detail === 'project_not_ready' || detail === 'project_completed') {
+        return detail
+      }
+    } catch {
+      // Return the generic failure below for malformed server responses.
+    }
   }
 
   return 'request_failed'
@@ -22132,6 +22792,7 @@ ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   try {
     const run = await startWorkflowDomainGoal({
       apiBase: context.apiBase,
+      idempotencyKey: payload?.idempotencyKey,
       objective: payload?.objective,
       projectId: payload?.projectId,
       starter: payload?.starter || {},
@@ -22177,6 +22838,7 @@ ipcMain.handle('hermes:workflowDomain:startRun', async (_event, payload) => {
   try {
     const run = await startExistingWorkflowDomainRun({
       apiBase: context.apiBase,
+      idempotencyKey: payload?.idempotencyKey,
       objective: payload?.objective,
       workflowId: payload?.workflowId,
       transport: context.transport,
@@ -22236,6 +22898,70 @@ ipcMain.handle('hermes:workflowDomain:getProject', async (_event, projectId) => 
 
   try {
     const item = await getWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getProjectCompletion', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const completion = await getWorkflowDomainProjectCompletion(context.apiBase, projectId, context.transport)
+
+    return { completion, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:updateProject', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await updateWorkflowDomainProject(context.apiBase, payload, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:completeProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await completeWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:reopenProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await reopenWorkflowDomainProject(context.apiBase, projectId, context.transport)
 
     return { item, ok: true }
   } catch (error) {
@@ -22442,6 +23168,7 @@ ipcMain.handle('hermes:managed:status', async () => {
     // the renderer reads the same env the electron self-heal does.
     loginStateTruth: isLoginStateTruthEnabled(process.env),
     signedIn: Boolean(managed.key),
+    accountId: managed.key ? managedAccountId(managed.accessToken) : null,
     // True only when a reusable login JWT is on disk — i.e. a real cloud
     // sign-in that CAN self-heal a rotated/expired relay key. A seeded/env key
     // (e.g. a `*.local` release account or a CI-provisioned test key) has a
@@ -23424,6 +24151,7 @@ async function connectAgentAccount(family) {
       if (settled) {
         return
       }
+
       settled = true
       resolve({ ...result, guideCommand: spec.guide })
     }
@@ -23449,16 +24177,19 @@ async function connectAgentAccount(family) {
     if (child.stderr) {
       child.stderr.on('data', onChunk)
     }
+
     child.on('error', err => {
       if (activeAgentLogin[family] === child) {
         activeAgentLogin[family] = null
       }
+
       finish({ ok: false, mode: err && err.code === 'ENOENT' ? 'no_cli' : 'guide', reason: 'spawn_error' })
     })
     child.on('exit', code => {
       if (activeAgentLogin[family] === child) {
         activeAgentLogin[family] = null
       }
+
       // Exited before we saw/opened a URL: 0 = already completed; else degrade.
       finish(code === 0 ? { ok: true, mode: 'completed' } : { ok: false, mode: 'guide', reason: 'exited' })
     })

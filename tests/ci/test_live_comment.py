@@ -79,6 +79,24 @@ def test_watched_run_jobs_carry_the_workflow_name_into_the_comment():
     assert job_urls[f"{DOCKER} / build (amd64)"] == "https://example/1"
 
 
+@pytest.mark.parametrize("name", ["Detect affected areas", "JS & TS checks"])
+def test_cancelled_jobs_stay_visible_as_incomplete_validation(name):
+    completed, pending, urls = classify_jobs([
+        {"name": name, "status": "completed", "conclusion": "cancelled",
+         "html_url": "https://example/cancelled"},
+        {"name": "Python tests", "status": "completed", "conclusion": "skipped"},
+    ])
+    assert completed == {name: "failure", "Python tests": "skipped"}
+    assert pending == []
+    assert urls[name] == "https://example/cancelled"
+
+
+def test_successful_detection_remains_hidden_from_review():
+    assert classify_jobs([
+        {"name": "Detect affected areas", "status": "completed", "conclusion": "success"},
+    ]) == ({}, [], {})
+
+
 def test_parse_watch_workflows_keeps_commas_inside_a_name():
     """Workflow names contain commas, so the list is newline-separated."""
     assert _mod.parse_watch_workflows("Docker Build, Test, and Publish\n") == [

@@ -798,9 +798,11 @@ def _run_prompt_submit(
     display_metadata: dict | None = None, image_paths: list[str] | None = None,
     queued_prompt_generation: int | None = None,
     terminal_callback: Callable[[dict[str, Any]], None] | None = None,
-    turn_author: dict | None = None) -> bool:
+    turn_author: dict | None = None, turn_id: str | None = None) -> bool:
+    from tui_gateway.prompt_outcomes import finish_prompt_outcome, run_tracked_prompt
     admitted = _admit_prompt_turn(sid, session, text, image_paths, queued_prompt_generation)
     if admitted is None:
+        finish_prompt_outcome(session, turn_id, "interrupted" if session.get("_closing") else "error")
         return False
     images, agent = admitted
     # The ONE INFO record proving a prompt was accepted by THIS process; ties ui sid,
@@ -829,6 +831,7 @@ def _run_prompt_submit(
             receipt_committed=terminal_callback is None)
         st.marker_key = _record_turn_marker(session, text, auto_continue=terminal_callback is None)
         goal_followup = None
+        terminal_outcome = "error"
         try:
             prepared = _prepare_turn_input(sid, session, st, text, images)
             if prepared is None:
@@ -845,6 +848,8 @@ def _run_prompt_submit(
             status_note = _absorb_turn_result(
                 sid, session, st, text, display_kind, display_metadata)
             payload, raw, status = _complete_turn_payload(session, st, status_note, cols)
+            terminal_outcome = status
+            finish_prompt_outcome(session, turn_id, status)
             _emit("message.complete", sid, payload)
             goal_followup = _goal_followup_after_turn(sid, session, st.result, status, raw)
             if status == "complete":
@@ -855,6 +860,7 @@ def _run_prompt_submit(
         except Exception as e:
             _recover_turn_exception(sid, session, st, e)
         finally:
+            finish_prompt_outcome(session, turn_id, terminal_outcome)
             _finish_turn(sid, session, st)
             _current_runtime_session_record.reset(runtime_session_token)
             reset_transport(transport_token)
@@ -888,7 +894,7 @@ def _run_prompt_submit(
             session.pop("_auto_continue_scheduled", None)
             _emit_settled_session_info(sid, session, st.agent)
         _run_post_turn_followups(rid, sid, session, st.result, goal_followup)
-    run_thread = threading.Thread(target=run, daemon=True)
+    run_thread = threading.Thread(target=lambda: run_tracked_prompt(session, turn_id, run), daemon=True)
     # The handle is resolved BEFORE _sessions_lock: a profile session opens its own SessionDB through the
     # state registry, and _sessions_lock gates every create/close/prompt on this backend.
     with _routing_provenance_db(session) as routing_db, _sessions_lock:
@@ -902,6 +908,7 @@ def _run_prompt_submit(
             session["_run_thread"] = run_thread
             run_thread.start()
     if not can_start:
+        finish_prompt_outcome(session, turn_id, "interrupted")
         with session["history_lock"]:
             session["running"] = False
     return can_start

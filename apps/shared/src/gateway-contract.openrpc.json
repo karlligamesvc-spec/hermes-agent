@@ -2473,6 +2473,24 @@
       }
     },
     {
+      "name": "prompt.turn.status",
+      "summary": "Exact accepted inline attempt outcome on its runtime session; bounded, process-local, never inferred from chat idle state.",
+      "params": [
+        {
+          "name": "params",
+          "schema": {
+            "$ref": "#/components/schemas/PromptTurnStatusParams"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "$ref": "#/components/schemas/PromptTurnStatusResult"
+        }
+      }
+    },
+    {
       "name": "reload.env",
       "summary": "Re-read ~/.hermes/.env (CLI /reload parity); built agents keep their pool until /new.",
       "params": [
@@ -21386,6 +21404,18 @@
             ],
             "default": null,
             "title": "Turn Isolation"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Turn Id"
           }
         },
         "title": "PromptSubmitResult",
@@ -21400,6 +21430,68 @@
         ],
         "title": "PromptSubmitStatus",
         "type": "string"
+      },
+      "PromptTurnState": {
+        "enum": [
+          "running",
+          "complete",
+          "error",
+          "interrupted",
+          "unavailable"
+        ],
+        "title": "PromptTurnState",
+        "type": "string"
+      },
+      "PromptTurnStatusParams": {
+        "additionalProperties": false,
+        "properties": {
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile"
+          },
+          "turn_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "turn_id"
+        ],
+        "title": "PromptTurnStatusParams",
+        "type": "object"
+      },
+      "PromptTurnStatusResult": {
+        "additionalProperties": false,
+        "properties": {
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PromptTurnState"
+          }
+        },
+        "required": [
+          "turn_id",
+          "status"
+        ],
+        "title": "PromptTurnStatusResult",
+        "type": "object"
       },
       "QueuedPrompt": {
         "additionalProperties": false,

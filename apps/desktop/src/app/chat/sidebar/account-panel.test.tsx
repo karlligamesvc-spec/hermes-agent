@@ -152,7 +152,8 @@ describe('signed-in account navigation', () => {
 
   it.each([
     ['连接助手', '/assistant'],
-    ['历史会话', '/history']
+    ['历史会话', '/history'],
+    ['交付物', '/deliverables']
   ])('keeps %s inside the account menu and routes only after selection', async (label, route) => {
     render(
       <I18nProvider configClient={null} initialLocale="zh">

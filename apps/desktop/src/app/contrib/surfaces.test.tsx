@@ -6,21 +6,28 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesGateway } from '@/hermes'
 import { I18nProvider } from '@/i18n'
+import { $authState } from '@/store/auth'
+import { $composerAttachments, clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
+import { $selectedStoredSessionId } from '@/store/session'
 
 import { routeDrawerNavigationState } from '../routes'
 
 import { ChatRoutesSurface } from './surfaces'
 import type { WiringActions } from './types'
 
+const originalBridge = window.hermesDesktop
+
 vi.mock('@/contrib/react/use-contributions', () => ({ useContributions: vi.fn() }))
 vi.mock('@/store/connections', () => ({ $activeConnectionId: atom('local') }))
 vi.mock('@/store/gateway', () => ({ $gateway: atom<unknown>(null) }))
 vi.mock('@/store/profile', () => ({ $activeGatewayProfile: atom('default') }))
 vi.mock('@/store/session', () => ({
+  $connection: atom({ mode: 'local' }),
   $freshDraftReady: atom(false),
-  $gatewayState: atom('open')
+  $gatewayState: atom('open'),
+  $selectedStoredSessionId: atom<string | null>(null)
 }))
 vi.mock('../chat', () => ({
   ChatView: ({ gateway }: { gateway: { id?: string } | null }) => <div data-testid="gateway">{gateway?.id}</div>
@@ -55,6 +62,17 @@ vi.mock('../business-workspace/pages/deliverable-detail-page', () => ({
 vi.mock('../business-workspace/pages/workflow-run-page', () => ({
   WorkflowRunView: () => <div>workflow-run-view</div>
 }))
+vi.mock('../business-workspace/pages/analysis-page', () => ({
+  AnalysisView: ({ onDeepBreakdown }: {
+    onDeepBreakdown: (document: unknown, locale: 'en', frames: Array<{ seconds: number; dataUrl: string }>) => Promise<void>
+  }) => <button onClick={() => void onDeepBreakdown({
+    id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'clip.srt', kind: 'subtitle',
+    status: 'ready', storageMode: 'local', evidenceOrigin: 'uploaded_video_audio',
+    analysis_scope: 'owner', analysis_revision: 'current',
+    anchors: [{ id: 'a1', location: { start_seconds: 3, end_seconds: 5 }, text: 'verified speech' }],
+    notes: [], questions: []
+  }, 'en', [{ seconds: 12.5, dataUrl: `data:image/jpeg;base64,${btoa('frame')}` }]).catch(() => undefined)} type="button">Prepare video</button>
+}))
 
 function LocationProbe() {
   const location = useLocation()
@@ -63,15 +81,21 @@ function LocationProbe() {
   return (
     <>
       <output data-testid="location">{`${location.pathname}${location.search}${location.hash}`}</output>
+      <output data-testid="goal-draft">{(location.state as { businessGoalDraft?: string } | null)?.businessGoalDraft ?? ''}</output>
+      <output data-testid="frame-handoff">{JSON.stringify((location.state as { analysisFrameDraft?: unknown } | null)?.analysisFrameDraft ?? null)}</output>
       <button onClick={() => navigate(1)} type="button">
         Forward
       </button>
+      <button onClick={() => navigate('/analysis')} type="button">Analysis</button>
     </>
   )
 }
 
-function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initialEntries']) {
-  const actions = { getGateway: () => $gateway.get() } as unknown as WiringActions
+const originalAuth = $authState.get()
+
+function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initialEntries'], suppliedActions?: Partial<WiringActions>) {
+  $authState.set({ ...originalAuth, enabled: true, status: 'signed-in', accountId: 'owner', account: { email: 'route@fixture.test', name: 'Route fixture', plan: '' } })
+  const actions = { getGateway: () => $gateway.get(), ...suppliedActions } as unknown as WiringActions
 
   return render(
     <MemoryRouter initialEntries={initialEntries} initialIndex={(initialEntries?.length ?? 1) - 1}>
@@ -85,11 +109,106 @@ function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initi
 
 afterEach(() => {
   cleanup()
+  $authState.set(originalAuth)
+  Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
   $gateway.set(null)
   $activeGatewayProfile.set('default')
+  $composerAttachments.set([])
+  $selectedStoredSessionId.set(null)
+  clearSessionDraft(null)
 })
 
 describe('ChatRoutesSurface', () => {
+  it('adds a captured frame to the local composer before opening the reviewable Agent draft', async () => {
+    let sequence = 0
+
+    const onAttachImageBlob = vi.fn(async (_blob: Blob) => {
+      sequence += 1
+      $composerAttachments.set([...$composerAttachments.get(), {
+        id: `image:${sequence}`, occurrenceId: `frame-${sequence}`, kind: 'image', label: `frame-${sequence}.jpg`
+      }])
+
+      return true
+    })
+
+    renderRoutes(['/analysis'], { onAttachImageBlob })
+    expect(await screen.findByRole('button', { name: 'Prepare video' })).toBeTruthy()
+    expect(onAttachImageBlob).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare video' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect(onAttachImageBlob).toHaveBeenCalledOnce()
+    expect(onAttachImageBlob.mock.calls[0][0]).toBeInstanceOf(File)
+    expect(screen.getByTestId('goal-draft').textContent).toContain('Attached frames')
+    expect(screen.getByTestId('goal-draft').textContent).toContain('0:12.5')
+    expect(screen.getByTestId('goal-draft').textContent).toContain('[0:03–0:05] "verified speech"')
+    expect(JSON.parse(screen.getByTestId('frame-handoff').textContent ?? '')).toEqual({
+      locale: 'en', sourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', attemptedFrames: 1,
+      frames: [{ id: 'image:1', occurrenceId: 'frame-1', seconds: 12.5 }]
+    })
+    expect($composerAttachments.get()).toHaveLength(1)
+    expect($composerAttachments.get()[0]?.analysisFrameSourceId).toBe('local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analysis' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare video' }))
+    await waitFor(() => expect(onAttachImageBlob).toHaveBeenCalledTimes(2))
+    expect($composerAttachments.get()).toHaveLength(1)
+    expect($composerAttachments.get()[0]?.occurrenceId).toBe('frame-2')
+  })
+
+  it('moves accepted frames into the new draft when a prior chat is selected', async () => {
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+      analysisDocuments: { transcriptForDraft: vi.fn().mockResolvedValue({ ok: true, text: 'complete transcript' }) },
+      savePastedText: vi.fn().mockResolvedValue('/local/transcript.txt')
+    } })
+    $selectedStoredSessionId.set('previous-chat')
+    $composerAttachments.set([{ id: 'user-image', occurrenceId: 'user-1', kind: 'image', label: 'own.jpg' }])
+    stashSessionDraft(null, 'existing fresh text', [
+      { id: 'old-frame', occurrenceId: 'old-1', kind: 'image', label: 'old.jpg', analysisFrameSourceId: 'old-source' }
+    ])
+
+    const onAttachImageBlob = vi.fn(async (_blob: Blob) => {
+      $composerAttachments.set([...$composerAttachments.get(), {
+        id: 'new-frame', occurrenceId: 'new-1', kind: 'image', label: 'new.jpg'
+      }])
+
+      return true
+    })
+
+    renderRoutes(['/analysis'], { onAttachImageBlob })
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare video' }))
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    expect($composerAttachments.get().map(item => item.id)).toEqual(['user-image'])
+    expect(takeSessionDraft(null)).toMatchObject({
+      text: 'existing fresh text',
+      attachments: [
+        { kind: 'file', path: '/local/transcript.txt', analysisTranscriptSourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+        { id: 'new-frame', analysisFrameSourceId: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }
+      ]
+    })
+    expect(screen.getByTestId('goal-draft').textContent).toContain('Attached frames')
+  })
+
+  it('does not route or attach a late transcript after a profile switch', async () => {
+    let finish!: (path: string) => void
+    const savePastedText = vi.fn(() => new Promise<string>(resolve => {finish = resolve}))
+    const transcriptForDraft = vi.fn().mockResolvedValue({ ok: true, text: 'owned transcript' })
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+      analysisDocuments: { transcriptForDraft }, savePastedText
+    } })
+    $composerAttachments.set([{ id: 'user-file', occurrenceId: 'user-1', kind: 'file', label: 'own.txt' }])
+    renderRoutes(['/analysis'], { onAttachImageBlob: vi.fn() })
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare video' }))
+    await waitFor(() => expect(savePastedText).toHaveBeenCalledOnce())
+    await act(async () => { $activeGatewayProfile.set('other-profile'); finish('/late/transcript.txt') })
+    expect(screen.getByTestId('location').textContent).toBe('/analysis')
+    expect($composerAttachments.get().map(item => item.id)).toEqual(['user-file'])
+    expect(transcriptForDraft).toHaveBeenCalledOnce()
+    expect(screen.getByTestId('goal-draft').textContent).toBe('')
+  })
+
   it('passes the live gateway after an open-to-open profile switch', () => {
     const gatewayA = { id: 'a' } as unknown as HermesGateway
     const gatewayB = { id: 'b' } as unknown as HermesGateway

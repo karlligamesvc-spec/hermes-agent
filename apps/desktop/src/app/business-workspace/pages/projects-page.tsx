@@ -29,6 +29,7 @@ import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
 import { ProjectCreateDialog } from '../components/project-create-dialog'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
 import { distinctProjectObjective, projectRunDisplayState } from '../view-model/project'
@@ -36,14 +37,12 @@ import { recentConversations, recentWorkspaceTasks } from '../view-model/workspa
 
 type ProjectFilter = 'active' | 'all' | 'completed'
 
-const completedProjectStates = new Set(['archived', 'cancelled', 'completed', 'succeeded'])
-
-function projectStatus(project: { status: string; summary?: { currentRunStatus: null | string } }) {
-  return project.summary?.currentRunStatus || project.status
+function isCompletedProject(status: string) {
+  return status === 'completed'
 }
 
-function isCompletedProject(status: string) {
-  return completedProjectStates.has(status)
+function isActiveProject(status: string) {
+  return status === 'active' || status === 'paused'
 }
 
 export function ProjectsView() {
@@ -60,7 +59,10 @@ export function ProjectsView() {
   }
 
   if (projects.mode === 'failed') {
-    return <LegacyProjectsView notice={c.projectLoadFailed} />
+    return <>
+      <WorkflowRefreshNotice state={projects} />
+      <LegacyProjectsView notice={c.projectLoadFailed} />
+    </>
   }
 
   const newProject = () => setCreateOpen(true)
@@ -73,17 +75,17 @@ export function ProjectsView() {
           }
 
           return filter === 'completed'
-            ? isCompletedProject(projectStatus(project))
-            : !isCompletedProject(projectStatus(project))
+            ? isCompletedProject(project.status)
+            : isActiveProject(project.status)
         })
       : []
 
   const counts =
     projects.mode === 'ready'
       ? {
-          active: projects.items.filter(project => !isCompletedProject(projectStatus(project))).length,
+          active: projects.items.filter(project => isActiveProject(project.status)).length,
           all: projects.total,
-          completed: projects.items.filter(project => isCompletedProject(projectStatus(project))).length
+          completed: projects.items.filter(project => isCompletedProject(project.status)).length
         }
       : { active: 0, all: 0, completed: 0 }
 
@@ -98,6 +100,7 @@ export function ProjectsView() {
           title={c.title}
         />
       </div>
+      <WorkflowRefreshNotice state={projects} />
       {projects.mode === 'loading' ? (
         <div className="mx-auto flex min-h-72 w-full max-w-[65.625rem] items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader className="size-8" label={c.loadingProjects} type="lemniscate-bloom" />
@@ -144,7 +147,7 @@ export function ProjectsView() {
             <div className="overflow-hidden rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) shadow-sm">
               {visibleProjects.map(project => {
                 const summary = project.summary
-                const status = projectStatus(project)
+                const status = project.status
                 const runDisplay = projectRunDisplayState(summary)
                 const objective = distinctProjectObjective(project)
 
@@ -153,11 +156,7 @@ export function ProjectsView() {
                     ? c.noRun
                     : runDisplay.kind === 'status-unavailable'
                       ? c.runStatusUnavailable
-                      : summary?.currentStepTitle
-                        ? c.currentStep(summary.currentStepTitle)
-                        : summary && summary.stepTotal > 0
-                          ? c.steps(summary.stepCompleted, summary.stepTotal)
-                          : c.lifecycle(runDisplay.status)
+                      : c.runLifecycle(runDisplay.status)
 
                 return (
                   <Button
@@ -189,7 +188,9 @@ export function ProjectsView() {
                           }
                         />
                         <strong className="truncate text-sm font-semibold">{project.name}</strong>
+                        <Badge data-project-status="" variant="muted">{c.lifecycle(status)}</Badge>
                         <Badge
+                          data-project-run-status=""
                           variant={
                             summary?.attention === 'failed'
                               ? 'destructive'
@@ -204,6 +205,11 @@ export function ProjectsView() {
                       {objective && (
                         <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
                           {objective}
+                        </span>
+                      )}
+                      {runDisplay.kind === 'status' && (summary?.currentStepTitle || (summary && summary.stepTotal > 0)) && (
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {summary.currentStepTitle ? c.currentStep(summary.currentStepTitle) : c.steps(summary.stepCompleted, summary.stepTotal)}
                         </span>
                       )}
                     </span>

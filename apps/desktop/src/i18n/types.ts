@@ -2361,6 +2361,10 @@ export interface Translations {
     created: string
     updated: string
     failedLoad: string
+    failedLoadRuns: string
+    runConversations: string
+    legacyRunHistory: string
+    executionStatuses: Record<'claimed' | 'running' | 'completed' | 'failed' | 'unknown', string>
     failedUpdate: string
     failedTrigger: string
     failedDelete: string
@@ -4193,6 +4197,23 @@ export interface Translations {
       emptyDescription: string
       action: string
       newProject: string
+      editProject: string
+      edit: {
+        title: string
+        description: string
+        save: string
+        saving: string
+        failed: string
+      }
+      awaitingAcceptance: string
+      notStarted: string
+      completionProgress: (succeeded: number, total: number) => string
+      completionUnavailable: string
+      completionFailed: string
+      completionNotReady: string
+      completeProject: string
+      reopenProject: string
+      reopenFirst: string
       create: {
         title: string
         description: string
@@ -4247,6 +4268,8 @@ export interface Translations {
       recentProjects: string
       loadingProjects: string
       projectLoadFailed: string
+      refreshFailed: string
+      refreshRetry: string
       projectDomainUnavailable: string
       detailTitle: string
       detailEyebrow: string
@@ -4268,6 +4291,7 @@ export interface Translations {
       updatedAt: (date: string) => string
       currentStep: (title: string) => string
       lifecycle: (status: string) => string
+      runLifecycle: (status: string) => string
       viewRun: string
       noRun: string
       legacyFallback: string
@@ -4292,6 +4316,7 @@ export interface Translations {
       use: string
       useShort: string
       startGoal: string
+      goalSelectionDescription: string
       backToProject: string
       projectContext: string
       projectDescription: string
@@ -4299,6 +4324,18 @@ export interface Translations {
       projectUnavailable: string
       projectSavedEmpty: string
       selectForProject: string
+      templateScope: string
+      templateExample: string
+      templateSteps: string
+      templateStepProject: string
+      templateStepGoal: string
+      templateStepRun: string
+      templateExecutionNote: string
+      joinCurrentProject: string
+      joinExistingProject: string
+      newProjectAndJoin: string
+      chooseProjectDescription: string
+      noActiveProjects: string
       createEyebrow: string
       createForProject: (name: string) => string
       objectiveLabel: string

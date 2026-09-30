@@ -2085,8 +2085,19 @@ export interface PromptSubmitResult {
   survivor_user_row_ids?: (number | null)[] | null
   survivor_row_id_map?: Record<string, number | null> | null
   turn_isolation?: boolean | null
+  turn_id?: string | null
 }
 export type PromptSubmitStatus = 'streaming' | 'queued' | 'steered' | 'redirected'
+export interface PromptTurnStatusParams {
+  session_id: string
+  profile?: string | null
+  turn_id: string
+}
+export interface PromptTurnStatusResult {
+  turn_id: string
+  status: PromptTurnState
+}
+export type PromptTurnState = 'running' | 'complete' | 'error' | 'interrupted' | 'unavailable'
 export interface ClipboardPasteParams {
   session_id: string
   profile?: string | null
@@ -4354,6 +4365,8 @@ export interface RpcMethods {
   'prompt.btw': { params: SideAgentParams; result: TaskIdResult }
   /** Send a user turn to a live session; busy sessions queue / steer / redirect instead of refusing. */
   'prompt.submit': { params: PromptSubmitParams; result: PromptSubmitResult }
+  /** Exact accepted inline attempt outcome on its runtime session; bounded, process-local, never inferred from chat idle state. */
+  'prompt.turn.status': { params: PromptTurnStatusParams; result: PromptTurnStatusResult }
   /** Re-read ~/.hermes/.env (CLI /reload parity); built agents keep their pool until /new. */
   'reload.env': { params: ReloadEnvParams; result: ReloadEnvResult }
   /** Tear down and rediscover MCP servers for every live session (prompt cache is invalidated). */
@@ -4650,6 +4663,7 @@ export const RPC_METHODS = [
   'prompt.background',
   'prompt.btw',
   'prompt.submit',
+  'prompt.turn.status',
   'reload.env',
   'reload.mcp',
   'request.answer',
