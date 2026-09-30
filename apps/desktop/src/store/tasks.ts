@@ -1,5 +1,6 @@
 import { computed } from 'nanostores'
 
+import { jobOutcomeError } from '@/app/cron/job-state'
 import { isOneShotJob, jobTitleShort, type TaskPhase, taskPhase } from '@/app/tasks/task-model'
 import { translateNow } from '@/i18n'
 import type { CronJob } from '@/types/hermes'
@@ -35,11 +36,13 @@ function notifyTransition(job: CronJob, phase: TaskPhase): void {
       title: translateNow('tasks.notify.doneTitle'),
       body: title
     })
-  } else if (phase === 'failed') {
+  } else if (phase === 'failed' || phase === 'delivery-failed') {
     dispatchNativeNotification({
       kind: 'turnError',
-      title: translateNow('tasks.notify.failedTitle'),
-      body: job.last_error?.trim() || title
+      title: translateNow(
+        phase === 'delivery-failed' ? 'tasks.notify.deliveryFailedTitle' : 'tasks.notify.failedTitle'
+      ),
+      body: jobOutcomeError(job) || title
     })
   }
 }
@@ -57,7 +60,7 @@ export function startTaskNotifier(): () => void {
       lastPhase.set(job.id, phase)
 
       // Fire only on a real running → terminal edge that we've been tracking.
-      if (seeded && prev === 'running' && (phase === 'done' || phase === 'failed')) {
+      if (seeded && prev === 'running' && (phase === 'done' || phase === 'failed' || phase === 'delivery-failed')) {
         notifyTransition(job, phase)
       }
     }

@@ -2653,7 +2653,16 @@ export const en: Translations = {
       paused: 'paused',
       disabled: 'disabled',
       error: 'error',
-      completed: 'completed'
+      completed: 'Schedule ended'
+    },
+    outcomes: {
+      succeeded: 'Latest execution succeeded',
+      failed: 'Latest execution failed',
+      blocked: 'Execution blocked by configuration',
+      interrupted: 'Execution interrupted',
+      'delivery-failed': 'Result delivery failed',
+      'delivery-pending': 'Delivery completion unverified',
+      unknown: 'Execution result unverified'
     },
     deliveryLabels: {
       local: 'This desktop',
@@ -5350,9 +5359,9 @@ export const en: Translations = {
   tasks: {
     newTask: 'New task',
     tabRunning: 'Running',
-    tabDone: 'Done',
+    tabDone: 'Ended',
     emptyRunning: 'No running tasks. Hand off a long job — it keeps working in the background.',
-    emptyDone: 'No finished tasks yet.',
+    emptyDone: 'No ended tasks yet.',
     emptyDetail: 'Kick off a long-running task and follow its progress here.',
     pending: 'Waiting to start',
     started: 'Started',
@@ -5367,9 +5376,12 @@ export const en: Translations = {
     stepsOf: (completed, total) => `${completed} / ${total} steps`,
     currentStepLabel: 'Now:',
     latestOutputLabel: 'Latest output',
-    runHistory: 'Runs',
-    noRuns: 'No runs yet.',
+    runHistory: 'Run conversations',
+    noRuns: 'No run conversations yet.',
     phases: {
+      'delivery-failed': 'Delivery failed',
+      'delivery-pending': 'Delivery unverified',
+      unknown: 'Result unverified',
       running: 'Running',
       done: 'Done',
       failed: 'Failed'
@@ -5396,6 +5408,7 @@ export const en: Translations = {
     deleteDescPrefix: 'This permanently removes ',
     deleteDescSuffix: ' and its schedule. Runs already recorded stay in your session history.',
     notify: {
+      deliveryFailedTitle: 'Task delivery failed',
       doneTitle: 'Task finished',
       failedTitle: 'Task failed'
     }

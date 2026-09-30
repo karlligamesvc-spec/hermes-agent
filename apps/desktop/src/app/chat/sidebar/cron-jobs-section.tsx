@@ -20,7 +20,7 @@ import { notify, notifyError } from '@/store/notifications'
 import { $selectedStoredSessionId } from '@/store/session'
 import type { CronJob } from '@/types/hermes'
 
-import { jobState, jobTitle, STATE_DOT } from '../../cron/job-state'
+import { jobDotClass, jobOutcome, jobState, jobTitle } from '../../cron/job-state'
 import { SidebarPanelLabel } from '../../shell/sidebar-label'
 
 import { SidebarRowBody, SidebarRowLabel, SidebarRowLead, SidebarRowShell } from './chrome'
@@ -240,11 +240,13 @@ function CronJobSidebarRow({
   const { t } = useI18n()
   const c = t.cron
   const state = jobState(job)
+  const outcome = jobOutcome(job)
   const next = nextRunMs(job)
   const label = jobTitle(job)
   const isPaused = state === 'paused'
 
-  const meta = INACTIVE_STATES.has(state) ? (c.states[state] ?? state) : next !== null ? relativeTime(next, nowMs) : '—'
+  const meta = state === 'running' ? c.states.running : outcome ? c.outcomes[outcome]
+    : INACTIVE_STATES.has(state) ? (c.states[state] ?? state) : next !== null ? relativeTime(next, nowMs) : '—'
 
   // Pause/resume and delete aren't threaded through the sidebar's prop chain, so
   // drive them against the shared $cronJobs atom directly (same path the cron
@@ -360,7 +362,7 @@ function CronJobSidebarRow({
                   aria-hidden="true"
                   className={cn(
                     'size-1 rounded-full',
-                    STATE_DOT[state] ?? 'bg-(--ui-text-quaternary)',
+                    jobDotClass(job),
                     state === 'running' && 'size-1.5 animate-pulse'
                   )}
                 />

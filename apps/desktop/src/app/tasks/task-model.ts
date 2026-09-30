@@ -2,7 +2,7 @@ import { type ChatMessage, chatMessageText, toChatMessages } from '@/lib/chat-me
 import { latestSessionTodos, type TodoItem } from '@/lib/todos'
 import type { CronJob, SessionInfo, SessionMessage } from '@/types/hermes'
 
-import { jobState, jobTitle } from '../cron/job-state'
+import { jobOutcome, jobOutcomeFailed, jobState, jobTitle } from '../cron/job-state'
 
 // ── What a "task" is here (honest scope) ────────────────────────────────────
 // hc-419 asks for a Codex-style "Goal mode": hand off one big job, let it run in
@@ -17,7 +17,7 @@ import { jobState, jobTitle } from '../cron/job-state'
 // /cron page; this page shows only the one-shot long-runs.
 
 /** Coarse lifecycle bucket a one-shot task is shown under. */
-export type TaskPhase = 'running' | 'done' | 'failed'
+export type TaskPhase = 'running' | 'done' | 'failed' | 'delivery-failed' | 'delivery-pending' | 'unknown'
 
 /** How confident we are the task is stuck (running but no recent activity). */
 export const STUCK_AFTER_MS = 20 * 60 * 1000 // 20 min of no run-session activity
@@ -61,23 +61,28 @@ export function isOneShotJob(job: CronJob): boolean {
   return display.startsWith('once')
 }
 
-/** Map a job's cron state onto the task lifecycle bucket. A completed one-shot
- *  ends `enabled:false, state:"completed"`; a failed recurring-compute ends
- *  `state:"error"`. `disabled` (paused-then-expired, hand-disabled) reads as
- *  done rather than failed — nothing went wrong, it just isn't live. */
+/** Keep the schedule lifecycle separate from the verified execution/delivery result. */
 export function taskPhase(job: CronJob): TaskPhase {
   const state = jobState(job)
+  const outcome = jobOutcome(job)
 
   if (state === 'error') {
     return 'failed'
   }
 
-  if (state === 'completed' || state === 'disabled') {
-    return 'done'
+  if (state !== 'completed' && state !== 'disabled') {
+    return 'running'
   }
 
-  // scheduled / running / enabled / paused → still an in-flight task.
-  return 'running'
+  if (outcome === 'delivery-failed' || outcome === 'delivery-pending') {
+    return outcome
+  }
+
+  if (jobOutcomeFailed(outcome)) {
+    return 'failed'
+  }
+
+  return outcome === 'succeeded' ? 'done' : 'unknown'
 }
 
 /** The single run session that best represents a task's progress: the newest

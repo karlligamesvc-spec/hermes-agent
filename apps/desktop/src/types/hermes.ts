@@ -870,10 +870,13 @@ export interface AnalyticsTotals {
 }
 
 export interface CronJob {
+  /** Last execution/delivery outcome; scheduling lifecycle remains in state. */
+  last_status?: null | string
   deliver?: null | string
   enabled: boolean
   id: string
   last_error?: null | string
+  last_delivery_error?: null | string
   last_run_at?: null | string
   model?: null | string
   name?: null | string

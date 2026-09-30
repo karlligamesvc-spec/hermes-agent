@@ -1732,6 +1732,26 @@ export const ar = defineLocale({
     failedCreate: 'فشل الإنشاء',
     failedRename: 'فشل إعادة التسمية'
   },
+  tasks: {
+    noRuns: 'لا توجد محادثات تنفيذ بعد.',
+    runHistory: 'محادثات التنفيذ',
+    emptyDone: 'لا توجد مهام انتهت بعد.',
+    tabDone: 'انتهت',
+    phases: {
+      running: 'قيد التشغيل',
+      done: 'اكتملت',
+      failed: 'فشلت',
+      'delivery-failed': 'فشل التسليم',
+      'delivery-pending': 'نتيجة التسليم غير متحقق منها',
+      unknown: 'نتيجة التنفيذ غير متحقق منها'
+    },
+    notify: {
+      doneTitle: 'اكتملت المهمة',
+      failedTitle: 'فشلت المهمة',
+      deliveryFailedTitle: 'فشل تسليم المهمة'
+    }
+  },
+
   cron: {
     close: 'إغلاق',
     eyebrow: 'التنفيذ التلقائي',
@@ -1757,7 +1777,16 @@ export const ar = defineLocale({
       paused: 'متوقف مؤقتا',
       disabled: 'معطّل',
       error: 'خطأ',
-      completed: 'مكتمل'
+      completed: 'انتهى الجدول'
+    },
+    outcomes: {
+      succeeded: 'نجح آخر تنفيذ',
+      failed: 'فشل آخر تنفيذ',
+      blocked: 'الإعدادات تمنع التنفيذ',
+      interrupted: 'توقف التنفيذ',
+      'delivery-failed': 'فشل تسليم النتيجة',
+      'delivery-pending': 'نتيجة التسليم غير متحقق منها',
+      unknown: 'نتيجة التنفيذ غير متحقق منها'
     },
     deliveryLabels: {
       local: 'سطح المكتب هذا',
