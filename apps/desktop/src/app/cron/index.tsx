@@ -81,7 +81,7 @@ import {
   validateCronEditor
 } from './cron-job-model'
 import { CronJobRuns } from './cron-run-history'
-import { jobState, jobTitle, STATE_DOT } from './job-state'
+import { jobDotClass, jobOutcome, jobOutcomeError, jobOutcomeFailed, jobState, jobTitle } from './job-state'
 
 const DEFAULT_DELIVER = 'local'
 
@@ -769,14 +769,16 @@ function CronJobListRow({
   menuLabel?: string
   onSelect: () => void
 }) {
-  const state = jobState(job)
+  const { t } = useI18n()
+  const outcome = jobOutcome(job)
 
   return (
     <PanelListRow
       active={active}
-      dotClassName={STATE_DOT[state] ?? 'bg-muted-foreground'}
+      dotClassName={jobDotClass(job)}
       menuItems={menuItems}
       menuLabel={menuLabel}
+      meta={outcome ? t.cron.outcomes[outcome] : undefined}
       onSelect={onSelect}
       rowKey={job.id}
       title={jobTitle(job)}
@@ -800,6 +802,8 @@ function CronJobDetail({
   onTrigger: () => void
 }) {
   const state = jobState(job)
+  const outcome = jobOutcome(job)
+  const outcomeError = jobOutcomeError(job)
   const isPaused = state === 'paused'
   const deliver = jobDeliver(job)
   const prompt = jobPrompt(job)
@@ -812,6 +816,11 @@ function CronJobDetail({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h3 className="text-[0.95rem] font-semibold tracking-tight text-foreground">{jobTitle(job)}</h3>
             <PanelPill tone={STATE_TONE[state] ?? 'muted'}>{c.states[state] ?? state}</PanelPill>
+            {outcome ? (
+              <PanelPill tone={jobOutcomeFailed(outcome) ? 'bad' : outcome === 'succeeded' ? 'good' : 'muted'}>
+                {c.outcomes[outcome]}
+              </PanelPill>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <PanelAction disabled={busy} icon={isPaused ? 'play' : 'debug-pause'} onClick={onPauseResume}>
@@ -833,10 +842,10 @@ function CronJobDetail({
           ]}
         />
 
-        {job.last_error ? (
+        {outcomeError ? (
           <div className="flex items-start gap-1.5 rounded bg-destructive/10 p-2 text-[0.7rem] text-destructive">
             <AlertTriangle className="mt-px size-3 shrink-0" />
-            <span className="min-w-0 break-words">{job.last_error}</span>
+            <span className="min-w-0 break-words">{outcomeError}</span>
           </div>
         ) : null}
       </header>
@@ -939,7 +948,7 @@ function CronEditorDialog({
   const [schedulePreset, setSchedulePreset] = useState('daily')
   const [deliver, setDeliver] = useState(DEFAULT_DELIVER)
   // Per-job model override, encoded as `${providerSlug}:${model}` (split on the
-  // first ':' when saving). MODEL_DEFAULT_VALUE = follow the global default.
+  // first ':' when saving). MODEL_DEFAULT_VALUE = unpinned, with a creation snapshot.
   const [modelChoice, setModelChoice] = useState(MODEL_DEFAULT_VALUE)
   // Blueprint fills typed slots (time/enum/weekdays/text) instead of the raw
   // cron fields; the backend renders the prompt + schedule from them.
@@ -1318,7 +1327,7 @@ type EditorState =
 
 interface EditorValues {
   deliver: string
-  /** Per-job model override ('' = follow the global default). */
+  /** Per-job model override ('' = use the creation snapshot / cron fleet default). */
   model: string
   name: string
   prompt: string

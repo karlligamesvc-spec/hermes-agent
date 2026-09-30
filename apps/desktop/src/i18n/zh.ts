@@ -2328,7 +2328,16 @@ export const zh = defineLocale({
       paused: '已暂停',
       disabled: '已禁用',
       error: '错误',
-      completed: '已完成'
+      completed: '计划已结束'
+    },
+    outcomes: {
+      succeeded: '最近执行成功',
+      failed: '最近执行失败',
+      blocked: '配置阻止执行',
+      interrupted: '执行已中断',
+      'delivery-failed': '结果交付失败',
+      'delivery-pending': '交付结果未核实',
+      unknown: '执行结果未核实'
     },
     deliveryLabels: {
       local: '此桌面',
@@ -4773,9 +4782,9 @@ export const zh = defineLocale({
   tasks: {
     newTask: '新任务',
     tabRunning: '进行中',
-    tabDone: '已完成',
+    tabDone: '已结束',
     emptyRunning: '暂无进行中的任务。把耗时的活交出去，它会在后台一直跑。',
-    emptyDone: '还没有已完成的任务。',
+    emptyDone: '还没有已结束的任务。',
     emptyDetail: '发起一个长任务，在这里跟进它的进度。',
     pending: '等待开始',
     started: '开始于',
@@ -4789,9 +4798,12 @@ export const zh = defineLocale({
     stepsOf: (completed, total) => `${completed} / ${total} 步`,
     currentStepLabel: '当前：',
     latestOutputLabel: '最新输出',
-    runHistory: '运行记录',
-    noRuns: '还没有运行记录。',
+    runHistory: '运行对话',
+    noRuns: '暂无运行对话。',
     phases: {
+      'delivery-failed': '交付失败',
+      'delivery-pending': '交付结果未核实',
+      unknown: '执行结果未核实',
       running: '进行中',
       done: '已完成',
       failed: '失败'
@@ -4818,6 +4830,7 @@ export const zh = defineLocale({
     deleteDescPrefix: '将永久移除 ',
     deleteDescSuffix: ' 及其排程；已产生的运行会话仍保留在历史中。',
     notify: {
+      deliveryFailedTitle: '任务交付失败',
       doneTitle: '任务完成',
       failedTitle: '任务失败'
     }
