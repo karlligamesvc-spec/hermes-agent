@@ -1571,7 +1571,8 @@ function shouldAttemptReprovision(state: any = {}) {
  *   readConfig: () => string | null,
  *   writeConfig: (next: string) => void,
  *   probeRelay: (key: string) => Promise<{ ok?: boolean, statusCode?: number }>,
- *   provisionKey: () => Promise<{ apiKey?: string } | null>,
+ *   provisionKey: () => Promise<{ apiKey?: string, statusCode?: number } | null>,
+ *   isCurrent?: () => boolean,
  *   applyToBackend: (reason: string) => unknown,
  *   log?: (line: string) => void
  * }} deps
@@ -1579,7 +1580,7 @@ function shouldAttemptReprovision(state: any = {}) {
  *   ok: boolean, relayUnauthorized: boolean, healed: boolean, hasToken: boolean,
  *   probeStatus: 'unknown' | 'ok' | 'unauthorized' | 'unreachable',
  *   minted: boolean, persisted: boolean, backendApplied: boolean,
- *   attempted: boolean, reason: string
+ *   attempted: boolean, needsSignIn: boolean, reason: string
  * }>}
  */
 async function reconcileManagedRelayKey(deps: any) {
@@ -1593,6 +1594,7 @@ async function reconcileManagedRelayKey(deps: any) {
     relayUnauthorized: false,
     healed: false,
     hasToken,
+    needsSignIn: false,
     probeStatus: 'unknown',
     minted: false,
     persisted: false,
@@ -1600,6 +1602,11 @@ async function reconcileManagedRelayKey(deps: any) {
     attempted: false,
     reason: ''
   }
+
+  const isCurrent = typeof deps.isCurrent === 'function' ? deps.isCurrent : () => true
+  const superseded = () => ({ ...idle, ok: false, reason: 'account-changed' })
+
+  if (!isCurrent()) {return superseded()}
 
   if (!deps.enabled || !storedKey || !baseUrl) {return idle}
 
@@ -1628,6 +1635,9 @@ async function reconcileManagedRelayKey(deps: any) {
 
   // 2. Probe the relay with the stored key.
   const probe = await deps.probeRelay(storedKey)
+
+  if (!isCurrent()) {return superseded()}
+
   const probeStatus = relayCatalogStatusFromProbe(probe)
 
   if (probeStatus !== 'unauthorized') {
@@ -1652,7 +1662,7 @@ async function reconcileManagedRelayKey(deps: any) {
       )
     }
 
-    return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, reason: hasToken ? 'cooldown' : 'no-token' }
+    return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, needsSignIn: !hasToken, reason: hasToken ? 'cooldown' : 'no-token' }
   }
 
   // 4. Pre-flight: never mint a key we have already proven we cannot persist.
@@ -1668,15 +1678,17 @@ async function reconcileManagedRelayKey(deps: any) {
   // 5. Mint → persist (verified) → apply to the running backend.
   log('[apexnodes] relay key rejected (401); auto re-provisioning with stored login token…')
   const provisioned = await deps.provisionKey()
+
+  if (!isCurrent()) {return superseded()}
+
   const freshKey = String((provisioned && provisioned.apiKey) || '').trim()
 
   if (!freshKey) {
-    log(
-      '[apexnodes] relay key self-heal could not re-provision (login token likely expired); ' +
-        'sign in again to refresh.'
-    )
+    const needsSignIn = provisioned?.statusCode === 401
+    log(`[apexnodes] relay key self-heal could not re-provision (${needsSignIn ? 'login-token-rejected' : 'provision-unavailable'}).`)
 
-    return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, attempted: true, reason: 'provision-failed' }
+    return { ...idle, relayUnauthorized: true, probeStatus, backendApplied, attempted: true, needsSignIn,
+      reason: needsSignIn ? 'login-token-rejected' : 'provision-failed' }
   }
 
   const written = persist(freshKey)
@@ -1699,6 +1711,9 @@ async function reconcileManagedRelayKey(deps: any) {
   }
 
   await deps.applyToBackend('key-rotation')
+
+  if (!isCurrent()) {return superseded()}
+
   log(`[apexnodes] relay key self-heal succeeded; config.yaml now holds ${maskRelayKey(freshKey)} and the backend was reloaded.`)
 
   return {
@@ -1706,6 +1721,7 @@ async function reconcileManagedRelayKey(deps: any) {
     relayUnauthorized: true,
     healed: true,
     hasToken: true,
+    needsSignIn: false,
     probeStatus: 'ok',
     minted: true,
     persisted: true,

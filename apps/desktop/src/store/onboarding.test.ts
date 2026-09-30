@@ -11,6 +11,7 @@ import {
   type OnboardingContext,
   refreshOnboarding,
   requestDesktopOnboarding,
+  requestManagedReSignIn,
   saveOnboardingLocalEndpoint,
   submitOnboardingCode
 } from './onboarding'
@@ -81,6 +82,40 @@ function fallbackTimeoutGateway(): OnboardingContext['requestGateway'] {
 }
 
 describe('refreshOnboarding', () => {
+  it('ignores a late managed-status reply after explicit login takes over', async () => {
+    $desktopOnboarding.set(baseState())
+    let release!: (status: unknown) => void
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { managed: { status: () => new Promise(resolve => { release = resolve }) } }
+    })
+    const pending = refreshOnboarding(onboardingContext(runtimeMismatchGateway()))
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    requestManagedReSignIn('fixture newer login')
+    release({ enabled: true, signedIn: true })
+    await expect(pending).resolves.toBe(false)
+    expect($desktopOnboarding.get()).toMatchObject({ configured: false, requested: true, managedAvailable: true, managedError: 'fixture newer login' })
+  })
+
+  it('does not let a late ready runtime dismiss a newer explicit managed login request', async () => {
+    $desktopOnboarding.set(baseState({ configured: true }))
+    let resolveRuntime!: (value: never) => void
+    const onCompleted = vi.fn()
+
+    const pending = refreshOnboarding({
+      onCompleted,
+      requestGateway: method => method === 'setup.runtime_check'
+        ? new Promise(resolve => { resolveRuntime = resolve })
+        : Promise.resolve({ provider_configured: true } as never)
+    })
+
+    requestManagedReSignIn('fixture re-login')
+    resolveRuntime({ ok: true } as never)
+    await expect(pending).resolves.toBe(false)
+    expect($desktopOnboarding.get()).toMatchObject({ configured: false, requested: true, managedAvailable: true, managedError: 'fixture re-login' })
+    expect(onCompleted).not.toHaveBeenCalled()
+  })
+
   it('keeps onboarding work in its initiating lifetime and profile', async () => {
     const { startManualOnboarding, startProviderOAuth, saveOnboardingApiKey, closeManualOnboarding } =
       await import('./onboarding')

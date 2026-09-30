@@ -21,6 +21,7 @@ import type { ModelOptionProvider } from '@hermes/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { managedCatalogCollapsed } from '@/lib/managed-catalog'
+import { $authState } from '@/store/auth'
 import { recoverManagedCatalogAuth } from '@/store/managed-recovery'
 // The self-heal bridge the electron main process exposes to the renderer.
 type SelfHeal = () => Promise<{
@@ -28,6 +29,7 @@ type SelfHeal = () => Promise<{
   relayUnauthorized: boolean
   healed: boolean
   hasToken: boolean
+  needsSignIn?: boolean
   assignment?: unknown
 }>
 
@@ -58,6 +60,7 @@ function managedRow(models: string[]): ModelOptionProvider {
 }
 
 beforeEach(() => {
+  $authState.set({ accountId: 'fixture-owner', account: { email: '', name: '', plan: '' }, enabled: true, gateReason: null, loginTruth: true, status: 'signed-in' })
   setModelAssignment.mockClear()
   gatewayRequest.mockClear()
 })
@@ -110,7 +113,7 @@ describe('recoverManagedCatalogAuth', () => {
   })
 
   it('a dead key with no reusable token reports "not healed" instead of re-querying forever', async () => {
-    installBridge(async () => ({ ok: true, relayUnauthorized: true, healed: false, hasToken: false }))
+    installBridge(async () => ({ ok: true, relayUnauthorized: true, healed: false, hasToken: false, needsSignIn: true }))
 
     // Owned (the account card degrades to 登录已失效 via handleRelayAuthExpired)
     // but NOT healed — so the catalog is not re-queried into the same 401.

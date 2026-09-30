@@ -2143,13 +2143,15 @@ export interface DesktopManagedSelfHealResult {
   relayUnauthorized: boolean
   healed: boolean
   needsSignIn: boolean
+  probeStatus?: 'ok' | 'unauthorized' | 'unreachable' | 'unknown'
   assignment: DesktopManagedSignInResult['assignment']
 }
 
 // hc-512: state of the relay's live model catalog (`GET {base_url}/v1/models`
 // with the stored relay key — the same listing the runtime's picker builds the
-// APEX group from). 'unauthorized' = the stored key is dead (re-login is the
-// fix); 'unreachable' = transient network/relay failure (retry is the fix);
+// APEX group from). 'unauthorized' = the relay rejected the stored key; recovery
+// receipts separately establish whether re-login is needed. 'unreachable' means
+// transient network/relay failure (retry is the fix);
 // 'unknown' = never probed / not a managed install.
 export interface DesktopRelayCatalogState {
   checkedAt: number

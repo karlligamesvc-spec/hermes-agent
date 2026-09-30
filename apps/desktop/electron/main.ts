@@ -146,7 +146,6 @@ import {
   parseProvisionResponse,
   persistRelayKeyToConfigYaml,
   reconcileManagedRelayKey,
-  relayCatalogStatusFromProbe,
   renewedTokenFromHeaders,
   resolveApexEndpoints,
   seedPluginsBlockYaml,
@@ -154,6 +153,7 @@ import {
   seedWebGatewayBlockYaml,
   syncManagedRelayConfigYaml
 } from './apex-managed'
+import { ManagedCredentialLifetime, managedRecoveryCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -19381,7 +19381,9 @@ function resolveManagedRelayCredential() {
 // flow). This rewrites the WHOLE record on every write (each follows a fresh
 // provision), so a provision that carries no token simply stores none — we never
 // resurrect a stale token, and clearing (no key) wipes the token too.
-function writeManagedConfig(provisioned) {
+const managedCredentialLifetime = new ManagedCredentialLifetime()
+
+function writeManagedConfig(provisioned, renewal = false) {
   const previous = resolveManagedConfig()
   fs.mkdirSync(path.dirname(DESKTOP_MANAGED_CONFIG_PATH), { recursive: true })
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
@@ -19399,11 +19401,17 @@ function writeManagedConfig(provisioned) {
       }
     : {}
 
-  writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
+  const generation = managedCredentialLifetime.persist(() => {
+    writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
+  }, renewal)
+
+  if (!renewal) {lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }}
 
   if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
     broadcastManagedAccountChanged()
   }
+
+  return generation
 }
 
 function broadcastManagedAccountChanged() {
@@ -19414,7 +19422,8 @@ function broadcastManagedAccountChanged() {
 
 function clearManagedRelayCredential() {
   try {
-    fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true })
+    managedCredentialLifetime.persist(() => fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true }))
+    lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
     broadcastManagedAccountChanged()
   } catch {
     // Best effort.
@@ -19453,7 +19462,7 @@ function persistRenewedLoginToken(token, requestBearer: string) {
       model: managed.model,
       account: managed.account,
       accessToken: next
-    })
+    }, true)
     rememberLog('[managed] login token renewed via sliding-window header (hc-529)')
 
     return true
@@ -21384,6 +21393,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
 // on the first attempt, so the cooldown only matters when re-provision keeps
 // failing (expired JWT / provision-key down), which must not loop.
 let lastManagedReprovisionAttemptAt = 0
+let lastManagedReprovisionAttemptOwner: string | null = null
 
 // hc-512: last known state of the relay's live model catalog, from the same
 // `GET {base_url}/v1/models` probe the runtime's picker uses. The runtime's own
@@ -21393,25 +21403,6 @@ let lastManagedReprovisionAttemptAt = 0
 // status: 'unknown' (never probed / not applicable) | 'ok' | 'unauthorized' |
 // 'unreachable'; checkedAt: ms timestamp of the last probe (0 = never).
 let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
-
-// Probe the relay model listing with the CURRENT stored key and remember the
-// classified outcome. Shared by the boot self-heal and the renderer's
-// on-demand catalog-state IPC. Resolves to the remembered state. Not managed /
-// no key → 'unknown' (BYOK installs never probe).
-async function probeRelayCatalogState() {
-  const managed = resolveManagedConfig()
-
-  if (!isManagedEnabled(process.env) || !managed.key || !managed.baseUrl) {
-    lastRelayCatalogState = { status: 'unknown', checkedAt: Date.now() }
-
-    return lastRelayCatalogState
-  }
-
-  const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
-  lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
-
-  return lastRelayCatalogState
-}
 
 // Relay-key self-heal: if the stored relay key is dead (relay /v1/models →
 // 401/403), re-provision it in place using the stored login JWT, write the fresh
@@ -21443,9 +21434,21 @@ async function probeRelayCatalogState() {
 //   - relayUnauthorized=true, healed=false, hasToken=false → seed/env key or a
 //     cleared token: can't re-provision, the user must sign in again.
 //   - relayUnauthorized=true, healed=false, hasToken=true → the stored JWT is
-//     itself expired, or config.yaml is not writable as managed (in which case
-//     we deliberately did NOT mint — see reconcileManagedRelayKey step 4).
-async function selfHealManagedKeyOn401() {
+//     either rejected by the provision endpoint (needsSignIn=true), or recovery
+//     is temporarily blocked (needsSignIn=false). Credential presence alone
+//     does not distinguish these outcomes.
+const managedRelayRecovery = new ManagedRelayRecoveryCoordinator()
+
+function selfHealManagedKeyOn401() {
+  const generation = managedCredentialLifetime.current()
+
+  return managedRelayRecovery.run(generation, () => reconcileCurrentManagedRelay(generation))
+}
+
+async function reconcileCurrentManagedRelay(generation: number) {
+  let ownedGeneration = generation
+  const isCurrent = () => ownedGeneration === managedCredentialLifetime.current() && isManagedEnabled(process.env)
+
   try {
     const managed = resolveManagedConfig()
 
@@ -21458,10 +21461,12 @@ async function selfHealManagedKeyOn401() {
     }
 
     const configPath = path.join(HERMES_HOME, 'config.yaml')
-    const attemptAt = lastManagedReprovisionAttemptAt
+    const owner = managedAccountId(managed.accessToken) || String(generation)
+    const attemptAt = lastManagedReprovisionAttemptOwner === owner ? lastManagedReprovisionAttemptAt : 0
 
     const outcome = await reconcileManagedRelayKey({
       enabled: true,
+      isCurrent,
       storedKey: managed.key,
       baseUrl: managed.baseUrl,
       hasToken: Boolean(managed.accessToken),
@@ -21476,16 +21481,28 @@ async function selfHealManagedKeyOn401() {
         // Mark the attempt before the network call so a hung provision still
         // starts the anti-storm cooldown.
         lastManagedReprovisionAttemptAt = Date.now()
+        lastManagedReprovisionAttemptOwner = owner
         // Re-run the SAME provision chain the sign-in routes use: mints a fresh
         // relay key (server rotates), persists it (+ the — possibly unchanged —
         // JWT). A stored account keeps the account panel intact.
-        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
+        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null, isCurrent)
 
-        return result && result.hasRelayKey ? { apiKey: resolveManagedConfig().key } : null
+        if (result.hasRelayKey) {
+          // This attempt's synchronous credential write advances the lifetime.
+          ownedGeneration = result.credentialGeneration
+
+          return { apiKey: resolveManagedConfig().key }
+        }
+
+        return { statusCode: result.provisionStatus }
       },
       applyToBackend: reason => reloadBackendForRelayKey(reason),
       log: rememberLog
     })
+
+    if (!isCurrent()) {
+      return { ok: false, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus: 'unknown', generation }
+    }
 
     // Remember the probe outcome for the renderer's model-menu catalog state
     // (hc-512): a heal means the live listing is reachable again.
@@ -21495,7 +21512,10 @@ async function selfHealManagedKeyOn401() {
       ok: outcome.ok,
       relayUnauthorized: outcome.relayUnauthorized,
       healed: outcome.healed,
-      hasToken: outcome.hasToken
+      hasToken: outcome.hasToken,
+      needsSignIn: outcome.needsSignIn,
+      probeStatus: outcome.probeStatus,
+      generation: ownedGeneration
     }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay key self-heal skipped: ${error && error.message ? error.message : error}`)
@@ -21515,7 +21535,8 @@ async function selfHealManagedKeyOn401() {
 //   - ok=true, hasRelayKey=true  → key + base_url + model stored; managed live.
 //   - ok=true, hasRelayKey=false → token valid but provision-key unavailable —
 //     caller falls back to BYOK.
-async function provisionManagedFromAccessToken(accessToken, account = null) {
+async function provisionManagedFromAccessToken(accessToken, account = null, recovery?: () => boolean) {
+  const isCurrent = recovery || (() => true)
   const token = String(accessToken || '').trim()
 
   if (!token) {
@@ -21532,69 +21553,47 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   // last-login-wins across machines.
   const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
 
-  let provisioned = null
+  const result = await provisionManagedRelayForCurrentAccount({
+    request: async () => {
+      const body = await apexAuthPostJson(endpoints.provisionKeyUrl, { bearer: token, body: deviceBody })
 
-  try {
-    const body = await apexAuthPostJson(endpoints.provisionKeyUrl, {
-      bearer: token,
-      body: deviceBody
-    })
+      return parseProvisionResponse(body, process.env)
+    },
+    isCurrent,
+    unavailable: (error: any) => {
+      rememberLog(
+        `[apexnodes] provision-key unavailable (${error && error.message ? error.message : error}); ` +
+          'managed default disabled, falling back to BYOK.'
+      )
+    },
+    commit: provisioned => {
+      const account2 = {
+        email: provisioned.email || resolvedAccount.email,
+        name: provisioned.name || resolvedAccount.name,
+        plan: provisioned.plan || resolvedAccount.plan
+      }
 
-    provisioned = parseProvisionResponse(body, process.env)
-  } catch (error: any) {
-    rememberLog(
-      `[apexnodes] provision-key unavailable (${error && error.message ? error.message : error}); ` +
-        'managed default disabled, falling back to BYOK.'
-    )
-  }
+      // A self-heal may have just slid this request's JWT in the transport. Keep
+      // that confirmed renewal rather than replacing it with the older bearer.
+      const currentToken = resolveManagedConfig().accessToken
+      const commitToken = recovery ? managedRecoveryCommitToken(token, currentToken) : token
+      const generation = writeManagedConfig({ ...provisioned, account: account2, accessToken: commitToken })
+      // Add the managed anchor on first login, then verify both runtime anchors.
+      guardConfigYamlProductBlocks('sign-in-provision')
+      syncManagedRelayKeyToConfig('sign-in')
 
-  if (provisioned) {
-    // The provision endpoint is JWT-authed and returns the signed-in user's own
-    // email/name/plan — authoritative. Prefer it, falling back to the login-body
-    // / JWT-claim values (a Google/browser sign-in JWT may omit the email).
-    const account2 = {
-      email: provisioned.email || resolvedAccount.email,
-      name: provisioned.name || resolvedAccount.name,
-      plan: provisioned.plan || resolvedAccount.plan
+      return generation
     }
+  })
 
-    // Persist the login JWT (encrypted) alongside the fresh relay key so the boot
-    // 401-self-heal can silently re-provision if this key is later rotated out.
-    writeManagedConfig({ ...provisioned, account: account2, accessToken: token })
-    // A signed-out first boot seeds a BYOK config, which has no managed relay
-    // anchor. The key writer correctly refuses that shape (`no-managed-anchor`),
-    // so create the managed custom-provider anchor before attempting the write.
-    // The renderer still applies the model assignment through /api/model/set;
-    // this guard is add-only and never overwrites an existing BYOK selection.
-    guardConfigYamlProductBlocks('sign-in-provision')
-    // A re-login just ROTATED the relay key — refresh both config.yaml anchors
-    // immediately so neither the chat path (model.api_key) nor the picker's live
-    // listing (custom_providers) runs on the dead key until the next restart.
-    syncManagedRelayKeyToConfig('sign-in')
-    // A successful sign-in is a sync point for the platform client config
-    // (contract: check at boot AND after every successful sign-in).
-    // Fire-and-forget — provisioning must not wait on it.
+  if (result.ok) {
+    // All successful sign-in/recovery outcomes remain platform sync points.
     void refreshClientConfigFromPlatform('sign-in')
-    // Same sync point for the platform SKILL family (pull → install under
-    // HERMES_HOME/skills/apexnodes/). Fire-and-forget; must not block sign-in.
     void refreshPlatformSkillsFromPlatform('sign-in')
-    // Platform PLUGIN sync (hc-564) shares the trigger points; no-op unless
-    // APEXNODES_PLATFORM_PLUGINS is explicitly enabled (default OFF).
     void refreshPlatformPluginsFromPlatform('sign-in')
-
-    return { ok: true, hasRelayKey: true }
   }
 
-  // Sign-in itself succeeded (valid token) even though provisioning fell back
-  // to BYOK — still a sync point for the platform client config.
-  void refreshClientConfigFromPlatform('sign-in')
-  // A valid token still lets us pull the platform SKILL family even when
-  // provisioning fell back to BYOK (the SKILLs are independent of the relay key).
-  void refreshPlatformSkillsFromPlatform('sign-in')
-  // Platform PLUGIN sync (hc-564): same reasoning, same opt-in gate (default OFF).
-  void refreshPlatformPluginsFromPlatform('sign-in')
-
-  return { ok: true, hasRelayKey: false }
+  return result
 }
 
 /**
@@ -23203,14 +23202,9 @@ ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
     const refresh = Boolean(opts && opts.refresh)
 
     if (refresh || !lastRelayCatalogState.checkedAt) {
-      await probeRelayCatalogState()
-
-      if (lastRelayCatalogState.status === 'unauthorized') {
-        // Same chain as boot: re-provision with the stored JWT when allowed
-        // (shouldAttemptReprovision gates + cools down inside), which flips
-        // the remembered state to 'ok' on success.
-        await selfHealManagedKeyOn401()
-      }
+      // Shared probe/recovery also owns catalog receipt settlement, so an old
+      // account's late probe cannot populate a new account's catalog cache.
+      await selfHealManagedKeyOn401()
     }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay catalog probe failed: ${error && error.message ? error.message : error}`)
@@ -23406,28 +23400,18 @@ ipcMain.handle('hermes:managed:signOut', async () => {
 // — turning a silent 401 loop into a visible, actionable state. Never throws.
 ipcMain.handle('hermes:managed:selfHeal', async () => {
   const outcome = await selfHealManagedKeyOn401()
+  const current = !('generation' in outcome) || outcome.generation === managedCredentialLifetime.current()
+  const relayUnauthorized = current && Boolean(outcome.relayUnauthorized)
+  const healed = relayUnauthorized && Boolean(outcome.healed)
 
-  // Relay accepted the key (or managed off / no key): not a managed-relay auth
-  // problem — let the renderer's generic error path surface it.
-  if (!outcome || !outcome.relayUnauthorized) {
-    return { ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null }
+  return {
+    ok: current && outcome.ok,
+    relayUnauthorized,
+    healed,
+    needsSignIn: relayUnauthorized && 'needsSignIn' in outcome && Boolean(outcome.needsSignIn),
+    probeStatus: current && 'probeStatus' in outcome ? outcome.probeStatus : 'unknown',
+    assignment: healed ? managedSignInResultPayload({ hasRelayKey: true }).assignment : null
   }
-
-  if (outcome.healed) {
-    // Fresh key on disk + config.yaml re-synced; hand back the assignment so the
-    // renderer applies it via /api/model/set (same path as sign-in) and retries.
-    return {
-      ok: true,
-      relayUnauthorized: true,
-      healed: true,
-      needsSignIn: false,
-      assignment: managedSignInResultPayload({ hasRelayKey: true }).assignment
-    }
-  }
-
-  // Could not heal (no token, or the stored JWT is itself expired) → the user
-  // must sign in again. Honest, visible state instead of a silent 401 loop.
-  return { ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null }
 })
 
 // ── hc-444: Feishu bridge (renderer surface) ────────────────────────────────

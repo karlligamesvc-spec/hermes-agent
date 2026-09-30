@@ -621,11 +621,17 @@ export function consumePendingCredentialWarning(): null | string {
 // (managedAvailable) regardless of the cached "onboarded" flag — the same state
 // refreshOnboarding lands on for a not-yet-signed-in managed install.
 export function requestManagedReSignIn(reason = DEFAULT_ONBOARDING_REASON) {
+  cancelOnboardingFlow()
+  providersRefreshPromise = null
+  clearManagedSyncRecheck()
+  writeCachedSkipped(false)
   writeCachedConfigured(false)
   patch({
     configured: false,
     managedAvailable: true,
     managedError: reason.trim() || null,
+    firstRunSkipped: false,
+    managedSyncing: false,
     managedSubmitting: false,
     requested: true,
     manual: false,
@@ -783,6 +789,7 @@ type ManagedProbe =
 
 // Probe the ApexNodes managed-LLM status via the desktop bridge.
 async function refreshManagedStatus(): Promise<ManagedProbe> {
+  const generation = flowGeneration
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
 
   if (!bridge) {
@@ -793,9 +800,12 @@ async function refreshManagedStatus(): Promise<ManagedProbe> {
 
   try {
     const status = await bridge.status()
+
     // "Available" for onboarding purposes means: enabled AND the user still
     // needs to sign in. An already-signed-in user has a relay key on disk, so
     // the runtime is configured and the normal readiness gate handles them.
+    if (generation !== flowGeneration) {return { kind: 'unknown' }}
+
     patch({ managedAvailable: status.enabled && !status.signedIn })
 
     return { enabled: status.enabled, kind: 'ok', signedIn: status.signedIn }
@@ -998,7 +1008,19 @@ export function exitByokFromLogin() {
   patch({ byokFromLogin: false, managedError: null, mode: 'oauth', localEndpoint: false, flow: { status: 'idle' } })
 }
 
+function managedReSignInRequested(): boolean {
+  const state = $desktopOnboarding.get()
+
+  return state.requested && state.managedAvailable === true && !state.manual
+}
+
 export async function refreshOnboarding(ctx: OnboardingContext) {
+  const generation = flowGeneration
+
+  // An explicit login request survives a ready local runtime. Readiness checks
+  // credential presence, not whether the managed account can authenticate.
+  if (managedReSignInRequested()) {return false}
+
   // Manual mode (user opened the selector from a working app): never
   // auto-dismiss on runtime-ready — the whole point is to let them add /
   // switch a provider while already configured. Just ensure the provider
@@ -1010,6 +1032,8 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
   }
 
   const runtime = await checkRuntime(ctx)
+
+  if (generation !== flowGeneration || managedReSignInRequested()) {return false}
 
   if (runtime.ready) {
     completeDesktopOnboarding()
@@ -1044,6 +1068,8 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
   // falls through to it. `byokFromLogin` is that opt-in: once taken, managed
   // stops re-asserting itself for the session and the BYOK flow runs as upstream.
   const probe: ManagedProbe = state.byokFromLogin ? { kind: 'absent' } : await refreshManagedStatus()
+
+  if (generation !== flowGeneration || managedReSignInRequested()) {return false}
 
   // Only an EXPLICIT negative may send a user to the picker: no bridge at all, or
   // a bridge that says managed is off for this build. A probe that didn't answer
@@ -1104,6 +1130,8 @@ export async function refreshOnboarding(ctx: OnboardingContext) {
   }
 
   await refreshProviders()
+
+  if (generation !== flowGeneration || managedReSignInRequested()) {return false}
 
   // refreshProviders sets mode from the OAuth provider list; re-assert the
   // key-form landing for the seed-needs-key case so it isn't flipped to 'oauth'.

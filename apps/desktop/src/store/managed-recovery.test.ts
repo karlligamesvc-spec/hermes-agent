@@ -9,6 +9,8 @@ const requestManagedReSignIn = vi.fn()
 // hc-519: the global auth-state transitions the recovery drives.
 const handleRelayAuthExpired = vi.fn()
 const clearRelayAuthExpiry = vi.fn()
+const isCurrent = vi.fn(() => true)
+const captureScope = vi.fn<() => () => boolean>(() => isCurrent)
 
 vi.mock('@/hermes', () => ({ setModelAssignment: (...args: unknown[]) => setModelAssignment(...args) }))
 vi.mock('@/store/gateway', () => ({
@@ -17,6 +19,7 @@ vi.mock('@/store/gateway', () => ({
 vi.mock('@/store/notifications', () => ({ notify: (...args: unknown[]) => notify(...args) }))
 vi.mock('@/store/onboarding', () => ({ requestManagedReSignIn: (...args: unknown[]) => requestManagedReSignIn(...args) }))
 vi.mock('@/store/auth', () => ({
+  captureManagedAuthRecoveryScope: () => captureScope(),
   handleRelayAuthExpired: (...args: unknown[]) => handleRelayAuthExpired(...args),
   clearRelayAuthExpiry: (...args: unknown[]) => clearRelayAuthExpiry(...args)
 }))
@@ -64,6 +67,8 @@ describe('recoverFromManagedRelayAuthError', () => {
     requestManagedReSignIn.mockReset()
     handleRelayAuthExpired.mockReset()
     clearRelayAuthExpiry.mockReset()
+    isCurrent.mockReset().mockReturnValue(true)
+    captureScope.mockReset().mockReturnValue(isCurrent)
     registerActiveTurnResend(null)
     setSelfHeal(null)
   })
@@ -152,4 +157,63 @@ describe('recoverFromManagedRelayAuthError', () => {
     expect(clearRelayAuthExpiry).not.toHaveBeenCalled()
     expect(requestManagedReSignIn).not.toHaveBeenCalled()
   })
+  it('keeps temporary recovery failure separate from account expiry', async () => {
+    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: true, healed: false, needsSignIn: false, assignment: null }))
+
+    expect(await recoverFromManagedRelayAuthError({ sessionId: 'transient', isActive: true })).toBe(false)
+    expect(handleRelayAuthExpired).not.toHaveBeenCalled()
+    expect(requestManagedReSignIn).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it.each(['ok', 'unknown', 'unreachable'] as const)('only a confirmed healthy probe lifts an old soft expiry (%s)', async probeStatus => {
+    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus, assignment: null }))
+
+    await reconcileRelayAuthState()
+
+    expect(clearRelayAuthExpiry).toHaveBeenCalledTimes(probeStatus === 'ok' ? 1 : 0)
+    expect(handleRelayAuthExpired).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('ignores an old account reply (healed=%s)', async healed => {
+    setSelfHeal(async () => {
+      isCurrent.mockReturnValue(false)
+
+      return { ok: true, relayUnauthorized: true, healed, needsSignIn: !healed, assignment: healed ? ASSIGNMENT : null }
+    })
+
+    await recoverFromManagedRelayAuthError({ sessionId: 'old-owner', isActive: true })
+
+    expect(setModelAssignment).not.toHaveBeenCalled()
+    expect(clearRelayAuthExpiry).not.toHaveBeenCalled()
+    expect(handleRelayAuthExpired).not.toHaveBeenCalled()
+    expect(requestManagedReSignIn).not.toHaveBeenCalled()
+  })
+
+  it('does not let a pending old-owner recovery suppress the new owner at the same entry', async () => {
+    let owner = 'fixture-a'
+    captureScope.mockImplementation(() => {
+      const captured = owner
+
+      return () => owner === captured
+    })
+    let release!: () => void
+    let calls = 0
+    setSelfHeal(async () => {
+      calls++
+
+      if (calls === 1) {await new Promise<void>(resolve => { release = resolve })}
+
+      return { ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus: 'ok', assignment: null }
+    })
+    const previous = reconcileRelayAuthState()
+    owner = 'fixture-b'
+    await reconcileRelayAuthState()
+    expect(calls).toBe(2)
+    expect(clearRelayAuthExpiry).toHaveBeenCalledTimes(1)
+    release()
+    await previous
+    expect(clearRelayAuthExpiry).toHaveBeenCalledTimes(1)
+  })
+
 })

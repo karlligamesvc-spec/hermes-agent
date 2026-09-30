@@ -1,7 +1,7 @@
 import { setModelAssignment } from '@/hermes'
 import { translateNow } from '@/i18n'
 import type { GatewayEventPayload } from '@/lib/chat-messages'
-import { clearRelayAuthExpiry, handleRelayAuthExpired } from '@/store/auth'
+import { captureManagedAuthRecoveryScope, clearRelayAuthExpiry, handleRelayAuthExpired } from '@/store/auth'
 import { $gateway } from '@/store/gateway'
 import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
@@ -53,9 +53,9 @@ export function registerActiveTurnResend(fn: (() => Promise<void> | void) | null
 // Sessions with a self-heal in flight, so a duplicate error event (or a retry
 // that also fails) can't spin up a second concurrent recovery for the same turn.
 // The 401 storm itself is bounded server-side by the electron re-provision
-// cooldown (a second failure within the window resolves to needsSignIn, which
-// breaks the retry loop after exactly one attempt).
-const recovering = new Set<string>()
+// cooldown. A second failure inside that window stays a temporary recovery
+// failure; it does not prove the login token expired.
+const recovering = new Map<string, () => boolean>()
 
 export interface ManagedRelayRecoveryOutcome {
   /** True when this path owns the outcome and the caller should skip its generic error UI. */
@@ -103,17 +103,26 @@ export async function runManagedRelayRecovery(
 
   const guardKey = args.sessionId || '*'
 
-  if (recovering.has(guardKey)) {
+  if (recovering.get(guardKey)?.()) {
     return { owned: true, healed: false }
   }
 
-  recovering.add(guardKey)
+  const isCurrent = captureManagedAuthRecoveryScope()
+  recovering.set(guardKey, isCurrent)
 
   try {
     const outcome = await bridge.selfHeal()
 
-    // Relay accepted the key: this failure wasn't a managed-relay auth problem
-    // (a BYOK provider 401, say) — defer to the generic error handling.
+    if (!isCurrent()) {
+      return { owned: false, healed: false }
+    }
+
+    // Only a successful live probe proves the old soft expiry has recovered.
+    // Disabled managed mode, a missing key and an unreachable relay do not.
+    if (outcome?.probeStatus === 'ok' && !outcome.relayUnauthorized) {
+      clearRelayAuthExpiry()
+    }
+
     if (!outcome || !outcome.relayUnauthorized) {
       return { owned: false, healed: false }
     }
@@ -122,10 +131,15 @@ export async function runManagedRelayRecovery(
       // Apply the freshly minted key the same way sign-in does, then reload the
       // runtime env so the in-flight process picks it up before the retry.
       await setModelAssignment(outcome.assignment)
+
+      if (!isCurrent()) {return { owned: false, healed: false }}
+
       await $gateway
         .get()
         ?.request('reload.env')
         .catch(() => undefined)
+
+      if (!isCurrent()) {return { owned: false, healed: false }}
 
       // hc-519: lift any global 'expired' degrade — the relay accepts the fresh
       // key, so the account card / gate return to signed-in. No-op if we were
@@ -158,6 +172,12 @@ export async function runManagedRelayRecovery(
       return { owned: true, healed: true }
     }
 
+    // A cooldown, a local persistence failure or a temporary provision outage
+    // is not proof that the account expired. Keep generic errors actionable.
+    if (!outcome.needsSignIn) {
+      return { owned: false, healed: false }
+    }
+
     // Could not heal — no reusable login token, or the stored JWT is itself
     // expired. hc-519: drive the GLOBAL login state to the "登录已失效" degrade so
     // the account card stops showing "已登录" (no-op when the rollback switch is
@@ -182,7 +202,7 @@ export async function runManagedRelayRecovery(
     // generic error UI so the failure is never invisible.
     return { owned: false, healed: false }
   } finally {
-    recovering.delete(guardKey)
+    if (recovering.get(guardKey) === isCurrent) {recovering.delete(guardKey)}
   }
 }
 
