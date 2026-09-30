@@ -102,6 +102,27 @@ scheduled execution to occur without a manual trigger. Preserve its original
 failed execution record. A successful GUI run and independent read-only ledger
 verification remain separate from these offline tests.
 
+## Required CI recovery
+
+The successful finished-task deep-link fixture supplies `last_status=ok` and
+selects the **Ended** bucket, which also contains failed/unverified attempts.
+The missing-outcome fixtures continue to require an unverified result.
+
+Workflow refresh subscriptions retain their mounting realm's bound cleanup
+methods. Delayed Nanostores deactivation still clears the interval and removes
+focus, blur, visibility and channel listeners if globals change or the original
+realm loses its methods during teardown. The teardown test removes methods on
+the captured objects rather than substituting a different global window.
+
+The subprocess environment composition test now completes a real session-kernel
+cell, verifies success and a fresh process, and compares the child's reported
+environment with the actual `Popen` environment. It keeps both controlled
+same-environment classification branches, inherited path stripping, user-path
+preservation and provider-key exclusion. Each test owns and disposes its kernel.
+An obsolete stream mock could previously ignore a failed kernel response and
+leave reader threads running until the file timeout. These controls do not
+prove compatibility with a second physical Python interpreter.
+
 ## Smoke
 
 Use the canonical runner with a complete fork development environment:
@@ -112,10 +133,14 @@ scripts/run_tests.sh -j 4 tests/cron/ \
 scripts/run_tests.sh -j 4 tests/cron/test_cron_provider_snapshot_identity.py \
   tests/hermes_cli/test_web_server_cron_profiles.py \
   tests/hermes_cli/test_cron_model_impact.py -q
+scripts/run_tests.sh -j 1 --files tests/tools/test_local_env_blocklist.py -q -rs
 cd apps/desktop
 npm run test:ui -- src/app/cron src/store/cron.test.ts \
   src/store/cron-model-impact.test.ts src/store/cron-model-impact-scope.test.ts \
   src/hermes-cron-scope.test.ts src/i18n/languages.test.ts src/i18n/runtime.test.ts
+npm run test:ui -- src/app/business-workspace/api/read-revision.test.ts \
+  src/app/business-workspace/hooks/workflow-read-refresh.test.tsx \
+  src/app/business-workspace/business-workspace.test.tsx
 npm run typecheck
 ```
 
@@ -136,6 +161,11 @@ resolver tests. Treating `error` as success must break visible failure and
 notification tests. Treating absent outcome as done must break unverified Tasks
 and no-success-notification tests. Removing the sidebar or Tasks result label
 must break that surface's visible behavior assertion.
+
+Replacing each captured window/document cleanup function with a later property
+lookup must fail the same-object teardown behavior test. Retaining contaminated
+inherited Python paths or leaking a fake provider key must fail the real
+session-kernel environment test.
 
 These smokes can catch provider identity loss and false UI success. They do
 not prove external provider availability, an installed-runtime update, a real

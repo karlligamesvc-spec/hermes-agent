@@ -2665,7 +2665,7 @@ describe('hc-685 business workspace identity', () => {
   it('selects the exact finished task named by a real-work deep link', async () => {
     $cronJobs.set([
       { enabled: true, id: 'running-job', name: 'Running scan', schedule: { kind: 'once' }, state: 'running' },
-      { enabled: false, id: 'done-job', name: 'Finished report', schedule: { kind: 'once' }, state: 'completed' }
+      { enabled: false, id: 'done-job', last_status: 'ok', name: 'Finished report', schedule: { kind: 'once' }, state: 'completed' }
     ])
 
     const { container } = render(
@@ -2676,7 +2676,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Done/ }).getAttribute('data-active')).toBe('true'))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Ended/ }).getAttribute('data-active')).toBe('true'))
     expect(container.querySelector('[data-task-row="done-job"]')?.className).toContain('bg-accent')
     expect(screen.getAllByText('Finished report').length).toBeGreaterThan(1)
   })
