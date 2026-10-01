@@ -1,5 +1,6 @@
 import { atom } from 'nanostores'
 
+import { setApiRequestManagedOwner } from '@/api/client'
 import type { DesktopAuthGateEvent, DesktopManagedStatus } from '@/global'
 
 // The desktop's login gate is the ApexNodes managed-LLM account (Desktop V0.2,
@@ -118,7 +119,12 @@ export const $authState = atom<DesktopAuthState>({
   status: readCachedSignedIn() ? 'signed-in' : 'checking'
 })
 
-const patch = (update: Partial<DesktopAuthState>) => $authState.set({ ...$authState.get(), ...update })
+const patch = (update: Partial<DesktopAuthState>) => {
+  const next = { ...$authState.get(), ...update }
+  $authState.set(next)
+
+  if ('accountId' in update) {setApiRequestManagedOwner(next.enabled === false ? undefined : next.accountId)}
+}
 
 function accountFromStatus(status: DesktopManagedStatus): AuthAccount {
   return {
@@ -373,6 +379,8 @@ export function returnToManagedLogin() {
 // fail-closed instead of merely looking signed out while a key remains active.
 export async function signOutAccount(): Promise<boolean> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
+  const generation = authGeneration
+  const owner = $authState.get().accountId
 
   try {
     const result = await bridge?.signOut()
@@ -383,6 +391,8 @@ export async function signOutAccount(): Promise<boolean> {
   } catch {
     return false
   }
+
+  if (generation !== authGeneration || owner !== $authState.get().accountId) {return false}
 
   invalidateAuthRefresh()
   writeCachedSignedIn(false)

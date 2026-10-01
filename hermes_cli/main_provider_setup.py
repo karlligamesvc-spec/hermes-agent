@@ -469,44 +469,74 @@ def _custom_provider_base_url_config_value(provider_info, resolved_base_url=""):
     return str(provider_info.get("base_url_ref", "") or "").strip() or str(resolved_base_url or "").strip()
 
 
-def _save_custom_provider(base_url, api_key="", model="", context_length=None, name=None, api_mode=None,
-                          key_env=""):
-    """Save a custom endpoint to ``custom_providers`` in config.yaml, deduplicated by base_url (an
-    existing entry gets model / context_length / api_mode updated). *key_env* set means the caller
-    already wrote the key to ``.env``; the entry references it instead of inlining the secret.
+def _upsert_custom_provider(cfg, base_url, api_key="", model="", context_length=None, name=None, api_mode=None,
+                            key_env="", replace_api_key=False):
+    """Build one catalog identity in a candidate config without writing it.
 
-    See #69449.
+    Only ``replace_api_key`` permits an explicit nonempty key rotation. When
+    several named entries share a URL, rotation selects the supplied name, never
+    the first entry. CLI re-selection keeps its existing key_env/${ENV} pointers.
     """
-    from hermes_cli.config import load_config, save_config
-    cfg = load_config()
     providers = cfg.get("custom_providers") or []
     if not isinstance(providers, list):
         providers = []
-    for entry in providers:
-        if not (isinstance(entry, dict) and entry.get("base_url", "").rstrip("/") == base_url.rstrip("/")):
-            continue
+    matching = [(entry, "") for entry in providers if isinstance(entry, dict)
+                and str(entry.get("base_url", "")).rstrip("/") == base_url.rstrip("/")]
+    keyed = cfg.get("providers")
+    if replace_api_key and isinstance(keyed, dict):
+        from hermes_cli.providers import resolve_user_provider
+        # The actual keyed consumer prefers api, then url, then base_url. The
+        # legacy compatible-list normalizer has a different order and cannot
+        # authorize replacing the credentials of this canonical identity.
+        for key, entry in keyed.items():
+            if not isinstance(entry, dict):
+                continue
+            provider = resolve_user_provider(str(key), {str(key): entry})
+            if provider and str(provider.base_url or "").rstrip("/") == base_url.rstrip("/"):
+                matching.append((entry, str(key)))
+    if replace_api_key and len(matching) > 1:
+        from hermes_cli.providers import custom_provider_slug
+        requested_identity = custom_provider_slug(name or _auto_provider_name(base_url))
+        matching = [(entry, key) for entry, key in matching if custom_provider_slug(
+            str(entry.get("name") or ""), key or str(entry.get("provider_key") or "")) == requested_identity]
+        if len(matching) > 1:
+            raise ValueError("Custom endpoint identity is ambiguous")
+    for entry, provider_key in matching:
         changed = False
-        if model and entry.get("model") != model:
-            entry["model"] = model
+        model_field = "default_model" if provider_key else "model"
+        if model and entry.get(model_field) != model:
+            entry[model_field] = model
+            changed = True
+        if provider_key and model and "model" in entry and entry["model"] != model:
+            entry["model"] = model  # keep a pre-existing alias consistent without adding one
             changed = True
         if model and context_length:
             _ensure_dict_section(entry, "models")[model] = {"context_length": context_length}
             changed = True
         if api_mode:
-            if entry.get("api_mode") != api_mode:
-                entry["api_mode"] = api_mode
+            mode_field = "transport" if provider_key else "api_mode"
+            if entry.get(mode_field) != api_mode:
+                entry[mode_field] = api_mode
                 changed = True
-        elif "api_mode" in entry:
+        elif not replace_api_key and "api_mode" in entry:
             entry.pop("api_mode", None)
             changed = True
         if key_env and (entry.get("key_env") != key_env or entry.get("api_key")):
             entry["key_env"] = key_env
             entry.pop("api_key", None)
             changed = True
-        if changed:
+        elif replace_api_key and not key_env and api_key and (entry.get("api_key") != api_key or any(
+                entry.get(field) for field in ("key_env", "api_key_env", "key_cmd"))):
+            entry["api_key"] = api_key
+            for field in ("key_env", "api_key_env", "key_cmd"):
+                entry.pop(field, None)
+            changed = True
+        if not provider_key:
             cfg["custom_providers"] = providers
-            save_config(cfg)
-        return  # already saved, updated if needed
+        saved_identity = {**entry, "provider_key": provider_key} if provider_key else entry
+        if replace_api_key:
+            _assert_custom_provider_identity(cfg, saved_identity)
+        return saved_identity, changed, False
 
     name = name or _auto_provider_name(base_url)
     entry = {"name": name, "base_url": base_url}
@@ -520,11 +550,46 @@ def _save_custom_provider(base_url, api_key="", model="", context_length=None, n
         entry["api_mode"] = api_mode
     if model and context_length:
         entry["models"] = {model: {"context_length": context_length}}
-
     providers.append(entry)
     cfg["custom_providers"] = providers
-    save_config(cfg)
-    print(f'  💾 Saved to custom providers as "{name}" (edit in config.yaml)')
+    if replace_api_key:
+        _assert_custom_provider_identity(cfg, entry)
+    return entry, True, True
+
+
+def _assert_custom_provider_identity(cfg, selected):
+    """Reject a rotation whose durable slug could resolve a different endpoint.
+
+    Inspect both raw schemas without the compatible-list deduplication: the
+    actual resolver gives keyed providers precedence over legacy list entries.
+    """
+    from hermes_cli.providers import custom_provider_aliases, custom_provider_slug
+    selected_slug = custom_provider_slug(str(selected.get("name") or ""), str(selected.get("provider_key") or ""))
+    identities = [(entry, str(entry.get("provider_key") or "")) for entry in cfg.get("custom_providers", [])
+                  if isinstance(entry, dict)]
+    keyed = cfg.get("providers")
+    if isinstance(keyed, dict):
+        identities += [(entry, str(key)) for key, entry in keyed.items() if isinstance(entry, dict)]
+    if sum(selected_slug in custom_provider_aliases(str(entry.get("name") or key), key)
+           for entry, key in identities) != 1:
+        raise ValueError("Custom endpoint identity is ambiguous")
+
+
+def _save_custom_provider(base_url, api_key="", model="", context_length=None, name=None, api_mode=None,
+                          key_env="", replace_api_key=False):
+    """Save a custom endpoint, retaining legacy credentials unless replacement is explicit.
+
+    ``key_env`` references an already saved .env key; ``replace_api_key`` opts in
+    to rotating a nonempty key. Omitted/empty keys never erase an existing one.
+    """
+    from hermes_cli.config import load_config, save_config
+    cfg = load_config()
+    entry, changed, created = _upsert_custom_provider(
+        cfg, base_url, api_key, model, context_length, name, api_mode, key_env, replace_api_key)
+    if changed:
+        save_config(cfg)
+    if created:
+        print(f'  💾 Saved to custom providers as "{entry["name"]}" (edit in config.yaml)')
 
 
 def _remove_custom_provider(config):

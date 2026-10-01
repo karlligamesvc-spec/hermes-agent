@@ -269,7 +269,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     // On-demand relay-key self-heal after a chat turn hit a relay auth error
     // (HTTP 401/403): re-provision + report whether it healed or the user must
     // sign in again. See electron/main.cjs hermes:managed:selfHeal.
-    selfHeal: () => ipcRenderer.invoke('hermes:managed:selfHeal')
+    selfHeal: payload => ipcRenderer.invoke('hermes:managed:selfHeal', payload),
+    cancelPending: () => ipcRenderer.invoke('hermes:managed:cancelPending')
   },
   workflowDomain: {
     access: () => ipcRenderer.invoke('hermes:workflowDomain:access'),

@@ -1988,8 +1988,11 @@ def require_readable_config_before_write(config_path: Optional[Path] = None) -> 
 
 def atomic_config_write(config_path: Path, data: Any, **kwargs: Any) -> None:
     """Fail-closed atomic write for ``config.yaml`` (``require_readable_config_before_write`` first)."""
-    require_readable_config_before_write(config_path)
-    atomic_yaml_write(config_path, data, **kwargs)
+    from hermes_cli.web_model_mutations import model_mutation_commit, model_mutation_written
+    with model_mutation_commit(config_path.parent):
+        require_readable_config_before_write(config_path)
+        atomic_yaml_write(config_path, data, **kwargs)
+        model_mutation_written()
 
 
 def load_config() -> Dict[str, Any]:
@@ -2020,10 +2023,10 @@ def write_platform_config_field(
     """Persist one scalar field under ``platforms.<platform_key>``.
     ``raw=True`` (CLI setup flows) edits only the user's raw file; dashboard routes use the
     default loaded-config path to keep their profile-scoped ``load_config`` behavior."""
-    config = read_raw_config() if raw else load_config()
-    platforms = _ensure_dict(config, "platforms")
-    _ensure_dict(platforms, platform_key)[field_key] = value
-    save_config(config)
+    def edit(config):
+        platforms = _ensure_dict(config, "platforms")
+        _ensure_dict(platforms, platform_key)[field_key] = value
+    mutate_config(edit, raw=raw)
 
 
 # ``terminal.<key>`` -> env var read by tools.terminal_tool. Every key maps to ``TERMINAL_<KEY>``
@@ -2326,6 +2329,22 @@ def _commented_sections_for_save(normalized: Dict[str, Any]) -> Optional[str]:
     return "".join(parts) or None
 
 
+def mutate_config(callback, *, raw: bool = False):
+    """Apply one prepared field edit to the latest config and save atomically.
+
+    The callback receives the current owning profile's config and returns its
+    own result. It only edits owned fields: no network, discovery, CLI work or
+    separate save belongs inside. Lock order is existing Desktop journal, then
+    config lock; an ordinary CLI profile does not create a Desktop journal.
+    """
+    from hermes_cli.web_model_mutations import config_mutation_commit
+    with config_mutation_commit(), _CONFIG_LOCK:
+        config = read_raw_config() if raw else load_config()
+        result = callback(config)
+        save_config(config)
+        return result
+
+
 def save_config(
     config: Dict[str, Any], *, strip_defaults: bool = True,
     preserve_keys: Optional[Set[Tuple[str, ...]]] = None, merge_existing: bool = False):
@@ -2334,7 +2353,8 @@ def save_config(
     raw config before normalisation), so config.yaml is never contaminated with defaults that
     would hide future default changes. ``merge_existing`` deep-merges the on-disk raw config
     under *config* so partial callers cannot drop sections they omitted."""
-    with _CONFIG_LOCK:
+    from hermes_cli.web_model_mutations import model_mutation_commit, model_mutation_written
+    with model_mutation_commit(), _CONFIG_LOCK:
         if is_managed():
             managed_error("save configuration")
             return
@@ -2366,6 +2386,7 @@ def save_config(
         _secure_file(config_path)
         _RAW_CONFIG_CACHE.pop(str(config_path), None)
         _LAST_EXPANDED_CONFIG_BY_PATH[str(config_path)] = copy.deepcopy(current_normalized)
+        model_mutation_written()
 
 
 # load_env() memo keyed on (path, mtime, size). Editing .env bumps mtime -> rebuild;
@@ -2469,6 +2490,8 @@ def _write_env_lines(env_path: Path, lines: list, *, preserve_mode: bool) -> Non
             pass
     else:
         _secure_file(env_path)
+    from hermes_cli.web_model_mutations import model_mutation_written
+    model_mutation_written()
 
 
 def _check_non_ascii_credential(key: str, value: str) -> str:

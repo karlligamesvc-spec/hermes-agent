@@ -34,7 +34,7 @@ def _providers_for_env_var(env_var: str) -> List[str]:
 
 
 def _for_each_provider(providers: List[str], import_path: str, *args: Any) -> None:
-    """Best-effort ``module.fn(provider, *args)`` for every provider; failures never propagate."""
+    """Best-effort legacy maintenance; tagged writes require every store to settle."""
     try:
         import importlib
 
@@ -43,7 +43,9 @@ def _for_each_provider(providers: List[str], import_path: str, *args: Any) -> No
         for provider in providers:
             fn(provider, *args)
     except Exception:
-        pass
+        from hermes_cli.web_model_mutations import model_mutation_active
+        if model_mutation_active():
+            raise
 
 
 def _prune_env_pool_entries(env_var: str) -> List[str]:
@@ -75,6 +77,8 @@ def _prune_env_pool_entries(env_var: str) -> List[str]:
                 del pool[provider]
         if pruned:
             _save_auth_store(auth_store)
+            from hermes_cli.web_model_mutations import model_mutation_written
+            model_mutation_written()
     return pruned
 
 
@@ -97,6 +101,9 @@ def _scrub_config_yaml_mirrors(old_value: str, new_value: str | None) -> List[st
     try:
         user_config = read_user_config_raw(config_path)
     except Exception:
+        from hermes_cli.web_model_mutations import model_mutation_active
+        if model_mutation_active():
+            raise
         return []
     if not user_config:
         return []
@@ -139,6 +146,8 @@ def _scrub_config_yaml_mirrors(old_value: str, new_value: str | None) -> List[st
     if touched:
         require_readable_config_before_write(config_path)
         atomic_yaml_write(config_path, user_config, sort_keys=False)
+        from hermes_cli.web_model_mutations import model_mutation_written
+        model_mutation_written()
     return touched
 
 
@@ -163,7 +172,7 @@ def purge_env_credential_references(
     return {"pool_pruned": pruned, "providers": providers}
 
 
-def save_provider_env_credential(env_var: str, value: str) -> Dict[str, Any]:
+def save_provider_env_credential(env_var: str, value: str, *, prepared_pool=None) -> Dict[str, Any]:
     """Save/update a credential in ``.env`` and reconcile every mirror.
 
     config.yaml mirrors of the PREVIOUS value are updated so a stale higher-precedence copy cannot
@@ -178,6 +187,11 @@ def save_provider_env_credential(env_var: str, value: str) -> Dict[str, Any]:
     ``auth.json``'s mtime stayed unchanged, so an OpenCode Go (or any other env-backed provider) request
     kept 401'ing until the user ran ``hermes auth add <provider> --type api-key`` separately. This makes the
     Desktop save's effect on disk match what ``hermes auth add`` does.
+
+    Tagged Desktop writes instead supply ``prepared_pool``: external discovery
+    has already finished outside the owner transaction. Only that explicit env
+    source is merged into the latest auth.json under the actual write guard;
+    persistence errors propagate so a partial multi-file write cannot settle.
     """
     from hermes_cli.config import load_env, save_env_value
 
@@ -194,7 +208,11 @@ def save_provider_env_credential(env_var: str, value: str) -> Dict[str, Any]:
 
     # ``load_pool`` is idempotent and additive-only for env sources, so re-running is safe even when
     # the pool already had this entry. Best-effort: never masks the successful .env write above.
-    _for_each_provider(providers, "agent.credential_pool.load_pool")
+    if prepared_pool is None:
+        _for_each_provider(providers, "agent.credential_pool.load_pool")
+    else:
+        from agent.credential_pool import apply_env_credential_pool_entries
+        apply_env_credential_pool_entries(prepared_pool)
 
     return {"ok": True, "key": env_var, "config_updates": config_updates}
 

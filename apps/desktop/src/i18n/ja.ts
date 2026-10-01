@@ -4212,7 +4212,11 @@ export const ja = defineLocale({
       failed: 'ログインに失敗しました。もう一度お試しください。',
       accountDisabled: 'アカウントが利用できません。再度ログインするかサポートにお問い合わせください。',
       sessionExpired: 'セッションの有効期限が切れました。再度ログインしてください。',
-      useOwnKey: '自分の API キーを使う'
+      useOwnKey: '自分の API キーを使う',
+      runtimeUpdateRequired: '現在の接続先の AI エンジンを更新してから、再度ログインしてください。',
+      runtimeUnavailable: 'モデル設定が未完了です。ランタイム接続を確認して、再度ログインしてください。',
+      provisionUnavailable: 'アカウント接続を確認できませんでした。再度ログインしてお試しください。',
+      superseded: '新しいアカウントまたはモデルの操作に切り替わりました。再度お試しください。'
     },
     account: {
       fallbackName: 'アカウント',

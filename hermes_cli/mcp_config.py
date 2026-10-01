@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from hermes_cli.config import (
     cfg_get,
     load_config,
-    save_config,
+    mutate_config,
     get_env_value,
     save_env_value,
     get_hermes_home,  # noqa: F401 — used by test mocks
@@ -229,7 +229,8 @@ def _tool_filters(cfg: dict) -> Tuple[Optional[list], Optional[list]]:
         exclude if isinstance(exclude, list) else None)
 
 
-def _save_mcp_server(name: str, server_config: dict) -> bool:
+def _save_mcp_server(name: str, server_config: dict, *, require_new: bool = False,
+                     bearer_token: Optional[str] = None) -> bool:
     """Add or update a server entry in config.yaml.
 
     Returns False when a high-signal exfiltration-shaped stdio command is rejected (shell+egress
@@ -237,9 +238,18 @@ def _save_mcp_server(name: str, server_config: dict) -> bool:
     """
     if not _validate_or_warn(name, server_config):
         return False
-    config = load_config()
-    config.setdefault("mcp_servers", {})[name] = server_config
-    save_config(config)
+    def edit(config):
+        servers = config.get("mcp_servers")
+        if not isinstance(servers, dict):
+            servers = config["mcp_servers"] = {}
+        if require_new and name in servers:
+            raise FileExistsError(f"Server '{name}' already exists")
+        # This record's local secret commit follows admission, so a duplicate
+        # cannot replace the winning server's stable environment reference.
+        if bearer_token is not None:
+            server_config["headers"] = _save_bearer_auth_token(name, bearer_token)
+        servers[name] = server_config
+    mutate_config(edit)
     return True
 
 
@@ -267,15 +277,21 @@ def _lookup_server(
 
 def _remove_mcp_server(name: str) -> bool:
     """Remove a server from config.yaml.  Returns True if it existed."""
-    config = load_config()
-    servers = config.get("mcp_servers") or {}
-    if name not in servers:
+    class MissingServer(Exception):
+        pass
+
+    def edit(config):
+        servers = config.get("mcp_servers") or {}
+        if name not in servers:
+            raise MissingServer
+        del servers[name]
+        if not servers:
+            config.pop("mcp_servers", None)
+        return True
+    try:
+        return mutate_config(edit)
+    except MissingServer:
         return False
-    del servers[name]
-    if not servers:
-        config.pop("mcp_servers", None)
-    save_config(config)
-    return True
 
 
 def _replace_mcp_servers(servers: Dict[str, dict]) -> Tuple[bool, List[str]]:
@@ -292,12 +308,12 @@ def _replace_mcp_servers(servers: Dict[str, dict]) -> Tuple[bool, List[str]]:
         issues.extend(validate_mcp_server_entry(name, cfg))
     if issues:
         return False, issues
-    config = load_config()
-    if servers:
-        config["mcp_servers"] = dict(servers)
-    else:
-        config.pop("mcp_servers", None)
-    save_config(config)
+    def edit(config):
+        if servers:
+            config["mcp_servers"] = dict(servers)
+        else:
+            config.pop("mcp_servers", None)
+    mutate_config(edit)
     return True, []
 
 
@@ -989,27 +1005,26 @@ def cmd_mcp_configure(args):
         _info("No changes made.")
         return
 
-    config = load_config()
-    server_entry = cfg_get(config, "mcp_servers", name, default={})
     exclude_mode = bool(exclude) and include is None
+    new_exclude = _rebuild_exclude_list(name, exclude, tool_names, chosen, matches_name_filter) if exclude_mode else []
 
-    if len(chosen) == total and not exclude_mode:
-        server_entry.pop("tools", None)  # all selected → register all
-    elif exclude_mode:
-        new_exclude = _rebuild_exclude_list(name, exclude, tool_names, chosen, matches_name_filter)
-        if not new_exclude:
-            server_entry.pop("tools", None)
+    def edit(config):
+        server_entry = cfg_get(config, "mcp_servers", name, default={})
+        if len(chosen) == total and not exclude_mode:
+            server_entry.pop("tools", None)  # all selected → register all
+        elif exclude_mode:
+            if not new_exclude:
+                server_entry.pop("tools", None)
+            else:
+                server_entry.setdefault("tools", {})
+                server_entry["tools"]["exclude"] = new_exclude
+                server_entry["tools"].pop("include", None)
         else:
             server_entry.setdefault("tools", {})
-            server_entry["tools"]["exclude"] = new_exclude
-            server_entry["tools"].pop("include", None)
-    else:
-        server_entry.setdefault("tools", {})
-        server_entry["tools"]["include"] = [tool_names[i] for i in sorted(chosen)]
-        server_entry["tools"].pop("exclude", None)
-
-    config.setdefault("mcp_servers", {})[name] = server_entry
-    save_config(config)
+            server_entry["tools"]["include"] = [tool_names[i] for i in sorted(chosen)]
+            server_entry["tools"].pop("exclude", None)
+        config.setdefault("mcp_servers", {})[name] = server_entry
+    mutate_config(edit)
     _success(f"Updated config: {len(chosen)}/{total} tools enabled")
     _info("Start a new session for changes to take effect.")
 

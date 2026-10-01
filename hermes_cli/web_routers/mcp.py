@@ -22,8 +22,8 @@ from hermes_cli.web_deps import LateState, late
 from hermes_cli.web_server_mcp import _mcp_oauth_flows, _mcp_server_summary, _normalize_mcp_server_create
 from hermes_cli.web_models import MCPCatalogInstall, MCPEnabledToggle, MCPServerCreate, MCPServersReplace
 from hermes_cli.web_routers._common import (
-    _profile_cli_args, _profile_scope, _spawn_hermes_action, config_write_scope, http_failure,
-    log as _log, scoped_to_thread,
+    _profile_cli_args, _profile_scope, _spawn_hermes_action, http_failure,
+    log as _log,
 )
 
 router = APIRouter()
@@ -32,7 +32,7 @@ _config_profile_scope = late("_config_profile_scope", "hermes_cli.web_server_pro
 _require_token = late("_require_token")
 _run_dashboard_mcp_oauth = late("_run_dashboard_mcp_oauth", "hermes_cli.web_server_mcp")
 load_config = late("load_config", "hermes_cli.config")
-save_config = late("save_config", "hermes_cli.config")
+mutate_config = late("mutate_config", "hermes_cli.config")
 save_env_value = late("save_env_value", "hermes_cli.config")
 
 _mcp_oauth_flows_lock = threading.Lock()
@@ -117,7 +117,7 @@ async def list_mcp_servers(profile: Optional[str] = None):
 
 @router.post("/api/mcp/servers")
 async def add_mcp_server(body: MCPServerCreate, profile: Optional[str] = None):
-    from hermes_cli.mcp_config import _get_mcp_servers, _save_bearer_auth_token, _save_mcp_server
+    from hermes_cli.mcp_config import _save_mcp_server
 
     try:
         name, server_config, bearer_token = _normalize_mcp_server_create(body)
@@ -125,18 +125,13 @@ async def add_mcp_server(body: MCPServerCreate, profile: Optional[str] = None):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     def _run():
-        # _save_mcp_server does its own load→mutate→save; the duplicate-name
-        # check sits under the same lock span so a concurrent add can't slip
-        # between check and save.
-        with config_write_scope(body.profile or profile):
-            if name in _get_mcp_servers():
-                raise HTTPException(status_code=409, detail=f"Server '{name}' already exists")
-            if bearer_token is not None:
-                server_config["headers"] = _save_bearer_auth_token(name, bearer_token)
-            if not _save_mcp_server(name, server_config):
-                raise HTTPException(
-                    status_code=400, detail=f"Server '{name}' rejected: suspicious command/args configuration",
-                )
+        with _config_profile_scope(body.profile or profile):
+            try:
+                saved = _save_mcp_server(name, server_config, require_new=True, bearer_token=bearer_token)
+            except FileExistsError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if not saved:
+                raise HTTPException(status_code=400, detail=f"Server '{name}' rejected: suspicious command/args configuration")
 
     try:
         await asyncio.to_thread(_run)
@@ -156,7 +151,7 @@ async def replace_mcp_servers(body: MCPServersReplace, profile: Optional[str] = 
     from hermes_cli.mcp_config import _replace_mcp_servers
 
     def _run():
-        with config_write_scope(body.profile or profile):
+        with _config_profile_scope(body.profile or profile):
             return _replace_mcp_servers(body.servers)
 
     ok, issues = await asyncio.to_thread(_run)
@@ -170,7 +165,7 @@ async def remove_mcp_server(name: str, profile: Optional[str] = None):
     from hermes_cli.mcp_config import _remove_mcp_server
 
     def _run():
-        with config_write_scope(profile):
+        with _config_profile_scope(profile):
             return _remove_mcp_server(name)
 
     if not await asyncio.to_thread(_run):
@@ -338,15 +333,15 @@ async def set_mcp_server_enabled(name: str, body: MCPEnabledToggle, profile: Opt
     """Toggle ``enabled`` (takes effect on next session/gateway); disabled
     servers stay in config so they can be re-enabled without re-entry."""
     def _run():
-        with config_write_scope(body.profile or profile):
-            cfg = load_config()
-            servers = cfg.get("mcp_servers")
-            if not isinstance(servers, dict) or name not in servers:
-                raise HTTPException(status_code=404, detail=f"Server '{name}' not found")
-            if not isinstance(servers[name], dict):
-                raise HTTPException(status_code=400, detail="Malformed server config")
-            servers[name]["enabled"] = bool(body.enabled)
-            save_config(cfg)
+        with _config_profile_scope(body.profile or profile):
+            def edit(cfg):
+                servers = cfg.get("mcp_servers")
+                if not isinstance(servers, dict) or name not in servers:
+                    raise HTTPException(status_code=404, detail=f"Server '{name}' not found")
+                if not isinstance(servers[name], dict):
+                    raise HTTPException(status_code=400, detail="Malformed server config")
+                servers[name]["enabled"] = bool(body.enabled)
+            mutate_config(edit)
         return {"ok": True, "name": name, "enabled": bool(body.enabled)}
 
     return await asyncio.to_thread(_run)
@@ -451,7 +446,7 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
     effective_profile = body.profile or profile
     if body.env:
         def _write_env():
-            with _profile_scope(effective_profile):
+            with _config_profile_scope(effective_profile):
                 for k, v in body.env.items():
                     if v:
                         save_env_value(k, v)
@@ -473,7 +468,8 @@ async def install_mcp_catalog_entry(body: MCPCatalogInstall, profile: Optional[s
     # No git step — install synchronously; install_entry goes through the
     # call-time config/env resolvers so the profile scope covers it.
     try:
-        await scoped_to_thread(effective_profile, lambda: mcp_catalog.install_entry(entry, enable=body.enable))
+        with _config_profile_scope(effective_profile):
+            await asyncio.to_thread(mcp_catalog.install_entry, entry, enable=body.enable)
     except HTTPException:
         raise
     except Exception as exc:

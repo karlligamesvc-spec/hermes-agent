@@ -63,6 +63,8 @@ interface YamlField {
 export interface YamlMap {
   /** '' for the document root, else e.g. `model`, `custom_providers[0]`, `providers.apex`. */
   path: string
+  /** Structural parent, independent of punctuation in the literal YAML key. */
+  parentPath?: string
   /** Column at which this map's keys are written. */
   indent: number
   fields: Record<string, YamlField>
@@ -107,6 +109,7 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
   interface Scope {
     kind: 'map' | 'seq' | 'pending'
     path: string
+    parentPath?: string
     /** Column of this container's entries; -1 while still unresolved. */
     indent: number
     /** Indent of the `key:` line that opened a pending container. */
@@ -158,7 +161,7 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
         } else {
           top.kind = 'map'
           top.indent = markerIndent
-          top.map = { path: top.path, indent: markerIndent, fields: {}, lastLine: i }
+          top.map = { path: top.path, parentPath: top.parentPath, indent: markerIndent, fields: {}, lastLine: i }
           maps.push(top.map)
         }
 
@@ -190,10 +193,11 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
       top.count += 1
 
       // A scalar item (`- copilot`) holds no fields — nothing to address.
-      if (!/^[A-Za-z0-9_.$-]+:(\s|$)/.test(rest)) {continue}
+      if (!/^("(?:\\.|[^"])*"|'(?:''|[^'])*'|[\p{L}\p{N}\p{M}_.$:-]+(?:[ \t]+[\p{L}\p{N}\p{M}_.$:-]+)*):(\s|$)/u.test(rest)) {continue}
 
       const itemMap: YamlMap = {
         path: `${top.path}[${index}]`,
+        parentPath: top.path,
         indent: contentIndent,
         fields: {},
         lastLine: i
@@ -214,12 +218,12 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
 
     if (scope.kind !== 'map' || !scope.map) {continue}
 
-    const entry = line.slice(contentIndent).match(/^([A-Za-z0-9_.$-]+):\s*(.*)$/)
+    const entry = line.slice(contentIndent).match(/^("(?:\\.|[^"])*"|'(?:''|[^'])*'|[\p{L}\p{N}\p{M}_.$:-]+(?:[ \t]+[\p{L}\p{N}\p{M}_.$:-]+)*):(?:[ \t]+(.*)|$)/u)
 
     if (!entry) {continue}
 
-    const name = entry[1]
-    const rawValue = entry[2].trim()
+    const name = unquote(entry[1])
+    const rawValue = (entry[2] || '').trim()
     scope.map.fields[name] = { line: i, value: unquote(rawValue) }
     scope.map.lastLine = i
 
@@ -234,6 +238,7 @@ export function parseYamlMaps(raw: string): { lines: string[]; maps: YamlMap[] }
       stack.push({
         kind: 'pending',
         path: keyOf(scope.path, name),
+        parentPath: scope.path,
         indent: -1,
         openerIndent: contentIndent,
         map: null,
@@ -252,9 +257,13 @@ const trimSlashes = (value: string) => String(value ?? '').trim().replace(/\/+$/
 const hostOf = (url: string) =>
   (String(url ?? '').match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i) || ['', ''])[1].toLowerCase()
 
-/** The URL field of an endpoint map: `base_url` (legacy list) or `api` (v12 dict). */
+/** Match the actual consumer: keyed providers prefer api, then url, then base_url. */
 function endpointUrl(map: YamlMap): string {
-  return map.fields.base_url?.value ?? map.fields.api?.value ?? ''
+  if (map.parentPath === 'providers') {
+    return map.fields.api?.value || map.fields.url?.value || map.fields.base_url?.value || ''
+  }
+
+  return map.fields.base_url?.value ?? ''
 }
 
 /**
@@ -339,7 +348,7 @@ export const MANAGED_KEY_ANCHORS: ManagedKeyAnchorKind[] = [
   {
     id: 'providers',
     why: "providers.<slug>.api_key — the v12 dict shape hermes_cli/config.py migrates custom_providers INTO (and then deletes the list). Registered before it is observed in the wild precisely because the previous two rounds of this bug were 'the exit we hadn't looked at yet'.",
-    matches: (map, baseUrl) => /^providers\.[^.[\]]+$/.test(map.path) && pointsAtRelay(map, baseUrl)
+    matches: (map, baseUrl) => map.parentPath === 'providers' && pointsAtRelay(map, baseUrl)
   }
 ]
 
@@ -382,10 +391,13 @@ export function locateManagedKeyAnchors(raw: string, baseUrl: string): LocatedAn
 
     if (!kind) {continue}
     const field = map.fields.api_key
+
     // See LocatedAnchor.insertAfter: anchor the insertion to the scalar this
     // map was IDENTIFIED by, so a nested block elsewhere in the map cannot
     // swallow the new line.
-    const identity = map.fields.base_url ?? map.fields.api ?? map.fields.name
+    const identity = map.parentPath === 'providers'
+      ? [map.fields.api, map.fields.url, map.fields.base_url].find(field => field?.value) ?? map.fields.name
+      : map.fields.base_url ?? map.fields.name
 
     found.push({
       kind: kind.id,
@@ -523,7 +535,7 @@ export function syncManagedCatalogDiscoveryYaml(raw: string, baseUrl: string, ke
       return (map.fields.provider?.value ?? '').toLowerCase() === 'custom'
     }
 
-    return /^custom_providers\[\d+\]$/.test(map.path) || /^providers\.[^.[\]]+$/.test(map.path)
+    return /^custom_providers\[\d+\]$/.test(map.path) || map.parentPath === 'providers'
   })
 
   if (targets.length === 0) {return idle}

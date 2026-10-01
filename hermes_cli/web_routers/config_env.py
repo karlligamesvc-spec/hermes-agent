@@ -13,6 +13,7 @@ import urllib.parse
 from fastapi import APIRouter
 from hermes_cli.web_routers._common import http_failure, scoped_to_thread
 from hermes_cli.web_deps import LateState, late
+from hermes_cli.web_model_mutations import model_mutation_ack, model_mutation_commit
 from hermes_cli.web_server_config import (
     _apply_main_model_assignment, _denormalize_config_from_web, _normalize_config_for_web, _schema_with_dynamic_provider_options,
     _validated_main_model_selection,
@@ -116,14 +117,14 @@ async def update_config(
 ):
     def _run():
         approvals_mode_changed = False
-        with _profile_scope(body.profile or profile):
+        with _config_profile_scope(body.profile or profile):
+            incoming = _denormalize_config_from_web(body.config)
             # The dashboard form is schema-driven; root keys absent from the
             # schema (``custom_providers``, ``agent.personalities``, ...) are not
             # in the PUT body, so deep-merge incoming over disk rather than
             # full-replace — the frontend can only overwrite what it sends.
-            with _CONFIG_MUTATION_LOCK:
+            with model_mutation_commit(), _CONFIG_MUTATION_LOCK:
                 existing = read_raw_config()
-                incoming = _denormalize_config_from_web(body.config)
                 merged = _deep_merge(existing, incoming)
                 # Compare normalized approvals.mode across the in-memory
                 # documents, not config blocks and not cache re-reads: the page
@@ -144,7 +145,7 @@ async def update_config(
         # different HERMES_HOME than this process's gateway sessions.
         if approvals_mode_changed and not _is_other_profile(body.profile or profile):
             _broadcast_gateway_session_info()
-        return {"ok": True}
+        return {"ok": True, **model_mutation_ack()}
 
     with http_failure("PUT /api/config failed", 500, detail="Internal server error"):
         return await asyncio.to_thread(_run)
@@ -288,12 +289,26 @@ async def set_env_var(body: EnvVarUpdate, profile: Optional[str] = None):
     # mirror still holding the previous value of this var (model.api_key /
     # auxiliary.*.api_key / custom_providers[*]), so a rotation can't leave a
     # stale higher-precedence copy that keeps authenticating with the old key.
-    with _env_write_errors("PUT /api/env failed", http_passthrough=False):
+    from hermes_cli.web_model_mutations import model_mutation_active
+    with _env_write_errors("PUT /api/env failed", http_passthrough=model_mutation_active()):
         from hermes_cli.credential_lifecycle import save_provider_env_credential
 
-        return await scoped_to_thread(
-            body.profile or profile, lambda: save_provider_env_credential(body.key, body.value)
-        )
+        def _write():
+            with _config_profile_scope(body.profile or profile):
+                prepared = None
+                value = body.value
+                if model_mutation_active():
+                    from agent.credential_pool import prepare_env_credential_pool_entries
+                    from hermes_cli.config import _check_non_ascii_credential, validate_env_var_name_for_write
+                    from hermes_cli.credential_lifecycle import _providers_for_env_var
+                    validate_env_var_name_for_write(body.key)
+                    value = _check_non_ascii_credential(body.key, value.replace("\n", "").replace("\r", ""))
+                    prepared = prepare_env_credential_pool_entries(body.key, value, _providers_for_env_var(body.key))
+                with model_mutation_commit():
+                    return save_provider_env_credential(body.key, value, prepared_pool=prepared)
+
+        result = await asyncio.to_thread(_write)
+        return {**result, **model_mutation_ack()}
 
 
 # Live credential probes keyed by env var: (url, auth) where auth is "bearer"
@@ -435,7 +450,7 @@ def _detach_main_model_from_provider(cfg: Dict[str, Any], provider_key: str) -> 
     cfg["model"] = model_cfg
 
 
-def _write_custom_endpoint(cfg: Dict[str, Any], body: CustomEndpointUpdate) -> Tuple[str, Dict[str, Any]]:
+def _write_custom_endpoint(cfg: Dict[str, Any], body: CustomEndpointUpdate, *, save_credentials=True, selection=None):
     endpoint_id = _custom_endpoint_id(body.id or body.name)
     name = (body.name or "").strip()
     base_url = (body.base_url or "").strip().rstrip("/")
@@ -496,18 +511,21 @@ def _write_custom_endpoint(cfg: Dict[str, Any], body: CustomEndpointUpdate) -> T
     env_var = custom_endpoint_key_env(endpoint_id)
     submitted_key = body.api_key.strip() if body.api_key is not None else None
     if submitted_key:
-        save_env_value(env_var, submitted_key)
+        if save_credentials:
+            save_env_value(env_var, submitted_key)
         entry["key_env"] = env_var
         entry.pop("api_key", None)
     elif submitted_key is not None:
         # Blank field means "clear the key", not "leave it alone".
-        remove_env_value(env_var)
+        if save_credentials:
+            remove_env_value(env_var)
         entry.pop("key_env", None)
         entry.pop("api_key", None)
     elif str(entry.get("api_key") or "").strip() and not _config_api_key_is_env_ref(endpoint_id):
         # Migrate a plaintext key an earlier release wrote, on the next save,
         # without the user having to re-enter it.
-        save_env_value(env_var, entry["api_key"].strip())
+        if save_credentials:
+            save_env_value(env_var, entry["api_key"].strip())
         entry["key_env"] = env_var
         entry.pop("api_key", None)
 
@@ -517,13 +535,24 @@ def _write_custom_endpoint(cfg: Dict[str, Any], body: CustomEndpointUpdate) -> T
     cfg["providers"] = providers
 
     if body.make_default:
-        result = _validated_main_model_selection(cfg, endpoint_id, model, base_url)
-        cfg["model"] = _apply_main_model_assignment(cfg.get("model", {}), result)
+        if selection is None:
+            validation_cfg = cfg
+            if not save_credentials and submitted_key:
+                # Validate the supplied key in memory; no .env/config write may
+                # happen until the commit fence is rechecked.
+                import copy
+                validation_cfg = copy.deepcopy(cfg)
+                validation_entry = validation_cfg["providers"][endpoint_id]
+                validation_entry["api_key"] = submitted_key
+                validation_entry.pop("key_env", None)
+                validation_entry.pop("api_key_env", None)
+            selection = _validated_main_model_selection(validation_cfg, endpoint_id, model, base_url)
+        cfg["model"] = _apply_main_model_assignment(cfg.get("model", {}), selection)
         if entry.get("key_env") and isinstance(cfg["model"], dict):
             cfg["model"]["key_env"] = entry["key_env"]
             cfg["model"].pop("api_key", None)
 
-    return endpoint_id, entry
+    return endpoint_id, entry, selection
 
 
 @router.get("/api/providers/custom-endpoints")
@@ -544,12 +573,18 @@ def upsert_custom_endpoint(body: CustomEndpointUpdate, profile: Optional[str] = 
     """Create or update a v12+ ``providers`` custom endpoint entry."""
     with http_failure("POST /api/providers/custom-endpoints failed", 500, detail="Failed to save custom endpoint"):
         with _config_profile_scope(profile):
-            cfg = load_config()
-            endpoint_id, _entry = _write_custom_endpoint(cfg, body)
-            save_config(cfg)
-            response = _custom_endpoint_response(cfg)
+            from hermes_cli.web_model_mutations import model_mutation_active
+            selection = None
+            if model_mutation_active() and body.make_default:
+                _, _, selection = _write_custom_endpoint(load_config(), body, save_credentials=False)
+            with model_mutation_commit():
+                cfg = load_config()
+                endpoint_id, _entry, _ = _write_custom_endpoint(cfg, body, selection=selection)
+                save_config(cfg)
+                response = _custom_endpoint_response(cfg)
         response["ok"] = True
         response["id"] = endpoint_id
+        response.update(model_mutation_ack())
         return response
 
 
@@ -573,25 +608,30 @@ def activate_custom_endpoint(endpoint_id: str, profile: Optional[str] = None):
             if not model or not base_url:
                 raise HTTPException(status_code=400, detail="custom endpoint is incomplete")
 
-            model_cfg = _apply_main_model_assignment(
-                cfg.get("model", {}), _validated_main_model_selection(cfg, provider_key, model, base_url))
-            if entry.get("key_env"):
-                model_cfg["key_env"] = entry["key_env"]
-                model_cfg.pop("api_key", None)
-            elif entry.get("api_key"):
-                # `cfg` is env-expanded, so a raw `${VAR}` api_key would land as
-                # plaintext; copy the raw template when that's what's on disk.
-                try:
-                    _raw_key = str(_raw_provider_api_key(provider_key) or "").strip()
-                except Exception:
-                    _raw_key = ""
-                if _raw_key.startswith("${") and _raw_key.endswith("}"):
-                    model_cfg["api_key"] = _raw_key
-                else:
-                    model_cfg["api_key"] = entry["api_key"]
-            cfg["model"] = model_cfg
-            save_config(cfg)
-        return {"ok": True, "provider": provider_key, "model": model}
+            selection = _validated_main_model_selection(cfg, provider_key, model, base_url)
+            with model_mutation_commit():
+                cfg = load_config()
+                _stored, entry = find_provider_entry(cfg.get("providers"), provider_key)
+                if entry is None:
+                    raise HTTPException(status_code=404, detail="custom endpoint not found")
+                model_cfg = _apply_main_model_assignment(cfg.get("model", {}), selection)
+                if entry.get("key_env"):
+                    model_cfg["key_env"] = entry["key_env"]
+                    model_cfg.pop("api_key", None)
+                elif entry.get("api_key"):
+                    # `cfg` is env-expanded, so a raw `${VAR}` api_key would land as
+                    # plaintext; copy the raw template when that's what's on disk.
+                    try:
+                        _raw_key = str(_raw_provider_api_key(provider_key) or "").strip()
+                    except Exception:
+                        _raw_key = ""
+                    if _raw_key.startswith("${") and _raw_key.endswith("}"):
+                        model_cfg["api_key"] = _raw_key
+                    else:
+                        model_cfg["api_key"] = entry["api_key"]
+                cfg["model"] = model_cfg
+                save_config(cfg)
+        return {"ok": True, "provider": provider_key, "model": model, **model_mutation_ack()}
 
 
 @router.delete("/api/providers/custom-endpoints/{endpoint_id}")
@@ -601,7 +641,7 @@ def delete_custom_endpoint(endpoint_id: str, profile: Optional[str] = None):
         f"DELETE /api/providers/custom-endpoints/{endpoint_id} failed", 500,
         detail="Failed to delete custom endpoint",
     ):
-        with _config_profile_scope(profile):
+        with _config_profile_scope(profile), model_mutation_commit():
             cfg = load_config()
             provider_key = _custom_endpoint_id(endpoint_id)
             providers = cfg.get("providers")
@@ -615,6 +655,7 @@ def delete_custom_endpoint(endpoint_id: str, profile: Optional[str] = None):
             save_config(cfg)
             response = _custom_endpoint_response(cfg)
         response["ok"] = True
+        response.update(model_mutation_ack())
         return response
 
 
@@ -729,12 +770,14 @@ async def remove_env_var(body: EnvVarDelete, profile: Optional[str] = None):
     with _env_write_errors("DELETE /api/env failed", http_passthrough=True):
         from hermes_cli.credential_lifecycle import remove_provider_env_credential
 
-        result = await scoped_to_thread(
-            body.profile or profile, lambda: remove_provider_env_credential(body.key)
-        )
+        def _write():
+            with _config_profile_scope(body.profile or profile), model_mutation_commit():
+                return remove_provider_env_credential(body.key)
+
+        result = await asyncio.to_thread(_write)
         if not result.get("found"):
             raise HTTPException(status_code=404, detail=f"{body.key} not found in .env")
-        return result
+        return {**result, **model_mutation_ack()}
 
 
 @router.post("/api/env/reveal")

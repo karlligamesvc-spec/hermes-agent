@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getApiRequestProfile, setApiRequestProfile } from '@/api/client'
+
 const setModelAssignment = vi.fn()
 // Rest-typed so the lazy mock wrapper below can spread its args into it —
 // a zero-arg implementation would fail tsc's TS2556 on the spread call.
@@ -96,6 +98,20 @@ describe('recoverFromManagedRelayAuthError', () => {
     expect(resend).toHaveBeenCalledTimes(1)
     // hc-519: a heal lifts any global 'expired' degrade back to signed-in.
     expect(clearRelayAuthExpiry).toHaveBeenCalledTimes(1)
+    expect(handleRelayAuthExpired).not.toHaveBeenCalled()
+    expect(requestManagedReSignIn).not.toHaveBeenCalled()
+  })
+
+  it('acknowledges an existing healthy key restored to the captured Runtime and retries once without claiming relay rejection', async () => {
+    const resend = vi.fn(() => Promise.resolve())
+    registerActiveTurnResend(resend)
+    setSelfHeal(() => Promise.resolve({ ok: true, relayUnauthorized: false, healed: false, runtimeRestored: true,
+      needsSignIn: false, probeStatus: 'ok', assignment: ASSIGNMENT }))
+
+    expect(await recoverFromManagedRelayAuthError({ sessionId: 'healthy-runtime', isActive: true })).toBe(true)
+    expect(setModelAssignment).toHaveBeenCalledExactlyOnceWith(ASSIGNMENT)
+    expect(gatewayRequest).toHaveBeenCalledExactlyOnceWith('reload.env')
+    expect(resend).toHaveBeenCalledTimes(1)
     expect(handleRelayAuthExpired).not.toHaveBeenCalled()
     expect(requestManagedReSignIn).not.toHaveBeenCalled()
   })
@@ -216,4 +232,27 @@ describe('recoverFromManagedRelayAuthError', () => {
     expect(clearRelayAuthExpiry).toHaveBeenCalledTimes(1)
   })
 
+})
+
+
+it('ignores a late relay recovery from a different initiating profile before applying or resending', async () => {
+  const oldProfile = getApiRequestProfile()
+  let resolve!: (value: unknown) => void
+  const pending = new Promise(done => {resolve = done})
+  setSelfHeal(() => pending)
+  setModelAssignment.mockClear()
+  gatewayRequest.mockClear()
+  clearRelayAuthExpiry.mockClear()
+  isCurrent.mockReturnValue(true)
+
+  try {
+    setApiRequestProfile('profile-a')
+    const recovering = recoverFromManagedRelayAuthError({ sessionId: 'hc903-profile', isActive: true })
+    setApiRequestProfile('profile-b')
+    resolve({ ok: true, relayUnauthorized: true, healed: true, needsSignIn: false, assignment: ASSIGNMENT })
+    expect(await recovering).toBe(false)
+    expect(setModelAssignment).not.toHaveBeenCalled()
+    expect(gatewayRequest).not.toHaveBeenCalled()
+    expect(clearRelayAuthExpiry).not.toHaveBeenCalled()
+  } finally {setApiRequestProfile(oldProfile)}
 })

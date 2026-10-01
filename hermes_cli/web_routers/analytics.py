@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from hermes_cli.config import get_config_path, read_raw_config
 from hermes_cli.web_deps import late
+from hermes_cli.web_model_mutations import model_mutation_ack
 from hermes_cli.web_routers._common import corrupt_store_as_status
 from hermes_cli.web_server_profiles import (
     _approval_mode_of, _aux_task_summary, _aux_usage_rows, _broadcast_gateway_session_info, _is_other_profile, _merge_aux_into_by_model,
@@ -64,7 +65,7 @@ async def update_config_raw(body: RawConfigUpdate, profile: Optional[str] = None
         # Same indicator refresh as the schema-driven save.
         if approvals_mode_changed and not _is_other_profile(body.profile or profile):
             _broadcast_gateway_session_info()
-        return {"ok": True}
+        return {"ok": True, **model_mutation_ack()}
 
     try:
         return await asyncio.to_thread(_run)

@@ -12,7 +12,7 @@ from typing import Callable
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
-from hermes_cli.web_deps import LateState, late
+from hermes_cli.web_deps import late
 from hermes_cli.config import cfg_get
 from hermes_cli.web_server_dashboard import (
     _BUILTIN_DASHBOARD_THEMES, _discover_user_themes, _invalidate_plugins_hub_cache, _merged_plugins_hub,
@@ -29,18 +29,16 @@ router = APIRouter()
 _get_dashboard_plugins = late("_get_dashboard_plugins")
 _require_token = late("_require_token")
 load_config = late("load_config", "hermes_cli.config")
-save_config = late("save_config", "hermes_cli.config")
-_CONFIG_MUTATION_LOCK = LateState("_CONFIG_MUTATION_LOCK")
+mutate_config = late("mutate_config", "hermes_cli.config")
 
 
 def _set_dashboard_key(key: str, value) -> None:
-    """Write ``dashboard.<key>`` to config.yaml under the config mutation lock."""
-    with _CONFIG_MUTATION_LOCK:
-        config = load_config()
-        if "dashboard" not in config:
+    """Edit one dashboard field against the latest owning config."""
+    def edit(config):
+        if not isinstance(config.get("dashboard"), dict):
             config["dashboard"] = {}
         config["dashboard"][key] = value
-        save_config(config)
+    mutate_config(edit)
 
 
 @router.get("/api/dashboard/themes")
@@ -227,15 +225,17 @@ def _named_plugin_action(request: Request, name: str, action: Callable[[str], di
 @router.post("/api/dashboard/agent-plugins/{name:path}/enable")
 async def post_agent_plugin_enable(request: Request, name: str):
     from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
-    return _named_plugin_action(request, name, lambda n: dashboard_set_agent_plugin_enabled(n, enabled=True),
-                                "Enable failed.", rescan=False)
+    return await asyncio.to_thread(_named_plugin_action, request, name,
+                                  lambda n: dashboard_set_agent_plugin_enabled(n, enabled=True),
+                                  "Enable failed.", rescan=False)
 
 
 @router.post("/api/dashboard/agent-plugins/{name:path}/disable")
 async def post_agent_plugin_disable(request: Request, name: str):
     from hermes_cli.plugins_cmd import dashboard_set_agent_plugin_enabled
-    return _named_plugin_action(request, name, lambda n: dashboard_set_agent_plugin_enabled(n, enabled=False),
-                                "Disable failed.", rescan=False)
+    return await asyncio.to_thread(_named_plugin_action, request, name,
+                                  lambda n: dashboard_set_agent_plugin_enabled(n, enabled=False),
+                                  "Disable failed.", rescan=False)
 
 
 @router.post("/api/dashboard/agent-plugins/{name:path}/update")
@@ -254,16 +254,20 @@ async def delete_agent_plugin(request: Request, name: str):
 async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     """Persist memory provider / context engine selection (writes config.yaml)."""
     _require_token(request)
-    from hermes_cli.plugins_cmd import _save_context_engine, _save_memory_provider
-
     def _run():
-        with _CONFIG_MUTATION_LOCK:
-            if body.memory_provider is not None:
-                memory_provider = _normalize_memory_provider_name(body.memory_provider)
-                _require_memory_provider_ready(memory_provider)
-                _save_memory_provider(memory_provider)
-            if body.context_engine is not None:
-                _save_context_engine(body.context_engine)
+        memory_provider = None
+        if body.memory_provider is not None:
+            memory_provider = _normalize_memory_provider_name(body.memory_provider)
+            _require_memory_provider_ready(memory_provider)
+
+        def edit(config):
+            for section, key, value in (("memory", "provider", memory_provider),
+                                        ("context", "engine", body.context_engine)):
+                if value is not None:
+                    if not isinstance(config.get(section), dict):
+                        config[section] = {}
+                    config[section][key] = value
+        mutate_config(edit)
         _invalidate_plugins_hub_cache()
         return {"ok": True}
 
@@ -277,8 +281,7 @@ async def post_plugin_visibility(request: Request, name: str, body: _PluginVisib
     name = _validate_plugin_name(name)
 
     def _run():
-        with _CONFIG_MUTATION_LOCK:
-            config = load_config()
+        def edit(config):
             if "dashboard" not in config or not isinstance(config.get("dashboard"), dict):
                 config["dashboard"] = {}
             hidden_list: list = config["dashboard"].get("hidden_plugins") or []
@@ -289,7 +292,7 @@ async def post_plugin_visibility(request: Request, name: str, body: _PluginVisib
             elif not body.hidden and name in hidden_list:
                 hidden_list.remove(name)
             config["dashboard"]["hidden_plugins"] = hidden_list
-            save_config(config)
+        mutate_config(edit)
         _invalidate_plugins_hub_cache()
         return {"ok": True, "name": name, "hidden": body.hidden}
 

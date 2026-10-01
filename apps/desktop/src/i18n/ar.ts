@@ -1,6 +1,14 @@
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  auth: {
+    login: {
+      runtimeUpdateRequired: 'حدّث محرك الذكاء الاصطناعي على الاتصال الحالي ثم أعد محاولة تسجيل الدخول.',
+      runtimeUnavailable: 'لم يكتمل إعداد النموذج. تحقق من اتصال بيئة التشغيل ثم أعد محاولة تسجيل الدخول.',
+      provisionUnavailable: 'تعذّر تأكيد اتصال الحساب. سجّل الدخول مجددًا لإعادة المحاولة.',
+      superseded: 'حلّت عملية أحدث للحساب أو النموذج محل هذه المحاولة. أعد المحاولة.'
+    }
+  },
   sessionImport: {
     title: 'المتابعة من تطبيق آخر',
     subtitle: 'انقل محادثة إلى Hermes وتابع من حيث توقفت.',

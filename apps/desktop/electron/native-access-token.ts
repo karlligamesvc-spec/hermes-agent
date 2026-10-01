@@ -119,6 +119,12 @@ export function createNativeAccessTokenCoordinator(deps: NativeAccessTokenCoordi
 
   return {
     ensure,
+    capture: (rawBaseUrl: string): (() => boolean) => {
+      const baseUrl = deps.normalizeBaseUrl(rawBaseUrl)
+      const epoch = epochFor(baseUrl)
+
+      return () => epochFor(baseUrl) === epoch
+    },
     beginLogin,
     storeTokens: (rawBaseUrl: string, tokens: NativeTokenSet) => {
       const baseUrl = deps.normalizeBaseUrl(rawBaseUrl)

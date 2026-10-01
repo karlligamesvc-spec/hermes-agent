@@ -1,6 +1,7 @@
 import type { ModelOptionProvider } from '@hermes/shared'
 import { atom } from 'nanostores'
 
+import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
 import {
   cancelOAuthSession,
   getGlobalModelOptions,
@@ -103,6 +104,7 @@ export interface DesktopOnboardingState {
   managedAvailable?: boolean | null
   /** Inline error from a managed sign-in attempt, surfaced in the managed panel. */
   managedError?: null | string
+  managedRuntimeRecovery?: boolean | null
   /** True while a managed sign-in request is in flight. */
   managedSubmitting?: boolean
   /** True when the user IS signed in to managed (the platform issued a relay
@@ -848,6 +850,14 @@ function managedErrorCopy(message: string | undefined): string {
     return MANAGED_COPY.emptyFields
   }
 
+  if (raw === 'MODEL_RUNTIME_UPDATE_REQUIRED') {return translateNow('auth.login.runtimeUpdateRequired')}
+
+  if (raw === 'MODEL_RUNTIME_UNAVAILABLE') {return translateNow('auth.login.runtimeUnavailable')}
+
+  if (raw === 'MANAGED_PROVISION_UNAVAILABLE') {return translateNow('auth.login.provisionUnavailable')}
+
+  if (raw === 'MODEL_MUTATION_SUPERSEDED') {return translateNow('auth.login.superseded')}
+
   // INVALID_CREDENTIALS marker, any raw HTTP-status body (e.g. `401: {...}`),
   // or anything else → the single friendly login-failed line. We never echo the
   // electron message verbatim, so a raw status/JSON body can't reach the user.
@@ -859,11 +869,15 @@ function managedErrorCopy(message: string | undefined): string {
 // or apply the assignment through the SAME /api/model/set path the BYOK
 // local-endpoint flow uses, verify the runtime, and complete onboarding.
 async function applyManagedSignInResult(
-  res: { assignment?: unknown; hasRelayKey?: boolean; message?: string; ok: boolean },
-  ctx: OnboardingContext
+  res: { assignment?: unknown; hasRelayKey?: boolean; message?: string; ok: boolean; localRuntime?: boolean },
+  ctx: OnboardingContext,
+  isCurrent: () => boolean
 ): Promise<void> {
+  if (!isCurrent()) {return}
+
   if (!res.ok) {
-    patch({ managedSubmitting: false, managedError: managedErrorCopy(res.message) })
+    patch({ managedSubmitting: false, managedError: managedErrorCopy(res.message), managedRuntimeRecovery:
+      res.message?.startsWith('MODEL_RUNTIME_') ? res.localRuntime === true : null })
 
     return
   }
@@ -882,9 +896,16 @@ async function applyManagedSignInResult(
   // Apply the managed relay assignment through the existing model-set path
   // (provider=custom + base_url + api_key + model), then verify + finish.
   await setModelAssignment(res.assignment as Parameters<typeof setModelAssignment>[0])
+
+  if (!isCurrent()) {return}
+
   await ctx.requestGateway('reload.env').catch(() => undefined)
 
+  if (!isCurrent()) {return}
+
   const runtime = await checkRuntime(ctx)
+
+  if (!isCurrent()) {return}
 
   if (!runtime.ready) {
     patch({ managedSubmitting: false, managedError: MANAGED_COPY.relayUnreachable })
@@ -921,15 +942,23 @@ export async function managedSignIn(email: string, password: string, ctx: Onboar
     return
   }
 
-  patch({ managedSubmitting: true, managedError: null })
+  patch({ managedSubmitting: true, managedError: null, managedRuntimeRecovery: null })
+  const generation = ++flowGeneration
+  const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
+
+  const isCurrent = () => generation === flowGeneration && target.connectionId === getApiRequestConnection() &&
+    target.profile === getApiRequestProfile()
 
   try {
-    const res = await bridge.signIn({ email: trimmedEmail, password })
-    await applyManagedSignInResult(res, ctx)
+    const res = await bridge.signIn({ email: trimmedEmail, password, target })
+    await applyManagedSignInResult(res, ctx, isCurrent)
   } catch (error) {
     // Network/IPC throw — keep it friendly and never leak a raw status body.
     void error
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.loginFailed })
+
+    if (isCurrent()) {patch({ managedSubmitting: false, managedError: MANAGED_COPY.loginFailed })}
+  } finally {
+    if (generation === flowGeneration && !isCurrent()) {patch({ managedSubmitting: false })}
   }
 }
 
@@ -956,14 +985,22 @@ export async function managedDeepLinkSignIn(code: string, ctx: OnboardingContext
     return
   }
 
-  patch({ managedSubmitting: true, managedError: null })
+  patch({ managedSubmitting: true, managedError: null, managedRuntimeRecovery: null })
+  const generation = ++flowGeneration
+  const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
+
+  const isCurrent = () => generation === flowGeneration && target.connectionId === getApiRequestConnection() &&
+    target.profile === getApiRequestProfile()
 
   try {
-    const res = await bridge.deepLinkSignIn({ code: trimmed })
-    await applyManagedSignInResult(res, ctx)
+    const res = await bridge.deepLinkSignIn({ code: trimmed, target })
+    await applyManagedSignInResult(res, ctx, isCurrent)
   } catch (error) {
     void error
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })
+
+    if (isCurrent()) {patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })}
+  } finally {
+    if (generation === flowGeneration && !isCurrent()) {patch({ managedSubmitting: false })}
   }
 }
 
@@ -980,14 +1017,22 @@ export async function managedBrowserSignIn(provider: 'apex' | 'google', ctx: Onb
     return
   }
 
-  patch({ managedSubmitting: true, managedError: null })
+  patch({ managedSubmitting: true, managedError: null, managedRuntimeRecovery: null })
+  const generation = ++flowGeneration
+  const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
+
+  const isCurrent = () => generation === flowGeneration && target.connectionId === getApiRequestConnection() &&
+    target.profile === getApiRequestProfile()
 
   try {
-    const res = await bridge.browserSignIn({ provider })
-    await applyManagedSignInResult(res, ctx)
+    const res = await bridge.browserSignIn({ provider, target })
+    await applyManagedSignInResult(res, ctx, isCurrent)
   } catch (error) {
     void error
-    patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })
+
+    if (isCurrent()) {patch({ managedSubmitting: false, managedError: MANAGED_COPY.browserFailed })}
+  } finally {
+    if (generation === flowGeneration && !isCurrent()) {patch({ managedSubmitting: false })}
   }
 }
 
@@ -996,6 +1041,8 @@ export async function managedBrowserSignIn(provider: 'apex' | 'google', ctx: Onb
 // surface as explicitly requested, which is also what earns it a way back to the
 // login screen (returnToManagedLogin + exitByokFromLogin).
 export function skipManagedForByok() {
+  cancelOnboardingFlow()
+  void window.hermesDesktop?.managed?.cancelPending?.().catch(() => undefined)
   clearManagedSyncRecheck()
   patch({ byokFromLogin: true, managedAvailable: false, managedError: null, managedSyncing: false, mode: 'oauth' })
   void refreshProviders()
@@ -1372,6 +1419,7 @@ export async function submitOnboardingCode(ctx: OnboardingContext) {
 
 export function cancelOnboardingFlow() {
   flowGeneration++
+  patch({ managedSubmitting: false })
   clearPoll()
   const sessionId = sessionIdFor($desktopOnboarding.get().flow)
 

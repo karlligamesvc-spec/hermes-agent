@@ -30,7 +30,7 @@ import { UninstallSection } from './uninstall-section'
 // hc-690 unified install/update center. This remains exported under its old
 // name so focused hc-591 tests and extensions keep a stable import while the
 // visible product entry changes from "AI engine" to one APEX update surface.
-export function EngineUpdateSection() {
+export function EngineUpdateSection({ dialogLayer }: { dialogLayer?: number } = {}) {
   const { t } = useI18n()
   const a = t.settings.about
   const updateCopy = t.sidebar.desktopUpdate
@@ -226,6 +226,7 @@ export function EngineUpdateSection() {
         cancelLabel={t.common.cancel}
         confirmLabel={updateCopy.confirmApply}
         description={updateCopy.confirmBody}
+        layer={dialogLayer}
         onClose={() => setConfirmOpen(false)}
         onConfirm={() => applyDesktopUpdates()}
         open={confirmOpen}

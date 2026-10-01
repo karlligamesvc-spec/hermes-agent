@@ -350,7 +350,15 @@ import {
   updatesAllowedByPolicy
 } from './desktop-diagnostic-trial'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
+import { managedRuntimeNeedsRepair } from './desktop-legacy-managed'
 import { formatDesktopLogLine } from './desktop-log-line'
+import { requestRevisionedManagedKeyMutation } from './desktop-managed-provision'
+import {
+  commitRotatedManagedCredential, completeManagedModelAssignment, DesktopModelMutationCoordinator,
+  isModelConfigurationMutation, legacyModelMutationSettled, ManagedAuthIntent, ManagedModelReceiptRegistry, modelMutationCapability, ModelMutationError, ModelMutationMetadataStore,
+  modelMutationNoWriteResult, modelMutationRequestProfile, type ModelMutationScope,
+  prepareManagedModelMutation, type ResolvedModelTarget
+} from './desktop-model-mutations'
 import { resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import {
   buildPosixCleanupScript,
@@ -8193,7 +8201,7 @@ function openOauthLoginWindow(baseUrl, { silent = false } = {}) {
 // authed REST against a gated gateway, including minting WS tickets.
 function fetchJsonViaOauthSession(url, options: any = {}) {
   return new Promise((resolve, reject) => {
-    const sess = getOauthSessionForUrl(url)
+    const sess = options.session || getOauthSessionForUrl(url)
 
     if (!sess) {
       reject(new Error('OAuth session partition is unavailable.'))
@@ -13017,6 +13025,7 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
   return {
     baseUrl,
     mode: 'local',
+    desktopOwnedPid: child.pid,
     source: 'local',
     authMode: 'token',
     token: authToken,
@@ -13528,6 +13537,7 @@ async function runHermesStart() {
     return {
       baseUrl,
       mode: 'local',
+      desktopOwnedPid: hermesProcess.pid,
       source: 'local',
       authMode: 'token',
       token: authToken,
@@ -16221,7 +16231,7 @@ async function getJsonForBackend(descriptor, path, opts: any = {}) {
 async function fetchJsonForBackend(
   descriptor,
   path,
-  opts: { method?: string; body?: unknown; upload?: unknown; timeoutMs?: number } = {}
+  opts: { method?: string; body?: unknown; upload?: unknown; timeoutMs?: number; headers?: Record<string, string> } = {}
 ) {
   const url = `${descriptor.baseUrl}${path}`
 
@@ -16236,7 +16246,7 @@ async function fetchJsonForBackend(
       method: opts.method,
       body: opts.body,
       timeoutMs: opts.timeoutMs,
-      headers: descriptor.headers
+      headers: { ...descriptor.headers, ...opts.headers }
     }
 
     return requestWithOauthFallback(descriptor.baseUrl, {
@@ -16251,7 +16261,7 @@ async function fetchJsonForBackend(
     body: opts.body,
     upload: opts.upload,
     timeoutMs: opts.timeoutMs,
-    headers: descriptor.headers
+    headers: { ...descriptor.headers, ...opts.headers }
   })
 }
 
@@ -16869,6 +16879,47 @@ async function teardownConnectionScopedProfileBackend(connectionId, profile) {
 }
 
 async function handleHermesApiRequest(request) {
+  if (isModelConfigurationMutation(request)) {
+    const managedReceipt = request?.body?.desktop_managed_receipt
+
+    if (managedReceipt) {
+      if (request.path !== '/api/model/set' || request.method !== 'POST') {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+
+      return managedModelReceipts.acknowledge(managedReceipt, captureModelMutationScope(request), request.body).result
+    }
+
+    const generation = managedCredentialLifetime.current()
+    const owner = managedAccountId(resolveManagedConfig().accessToken)
+
+    if ('managedOwner' in request && request.managedOwner !== owner) {
+      throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')
+    }
+
+    // An explicit model edit wins over a still-pending managed login. Its
+    // queued write still belongs to the credentials present at this entry.
+    if (isMainModelEdit(request)) {deferManagedRuntimeRecovery()}
+
+    const intent = managedAuthIntent.capture()
+    const isCurrent = () => generation === managedCredentialLifetime.current() && intent()
+    const target = await desktopModelMutations.resolveTarget(captureModelMutationScope(request))
+
+    const result = await desktopModelMutations.run(target, isCurrent, headers => target.request(request.path, request.body, headers, request.method),
+      result => legacyModelMutationSettled(request.path, request.body, result),
+      result => modelMutationNoWriteResult(request.path, request.body, result))
+
+    if (isMainModelEdit(request) && result?.ok !== false && isCurrent()) {
+      const managed = resolveManagedConfig()
+
+      if (managed.key && managed.runtimePending) {
+        writeManagedConfig({ apiKey: managed.key, baseUrl: managed.baseUrl, model: managed.model,
+          account: managed.account, accessToken: managed.accessToken, runtimePending: false }, true)
+        broadcastManagedAccountChanged()
+      }
+    }
+
+    return result
+  }
+
   // Registry-pinned request (request.connectionId): the renderer is working
   // against a REGISTERED gateway connection, so the data — cron jobs and their
   // run sessions included — lives in THAT host's state.db, not any local
@@ -18890,6 +18941,8 @@ const SEED_MOA_BLOCK =
 //     api.deepseek.com (missing /v1) would 404.
 function seedDefaultModelConfig() {
   try {
+    if (modelMutationMetadata.pending().length > 0) {return}
+
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
     if (fs.existsSync(configPath)) {
@@ -18968,6 +19021,10 @@ function seedDefaultModelConfig() {
 // Returns the structured persist result so callers can gate on a PROVEN write;
 // a failure is logged loudly (never silently swallowed) with a masked key.
 function syncManagedRelayKeyToConfig(reason = 'sync') {
+  if (modelMutationMetadata.pending().length > 0) {
+    return { ok: false, changed: false, reason: 'pending-model-writes', model: 'absent', entries: { matched: 0, updated: 0 } }
+  }
+
   const managed = resolveManagedConfig()
 
   if (!managed.key || !managed.baseUrl) {
@@ -19339,7 +19396,7 @@ function readManagedAccount(stored) {
 // re-calling provision-key (server-validated). '' when none stored / env key.
 function resolveManagedConfig() {
   if (!isManagedEnabled(process.env)) {
-    return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' }, accessToken: '' }
+    return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' }, accessToken: '', runtimePending: false, runtimeRecoveryOptOut: false }
   }
 
   const endpoints = resolveApexEndpoints(process.env)
@@ -19352,7 +19409,7 @@ function resolveManagedConfig() {
   const fromEnv = String(process.env.APEXNODES_RELAY_KEY || '').trim()
 
   if (fromEnv) {
-    return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account, accessToken: '' }
+    return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account, accessToken: '', runtimePending: false, runtimeRecoveryOptOut: false }
   }
 
   return {
@@ -19360,7 +19417,9 @@ function resolveManagedConfig() {
     baseUrl: String(stored.baseUrl || '').trim() || endpoints.relayBaseUrl,
     model: String(stored.model || '').trim() || endpoints.model,
     account,
-    accessToken: decryptDesktopSecret(stored.accessToken)
+    accessToken: decryptDesktopSecret(stored.accessToken),
+    runtimePending: stored.runtimePending === true,
+    runtimeRecoveryOptOut: stored.runtimeRecoveryOptOut === true
   }
 }
 
@@ -19382,6 +19441,161 @@ function resolveManagedRelayCredential() {
 // provision), so a provision that carries no token simply stores none — we never
 // resurrect a stale token, and clearing (no key) wipes the token too.
 const managedCredentialLifetime = new ManagedCredentialLifetime()
+const managedAuthIntent = new ManagedAuthIntent()
+const managedModelReceipts = new ManagedModelReceiptRegistry()
+
+const modelMutationMetadata = new ModelMutationMetadataStore(
+  path.join(app.getPath('userData'), 'desktop-model-mutations.json'), desktopDeviceInstanceId
+)
+
+const desktopModelMutations = new DesktopModelMutationCoordinator(modelMutationMetadata, resolveModelMutationTarget)
+let unpersistedManagedRotation = false
+
+function captureModelMutationScope(request?): ModelMutationScope {
+  const source = request?.target || request || {}
+
+  return {
+    connectionId: apiRequestRegistryConnectionId(source),
+    profile: modelMutationRequestProfile(source, primaryProfileKey())
+  }
+}
+
+function isMainModelEdit(request): boolean {
+  const pathname = new URL(String(request.path), 'http://model.invalid').pathname
+
+  return (pathname === '/api/model/set' && request.body?.scope === 'main') ||
+    (pathname === '/api/config' && Object.hasOwn(request.body?.config || {}, 'model')) ||
+    pathname === '/api/config/raw' || pathname.startsWith('/api/providers/custom-endpoints')
+}
+
+async function resolveModelMutationTarget(scope: ModelMutationScope): Promise<ResolvedModelTarget> {
+  const frozen = { ...scope }
+
+  // Private in-memory fingerprint only. A connection edited while dialing must
+  // not turn an old initiator into an operation against a new target.
+  const routingState = () => JSON.stringify(frozen.connectionId
+    ? readDesktopConnectionsRegistry().connections.find(connection => connection.id === frozen.connectionId)
+    : readDesktopConnectionConfig())
+
+  const routing = routingState()
+
+  const assertRoute = () => {
+    if (routingState() !== routing) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+  }
+
+  const routeOptions = profileRouteOptions(frozen.profile, { method: 'POST', path: '/api/model/set' })
+  const route = resolveProfileApiRequest(frozen.profile, '/api/model/set', routeOptions)
+
+  const resolvedDescriptor = frozen.connectionId
+    ? await ensureRegistryBackend(frozen.connectionId, frozen.profile)
+    : await ensureBackend(route.backendProfile || primaryProfileKey())
+
+  const descriptor = { ...resolvedDescriptor, headers: { ...resolvedDescriptor.headers } }
+
+  assertRoute()
+
+  const scopedPath = frozen.connectionId
+    ? pathForRegistryBackendRequest('/api/model/set', frozen.profile, descriptor)
+    : route.requestPath
+
+  const profile = new URL(scopedPath, 'http://model.invalid').searchParams.get('profile')
+
+  const pathForTarget = requestPath => {
+    const url = new URL(requestPath, 'http://model.invalid')
+
+    if (profile) {url.searchParams.set('profile', profile)}
+
+    return `${url.pathname}${url.search}`
+  }
+
+  const authFacts: any = { authMode: descriptor.authMode || 'token', token: descriptor.token || '',
+    headers: Object.entries(descriptor.headers).map(([key, value]) => [key.toLowerCase(), value]).sort(),
+    remoteIdentity: descriptor.remoteIdentity || null }
+
+  let assertAuth = () => {}
+  let requestCaptured = (requestPath, options: any = {}) => fetchJsonForBackend(descriptor, requestPath, options)
+
+  if (descriptor.authMode === 'oauth') {
+    const currentAuth = nativeAccessTokenCoordinator.capture(descriptor.baseUrl)
+    const bearer = await ensureNativeAccessToken(descriptor.baseUrl)
+    assertRoute()
+
+    if (!currentAuth()) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+
+    if (bearer) {
+      const tokens = _loadNativeTokens(descriptor.baseUrl)
+      // Same-owner token sliding preserves routing identity; explicit login or
+      // logout invalidates this captured authority even when the URL is equal.
+      authFacts.oauth = tokens?.userId ? [tokens.provider, tokens.userId] : bearer
+
+      assertAuth = () => {if (!currentAuth()) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}}
+
+      requestCaptured = (requestPath, options: any = {}) => {
+        assertAuth()
+
+        return fetchJson(`${descriptor.baseUrl}${requestPath}`, null, { ...options, bearer,
+          headers: { ...descriptor.headers, ...options.headers } })
+      }
+    } else {
+      const oauthSession = getOauthSessionForUrl(descriptor.baseUrl)
+
+      if (!oauthSession) {throw new ModelMutationError('MODEL_RUNTIME_UNAVAILABLE', false)}
+
+      const cookieIdentity = async () => JSON.stringify((await oauthSession.cookies.get({ url: descriptor.baseUrl }))
+        .map(cookie => [cookie.domain, cookie.path, cookie.name, cookie.value]).sort())
+
+      const capturedCookies = await cookieIdentity()
+      authFacts.oauth = capturedCookies
+
+      assertAuth = () => {
+        if (!currentAuth() || getOauthSessionForUrl(descriptor.baseUrl) !== oauthSession) {
+          throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')
+        }
+      }
+
+      requestCaptured = async (requestPath, options: any = {}) => {
+        if (await cookieIdentity() !== capturedCookies) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+        assertRoute()
+        assertAuth()
+
+        return fetchJsonViaOauthSession(`${descriptor.baseUrl}${requestPath}`, { ...options, session: oauthSession,
+          headers: { ...descriptor.headers, ...options.headers } })
+      }
+    }
+  }
+
+  const transportAuthIdentity = crypto.createHash('sha256').update(JSON.stringify(authFacts)).digest('hex')
+
+  const assertCaptured = () => {assertRoute(); assertAuth()}
+  let targetId: string | null
+
+  try {
+    targetId = modelMutationCapability(await requestCaptured(pathForTarget('/api/model/mutation')))
+    assertCaptured()
+  } catch (error: any) {
+    // Only an explicit missing route is legacy. A 503, offline gateway or
+    // malformed JSON cannot silently disable the server-side write guard.
+    if (error?.statusCode === 404) {targetId = null}
+    else if (error instanceof ModelMutationError) {throw error}
+    else {throw new ModelMutationError('MODEL_RUNTIME_UNAVAILABLE', descriptor.mode === 'local')}
+  }
+
+  assertCaptured()
+
+  return {
+    scope: frozen, targetId, transportAuthIdentity,
+    assertCurrent: assertCaptured,
+    localRuntime: descriptor.mode === 'local',
+    legacyOwnedPid: descriptor.desktopOwnedPid,
+    runtimeProfile: profile || descriptor.profile || frozen.profile || 'default',
+    transportIdentity: descriptor.baseUrl,
+    request: (requestPath, body, headers, method = 'POST') => {
+      assertCaptured()
+
+      return requestCaptured(pathForTarget(requestPath), { method, body, headers })
+    }
+  }
+}
 
 function writeManagedConfig(provisioned, renewal = false) {
   const previous = resolveManagedConfig()
@@ -19395,6 +19609,8 @@ function writeManagedConfig(provisioned, renewal = false) {
         relayKey: encryptDesktopSecret(key),
         baseUrl: String(provisioned.baseUrl || '').trim(),
         model: String(provisioned.model || '').trim(),
+        ...(provisioned.runtimePending ? { runtimePending: true } : {}),
+        ...((provisioned.runtimeRecoveryOptOut === true || (renewal && previous.runtimeRecoveryOptOut)) ? { runtimeRecoveryOptOut: true } : {}),
         ...(account && (account.email || account.name || account.plan) ? { account } : {}),
         ...(accessToken ? { accessToken: encryptDesktopSecret(accessToken) } : {}),
         savedAt: Date.now()
@@ -19420,13 +19636,40 @@ function broadcastManagedAccountChanged() {
   }
 }
 
+function deferManagedRuntimeRecovery() {
+  managedAuthIntent.cancel()
+  const managed = resolveManagedConfig()
+
+  if (managed.key && !String(process.env.APEXNODES_RELAY_KEY || '').trim()) {
+    writeManagedConfig({ apiKey: managed.key, baseUrl: managed.baseUrl, model: managed.model,
+      account: managed.account, accessToken: managed.accessToken, runtimePending: managed.runtimePending,
+      runtimeRecoveryOptOut: true }, true)
+  }
+}
+
 function clearManagedRelayCredential() {
   try {
     managedCredentialLifetime.persist(() => fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true }))
-    lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
-    broadcastManagedAccountChanged()
-  } catch {
-    // Best effort.
+  } catch (error) {
+    unpersistedManagedRotation = true
+    modelMutationMetadata.markCredentialRecovery(true)
+    throw error
+  }
+
+  modelMutationMetadata.markCredentialRecovery(false)
+  unpersistedManagedRotation = false
+  lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+  broadcastManagedAccountChanged()
+}
+
+function beginManagedKeyMutationRecovery(): () => void {
+  const previous = unpersistedManagedRotation
+  const rollback = modelMutationMetadata.beginCredentialMutation()
+  unpersistedManagedRotation = true
+
+  return () => {
+    rollback()
+    unpersistedManagedRotation = previous
   }
 }
 
@@ -19461,7 +19704,8 @@ function persistRenewedLoginToken(token, requestBearer: string) {
       baseUrl: managed.baseUrl,
       model: managed.model,
       account: managed.account,
-      accessToken: next
+      accessToken: next,
+      runtimePending: managed.runtimePending
     }, true)
     rememberLog('[managed] login token renewed via sliding-window header (hc-529)')
 
@@ -20705,6 +20949,10 @@ function guardConfigYamlProductBlocks(reason) {
 }
 
 function healConfigYamlProductBlocks(reason) {
+  // A Native restart must not let the YAML watcher bypass an unresolved
+  // server-side model write. The recovery path fences it before healing.
+  if (modelMutationMetadata.pending().length > 0) {return 'pending-model-writes'}
+
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
@@ -20957,6 +21205,8 @@ function guardConfigYamlWhenItArrives() {
 // next boot. Fail-soft — a broken payload can never block booting.
 function applyClientConfigToRuntime(reason) {
   try {
+    if (modelMutationMetadata.pending().length > 0) {return}
+
     const stored = readClientConfigState()
 
     if (!stored.version || stored.version <= (stored.appliedVersion || 0)) {
@@ -21439,19 +21689,20 @@ let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
 //     does not distinguish these outcomes.
 const managedRelayRecovery = new ManagedRelayRecoveryCoordinator()
 
-function selfHealManagedKeyOn401() {
+function selfHealManagedKeyOn401(scope: ModelMutationScope = captureModelMutationScope()) {
   const generation = managedCredentialLifetime.current()
 
-  return managedRelayRecovery.run(generation, () => reconcileCurrentManagedRelay(generation))
+  return managedRelayRecovery.run(generation, () => reconcileCurrentManagedRelay(generation, scope))
 }
 
-async function reconcileCurrentManagedRelay(generation: number) {
+async function reconcileCurrentManagedRelay(generation: number, scope: ModelMutationScope) {
   let ownedGeneration = generation
-  const isCurrent = () => ownedGeneration === managedCredentialLifetime.current() && isManagedEnabled(process.env)
+  const intent = managedAuthIntent.capture()
+  const isCurrent = () => ownedGeneration === managedCredentialLifetime.current() && intent() && isManagedEnabled(process.env)
+  const managed = resolveManagedConfig()
+  let completion: any = null
 
   try {
-    const managed = resolveManagedConfig()
-
     if (!isManagedEnabled(process.env)) {
       return { ok: true, relayUnauthorized: false }
     }
@@ -21459,6 +21710,20 @@ async function reconcileCurrentManagedRelay(generation: number) {
     if (!managed.key || !managed.baseUrl) {
       return { ok: true, relayUnauthorized: false }
     }
+
+    if (managed.runtimeRecoveryOptOut) {
+      const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
+      const probeStatus = probe.ok ? 'ok' : probe.statusCode === 401 || probe.statusCode === 403 ? 'unauthorized' : 'unreachable'
+
+      if (isCurrent()) {lastRelayCatalogState = { status: probeStatus, checkedAt: Date.now() }}
+
+      return { ok: isCurrent(), relayUnauthorized: false, healed: false, needsSignIn: false,
+        probeStatus: isCurrent() ? probeStatus : 'unknown', generation }
+    }
+
+    await desktopModelMutations.fence(isCurrent)
+
+    if (!isCurrent()) {return { ok: false, relayUnauthorized: false }}
 
     const configPath = path.join(HERMES_HOME, 'config.yaml')
     const owner = managedAccountId(managed.accessToken) || String(generation)
@@ -21482,14 +21747,17 @@ async function reconcileCurrentManagedRelay(generation: number) {
         // starts the anti-storm cooldown.
         lastManagedReprovisionAttemptAt = Date.now()
         lastManagedReprovisionAttemptOwner = owner
+
         // Re-run the SAME provision chain the sign-in routes use: mints a fresh
         // relay key (server rotates), persists it (+ the — possibly unchanged —
         // JWT). A stored account keeps the account panel intact.
-        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null, isCurrent)
+        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null, isCurrent,
+          scope, nextGeneration => {ownedGeneration = nextGeneration})
 
-        if (result.hasRelayKey) {
+        if (result.ok && result.hasRelayKey) {
           // This attempt's synchronous credential write advances the lifetime.
           ownedGeneration = result.credentialGeneration
+          completion = result
 
           return { apiKey: resolveManagedConfig().key }
         }
@@ -21504,6 +21772,13 @@ async function reconcileCurrentManagedRelay(generation: number) {
       return { ok: false, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus: 'unknown', generation }
     }
 
+    if (outcome.probeStatus === 'ok' && resolveManagedConfig().runtimePending) {
+      const target = await desktopModelMutations.resolveTarget(scope)
+      completion = await finishManagedModelRuntime(target, isCurrent)
+    }
+
+    if (!isCurrent()) {return { ok: false, relayUnauthorized: false, probeStatus: 'unknown', generation }}
+
     // Remember the probe outcome for the renderer's model-menu catalog state
     // (hc-512): a heal means the live listing is reachable again.
     lastRelayCatalogState = { status: outcome.healed ? 'ok' : outcome.probeStatus, checkedAt: Date.now() }
@@ -21515,28 +21790,69 @@ async function reconcileCurrentManagedRelay(generation: number) {
       hasToken: outcome.hasToken,
       needsSignIn: outcome.needsSignIn,
       probeStatus: outcome.probeStatus,
-      generation: ownedGeneration
+      generation: ownedGeneration,
+      ...(completion ? { completionScope: scope, assignment: managedSignInResultPayload({ hasRelayKey: true, ...completion }).assignment } : {})
     }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay key self-heal skipped: ${error && error.message ? error.message : error}`)
 
-    return { ok: false, relayUnauthorized: false, healed: false, hasToken: false }
+    // Runtime recovery failure does not establish account expiry. A read-only
+    // relay probe can still clear an obsolete soft gate without any YAML write,
+    // provisioning or Runtime mutation.
+    const live = isCurrent() && managed.key && managed.baseUrl ? await apexRelayGetModels(managed.baseUrl, managed.key) : null
+    const probeStatus = live?.ok ? 'ok' : live?.statusCode === 401 || live?.statusCode === 403 ? 'unauthorized' : 'unreachable'
+
+    if (isCurrent()) {lastRelayCatalogState = { status: probeStatus, checkedAt: Date.now() }}
+
+    return { ok: false, relayUnauthorized: isCurrent() && probeStatus === 'unauthorized', healed: false,
+      hasToken: Boolean(managed.accessToken), needsSignIn: false, probeStatus: isCurrent() ? probeStatus : 'unknown', generation: ownedGeneration }
   }
 }
 
 // Shared post-auth path for EVERY managed sign-in route (email/password,
 // Google, APEX-web). Given a platform access-token JWT, provision a relay-valid
-// key for this user and persist it. Tolerates "provision-key not deployed yet"
-// (404/501 or any fetch error): keeps the BYOK fallback rather than failing the
-// sign-in, so a missing endpoint is NOT a login failure. base_url + model come
-// FROM THE RESPONSE (server-truth).
+// key for this user and persist it. A verified Cloud mutation capability and
+// revision echo precede persistence; unknown grants remain explicitly pending
+// for retry. base_url + model come FROM THE RESPONSE (server-truth).
 //
 // Returns { ok, hasRelayKey }:
 //   - ok=true, hasRelayKey=true  → key + base_url + model stored; managed live.
-//   - ok=true, hasRelayKey=false → token valid but provision-key unavailable —
-//     caller falls back to BYOK.
-async function provisionManagedFromAccessToken(accessToken, account = null, recovery?: () => boolean) {
-  const isCurrent = recovery || (() => true)
+//   - ok=false → preserve the current credential and show explicit recovery.
+async function finishManagedModelRuntime(target: ResolvedModelTarget, isCurrent: () => boolean) {
+  const assignment = managedSignInResultPayload({ hasRelayKey: true }).assignment
+
+  if (!target.targetId && !target.legacyManagedBinding) {
+    const prepared = await prepareManagedModelMutation({ coordinator: desktopModelMutations, scope: target.scope, isCurrent,
+      requiresRevision: true, managedBaseUrl: assignment.base_url })
+
+    target = prepared
+  }
+
+  return completeManagedModelAssignment({ coordinator: desktopModelMutations,
+    receipts: managedModelReceipts, target, isCurrent, assignment,
+    syncLocal: () => {
+      // Actual Runtime success creates the first managed anchor. Only existing
+      // local mirrors are reconciled here; a remote/profile login must not
+      // replace an unrelated local BYOK model to create an absent mirror.
+      guardConfigYamlProductBlocks('managed-runtime-complete')
+      const synced = syncManagedRelayKeyToConfig('managed-runtime-complete')
+
+      if (!synced.ok && !['no-managed-anchor', 'config-missing'].includes(synced.reason)) {
+        throw new ModelMutationError('MODEL_RUNTIME_UNAVAILABLE', target.localRuntime)
+      }
+    },
+    finalize: () => {
+      const managed = resolveManagedConfig()
+      writeManagedConfig({ apiKey: managed.key, baseUrl: managed.baseUrl, model: managed.model,
+        account: managed.account, accessToken: managed.accessToken, runtimePending: false, runtimeRecoveryOptOut: false }, true)
+      broadcastManagedAccountChanged()
+    }
+  })
+}
+
+async function provisionManagedFromAccessToken(accessToken, account = null, recovery?: () => boolean,
+  capturedTarget?: ModelMutationScope, onCommitted?: (generation: number) => void) {
+  const isCurrent = recovery || managedAuthIntent.capture()
   const token = String(accessToken || '').trim()
 
   if (!token) {
@@ -21552,19 +21868,40 @@ async function provisionManagedFromAccessToken(accessToken, account = null, reco
   // be loaded/repaired. Falling back to the legacy slot would reintroduce
   // last-login-wins across machines.
   const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
+  const scope = capturedTarget || captureModelMutationScope()
+
+  // Provision rotates the cloud key. Finish this preflight BEFORE that
+  // irreversible request, including every unknown HTTP outcome from a prior
+  // Native process. A 404 is compatible only for the first, uncontended login.
+  const target = await prepareManagedModelMutation({ coordinator: desktopModelMutations, scope, isCurrent,
+    requiresRevision: Boolean(resolveManagedConfig().key), managedBaseUrl: resolveManagedConfig().baseUrl || endpoints.relayBaseUrl })
+
+  let provisionFailure: any = null
 
   const result = await provisionManagedRelayForCurrentAccount({
     request: async () => {
-      const body = await apexAuthPostJson(endpoints.provisionKeyUrl, { bearer: token, body: deviceBody })
+      const body = await requestRevisionedManagedKeyMutation({
+        capabilities: () => apexAuthBodylessJson('GET', `${endpoints.provisionKeyUrl}/capabilities`, { bearer: token }),
+        nextRevision: () => modelMutationMetadata.nextProvisionRevision(),
+        issue: revision => apexAuthPostJson(endpoints.provisionKeyUrl, { bearer: token,
+          body: { ...deviceBody, provision_revision: revision } }),
+        isCurrent,
+        beginMutation: beginManagedKeyMutationRecovery,
+        validateResponse: response => {
+          if (!parseProvisionResponse(response, process.env)) {throw new Error('Managed grant has no credential')}
+        },
+        recordUnknownMutation: () => {
+          unpersistedManagedRotation = true
+          modelMutationMetadata.markCredentialRecovery(true)
+        }
+      })
 
       return parseProvisionResponse(body, process.env)
     },
     isCurrent,
     unavailable: (error: any) => {
-      rememberLog(
-        `[apexnodes] provision-key unavailable (${error && error.message ? error.message : error}); ` +
-          'managed default disabled, falling back to BYOK.'
-      )
+      provisionFailure = error
+      rememberLog(`[apexnodes] provision-key unavailable (${error?.code || 'request-failed'}); recovery needs retry`)
     },
     commit: provisioned => {
       const account2 = {
@@ -21577,14 +21914,46 @@ async function provisionManagedFromAccessToken(accessToken, account = null, reco
       // that confirmed renewal rather than replacing it with the older bearer.
       const currentToken = resolveManagedConfig().accessToken
       const commitToken = recovery ? managedRecoveryCommitToken(token, currentToken) : token
-      const generation = writeManagedConfig({ ...provisioned, account: account2, accessToken: commitToken })
-      // Add the managed anchor on first login, then verify both runtime anchors.
-      guardConfigYamlProductBlocks('sign-in-provision')
-      syncManagedRelayKeyToConfig('sign-in')
+
+      // Once minted, keep the new credential even if Runtime recovery needs a
+      // retry. Keeping the already-revoked old key would strand this login.
+      const generation = commitRotatedManagedCredential(
+        () => writeManagedConfig({ ...provisioned, account: account2, accessToken: commitToken, runtimePending: true }),
+        () => {
+          unpersistedManagedRotation = true
+          rememberLog('[apexnodes] provision minted; local credential persistence failed; recovery required')
+          modelMutationMetadata.markCredentialRecovery(true)
+        }
+      )
+
+      modelMutationMetadata.markCredentialRecovery(false)
+      unpersistedManagedRotation = false
+      onCommitted?.(generation)
 
       return generation
     }
   })
+
+  if (provisionFailure) {
+    return { ...result, ok: false, message: provisionFailure.code || 'MANAGED_PROVISION_UNAVAILABLE' }
+  }
+
+  if (result.hasRelayKey) {
+    const generation = result.credentialGeneration
+    const current = () => generation === managedCredentialLifetime.current() && isCurrent()
+
+    try {
+      const completed = await finishManagedModelRuntime(target, current)
+
+      void refreshClientConfigFromPlatform('sign-in')
+      void refreshPlatformSkillsFromPlatform('sign-in')
+      void refreshPlatformPluginsFromPlatform('sign-in')
+
+      return { ...result, modelReceipt: completed.modelReceipt, modelAssignment: completed.modelAssignment }
+    } catch (error: any) {
+      return { ...result, ok: false, message: error?.code || 'MODEL_RUNTIME_UNAVAILABLE', localRuntime: target.localRuntime }
+    }
+  }
 
   if (result.ok) {
     // All successful sign-in/recovery outcomes remain platform sync points.
@@ -21609,7 +21978,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null, reco
  * password) surfaces as a login failure (the Chinese message is applied in the
  * renderer). Any other login error (non-401) is rethrown as-is.
  */
-async function apexManagedSignIn({ email, password }: any) {
+async function apexManagedSignIn({ email, password }: any, isCurrent: () => boolean, target: ModelMutationScope) {
   const endpoints = resolveApexEndpoints(process.env)
   const cleanEmail = String(email || '').trim()
   const cleanPassword = String(password || '')
@@ -21660,7 +22029,7 @@ async function apexManagedSignIn({ email, password }: any) {
   // The typed email is always a valid identity fallback even if the body omits it.
   const account = { email: cleanEmail, ...(authBody && typeof authBody === 'object' ? authBody : {}) }
 
-  return provisionManagedFromAccessToken(accessToken, account)
+  return provisionManagedFromAccessToken(accessToken, account, isCurrent, target)
 }
 
 // ── hc-417: desktop-managed messaging gateway lifecycle ─────────────────────
@@ -23158,6 +23527,7 @@ ipcMain.handle('hermes:managed:status', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const managed = resolveManagedConfig()
   const account = managed.account || { email: '', name: '', plan: '' }
+  const runtimePending = managed.runtimePending || unpersistedManagedRotation || modelMutationMetadata.credentialRecovery()
 
   return {
     enabled: isManagedEnabled(process.env),
@@ -23166,7 +23536,8 @@ ipcMain.handle('hermes:managed:status', async () => {
     // → hc-511 behavior (relay 401 only surfaced on a chat send). Exposed here so
     // the renderer reads the same env the electron self-heal does.
     loginStateTruth: isLoginStateTruthEnabled(process.env),
-    signedIn: Boolean(managed.key),
+    signedIn: Boolean(managed.key) && !runtimePending,
+    runtimePending,
     accountId: managed.key ? managedAccountId(managed.accessToken) : null,
     // True only when a reusable login JWT is on disk — i.e. a real cloud
     // sign-in that CAN self-heal a rotated/expired relay key. A seeded/env key
@@ -23218,6 +23589,10 @@ ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
 // result (server-truth base_url + model), not env defaults. When provision-key
 // wasn't available, assignment is null and the renderer falls back to BYOK.
 function managedSignInResultPayload(result) {
+  if (result.ok === false) {
+    return { ok: false, hasRelayKey: Boolean(result.hasRelayKey), assignment: null, message: result.message || 'MODEL_RUNTIME_UNAVAILABLE', localRuntime: result.localRuntime }
+  }
+
   if (!result.hasRelayKey) {
     return { ok: true, hasRelayKey: false, assignment: null }
   }
@@ -23237,7 +23612,9 @@ function managedSignInResultPayload(result) {
       provider: block.provider,
       model: block.default,
       base_url: block.base_url,
-      api_key: block.api_key
+      api_key: block.api_key,
+      ...(result.modelAssignment || {}),
+      ...(result.modelReceipt ? { desktop_managed_receipt: result.modelReceipt } : {})
     }
   }
 }
@@ -23268,12 +23645,15 @@ ipcMain.handle('hermes:managed:signIn', async (_event, payload) => {
     return { ok: false, message: 'EMPTY_FIELDS' }
   }
 
+  const intent = managedAuthIntent.begin()
+  const target = captureModelMutationScope(payload)
+
   try {
-    const result = await apexManagedSignIn({ email, password })
+    const result = await apexManagedSignIn({ email, password }, intent, target)
 
     return managedSignInResultPayload(result)
   } catch (error: any) {
-    return { ok: false, message: managedSignInErrorMessage(error) }
+    return { ok: false, message: managedSignInErrorMessage(error), localRuntime: error?.localRuntime }
   }
 })
 
@@ -23291,6 +23671,8 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
   }
 
   let loopback = null
+  const intent = managedAuthIntent.begin()
+  const target = captureModelMutationScope(payload)
 
   try {
     loopback = await startLoopbackLogin()
@@ -23312,13 +23694,13 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
 
     // Block until the browser redirects back (or the watchdog/abort fires).
     const { token } = await loopback.result
-    const result = await provisionManagedFromAccessToken(token)
+    const result = await provisionManagedFromAccessToken(token, null, intent, target)
 
     return managedSignInResultPayload(result)
   } catch (error: any) {
     loopback.close()
 
-    return { ok: false, message: managedSignInErrorMessage(error) }
+    return { ok: false, message: managedSignInErrorMessage(error), localRuntime: error?.localRuntime }
   }
 })
 
@@ -23356,13 +23738,16 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
     return { ok: false, message: 'EMPTY_FIELDS' }
   }
 
+  const intent = managedAuthIntent.begin()
+  const target = captureModelMutationScope(payload)
+
   try {
     const token = await exchangeHandoffCodeForToken(code)
-    const result = await provisionManagedFromAccessToken(token)
+    const result = await provisionManagedFromAccessToken(token, null, intent, target)
 
     return managedSignInResultPayload(result)
   } catch (error: any) {
-    return { ok: false, message: managedSignInErrorMessage(error) }
+    return { ok: false, message: managedSignInErrorMessage(error), localRuntime: error?.localRuntime }
   }
 })
 
@@ -23373,6 +23758,16 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
+
+  // Explicit logout stops background recovery before awaiting either fence.
+  // A failed revoke/removal keeps that intent so self-heal cannot undo it.
+  if (managed.accessToken && !envKey) {
+    try {deferManagedRuntimeRecovery()} catch {return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
+  }
+
+  const intent = managedAuthIntent.begin()
+  const generation = managedCredentialLifetime.current()
+  const isCurrent = () => intent() && generation === managedCredentialLifetime.current()
   const endpoints = resolveApexEndpoints(process.env)
 
   return signOutManagedDevice({
@@ -23381,10 +23776,21 @@ ipcMain.handle('hermes:managed:signOut', async () => {
     deviceInstanceId: desktopDeviceInstanceId(),
     envKey,
     managedKey: managed.key,
+    isCurrent,
+    prepare: () => desktopModelMutations.fence(isCurrent),
     revoke: async body => {
-      const result = await apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), {
-        bearer: managed.accessToken as string,
-        body
+      const result = await requestRevisionedManagedKeyMutation({
+        capabilities: () => apexAuthBodylessJson('GET', `${endpoints.provisionKeyUrl}/capabilities`, { bearer: managed.accessToken }),
+        nextRevision: () => modelMutationMetadata.nextProvisionRevision(),
+        issue: revision => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), {
+          bearer: managed.accessToken, body: { ...body, provision_revision: revision }
+        }),
+        isCurrent,
+        beginMutation: beginManagedKeyMutationRecovery,
+        recordUnknownMutation: () => {
+          unpersistedManagedRotation = true
+          modelMutationMetadata.markCredentialRecovery(true)
+        }
       })
 
       requireRevokedDeviceKey(result)
@@ -23392,25 +23798,67 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   })
 })
 
+ipcMain.handle('hermes:managed:cancelPending', deferManagedRuntimeRecovery)
+
 // selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat
 // turn fails with a relay auth error (HTTP 401/403). Runs the SAME gated probe +
 // re-provision as the boot self-heal and reports the outcome so the renderer can
 // either apply the fresh key + retry once (healed), or route to re-sign-in when
 // there is no reusable login token (a `*.local`/env seed key, or an expired JWT)
 // — turning a silent 401 loop into a visible, actionable state. Never throws.
-ipcMain.handle('hermes:managed:selfHeal', async () => {
-  const outcome = await selfHealManagedKeyOn401()
-  const current = !('generation' in outcome) || outcome.generation === managedCredentialLifetime.current()
+ipcMain.handle('hermes:managed:selfHeal', async (_event, payload) => {
+  const scope = captureModelMutationScope(payload)
+  const intent = managedAuthIntent.capture()
+  const outcome = await selfHealManagedKeyOn401(scope)
+  const generation = managedCredentialLifetime.current()
+  const current = intent() && (!('generation' in outcome) || outcome.generation === generation)
   const relayUnauthorized = current && Boolean(outcome.relayUnauthorized)
   const healed = relayUnauthorized && Boolean(outcome.healed)
+
+  let assignment = current && 'assignment' in outcome && 'completionScope' in outcome &&
+    outcome.completionScope?.connectionId === scope.connectionId && outcome.completionScope?.profile === scope.profile
+    ? outcome.assignment : null
+
+  let runtimeRestored = current && Boolean(assignment) && !healed
+
+  if (current && healed && !assignment) {
+    const owner = () => intent() && generation === managedCredentialLifetime.current()
+
+    try {
+      const target = await desktopModelMutations.resolveTarget(scope)
+      const completed = await finishManagedModelRuntime(target, owner)
+      assignment = managedSignInResultPayload({ hasRelayKey: true, ...completed }).assignment
+    } catch {
+      return { ok: false, relayUnauthorized, healed: false, needsSignIn: false, probeStatus: 'unknown', assignment: null }
+    }
+  }
+
+  if (current && !assignment && outcome.probeStatus === 'ok' && !resolveManagedConfig().runtimeRecoveryOptOut) {
+    const owner = () => intent() && generation === managedCredentialLifetime.current()
+
+    try {
+      const target = await desktopModelMutations.resolveTarget(scope)
+      const managedAssignment = managedSignInResultPayload({ hasRelayKey: true }).assignment
+
+      if (await managedRuntimeNeedsRepair(target, managedAssignment, desktopModelMutations)) {
+        const completed = await finishManagedModelRuntime(target, owner)
+        assignment = managedSignInResultPayload({ hasRelayKey: true, ...completed }).assignment
+        runtimeRestored = true
+      }
+    } catch {
+      return { ok: false, relayUnauthorized, healed: false, runtimeRestored: false,
+        needsSignIn: false, probeStatus: 'ok', assignment: null }
+    }
+  }
 
   return {
     ok: current && outcome.ok,
     relayUnauthorized,
     healed,
+    runtimeRestored,
     needsSignIn: relayUnauthorized && 'needsSignIn' in outcome && Boolean(outcome.needsSignIn),
     probeStatus: current && 'probeStatus' in outcome ? outcome.probeStatus : 'unknown',
-    assignment: healed ? managedSignInResultPayload({ hasRelayKey: true }).assignment : null
+    assignment
   }
 })
 

@@ -1,3 +1,4 @@
+import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
 import { setModelAssignment } from '@/hermes'
 import { translateNow } from '@/i18n'
 import type { GatewayEventPayload } from '@/lib/chat-messages'
@@ -60,7 +61,7 @@ const recovering = new Map<string, () => boolean>()
 export interface ManagedRelayRecoveryOutcome {
   /** True when this path owns the outcome and the caller should skip its generic error UI. */
   owned: boolean
-  /** True when a fresh relay key was minted, persisted and applied. */
+  /** True when the captured Runtime binding recovered and can be retried. */
   healed: boolean
 }
 
@@ -107,11 +108,13 @@ export async function runManagedRelayRecovery(
     return { owned: true, healed: false }
   }
 
-  const isCurrent = captureManagedAuthRecoveryScope()
+  const ownerIsCurrent = captureManagedAuthRecoveryScope()
+  const target = { connectionId: getApiRequestConnection(), profile: getApiRequestProfile() }
+  const isCurrent = () => ownerIsCurrent() && target.connectionId === getApiRequestConnection() && target.profile === getApiRequestProfile()
   recovering.set(guardKey, isCurrent)
 
   try {
-    const outcome = await bridge.selfHeal()
+    const outcome = await bridge.selfHeal({ target })
 
     if (!isCurrent()) {
       return { owned: false, healed: false }
@@ -123,13 +126,9 @@ export async function runManagedRelayRecovery(
       clearRelayAuthExpiry()
     }
 
-    if (!outcome || !outcome.relayUnauthorized) {
-      return { owned: false, healed: false }
-    }
-
-    if (outcome.healed && outcome.assignment) {
-      // Apply the freshly minted key the same way sign-in does, then reload the
-      // runtime env so the in-flight process picks it up before the retry.
+    if ((outcome?.healed || outcome?.runtimeRestored) && outcome.assignment) {
+      // Acknowledge Native's actual completed assignment once. A healthy key
+      // restored to another profile need not rotate the cloud credential.
       await setModelAssignment(outcome.assignment)
 
       if (!isCurrent()) {return { owned: false, healed: false }}
@@ -170,6 +169,10 @@ export async function runManagedRelayRecovery(
       }
 
       return { owned: true, healed: true }
+    }
+
+    if (!outcome || !outcome.relayUnauthorized) {
+      return { owned: false, healed: false }
     }
 
     // A cooldown, a local persistence failure or a temporary provision outage
