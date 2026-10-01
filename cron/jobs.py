@@ -1653,7 +1653,15 @@ def _compute_provider_model_snapshots(
             if normalized_base_url:
                 runtime_kwargs["explicit_base_url"] = normalized_base_url
             snap = resolve_runtime_provider(**runtime_kwargs)
-            provider_snapshot = str(snap.get("provider") or "").strip().lower() or None
+            resolved = str(snap.get("provider") or "").strip().lower()
+            requested = str(snap.get("requested_provider") or "").strip().lower()
+            # "custom" is an interface/billing class, not a named endpoint's identity.
+            # Preserve the exact route that resolved; matching by URL could choose a
+            # different credential when two named providers share an endpoint.
+            provider_snapshot = (
+                requested if resolved == "custom" and requested not in {"", "auto"}
+                else resolved
+            ) or None
     if normalized_model is None:
         with contextlib.suppress(Exception):
             model_snapshot = _resolve_default_model_snapshot() or None
@@ -2047,14 +2055,14 @@ def resnapshot_job(job_id: str) -> Optional[Dict[str, Any]]:
     (#44585). Where pinning a job (``provider=... model=...``) makes it stop
     tracking the global default forever, ``resnapshot_job`` re-captures the
     current resolution so an unpinned job follows the user's deliberately
-    changed default — while remaining unpinned and tracking future changes.
+    changed default once. Later global changes leave that new snapshot in place.
 
     Semantics:
       - Pinned axes (job has an explicit provider/model) keep their snapshot
         None and are left untouched.
       - no_agent script jobs carry no snapshot and are left untouched.
-      - If the current resolution fails, the previous snapshot is left in
-        place (fail-open, matching create_job semantics).
+      - A failed resolution leaves that axis without a snapshot, matching
+        create_job semantics; the scheduler then resolves that axis normally.
 
     Makes no inference call — it only recomputes the snapshot string from
     config. Returns the normalized updated job, or None if not found.

@@ -1857,6 +1857,26 @@ export const ja = defineLocale({
     failedRename: 'プロファイルの名前変更に失敗しました'
   },
 
+  tasks: {
+    noRuns: '実行の会話はまだありません。',
+    runHistory: '実行の会話',
+    emptyDone: '終了したタスクはまだありません。',
+    tabDone: '終了済み',
+    phases: {
+      running: '実行中',
+      done: '完了',
+      failed: '失敗',
+      'delivery-failed': '配信失敗',
+      'delivery-pending': '配信結果は未確認',
+      unknown: '実行結果は未確認'
+    },
+    notify: {
+      doneTitle: 'タスクが完了',
+      failedTitle: 'タスクが失敗',
+      deliveryFailedTitle: 'タスクの配信に失敗'
+    }
+  },
+
   cron: {
     close: 'Cron を閉じる',
     eyebrow: '自動実行',
@@ -1884,7 +1904,16 @@ export const ja = defineLocale({
       paused: '一時停止中',
       disabled: '無効',
       error: 'エラー',
-      completed: '完了'
+      completed: 'スケジュール終了'
+    },
+    outcomes: {
+      succeeded: '直近の実行は成功',
+      failed: '直近の実行は失敗',
+      blocked: '設定により実行できません',
+      interrupted: '実行が中断されました',
+      'delivery-failed': '結果の配信に失敗',
+      'delivery-pending': '配信結果は未確認',
+      unknown: '実行結果は未確認'
     },
     deliveryLabels: {
       local: 'このデスクトップ',

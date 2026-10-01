@@ -8,6 +8,7 @@ See: https://github.com/NousResearch/hermes-agent/issues/1002
 See: https://github.com/NousResearch/hermes-agent/issues/1264
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -945,12 +946,13 @@ class TestPythonpathSelectiveStrip:
         assert "/home/user/my-lib" in entries
 
     @pytest.mark.parametrize("same_env", [True, False])
-    def test_execute_code_composition_strips_inherited_hermes_entries(self, same_env):
+    def test_execute_code_composition_strips_inherited_hermes_entries(self, same_env, tmp_path, monkeypatch):
         """Integration: execute_code's real spawn path composes a clean PYTHONPATH.
 
         Seeds a contaminated inherited PYTHONPATH (Hermes repo root + Hermes
         venv site-packages + user entries) through os.environ and drives
-        execute_code all the way to Popen.  Proves the #84500 conditional
+        execute_code through a real session kernel and inspect its child env.
+        Proves the #84500 conditional
         composition and the #82581 selective strip compose correctly:
 
         * inherited Hermes venv site-packages never survive into the sandbox;
@@ -962,39 +964,49 @@ class TestPythonpathSelectiveStrip:
         """
         import tools.code_execution_tool as cet
         from tools.code_execution_tool import execute_code
-
-        def _mock_handle_function_call(function_name, function_args, task_id=None, user_task=None):
-            return '{"output": "mock", "exit_code": 0}'
+        from tools.code_kernel import shutdown_kernels_for_owner
 
         hermes_root = str(Path(cet.__file__).resolve().parents[1])
         venv_sp = str(_running_venv_site_packages())
         user_a = "/home/user/my-lib"
         user_b = "/opt/project/lib"
         captured = {}
+        real_popen = subprocess.Popen
+        owner = f"env-composition-{same_env}-{tmp_path.name}"
+        monkeypatch.setenv("TERMINAL_ENV", "local")
 
-        def _fake_popen(cmd, **kwargs):
+        def _capture_popen(cmd, **kwargs):
+            assert Path(cmd[1]).name == "hermes_kernel_runner.py"
             captured["env"] = kwargs.get("env", {})
             captured["staging"] = os.path.dirname(cmd[1])
-            proc = MagicMock()
-            proc.stdout.read.return_value = b""
-            proc.stderr.read.return_value = b""
-            proc.wait.return_value = 0
-            proc.returncode = 0
-            proc.poll.return_value = 0
-            return proc
+            return real_popen(cmd, **kwargs)
 
-        with patch("tools.code_execution_tool._load_config",
-                   return_value={"mode": "strict"}), \
-             patch("model_tools.handle_function_call",
-                   side_effect=_mock_handle_function_call), \
-             patch("tools.code_execution_env._uses_hermes_python_environment",
-                   return_value=same_env), \
-             patch("subprocess.Popen", side_effect=_fake_popen), \
-             patch.dict(os.environ, {
-                 "PYTHONPATH": os.pathsep.join(
-                     [hermes_root, venv_sp, user_a, user_b]),
-             }):
-            execute_code(code="pass", task_id="test-int", enabled_tools=[])
+        try:
+            with patch("tools.code_execution_tool._load_config",
+                       return_value={"mode": "strict"}), \
+                 patch("tools.approval_context.get_current_session_key", return_value=owner), \
+                 patch("tools.code_execution_env._uses_hermes_python_environment",
+                       return_value=same_env), \
+                 patch("subprocess.Popen", side_effect=_capture_popen), \
+                 patch.dict(os.environ, {
+                     "PYTHONPATH": os.pathsep.join(
+                         [hermes_root, venv_sp, user_a, user_b]),
+                     "OPENAI_API_KEY": "fake-composition-secret",
+                 }):
+                result = json.loads(execute_code(
+                    code="import json, os; print(json.dumps({"
+                         "'path': os.environ['PYTHONPATH'], "
+                         "'provider_key_present': 'OPENAI_API_KEY' in os.environ}))",
+                    task_id=owner, enabled_tools=[], reset=True,
+                ))
+            assert result["status"] == "success", result
+            assert result["exit_code"] == 0, result
+            assert result["kernel"]["reused"] is False
+            child_env = json.loads(result["output"])
+            assert child_env["path"] == captured["env"]["PYTHONPATH"]
+            assert child_env["provider_key_present"] is False
+        finally:
+            shutdown_kernels_for_owner(owner)
 
         assert "PYTHONPATH" in captured["env"], \
             "execute_code never reached Popen"

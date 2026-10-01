@@ -38,17 +38,21 @@ export function workflowDomainChanged(): void {
 }
 
 onMount($workflowDomainRevision, () => {
-  // Nanostores deactivates after a delay; globals can already belong to another realm.
+  // Delayed deactivation can outlive both globals and methods on the mounting realm.
   const ownerWindow = window
   const ownerDocument = document
+  const clearPollingInterval = ownerWindow.clearInterval.bind(ownerWindow)
+  const removeWindowListener = ownerWindow.removeEventListener.bind(ownerWindow)
+  const removeDocumentListener = ownerDocument.removeEventListener.bind(ownerDocument)
   const isViewed = () => workflowWindowIsViewed(ownerDocument)
   let timer: number | null = null
   let wasViewed = isViewed()
   let pendingExternalChange = false
   const bus = workflowChannel()
+  const removeBusListener = bus?.removeEventListener.bind(bus)
 
   const stop = () => {
-    if (timer !== null) {ownerWindow.clearInterval(timer); timer = null}
+    if (timer !== null) {clearPollingInterval(timer); timer = null}
   }
 
   const schedule = () => {
@@ -85,9 +89,9 @@ onMount($workflowDomainRevision, () => {
 
   return () => {
     stop()
-    bus?.removeEventListener('message', changed)
-    ownerWindow.removeEventListener('focus', sync)
-    ownerWindow.removeEventListener('blur', sync)
-    ownerDocument.removeEventListener('visibilitychange', sync)
+    removeBusListener?.('message', changed)
+    removeWindowListener('focus', sync)
+    removeWindowListener('blur', sync)
+    removeDocumentListener('visibilitychange', sync)
   }
 })

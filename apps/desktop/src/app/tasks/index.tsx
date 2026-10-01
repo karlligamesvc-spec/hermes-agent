@@ -34,7 +34,7 @@ import { updateCronJobs } from '@/store/cron'
 import { notify, notifyError } from '@/store/notifications'
 import { $tasks } from '@/store/tasks'
 
-import { jobTitle } from '../cron/job-state'
+import { jobOutcomeError, jobTitle } from '../cron/job-state'
 import { OverlayMain, OverlayNewButton, OverlaySidebar, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
@@ -293,7 +293,10 @@ export function TasksView({ onOpenSession, setStatusbarItemGroup: _setStatusbarI
 const PHASE_DOT: Record<TaskPhase, string> = {
   running: 'bg-primary',
   done: 'bg-(--ui-text-quaternary)',
-  failed: 'bg-destructive'
+  failed: 'bg-destructive',
+  'delivery-failed': 'bg-destructive',
+  'delivery-pending': 'bg-(--ui-text-quaternary)',
+  unknown: 'bg-(--ui-text-quaternary)'
 }
 
 function TaskListRow({
@@ -340,6 +343,7 @@ function TaskListRow({
 // gone quiet. Kept cheap (no run fetch) — the detail pane does the deep read.
 function TaskRowSubtitle({ job, now }: { job: CronJob; now: number }) {
   const { t } = useI18n()
+  const phase = taskPhase(job)
   const display = asText(job.schedule_display) || asText(job.schedule?.display) || ''
 
   // Stuck flag on the row uses only the job's own timing signal; the full
@@ -350,7 +354,11 @@ function TaskRowSubtitle({ job, now }: { job: CronJob; now: number }) {
     return <span className="truncate text-[0.7rem] text-amber-600 dark:text-amber-300">{t.tasks.stuckHint}</span>
   }
 
-  return <span className="truncate text-[0.7rem] text-muted-foreground">{display || t.tasks.pending}</span>
+  return (
+    <span className="truncate text-[0.7rem] text-muted-foreground">
+      {phase === 'running' ? display || t.tasks.pending : t.tasks.phases[phase]}
+    </span>
+  )
 }
 
 // ── Detail: header + live progress card + run history ────────────────────────
@@ -373,6 +381,7 @@ function TaskDetail({
   onRunNow: () => void
 }) {
   const phase = taskPhase(job)
+  const outcomeError = jobOutcomeError(job)
   const prompt = jobPrompt(job)
 
   return (
@@ -422,10 +431,10 @@ function TaskDetail({
                 <p className="whitespace-pre-wrap text-xs text-foreground/90">{prompt}</p>
               </div>
             )}
-            {job.last_error && (
+            {outcomeError && (
               <p className="inline-flex items-start gap-1 text-[0.7rem] text-destructive">
                 <AlertTriangle className="mt-px size-3 shrink-0" />
-                <span className="line-clamp-3">{job.last_error}</span>
+                <span className="line-clamp-3">{outcomeError}</span>
               </p>
             )}
           </header>
@@ -616,7 +625,9 @@ function TaskRuns({
               type="button"
             >
               <span className="inline-flex min-w-0 items-center gap-1.5">
-                {run.is_active && <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />}
+                {run.is_active && (
+                  <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-pulse" />
+                )}
                 <span className="truncate text-foreground">{run.title?.trim() || run.preview?.trim() || run.id}</span>
               </span>
               <span className="shrink-0 text-[0.62rem] text-muted-foreground tabular-nums">
@@ -632,9 +643,9 @@ function TaskRuns({
 
 function PhasePill({ c, phase }: { c: Translations['tasks']; phase: TaskPhase }) {
   const tone =
-    phase === 'failed'
+    phase === 'failed' || phase === 'delivery-failed'
       ? 'bg-destructive/10 text-destructive'
-      : phase === 'done'
+      : phase !== 'running'
         ? 'bg-muted text-muted-foreground'
         : 'bg-primary/10 text-primary'
 

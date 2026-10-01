@@ -23,6 +23,45 @@ afterEach(() => {
 })
 
 describe('Workflow refresh subscriptions retain their mounting realm', () => {
+  it('cleans up after the original realm loses its methods before delayed deactivation', () => {
+    const ownerWindow = window
+    const ownerDocument = document
+    const removeWindow = vi.spyOn(ownerWindow, 'removeEventListener')
+    const removeDocument = vi.spyOn(ownerDocument, 'removeEventListener')
+    const schedule = vi.spyOn(ownerWindow, 'setInterval')
+    const stop = vi.spyOn(ownerWindow, 'clearInterval')
+    const off = $workflowDomainRevision.listen(() => {})
+    const timer = schedule.mock.results[0]!.value
+
+    const methods = [
+      [ownerWindow, 'clearInterval'],
+      [ownerWindow, 'removeEventListener'],
+      [ownerDocument, 'removeEventListener']
+    ] as const
+
+    const descriptors = methods.map(([owner, name]) => Object.getOwnPropertyDescriptor(owner, name)!)
+
+    off()
+
+    try {
+      for (const [owner, name] of methods) {
+        Object.defineProperty(owner, name, { configurable: true, value: undefined, writable: true })
+      }
+
+      expect(ownerWindow.clearInterval).toBeUndefined()
+      expect(ownerWindow.removeEventListener).toBeUndefined()
+      expect(ownerDocument.removeEventListener).toBeUndefined()
+      expect(() => vi.advanceTimersByTime(STORE_UNMOUNT_DELAY)).not.toThrow()
+      expect(stop).toHaveBeenCalledWith(timer)
+      expect(removeWindow).toHaveBeenCalledWith('focus', expect.any(Function))
+      expect(removeWindow).toHaveBeenCalledWith('blur', expect.any(Function))
+      expect(removeDocument).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      methods.forEach(([owner, name], index) => Object.defineProperty(owner, name, descriptors[index]!))
+    }
+  })
+
   it('clears its timer and listeners after delayed deactivation when browser globals disappeared', () => {
     const ownerWindow = window
     const ownerDocument = document

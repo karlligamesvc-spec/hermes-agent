@@ -1843,6 +1843,26 @@ export const zhHant = defineLocale({
     failedRename: '重新命名設定檔失敗'
   },
 
+  tasks: {
+    noRuns: '暫無執行對話。',
+    runHistory: '執行對話',
+    emptyDone: '還沒有已結束的工作。',
+    tabDone: '已結束',
+    phases: {
+      running: '進行中',
+      done: '已完成',
+      failed: '失敗',
+      'delivery-failed': '交付失敗',
+      'delivery-pending': '交付結果未核實',
+      unknown: '執行結果未核實'
+    },
+    notify: {
+      doneTitle: '工作完成',
+      failedTitle: '工作失敗',
+      deliveryFailedTitle: '工作交付失敗'
+    }
+  },
+
   cron: {
     close: '關閉排程',
     eyebrow: '自動化執行',
@@ -1869,7 +1889,16 @@ export const zhHant = defineLocale({
       paused: '已暫停',
       disabled: '已停用',
       error: '錯誤',
-      completed: '已完成'
+      completed: '計劃已結束'
+    },
+    outcomes: {
+      succeeded: '最近執行成功',
+      failed: '最近執行失敗',
+      blocked: '設定阻止執行',
+      interrupted: '執行已中斷',
+      'delivery-failed': '結果交付失敗',
+      'delivery-pending': '交付結果未核實',
+      unknown: '執行結果未核實'
     },
     deliveryLabels: {
       local: '此桌面',

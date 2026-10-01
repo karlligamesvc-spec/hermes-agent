@@ -2320,6 +2320,10 @@ export interface Translations {
     search: string
     loading: string
     states: Record<string, string>
+    outcomes: Record<
+      'succeeded' | 'failed' | 'blocked' | 'interrupted' | 'delivery-failed' | 'delivery-pending' | 'unknown',
+      string
+    >
     deliveryLabels: Record<string, string>
     scheduleLabels: Record<string, string>
     scheduleHints: Record<string, string>
@@ -4605,7 +4609,7 @@ export interface Translations {
     latestOutputLabel: string
     runHistory: string
     noRuns: string
-    phases: Record<'done' | 'failed' | 'running', string>
+    phases: Record<'done' | 'failed' | 'running' | 'delivery-failed' | 'delivery-pending' | 'unknown', string>
     newTaskTitle: string
     newTaskDesc: string
     goalRequired: string
@@ -4631,6 +4635,7 @@ export interface Translations {
     notify: {
       doneTitle: string
       failedTitle: string
+      deliveryFailedTitle: string
     }
   }
 
