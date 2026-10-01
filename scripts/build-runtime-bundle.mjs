@@ -50,7 +50,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { notarizeMacRuntimePayload, signMacRuntimePayload } from './mac-runtime-payload.mjs'
-import { probeBundledBackend, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
+import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -233,7 +233,7 @@ function tarBin() {
   return 'tar'
 }
 
-function rmrf(p) { fs.rmSync(p, { recursive: true, force: true }) }
+const rmrf = removeOwnedRuntimeTree
 
 function* walk(dir, rel = '') {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -974,9 +974,8 @@ async function cmdSmoke(args) {
   fs.renameSync(rootA, rootB)
   await runProbes(rootB, 'moved location')
 
-  fs.writeFileSync(`${archive}.smoke-proof.json`, JSON.stringify({ runtime_commit: manifest.runtime_commit, locations: proofs }, null, 2) + '\n')
-
   if (!args.keep) rmrf(work)
+  fs.writeFileSync(`${archive}.smoke-proof.json`, JSON.stringify({ runtime_commit: manifest.runtime_commit, locations: proofs, privateWorkspaceRemoved: !args.keep }, null, 2) + '\n')
   log('SMOKE OK')
 }
 

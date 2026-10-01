@@ -335,7 +335,8 @@ async function resolveLatestRuntimePin({
 
 /**
  * Compare a resolved latest pin against the locally installed marker to decide
- * whether an opt-in update is available (R5 read side). NEVER throws.
+ * whether an opt-in update is available (R5 read side). Latest lookup failures
+ * become an unavailable result; an authoritative marker-reader failure propagates.
  *
  * "Installed key" is derived the same way install.sh keyed the source: the
  * marker's pinnedCommit when present, else pinnedBranch. A difference in key (or
@@ -346,6 +347,8 @@ async function resolveLatestRuntimePin({
  * @param {(url: string, options?: object) => Promise<any>} opts.fetchJson
  * @param {{pinnedCommit?: string|null, pinnedBranch?: string|null, version?: string|null}|null} opts.marker
  *   the bootstrap-complete marker (main.ts readBootstrapMarker())
+ * @param {() => Promise<object|null>} [opts.readCurrentMarker]
+ *   read after latest resolves so an in-flight bundled activation can settle first
  * @param {string} [opts.frameworkId]
  * @param {(msg: string) => void} [opts.log]
  * @returns {Promise<{updateAvailable: boolean, current: object, latest: object|null, error?: string}>}
@@ -354,23 +357,36 @@ async function checkForRuntimeUpdate({
   apiBase,
   fetchJson,
   marker,
+  readCurrentMarker,
   frameworkId = DEFAULT_FRAMEWORK_ID,
   desktopVersion = null,
   log = () => {}
 }: any) {
-  const installedCommit = (marker && marker.pinnedCommit) || null
-  const installedBranch = (marker && marker.pinnedBranch) || null
-  const installedVersion = (marker && marker.version) || null
-  const installedKey = installedCommit || installedBranch || null
-  const current = { commit: installedCommit, branch: installedBranch, version: installedVersion, key: installedKey }
+  const originalMarker = {
+    pinnedCommit: marker?.pinnedCommit,
+    pinnedBranch: marker?.pinnedBranch,
+    version: marker?.version
+  }
 
   let pin
+  let lookupError: string | null = null
 
   try {
     pin = await resolveLatestRuntimePin({ apiBase, fetchJson, frameworkId, log })
   } catch (err: any) {
     // resolveLatestRuntimePin already swallows, but be defensive.
-    return { updateAvailable: false, current, latest: null, error: (err && err.message) || String(err) }
+    lookupError = (err && err.message) || String(err)
+  }
+
+  const currentMarker = readCurrentMarker ? await readCurrentMarker() : originalMarker
+  const installedCommit = currentMarker?.pinnedCommit || null
+  const installedBranch = currentMarker?.pinnedBranch || null
+  const installedVersion = currentMarker?.version || null
+  const installedKey = installedCommit || installedBranch || null
+  const current = { commit: installedCommit, branch: installedBranch, version: installedVersion, key: installedKey }
+
+  if (lookupError) {
+    return { updateAvailable: false, current, latest: null, error: lookupError }
   }
 
   if (!pin) {

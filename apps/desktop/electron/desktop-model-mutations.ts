@@ -161,10 +161,13 @@ export class ModelMutationMetadataStore {
       const staging = `${this.file}.${nonce}.tmp`
 
       try {
-        fs.writeFileSync(staging, JSON.stringify(metadata), { flag: 'wx', mode: 0o600 })
-        const handle = fs.openSync(staging, 'r')
+        const handle = fs.openSync(staging, 'wx', 0o600)
 
-        try {fs.fsyncSync(handle)} finally {fs.closeSync(handle)}
+        try {
+          fs.writeFileSync(handle, JSON.stringify(metadata))
+          fs.fsyncSync(handle)
+        } finally {fs.closeSync(handle)}
+
         fs.renameSync(staging, this.file)
 
         if (!fs.existsSync(`${this.file}.initialized`)) {

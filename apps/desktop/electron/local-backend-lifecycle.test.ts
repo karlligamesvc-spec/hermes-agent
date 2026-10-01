@@ -6,6 +6,7 @@ import { test, vi } from 'vitest'
 
 import { createFirstRunSetupGate } from './first-run-setup-gate'
 import { createLocalBackendLifecycle } from './local-backend-lifecycle'
+import { createPackagedRuntimeGate } from './packaged-runtime'
 import { runPrimaryBackendStartup } from './primary-backend-startup'
 import { createQuitTeardownCoordinator } from './quit-teardown'
 
@@ -18,6 +19,62 @@ function deferred() {
 
   return { promise, resolve }
 }
+
+test.each([false, true])('an already-tracked start is joined before its bundle gate exists (failed=%s)', async fails => {
+  const prepare = deferred()
+  const entered = deferred()
+
+  const lifecycle = createLocalBackendLifecycle({
+    stopChild: () => {throw new Error('A version read must not stop a child')},
+    waitForExit: async () => {throw new Error('A version read must not wait for a live child')},
+    cancelSetup: () => {}
+  })
+
+  let installs = 0
+
+  const gate = createPackagedRuntimeGate(async () => {
+    installs += 1
+
+    return { status: 'installed', runtimeCommit: 'fixture' }
+  })
+
+  lifecycle.spawn(() => ({}))
+
+  const startup = lifecycle.start(async () => {
+    entered.resolve()
+    await prepare.promise
+
+    if (fails) {throw new Error('preparation failed')}
+
+    await gate()
+  })
+
+  const settledStart = startup.catch(() => {})
+  let joined = false
+
+  const reading = lifecycle.waitForPendingStarts().then(async () => {
+    await gate.waitForPending()
+    joined = true
+  })
+
+  try {
+    await entered.promise
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(joined, false)
+    assert.equal(installs, 0)
+    prepare.resolve()
+    await reading
+    await settledStart
+    assert.equal(joined, true)
+    assert.equal(installs, fails ? 0 : 1)
+    // The owned child remains live, but a second read has no startup to await.
+    await lifecycle.waitForPendingStarts()
+    assert.equal(lifecycle.hasPending(), true)
+  } finally {
+    prepare.resolve()
+    await settledStart
+  }
+})
 
 test('shutdown joins a removed start and prevents its late spawn', async () => {
   const resume = deferred()

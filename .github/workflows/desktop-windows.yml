@@ -100,6 +100,10 @@ jobs:
       - name: Install dependencies (root workspaces)
         run: npm ci
 
+      - name: Prove owned Windows process trees release executable locks
+        working-directory: apps/desktop
+        run: node scripts/runtime-bundle-owned-cleanup-gate.mjs --proof "$env:RUNNER_TEMP/bundled-engine/windows-owned-cleanup-proof.json"
+
       - name: Build complete native engine and prove relocation and Bash
         working-directory: apps/desktop
         env:
@@ -127,6 +131,7 @@ jobs:
             ${{ runner.temp }}/bundled-engine/packaged-runtime-proof.json
             ${{ runner.temp }}/bundled-engine/consumer-proof.json
             ${{ runner.temp }}/bundled-engine/component-download-proof.json
+            ${{ runner.temp }}/bundled-engine/windows-owned-cleanup-proof.json
 
       # dist:win = build (write-build-stamp + stage-install-script +
       # stage-native-deps[stages win32 node-pty natively on this host] + tsc +

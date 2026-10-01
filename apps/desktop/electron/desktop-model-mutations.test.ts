@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { buildSync } from 'esbuild'
-import { afterEach, test } from 'vitest'
+import { afterEach, test, vi } from 'vitest'
 
 import { signOutManagedDevice } from './desktop-device-key'
 import { managedRuntimeNeedsRepair } from './desktop-legacy-managed'
@@ -206,6 +206,80 @@ test('fresh metadata initializes, restarts retain monotonic counter, and deleted
   fs.unlinkSync(file)
   assert.throws(() => restarted.reserve(SCOPE, TARGET), /MODEL_RUNTIME_UNAVAILABLE/)
   assert.equal(fs.existsSync(file), false)
+})
+
+test('metadata flush uses a writable staging handle and publishes the same bytes', () => {
+  const { file, metadata } = fixture()
+  const open = fs.openSync
+  const sync = fs.fsyncSync
+  const stagingHandles = new Set<number>()
+  let verified = 0
+
+  const opened = vi.spyOn(fs, 'openSync').mockImplementation((name, flags, mode) => {
+    const handle = open(name, flags, mode)
+
+    if (String(name).startsWith(`${file}.`) && String(name).endsWith('.tmp')) {stagingHandles.add(handle)}
+
+    return handle
+  })
+
+  const synced = vi.spyOn(fs, 'fsyncSync').mockImplementation(handle => {
+    if (stagingHandles.has(handle)) {
+      stagingHandles.delete(handle)
+      // Restore the actual first JSON byte through this descriptor. A read-only
+      // handle rejects this write even on POSIX, which allows read-only fsync.
+      assert.equal(fs.writeSync(handle, Buffer.from('{'), 0, 1, 0), 1)
+      verified++
+    }
+
+    sync(handle)
+  })
+
+  try {
+    assert.equal(metadata.nextProvisionRevision(), 1)
+    assert.equal(verified, 1)
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).revision, 1)
+    assert.equal(new ModelMutationMetadataStore(file, () => AUTHORITY).nextProvisionRevision(), 2)
+    assert.equal(verified, 2)
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).revision, 2)
+  } finally {synced.mockRestore(); opened.mockRestore()}
+})
+
+test.each(['write', 'fsync'])('failed staging %s keeps the established counter and releases owned temporary files', fault => {
+  const { directory, file, metadata } = fixture()
+  assert.equal(metadata.nextProvisionRevision(), 1)
+  const before = fs.readFileSync(file)
+  const open = fs.openSync
+  const write = fs.writeFileSync
+  const sync = fs.fsyncSync
+  const stagingHandles = new Set<number>()
+  const failure = Object.assign(new Error(`owned staging ${fault} failure`), { code: 'EIO' })
+
+  const opened = vi.spyOn(fs, 'openSync').mockImplementation((name, flags, mode) => {
+    const handle = open(name, flags, mode)
+
+    if (String(name).startsWith(`${file}.`) && String(name).endsWith('.tmp')) {stagingHandles.add(handle)}
+
+    return handle
+  })
+
+  const written = vi.spyOn(fs, 'writeFileSync').mockImplementation((target, data, options) => {
+    if (fault === 'write' && typeof target === 'number' && stagingHandles.has(target)) {throw failure}
+    write(target, data, options)
+  })
+
+  const synced = vi.spyOn(fs, 'fsyncSync').mockImplementation(handle => {
+    if (fault === 'fsync' && stagingHandles.has(handle)) {throw failure}
+    sync(handle)
+  })
+
+  try {
+    assert.throws(() => metadata.nextProvisionRevision(), error => error === failure)
+    assert.deepEqual(fs.readFileSync(file), before)
+    assert.deepEqual(fs.readdirSync(directory).sort(), ['metadata.json', 'metadata.json.initialized'])
+  } finally {synced.mockRestore(); written.mockRestore(); opened.mockRestore()}
+
+  assert.equal(new ModelMutationMetadataStore(file, () => AUTHORITY).nextProvisionRevision(), 2)
 })
 
 test('corrupt or exhausted metadata never resets the published revision or writes a request', () => {

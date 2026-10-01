@@ -4,9 +4,10 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
-import { runtimeSmokeEnvironment } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
+import { removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 import { bundledNodeExe, fixupArgv } from '../electron/apex-bundle-install.ts'
 import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
@@ -48,6 +49,7 @@ function environment(root: string, home: string) {
     ...buildDesktopBackendEnv({ runtimeRoot: root, hermesHome: home, venvRoot: path.join(root, 'venv'), pythonPathEntries: [root], currentEnv: cleanEnv }),
     HOME: home, USERPROFILE: home, HERMES_HOME: home,
     UV_OFFLINE: offline.UV_OFFLINE || '1', PIP_NO_INDEX: offline.PIP_NO_INDEX || '1',
+    HERMES_DISABLE_LAZY_INSTALLS: offline.HERMES_DISABLE_LAZY_INSTALLS || '1',
     PYTHONPATH: offline.PYTHONPATH, TMPDIR: offline.TMPDIR, TMP: offline.TMP, TEMP: offline.TEMP,
     ...(process.platform === 'win32' ? { APPDATA: offline.APPDATA, LOCALAPPDATA: offline.LOCALAPPDATA } : {}),
     PYTHONDONTWRITEBYTECODE: '1', APEXNODES_TELEMETRY: 'off', HERMES_INSTALL_TELEMETRY: '0'
@@ -85,10 +87,11 @@ async function rpc(root: string, home: string) {
     cwd: workspace, env: { ...environment(root, home), HERMES_DASHBOARD_SESSION_TOKEN: token }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
   })
 
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
+
   let output = ''
   child.stdout!.on('data', bytes => { output = (output + bytes).slice(-8192) })
   child.stderr!.on('data', bytes => { output = (output + bytes).slice(-8192) })
-  const exited = new Promise<void>(resolve => { child.once('exit', () => resolve()); child.once('error', () => resolve()) })
 
   try {
     const port = await waitForDashboardPortAnnouncement(child, { timeoutMs: 90_000, bufferedOutput: () => output })
@@ -106,10 +109,7 @@ async function rpc(root: string, home: string) {
 
     return { status: response.status, runtimeCommit: release.runtime_commit, runtimeVersion: status.version, targetId: target.target_id, actualPid: child.pid, interpreter: python(root), externalPythonSocketsDenied: true }
   } finally {
-    child.kill('SIGTERM')
-    const timer = setTimeout(() => child.kill('SIGKILL'), 5000)
-    await exited
-    clearTimeout(timer)
+    await terminateOwnedSmokeProcess(child, closed)
   }
 }
 
@@ -174,6 +174,131 @@ async function assertNoUpdate(home: string) {
   return { marker, updateAvailable: latest.updateAvailable, publishedKey: latest.latest.key }
 }
 
+async function verifyRuntimeIdleGate(verifiedRoot: string) {
+  const active = path.join(workspace, 'idle-control-engine')
+  fs.mkdirSync(active)
+  const marker = path.join(active, 'unchanged-engine.txt')
+  fs.writeFileSync(marker, 'controlled old engine')
+  const noWorker = await assertPackagedRuntimeIdle(active, verifiedRoot)
+  assert.ok(noWorker && noWorker.ownedProbePid > 0 && noWorker.workerPid > 0)
+  assert.deepEqual(noWorker.holderPids, [])
+
+  let reversal: unknown = null
+
+  if (process.platform === 'win32') {
+    assert.notEqual(noWorker.ownedProbePid, noWorker.workerPid, 'actual venv launcher and Python worker must be distinct')
+    assert.ok(noWorker.rawHolderPids.includes(noWorker.ownedProbePid), 'the actual scanner redirector must reproduce the old false holder')
+    const sourcePath = fileURLToPath(new URL('../electron/packaged-runtime.ts', import.meta.url))
+    const original = fs.readFileSync(sourcePath)
+    const anchor = 'const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid)'
+    const body = original.toString('utf8')
+    assert.equal(body.split(anchor).length - 1, 1, 'private reversal must target the unique actual idle PID filter')
+    const copy = path.join(path.dirname(sourcePath), `packaged-runtime.idle-reverse-${randomUUID()}.ts`)
+    const reversed = body.replace(anchor, 'const holderPids = result.holders')
+    fs.writeFileSync(copy, reversed, { flag: 'wx' })
+    assert.equal(fs.readFileSync(copy, 'utf8'), reversed, 'private fault must be the actual imported bytes')
+
+    try {
+      const code = `import assert from 'node:assert/strict'; import { assertPackagedRuntimeIdle } from ${JSON.stringify(pathToFileURL(copy).href)};
+try { await assert.doesNotReject(() => assertPackagedRuntimeIdle(${JSON.stringify(active)},${JSON.stringify(verifiedRoot)}),'native idle control must accept no foreign worker'); }
+catch(error) { console.log(JSON.stringify({name:error.name,code:error.code,idleProof:error.actual?.idleProof})); throw error; }`
+
+      let observed: unknown
+      await assert.rejects(exec(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], {
+        cwd: path.dirname(sourcePath), env: environment(verifiedRoot, workspace), windowsHide: true, timeout: 30_000, maxBuffer: 64 * 1024
+      }), error => {
+        const failure = error as Error & { code?: number; stdout?: string; stderr?: string }
+        assert.equal(failure.code, 1, 'the private native control must really fail')
+        assert.match(failure.stderr || '', /AssertionError \[ERR_ASSERTION\]/)
+        const result = JSON.parse(failure.stdout || '')
+        assert.equal(result.name, 'AssertionError')
+        assert.equal(result.code, 'ERR_ASSERTION')
+        assert.ok(result.idleProof.rawHolderPids.includes(result.idleProof.ownedProbePid), 'unfiltered actual scanner PID must cause the refusal')
+        observed = { exitCode: failure.code, ...result }
+
+        return true
+      })
+      reversal = { uniqueAnchor: true, importedFaultSha256: sha(Buffer.from(reversed)), actualRefusal: observed }
+    } finally {
+      fs.rmSync(copy, { force: true })
+      assert.equal(fs.existsSync(copy), false, 'private product copy must be removed')
+      assert.equal(sha(fs.readFileSync(sourcePath)), sha(original), 'tracked product bytes must never be changed by the reversal')
+    }
+
+    assert.deepEqual((await assertPackagedRuntimeIdle(active, verifiedRoot))?.holderPids, [])
+  }
+
+  const token = randomUUID()
+  const node = bundledNodeExe(verifiedRoot, manifest)
+
+  const child = spawn(node, ['-e', `console.log(JSON.stringify({pid:process.pid,token:${JSON.stringify(token)}})); setInterval(()=>{},1000)`], {
+    cwd: active, env: environment(verifiedRoot, workspace), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+  })
+
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
+  let blocked: unknown
+  let fixturePid: number | undefined
+
+  try {
+    const ready = await new Promise<{ pid: number; token: string }>((resolve, reject) => {
+      let output = ''
+      const timer = setTimeout(() => reject(new Error('owned idle-holder fixture did not become ready')), 5000)
+      child.once('error', error => { clearTimeout(timer); reject(error) })
+      child.once('exit', code => { clearTimeout(timer); reject(new Error(`owned idle-holder fixture exited early: ${code}`)) })
+      child.stdout!.on('data', bytes => {
+        output += bytes
+
+        if (output.includes('\n')) {
+          clearTimeout(timer)
+
+          try { resolve(JSON.parse(output.split('\n')[0])) } catch (error) { reject(error) }
+        }
+      })
+    })
+
+    assert.equal(ready.token, token)
+    assert.equal(ready.pid, child.pid)
+    assert.ok(Number.isInteger(ready.pid) && ready.pid > 0)
+    fixturePid = ready.pid
+    await assert.rejects(assertPackagedRuntimeIdle(active, verifiedRoot), error => {
+      const failure = error as Error & { idleProof?: typeof noWorker }
+      assert.match(failure.message, /previous engine is still running/)
+      assert.ok(failure.idleProof?.holderPids.includes(ready.pid), 'only the scanner PID can be excluded; the real borrowed worker must block')
+      blocked = failure.idleProof
+
+      return true
+    })
+    assert.equal(child.exitCode, null)
+    assert.doesNotThrow(() => process.kill(ready.pid, 0), 'the idle detector must leave a borrowed process alive')
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'controlled old engine')
+  } finally {
+    await terminateOwnedSmokeProcess(child, closed)
+  }
+
+  // An owned close event can precede kernel PID retirement on Windows.
+  const deadline = Date.now() + 5000
+  let retired = false
+
+  while (Date.now() < deadline) {
+    try { process.kill(fixturePid!, 0) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') { retired = true;
+
+ break }
+
+      throw error
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+
+  assert.equal(retired, true, 'only the recorded fixture must actually retire before retry')
+  const afterRetirement = await assertPackagedRuntimeIdle(active, verifiedRoot)
+  assert.deepEqual(afterRetirement?.holderPids, [])
+  assert.equal(fs.readFileSync(marker, 'utf8'), 'controlled old engine')
+
+  return { noWorker, borrowedWorker: { pid: fixturePid, stillAliveAfterRefusal: true, blocked }, afterRetirement, privateWindowsReversal: reversal }
+}
+
 try {
   const fresh = path.join(workspace, 'fresh-home')
   const first = await installPackagedRuntime(consumer(fresh), false)
@@ -182,6 +307,7 @@ try {
   const actualRpc = await rpc(active, fresh)
   assert.equal((await installPackagedRuntime(consumer(fresh), true)).status, 'current')
   proof.fresh = { ...first, actualRpc, reopen: 'current', updateCheck: await assertNoUpdate(fresh) }
+  proof.runtimeIdleGate = await verifyRuntimeIdleGate(active)
 
   const returning = path.join(workspace, 'legacy-home')
   const before = await seedOld(returning, active)
@@ -235,9 +361,7 @@ try {
   throw error
 } finally {
   try {
-    // Native child caches may finish after the owned server's exit. Bound retries;
-    // cleanup failure is a failed gate, even when all preceding behavior passed.
-    fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
+    removeOwnedRuntimeTree(workspace)
     proof.privateWorkspaceRemoved = true
   } catch (error) {
     proof.success = false

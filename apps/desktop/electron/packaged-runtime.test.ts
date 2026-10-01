@@ -14,6 +14,7 @@ import { checkForRuntimeUpdate } from './apex-runtime-latest'
 import { buildDesktopBackendEnv, bundledRuntimePathEntries } from './backend-env'
 import { buildTerminalScript, terminalScriptEnv } from './external-terminal'
 import {
+  assertPackagedRuntimeIdle,
   createPackagedRuntimeGate,
   installPackagedRuntime,
   packagedRuntimeDecision,
@@ -113,6 +114,90 @@ function legacy(home: string, source = 'f'.repeat(40), version = 'v2026.9.22-for
 
   return root
 }
+
+nativeTest('the actual idle scan excludes its owned probe but blocks a live borrowed engine worker without killing it', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-idle-native-'))
+  const root = path.join(home, 'verified-engine')
+  const active = path.join(home, 'previous-engine')
+  const commonGit = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim()
+  const interpreter = process.env.HERMES_PYTHON || path.join(path.dirname(commonGit), '.venv', nativeOS === 'win' ? 'Scripts/python.exe' : 'bin/python')
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home, HERMES_HOME: home, PYTHONDONTWRITEBYTECODE: '1' }
+  delete env.PYTHONHOME
+  delete env.PYTHONPATH
+  let child: ReturnType<typeof spawn> | undefined
+  let closed: Promise<void> | undefined
+
+  try {
+    const identity = await exec(interpreter, ['-c', 'import json,pathlib,psutil,sys; assert sys.version_info[:2] == (3,11); print(json.dumps({"psutil":str(pathlib.Path(psutil.__file__).parent),"version":psutil.__version__}))'], { env, cwd: home, timeout: 10_000 })
+    const dependency = JSON.parse(identity.stdout)
+    assert.ok(dependency.version, 'native fixture must have real psutil')
+    await exec(interpreter, ['-m', 'venv', '--without-pip', path.join(root, 'venv')], { env, cwd: home, timeout: 20_000 })
+    const python = path.join(root, 'venv', nativeOS === 'win' ? 'Scripts/python.exe' : 'bin/python')
+    const purelib = await exec(python, ['-c', 'import sysconfig; print(sysconfig.get_path("purelib"))'], { env, cwd: home, timeout: 10_000 })
+    fs.cpSync(dependency.psutil, path.join(purelib.stdout.trim(), 'psutil'), { recursive: true })
+    fs.mkdirSync(active)
+    fs.writeFileSync(path.join(active, 'old-engine.txt'), 'untouched previous engine')
+    const idle = await assertPackagedRuntimeIdle(active, root)
+    assert.ok(idle && idle.ownedProbePid > 0 && idle.workerPid > 0)
+    assert.deepEqual(idle.holderPids, [])
+
+    if (process.platform === 'win32') {
+      assert.notEqual(idle.ownedProbePid, idle.workerPid, 'the real venv redirector must differ from its Python worker')
+      assert.ok(idle.rawHolderPids.includes(idle.ownedProbePid), 'native Windows must reproduce the scanner launcher holder')
+    }
+
+    child = spawn(process.execPath, ['-e', 'console.log(JSON.stringify({pid:process.pid})); setInterval(()=>{},1000)'], { cwd: active, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    closed = new Promise(resolve => child!.once('close', () => resolve()))
+    const worker = child
+
+    const ready = await new Promise<{ pid: number }>((resolve, reject) => {
+      let output = ''
+      const timer = setTimeout(() => reject(new Error('controlled borrowed worker did not become ready')), 5000)
+      worker.once('error', error => { clearTimeout(timer); reject(error) })
+      worker.once('exit', code => { clearTimeout(timer); reject(new Error(`controlled borrowed worker exited early: ${code}`)) })
+      worker.stdout!.on('data', bytes => {
+        output += bytes
+
+        if (output.includes('\n')) {
+          clearTimeout(timer)
+
+          try { resolve(JSON.parse(output.split('\n')[0])) } catch (error) { reject(error) }
+        }
+      })
+    })
+
+    assert.equal(ready.pid, child.pid)
+    assert.ok(Number.isInteger(ready.pid) && ready.pid > 0)
+    await assert.rejects(assertPackagedRuntimeIdle(active, root), (error: Error & { idleProof?: typeof idle }) => {
+      assert.match(error.message, /previous engine is still running/)
+      assert.ok(error.idleProof?.holderPids.includes(ready.pid), 'the actual borrowed PID must remain a blocker')
+
+      return true
+    })
+    assert.equal(child.exitCode, null)
+    assert.doesNotThrow(() => process.kill(ready.pid, 0), 'the idle scan must never kill the borrowed worker')
+    child.kill('SIGTERM')
+    let timer: NodeJS.Timeout | undefined
+
+    try {
+      await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('controlled borrowed worker did not retire')), 5000) })])
+    } finally { clearTimeout(timer) }
+
+    assert.deepEqual((await assertPackagedRuntimeIdle(active, root))?.holderPids, [])
+    assert.equal(fs.readFileSync(path.join(active, 'old-engine.txt'), 'utf8'), 'untouched previous engine')
+  } finally {
+    if (child && closed) {
+      if (child.exitCode === null && child.signalCode === null) {child.kill('SIGKILL')}
+      let timer: NodeJS.Timeout | undefined
+
+      try {
+        await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('controlled borrowed worker did not retire')), 5000) })])
+      } finally { clearTimeout(timer) }
+    }
+
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
+  }
+}, 60_000)
 
 nativeTest('offline fresh boot installs, relocates and probes the active engine before stamping', async () => {
   await withHome(async (home, options) => {

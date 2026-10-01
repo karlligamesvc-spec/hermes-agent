@@ -194,17 +194,28 @@ function probeEnv(root: string, home: string): NodeJS.ProcessEnv {
     HERMES_HOME: home,
     UV_OFFLINE: '1',
     PIP_NO_INDEX: '1',
+    HERMES_DISABLE_LAZY_INSTALLS: '1',
     HERMES_INSTALL_TELEMETRY: '0',
     HERMES_DASHBOARD_DISABLE_AUTH: '0'
   }
 }
+
+// Pinned Python 3.11's Windows platform.machine() reads optional PROCESSOR_* hints.
+// Verify the interpreter's compiled platform and pointer width instead.
+export const NATIVE_PYTHON_ARCHITECTURE_PROBE = [
+  'import platform,struct,sys,sysconfig',
+  'if sys.platform == "win32":',
+  ' assert sys.argv[3] == "x64" and sysconfig.get_platform() == "win-amd64" and struct.calcsize("P") == 8, "engine architecture mismatch"',
+  'else:',
+  ' assert platform.machine().lower() in ({"arm64","aarch64"} if sys.argv[3] == "arm64" else {"amd64","x86_64"}), "engine architecture mismatch"'
+].join('\n')
 
 export async function probePackagedRuntime(root: string, release: PackagedRuntimeRelease, bundled = true): Promise<void> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-probe-'))
   const python = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 
   const code = [
-    'import pathlib,sys,platform',
+    'import pathlib,sys',
     'root=pathlib.Path(sys.argv[1]).resolve()',
     'assert sys.version_info[:2] == (3,11), "engine Python version mismatch"',
     'assert pathlib.Path(sys.prefix).resolve() == root / "venv", "engine venv mismatch"',
@@ -212,19 +223,19 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
     'import yaml,dotenv,hermes_cli.config,hermes_cli.main,run_agent,toolsets',
     'assert pathlib.Path(hermes_cli.config.__file__).resolve().is_relative_to(root), "engine imported foreign source"',
     'assert (root / ".hermes-source-commit").read_text().strip() == sys.argv[2], "engine source mismatch"',
-    'assert platform.machine().lower() in ({"arm64","aarch64"} if sys.argv[3] == "arm64" else {"amd64","x86_64"}), "engine architecture mismatch"'
+    NATIVE_PYTHON_ARCHITECTURE_PROBE
   ].join('\n')
 
   try {
     await exec(python, ['-c', code, root, release.runtime_commit, process.arch, bundled ? 'bundled' : 'legacy'], { cwd: home, env: probeEnv(root, home), windowsHide: true, timeout: 60_000, maxBuffer: 32 * 1024 })
   } finally {
-    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
   }
 }
 
 /** Shared runtime workers must leave before the canonical path can change. Never kills borrowed workers. */
-export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string): Promise<void> {
-  if (!fs.existsSync(activeRoot)) {return}
+export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string) {
+  if (!fs.existsSync(activeRoot)) {return null}
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-holder-'))
   const python = path.join(verifiedRoot, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 
@@ -242,18 +253,32 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     '  if under(p.exe()) or under(p.cwd()) or any(under(arg) for arg in p.cmdline()): holders.append(p.pid)',
     ' except psutil.NoSuchProcess: continue',
     ' except psutil.AccessDenied: continue',
-    'print(json.dumps({"holders":holders}))'
+    'print(json.dumps({"holders":holders,"workerPid":os.getpid()}))'
   ].join('\n')
 
   try {
-    const { stdout } = await exec(python, ['-c', code, activeRoot], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
+    const pending = exec(python, ['-c', code, activeRoot], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
+    const ownedProbePid = pending.child.pid
+    const { stdout } = await pending
     const result = JSON.parse(stdout)
 
-    if (!Array.isArray(result.holders) || result.holders.some((pid: unknown) => !Number.isInteger(pid))) {throw new Error('Could not verify existing engine workers.')}
+    if (typeof ownedProbePid !== 'number' || !Number.isInteger(ownedProbePid) || ownedProbePid <= 0 || !Number.isInteger(result.workerPid) || result.workerPid <= 0 ||
+      !Array.isArray(result.holders) || result.holders.some((pid: unknown) => !Number.isInteger(pid) || Number(pid) <= 0)) {
+      throw new Error('Could not verify existing engine workers.')
+    }
 
-    if (result.holders.length) {throw new Error('The previous engine is still running. Close its local workers and retry; no engine files were switched.')}
+    // Windows venv Python has a live redirector parent carrying our activeRoot argument.
+    // Exclude only the exact process Node launched for this scan, never other ancestors/workers.
+    const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid)
+    const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[] }
+
+    if (holderPids.length) {
+      throw Object.assign(new Error('The previous engine is still running. Close its local workers and retry; no engine files were switched.'), { idleProof })
+    }
+
+    return idleProof
   } finally {
-    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
   }
 }
 
@@ -309,7 +334,7 @@ function reclaimOwnedPackagedStaging(hermesHome: string, manifest: ReturnType<ty
   }
 
   // Only this package's claimed, unreferenced staging slot. No committed version GC.
-  fs.rmSync(staging, { recursive: true })
+  fs.rmSync(staging, { recursive: true, maxRetries: 6, retryDelay: 100 })
 }
 
 /** No network, no in-place extraction, no GC of the old rollback target. */
