@@ -11,7 +11,54 @@ function source(anchors: AnalysisDocument['anchors'], sourceUrl?: string): Analy
   }
 }
 
+const TIME_EVIDENCE_BOUNDARIES = [
+  ['zh', [
+    '转写锚点的首末范围和最后锚点只标记已保存转写的范围，不是媒体全长。',
+    '本草稿未提供经核实的媒体时长元数据；取得这种元数据前，媒体全长应标为未知。',
+    'ASR锚点间隙可能有漏识别的口播，不能据此断言静音或无人声。',
+  ]],
+  ['zh-hant', [
+    '轉寫錨點的首末範圍和最後錨點只標記已儲存逐字稿的範圍，不是媒體全長。',
+    '本草稿未提供經核實的媒體時長資料；取得這種資料前，媒體全長應標為未知。',
+    'ASR錨點間隙可能有漏辨識的口播，不能據此斷言靜音或沒有人聲。',
+  ]],
+  ['en', [
+    'The transcript anchor span and final anchor mark only the stored transcript range, not the full media duration.',
+    'This draft supplies no verified media duration metadata; keep the full media duration unknown until such metadata is obtained.',
+    'Gaps between ASR anchors may contain missed speech and do not prove silence or absence of voices.',
+  ]],
+  ['ja', [
+    '字幕の時間範囲と最後のASRアンカーは保存済みの文字起こしの範囲であり、動画全体の長さではありません。',
+    'この下書きには確認済みのメディア長のメタデータがありません。それを取得するまでは全体の長さを不明としてください。',
+    'ASRアンカー間の空白には認識漏れの発話がある可能性があり、無音や人声の不在を意味しません。',
+  ]],
+  ['ar', [
+    'نطاق مراسي التفريغ وآخر مرساة ASR يحددان حدود النص المحفوظ، لا مدة الوسائط الكاملة.',
+    'لا تتضمن هذه المسودة بيانات وصفية متحققة لمدة الوسائط؛ تبقى المدة الكاملة مجهولة حتى الحصول على هذه البيانات.',
+    'قد تتضمن الفجوات بين مراسي ASR كلامًا لم يُتعرف عليه؛ ولا تثبت الصمت أو غياب الأصوات البشرية.',
+  ]],
+] as const
+
 describe('video deep breakdown handoff', () => {
+  it.each(TIME_EVIDENCE_BOUNDARIES)('keeps ASR time coverage separate from media duration and silence in %s', (locale, boundaries) => {
+    // Untrusted source text repeats the clauses so a whole-draft substring check cannot protect the instruction boundary.
+    const anchors = [
+      { id: 'a1', location: { start_seconds: 0.11, end_seconds: 7.19 }, text: boundaries.join(' ') },
+      { id: 'a2', location: { start_seconds: 12.56, end_seconds: 159.06 }, text: 'final stored transcript segment' }
+    ]
+
+    for (const sourceUrl of [undefined, 'https://www.iesdouyin.com/share/video/123']) {
+      const draft = videoDeepBreakdownDraft(source(anchors, sourceUrl), locale)!
+      const instructions = draft.split('\n<source-transcript>\n')[0]
+
+      expect(draft).toContain('\n<source-transcript>\n')
+      expect(draft).toContain('[0:12–2:39] "final stored transcript segment"')
+
+      for (const boundary of boundaries) {expect(instructions).toContain(boundary)}
+      expect(draft.length).toBeLessThanOrEqual(4000)
+    }
+  })
+
   it('passes an owned linked-video transcript to the Agent as a reviewable, evidence-bounded draft', () => {
     const draft = videoDeepBreakdownDraft(source([
       { id: 'a1', location: { start_seconds: 2, end_seconds: 5 }, text: '实际口播' }
