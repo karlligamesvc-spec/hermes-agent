@@ -76,6 +76,8 @@ export interface TerminalScriptSpec {
   args: string[]
   cwd: string
   env?: Record<string, string>
+  /** Only bundled tools; retain the interactive shell's own PATH after them. */
+  pathPrefix?: string[]
   platform?: NodeJS.Platform
 }
 
@@ -83,7 +85,7 @@ export interface TerminalScriptSpec {
  * The launcher script contents. `exec` on POSIX so the terminal window belongs
  * to the TUI itself rather than an idle shell wrapping it.
  */
-export function buildTerminalScript({ command, args, cwd, env = {}, platform = process.platform }: TerminalScriptSpec) {
+export function buildTerminalScript({ command, args, cwd, env = {}, pathPrefix = [], platform = process.platform }: TerminalScriptSpec) {
   const entries = Object.entries(env)
 
   if (platform === 'win32') {
@@ -91,6 +93,7 @@ export function buildTerminalScript({ command, args, cwd, env = {}, platform = p
       '@echo off',
       `cd /d ${windowsQuote(cwd)}`,
       ...entries.map(([key, value]) => `set ${windowsQuote(`${key}=${value}`)}`),
+      ...(pathPrefix.length ? [`set ${windowsQuote(`PATH=${pathPrefix.join(';')};%PATH%`)}`] : []),
       [command, ...args].map(windowsQuote).join(' '),
       ''
     ].join('\r\n')
@@ -100,6 +103,7 @@ export function buildTerminalScript({ command, args, cwd, env = {}, platform = p
     '#!/bin/sh',
     `cd ${posixQuote(cwd)} || exit 1`,
     ...entries.map(([key, value]) => `export ${key}=${posixQuote(value)}`),
+    ...(pathPrefix.length ? [`export PATH=${posixQuote(pathPrefix.join(':'))}:"${'${PATH:-}'}"`] : []),
     `exec ${[command, ...args].map(posixQuote).join(' ')}`,
     ''
   ].join('\n')

@@ -53,6 +53,10 @@ jobs:
           MAC_VERSION: ${{ needs.macos.outputs.version }}
           WINDOWS_VERSION: ${{ needs.windows.outputs.version }}
           WINDOWS_IDENTITY_VERIFIED: ${{ needs.windows.outputs.identity_verified }}
+          MAC_RUNTIME_COMMIT: ${{ needs.macos.outputs.runtime_commit }}
+          WINDOWS_RUNTIME_COMMIT: ${{ needs.windows.outputs.runtime_commit }}
+          MAC_RUNTIME_VERSION: ${{ needs.macos.outputs.runtime_version }}
+          WINDOWS_RUNTIME_VERSION: ${{ needs.windows.outputs.runtime_version }}
         run: |
           set -euo pipefail
           test -n "$MAC_SHA" && test -n "$WINDOWS_SHA"
@@ -62,6 +66,12 @@ jobs:
           test "$WINDOWS_IDENTITY_VERIFIED" = "true"
           PACKAGE_VERSION="$(node -e "process.stdout.write(require('./apps/desktop/package.json').version)")"
           test "$MAC_VERSION" = "$PACKAGE_VERSION"
+          PINNED_RUNTIME_COMMIT="$(node -e "process.stdout.write(require('./apps/desktop/bundled-runtime.json').runtime_commit)")"
+          PINNED_RUNTIME_VERSION="$(node -e "process.stdout.write(require('./apps/desktop/bundled-runtime.json').runtime_version)")"
+          test "$MAC_RUNTIME_COMMIT" = "$PINNED_RUNTIME_COMMIT"
+          test "$WINDOWS_RUNTIME_COMMIT" = "$PINNED_RUNTIME_COMMIT"
+          test "$MAC_RUNTIME_VERSION" = "$PINNED_RUNTIME_VERSION"
+          test "$WINDOWS_RUNTIME_VERSION" = "$PINNED_RUNTIME_VERSION"
           echo "paired release identity OK: version=$MAC_VERSION sha=$CALLER_SHA"
 
       - name: Assert all production updater feeds advanced together

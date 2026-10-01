@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 
 // Match the POSIX fallback surface used by the Python terminal environment.
@@ -91,8 +92,19 @@ function hermesManagedNodePathEntries(
   return platform === 'win32' ? [root, bin] : [bin, root]
 }
 
+/** Native tools shipped inside the selected runtime, shared by all local children. */
+function bundledRuntimePathEntries(runtimeRoot, { platform = process.platform, pathModule = pathModuleForPlatform(platform) }: any = {}) {
+  if (!runtimeRoot) {return []}
+  const runtime = pathModule.join(runtimeRoot, '.runtime')
+
+  return platform === 'win32'
+    ? [pathModule.join(runtime, 'node'), pathModule.join(runtime, 'bin'), pathModule.join(runtime, 'git', 'cmd'), pathModule.join(runtime, 'git', 'bin'), pathModule.join(runtime, 'git', 'usr', 'bin')]
+    : [pathModule.join(runtime, 'node', 'bin'), pathModule.join(runtime, 'bin')]
+}
+
 function buildDesktopBackendPath({
   hermesHome,
+  runtimeRoot,
   venvRoot,
   currentPath = '',
   platform = process.platform,
@@ -103,7 +115,7 @@ function buildDesktopBackendPath({
   const venvBin = venvRoot ? pathModule.join(venvRoot, platform === 'win32' ? 'Scripts' : 'bin') : null
   const saneEntries = platform === 'win32' ? [] : POSIX_SANE_PATH_ENTRIES
 
-  return appendUniquePathEntries([hermesNodeDirs, venvBin, currentPath, saneEntries], { delimiter })
+  return appendUniquePathEntries([bundledRuntimePathEntries(runtimeRoot, { platform, pathModule }), hermesNodeDirs, venvBin, currentPath, saneEntries], { delimiter })
 }
 
 function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
@@ -123,6 +135,7 @@ function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatfor
 
 function buildDesktopBackendEnv({
   hermesHome,
+  runtimeRoot,
   pythonPathEntries = [],
   venvRoot,
   currentEnv = process.env,
@@ -140,11 +153,19 @@ function buildDesktopBackendEnv({
     PYTHONUTF8: currentEnv?.PYTHONUTF8 ?? '1',
     [key]: buildDesktopBackendPath({
       hermesHome,
+      runtimeRoot,
       venvRoot,
       currentPath: currentPathValue(currentEnv, platform),
       platform,
       pathModule
     })
+  }
+
+  const bundledBash = runtimeRoot && pathModule.join(runtimeRoot, '.runtime', 'git', 'bin', 'bash.exe')
+
+  if (platform === 'win32' && !currentEnv?.HERMES_GIT_BASH_PATH && bundledBash && fs.existsSync(bundledBash)) {
+    // tools/environments/local.py consumes this override before system Git candidates.
+    env.HERMES_GIT_BASH_PATH = bundledBash
   }
 
   // hc-545: fold in the coding-agent proxy fragment (HTTP(S)_PROXY / NO_PROXY,
@@ -196,6 +217,7 @@ export {
   appendUniquePathEntries,
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
+  bundledRuntimePathEntries,
   delimiterForPlatform,
   hermesManagedNodePathEntries,
   HF_MIRROR_ENDPOINT,
