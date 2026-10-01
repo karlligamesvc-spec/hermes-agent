@@ -150,6 +150,53 @@ test('native Windows tree shutdown releases an actual locked uv.exe and cleanup 
   }
 })
 
+test('native Python architecture guard accepts absent Windows processor hints and rejects the wrong target', () => {
+  // Resolve production code only inside this selected test. The private /T
+  // reversal copies this file elsewhere and selects only the owned-lock test.
+  const source = new URL('../electron/packaged-runtime.ts', import.meta.url).href
+  const read = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `import { NATIVE_PYTHON_ARCHITECTURE_PROBE } from ${JSON.stringify(source)}; console.log(JSON.stringify(NATIVE_PYTHON_ARCHITECTURE_PROBE))`], { encoding: 'utf8', timeout: 15_000 })
+  assert.equal(read.status, 0, read.stderr)
+  const guard = JSON.parse(read.stdout)
+  assert.equal(typeof guard, 'string')
+  let python = '/usr/bin/python3'
+  if (process.platform === 'win32') {
+    // The default runner Python 3.12 uses WMI and would mask the pinned 3.11
+    // failure. Use a real cached 3.11 x64 interpreter, then verify its identity.
+    assert.ok(process.env.RUNNER_TOOL_CACHE, 'native Windows regression requires an installed Python 3.11 tool cache')
+    const cache = path.join(process.env.RUNNER_TOOL_CACHE, 'Python')
+    const version = fs.readdirSync(cache).filter(name => /^3\.11\.\d+$/.test(name)).sort().reverse()
+      .find(name => fs.existsSync(path.join(cache, name, 'x64', 'python.exe')))
+    assert.ok(version, 'native Windows regression requires a real cached Python 3.11 x64 executable')
+    python = path.join(cache, version, 'x64', 'python.exe')
+  }
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-architecture-probe-'))
+  const env = { ...process.env, HOME: home, USERPROFILE: home, PYTHONDONTWRITEBYTECODE: '1' }
+  for (const key of Object.keys(env)) {
+    if (/^(?:PROCESSOR_ARCHITECTURE|PROCESSOR_ARCHITEW6432|PYTHONHOME|PYTHONPATH)$/i.test(key)) delete env[key]
+  }
+  const code = `import json,os,sys\nassert not os.environ.get('PROCESSOR_ARCHITECTURE') and not os.environ.get('PROCESSOR_ARCHITEW6432')\n${guard}\nprint(json.dumps({'version':sys.version,'versionMinor':list(sys.version_info[:2]),'compiledPlatform':sysconfig.get_platform(),'pointerBytes':struct.calcsize('P'),'target':sys.argv[3]}))`
+  try {
+    const run = arch => spawnSync(python, ['-c', code, 'owned-root', 'owned-source', arch], { cwd: home, env, encoding: 'utf8', timeout: 10_000 })
+    const native = run(process.arch)
+    assert.equal(native.status, 0, native.stderr)
+    const identity = JSON.parse(native.stdout)
+    assert.equal(identity.target, process.arch)
+    assert.equal(identity.pointerBytes, 8)
+    if (process.platform === 'win32') {
+      assert.deepEqual(identity.versionMinor, [3, 11])
+      assert.equal(identity.compiledPlatform, 'win-amd64')
+      const old = spawnSync(python, ['-c', 'import json,platform; print(json.dumps({"machine":platform.machine()})); assert platform.machine().lower() in {"amd64","x86_64"}, "old architecture hint guard rejected"'], { cwd: home, env, encoding: 'utf8', timeout: 10_000 })
+      assert.equal(old.status, 1, 'the previous guard must reproduce the missing-hint failure on native Windows')
+      assert.equal(JSON.parse(old.stdout).machine, '')
+      assert.match(old.stderr, /AssertionError: old architecture hint guard rejected/)
+    }
+    const incompatible = run(process.arch === 'arm64' ? 'x64' : 'arm64')
+    assert.equal(incompatible.status, 1)
+    assert.match(incompatible.stderr, /AssertionError: engine architecture mismatch/)
+    console.log(JSON.stringify({ nativePythonArchitecture: true, interpreter: python, ...identity, processorHintsAbsent: true, wrongTargetRejected: true, oldWindowsHintGuardRejected: process.platform === 'win32' }))
+  } finally { removeOwnedRuntimeTree(home) }
+})
+
 test('the isolated smoke rejects real external socket attempts while allowing a local API socket', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-offline-'))
   const server = net.createServer(socket => socket.destroy())

@@ -200,12 +200,22 @@ function probeEnv(root: string, home: string): NodeJS.ProcessEnv {
   }
 }
 
+// Pinned Python 3.11's Windows platform.machine() reads optional PROCESSOR_* hints.
+// Verify the interpreter's compiled platform and pointer width instead.
+export const NATIVE_PYTHON_ARCHITECTURE_PROBE = [
+  'import platform,struct,sys,sysconfig',
+  'if sys.platform == "win32":',
+  ' assert sys.argv[3] == "x64" and sysconfig.get_platform() == "win-amd64" and struct.calcsize("P") == 8, "engine architecture mismatch"',
+  'else:',
+  ' assert platform.machine().lower() in ({"arm64","aarch64"} if sys.argv[3] == "arm64" else {"amd64","x86_64"}), "engine architecture mismatch"'
+].join('\n')
+
 export async function probePackagedRuntime(root: string, release: PackagedRuntimeRelease, bundled = true): Promise<void> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-probe-'))
   const python = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 
   const code = [
-    'import pathlib,sys,platform',
+    'import pathlib,sys',
     'root=pathlib.Path(sys.argv[1]).resolve()',
     'assert sys.version_info[:2] == (3,11), "engine Python version mismatch"',
     'assert pathlib.Path(sys.prefix).resolve() == root / "venv", "engine venv mismatch"',
@@ -213,7 +223,7 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
     'import yaml,dotenv,hermes_cli.config,hermes_cli.main,run_agent,toolsets',
     'assert pathlib.Path(hermes_cli.config.__file__).resolve().is_relative_to(root), "engine imported foreign source"',
     'assert (root / ".hermes-source-commit").read_text().strip() == sys.argv[2], "engine source mismatch"',
-    'assert platform.machine().lower() in ({"arm64","aarch64"} if sys.argv[3] == "arm64" else {"amd64","x86_64"}), "engine architecture mismatch"'
+    NATIVE_PYTHON_ARCHITECTURE_PROBE
   ].join('\n')
 
   try {
