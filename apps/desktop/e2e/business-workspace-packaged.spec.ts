@@ -2241,7 +2241,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toBeVisible()
   await expect(page.getByText('本地保存', { exact: true }).first()).toBeVisible()
   await page.getByRole('textbox', { name: '粘贴资料链接' }).fill(ANALYSIS_REVIEW_VIDEO_URL)
-  await page.getByRole('button', { name: '检查并尝试转写视频' }).click()
+  await page.getByRole('button', { name: '打开链接' }).click()
 
   const overview = page.getByRole('region', { name: '视频声音速览' })
 
