@@ -194,6 +194,7 @@ function probeEnv(root: string, home: string): NodeJS.ProcessEnv {
     HERMES_HOME: home,
     UV_OFFLINE: '1',
     PIP_NO_INDEX: '1',
+    HERMES_DISABLE_LAZY_INSTALLS: '1',
     HERMES_INSTALL_TELEMETRY: '0',
     HERMES_DASHBOARD_DISABLE_AUTH: '0'
   }
@@ -218,7 +219,7 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
   try {
     await exec(python, ['-c', code, root, release.runtime_commit, process.arch, bundled ? 'bundled' : 'legacy'], { cwd: home, env: probeEnv(root, home), windowsHide: true, timeout: 60_000, maxBuffer: 32 * 1024 })
   } finally {
-    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
   }
 }
 
@@ -253,7 +254,7 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
 
     if (result.holders.length) {throw new Error('The previous engine is still running. Close its local workers and retry; no engine files were switched.')}
   } finally {
-    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
   }
 }
 
@@ -309,7 +310,7 @@ function reclaimOwnedPackagedStaging(hermesHome: string, manifest: ReturnType<ty
   }
 
   // Only this package's claimed, unreferenced staging slot. No committed version GC.
-  fs.rmSync(staging, { recursive: true })
+  fs.rmSync(staging, { recursive: true, maxRetries: 6, retryDelay: 100 })
 }
 
 /** No network, no in-place extraction, no GC of the old rollback target. */

@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { removeOwnedRuntimeTree } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 
 const desktopRoot = path.resolve(import.meta.dirname, '..')
 const repositoryRoot = path.resolve(desktopRoot, '../..')
@@ -115,7 +116,7 @@ export function stageBundledRuntime(outDir, buildResources = path.join(desktopRo
   const manifest = JSON.parse(fs.readFileSync(path.join(outDir, `${basename}.manifest.json`), 'utf8'))
   validateBundledRuntimeManifest(manifest, pin, platform, arch)
   const staged = path.join(buildResources, 'bundled-runtime')
-  fs.rmSync(staged, { recursive: true, force: true })
+  removeOwnedRuntimeTree(staged)
   fs.mkdirSync(staged, { recursive: true })
   fs.copyFileSync(path.join(outDir, manifest.archive.name), path.join(staged, manifest.archive.name))
   fs.writeFileSync(path.join(staged, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')

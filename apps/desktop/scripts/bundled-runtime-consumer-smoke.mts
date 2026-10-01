@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
-import { runtimeSmokeEnvironment } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
+import { removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 import { bundledNodeExe, fixupArgv } from '../electron/apex-bundle-install.ts'
 import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
@@ -48,6 +48,7 @@ function environment(root: string, home: string) {
     ...buildDesktopBackendEnv({ runtimeRoot: root, hermesHome: home, venvRoot: path.join(root, 'venv'), pythonPathEntries: [root], currentEnv: cleanEnv }),
     HOME: home, USERPROFILE: home, HERMES_HOME: home,
     UV_OFFLINE: offline.UV_OFFLINE || '1', PIP_NO_INDEX: offline.PIP_NO_INDEX || '1',
+    HERMES_DISABLE_LAZY_INSTALLS: offline.HERMES_DISABLE_LAZY_INSTALLS || '1',
     PYTHONPATH: offline.PYTHONPATH, TMPDIR: offline.TMPDIR, TMP: offline.TMP, TEMP: offline.TEMP,
     ...(process.platform === 'win32' ? { APPDATA: offline.APPDATA, LOCALAPPDATA: offline.LOCALAPPDATA } : {}),
     PYTHONDONTWRITEBYTECODE: '1', APEXNODES_TELEMETRY: 'off', HERMES_INSTALL_TELEMETRY: '0'
@@ -84,11 +85,11 @@ async function rpc(root: string, home: string) {
   const child = spawn(python(root), ['-m', 'hermes_cli.main', 'serve', '--isolated', '--skip-build', '--host', '127.0.0.1', '--port', '0'], {
     cwd: workspace, env: { ...environment(root, home), HERMES_DASHBOARD_SESSION_TOKEN: token }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
   })
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
 
   let output = ''
   child.stdout!.on('data', bytes => { output = (output + bytes).slice(-8192) })
   child.stderr!.on('data', bytes => { output = (output + bytes).slice(-8192) })
-  const exited = new Promise<void>(resolve => { child.once('exit', () => resolve()); child.once('error', () => resolve()) })
 
   try {
     const port = await waitForDashboardPortAnnouncement(child, { timeoutMs: 90_000, bufferedOutput: () => output })
@@ -106,10 +107,7 @@ async function rpc(root: string, home: string) {
 
     return { status: response.status, runtimeCommit: release.runtime_commit, runtimeVersion: status.version, targetId: target.target_id, actualPid: child.pid, interpreter: python(root), externalPythonSocketsDenied: true }
   } finally {
-    child.kill('SIGTERM')
-    const timer = setTimeout(() => child.kill('SIGKILL'), 5000)
-    await exited
-    clearTimeout(timer)
+    await terminateOwnedSmokeProcess(child, closed)
   }
 }
 
@@ -235,9 +233,7 @@ try {
   throw error
 } finally {
   try {
-    // Native child caches may finish after the owned server's exit. Bound retries;
-    // cleanup failure is a failed gate, even when all preceding behavior passed.
-    fs.rmSync(workspace, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
+    removeOwnedRuntimeTree(workspace)
     proof.privateWorkspaceRemoved = true
   } catch (error) {
     proof.success = false
