@@ -22382,7 +22382,18 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
     const result = await checkForRuntimeUpdate({
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
-      marker: readBootstrapMarker(),
+      readCurrentMarker: async () => {
+        if (
+          IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT &&
+          !readRuntimePinOverride() && !primaryBackendIsRemote() && managedPrimaryRestoreOwners.size === 0
+        ) {
+          await localBackendLifecycle.waitForPendingStarts()
+        }
+
+        await ensurePackagedEngine.waitForPending()
+
+        return readBootstrapMarker()
+      },
       // hc-475 (F4): pass the running shell version so the check can gate an
       // engine that requires a newer desktop (surfaces desktopUpgradeRequired).
       desktopVersion: app.getVersion(),
@@ -22391,7 +22402,7 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
 
     return { ...result, ok: true }
   } catch (error: any) {
-    // checkForRuntimeUpdate already swallows; defensive only.
+    // Latest lookup failures become unavailable; an authoritative marker-read failure lands here.
     rememberLog(`[runtime-update] check-update errored: ${error && error.message}`)
 
     return { ok: false, updateAvailable: false, error: (error && error.message) || String(error) }

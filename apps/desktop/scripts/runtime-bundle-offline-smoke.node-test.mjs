@@ -197,6 +197,41 @@ test('native Python architecture guard accepts absent Windows processor hints an
   } finally { removeOwnedRuntimeTree(home) }
 })
 
+test('native model mutation metadata flush publishes a counter and preserves it after reopen', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-native-metadata-'))
+  const file = path.join(home, 'metadata.json')
+  const authority = randomUUID()
+  try {
+    if (process.platform === 'win32') {
+      const control = path.join(home, 'readonly-flush-control')
+      fs.writeFileSync(control, 'owned control')
+      const handle = fs.openSync(control, 'r')
+      try { assert.throws(() => fs.fsyncSync(handle), error => error.code === 'EPERM') }
+      finally { fs.closeSync(handle); fs.unlinkSync(control) }
+    }
+    // Execute the same production store used by the complete consumer before
+    // spending the native engine build budget. Keep imports inside this test
+    // so the private owned-lock-only reversal does not resolve a foreign path.
+    const source = new URL('../electron/desktop-model-mutations.ts', import.meta.url).href
+    const code = `import assert from 'node:assert/strict'; import fs from 'node:fs'; import { ModelMutationMetadataStore } from ${JSON.stringify(source)};
+const file=${JSON.stringify(file)}; const authority=${JSON.stringify(authority)};
+assert.equal(new ModelMutationMetadataStore(file,()=>authority).nextProvisionRevision(),1);
+assert.equal(new ModelMutationMetadataStore(file,()=>authority).nextProvisionRevision(),2);
+const metadata=JSON.parse(fs.readFileSync(file,'utf8')); assert.equal(metadata.authority,authority); assert.equal(metadata.revision,2); assert.deepEqual(metadata.pending,[]);
+assert.equal(fs.readFileSync(file+'.initialized','utf8'),authority);
+console.log(JSON.stringify({nativeModelMutationMetadata:true,revision:metadata.revision,reopenedCounter:true,readonlyFileFlushRejected:process.platform==='win32'}));`
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', code], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', timeout: 15_000 })
+    assert.equal(result.status, 0, result.stderr)
+    const identity = JSON.parse(result.stdout)
+    assert.equal(identity.revision, 2)
+    assert.equal(identity.reopenedCounter, true)
+    assert.equal(identity.readonlyFileFlushRejected, process.platform === 'win32')
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).revision, 2)
+    assert.deepEqual(fs.readdirSync(home).sort(), ['metadata.json', 'metadata.json.initialized'])
+    console.log(JSON.stringify(identity))
+  } finally { removeOwnedRuntimeTree(home) }
+})
+
 test('the isolated smoke rejects real external socket attempts while allowing a local API socket', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-offline-'))
   const server = net.createServer(socket => socket.destroy())
