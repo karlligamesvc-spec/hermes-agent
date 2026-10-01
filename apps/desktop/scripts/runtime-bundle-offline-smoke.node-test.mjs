@@ -9,8 +9,8 @@ import test from 'node:test'
 
 import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment, terminateOwnedSmokeProcess } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 
-function ownedFixture(executable, code) {
-  const child = spawn(executable, ['-e', code], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+function ownedFixture(executable, code, codeFlag = '-e') {
+  const child = spawn(executable, [codeFlag, code], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   const closed = new Promise(resolve => child.once('close', resolve))
   const ready = new Promise((resolve, reject) => {
     let output = ''
@@ -83,7 +83,10 @@ test('owned shutdown closes a real child without terminating an independent chil
   }
 })
 
-test('native Windows tree shutdown releases an actual locked uv.exe and cleanup fails closed while locked', { skip: process.platform !== 'win32', timeout: 90_000 }, async () => {
+test('native Windows tree shutdown releases an actual locked uv.exe and cleanup fails closed while locked', { skip: process.platform !== 'win32', timeout: 120_000 }, async () => {
+  const resolved = spawnSync('python', ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8' })
+  assert.equal(resolved.status, 0, resolved.stderr)
+  const parentPython = resolved.stdout.trim()
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-win-lock-'))
   const locked = path.join(root, 'locked')
   const executable = path.join(locked, 'uv.exe')
@@ -91,10 +94,10 @@ test('native Windows tree shutdown releases an actual locked uv.exe and cleanup 
   fs.copyFileSync(process.execPath, executable)
   const fixtureToken = randomUUID()
   const grandchildCode = `console.log(JSON.stringify({pid:process.pid,fixtureToken:${JSON.stringify(fixtureToken)}})); setInterval(()=>{},1000)`
-  // The grandchild uses a real copied executable and holds its stdout open.
-  // Omitting /T leaves this child alive and prevents both close and deletion.
-  const code = `const {spawn}=require('node:child_process'); spawn(${JSON.stringify(executable)},['-e',${JSON.stringify(grandchildCode)}],{stdio:['ignore','inherit','inherit']}); setInterval(()=>{},1000)`
-  const owned = ownedFixture(process.execPath, code)
+  // Python matches the backend's subprocess lineage. A Node parent would put
+  // its child in a libuv kill-on-parent-close job, masking a missing /T.
+  const code = `import subprocess,sys,threading; subprocess.Popen([${JSON.stringify(executable)},'-e',${JSON.stringify(grandchildCode)}],stdout=sys.stdout,stderr=sys.stderr); threading.Event().wait()`
+  const owned = ownedFixture(parentPython, code, '-c')
   const bystander = ownedFixture(process.execPath, grandchildCode)
   let descendantPid
   try {
@@ -115,7 +118,7 @@ test('native Windows tree shutdown releases an actual locked uv.exe and cleanup 
     assert.equal(bystander.child.exitCode, null)
     removeOwnedRuntimeTree(locked)
     assert.equal(fs.existsSync(locked), false, 'all executable locks must be released before cleanup succeeds')
-    console.log(JSON.stringify({ nativeWindowsOwnedTree: true, ownedPid: owned.child.pid, descendantPid, bystanderPid: bystander.child.pid, lockedCleanupRejected: true, removedAfterTreeShutdown: true }))
+    console.log(JSON.stringify({ nativeWindowsOwnedTree: true, parentInterpreter: parentPython, ownedPid: owned.child.pid, descendantPid, bystanderPid: bystander.child.pid, lockedCleanupRejected: true, removedAfterTreeShutdown: true }))
   } finally {
     // Teardown is independent of the implementation under reversal. Each PID
     // comes from this fixture's live ChildProcess or token-bearing readiness.

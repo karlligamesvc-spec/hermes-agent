@@ -18,10 +18,10 @@ const helper = fs.readFileSync(helperPath)
 const tests = fs.readFileSync(testPath)
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-owned-tree-reversal-'))
-const proof = { nativePlatform: process.platform, helperSha256: digest(helper), testSha256: digest(tests), success: false }
+const proof = { nativePlatform: process.platform, helperSha256: digest(helper), testSha256: digest(tests), originalGreenExitCode: null, negativeExitCode: null, restoredExitCode: null, success: false }
 
 function runFocused(file, name) {
-  const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...(name ? [`--test-name-pattern=${name}`] : []), file], { encoding: 'utf8', timeout: 120_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+  const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...(name ? [`--test-name-pattern=${name}`] : []), file], { encoding: 'utf8', timeout: 180_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true })
   process.stdout.write(result.stdout || '')
   process.stderr.write(result.stderr || '')
   assert.equal(result.error, undefined, 'native test process must finish within its budget')
@@ -30,6 +30,7 @@ function runFocused(file, name) {
 
 try {
   const positive = runFocused(testPath)
+  proof.originalGreenExitCode = positive.status
   assert.equal(positive.status, 0, 'all original native focused tests must pass before reversal')
   assert.match(positive.stdout, /# fail 0\b/)
   assert.match(positive.stdout, /# skipped 0\b/, 'Windows locking test cannot be skipped')
@@ -46,7 +47,10 @@ try {
   const testSource = tests.toString('utf8')
   assert.equal(testSource.split(importAnchor).length - 1, 1, 'private test import must be unique')
   fs.writeFileSync(copiedTests, testSource.replace(importAnchor, JSON.stringify(pathToFileURL(copiedHelper).href)))
+  proof.reversal = { anchorCount: 1, privateHelperSha256: digest(fs.readFileSync(copiedHelper)), privateTestSha256: digest(fs.readFileSync(copiedTests)) }
+  console.log(JSON.stringify({ privateMutationLanded: true, ...proof.reversal }))
   const negative = runFocused(copiedTests, '^native Windows tree shutdown')
+  proof.negativeExitCode = negative.status
   assert.notEqual(negative.status, 0, 'removing /T must make the native executable-lock guard fail')
   assert.match(negative.stdout, /not ok \d+ - native Windows tree shutdown/)
   assert.match(negative.stdout, /# fail 1\b/)
@@ -54,10 +58,11 @@ try {
   assert.match(negative.stdout, /"recordedFixturesRetired":true/)
   assert.match(negative.stdout, /"privateFixtureRemoved":true/)
   assert.doesNotMatch(negative.stdout + negative.stderr, /SyntaxError|ERR_MODULE_NOT_FOUND|Cannot find module/)
-  proof.reversal = { anchorCount: 1, privateHelperSha256: digest(fs.readFileSync(copiedHelper)), privateTestSha256: digest(fs.readFileSync(copiedTests)), exitCode: negative.status, actualOwnedDescendantFailure: true }
+  proof.reversal.actualOwnedDescendantFailure = true
   assert.equal(digest(fs.readFileSync(helperPath)), proof.helperSha256, 'checkout helper must remain unchanged')
   assert.equal(digest(fs.readFileSync(testPath)), proof.testSha256, 'checkout tests must remain unchanged')
   const restored = runFocused(testPath, '^native Windows tree shutdown')
+  proof.restoredExitCode = restored.status
   assert.equal(restored.status, 0, 'unmodified tree-kill implementation must pass after the private reversal')
   assert.match(restored.stdout, /# fail 0\b/)
   proof.success = true
