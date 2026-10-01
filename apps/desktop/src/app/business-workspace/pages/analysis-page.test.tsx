@@ -449,7 +449,7 @@ describe('document analysis evidence', () => {
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
   })
 
-  it('keeps links unanswerable and distinguishes Feishu permission from unsupported URLs', async () => {
+  it('keeps links unanswerable and distinguishes Feishu permission from unchecked URLs', async () => {
     window.hermesDesktop = {
       analysisDocuments: {
         policy: vi.fn().mockResolvedValue({ ok: true, policy: { mode: 'local', cloud_storage_configured: false } }),
@@ -462,13 +462,13 @@ describe('document analysis evidence', () => {
     const input = screen.getByRole('textbox', { name: '粘贴资料链接' })
     fireEvent.change(input, { target: { value: 'https://acme.feishu.cn/wiki/abc' } })
     expect(screen.getByText(/需要本人授权及读取权限/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '读取链接' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '打开链接' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '授权飞书' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '移除平台保存的飞书授权' })).toBeTruthy()
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
 
     fireEvent.change(input, { target: { value: 'https://example.com/report.pdf' } })
-    expect(screen.getByText(/暂不支持直接读取此链接/)).toBeTruthy()
+    expect(screen.getByText(/已识别到链接/)).toBeTruthy()
     expect(screen.queryByText(/需要本人授权及读取权限/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '在原站打开' }))
     expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith('https://example.com/report.pdf')
@@ -496,7 +496,7 @@ describe('document analysis evidence', () => {
 
     render(<AnalysisView />)
     fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: 'https://youtu.be/dQw4w9WgXcQ' } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByText(/尚未读取媒体或字幕/)).toBeTruthy())
     expect(resolveVideoLink).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ')
     expect(transcribeVideoLink).not.toHaveBeenCalled()
@@ -523,12 +523,12 @@ describe('document analysis evidence', () => {
     render(<AnalysisView />)
     const input = screen.getByRole('textbox', { name: '粘贴资料链接' })
     fireEvent.change(input, { target: { value: 'https://vm.tiktok.com/Z12345abc' } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByText(/需要上传视频或字幕/)).toBeTruthy())
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
 
     fireEvent.change(input, { target: { value: 'https://example.com/video' } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByText(/无法确认可读取的视频链接/)).toBeTruthy())
     expect(transcribeVideoLink).not.toHaveBeenCalled()
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
@@ -561,8 +561,8 @@ describe('document analysis evidence', () => {
 
     render(<AnalysisView />)
     fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: url } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(transcribeVideoLink).toHaveBeenCalledWith(url))
     expect(resolveVideoLink).toHaveBeenCalledTimes(1)
     expect(transcribeVideoLink).toHaveBeenCalledTimes(1)
@@ -594,7 +594,7 @@ describe('document analysis evidence', () => {
 
     render(<AnalysisView />)
     fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: url } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/未返回可靠时间码/))
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
     expect(screen.getByText(/尚无资料/)).toBeTruthy()
@@ -622,7 +622,7 @@ describe('document analysis evidence', () => {
 
     render(<AnalysisView />)
     fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: url } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/未返回可靠时间码/))
     expect(window.hermesDesktop.analysisDocuments?.get).not.toHaveBeenCalled()
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
@@ -645,7 +645,7 @@ describe('document analysis evidence', () => {
 
     render(<AnalysisView />)
     fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: url } })
-    fireEvent.click(screen.getByRole('button', { name: '检查并尝试转写视频' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByText(/尚未读取媒体或字幕/)).toBeTruthy())
     expect(transcribeVideoLink).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '转写视频声音' }).hasAttribute('disabled')).toBe(true)
@@ -704,12 +704,12 @@ describe('document analysis evidence', () => {
 
     render(<AnalysisView />)
     fireEvent.change(screen.getByRole('textbox', { name: '粘贴资料链接' }), { target: { value: 'https://team.feishu.cn/docx/docxtoken123' } })
-    fireEvent.click(screen.getByRole('button', { name: '读取链接' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/正文尚未获授权读取/))
     expect(screen.queryByRole('textbox', { name: '针对当前资料提问' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '授权飞书' }))
     await waitFor(() => expect(screen.getByText('已授权，可读取链接')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: '读取链接' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
     await waitFor(() => expect(screen.getByRole('textbox', { name: '针对当前资料提问' })).toBeTruthy())
     expect(importLink).toHaveBeenCalledTimes(2)
   })
