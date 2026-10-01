@@ -410,8 +410,8 @@ describe('hc-685 business workspace identity', () => {
     const workflowHeader = window.document.querySelector('[aria-labelledby="business-start-workflows"]')
 
     expect(workflowHeader).toBeTruthy()
-    fireEvent.click(within(workflowHeader as HTMLElement).getByRole('button', { name: 'Projects' }))
-    expect(screen.getByTestId('location').textContent).toBe('/projects')
+    fireEvent.click(within(workflowHeader as HTMLElement).getByRole('button', { name: 'Workflows' }))
+    expect(screen.getByTestId('location').textContent).toBe('/workflows')
     window.removeEventListener('hermes:composer-insert', insert)
   })
 
@@ -443,8 +443,9 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(window.document.activeElement).toBe(goal))
     expect((goal as HTMLTextAreaElement).value).toContain('Monitor my key competitors')
     expect(startHome?.classList.contains('text-left')).toBe(true)
-    expect(headingColumn?.className).toContain('max-w-[44rem]')
-    expect(launcherColumn?.className).toContain('max-w-[52rem]')
+    expect(headingColumn?.closest('[data-business-start-home]')).toBe(startHome)
+    expect(launcherColumn?.parentElement).toBe(startHome)
+    expect(goal.closest('form')?.querySelector('[data-start-workflow-selection]')).toBeTruthy()
     expect(screen.queryByText(/Local test data/)).toBeNull()
   })
 
@@ -576,8 +577,8 @@ describe('hc-685 business workspace identity', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('ffmpeg, ffprobe'))
-    expect(screen.getByRole('status').textContent).not.toContain('渲染完成')
+    await waitFor(() => expect(screen.getByText(/ffmpeg, ffprobe/).getAttribute('role')).toBe('status'))
+    expect(screen.getByText(/ffmpeg, ffprobe/).textContent).not.toContain('渲染完成')
   })
 
   it('starts the home viral-video card as the real seven-stage workflow when the catalog is available', async () => {
@@ -704,7 +705,7 @@ describe('hc-685 business workspace identity', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /拆解并复刻爆款视频/ }))
-    expect(screen.getByRole('status').textContent).toContain('分阶段视频工作流尚未开放')
+    expect(screen.getByText(/分阶段视频工作流尚未开放/).getAttribute('role')).toBe('status')
     expect(screen.queryByText('启动前确认')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '开始执行' }))
 
@@ -886,7 +887,7 @@ describe('hc-685 business workspace identity', () => {
 
     const projectRow = screen.getByRole('button', { name: /美国宠物用品上架/ })
 
-    expect(projectRow.getAttribute('data-variant')).toBe('ghost')
+    expect(projectRow.getAttribute('type')).toBe('button')
     expect(screen.getByRole('button', { name: '新建项目' }).getAttribute('data-variant')).toBe('default')
 
     const renderedText = screen.getByRole('heading', { name: '项目' }).closest('section')?.textContent ?? ''
@@ -1538,6 +1539,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: /^工作流/ }))
     expect(await screen.findByText('项目工作流')).toBeTruthy()
     expect(screen.getByText('这个项目还没有工作流，也没有 Run 或进度。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '增加工作流' }))
@@ -1614,12 +1616,15 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
+    await screen.findByRole('button', { name: '编辑项目' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^成果/ }))
     const finish = await screen.findByRole('button', { name: '完成项目' })
 
     expect(finish.hasAttribute('disabled')).toBe(true)
     expect(screen.getByText('已完成 0 / 1 条工作流')).toBeTruthy()
     expect(completeProject).not.toHaveBeenCalled()
 
+    fireEvent.mouseDown(screen.getByRole('tab', { name: '概览' }))
     fireEvent.click(screen.getByRole('button', { name: '编辑项目' }))
     fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '新项目' } })
     fireEvent.change(screen.getByRole('textbox', { name: '项目描述与目标' }), { target: { value: '新目标' } })
@@ -1641,12 +1646,16 @@ describe('hc-685 business workspace identity', () => {
     )
 
     expect((await screen.findAllByText('待验收')).length).toBeGreaterThan(0)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^成果/ }))
     fireEvent.click(await screen.findByRole('button', { name: '完成项目' }))
     await waitFor(() => expect(completeProject).toHaveBeenCalledWith('project-lifecycle'))
     await waitFor(() => expect(screen.getByRole('button', { name: '重新打开项目' })).toBeTruthy())
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^工作流/ }))
     expect(screen.getByRole('button', { name: '增加工作流' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^成果/ }))
     fireEvent.click(screen.getByRole('button', { name: '重新打开项目' }))
     await waitFor(() => expect(reopenProject).toHaveBeenCalledWith('project-lifecycle'))
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /^工作流/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: '增加工作流' }).hasAttribute('disabled')).toBe(false))
   })
 
@@ -1773,6 +1782,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: /^工作流/ }))
     fireEvent.click(await screen.findByRole('button', { name: '运行' }))
     await waitFor(() =>
       expect(startRun).toHaveBeenCalledWith({ idempotencyKey: expect.stringMatching(/^desktop:/), objective: '继续已有项目目标', workflowId: 'workflow-existing' })
@@ -2384,7 +2394,7 @@ describe('hc-685 business workspace identity', () => {
     expect(keyboardOrder).toEqual(['业务目标', '开始执行', '附加'])
   })
 
-  it('keeps the Start goal field wide and tall enough to review a multi-line brief', () => {
+  it('keeps the compact Start composer editable with workflow selection in its footer', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <I18nProvider configClient={null} initialLocale="zh">
@@ -2396,10 +2406,9 @@ describe('hc-685 business workspace identity', () => {
     const goal = screen.getByRole('textbox', { name: '业务目标' })
     const content = goal.closest('[data-business-start-content]')
 
-    expect(goal.getAttribute('rows')).toBe('5')
-    expect(goal.className).toContain('min-h-[7rem]')
-    expect(goal.className).toContain('sm:min-h-[8rem]')
-    expect(content?.className).toContain('max-w-[52rem]')
+    expect(goal.getAttribute('rows')).toBe('2')
+    expect(content?.querySelector('form')).toBe(goal.closest('form'))
+    expect(goal.closest('form')?.querySelector('[data-business-goal-footer] [data-start-workflow-selection]')).toBeTruthy()
   })
 
   it('preserves the draft for a rejected goal and leaves Shift+Enter to the textarea', async () => {
@@ -2437,7 +2446,7 @@ describe('hc-685 business workspace identity', () => {
     expect(window.document.activeElement).toBe(goal)
   })
 
-  it('keeps Start scoped to three recommended paths and an honest unavailable-project lifecycle', () => {
+  it('keeps three business paths and three capability entries with an honest unavailable-project lifecycle', () => {
     setSessions([
       {
         id: 'real-tip-2',
@@ -2466,16 +2475,8 @@ describe('hc-685 business workspace identity', () => {
     )
 
     expect(window.document.querySelectorAll('[data-workflow-starter="shelf"]')).toHaveLength(3)
-    expect(
-      window.document
-        .querySelector('[data-start-recommended-workflows]')
-        ?.classList.contains('apex-workflow-entry-grid')
-    ).toBe(true)
-    expect(
-      window.document
-        .querySelector('[data-start-recommended-workflows]')
-        ?.classList.contains('apex-workflow-entry-grid--stacked')
-    ).toBe(true)
+    expect(window.document.querySelectorAll('[data-start-primary-workflows] button')).toHaveLength(3)
+    expect(window.document.querySelectorAll('[data-start-workspace-overview] > section')).toHaveLength(2)
     expect(
       screen.getByText(
         'The project service is not connected yet. Recent projects appear here when real data is available.'

@@ -68,6 +68,7 @@ describe('Analysis reconciles account-owned source snapshots', () => {
     bridge({ list, get, reviewDeepReport: vi.fn() })
     mount(); await flush()
     act(() => fireEvent.click(screen.getByRole('button', { name: /Original.txt/ }))); await flush()
+    act(() => fireEvent.mouseDown(screen.getByRole('tab', { name: '研究笔记' }), { button: 0, ctrlKey: false }))
     expect(screen.getByText('Original note')).toBeTruthy()
     act(() => {
       fireEvent.change(screen.getByRole('textbox', { name: '记录你的发现' }), { target: { value: 'Unsaved note' } })

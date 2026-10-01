@@ -1,4 +1,4 @@
-import { type FormEvent, type KeyboardEvent, useState } from 'react'
+import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -22,6 +22,7 @@ export interface BusinessGoalLauncherProps {
   onRemoveAttachment?: (id: string) => void
   onSubmit?: (goal: string) => Promise<boolean> | boolean
   submitBlockedReason?: string
+  workflowSelection?: ReactNode
 }
 
 export const BUSINESS_GOAL_INPUT_ID = 'business-goal-input'
@@ -39,7 +40,8 @@ export function BusinessGoalLauncher({
   onPickImages,
   onRemoveAttachment,
   onSubmit,
-  submitBlockedReason
+  submitBlockedReason,
+  workflowSelection
 }: BusinessGoalLauncherProps) {
   const { t } = useI18n()
   const copy = t.businessWorkspace.goalLauncher
@@ -117,7 +119,7 @@ export function BusinessGoalLauncher({
         onChange={event => setGoal(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={copy.placeholder}
-        rows={5}
+        rows={2}
         spellCheck
         value={goal}
       />
@@ -130,7 +132,7 @@ export function BusinessGoalLauncher({
           {submitBlockedReason}
         </p>
       )}
-      <div className="mt-1 flex items-center gap-3">
+      <div className="mt-1 flex items-center gap-3" data-business-goal-footer="">
         <span className="sr-only">{copy.hint}</span>
         <Button
           aria-busy={submitting}
@@ -173,6 +175,7 @@ export function BusinessGoalLauncher({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {workflowSelection && <div className="order-2 min-w-0" data-start-workflow-selection="">{workflowSelection}</div>}
         {model && (
           <div className="order-2 ml-auto min-w-0">
             <ModelPill disabled={disabled || submitting || !model.canSwitch} model={model} />
