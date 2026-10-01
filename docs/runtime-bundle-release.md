@@ -1,5 +1,46 @@
 # Runtime bundle release runbook
 
+## Engines embedded in Desktop installers
+
+The synchronized Desktop release builds a complete native engine for Mac arm64,
+Mac x64 and Windows x64 before packaging the shell. The engine source is pinned
+by `apps/desktop/bundled-runtime.json`; it can intentionally differ from the
+Desktop shell's source commit. All three installers must carry the same full
+engine commit and release label. Changing the pin does not change the Cloud
+default runtime.
+
+`Resources/bundled-runtime/` contains the compressed native archive,
+`manifest.json` and `release.json`. The archive includes CPython, its locked
+Python dependencies, portable Node, uv, ripgrep, and on Windows PortableGit
+including Bash. Chromium and optional browser downloads retain their existing
+first-use behavior; embedding the engine does not make every browser tool
+available offline.
+
+The native build runs extraction, fixup, per-file verification, real imports,
+CLI/tool probes, relocation and the probes again. Windows Bash is executed with
+a PATH containing only its bundled directories. Mac Mach-O executables and
+libraries are signed before the files index is generated; the signed payload
+ZIP must receive an Accepted notarization result with no issues. The resulting
+tar is not a stapled artifact. The outer App still follows its own notarization
+and Gatekeeper gates.
+
+`beforePack`, `afterPack` and the native workflows independently check the actual
+resource archive's size, SHA256, native target, full source stamp and required
+executables. Missing, unlocked, wrong-source or wrong-architecture payloads
+reject packaging. The final synchronized job also compares the embedded engine
+commit and label across both platform workflows.
+
+Native build command (the Mac invocation requires the existing signing
+certificate and Apple API key file variables):
+
+```bash
+node apps/desktop/scripts/bundled-runtime-package.mjs build /private/tmp/apex-engine --notarize
+```
+
+On Windows omit `--notarize`. Small manifest, signature/notary and package
+verification receipts are uploaded alongside each workflow run; the large
+archive travels inside the installer rather than as a separate GitHub artifact.
+
 How the prebuilt, self-contained desktop runtime bundles get built, published,
 registered, and rolled out. Companion to the source-tarball train
 (`scripts/publish-runtime-tarball.sh` / `publish-runtime-tarball.yml`), which is

@@ -194,6 +194,20 @@ CASES = {
         ["scripts/desktop-update/ui.html"],
         _lanes(python=True, frontend=True, desktop_updater=True),
     ),
+    # These native producer files are guarded by the Desktop Node suites;
+    # changing one alone must still schedule that workspace's check scripts.
+    "bundled engine builder → frontend": (
+        ["scripts/build-runtime-bundle.mjs"],
+        _lanes(python=True, frontend=True),
+    ),
+    "bundled engine signing → frontend": (
+        ["scripts/mac-runtime-payload.mjs"],
+        _lanes(python=True, frontend=True),
+    ),
+    "bundled engine offline smoke → frontend": (
+        ["scripts/runtime-bundle-offline-smoke.mjs"],
+        _lanes(python=True, frontend=True),
+    ),
     "desktop-update test → desktop_updater": (
         ["tests/scripts/desktop_update/test_desktop_update_windows_progress.py"],
         _lanes(python=True, python_prod=False, scan=True, desktop_updater=True),

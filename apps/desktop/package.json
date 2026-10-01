@@ -2,7 +2,7 @@
   "name": "hermes",
   "productName": "APEX",
   "private": true,
-  "version": "0.17.36",
+  "version": "0.17.37",
   "description": "Native desktop shell for Hermes Agent.",
   "author": "ApexNodes",
   "repository": {
@@ -63,12 +63,13 @@
     "test:ui": "vitest run --project ui",
     "test:task-scroll": "node --test scripts/tasks-scroll.test.mjs",
     "test:desktop:platforms": "vitest run --project electron",
-    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs scripts/desktop-macos-workflow.test.cjs scripts/electron-builder-target-arch.node-test.mjs scripts/assert-macos-package-arch.node-test.mjs scripts/diagnostic-trial-package.node-test.mjs scripts/windows-exe-identity.node-test.mjs scripts/verify-cross-platform-release.node-test.mjs scripts/runtime-bundle-import-probe.node-test.mjs && vitest run scripts/before-pack.test.mjs scripts/after-pack.test.mjs",
+    "test:release-gates": "node --test scripts/assert-release-preflight.test.cjs scripts/assert-dist-built.test.cjs scripts/stage-updater-deps.test.cjs scripts/assert-updater-deps.test.cjs scripts/desktop-macos-workflow.test.cjs scripts/electron-builder-target-arch.node-test.mjs scripts/assert-macos-package-arch.node-test.mjs scripts/diagnostic-trial-package.node-test.mjs scripts/windows-exe-identity.node-test.mjs scripts/verify-cross-platform-release.node-test.mjs scripts/runtime-bundle-import-probe.node-test.mjs scripts/bundled-runtime-package.node-test.mjs scripts/mac-runtime-payload.node-test.mjs scripts/runtime-bundle-download.node-test.mjs scripts/runtime-bundle-offline-smoke.node-test.mjs && vitest run scripts/before-pack.test.mjs scripts/after-pack.test.mjs",
     "test:find-in-page-native": "electron electron/find-in-page-native-fixture",
     "test": "vitest run",
     "preview": "node scripts/assert-root-install.mjs && vite preview --host 127.0.0.1 --port 4174",
     "check:test:ui": "npm run test:ui",
     "check:test:desktop:platforms": "npm run test:desktop:platforms",
+    "check:test:release-gates": "npm run test:release-gates",
     "check:test:desktop:all": "npm run test:desktop:all",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "check:lint": "npm run typecheck && npm run typecheck:e2e && npm run lint",
@@ -253,6 +254,10 @@
       {
         "from": "build/updater-deps",
         "to": "updater-deps"
+      },
+      {
+        "from": "build/bundled-runtime",
+        "to": "bundled-runtime"
       },
       {
         "from": "assets/icon.ico",
