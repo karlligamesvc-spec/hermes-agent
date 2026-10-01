@@ -14,6 +14,7 @@ import { useI18n } from '@/i18n'
 import { profileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
 import { $authState, type AuthAccount, signOutAccount } from '@/store/auth'
+import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
 import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
@@ -40,13 +41,13 @@ function initialOf(name: string): string {
 
 // Bottom-left account panel (Codex account row, high-fidelity). The row is
 // avatar (initial) + a two-line stack: display name over the signed-in email —
-// no plan badge, no phone icon, no caret, matching the Codex reference. Click →
+// no plan badge or phone icon. The business rail adds a menu caret. Click →
 // a popover menu with 个人资料, 设置, 连接助手, 历史会话, 交付物, optional real usage,
 // and 退出登录. These destinations share one information-architecture group
 // instead of spending permanent sidebar height on additional rows. Rendered
 // only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
-export function AccountPanel() {
+export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: { businessChrome?: boolean } = {}) {
   const { t } = useI18n()
   const a = t.auth.account
   const nav = t.sidebar.nav
@@ -112,11 +113,13 @@ export function AccountPanel() {
             'hover:bg-(--ui-control-hover-background)',
             open && 'bg-(--ui-control-active-background)'
           )}
+          data-apex-account-trigger=""
           type="button"
         >
           <span
             aria-hidden
             className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold uppercase leading-none text-white"
+            data-apex-account-avatar=""
             style={{ backgroundColor: tint }}
           >
             {initial}
@@ -125,6 +128,7 @@ export function AccountPanel() {
             <span className="truncate text-[0.8125rem] font-medium text-foreground">{name}</span>
             {email ? <span className="truncate text-[0.6875rem] text-(--ui-text-tertiary)">{email}</span> : null}
           </span>
+          {businessChrome && <Codicon aria-hidden name="chevron-up" size="0.875rem" />}
         </button>
       </DropdownMenuTrigger>
 

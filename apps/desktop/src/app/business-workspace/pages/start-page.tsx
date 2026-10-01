@@ -1,5 +1,7 @@
+import './start-page.css'
+
 import { useStore } from '@nanostores/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
@@ -13,6 +15,7 @@ import type { ChatBarState } from '../../chat/composer/types'
 import { projectWorkflowsRoute, routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
 import { listVideoWorkflowCatalog, startWorkflowGoal } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
+import { $workflowDomainAccountScope } from '../api/read-revision'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
@@ -129,6 +132,7 @@ export function BusinessStartHome({
 
   const [domainError, setDomainError] = useState(false)
   const [domainStarting, setDomainStarting] = useState(false)
+  const domainStartingRef = useRef(false)
 
   const [videoReadiness, setVideoReadiness] = useState<
     { state: 'checking' | 'unknown' | 'present' } | { state: 'missing'; tools: string[] }
@@ -231,30 +235,36 @@ export function BusinessStartHome({
     setDomainError(false)
   }, [initialDraft, launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key])
 
-  const openWorkflowSelection = () => navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
-    state: {
-      businessStartSelection: true,
-      businessGoalDraft: goalDraft,
-      ...(routedProjectId ? { businessProjectId: routedProjectId } : {}),
-      ...(selectedWorkflow ? {
-        businessWorkflowId: selectedWorkflow.id,
-        businessWorkflowSlug: selectedWorkflow.slug,
-        businessWorkflowVersion: selectedWorkflow.version,
-        businessWorkflowCatalogProvenance: selectedWorkflowIsTestData ? 'test' : 'production'
-      } : {})
-    }
-  })
+  const openWorkflowSelection = () => {
+    if (domainStartingRef.current) {return}
+
+    navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
+      state: {
+        businessStartSelection: true,
+        businessGoalDraft: goalDraft,
+        ...(routedProjectId ? { businessProjectId: routedProjectId } : {}),
+        ...(selectedWorkflow ? {
+          businessWorkflowId: selectedWorkflow.id,
+          businessWorkflowSlug: selectedWorkflow.slug,
+          businessWorkflowVersion: selectedWorkflow.version,
+          businessWorkflowCatalogProvenance: selectedWorkflowIsTestData ? 'test' : 'production'
+        } : {})
+      }
+    })
+  }
 
   // A local attachment cannot be silently dropped by the cloud Workflow API.
   // Keep the existing attachment-capable chat route for a home-card draft.
   useEffect(() => {
-    if (homeVideoWorkflowSelected && attachments.length > 0) {
+    if (!domainStartingRef.current && homeVideoWorkflowSelected && attachments.length > 0) {
       setSelectedWorkflow(null)
       setHomeVideoWorkflowSelected(false)
     }
-  }, [attachments.length, homeVideoWorkflowSelected])
+  }, [attachments.length, domainStarting, homeVideoWorkflowSelected])
 
   const selectGoal = (starter: BusinessHomeStarter) => {
+    if (domainStartingRef.current) {return}
+
     const isVideoStarter = starter.id === 'viral-video-remake'
 
     const videoWorkflow =
@@ -273,55 +283,79 @@ export function BusinessStartHome({
     focusGoal()
   }
 
+  const selectWorkflow = (starter: BusinessWorkflowStarter, testCatalog: boolean) => {
+    if (domainStartingRef.current) {return}
+
+    setSelectedWorkflow(starter)
+    setSelectedWorkflowIsTestData(testCatalog)
+    setHomeVideoWorkflowSelected(false)
+    setDomainError(false)
+    setGoalDraft(current => current.trim() ? current : starter.prompt)
+    focusGoal()
+  }
+
   const submitGoal = async (goal: string): Promise<boolean> => {
-    if (!selectedWorkflow) {
-      const text = transcriptDraft ? syncVideoTranscriptDraft(goal, transcriptDraft, attachments) : goal
+    const owner = $workflowDomainAccountScope.get()
+    const isCurrentOwner = () => owner === $workflowDomainAccountScope.get()
 
-      const options = analysisChatSubmitOptions(launchState?.analysisChatDraft, text)
+    if (domainStartingRef.current) {return false}
 
-      if (options === false) {return false}
-
-      return (await (options ? onSubmitGoal?.(text, options) : onSubmitGoal?.(text))) ?? false
-    }
-
+    domainStartingRef.current = true
     setDomainError(false)
     setDomainStarting(true)
 
-    let starter = selectedWorkflow
+    const submitChat = async (text: string, options?: SubmitTextOptions) => {
+      if (!isCurrentOwner()) {return false}
 
-    if (homeVideoWorkflowSelected) {
-      const catalog = await listVideoWorkflowCatalog()
-      const available = catalog.mode === 'ready' ? catalog.items.find(item => item.id === starter.id) : null
+      const accepted = (await (options ? onSubmitGoal?.(text, options) : onSubmitGoal?.(text))) ?? false
 
-      if (!available) {
-        setDomainStarting(false)
+      return isCurrentOwner() && accepted
+    }
 
-        return (await onSubmitGoal?.(goal)) ?? false
+    try {
+      if (!selectedWorkflow) {
+        const text = transcriptDraft ? syncVideoTranscriptDraft(goal, transcriptDraft, attachments) : goal
+        const options = analysisChatSubmitOptions(launchState?.analysisChatDraft, text)
+
+        return options === false ? false : await submitChat(text, options)
       }
 
-      starter = { ...starter, version: available.version }
+      let starter = selectedWorkflow
+
+      if (homeVideoWorkflowSelected) {
+        const catalog = await listVideoWorkflowCatalog()
+
+        if (!isCurrentOwner()) {return false}
+        const available = catalog.mode === 'ready' ? catalog.items.find(item => item.id === starter.id) : null
+
+        if (!available) {return await submitChat(goal)}
+        starter = { ...starter, version: available.version }
+      }
+
+      const projectId = routedProjectId || undefined
+      const outcome = await startWorkflowGoal(goal, starter, projectId)
+
+      if (!isCurrentOwner()) {return false}
+
+      if (outcome.mode === 'started') {
+        navigate(workflowRunRoute(outcome.runId), {
+          state: routeDrawerNavigationState(location)
+        })
+
+        return true
+      }
+
+      if (outcome.mode === 'failed') {
+        setDomainError(true)
+
+        return false
+      }
+
+      return await submitChat(goal)
+    } finally {
+      domainStartingRef.current = false
+      setDomainStarting(false)
     }
-
-    const projectId = routedProjectId || undefined
-    const outcome = await startWorkflowGoal(goal, starter, projectId)
-
-    setDomainStarting(false)
-
-    if (outcome.mode === 'started') {
-      navigate(workflowRunRoute(outcome.runId), {
-        state: routeDrawerNavigationState(location)
-      })
-
-      return true
-    }
-
-    if (outcome.mode === 'failed') {
-      setDomainError(true)
-
-      return false
-    }
-
-    return (await onSubmitGoal?.(goal)) ?? false
   }
 
   const videoReadinessMessage =
@@ -337,17 +371,18 @@ export function BusinessStartHome({
 
   return (
     <div
-      className="pointer-events-auto mx-auto flex w-full max-w-[52rem] min-w-0 flex-col gap-7 pb-4 text-left"
+      className="apex-start-home pointer-events-auto mx-auto min-w-0 text-left"
       data-business-start-home=""
     >
-      <header className="relative flex flex-col gap-4">
-        <div className="mx-auto w-full max-w-[44rem] sm:pr-[9.5rem]">
-          <h1 className="m-0 text-balance text-[clamp(2rem,4vw,2.625rem)] font-semibold leading-[1.12] tracking-[-0.035em] text-foreground">
+      <header className="apex-start-hero">
+        <div>
+          <h1 className="text-foreground">
             {t.home.title}
           </h1>
+          <p>{t.home.description}</p>
         </div>
         <Button
-          className="shrink-0 self-start sm:absolute sm:right-0 sm:top-0"
+          className="apex-start-new-goal"
           onClick={focusGoal}
           size="sm"
           variant="outline"
@@ -357,7 +392,7 @@ export function BusinessStartHome({
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[52rem] flex-col gap-8" data-business-start-content="">
+      <div className="apex-start-content" data-business-start-content="">
         {selectedWorkflow && (
           <section
             aria-label={t.businessWorkspace.goalLauncher.confirmationEyebrow}
@@ -385,6 +420,7 @@ export function BusinessStartHome({
               )}
             </div>
             <Button
+              disabled={domainStarting}
               onClick={openWorkflowSelection}
               size="sm"
               variant="ghost"
@@ -414,6 +450,10 @@ export function BusinessStartHome({
           submitBlockedReason={
             templateAttachmentBlocked ? t.businessWorkspace.goalLauncher.workflowAttachmentsUnsupported : undefined
           }
+          workflowSelection={<Button disabled={domainStarting} onClick={openWorkflowSelection} size="inline" type="button" variant="text">
+            <Codicon name="workflow" size="0.875rem" />
+            <span className="truncate">{selectedWorkflow ? `${t.businessWorkspace.goalLauncher.confirmationTemplate}${selectedWorkflow.title}` : t.businessWorkspace.projects.chooseWorkflow}</span>
+          </Button>}
         />
         {homeVideoWorkflowSelected && !selectedWorkflow && (
           <p className="-mt-4 text-xs text-(--ui-text-secondary)" role="status">
@@ -425,14 +465,7 @@ export function BusinessStartHome({
             {t.businessWorkspace.workflowDomain.startFailed}
           </p>
         )}
-        {!selectedWorkflow && (
-          <div className="-mt-4">
-            <Button disabled={domainStarting} onClick={openWorkflowSelection} size="sm" variant="outline">
-              {t.businessWorkspace.projects.chooseWorkflow}
-            </Button>
-          </div>
-        )}
-        <BusinessStartShelf onSelectGoal={selectGoal} />
+        <BusinessStartShelf onSelectGoal={selectGoal} onSelectWorkflow={selectWorkflow} selectedWorkflowId={selectedWorkflow?.id} selectionDisabled={domainStarting} />
       </div>
     </div>
   )

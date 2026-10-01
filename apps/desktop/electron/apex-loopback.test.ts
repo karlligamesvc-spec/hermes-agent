@@ -66,6 +66,10 @@ test('resolves with the token on a valid /cb callback (matching state)', async (
   assert.match(res.body, /apexnodes:\/\/open\?source=login-complete/)
   assert.match(res.body, /打开 APEX/)
   assert.doesNotMatch(res.body, /ZCode/i)
+  assert.ok(!res.body.includes('jwt.success'))
+  assert.ok(!res.body.includes(lb.state))
+  assert.match(res.body, /<img class="brand" src="data:image\/png;base64,[^"]+" alt="APEX"/)
+  assert.doesNotMatch(res.body, /<script|https?:\/\//)
   assert.equal(res.headers['cache-control'], 'no-store')
   assert.match(String(res.headers['content-security-policy']), /default-src 'none'/)
   const outcome = await lb.result
@@ -82,6 +86,8 @@ test('rejects (state_mismatch) on a CSRF mismatch and serves a 400 page', async 
   assert.equal(res.statusCode, 400)
   assert.match(res.body, /登录未完成/)
   assert.match(res.body, /返回 APEX 桌面端重新登录/)
+  assert.ok(!res.body.includes('jwt.x'))
+  assert.ok(!res.body.includes(lb.state))
   assert.match(res.body, /打开 APEX/)
   await rejected
 })

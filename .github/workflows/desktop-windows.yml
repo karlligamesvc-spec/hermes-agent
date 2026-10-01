@@ -25,6 +25,12 @@ on:
       version:
         description: Desktop version packaged by this workflow
         value: ${{ jobs.build.outputs.version }}
+      runtime_commit:
+        description: Full pinned runtime commit carried in the installer
+        value: ${{ jobs.build.outputs.runtime_commit }}
+      runtime_version:
+        description: Pinned runtime release label carried in the installer
+        value: ${{ jobs.build.outputs.runtime_version }}
       identity_verified:
         description: Whether packaged APEX.exe PE metadata matched the Desktop package identity
         value: ${{ jobs.build.outputs.identity_verified }}
@@ -60,14 +66,14 @@ jobs:
     name: ApexNodes Windows installer (x64, unsigned)
     needs: preflight
     runs-on: windows-latest
-    # hc-657: was 75, which only ever needed to be that large because the COS
-    # upload lived in this job and could hang. The build itself runs in about
-    # five minutes; 30 leaves generous margin while making a genuinely wedged
-    # build visible instead of letting it idle for over an hour.
-    timeout-minutes: 30
+    # Full Python, locked dependencies and PortableGit now build on this native
+    # runner. Publishing remains a separate, retryable job.
+    timeout-minutes: 120
     outputs:
       source_sha: ${{ steps.release-identity.outputs.source_sha }}
       version: ${{ steps.release-identity.outputs.version }}
+      runtime_commit: ${{ steps.release-identity.outputs.runtime_commit }}
+      runtime_version: ${{ steps.release-identity.outputs.runtime_version }}
       identity_verified: ${{ steps.exe-identity.outputs.identity_verified }}
 
     steps:
@@ -87,11 +93,45 @@ jobs:
         run: |
           echo "source_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           node -e "process.stdout.write('version=' + require('./package.json').version + '\\n')" >> "$GITHUB_OUTPUT"
+          node -e "const p=require('./bundled-runtime.json'); process.stdout.write('runtime_commit='+p.runtime_commit+'\\nruntime_version='+p.runtime_version+'\\n')" >> "$GITHUB_OUTPUT"
 
       # Root install: apps/desktop's build asserts a root workspace install
       # (assert-root-install.cjs) and links @hermes/shared via the workspace.
       - name: Install dependencies (root workspaces)
         run: npm ci
+
+      - name: Prove owned Windows process trees release executable locks
+        working-directory: apps/desktop
+        run: node scripts/runtime-bundle-owned-cleanup-gate.mjs --proof "$env:RUNNER_TEMP/bundled-engine/windows-owned-cleanup-proof.json"
+
+      - name: Build complete native engine and prove relocation and Bash
+        working-directory: apps/desktop
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/bundled-runtime-package.mjs build "$env:RUNNER_TEMP/bundled-engine"
+
+      - name: Prove fresh offline install, real legacy upgrade, reopen and rollback
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth 1 origin f8d9cbebee9baa018cf8a8866ecb896e9f70fa5a
+          node --import tsx scripts/bundled-runtime-consumer-smoke.mts --resources build --proof "$RUNNER_TEMP/bundled-engine/consumer-proof.json"
+
+      - name: Upload native engine verification receipts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundled-engine-proof-win-x64
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/bundled-engine/*.manifest.json
+            ${{ runner.temp }}/bundled-engine/*.summary.json
+            ${{ runner.temp }}/bundled-engine/*.smoke-proof.json
+            ${{ runner.temp }}/bundled-engine/packaged-runtime-proof.json
+            ${{ runner.temp }}/bundled-engine/consumer-proof.json
+            ${{ runner.temp }}/bundled-engine/component-download-proof.json
+            ${{ runner.temp }}/bundled-engine/windows-owned-cleanup-proof.json
 
       # dist:win = build (write-build-stamp + stage-install-script +
       # stage-native-deps[stages win32 node-pty natively on this host] + tsc +
@@ -122,6 +162,10 @@ jobs:
       - name: Assert packaged updater-deps integrity
         working-directory: apps/desktop
         run: node scripts/assert-updater-deps.cjs release/win-unpacked/resources
+
+      - name: Assert packaged full engine identity and integrity
+        working-directory: apps/desktop
+        run: node scripts/bundled-runtime-package.mjs assert release/win-unpacked/resources win32 x64
 
       - name: Assert packaged APEX PE identity
         id: exe-identity
@@ -188,7 +232,7 @@ jobs:
     needs: build
     if: ${{ inputs.publish }}
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -238,12 +282,16 @@ jobs:
           Set-Content -Path (Join-Path $env:USERPROFILE ".cos.yaml") -Value $cfg -Encoding ascii
           try {
             $coscli = (Resolve-Path ./coscli.exe).Path
-            # 15 minutes is far above any healthy transfer here (a whole
-            # successful job, build included, has run in 8) and far below the
-            # job wall, so a stall is caught with retries still left.
+            # The embedded engine makes installers substantially larger than
+            # the former shell-only packages. Bound each attempt by its actual
+            # size, with 10 minutes of overhead, and cap it at 50 minutes so
+            # the separate publish job still has room for all three retries.
             $uploader = {
               param($LocalPath, $Key)
-              Invoke-BoundedProcess -FilePath $coscli -TimeoutSeconds 900 `
+              $bytes = (Get-Item $LocalPath).Length
+              $budget = [Math]::Min(3000, [Math]::Max(900, [Math]::Ceiling($bytes / (128 * 1024)) + 600))
+              Write-Host "COS upload bounded budget: $bytes bytes, $budget seconds"
+              Invoke-BoundedProcess -FilePath $coscli -TimeoutSeconds $budget `
                 -ArgumentList @("cp", $LocalPath, "cos://$bucket/$Key")
             }.GetNewClosure()
             $verifier = { param($Url) Get-RemoteContentLength -Url $Url }

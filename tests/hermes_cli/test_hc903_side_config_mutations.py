@@ -83,6 +83,12 @@ def _fixture_services():
     plugins_cmd._get_plugin_toolset_key = lambda *_: "fixture_tools"
 
 
+def _publish_runtime_ready(ready: Path, port: int):
+    pending = ready.with_name(f".{ready.name}.{os.getpid()}.tmp")
+    pending.write_text(json.dumps({"port": port}), encoding="utf-8")
+    pending.replace(ready)
+
+
 def _serve():
     """Owned child process; publish only its loopback port."""
     home, ready = map(Path, sys.argv[1:3])
@@ -188,7 +194,7 @@ def _serve():
     for route in controls:
         web_server.app.router.routes.remove(route)
     web_server.app.router.routes[:0] = controls
-    Path(ready).write_text(json.dumps({"port": port}))
+    _publish_runtime_ready(ready, port)
     uvicorn.Server(uvicorn.Config(web_server.app, lifespan="off", log_level="critical", access_log=False)).run(sockets=[listener])
 
 
@@ -263,6 +269,29 @@ class Runtime:
             self.process.kill()
             self.process.wait(timeout=5)
         self.log.close()
+
+
+def test_runtime_ready_json_is_not_visible_until_complete(tmp_path, monkeypatch):
+    ready = tmp_path / "ready.json"
+    entered, release = threading.Event(), threading.Event()
+    write_text = Path.write_text
+
+    def interrupted_write(destination, contents, **kwargs):
+        write_text(destination, "", **kwargs)
+        entered.set()
+        assert release.wait(5), "Ready publication barrier was not released"
+        return write_text(destination, contents, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", interrupted_write)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        publishing = pool.submit(_publish_runtime_ready, ready, 12345)
+        try:
+            assert entered.wait(5), "Ready publisher did not enter the write"
+            assert not ready.exists(), "Ready JSON was visible before its contents were complete"
+        finally:
+            release.set()
+        publishing.result(timeout=5)
+    assert json.loads(ready.read_text()) == {"port": 12345}
 
 
 @pytest.fixture

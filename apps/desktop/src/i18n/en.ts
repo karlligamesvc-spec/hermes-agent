@@ -4791,7 +4791,29 @@ export const en: Translations = {
   },
 
   home: {
-    title: 'What business should we move forward today?'
+    title: 'What business should we move forward today?',
+    description: 'Describe a business goal, choose a workflow, or work directly with your assistant.',
+    pathsEyebrow: 'Start with a proven path',
+    pathsTitle: 'Choose a business direction',
+    capabilityPaths: 'Video and social media tasks',
+    catalogLoading: 'Reading available workflows…',
+    primaryPaths: {
+      commerce: {
+        title: 'Market opportunity to launch assets',
+        summary: 'Selection · Positioning · Listings · Images · Video',
+        prompt: 'Analyze the US pet supplies market and produce a selection report and launch assets'
+      },
+      geo: {
+        title: 'Grow brand visibility and acquisition',
+        summary: 'Brand audit · Question map · Content · Leads',
+        prompt: 'Audit my brand visibility in AI Search and propose a GEO customer acquisition plan'
+      },
+      content: {
+        title: 'Insight, creation, and performance review',
+        summary: 'Audience · Topics · Scripts · Images · Publishing · Review',
+        prompt: 'Plan this week’s topics for my social media account and draft three illustrated posts'
+      }
+    }
   },
 
   businessWorkspace: {

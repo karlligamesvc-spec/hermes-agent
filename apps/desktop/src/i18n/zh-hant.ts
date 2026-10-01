@@ -3630,7 +3630,29 @@ export const zhHant = defineLocale({
   },
 
   home: {
-    title: '今天想推進什麼業務？'
+    title: '今天想推進什麼業務？',
+    description: '描述業務目標，選擇工作流程或直接交給助手推進。',
+    pathsEyebrow: '從成熟路徑開始',
+    pathsTitle: '選擇一條業務主線',
+    capabilityPaths: '影片與社群媒體任務',
+    catalogLoading: '正在讀取可用工作流程…',
+    primaryPaths: {
+      commerce: {
+        title: '從市場機會到上架素材',
+        summary: '選品分析 · 產品定位 · Listing · 圖片 · 短影片',
+        prompt: '分析美國寵物用品市場，並產生選品報告和上架素材'
+      },
+      geo: {
+        title: '提升品牌可見度與獲客',
+        summary: '品牌診斷 · 問題地圖 · 內容優化 · 潛在客戶發現',
+        prompt: '診斷我的品牌在 AI Search 中的可見度，並提出 GEO 獲客方案'
+      },
+      content: {
+        title: '洞察、創作到數據復盤',
+        summary: '使用者洞察 · 選題 · 腳本 · 配圖 · 發布 · 復盤',
+        prompt: '為我的社群媒體帳號制定本週選題，並產生 3 篇圖文內容'
+      }
+    }
   },
 
   businessWorkspace: {

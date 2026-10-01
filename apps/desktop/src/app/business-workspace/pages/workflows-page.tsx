@@ -21,6 +21,7 @@ import { createWorkflowDefinition } from '../api/adapters'
 import type { WorkflowProject } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { ProjectCreateDialog } from '../components/project-create-dialog'
+import { ProjectLibraryNavigation } from '../components/project-library-navigation'
 import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { WorkflowStarterCard } from '../components/workflow-starter-card'
 import {
@@ -254,6 +255,7 @@ export function WorkflowsView() {
           }
         />
       </div>
+      {!startSelection && !targetProjectId && <ProjectLibraryNavigation active="workflows" />}
       {targetProjectId && (
         <section
           className="mx-auto w-full max-w-[65.625rem] rounded-2xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-5 py-4"

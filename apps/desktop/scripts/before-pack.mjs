@@ -61,6 +61,7 @@ import { existsSync, rmSync, renameSync } from 'node:fs'
 import path from 'node:path'
 import { Arch } from 'electron-builder'
 import { stageNodePty, stageGetWindows } from './stage-native-deps.mjs'
+import { assertBundledRuntimePackage } from './bundled-runtime-package.mjs'
 
 export function cleanStaleAppOutDir(appOutDir) {
   if (!appOutDir || typeof appOutDir !== 'string') {
@@ -113,6 +114,11 @@ export function preserveRollbackBackup(appOutDir, productExeName = 'APEX.exe') {
 export default async function beforePack(context) {
   const appOutDir = context && context.appOutDir
   const platformName = context && context.electronPlatformName
+  if (['darwin', 'win32'].includes(platformName) && typeof context.arch === 'number') {
+    // Full native runtimes cannot be cross-staged like node-pty prebuilds.
+    // Reject a missing, unlocked or different-architecture payload before pack.
+    assertBundledRuntimePackage(path.resolve(import.meta.dirname, '../build'), platformName, Arch[context.arch])
+  }
   try {
     // Windows: keep the previous working build as rollback material for the
     // post-build integrity gate (#69179) instead of destroying it. Falls

@@ -230,9 +230,9 @@ import {
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { BackendDialClaims } from './backend-dial-claim'
-import { buildDesktopBackendEnv, hermesManagedNodePathEntries, normalizeHermesHomeRoot } from './backend-env'
+import { buildDesktopBackendEnv, bundledRuntimePathEntries, hermesManagedNodePathEntries, normalizeHermesHomeRoot } from './backend-env'
 import { isReauthRequiredError, waitForHermesReady } from './backend-health'
-import { backendCommandMatches, createBackendOwnership, createBackendShutdownCoordinator } from './backend-ownership'
+import { backendCommandMatches, createBackendOwnership, createBackendShutdownCoordinator, parseBackendOwnershipDetailed } from './backend-ownership'
 import { canImportHermesCli, probeHermesRuntimeIntegrity, verifyHermesCli } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { recycleOwnedBackend } from './backend-recycle'
@@ -480,6 +480,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
+import { assertPackagedRuntimeIdle, createPackagedRuntimeGate, installPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { registerPetOverlayIpc } from './pet-overlay-ipc'
 import {
@@ -3184,7 +3185,7 @@ function findGitBash() {
   // first so users who installed via install.ps1 are detected before we
   // start probing system-wide locations.
   const localAppData = process.env.LOCALAPPDATA || ''
-  const candidates = []
+  const candidates = [path.join(ACTIVE_HERMES_ROOT, '.runtime', 'git', 'bin', 'bash.exe')]
 
   if (localAppData) {
     candidates.push(path.join(localAppData, 'apexnodes', 'git', 'bin', 'bash.exe'))
@@ -3280,6 +3281,15 @@ function makeDashboardReadyFile() {
 let _gitBinaryCache = null
 
 function resolveGitBinary() {
+  const bundledGit = path.join(ACTIVE_HERMES_ROOT, '.runtime', 'git', 'cmd', 'git.exe')
+
+  if (IS_WINDOWS && fileExists(bundledGit)) {
+    // Recheck before the cache: boot can install PortableGit after an earlier lookup.
+    _gitBinaryCache = bundledGit
+
+    return _gitBinaryCache
+  }
+
   if (_gitBinaryCache) {
     return _gitBinaryCache
   }
@@ -5256,6 +5266,7 @@ function createPythonBackend(root, label, backendArgs, options: any = {}) {
     args: ['-m', 'hermes_cli.main', ...backendArgs],
     env: buildDesktopBackendEnv({
       hermesHome: HERMES_HOME,
+      runtimeRoot: root,
       pythonPathEntries: [root, ...getVenvSitePackagesEntries(venvRoot)],
       venvRoot,
       webSearchApiKey: resolveManagedConfig().key,
@@ -5282,6 +5293,7 @@ function createActiveBackend(backendArgs) {
     args: ['-m', 'hermes_cli.main', ...backendArgs],
     env: buildDesktopBackendEnv({
       hermesHome: HERMES_HOME,
+      runtimeRoot: ACTIVE_HERMES_ROOT,
       pythonPathEntries: [ACTIVE_HERMES_ROOT, ...getVenvSitePackagesEntries(VENV_ROOT)],
       venvRoot: VENV_ROOT,
       webSearchApiKey: resolveManagedConfig().key,
@@ -5500,7 +5512,76 @@ function resolveHermesBackend(backendArgs) {
   }
 }
 
+let packagedRuntimeBootError: string | null = null
+
+const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
+  try {
+    const result = await installPackagedRuntime({
+      resourcesPath: process.resourcesPath,
+      hermesHome: HERMES_HOME,
+      desktopVersion: app.getVersion(),
+      extract: extractBundleArchive,
+      runTool: runBundledTool,
+      assertCurrent: () => localBackendLifecycle.assertCanStart(),
+      beforeSwitch: async verifiedRoot => {
+        // The ownership reaper already validates both parent and child identity.
+        // A remaining live/unknown record may belong to another Desktop; never kill it.
+        await reapOrphanedBackendsOnce()
+        const ownership = parseBackendOwnershipDetailed(fileExists(DESKTOP_BACKEND_OWNERSHIP_PATH) ? fs.readFileSync(DESKTOP_BACKEND_OWNERSHIP_PATH, 'utf8') : null)
+
+        if (ownership.corrupt) {throw new Error('Could not verify previous Desktop engine ownership. Retry after closing its local workers.')}
+
+        for (const entry of ownership.entries) {
+          if (await backendIdentityMatches(entry) !== false) {
+            throw new Error('A previous Desktop engine worker is still live or unverified. Close it and retry.')
+          }
+        }
+
+        await assertPackagedRuntimeIdle(ACTIVE_HERMES_ROOT, verifiedRoot)
+      },
+      writeMarker: release => writeBootstrapMarker({ pinnedCommit: release.runtime_commit, pinnedBranch: null, version: release.runtime_version }),
+      log: rememberLog
+    }, isActiveRuntimeUsable())
+
+    packagedRuntimeBootError = null
+
+    return result
+  } catch (error: any) {
+    packagedRuntimeBootError = error?.message || String(error)
+    rememberLog(`[bundled-engine] automatic install failed: ${packagedRuntimeBootError}`)
+
+    if (isActiveRuntimeUsable()) {
+      rememberLog('[bundled-engine] the previous engine remains usable; retaining its source and version marker. Reload and retry can retry the bundled upgrade.')
+
+      return { status: 'preserved' as const, reason: 'upgrade-failed' as const, runtimeCommit: readSourceCommitStamp(ACTIVE_HERMES_ROOT) }
+    }
+
+    const failure = new Error(`Bundled engine installation failed: ${packagedRuntimeBootError}`) as Error & { isBootstrapFailure: boolean }
+    failure.isBootstrapFailure = true
+    bootstrapFailure = failure
+    throw failure
+  }
+})
+
 async function ensureRuntime(backend) {
+  // This shared gate covers primary, background-profile, messaging and explicit local Agent children.
+  // Remote routes return before ensureRuntime; developer/borrowed roots are untouched.
+  if (shouldInstallPackagedRuntime({
+    isPackaged: IS_PACKAGED,
+    diagnostic: IS_DIAGNOSTIC_TRIAL,
+    explicitRoot: process.env.HERMES_DESKTOP_HERMES_ROOT,
+    backendRoot: backend.root,
+    backendKind: backend.kind,
+    hermesHome: HERMES_HOME,
+    updatePending: readRuntimePinOverride() !== null
+  })) {
+    await advanceBootProgress('runtime.bundle', 'Preparing the APEX engine', 30)
+    await ensurePackagedEngine()
+    localBackendLifecycle.assertCanStart()
+    const cliArgs = backend.kind === 'bootstrap-needed' ? backend.args : backend.args.slice(2)
+    backend = createActiveBackend(cliArgs)
+  }
+
   // Every boot path (existing install or fresh bootstrap) passes through here
   // before the gateway starts.
   //
@@ -5803,7 +5884,7 @@ async function ensureRuntime(backend) {
   backend.label = `Hermes at ${ACTIVE_HERMES_ROOT} (venv: ${VENV_ROOT})`
   updateBootProgress({
     phase: 'runtime.ready',
-    message: 'Hermes runtime is ready',
+    message: packagedRuntimeBootError ? `Using the previous APEX engine; bundled upgrade failed: ${packagedRuntimeBootError}` : 'Hermes runtime is ready',
     progress: 82,
     running: true,
     error: null
@@ -15354,6 +15435,7 @@ ipcMain.handle('hermes:window:openInTerminal', async (_event, sessionId, opts) =
   }
 
   try {
+    await ensurePackagedEngine.waitForPending()
     const profile = typeof opts?.profile === 'string' ? opts.profile.trim() : ''
     const backend = resolveHermesBackend(tuiResumeArgs(sessionId.trim(), profile || undefined))
 
@@ -15362,6 +15444,7 @@ ipcMain.handle('hermes:window:openInTerminal', async (_event, sessionId, opts) =
     }
 
     const { cwd } = sanitizeWorkspaceCwd(opts?.cwd)
+    const runtimeRoot = 'root' in backend && typeof backend.root === 'string' ? backend.root : null
     const scriptDir = path.join(app.getPath('userData'), 'open-in-terminal')
     fs.mkdirSync(scriptDir, { recursive: true })
 
@@ -15376,7 +15459,8 @@ ipcMain.handle('hermes:window:openInTerminal', async (_event, sessionId, opts) =
         args: backend.args,
         command: backend.command,
         cwd,
-        env: terminalScriptEnv(backend.env, HERMES_HOME)
+        env: terminalScriptEnv(backend.env, HERMES_HOME),
+        pathPrefix: runtimeRoot && fileExists(path.join(runtimeRoot, '.bundle-manifest.json')) ? bundledRuntimePathEntries(runtimeRoot) : []
       }),
       { mode: 0o700 }
     )
@@ -15468,6 +15552,7 @@ ipcMain.handle('hermes:bootstrap:reset', async () => {
   rememberLog('[bootstrap] reset requested by renderer; clearing latched failure')
   await teardownPrimaryBackendAndWait()
   bootstrapFailure = null
+  ensurePackagedEngine.reset()
   backendStartFailure = null
   bootstrapState = {
     active: false,
@@ -19354,6 +19439,7 @@ function buildAgentCliEnv(proxyFragment?) {
 
   const base = buildDesktopBackendEnv({
     hermesHome: HERMES_HOME,
+    runtimeRoot: ACTIVE_HERMES_ROOT,
     venvRoot: VENV_ROOT,
     proxyEnv: frag
   })
@@ -20319,10 +20405,22 @@ async function submitDaemonTaskResult(taskId, resultBody) {
 // Drive one local-agent job out-of-process via the venv python runner. Feeds the
 // job JSON on stdin, parses one result JSON from stdout. Resolves null on any
 // spawn/parse/timeout failure so the caller posts a clean runner_no_result.
-function runLocalAgentJob(job) {
+async function runLocalAgentJob(job) {
+  let backend
+
+  try {
+    // An opted-in local Agent job is a fourth local spawn consumer, including
+    // when the foreground connection is remote. It must use the owned engine.
+    backend = await ensureRuntime(createActiveBackend([]))
+    localBackendLifecycle.assertCanStart()
+  } catch (error: any) {
+    rememberLog(`[daemon] local engine unavailable: ${error?.message || String(error)}`)
+
+    return null
+  }
+
   return new Promise(resolve => {
-    const venvPython = getVenvPython(VENV_ROOT)
-    const pythonExe = fileExists(venvPython) ? venvPython : findSystemPython()
+    const pythonExe = backend.command
 
     if (!pythonExe) {
       rememberLog('[daemon] no python to run the local agent')
@@ -20340,7 +20438,7 @@ function runLocalAgentJob(job) {
         hiddenWindowsChildOptions({
           cwd: ACTIVE_HERMES_ROOT, // repo root so `-m agent.coding_agents...` resolves
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env }
+          env: { ...process.env, HERMES_HOME, ...backend.env }
         })
       )
     } catch (error: any) {
@@ -22284,7 +22382,18 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
     const result = await checkForRuntimeUpdate({
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
-      marker: readBootstrapMarker(),
+      readCurrentMarker: async () => {
+        if (
+          IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT &&
+          !readRuntimePinOverride() && !primaryBackendIsRemote() && managedPrimaryRestoreOwners.size === 0
+        ) {
+          await localBackendLifecycle.waitForPendingStarts()
+        }
+
+        await ensurePackagedEngine.waitForPending()
+
+        return readBootstrapMarker()
+      },
       // hc-475 (F4): pass the running shell version so the check can gate an
       // engine that requires a newer desktop (surfaces desktopUpgradeRequired).
       desktopVersion: app.getVersion(),
@@ -22293,7 +22402,7 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
 
     return { ...result, ok: true }
   } catch (error: any) {
-    // checkForRuntimeUpdate already swallows; defensive only.
+    // Latest lookup failures become unavailable; an authoritative marker-read failure lands here.
     rememberLog(`[runtime-update] check-update errored: ${error && error.message}`)
 
     return { ok: false, updateAvailable: false, error: (error && error.message) || String(error) }

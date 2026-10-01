@@ -21,8 +21,10 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { Arch } from 'electron-builder'
 
 import { stampExeIdentity } from './set-exe-identity.mjs'
+import { assertBundledRuntimePackage } from './bundled-runtime-package.mjs'
 
 function plistString(plist, key) {
   const match = plist.match(new RegExp(`<key>\\s*${key}\\s*</key>\\s*<string>([^<]+)</string>`))
@@ -51,6 +53,12 @@ export function assertMacVersionIdentity({ appOutDir, productName, runtimeVersio
 export default async function afterPack(context) {
   const productName = context.packager?.appInfo?.productFilename || 'APEX'
   const desktopRoot = path.resolve(import.meta.dirname, '..')
+  if (['darwin', 'win32'].includes(context.electronPlatformName) && typeof context.arch === 'number') {
+    const resources = context.electronPlatformName === 'darwin'
+      ? path.join(context.appOutDir, `${productName}.app`, 'Contents', 'Resources')
+      : path.join(context.appOutDir, 'resources')
+    assertBundledRuntimePackage(resources, context.electronPlatformName, Arch[context.arch])
+  }
 
   if (context.electronPlatformName === 'darwin') {
     assertMacVersionIdentity({

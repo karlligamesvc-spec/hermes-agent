@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import { test } from 'vitest'
@@ -16,6 +17,7 @@ import {
   parseSemver,
   resolveLatestRuntimePin
 } from './apex-runtime-latest'
+import { createPackagedRuntimeGate } from './packaged-runtime'
 
 const SHA = '87740e8021390455962caa3ad2c16d522c0d306a'
 const COS_BASE = 'https://bucket.cos.ap-guangzhou.myqcloud.com/runtime'
@@ -273,6 +275,116 @@ test('checkForRuntimeUpdate: installed via branch key compares against branch', 
 
   assert.equal(res.current.key, 'v2026.6.19')
   assert.equal(res.updateAvailable, true)
+})
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>(done => { resolve = done })
+
+  return { promise, resolve }
+}
+
+test.each([
+  { startsDuringLookup: false, preservesOld: false },
+  { startsDuringLookup: true, preservesOld: false },
+  { startsDuringLookup: false, preservesOld: true },
+  { startsDuringLookup: true, preservesOld: true }
+])('checkForRuntimeUpdate: reads the actual marker after bundled preparation ($startsDuringLookup/$preservesOld)', async ({ startsDuringLookup, preservesOld }) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-update-marker-'))
+  const markerPath = path.join(home, 'bootstrap-complete.json')
+  const oldMarker = { pinnedCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', version: 'v2026.9.22-fork.aaaaaaaa' }
+  const newMarker = { pinnedCommit: SHA, version: 'v2026.10.1-fork.current' }
+  const latestEntered = deferred()
+  const latestFinished = deferred()
+  const installFinished = deferred()
+  let requests = 0
+  let reads = 0
+  let published = false
+
+  const writeMarker = (marker: typeof oldMarker) => {
+    fs.writeFileSync(`${markerPath}.tmp`, JSON.stringify(marker))
+    fs.renameSync(`${markerPath}.tmp`, markerPath)
+  }
+
+  const gate = createPackagedRuntimeGate(async () => {
+    await installFinished.promise
+
+    if (preservesOld) {
+      return { status: 'preserved', reason: 'upgrade-failed', runtimeCommit: oldMarker.pinnedCommit }
+    }
+
+    writeMarker(newMarker)
+
+    return { status: 'installed', runtimeCommit: newMarker.pinnedCommit }
+  })
+
+  try {
+    writeMarker(oldMarker)
+
+    if (!startsDuringLookup) {void gate()}
+
+    const checking = checkForRuntimeUpdate({
+      apiBase: 'https://fixture.invalid',
+      marker: oldMarker,
+      fetchJson: async () => {
+        requests += 1
+        latestEntered.resolve()
+        await latestFinished.promise
+
+        return publishedBody(newMarker.pinnedCommit, newMarker.version)
+      },
+      readCurrentMarker: async () => {
+        await gate.waitForPending()
+        reads += 1
+
+        return JSON.parse(fs.readFileSync(markerPath, 'utf8'))
+      }
+    }).then(result => {
+      published = true
+
+      return result
+    })
+
+    await latestEntered.promise
+    assert.equal(reads, 0)
+
+    if (startsDuringLookup) {void gate()}
+
+    latestFinished.resolve()
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.equal(published, false, 'An update check must not publish while the bundled marker is still changing')
+    assert.equal(reads, 0, 'An in-flight bundle must settle before the actual marker is read')
+    installFinished.resolve()
+    const result = await checking
+
+    assert.equal(requests, 1)
+    assert.equal(reads, 1)
+    assert.equal(result.updateAvailable, preservesOld)
+    assert.equal(result.current.key, preservesOld ? oldMarker.pinnedCommit : newMarker.pinnedCommit)
+    assert.equal(result.current.version, preservesOld ? oldMarker.version : newMarker.version)
+    assert.equal(result.latest.key, newMarker.pinnedCommit)
+  } finally {
+    latestFinished.resolve()
+    installFinished.resolve()
+    await gate.waitForPending()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('checkForRuntimeUpdate: authoritative marker read errors cannot claim current or offer stale updates', async () => {
+  let requests = 0
+
+  await assert.rejects(checkForRuntimeUpdate({
+    apiBase: 'https://fixture.invalid',
+    marker: { pinnedCommit: 'old' },
+    fetchJson: async () => {
+      requests += 1
+
+      return publishedBody(SHA, 'current')
+    },
+    readCurrentMarker: async () => {throw new Error('marker unavailable')}
+  }), /marker unavailable/)
+  assert.equal(requests, 1)
 })
 
 // ---------------------------------------------------------------------------

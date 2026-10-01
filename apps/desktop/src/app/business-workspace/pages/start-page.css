@@ -1,0 +1,136 @@
+/* Home App.jsx 303–389: the Start rail, three illustrated paths and two-column overview.
+   Scope every rule to Start so catalog cards and other business pages retain their layout. */
+.apex-start-home {
+  width: 100%;
+  max-width: 750px;
+  margin: 36px auto 42px;
+  container-type: inline-size;
+}
+
+.apex-start-home .apex-start-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.apex-start-home .apex-start-hero h1 {
+  margin: 0 0 11px;
+  font-size: 41px;
+  line-height: 1.12;
+  letter-spacing: -.05em;
+}
+
+.apex-start-home .apex-start-hero p {
+  margin: 0;
+  color: var(--ui-text-tertiary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.apex-start-home .apex-start-new-goal { flex-shrink: 0; }
+.apex-start-home .apex-start-content { display: flex; flex-direction: column; gap: 16px; }
+
+.apex-start-home .apex-goal-launcher {
+  margin: 24px 0 25px;
+  padding: 12px 18px 10px;
+  border-radius: 15px;
+}
+
+.apex-start-home [data-slot="business-goal-input"] {
+  min-height: 48px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.apex-start-home [data-business-goal-footer] { flex-wrap: wrap; }
+.apex-start-home [data-start-workflow-selection] { max-width: 65%; }
+.apex-start-home [data-start-workflow-selection] > button { max-width: 100%; }
+
+.apex-start-shelf .apex-start-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.apex-start-shelf h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+.apex-start-shelf .apex-start-section-heading p { margin: 0 0 3px; color: var(--ui-text-tertiary); font-size: 11px; }
+.apex-start-shelf .apex-start-section-heading > button { color: var(--ui-text-tertiary); font-size: 12px; }
+.apex-start-shelf .apex-start-primary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+
+.apex-start-shelf .apex-start-primary-card {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 96px;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: normal;
+  text-align: start;
+}
+
+.apex-start-shelf .apex-start-primary-card img {
+  width: 86px;
+  height: 86px;
+  object-fit: cover;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 13px;
+}
+
+.apex-start-shelf .apex-start-primary-card strong { display: block; margin: 3px 0 6px; font-size: 13px; line-height: 1.35; }
+.apex-start-shelf .apex-start-primary-card small { display: block; color: var(--ui-text-tertiary); font-size: 10px; line-height: 1.55; }
+.apex-start-shelf .apex-start-primary-card[aria-pressed="true"] strong { color: var(--theme-primary); }
+.apex-start-shelf .apex-start-primary-card[aria-pressed="true"] img { border-color: var(--theme-primary); }
+.apex-start-shelf .apex-start-catalog-status { margin-top: 12px; color: var(--ui-text-tertiary); font-size: 12px; }
+.apex-start-shelf .apex-start-secondary-paths { margin-top: 24px; }
+.apex-start-shelf .apex-start-secondary-paths h2 { color: var(--ui-text-secondary); font-size: 12px; }
+.apex-start-shelf .apex-start-secondary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 8px; }
+
+.apex-start-shelf .apex-start-secondary-grid [data-workflow-starter] {
+  min-height: 64px;
+  padding: 0;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.apex-start-shelf .apex-start-secondary-grid [data-workflow-artwork] { width: 36px; height: 36px; transform: none; }
+.apex-start-shelf .apex-start-secondary-grid [data-workflow-card-title] { font-size: 12px; line-height: 1.4; }
+.apex-start-shelf .apex-start-secondary-grid [data-workflow-card-summary] { font-size: 10px; line-height: 1.5; }
+.apex-start-shelf .apex-start-secondary-grid [data-workflow-card-action] { display: none; }
+
+.apex-start-shelf .apex-start-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+  gap: 28px;
+  margin-top: 33px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ui-stroke-tertiary);
+}
+
+.apex-start-shelf .apex-start-recent { min-width: 0; padding-inline-end: 22px; border-inline-end: 1px solid var(--ui-stroke-tertiary); }
+.apex-start-shelf [data-start-recent-project] { min-height: 60px; gap: 9px; }
+.apex-start-shelf [data-start-recent-project] strong { font-size: 11px; }
+.apex-start-shelf [data-start-recent-project] [data-slot="badge"] { font-size: 10px; }
+.apex-start-shelf .apex-start-project-icon { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px; color: var(--theme-primary); background: color-mix(in srgb, var(--theme-primary) 10%, transparent); }
+.apex-start-shelf .apex-start-connection-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+.apex-start-shelf .apex-start-connection { display: flex; flex-direction: column; gap: 7px; white-space: normal; }
+.apex-start-shelf .apex-start-connection strong, .apex-start-shelf .apex-start-connection > span:last-child { font-size: 10px; }
+.apex-start-shelf .apex-start-connection-icon { display: grid; place-items: center; width: 55px; height: 55px; border: 1px solid var(--ui-stroke-tertiary); border-radius: 10px; color: var(--theme-primary); }
+.apex-start-shelf .apex-start-source-coverage { display: flex; gap: 6px; margin: 24px 0 0; color: var(--ui-text-tertiary); font-size: 10px; line-height: 1.55; }
+.apex-start-shelf .apex-start-source-coverage > svg { flex-shrink: 0; margin-top: 3px; }
+
+@container (max-width: 620px) {
+  .apex-start-home .apex-start-hero h1 { font-size: 32px; }
+  .apex-start-home .apex-start-hero { flex-wrap: wrap; }
+  .apex-start-home .apex-start-primary-grid, .apex-start-home .apex-start-secondary-grid { grid-template-columns: minmax(0, 1fr); }
+  .apex-start-home .apex-start-overview { grid-template-columns: minmax(0, 1fr); }
+  .apex-start-home .apex-start-recent { border-inline-end: 0; padding-inline-end: 0; }
+}

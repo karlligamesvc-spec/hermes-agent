@@ -9,29 +9,46 @@ import { formatBusinessDayTime } from '@/lib/time'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
 import { useChannelStatus } from '../../chat/scenarios/use-channel-status'
-import { IM_ENTRY_ROUTE, projectDetailRoute, PROJECTS_ROUTE, routeDrawerNavigationState } from '../../routes'
-import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
+import { IM_ENTRY_ROUTE, projectDetailRoute, PROJECTS_ROUTE, routeDrawerNavigationState, WORKFLOWS_ROUTE } from '../../routes'
+import { useWorkflowCatalog, useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { projectRunDisplayState } from '../view-model/project'
-import { type BusinessHomeStarter, businessHomeStarters } from '../view-model/workflow-starters'
+import { type BusinessHomeStarter, businessHomeStarters, type BusinessWorkflowStarter, businessWorkflowStarters } from '../view-model/workflow-starters'
 
-import { BusinessSection } from './business-section'
 import { WorkflowRefreshNotice } from './workflow-refresh-notice'
 import { WorkflowStarterCard } from './workflow-starter-card'
 
 export interface BusinessStartShelfProps {
   onSelectGoal?: (starter: BusinessHomeStarter) => void
+  onSelectWorkflow?: (starter: BusinessWorkflowStarter, testCatalog: boolean) => void
+  selectedWorkflowId?: string
+  selectionDisabled?: boolean
 }
 
 /**
  * Phase 1 Start shelf. Project rows and source states come from their real
  * bridges; an unavailable project API remains an explicit lifecycle message.
  */
-export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {}) {
+export function BusinessStartShelf({ onSelectGoal, onSelectWorkflow, selectedWorkflowId, selectionDisabled = false }: BusinessStartShelfProps = {}) {
   const { locale, t } = useI18n()
   const c = t.businessWorkspace
   const location = useLocation()
   const navigate = useNavigate()
   const starters = businessHomeStarters(c.workflows)
+  const catalog = useWorkflowCatalog()
+
+  const primaryCopy: Record<string, { title: string; summary: string; prompt: string }> = {
+    'market-launch': t.home.primaryPaths.commerce,
+    'geo-brand-audit': t.home.primaryPaths.geo,
+    'content-review': t.home.primaryPaths.content
+  }
+
+  const primaryStarters = businessWorkflowStarters(c.workflows)
+    .filter(starter => primaryCopy[starter.id])
+    .map(starter => ({ ...starter, ...primaryCopy[starter.id] }))
+
+  const testCatalog = catalog.mode === 'ready' && /(?:local|test|staging|review)/i.test(catalog.version ?? '')
+
+  const primaryAvailable = catalog.mode === 'ready' && primaryStarters.every(starter => catalog.items.some(item => item.id === starter.id && item.slug === starter.slug))
   const projects = useWorkflowProjects(2)
   const channelStatus = useChannelStatus()
 
@@ -49,6 +66,8 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
   ].filter(source => source.status.available)
 
   const selectGoal = (starter: BusinessHomeStarter) => {
+    if (selectionDisabled) {return}
+
     if (onSelectGoal) {
       onSelectGoal(starter)
 
@@ -59,30 +78,71 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
     requestComposerFocus('main')
   }
 
+  const selectWorkflow = (starter: BusinessWorkflowStarter) => {
+    if (selectionDisabled) {return}
+
+    if (onSelectWorkflow) {
+      onSelectWorkflow(starter, testCatalog)
+
+      return
+    }
+
+    navigate(WORKFLOWS_ROUTE, { state: { businessStartSelection: true, businessGoalDraft: starter.prompt } })
+  }
+
   return (
-    <div className="pointer-events-auto flex w-full flex-col gap-8 pb-10 text-left" data-business-start-shelf="">
+    <div className="apex-start-shelf pointer-events-auto w-full text-left" data-business-start-shelf="">
       <section aria-labelledby="business-start-workflows">
-        <header className="mb-3 flex items-end justify-between gap-4">
+        <header className="apex-start-section-heading">
           <div>
-            <h2 className="text-base font-semibold" id="business-start-workflows">
-              {c.workflows.homeTitle}
+            <p>{t.home.pathsEyebrow}</p>
+            <h2 id="business-start-workflows">
+              {t.home.pathsTitle}
             </h2>
-            <p className="mt-1 max-w-[48rem] text-xs leading-5 text-(--ui-text-tertiary)">
-              {c.workflows.homeDescription}
-            </p>
           </div>
-          <Button onClick={() => navigate(PROJECTS_ROUTE)} size="inline" variant="textStrong">
-            {c.projects.title}
+          <Button disabled={selectionDisabled} onClick={() => { if (!selectionDisabled) {navigate(WORKFLOWS_ROUTE)} }} size="inline" variant="text">
+            {c.workflows.title}<Codicon name="arrow-right" size="0.75rem" />
           </Button>
         </header>
 
-        <div
-          className="apex-workflow-entry-grid apex-workflow-entry-grid--stacked grid gap-2.5"
-          data-start-recommended-workflows=""
-        >
+        <div className="apex-start-primary-grid" data-start-primary-workflows="">
+          {primaryStarters.map(starter => {
+            const item = catalog.mode === 'ready' ? catalog.items.find(row => row.id === starter.id && row.slug === starter.slug) : null
+
+            return (
+              <Button
+                aria-label={`${starter.title} · ${c.workflows.use}`}
+                aria-pressed={selectedWorkflowId === starter.id}
+                className="apex-start-primary-card"
+                disabled={!item || selectionDisabled}
+                key={starter.id}
+                onClick={() => {
+                  if (item) {
+                    selectWorkflow({ ...starter, businessPath: item.businessPath, version: item.version })
+                  }
+                }}
+                size="inline"
+                type="button"
+                variant="ghost"
+              >
+                <img alt="" height={86} src={`${import.meta.env.BASE_URL}assets/workflow-${starter.id === 'market-launch' ? 'commerce' : starter.id === 'geo-brand-audit' ? 'geo' : 'content'}-minimal.png`} width={86} />
+                <span><strong>{starter.title}</strong><small>{starter.summary}</small></span>
+              </Button>
+            )
+          })}
+        </div>
+        {!primaryAvailable && <p className="apex-start-catalog-status" role="status">
+          {catalog.mode === 'loading' ? t.home.catalogLoading : c.workflows.catalogUnavailable}
+        </p>}
+      </section>
+
+      <section aria-labelledby="business-start-capability-goals" className="apex-start-secondary-paths">
+        <h2 id="business-start-capability-goals">{t.home.capabilityPaths}</h2>
+        <div className="apex-start-secondary-grid" data-start-recommended-workflows="">
           {starters.map(starter => (
             <WorkflowStarterCard
               action={c.workflows.use}
+              disabled={selectionDisabled}
               key={starter.id}
               onSelect={() => selectGoal(starter)}
               starter={starter}
@@ -91,24 +151,11 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
           ))}
         </div>
 
-        <p
-          className="mt-3 flex max-w-[52rem] items-start gap-2 px-1 text-xs leading-5 text-(--ui-text-tertiary)"
-          data-start-source-coverage=""
-        >
-          <Codicon className="mt-1 shrink-0 text-primary" name="globe" size="0.75rem" />
-          <span>
-            <strong className="font-medium text-(--ui-text-secondary)">{c.workflows.homeSourceLabel}：</strong>
-            {c.workflows.homeSourceCoverage}
-          </span>
-        </p>
       </section>
 
-      <div className="grid gap-8 border-t border-(--ui-stroke-tertiary) pt-6 min-[900px]:grid-cols-2">
-        <BusinessSection
-          action={c.projects.title}
-          onAction={() => navigate(PROJECTS_ROUTE)}
-          title={c.projects.recentProjects}
-        >
+      <div className="apex-start-overview" data-start-workspace-overview="">
+        <section aria-labelledby="business-start-recent-projects" className="apex-start-recent">
+          <header className="apex-start-section-heading"><h2 id="business-start-recent-projects">{c.projects.recentProjects}</h2></header>
           <WorkflowRefreshNotice state={projects} />
           {projects.mode === 'loading' ? (
             <div className="flex min-h-20 items-center gap-3 text-xs text-muted-foreground">
@@ -124,6 +171,7 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
                 <Button
                   className="flex h-auto w-full items-center justify-start gap-3 rounded-none border-b border-(--ui-stroke-tertiary) px-0 py-3 text-left last:border-b-0"
                   data-route-drawer-return-focus={project.id}
+                  data-start-recent-project=""
                   key={project.id}
                   onClick={() =>
                     navigate(projectDetailRoute(project.id), {
@@ -132,32 +180,21 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
                   }
                   variant="ghost"
                 >
-                  <span
-                    className={
-                      summary?.attention === 'failed'
-                        ? 'size-2 shrink-0 rounded-full bg-destructive'
-                        : summary?.attention === 'review'
-                          ? 'size-2 shrink-0 rounded-full bg-amber-500'
-                          : summary?.currentRunStatus === 'running'
-                            ? 'size-2 shrink-0 animate-pulse rounded-full bg-primary'
-                            : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
-                    }
-                  />
+                  <span className="apex-start-project-icon"><Codicon name="folder" size="1.25rem" /></span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <strong className="truncate text-sm font-medium text-foreground">{project.name}</strong>
                       <Badge variant="muted">{c.projects.lifecycle(project.status)}</Badge>
                     </span>
-                    <span className="mt-0.5 block truncate text-xs text-(--ui-text-tertiary)">
-                      {runDisplay.kind === 'no-run'
+                    <span className="mt-0.5 block text-xs text-(--ui-text-tertiary)">
+                      <time dateTime={project.updatedAt}>{c.projects.updatedAt(formatBusinessDayTime(new Date(project.updatedAt), locale))}</time>
+                      {' · '}
+                      <span>{runDisplay.kind === 'no-run'
                         ? c.projects.noRun
                         : runDisplay.kind === 'status-unavailable'
                           ? c.projects.runStatusUnavailable
-                          : c.projects.runLifecycle(runDisplay.status)}
+                          : c.projects.runLifecycle(runDisplay.status)}</span>
                     </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-(--ui-text-tertiary)">
-                    {formatBusinessDayTime(new Date(project.updatedAt), locale)}
                   </span>
                   <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="arrow-right" size="0.75rem" />
                 </Button>
@@ -170,31 +207,25 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
               {projects.mode === 'failed' ? c.projects.projectLoadFailed : c.projects.projectDomainUnavailable}
             </p>
           )}
-        </BusinessSection>
+          <Button onClick={() => navigate(PROJECTS_ROUTE)} size="inline" variant="text">{c.projects.title}<Codicon name="arrow-right" size="0.75rem" /></Button>
+        </section>
 
-        <BusinessSection
-          action={t.imEntry.manage}
-          onAction={() => navigate(IM_ENTRY_ROUTE)}
-          title={c.projects.availableSources}
-        >
+        <section aria-labelledby="business-start-connections" className="apex-start-connections">
+          <header className="apex-start-section-heading"><h2 id="business-start-connections">{c.projects.availableSources}</h2>
+            <Button onClick={() => navigate(IM_ENTRY_ROUTE)} size="inline" variant="text">{t.imEntry.manage}</Button>
+          </header>
+          <div className="apex-start-connection-grid">
           {sources.length > 0 ? (
             sources.map(source => (
               <Button
-                className="flex h-auto w-full items-center justify-between gap-3 rounded-none border-b border-(--ui-stroke-tertiary) px-0 py-3 text-left last:border-b-0"
+                className="apex-start-connection"
                 key={source.key}
                 onClick={() => navigate(IM_ENTRY_ROUTE)}
+                size="inline"
                 variant="ghost"
               >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span
-                    className={
-                      source.status.bound
-                        ? 'size-2 shrink-0 rounded-full bg-emerald-500'
-                        : 'size-2 shrink-0 rounded-full bg-(--ui-text-quaternary)'
-                    }
-                  />
-                  <strong className="truncate text-sm font-medium text-foreground">{source.label}</strong>
-                </span>
+                <span className="apex-start-connection-icon"><Codicon name="comment-discussion" size="1.25rem" /></span>
+                <strong>{source.label}</strong>
                 <span className="text-xs text-(--ui-text-tertiary)">
                   {source.status.bound ? c.projects.sourceConnected : c.projects.sourceNotConnected}
                 </span>
@@ -203,7 +234,12 @@ export function BusinessStartShelf({ onSelectGoal }: BusinessStartShelfProps = {
           ) : (
             <p className="py-4 text-xs leading-5 text-muted-foreground">{c.projects.noAvailableSources}</p>
           )}
-        </BusinessSection>
+          </div>
+          <p className="apex-start-source-coverage" data-start-source-coverage="">
+            <Codicon name="globe" size="0.75rem" />
+            <span><strong>{c.workflows.homeSourceLabel}：</strong>{c.workflows.homeSourceCoverage}</span>
+          </p>
+        </section>
       </div>
     </div>
   )

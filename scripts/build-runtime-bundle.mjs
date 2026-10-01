@@ -35,7 +35,7 @@
 //   ./venv/                 relocatable venv (uv venv --relocatable + uv sync)
 //   ./.runtime/py/<name>/   python-build-standalone CPython (uv-managed)
 //   ./.runtime/node/        portable Node 22 = npm -g prefix (agent-browser…)
-//   ./.runtime/git/         MinGit (windows only)
+//   ./.runtime/git/         PortableGit, including Bash (windows only)
 //   ./.runtime/bin/         uv(.exe), uvx, rg(.exe)
 //   ./.runtime/files.tsv    per-file sha256 index (verify)
 //   ./.bundle-manifest.json embedded manifest (sibling manifest.json on COS
@@ -48,6 +48,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+
+import { notarizeMacRuntimePayload, signMacRuntimePayload } from './mac-runtime-payload.mjs'
+import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -107,8 +110,23 @@ function run(cmd, argv, opts = {}) {
   return res
 }
 
-export function probeRuntimeImports(python, { env = process.env, cwd = os.tmpdir() } = {}) {
-  const code = 'import yaml, dotenv, hermes_cli.config, run_agent, toolsets'
+export function probeRuntimeImports(python, { env = process.env, cwd = os.tmpdir(), root = null } = {}) {
+  const code = [
+    'import yaml, dotenv, hermes_cli.config, run_agent, toolsets',
+    ...(root ? [
+      'import importlib, pathlib, socket',
+      'assert getattr(socket, "_hermes_offline_guard", False), "offline guard missing"',
+      'try: socket.create_connection(("203.0.113.1", 443), timeout=0.1)',
+      'except PermissionError as error: assert "runtime smoke disallows external network" in str(error)',
+      'else: raise AssertionError("external network was not blocked")',
+      `root = pathlib.Path(${JSON.stringify(root)}).resolve()`,
+      'modules = ["run_agent", "toolsets", "hermes_cli.config", "agent.chat_completion_helpers", "fastapi", "uvicorn", "openai", "pydantic_core._pydantic_core", "PIL._imaging", "psutil", "docx", "xlsxwriter", "pptx"]',
+      'for name in modules:',
+      '    module = importlib.import_module(name)',
+      '    origin = pathlib.Path(module.__file__).resolve()',
+      '    assert origin.is_relative_to(root), (name, str(origin), str(root))',
+    ] : [])
+  ].join('\n')
   const result = spawnSync(python, ['-c', code], {
     stdio: ['ignore', 'pipe', 'pipe'],
     cwd,
@@ -145,7 +163,7 @@ function curlHeaderArgs(headers) {
   return args
 }
 
-async function download(url, dest, { headers = {}, attempts = 3, timeoutSec = 900 } = {}) {
+export async function download(url, dest, { headers = {}, attempts = 3, timeoutSec = 900, env = process.env } = {}) {
   fs.mkdirSync(path.dirname(dest), { recursive: true })
   // Idempotent: a pre-seeded / previously fetched artifact is reused. CI
   // runners start empty so this never masks staleness there; locally it lets
@@ -155,18 +173,32 @@ async function download(url, dest, { headers = {}, attempts = 3, timeoutSec = 90
     return dest
   }
   const tmp = `${dest}.part`
-  rmrf(tmp)
   log(`fetch ${url}`)
-  const res = spawnSync('curl', [
-    '-fL', '--silent', '--show-error',
-    '--retry', String(attempts), '--retry-delay', '2', '--retry-all-errors',
-    '--connect-timeout', '30', '--max-time', String(timeoutSec),
-    ...curlHeaderArgs(headers),
-    '-o', tmp, url,
-  ], { stdio: ['ignore', 'inherit', 'pipe'], encoding: 'utf8' })
-  if (res.status !== 0) {
-    rmrf(tmp)
-    throw new Error(`curl failed (${res.status}) for ${url}: ${(res.stderr || '').trim()}`)
+  const receipt = []
+  let res
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const offset = fs.existsSync(tmp) ? fs.statSync(tmp).size : 0
+    const headerFile = `${tmp}.response-headers`
+    res = spawnSync('curl', [
+      '-fL', '--silent', '--show-error', '--retry', '0',
+      '--connect-timeout', '30', '--max-time', String(timeoutSec),
+      '--continue-at', String(offset), '--dump-header', headerFile,
+      ...curlHeaderArgs(headers), '-o', tmp, url,
+    ], { stdio: ['ignore', 'inherit', 'pipe'], encoding: 'utf8', env })
+    const responseHeaders = fs.existsSync(headerFile) ? fs.readFileSync(headerFile, 'utf8') : ''
+    fs.rmSync(headerFile, { force: true })
+    const blocks = responseHeaders.trim().split(/\r?\n\r?\n/)
+    const finalHeaders = [...blocks].reverse().find(block => /^HTTP\/\S+ \d{3}/.test(block)) || ''
+    const status = Number(finalHeaders.match(/^HTTP\/\S+ (\d{3})/)?.[1] || 0)
+    const range = finalHeaders.match(/^content-range:\s*([^\r\n]+)/im)?.[1] || null
+    const received = fs.existsSync(tmp) ? fs.statSync(tmp).size : 0
+    const resumed = offset === 0 || (status === 206 && range?.startsWith(`bytes ${offset}-`))
+    receipt.push({ attempt, offset, status, content_range: range, received, curl_exit: res.status, resumed })
+    fs.writeFileSync(`${dest}.download-proof.json`, JSON.stringify(receipt, null, 2) + '\n')
+    log(`download attempt ${attempt}: HTTP ${status}, offset ${offset}, received ${received}, Range ${range || '<none>'}`)
+    if (offset > 0 && status >= 200 && status < 300 && !resumed) throw new Error(`server did not honor the requested Range for ${path.basename(dest)}; partial preserved`)
+    if (res.status === 0) break
+    if (attempt === attempts) throw new Error(`curl failed (${res.status}) for ${url}: ${(res.stderr || '').trim()}; partial preserved`)
   }
   fs.renameSync(tmp, dest)
   log(`fetched ${human(fs.statSync(dest).size)} -> ${path.basename(dest)}`)
@@ -201,7 +233,7 @@ function tarBin() {
   return 'tar'
 }
 
-function rmrf(p) { fs.rmSync(p, { recursive: true, force: true }) }
+const rmrf = removeOwnedRuntimeTree
 
 function* walk(dir, rel = '') {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -284,6 +316,7 @@ async function cmdBuild(args) {
   run('git', ['-C', repoRoot, 'archive', '--format=tar', '-o', srcTar, sha])
   run(tarBin(), ['-xf', srcTar, '-C', stage])
   fs.rmSync(srcTar)
+  fs.writeFileSync(path.join(stage, '.hermes-source-commit'), `${sha}\n`)
   // dist/cos-runtime held an accidentally-committed 52MB source tarball (a
   // coscli-era publish artifact) — git-rm'd out of HEAD + gitignored
   // (hc-472 followup), but never ship it inside a bundle built from an
@@ -432,20 +465,21 @@ async function cmdBuild(args) {
   npm(['install', '--workspaces=false', '--silent'], { cwd: stage })
   npm(['install', '--workspace', 'ui-tui', '--silent'], { cwd: stage })
 
-  // ── 9. MinGit (windows only; replaces PortableGit — bundle installs never
-  //       git-clone, runtime shell-outs only. design §2). ────────────────────
+  // ── 9. PortableGit (windows only). Runtime tools need Bash, which MinGit
+  //       omits even though its git --version probe succeeds. ──────────────
   let gitComponent = null
   if (target.os === 'win') {
     const gitDir = path.join(stage, '.runtime', 'git')
     const relTag = `v${MINGIT_VERSION}.windows.1`
-    const asset = `MinGit-${MINGIT_VERSION}-64-bit.zip`
+    const asset = `PortableGit-${MINGIT_VERSION}-64-bit.7z.exe`
     const gitArchive = path.join(tools, asset)
     await download(`https://github.com/git-for-windows/git/releases/download/${relTag}/${asset}`, gitArchive, { headers: githubHeaders() })
     fs.mkdirSync(gitDir, { recursive: true })
-    run(tarBin(), ['-xf', gitArchive, '-C', gitDir])
+    run(gitArchive, [`-o${gitDir}`, '-y'])
     const gitExe = path.join(gitDir, 'cmd', 'git.exe')
-    if (!fs.existsSync(gitExe)) die(`MinGit missing cmd/git.exe under ${gitDir}`)
-    gitComponent = { path: '.runtime/git', version: MINGIT_VERSION, flavor: 'MinGit' }
+    const bashExe = path.join(gitDir, 'bin', 'bash.exe')
+    if (!fs.existsSync(gitExe) || !fs.existsSync(bashExe)) die(`PortableGit missing git.exe or bash.exe under ${gitDir}`)
+    gitComponent = { path: '.runtime/git', version: MINGIT_VERSION, flavor: 'PortableGit', shell: 'bin/bash.exe' }
   }
 
   // ── 10. small tools: uv + rg into .runtime/bin ─────────────────────────────
@@ -470,6 +504,12 @@ async function cmdBuild(args) {
   prunePycache(stage)
   normalizeStageLinks(stage)
 
+  const macSigning = args['mac-sign-identity']
+    ? signMacRuntimePayload(stage, args['mac-sign-identity']) : null
+  if (args['mac-notarize'] && !macSigning) die('--mac-notarize requires --mac-sign-identity')
+  const macNotarization = args['mac-notarize']
+    ? notarizeMacRuntimePayload(stage, outDir) : null
+
   // ── 12. chromium lazy hook metadata (env reservation, design §2/A2) ───────
   const playwrightVersion = detectPlaywrightVersion(stage, target)
 
@@ -489,6 +529,8 @@ async function cmdBuild(args) {
     min_desktop_version: minDesktopVersion,
     ...(devUnlocked ? { dev_unlocked: true } : {}),
     build_root: stage,
+    ...(macSigning ? { mac_signing: macSigning } : {}),
+    ...(macNotarization ? { mac_notarization: macNotarization } : {}),
     components: {
       src: { path: '.', note: 'runtime source tree at bundle root (git archive, no .git)' },
       python: { path: pyDirRel, version: pyVersion, source: 'python-build-standalone (uv-managed)' },
@@ -548,6 +590,11 @@ async function cmdBuild(args) {
   log(`BUNDLE_SUMMARY ${JSON.stringify(summary)}`)
   // machine-readable for the workflow
   fs.writeFileSync(path.join(outDir, `${bundleBase}.summary.json`), JSON.stringify(summary, null, 2) + '\n')
+  const downloadProofs = {}
+  for (const name of fs.readdirSync(tools)) {
+    if (name.endsWith('.download-proof.json')) downloadProofs[name] = JSON.parse(fs.readFileSync(path.join(tools, name), 'utf8'))
+  }
+  fs.writeFileSync(path.join(outDir, 'component-download-proof.json'), JSON.stringify(downloadProofs, null, 2) + '\n')
   if (!args['keep-stage']) rmrf(stage)
   rmrf(tools)
   log(`done: ${archivePath} (${human(archiveSize)})`)
@@ -820,7 +867,7 @@ function cmdVerify(args) {
 // smoke — extract → fixup → verify → probes → move → re-fixup → probes.
 // ---------------------------------------------------------------------------
 
-function cmdSmoke(args) {
+async function cmdSmoke(args) {
   if (!args.archive) die('smoke requires --archive <runtime-bundle-*.tar.gz>')
   const archive = path.resolve(args.archive)
   const work = path.resolve(args.workdir || path.join(os.tmpdir(), `hb-smoke-${process.pid}`))
@@ -851,15 +898,9 @@ function cmdSmoke(args) {
   // chain on mac/win (the ultrafast pre-import path is Termux-only) and may
   // touch $HOME/.hermes state — never let probes poke the build host's real
   // hermes home (CI determinism + local-seat safety).
-  const probeHome = path.join(work, 'home')
-  fs.mkdirSync(probeHome, { recursive: true })
-  const probeEnv = { ...process.env, HERMES_HOME: path.join(probeHome, '.hermes') }
-  if (process.platform === 'win32') { probeEnv.USERPROFILE = probeHome } else { probeEnv.HOME = probeHome }
-  delete probeEnv.VIRTUAL_ENV
-  delete probeEnv.PYTHONPATH
-  delete probeEnv.PYTHONHOME
-
-  const runProbes = (root, label) => {
+  const proofs = []
+  const runProbes = async (root, label) => {
+    const probeEnv = runtimeSmokeEnvironment(root, path.join(work, `home-${path.basename(root)}`), manifest)
     log(`── probes @ ${label} (${root})`)
     // fixup + verify with the BUNDLED node running the BUNDLED tool copy.
     run(bundledNode(root), [bundledTool(root), 'fixup', '--root', root], { env: probeEnv })
@@ -881,8 +922,8 @@ function cmdSmoke(args) {
     // Editable finder covers packages AND py-modules. Import the same config
     // boundary Desktop probes at startup; top-level hermes_cli alone does not
     // prove that PyYAML or the configuration path is intact.
-    probeRuntimeImports(py, { env: probeEnv, cwd: os.tmpdir() })
-    log('imports-ok (yaml, dotenv, hermes_cli.config, run_agent, toolsets)')
+    probeRuntimeImports(py, { env: probeEnv, cwd: os.tmpdir(), root })
+    log('imports-ok (core, providers, native extensions, document dependencies; origins inside bundle)')
 
     // entry-point trampoline end to end (the real relocation assertion)
     const hermes = path.join(venvBin, manifest.os === 'win' ? 'hermes.exe' : 'hermes')
@@ -900,6 +941,21 @@ function cmdSmoke(args) {
     if (manifest.os === 'win') {
       const gv = run(path.join(root, '.runtime', 'git', 'cmd', 'git.exe'), ['--version'], { capture: true, env: probeEnv }).stdout.trim()
       log(`git-ok ${gv}`)
+      const bash = path.join(root, '.runtime', 'git', 'bin', 'bash.exe')
+      const shellEnv = {
+        ...probeEnv,
+        PATH: [path.join(root, '.runtime', 'git', 'bin'), path.join(root, '.runtime', 'git', 'usr', 'bin')].join(path.delimiter),
+      }
+      const shell = run(bash, ['--noprofile', '--norc', '-c', 'test -n "$BASH_VERSION" && test "$(printf portable | sed s/portable/bundle/)" = bundle && git --version'], { capture: true, env: shellEnv })
+      log(`bash-ok ${shell.stdout.trim()}`)
+    }
+    if (manifest.os === 'mac' && manifest.mac_signing) {
+      const executables = [py, bundledNode(root), path.join(root, '.runtime', 'bin', 'rg'), path.join(root, '.runtime', 'bin', 'uv')]
+      for (const executable of executables) {
+        run('codesign', ['--verify', '--strict', executable], { env: probeEnv })
+        if (manifest.mac_notarization) run('/usr/bin/codesign', ['--verify', '--strict', '-R=notarized', '--check-notarization', executable], { env: probeEnv })
+      }
+      log('native-signatures-ok (Python, Node, rg, uv)')
     }
     // agent-browser global shim landed in the npm prefix
     const shim = manifest.os === 'win'
@@ -907,16 +963,19 @@ function cmdSmoke(args) {
       : path.join(root, '.runtime', 'node', 'lib', 'node_modules', 'agent-browser')
     if (!fs.existsSync(shim)) die(`agent-browser not found under the bundled npm prefix (${shim})`)
     log('agent-browser-ok (npm -g prefix)')
+    proofs.push({ location: label, root, native_target: `${manifest.os}-${manifest.arch}`, imports: 'core/providers/native/extensions/document-dependencies',
+      backend: await probeBundledBackend(root, manifest, probeEnv, log) })
   }
 
-  runProbes(rootA, 'extract location')
+  await runProbes(rootA, 'extract location')
 
   // The core hc-472 claim: the SAME tree keeps working after a move.
   const rootB = path.join(work, 'b')
   fs.renameSync(rootA, rootB)
-  runProbes(rootB, 'moved location')
+  await runProbes(rootB, 'moved location')
 
   if (!args.keep) rmrf(work)
+  fs.writeFileSync(`${archive}.smoke-proof.json`, JSON.stringify({ runtime_commit: manifest.runtime_commit, locations: proofs, privateWorkspaceRemoved: !args.keep }, null, 2) + '\n')
   log('SMOKE OK')
 }
 
@@ -929,7 +988,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
     case 'build': await cmdBuild(args); break
     case 'fixup': cmdFixup(args); break
     case 'verify': cmdVerify(args); break
-    case 'smoke': cmdSmoke(args); break
+    case 'smoke': await cmdSmoke(args); break
     default:
       die('usage: build-runtime-bundle.mjs <build|fixup|verify|smoke> [--out DIR] [--ref REF] [--root DIR] [--archive FILE] [--workdir DIR] [--min-desktop-version X] [--uv-version X] [--keep-stage] [--keep]')
   }

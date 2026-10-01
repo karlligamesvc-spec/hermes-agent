@@ -5,6 +5,8 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { listPackage } from '@electron/asar'
 
+import { assertBundledRuntimePackage } from './bundled-runtime-package.mjs'
+
 import PACKAGE_JSON from '../package.json' with { type: 'json' }
 
 const MODE = process.argv[2] || 'help'
@@ -15,10 +17,8 @@ const PLATFORM = process.platform
 const PRODUCT_NAME = PACKAGE_JSON.build?.productName || PACKAGE_JSON.productName || 'APEX'
 const EXECUTABLE_NAME = PACKAGE_JSON.build?.executableName || PRODUCT_NAME
 
-// Platform-specific packaged-app layout. The thin installer ships an Electron
-// app shell plus extraResources (install-stamp.json + native-deps/) -- it
-// no longer bundles the Hermes Agent Python payload (that's fetched at first
-// launch via install.ps1 / install.sh, per the Phase 1 thin-installer flow).
+// Native Mac/Windows installers carry the shell and a complete pinned engine
+// archive in Resources. Linux retains its existing developer package layout.
 const APP = (() => {
   if (PLATFORM === 'darwin') {
     const appPath = path.join(RELEASE_ROOT, `mac-${ARCH}`, `${PRODUCT_NAME}.app`)
@@ -283,9 +283,7 @@ function launchFresh() {
   return { runtimeRoot: path.join(hermesHome, 'hermes-agent', 'venv') }
 }
 
-// Validate the packaged bundle matches the thin-installer architecture:
-//   - The Hermes Agent Python payload is NOT shipped (it's fetched at first
-//     launch via install.ps1's stage protocol).
+// Validate the shell and the complete native engine archive actually shipped:
 //   - install-stamp.json IS shipped in resources/ with a valid commit + branch.
 //   - node-pty IS shipped inside app.asar.unpacked/dist/node_modules/node-pty
 //     with package.json + lib/ + at least one .node binary (the renderer's
@@ -297,15 +295,18 @@ function validateBundle() {
     die(`Missing packaged app binary: ${APP.binary}`)
   }
 
-  // Negative assertion: the OLD fat-installer factory payload must NOT be
-  // present anymore. If a stray ship of hermes_cli sneaks back in we want
-  // to fail loudly rather than re-introduce the 400MB delta we just removed.
+  // The engine archive is staged by the shared boot gate; a second unpacked
+  // factory tree would create a competing, unverified runtime source.
   const staleFactoryMarker = path.join(APP.resourcesPath, 'hermes-agent', 'hermes_cli', 'main.py')
   if (exists(staleFactoryMarker)) {
     die(
-      `Thin-installer regression: factory-payload file should NOT be in the package: ${staleFactoryMarker}`
+      `Competing unpacked factory runtime in the package: ${staleFactoryMarker}`
     )
   }
+
+  const bundledRuntime = ['darwin', 'win32'].includes(PLATFORM)
+    ? assertBundledRuntimePackage(APP.resourcesPath, PLATFORM, ARCH)
+    : null
 
   // Positive assertion: install-stamp.json carries a sane commit + branch
   const stampPath = path.join(APP.resourcesPath, 'install-stamp.json')
@@ -362,7 +363,7 @@ function validateBundle() {
 
   // Renderer payload check (either unpacked or in the asar)
   if (exists(APP.unpackedDistIndex)) {
-    return { stamp, nodeBinaries }
+    return { stamp, nodeBinaries, bundledRuntime }
   }
   if (!exists(APP.asarPath)) {
     die(`Missing renderer payload: neither ${APP.unpackedDistIndex} nor ${APP.asarPath} exists`)
@@ -375,7 +376,7 @@ function validateBundle() {
   if (!normalized.includes('dist/index.html')) {
     die(`Missing renderer payload file in app.asar: ${APP.asarPath} (expected dist/index.html)`)
   }
-  return { stamp, nodeBinaries }
+  return { stamp, nodeBinaries, bundledRuntime }
 }
 
 function printArtifacts(options = {}) {
@@ -393,6 +394,9 @@ function printArtifacts(options = {}) {
   console.log(`  runtime: ${runtimeRoot}`)
   if (stamp) {
     console.log(`  install-stamp: ${stamp.commit.slice(0, 12)} on ${stamp.branch}`)
+  }
+  if (options.bundledRuntime) {
+    console.log(`  bundled-engine: ${options.bundledRuntime.runtimeVersion} (${options.bundledRuntime.runtimeCommit})`)
   }
   if (options.nodeBinaries && options.nodeBinaries.length > 0) {
     console.log(`  node-pty binaries: ${options.nodeBinaries.join(', ')}`)
