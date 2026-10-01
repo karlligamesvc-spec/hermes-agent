@@ -953,7 +953,7 @@ async function cmdSmoke(args) {
       const executables = [py, bundledNode(root), path.join(root, '.runtime', 'bin', 'rg'), path.join(root, '.runtime', 'bin', 'uv')]
       for (const executable of executables) {
         run('codesign', ['--verify', '--strict', executable], { env: probeEnv })
-        if (manifest.mac_notarization) run('spctl', ['--assess', '--type', 'execute', '-v', executable], { env: probeEnv })
+        if (manifest.mac_notarization) run('/usr/bin/codesign', ['--verify', '--strict', '-R=notarized', '--check-notarization', executable], { env: probeEnv })
       }
       log('native-signatures-ok (Python, Node, rg, uv)')
     }
