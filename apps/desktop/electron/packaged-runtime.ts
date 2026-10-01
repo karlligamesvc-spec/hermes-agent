@@ -234,8 +234,8 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
 }
 
 /** Shared runtime workers must leave before the canonical path can change. Never kills borrowed workers. */
-export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string): Promise<void> {
-  if (!fs.existsSync(activeRoot)) {return}
+export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string) {
+  if (!fs.existsSync(activeRoot)) {return null}
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-holder-'))
   const python = path.join(verifiedRoot, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 
@@ -253,16 +253,30 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     '  if under(p.exe()) or under(p.cwd()) or any(under(arg) for arg in p.cmdline()): holders.append(p.pid)',
     ' except psutil.NoSuchProcess: continue',
     ' except psutil.AccessDenied: continue',
-    'print(json.dumps({"holders":holders}))'
+    'print(json.dumps({"holders":holders,"workerPid":os.getpid()}))'
   ].join('\n')
 
   try {
-    const { stdout } = await exec(python, ['-c', code, activeRoot], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
+    const pending = exec(python, ['-c', code, activeRoot], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
+    const ownedProbePid = pending.child.pid
+    const { stdout } = await pending
     const result = JSON.parse(stdout)
 
-    if (!Array.isArray(result.holders) || result.holders.some((pid: unknown) => !Number.isInteger(pid))) {throw new Error('Could not verify existing engine workers.')}
+    if (typeof ownedProbePid !== 'number' || !Number.isInteger(ownedProbePid) || ownedProbePid <= 0 || !Number.isInteger(result.workerPid) || result.workerPid <= 0 ||
+      !Array.isArray(result.holders) || result.holders.some((pid: unknown) => !Number.isInteger(pid) || Number(pid) <= 0)) {
+      throw new Error('Could not verify existing engine workers.')
+    }
 
-    if (result.holders.length) {throw new Error('The previous engine is still running. Close its local workers and retry; no engine files were switched.')}
+    // Windows venv Python has a live redirector parent carrying our activeRoot argument.
+    // Exclude only the exact process Node launched for this scan, never other ancestors/workers.
+    const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid)
+    const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[] }
+
+    if (holderPids.length) {
+      throw Object.assign(new Error('The previous engine is still running. Close its local workers and retry; no engine files were switched.'), { idleProof })
+    }
+
+    return idleProof
   } finally {
     fs.rmSync(home, { recursive: true, force: true, maxRetries: 6, retryDelay: 100 })
   }
