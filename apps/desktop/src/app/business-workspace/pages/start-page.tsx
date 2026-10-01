@@ -2,11 +2,12 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { useI18n } from '@/i18n'
-import type { ComposerAttachment } from '@/store/composer'
-import { $connection } from '@/store/session'
+import { type ComposerAttachment, mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
+import { $connection, $selectedStoredSessionId } from '@/store/session'
 
 import type { ChatBarState } from '../../chat/composer/types'
 import { projectWorkflowsRoute, routeDrawerNavigationState, workflowRunRoute, WORKFLOWS_ROUTE } from '../../routes'
@@ -15,6 +16,9 @@ import { workflowDomainBridge } from '../api/bridge'
 import { BUSINESS_GOAL_INPUT_ID, BusinessGoalLauncher } from '../components/business-goal-launcher'
 import { BusinessStartShelf } from '../components/start-shelf'
 import { useVideoWorkflowCatalog } from '../hooks/use-workflow-domain-lists'
+import { analysisChatSubmitOptions } from '../video-analysis-chat-handoff'
+import { draftAfterVideoFrameRemoval, isVideoFrameDraftHandoff } from '../video-frame-draft-sync'
+import { isVideoTranscriptHandoff, syncVideoTranscriptDraft } from '../video-transcript-draft'
 import type { BusinessHomeStarter, BusinessWorkflowStarter } from '../view-model/workflow-starters'
 import { businessWorkflowStarters, videoWorkflowStarters } from '../view-model/workflow-starters'
 
@@ -26,7 +30,7 @@ export interface BusinessStartHomeProps {
   onPickFolders?: () => void
   onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
-  onSubmitGoal?: (goal: string) => Promise<boolean> | boolean
+  onSubmitGoal?: (goal: string, options?: SubmitTextOptions) => Promise<boolean> | boolean
 }
 
 /**
@@ -50,6 +54,7 @@ export function BusinessStartHome({
   const location = useLocation()
   const navigate = useNavigate()
   const connection = useStore($connection)
+  const selectedSessionId = useStore($selectedStoredSessionId)
   const videoCatalog = useVideoWorkflowCatalog()
 
   const workflows = useMemo(
@@ -61,8 +66,13 @@ export function BusinessStartHome({
   )
 
   const launchState = location.state as null | {
+    analysisChatDraft?: unknown
+    analysisTranscriptDraft?: unknown
+    analysisFrameDraft?: unknown
+    analysisFrameHandoff?: unknown
     businessGoalDraft?: unknown
     businessGoalFocus?: unknown
+    businessStartSelection?: unknown
     businessProjectId?: unknown
     businessWorkflowCatalogProvenance?: unknown
     businessWorkflowId?: unknown
@@ -97,14 +107,19 @@ export function BusinessStartHome({
   const routedGoalDraft =
     typeof launchState?.businessGoalDraft === 'string' ? launchState.businessGoalDraft.slice(0, 4000) : ''
 
-  // A catalog selection owns its approved prompt. A routed draft is only
-  // authoritative when the user is adding that workflow to an existing
-  // Project, where their Project objective must survive the round trip.
-  const initialDraft = routedProjectId
+  const transcriptDraft = isVideoTranscriptHandoff(launchState?.analysisTranscriptDraft) ? launchState.analysisTranscriptDraft : null
+  const frameDraft = isVideoFrameDraftHandoff(launchState?.analysisFrameDraft) ? launchState.analysisFrameDraft : null
+
+  // An explicit trip from Start owns the user's brief. Legacy catalog routes
+  // still use the approved prompt unless they carry an existing Project.
+  const preserveRoutedGoal = Boolean(routedProjectId) || launchState?.businessStartSelection === true
+
+  const initialDraft = preserveRoutedGoal
     ? routedGoalDraft || launchedWorkflow?.prompt || ''
     : launchedWorkflow?.prompt || routedGoalDraft
 
   const [goalDraft, setGoalDraft] = useState(initialDraft)
+  const [hydratedHandoffKey, setHydratedHandoffKey] = useState<string | null>(null)
   const [selectedWorkflow, setSelectedWorkflow] = useState<BusinessWorkflowStarter | null>(launchedWorkflow)
   const [homeVideoWorkflowSelected, setHomeVideoWorkflowSelected] = useState(false)
 
@@ -120,6 +135,26 @@ export function BusinessStartHome({
   >({ state: 'checking' })
 
   const templateAttachmentBlocked = selectedWorkflow !== null && attachments.length > 0
+
+  // The business Start launcher has no ChatBar. When a routed handoff leaves
+  // an existing chat, restore the prepared new-chat chips after route resume
+  // clears the old selection; then keep removals in that draft's stash.
+  const handoffKey = launchState?.analysisFrameHandoff === true ? location.key : null
+
+  useEffect(() => {
+    if (!handoffKey || selectedSessionId !== null || hydratedHandoffKey === handoffKey) {return}
+
+    mainComposerScope.$attachments.set(takeSessionDraft(null).attachments)
+    setHydratedHandoffKey(handoffKey)
+  }, [handoffKey, hydratedHandoffKey, selectedSessionId])
+
+  useEffect(() => {
+    if (!handoffKey || hydratedHandoffKey !== handoffKey || selectedSessionId !== null) {return}
+
+    const fresh = takeSessionDraft(null)
+
+    stashSessionDraft(null, fresh.text, attachments)
+  }, [attachments, handoffKey, hydratedHandoffKey, selectedSessionId])
 
   useEffect(() => {
     if (
@@ -192,11 +227,23 @@ export function BusinessStartHome({
     setSelectedWorkflowIsTestData(
       launchedWorkflow !== null && launchState?.businessWorkflowCatalogProvenance === 'test'
     )
-    setGoalDraft(
-      routedProjectId ? routedGoalDraft || launchedWorkflow?.prompt || '' : launchedWorkflow?.prompt || routedGoalDraft
-    )
+    setGoalDraft(initialDraft)
     setDomainError(false)
-  }, [launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key, routedGoalDraft, routedProjectId])
+  }, [initialDraft, launchState?.businessWorkflowCatalogProvenance, launchedWorkflow, location.key])
+
+  const openWorkflowSelection = () => navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
+    state: {
+      businessStartSelection: true,
+      businessGoalDraft: goalDraft,
+      ...(routedProjectId ? { businessProjectId: routedProjectId } : {}),
+      ...(selectedWorkflow ? {
+        businessWorkflowId: selectedWorkflow.id,
+        businessWorkflowSlug: selectedWorkflow.slug,
+        businessWorkflowVersion: selectedWorkflow.version,
+        businessWorkflowCatalogProvenance: selectedWorkflowIsTestData ? 'test' : 'production'
+      } : {})
+    }
+  })
 
   // A local attachment cannot be silently dropped by the cloud Workflow API.
   // Keep the existing attachment-capable chat route for a home-card draft.
@@ -228,7 +275,13 @@ export function BusinessStartHome({
 
   const submitGoal = async (goal: string): Promise<boolean> => {
     if (!selectedWorkflow) {
-      return (await onSubmitGoal?.(goal)) ?? false
+      const text = transcriptDraft ? syncVideoTranscriptDraft(goal, transcriptDraft, attachments) : goal
+
+      const options = analysisChatSubmitOptions(launchState?.analysisChatDraft, text)
+
+      if (options === false) {return false}
+
+      return (await (options ? onSubmitGoal?.(text, options) : onSubmitGoal?.(text))) ?? false
     }
 
     setDomainError(false)
@@ -332,16 +385,7 @@ export function BusinessStartHome({
               )}
             </div>
             <Button
-              onClick={() =>
-                navigate(routedProjectId ? projectWorkflowsRoute(routedProjectId) : WORKFLOWS_ROUTE, {
-                  state: {
-                    businessGoalDraft: goalDraft,
-                    ...(typeof launchState?.businessProjectId === 'string'
-                      ? { businessProjectId: launchState.businessProjectId }
-                      : {})
-                  }
-                })
-              }
+              onClick={openWorkflowSelection}
               size="sm"
               variant="ghost"
             >
@@ -360,7 +404,12 @@ export function BusinessStartHome({
           onPickFiles={onPickFiles}
           onPickFolders={onPickFolders}
           onPickImages={onPickImages}
-          onRemoveAttachment={onRemoveAttachment}
+          onRemoveAttachment={onRemoveAttachment ? id => {
+            if (frameDraft) {setGoalDraft(current => draftAfterVideoFrameRemoval(current, frameDraft, attachments, id))}
+
+            if (transcriptDraft) {setGoalDraft(current => syncVideoTranscriptDraft(current, transcriptDraft, attachments.filter(item => item.id !== id)))}
+            onRemoveAttachment(id)
+          } : undefined}
           onSubmit={submitGoal}
           submitBlockedReason={
             templateAttachmentBlocked ? t.businessWorkspace.goalLauncher.workflowAttachmentsUnsupported : undefined
@@ -375,6 +424,13 @@ export function BusinessStartHome({
           <p className="-mt-4 text-xs text-destructive" role="alert">
             {t.businessWorkspace.workflowDomain.startFailed}
           </p>
+        )}
+        {!selectedWorkflow && (
+          <div className="-mt-4">
+            <Button disabled={domainStarting} onClick={openWorkflowSelection} size="sm" variant="outline">
+              {t.businessWorkspace.projects.chooseWorkflow}
+            </Button>
+          </div>
         )}
         <BusinessStartShelf onSelectGoal={selectGoal} />
       </div>

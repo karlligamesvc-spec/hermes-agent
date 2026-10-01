@@ -15,6 +15,7 @@ import { formatBusinessDayTime } from '@/lib/time'
 import { openWorkflowUserFile, reviewWorkflowDeliverable } from '../api/adapters'
 import type { WorkflowDeliverable } from '../api/types'
 import { RunFact, RunSection } from '../components/run-sections'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { useWorkflowDeliverable } from '../hooks/use-workflow-deliverables'
 
 function deliverableSummary(item: WorkflowDeliverable): string {
@@ -117,6 +118,7 @@ export function DeliverableDetailView() {
       data-route-drawer-scroll=""
     >
       <div className="mx-auto w-full max-w-4xl pb-10">
+        <WorkflowRefreshNotice state={state} />
         <header className="border-b border-(--ui-stroke-tertiary) pb-5 pr-(--route-drawer-action-clearance,0rem)">
           <p className="text-xs font-medium text-primary">{copy.detailEyebrow}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">

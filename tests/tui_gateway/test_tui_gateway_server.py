@@ -417,7 +417,7 @@ def test_prompt_submit_fails_open_inline_when_compute_host_dispatch_breaks(monke
     monkeypatch.setattr(
         server,
         "_run_prompt_submit",
-        lambda rid, sid, _session, text, **_kwargs: inline_calls.append((rid, sid, text)),
+        lambda rid, sid, _session, text, **kwargs: inline_calls.append((rid, sid, text, kwargs["turn_id"])),
     )
     monkeypatch.setattr(server.threading, "Thread", _ImmediateThread)
 
@@ -432,12 +432,18 @@ def test_prompt_submit_fails_open_inline_when_compute_host_dispatch_breaks(monke
     finally:
         server._sessions.pop("iso-fallback", None)
 
+    from uuid import UUID
+    from tui_gateway.prompt_outcomes import read_prompt_outcome
+
+    turn_id = resp["result"]["turn_id"]
+    assert str(UUID(turn_id)) == turn_id
     assert resp == {
         "jsonrpc": "2.0",
         "id": "fallback-turn",
-        "result": {"status": "streaming"},
+        "result": {"status": "streaming", "turn_id": turn_id},
     }
-    assert inline_calls == [("fallback-turn", "iso-fallback", "hello")]
+    assert inline_calls == [("fallback-turn", "iso-fallback", "hello", turn_id)]
+    assert read_prompt_outcome(session, turn_id) == "running"
     assert session.get("_compute_host_active") is not True
 
 

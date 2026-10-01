@@ -139,12 +139,13 @@ describe('ChatSidebar navigation activity', () => {
     for (const [pathname, currentView, label] of [
       ['/projects', 'projects', 'Projects'],
       ['/cron', 'cron', 'Scheduled runs'],
-      ['/artifacts', 'deliverables', 'Deliverables']
+      ['/deliverables', 'deliverables', null]
     ] as const) {
       cleanup()
       focus('workspace-group')
       renderSidebar(pathname, currentView)
       expectOnlyCurrent(label)
+      if (currentView === 'deliverables') {expect(screen.queryByRole('button', { name: 'Deliverables' })).toBeNull()}
       expectOnlySelectedSession(null)
 
       focus('tile-one-group')

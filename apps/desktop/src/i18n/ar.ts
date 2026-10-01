@@ -1,6 +1,14 @@
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  auth: {
+    login: {
+      runtimeUpdateRequired: 'حدّث محرك الذكاء الاصطناعي على الاتصال الحالي ثم أعد محاولة تسجيل الدخول.',
+      runtimeUnavailable: 'لم يكتمل إعداد النموذج. تحقق من اتصال بيئة التشغيل ثم أعد محاولة تسجيل الدخول.',
+      provisionUnavailable: 'تعذّر تأكيد اتصال الحساب. سجّل الدخول مجددًا لإعادة المحاولة.',
+      superseded: 'حلّت عملية أحدث للحساب أو النموذج محل هذه المحاولة. أعد المحاولة.'
+    }
+  },
   sessionImport: {
     title: 'المتابعة من تطبيق آخر',
     subtitle: 'انقل محادثة إلى Hermes وتابع من حيث توقفت.',
@@ -95,6 +103,36 @@ export const ar = defineLocale({
     off: 'معطل'
   },
   businessWorkspace: {
+    projects: {
+      chooseWorkflow: 'اختيار سير عمل',
+      awaitingAcceptance: 'بانتظار القبول',
+      notStarted: 'لم يبدأ بعد',
+      completeProject: 'إكمال المشروع',
+      reopenProject: 'إعادة فتح المشروع',
+      refreshFailed: 'تعذر تحديث أحدث حالة. تحقق من الاتصال ثم أعد المحاولة.',
+      refreshRetry: 'إعادة محاولة التحديث',
+      lifecycle: status =>
+        ({
+          active: 'قيد العمل',
+          archived: 'مؤرشف',
+          completed: 'مكتمل',
+          paused: 'متوقف مؤقتًا'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: 'تم إلغاء التشغيل',
+          failed: 'التشغيل يحتاج إلى معالجة',
+          queued: 'بانتظار تشغيل Hermes',
+          running: 'Hermes يعمل',
+          succeeded: 'نجح التشغيل',
+          timed_out: 'انتهت مهلة التشغيل',
+          waiting_review: 'التشغيل بانتظار المراجعة'
+        })[status] || status
+    },
+    workflows: {
+      use: 'استخدام سير العمل هذا',
+      goalSelectionDescription: 'اختر قالبًا ثم عد إلى صفحة البدء لتأكيد هدفك. يتم إنشاء المشروع والتشغيل فقط عند الضغط على زر بدء العمل.'
+    },
     goalLauncher: {
       label: 'هدف العمل',
       placeholder: 'مثال: حلّل سوق مستلزمات الحيوانات الأليفة في الولايات المتحدة وأنشئ تقرير اختيار ومواد إطلاق',
@@ -1702,6 +1740,26 @@ export const ar = defineLocale({
     failedCreate: 'فشل الإنشاء',
     failedRename: 'فشل إعادة التسمية'
   },
+  tasks: {
+    noRuns: 'لا توجد محادثات تنفيذ بعد.',
+    runHistory: 'محادثات التنفيذ',
+    emptyDone: 'لا توجد مهام انتهت بعد.',
+    tabDone: 'انتهت',
+    phases: {
+      running: 'قيد التشغيل',
+      done: 'اكتملت',
+      failed: 'فشلت',
+      'delivery-failed': 'فشل التسليم',
+      'delivery-pending': 'نتيجة التسليم غير متحقق منها',
+      unknown: 'نتيجة التنفيذ غير متحقق منها'
+    },
+    notify: {
+      doneTitle: 'اكتملت المهمة',
+      failedTitle: 'فشلت المهمة',
+      deliveryFailedTitle: 'فشل تسليم المهمة'
+    }
+  },
+
   cron: {
     close: 'إغلاق',
     eyebrow: 'التنفيذ التلقائي',
@@ -1727,7 +1785,16 @@ export const ar = defineLocale({
       paused: 'متوقف مؤقتا',
       disabled: 'معطّل',
       error: 'خطأ',
-      completed: 'مكتمل'
+      completed: 'انتهى الجدول'
+    },
+    outcomes: {
+      succeeded: 'نجح آخر تنفيذ',
+      failed: 'فشل آخر تنفيذ',
+      blocked: 'الإعدادات تمنع التنفيذ',
+      interrupted: 'توقف التنفيذ',
+      'delivery-failed': 'فشل تسليم النتيجة',
+      'delivery-pending': 'نتيجة التسليم غير متحقق منها',
+      unknown: 'نتيجة التنفيذ غير متحقق منها'
     },
     deliveryLabels: {
       local: 'سطح المكتب هذا',
@@ -1802,6 +1869,16 @@ export const ar = defineLocale({
     created: 'تم الإنشاء',
     updated: 'تم التحديث',
     failedLoad: 'فشل تحميل المهام',
+    failedLoadRuns: 'فشل تحميل سجل التشغيل',
+    runConversations: 'محادثات التشغيل',
+    legacyRunHistory: 'يتوفر هنا سجل المحادثات فقط؛ قد لا تنتج مهام البرامج النصية محادثة.',
+    executionStatuses: {
+      claimed: 'بانتظار التشغيل',
+      running: 'قيد التشغيل',
+      completed: 'اكتمل',
+      failed: 'فشل',
+      unknown: 'النتيجة غير معروفة',
+    },
     failedUpdate: 'فشل التحديث',
     failedTrigger: 'فشل التشغيل',
     failedDelete: 'فشل الحذف',
@@ -1897,6 +1974,7 @@ export const ar = defineLocale({
       'new-session': 'جلسة جديدة',
       start: 'ابدأ',
       projects: 'المشاريع',
+      analysis: 'تحليل المستندات',
       workflows: 'سير العمل',
       assistant: 'المساعد',
       history: 'السجل',

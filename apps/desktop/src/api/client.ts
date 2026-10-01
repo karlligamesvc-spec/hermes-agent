@@ -45,6 +45,13 @@ export class HermesGateway extends JsonRpcGatewayClient {
 // unscoped handlers retain a profile backend. Remote overrides still route to
 // their owning backend. Null → primary, so single-profile users are unaffected.
 let _apiProfile: null | string = null
+let _apiManagedOwner: string | null | undefined
+
+export function setApiRequestManagedOwner(owner: string | null | undefined): void {_apiManagedOwner = owner}
+
+function managedOwnerScoped(): { managedOwner?: string | null } {
+  return _apiManagedOwner === undefined ? {} : { managedOwner: _apiManagedOwner }
+}
 
 export function setApiRequestProfile(profile: null | string): void {
   _apiProfile = profile || null
@@ -115,7 +122,7 @@ export function ambientOwnerConnectionId(): string | undefined {
  *  underneath it. (It used to omit the key for 'local', which made the pin
  *  unable to beat the ambient tag; helpers then had to bypass this wrapper.) */
 export function hermesApi<T>(request: HermesApiRequest): Promise<T> {
-  return window.hermesDesktop.api<T>({ ...connectionScoped(), ...request })
+  return window.hermesDesktop.api<T>({ ...managedOwnerScoped(), ...connectionScoped(), ...request })
 }
 
 // ── Capability scope: (connection, profile) routing for the Capabilities
@@ -147,12 +154,13 @@ export function capabilityScoped(scope?: ProfileScope): { connectionId?: string;
     const connectionId = (scope.connectionId ?? '').trim()
 
     return {
+      ...managedOwnerScoped(),
       ...(profile ? { profile } : {}),
       ...(connectionId ? { connectionId } : {})
     }
   }
 
-  return { ...profileScoped(scope), ...connectionScoped() }
+  return { ...managedOwnerScoped(), ...profileScoped(scope), ...connectionScoped() }
 }
 
 /** Stable cache-key for a capability scope: `profile` for the ambient/legacy

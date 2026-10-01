@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
@@ -21,9 +22,9 @@ import {
   runSessionSearchShortcut,
   visibleSidebarNavItems
 } from '@/store/business-workspace'
-import { mainComposerScope } from '@/store/composer'
+import { $composerAttachments, clearSessionDraft, mainComposerScope, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $cronJobs } from '@/store/cron'
-import { setSessions, setSessionsLoading } from '@/store/session'
+import { $selectedStoredSessionId, setSessions, setSessionsLoading } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
 import { TasksView } from '../tasks'
@@ -33,6 +34,7 @@ import { BusinessGoalLauncher } from './goal-launcher'
 import { ProjectDetailView } from './pages/project-detail-page'
 import { BusinessStartHome } from './start-home'
 import { BusinessStartShelf } from './start-shelf'
+import { videoFrameDisclosure } from './video-deep-breakdown-draft'
 import { projectCurrentRunId, projectRunDisplayState } from './view-model/project'
 
 import { ProjectsView, WorkflowsView } from '.'
@@ -108,6 +110,8 @@ describe('hc-685 business workspace identity', () => {
     $sessionStates.set({})
     $cronJobs.set([])
     mainComposerScope.clear()
+    clearSessionDraft(null)
+    $selectedStoredSessionId.set(null)
     Object.defineProperty(window, 'hermesDesktop', {
       configurable: true,
       value: {
@@ -118,7 +122,7 @@ describe('hc-685 business workspace identity', () => {
   })
 
   it('keeps Workflows below Projects rather than in the primary navigation', () => {
-    expect(BUSINESS_NAV_IDS).toEqual(['start', 'projects', 'scheduled-runs', 'deliverables', 'assistant', 'history'])
+    expect(BUSINESS_NAV_IDS).toEqual(['start', 'projects', 'analysis', 'scheduled-runs', 'deliverables', 'assistant', 'history'])
     expect(isBusinessNavigationContract([...BUSINESS_NAV_IDS, 'skills'])).toBe(false)
     expect(isBusinessNavigationContract(BUSINESS_NAV_IDS)).toBe(true)
   })
@@ -139,13 +143,16 @@ describe('hc-685 business workspace identity', () => {
     ])
   })
 
-  it('opens real generated files from Deliverables while retaining workflow deliverable routes', () => {
+  it('opens canonical workflow deliverables from the business navigation while retaining legacy artifacts', () => {
     const deliverables = BUSINESS_SIDEBAR_NAV_CONTRACT.find(item => item.id === 'deliverables')
     const navigate = vi.fn()
 
-    expect(deliverables).toEqual({ id: 'deliverables', route: '/artifacts', keybindActionId: 'nav.artifacts' })
+    expect(deliverables).toEqual({ id: 'deliverables', route: '/deliverables' })
     activateSidebarNavigation(deliverables!, navigate, vi.fn())
-    expect(navigate).toHaveBeenCalledWith('/artifacts')
+    expect(navigate).toHaveBeenCalledWith('/deliverables')
+    expect(LEGACY_SIDEBAR_NAV_CONTRACT.at(-1)).toEqual({
+      id: 'artifacts', route: '/artifacts', keybindActionId: 'nav.artifacts'
+    })
   })
 
   it('uses one canonical route for History clicks and the search shortcut', () => {
@@ -167,12 +174,12 @@ describe('hc-685 business workspace identity', () => {
   it('keeps contributed rows out of business mode and restores them in rollback mode', () => {
     const contributed = [{ id: 'kanban', route: '/kanban' }]
 
-    expect(visibleSidebarNavItems(BUSINESS_SIDEBAR_NAV_CONTRACT, contributed, true)).toHaveLength(6)
+    expect(visibleSidebarNavItems(BUSINESS_SIDEBAR_NAV_CONTRACT, contributed, true)).toHaveLength(7)
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false)).toHaveLength(7)
     expect(visibleSidebarNavItems(LEGACY_SIDEBAR_NAV_CONTRACT, contributed, false).at(-1)).toEqual(contributed[0])
   })
 
-  it('moves a workflow selection to the editable Start goal without starting it', async () => {
+  it('opens template details before choosing a project without starting a Run', async () => {
     const insert = vi.fn()
     window.addEventListener('hermes:composer-insert', insert)
     window.hermesDesktop!.workflowDomain = {
@@ -211,15 +218,128 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /从市场机会到上架素材/ })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: /从市场机会到上架素材/ }))
 
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
-    expect(screen.getByTestId('business-goal-draft').textContent).toContain('分析美国宠物用品市场')
-    expect(screen.getByTestId('business-workflow-catalog-provenance').textContent).toBe('production')
-    expect(screen.getByTestId('business-workflow-slug').textContent).toBe('market-launch')
+    expect(screen.getByTestId('location').textContent).toBe('/workflows')
+    expect(screen.getByRole('dialog').textContent).toContain('分析美国宠物用品市场')
+    expect(screen.getByRole('button', { name: '加入已有项目' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '新建项目并加入' })).toBeTruthy()
     expect(insert).not.toHaveBeenCalled()
     window.removeEventListener('hermes:composer-insert', insert)
   })
 
-  it('clears a retained catalog template before an explicit plain-goal chat submission', async () => {
+  it('adds a catalog template to a chosen existing Project without starting a Run', async () => {
+    const createWorkflow = vi.fn(async () => ({ ok: true, workflow: { id: 'workflow-added' } }))
+    const startGoal = vi.fn()
+    const listProjects = vi.fn(async () => ({ items: [{
+      createdAt: '2026-09-01T10:00:00Z', id: 'existing-project', name: '已有项目',
+      objective: '已有目标', status: 'active', updatedAt: '2026-09-04T10:00:00Z'
+    }], ok: true, total: 1 }))
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      createWorkflow,
+      getCatalog: vi.fn(async () => ({
+        items: [{ businessPath: 'cross_border_launch', id: 'market-launch', position: 1,
+          recommended: true, slug: 'market-launch', version: 1 }],
+        ok: true, version: 'workflow-catalog/v1'
+      })),
+      getRun: vi.fn(),
+      listProjects,
+      listWorkflows: vi.fn(async () => ({ items: [], ok: true })),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<WorkflowsView />} path="/workflows" />
+            <Route element={<div>项目详情</div>} path="/projects/:projectId" />
+          </Routes>
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: /从市场机会到上架素材/ }))
+    fireEvent.click(screen.getByRole('button', { name: '加入已有项目' }))
+    expect(listProjects).toHaveBeenCalledWith({ limit: 50, status: 'active' })
+    fireEvent.click(await screen.findByRole('button', { name: '已有项目' }))
+    expect(screen.getByText('将保存到「已有项目」，不会立即运行。')).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: '工作流目标' }), { target: { value: '自定义目标' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存工作流' }))
+    await waitFor(() => expect(createWorkflow).toHaveBeenCalledWith({
+      objective: '自定义目标', projectId: 'existing-project',
+      starter: expect.objectContaining({ id: 'market-launch' })
+    }))
+    expect(startGoal).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/projects/existing-project'))
+  })
+
+  it('keeps the new Project available to retry when template joining fails, without a Run', async () => {
+    const createProject = vi.fn(async (input: { name: string; objective: string }) => ({
+      item: { ...input, createdAt: '2026-09-04T10:00:00Z', id: 'new-project', status: 'active',
+        updatedAt: '2026-09-04T10:00:00Z' }, ok: true
+    }))
+    let attempts = 0
+    const createWorkflow = vi.fn(async () => {
+      attempts += 1
+
+      return attempts === 1 ? { ok: false } : { ok: true, workflow: { id: 'new-workflow' } }
+    })
+    const startGoal = vi.fn()
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      createProject,
+      createWorkflow,
+      getCatalog: vi.fn(async () => ({
+        items: [{ businessPath: 'cross_border_launch', id: 'market-launch', position: 1,
+          recommended: true, slug: 'market-launch', version: 1 }],
+        ok: true, version: 'workflow-catalog/v1'
+      })),
+      getRun: vi.fn(),
+      listProjects: vi.fn(async () => ({ items: [], ok: true, total: 0 })),
+      listWorkflows: vi.fn(async () => ({ items: [], ok: true })),
+      reviewDeliverable: vi.fn(),
+      startGoal
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/workflows']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes>
+            <Route element={<WorkflowsView />} path="/workflows" />
+            <Route element={<div>项目详情</div>} path="/projects/:projectId" />
+          </Routes>
+          <LocationProbe />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: /从市场机会到上架素材/ }))
+    fireEvent.click(screen.getByRole('button', { name: '新建项目并加入' }))
+    const dialog = screen.getByRole('dialog')
+
+    expect(within(dialog).queryByRole('button', { name: '选择文件夹' })).toBeNull()
+    fireEvent.change(within(dialog).getByRole('textbox', { name: '项目名称' }), { target: { value: '新项目' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: '项目描述与目标' }), { target: { value: '新目标' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '创建项目' }))
+    await waitFor(() => expect(createProject).toHaveBeenCalledWith({ name: '新项目', objective: '新目标' }))
+    await waitFor(() => expect(createWorkflow).toHaveBeenCalledWith({
+      objective: '新目标', projectId: 'new-project',
+      starter: expect.objectContaining({ id: 'market-launch' })
+    }))
+    expect(startGoal).not.toHaveBeenCalled()
+    expect(screen.getByTestId('location').textContent).toBe('/workflows')
+    expect((await screen.findByRole('alert')).textContent).toContain('未能保存工作流')
+    fireEvent.click(screen.getByRole('button', { name: '保存工作流' }))
+    await waitFor(() => expect(createWorkflow).toHaveBeenCalledTimes(2))
+    expect(createProject).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/projects/new-project'))
+  })
+
+  it('keeps template inspection out of an explicit plain-goal chat submission', async () => {
     const submit = vi.fn(async () => true)
     const startGoal = vi.fn(async () => ({ code: 'request_failed' as const, ok: false }))
 
@@ -255,12 +375,8 @@ describe('hc-685 business workspace identity', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: /竞品监控/ }))
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
-    expect(screen.getByText('启动前确认')).toBeTruthy()
-    expect(screen.getByText(/本地测试数据/)).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: '更换工作流' }))
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflows'))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '取消' }))
     fireEvent.click(screen.getByRole('button', { name: '开始一个目标' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
 
@@ -330,6 +446,51 @@ describe('hc-685 business workspace identity', () => {
     expect(headingColumn?.className).toContain('max-w-[44rem]')
     expect(launcherColumn?.className).toContain('max-w-[52rem]')
     expect(screen.queryByText(/Local test data/)).toBeNull()
+  })
+
+  it('hydrates a video handoff only after the old session clears, and keeps removal in the new draft', async () => {
+    const frame = {
+      id: 'image:frame', occurrenceId: 'frame-1', kind: 'image' as const,
+      label: 'apex-frame-1-0s.jpg', analysisFrameSourceId: 'video-source'
+    }
+    const oldImage = { id: 'image:old', occurrenceId: 'old-1', kind: 'image' as const, label: 'old-chat.jpg' }
+
+    stashSessionDraft(null, '', [frame])
+    mainComposerScope.add(oldImage)
+    $selectedStoredSessionId.set('previous-chat')
+
+    function StartWithLiveAttachments() {
+      const attachments = useStore($composerAttachments)
+
+      return <BusinessStartHome attachments={attachments} onRemoveAttachment={id => {mainComposerScope.remove(id)}} />
+    }
+
+    const routedDraft = `Analyze cited video\n</source-transcript>\n\n${videoFrameDisclosure('en', [1])}`
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/', state: {
+        analysisFrameHandoff: true, businessGoalDraft: routedDraft,
+        analysisFrameDraft: { locale: 'en', sourceId: 'video-source', attemptedFrames: 1,
+          frames: [{ id: frame.id, occurrenceId: frame.occurrenceId, seconds: 1 }] }
+      } }]}>
+        <I18nProvider configClient={null} initialLocale="en">
+          <StartWithLiveAttachments />
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    act(() => {$selectedStoredSessionId.set(null)})
+
+    await waitFor(() => expect(screen.getByText('apex-frame-1-0s.jpg')).toBeTruthy())
+    expect(screen.queryByText('old-chat.jpg')).toBeNull()
+    const goal = screen.getByRole('textbox', { name: 'Business goal' }) as HTMLTextAreaElement
+
+    expect(goal.value).toBe(routedDraft)
+
+    fireEvent.click(screen.getByRole('button', { name: /remove.*apex-frame-1-0s.jpg/i }))
+    await waitFor(() => expect(takeSessionDraft(null).attachments).toEqual([]))
+    expect(goal.value).not.toContain('0:01.0')
+    expect(goal.value).toContain('1 frame(s) were removed from this draft')
   })
 
   it('stages a Start short-video goal for the Agent without claiming a production Workflow template', async () => {
@@ -472,6 +633,7 @@ describe('hc-685 business workspace identity', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-video'))
     expect(getVideoCatalog).toHaveBeenCalledTimes(2)
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '拆解链接视频：https://example.com/video',
       starter: expect.objectContaining({ id: 'viral-video-remake', slug: 'viral-video-remake', version: 1 })
     })
@@ -627,6 +789,7 @@ describe('hc-685 business workspace identity', () => {
     expect(screen.getByTestId('route-drawer-source').textContent).toBe('/')
     expect(access).toHaveBeenCalledTimes(1)
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '分析美国宠物用品市场，并生成选品报告和上架素材（已编辑）',
       starter: {
         description: '数据采集、机会分析、定位与生产',
@@ -767,7 +930,7 @@ describe('hc-685 business workspace identity', () => {
             id: 'completed-project',
             name: '已完成的真实项目',
             objective: '已完成的真实目标',
-            status: 'active',
+            status: 'completed',
             summary: {
               attention: 'none' as const,
               currentRunId: 'run-complete',
@@ -778,10 +941,27 @@ describe('hc-685 business workspace identity', () => {
               stepTotal: 0
             },
             updatedAt: '2026-09-03T10:00:00Z'
+          },
+          {
+            createdAt: '2026-09-01T10:00:00Z',
+            id: 'review-project',
+            name: '待人工验收的真实项目',
+            objective: '等待负责人确认',
+            status: 'active',
+            summary: {
+              attention: 'review' as const,
+              currentRunId: 'run-reviewed',
+              currentRunStatus: 'succeeded',
+              currentStepTitle: null,
+              deliverableCount: 1,
+              stepCompleted: 0,
+              stepTotal: 0
+            },
+            updatedAt: '2026-09-02T10:00:00Z'
           }
         ],
         ok: true,
-        total: 2
+        total: 3
       })),
       reviewDeliverable: vi.fn(),
       startGoal: vi.fn()
@@ -797,10 +977,11 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByText('进行中的真实项目')).toBeTruthy())
     expect(screen.queryByText('0 个交付物')).toBeNull()
-    expect(screen.getByRole('button', { name: /全部2/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: /全部3/ }).getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(screen.getByRole('button', { name: /已完成1/ }))
     expect(screen.queryByText('进行中的真实项目')).toBeNull()
+    expect(screen.queryByText('待人工验收的真实项目')).toBeNull()
     expect(screen.getByText('已完成的真实项目')).toBeTruthy()
     expect(screen.getByText('1 个交付物')).toBeTruthy()
     expect(screen.queryByText(/0 \/ 0/)).toBeNull()
@@ -903,7 +1084,7 @@ describe('hc-685 business workspace identity', () => {
     const projectRow = screen.getByRole('button', { name: /Phase 0 真实项目/ })
 
     expect(within(projectRow).getByText('尚未开始运行')).toBeTruthy()
-    expect(within(projectRow).queryByText('进行中')).toBeNull()
+    expect(within(projectRow).getByText('进行中')).toBeTruthy()
     expect(screen.queryByText('0 个交付物')).toBeNull()
     expect(screen.queryByText(/0 \/ 0/)).toBeNull()
 
@@ -946,11 +1127,11 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(screen.getByText('Start 真实项目')).toBeTruthy())
     expect(screen.getByText('尚未开始运行')).toBeTruthy()
-    expect(screen.queryByText('进行中')).toBeNull()
+    expect(screen.getByText('进行中')).toBeTruthy()
     expect(screen.queryByText(/0 \/ 0/)).toBeNull()
   })
 
-  it('shows an unavailable Run status in both Project summary outlets without falling back to lifecycle', async () => {
+  it('shows an unavailable Run status alongside the known Project lifecycle in both summary outlets', async () => {
     window.hermesDesktop!.workflowDomain = {
       access: vi.fn(async () => ({ available: true })),
       cancelRun: vi.fn(),
@@ -995,7 +1176,7 @@ describe('hc-685 business workspace identity', () => {
 
     for (const projectRow of screen.getAllByRole('button', { name: /运行状态缺失项目/ })) {
       expect(within(projectRow).getByText('运行状态暂时不可读')).toBeTruthy()
-      expect(within(projectRow).queryByText('进行中')).toBeNull()
+      expect(within(projectRow).getByText('进行中')).toBeTruthy()
     }
   })
 
@@ -1105,9 +1286,9 @@ describe('hc-685 business workspace identity', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /竞品监控/ }))
 
-    await waitFor(() => expect(screen.getByTestId('business-workflow-slug').textContent).toBe('competitor-monitoring'))
-    expect(screen.getByTestId('business-workflow-id').textContent).toBe('competitor-monitoring')
-    expect(screen.getByTestId('business-workflow-version').textContent).toBe('7')
+    expect(screen.getByRole('dialog').textContent).toContain('竞品监控')
+    expect(screen.getByRole('dialog').textContent).toContain('版本 7')
+    expect(screen.getByTestId('location').textContent).toBe('/workflows')
     expect(startGoal).not.toHaveBeenCalled()
   })
 
@@ -1167,9 +1348,8 @@ describe('hc-685 business workspace identity', () => {
     expect(getVideoCatalog).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /采集视频与数据/ }))
-    await waitFor(() =>
-      expect(screen.getByTestId('business-workflow-slug').textContent).toBe('video-source-collection')
-    )
+    expect(screen.getByRole('dialog').textContent).toContain('采集视频与数据')
+    expect(screen.getByTestId('location').textContent).toBe('/workflows')
   })
 
   it('offers executable recovery actions and never substitutes test templates when the catalog is unavailable', async () => {
@@ -1370,6 +1550,106 @@ describe('hc-685 business workspace identity', () => {
     expect(await screen.findByRole('heading', { name: '已有项目' })).toBeTruthy()
   })
 
+  it('requires real workflow completion before manual project finish and supports edit and reopen', async () => {
+    let project = {
+      createdAt: '2026-09-01T10:00:00Z',
+      id: 'project-lifecycle',
+      name: '原项目',
+      objective: '原目标',
+      status: 'active',
+      updatedAt: '2026-09-04T10:00:00Z'
+    }
+    let runStatus: null | string = null
+    const updateProject = vi.fn(async (payload: { name: string; objective: string }) => {
+      project = { ...project, name: payload.name, objective: payload.objective }
+
+      return { item: project, ok: true }
+    })
+    const completeProject = vi.fn(async () => {
+      project = { ...project, status: 'completed' }
+
+      return { item: project, ok: true }
+    })
+    const reopenProject = vi.fn(async () => {
+      project = { ...project, status: 'active' }
+
+      return { item: project, ok: true }
+    })
+
+    window.hermesDesktop!.workflowDomain = {
+      access: vi.fn(async () => ({ available: true })),
+      cancelRun: vi.fn(),
+      completeProject,
+      getProject: vi.fn(async () => ({ item: project, ok: true })),
+      getProjectCompletion: vi.fn(async () => ({
+        completion: {
+          canComplete: project.status === 'active' && runStatus === 'succeeded',
+          projectStatus: project.status,
+          readyForReview: runStatus === 'succeeded',
+          workflowSucceeded: runStatus === 'succeeded' ? 1 : 0,
+          workflowTotal: 1,
+          workflowStates: [{ workflowId: 'workflow-lifecycle', runId: runStatus ? 'run-lifecycle' : null, runStatus }]
+        },
+        ok: true
+      })),
+      getRun: vi.fn(),
+      listWorkflows: vi.fn(async () => ({
+        items: [{
+          createdAt: '2026-09-01T10:00:00Z', description: '真实工作流',
+          id: 'workflow-lifecycle', name: '真实工作流', projectId: project.id,
+          slug: 'real-workflow', status: 'active', updatedAt: '2026-09-04T10:00:00Z', version: 1
+        }], ok: true
+      })),
+      reopenProject,
+      reviewDeliverable: vi.fn(),
+      startGoal: vi.fn(),
+      updateProject
+    }
+
+    const view = render(
+      <MemoryRouter initialEntries={['/projects/project-lifecycle']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes><Route element={<ProjectDetailView />} path="projects/:projectId" /></Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    const finish = await screen.findByRole('button', { name: '完成项目' })
+
+    expect(finish.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('已完成 0 / 1 条工作流')).toBeTruthy()
+    expect(completeProject).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑项目' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '新项目' } })
+    fireEvent.change(screen.getByRole('textbox', { name: '项目描述与目标' }), { target: { value: '新目标' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }))
+    await waitFor(() => expect(updateProject).toHaveBeenCalledWith({
+      name: '新项目', objective: '新目标', projectId: 'project-lifecycle'
+    }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '新项目' })).toBeTruthy())
+
+    runStatus = 'succeeded'
+    // A new opening of the project reads the server again; the Run alone never marks it complete.
+    view.unmount()
+    render(
+      <MemoryRouter initialEntries={['/projects/project-lifecycle']}>
+        <I18nProvider configClient={null} initialLocale="zh">
+          <Routes><Route element={<ProjectDetailView />} path="projects/:projectId" /></Routes>
+        </I18nProvider>
+      </MemoryRouter>
+    )
+
+    expect((await screen.findAllByText('待验收')).length).toBeGreaterThan(0)
+    fireEvent.click(await screen.findByRole('button', { name: '完成项目' }))
+    await waitFor(() => expect(completeProject).toHaveBeenCalledWith('project-lifecycle'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '重新打开项目' })).toBeTruthy())
+    expect(screen.getByRole('button', { name: '增加工作流' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '重新打开项目' }))
+    await waitFor(() => expect(reopenProject).toHaveBeenCalledWith('project-lifecycle'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '增加工作流' }).hasAttribute('disabled')).toBe(false))
+  })
+
   it('keeps Project identity through catalog selection and saves without redirecting to Start or creating a Run', async () => {
     const listWorkflows = vi.fn(async () => ({ items: [], ok: true }))
     const createWorkflow = vi.fn(async () => ({ ok: true, workflow: { id: 'workflow-new' } }))
@@ -1424,6 +1704,8 @@ describe('hc-685 business workspace identity', () => {
     expect(await screen.findByRole('heading', { name: '已有项目' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '开始一个目标' })).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: /从市场机会到上架素材 · 选择并配置/ }))
+    expect(screen.getByRole('dialog').textContent).toContain('示例目标')
+    fireEvent.click(screen.getByRole('button', { name: '加入当前项目' }))
     expect(screen.getByText('将保存到「已有项目」，不会立即运行。')).toBeTruthy()
     fireEvent.change(screen.getByRole('textbox', { name: '工作流目标' }), { target: { value: '项目内的新目标' } })
     fireEvent.click(screen.getByRole('button', { name: '保存工作流' }))
@@ -1493,7 +1775,7 @@ describe('hc-685 business workspace identity', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '运行' }))
     await waitFor(() =>
-      expect(startRun).toHaveBeenCalledWith({ objective: '继续已有项目目标', workflowId: 'workflow-existing' })
+      expect(startRun).toHaveBeenCalledWith({ idempotencyKey: expect.stringMatching(/^desktop:/), objective: '继续已有项目目标', workflowId: 'workflow-existing' })
     )
     expect(createWorkflow).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/workflow-runs/run-new'))
@@ -1605,6 +1887,7 @@ describe('hc-685 business workspace identity', () => {
     )
 
     fireEvent.click(await screen.findByRole('button', { name: /从市场机会到上架素材 · 选择并配置/ }))
+    fireEvent.click(screen.getByRole('button', { name: '加入当前项目' }))
     expect(screen.getByText('这个项目已有相同的工作流，请在上方列表中查看或运行。')).toBeTruthy()
     expect(screen.getByRole('button', { name: '保存工作流' }).hasAttribute('disabled')).toBe(true)
     expect(createWorkflow).not.toHaveBeenCalled()
@@ -1811,6 +2094,7 @@ describe('hc-685 business workspace identity', () => {
 
     await waitFor(() => expect(startGoal).toHaveBeenCalledTimes(1))
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: 'edited catalog goal',
       projectId: 'project-existing',
       starter: expect.objectContaining({ id: 'competitor-monitoring', slug: 'competitor-monitoring', version: 7 })
@@ -1989,6 +2273,7 @@ describe('hc-685 business workspace identity', () => {
     fireEvent.click(submitButton)
     await waitFor(() => expect(startGoal).toHaveBeenCalledTimes(1))
     expect(startGoal).toHaveBeenCalledWith({
+      idempotencyKey: expect.stringMatching(/^desktop:/),
       objective: '保留这个目标',
       starter: expect.objectContaining({ id: 'market-launch', slug: 'market-launch', version: 1 })
     })
@@ -2380,7 +2665,7 @@ describe('hc-685 business workspace identity', () => {
   it('selects the exact finished task named by a real-work deep link', async () => {
     $cronJobs.set([
       { enabled: true, id: 'running-job', name: 'Running scan', schedule: { kind: 'once' }, state: 'running' },
-      { enabled: false, id: 'done-job', name: 'Finished report', schedule: { kind: 'once' }, state: 'completed' }
+      { enabled: false, id: 'done-job', last_status: 'ok', name: 'Finished report', schedule: { kind: 'once' }, state: 'completed' }
     ])
 
     const { container } = render(
@@ -2391,7 +2676,7 @@ describe('hc-685 business workspace identity', () => {
       </MemoryRouter>
     )
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Done/ }).getAttribute('data-active')).toBe('true'))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Ended/ }).getAttribute('data-active')).toBe('true'))
     expect(container.querySelector('[data-task-row="done-job"]')?.className).toContain('bg-accent')
     expect(screen.getAllByText('Finished report').length).toBeGreaterThan(1)
   })

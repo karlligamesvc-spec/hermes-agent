@@ -222,3 +222,23 @@ test('newer login intent wins out-of-order completions and fences an older refre
     expect(await coordinator.ensure(host)).toBeNull()
   }
 })
+
+
+test('captured OAuth mutation identity survives same-owner renewal but rejects explicit account changes', async () => {
+  const host = 'https://gw.test'
+  let stored = tokenSet('before', 1_000)
+
+  const coordinator = createNativeAccessTokenCoordinator({ normalizeBaseUrl: normalizeRemoteBaseUrl,
+    nowSeconds: () => 1_000, tokenNeedsRefresh, loadTokens: () => stored,
+    storeTokens: (_host, tokens) => {stored = tokens}, clearTokens: () => {},
+    isRefreshAuthRejection: () => false, refreshTokens: async () => tokenSet('renewed') })
+
+  const captured = coordinator.capture(host)
+  expect(await coordinator.ensure(host)).toBe('renewed')
+  expect(captured()).toBe(true)
+  coordinator.storeTokens(host, { ...tokenSet('new-account'), userId: 'other' })
+  expect(captured()).toBe(false)
+  const next = coordinator.capture(host)
+  coordinator.clearTokens(host)
+  expect(next()).toBe(false)
+})

@@ -593,7 +593,8 @@ async def apply_whatsapp_onboarding(pairing_id: str, body: WhatsAppOnboardingApp
         record_profile = record.profile
 
     effective_profile = body.profile or profile or record_profile
-    with _onboarding_save_errors("WhatsApp onboarding apply failed", "Failed to save WhatsApp setup."):
+
+    def _apply():
         with _config_profile_scope(effective_profile):
             save_env_value("WHATSAPP_MODE", mode)
             save_env_value("WHATSAPP_DM_POLICY", "pairing")
@@ -603,6 +604,9 @@ async def apply_whatsapp_onboarding(pairing_id: str, body: WhatsAppOnboardingApp
                 save_env_value("WHATSAPP_ALLOWED_USERS", allowed_users)
             save_env_value("WHATSAPP_ENABLED", "true")
             _write_platform_enabled("whatsapp", True)
+
+    with _onboarding_save_errors("WhatsApp onboarding apply failed", "Failed to save WhatsApp setup."):
+        await asyncio.to_thread(_apply)
 
     with _whatsapp_onboarding_lock:
         _whatsapp_onboarding_sessions.pop(pairing_id, None)
@@ -749,7 +753,7 @@ async def apply_telegram_onboarding(pairing_id: str, body: TelegramOnboardingApp
     effective_profile = body.profile or profile
 
     def _apply():
-        with _profile_scope(effective_profile):
+        with _config_profile_scope(effective_profile):
             save_env_value("TELEGRAM_BOT_TOKEN", bot_token)
             save_env_value("TELEGRAM_ALLOWED_USERS", ",".join(allowed_user_ids))
             _write_platform_enabled("telegram", True)
@@ -861,7 +865,7 @@ async def update_messaging_platform(platform_id: str, body: MessagingPlatformUpd
             raise HTTPException(status_code=400, detail=f"{key} is not configurable for {entry['name']}")
 
     def _apply():
-        with _profile_scope(target_profile):
+        with _config_profile_scope(target_profile):
             for key in body.clear_env:
                 _check_allowed(key)
                 remove_env_value(key)

@@ -38,7 +38,7 @@ jobs:
   detect:
     name: Detect affected areas
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 5
     outputs:
       python: ${{ steps.classify.outputs.python }}
       python_prod: ${{ steps.classify.outputs.python_prod }}
@@ -58,12 +58,15 @@ jobs:
       event_name: ${{ github.event_name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: |
+            .github/actions/detect-changes/
+            scripts/ci/classify_changes.py
+          sparse-checkout-cone-mode: false
       - name: Detect affected areas
         id: classify
         uses: ./.github/actions/detect-changes
         with:
-          sparse-checkout: scripts/ci/classify_changes.py
-          sparse-checkout-cone-mode: false
           github-token: ${{ github.token }}
 
   # ─────────────────────────────────────────────────────────────────────
@@ -221,8 +224,8 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────
   # Gate: runs after everything. ``if: always()`` ensures it reports a
-  # status even when some deps were skipped. Only actual ``failure``
-  # results cause it to fail; ``skipped`` is treated as success.
+  # status even when some deps were skipped. Detection must finish successfully;
+  # conditional lanes may be skipped, but cancellations must never pass.
   #
   # Branch protection should require ONLY this check.
   #
@@ -274,13 +277,15 @@ jobs:
           print(f'needs-json={json.dumps(compact)}')
           with open('$GITHUB_OUTPUT', 'a') as f:
               f.write(f'needs-json={json.dumps(compact)}\n')
-          failed = [name for name, info in needs.items() if info['result'] == 'failure']
+          failed = {name for name, result in compact.items() if result not in ('success', 'skipped')}
+          if compact.get('detect') != 'success':
+              failed.add('detect')
           for name, info in sorted(needs.items()):
               result = info['result']
-              icon = '✅' if result in ('success', 'skipped') else '❌'
+              icon = '❌' if name in failed else '✅'
               print(f'{icon} {name}: {result}')
           if failed:
-              print(f'::error::{len(failed)} job(s) failed: {\", \".join(failed)}')
+              print(f'::error::{len(failed)} job(s) did not complete successfully: {\", \".join(sorted(failed))}')
               sys.exit(1)
           print('All checks passed (or were skipped)')
           "

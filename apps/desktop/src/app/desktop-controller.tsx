@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
+import { AccountWorkspace, useManagedAccountChanges } from '@/app/account-workspace'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
 import { DesktopOnboardingOverlay } from '@/components/desktop-onboarding-overlay'
@@ -206,6 +207,7 @@ export function DesktopController() {
 
   const gatewayState = useStore($gatewayState)
   const authState = useStore($authState)
+  useManagedAccountChanges()
   const onboardingRequested = useStore($desktopOnboarding).requested
   const activeSessionId = useStore($activeSessionId)
   const currentCwd = useStore($currentCwd)
@@ -981,7 +983,7 @@ export function DesktopController() {
       <SessionSwitcher />
 
       {settingsOpen && (
-        <Suspense fallback={null}>
+        <AccountWorkspace><Suspense fallback={null}>
           <SettingsView
             gateway={gatewayRef.current}
             onClose={closeOverlayToPreviousRoute}
@@ -998,7 +1000,7 @@ export function DesktopController() {
               void queryClient.invalidateQueries({ queryKey: ['model-options'] })
             }}
           />
-        </Suspense>
+        </Suspense></AccountWorkspace>
       )}
 
       {commandCenterOpen && (
@@ -1027,7 +1029,7 @@ export function DesktopController() {
 
       {profileStatsOpen && (
         <Suspense fallback={null}>
-          <ProfileStatsView onClose={closeOverlayToPreviousRoute} onOpenSettings={() => navigate(SETTINGS_ROUTE)} />
+          <AccountWorkspace><ProfileStatsView onClose={closeOverlayToPreviousRoute} onOpenSettings={() => navigate(SETTINGS_ROUTE)} /></AccountWorkspace>
         </Suspense>
       )}
     </>

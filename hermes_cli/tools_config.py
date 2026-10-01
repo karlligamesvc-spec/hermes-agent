@@ -545,7 +545,8 @@ def _context_engine_active(config: dict) -> bool:
     return bool(name) and name != "compressor"
 
 
-def _get_platform_tools(config: dict, platform: str, *, include_default_mcp_servers: bool = True) -> Set[str]:
+def _get_platform_tools(config: dict, platform: str, *, include_default_mcp_servers: bool = True,
+                        plugin_toolset_keys: Optional[Set[str]] = None) -> Set[str]:
     """Resolve which individual toolset names are enabled for a platform."""
     platform_toolsets = config.get("platform_toolsets") or {}
     toolset_names = platform_toolsets.get(platform)
@@ -560,7 +561,7 @@ def _get_platform_tools(config: dict, platform: str, *, include_default_mcp_serv
     toolset_names = [str(ts) for ts in toolset_names]
 
     configurable_keys = _configurable_keys()
-    plugin_ts_keys = _get_plugin_toolset_keys()
+    plugin_ts_keys = _get_plugin_toolset_keys() if plugin_toolset_keys is None else plugin_toolset_keys
     platform_default_keys = _platform_default_keys()
     # Plugin toolsets are first-class on a saved list: ``[hermes-cli, a2a]`` must survive filtering.
     # Plugin-provided toolsets are first-class on a platform-toolsets list — explicit config like
@@ -679,11 +680,21 @@ def _warn_all_invalid_platform_toolsets(platform: str, explicit: list) -> None:
 
 def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: Set[str]):
     """Save the selected toolset keys for a platform to config."""
+    apply_platform_tool_selection(config, platform, enabled_toolset_keys, _get_plugin_toolset_keys())
+    save_config(config)
+
+
+def apply_platform_tool_selection(config: dict, platform: str, enabled_toolset_keys: Set[str],
+                                  plugin_keys: Set[str]) -> None:
+    """Edit the current platform fields using already discovered plugin keys.
+
+    No saving or plugin discovery: dashboard uses this inside its short latest
+    config edit, while the CLI wrapper keeps its original resolve-and-save flow.
+    """
     config.setdefault("platform_toolsets", {})
     # Drop platform-scoped toolsets that don't apply here, so the "Configure all platforms" checklist (or a
     # hand-edited config.yaml) can't turn on `discord` for Telegram.
     enabled_toolset_keys = {ts for ts in enabled_toolset_keys if _toolset_allowed_for_platform(ts, platform)}
-    plugin_keys = _get_plugin_toolset_keys()
     # Preserve only existing entries that are neither configurable nor platform defaults (i.e. MCP server
     # names): platform defaults (hermes-cli, ...) resolve to ALL tools and would silently override the user's
     # unchecked selections on the next read. Saving from the picker is consent to clear the "no_mcp" sentinel
@@ -713,7 +724,6 @@ def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: Set[
         remaining = [ts for ts in parsed_disabled if ts not in newly_enabled]
         if remaining != parsed_disabled:
             agent_cfg["disabled_toolsets"] = remaining
-    save_config(config)
 
 
 def _provider_env_ready(provider: dict) -> bool:

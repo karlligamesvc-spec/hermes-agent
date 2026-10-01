@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef } from 'react'
 
+import { ManagedRuntimeRecovery } from '@/components/managed-runtime-recovery'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { Loader2 } from '@/lib/icons'
@@ -37,7 +38,7 @@ interface DesktopLoginScreenProps {
 export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: DesktopLoginScreenProps) {
   const { t } = useI18n()
   const a = t.auth.login
-  const { managedError, managedSubmitting } = useStore($desktopOnboarding)
+  const { managedError, managedSubmitting, managedRuntimeRecovery } = useStore($desktopOnboarding)
   const pendingLoginCode = useStore($pendingDesktopLoginCode)
 
   // A ctx whose onCompleted flips the auth gate to signed-in (and re-reads the
@@ -102,7 +103,7 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
       className="fixed inset-0 z-1400 flex flex-col items-center justify-center bg-(--ui-chat-surface-background) p-6 [-webkit-app-region:drag]"
       data-glass-opaque
     >
-      <div className="flex w-full max-w-[22rem] flex-col items-center [-webkit-app-region:no-drag]">
+      <div className="flex max-h-[90vh] w-full max-w-[22rem] flex-col items-center overflow-y-auto [-webkit-app-region:no-drag]">
         <img alt="" aria-hidden className="mb-6 size-16 rounded-[1.125rem]" src={assetPath(LOGO_ASSET)} />
 
         <h1 className="mb-8 text-[1.375rem] font-medium tracking-[-0.01em] text-foreground">{a.title}</h1>
@@ -112,6 +113,7 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
             {notice}
           </div>
         ) : null}
+        <ManagedRuntimeRecovery localRuntime={managedRuntimeRecovery} />
 
         <div className="grid w-full gap-2.5">
           {/* Primary: the same contrast-safe APEX action used across the app. */}

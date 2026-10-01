@@ -686,15 +686,24 @@ describe('identity: the brand skin survives', () => {
     const accountPanel = readSource('src', 'app', 'chat', 'sidebar', 'account-panel.tsx')
     const zh = readSource('src', 'i18n', 'zh.ts')
 
-    expect(sidebar).toContain("const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history'])")
+    expect(sidebar).toContain("const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history', 'deliverables'])")
     expect(sidebar).not.toContain('utilitySidebarNavItems')
     expect(accountPanel).toContain('<span>{nav.assistant}</span>')
     expect(accountPanel).toContain('<span>{nav.history}</span>')
+    expect(accountPanel).toContain('<span>{nav.deliverables}</span>')
     expect(sidebar).not.toContain('SidebarChannelStatus')
     expect(sidebar).toMatch(/BUSINESS_WORKSPACE_ENABLED \|\| showAllProfiles\s*\? sessions/)
     expect(zh).toContain("assistant: '连接助手'")
     expect(zh).toContain("history: '历史会话'")
+    expect(zh).toContain("deliverables: '交付物'")
     expect(zh).not.toContain('渠道 · 分身在哪')
+  })
+
+  it('mounts the connected assistant workspace at the account-menu destination', () => {
+    const surfaces = readSource('src', 'app', 'contrib', 'surfaces.tsx')
+
+    expect(surfaces).toContain("(await import('../business-workspace/pages/assistant-page')).AssistantWorkspaceView")
+    expect(surfaces).toContain('<Route element={page(<AccountWorkspace><AssistantWorkspaceView /></AccountWorkspace>)} path={ASSISTANT_ROUTE.slice(1)} />')
   })
 })
 
@@ -703,6 +712,7 @@ describe('identity: the APEX business shell stays user-facing', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.id)).toEqual([
       'start',
       'projects',
+      'analysis',
       'scheduled-runs',
       'deliverables',
       'assistant',
@@ -711,8 +721,9 @@ describe('identity: the APEX business shell stays user-facing', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.path)).toEqual([
       '/',
       '/projects',
+      '/analysis',
       '/cron',
-      '/artifacts',
+      '/deliverables',
       '/assistant',
       '/history'
     ])

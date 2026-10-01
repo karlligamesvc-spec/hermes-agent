@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from hermes_cli.web_deps import late
 from hermes_cli.config import cfg_get
 from hermes_cli.web_server_cron import (
-    _create_cron_job_sync, _cron_optional_text, _cron_string_list, _mutate_cron_for_profile, _normalize_dashboard_cron_script, _raise_if_cron_registration_error, _run_cron_dashboard_io, _validate_dashboard_cron_context_from, _validate_dashboard_cron_effective_job,
+    _create_cron_job_sync, _cron_optional_text, _cron_store_scope, _cron_string_list, _mutate_cron_for_profile, _normalize_dashboard_cron_script, _raise_if_cron_registration_error, _run_cron_dashboard_io, _validate_dashboard_cron_context_from, _validate_dashboard_cron_effective_job,
 )
 from hermes_cli.web_models import AutomationBlueprintInstantiate, CronJobCreate, CronJobUpdate
 from hermes_cli.web_routers._common import log as _log
@@ -102,13 +102,15 @@ def _get_cron_job_sync(job_id: str, profile: Optional[str] = None):
 
 
 def _list_cron_job_runs_sync(job_id: str, profile: Optional[str] = None, limit: int = 20):
-    """Run sessions produced by a cron job, newest first.
+    """Run sessions and durable execution outcomes, each newest first.
 
     Runs are ordinary sessions with id ``cron_{job_id}_{timestamp}`` (see
     cron/scheduler.run_job); ``source='cron'`` plus the id prefix binds them to
     this job. Same row shape as ``/api/sessions`` so the frontend reuses
     SessionInfo. Backed by ``SessionDB.list_cron_job_runs`` — a bounded id-range
     scan, so cost scales with the requested window, not total cron history.
+    The additive execution list includes script-only/failed-before-session runs;
+    execution IDs are never presented as navigable session IDs.
     """
     selected = profile or _find_cron_job_profile(job_id)
     # job_id may be a human name; resolve to the canonical id used in run-session ids.
@@ -132,9 +134,21 @@ def _list_cron_job_runs_sync(job_id: str, profile: Optional[str] = None, limit: 
             s["archived"] = bool(s.get("archived"))
             if selected:
                 s["profile"] = selected
-        return {"runs": runs, "limit": limit_n}
     finally:
         db.close()
+
+    from cron.executions import list_executions
+    _, home = _cron_profile_home(selected)
+    with _cron_store_scope(home):
+        executions = list_executions(job_id=canonical, limit=limit_n)
+    # Scheduler process identities, errors and delivery internals are not needed
+    # by this history view. Keep its public projection deliberately bounded.
+    fields = ("id", "status", "claimed_at", "started_at", "finished_at")
+    return {
+        "runs": runs,
+        "executions": [{key: row.get(key) for key in fields} for row in executions],
+        "limit": limit_n,
+    }
 
 
 _EXECUTION_FIELDS = {"prompt", "skill", "skills", "script", "no_agent"}

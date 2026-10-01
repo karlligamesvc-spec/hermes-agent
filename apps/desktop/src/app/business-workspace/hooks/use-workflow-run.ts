@@ -1,6 +1,8 @@
+import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cancelWorkflowRun, getWorkflowRun, retryWorkflowRunStep, reviewWorkflowDeliverable } from '../api/adapters'
+import { $workflowDomainAccountScope, $workflowDomainRevision, workflowDomainUrgentRevision, workflowWindowIsViewed } from '../api/read-revision'
 import type { WorkflowRunOverview } from '../api/types'
 import { businessStatusPresentation } from '../view-model/display-status'
 
@@ -19,29 +21,32 @@ export interface WorkflowRunController {
 export const WORKFLOW_RUN_POLL_INTERVAL_MS = 3000
 
 interface InFlightRunRequest {
+  owner: string
   promise: Promise<void>
   runId: string
-}
-
-function windowIsActivelyViewed(): boolean {
-  return document.visibilityState === 'visible' && document.hasFocus()
+  urgent: number
 }
 
 /** Owns Run reads, polling, cancellation and Review mutations. */
 export function useWorkflowRun(runId: string): WorkflowRunController {
+  const revision = useStore($workflowDomainRevision)
+  const owner = useStore($workflowDomainAccountScope)
+  const revisionRef = useRef({ revision, urgent: workflowDomainUrgentRevision() })
   const [overview, setOverview] = useState<null | WorkflowRunOverview>(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [actionId, setActionId] = useState<null | string>(null)
   const [actionFailed, setActionFailed] = useState(false)
   const generationRef = useRef(0)
+  const actionGenerationRef = useRef(0)
   const inFlightRef = useRef<InFlightRunRequest | null>(null)
 
   const refresh = useCallback(
     (force = false): Promise<void> => {
       const existing = inFlightRef.current
+      const urgent = workflowDomainUrgentRevision()
 
-      if (!force && existing?.runId === runId) {
+      if (existing?.runId === runId && existing.owner === owner && (!force || existing.urgent === urgent)) {
         return existing.promise
       }
 
@@ -51,7 +56,7 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
         try {
           const next = runId ? await getWorkflowRun(runId) : null
 
-          if (generation !== generationRef.current) {
+          if (generation !== generationRef.current || owner !== $workflowDomainAccountScope.get() || urgent !== workflowDomainUrgentRevision()) {
             return
           }
 
@@ -64,17 +69,17 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
           setOverview(next)
           setFailed(false)
         } catch {
-          if (generation === generationRef.current) {
+          if (generation === generationRef.current && owner === $workflowDomainAccountScope.get() && urgent === workflowDomainUrgentRevision()) {
             setFailed(true)
           }
         } finally {
-          if (generation === generationRef.current) {
+          if (generation === generationRef.current && owner === $workflowDomainAccountScope.get() && urgent === workflowDomainUrgentRevision()) {
             setLoading(false)
           }
         }
       })()
 
-      inFlightRef.current = { promise: request, runId }
+      inFlightRef.current = { owner, promise: request, runId, urgent }
       void request.finally(() => {
         if (inFlightRef.current?.promise === request) {
           inFlightRef.current = null
@@ -83,13 +88,14 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
 
       return request
     },
-    [runId]
+    [owner, runId]
   )
 
   const load = useCallback(() => refresh(), [refresh])
 
   const invalidateRequests = useCallback(() => {
     generationRef.current += 1
+    actionGenerationRef.current += 1
     inFlightRef.current = null
   }, [])
 
@@ -105,6 +111,17 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
     return invalidateRequests
   }, [invalidateRequests, load])
 
+  // Consumed invalidation cursor; response ownership always reads the authoritative atom.
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (revisionRef.current.revision !== revision) {
+      const urgent = workflowDomainUrgentRevision()
+      const force = revisionRef.current.urgent !== urgent
+      revisionRef.current = { revision, urgent }
+      void refresh(force)
+    }
+  }, [refresh, revision])
+
   const shouldPoll = Boolean(overview && businessStatusPresentation('run', overview.run.status).poll)
 
   useEffect(() => {
@@ -113,7 +130,6 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
     }
 
     let timer: null | number = null
-    let wasViewed = windowIsActivelyViewed()
 
     const stop = () => {
       if (timer !== null) {
@@ -125,19 +141,13 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
     const schedule = () => {
       stop()
 
-      if (windowIsActivelyViewed()) {
+      if (workflowWindowIsViewed()) {
         timer = window.setInterval(() => void load(), WORKFLOW_RUN_POLL_INTERVAL_MS)
       }
     }
 
     const sync = () => {
-      const viewed = windowIsActivelyViewed()
-
-      if (viewed && !wasViewed) {
-        void load()
-      }
-
-      wasViewed = viewed
+      // Shared reconciliation owns the immediate read on return, including terminal Runs.
       schedule()
     }
 
@@ -155,59 +165,65 @@ export function useWorkflowRun(runId: string): WorkflowRunController {
   }, [load, shouldPoll])
 
   const cancel = async () => {
+    const action = ++actionGenerationRef.current
+    const currentAction = () => action === actionGenerationRef.current && owner === $workflowDomainAccountScope.get()
     setActionFailed(false)
     setActionId('cancel')
 
     try {
       if (!(await cancelWorkflowRun(runId))) {
-        setActionFailed(true)
+        if (currentAction()) {setActionFailed(true)}
 
         return
       }
 
-      await refresh(true)
+      if (currentAction()) {await refresh(true)}
     } catch {
-      setActionFailed(true)
+      if (currentAction()) {setActionFailed(true)}
     } finally {
-      setActionId(null)
+      if (currentAction()) {setActionId(null)}
     }
   }
 
   const review = async (deliverableId: string, status: 'approved' | 'changes_requested') => {
+    const action = ++actionGenerationRef.current
+    const currentAction = () => action === actionGenerationRef.current && owner === $workflowDomainAccountScope.get()
     setActionFailed(false)
     setActionId(`${deliverableId}:${status}`)
 
     try {
       if (!(await reviewWorkflowDeliverable(deliverableId, status))) {
-        setActionFailed(true)
+        if (currentAction()) {setActionFailed(true)}
 
         return
       }
 
-      await refresh(true)
+      if (currentAction()) {await refresh(true)}
     } catch {
-      setActionFailed(true)
+      if (currentAction()) {setActionFailed(true)}
     } finally {
-      setActionId(null)
+      if (currentAction()) {setActionId(null)}
     }
   }
 
   const retryStep = async (stepKey: string) => {
+    const action = ++actionGenerationRef.current
+    const currentAction = () => action === actionGenerationRef.current && owner === $workflowDomainAccountScope.get()
     setActionFailed(false)
     setActionId(`step:${stepKey}:retry`)
 
     try {
       if (!(await retryWorkflowRunStep(runId, stepKey))) {
-        setActionFailed(true)
+        if (currentAction()) {setActionFailed(true)}
 
         return
       }
 
-      await refresh(true)
+      if (currentAction()) {await refresh(true)}
     } catch {
-      setActionFailed(true)
+      if (currentAction()) {setActionFailed(true)}
     } finally {
-      setActionId(null)
+      if (currentAction()) {setActionId(null)}
     }
   }
 

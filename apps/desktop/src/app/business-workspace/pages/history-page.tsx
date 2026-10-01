@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
@@ -9,14 +10,25 @@ import { Loader } from '@/components/ui/loader'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useI18n } from '@/i18n'
 import { formatBusinessDayTime } from '@/lib/time'
+import { $sessions, $sessionsLoading } from '@/store/session'
 
-import { deliverableDetailRoute, routeDrawerNavigationState, workflowRunRoute } from '../../routes'
+import { openSession } from '../../open-session'
+import { deliverableDetailRoute, routeDrawerNavigationState, SEARCH_ROUTE, workflowRunRoute } from '../../routes'
 import type { WorkflowActivityItem } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { useWorkflowActivity } from '../hooks/use-workflow-deliverables'
 
 type ActivityFilter = 'all' | 'deliverable' | 'review' | 'run'
 type ActivityGroup = 'older' | 'recent' | 'today' | 'yesterday'
+
+const HISTORY_MODES = {
+  zh: { sessions: '历史会话', activity: '业务活动', description: '回看这台连接上的真实对话；项目运行与交付记录在业务活动中。', search: '搜索全部会话' },
+  'zh-hant': { sessions: '歷史對話', activity: '業務活動', description: '查看此連線上的真實對話；專案執行與交付記錄在業務活動中。', search: '搜尋全部對話' },
+  en: { sessions: 'Conversations', activity: 'Business activity', description: 'Reopen real conversations on this connection. Project runs and results are in Business activity.', search: 'Search all conversations' },
+  ja: { sessions: '会話履歴', activity: '業務アクティビティ', description: 'この接続の実際の会話を開きます。プロジェクトの実行と成果は業務アクティビティにあります。', search: 'すべての会話を検索' },
+  ar: { sessions: 'المحادثات', activity: 'نشاط العمل', description: 'أعد فتح المحادثات الفعلية في هذا الاتصال. توجد عمليات المشاريع ونتائجها في نشاط العمل.', search: 'البحث في كل المحادثات' }
+} as const
 
 function startOfLocalDay(value: Date): number {
   // Compare calendar dates rather than elapsed milliseconds between local
@@ -49,6 +61,87 @@ function targetRoute(item: WorkflowActivityItem): string {
 }
 
 export function HistoryView() {
+  const { locale } = useI18n()
+  const [mode, setMode] = useState<'activity' | 'sessions'>('sessions')
+  const labels = HISTORY_MODES[locale]
+
+  return (
+    <section className="apex-business-surface apex-business-page apex-primary-page" data-history-page="">
+      <div className="apex-primary-page-column pt-4">
+        <SegmentedControl
+          onChange={setMode}
+          options={[{ id: 'sessions', label: labels.sessions }, { id: 'activity', label: labels.activity }]}
+          value={mode}
+        />
+      </div>
+      {mode === 'sessions' ? <SessionHistoryContent /> : <ActivityHistoryContent />}
+    </section>
+  )
+}
+
+function SessionHistoryContent() {
+  const { locale, t } = useI18n()
+  const labels = HISTORY_MODES[locale]
+  const copy = t.businessWorkspace.projects
+  const history = t.businessWorkspace.workflowDomain.history
+  const navigate = useNavigate()
+  const sessions = useStore($sessions)
+  const loading = useStore($sessionsLoading)
+
+  const visible = useMemo(
+    () => sessions.filter(session => !session.archived).sort((left, right) => right.last_active - left.last_active),
+    [sessions]
+  )
+
+  return <>
+    <div className="apex-primary-page-column">
+      <BusinessPageHeader
+        action={{ icon: 'search', label: labels.search, onClick: () => navigate(SEARCH_ROUTE) }}
+        description={labels.description}
+        eyebrow={labels.sessions}
+        icon="history"
+        title={history.title}
+      />
+    </div>
+    {loading && visible.length === 0 ? (
+      <div className="mx-auto flex min-h-72 w-full max-w-[65.625rem] items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
+        <Loader className="size-8" label={copy.loadingHistory} type="lemniscate-bloom" />
+        <span>{copy.loadingHistory}</span>
+      </div>
+    ) : visible.length === 0 ? (
+      <div className="mx-auto grid min-h-64 w-full max-w-[65.625rem] place-items-center py-10 text-center">
+        <EmptyState description={copy.noConversations} title={labels.sessions} />
+      </div>
+    ) : (
+      <div className="mx-auto w-full max-w-[65.625rem] space-y-1 py-5">
+        {visible.map(session => (
+          <Button
+            className="grid min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] gap-3 text-left"
+            key={session.id}
+            onClick={() => openSession(session.id, navigate)}
+            variant="ghost"
+          >
+            <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
+              <Codicon name="comment-discussion" />
+            </span>
+            <span className="min-w-0 self-center">
+              <strong className="block truncate text-sm font-semibold">{session.title || copy.untitled}</strong>
+              <span className="mt-1 block truncate text-xs text-muted-foreground">{session.preview || copy.noPreview}</span>
+            </span>
+            <span className="flex items-center gap-2 self-center text-xs text-(--ui-text-tertiary)">
+              {Number.isFinite(session.last_active) && session.last_active > 0
+                ? formatBusinessDayTime(new Date(session.last_active * 1000), locale)
+                : null}
+              <Codicon name="arrow-right" />
+            </span>
+          </Button>
+        ))}
+      </div>
+    )}
+  </>
+}
+
+function ActivityHistoryContent() {
   const { locale, t } = useI18n()
   const copy = t.businessWorkspace.workflowDomain.history
   const deliverableCopy = t.businessWorkspace.workflowDomain.deliverables
@@ -77,8 +170,9 @@ export function HistoryView() {
   }, [state])
 
   return (
-    <section className="apex-business-surface apex-business-page apex-primary-page" data-history-page="">
+    <>
       <div className="apex-primary-page-column">
+        {state.mode === 'ready' && <WorkflowRefreshNotice state={state} />}
         <BusinessPageHeader
           action={{ icon: 'refresh', label: copy.refresh, onClick: refresh }}
           description={copy.description}
@@ -198,6 +292,6 @@ export function HistoryView() {
           )}
         </div>
       )}
-    </section>
+    </>
   )
 }

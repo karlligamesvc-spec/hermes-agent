@@ -500,6 +500,36 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
             _receivedUserTexts.push(userText)
           }
 
+          // hc-891 injects a real provider rejection; no gateway result is fabricated.
+          if (userText.includes('HC891_PROVIDER_FAILURE')) {
+            res.writeHead(401, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: { message: 'HC891 intentional provider rejection', type: 'authentication_error', code: 'invalid_api_key' } }))
+
+            return
+          }
+
+          // hc-883 exercises the real runtime oneshot -> HTTP model -> native save path.
+          // This fixture is deterministic; it is not a semantic-quality evaluation.
+          if (!stream && messages.some(m => m.role === 'system' && typeof m.content === 'string' &&
+            m.content.startsWith('Summarize this video AUDIO transcript')) && userText.includes('[本地测试] 中段原文')) {
+            nonStreamingTextResponse(res, model, JSON.stringify({ points: [
+              { text: '[本地测试] 视频包含开场与中段讲述。', anchor_ids: ['a1', 'a2'] }
+            ] }))
+
+            return
+          }
+
+          // Deterministic hc-886 model double: verifies routing/storage, not reasoning quality.
+          if (!stream && messages.some(m => m.role === 'system' && typeof m.content === 'string' &&
+            m.content.startsWith('Answer the question in ')) && userText.includes('HC886_SOURCE_QUESTION')) {
+            const input = JSON.parse(userText) as { evidence: Array<{ id: string }> }
+            const anchorId = input.evidence.some(anchor => anchor.id === 'a2') ? 'a2' : 'a1'
+            nonStreamingTextResponse(res, model, JSON.stringify({ answer_type: 'semantic_answer',
+              answer: '[本地测试] 当前资料的回答已附出处。', anchor_ids: [anchorId] }))
+
+            return
+          }
+
           const isInterimTrigger = userText.includes('E2E_INTERIM_TRIGGER')
           const isSidebarTrigger = userText.includes('E2E_SIDEBAR_TRIGGER')
           const isSidebarCrossTrigger = userText.includes('E2E_SIDEBAR_CROSS')
@@ -529,7 +559,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
               }
             }
 
-            if (holdThisCompletion) {
+            if (holdThisCompletion || userText.includes('HC891_PROVIDER_HOLD')) {
               heldCompletionCount++
               resolveHeldStreamStarted?.()
               void heldStreamReleased.then(respond)
@@ -651,8 +681,8 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
 
           if (stream) {
             const holdThisStream = Boolean(
-              options.holdFirstStreamForPrompt && typeof lastUserMessage?.content === 'string' &&
-                lastUserMessage.content.includes(options.holdFirstStreamForPrompt),
+              userText.includes('HC891_PROVIDER_HOLD') || (options.holdFirstStreamForPrompt && typeof lastUserMessage?.content === 'string' &&
+                lastUserMessage.content.includes(options.holdFirstStreamForPrompt)),
             )
 
             streamTextResponse(res, model, MOCK_REPLY, holdThisStream || holdThisCompletion ? () => {
@@ -665,7 +695,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
               return heldStreamReleased
             } : undefined)
           } else {
-            if (holdThisCompletion) {
+            if (holdThisCompletion || userText.includes('HC891_PROVIDER_HOLD')) {
               heldCompletionCount++
               resolveHeldStreamStarted?.()
               void heldStreamReleased.then(() => nonStreamingTextResponse(res, model, MOCK_REPLY))

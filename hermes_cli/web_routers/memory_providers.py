@@ -4,6 +4,7 @@ Extracted from ``hermes_cli.web_server``; helpers/state that tests monkeypatch o
 ``web_server`` stay there and are late-bound (cycle-safe).
 """
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -22,7 +23,6 @@ from hermes_cli.web_server_memory import (
     _coerce_bool, _field_default, _field_is_set, _field_value, _field_visible, _load_memory_provider, _memory_provider_manifest, _memory_provider_setup_info, _memory_provider_setup_manifest, _normalize_memory_provider_schema, _read_memory_provider_existing_values, _require_memory_provider_ready, _run_setup_command,
 )
 from hermes_cli.web_models import MemoryProviderConfigUpdate, MemoryProviderSetupRequest
-from hermes_cli.web_routers._common import scoped_to_thread
 from plugins.memory.config_schema import (
     STORAGE_HONCHO_HOST_BLOCK, ProviderConfigSchema, ProviderField, get_provider_config_schema,
 )
@@ -34,7 +34,8 @@ router = APIRouter()
 _discover_memory_provider_statuses = late("_discover_memory_provider_statuses", "hermes_cli.web_server_memory")
 get_hermes_home = late("get_hermes_home", "hermes_cli.config")
 load_config = late("load_config", "hermes_cli.config")
-save_config = late("save_config", "hermes_cli.config")
+mutate_config = late("mutate_config", "hermes_cli.config")
+_config_profile_scope = late("_config_profile_scope", "hermes_cli.web_server_profiles")
 save_env_value = late("save_env_value", "hermes_cli.config")
 _dependency_importable = late("_dependency_importable", "hermes_cli.web_server_memory")
 load_env = late("load_env", "hermes_cli.config")
@@ -304,11 +305,9 @@ def _memory_section(config: Dict[str, Any]) -> Dict[str, Any]:
 def _update_memory_provider_config(provider: ProviderConfigSchema, values: Dict[str, str]) -> None:
     writer = _write_provider_honcho if provider.storage == STORAGE_HONCHO_HOST_BLOCK else _write_provider_flat
     writer(provider, values)
-    config = load_config()
-    memory_config = _memory_section(config)
-    if memory_config.get("provider") != provider.name:
-        memory_config["provider"] = provider.name
-        save_config(config)
+    def edit(config):
+        _memory_section(config)["provider"] = provider.name
+    mutate_config(edit)
 
 
 # ── Setup: dependency installation ────────────────────────────────────────────
@@ -468,11 +467,11 @@ def _save_memory_provider_native_config(name: str, provider: Any, values: Dict[s
         if _BaseMemoryProvider is None or type(provider).save_config is not _BaseMemoryProvider.save_config:
             provider.save_config(values, str(get_hermes_home()))
             return
-    cfg = load_config()
-    memory_cfg = _memory_section(cfg)
-    current = memory_cfg.get(name)
-    memory_cfg[name] = {**(current if isinstance(current, dict) else {}), **values}
-    save_config(cfg)
+    def edit(cfg):
+        memory_cfg = _memory_section(cfg)
+        current = memory_cfg.get(name)
+        memory_cfg[name] = {**(current if isinstance(current, dict) else {}), **values}
+    mutate_config(edit)
 
 
 def _write_memory_provider_config_values(name: str, provider: Any, values: Dict[str, Any]) -> None:
@@ -527,24 +526,27 @@ async def get_memory_provider_config(name: str, surface: Optional[str] = None, p
             return {"name": name, "label": name, "fields": [], "setup": _memory_provider_setup_info(name)}
         return _memory_provider_payload(name, provider)
 
-    return await scoped_to_thread(profile, _run)
+    with _config_profile_scope(profile):
+        return await asyncio.to_thread(_run)
 
 
 @router.post("/api/memory/providers/{name}/setup")
 async def setup_memory_provider(name: str, body: MemoryProviderSetupRequest):
     _require_valid_memory_provider_name(name)
-    provider = _load_memory_provider(name)
-    if provider is None and not _memory_provider_manifest(name):
-        # No discoverable plugin directory -> no manifest that could declare
-        # setup commands; refuse before the command-running path. (provider
-        # may be None with a manifest present when its pip deps aren't
-        # installed yet — that's the setup use case.)
-        raise _unknown_provider(name)
-    if provider is not None and body.values:
-        with _value_errors_as_http("Failed to persist memory provider setup values for %s", name, passthrough_http=False):
-            _write_memory_provider_config_values(name, provider, body.values)
-    _invalidate_plugins_hub_cache()
-    return _install_memory_provider_setup(name)
+
+    def _run():
+        provider = _load_memory_provider(name)
+        if provider is None and not _memory_provider_manifest(name):
+            # A missing plugin cannot declare setup commands. A present
+            # manifest with unavailable Python dependencies remains installable.
+            raise _unknown_provider(name)
+        if provider is not None and body.values:
+            with _value_errors_as_http("Failed to persist memory provider setup values for %s", name, passthrough_http=False):
+                _write_memory_provider_config_values(name, provider, body.values)
+        _invalidate_plugins_hub_cache()
+        return _install_memory_provider_setup(name)
+
+    return await asyncio.to_thread(_run)
 
 
 @router.put("/api/memory/providers/{name}/config")
@@ -567,11 +569,12 @@ async def update_memory_provider_config(
             raise _unknown_provider(name)
         _write_memory_provider_config_values(name, provider, values)
         _require_memory_provider_ready(name)
-        config = load_config()
-        _memory_section(config)["provider"] = name
-        save_config(config)
+        def edit(config):
+            _memory_section(config)["provider"] = name
+        mutate_config(edit)
         _invalidate_plugins_hub_cache()
         return {"ok": True, "active": name}
 
     with _value_errors_as_http("PUT /api/memory/providers/%s/config failed", name):
-        return await scoped_to_thread(profile, _run)
+        with _config_profile_scope(profile):
+            return await asyncio.to_thread(_run)

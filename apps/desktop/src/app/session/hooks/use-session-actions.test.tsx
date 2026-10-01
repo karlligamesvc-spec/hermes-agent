@@ -83,7 +83,7 @@ import { $sessionSeenCounts, $unreadFinishedMarkers } from '@/store/session-unre
 
 import sessionResumeActiveTurn from '../../../../../../tests/fixtures/session-resume-active-turn.json'
 import { deferred } from '../../../test/deferred'
-import { NEW_CHAT_ROUTE, sessionRoute } from '../../routes'
+import { NEW_CHAT_ROUTE, routeSessionId, sessionRoute } from '../../routes'
 import type { ClientSessionState } from '../../types'
 
 import { useSessionActions } from './use-session-actions'
@@ -154,6 +154,8 @@ function storedSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
 function Harness({
   activeSessionId = null,
   activeSessionIdRef: activeSessionIdRefOverride,
+  getRoutedStoredSessionId,
+  getRouteToken = () => 'token',
   navigate = vi.fn(),
   onReady,
   requestGateway,
@@ -162,6 +164,8 @@ function Harness({
 }: {
   activeSessionId?: null | string
   activeSessionIdRef?: MutableRefObject<null | string>
+  getRoutedStoredSessionId?: () => null | string
+  getRouteToken?: () => string
   navigate?: ReturnType<typeof vi.fn>
   onReady: (handle: HarnessHandle) => void
   requestGateway: <T>(method: string, params?: Record<string, unknown>) => Promise<T>
@@ -176,8 +180,8 @@ function Harness({
     busyRef: ref(false),
     creatingSessionRef: ref(false),
     ensureSessionState: () => ({}) as ClientSessionState,
-    getRouteToken: () => 'token',
-    getRoutedStoredSessionId: () => null,
+    getRouteToken,
+    getRoutedStoredSessionId: getRoutedStoredSessionId ?? (() => selectedStoredSessionIdRefOverride?.current ?? selectedStoredSessionId),
     navigate: navigate as never,
     requestGateway,
     resetViewSync: vi.fn(),
@@ -328,7 +332,59 @@ describe('connection-qualified session deletion', () => {
   afterEach(() => {
     cleanup()
     setSessions([])
+    setSelectedStoredSessionId(null)
+    setActiveSessionId(null)
+    $removedSessionIds.set(new Set())
+    $sessionMutationsInFlight.set(new Set())
     vi.clearAllMocks()
+  })
+
+  it.each([
+    ['removeSession', 'shared-session', false], ['removeSession', null, false], ['removeSession', 'another-chat', false],
+    ['archiveSession', 'shared-session', false], ['archiveSession', null, false], ['archiveSession', 'another-chat', false],
+    ['removeSession', 'shared-session', true], ['removeSession', null, true], ['removeSession', 'another-chat', true],
+    ['removeSession', 'shared-session', 'left-page'], ['removeSession', 'shared-session', 'another-selection']
+  ] as const)('%s respects the current surface (%s, failure=%s)', async (operation, routedId, fails) => {
+    const originalPath = routedId ? sessionRoute(routedId) : '/cron'
+    let currentPath = originalPath
+    const navigate = vi.fn((to: string) => { currentPath = to })
+    const activeSessionIdRef = { current: 'runtime-shared' as string | null }
+    const selectedStoredSessionIdRef = { current: 'shared-session' as string | null }
+    let actions!: HarnessHandle
+    const row = storedSession({ id: 'shared-session', profile: 'default' })
+
+    setSessions([row])
+    vi.mocked(deleteSession).mockImplementation(async () => {
+      if (fails === 'left-page') {currentPath = '/cron'}
+
+      if (fails === 'another-selection') {
+        currentPath = sessionRoute('another-chat')
+        selectedStoredSessionIdRef.current = 'another-chat'
+        activeSessionIdRef.current = 'runtime-other'
+      }
+
+      if (fails) {throw new Error('delete rejected')}
+
+      return { ok: true }
+    })
+    vi.mocked(setSessionArchived).mockResolvedValue({ ok: true })
+    render(<Harness activeSessionIdRef={activeSessionIdRef} getRoutedStoredSessionId={() => routeSessionId(currentPath)}
+      getRouteToken={() => `${currentPath}::`} navigate={navigate} onReady={value => { actions = value }}
+      requestGateway={vi.fn().mockResolvedValue({})} selectedStoredSessionIdRef={selectedStoredSessionIdRef} />)
+    await waitFor(() => expect(actions).toBeDefined())
+    await act(async () => { await actions[operation]('shared-session') })
+
+    expect(selectedStoredSessionIdRef.current).toBe(fails === 'another-selection' ? 'another-chat' : fails ? 'shared-session' : null)
+    expect(activeSessionIdRef.current).toBe(fails === 'another-selection' ? 'runtime-other' : fails ? 'runtime-shared' : null)
+    expect($sessions.get()).toEqual(fails ? [row] : [])
+    expect(operation === 'removeSession' ? deleteSession : setSessionArchived).toHaveBeenCalled()
+
+    const expectedPath = fails === 'another-selection' ? sessionRoute('another-chat') : fails === 'left-page' ? '/cron'
+      : routedId === 'shared-session' && !fails ? NEW_CHAT_ROUTE : originalPath
+
+    expect(currentPath).toBe(expectedPath)
+
+    if (routedId !== 'shared-session') {expect(navigate).not.toHaveBeenCalled()}
   })
 
   it('deletes a registry session through its captured connection owner', async () => {
@@ -972,6 +1028,8 @@ describe('createBackendSessionForSend profile routing', () => {
 // (b) arm $resumeFailedSessionId so use-route-resume can retry. A resume that
 // succeeds must NOT leave the flag armed.
 function ResumeHarness({
+  getRoutedStoredSessionId = () => null,
+  navigate = vi.fn(),
   onStateUpdate,
   onViewSync,
   onReady,
@@ -980,6 +1038,8 @@ function ResumeHarness({
   selectedStoredSessionId = null,
   sessionStateByRuntimeIdRef
 }: {
+  getRoutedStoredSessionId?: () => null | string
+  navigate?: ReturnType<typeof vi.fn>
   onStateUpdate?: (sessionId: string, state: ClientSessionState) => void
   onViewSync?: (sessionId: string, state: ClientSessionState) => void
   onReady: (
@@ -1001,8 +1061,8 @@ function ResumeHarness({
     creatingSessionRef: ref(false),
     ensureSessionState: () => ({}) as ClientSessionState,
     getRouteToken: () => 'token',
-    getRoutedStoredSessionId: () => null,
-    navigate: vi.fn() as never,
+    getRoutedStoredSessionId,
+    navigate: navigate as never,
     requestGateway,
     resetViewSync: vi.fn(),
     runtimeIdByStoredSessionIdRef: runtimeMapRef,
@@ -1101,6 +1161,50 @@ describe('resumeSession failure recovery', () => {
     await waitFor(() => expect(resume).not.toBeNull())
     await resume!('stored-1', true)
   }
+
+  it.each(['stored-1', null, 'another-chat'])('clears a missing session without leaving a newer surface (%s)', async routedId => {
+    const missing = new Error('404: Session not found')
+    const pending = deferred<never>()
+    const navigate = vi.fn()
+    let currentRoute: string | null = 'stored-1'
+    let resume!: (id: string) => Promise<unknown>
+
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'session.resume') {return pending.promise}
+
+      return {} as never
+    })
+
+    vi.mocked(getSession).mockRejectedValue(missing)
+    vi.mocked(getLatestSessionMessages).mockRejectedValue(missing)
+    $activeGatewayProfile.set('default')
+    $profiles.set([])
+    setConnection({ mode: 'local', baseUrl: 'http://127.0.0.1:8000', wsUrl: 'ws://127.0.0.1:8000/ws',
+      token: '', logs: [], isFullscreen: false, nativeOverlayWidth: 0, windowButtonPosition: null })
+    setMessages([])
+    render(<ResumeHarness getRoutedStoredSessionId={() => currentRoute} navigate={navigate}
+      onReady={value => { resume = value }} requestGateway={requestGateway} />)
+    await waitFor(() => expect(resume).toBeDefined())
+    let flight!: Promise<unknown>
+
+    await act(async () => {
+      flight = resume('stored-1')
+      await waitFor(() => expect(requestGateway).toHaveBeenCalledWith('session.resume', expect.anything()))
+      currentRoute = routedId
+      pending.reject(missing)
+      await flight
+    })
+
+    expect($selectedStoredSessionId.get()).toBeNull()
+    expect($activeSessionId.get()).toBeNull()
+    expect($resumeFailedSessionId.get()).toBeNull()
+
+    if (routedId === 'stored-1') {
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(NEW_CHAT_ROUTE, { replace: true })
+    } else {
+      expect(navigate).not.toHaveBeenCalled()
+    }
+  })
 
   it('does not resume a tombstoned session after delete', async () => {
     $removedSessionIds.set(new Set(['stored-1']))

@@ -29,6 +29,9 @@ import {
   systemPreferences
 } from 'electron'
 
+import { overviewEvidence } from '../shared/analysis-video-overview'
+
+import { analysisAccountBoundary, canApplyManagedRenewal, managedAccountId } from './apex-account-boundary'
 import {
   AGENT_STATE,
   detectClaude as detectClaudeAuth,
@@ -42,6 +45,28 @@ import {
   resolveAgentProxyEnv,
   systemProxyToUrls
 } from './apex-agent-proxy'
+import { createSourceAnswerHandlers } from './apex-analysis-answer'
+import { createDeepReportHandlers } from './apex-analysis-deep-report'
+import {
+  addLocalNote,
+  answerLocalDocument,
+  completeLocalDocument,
+  createLocalFeishuDocument,
+  createLocalPendingDocument,
+  createLocalUploadedVideoTranscript,
+  createLocalVideoTranscript,
+  deleteLocalDocument,
+  getLocalDocument,
+  listLocalDocuments,
+  localOverviewRevision,
+  readLocalPdfPreview,
+  removeLocalNote,
+  retryLocalDocument,
+  saveLocalVideoOverview
+} from './apex-analysis-local'
+import { fullVideoTranscript } from './apex-analysis-transcript'
+import { uploadAnalysisVideo } from './apex-analysis-video-upload'
+import { deleteAnalysisWorkspace } from './apex-analysis-workspace'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
@@ -121,7 +146,6 @@ import {
   parseProvisionResponse,
   persistRelayKeyToConfigYaml,
   reconcileManagedRelayKey,
-  relayCatalogStatusFromProbe,
   renewedTokenFromHeaders,
   resolveApexEndpoints,
   seedPluginsBlockYaml,
@@ -129,6 +153,7 @@ import {
   seedWebGatewayBlockYaml,
   syncManagedRelayConfigYaml
 } from './apex-managed'
+import { ManagedCredentialLifetime, managedRecoveryCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -155,6 +180,7 @@ import { loadScenarioCatalog } from './apex-scenario-catalog'
 import { loginShellPathProbeArgs, parseLoginShellPath, resolveAugmentedPath } from './apex-shell-path'
 import {
   cancelWorkflowDomainRun,
+  completeWorkflowDomainProject,
   createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
@@ -162,16 +188,19 @@ import {
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
   getWorkflowDomainProject,
+  getWorkflowDomainProjectCompletion,
   getWorkflowDomainRun,
   getWorkflowDomainUserFileDownload,
   listWorkflowDomainActivity,
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  reopenWorkflowDomainProject,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startExistingWorkflowDomainRun,
-  startWorkflowDomainGoal
+  startWorkflowDomainGoal,
+  updateWorkflowDomainProject
 } from './apex-workflow-domain'
 import {
   destroyKeepaliveAgents,
@@ -321,7 +350,15 @@ import {
   updatesAllowedByPolicy
 } from './desktop-diagnostic-trial'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
+import { managedRuntimeNeedsRepair } from './desktop-legacy-managed'
 import { formatDesktopLogLine } from './desktop-log-line'
+import { requestRevisionedManagedKeyMutation } from './desktop-managed-provision'
+import {
+  commitRotatedManagedCredential, completeManagedModelAssignment, DesktopModelMutationCoordinator,
+  isModelConfigurationMutation, legacyModelMutationSettled, ManagedAuthIntent, ManagedModelReceiptRegistry, modelMutationCapability, ModelMutationError, ModelMutationMetadataStore,
+  modelMutationNoWriteResult, modelMutationRequestProfile, type ModelMutationScope,
+  prepareManagedModelMutation, type ResolvedModelTarget
+} from './desktop-model-mutations'
 import { resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import {
   buildPosixCleanupScript,
@@ -8164,7 +8201,7 @@ function openOauthLoginWindow(baseUrl, { silent = false } = {}) {
 // authed REST against a gated gateway, including minting WS tickets.
 function fetchJsonViaOauthSession(url, options: any = {}) {
   return new Promise((resolve, reject) => {
-    const sess = getOauthSessionForUrl(url)
+    const sess = options.session || getOauthSessionForUrl(url)
 
     if (!sess) {
       reject(new Error('OAuth session partition is unavailable.'))
@@ -10380,9 +10417,11 @@ async function buildRemoteConnection(
 }
 
 const sshConnections = new Map<string, any>()
+
 const sshIsolatedKeepalives = createSshIsolatedKeepaliveRegistry({
   log: chunk => sshRememberLog(chunk)
 })
+
 const desktopInstallationId = loadOrCreateInstallationId(DESKTOP_INSTALLATION_PATH)
 
 // Managed SSH update lifecycle (#93042): while an update owns a registered
@@ -12986,6 +13025,7 @@ async function runPoolBackendStart(profile, entry, opts: { forceLocal?: boolean;
   return {
     baseUrl,
     mode: 'local',
+    desktopOwnedPid: child.pid,
     source: 'local',
     authMode: 'token',
     token: authToken,
@@ -13497,6 +13537,7 @@ async function runHermesStart() {
     return {
       baseUrl,
       mode: 'local',
+      desktopOwnedPid: hermesProcess.pid,
       source: 'local',
       authMode: 'token',
       token: authToken,
@@ -16190,7 +16231,7 @@ async function getJsonForBackend(descriptor, path, opts: any = {}) {
 async function fetchJsonForBackend(
   descriptor,
   path,
-  opts: { method?: string; body?: unknown; upload?: unknown; timeoutMs?: number } = {}
+  opts: { method?: string; body?: unknown; upload?: unknown; timeoutMs?: number; headers?: Record<string, string> } = {}
 ) {
   const url = `${descriptor.baseUrl}${path}`
 
@@ -16205,7 +16246,7 @@ async function fetchJsonForBackend(
       method: opts.method,
       body: opts.body,
       timeoutMs: opts.timeoutMs,
-      headers: descriptor.headers
+      headers: { ...descriptor.headers, ...opts.headers }
     }
 
     return requestWithOauthFallback(descriptor.baseUrl, {
@@ -16220,7 +16261,7 @@ async function fetchJsonForBackend(
     body: opts.body,
     upload: opts.upload,
     timeoutMs: opts.timeoutMs,
-    headers: descriptor.headers
+    headers: { ...descriptor.headers, ...opts.headers }
   })
 }
 
@@ -16838,6 +16879,47 @@ async function teardownConnectionScopedProfileBackend(connectionId, profile) {
 }
 
 async function handleHermesApiRequest(request) {
+  if (isModelConfigurationMutation(request)) {
+    const managedReceipt = request?.body?.desktop_managed_receipt
+
+    if (managedReceipt) {
+      if (request.path !== '/api/model/set' || request.method !== 'POST') {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+
+      return managedModelReceipts.acknowledge(managedReceipt, captureModelMutationScope(request), request.body).result
+    }
+
+    const generation = managedCredentialLifetime.current()
+    const owner = managedAccountId(resolveManagedConfig().accessToken)
+
+    if ('managedOwner' in request && request.managedOwner !== owner) {
+      throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')
+    }
+
+    // An explicit model edit wins over a still-pending managed login. Its
+    // queued write still belongs to the credentials present at this entry.
+    if (isMainModelEdit(request)) {deferManagedRuntimeRecovery()}
+
+    const intent = managedAuthIntent.capture()
+    const isCurrent = () => generation === managedCredentialLifetime.current() && intent()
+    const target = await desktopModelMutations.resolveTarget(captureModelMutationScope(request))
+
+    const result = await desktopModelMutations.run(target, isCurrent, headers => target.request(request.path, request.body, headers, request.method),
+      result => legacyModelMutationSettled(request.path, request.body, result),
+      result => modelMutationNoWriteResult(request.path, request.body, result))
+
+    if (isMainModelEdit(request) && result?.ok !== false && isCurrent()) {
+      const managed = resolveManagedConfig()
+
+      if (managed.key && managed.runtimePending) {
+        writeManagedConfig({ apiKey: managed.key, baseUrl: managed.baseUrl, model: managed.model,
+          account: managed.account, accessToken: managed.accessToken, runtimePending: false }, true)
+        broadcastManagedAccountChanged()
+      }
+    }
+
+    return result
+  }
+
   // Registry-pinned request (request.connectionId): the renderer is working
   // against a REGISTERED gateway connection, so the data — cron jobs and their
   // run sessions included — lives in THAT host's state.db, not any local
@@ -18525,6 +18607,7 @@ function isUpdateArtifactReachable(url, { timeoutMs = 8000 }: any = {}) {
       if (settled) {
         return
       }
+
       settled = true
       resolve(value)
     }
@@ -18559,6 +18642,7 @@ function rollbackRuntimePinOverride(reason) {
   if (!override) {
     return false
   }
+
   rememberLog(`[runtime-update] rolling back opt-in update (${reason || 'failed'})`)
 
   try {
@@ -18611,6 +18695,7 @@ function extractBundleArchive(archivePath, destDir) {
       ['-xzf', archivePath, '-C', destDir],
       hiddenWindowsChildOptions({ stdio: ['ignore', 'ignore', 'pipe'] })
     )
+
     let stderr = ''
     child.stderr.on('data', d => {
       stderr = (stderr + String(d)).slice(-2000)
@@ -18670,6 +18755,7 @@ function reconcileAndGcBundleRuntime() {
     if (rec.reconciled) {
       rememberLog(`[bundle] healed active link (${rec.action}) -> ${rec.key || '?'}`)
     }
+
     // Watermark-aware GC: normal keep current+previous, or drop previous when
     // versions/ blew past its disk budget. One pass (the watermark check runs GC).
     const water = bundleDiskspace.enforceVersionsWatermark(HERMES_HOME)
@@ -18685,6 +18771,7 @@ function reconcileAndGcBundleRuntime() {
     if (water.warning) {
       rememberLog(`[bundle] ${water.warning}`)
     }
+
     // Reap the legacy in-place fallback once the sentinel has left the pointer.
     const asideGc = bundleMigrate.gcLegacyAside(HERMES_HOME)
 
@@ -18854,11 +18941,14 @@ const SEED_MOA_BLOCK =
 //     api.deepseek.com (missing /v1) would 404.
 function seedDefaultModelConfig() {
   try {
+    if (modelMutationMetadata.pending().length > 0) {return}
+
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
     if (fs.existsSync(configPath)) {
       return
     }
+
     fs.mkdirSync(HERMES_HOME, { recursive: true })
 
     const managed = resolveManagedConfig()
@@ -18931,6 +19021,10 @@ function seedDefaultModelConfig() {
 // Returns the structured persist result so callers can gate on a PROVEN write;
 // a failure is logged loudly (never silently swallowed) with a masked key.
 function syncManagedRelayKeyToConfig(reason = 'sync') {
+  if (modelMutationMetadata.pending().length > 0) {
+    return { ok: false, changed: false, reason: 'pending-model-writes', model: 'absent', entries: { matched: 0, updated: 0 } }
+  }
+
   const managed = resolveManagedConfig()
 
   if (!managed.key || !managed.baseUrl) {
@@ -19130,11 +19224,13 @@ function probeLoginShellPath() {
   if (_loginShellPathProbe !== undefined) {
     return _loginShellPathProbe
   }
+
   _loginShellPathProbe = null
 
   if (IS_WINDOWS) {
     return _loginShellPathProbe
   }
+
   const shell = String(process.env.SHELL || '').trim() || '/bin/zsh'
 
   try {
@@ -19164,6 +19260,7 @@ function augmentDesktopProcessPath() {
   if (IS_WINDOWS) {
     return 0
   }
+
   const before = String(process.env.PATH || '')
   let after = before
 
@@ -19299,7 +19396,7 @@ function readManagedAccount(stored) {
 // re-calling provision-key (server-validated). '' when none stored / env key.
 function resolveManagedConfig() {
   if (!isManagedEnabled(process.env)) {
-    return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' }, accessToken: '' }
+    return { key: '', baseUrl: '', model: '', account: { email: '', name: '', plan: '' }, accessToken: '', runtimePending: false, runtimeRecoveryOptOut: false }
   }
 
   const endpoints = resolveApexEndpoints(process.env)
@@ -19312,7 +19409,7 @@ function resolveManagedConfig() {
   const fromEnv = String(process.env.APEXNODES_RELAY_KEY || '').trim()
 
   if (fromEnv) {
-    return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account, accessToken: '' }
+    return { key: fromEnv, baseUrl: endpoints.relayBaseUrl, model: endpoints.model, account, accessToken: '', runtimePending: false, runtimeRecoveryOptOut: false }
   }
 
   return {
@@ -19320,7 +19417,9 @@ function resolveManagedConfig() {
     baseUrl: String(stored.baseUrl || '').trim() || endpoints.relayBaseUrl,
     model: String(stored.model || '').trim() || endpoints.model,
     account,
-    accessToken: decryptDesktopSecret(stored.accessToken)
+    accessToken: decryptDesktopSecret(stored.accessToken),
+    runtimePending: stored.runtimePending === true,
+    runtimeRecoveryOptOut: stored.runtimeRecoveryOptOut === true
   }
 }
 
@@ -19341,7 +19440,165 @@ function resolveManagedRelayCredential() {
 // flow). This rewrites the WHOLE record on every write (each follows a fresh
 // provision), so a provision that carries no token simply stores none — we never
 // resurrect a stale token, and clearing (no key) wipes the token too.
-function writeManagedConfig(provisioned) {
+const managedCredentialLifetime = new ManagedCredentialLifetime()
+const managedAuthIntent = new ManagedAuthIntent()
+const managedModelReceipts = new ManagedModelReceiptRegistry()
+
+const modelMutationMetadata = new ModelMutationMetadataStore(
+  path.join(app.getPath('userData'), 'desktop-model-mutations.json'), desktopDeviceInstanceId
+)
+
+const desktopModelMutations = new DesktopModelMutationCoordinator(modelMutationMetadata, resolveModelMutationTarget)
+let unpersistedManagedRotation = false
+
+function captureModelMutationScope(request?): ModelMutationScope {
+  const source = request?.target || request || {}
+
+  return {
+    connectionId: apiRequestRegistryConnectionId(source),
+    profile: modelMutationRequestProfile(source, primaryProfileKey())
+  }
+}
+
+function isMainModelEdit(request): boolean {
+  const pathname = new URL(String(request.path), 'http://model.invalid').pathname
+
+  return (pathname === '/api/model/set' && request.body?.scope === 'main') ||
+    (pathname === '/api/config' && Object.hasOwn(request.body?.config || {}, 'model')) ||
+    pathname === '/api/config/raw' || pathname.startsWith('/api/providers/custom-endpoints')
+}
+
+async function resolveModelMutationTarget(scope: ModelMutationScope): Promise<ResolvedModelTarget> {
+  const frozen = { ...scope }
+
+  // Private in-memory fingerprint only. A connection edited while dialing must
+  // not turn an old initiator into an operation against a new target.
+  const routingState = () => JSON.stringify(frozen.connectionId
+    ? readDesktopConnectionsRegistry().connections.find(connection => connection.id === frozen.connectionId)
+    : readDesktopConnectionConfig())
+
+  const routing = routingState()
+
+  const assertRoute = () => {
+    if (routingState() !== routing) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+  }
+
+  const routeOptions = profileRouteOptions(frozen.profile, { method: 'POST', path: '/api/model/set' })
+  const route = resolveProfileApiRequest(frozen.profile, '/api/model/set', routeOptions)
+
+  const resolvedDescriptor = frozen.connectionId
+    ? await ensureRegistryBackend(frozen.connectionId, frozen.profile)
+    : await ensureBackend(route.backendProfile || primaryProfileKey())
+
+  const descriptor = { ...resolvedDescriptor, headers: { ...resolvedDescriptor.headers } }
+
+  assertRoute()
+
+  const scopedPath = frozen.connectionId
+    ? pathForRegistryBackendRequest('/api/model/set', frozen.profile, descriptor)
+    : route.requestPath
+
+  const profile = new URL(scopedPath, 'http://model.invalid').searchParams.get('profile')
+
+  const pathForTarget = requestPath => {
+    const url = new URL(requestPath, 'http://model.invalid')
+
+    if (profile) {url.searchParams.set('profile', profile)}
+
+    return `${url.pathname}${url.search}`
+  }
+
+  const authFacts: any = { authMode: descriptor.authMode || 'token', token: descriptor.token || '',
+    headers: Object.entries(descriptor.headers).map(([key, value]) => [key.toLowerCase(), value]).sort(),
+    remoteIdentity: descriptor.remoteIdentity || null }
+
+  let assertAuth = () => {}
+  let requestCaptured = (requestPath, options: any = {}) => fetchJsonForBackend(descriptor, requestPath, options)
+
+  if (descriptor.authMode === 'oauth') {
+    const currentAuth = nativeAccessTokenCoordinator.capture(descriptor.baseUrl)
+    const bearer = await ensureNativeAccessToken(descriptor.baseUrl)
+    assertRoute()
+
+    if (!currentAuth()) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+
+    if (bearer) {
+      const tokens = _loadNativeTokens(descriptor.baseUrl)
+      // Same-owner token sliding preserves routing identity; explicit login or
+      // logout invalidates this captured authority even when the URL is equal.
+      authFacts.oauth = tokens?.userId ? [tokens.provider, tokens.userId] : bearer
+
+      assertAuth = () => {if (!currentAuth()) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}}
+
+      requestCaptured = (requestPath, options: any = {}) => {
+        assertAuth()
+
+        return fetchJson(`${descriptor.baseUrl}${requestPath}`, null, { ...options, bearer,
+          headers: { ...descriptor.headers, ...options.headers } })
+      }
+    } else {
+      const oauthSession = getOauthSessionForUrl(descriptor.baseUrl)
+
+      if (!oauthSession) {throw new ModelMutationError('MODEL_RUNTIME_UNAVAILABLE', false)}
+
+      const cookieIdentity = async () => JSON.stringify((await oauthSession.cookies.get({ url: descriptor.baseUrl }))
+        .map(cookie => [cookie.domain, cookie.path, cookie.name, cookie.value]).sort())
+
+      const capturedCookies = await cookieIdentity()
+      authFacts.oauth = capturedCookies
+
+      assertAuth = () => {
+        if (!currentAuth() || getOauthSessionForUrl(descriptor.baseUrl) !== oauthSession) {
+          throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')
+        }
+      }
+
+      requestCaptured = async (requestPath, options: any = {}) => {
+        if (await cookieIdentity() !== capturedCookies) {throw new ModelMutationError('MODEL_MUTATION_SUPERSEDED')}
+        assertRoute()
+        assertAuth()
+
+        return fetchJsonViaOauthSession(`${descriptor.baseUrl}${requestPath}`, { ...options, session: oauthSession,
+          headers: { ...descriptor.headers, ...options.headers } })
+      }
+    }
+  }
+
+  const transportAuthIdentity = crypto.createHash('sha256').update(JSON.stringify(authFacts)).digest('hex')
+
+  const assertCaptured = () => {assertRoute(); assertAuth()}
+  let targetId: string | null
+
+  try {
+    targetId = modelMutationCapability(await requestCaptured(pathForTarget('/api/model/mutation')))
+    assertCaptured()
+  } catch (error: any) {
+    // Only an explicit missing route is legacy. A 503, offline gateway or
+    // malformed JSON cannot silently disable the server-side write guard.
+    if (error?.statusCode === 404) {targetId = null}
+    else if (error instanceof ModelMutationError) {throw error}
+    else {throw new ModelMutationError('MODEL_RUNTIME_UNAVAILABLE', descriptor.mode === 'local')}
+  }
+
+  assertCaptured()
+
+  return {
+    scope: frozen, targetId, transportAuthIdentity,
+    assertCurrent: assertCaptured,
+    localRuntime: descriptor.mode === 'local',
+    legacyOwnedPid: descriptor.desktopOwnedPid,
+    runtimeProfile: profile || descriptor.profile || frozen.profile || 'default',
+    transportIdentity: descriptor.baseUrl,
+    request: (requestPath, body, headers, method = 'POST') => {
+      assertCaptured()
+
+      return requestCaptured(pathForTarget(requestPath), { method, body, headers })
+    }
+  }
+}
+
+function writeManagedConfig(provisioned, renewal = false) {
+  const previous = resolveManagedConfig()
   fs.mkdirSync(path.dirname(DESKTOP_MANAGED_CONFIG_PATH), { recursive: true })
   const key = provisioned && typeof provisioned.apiKey === 'string' ? provisioned.apiKey.trim() : ''
   const account = provisioned && provisioned.account ? readManagedAccount({ account: provisioned.account }) : null
@@ -19352,20 +19609,67 @@ function writeManagedConfig(provisioned) {
         relayKey: encryptDesktopSecret(key),
         baseUrl: String(provisioned.baseUrl || '').trim(),
         model: String(provisioned.model || '').trim(),
+        ...(provisioned.runtimePending ? { runtimePending: true } : {}),
+        ...((provisioned.runtimeRecoveryOptOut === true || (renewal && previous.runtimeRecoveryOptOut)) ? { runtimeRecoveryOptOut: true } : {}),
         ...(account && (account.email || account.name || account.plan) ? { account } : {}),
         ...(accessToken ? { accessToken: encryptDesktopSecret(accessToken) } : {}),
         savedAt: Date.now()
       }
     : {}
 
-  writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
+  const generation = managedCredentialLifetime.persist(() => {
+    writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
+  }, renewal)
+
+  if (!renewal) {lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }}
+
+  if (Boolean(previous.key) !== Boolean(key) || managedAccountId(previous.accessToken) !== managedAccountId(accessToken)) {
+    broadcastManagedAccountChanged()
+  }
+
+  return generation
+}
+
+function broadcastManagedAccountChanged() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {win.webContents.send('hermes:managed-account-changed')}
+  }
+}
+
+function deferManagedRuntimeRecovery() {
+  managedAuthIntent.cancel()
+  const managed = resolveManagedConfig()
+
+  if (managed.key && !String(process.env.APEXNODES_RELAY_KEY || '').trim()) {
+    writeManagedConfig({ apiKey: managed.key, baseUrl: managed.baseUrl, model: managed.model,
+      account: managed.account, accessToken: managed.accessToken, runtimePending: managed.runtimePending,
+      runtimeRecoveryOptOut: true }, true)
+  }
 }
 
 function clearManagedRelayCredential() {
   try {
-    fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true })
-  } catch {
-    // Best effort.
+    managedCredentialLifetime.persist(() => fs.rmSync(DESKTOP_MANAGED_CONFIG_PATH, { force: true }))
+  } catch (error) {
+    unpersistedManagedRotation = true
+    modelMutationMetadata.markCredentialRecovery(true)
+    throw error
+  }
+
+  modelMutationMetadata.markCredentialRecovery(false)
+  unpersistedManagedRotation = false
+  lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
+  broadcastManagedAccountChanged()
+}
+
+function beginManagedKeyMutationRecovery(): () => void {
+  const previous = unpersistedManagedRotation
+  const rollback = modelMutationMetadata.beginCredentialMutation()
+  unpersistedManagedRotation = true
+
+  return () => {
+    rollback()
+    unpersistedManagedRotation = previous
   }
 }
 
@@ -19377,29 +19681,32 @@ function clearManagedRelayCredential() {
 // and never throws — a persist hiccup must not fail the request the user made.
 // Skips when: managed isn't signed in (no stored key), there is no existing login
 // JWT to slide (env-key path stores none), or the token is unchanged.
-function persistRenewedLoginToken(token) {
+function persistRenewedLoginToken(token, requestBearer: string) {
   try {
     const next = String(token || '').trim()
 
     if (!next) {
       return false
     }
+
     const managed = resolveManagedConfig()
 
     if (!managed.key || !managed.accessToken) {
       return false
     }
 
-    if (next === managed.accessToken) {
+    if (!canApplyManagedRenewal(managed.accessToken, requestBearer, next)) {
       return false
     }
+
     writeManagedConfig({
       apiKey: managed.key,
       baseUrl: managed.baseUrl,
       model: managed.model,
       account: managed.account,
-      accessToken: next
-    })
+      accessToken: next,
+      runtimePending: managed.runtimePending
+    }, true)
     rememberLog('[managed] login token renewed via sliding-window header (hc-529)')
 
     return true
@@ -20050,6 +20357,7 @@ function runLocalAgentJob(job) {
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(killTimer)
       resolve(value)
@@ -20215,6 +20523,7 @@ function scheduleDaemonConnection(delay) {
   if (!daemonRuntime.started) {
     return
   }
+
   clearTimeout(daemonRuntime.connLoopTimer)
   daemonRuntime.connLoopTimer = setTimeout(() => {
     void daemonConnectionTick()
@@ -20225,6 +20534,7 @@ function scheduleDaemonPoll(delay) {
   if (!daemonRuntime.started) {
     return
   }
+
   clearTimeout(daemonRuntime.pollLoopTimer)
   daemonRuntime.pollLoopTimer = setTimeout(() => {
     void daemonPollTick()
@@ -20639,12 +20949,17 @@ function guardConfigYamlProductBlocks(reason) {
 }
 
 function healConfigYamlProductBlocks(reason) {
+  // A Native restart must not let the YAML watcher bypass an unresolved
+  // server-side model write. The recovery path fences it before healing.
+  if (modelMutationMetadata.pending().length > 0) {return 'pending-model-writes'}
+
   try {
     const configPath = path.join(HERMES_HOME, 'config.yaml')
 
     if (!fs.existsSync(configPath)) {
       return 'absent'
     }
+
     let raw = fs.readFileSync(configPath, 'utf8')
     // What we based this pass on. The runtime saves config.yaml atomically
     // (utils.atomic_yaml_write — temp file + rename), so we can never READ a
@@ -20836,6 +21151,7 @@ function watchConfigYamlProductBlocks() {
     if (!fs.existsSync(configPath)) {
       return
     }
+
     fs.watch(configPath, { persistent: false }, () => {
       clearTimeout(configGuardTimer)
       configGuardTimer = setTimeout(() => guardConfigYamlProductBlocks('watch'), 2_000)
@@ -20889,6 +21205,8 @@ function guardConfigYamlWhenItArrives() {
 // next boot. Fail-soft — a broken payload can never block booting.
 function applyClientConfigToRuntime(reason) {
   try {
+    if (modelMutationMetadata.pending().length > 0) {return}
+
     const stored = readClientConfigState()
 
     if (!stored.version || stored.version <= (stored.appliedVersion || 0)) {
@@ -20920,6 +21238,7 @@ function applyClientConfigToRuntime(reason) {
       if (changed) {
         fs.writeFileSync(configPath, next, { encoding: 'utf8' })
       }
+
       rememberLog(
         `[client-config] applied v${stored.version} (${reason}): ${applied.join(', ') || 'no-op'}` +
           (preserved.length ? `; preserved user preferences: ${preserved.join(', ')}` : '') +
@@ -20942,7 +21261,7 @@ function applyClientConfigToRuntime(reason) {
 // Electron's net stack, the same transport fetchJsonViaOauthSession uses — but
 // WITHOUT the OAuth cookie session (managed-LLM auth is JWT Bearer, a separate
 // concern from the remote-gateway cookie jar).
-function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): Promise<any> {
+function apexAuthPostJson(url, { body, bearer, method = 'POST', timeoutMs = 12_000 }: any = {}): Promise<any> {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -20961,7 +21280,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
     }
 
     const payload = serializeJsonBody(body)
-    const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
+    const request = electronNet.request({ method, url, redirect: 'follow' })
     setJsonRequestHeaders(request)
 
     if (bearer) {
@@ -20989,6 +21308,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -21003,7 +21323,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
 
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
 
         if (!text) {
           resolve(null)
@@ -21022,6 +21342,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -21029,6 +21350,7 @@ function apexAuthPostJson(url, { body, bearer, timeoutMs = 12_000 }: any = {}): 
     if (payload) {
       request.write(payload)
     }
+
     request.end()
   })
 }
@@ -21084,6 +21406,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
         if (timedOut) {
           return
         }
+
         clearTimeout(timer)
         const text = Buffer.concat(chunks).toString('utf8')
         const statusCode = res.statusCode || 500
@@ -21098,7 +21421,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
 
         // hc-529: a 2xx on an authed call may carry a renewed login JWT — slide
         // the stored token forward (best-effort; persist gates on being signed in).
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
 
         if (!text) {
           resolve(null)
@@ -21117,6 +21440,7 @@ function apexAuthBodylessJson(method, url, { bearer, timeoutMs = 12_000 }: any =
       if (timedOut) {
         return
       }
+
       clearTimeout(timer)
       reject(error)
     })
@@ -21171,6 +21495,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(timer)
       reject(error)
@@ -21210,6 +21535,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
         if (settled) {
           return
         }
+
         settled = true
         clearTimeout(timer)
         const statusCode = res.statusCode || 500
@@ -21223,7 +21549,7 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
           return
         }
 
-        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers))
+        persistRenewedLoginToken(renewedTokenFromHeaders(res.headers), bearer)
         resolve(body)
       })
     })
@@ -21248,6 +21574,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
     const base = String(baseUrl || '')
       .trim()
       .replace(/\/+$/, '')
+
     const relayKey = String(key || '').trim()
 
     if (!base || !relayKey) {
@@ -21279,6 +21606,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
       if (settled) {
         return
       }
+
       settled = true
       clearTimeout(timer)
       resolve(result)
@@ -21315,6 +21643,7 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
 // on the first attempt, so the cooldown only matters when re-provision keeps
 // failing (expired JWT / provision-key down), which must not loop.
 let lastManagedReprovisionAttemptAt = 0
+let lastManagedReprovisionAttemptOwner: string | null = null
 
 // hc-512: last known state of the relay's live model catalog, from the same
 // `GET {base_url}/v1/models` probe the runtime's picker uses. The runtime's own
@@ -21324,25 +21653,6 @@ let lastManagedReprovisionAttemptAt = 0
 // status: 'unknown' (never probed / not applicable) | 'ok' | 'unauthorized' |
 // 'unreachable'; checkedAt: ms timestamp of the last probe (0 = never).
 let lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }
-
-// Probe the relay model listing with the CURRENT stored key and remember the
-// classified outcome. Shared by the boot self-heal and the renderer's
-// on-demand catalog-state IPC. Resolves to the remembered state. Not managed /
-// no key → 'unknown' (BYOK installs never probe).
-async function probeRelayCatalogState() {
-  const managed = resolveManagedConfig()
-
-  if (!isManagedEnabled(process.env) || !managed.key || !managed.baseUrl) {
-    lastRelayCatalogState = { status: 'unknown', checkedAt: Date.now() }
-
-    return lastRelayCatalogState
-  }
-
-  const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
-  lastRelayCatalogState = { status: relayCatalogStatusFromProbe(probe), checkedAt: Date.now() }
-
-  return lastRelayCatalogState
-}
 
 // Relay-key self-heal: if the stored relay key is dead (relay /v1/models →
 // 401/403), re-provision it in place using the stored login JWT, write the fresh
@@ -21374,12 +21684,25 @@ async function probeRelayCatalogState() {
 //   - relayUnauthorized=true, healed=false, hasToken=false → seed/env key or a
 //     cleared token: can't re-provision, the user must sign in again.
 //   - relayUnauthorized=true, healed=false, hasToken=true → the stored JWT is
-//     itself expired, or config.yaml is not writable as managed (in which case
-//     we deliberately did NOT mint — see reconcileManagedRelayKey step 4).
-async function selfHealManagedKeyOn401() {
-  try {
-    const managed = resolveManagedConfig()
+//     either rejected by the provision endpoint (needsSignIn=true), or recovery
+//     is temporarily blocked (needsSignIn=false). Credential presence alone
+//     does not distinguish these outcomes.
+const managedRelayRecovery = new ManagedRelayRecoveryCoordinator()
 
+function selfHealManagedKeyOn401(scope: ModelMutationScope = captureModelMutationScope()) {
+  const generation = managedCredentialLifetime.current()
+
+  return managedRelayRecovery.run(generation, () => reconcileCurrentManagedRelay(generation, scope))
+}
+
+async function reconcileCurrentManagedRelay(generation: number, scope: ModelMutationScope) {
+  let ownedGeneration = generation
+  const intent = managedAuthIntent.capture()
+  const isCurrent = () => ownedGeneration === managedCredentialLifetime.current() && intent() && isManagedEnabled(process.env)
+  const managed = resolveManagedConfig()
+  let completion: any = null
+
+  try {
     if (!isManagedEnabled(process.env)) {
       return { ok: true, relayUnauthorized: false }
     }
@@ -21388,11 +21711,27 @@ async function selfHealManagedKeyOn401() {
       return { ok: true, relayUnauthorized: false }
     }
 
+    if (managed.runtimeRecoveryOptOut) {
+      const probe = await apexRelayGetModels(managed.baseUrl, managed.key)
+      const probeStatus = probe.ok ? 'ok' : probe.statusCode === 401 || probe.statusCode === 403 ? 'unauthorized' : 'unreachable'
+
+      if (isCurrent()) {lastRelayCatalogState = { status: probeStatus, checkedAt: Date.now() }}
+
+      return { ok: isCurrent(), relayUnauthorized: false, healed: false, needsSignIn: false,
+        probeStatus: isCurrent() ? probeStatus : 'unknown', generation }
+    }
+
+    await desktopModelMutations.fence(isCurrent)
+
+    if (!isCurrent()) {return { ok: false, relayUnauthorized: false }}
+
     const configPath = path.join(HERMES_HOME, 'config.yaml')
-    const attemptAt = lastManagedReprovisionAttemptAt
+    const owner = managedAccountId(managed.accessToken) || String(generation)
+    const attemptAt = lastManagedReprovisionAttemptOwner === owner ? lastManagedReprovisionAttemptAt : 0
 
     const outcome = await reconcileManagedRelayKey({
       enabled: true,
+      isCurrent,
       storedKey: managed.key,
       baseUrl: managed.baseUrl,
       hasToken: Boolean(managed.accessToken),
@@ -21407,16 +21746,38 @@ async function selfHealManagedKeyOn401() {
         // Mark the attempt before the network call so a hung provision still
         // starts the anti-storm cooldown.
         lastManagedReprovisionAttemptAt = Date.now()
+        lastManagedReprovisionAttemptOwner = owner
+
         // Re-run the SAME provision chain the sign-in routes use: mints a fresh
         // relay key (server rotates), persists it (+ the — possibly unchanged —
         // JWT). A stored account keeps the account panel intact.
-        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null)
+        const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null, isCurrent,
+          scope, nextGeneration => {ownedGeneration = nextGeneration})
 
-        return result && result.hasRelayKey ? { apiKey: resolveManagedConfig().key } : null
+        if (result.ok && result.hasRelayKey) {
+          // This attempt's synchronous credential write advances the lifetime.
+          ownedGeneration = result.credentialGeneration
+          completion = result
+
+          return { apiKey: resolveManagedConfig().key }
+        }
+
+        return { statusCode: result.provisionStatus }
       },
       applyToBackend: reason => reloadBackendForRelayKey(reason),
       log: rememberLog
     })
+
+    if (!isCurrent()) {
+      return { ok: false, relayUnauthorized: false, healed: false, needsSignIn: false, probeStatus: 'unknown', generation }
+    }
+
+    if (outcome.probeStatus === 'ok' && resolveManagedConfig().runtimePending) {
+      const target = await desktopModelMutations.resolveTarget(scope)
+      completion = await finishManagedModelRuntime(target, isCurrent)
+    }
+
+    if (!isCurrent()) {return { ok: false, relayUnauthorized: false, probeStatus: 'unknown', generation }}
 
     // Remember the probe outcome for the renderer's model-menu catalog state
     // (hc-512): a heal means the live listing is reachable again.
@@ -21426,27 +21787,72 @@ async function selfHealManagedKeyOn401() {
       ok: outcome.ok,
       relayUnauthorized: outcome.relayUnauthorized,
       healed: outcome.healed,
-      hasToken: outcome.hasToken
+      hasToken: outcome.hasToken,
+      needsSignIn: outcome.needsSignIn,
+      probeStatus: outcome.probeStatus,
+      generation: ownedGeneration,
+      ...(completion ? { completionScope: scope, assignment: managedSignInResultPayload({ hasRelayKey: true, ...completion }).assignment } : {})
     }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay key self-heal skipped: ${error && error.message ? error.message : error}`)
 
-    return { ok: false, relayUnauthorized: false, healed: false, hasToken: false }
+    // Runtime recovery failure does not establish account expiry. A read-only
+    // relay probe can still clear an obsolete soft gate without any YAML write,
+    // provisioning or Runtime mutation.
+    const live = isCurrent() && managed.key && managed.baseUrl ? await apexRelayGetModels(managed.baseUrl, managed.key) : null
+    const probeStatus = live?.ok ? 'ok' : live?.statusCode === 401 || live?.statusCode === 403 ? 'unauthorized' : 'unreachable'
+
+    if (isCurrent()) {lastRelayCatalogState = { status: probeStatus, checkedAt: Date.now() }}
+
+    return { ok: false, relayUnauthorized: isCurrent() && probeStatus === 'unauthorized', healed: false,
+      hasToken: Boolean(managed.accessToken), needsSignIn: false, probeStatus: isCurrent() ? probeStatus : 'unknown', generation: ownedGeneration }
   }
 }
 
 // Shared post-auth path for EVERY managed sign-in route (email/password,
 // Google, APEX-web). Given a platform access-token JWT, provision a relay-valid
-// key for this user and persist it. Tolerates "provision-key not deployed yet"
-// (404/501 or any fetch error): keeps the BYOK fallback rather than failing the
-// sign-in, so a missing endpoint is NOT a login failure. base_url + model come
-// FROM THE RESPONSE (server-truth).
+// key for this user and persist it. A verified Cloud mutation capability and
+// revision echo precede persistence; unknown grants remain explicitly pending
+// for retry. base_url + model come FROM THE RESPONSE (server-truth).
 //
 // Returns { ok, hasRelayKey }:
 //   - ok=true, hasRelayKey=true  → key + base_url + model stored; managed live.
-//   - ok=true, hasRelayKey=false → token valid but provision-key unavailable —
-//     caller falls back to BYOK.
-async function provisionManagedFromAccessToken(accessToken, account = null) {
+//   - ok=false → preserve the current credential and show explicit recovery.
+async function finishManagedModelRuntime(target: ResolvedModelTarget, isCurrent: () => boolean) {
+  const assignment = managedSignInResultPayload({ hasRelayKey: true }).assignment
+
+  if (!target.targetId && !target.legacyManagedBinding) {
+    const prepared = await prepareManagedModelMutation({ coordinator: desktopModelMutations, scope: target.scope, isCurrent,
+      requiresRevision: true, managedBaseUrl: assignment.base_url })
+
+    target = prepared
+  }
+
+  return completeManagedModelAssignment({ coordinator: desktopModelMutations,
+    receipts: managedModelReceipts, target, isCurrent, assignment,
+    syncLocal: () => {
+      // Actual Runtime success creates the first managed anchor. Only existing
+      // local mirrors are reconciled here; a remote/profile login must not
+      // replace an unrelated local BYOK model to create an absent mirror.
+      guardConfigYamlProductBlocks('managed-runtime-complete')
+      const synced = syncManagedRelayKeyToConfig('managed-runtime-complete')
+
+      if (!synced.ok && !['no-managed-anchor', 'config-missing'].includes(synced.reason)) {
+        throw new ModelMutationError('MODEL_RUNTIME_UNAVAILABLE', target.localRuntime)
+      }
+    },
+    finalize: () => {
+      const managed = resolveManagedConfig()
+      writeManagedConfig({ apiKey: managed.key, baseUrl: managed.baseUrl, model: managed.model,
+        account: managed.account, accessToken: managed.accessToken, runtimePending: false, runtimeRecoveryOptOut: false }, true)
+      broadcastManagedAccountChanged()
+    }
+  })
+}
+
+async function provisionManagedFromAccessToken(accessToken, account = null, recovery?: () => boolean,
+  capturedTarget?: ModelMutationScope, onCommitted?: (generation: number) => void) {
+  const isCurrent = recovery || managedAuthIntent.capture()
   const token = String(accessToken || '').trim()
 
   if (!token) {
@@ -21462,70 +21868,101 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
   // be loaded/repaired. Falling back to the legacy slot would reintroduce
   // last-login-wins across machines.
   const deviceBody = provisionDeviceBody(desktopDeviceInstanceId())
+  const scope = capturedTarget || captureModelMutationScope()
 
-  let provisioned = null
+  // Provision rotates the cloud key. Finish this preflight BEFORE that
+  // irreversible request, including every unknown HTTP outcome from a prior
+  // Native process. A 404 is compatible only for the first, uncontended login.
+  const target = await prepareManagedModelMutation({ coordinator: desktopModelMutations, scope, isCurrent,
+    requiresRevision: Boolean(resolveManagedConfig().key), managedBaseUrl: resolveManagedConfig().baseUrl || endpoints.relayBaseUrl })
 
-  try {
-    const body = await apexAuthPostJson(endpoints.provisionKeyUrl, {
-      bearer: token,
-      body: deviceBody
-    })
+  let provisionFailure: any = null
 
-    provisioned = parseProvisionResponse(body, process.env)
-  } catch (error: any) {
-    rememberLog(
-      `[apexnodes] provision-key unavailable (${error && error.message ? error.message : error}); ` +
-        'managed default disabled, falling back to BYOK.'
-    )
-  }
+  const result = await provisionManagedRelayForCurrentAccount({
+    request: async () => {
+      const body = await requestRevisionedManagedKeyMutation({
+        capabilities: () => apexAuthBodylessJson('GET', `${endpoints.provisionKeyUrl}/capabilities`, { bearer: token }),
+        nextRevision: () => modelMutationMetadata.nextProvisionRevision(),
+        issue: revision => apexAuthPostJson(endpoints.provisionKeyUrl, { bearer: token,
+          body: { ...deviceBody, provision_revision: revision } }),
+        isCurrent,
+        beginMutation: beginManagedKeyMutationRecovery,
+        validateResponse: response => {
+          if (!parseProvisionResponse(response, process.env)) {throw new Error('Managed grant has no credential')}
+        },
+        recordUnknownMutation: () => {
+          unpersistedManagedRotation = true
+          modelMutationMetadata.markCredentialRecovery(true)
+        }
+      })
 
-  if (provisioned) {
-    // The provision endpoint is JWT-authed and returns the signed-in user's own
-    // email/name/plan — authoritative. Prefer it, falling back to the login-body
-    // / JWT-claim values (a Google/browser sign-in JWT may omit the email).
-    const account2 = {
-      email: provisioned.email || resolvedAccount.email,
-      name: provisioned.name || resolvedAccount.name,
-      plan: provisioned.plan || resolvedAccount.plan
+      return parseProvisionResponse(body, process.env)
+    },
+    isCurrent,
+    unavailable: (error: any) => {
+      provisionFailure = error
+      rememberLog(`[apexnodes] provision-key unavailable (${error?.code || 'request-failed'}); recovery needs retry`)
+    },
+    commit: provisioned => {
+      const account2 = {
+        email: provisioned.email || resolvedAccount.email,
+        name: provisioned.name || resolvedAccount.name,
+        plan: provisioned.plan || resolvedAccount.plan
+      }
+
+      // A self-heal may have just slid this request's JWT in the transport. Keep
+      // that confirmed renewal rather than replacing it with the older bearer.
+      const currentToken = resolveManagedConfig().accessToken
+      const commitToken = recovery ? managedRecoveryCommitToken(token, currentToken) : token
+
+      // Once minted, keep the new credential even if Runtime recovery needs a
+      // retry. Keeping the already-revoked old key would strand this login.
+      const generation = commitRotatedManagedCredential(
+        () => writeManagedConfig({ ...provisioned, account: account2, accessToken: commitToken, runtimePending: true }),
+        () => {
+          unpersistedManagedRotation = true
+          rememberLog('[apexnodes] provision minted; local credential persistence failed; recovery required')
+          modelMutationMetadata.markCredentialRecovery(true)
+        }
+      )
+
+      modelMutationMetadata.markCredentialRecovery(false)
+      unpersistedManagedRotation = false
+      onCommitted?.(generation)
+
+      return generation
     }
+  })
 
-    // Persist the login JWT (encrypted) alongside the fresh relay key so the boot
-    // 401-self-heal can silently re-provision if this key is later rotated out.
-    writeManagedConfig({ ...provisioned, account: account2, accessToken: token })
-    // A signed-out first boot seeds a BYOK config, which has no managed relay
-    // anchor. The key writer correctly refuses that shape (`no-managed-anchor`),
-    // so create the managed custom-provider anchor before attempting the write.
-    // The renderer still applies the model assignment through /api/model/set;
-    // this guard is add-only and never overwrites an existing BYOK selection.
-    guardConfigYamlProductBlocks('sign-in-provision')
-    // A re-login just ROTATED the relay key — refresh both config.yaml anchors
-    // immediately so neither the chat path (model.api_key) nor the picker's live
-    // listing (custom_providers) runs on the dead key until the next restart.
-    syncManagedRelayKeyToConfig('sign-in')
-    // A successful sign-in is a sync point for the platform client config
-    // (contract: check at boot AND after every successful sign-in).
-    // Fire-and-forget — provisioning must not wait on it.
-    void refreshClientConfigFromPlatform('sign-in')
-    // Same sync point for the platform SKILL family (pull → install under
-    // HERMES_HOME/skills/apexnodes/). Fire-and-forget; must not block sign-in.
-    void refreshPlatformSkillsFromPlatform('sign-in')
-    // Platform PLUGIN sync (hc-564) shares the trigger points; no-op unless
-    // APEXNODES_PLATFORM_PLUGINS is explicitly enabled (default OFF).
-    void refreshPlatformPluginsFromPlatform('sign-in')
-
-    return { ok: true, hasRelayKey: true }
+  if (provisionFailure) {
+    return { ...result, ok: false, message: provisionFailure.code || 'MANAGED_PROVISION_UNAVAILABLE' }
   }
 
-  // Sign-in itself succeeded (valid token) even though provisioning fell back
-  // to BYOK — still a sync point for the platform client config.
-  void refreshClientConfigFromPlatform('sign-in')
-  // A valid token still lets us pull the platform SKILL family even when
-  // provisioning fell back to BYOK (the SKILLs are independent of the relay key).
-  void refreshPlatformSkillsFromPlatform('sign-in')
-  // Platform PLUGIN sync (hc-564): same reasoning, same opt-in gate (default OFF).
-  void refreshPlatformPluginsFromPlatform('sign-in')
+  if (result.hasRelayKey) {
+    const generation = result.credentialGeneration
+    const current = () => generation === managedCredentialLifetime.current() && isCurrent()
 
-  return { ok: true, hasRelayKey: false }
+    try {
+      const completed = await finishManagedModelRuntime(target, current)
+
+      void refreshClientConfigFromPlatform('sign-in')
+      void refreshPlatformSkillsFromPlatform('sign-in')
+      void refreshPlatformPluginsFromPlatform('sign-in')
+
+      return { ...result, modelReceipt: completed.modelReceipt, modelAssignment: completed.modelAssignment }
+    } catch (error: any) {
+      return { ...result, ok: false, message: error?.code || 'MODEL_RUNTIME_UNAVAILABLE', localRuntime: target.localRuntime }
+    }
+  }
+
+  if (result.ok) {
+    // All successful sign-in/recovery outcomes remain platform sync points.
+    void refreshClientConfigFromPlatform('sign-in')
+    void refreshPlatformSkillsFromPlatform('sign-in')
+    void refreshPlatformPluginsFromPlatform('sign-in')
+  }
+
+  return result
 }
 
 /**
@@ -21541,7 +21978,7 @@ async function provisionManagedFromAccessToken(accessToken, account = null) {
  * password) surfaces as a login failure (the Chinese message is applied in the
  * renderer). Any other login error (non-401) is rethrown as-is.
  */
-async function apexManagedSignIn({ email, password }: any) {
+async function apexManagedSignIn({ email, password }: any, isCurrent: () => boolean, target: ModelMutationScope) {
   const endpoints = resolveApexEndpoints(process.env)
   const cleanEmail = String(email || '').trim()
   const cleanPassword = String(password || '')
@@ -21592,7 +22029,7 @@ async function apexManagedSignIn({ email, password }: any) {
   // The typed email is always a valid identity fallback even if the body omits it.
   const account = { email: cleanEmail, ...(authBody && typeof authBody === 'object' ? authBody : {}) }
 
-  return provisionManagedFromAccessToken(accessToken, account)
+  return provisionManagedFromAccessToken(accessToken, account, isCurrent, target)
 }
 
 // ── hc-417: desktop-managed messaging gateway lifecycle ─────────────────────
@@ -22069,10 +22506,589 @@ function workflowDomainIpcContext() {
     apiBase,
     transport: {
       getJson: url => apexAuthGetJson(url, { bearer }),
+      patchJson: (url, body) => apexAuthPostJson(url, { bearer, body, method: 'PATCH' }),
       postJson: (url, body) => apexAuthPostJson(url, { bearer, body })
     }
   }
 }
+
+function analysisUploadFile(url: string, bearer: string, filename: string, bytes: Buffer): Promise<any> {
+
+  if (bytes.length > 15 * 1024 * 1024) {throw new Error('file_too_large')}
+  const boundary = `apex-${crypto.randomUUID()}`
+  const safeFilename = filename.replace(/[\r\n"]/g, '_')
+
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeFilename}"\r\nContent-Type: application/octet-stream\r\n\r\n`),
+    bytes,
+    Buffer.from(`\r\n--${boundary}--\r\n`)
+  ])
+
+  return new Promise((resolve, reject) => {
+    const request = electronNet.request({ method: 'POST', url, redirect: 'follow' })
+    request.setHeader('Authorization', `Bearer ${bearer}`)
+    request.setHeader('Content-Type', `multipart/form-data; boundary=${boundary}`)
+    request.setHeader('Accept', 'application/json')
+    let settled = false
+
+    const timer = setTimeout(() => {
+      request.abort()
+
+      if (!settled) { settled = true; reject(new Error('analysis_upload_timeout')) }
+    }, 90_000)
+
+    request.on('response', response => {
+      const chunks: Buffer[] = []
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      response.on('end', () => {
+        if (settled) {return}
+        settled = true
+        clearTimeout(timer)
+        const text = Buffer.concat(chunks).toString('utf8')
+
+        if ((response.statusCode || 500) >= 400) {
+          const error: any = new Error(text.slice(0, 300))
+          error.statusCode = response.statusCode
+          reject(error)
+
+          return
+        }
+
+        persistRenewedLoginToken(renewedTokenFromHeaders(response.headers), bearer)
+
+        try { resolve(JSON.parse(text)) } catch { reject(new Error('analysis_invalid_response')) }
+      })
+    })
+    request.on('error', error => {
+      if (settled) {return}
+      settled = true
+      clearTimeout(timer)
+      reject(error)
+    })
+    request.end(body)
+  })
+}
+
+async function analysisIpcContext(needPolicy = false) {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {throw new Error('sign_in')}
+  const bearer = String(resolveManagedConfig().accessToken || '')
+  const userId = managedAccountId(bearer)
+
+  if (!userId) {throw new Error('sign_in')}
+  const account = analysisAccountBoundary(userId, () => managedAccountId(resolveManagedConfig().accessToken))
+
+  // Local reads/notes keep working offline. New imports still fetch the current
+  // server policy, and all cloud operations are authorized by the server.
+  const policy: any = needPolicy
+    ? await account.run(() => context.transport.getJson(`${context.apiBase}/api/v1/account/analysis/storage-policy`))
+    : { user_id: userId, mode: 'local', cloud_storage_configured: false }
+
+  if (String(policy?.user_id || '').toLowerCase() !== userId.toLowerCase()) {throw new Error('analysis_policy_unavailable')}
+
+  account.assertCurrent()
+
+  return { ...context, ...account, transport: {
+    getJson: (url: string) => account.run(() => context.transport.getJson(url)),
+    postJson: (url: string, body: unknown) => account.run(() => context.transport.postJson(url, body)),
+    patchJson: (url: string, body: unknown) => account.run(() => context.transport.patchJson(url, body))
+  }, policy, root: app.getPath('userData'), url: `${context.apiBase}/api/v1/account/analysis/documents`, bearer }
+}
+
+function analysisIpcError(error: any): string {
+  const detail = (() => {
+    const message = String(error?.message || '')
+    const json = message.slice(message.indexOf('{'))
+
+    try { return JSON.parse(json)?.detail?.code } catch { return null }
+  })()
+
+  if (typeof detail === 'string') {return detail}
+
+  if (error?.statusCode === 401) {return 'sign_in'}
+
+  if (error?.statusCode === 403) {return 'permission_denied'}
+
+  return String(error?.message || 'request_failed').slice(0, 80)
+}
+
+function localAnalysisForRenderer(document: any) {
+  if (!document) {return null}
+  const { sourcePath: _sourcePath, ...safe } = document
+
+  return safe
+}
+
+async function processLocalAnalysisDocument(context: Awaited<ReturnType<typeof analysisIpcContext>>, id: string, attempt: string, filename: string, bytes: Buffer): Promise<void> {
+  let parsed: any = null
+  let errorCode = 'parse_failed'
+
+  try {
+    parsed = await context.run(() => analysisUploadFile(`${context.url}/parse`, context.bearer, filename, bytes))
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      throw new Error('analysis_policy_changed')
+    }
+  } catch (error) {
+    parsed = null
+    errorCode = analysisIpcError(error)
+  }
+
+  try {
+    completeLocalDocument(context.root, context.policy.user_id, id, attempt, parsed, errorCode)
+  } catch (error) {
+    rememberLog(`[analysis] local parse result could not be saved: ${analysisIpcError(error)}`)
+  }
+}
+
+ipcMain.handle('hermes:analysis:policy', async () => {
+  try {
+    const { policy } = await analysisIpcContext(true)
+
+    return { ok: true, policy }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:list', async () => {
+  try {
+    const context = await analysisIpcContext()
+    const local = listLocalDocuments(context.root, context.policy.user_id).map(localAnalysisForRenderer)
+    let cloud: any[] = []
+    let cloudUnavailable = false
+
+    try {
+      const remote: any = await context.transport.getJson(context.url)
+      cloud = (remote.items || []).map(item => ({ ...item, storageMode: 'cloud' }))
+    } catch { cloudUnavailable = true }
+
+    context.assertCurrent()
+
+    return { ok: true, cloudUnavailable, items: [...local, ...cloud].sort((a, b) => String(b.createdAt || b.created_at).localeCompare(String(a.createdAt || a.created_at))) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:import', async event => {
+  try {
+    const initial = await analysisIpcContext(true)
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
+      properties: ['openFile'],
+      filters: [{ name: 'Documents and subtitles', extensions: ['pdf', 'docx', 'xlsx', 'txt', 'md', 'srt', 'vtt'] }]
+    })
+
+    if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+    initial.assertCurrent()
+    const filePath = chosen.filePaths[0]
+    const size = fs.statSync(filePath).size
+
+    if (!size || size > 15 * 1024 * 1024) {return { ok: false, code: size ? 'file_too_large' : 'empty_file' }}
+
+    const bytes = fs.readFileSync(filePath)
+    const filename = path.basename(filePath)
+    const context = await analysisIpcContext(true)
+    initial.assertCurrent()
+
+    if (context.policy.mode === 'cloud') {
+      const response = await context.run(() => analysisUploadFile(context.url, context.bearer, filename, bytes))
+
+      return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
+    }
+
+    const item = createLocalPendingDocument(context.root, context.policy.user_id, filename, bytes)
+    void processLocalAnalysisDocument(context, item.id, item.parseAttempt!, filename, bytes)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:authorizeFeishu', async () => {
+  try {
+    const context = await analysisIpcContext(true)
+    const response: any = await context.transport.postJson(`${context.url}/feishu/authorize`, {})
+
+    if (!response.flow_id || !openExternalUrl(response.verification_url)) {return { ok: false, code: 'feishu_auth_invalid' }}
+
+    return { ok: true, flow_id: response.flow_id, verification_url: response.verification_url, interval: response.interval }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:pollFeishu', async (_event, flowId) => {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(String(flowId))) {return { ok: false, code: 'feishu_flow_not_found' }}
+    const context = await analysisIpcContext()
+    const response: any = await context.transport.getJson(`${context.url}/feishu/authorize/${flowId}`)
+
+    return { ok: true, status: response.status, interval: response.interval }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:forgetFeishu', async () => {
+  try {
+    const context = await analysisIpcContext()
+    await context.run(() => apexAuthDeleteJson(`${context.url}/feishu/authorize`, { bearer: context.bearer }))
+
+    return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:importLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext(true)
+    const url = String(sourceUrl || '').trim()
+
+    if (url.length > 2048) {return { ok: false, code: 'unsupported_feishu_link' }}
+
+    if (context.policy.mode === 'cloud') {
+      const result: any = await context.transport.postJson(`${context.url}/feishu`, { url })
+
+      return { ok: true, item: { ...result.item, storageMode: 'cloud' } }
+    }
+
+    const parsed: any = await context.transport.postJson(`${context.url}/feishu/parse`, { url })
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== 'local' || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    const item = createLocalFeishuDocument(context.root, context.policy.user_id, parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:resolveVideoLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext()
+    const url = String(sourceUrl || '').trim()
+
+    if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
+    const resolution = await context.transport.postJson(`${context.apiBase}/api/v1/account/analysis/video-links/resolve`, { url })
+
+    return { ok: true, resolution }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) => {
+  try {
+    const context = await analysisIpcContext(true)
+    const url = String(sourceUrl || '').trim()
+
+    if (!url || url.length > 2048) {return { ok: false, code: 'unsupported_video_link' }}
+
+    const response: any = await context.run(() => apexAuthPostJson(`${context.apiBase}/api/v1/account/analysis/video-links/transcribe`, {
+      body: { url, storage_mode: context.policy.mode }, bearer: context.bearer, timeoutMs: 1_850_000
+    }))
+
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== context.policy.mode || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    if (context.policy.mode === 'cloud') {
+      return response.item ? { ok: true, item: { ...response.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
+    }
+
+    const item = createLocalVideoTranscript(context.root, context.policy.user_id, response.parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:uploadVideo', async event => {
+  try {
+    const initial = await analysisIpcContext(true)
+
+    if (initial.policy.mode === 'cloud' && !initial.policy.cloud_storage_configured) {
+      return { ok: false, code: 'analysis_cloud_storage_unavailable' }
+    }
+
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(ownerWindow || undefined, {
+      properties: ['openFile'],
+      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'flv'] }]
+    })
+
+    if (chosen.canceled || !chosen.filePaths[0]) {return { ok: false, code: 'cancelled' }}
+
+    const context = await analysisIpcContext(true)
+
+    if (context.policy.mode !== initial.policy.mode || context.policy.user_id !== initial.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    const response = await context.run(() => uploadAnalysisVideo(
+      `${context.apiBase}/api/v1/account/analysis/video-links/upload-transcribe`,
+      context.bearer, chosen.filePaths[0], context.policy.mode,
+      (url, init) => electronNet.fetch(url, init)
+    ))
+
+    persistRenewedLoginToken(response.renewedToken, context.bearer)
+
+    const current = await analysisIpcContext(true)
+
+    if (current.policy.mode !== context.policy.mode || current.policy.user_id !== context.policy.user_id) {
+      return { ok: false, code: 'analysis_policy_changed' }
+    }
+
+    if (context.policy.mode === 'cloud') {
+      return response.body?.item ? { ok: true, item: { ...response.body.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
+    }
+
+    const item = createLocalUploadedVideoTranscript(context.root, context.policy.user_id, response.body?.parsed)
+
+    return { ok: true, item: localAnalysisForRenderer(item) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:get', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, id)
+
+      return item ? { ok: true, item: { ...localAnalysisForRenderer(item), analysis_scope: context.policy.user_id, analysis_revision: localOverviewRevision(item) } } : { ok: false, code: 'source_not_found' }
+    }
+
+    const [detail, notes, questions]: any[] = await Promise.all([
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`),
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/notes`),
+      context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/questions`)
+    ])
+
+    return { ok: true, item: { ...detail.item, analysis_scope: context.policy.user_id, storageMode: 'cloud', notes: notes.items, questions: questions.items } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+// Model inference stays on the stateless runtime RPC. Electron owns only account-scoped evidence and storage.
+async function analysisDerivedContext(id: string, scope: string, write = true) {
+  const context = await analysisIpcContext(write)
+
+  if (context.policy.user_id !== scope) {throw new Error('analysis_account_changed')}
+  const local = String(id).startsWith('local-')
+
+  if (write && !local && (context.policy.mode !== 'cloud' || !context.policy.cloud_storage_configured)) {
+    throw new Error('analysis_cloud_storage_disabled')
+  }
+
+  const source = local
+    ? getLocalDocument(context.root, scope, id)
+    : (await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}`) as any)?.item
+
+  if (!source) {throw new Error('source_not_found')}
+
+  // Policy/network awaits may outlive a sign-out. Never return old-account text to the new renderer.
+  if (managedAccountId(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+
+  const item = { ...localAnalysisForRenderer(source), analysis_scope: scope,
+    analysis_revision: local ? localOverviewRevision(source) : source.analysis_revision }
+
+  return { context, item, local }
+}
+
+ipcMain.handle('hermes:analysis:transcriptForDraft', async (_event, id, scope, revision) => {
+  try {
+    const { item } = await analysisDerivedContext(id, scope)
+
+    return { ok: true, text: fullVideoTranscript(item, scope, revision) }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:overviewContext', async (_event, id, scope) => {
+  try {
+    const { item } = await analysisDerivedContext(id, scope)
+    overviewEvidence(item)
+
+    return { ok: true, item }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:saveOverview', async (_event, id, scope, overview) => {
+  try {
+    const { context, item: source, local } = await analysisDerivedContext(id, scope)
+    overviewEvidence(source)
+
+    const item = local
+      ? saveLocalVideoOverview(context.root, scope, id, overview)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/video-overviews`, overview) as any).item
+
+    if (managedAccountId(resolveManagedConfig().accessToken) !== scope) {throw new Error('analysis_account_changed')}
+
+    return { ok: true, item }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+const sourceAnswerHandlers = createSourceAnswerHandlers({
+  context: analysisDerivedContext,
+  currentAccount: () => managedAccountId(resolveManagedConfig().accessToken),
+  error: analysisIpcError
+})
+
+ipcMain.handle('hermes:analysis:questionContext', sourceAnswerHandlers.questionContext)
+ipcMain.handle('hermes:analysis:saveAnswer', sourceAnswerHandlers.saveAnswer)
+
+const deepReportHandlers = createDeepReportHandlers({
+  context: analysisDerivedContext,
+  currentAccount: () => managedAccountId(resolveManagedConfig().accessToken),
+  error: analysisIpcError,
+  deleteCloud: (context, url) => apexAuthDeleteJson(url, { bearer: context.bearer }),
+  chooseFile: async (event: any) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+
+    const chosen = await dialog.showOpenDialog(owner || undefined, {
+      properties: ['openFile'], filters: [{ name: 'Analysis report', extensions: ['md', 'txt'] }]
+    })
+
+    return chosen.canceled ? null : chosen.filePaths[0] ?? null
+  }
+})
+
+ipcMain.handle('hermes:analysis:importDeepReport', deepReportHandlers.importReport)
+ipcMain.handle('hermes:analysis:prepareDeepWorkspace', deepReportHandlers.prepareWorkspace)
+ipcMain.handle('hermes:analysis:recordDeepChat', deepReportHandlers.recordChat)
+ipcMain.handle('hermes:analysis:readDeepChat', deepReportHandlers.readChat)
+ipcMain.handle('hermes:analysis:updateDeepChatOutcome', deepReportHandlers.updateChatOutcome)
+ipcMain.handle('hermes:analysis:collectDeepReport', deepReportHandlers.collectReport)
+ipcMain.handle('hermes:analysis:reviewDeepReport', deepReportHandlers.reviewReport)
+ipcMain.handle('hermes:analysis:deleteDeepReport', deepReportHandlers.deleteReport)
+
+ipcMain.handle('hermes:analysis:ask', async (_event, id, question) => {
+  try {
+    const context = await analysisIpcContext()
+    const input = String(question || '').trim()
+
+    if (input.length < 2 || input.length > 1000) {return { ok: false, code: 'invalid_question' }}
+
+    const item = String(id).startsWith('local-')
+      ? answerLocalDocument(context.root, context.policy.user_id, id, input)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/questions`, { question: input }) as any).item
+
+    return item ? { ok: true, item } : { ok: false, code: 'source_not_found' }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:addNote', async (_event, id, body, anchorId) => {
+  try {
+    const context = await analysisIpcContext()
+    const text = String(body || '').trim()
+
+    if (!text || text.length > 5000) {return { ok: false, code: 'invalid_note' }}
+
+    const item = String(id).startsWith('local-')
+      ? addLocalNote(context.root, context.policy.user_id, id, text, anchorId || null)
+      : (await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/notes`, { body: text, anchor_id: anchorId || null }) as any).item
+
+    return item ? { ok: true, item } : { ok: false, code: 'source_not_found' }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:deleteNote', async (_event, id, noteId) => {
+  try {
+    const context = await analysisIpcContext()
+
+    const ok = String(id).startsWith('local-')
+      ? removeLocalNote(context.root, context.policy.user_id, id, noteId)
+      : Boolean(await context.run(() => apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, { bearer: context.bearer })))
+
+    return { ok }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:retry', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext(String(id).startsWith('local-'))
+
+    if (String(id).startsWith('local-')) {
+      if (context.policy.mode !== 'local') {return { ok: false, code: 'analysis_policy_changed' }}
+      const retry = retryLocalDocument(context.root, context.policy.user_id, String(id))
+
+      if (!retry) {return { ok: false, code: 'source_not_found' }}
+      void processLocalAnalysisDocument(context, retry.document.id, retry.attempt, retry.document.filename, retry.bytes)
+
+      return { ok: true, item: localAnalysisForRenderer(retry.document) }
+    }
+
+    const response: any = await context.transport.postJson(`${context.url}/${encodeURIComponent(id)}/retry`, {})
+
+    return { ok: true, item: { ...response.item, storageMode: 'cloud' } }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:delete', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    const ok = String(id).startsWith('local-')
+      ? deleteLocalDocument(context.root, context.policy.user_id, id)
+      : Boolean(await context.run(() => apexAuthDeleteJson(`${context.url}/${encodeURIComponent(id)}`, { bearer: context.bearer })))
+
+    if (ok) {deleteAnalysisWorkspace(context.root, context.policy.user_id, id)}
+
+    return { ok }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:openSource', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+
+    if (String(id).startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, id)
+
+      if (!item) {return { ok: false, code: 'source_not_found' }}
+
+      return item.kind === 'feishu' || (item.kind === 'subtitle' && item.sourceUrl)
+        ? { ok: openExternalUrl(item.sourceUrl) }
+        : { ok: !(await shell.openPath(item.sourcePath)) }
+    }
+
+    const response: any = await context.transport.getJson(`${context.url}/${encodeURIComponent(id)}/download`)
+
+    if (!openExternalUrl(response.source_url || response.download_url)) {return { ok: false, code: 'download_unavailable' }}
+
+    return { ok: true }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
+
+ipcMain.handle('hermes:analysis:previewPdf', async (_event, id) => {
+  try {
+    const context = await analysisIpcContext()
+    const sourceId = String(id || '')
+    let bytes: Buffer
+
+    if (sourceId.startsWith('local-')) {
+      const item = getLocalDocument(context.root, context.policy.user_id, sourceId)
+
+      if (!item) {return { ok: false, code: 'source_not_found' }}
+
+      if (item.kind !== 'pdf' || item.status !== 'ready') {return { ok: false, code: 'preview_unsupported' }}
+
+      const localBytes = readLocalPdfPreview(context.root, context.policy.user_id, sourceId)
+
+      if (!localBytes) {return { ok: false, code: 'preview_unavailable' }}
+
+      bytes = localBytes
+    } else {
+      if (!/^[0-9a-f-]{36}$/i.test(sourceId)) {return { ok: false, code: 'source_not_found' }}
+
+      bytes = await context.run(() => apexAuthGetBuffer(`${context.url}/${sourceId}/preview`, {
+        bearer: context.bearer, maxBytes: 15 * 1024 * 1024
+      }))
+    }
+
+    if (!bytes.length || !bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+      return { ok: false, code: 'preview_unavailable' }
+    }
+
+    return { ok: true, data_url: `data:application/pdf;base64,${bytes.toString('base64')}` }
+  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+})
 
 function workflowDomainIpcError(error) {
   const statusCode = Number(error && error.statusCode) || 0
@@ -22088,6 +23104,18 @@ function workflowDomainIpcError(error) {
 
   if (statusCode === 403 || statusCode === 404) {
     return 'unavailable'
+  }
+
+  if (statusCode === 409 && typeof error?.message === 'string') {
+    try {
+      const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2))?.detail?.code
+
+      if (detail === 'project_not_ready' || detail === 'project_completed') {
+        return detail
+      }
+    } catch {
+      // Return the generic failure below for malformed server responses.
+    }
   }
 
   return 'request_failed'
@@ -22132,6 +23160,7 @@ ipcMain.handle('hermes:workflowDomain:startGoal', async (_event, payload) => {
   try {
     const run = await startWorkflowDomainGoal({
       apiBase: context.apiBase,
+      idempotencyKey: payload?.idempotencyKey,
       objective: payload?.objective,
       projectId: payload?.projectId,
       starter: payload?.starter || {},
@@ -22177,6 +23206,7 @@ ipcMain.handle('hermes:workflowDomain:startRun', async (_event, payload) => {
   try {
     const run = await startExistingWorkflowDomainRun({
       apiBase: context.apiBase,
+      idempotencyKey: payload?.idempotencyKey,
       objective: payload?.objective,
       workflowId: payload?.workflowId,
       transport: context.transport,
@@ -22236,6 +23266,70 @@ ipcMain.handle('hermes:workflowDomain:getProject', async (_event, projectId) => 
 
   try {
     const item = await getWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:getProjectCompletion', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const completion = await getWorkflowDomainProjectCompletion(context.apiBase, projectId, context.transport)
+
+    return { completion, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:updateProject', async (_event, payload) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await updateWorkflowDomainProject(context.apiBase, payload, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:completeProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await completeWorkflowDomainProject(context.apiBase, projectId, context.transport)
+
+    return { item, ok: true }
+  } catch (error) {
+    return { ok: false, code: workflowDomainIpcError(error) }
+  }
+})
+
+ipcMain.handle('hermes:workflowDomain:reopenProject', async (_event, projectId) => {
+  const context = workflowDomainIpcContext()
+
+  if (!context) {
+    return { ok: false, code: 'sign_in' }
+  }
+
+  try {
+    const item = await reopenWorkflowDomainProject(context.apiBase, projectId, context.transport)
 
     return { item, ok: true }
   } catch (error) {
@@ -22433,6 +23527,7 @@ ipcMain.handle('hermes:managed:status', async () => {
   const endpoints = resolveApexEndpoints(process.env)
   const managed = resolveManagedConfig()
   const account = managed.account || { email: '', name: '', plan: '' }
+  const runtimePending = managed.runtimePending || unpersistedManagedRotation || modelMutationMetadata.credentialRecovery()
 
   return {
     enabled: isManagedEnabled(process.env),
@@ -22441,7 +23536,9 @@ ipcMain.handle('hermes:managed:status', async () => {
     // → hc-511 behavior (relay 401 only surfaced on a chat send). Exposed here so
     // the renderer reads the same env the electron self-heal does.
     loginStateTruth: isLoginStateTruthEnabled(process.env),
-    signedIn: Boolean(managed.key),
+    signedIn: Boolean(managed.key) && !runtimePending,
+    runtimePending,
+    accountId: managed.key ? managedAccountId(managed.accessToken) : null,
     // True only when a reusable login JWT is on disk — i.e. a real cloud
     // sign-in that CAN self-heal a rotated/expired relay key. A seeded/env key
     // (e.g. a `*.local` release account or a CI-provisioned test key) has a
@@ -22476,14 +23573,9 @@ ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
     const refresh = Boolean(opts && opts.refresh)
 
     if (refresh || !lastRelayCatalogState.checkedAt) {
-      await probeRelayCatalogState()
-
-      if (lastRelayCatalogState.status === 'unauthorized') {
-        // Same chain as boot: re-provision with the stored JWT when allowed
-        // (shouldAttemptReprovision gates + cools down inside), which flips
-        // the remembered state to 'ok' on success.
-        await selfHealManagedKeyOn401()
-      }
+      // Shared probe/recovery also owns catalog receipt settlement, so an old
+      // account's late probe cannot populate a new account's catalog cache.
+      await selfHealManagedKeyOn401()
     }
   } catch (error: any) {
     rememberLog(`[apexnodes] relay catalog probe failed: ${error && error.message ? error.message : error}`)
@@ -22497,6 +23589,10 @@ ipcMain.handle('hermes:managed:relayCatalog', async (_event, opts) => {
 // result (server-truth base_url + model), not env defaults. When provision-key
 // wasn't available, assignment is null and the renderer falls back to BYOK.
 function managedSignInResultPayload(result) {
+  if (result.ok === false) {
+    return { ok: false, hasRelayKey: Boolean(result.hasRelayKey), assignment: null, message: result.message || 'MODEL_RUNTIME_UNAVAILABLE', localRuntime: result.localRuntime }
+  }
+
   if (!result.hasRelayKey) {
     return { ok: true, hasRelayKey: false, assignment: null }
   }
@@ -22516,7 +23612,9 @@ function managedSignInResultPayload(result) {
       provider: block.provider,
       model: block.default,
       base_url: block.base_url,
-      api_key: block.api_key
+      api_key: block.api_key,
+      ...(result.modelAssignment || {}),
+      ...(result.modelReceipt ? { desktop_managed_receipt: result.modelReceipt } : {})
     }
   }
 }
@@ -22547,12 +23645,15 @@ ipcMain.handle('hermes:managed:signIn', async (_event, payload) => {
     return { ok: false, message: 'EMPTY_FIELDS' }
   }
 
+  const intent = managedAuthIntent.begin()
+  const target = captureModelMutationScope(payload)
+
   try {
-    const result = await apexManagedSignIn({ email, password })
+    const result = await apexManagedSignIn({ email, password }, intent, target)
 
     return managedSignInResultPayload(result)
   } catch (error: any) {
-    return { ok: false, message: managedSignInErrorMessage(error) }
+    return { ok: false, message: managedSignInErrorMessage(error), localRuntime: error?.localRuntime }
   }
 })
 
@@ -22570,6 +23671,8 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
   }
 
   let loopback = null
+  const intent = managedAuthIntent.begin()
+  const target = captureModelMutationScope(payload)
 
   try {
     loopback = await startLoopbackLogin()
@@ -22591,13 +23694,13 @@ ipcMain.handle('hermes:managed:browserSignIn', async (_event, payload) => {
 
     // Block until the browser redirects back (or the watchdog/abort fires).
     const { token } = await loopback.result
-    const result = await provisionManagedFromAccessToken(token)
+    const result = await provisionManagedFromAccessToken(token, null, intent, target)
 
     return managedSignInResultPayload(result)
   } catch (error: any) {
     loopback.close()
 
-    return { ok: false, message: managedSignInErrorMessage(error) }
+    return { ok: false, message: managedSignInErrorMessage(error), localRuntime: error?.localRuntime }
   }
 })
 
@@ -22635,13 +23738,16 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
     return { ok: false, message: 'EMPTY_FIELDS' }
   }
 
+  const intent = managedAuthIntent.begin()
+  const target = captureModelMutationScope(payload)
+
   try {
     const token = await exchangeHandoffCodeForToken(code)
-    const result = await provisionManagedFromAccessToken(token)
+    const result = await provisionManagedFromAccessToken(token, null, intent, target)
 
     return managedSignInResultPayload(result)
   } catch (error: any) {
-    return { ok: false, message: managedSignInErrorMessage(error) }
+    return { ok: false, message: managedSignInErrorMessage(error), localRuntime: error?.localRuntime }
   }
 })
 
@@ -22652,6 +23758,16 @@ ipcMain.handle('hermes:managed:deepLinkSignIn', async (_event, payload) => {
 ipcMain.handle('hermes:managed:signOut', async () => {
   const managed = resolveManagedConfig()
   const envKey = String(process.env.APEXNODES_RELAY_KEY || '').trim()
+
+  // Explicit logout stops background recovery before awaiting either fence.
+  // A failed revoke/removal keeps that intent so self-heal cannot undo it.
+  if (managed.accessToken && !envKey) {
+    try {deferManagedRuntimeRecovery()} catch {return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }}
+  }
+
+  const intent = managedAuthIntent.begin()
+  const generation = managedCredentialLifetime.current()
+  const isCurrent = () => intent() && generation === managedCredentialLifetime.current()
   const endpoints = resolveApexEndpoints(process.env)
 
   return signOutManagedDevice({
@@ -22660,10 +23776,21 @@ ipcMain.handle('hermes:managed:signOut', async () => {
     deviceInstanceId: desktopDeviceInstanceId(),
     envKey,
     managedKey: managed.key,
+    isCurrent,
+    prepare: () => desktopModelMutations.fence(isCurrent),
     revoke: async body => {
-      const result = await apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), {
-        bearer: managed.accessToken as string,
-        body
+      const result = await requestRevisionedManagedKeyMutation({
+        capabilities: () => apexAuthBodylessJson('GET', `${endpoints.provisionKeyUrl}/capabilities`, { bearer: managed.accessToken }),
+        nextRevision: () => modelMutationMetadata.nextProvisionRevision(),
+        issue: revision => apexAuthPostJson(provisionKeyRevokeUrl(endpoints.provisionKeyUrl), {
+          bearer: managed.accessToken, body: { ...body, provision_revision: revision }
+        }),
+        isCurrent,
+        beginMutation: beginManagedKeyMutationRecovery,
+        recordUnknownMutation: () => {
+          unpersistedManagedRotation = true
+          modelMutationMetadata.markCredentialRecovery(true)
+        }
       })
 
       requireRevokedDeviceKey(result)
@@ -22671,36 +23798,68 @@ ipcMain.handle('hermes:managed:signOut', async () => {
   })
 })
 
+ipcMain.handle('hermes:managed:cancelPending', deferManagedRuntimeRecovery)
+
 // selfHeal: on-demand relay-key recovery, triggered by the renderer when a chat
 // turn fails with a relay auth error (HTTP 401/403). Runs the SAME gated probe +
 // re-provision as the boot self-heal and reports the outcome so the renderer can
 // either apply the fresh key + retry once (healed), or route to re-sign-in when
 // there is no reusable login token (a `*.local`/env seed key, or an expired JWT)
 // — turning a silent 401 loop into a visible, actionable state. Never throws.
-ipcMain.handle('hermes:managed:selfHeal', async () => {
-  const outcome = await selfHealManagedKeyOn401()
+ipcMain.handle('hermes:managed:selfHeal', async (_event, payload) => {
+  const scope = captureModelMutationScope(payload)
+  const intent = managedAuthIntent.capture()
+  const outcome = await selfHealManagedKeyOn401(scope)
+  const generation = managedCredentialLifetime.current()
+  const current = intent() && (!('generation' in outcome) || outcome.generation === generation)
+  const relayUnauthorized = current && Boolean(outcome.relayUnauthorized)
+  const healed = relayUnauthorized && Boolean(outcome.healed)
 
-  // Relay accepted the key (or managed off / no key): not a managed-relay auth
-  // problem — let the renderer's generic error path surface it.
-  if (!outcome || !outcome.relayUnauthorized) {
-    return { ok: true, relayUnauthorized: false, healed: false, needsSignIn: false, assignment: null }
-  }
+  let assignment = current && 'assignment' in outcome && 'completionScope' in outcome &&
+    outcome.completionScope?.connectionId === scope.connectionId && outcome.completionScope?.profile === scope.profile
+    ? outcome.assignment : null
 
-  if (outcome.healed) {
-    // Fresh key on disk + config.yaml re-synced; hand back the assignment so the
-    // renderer applies it via /api/model/set (same path as sign-in) and retries.
-    return {
-      ok: true,
-      relayUnauthorized: true,
-      healed: true,
-      needsSignIn: false,
-      assignment: managedSignInResultPayload({ hasRelayKey: true }).assignment
+  let runtimeRestored = current && Boolean(assignment) && !healed
+
+  if (current && healed && !assignment) {
+    const owner = () => intent() && generation === managedCredentialLifetime.current()
+
+    try {
+      const target = await desktopModelMutations.resolveTarget(scope)
+      const completed = await finishManagedModelRuntime(target, owner)
+      assignment = managedSignInResultPayload({ hasRelayKey: true, ...completed }).assignment
+    } catch {
+      return { ok: false, relayUnauthorized, healed: false, needsSignIn: false, probeStatus: 'unknown', assignment: null }
     }
   }
 
-  // Could not heal (no token, or the stored JWT is itself expired) → the user
-  // must sign in again. Honest, visible state instead of a silent 401 loop.
-  return { ok: true, relayUnauthorized: true, healed: false, needsSignIn: true, assignment: null }
+  if (current && !assignment && outcome.probeStatus === 'ok' && !resolveManagedConfig().runtimeRecoveryOptOut) {
+    const owner = () => intent() && generation === managedCredentialLifetime.current()
+
+    try {
+      const target = await desktopModelMutations.resolveTarget(scope)
+      const managedAssignment = managedSignInResultPayload({ hasRelayKey: true }).assignment
+
+      if (await managedRuntimeNeedsRepair(target, managedAssignment, desktopModelMutations)) {
+        const completed = await finishManagedModelRuntime(target, owner)
+        assignment = managedSignInResultPayload({ hasRelayKey: true, ...completed }).assignment
+        runtimeRestored = true
+      }
+    } catch {
+      return { ok: false, relayUnauthorized, healed: false, runtimeRestored: false,
+        needsSignIn: false, probeStatus: 'ok', assignment: null }
+    }
+  }
+
+  return {
+    ok: current && outcome.ok,
+    relayUnauthorized,
+    healed,
+    runtimeRestored,
+    needsSignIn: relayUnauthorized && 'needsSignIn' in outcome && Boolean(outcome.needsSignIn),
+    probeStatus: current && 'probeStatus' in outcome ? outcome.probeStatus : 'unknown',
+    assignment
+  }
 })
 
 // ── hc-444: Feishu bridge (renderer surface) ────────────────────────────────
@@ -23424,6 +24583,7 @@ async function connectAgentAccount(family) {
       if (settled) {
         return
       }
+
       settled = true
       resolve({ ...result, guideCommand: spec.guide })
     }
@@ -23449,16 +24609,19 @@ async function connectAgentAccount(family) {
     if (child.stderr) {
       child.stderr.on('data', onChunk)
     }
+
     child.on('error', err => {
       if (activeAgentLogin[family] === child) {
         activeAgentLogin[family] = null
       }
+
       finish({ ok: false, mode: err && err.code === 'ENOENT' ? 'no_cli' : 'guide', reason: 'spawn_error' })
     })
     child.on('exit', code => {
       if (activeAgentLogin[family] === child) {
         activeAgentLogin[family] = null
       }
+
       // Exited before we saw/opened a URL: 0 = already completed; else degrade.
       finish(code === 0 ? { ok: true, mode: 'completed' } : { ok: false, mode: 'guide', reason: 'exited' })
     })

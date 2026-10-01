@@ -66,10 +66,32 @@ class PromptSubmitResult(Result):
     survivor_user_row_ids: list[int | None] | None = None
     survivor_row_id_map: dict[str, int | None] | None = None
     turn_isolation: bool | None = None
+    turn_id: str | None = None  # exact inline attempt; absent on older/queued/compute-host paths
 
 
 method("prompt.submit", params=PromptSubmitParams, result=PromptSubmitResult,
        doc="Send a user turn to a live session; busy sessions queue / steer / redirect instead of refusing.")
+
+
+class PromptTurnState(WireEnum):
+    running = "running"
+    complete = "complete"
+    error = "error"
+    interrupted = "interrupted"
+    unavailable = "unavailable"
+
+
+class PromptTurnStatusParams(SessionParams):
+    turn_id: str = Field(min_length=1, max_length=64)
+
+
+class PromptTurnStatusResult(Result):
+    turn_id: str
+    status: PromptTurnState
+
+
+method("prompt.turn.status", params=PromptTurnStatusParams, result=PromptTurnStatusResult,
+       doc="Exact accepted inline attempt outcome on its runtime session; bounded, process-local, never inferred from chat idle state.")
 
 
 # ── attachments ───────────────────────────────────────────────────────────────────────────────

@@ -12,6 +12,17 @@ export interface WorkflowDomainBridge {
     name: string
     objective: string
   }) => Promise<{ item?: WorkflowProject; ok: boolean }>
+  updateProject?: (payload: { name: string; objective: string; projectId: string }) => Promise<{
+    code?: string
+    item?: WorkflowProject
+    ok: boolean
+  }>
+  completeProject?: (projectId: string) => Promise<{ code?: string; item?: WorkflowProject; ok: boolean }>
+  reopenProject?: (projectId: string) => Promise<{ code?: string; item?: WorkflowProject; ok: boolean }>
+  getProjectCompletion?: (projectId: string) => Promise<{
+    completion?: WorkflowProjectCompletion
+    ok: boolean
+  }>
   createWorkflow?: (payload: {
     objective: string
     projectId: string
@@ -45,11 +56,12 @@ export interface WorkflowDomainBridge {
   retryRunStep?: (payload: { runId: string; stepKey: string }) => Promise<{ ok: boolean }>
   openUserFile?: (fileId: string) => Promise<{ ok: boolean }>
   startGoal: (payload: {
+    idempotencyKey?: string
     objective: string
     projectId?: string
     starter: { description: string; id: string; name: string; slug: string; version: number }
   }) => Promise<{ ok: boolean; run?: { id: string } }>
-  startRun?: (payload: { objective: string; workflowId: string }) => Promise<{ ok: boolean; run?: { id: string } }>
+  startRun?: (payload: { idempotencyKey?: string; objective: string; workflowId: string }) => Promise<{ ok: boolean; run?: { id: string } }>
 }
 
 export interface WorkflowReview {
@@ -172,6 +184,15 @@ export interface WorkflowProject {
   // those real projects without inventing run/progress data.
   summary?: WorkflowProjectSummary
   updatedAt: string
+}
+
+export interface WorkflowProjectCompletion {
+  canComplete: boolean
+  projectStatus: string
+  readyForReview: boolean
+  workflowSucceeded: number
+  workflowTotal: number
+  workflowStates: Array<{ runId: null | string; runStatus: null | string; workflowId: string }>
 }
 
 export interface WorkflowProjectListResult {

@@ -870,10 +870,13 @@ export interface AnalyticsTotals {
 }
 
 export interface CronJob {
+  /** Last execution/delivery outcome; scheduling lifecycle remains in state. */
+  last_status?: null | string
   deliver?: null | string
   enabled: boolean
   id: string
   last_error?: null | string
+  last_delivery_error?: null | string
   last_run_at?: null | string
   model?: null | string
   name?: null | string
@@ -1465,6 +1468,8 @@ export interface MoaConfigResponse {
 }
 
 export interface ModelAssignmentRequest {
+  /** Native acknowledgement of an already-applied managed assignment. */
+  desktop_managed_receipt?: string
   /** Optional API key for a custom/local endpoint. Persisted to model.api_key
    *  (where the runtime reads it) for self-hosted endpoints that require auth.
    *  Only honored for custom/local providers on the main slot. */

@@ -114,10 +114,11 @@ def _config_str(*keys: str, default: str) -> str:
 
 def _write_config_value(section: str, key: str, value: Any) -> None:
     """Persist ``config[section][key] = value`` to config.yaml (creating the section)."""
-    from hermes_cli.config import load_config, save_config
-    config = load_config()
-    config.setdefault(section, {})[key] = value
-    save_config(config)
+    from hermes_cli.config import mutate_config
+
+    def edit(config):
+        config.setdefault(section, {})[key] = value
+    mutate_config(edit)
 
 
 def _scan_on_install_enabled() -> bool:
@@ -981,11 +982,12 @@ def _resolve_plugin_key_and_source(name: str) -> Optional[tuple]:
 
 def _set_plugin_entry_flag(plugin_id: str, key: str, value: bool) -> None:
     """Write ``plugins.entries.<plugin_id>.<key> = value`` into config.yaml."""
-    from hermes_cli.config import load_config, save_config
-    config = load_config()
-    entry = _child_dict(_child_dict(_child_dict(config, "plugins"), "entries"), plugin_id)
-    entry[key] = bool(value)
-    save_config(config)
+    from hermes_cli.config import mutate_config
+
+    def edit(config):
+        entry = _child_dict(_child_dict(_child_dict(config, "plugins"), "entries"), plugin_id)
+        entry[key] = bool(value)
+    mutate_config(edit)
 
 
 def cmd_enable(name: str, allow_tool_override: Optional[bool] = None) -> None:
@@ -1798,20 +1800,29 @@ def _toggle_plugin_toolset(name: str, *, enable: bool) -> None:
     toolset_key = _get_plugin_toolset_key(name)
     if not toolset_key:
         return
-    from hermes_cli.config import load_config, save_config
-    config = load_config()
-    platform_toolsets = _child_dict(config, "platform_toolsets")
-    changed = False
-    for ts_list in platform_toolsets.values():
-        if isinstance(ts_list, list) and enable != (toolset_key in ts_list):
-            (ts_list.append if enable else ts_list.remove)(toolset_key)
+    from hermes_cli.config import mutate_config
+
+    class UnchangedToolsets(Exception):
+        pass
+
+    def edit(config):
+        platform_toolsets = _child_dict(config, "platform_toolsets")
+        changed = False
+        for ts_list in platform_toolsets.values():
+            if isinstance(ts_list, list) and enable != (toolset_key in ts_list):
+                (ts_list.append if enable else ts_list.remove)(toolset_key)
+                changed = True
+        # Enabling with no platform lists yet: seed "cli" at minimum.
+        if enable and not changed and not platform_toolsets:
+            platform_toolsets["cli"] = [toolset_key]
             changed = True
-    # Enabling with no platform lists yet: seed "cli" at minimum.
-    if enable and not changed and not platform_toolsets:
-        platform_toolsets["cli"] = [toolset_key]
-        changed = True
-    if changed:
-        save_config(config)
+        if not changed:
+            raise UnchangedToolsets
+
+    try:
+        mutate_config(edit)
+    except UnchangedToolsets:
+        pass
 
 
 def dashboard_set_agent_plugin_enabled(name: str, *, enabled: bool) -> dict[str, Any]:

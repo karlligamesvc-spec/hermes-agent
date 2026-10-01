@@ -29,6 +29,7 @@ type JsonObject = Record<string, unknown>
 
 export interface WorkflowDomainTransport {
   getJson: (url: string) => Promise<unknown>
+  patchJson?: (url: string, body: JsonObject) => Promise<unknown>
   postJson: (url: string, body: JsonObject) => Promise<unknown>
 }
 
@@ -42,6 +43,7 @@ export interface WorkflowDomainStarter {
 
 export interface StartWorkflowDomainGoalOptions {
   apiBase: string
+  idempotencyKey?: string
   objective: string
   projectId?: string
   starter: WorkflowDomainStarter
@@ -59,6 +61,7 @@ export interface CreateWorkflowDomainDefinitionOptions {
 
 export interface StartExistingWorkflowDomainRunOptions {
   apiBase: string
+  idempotencyKey?: string
   objective: string
   workflowId: string
   transport: Pick<WorkflowDomainTransport, 'postJson'>
@@ -682,6 +685,85 @@ export async function getWorkflowDomainProject(
   )
 }
 
+export async function getWorkflowDomainProjectCompletion(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'getJson'>
+) {
+  const id = uuidText(projectId, 'project id')
+  const body = requireObject(
+    await transport.getJson(workflowDomainUrl(apiBase, `projects/${id}/completion`)),
+    'project completion'
+  )
+  const states = body.workflowStates
+
+  if (!Array.isArray(states) || typeof body.readyForReview !== 'boolean' || typeof body.canComplete !== 'boolean') {
+    throw new Error('Invalid workflow domain project completion response')
+  }
+
+  return {
+    projectStatus: requireText(body.projectStatus, 'project status', 24),
+    workflowTotal: requireInteger(body.workflowTotal, 'workflow total'),
+    workflowSucceeded: requireInteger(body.workflowSucceeded, 'workflow succeeded'),
+    readyForReview: body.readyForReview,
+    canComplete: body.canComplete,
+    workflowStates: states.map(value => {
+      const state = requireObject(value, 'workflow state')
+
+      return {
+        workflowId: uuidText(state.workflowId, 'workflow id'),
+        runId: state.runId ? uuidText(state.runId, 'run id') : null,
+        runStatus: optionalText(state.runStatus, 24)
+      }
+    })
+  }
+}
+
+export async function updateWorkflowDomainProject(
+  apiBase: string,
+  input: { name: string; objective: string; projectId: string },
+  transport: WorkflowDomainTransport & { patchJson: (url: string, body: JsonObject) => Promise<unknown> }
+): Promise<JsonObject> {
+  const id = uuidText(input.projectId, 'project id')
+  const name = requireText(input.name, 'project name', 200)
+  const objective = trimmed(input.objective)
+
+  if (objective.length > 4000) {
+    throw new Error('Invalid workflow domain objective')
+  }
+
+  return responseItem(
+    await transport.patchJson(workflowDomainUrl(apiBase, `projects/${id}`), { name, objective }),
+    'project'
+  )
+}
+
+export async function completeWorkflowDomainProject(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+): Promise<JsonObject> {
+  const id = uuidText(projectId, 'project id')
+
+  return responseItem(
+    await transport.postJson(workflowDomainUrl(apiBase, `projects/${id}/complete`), {}),
+    'project'
+  )
+}
+
+export async function reopenWorkflowDomainProject(
+  apiBase: string,
+  projectId: string,
+  transport: Pick<WorkflowDomainTransport, 'postJson'>
+): Promise<JsonObject> {
+  const id = uuidText(projectId, 'project id')
+
+  return responseItem(
+    await transport.postJson(workflowDomainUrl(apiBase, `projects/${id}/reopen`), {}),
+    'project'
+  )
+}
+
 export async function listWorkflowDomainWorkflows(
   apiBase: string,
   options: { cursor?: string; limit?: number; projectId?: string; status?: string },
@@ -737,40 +819,16 @@ export async function createWorkflowDomainProject(options: CreateWorkflowDomainP
 
 export async function startWorkflowDomainGoal(options: StartWorkflowDomainGoalOptions): Promise<JsonObject> {
   const objective = requireText(options.objective, 'objective', 4000)
-  // Invalid catalog data must not leave a newly-created Project orphaned.
-  validatedWorkflowStarter(options.starter)
-
-  const projectId = options.projectId
-    ? requireText(options.projectId, 'project id', 160)
-    : requireText(
-        (
-          await createWorkflowDomainProject({
-            apiBase: options.apiBase,
-            createdFrom: 'desktop_start',
-            name: workflowProjectName(objective),
-            objective,
-            transport: options.transport
-          })
-        ).id,
-        'project id',
-        160
-      )
-
-  const workflow = await createWorkflowDomainDefinition({
-    apiBase: options.apiBase,
+  const { description, name, slug, templateId, templateVersion } = validatedWorkflowStarter(options.starter)
+  const projectId = options.projectId ? requireText(options.projectId, 'project id', 160) : undefined
+  const run = responseItem(await options.transport.postJson(workflowDomainUrl(options.apiBase, 'start-goal'), {
     objective,
-    projectId,
-    starter: options.starter,
-    transport: options.transport
-  })
+    ...(projectId ? { projectId } : {}),
+    starter: { description, name, slug, id: templateId, version: templateVersion },
+    idempotencyKey: requireText(options.idempotencyKey ?? `desktop:${options.uuid()}`, 'idempotency key', 160)
+  }), 'run')
 
-  return startExistingWorkflowDomainRun({
-    apiBase: options.apiBase,
-    objective,
-    workflowId: requireText(workflow.id, 'workflow id', 160),
-    transport: options.transport,
-    uuid: options.uuid
-  })
+  return { id: requireText(run.id, 'run id', 160) }
 }
 
 function validatedWorkflowStarter(starter: WorkflowDomainStarter) {
@@ -850,7 +908,7 @@ export async function startExistingWorkflowDomainRun(
   const run = responseItem(
     await options.transport.postJson(workflowDomainUrl(options.apiBase, 'runs'), {
       workflowId,
-      idempotencyKey: `desktop:${options.uuid()}`,
+      idempotencyKey: requireText(options.idempotencyKey ?? `desktop:${options.uuid()}`, 'idempotency key', 160),
       ...(objective ? { triggerRef: objective } : {}),
       executorType: 'hermes',
       maxAttempts: 2

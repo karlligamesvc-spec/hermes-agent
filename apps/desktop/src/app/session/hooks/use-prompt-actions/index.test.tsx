@@ -5913,3 +5913,36 @@ describe('usePromptActions live-owner refusal (#106217)', () => {
     expect(requestGateway.mock.calls.map(c => c[0])).toEqual(['prompt.submit'])
   })
 })
+
+// hc-890: observers receive the actual accepted durable target, never current selection or a failed send.
+it.each(['accepted', 'refused', 'not_streaming', 'empty_ack', 'with_turn', 'selection_changed', 'observer_failed'] as const)('reports submit acceptance without changing send semantics: %s', async mode => {
+  const selected = { current: 'stored-target' as string | null }
+  const onAccepted = vi.fn(async () => {if (mode === 'observer_failed') {throw new Error('receipt disk failed')}})
+
+  const requestGateway = vi.fn(async (method: string) => {
+    if (method === 'prompt.submit') {
+      if (mode === 'refused') {throw new Error('submit refused')}
+
+      if (mode === 'empty_ack') {return undefined}
+
+      if (mode === 'with_turn') {return { status: 'streaming', turn_id: 'accepted-turn' }}
+
+      if (mode === 'selection_changed') {selected.current = 'another-chat'}
+
+      return mode === 'not_streaming' ? { voice_stopped: true } : { status: 'streaming' }
+    }
+
+    return {}
+  }) as never
+
+  let handle: HarnessHandle | null = null
+  await actRender(<Harness onReady={h => { handle = h }} refreshSessions={vi.fn(async () => {})}
+    requestGateway={requestGateway} selectedStoredSessionIdRef={selected} storedSessionId="stored-target" />)
+  let sent: boolean | undefined
+  await act(async () => {sent = await handle!.submitTextRaw('A reviewed request', { onAccepted })})
+  expect(sent).toBe(mode !== 'refused')
+
+  if (mode === 'refused' || mode === 'not_streaming' || mode === 'empty_ack') {expect(onAccepted).not.toHaveBeenCalled()}
+  else if (mode === 'with_turn') {expect(onAccepted).toHaveBeenCalledExactlyOnceWith({ storedSessionId: 'stored-target', turn: { id: 'accepted-turn', runtimeSessionId: RUNTIME_SESSION_ID } })}
+  else {expect(onAccepted).toHaveBeenCalledExactlyOnceWith({ storedSessionId: 'stored-target' })}
+})

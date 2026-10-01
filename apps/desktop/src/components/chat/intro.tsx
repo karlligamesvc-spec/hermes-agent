@@ -1,6 +1,8 @@
+import { AccountWorkspace } from '@/app/account-workspace'
 import { BusinessStartHome } from '@/app/business-workspace/start-home'
 import type { ChatBarState } from '@/app/chat/composer/types'
 import { ScenarioShelf } from '@/app/chat/scenarios/scenario-shelf'
+import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { useI18n } from '@/i18n'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
 import type { ComposerAttachment } from '@/store/composer'
@@ -15,7 +17,7 @@ export type IntroProps = {
   onPickFolders?: () => void
   onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
-  onSubmitGoal?: (goal: string) => Promise<boolean> | boolean
+  onSubmitGoal?: (goal: string, options?: SubmitTextOptions) => Promise<boolean> | boolean
   personality?: string
   seed?: number
 }
@@ -53,6 +55,7 @@ export function Intro({
       data-slot="aui_intro"
     >
       {businessWorkspaceEnabled ? (
+        <AccountWorkspace>
         <BusinessStartHome
           attachments={attachments}
           goalDisabled={goalDisabled}
@@ -63,6 +66,7 @@ export function Intro({
           onRemoveAttachment={onRemoveAttachment}
           onSubmitGoal={onSubmitGoal}
         />
+        </AccountWorkspace>
       ) : (
         <>
           <div>

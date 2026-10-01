@@ -4,6 +4,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 
+import type { AnalysisDocumentsBridge } from './app/business-workspace/analysis-types'
 import type { WakeIndicatorState } from './lib/wake-indicator'
 import type {
   PetOverlayBounds,
@@ -271,19 +272,20 @@ declare global {
         // re-probes now (menu open / user retry); a 401 kicks the key
         // self-heal chain before reporting.
         relayCatalog?: (opts?: { refresh?: boolean }) => Promise<DesktopRelayCatalogState>
-        signIn: (payload: { email: string; password: string }) => Promise<DesktopManagedSignInResult>
+        signIn: (payload: { email: string; password: string; target?: DesktopManagedModelTarget }) => Promise<DesktopManagedSignInResult>
         // Browser (loopback) sign-in: "用 Google 登录" / "用 APEX 登录". Opens
         // the system browser, catches the loopback redirect, and resolves with
         // the same managed assignment shape the email/password flow returns.
-        browserSignIn: (payload: { provider: 'apex' | 'google' }) => Promise<DesktopManagedSignInResult>
+        browserSignIn: (payload: { provider: 'apex' | 'google'; target?: DesktopManagedModelTarget }) => Promise<DesktopManagedSignInResult>
         // hc-530: web handoff sign-in. Exchange the one-time code delivered via the
         // apexnodes://login deep link for the same managed assignment shape.
         // Optional: an older main process may not expose it.
-        deepLinkSignIn?: (payload: { code: string }) => Promise<DesktopManagedSignInResult>
+        deepLinkSignIn?: (payload: { code: string; target?: DesktopManagedModelTarget }) => Promise<DesktopManagedSignInResult>
         signOut: () => Promise<{ ok: boolean }>
         // On-demand relay-key self-heal after a chat turn hit a relay auth error
         // (HTTP 401/403). Optional: an older main process may not expose it.
-        selfHeal?: () => Promise<DesktopManagedSelfHealResult>
+        selfHeal?: (payload?: { target: DesktopManagedModelTarget }) => Promise<DesktopManagedSelfHealResult>
+        cancelPending?: () => Promise<void>
       }
       // hc-795: authenticated workflow business-domain bridge. The main
       // process owns the reusable platform JWT; only typed domain data crosses
@@ -303,13 +305,21 @@ declare global {
         createWorkflow?: (
           payload: DesktopWorkflowDomainCreateWorkflowInput
         ) => Promise<DesktopWorkflowDomainCreateWorkflowResult>
-        startRun?: (payload: { objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
+        startRun?: (payload: { idempotencyKey?: string; objective: string; workflowId: string }) => Promise<DesktopWorkflowDomainStartResult>
         listProjects?: (options?: {
           cursor?: string
           limit?: number
           status?: string
         }) => Promise<DesktopWorkflowDomainProjectListResult>
         getProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
+        getProjectCompletion?: (projectId: string) => Promise<DesktopWorkflowDomainProjectCompletionResult>
+        updateProject?: (payload: {
+          name: string
+          objective: string
+          projectId: string
+        }) => Promise<DesktopWorkflowDomainProjectResult>
+        completeProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
+        reopenProject?: (projectId: string) => Promise<DesktopWorkflowDomainProjectResult>
         listWorkflows?: (options?: {
           cursor?: string
           limit?: number
@@ -341,6 +351,7 @@ declare global {
         }) => Promise<DesktopWorkflowDomainMutationResult>
         openUserFile?: (fileId: string) => Promise<DesktopWorkflowDomainMutationResult>
       }
+      analysisDocuments?: AnalysisDocumentsBridge
       // hc-444: desktop ↔ cloud Feishu bridge. Mirrors the signed-in user's OWN
       // Feishu app credential (from the cloud agent_entries) down to the local
       // runtime so the Feishu adapter + lark doc/drive tools light up. No secret
@@ -434,6 +445,7 @@ declare global {
       // Continuous auth gate: fires when a backend call returns 401 (login lost)
       // or 403 account_disabled (account abnormal). The renderer clears auth and
       // returns to the login screen. See electron/main.cjs broadcastAuthGate.
+      onManagedAccountChanged?: (callback: () => void) => () => void
       onAuthGate?: (callback: (payload: DesktopAuthGateEvent) => void) => () => void
       // Runtime 3-end consistency — desktop opt-in engine update (R5/R6).
       // checkUpdate compares the installed engine (bootstrap marker) against the
@@ -1534,6 +1546,8 @@ export type DesktopBootstrapEvent =
     }
 
 export interface HermesApiRequest {
+  /** Display-safe initiator identity; Native compares against its current credential owner. */
+  managedOwner?: string | null
   path: string
   method?: string
   body?: unknown
@@ -1765,6 +1779,9 @@ export interface BackendExit {
 // ---------------------------------------------------------------------------
 
 export interface DesktopManagedStatus {
+  runtimePending?: boolean
+  /** UUID subject for account-owned renderer caches, never a credential. */
+  accountId?: string | null
   // The relay base_url the managed config points at (e.g.
   // https://apex-nodes.com/relay/v1).
   baseUrl: string
@@ -1805,6 +1822,7 @@ export interface DesktopWorkflowDomainAccess {
 }
 
 export interface DesktopWorkflowDomainStartGoalInput {
+  idempotencyKey?: string
   objective: string
   projectId?: string
   starter: {
@@ -1853,6 +1871,21 @@ export interface DesktopWorkflowDomainProject {
   updatedAt: string
 }
 
+export interface DesktopWorkflowDomainProjectCompletion {
+  canComplete: boolean
+  projectStatus: string
+  readyForReview: boolean
+  workflowSucceeded: number
+  workflowTotal: number
+  workflowStates: Array<{ runId: null | string; runStatus: null | string; workflowId: string }>
+}
+
+export interface DesktopWorkflowDomainProjectCompletionResult {
+  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  completion?: DesktopWorkflowDomainProjectCompletion
+  ok: boolean
+}
+
 export interface DesktopWorkflowDomainWorkflow {
   createdAt: string
   description: null | string
@@ -1885,7 +1918,7 @@ export interface DesktopWorkflowDomainProjectListResult {
 }
 
 export interface DesktopWorkflowDomainProjectResult {
-  code?: 'request_failed' | 'sign_in' | 'unavailable'
+  code?: 'project_completed' | 'project_not_ready' | 'request_failed' | 'sign_in' | 'unavailable'
   item?: DesktopWorkflowDomainProject
   ok: boolean
 }
@@ -2106,21 +2139,26 @@ export interface DesktopWorkflowDomainMutationResult {
 // Result of hermesDesktop.managed.selfHeal() — an on-demand relay-key recovery.
 // relayUnauthorized=false means the relay accepted the key (the failure was not
 // a managed-relay auth problem). healed=true means a fresh key is on disk and
-// `assignment` should be applied via /api/model/set before retrying. needsSignIn
+// `assignment` acknowledges the completed Native mutation before retrying.
+// runtimeRestored=true separately means the existing healthy key was bound to
+// the captured Runtime; no cloud key was minted. needsSignIn
 // =true means recovery is impossible without a re-login (no token, or an expired
 // JWT) — surface the sign-in flow rather than retry into another silent 401.
 export interface DesktopManagedSelfHealResult {
   ok: boolean
   relayUnauthorized: boolean
   healed: boolean
+  runtimeRestored?: boolean
   needsSignIn: boolean
+  probeStatus?: 'ok' | 'unauthorized' | 'unreachable' | 'unknown'
   assignment: DesktopManagedSignInResult['assignment']
 }
 
 // hc-512: state of the relay's live model catalog (`GET {base_url}/v1/models`
 // with the stored relay key — the same listing the runtime's picker builds the
-// APEX group from). 'unauthorized' = the stored key is dead (re-login is the
-// fix); 'unreachable' = transient network/relay failure (retry is the fix);
+// APEX group from). 'unauthorized' = the relay rejected the stored key; recovery
+// receipts separately establish whether re-login is needed. 'unreachable' means
+// transient network/relay failure (retry is the fix);
 // 'unknown' = never probed / not a managed install.
 export interface DesktopRelayCatalogState {
   checkedAt: number
@@ -2313,14 +2351,18 @@ export interface DesktopManagedSignInResult {
     model: string
     provider: string
     scope: 'main'
+    desktop_managed_receipt?: string
   } | null
   // True when sign-in succeeded AND a relay-valid key was provisioned. False
   // means login worked but the backend relay-key endpoint isn't deployed yet —
   // the caller falls back to the BYOK onboarding.
   hasRelayKey?: boolean
+  localRuntime?: boolean
   message?: string
   ok: boolean
 }
+
+export interface DesktopManagedModelTarget { connectionId: string | null; profile: string | null }
 
 // Cached platform client-config state, as returned by
 // hermesDesktop.clientConfig.get() (a local disk read — no network). version 0

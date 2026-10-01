@@ -13,6 +13,7 @@ import { formatBusinessDayTime } from '@/lib/time'
 import { deliverableDetailRoute, routeDrawerNavigationState } from '../../routes'
 import type { WorkflowDeliverable } from '../api/types'
 import { BusinessPageHeader } from '../components/business-page-header'
+import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
 import { useWorkflowDeliverables } from '../hooks/use-workflow-deliverables'
 
 type DeliverableFilter = 'all' | 'copy' | 'material' | 'report' | 'sheet'
@@ -60,6 +61,7 @@ export function DeliverablesView() {
   return (
     <section className="apex-business-surface apex-business-page apex-primary-page" data-deliverables-page="">
       <div className="apex-primary-page-column">
+        {state.mode === 'ready' && <WorkflowRefreshNotice state={state} />}
         <BusinessPageHeader
           action={{ icon: 'refresh', label: copy.refresh, onClick: refresh }}
           description={copy.description}

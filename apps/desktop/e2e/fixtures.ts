@@ -26,7 +26,9 @@ import * as path from 'node:path'
 
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
 
-import { type MockServerOptions, startMockServer } from './mock-server'
+import { type MockServerOptions, startMockServer } from '../../../tests-js/scripts/mock-server'
+
+import { resolveElectronBinary } from './electron-binary'
 import { resolvePackagedE2ePython } from './python-prerequisite'
 import { installErrorBannerGuard } from './test'
 

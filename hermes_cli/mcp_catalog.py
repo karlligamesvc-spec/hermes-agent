@@ -18,7 +18,7 @@ import yaml
 from hermes_constants import get_hermes_home, get_optional_mcps_dir
 from hermes_cli._subprocess_compat import noninteractive_git_env
 from hermes_cli.colors import Colors, color
-from hermes_cli.config import load_config, save_config, get_env_value, save_env_value
+from hermes_cli.config import load_config, mutate_config, get_env_value, save_env_value
 from hermes_cli.cli_output import prompt as _prompt_input
 
 _MANIFEST_VERSION = 1
@@ -484,21 +484,20 @@ def _probe_tools(name: str) -> Optional[List[tuple]]:
 def _write_tools_filter(name: str, mode: str, values: Optional[List[str]]) -> None:
     """Persist ``mcp_servers.<name>.tools.<mode>`` (``include``/``exclude``), clearing the other
     mode; ``values=None`` drops the whole tools block (no filter)."""
-    cfg = load_config()
-    servers = cfg.setdefault("mcp_servers", {})
-    server_entry = servers.get(name) or {}
-    if values is None:
-        server_entry.pop("tools", None)
-    else:
-        tools_block = server_entry.get("tools") or {}
-        if not isinstance(tools_block, dict):
-            tools_block = {}
-        tools_block[mode] = list(values)
-        tools_block.pop("exclude" if mode == "include" else "include", None)
-        server_entry["tools"] = tools_block
-    servers[name] = server_entry
-    cfg["mcp_servers"] = servers
-    save_config(cfg)
+    def edit(cfg):
+        servers = cfg.setdefault("mcp_servers", {})
+        server_entry = servers.get(name) or {}
+        if values is None:
+            server_entry.pop("tools", None)
+        else:
+            tools_block = server_entry.get("tools") or {}
+            if not isinstance(tools_block, dict):
+                tools_block = {}
+            tools_block[mode] = list(values)
+            tools_block.pop("exclude" if mode == "include" else "include", None)
+            server_entry["tools"] = tools_block
+        servers[name] = server_entry
+    mutate_config(edit)
 
 
 def _apply_tool_selection(

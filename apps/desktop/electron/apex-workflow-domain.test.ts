@@ -6,6 +6,7 @@ type JsonObject = Record<string, unknown>
 
 import {
   cancelWorkflowDomainRun,
+  completeWorkflowDomainProject,
   createWorkflowDomainDefinition,
   createWorkflowDomainProject,
   getVideoWorkflowDomainCatalog,
@@ -13,16 +14,19 @@ import {
   getWorkflowDomainCatalog,
   getWorkflowDomainDeliverable,
   getWorkflowDomainProject,
+  getWorkflowDomainProjectCompletion,
   getWorkflowDomainRun,
   getWorkflowDomainUserFileDownload,
   listWorkflowDomainActivity,
   listWorkflowDomainDeliverables,
   listWorkflowDomainProjects,
   listWorkflowDomainWorkflows,
+  reopenWorkflowDomainProject,
   retryWorkflowDomainRunStep,
   reviewWorkflowDomainDeliverable,
   startExistingWorkflowDomainRun,
   startWorkflowDomainGoal,
+  updateWorkflowDomainProject,
   workflowDomainUrl,
   workflowProjectName
 } from './apex-workflow-domain'
@@ -84,39 +88,15 @@ test('starts one canonical Project to Workflow to Hermes Run chain', async () =>
   })
 
   assert.deepEqual(run, { id: 'run-1' })
-  assert.equal(calls.length, 3)
-  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/projects')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/start-goal')
   assert.deepEqual(calls[0]?.body, {
-    name: 'Analyze the pet market',
     objective: 'Analyze the pet market',
-    projectConfig: { createdFrom: 'desktop_start' }
-  })
-  assert.equal(calls[1]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-1/workflows')
-  assert.deepEqual(calls[1]?.body, {
-    name: 'Market research',
-    slug: 'market-research',
-    description: 'Evidence-backed market research',
-    definition: {
-      entrypoint: 'hermes',
-      objective: 'Analyze the pet market',
-      template: { id: 'market-research', version: 3 }
+    starter: {
+      description: 'Evidence-backed market research', id: 'market-research', name: 'Market research',
+      slug: 'market-research', version: 3
     },
-    inputSchema: {
-      type: 'object',
-      required: ['objective'],
-      properties: { objective: { type: 'string' } }
-    },
-    outputSchema: {
-      type: 'object',
-      properties: { summary: { type: 'string' }, evidence: { type: 'array' } }
-    }
-  })
-  assert.deepEqual(calls[2]?.body, {
-    workflowId: 'workflow-1',
-    idempotencyKey: 'desktop:00000000-0000-4000-8000-000000000795',
-    triggerRef: 'Analyze the pet market',
-    executorType: 'hermes',
-    maxAttempts: 2
+    idempotencyKey: 'desktop:00000000-0000-4000-8000-000000000795'
   })
 })
 
@@ -246,19 +226,21 @@ test('starts the server-owned video Workflow without accepting a client-authored
       postJson: async (url, body) => {
         calls.push({ body, url })
 
-        return url.endsWith('/runs') ? { item: { id: 'run-video' } } : { item: { id: 'workflow-video' } }
+        return { item: { id: 'run-video' } }
       }
     },
     uuid: () => '00000000-0000-4000-8000-000000000842'
   })
 
   assert.deepEqual(run, { id: 'run-video' })
-  assert.equal(
-    calls[0]?.url,
-    'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-video/workflow-templates/viral-video-remake'
-  )
-  assert.deepEqual(calls[0]?.body, { objective: '拆解并复刻这条视频' })
-  assert.equal(JSON.stringify(calls[0]?.body).includes('Renderer copy'), false)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/start-goal')
+  assert.equal(calls[0]?.body.projectId, 'project-video')
+  assert.deepEqual(calls[0]?.body.starter, {
+    description: 'Renderer copy must not become the execution definition', id: 'viral-video-remake',
+    name: '拆解并复刻爆款视频', slug: 'viral-video-remake', version: 1
+  })
+  assert.equal(Object.hasOwn(calls[0]?.body ?? {}, 'definition'), false)
 })
 
 test('creates an honest empty Project with its optional local folder', async () => {
@@ -291,6 +273,62 @@ test('creates an honest empty Project with its optional local folder', async () 
   ])
 })
 
+test('keeps project edits and completion actions on authenticated project exits', async () => {
+  const projectId = '00000000-0000-4000-8000-000000000853'
+  const workflowId = '00000000-0000-4000-8000-000000000854'
+  const runId = '00000000-0000-4000-8000-000000000855'
+  const calls: Array<{ body?: JsonObject; method: string; url: string }> = []
+  const transport = {
+    getJson: async (url: string) => {
+      calls.push({ method: 'GET', url })
+
+      return {
+        projectStatus: 'active', workflowTotal: 1, workflowSucceeded: 1,
+        readyForReview: true, canComplete: true,
+        workflowStates: [{ workflowId, runId, runStatus: 'succeeded' }]
+      }
+    },
+    patchJson: async (url: string, body: JsonObject) => {
+      calls.push({ body, method: 'PATCH', url })
+
+      return { item: { id: projectId, name: body.name } }
+    },
+    postJson: async (url: string, body: JsonObject) => {
+      calls.push({ body, method: 'POST', url })
+
+      return { item: { id: projectId, status: url.endsWith('/complete') ? 'completed' : 'active' } }
+    }
+  }
+
+  const completion = await getWorkflowDomainProjectCompletion('https://api.apex-nodes.com', projectId, transport)
+  const updated = await updateWorkflowDomainProject(
+    'https://api.apex-nodes.com', { projectId, name: ' Revised ', objective: '  Goal  ' }, transport
+  )
+  const completed = await completeWorkflowDomainProject('https://api.apex-nodes.com', projectId, transport)
+  const reopened = await reopenWorkflowDomainProject('https://api.apex-nodes.com', projectId, transport)
+
+  assert.equal(completion.canComplete, true)
+  assert.deepEqual(completion.workflowStates, [{ workflowId, runId, runStatus: 'succeeded' }])
+  assert.equal(updated.name, 'Revised')
+  assert.equal(completed.status, 'completed')
+  assert.equal(reopened.status, 'active')
+  assert.deepEqual(calls, [
+    { method: 'GET', url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}/completion` },
+    {
+      body: { name: 'Revised', objective: 'Goal' }, method: 'PATCH',
+      url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}`
+    },
+    { body: {}, method: 'POST', url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}/complete` },
+    { body: {}, method: 'POST', url: `https://api.apex-nodes.com/api/v1/workflow-domain/projects/${projectId}/reopen` }
+  ])
+
+  await assert.rejects(
+    getWorkflowDomainProjectCompletion('https://api.apex-nodes.com', '../another-project', transport),
+    /project id/
+  )
+  assert.equal(calls.length, 4)
+})
+
 test('adds a Workflow and Run to an existing Project without creating a duplicate Project', async () => {
   const calls: Array<{ body?: Record<string, unknown>; method: string; url: string }> = []
 
@@ -321,9 +359,9 @@ test('adds a Workflow and Run to an existing Project without creating a duplicat
   })
 
   assert.deepEqual(run, { id: 'run-1' })
-  assert.equal(calls.length, 2)
-  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/projects/project-existing/workflows')
-  assert.equal(calls[1]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/runs')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]?.url, 'https://api.apex-nodes.com/api/v1/workflow-domain/start-goal')
+  assert.equal(calls[0]?.body?.projectId, 'project-existing')
 })
 
 test('rejects malformed server identifiers before they can retarget a later request', async () => {
@@ -338,7 +376,7 @@ test('rejects malformed server identifiers before they can retarget a later requ
         postJson: async () => ({ item: { id: '' } })
       }
     }),
-    /project id/
+    /run id/
   )
 })
 
@@ -902,4 +940,31 @@ test('rejects any non-Hermes executor at the Run projection boundary', async () 
     }),
     /Unsupported workflow domain executor/
   )
+})
+
+test('keeps an explicit Start retry key and never retries an unavailable atomic endpoint through legacy writes', async () => {
+  const calls: Array<{ url: string; body: JsonObject }> = []
+  const options = {
+    apiBase: 'https://api.apex-nodes.com', objective: 'Retry this goal',
+    idempotencyKey: 'desktop:00000000-0000-4000-8000-000000000901',
+    starter: { id: 'competitor-monitoring', slug: 'competitor-monitoring', version: 3,
+      description: 'Monitoring', name: 'Monitor' },
+    uuid: () => { throw new Error('Retry must retain the caller key') },
+    transport: {
+      getJson: async () => ({}),
+      postJson: async (url: string, body: JsonObject) => {
+        calls.push({ url, body })
+        if (calls.length === 1) {throw Object.assign(new Error('Atomic endpoint unavailable'), { statusCode: 404 })}
+
+        return { item: { id: 'same-confirmed-run' } }
+      }
+    }
+  }
+
+  await assert.rejects(startWorkflowDomainGoal(options), /unavailable/)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(await startWorkflowDomainGoal(options), { id: 'same-confirmed-run' })
+  assert.equal(calls.length, 2)
+  assert.deepEqual(calls[0], calls[1])
+  assert.equal(calls[0]?.url.endsWith('/start-goal'), true)
 })

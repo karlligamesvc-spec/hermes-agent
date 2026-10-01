@@ -5,6 +5,8 @@ from __future__ import annotations
 from agent.credential_pool_admin import CredentialPoolAdminMixin
 
 import logging
+import hashlib
+import json
 import os
 import random
 import threading
@@ -2564,6 +2566,98 @@ _ENV_BASE_URL_RESOLVERS = {
     "kimi-coding": _resolve_kimi_base_url,
     "zai": _resolve_zai_base_url,
 }
+
+
+def prepare_env_credential_pool_entries(env_var: str, value: str, providers: List[str]) -> List[Dict[str, Any]]:
+    """Prepare only an explicitly replaced env source, without writing any store.
+
+    Desktop calls this before its disk transaction. Copilot's token exchange and
+    Z.AI's endpoint probe may block; neither may hold the owner-write fence. CLI
+    and ordinary ``load_pool`` retain their existing discovery behavior.
+    """
+    value = value.strip()
+    if not value:
+        return []
+    prepared = []
+    for provider in providers:
+        pconfig = PROVIDER_REGISTRY.get(provider)
+        if not pconfig or pconfig.auth_type != AUTH_TYPE_API_KEY:
+            continue
+        base_url = get_env_prefer_dotenv(pconfig.base_url_env_var).rstrip("/") if pconfig.base_url_env_var else ""
+        token, endpoint_state = value, None
+        if provider == "copilot":
+            from hermes_cli.copilot_auth import get_copilot_api_token
+            token, enterprise_url = get_copilot_api_token(value, persist=False)
+            base_url = enterprise_url or base_url or pconfig.inference_base_url
+        elif provider == "zai" and not base_url:
+            from hermes_cli.auth import _auth_file_path, detect_zai_endpoint
+            key_hash = hashlib.sha256(value.encode()).hexdigest()[:16]
+            # The ordinary getter quarantines corrupt JSON on disk. Preparation
+            # is strictly read-only until its owner fence: a bad cache is a miss,
+            # not permission to write a backup from a superseded request.
+            try:
+                cached_store = json.loads(_auth_file_path().read_text(encoding="utf-8-sig"))
+            except (FileNotFoundError, json.JSONDecodeError, UnicodeError):
+                cached_store = {}
+            state = _load_provider_state(cached_store if isinstance(cached_store, dict) else {}, "zai") or {}
+            cached = state.get("detected_endpoint")
+            if isinstance(cached, dict) and cached.get("base_url") and cached.get("key_hash") == key_hash:
+                base_url = cached["base_url"]
+            else:
+                detected = detect_zai_endpoint(value)
+                if detected and detected.get("base_url"):
+                    base_url = detected["base_url"]
+                    endpoint_state = {"base_url": base_url, "endpoint_id": detected.get("id", ""),
+                                      "model": detected.get("model", ""), "label": detected.get("label", ""), "key_hash": key_hash}
+        elif provider == "kimi-coding":
+            base_url = _resolve_kimi_base_url(value, pconfig.inference_base_url, base_url)
+        payload = _env_payload(env_var=env_var, token=token, base_url=base_url or pconfig.inference_base_url)
+        prepared.append({"provider": provider, "source": f"env:{env_var}", "payload": payload, "endpoint_state": endpoint_state})
+    return prepared
+
+
+def apply_env_credential_pool_entries(prepared: List[Dict[str, Any]]) -> None:
+    """Merge prepared source metadata into the current owning store, locally.
+
+    The caller holds its actual-write transaction. Re-read auth.json here; a
+    snapshot taken before a network probe must never replace a newer whole pool.
+    """
+    if not prepared:
+        return
+    with _auth_store_lock():
+        store = _load_auth_store()
+        pool = store.setdefault("credential_pool", {})
+        if not isinstance(pool, dict):
+            raise ValueError("Invalid credential pool store")
+        for item in prepared:
+            provider = item["provider"]
+            current = pool.get(provider, [])
+            if not isinstance(current, list) or any(not isinstance(entry, dict) for entry in current):
+                raise ValueError("Invalid provider credential entries")
+            source = item["source"]
+            entries = [PooledCredential.from_dict(provider, entry) for entry in current if entry.get("source") == source]
+            payload = {"source": source, **item["payload"]}
+            if not entries:
+                payload["priority"] = _next_priority([PooledCredential.from_dict(provider, entry) for entry in current])
+            _upsert_entry(entries, provider, source, payload)
+            updated = entries[0].to_dict()
+            merged, inserted = [], False
+            for entry in current:
+                if entry.get("source") != source:
+                    merged.append(entry)  # keep every other current source's metadata verbatim
+                elif not inserted:
+                    merged.append(updated)
+                    inserted = True
+            if not inserted:
+                merged.append(updated)
+            pool[provider] = merged
+            if item["endpoint_state"] is not None:
+                state = _load_provider_state(store, provider) or {}
+                state["detected_endpoint"] = item["endpoint_state"]
+                _store_provider_state(store, provider, state, set_active=False)
+        _save_auth_store(store)
+        from hermes_cli.web_model_mutations import model_mutation_written
+        model_mutation_written()
 
 
 def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool, Set[str]]:

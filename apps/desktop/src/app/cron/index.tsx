@@ -8,7 +8,6 @@ import { PageLoader } from '@/components/page-loader'
 import { ApexPageHeader } from '@/components/ui/apex-page-header'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Codicon } from '@/components/ui/codicon'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
@@ -18,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { ErrorState } from '@/components/ui/error-state'
+import { ErrorBanner, ErrorState } from '@/components/ui/error-state'
 import { Field, FieldHint } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
@@ -39,11 +38,9 @@ import {
   deleteCronJob,
   getAutomationBlueprints,
   getCronDeliveryTargets,
-  getCronJobRuns,
   instantiateAutomationBlueprint,
   pauseCronJob,
   resumeCronJob,
-  type SessionInfo,
   updateCronJob
 } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
@@ -51,8 +48,7 @@ import { AlertTriangle } from '@/lib/icons'
 import { requestModelOptions } from '@/lib/model-options'
 import { asText } from '@/lib/text'
 import { $cronFocusJobId, $cronJobs, invalidateCronJobsRequests, setCronFocusJobId } from '@/store/cron'
-import { $changeEventsAvailable, $cronChangeTick } from '@/store/live-sync'
-import { notify, notifyError } from '@/store/notifications'
+import { notify, notifyError, readableError } from '@/store/notifications'
 import { $profileScope, ALL_PROFILES } from '@/store/profile'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
@@ -84,7 +80,8 @@ import {
   toggleCronDeliveryTarget,
   validateCronEditor
 } from './cron-job-model'
-import { jobState, jobTitle, STATE_DOT } from './job-state'
+import { CronJobRuns } from './cron-run-history'
+import { jobDotClass, jobOutcome, jobOutcomeError, jobOutcomeFailed, jobState, jobTitle } from './job-state'
 
 const DEFAULT_DELIVER = 'local'
 
@@ -354,6 +351,7 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
   const profile = cronProfileForScope(profileScope)
 
   const refresh = useCallback(async () => {
+    setLoadError(null)
     const { refreshError, stale } = await refreshCronJobs(profile)
 
     if (stale) {
@@ -362,6 +360,7 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
 
     if (refreshError) {
       notifyError(refreshError, c.failedLoad)
+      setLoadError(readableError(refreshError, c.failedLoad).message)
     }
 
     setLoading(false)
@@ -668,50 +667,63 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
             title={c.emptyTitleNew}
           />
         ) : (
-          <PanelBody>
-            <PanelList
-              onSearchChange={setQuery}
-              searchHints={jobs
-                .map(jobTitle)
-                .filter(Boolean)
-                .slice(0, 5)
-                .map(title => t.common.tryHint(title))}
-              searchLabel={c.search}
-              searchPlaceholder={c.search}
-              searchValue={query}
-            >
-              {visibleJobs.map(job => (
-                <CronJobListRow
-                  active={selectedJob?.id === job.id}
-                  job={job}
-                  key={job.id}
-                  menuItems={[
-                    { icon: 'edit', label: c.edit, onSelect: () => setEditor({ mode: 'edit', job }) },
-                    { icon: 'trash', label: t.common.delete, onSelect: () => setPendingDelete(job), tone: 'danger' }
-                  ]}
-                  menuLabel={c.manage}
-                  onSelect={() => setSelectedJobId(job.id)}
-                />
-              ))}
-              {visibleJobs.length === 0 && (
-                <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
-              )}
-              <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
-            </PanelList>
+          <>
+            {loadError ? (
+              <ErrorBanner className="mb-3">
+                <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                  <span className="min-w-0 break-words">{loadError}</span>
+                  <Button onClick={() => void refresh()} size="sm" variant="outline">
+                    {t.common.retry}
+                  </Button>
+                </span>
+              </ErrorBanner>
+            ) : null}
+            <PanelBody>
+              <PanelList
+                onSearchChange={setQuery}
+                searchHints={jobs
+                  .map(jobTitle)
+                  .filter(Boolean)
+                  .slice(0, 5)
+                  .map(title => t.common.tryHint(title))}
+                searchLabel={c.search}
+                searchPlaceholder={c.search}
+                searchValue={query}
+              >
+                {visibleJobs.map(job => (
+                  <CronJobListRow
+                    active={selectedJob?.id === job.id}
+                    job={job}
+                    key={job.id}
+                    menuItems={[
+                      { icon: 'edit', label: c.edit, onSelect: () => setEditor({ mode: 'edit', job }) },
+                      { icon: 'trash', label: t.common.delete, onSelect: () => setPendingDelete(job), tone: 'danger' }
+                    ]}
+                    menuLabel={c.manage}
+                    onSelect={() => setSelectedJobId(job.id)}
+                  />
+                ))}
+                {visibleJobs.length === 0 && (
+                  <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
+                )}
+                <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
+              </PanelList>
 
-            {selectedJob ? (
-              <CronJobDetail
-                busy={busyJobTokens.has(selectedJob.id) || triggeringJobKeys.has(`${profile}:${selectedJob.id}`)}
-                c={c}
-                job={selectedJob}
-                onOpenSession={onOpenSession}
-                onPauseResume={() => void handlePauseResume(selectedJob)}
-                onTrigger={() => void handleTrigger(selectedJob)}
-              />
-            ) : (
-              <PanelEmpty description={c.emptyDescSearch} icon="search" />
-            )}
-          </PanelBody>
+              {selectedJob ? (
+                <CronJobDetail
+                  busy={busyJobTokens.has(selectedJob.id) || triggeringJobKeys.has(`${profile}:${selectedJob.id}`)}
+                  c={c}
+                  job={selectedJob}
+                  key={`${profile}:${selectedJob.id}`}
+                  onOpenSession={onOpenSession}
+                  onPauseResume={() => void handlePauseResume(selectedJob)}
+                  onTrigger={() => void handleTrigger(selectedJob)}
+                />
+              ) : (
+                <PanelEmpty description={c.emptyDescSearch} icon="search" />
+              )}
+            </PanelBody>
+          </>
         )}
       </PanelPageBody>
 
@@ -757,14 +769,16 @@ function CronJobListRow({
   menuLabel?: string
   onSelect: () => void
 }) {
-  const state = jobState(job)
+  const { t } = useI18n()
+  const outcome = jobOutcome(job)
 
   return (
     <PanelListRow
       active={active}
-      dotClassName={STATE_DOT[state] ?? 'bg-muted-foreground'}
+      dotClassName={jobDotClass(job)}
       menuItems={menuItems}
       menuLabel={menuLabel}
+      meta={outcome ? t.cron.outcomes[outcome] : undefined}
       onSelect={onSelect}
       rowKey={job.id}
       title={jobTitle(job)}
@@ -788,6 +802,8 @@ function CronJobDetail({
   onTrigger: () => void
 }) {
   const state = jobState(job)
+  const outcome = jobOutcome(job)
+  const outcomeError = jobOutcomeError(job)
   const isPaused = state === 'paused'
   const deliver = jobDeliver(job)
   const prompt = jobPrompt(job)
@@ -800,6 +816,11 @@ function CronJobDetail({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h3 className="text-[0.95rem] font-semibold tracking-tight text-foreground">{jobTitle(job)}</h3>
             <PanelPill tone={STATE_TONE[state] ?? 'muted'}>{c.states[state] ?? state}</PanelPill>
+            {outcome ? (
+              <PanelPill tone={jobOutcomeFailed(outcome) ? 'bad' : outcome === 'succeeded' ? 'good' : 'muted'}>
+                {c.outcomes[outcome]}
+              </PanelPill>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <PanelAction disabled={busy} icon={isPaused ? 'play' : 'debug-pause'} onClick={onPauseResume}>
@@ -821,10 +842,10 @@ function CronJobDetail({
           ]}
         />
 
-        {job.last_error ? (
+        {outcomeError ? (
           <div className="flex items-start gap-1.5 rounded bg-destructive/10 p-2 text-[0.7rem] text-destructive">
             <AlertTriangle className="mt-px size-3 shrink-0" />
-            <span className="min-w-0 break-words">{job.last_error}</span>
+            <span className="min-w-0 break-words">{outcomeError}</span>
           </div>
         ) : null}
       </header>
@@ -838,112 +859,6 @@ function CronJobDetail({
 
       <CronJobRuns c={c} jobId={job.id} onOpenSession={onOpenSession} />
     </PanelDetail>
-  )
-}
-
-function formatRunTime(seconds?: null | number): string {
-  if (!seconds) {
-    return '—'
-  }
-
-  const date = new Date(seconds * 1000)
-
-  return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString()
-}
-
-// Runs are produced by the background scheduler tick. cron.changed /
-// sessions.changed broadcasts re-load immediately on event-capable backends
-// (the tick dep below), so the poll drops to a slow backstop there; older
-// backends keep the legacy cadence.
-const RUNS_POLL_INTERVAL_MS = 8000
-const RUNS_BACKSTOP_INTERVAL_MS = 60_000
-
-function CronJobRuns({
-  c,
-  jobId,
-  onOpenSession
-}: {
-  c: Translations['cron']
-  jobId: string
-  onOpenSession?: (sessionId: string) => void
-}) {
-  const [runs, setRuns] = useState<null | SessionInfo[]>(null)
-  const changeEventsAvailable = useStore($changeEventsAvailable)
-  const cronChangeTick = useStore($cronChangeTick)
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = () =>
-      getCronJobRuns(jobId)
-        .then(result => {
-          if (!cancelled) {
-            setRuns(result)
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setRuns(prev => prev ?? [])
-          }
-        })
-
-    void load()
-
-    const intervalId = window.setInterval(
-      () => {
-        if (document.visibilityState === 'visible') {
-          void load()
-        }
-      },
-      changeEventsAvailable ? RUNS_BACKSTOP_INTERVAL_MS : RUNS_POLL_INTERVAL_MS
-    )
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void load()
-      }
-    }
-
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-    // cronChangeTick: a fired run moves jobs.json bookkeeping → reload now.
-  }, [changeEventsAvailable, cronChangeTick, jobId])
-
-  return (
-    <div>
-      <PanelSectionLabel className="mb-1.5">
-        {c.runHistory}
-        {runs && runs.length > 0 ? ` · ${runs.length}` : ''}
-      </PanelSectionLabel>
-      {runs === null ? (
-        <div className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground">
-          <Codicon name="loading" size="0.75rem" spinning />
-        </div>
-      ) : runs.length === 0 ? (
-        <div className="py-1 text-xs text-muted-foreground">{c.noRuns}</div>
-      ) : (
-        <div className="flex flex-col gap-px">
-          {runs.map(run => (
-            <button
-              className="row-hover flex items-center justify-between gap-3 rounded-md px-2 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              key={run.id}
-              onClick={() => onOpenSession?.(run.id)}
-              type="button"
-            >
-              <span className="truncate text-foreground/85">{run.title?.trim() || run.preview?.trim() || run.id}</span>
-              <span className="shrink-0 text-[0.62rem] text-muted-foreground/55 tabular-nums">
-                {formatRunTime(run.last_active || run.started_at)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -1033,7 +948,7 @@ function CronEditorDialog({
   const [schedulePreset, setSchedulePreset] = useState('daily')
   const [deliver, setDeliver] = useState(DEFAULT_DELIVER)
   // Per-job model override, encoded as `${providerSlug}:${model}` (split on the
-  // first ':' when saving). MODEL_DEFAULT_VALUE = follow the global default.
+  // first ':' when saving). MODEL_DEFAULT_VALUE = unpinned, with a creation snapshot.
   const [modelChoice, setModelChoice] = useState(MODEL_DEFAULT_VALUE)
   // Blueprint fills typed slots (time/enum/weekdays/text) instead of the raw
   // cron fields; the backend renders the prompt + schedule from them.
@@ -1412,7 +1327,7 @@ type EditorState =
 
 interface EditorValues {
   deliver: string
-  /** Per-job model override ('' = follow the global default). */
+  /** Per-job model override ('' = use the creation snapshot / cron fleet default). */
   model: string
   name: string
   prompt: string

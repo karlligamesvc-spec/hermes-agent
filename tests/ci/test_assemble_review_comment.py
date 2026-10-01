@@ -100,6 +100,14 @@ def test_failed_jobs_empty_needs():
     assert _mod.collect_failed_jobs("", "https://run") == []
 
 
+def test_cancelled_detection_does_not_render_a_clean_review():
+    items = _mod.collect_failed_jobs(
+        json.dumps({"detect": "cancelled", "js-tests": "skipped"}), "https://run"
+    )
+    assert len(items) == 1
+    assert items[0].severity == "error"
+    assert items[0].summary == "Job **detect** was cancelled."
+
 
 
 
@@ -353,5 +361,4 @@ def test_render_both_emitted_link_and_job_url():
     assert "[View job](https://github.com/run/1/job/5)" in body
     # Both links on the same line, separated by ·
     assert " · " in body
-
 

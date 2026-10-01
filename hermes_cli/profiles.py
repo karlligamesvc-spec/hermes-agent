@@ -57,6 +57,8 @@ _CLONE_ALL_DEFAULT_EXCLUDE_ROOT: frozenset[str] = frozenset({
 _CLONE_ALL_HISTORY_EXCLUDE_ROOT: frozenset[str] = frozenset({
     "state.db", "state.db-wal", "state.db-shm", "sessions", "backups", "state-snapshots", "checkpoints",
     "cron",
+    ".desktop-model-mutations.sqlite3", ".desktop-model-mutations.sqlite3-wal",
+    ".desktop-model-mutations.sqlite3-shm", ".desktop-model-mutations.sqlite3-journal",
 })
 
 # Marker written by `hermes profile create --no-skills`. When present at a profile root,
@@ -1546,7 +1548,11 @@ def _default_export_ignore(root_dir: Path):
 
 
 # Credential files dropped from named-profile exports.
-_EXPORT_CREDENTIAL_FILES = frozenset({"auth.json", ".env"})
+_PROFILE_LOCAL_MUTATION_FILES = frozenset({
+    ".desktop-model-mutations.sqlite3", ".desktop-model-mutations.sqlite3-wal",
+    ".desktop-model-mutations.sqlite3-shm", ".desktop-model-mutations.sqlite3-journal",
+})
+_EXPORT_CREDENTIAL_FILES = frozenset({"auth.json", ".env"}) | _PROFILE_LOCAL_MUTATION_FILES
 
 # Text/config suffixes secret-scrubbed on export; binary DBs, images etc. are left alone.
 _EXPORT_REDACT_SUFFIXES = frozenset({
@@ -1611,6 +1617,8 @@ def export_profile(name: str, output_path: str, extra_files: Optional[Dict[str, 
         staged = Path(tmpdir) / canon
         shutil.copytree(profile_dir, staged, symlinks=True, ignore=ignore)
         for rel, content in (extra_files or {}).items():
+            if normalize_archive_parts(rel)[0] in _PROFILE_LOCAL_MUTATION_FILES:
+                raise ValueError("Model mutation journals cannot be exported")
             target = staged.joinpath(*normalize_archive_parts(rel))
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
@@ -1653,6 +1661,14 @@ def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
         extracted = staging_root / archive_root
         if not extracted.is_dir():
             raise ValueError(f"Profile archive root is missing or invalid: {archive_root}")
+        # Older/untrusted archives must not give the new profile a source's
+        # mutation identity, counters, or SQLite auxiliary files.
+        for filename in _PROFILE_LOCAL_MUTATION_FILES:
+            artifact = extracted / filename
+            if artifact.is_dir() and not artifact.is_symlink():
+                shutil.rmtree(artifact)
+            else:
+                artifact.unlink(missing_ok=True)
         final_source = extracted
         if archive_root != canon:
             final_source = staging_root / canon

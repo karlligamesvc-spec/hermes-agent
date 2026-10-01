@@ -26,6 +26,7 @@ interface ConfirmDialogProps {
   doneLabel?: string
   cancelLabel?: string
   destructive?: boolean
+  layer?: number
   /** Close as soon as onConfirm resolves — for optimistic actions that finish in the background. */
   dismissOnConfirm?: boolean
   /** A third, non-destructive way out, shown between Cancel and Confirm (e.g.
@@ -53,6 +54,7 @@ export function ConfirmDialog({
   doneLabel,
   cancelLabel,
   destructive = false,
+  layer,
   dismissOnConfirm = false,
   secondaryAction
 }: ConfirmDialogProps) {
@@ -129,6 +131,7 @@ export function ConfirmDialog({
     <Dialog onOpenChange={value => !value && !busy && onClose()} open={open}>
       <DialogContent
         className="max-w-md"
+        layer={layer}
         onKeyDown={event => {
           // Enter/Space confirm regardless of which button holds focus
           // (preventDefault stops a focused Cancel from swallowing it).

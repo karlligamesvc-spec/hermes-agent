@@ -2,6 +2,7 @@ import type { ModelOptionProvider } from '@hermes/shared'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { ManagedRuntimeRecovery } from '@/components/managed-runtime-recovery'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -773,7 +774,7 @@ function ChooseLaterLink() {
 function ManagedSignInPanel({ ctx }: { ctx: OnboardingContext }) {
   const { t } = useI18n()
   const m = t.onboarding.managed
-  const { managedError, managedSubmitting } = useStore($desktopOnboarding)
+  const { managedError, managedSubmitting, managedRuntimeRecovery } = useStore($desktopOnboarding)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
@@ -816,6 +817,7 @@ function ManagedSignInPanel({ ctx }: { ctx: OnboardingContext }) {
         value={password}
       />
       {managedError ? <div className="text-xs text-destructive">{managedError}</div> : null}
+      <ManagedRuntimeRecovery localRuntime={managedRuntimeRecovery} />
       <Button className="w-full" disabled={!canSubmit} onClick={submit} type="button">
         {managedSubmitting && <Loader2 className="size-3.5 animate-spin" />}
         {managedSubmitting ? m.signingIn : m.signIn}

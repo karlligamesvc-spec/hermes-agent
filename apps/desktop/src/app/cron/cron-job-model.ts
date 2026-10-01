@@ -36,7 +36,7 @@ export function validateCronEditor(input: CronEditorValidationInput): CronEditor
 
 export interface CronEditorSaveValues {
   deliver: string
-  /** Per-job model override ('' = follow the global default at fire time). */
+  /** Per-job model override ('' = use the creation snapshot / cron fleet default). */
   model: string
   name: string
   prompt: string

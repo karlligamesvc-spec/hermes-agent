@@ -67,7 +67,8 @@ from pathlib import Path
 API_BASE = "https://api.github.com"
 
 # Job names that are infrastructure (this script, the gate, the detector)
-# and should never appear in the review comment.
+# hidden from the review comment while healthy. Failed/cancelled detection
+# must remain visible: its downstream skips are not successful validation.
 _INFRA_JOBS = frozenset({
     "detect",
     "all-checks-pass",
@@ -86,7 +87,7 @@ _CONCLUSION_MAP = {
     "success": "success",
     "failure": "failure",
     "skipped": "skipped",
-    "cancelled": "skipped",
+    "cancelled": "failure",
     "neutral": "skipped",
     "timed_out": "failure",
     "action_required": "skipped",
@@ -99,7 +100,7 @@ def classify_jobs(api_jobs: list[dict]) -> tuple[dict[str, str], list[str], dict
 
     - ``completed``: ``{job_name: result}`` where result is
       ``"success"`` / ``"failure"`` / ``"skipped"``. Only non-infra jobs
-      that have finished.
+      that have finished, plus failed infrastructure jobs.
     - ``pending``: list of job names still running (in_progress / queued
       / waiting). Excludes infra jobs.
     - ``job_urls``: ``{job_name: html_url}`` — direct links to each
@@ -118,10 +119,12 @@ def classify_jobs(api_jobs: list[dict]) -> tuple[dict[str, str], list[str], dict
         name = job.get("name", "unknown")
         if job.get("_workflow_name"):
             name = f"{job['_workflow_name']} / {name}"
-        if name in _INFRA_JOBS:
-            continue
         status = job.get("status", "")
         conclusion = job.get("conclusion", "")
+        if name in _INFRA_JOBS and not (
+            status == "completed" and _CONCLUSION_MAP.get(conclusion) == "failure"
+        ):
+            continue
         html_url = job.get("html_url", "")
 
         if html_url:

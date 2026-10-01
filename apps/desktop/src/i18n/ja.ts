@@ -1857,6 +1857,26 @@ export const ja = defineLocale({
     failedRename: 'プロファイルの名前変更に失敗しました'
   },
 
+  tasks: {
+    noRuns: '実行の会話はまだありません。',
+    runHistory: '実行の会話',
+    emptyDone: '終了したタスクはまだありません。',
+    tabDone: '終了済み',
+    phases: {
+      running: '実行中',
+      done: '完了',
+      failed: '失敗',
+      'delivery-failed': '配信失敗',
+      'delivery-pending': '配信結果は未確認',
+      unknown: '実行結果は未確認'
+    },
+    notify: {
+      doneTitle: 'タスクが完了',
+      failedTitle: 'タスクが失敗',
+      deliveryFailedTitle: 'タスクの配信に失敗'
+    }
+  },
+
   cron: {
     close: 'Cron を閉じる',
     eyebrow: '自動実行',
@@ -1884,7 +1904,16 @@ export const ja = defineLocale({
       paused: '一時停止中',
       disabled: '無効',
       error: 'エラー',
-      completed: '完了'
+      completed: 'スケジュール終了'
+    },
+    outcomes: {
+      succeeded: '直近の実行は成功',
+      failed: '直近の実行は失敗',
+      blocked: '設定により実行できません',
+      interrupted: '実行が中断されました',
+      'delivery-failed': '結果の配信に失敗',
+      'delivery-pending': '配信結果は未確認',
+      unknown: '実行結果は未確認'
     },
     deliveryLabels: {
       local: 'このデスクトップ',
@@ -1959,6 +1988,16 @@ export const ja = defineLocale({
     created: 'Cron を作成しました',
     updated: 'Cron を更新しました',
     failedLoad: 'Cron ジョブの読み込みに失敗しました',
+    failedLoadRuns: '実行履歴の読み込みに失敗しました',
+    runConversations: '実行の会話',
+    legacyRunHistory: 'ここには会話履歴のみが表示されます。スクリプト実行には会話がない場合があります。',
+    executionStatuses: {
+      claimed: '実行待ち',
+      running: '実行中',
+      completed: '完了',
+      failed: '失敗',
+      unknown: '結果不明',
+    },
     failedUpdate: 'Cron ジョブの更新に失敗しました',
     failedTrigger: 'Cron ジョブのトリガーに失敗しました',
     failedDelete: 'Cron ジョブの削除に失敗しました',
@@ -2042,6 +2081,7 @@ export const ja = defineLocale({
       'new-session': '開始',
       start: '開始',
       projects: 'プロジェクト',
+      analysis: '資料分析',
       workflows: 'ワークフロー',
       assistant: 'アシスタント接続',
       history: '会話履歴',
@@ -3691,6 +3731,23 @@ export const ja = defineLocale({
       emptyDescription: '業務目標を入力すると、APEX が実際のプロジェクトを作成し、ワークフローを構成します。',
       action: '目標を始める',
       newProject: '新規プロジェクト',
+      editProject: 'プロジェクトを編集',
+      edit: {
+        title: 'プロジェクトを編集',
+        description: '名前と目標を変更します。保存後は他の端末にも反映されます。',
+        save: '変更を保存',
+        saving: '保存中…',
+        failed: '保存できませんでした。入力内容は保持されています。再試行してください。'
+      },
+      awaitingAcceptance: '確認待ち',
+      notStarted: '未開始',
+      completionProgress: (succeeded, total) => `${total} 件中 ${succeeded} 件のワークフローが完了`,
+      completionUnavailable: 'ワークフローの状態を読み込めません。更新してから完了してください。',
+      completionFailed: 'プロジェクトを更新できませんでした。接続を確認して再試行してください。',
+      completionNotReady: '未完了のワークフローがあります。実行結果を確認して再試行してください。',
+      completeProject: 'プロジェクトを完了',
+      reopenProject: 'プロジェクトを再開',
+      reopenFirst: 'ワークフローの追加や開始には、先にプロジェクトを再開してください。',
       create: {
         title: '新規プロジェクト',
         description: 'ワークフローを追加する前に名前と目標を定義します。作成だけでは実行や進捗は生成されません。',
@@ -3747,6 +3804,8 @@ export const ja = defineLocale({
       recentProjects: '最近のプロジェクト',
       loadingProjects: 'プロジェクトを読み込み中…',
       projectLoadFailed: 'プロジェクトを読み込めません。下にローカル作業の互換ビューを残しています。',
+      refreshFailed: '最新の状態を更新できませんでした。接続を確認して再試行してください。',
+      refreshRetry: '更新を再試行',
       projectDomainUnavailable:
         'プロジェクトサービスはまだ接続されていません。実際のデータが利用可能になると、ここに表示されます。',
       detailTitle: 'プロジェクト概要',
@@ -3776,12 +3835,23 @@ export const ja = defineLocale({
           archived: 'アーカイブ済み',
           cancelled: 'キャンセル済み',
           completed: '完了',
+          paused: '一時停止',
           failed: '対応が必要',
           queued: 'Hermes の実行待ち',
           running: 'Hermes が実行中',
           succeeded: '完了',
           timed_out: 'タイムアウト',
           waiting_review: 'レビュー待ち'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: '実行キャンセル済み',
+          failed: '実行への対応が必要',
+          queued: 'Hermes の実行待ち',
+          running: 'Hermes が実行中',
+          succeeded: '実行成功',
+          timed_out: '実行タイムアウト',
+          waiting_review: '実行レビュー待ち'
         })[status] || status,
       viewRun: '現在の実行を開く',
       noRun: '実行はまだ開始されていません',
@@ -3805,9 +3875,10 @@ export const ja = defineLocale({
     workflows: {
       eyebrow: 'タスクテンプレート',
       title: 'ワークフロー',
-      description: '成果までの道筋を選ぶと、APEX がチャットで目標を整理し、作業を組み立てます。',
+      description: 'テンプレートを確認してプロジェクトに追加します。実行はプロジェクトから開始します。',
       use: 'このワークフローを使う',
       useShort: '使用',
+      goalSelectionDescription: 'テンプレートを選んで開始ページに戻り、目標を確認します。「実行開始」を押すとプロジェクトと実行が作成されます。',
       startGoal: '目標を始める',
       backToProject: 'プロジェクトに戻る',
       projectContext: '現在のプロジェクト · ワークフローを追加',
@@ -3816,6 +3887,18 @@ export const ja = defineLocale({
       projectUnavailable: 'プロジェクトを確認できないため作成を停止しました。プロジェクトに戻って再試行してください。',
       projectSavedEmpty: 'このプロジェクトにはワークフローがありません。下のテンプレートを選んで保存してください。',
       selectForProject: '選択して設定',
+      templateScope: '適した用途',
+      templateExample: '目標の例',
+      templateSteps: '使い方',
+      templateStepProject: 'プロジェクトを選ぶか、新しく作成します。',
+      templateStepGoal: 'ワークフローの目標を確認してプロジェクトに追加します。',
+      templateStepRun: 'プロジェクトから手動で開始し、実際の進捗と成果を確認します。',
+      templateExecutionNote: 'このテンプレートには事前定義された詳細な実行段階はありません。実際の進捗は実行後に表示されます。追加だけでは開始しません。',
+      joinCurrentProject: 'このプロジェクトに追加',
+      joinExistingProject: '既存のプロジェクトに追加',
+      newProjectAndJoin: 'プロジェクトを作成して追加',
+      chooseProjectDescription: 'ワークフローを追加できるプロジェクトだけを表示します。',
+      noActiveProjects: '利用できるプロジェクトがありません。新しく作成してください。',
       createEyebrow: 'プロジェクトに追加',
       createForProject: name => `「${name}」に保存します。すぐには実行されません。`,
       objectiveLabel: 'ワークフローの目標',
@@ -3824,7 +3907,7 @@ export const ja = defineLocale({
       saveFailed: 'ワークフローを保存できませんでした。同じテンプレートが既にあるか確認してください。',
       alreadyAdded: 'このプロジェクトには同じワークフローがあります。上の一覧から確認・実行してください。',
       recommendedTitle: 'おすすめのワークフロー',
-      recommendedDescription: '目標を編集してから、準備ができたら実行できます。',
+      recommendedDescription: '詳細を確認し、プロジェクトと目標を選びます。追加だけでは実行されません。',
       homeTitle: 'やりたいことを選んで開始',
       homeDescription: 'リンクを貼るか、分析したい内容を APEX に伝えてください。',
       homeSourceLabel: '対応プラットフォーム',
@@ -4158,7 +4241,11 @@ export const ja = defineLocale({
       failed: 'ログインに失敗しました。もう一度お試しください。',
       accountDisabled: 'アカウントが利用できません。再度ログインするかサポートにお問い合わせください。',
       sessionExpired: 'セッションの有効期限が切れました。再度ログインしてください。',
-      useOwnKey: '自分の API キーを使う'
+      useOwnKey: '自分の API キーを使う',
+      runtimeUpdateRequired: '現在の接続先の AI エンジンを更新してから、再度ログインしてください。',
+      runtimeUnavailable: 'モデル設定が未完了です。ランタイム接続を確認して、再度ログインしてください。',
+      provisionUnavailable: 'アカウント接続を確認できませんでした。再度ログインしてお試しください。',
+      superseded: '新しいアカウントまたはモデルの操作に切り替わりました。再度お試しください。'
     },
     account: {
       fallbackName: 'アカウント',

@@ -471,14 +471,16 @@ def _persist_session_row_for_submit(rid, session):
     return error
 
 
-def _run_after_agent_ready(rid, sid, session, text, display_kind, hosted_terminal_callback, turn_author=None):
+def _run_after_agent_ready(rid, sid, session, text, display_kind, hosted_terminal_callback, turn_author=None, turn_id=None):
     """Turn thread body: patient wait for a deferred build (a slow build must not eat the
     accepted in-flight message), then run."""
     # The wait delivers the prompt when the still-running build completes, honors a cancel promptly, notices
     # the user once past the slow threshold, and only errors when the build itself fails or the bounded cap
     # expires. See #63078.
+    from tui_gateway.prompt_outcomes import finish_prompt_outcome
     err = _wait_agent_for_prompt(session, rid, sid)
     if err:
+        finish_prompt_outcome(session, turn_id, "interrupted" if session.get("_turn_cancel_requested") else "error")
         # Terminal frame + retained snapshot (not a bare "error" event): the snapshot is
         # the only way resume shows this to a disconnected client.
         _emit_terminal_turn_error(
@@ -491,6 +493,7 @@ def _run_after_agent_ready(rid, sid, session, text, display_kind, hosted_termina
         return
     with session["history_lock"]:
         if session.get("_turn_cancel_requested") or not session.get("running"):
+            finish_prompt_outcome(session, turn_id, "interrupted" if session.get("_turn_cancel_requested") else "error")
             session["running"] = False
             _clear_inflight_turn(session)
             # Without this emit the turn vanishes silently after {"status": "streaming"}.
@@ -501,7 +504,7 @@ def _run_after_agent_ready(rid, sid, session, text, display_kind, hosted_termina
             return
     _run_prompt_submit(
         rid, sid, session, text, display_kind=display_kind,
-        terminal_callback=hosted_terminal_callback, turn_author=turn_author)
+        terminal_callback=hosted_terminal_callback, turn_author=turn_author, turn_id=turn_id)
 
 
 _TRUNCATION_PARAMS = (
@@ -652,14 +655,26 @@ def _(rid, params: dict) -> dict:
     # A completed FAILED build must not wedge the session: rebuild, don't replay it.
     if not _restart_completed_failed_agent_build(sid, session, session.get("agent_ready")):
         _start_agent_build(sid, session)
+    from tui_gateway.prompt_outcomes import begin_prompt_outcome, run_tracked_prompt
+    turn_id = begin_prompt_outcome(session)
     run_thread = threading.Thread(
-        target=lambda: _run_after_agent_ready(
-            rid, sid, session, text, display_kind, hosted_terminal_callback, turn_author),
+        target=lambda: run_tracked_prompt(session, turn_id, lambda: _run_after_agent_ready(
+            rid, sid, session, text, display_kind, hosted_terminal_callback, turn_author, turn_id)),
         daemon=True)
     # Handle lets session.interrupt tell a live turn from a stuck `running` flag.
     session["_run_thread"] = run_thread
     run_thread.start()
-    return _ok(rid, {"status": "streaming", **survivor_fields})
+    return _ok(rid, {"status": "streaming", "turn_id": turn_id, **survivor_fields})
+
+
+@method("prompt.turn.status")
+def _(rid, params: dict) -> dict:
+    from tui_gateway.prompt_outcomes import read_prompt_outcome
+    session, err = _sess_nowait(params, rid)
+    if err:
+        return err
+    turn_id = params["turn_id"]
+    return _ok(rid, {"turn_id": turn_id, "status": read_prompt_outcome(session, turn_id)})
 
 
 # ── attachments ─────────────────────────────────────────────────────────────

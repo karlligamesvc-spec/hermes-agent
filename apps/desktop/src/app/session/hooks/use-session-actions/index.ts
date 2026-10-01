@@ -136,7 +136,7 @@ import type { SessionCreateResponse, SessionMessage, SessionResumeResult, UsageS
 
 import { navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute, SETTINGS_ROUTE } from '../../../routes'
 import type { ClientSessionState, SidebarNavItem } from '../../../types'
-import { sessionContextDrift } from '../session-context-drift'
+import { routeTargetFromToken, sessionContextDrift } from '../session-context-drift'
 import { singleFlightSessionResume } from '../use-prompt-actions/single-flight-resume'
 
 import { sessionCreateOverrideParams, type SessionCreateOverrides, type SessionSeedMessage } from './create-overrides'
@@ -2094,7 +2094,12 @@ export function useSessionActions({
             return
           }
 
-          startFreshSessionDraft(true)
+          // A late 404 may arrive after the user opened Cron, Analysis or
+          // another chat. Clear the dead binding without taking that surface.
+          startFreshSessionDraft({
+            preserveRoute: getRoutedStoredSessionId() !== storedSessionId,
+            replaceRoute: true
+          })
 
           return
         }
@@ -2127,6 +2132,7 @@ export function useSessionActions({
       activeSessionIdRef,
       busyRef,
       copy,
+      getRoutedStoredSessionId,
       holdSessionTranscriptView,
       requestGateway,
       resetViewSync,
@@ -2533,6 +2539,7 @@ export function useSessionActions({
       // delete lands in the same tick, which used to leave the doomed route in
       // place and let the generic 4001 recovery rebind it.
       const wasSelected = selectedStoredSessionIdRef.current === storedSessionId
+      const wasRouted = getRoutedStoredSessionId() === storedSessionId
       const closingRuntimeId = wasSelected ? activeSessionIdRef.current : null
       const previousMessages = $messages.get()
       const previousPinned = $pinnedSessionIds.get()
@@ -2563,7 +2570,10 @@ export function useSessionActions({
       // Tear down before awaiting so the route effect can't resume the
       // doomed session via the stale /<sid> URL.
       if (wasSelected) {
-        startFreshSessionDraft(true)
+        startFreshSessionDraft({
+          preserveRoute: getRoutedStoredSessionId() !== storedSessionId,
+          replaceRoute: true
+        })
       }
 
       try {
@@ -2608,7 +2618,7 @@ export function useSessionActions({
         untombstoneSessions(removedIds)
         $pinnedSessionIds.set(previousPinned)
 
-        if (wasSelected) {
+        if (wasSelected && selectedStoredSessionIdRef.current === null) {
           setFreshDraftReady(false)
           setSelectedStoredSessionId(storedSessionId)
           selectedStoredSessionIdRef.current = storedSessionId
@@ -2619,7 +2629,10 @@ export function useSessionActions({
           }
 
           setMessages(previousMessages)
-          navigate(sessionRoute(storedSessionId), { replace: true })
+
+          if (wasRouted && routeTargetFromToken(getRouteToken()) === '__new__') {
+            navigate(sessionRoute(storedSessionId), { replace: true })
+          }
 
           if (closingRuntimeId) {
             setActiveSessionId(closingRuntimeId)
@@ -2638,6 +2651,8 @@ export function useSessionActions({
     [
       activeSessionIdRef,
       copy,
+      getRoutedStoredSessionId,
+      getRouteToken,
       navigate,
       requestGateway,
       runtimeIdByStoredSessionIdRef,
@@ -2681,7 +2696,10 @@ export function useSessionActions({
       $pinnedSessionIds.set(previousPinned.filter(id => id !== storedSessionId && id !== archivedPinId))
 
       if (wasSelected) {
-        startFreshSessionDraft(true)
+        startFreshSessionDraft({
+          preserveRoute: getRoutedStoredSessionId() !== storedSessionId,
+          replaceRoute: true
+        })
       }
 
       try {
@@ -2714,6 +2732,7 @@ export function useSessionActions({
     },
     [
       copy,
+      getRoutedStoredSessionId,
       runtimeIdByStoredSessionIdRef,
       selectedStoredSessionIdRef,
       sessionStateByRuntimeIdRef,

@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -18,7 +18,7 @@ function ExpiredAccountWindow() {
     <>
       <AccountPanel />
       {canMountDesktopOnboarding(auth, onboarding.requested) && (
-        <DesktopOnboardingOverlay enabled requestGateway={vi.fn() as never} />
+        <DesktopOnboardingOverlay enabled requestGateway={async method => (method === 'setup.runtime_check' ? { ok: true } : { provider_configured: true }) as never} />
       )}
     </>
   )
@@ -74,7 +74,8 @@ describe('expired account recovery', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens managed sign-in when the user clicks the expired account card', async () => {
+  it.each([false, true])('opens managed sign-in despite a ready Gateway and firstRunSkipped=%s', async firstRunSkipped => {
+    $desktopOnboarding.set({ ...$desktopOnboarding.get(), firstRunSkipped })
     render(
       <I18nProvider configClient={null} initialLocale="zh">
         <MemoryRouter>
@@ -83,7 +84,9 @@ describe('expired account recovery', () => {
       </I18nProvider>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /登录已失效/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /登录已失效/ }))
+    })
 
     await waitFor(() => expect(screen.getByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')).toBeTruthy())
   })
@@ -152,7 +155,8 @@ describe('signed-in account navigation', () => {
 
   it.each([
     ['连接助手', '/assistant'],
-    ['历史会话', '/history']
+    ['历史会话', '/history'],
+    ['交付物', '/deliverables']
   ])('keeps %s inside the account menu and routes only after selection', async (label, route) => {
     render(
       <I18nProvider configClient={null} initialLocale="zh">

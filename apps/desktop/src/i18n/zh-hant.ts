@@ -1843,6 +1843,26 @@ export const zhHant = defineLocale({
     failedRename: '重新命名設定檔失敗'
   },
 
+  tasks: {
+    noRuns: '暫無執行對話。',
+    runHistory: '執行對話',
+    emptyDone: '還沒有已結束的工作。',
+    tabDone: '已結束',
+    phases: {
+      running: '進行中',
+      done: '已完成',
+      failed: '失敗',
+      'delivery-failed': '交付失敗',
+      'delivery-pending': '交付結果未核實',
+      unknown: '執行結果未核實'
+    },
+    notify: {
+      doneTitle: '工作完成',
+      failedTitle: '工作失敗',
+      deliveryFailedTitle: '工作交付失敗'
+    }
+  },
+
   cron: {
     close: '關閉排程',
     eyebrow: '自動化執行',
@@ -1869,7 +1889,16 @@ export const zhHant = defineLocale({
       paused: '已暫停',
       disabled: '已停用',
       error: '錯誤',
-      completed: '已完成'
+      completed: '計劃已結束'
+    },
+    outcomes: {
+      succeeded: '最近執行成功',
+      failed: '最近執行失敗',
+      blocked: '設定阻止執行',
+      interrupted: '執行已中斷',
+      'delivery-failed': '結果交付失敗',
+      'delivery-pending': '交付結果未核實',
+      unknown: '執行結果未核實'
     },
     deliveryLabels: {
       local: '此桌面',
@@ -1943,6 +1972,16 @@ export const zhHant = defineLocale({
     created: '排程工作已建立',
     updated: '排程工作已更新',
     failedLoad: '載入排程工作失敗',
+    failedLoadRuns: '載入執行記錄失敗',
+    runConversations: '執行對話',
+    legacyRunHistory: '此處僅有會話記錄，指令碼任務可能沒有對話。',
+    executionStatuses: {
+      claimed: '等待執行',
+      running: '正在執行',
+      completed: '已完成',
+      failed: '執行失敗',
+      unknown: '結果未知',
+    },
     failedUpdate: '更新排程工作失敗',
     failedTrigger: '觸發排程工作失敗',
     failedDelete: '刪除排程工作失敗',
@@ -2025,6 +2064,7 @@ export const zhHant = defineLocale({
       'new-session': '開始',
       start: '開始',
       projects: '專案',
+      analysis: '沉浸式分析',
       workflows: '工作流程',
       assistant: '連接助手',
       history: '歷史會話',
@@ -3621,6 +3661,23 @@ export const zhHant = defineLocale({
       emptyDescription: '先描述一個業務目標，APEX 會據此建立真實專案並組織工作流程。',
       action: '開始一個目標',
       newProject: '新增專案',
+      editProject: '編輯專案',
+      edit: {
+        title: '編輯專案',
+        description: '修改專案名稱和目標，儲存後會同步到其他裝置。',
+        save: '儲存修改',
+        saving: '正在儲存…',
+        failed: '儲存失敗。輸入內容已保留，請重試。'
+      },
+      awaitingAcceptance: '待驗收',
+      notStarted: '待開始',
+      completionProgress: (succeeded, total) => `已完成 ${succeeded} / ${total} 條工作流程`,
+      completionUnavailable: '暫時無法讀取全部工作流程狀態，請重新整理後再驗收。',
+      completionFailed: '專案狀態未更新，請檢查連線並重試。',
+      completionNotReady: '仍有工作流程未成功完成，請檢查執行結果後重試。',
+      completeProject: '完成專案',
+      reopenProject: '重新開啟專案',
+      reopenFirst: '請先重新開啟專案，才能加入或啟動工作流程。',
       create: {
         title: '新增專案',
         description: '先定義專案名稱與目標。建立後不會自動啟動工作流程或虛構進度。',
@@ -3677,6 +3734,8 @@ export const zhHant = defineLocale({
       recentProjects: '最近專案',
       loadingProjects: '正在讀取專案…',
       projectLoadFailed: '暫時無法讀取專案，下方仍保留本機工作的相容視圖。',
+      refreshFailed: '暫時無法重新整理最新狀態，請檢查連接後重試。',
+      refreshRetry: '重試重新整理',
       projectDomainUnavailable: '專案服務尚未連接。真實資料可用後，最近專案會顯示在這裡。',
       detailTitle: '專案概覽',
       detailEyebrow: '專案概覽',
@@ -3703,12 +3762,23 @@ export const zhHant = defineLocale({
           archived: '已封存',
           cancelled: '已取消',
           completed: '已完成',
+          paused: '已暫停',
           failed: '需要處理',
           queued: '等待 Hermes 執行',
           running: 'Hermes 正在執行',
           succeeded: '已完成',
           timed_out: '已逾時',
           waiting_review: '等待審閱'
+        })[status] || status,
+      runLifecycle: status =>
+        ({
+          cancelled: '執行已取消',
+          failed: '執行需要處理',
+          queued: '等待 Hermes 執行',
+          running: 'Hermes 正在執行',
+          succeeded: '執行成功',
+          timed_out: '執行已逾時',
+          waiting_review: '執行等待審閱'
         })[status] || status,
       viewRun: '開啟目前執行',
       noRun: '尚未開始執行',
@@ -3730,9 +3800,10 @@ export const zhHant = defineLocale({
     workflows: {
       eyebrow: '任務範本',
       title: '工作流程',
-      description: '選擇結果路徑，APEX 會在對話中釐清目標並組織執行。',
+      description: '先了解範本，再選擇專案並加入工作流程；執行由你在專案中啟動。',
       use: '使用此工作流程',
       useShort: '使用',
+      goalSelectionDescription: '選擇範本後返回開始頁確認目標；點擊「開始執行」才會建立專案並啟動執行。',
       startGoal: '開始一個目標',
       backToProject: '返回專案',
       projectContext: '目前專案 · 新增工作流程',
@@ -3741,6 +3812,18 @@ export const zhHant = defineLocale({
       projectUnavailable: '無法確認專案歸屬，已暫停建立。請返回專案後重試。',
       projectSavedEmpty: '此專案尚無工作流程。請選擇下方範本並儲存。',
       selectForProject: '選擇並設定',
+      templateScope: '適用範圍',
+      templateExample: '範例目標',
+      templateSteps: '使用步驟',
+      templateStepProject: '選擇一個專案，或建立新專案。',
+      templateStepGoal: '確認工作流程目標並加入專案。',
+      templateStepRun: '在專案中手動啟動，查看實際進度與成果。',
+      templateExecutionNote: '範本沒有預設細分執行步驟；執行後以實際狀態為準。加入專案不會自動執行。',
+      joinCurrentProject: '加入目前專案',
+      joinExistingProject: '加入現有專案',
+      newProjectAndJoin: '建立專案並加入',
+      chooseProjectDescription: '僅顯示可繼續加入工作流程的專案。',
+      noActiveProjects: '沒有可用專案，請建立新專案。',
       createEyebrow: '新增至專案',
       createForProject: name => `將儲存至「${name}」，不會立即執行。`,
       objectiveLabel: '工作流程目標',
@@ -3749,7 +3832,7 @@ export const zhHant = defineLocale({
       saveFailed: '未能儲存工作流程。若專案已有相同範本，請先查看專案工作流程。',
       alreadyAdded: '此專案已有相同的工作流程，請在上方清單查看或執行。',
       recommendedTitle: '推薦工作流程',
-      recommendedDescription: '選擇後可先修改目標，再開始執行。',
+      recommendedDescription: '查看範本詳情，選擇專案並確認目標；加入後不會自動執行。',
       homeTitle: '選擇一項任務開始',
       homeDescription: '貼上連結，或告訴我你想分析的內容。',
       homeSourceLabel: '支援的平台',
@@ -4077,7 +4160,11 @@ export const zhHant = defineLocale({
       failed: '登入失敗,請重試',
       accountDisabled: '帳戶狀態異常,請重新登入或聯絡客服',
       sessionExpired: '登入已過期,請重新登入',
-      useOwnKey: '使用自己的金鑰'
+      useOwnKey: '使用自己的金鑰',
+      runtimeUpdateRequired: '請更新目前連線的 AI 引擎後,再重試登入',
+      runtimeUnavailable: '模型設定尚未完成,請檢查執行環境連線後重試登入',
+      provisionUnavailable: '帳戶連線暫時無法確認,請重新登入重試',
+      superseded: '新的帳戶或模型操作已取代這次登入,請重試'
     },
     account: {
       fallbackName: '帳戶',

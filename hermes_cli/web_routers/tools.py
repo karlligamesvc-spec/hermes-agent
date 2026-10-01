@@ -14,7 +14,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 
 from hermes_cli.web_deps import late
-from hermes_cli.web_server_profiles import _plugin_terminal_backend_rows
+from hermes_cli.config import mutate_config
+from hermes_cli.web_server_profiles import _config_profile_scope, _plugin_terminal_backend_rows
+from hermes_cli.web_model_mutations import model_mutation_ack, model_mutation_active, model_mutation_commit
 from starlette.concurrency import run_in_threadpool
 from hermes_cli.web_models import (
     TerminalBackendSelect, ToolsetEnvUpdate, ToolsetModelSelect, ToolsetPostSetup,
@@ -266,29 +268,31 @@ async def toggle_toolset(name: str, body: ToolsetToggle, profile: Optional[str] 
     (``platform_toolsets.cli`` for most; platform-restricted toolsets target
     their own platform) via the same ``_save_platform_tools`` the CLI uses."""
     from hermes_cli.tools_config import (
-        _CONFIG_ONLY_TOOLSETS, _get_platform_tools, _save_platform_tools,
-        _toolset_configuration_platform)
+        _CONFIG_ONLY_TOOLSETS, _get_platform_tools, _get_plugin_toolset_keys,
+        apply_platform_tool_selection, _toolset_configuration_platform)
 
     _require_known_toolset(name)
     target_platform = _toolset_configuration_platform(name)
     scope_profile = body.profile or profile
 
     def _run():
-        with config_write_scope(scope_profile):
-            config = load_config()
-            if name in _CONFIG_ONLY_TOOLSETS:
-                # Config-only capabilities (stt) toggle their own section's
-                # ``enabled`` flag — there is no platform_toolsets entry.
-                _dict_section(config, name)["enabled"] = bool(body.enabled)
-                save_config(config)
-                return
-            enabled = set(
-                _get_platform_tools(config, target_platform, include_default_mcp_servers=False))
-            if body.enabled:
-                enabled.add(name)
-            else:
-                enabled.discard(name)
-            _save_platform_tools(config, target_platform, enabled)
+        with _config_profile_scope(scope_profile):
+            plugin_keys = _get_plugin_toolset_keys()
+            # Resolve/import tool registries before the short actual writer.
+            _get_platform_tools(load_config(), target_platform, include_default_mcp_servers=False,
+                                plugin_toolset_keys=plugin_keys)
+            def edit(config):
+                if name in _CONFIG_ONLY_TOOLSETS:
+                    _dict_section(config, name)["enabled"] = bool(body.enabled)
+                    return
+                enabled = set(_get_platform_tools(config, target_platform, include_default_mcp_servers=False,
+                                                  plugin_toolset_keys=plugin_keys))
+                if body.enabled:
+                    enabled.add(name)
+                else:
+                    enabled.discard(name)
+                apply_platform_tool_selection(config, target_platform, enabled, plugin_keys)
+            mutate_config(edit)
 
     await asyncio.to_thread(_run)
 
@@ -454,7 +458,7 @@ async def select_toolset_model(
         raise _bad_request("model is required")
 
     def _run():
-        with config_write_scope(body.profile or profile):
+        with _config_profile_scope(body.profile or profile):
             config = load_config()
             row = _find_toolset_provider_row(name, config, body.provider)
             plugin = _resolve_toolset_model_plugin(name, row) if row else None
@@ -465,12 +469,13 @@ async def select_toolset_model(
             if model_id not in catalog:
                 raise _bad_request(f"Unknown model {model_id!r} for backend {plugin!r}")
 
-            _dict_section(config, section)["model"] = model_id
-            save_config(config)
+            def edit(config):
+                _dict_section(config, section)["model"] = model_id
+            mutate_config(edit)
         return plugin
 
     plugin = await asyncio.to_thread(_run)
-    return {"ok": True, "name": name, "model": model_id, "plugin": plugin}
+    return {"ok": True, "name": name, "model": model_id, "plugin": plugin, **model_mutation_ack()}
 
 
 @router.put("/api/tools/toolsets/{name}/provider")
@@ -485,7 +490,8 @@ async def select_toolset_provider(
     entitlement (``needs_nous_auth`` + ``feature``): the GUI has no inline
     login, so an unentitled selection would write config and never activate.
     """
-    from hermes_cli.tools_config import apply_provider_selection, web_provider_capabilities
+    from hermes_cli.tools_config import web_provider_capabilities
+    from hermes_cli.tools_config_providers import apply_resolved_provider_selection
     from hermes_cli.nous_subscription import (
         MANAGED_FEATURE_COVERAGE_CATEGORY, get_nous_subscription_features)
 
@@ -503,38 +509,34 @@ async def select_toolset_provider(
             (p for p in _category_providers(name, config) if p.get("name") == body.provider), None)
 
     def _run():
-        with _profile_scope(body.profile or profile):
-            with _CONFIG_MUTATION_LOCK:
-                config = load_config()
+        with _config_profile_scope(body.profile or profile):
+            config = load_config()
+            prov = _provider_row(config)
+            if prov is None:
+                raise _bad_request(f"Unknown provider {body.provider!r} for toolset {name!r}")
+            backend = prov.get("web_backend")
+            if body.capability is not None:
+                if not backend:
+                    raise _bad_request(f"Provider {body.provider!r} has no web backend key")
+                if body.capability not in web_provider_capabilities(backend):
+                    raise _bad_request(f"{body.provider} does not support {body.capability}")
+            def edit(config):
                 if body.capability is not None:
                     # Per-capability path writes web.<capability>_backend only —
                     # web.backend is untouched so the other capability keeps
                     # resolving through the shared fallback chain.
-                    prov = _provider_row(config)
-                    if prov is None:
-                        raise _bad_request(
-                            f"Unknown provider {body.provider!r} for toolset {name!r}")
-                    backend = prov.get("web_backend")
-                    if not backend:
-                        raise _bad_request(f"Provider {body.provider!r} has no web backend key")
-                    if body.capability not in web_provider_capabilities(backend):
-                        raise _bad_request(f"{body.provider} does not support {body.capability}")
                     _dict_section(config, "web")[f"{body.capability}_backend"] = backend
                 else:
-                    try:
-                        apply_provider_selection(name, body.provider, config)
-                    except KeyError as exc:
-                        raise _bad_request(str(exc).strip('"'))
-                save_config(config)
-                response: Dict[str, Any] = {"ok": True, "name": name, "provider": body.provider}
-                if body.capability is not None:
-                    response["capability"] = body.capability
+                    apply_resolved_provider_selection(prov, config)
+            mutate_config(edit)
+            response: Dict[str, Any] = {"ok": True, "name": name, "provider": body.provider}
+            if body.capability is not None:
+                response["capability"] = body.capability
 
             # Entitlement check for managed Nous rows (mirrors the CLI's
             # ensure_nous_portal_access gate).  Hits the Portal, so it runs AFTER
             # releasing the mutation lock — still in the worker thread + scope.
-            row = _provider_row(config)
-            managed_feature = (row or {}).get("managed_nous_feature")
+            managed_feature = prov.get("managed_nous_feature")
             if managed_feature:
                 features = get_nous_subscription_features(config, force_fresh=True)
                 acct = features.account_info
@@ -551,7 +553,7 @@ async def select_toolset_provider(
                     response["feature"] = managed_feature
         return response
 
-    return await asyncio.to_thread(_run)
+    return {**await asyncio.to_thread(_run), **model_mutation_ack()}
 
 
 @router.put("/api/tools/toolsets/{name}/env")
@@ -564,7 +566,7 @@ async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[
     _require_known_toolset(name)
 
     def _run():
-        with _profile_scope(body.profile or profile):
+        with _config_profile_scope(body.profile or profile):
             config = load_config()
             allowed: set[str] = {
                 e["key"]
@@ -576,23 +578,40 @@ async def save_toolset_env(name: str, body: ToolsetEnvUpdate, profile: Optional[
                 raise _bad_request(
                     f"Unknown env var(s) for toolset {name}: {', '.join(sorted(unknown))}")
 
+            prepared = {}
+            if model_mutation_active():
+                from agent.credential_pool import prepare_env_credential_pool_entries
+                from hermes_cli.config import _check_non_ascii_credential, validate_env_var_name_for_write
+                from hermes_cli.credential_lifecycle import _providers_for_env_var
+                for key, value in body.env.items():
+                    if value and value.strip():
+                        validate_env_var_name_for_write(key)
+                        value = _check_non_ascii_credential(key, value.strip().replace("\n", "").replace("\r", ""))
+                        prepared[key] = (value, prepare_env_credential_pool_entries(key, value, _providers_for_env_var(key)))
+
             saved: List[str] = []
             skipped: List[str] = []
-            for key, value in body.env.items():
-                if value and value.strip():
-                    try:
-                        save_env_value(key, value.strip())
-                    except ValueError as exc:
-                        raise _bad_request(str(exc))
-                    saved.append(key)
-                else:
-                    skipped.append(key)
+            with model_mutation_commit():
+                for key, value in body.env.items():
+                    if value and value.strip():
+                        try:
+                            if key in prepared:
+                                from hermes_cli.credential_lifecycle import save_provider_env_credential
+                                normalized, pool_entries = prepared[key]
+                                save_provider_env_credential(key, normalized, prepared_pool=pool_entries)
+                            else:
+                                save_env_value(key, value.strip())
+                        except ValueError as exc:
+                            raise _bad_request(str(exc))
+                        saved.append(key)
+                    else:
+                        skipped.append(key)
 
             status = {k: bool(get_env_value(k)) for k in allowed}
         return saved, skipped, status
 
     saved, skipped, status = await asyncio.to_thread(_run)
-    return {"ok": True, "name": name, "saved": saved, "skipped": skipped, "is_set": status}
+    return {"ok": True, "name": name, "saved": saved, "skipped": skipped, "is_set": status, **model_mutation_ack()}
 
 
 @router.post("/api/tools/toolsets/{name}/post-setup")
@@ -654,10 +673,10 @@ async def select_terminal_backend(
             f"Use one of: {', '.join(sorted(valid_names))}")
 
     def _run():
-        with config_write_scope(body.profile or profile):
-            config = load_config()
-            _dict_section(config, "terminal")["backend"] = backend
-            save_config(config)
+        with _config_profile_scope(body.profile or profile):
+            def edit(config):
+                _dict_section(config, "terminal")["backend"] = backend
+            mutate_config(edit)
 
     await asyncio.to_thread(_run)
     return {"ok": True, "backend": backend}

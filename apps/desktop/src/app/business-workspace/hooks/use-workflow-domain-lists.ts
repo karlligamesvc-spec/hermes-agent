@@ -1,76 +1,40 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   getWorkflowProject,
+  getWorkflowProjectCompletion,
   listVideoWorkflowCatalog,
   listWorkflowCatalog,
   listWorkflowDefinitions,
   listWorkflowProjects,
   type WorkflowCatalogOutcome,
-  type WorkflowDefinitionListOutcome,
-  type WorkflowProjectListOutcome,
+  type WorkflowProjectCompletionOutcome,
   type WorkflowProjectOutcome,
   type WorkflowVideoCatalogOutcome
 } from '../api/adapters'
 import { workflowDomainBridge } from '../api/bridge'
 
-type ProjectListState = WorkflowProjectListOutcome | { mode: 'loading' }
-type ProjectState = WorkflowProjectOutcome | { mode: 'loading' }
+import { useWorkflowDomainRead } from './use-workflow-domain-read'
+
 type WorkflowCatalogState = WorkflowCatalogOutcome | { mode: 'loading' }
 type WorkflowVideoCatalogState = WorkflowVideoCatalogOutcome | { mode: 'loading' }
-type WorkflowListState = WorkflowDefinitionListOutcome | { mode: 'loading' }
 
-export function useWorkflowProjects(limit = 50): ProjectListState {
-  const [state, setState] = useState<ProjectListState>(() =>
-    workflowDomainBridge()?.listProjects ? { mode: 'loading' } : { mode: 'unavailable' }
-  )
+export function useWorkflowProjects(limit = 50, status?: string) {
+  const read = useCallback(() => listWorkflowProjects({ limit, ...(status ? { status } : {}) }), [limit, status])
 
-  useEffect(() => {
-    let active = true
-
-    void listWorkflowProjects({ limit }).then(result => {
-      if (active) {
-        setState(result)
-      }
-    })
-
-    return () => {
-      active = false
-    }
-  }, [limit])
-
-  return state
+  return useWorkflowDomainRead(`projects:${limit}:${status ?? ''}`, read, Boolean(workflowDomainBridge()?.listProjects))
 }
 
-export function useWorkflowProject(projectId: string | undefined): ProjectState {
-  const [state, setState] = useState<ProjectState>(() =>
-    projectId && workflowDomainBridge()?.getProject ? { mode: 'loading' } : { mode: 'unavailable' }
-  )
+export function useWorkflowProject(projectId: string | undefined, reloadToken = 0) {
+  const read = useCallback(() => projectId ? getWorkflowProject(projectId) : Promise.resolve({ mode: 'unavailable' } as WorkflowProjectOutcome), [projectId])
 
-  useEffect(() => {
-    let active = true
+  return useWorkflowDomainRead(`project:${projectId ?? ''}`, read, Boolean(projectId && workflowDomainBridge()?.getProject), reloadToken)
+}
 
-    if (!projectId) {
-      setState({ mode: 'unavailable' })
+export function useWorkflowProjectCompletion(projectId: string | undefined, reloadToken = 0) {
+  const read = useCallback(() => projectId ? getWorkflowProjectCompletion(projectId) : Promise.resolve({ mode: 'unavailable' } as WorkflowProjectCompletionOutcome), [projectId])
 
-      return () => {
-        active = false
-      }
-    }
-
-    setState({ mode: 'loading' })
-    void getWorkflowProject(projectId).then(result => {
-      if (active) {
-        setState(result)
-      }
-    })
-
-    return () => {
-      active = false
-    }
-  }, [projectId])
-
-  return state
+  return useWorkflowDomainRead(`completion:${projectId ?? ''}`, read, Boolean(projectId && workflowDomainBridge()?.getProjectCompletion), reloadToken)
 }
 
 export function useWorkflowCatalog(reloadToken = 0): WorkflowCatalogState {
@@ -122,27 +86,9 @@ export function useVideoWorkflowCatalog(reloadToken = 0): WorkflowVideoCatalogSt
 export function useWorkflowDefinitions(
   options: { limit?: number; projectId?: string; status?: string } = {},
   reloadToken = 0
-): WorkflowListState {
-  const [state, setState] = useState<WorkflowListState>(() =>
-    workflowDomainBridge()?.listWorkflows ? { mode: 'loading' } : { mode: 'unavailable' }
-  )
-
+) {
   const { limit, projectId, status } = options
+  const read = useCallback(() => listWorkflowDefinitions({ limit, projectId, status }), [limit, projectId, status])
 
-  useEffect(() => {
-    let active = true
-
-    setState({ mode: 'loading' })
-    void listWorkflowDefinitions({ limit, projectId, status }).then(result => {
-      if (active) {
-        setState(result)
-      }
-    })
-
-    return () => {
-      active = false
-    }
-  }, [limit, projectId, reloadToken, status])
-
-  return state
+  return useWorkflowDomainRead(`workflows:${limit ?? ''}:${projectId ?? ''}:${status ?? ''}`, read, Boolean(workflowDomainBridge()?.listWorkflows), reloadToken)
 }
