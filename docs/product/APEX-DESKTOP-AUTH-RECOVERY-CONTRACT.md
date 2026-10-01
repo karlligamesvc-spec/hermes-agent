@@ -294,6 +294,29 @@ Cloud issue/revoke, signed and notarized paired artifacts, installed Runtime
 identity/upgrade, real account replay and user acceptance remain separate gates.
 No test fixture or code review proves those external results.
 
+The integrated Desktop 0.17.36 candidate includes reviewed main hc-905. Its
+complete UI suite passed 8833 tests in 923 files; the restored complete Native
+suite passed 3148 tests with 25 skips. The canonical Python integration runner
+passed 145 cases across model mutations, credential mutations, adjacent config
+writers and Cron snapshot identity. These local gates do not assert Windows
+hardware acceptance or packaged Runtime identity.
+
+The update center is loaded only after the local recovery action is expanded.
+Restoring its earlier eager import makes all nine unchanged Provider settings
+cases fail during real module evaluation; restoring lazy loading passes those
+nine and seven real login/update confirmation cases. The confirmation layers
+and provider assertions are unchanged. This UI reverse is separate from the
+seventeen Native reverses above. Local stale generated JS companions were
+reversibly isolated before the complete suites; they are not committed source.
+
+The SSH lifecycle fixtures now wait for each actual child to publish its PID,
+entrypoint and argv, and inspect real open descriptors with `fstat` before
+atomically publishing a completed report. Removing the production detached
+child's descriptor-close operation makes the actual macOS mutex-FD assertion
+fail; exact restoration passes all 92 lifecycle cases. The production lifecycle
+code is unchanged. Its standard-library-only Python fixture is separate from
+the canonical Hermes Runtime interpreter; Linux runs the same fixture in CI.
+
 ## Cloud device-key ordering
 
 Login and logout first verify authenticated
