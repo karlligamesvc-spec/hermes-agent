@@ -411,13 +411,16 @@ def _cache_entry_fresh(cached) -> bool:
 
 
 def exchange_copilot_token(
-    raw_token: str, *, timeout: float = 10.0) -> tuple[str, float, Optional[str]]:
+    raw_token: str, *, timeout: float = 10.0, persist: bool = True) -> tuple[str, float, Optional[str]]:
     """Exchange a raw GitHub token for a Copilot API token → (token, expires_at, base_url).
 
     The token is a semicolon-separated string (not a JWT) used as a Bearer token. ``base_url``
     is the account-specific host: the exchange's ``endpoints.api`` (enterprise/proxied
     accounts), else derived from the token's ``proxy-ep``; individual accounts have neither,
-    so it is None. Cached in-process until close to expiry. Raises ``ValueError`` on failure.
+    so it is None. Cached in-process until close to expiry. ``persist=False`` is
+    the explicit Desktop preparation path: exchange metadata without disk writes
+    before its owner fence. Ordinary discovery keeps the persistent cache.
+    Raises ``ValueError`` on failure.
     """
     fp = _token_fingerprint(raw_token)
     # Fast paths outside the lock: a valid in-process JWT needs no exchange, and a recent failure
@@ -433,11 +436,13 @@ def exchange_copilot_token(
     # Note: a waiter's own ``timeout`` is not honoured across the lock wait — by design of
     # single-flight, it observes the holder's outcome instead.
     with _exchange_lock_for(fp):
-        return _exchange_copilot_token_locked(raw_token, fp, timeout=timeout)
+        if persist:
+            return _exchange_copilot_token_locked(raw_token, fp, timeout=timeout)
+        return _exchange_copilot_token_locked(raw_token, fp, timeout=timeout, persist=False)
 
 
 def _exchange_copilot_token_locked(
-    raw_token: str, fp: str, *, timeout: float) -> tuple[str, float, Optional[str]]:
+    raw_token: str, fp: str, *, timeout: float, persist: bool = True) -> tuple[str, float, Optional[str]]:
     # Re-check in-process under the lock (a queued-behind caller may have just exchanged), then
     # on-disk: a fresh process may hold a still-valid persisted JWT, avoiding a network
     # round-trip precisely when the network is most likely flaky.
@@ -467,7 +472,8 @@ def _exchange_copilot_token_locked(
         str(endpoints.get("api") or "").strip().rstrip("/") if isinstance(endpoints, dict) else ""
     ) or _derive_base_url_from_proxy_ep(api_token)
     _jwt_cache[fp] = (api_token, expires_at, base_url)
-    _save_jwt_to_disk(fp, api_token, expires_at, base_url)
+    if persist:
+        _save_jwt_to_disk(fp, api_token, expires_at, base_url)
     logger.debug("Copilot token exchanged, expires_at=%s, base_url=%s", expires_at, base_url)
     return api_token, expires_at, base_url
 
@@ -482,13 +488,13 @@ def _derive_base_url_from_proxy_ep(token: str) -> Optional[str]:
     return f"https://{proxy_ep}"
 
 
-def get_copilot_api_token(raw_token: str) -> tuple[str, Optional[str]]:
+def get_copilot_api_token(raw_token: str, *, persist: bool = True) -> tuple[str, Optional[str]]:
     """``(api_token, base_url)`` from the exchange, or ``(raw_token, None)`` when it fails
     (accounts that don't need exchange keep working)."""
     if not raw_token:
         return raw_token, None
     try:
-        api_token, _, base_url = exchange_copilot_token(raw_token)
+        api_token, _, base_url = exchange_copilot_token(raw_token) if persist else exchange_copilot_token(raw_token, persist=False)
         return api_token, base_url
     except Exception as exc:
         logger.debug("Copilot token exchange failed, using raw token: %s", exc)

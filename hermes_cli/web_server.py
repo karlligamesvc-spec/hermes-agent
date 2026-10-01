@@ -36,7 +36,7 @@ from hermes_cli import __version__
 from hermes_cli.config import load_config
 
 try:
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import Depends, FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
 except ImportError:
@@ -46,7 +46,7 @@ except ImportError:
     try:
         from tools.lazy_deps import ensure as _lazy_ensure
         _lazy_ensure("tool.dashboard", prompt=False)
-        from fastapi import FastAPI, HTTPException, Request
+        from fastapi import Depends, FastAPI, HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
     except Exception:
@@ -293,7 +293,10 @@ def _get_pty_active_session_files(app: "FastAPI") -> dict[str, Path]:
     return _app_state_default(app, "pty_active_session_files", dict)
 
 
-app = FastAPI(title="Hermes Agent", version=__version__, lifespan=_lifespan)
+from hermes_cli.web_model_mutations import model_mutation_dependency  # noqa: E402
+
+app = FastAPI(title="Hermes Agent", version=__version__, lifespan=_lifespan,
+              dependencies=[Depends(model_mutation_dependency)])
 
 
 # Memory-provider OAuth connect routes live in the memory layer, not here.

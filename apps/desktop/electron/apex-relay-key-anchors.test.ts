@@ -36,6 +36,7 @@
  */
 import assert from 'node:assert/strict'
 
+import yaml from 'js-yaml'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -124,6 +125,50 @@ function poison(raw: string, path: string, key = ROTATED): string {
 
   return next.join('\n')
 }
+
+test.each(['api', 'url', 'base_url'])('keyed provider %s anchors insert the credential and recover discovery', field => {
+  const raw = yaml.dump({ providers: { managed: { [field]: RELAY_BASE, discover_models: false,
+    models: { [MODEL_ID]: { context_length: 128000 } } } } })
+
+  const synced = syncManagedRelayConfigYaml(raw, RELAY_BASE, ACTIVE)
+  const actual = yaml.load(synced.next) as any
+
+  assert.equal(synced.matched, true)
+  assert.equal(actual.providers.managed.api_key, ACTIVE)
+  assert.equal(actual.providers.managed.discover_models, true)
+  assert.equal(actual.providers.managed.models[MODEL_ID].context_length, 128000)
+  assert.equal(auditManagedRelayKeyAnchors(synced.next, RELAY_BASE, ACTIVE).clean, true)
+})
+
+test.each(['custom:managed', 'custom:Managed endpoint', '托管', 'managed.endpoint'])('valid provider identity %s retains its new credential after YAML surgery', provider => {
+  const raw = yaml.dump({ providers: { [provider]: { url: RELAY_BASE, api_key: ROTATED } } })
+  const synced = syncManagedRelayKeyYaml(raw, RELAY_BASE, ACTIVE)
+
+  assert.equal(synced.matched, true)
+  assert.equal((yaml.load(synced.next) as any).providers[provider].api_key, ACTIVE)
+  assert.equal(auditManagedRelayKeyAnchors(synced.next, RELAY_BASE, ACTIVE).clean, true)
+})
+
+test('provider API precedence and legacy list base_url preserve unrelated endpoint credentials', () => {
+  const other = 'https://byok.invalid/v1'
+
+  const raw = yaml.dump({ model: { provider: 'custom', base_url: RELAY_BASE, api_key: ROTATED }, providers: {
+    managed: { api: RELAY_BASE, url: other, base_url: other, api_key: ROTATED },
+    unrelated: { api: other, url: RELAY_BASE, base_url: RELAY_BASE, api_key: ROTATED, discover_models: false }
+  }, custom_providers: [{ name: 'Unrelated', api: RELAY_BASE, base_url: other, api_key: ROTATED, discover_models: false }] })
+
+  const synced = syncManagedRelayConfigYaml(raw, RELAY_BASE, ACTIVE)
+  const actual = yaml.load(synced.next) as any
+
+  assert.equal(actual.model.api_key, ACTIVE)
+  assert.equal(actual.providers.managed.api_key, ACTIVE)
+  assert.equal(actual.providers.unrelated.api_key, ROTATED)
+  assert.equal(actual.providers.unrelated.discover_models, false)
+  assert.equal(actual.custom_providers[0].api_key, ROTATED)
+  assert.equal(actual.custom_providers[0].discover_models, false)
+  assert.deepEqual(auditManagedRelayKeyAnchors(synced.next, RELAY_BASE, ACTIVE).holders.map(holder => holder.path),
+    ['model', 'providers.managed'])
+})
 
 // ── The forcing function ────────────────────────────────────────────────────
 

@@ -52,20 +52,31 @@ interface SignOutManagedDeviceInput {
   deviceInstanceId: string
   envKey: string
   managedKey: string | null
-  revoke: (body: ReturnType<typeof revokeDeviceBody>) => Promise<void>
+  revoke: (body: { device_instance_id: string; legacy_key_hash?: string }) => Promise<void>
+  isCurrent?: () => boolean
+  prepare?: () => Promise<void>
 }
 
 async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
   const managedKey = String(input.managedKey || '').trim()
   const envKey = String(input.envKey || '').trim()
+  const isCurrent = input.isCurrent || (() => true)
 
-  if (managedKey && !envKey) {
+  try {
+    await input.prepare?.()
+  } catch (error: any) {
+    return { ok: false, message: error?.code || 'MODEL_RUNTIME_UNAVAILABLE' }
+  }
+
+  if (!isCurrent()) {return { ok: false, message: 'MODEL_MUTATION_SUPERSEDED' }}
+
+  if ((managedKey || input.accessToken) && !envKey) {
     if (!input.accessToken) {
       return { ok: false, message: 'SIGN_OUT_REQUIRES_SIGN_IN' }
     }
 
     try {
-      await input.revoke(revokeDeviceBody(input.deviceInstanceId, managedKey))
+      await input.revoke(managedKey ? revokeDeviceBody(input.deviceInstanceId, managedKey) : provisionDeviceBody(input.deviceInstanceId))
     } catch (error: any) {
       return { ok: false, message: error && error.message ? error.message : String(error) }
     }
@@ -74,7 +85,11 @@ async function signOutManagedDevice(input: SignOutManagedDeviceInput) {
   // Clearing is deliberately last. A revoke/network failure must leave the
   // encrypted local credential intact so logout can be retried and the server
   // is never left with an invisible active key.
-  input.clearCredential()
+  if (!isCurrent()) {return { ok: false, message: 'MODEL_MUTATION_SUPERSEDED' }}
+
+  try {input.clearCredential()} catch {
+    return { ok: false, message: 'SIGN_OUT_CLEAR_FAILED' }
+  }
 
   return { ok: true }
 }

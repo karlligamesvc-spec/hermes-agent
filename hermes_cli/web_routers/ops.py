@@ -29,7 +29,7 @@ from hermes_cli.web_models import (
     BackupRequest, CredentialPoolAdd, HookCreate, HookDelete, ImportRequest, MemoryProviderSelect,
     MemoryReset, PairingApprove, PairingRevoke, WebhookCreate, WebhookEnabledToggle,
 )
-from hermes_cli.web_routers._common import _CONFIG_MUTATION_LOCK, http_failure, spawn_profile_action
+from hermes_cli.web_routers._common import http_failure, spawn_profile_action
 from hermes_cli.web_routers.files import stream_upload_to_path
 
 _log = logging.getLogger("hermes_cli.web_server")
@@ -43,7 +43,7 @@ _spawn_hermes_action = late("_spawn_hermes_action", "hermes_cli.web_server_gatew
 _write_platform_enabled = late("_write_platform_enabled", "hermes_cli.web_server_messaging")
 get_hermes_home = late("get_hermes_home", "hermes_cli.config")
 load_config = late("load_config", "hermes_cli.config")
-save_config = late("save_config", "hermes_cli.config")
+mutate_config = late("mutate_config", "hermes_cli.config")
 
 
 def _spawn_action(argv: List[str], name: str, *, log_msg: str, prefix: str) -> dict:
@@ -465,12 +465,11 @@ async def set_memory_provider(body: MemoryProviderSelect):
 
     def _run():
         _require_memory_provider_ready(provider)
-        with _CONFIG_MUTATION_LOCK:
-            cfg = load_config()
+        def edit(cfg):
             if not isinstance(cfg.get("memory"), dict):
                 cfg["memory"] = {}
             cfg["memory"]["provider"] = provider
-            save_config(cfg)
+        mutate_config(edit)
         return {"ok": True, "active": provider}
 
     return await asyncio.to_thread(_run)
@@ -669,8 +668,7 @@ async def create_hook(body: HookCreate):
         raise HTTPException(status_code=400, detail=f"Unknown event '{event}'. Valid: {', '.join(sorted(valid_hooks))}")
 
     def _run():
-        with _CONFIG_MUTATION_LOCK:
-            cfg = load_config()
+        def edit(cfg):
             hooks_cfg = cfg.get("hooks")
             if not isinstance(hooks_cfg, dict):
                 hooks_cfg = cfg["hooks"] = {}
@@ -683,7 +681,7 @@ async def create_hook(body: HookCreate):
             if body.timeout is not None:
                 new_entry["timeout"] = int(body.timeout)
             entries.append(new_entry)
-            save_config(cfg)
+        mutate_config(edit)
 
         approved = False
         if body.approve:
@@ -705,22 +703,29 @@ async def delete_hook(body: HookDelete):
     event, command = _hook_body_fields(body)
 
     def _run():
-        removed = False
-        with _CONFIG_MUTATION_LOCK:
-            cfg = load_config()
+        class MissingHook(Exception):
+            pass
+
+        def edit(cfg):
+            removed = False
             hooks_cfg = cfg.get("hooks")
-            if isinstance(hooks_cfg, dict) and isinstance(hooks_cfg.get(event), list):
-                before = len(hooks_cfg[event])
-                hooks_cfg[event] = [
-                    e for e in hooks_cfg[event]
-                    if not (isinstance(e, dict) and e.get("command") == command)
-                ]
-                removed = len(hooks_cfg[event]) < before
-                if not hooks_cfg[event]:
-                    del hooks_cfg[event]
-                if not hooks_cfg:
-                    cfg.pop("hooks", None)
-                save_config(cfg)
+            if not (isinstance(hooks_cfg, dict) and isinstance(hooks_cfg.get(event), list)):
+                raise MissingHook
+            before = len(hooks_cfg[event])
+            hooks_cfg[event] = [
+                e for e in hooks_cfg[event]
+                if not (isinstance(e, dict) and e.get("command") == command)
+            ]
+            removed = len(hooks_cfg[event]) < before
+            if not hooks_cfg[event]:
+                del hooks_cfg[event]
+            if not hooks_cfg:
+                cfg.pop("hooks", None)
+            return removed
+        try:
+            removed = mutate_config(edit)
+        except MissingHook:
+            removed = False
         # Revoke consent regardless so a re-add re-prompts.
         with contextlib.suppress(Exception):
             shell_hooks.revoke(command)

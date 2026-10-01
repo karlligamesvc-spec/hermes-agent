@@ -5340,6 +5340,10 @@ export const en: Translations = {
       signInGoogle: 'Continue with Google',
       signingIn: 'Signing in…',
       failed: 'Sign-in failed. Please try again.',
+      runtimeUpdateRequired: 'Update the AI engine on the current connection, then try signing in again.',
+      runtimeUnavailable: 'Model setup is incomplete. Check the runtime connection, then try signing in again.',
+      provisionUnavailable: 'Account connection could not be confirmed. Sign in again to retry.',
+      superseded: 'A newer account or model action replaced this sign-in. Please try again.',
       accountDisabled: 'Your account is unavailable. Please sign in again or contact support.',
       sessionExpired: 'Your session has expired. Please sign in again.',
       useOwnKey: 'Use my own API key'

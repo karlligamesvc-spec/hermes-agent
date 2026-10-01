@@ -446,7 +446,7 @@ def _normalize_main_model_assignment(provider: str, model: str) -> tuple[str, st
 
 
 def _validated_main_model_selection(
-    cfg: dict, provider: str, model: str, base_url: str = "", api_key: str = ""
+    cfg: dict, provider: str, model: str, base_url: str = "", api_key: str = "", *, explicit_endpoint: bool = False
 ) -> "ModelSwitchResult":
     """Route a dashboard main-slot pick through ``switch_model`` (catalog/alias/credential
     validation) seeded with the configured route, exactly like a ``/model <model> --provider
@@ -462,8 +462,8 @@ def _validated_main_model_selection(
         current_provider=str(model_cfg.get("provider") or ""), current_model=str(model_cfg.get("default") or ""),
         current_base_url=base_url if is_bare_custom else str(model_cfg.get("base_url") or ""),
         current_api_key=api_key if is_bare_custom else "",
-        user_providers=cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {},
-        custom_providers=get_compatible_custom_providers(cfg))
+        user_providers={} if explicit_endpoint else (cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}),
+        custom_providers=[] if explicit_endpoint else get_compatible_custom_providers(cfg))
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error_message or "model switch rejected")
     return result
@@ -601,9 +601,14 @@ def _register_custom_endpoint(base_url: str, api_key: str, model: str) -> None:
     setup" dead-end. Dedups by base_url; never blocks the already-persisted assignment."""
     try:
         from hermes_cli.main_provider_setup import _auto_provider_name, _save_custom_provider
+        from hermes_cli.web_model_mutations import model_mutation_active
 
-        _save_custom_provider(base_url, api_key, model, name=_auto_provider_name(base_url))
+        _save_custom_provider(base_url, api_key, model, name=_auto_provider_name(base_url),
+                              replace_api_key=bool(api_key) and model_mutation_active())
     except Exception:
+        from hermes_cli.web_model_mutations import model_mutation_active
+        if model_mutation_active():
+            raise
         _log.debug("custom_providers registration skipped", exc_info=True)
 
 
@@ -653,25 +658,57 @@ def _cron_model_impact(cfg: dict, provider: str, model: str) -> Any:
 
 
 def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: str, api_key: str) -> dict:
-    from hermes_cli.config import save_config
+    from hermes_cli.config import load_config, save_config
+    from hermes_cli.web_model_mutations import model_mutation_active, model_mutation_commit
     if not provider or not model:
         raise HTTPException(status_code=400, detail="provider and model required for main")
-    provider, model = _normalize_main_model_assignment(provider, model)
+    explicit_endpoint = bool(model_mutation_active() and provider.strip().lower() in {"custom", "local"} and base_url and api_key)
+    if explicit_endpoint:
+        # A tagged, explicit endpoint/key selection must update the catalog the
+        # resolver reads, then use that exact durable identity. Bare-custom's
+        # legacy first-entry fallback cannot choose a different named key.
+        provider = "custom"
+    else:
+        provider, model = _normalize_main_model_assignment(provider, model)
     providers_cfg = cfg.get("providers")
     provider_entry = providers_cfg.get(provider) if isinstance(providers_cfg, dict) else None
     if not base_url and isinstance(provider_entry, dict) and provider_entry.get("base_url"):
         base_url = str(provider_entry.get("base_url") or "").strip()
-    result = _validated_main_model_selection(cfg, provider, model, base_url, api_key)
-    provider, model = result.target_provider, result.new_model
-    model_cfg = _apply_main_model_assignment(cfg.get("model", {}), result, api_key)
-    _resolve_assignment_credentials(model_cfg, provider, provider_entry)
-    cfg["model"] = model_cfg
+    result = _validated_main_model_selection(cfg, provider, model, base_url, api_key, explicit_endpoint=explicit_endpoint)
+    gateway_tools = []
+    if result.target_provider.strip().lower() == "nous":
+        import copy
+        prepared_gateway_config = copy.deepcopy(cfg)
+        prepared_gateway_config["model"] = _apply_main_model_assignment(cfg.get("model", {}), result, api_key)
+        gateway_tools = _apply_nous_gateway_defaults(prepared_gateway_config)
+    with model_mutation_commit():
+        cfg = load_config()
+        if explicit_endpoint:
+            from dataclasses import replace
+            from hermes_cli.main_provider_setup import _auto_provider_name, _upsert_custom_provider
+            from hermes_cli.providers import custom_provider_slug
+            entry, _, _ = _upsert_custom_provider(
+                cfg, base_url, api_key, result.new_model, name=_auto_provider_name(base_url), replace_api_key=True)
+            result = replace(result, target_provider=custom_provider_slug(str(entry.get("name") or ""), str(entry.get("provider_key") or "")))
+        provider, model = result.target_provider, result.new_model
+        model_cfg = _apply_main_model_assignment(cfg.get("model", {}), result, api_key)
+        if explicit_endpoint:
+            # Explicit replacement owns both credential anchors. The raw disk
+            # entry still has the previous pointer until this atomic save.
+            for field in ("key_env", "api_key_env", "key_cmd"):
+                model_cfg.pop(field, None)
+        else:
+            _resolve_assignment_credentials(model_cfg, provider, provider_entry)
+        cfg["model"] = model_cfg
 
-    new_provider = provider.strip().lower()
-    gateway_tools = _apply_nous_gateway_defaults(cfg) if new_provider == "nous" else []
-    save_config(cfg)
-    if new_provider in {"custom", "local"} and base_url:
-        _register_custom_endpoint(base_url, api_key, model)
+        new_provider = provider.strip().lower()
+        if gateway_tools:
+            from hermes_cli.nous_subscription import _select_nous
+            for tool in gateway_tools:
+                _select_nous(cfg, tool)
+        save_config(cfg)
+        if new_provider in {"custom", "local"} and base_url:
+            _register_custom_endpoint(base_url, api_key, model)
 
     return {
         "ok": True,
@@ -776,14 +813,15 @@ def _apply_model_assignment_sync(
 ):
     """Synchronous body of POST /api/model/set.
 
-    Runs inside ``_profile_scope`` (worker thread) so every load_config/save_config lands in
+    Runs inside ``_config_profile_scope`` (worker thread) so every load_config/save_config lands in
     the requested profile. Raises HTTPException for validation errors.
     """
     from hermes_cli.config import load_config
-    cfg = load_config()
+    from hermes_cli.web_model_mutations import model_mutation_commit
     if scope == "main":
-        return _apply_main_assignment_sync(cfg, provider, model, base_url, api_key)
-    return _apply_aux_assignment_sync(cfg, provider, model, task, base_url, api_key, reasoning_effort)
+        return _apply_main_assignment_sync(load_config(), provider, model, base_url, api_key)
+    with model_mutation_commit():
+        return _apply_aux_assignment_sync(load_config(), provider, model, task, base_url, api_key, reasoning_effort)
 
 
 def _infer_provider_on_model_change(model_val: str, prev_provider: str) -> tuple[str, str]:

@@ -5,6 +5,7 @@ import type { DesktopManagedStatus } from '@/global'
 import {
   $authState,
   canMountDesktopOnboarding,
+  captureManagedAuthRecoveryScope,
   clearRelayAuthExpiry,
   handleAuthGate,
   handleRelayAuthExpired,
@@ -202,6 +203,39 @@ describe('markSignedIn / markManagedUnavailable / signOutAccount', () => {
 
 // hc-519 — relay-key validity as the single source of truth.
 describe('handleRelayAuthExpired / clearRelayAuthExpiry', () => {
+  it.each([
+    [{ reason: 'unauthorized', statusCode: 401 } as const, 'signed-out'],
+    [{ reason: 'account_disabled', statusCode: 403 } as const, 'disabled']
+  ])('never lets recovery or a fresh disk-key status undo the hard account gate %o', async (event, expected) => {
+    $authState.set({ ...$authState.get(), accountId: 'fixture-owner', enabled: true, status: 'signed-in' })
+    const isCurrent = captureManagedAuthRecoveryScope()
+    expect(isCurrent()).toBe(true)
+    handleAuthGate(event)
+    expect(isCurrent()).toBe(false)
+    handleRelayAuthExpired()
+    clearRelayAuthExpiry()
+    expect($authState.get().status).toBe(expected)
+    installManagedMock({ status: vi.fn().mockResolvedValue(status({ signedIn: true })) })
+    await refreshAuthStatus()
+    expect($authState.get()).toMatchObject({ status: expected, gateReason: event.reason })
+    installManagedMock({ status: vi.fn().mockRejectedValue(new Error('fixture IPC failure')) })
+    await refreshAuthStatus()
+    expect($authState.get()).toMatchObject({ status: expected, gateReason: event.reason })
+    markSignedIn()
+    expect($authState.get().status).toBe('signed-in')
+  })
+
+  it('keeps soft expiry in the same recovery lifetime but rejects a changed owner', () => {
+    $authState.set({ ...$authState.get(), accountId: 'fixture-owner-a', enabled: true, status: 'signed-in' })
+    const isCurrent = captureManagedAuthRecoveryScope()
+    handleRelayAuthExpired()
+    expect(isCurrent()).toBe(true)
+    clearRelayAuthExpiry()
+    expect(isCurrent()).toBe(true)
+    $authState.set({ ...$authState.get(), accountId: 'fixture-owner-b' })
+    expect(isCurrent()).toBe(false)
+  })
+
   it('degrades a signed-in account to expired, keeping the identity for display', () => {
     window.localStorage.setItem('apexnodes-desktop-signed-in-v1', '1')
     $authState.set({
@@ -271,6 +305,13 @@ describe('handleRelayAuthExpired / clearRelayAuthExpiry', () => {
     expect(state.status).toBe('expired')
     // Identity still refreshes so the degraded card stays accurate.
     expect(state.account.email).toBe('jane@apex-nodes.com')
+  })
+
+  it('keeps an existing soft expiry through temporary status IPC failure', async () => {
+    $authState.set({ ...$authState.get(), enabled: true, gateReason: 'unauthorized', status: 'expired' })
+    installManagedMock({ status: vi.fn().mockRejectedValue(new Error('fixture IPC failure')) })
+    await refreshAuthStatus()
+    expect($authState.get().status).toBe('expired')
   })
 
   it('refreshAuthStatus mirrors the loginTruth rollback switch from status()', async () => {

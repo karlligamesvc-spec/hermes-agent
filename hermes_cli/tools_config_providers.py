@@ -727,6 +727,16 @@ def apply_provider_selection(ts_key: str, provider_name: str, config: dict) -> N
     if provider is None:
         raise KeyError(f"Unknown provider {provider_name!r} for toolset {ts_key!r}")
 
+    apply_resolved_provider_selection(provider, config)
+
+
+def apply_resolved_provider_selection(provider: dict, config: dict) -> None:
+    """Apply an already resolved provider row; no discovery, network or saving.
+
+    Dashboard prepares the row before its actual-write transaction, then applies
+    these category-owned fields to the latest config. CLI resolution is unchanged.
+    """
+
     managed_feature = provider.get("managed_nous_feature")
     _write_provider_config(provider, config, managed_feature=managed_feature)
 

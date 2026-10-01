@@ -4552,6 +4552,10 @@ export interface Translations {
       signingIn: string
       /** Generic sign-in failure line. */
       failed: string
+      runtimeUpdateRequired: string
+      runtimeUnavailable: string
+      provisionUnavailable: string
+      superseded: string
       /** Account-abnormal (403 account_disabled) message shown on the gate. */
       accountDisabled: string
       /** Session-expired / login-lost (401) message shown on the gate. */

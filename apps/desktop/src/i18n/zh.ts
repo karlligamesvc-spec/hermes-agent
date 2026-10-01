@@ -4763,6 +4763,10 @@ export const zh = defineLocale({
       signInGoogle: '使用 Google 登录',
       signingIn: '登录中…',
       failed: '登录失败,请重试',
+      runtimeUpdateRequired: '请更新当前连接的 AI 引擎后重试登录',
+      runtimeUnavailable: '模型配置尚未完成,请检查运行时连接后重试登录',
+      provisionUnavailable: '账户连接暂时无法确认,请重新登录重试',
+      superseded: '登录操作已被新的账户或模型操作替代,请重试',
       accountDisabled: '账户状态异常,请重新登录或联系客服',
       sessionExpired: '登录已过期,请重新登录',
       useOwnKey: '使用自己的密钥'

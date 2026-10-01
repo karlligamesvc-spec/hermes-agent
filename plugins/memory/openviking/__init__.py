@@ -1273,14 +1273,14 @@ class OpenVikingMemoryProvider(MemoryProvider):
         if endpoint:
             normalized["endpoint"] = _normalize_openviking_url(endpoint)
 
-        from hermes_cli.config import load_config, save_config
+        from hermes_cli.config import mutate_config
 
-        config = load_config()
-        if not isinstance(config.get("memory"), dict):
-            config["memory"] = {}
-        provider_config = config["memory"].get("openviking")
-        config["memory"]["openviking"] = {**(provider_config if isinstance(provider_config, dict) else {}), **normalized}
-        save_config(config)
+        def edit(config):
+            if not isinstance(config.get("memory"), dict):
+                config["memory"] = {}
+            provider_config = config["memory"].get("openviking")
+            config["memory"]["openviking"] = {**(provider_config if isinstance(provider_config, dict) else {}), **normalized}
+        mutate_config(edit)
 
     def get_status_config(self, provider_config: dict) -> dict:
         provider_config = dict(provider_config or {})

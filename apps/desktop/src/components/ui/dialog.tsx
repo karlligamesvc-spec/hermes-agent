@@ -70,6 +70,7 @@ function DialogContent({
   fitContent = false,
   banner,
   bannerTone = 'error',
+  layer,
   onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
@@ -87,6 +88,8 @@ function DialogContent({
   // alert. Falsy → no banner. Tone picks the colour.
   banner?: React.ReactNode
   bannerTone?: DialogBannerTone
+  /** A blocking auth surface sits above ordinary dialogs. */
+  layer?: number
 }) {
   const { t } = useI18n()
 
@@ -127,9 +130,9 @@ function DialogContent({
   if (banner) {
     return (
       <DialogPortal>
-        <DialogOverlay />
+        <DialogOverlay style={layer ? { zIndex: layer - 1 } : undefined} />
         <DialogPrimitive.Content
-          className={cn(
+        className={cn(
             // The same split as the plain variant. The shell must not clip,
             // because it crops the popovers that portal into it. The banner
             // below has its own `overflow-hidden`, which rounds its corners.
@@ -143,6 +146,7 @@ function DialogContent({
           data-slot="dialog-content"
           onOpenAutoFocus={onOpenAutoFocus}
           ref={setContentNode}
+          style={layer ? { zIndex: layer } : undefined}
           {...props}
         >
           <DialogPortalContainerContext.Provider value={contentNode}>
@@ -178,7 +182,7 @@ function DialogContent({
 
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay style={layer ? { zIndex: layer - 1 } : undefined} />
       <DialogPrimitive.Content
         className={cn(
           // The SHELL: position, size, and skin. It has no overflow of its own,
@@ -194,6 +198,7 @@ function DialogContent({
         data-slot="dialog-content"
         onOpenAutoFocus={onOpenAutoFocus}
         ref={setContentNode}
+        style={layer ? { zIndex: layer } : undefined}
         {...props}
       >
         <DialogPortalContainerContext.Provider value={contentNode}>

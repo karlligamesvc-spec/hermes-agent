@@ -1,5 +1,6 @@
 import { atom } from 'nanostores'
 
+import { setApiRequestManagedOwner } from '@/api/client'
 import type { DesktopAuthGateEvent, DesktopManagedStatus } from '@/global'
 
 // The desktop's login gate is the ApexNodes managed-LLM account (Desktop V0.2,
@@ -118,7 +119,12 @@ export const $authState = atom<DesktopAuthState>({
   status: readCachedSignedIn() ? 'signed-in' : 'checking'
 })
 
-const patch = (update: Partial<DesktopAuthState>) => $authState.set({ ...$authState.get(), ...update })
+const patch = (update: Partial<DesktopAuthState>) => {
+  const next = { ...$authState.get(), ...update }
+  $authState.set(next)
+
+  if ('accountId' in update) {setApiRequestManagedOwner(next.enabled === false ? undefined : next.accountId)}
+}
 
 function accountFromStatus(status: DesktopManagedStatus): AuthAccount {
   return {
@@ -146,6 +152,10 @@ export function refreshChangedAccount(waitForSignIn = false) {
   // model assignment and checked its runtime. Its existing completion owns the
   // gate; another window or a direct native sign-in can reconcile immediately.
   if (!waitForSignIn) {void refreshAuthStatus()}
+}
+
+function hasHardAuthGate(state: DesktopAuthState): boolean {
+  return state.gateReason !== null && (state.status === 'signed-out' || state.status === 'disabled')
 }
 
 // Read the managed status via the desktop bridge and reconcile the gate.
@@ -189,6 +199,14 @@ export async function refreshAuthStatus(): Promise<void> {
         return
       }
 
+      // Native status proves credential presence, not successful authentication.
+      // A fresh status read cannot clear a server-confirmed hard account gate.
+      if (hasHardAuthGate($authState.get())) {
+        patch({ enabled: true, loginTruth })
+
+        return
+      }
+
       if (status.signedIn) {
         // hc-519: a status() that reports signedIn=true means only that a relay
         // KEY is on disk — not that it is valid. If relay-auth loss already flipped
@@ -228,6 +246,10 @@ export async function refreshAuthStatus(): Promise<void> {
       // status() threw (bridge error). Don't hard-block a returning user on a
       // transient IPC failure: keep a cached signed-in state, otherwise treat as
       // signed-out so the login screen can offer a retry.
+      const current = $authState.get()
+
+      if (hasHardAuthGate(current) || current.status === 'expired') {return}
+
       patch({ enabled: true, status: readCachedSignedIn() ? 'signed-in' : 'signed-out' })
     }
   })()
@@ -295,12 +317,25 @@ export function handleAuthGate(payload: DesktopAuthGateEvent) {
 export function handleRelayAuthExpired() {
   const state = $authState.get()
 
-  if (state.enabled === false || state.loginTruth === false) {
+  if (state.enabled !== true || state.loginTruth === false || !['signed-in', 'expired'].includes(state.status)) {
     return
   }
 
   writeCachedSignedIn(false)
   patch({ gateReason: 'unauthorized', status: 'expired' })
+}
+
+/** Recovery belongs to this account lifetime; a late reply cannot undo a hard gate. */
+export function captureManagedAuthRecoveryScope(): () => boolean {
+  const generation = authGeneration
+  const owner = $authState.get().accountId
+
+  return () => {
+    const current = $authState.get()
+
+    return generation === authGeneration && current.accountId === owner && current.enabled === true &&
+      (current.status === 'signed-in' || current.status === 'expired')
+  }
 }
 
 // hc-519 — the inverse of handleRelayAuthExpired: a relay-key recovery landed (a
@@ -344,6 +379,8 @@ export function returnToManagedLogin() {
 // fail-closed instead of merely looking signed out while a key remains active.
 export async function signOutAccount(): Promise<boolean> {
   const bridge = typeof window !== 'undefined' ? window.hermesDesktop?.managed : undefined
+  const generation = authGeneration
+  const owner = $authState.get().accountId
 
   try {
     const result = await bridge?.signOut()
@@ -354,6 +391,8 @@ export async function signOutAccount(): Promise<boolean> {
   } catch {
     return false
   }
+
+  if (generation !== authGeneration || owner !== $authState.get().accountId) {return false}
 
   invalidateAuthRefresh()
   writeCachedSignedIn(false)

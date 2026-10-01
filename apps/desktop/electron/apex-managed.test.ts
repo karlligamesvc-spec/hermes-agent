@@ -1056,22 +1056,27 @@ test('hc-687 live client-config still fills missing product preferences', () => 
   assert.deepEqual(result.preserved, [])
 })
 
-test('managed sign-in creates an anchor before syncing the freshly rotated relay key', () => {
-  // hc-646: on a signed-out first boot the existing file is the BYOK seed and
-  // contains no managed anchor. Calling sync first can only return
-  // `no-managed-anchor`; the add-only product guard must run after the managed
-  // credential is stored and before the writer attempts to persist it.
+test('managed sign-in stores the rotated key then completes Runtime before synchronizing existing local anchors', () => {
+  // hc-646 first-login anchor ordering is now supplied by the actual Runtime
+  // commit. A remote/profile login must not create an unrelated local BYOK
+  // anchor merely to make Native's mirror synchronizer succeed.
   const main = readFileSync(join(__dirname, 'main.ts'), 'utf8')
   const start = main.indexOf('async function provisionManagedFromAccessToken')
   const end = main.indexOf('\n/**\n * Sign in to ApexNodes', start)
   const body = main.slice(start, end)
   const stored = body.indexOf('writeManagedConfig({ ...provisioned')
-  const anchored = body.indexOf("guardConfigYamlProductBlocks('sign-in-provision')")
-  const synced = body.indexOf("syncManagedRelayKeyToConfig('sign-in')")
+  const completed = body.indexOf('await finishManagedModelRuntime(target, current)')
+  const finish = main.slice(main.indexOf('async function finishManagedModelRuntime'), start)
+  const anchored = finish.indexOf("guardConfigYamlProductBlocks('managed-runtime-complete')")
+  const synced = finish.indexOf("syncManagedRelayKeyToConfig('managed-runtime-complete')")
+
+  const actual = readFileSync(join(__dirname, 'desktop-model-mutations.ts'), 'utf8')
+    .split('export async function completeManagedModelAssignment')[1].split('export class DesktopModelMutationCoordinator')[0]
 
   assert.ok(stored >= 0, 'provision result is not stored')
-  assert.ok(anchored > stored, 'managed anchor must be created after the new key is stored')
-  assert.ok(synced > anchored, 'relay key sync must run only after the managed anchor exists')
+  assert.ok(completed > stored, 'actual Runtime completion must follow credential persistence')
+  assert.ok(anchored >= 0 && synced > anchored, 'existing local anchors must be guarded before synchronization')
+  assert.ok(actual.indexOf('args.syncLocal()') > actual.indexOf('const applied ='), 'local synchronization must follow Runtime completion')
 })
 
 test('ensureProductDefaultsYaml preserves comments and unrelated blocks', () => {
@@ -1137,6 +1142,7 @@ test('APEX_PRODUCT_DEFAULTS stays in lockstep with the first-install seed blocks
       `seed blocks do not carry ${dotted}: ${rendered}`
     )
   }
+
   assert.equal(APEX_PRODUCT_DEFAULTS['apex.generation_image_model'], 'gpt-image-2.5-flare')
 })
 

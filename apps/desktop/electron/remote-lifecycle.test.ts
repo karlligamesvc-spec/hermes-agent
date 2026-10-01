@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { exec as execCallback, spawn } from 'node:child_process'
+import { watch } from 'node:fs'
 import { access, chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -580,12 +581,13 @@ test.skipIf(process.platform === 'win32')(
     const pythonLink = path.join(venvBin, 'python')
     const entrypoint = path.join(installDir, 'hermes')
     const launcher = path.join(temp, 'hermes launcher')
-    const python = (await exec('command -v python3')).stdout.trim()
+    // macOS /usr/bin/python3 is a name-sensitive Xcode launcher, not the interpreter.
+    const python = (await exec("python3 -c 'import os, sys; print(os.path.realpath(sys.executable))'")).stdout.trim()
     const tokenPath = path.join(os.homedir(), spawnTokenPath(OWNERSHIP_ID, SPAWN_NONCE).replace(/^~\//, ''))
 
     await mkdir(venvBin, { recursive: true })
     await symlink(python, pythonLink)
-    await writeFile(entrypoint, 'import time\ntime.sleep(30)\n', 'utf8')
+    await writeFile(entrypoint, 'import json, os, sys, time\nprint(json.dumps({"pid": os.getpid(), "entrypoint": __file__, "argv": sys.argv[1:]}), flush=True)\ntime.sleep(30)\n', 'utf8')
     await writeFile(launcher, `#!/bin/bash\nexec "${pythonLink}" "${entrypoint}" "$@"\n`, 'utf8')
     await chmod(launcher, 0o755)
 
@@ -601,11 +603,42 @@ test.skipIf(process.platform === 'win32')(
     ]
 
     const children: ReturnType<typeof spawn>[] = []
+    const ready = new Map<ReturnType<typeof spawn>, Promise<boolean>>()
 
     const spawnInstaller = (args: string[]) => {
-      const process = spawn(launcher, args, { stdio: 'ignore' })
+      const process = spawn(launcher, args, { stdio: ['ignore', 'pipe', 'pipe'] })
 
       children.push(process)
+      ready.set(process, new Promise((resolve, reject) => {
+        let output = ''
+        let stderr = ''
+        let settled = false
+        process.stderr.on('data', chunk => {stderr += chunk.toString()})
+        const finish = (error?: Error) => {
+          if (settled) {return}
+          settled = true
+          clearTimeout(timer)
+          process.stdout.removeListener('data', onData)
+          process.removeListener('error', onError)
+          process.removeListener('exit', onExit)
+          if (error) {reject(error)} else {resolve(true)}
+        }
+        const onError = (error: Error) => finish(error)
+        const onExit = (code: number | null, signal: string | null) => finish(new Error(`fake installer exited before READY (${code}, ${signal}): ${stderr}`))
+        const onData = (chunk: Buffer) => {
+          output += chunk.toString()
+          const newline = output.indexOf('\n')
+          if (newline < 0) {return}
+          try {
+            assert.deepEqual(JSON.parse(output.slice(0, newline)), { pid: process.pid, entrypoint, argv: args })
+            finish()
+          } catch (error) {finish(error as Error)}
+        }
+        const timer = setTimeout(() => finish(new Error('fake installer did not publish READY')), 5000)
+        process.stdout.on('data', onData)
+        process.once('error', onError)
+        process.once('exit', onExit)
+      }))
 
       return process
     }
@@ -616,19 +649,7 @@ test.skipIf(process.platform === 'win32')(
       exec: async (command: string) => (await exec(command, { shell: '/bin/bash' })).stdout
     }
 
-    const waitForEntrypoint = async (process: ReturnType<typeof spawn>) => {
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const command = (await exec(`ps -ww -o command= -p ${process.pid}`)).stdout
-
-        if (command.includes(entrypoint)) {
-          return true
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 25))
-      }
-
-      return false
-    }
+    const waitForEntrypoint = (process: ReturnType<typeof spawn>) => ready.get(process)!
 
     try {
       assert.equal(await waitForEntrypoint(child), true, 'wrapper must exec into the fake installer entrypoint')
@@ -703,13 +724,20 @@ test.skipIf(process.platform === 'win32')(
         'a duplicate conflicting profile must remain foreign'
       )
     } finally {
-      for (const process of children) {
+      await Promise.all(children.map(process => new Promise<void>((resolve, reject) => {
+        if (process.exitCode !== null || process.signalCode !== null) {resolve(); return}
+        const timer = setTimeout(() => {
+          process.kill('SIGKILL')
+          reject(new Error('owned fixture did not confirm exit after SIGTERM'))
+        }, 5000)
+        process.once('exit', () => {clearTimeout(timer); resolve()})
         process.kill('SIGTERM')
-      }
+      })))
 
       await rm(temp, { force: true, recursive: true })
     }
-  }
+  },
+  20_000
 )
 
 test('disconnect reaps the backend recorded for this desktop ownership', async () => {
@@ -836,14 +864,24 @@ test.skipIf(process.platform === 'win32')('detached backend does not inherit the
   try {
     await writeFile(
       hermesPath,
-      `#!/bin/sh
-: > ${reportPath}
-for fd in /proc/$$/fd/*; do
-  target=$(readlink "$fd" 2>/dev/null || true)
-  case "$target" in
-    *hermes-update-in-progress.mutex) printf '%s\\n' "$target" >> ${reportPath} ;;
-  esac
-done
+      `#!/usr/bin/env python3
+import json, os
+mutex = os.stat(${JSON.stringify(path.join(directory, 'home', '.hermes-update-in-progress.mutex'))})
+scanned, inherited = [], []
+for name in os.listdir('/dev/fd'):
+    if not name.isdigit(): continue
+    fd = int(name)
+    try: opened = os.fstat(fd)
+    except OSError: continue
+    scanned.append(fd)
+    if (opened.st_dev, opened.st_ino) == (mutex.st_dev, mutex.st_ino): inherited.append(fd)
+report = ${JSON.stringify(reportPath)}
+temporary = report + '.' + str(os.getpid()) + '.tmp'
+with open(temporary, 'w') as output:
+    json.dump({'pid': os.getpid(), 'complete': True, 'scanned': sorted(scanned), 'mutex_fds': inherited}, output)
+    output.flush()
+    os.fsync(output.fileno())
+os.replace(temporary, report)
 `,
       { mode: 0o700 }
     )
@@ -860,26 +898,34 @@ done
     // while this test otherwise still reports a clean inherited descriptor.
     await access(path.join(directory, 'home', '.hermes-update-in-progress.mutex'))
 
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        const report = await readFile(reportPath, 'utf8')
-        assert.equal(report, '', 'the backend process must not retain the update mutex descriptor')
-
-        return
-      } catch (error: any) {
-        if (error?.code !== 'ENOENT') {
-          throw error
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 25))
+    type DescriptorReport = { pid: number; complete: boolean; scanned: number[]; mutex_fds: number[] }
+    const report = await new Promise<DescriptorReport>((resolve, reject) => {
+      let settled = false
+      const finish = (error?: Error, value?: DescriptorReport) => {
+        if (settled) {return}
+        settled = true
+        clearTimeout(timer)
+        watcher.close()
+        if (error) {reject(error)} else {resolve(value!)}
       }
-    }
-
-    assert.fail('the detached backend did not write its descriptor report')
+      const read = async () => {
+        try {finish(undefined, JSON.parse(await readFile(reportPath, 'utf8')))} catch (error: any) {
+          if (error?.code !== 'ENOENT') {finish(error)}
+        }
+      }
+      const watcher = watch(directory, (_, filename) => { if (filename === path.basename(reportPath)) {void read()} })
+      watcher.once('error', error => finish(error))
+      const timer = setTimeout(() => finish(new Error('the detached backend did not publish its completed descriptor report')), 5000)
+      void read()
+    })
+    assert.equal(report.complete, true)
+    assert.ok(Number.isSafeInteger(report.pid) && report.pid > 0)
+    assert.ok([0, 1, 2].every(fd => report.scanned.includes(fd)), 'the actual backend must inspect its open descriptors')
+    assert.deepEqual(report.mutex_fds, [], 'the backend process must not retain the update mutex descriptor')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
-})
+}, 10_000)
 
 test('spawnRemoteDashboard returns exact ownership artifacts', async () => {
   const ssh = fakeSsh([

@@ -4160,7 +4160,11 @@ export const zhHant = defineLocale({
       failed: '登入失敗,請重試',
       accountDisabled: '帳戶狀態異常,請重新登入或聯絡客服',
       sessionExpired: '登入已過期,請重新登入',
-      useOwnKey: '使用自己的金鑰'
+      useOwnKey: '使用自己的金鑰',
+      runtimeUpdateRequired: '請更新目前連線的 AI 引擎後,再重試登入',
+      runtimeUnavailable: '模型設定尚未完成,請檢查執行環境連線後重試登入',
+      provisionUnavailable: '帳戶連線暫時無法確認,請重新登入重試',
+      superseded: '新的帳戶或模型操作已取代這次登入,請重試'
     },
     account: {
       fallbackName: '帳戶',

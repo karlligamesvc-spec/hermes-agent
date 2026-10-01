@@ -62,6 +62,17 @@ test('managed logout revokes before clearing the local credential', async () => 
   assert.deepEqual(calls, ['revoke', 'clear'])
 })
 
+test('an existing account with no readable relay key still publishes its device logout before local clear', async () => {
+  const calls: unknown[] = []
+
+  const result = await signOutManagedDevice({ accessToken: 'hc903-fixture-token', managedKey: null, envKey: '',
+    deviceInstanceId: DEVICE_ID, clearCredential: () => {calls.push('clear')},
+    revoke: async body => {calls.push(body)} })
+
+  assert.deepEqual(result, { ok: true })
+  assert.deepEqual(calls, [{ device_instance_id: DEVICE_ID }, 'clear'])
+})
+
 test('managed logout fails closed when revoke cannot be proven', async () => {
   for (const accessToken of [null, 'login-token']) {
     let cleared = false
