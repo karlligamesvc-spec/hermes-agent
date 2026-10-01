@@ -90,6 +90,7 @@ describe('analysis source selection', () => {
     render(<AnalysisView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /a.txt/ }))
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: '研究笔记' }), { button: 0, ctrlKey: false })
     fireEvent.change(await screen.findByLabelText('记录你的发现'), { target: { value: 'A 的私有笔记' } })
     fireEvent.click(screen.getByRole('button', { name: /a.txt/ }))
     expect(screen.getByLabelText('记录你的发现')).toHaveProperty('value', 'A 的私有笔记')
@@ -111,10 +112,12 @@ describe('analysis source selection', () => {
     render(<AnalysisView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /a.txt/ }))
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: '研究笔记' }), { button: 0, ctrlKey: false })
     fireEvent.change(await screen.findByLabelText('记录你的发现'), { target: { value: 'A note' } })
     fireEvent.click(screen.getByRole('button', { name: '保存笔记' }))
     fireEvent.click(screen.getByRole('button', { name: /b.txt/ }))
     await screen.findByRole('heading', { name: 'b.txt' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: '研究笔记' }), { button: 0, ctrlKey: false })
     fireEvent.change(screen.getByLabelText('记录你的发现'), { target: { value: 'B draft' } })
 
     await act(async () => saved.resolve({ ok: true }))

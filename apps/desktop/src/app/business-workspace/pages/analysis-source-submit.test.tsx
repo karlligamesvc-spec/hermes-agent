@@ -71,7 +71,7 @@ describe('analysis source submission', () => {
     expect(transcribeVideoLink).toHaveBeenCalledTimes(2)
     expect(transcribeVideoLink).toHaveBeenLastCalledWith(url)
     expect(get).toHaveBeenCalledWith(item.id)
-    expect((input as HTMLInputElement).value).toBe('')
+    expect((screen.getByRole('textbox', { name: '粘贴资料链接' }) as HTMLInputElement).value).toBe('')
   })
 
   it('routes a shared Feishu document through the same form submit without invoking video tools', async () => {

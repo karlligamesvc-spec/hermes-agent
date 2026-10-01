@@ -1,3 +1,5 @@
+import './business-sidebar.css'
+
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -1172,6 +1174,7 @@ export function ChatSidebar({
             'border-transparent bg-(--ui-row-active-background) text-foreground shadow-none hover:bg-(--ui-row-active-background)!',
           !isInteractive && 'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
         )}
+        data-apex-business-nav={BUSINESS_WORKSPACE_ENABLED ? item.id : undefined}
         onClick={() => {
           if (isNewSession) {
             $newChatProfile.set(null)
@@ -1237,6 +1240,7 @@ export function ChatSidebar({
         'border-(--sidebar-edge-border) bg-(--ui-sidebar-surface-background) opacity-100'
       )}
       collapsible="none"
+      data-apex-business-chrome={BUSINESS_WORKSPACE_ENABLED ? '' : undefined}
     >
       <SidebarContent className="gap-0 overflow-hidden bg-transparent px-2.5">
         <div
@@ -1249,7 +1253,7 @@ export function ChatSidebar({
         </div>
         <SidebarGroup className="shrink-0 p-0 pb-2 pt-0">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-px">{primarySidebarNavItems.map(renderSidebarNavItem)}</SidebarMenu>
+            <SidebarMenu className="gap-px" data-apex-business-nav-list={BUSINESS_WORKSPACE_ENABLED ? '' : undefined}>{primarySidebarNavItems.map(renderSidebarNavItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -1593,7 +1597,7 @@ export function ChatSidebar({
               the signed-out case. Profile, Settings, connection management and
               session history live in one account menu. Passive channel rows do
               not consume conversation-list height. */}
-          <AccountPanel />
+          <AccountPanel businessChrome={BUSINESS_WORKSPACE_ENABLED} />
         </div>
       </SidebarContent>
       <ProjectDialog />

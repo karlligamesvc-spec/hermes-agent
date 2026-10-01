@@ -3697,7 +3697,29 @@ export const ja = defineLocale({
   },
 
   home: {
-    title: '今日はどの業務を前に進めますか？'
+    title: '今日はどの業務を前に進めますか？',
+    description: '業務目標を入力し、ワークフローを選ぶか、そのままアシスタントに依頼できます。',
+    pathsEyebrow: '定番の進め方から始める',
+    pathsTitle: '業務の主軸を選ぶ',
+    capabilityPaths: '動画・ソーシャルメディアのタスク',
+    catalogLoading: '利用可能なワークフローを確認中…',
+    primaryPaths: {
+      commerce: {
+        title: '市場機会から出品素材へ',
+        summary: '商品分析 · ポジショニング · 商品説明 · 画像 · 動画',
+        prompt: '米国のペット用品市場を分析し、商品選定レポートと出品素材を作成してください'
+      },
+      geo: {
+        title: 'ブランドの認知と顧客獲得を改善',
+        summary: 'ブランド診断 · 質問マップ · コンテンツ · 見込み客',
+        prompt: 'AI Search での自社ブランドの可視性を診断し、GEO による顧客獲得案を提案してください'
+      },
+      content: {
+        title: '洞察・制作から成果の振り返りへ',
+        summary: 'ユーザー理解 · テーマ · 台本 · 画像 · 公開 · 振り返り',
+        prompt: '自分の SNS アカウントの今週のテーマを計画し、画像付き投稿を 3 件作成してください'
+      }
+    }
   },
 
   businessWorkspace: {

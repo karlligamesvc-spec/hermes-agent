@@ -4173,6 +4173,16 @@ export interface Translations {
 
   home: {
     title: string
+    description: string
+    pathsEyebrow: string
+    pathsTitle: string
+    capabilityPaths: string
+    catalogLoading: string
+    primaryPaths: {
+      commerce: { title: string; summary: string; prompt: string }
+      geo: { title: string; summary: string; prompt: string }
+      content: { title: string; summary: string; prompt: string }
+    }
   }
 
   businessWorkspace: {

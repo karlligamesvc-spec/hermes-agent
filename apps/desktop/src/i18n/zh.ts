@@ -4235,7 +4235,29 @@ export const zh = defineLocale({
   },
 
   home: {
-    title: '今天想推进什么业务？'
+    title: '今天想推进什么业务？',
+    description: '描述业务目标，选择工作流或直接交给助手推进。',
+    pathsEyebrow: '从成熟路径开始',
+    pathsTitle: '选择一条业务主线',
+    capabilityPaths: '视频与社媒任务',
+    catalogLoading: '正在读取可用工作流…',
+    primaryPaths: {
+      commerce: {
+        title: '从市场机会到上架素材',
+        summary: '选品分析 · 产品定位 · Listing · 图片 · 短视频',
+        prompt: '分析美国宠物用品市场，并生成选品报告和上架素材'
+      },
+      geo: {
+        title: '提升品牌可见度与获客',
+        summary: '品牌诊断 · 问题地图 · 内容优化 · 线索发现',
+        prompt: '诊断我的品牌在 AI Search 中的可见度，并给出 GEO 获客方案'
+      },
+      content: {
+        title: '洞察、创作到数据复盘',
+        summary: '用户洞察 · 选题 · 脚本 · 配图 · 发布 · 复盘',
+        prompt: '为我的社交媒体账号制定本周选题，并生成 3 篇图文内容'
+      }
+    }
   },
 
   businessWorkspace: {

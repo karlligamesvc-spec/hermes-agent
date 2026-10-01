@@ -29,21 +29,15 @@ import { openWorkspaceArtifact } from '../api/artifacts-adapter'
 import { BusinessPageHeader } from '../components/business-page-header'
 import { BusinessLimitation, BusinessSection } from '../components/business-section'
 import { ProjectCreateDialog } from '../components/project-create-dialog'
+import { ProjectLibraryNavigation } from '../components/project-library-navigation'
 import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
+import { useProjectListCompletions } from '../hooks/use-project-list-completions'
 import { useWorkflowProjects } from '../hooks/use-workflow-domain-lists'
 import { useWorkspaceEvidence } from '../hooks/use-workspace-evidence'
+import { PROJECT_PROTOTYPE_COPY } from '../project-prototype-copy'
 import { distinctProjectObjective, projectRunDisplayState } from '../view-model/project'
+import { PROJECT_FILTERS, type ProjectFilter, projectPresentationStage } from '../view-model/project-presentation'
 import { recentConversations, recentWorkspaceTasks } from '../view-model/workspace'
-
-type ProjectFilter = 'active' | 'all' | 'completed'
-
-function isCompletedProject(status: string) {
-  return status === 'completed'
-}
-
-function isActiveProject(status: string) {
-  return status === 'active' || status === 'paused'
-}
 
 export function ProjectsView() {
   const { locale, t } = useI18n()
@@ -51,6 +45,8 @@ export function ProjectsView() {
   const location = useLocation()
   const navigate = useNavigate()
   const projects = useWorkflowProjects()
+  const prototype = PROJECT_PROTOTYPE_COPY[locale]
+  const completions = useProjectListCompletions(projects.mode === 'ready' ? projects.items.map(item => item.id) : [])
   const [filter, setFilter] = useState<ProjectFilter>('all')
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -67,27 +63,20 @@ export function ProjectsView() {
 
   const newProject = () => setCreateOpen(true)
 
-  const visibleProjects =
-    projects.mode === 'ready'
-      ? projects.items.filter(project => {
-          if (filter === 'all') {
-            return true
-          }
+  const items = projects.mode === 'ready' ? projects.items : []
 
-          return filter === 'completed'
-            ? isCompletedProject(project.status)
-            : isActiveProject(project.status)
-        })
-      : []
+  const factsFor = (id: string) => {
+    const result = completions.mode === 'ready' ? completions.items.get(id) : null
 
-  const counts =
-    projects.mode === 'ready'
-      ? {
-          active: projects.items.filter(project => isActiveProject(project.status)).length,
-          all: projects.total,
-          completed: projects.items.filter(project => isCompletedProject(project.status)).length
-        }
-      : { active: 0, all: 0, completed: 0 }
+    return result?.mode === 'ready' ? result.completion : null
+  }
+
+  const visibleProjects = items.filter(project => filter === 'all' || projectPresentationStage(project, factsFor(project.id)) === filter)
+
+  const counts = Object.fromEntries(PROJECT_FILTERS.map(key => [key,
+    key === 'all' ? items.length
+      : items.filter(project => projectPresentationStage(project, factsFor(project.id)) === key).length
+  ])) as Record<ProjectFilter, number>
 
   return (
     <section className="apex-business-surface apex-business-page apex-primary-page">
@@ -100,7 +89,29 @@ export function ProjectsView() {
           title={c.title}
         />
       </div>
+      <ProjectLibraryNavigation active="projects" />
       <WorkflowRefreshNotice state={projects} />
+      <WorkflowRefreshNotice state={completions} />
+      <div className="mx-auto w-full max-w-[65.625rem] pt-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div aria-label={c.filters.label} className="flex flex-wrap gap-2" role="group">
+              {PROJECT_FILTERS.map(item => (
+                <Button
+                  aria-pressed={filter === item}
+                  disabled={projects.mode !== 'ready'}
+                  key={item}
+                  onClick={() => setFilter(item)}
+                  size="sm"
+                  variant={filter === item ? 'secondary' : 'ghost'}
+                >
+                  {prototype.filters[item]}
+                  <span className="text-(--ui-text-tertiary)">{counts[item]}</span>
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-(--ui-text-tertiary)">{c.totalProjects(projects.mode === 'ready' ? projects.total : 0)}{projects.mode === 'ready' && projects.items.length < projects.total ? ` · ${prototype.loaded(projects.items.length)}` : ''}</p>
+          </div>
+      </div>
       {projects.mode === 'loading' ? (
         <div className="mx-auto flex min-h-72 w-full max-w-[65.625rem] items-center justify-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader className="size-8" label={c.loadingProjects} type="lemniscate-bloom" />
@@ -121,23 +132,7 @@ export function ProjectsView() {
         </div>
       ) : (
         <div className="mx-auto w-full max-w-[65.625rem] py-5" data-workflow-project-list="">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div aria-label={c.filters.label} className="flex flex-wrap gap-2" role="group">
-              {(['all', 'active', 'completed'] as const).map(item => (
-                <Button
-                  aria-pressed={filter === item}
-                  key={item}
-                  onClick={() => setFilter(item)}
-                  size="sm"
-                  variant={filter === item ? 'secondary' : 'ghost'}
-                >
-                  {c.filters[item]}
-                  <span className="text-(--ui-text-tertiary)">{counts[item]}</span>
-                </Button>
-              ))}
-            </div>
-            <p className="text-xs text-(--ui-text-tertiary)">{c.totalProjects(projects.total)}</p>
-          </div>
+
 
           {visibleProjects.length === 0 ? (
             <div className="rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) px-5 py-10 text-center text-sm text-muted-foreground">
@@ -150,6 +145,9 @@ export function ProjectsView() {
                 const status = project.status
                 const runDisplay = projectRunDisplayState(summary)
                 const objective = distinctProjectObjective(project)
+                const facts = factsFor(project.id)
+                const stage = projectPresentationStage(project, facts)
+                const stageLabel = stage ? prototype.filters[stage] : project.status !== 'active' ? c.lifecycle(status) : completions.mode === 'loading' ? prototype.loading : prototype.unknown
 
                 const progress =
                   runDisplay.kind === 'no-run'
@@ -159,8 +157,8 @@ export function ProjectsView() {
                       : c.runLifecycle(runDisplay.status)
 
                 return (
-                  <Button
-                    className="grid min-h-[6.25rem] w-full grid-cols-[auto_minmax(0,1fr)] gap-4 rounded-none border-b border-(--ui-stroke-tertiary) px-4 py-4 text-left last:border-b-0 hover:bg-(--chrome-action-hover) sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-5"
+                  <RowButton
+                    className="apex-project-list-row"
                     data-route-drawer-return-focus={project.id}
                     key={project.id}
                     onClick={() =>
@@ -169,7 +167,6 @@ export function ProjectsView() {
                       })
                     }
                     type="button"
-                    variant="ghost"
                   >
                     <span className="grid size-11 shrink-0 place-items-center self-center rounded-xl bg-primary/10 text-primary">
                       <Codicon name="folder" size="1.125rem" />
@@ -213,7 +210,16 @@ export function ProjectsView() {
                         </span>
                       )}
                     </span>
-                    <span className="col-span-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 self-center pl-[3.75rem] text-xs text-(--ui-text-tertiary) sm:col-span-1 sm:pl-0">
+                    <span className="apex-project-list-row-progress self-center text-xs text-muted-foreground">
+                      {stageLabel !== c.lifecycle(status) && <span>{stageLabel}</span>}
+                      {facts && <>
+                        <span className="mt-1 block">{c.completionProgress(facts.workflowSucceeded, facts.workflowTotal)}</span>
+                        <span aria-label={prototype.progress} aria-valuemax={facts.workflowTotal || 1} aria-valuemin={0} aria-valuenow={facts.workflowSucceeded} className="apex-project-progress block" role="progressbar">
+                          <span style={{ width: `${facts.workflowTotal ? facts.workflowSucceeded / facts.workflowTotal * 100 : 0}%` }} />
+                        </span>
+                      </>}
+                    </span>
+                    <span className="apex-project-list-row-meta flex shrink-0 flex-col gap-1 self-center text-xs text-(--ui-text-tertiary)">
                       <span>{c.updatedAt(formatBusinessDayTime(new Date(project.updatedAt), locale))}</span>
                       {summary && summary.deliverableCount > 0 && (
                         <span>{c.deliverableCount(summary.deliverableCount)}</span>
@@ -221,7 +227,7 @@ export function ProjectsView() {
                       <span>{c.viewProject}</span>
                       <Codicon name="arrow-right" size="0.75rem" />
                     </span>
-                  </Button>
+                  </RowButton>
                 )
               })}
             </div>
@@ -284,6 +290,7 @@ function LegacyProjectsView({ notice }: { notice?: string } = {}) {
           }
         />
       </div>
+      <ProjectLibraryNavigation active="projects" />
       {showEvidenceFailure ? (
         <div className="mx-auto grid w-full max-w-4xl flex-1 place-items-center py-10 text-center">
           <div>
