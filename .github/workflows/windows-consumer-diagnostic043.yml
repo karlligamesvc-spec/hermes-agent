@@ -1,0 +1,49 @@
+name: Windows 0.17.43 consumer extraction diagnostic (no publication)
+on:
+  push:
+    branches: [codex/hc-901-windows-consumer-diagnostic043]
+permissions:
+  contents: read
+jobs:
+  actual-native-consumer:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build unchanged pinned full engine and prove short-path relocation
+        working-directory: apps/desktop
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/bundled-runtime-package.mjs build "$env:RUNNER_TEMP/bundled-engine"
+      - name: Instrument original extraction budget before an explicitly separate diagnostic budget
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          git fetch --no-tags --depth 1 origin f8d9cbebee9baa018cf8a8866ecb896e9f70fa5a
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:APEX_DIAGNOSTIC_EXTRACT_LOG = "$env:RUNNER_TEMP/bundled-engine/extract-original.ndjson"
+          $env:APEX_DIAGNOSTIC_EXTRACT_TIMEOUT_MS = "180000"
+          node --import tsx scripts/bundled-runtime-consumer-smoke.mts --resources build --proof "$env:RUNNER_TEMP/bundled-engine/consumer-original.json"
+          $originalExit = $LASTEXITCODE
+          @{originalExit=$originalExit;originalBudget=180000} | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/bundled-engine/original-exit.json"
+          if ($originalExit -eq 0) { exit 0 }
+          $last = Get-Content $env:APEX_DIAGNOSTIC_EXTRACT_LOG | Select-Object -Last 1 | ConvertFrom-Json
+          if (-not $last.killed -or $last.elapsedMs -lt 179000 -or $last.stderrLength -ne 0 -or $last.stdoutLength -ne 0) { throw "Original failure is not a confirmed empty-output deadline termination" }
+          $env:APEX_DIAGNOSTIC_EXTRACT_LOG = "$env:RUNNER_TEMP/bundled-engine/extract-extended.ndjson"
+          $env:APEX_DIAGNOSTIC_EXTRACT_TIMEOUT_MS = "600000"
+          node --import tsx scripts/bundled-runtime-consumer-smoke.mts --resources build --proof "$env:RUNNER_TEMP/bundled-engine/consumer-extended-diagnostic.json"
+          exit $LASTEXITCODE
+      - name: Preserve positive and negative native command evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows043-consumer-extraction-diagnostic
+          path: |
+            ${{ runner.temp }}/bundled-engine/*.json
+            ${{ runner.temp }}/bundled-engine/*.ndjson
+          if-no-files-found: error
+          retention-days: 3

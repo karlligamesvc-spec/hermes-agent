@@ -64,7 +64,23 @@ let cleanupFailure: unknown
 function consumer(home: string): PackagedRuntimeOptions {
   return {
     resourcesPath, hermesHome: home, desktopVersion: '0.17.37',
-    extract: async (archive, destination) => { await exec(tar, ['-xzf', archive, '-C', destination], { timeout: 180_000 }) },
+    extract: async (archive, destination) => {
+      const timeoutMs = Number(process.env.APEX_DIAGNOSTIC_EXTRACT_TIMEOUT_MS || '180000')
+      assert.ok([180000,600000].includes(timeoutMs), 'diagnostic extraction budget is explicit and bounded')
+      const started = Date.now()
+      const record = (fields: Record<string,unknown>) => {
+        const row={archive,destination,timeoutMs,elapsedMs:Date.now()-started,...fields}
+        fs.appendFileSync(process.env.APEX_DIAGNOSTIC_EXTRACT_LOG!,JSON.stringify(row)+'\n')
+        console.log('EXTRACT_DIAGNOSTIC '+JSON.stringify(row))
+      }
+      try {
+        await exec(tar, ['-xzf', archive, '-C', destination], { timeout: timeoutMs })
+        record({ok:true})
+      } catch(error:any) {
+        record({ok:false,killed:error.killed,signal:error.signal,code:error.code,stdoutLength:String(error.stdout||'').length,stderrLength:String(error.stderr||'').length})
+        throw error
+      }
+    },
     runTool: async (executable, argv) => {
       const root = argv[argv.indexOf('--root') + 1]
       assert.ok(argv.includes('--root') && path.isAbsolute(root), 'bundle tool must declare its actual root')
