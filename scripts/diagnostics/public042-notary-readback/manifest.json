@@ -1,0 +1,62 @@
+{
+  "package_source": "316f6cfbfc061017cc3ac9d847a76db96b71b677",
+  "formal_release_run": 36983817342,
+  "version": "0.17.42",
+  "handoff_sha256": "5364b1e8a75347ee991fcbbd56cfa26f3ac88b508c10efe0abe7bf45dc00c082",
+  "public_download_proof_sha256": "dd6936b28b06ed5acb824c111df57f9bacd4fcd520bbac3f03e813a60655a426",
+  "public_other_static_style_native_proof_sha256": "b28ca0fa8f101f34220b80c402957c3b3b21baf7a7a55a181c17b5dcb7daa701",
+  "root_independent_whole_body_proof_sha256": "e59c0f746db992651c494112807e315dcc97fb057368fad8e43051fb5c5e25f7",
+  "original_reader_sha256": "ea1e95698d1c0906805e016e315b7ebd3f7d77ae49bcaf89d774282f8544964d",
+  "architecture_checker_sha256": "341d1e58609e490ed5f9c0e6369d1fbe528fa811bfd086774275ce0f42714e86",
+  "packages": [
+    {
+      "platform": "mac-arm64",
+      "name": "APEX-0.17.42-mac-arm64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/APEX-0.17.42-mac-arm64.zip",
+      "size": 539862191,
+      "sha256": "c3bdfcc4c7c0939399c24ebbec64f98de5aa1cb62ef18bde43f7fd3963ca4b95",
+      "sha512": "eI7UfhPNSK3wGbwoXFeegE1BprmCnO2Lnc96YuYroGErPSWJTvIDHZl5prTowMDaLgdQ8Aba9MkhzKksIJWsew=="
+    },
+    {
+      "platform": "mac-arm64",
+      "name": "APEX-0.17.42-mac-arm64.dmg",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/APEX-0.17.42-mac-arm64.dmg",
+      "size": 543151041,
+      "sha256": "dcd443dd3ddb6c3da5ea9cd2804bf1da5bf3925eb1ecdf4062795b6cf9ad1ef8",
+      "sha512": "m1eyR8Jyq0tbuTjFvAwXSU2Kh6xIRZixA4x5Rz5sFDh+zYY7/bBsulOYyHSx7WE6GAHbAnmz1rCj+JphwHzf4g=="
+    },
+    {
+      "platform": "mac-x64",
+      "name": "APEX-0.17.42-mac-x64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-x64/APEX-0.17.42-mac-x64.zip",
+      "size": 537531968,
+      "sha256": "7cb90ca488c7b2b526df28efef3cbf36638214ca8a2b0c48ac73c146c8111e80",
+      "sha512": "07DAU71WEImJIOuPWMzy9VtkC4AIqGXFPGaG+Md8SQ7jG2BcagU7a8fYDiSbJn1exD++TWF1wK+clKcXoXAk+Q=="
+    },
+    {
+      "platform": "mac-x64",
+      "name": "APEX-0.17.42-mac-x64.dmg",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-x64/APEX-0.17.42-mac-x64.dmg",
+      "size": 540673981,
+      "sha256": "b7c99e8e5004a0e6e74f8b14da72b061fd7de11cb453de8bf75d36f3fd630547",
+      "sha512": "hGKPfiLZXlvqGwy+zILMKksIQUDNXuUmlXFM7fwZJ2LnUF2EHdagJIRN7fW2I+cquoI6X4Gf6U0Pc6+z/ZM5gg=="
+    }
+  ],
+  "preserved_local_stapler_failures": [
+    {
+      "diagnostic_sha256": "52cbcb24d319a4a0bc1f1a431006ea01cf42b455ab19d799459d461156bd33d6",
+      "exit": 68,
+      "log_sha256": "41fdf19c03c759841edee65531c38de4acb378e39f0e5c5ae90eef7d84992564"
+    },
+    {
+      "diagnostic_sha256": "fb4af887070c1655f4a25d6b9b739134ca09639f815367e698050087d05e783a",
+      "exit": 68,
+      "log_sha256": "33badd3134e5f15bfd5bb9d75acaca7380b7f4730a54a7c47c25eb52f5643349"
+    },
+    {
+      "diagnostic_sha256": "c66ea1ef55286f5457bfeb96b19bc9a9091e4e06f20c6208416ea5cc9133fbc0",
+      "exit": 68,
+      "log_sha256": "8b3f1f17bc329fa0775060d75471fdb7fce2efc9f7a56e8736634aeb42eca2be"
+    }
+  ]
+}
