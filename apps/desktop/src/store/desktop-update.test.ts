@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+import type { IpcMain } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
+
+import { createLocalBackendLifecycle } from '../../electron/local-backend-lifecycle'
+import { createPackagedRuntimeGate } from '../../electron/packaged-runtime'
+import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from '../../electron/runtime-version'
 
 import {
   $desktopUpdateProgress,
@@ -73,7 +82,7 @@ describe('desktop update orchestration', () => {
         applyUpdate: vi.fn(async () => {
           order.push('runtime')
 
-          return { applied: true, ok: true, reloadRequired: true }
+          return { applied: true, ok: true, reloadRequired: true, latest: { key: 'resolved', version: 'v2026.8.9' } }
         })
       },
       shellUpdate: {
@@ -96,6 +105,12 @@ describe('desktop update orchestration', () => {
     await applyDesktopUpdates({ reload })
 
     expect(order).toEqual(['runtime', 'persist-shell-only', 'shell'])
+    expect(window.hermesDesktop.updateCenter?.setShellOnly).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetRuntimeKey: 'resolved',
+        targetRuntimeVersion: 'v2026.8.9'
+      })
+    )
     expect(reload).not.toHaveBeenCalled()
     expect($desktopUpdateProgress.get().currentStage).toBe('restart')
   })
@@ -172,14 +187,23 @@ describe('desktop update orchestration', () => {
     expect(window.hermesDesktop.runtime.applyUpdate).not.toHaveBeenCalled()
   })
 
-  it('resumes the runtime after the new shell starts, clears the plan, then renderer-reloads', async () => {
+  it('keeps the plan through a reload and failed activation, then completes from actual activation', async () => {
     const reload = vi.fn()
     const clearPlan = vi.fn(async () => ({ ok: true }))
+    let activeKey = 'old'
+    let updateAvailable = true
 
     window.hermesDesktop = {
       getVersion: vi.fn(async () => ({ appVersion: '0.18.0' })),
       runtime: {
-        checkUpdate: vi.fn(async () => RUNTIME_UPDATE),
+        getVersion: vi.fn(async () => ({
+          ok: true,
+          key: activeKey,
+          version: 'v2026.8.8',
+          commit: activeKey,
+          branch: null
+        })),
+        checkUpdate: vi.fn(async () => ({ ...RUNTIME_UPDATE, updateAvailable })),
         applyUpdate: vi.fn(async () => ({ applied: true, ok: true, reloadRequired: true }))
       },
       updateCenter: {
@@ -192,8 +216,23 @@ describe('desktop update orchestration', () => {
     await resumeDesktopUpdatePlan({ reload })
 
     expect(window.hermesDesktop.runtime.applyUpdate).toHaveBeenCalledTimes(1)
-    expect(clearPlan).toHaveBeenCalledTimes(1)
+    expect(window.hermesDesktop.runtime.applyUpdate).toHaveBeenCalledWith({
+      expectedKey: 'new',
+      expectedVersion: 'v2026.8.8'
+    })
+    expect(clearPlan).not.toHaveBeenCalled()
     expect(reload).toHaveBeenCalledTimes(1)
+
+    updateAvailable = false
+    await resumeDesktopUpdatePlan({ reload })
+    expect(clearPlan).not.toHaveBeenCalled()
+    expect($desktopUpdateProgress.get().error).toBe('runtime_target_not_active')
+
+    activeKey = 'new'
+    await resumeDesktopUpdatePlan({ reload })
+    expect(clearPlan).toHaveBeenCalledTimes(1)
+    expect(window.hermesDesktop.runtime.applyUpdate).toHaveBeenCalledTimes(1)
+    expect(window.hermesDesktop.runtime.checkUpdate).toHaveBeenCalledTimes(2)
   })
 
   it('surfaces a native shell hand-off failure that arrives after install IPC returns', async () => {
@@ -327,4 +366,183 @@ describe('desktop update orchestration', () => {
       error: null
     })
   })
+
+  it.each([
+    ['shell-only', false],
+    ['shell-only', true],
+    ['runtime-after-shell', false],
+    ['runtime-after-shell', true]
+  ] as const)('waits for the actual version IPC before finishing a %s plan (failure=%s)', async (kind, failure) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-update-resume-'))
+    const markerPath = path.join(home, '.hermes-bootstrap-complete')
+    const sourcePath = path.join(home, '.hermes-source-commit')
+    const oldKey = 'a'.repeat(40)
+    const targetKey = 'b'.repeat(40)
+    const plan = updatePlan({ kind, targetRuntimeKey: targetKey })
+    const clearPlan = vi.fn(async () => ({ ok: true }))
+    let release!: () => void
+
+    const preparation = new Promise<void>(resolve => {
+      release = resolve
+    })
+
+    const lifecycle = createLocalBackendLifecycle({
+      stopChild: vi.fn(() => {
+        throw new Error('A version read must not stop a worker')
+      }),
+      waitForExit: vi.fn(async () => {}),
+      cancelSetup: vi.fn()
+    })
+
+    const gate = createPackagedRuntimeGate(async () => {
+      throw new Error('A version read must not start an install')
+    })
+
+    const reads = vi.fn(() => (fs.existsSync(markerPath) ? JSON.parse(fs.readFileSync(markerPath, 'utf8')) : null))
+    const handlers = new Map<string, () => Promise<any>>()
+
+    const ipcMain = {
+      handle: (channel: string, handler: () => Promise<any>) => handlers.set(channel, handler)
+    } as unknown as Pick<IpcMain, 'handle'>
+
+    registerRuntimeVersionIpc(ipcMain, {
+      waitForRuntimePreparation: () =>
+        waitForPendingRuntimePreparation({
+          isPackaged: true,
+          diagnostic: false,
+          remote: false,
+          managedRestorePending: false,
+          waitForPendingStarts: lifecycle.waitForPendingStarts,
+          waitForPackagedEngine: gate.waitForPending
+        }),
+      readMarker: reads,
+      readTreeCommit: () => fs.readFileSync(sourcePath, 'utf8'),
+      minEngineVersion: () => null,
+      log: () => {}
+    })
+
+    // The opt-in legacy bootstrap starts with its marker removed. Activation or
+    // rollback happens only after the explicitly controlled preparation event.
+    const startup = lifecycle
+      .start(async () => {
+        await preparation
+        const key = failure ? oldKey : targetKey
+        fs.writeFileSync(markerPath, JSON.stringify({ pinnedCommit: key, version: plan.targetRuntimeVersion }))
+        fs.writeFileSync(sourcePath, key)
+
+        if (failure) {
+          throw new Error('Preparation failed; restored the old engine')
+        }
+      })
+      .catch(() => {})
+
+    window.hermesDesktop = {
+      getVersion: vi.fn(async () => ({ appVersion: '0.18.0' })),
+      runtime: {
+        getVersion: () => handlers.get('hermes:runtime:version')!(),
+        checkUpdate: vi.fn(async () => ({
+          ...RUNTIME_UPDATE,
+          latest: { key: targetKey, version: plan.targetRuntimeVersion },
+          updateAvailable: false
+        })),
+        applyUpdate: vi.fn()
+      },
+      updateCenter: { getPlan: vi.fn(async () => plan), clearPlan, transitionPlan: vi.fn(async () => ({ ok: true })) }
+    } as unknown as typeof window.hermesDesktop
+    const resuming = resumeDesktopUpdatePlan({ reload: vi.fn() })
+
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(reads).not.toHaveBeenCalled()
+      expect(clearPlan).not.toHaveBeenCalled()
+      expect($desktopUpdateProgress.get()).toMatchObject({ active: true, error: null })
+      release()
+      await startup
+      await resuming
+      expect(clearPlan).toHaveBeenCalledTimes(failure ? 0 : 1)
+      expect($desktopUpdateProgress.get()).toMatchObject({
+        active: false,
+        error: failure ? 'runtime_target_not_active' : null
+      })
+      expect(window.hermesDesktop.runtime.applyUpdate).not.toHaveBeenCalled()
+    } finally {
+      release()
+      await startup
+      await resuming
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    { kind: 'shell-only', ok: false, treeMatchesMarker: true, latestKey: 'new', expected: 'runtime_target_not_active' },
+    { kind: 'shell-only', ok: true, treeMatchesMarker: false, latestKey: 'new', expected: 'runtime_target_not_active' },
+    {
+      kind: 'runtime-after-shell',
+      ok: false,
+      treeMatchesMarker: true,
+      latestKey: 'new',
+      expected: 'runtime_target_not_active'
+    },
+    {
+      kind: 'runtime-after-shell',
+      ok: true,
+      treeMatchesMarker: false,
+      latestKey: 'new',
+      expected: 'runtime_target_not_active'
+    },
+    {
+      kind: 'runtime-after-shell',
+      ok: false,
+      treeMatchesMarker: true,
+      latestKey: 'different-commit',
+      expected: 'runtime_target_changed'
+    },
+    { kind: 'runtime-after-shell', ok: true, treeMatchesMarker: true, latestKey: 'different-commit', expected: null },
+    { kind: 'shell-only', ok: true, treeMatchesMarker: true, latestKey: 'different-commit', expected: null }
+  ] as const)(
+    'requires actual activation for $kind (ok=$ok, tree=$treeMatchesMarker, latest=$latestKey)',
+    async row => {
+      const clearPlan = vi.fn(async () => ({ ok: true }))
+
+      const checkUpdate = vi.fn(async () => ({
+        ...RUNTIME_UPDATE,
+        latest: { key: row.latestKey, version: RUNTIME_UPDATE.latest!.version },
+        updateAvailable: false
+      }))
+
+      const install = vi.fn()
+      window.hermesDesktop = {
+        getVersion: vi.fn(async () => ({ appVersion: '0.18.1' })),
+        runtime: {
+          getVersion: vi.fn(async () => ({
+            ok: row.ok,
+            key: 'new',
+            version: 'v2026.8.8',
+            commit: 'new',
+            branch: null,
+            treeMatchesMarker: row.treeMatchesMarker
+          })),
+          checkUpdate,
+          applyUpdate: vi.fn()
+        },
+        shellUpdate: { install },
+        updateCenter: {
+          getPlan: vi.fn(async () => updatePlan({ kind: row.kind })),
+          clearPlan,
+          transitionPlan: vi.fn(async () => ({ ok: true }))
+        }
+      } as unknown as typeof window.hermesDesktop
+
+      await retryDesktopUpdate({ reload: vi.fn() })
+
+      expect(clearPlan).toHaveBeenCalledTimes(row.expected ? 0 : 1)
+      expect($desktopUpdateProgress.get().error).toBe(row.expected)
+      expect(install).not.toHaveBeenCalled()
+      expect(window.hermesDesktop.runtime.applyUpdate).not.toHaveBeenCalled()
+
+      if (!row.expected) {
+        expect(checkUpdate).not.toHaveBeenCalled()
+      }
+    }
+  )
 })

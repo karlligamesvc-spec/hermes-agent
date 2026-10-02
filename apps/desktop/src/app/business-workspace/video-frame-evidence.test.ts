@@ -24,8 +24,8 @@ describe('video frame evidence', () => {
       videoHeight: { configurable: true, value: 1080 }
     })
     vi.spyOn(video, 'load').mockImplementation(() => undefined)
-    vi.spyOn(document, 'createElement').mockImplementation((tagName, options) =>
-      tagName === 'video' ? video : createElement(tagName, options))
+    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string, options?: ElementCreationOptions) =>
+      tagName === 'video' ? video : createElement(tagName, options)) as Document['createElement'])
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
     vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,ZmFrZQ==')
 

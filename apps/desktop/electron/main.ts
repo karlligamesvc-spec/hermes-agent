@@ -167,7 +167,6 @@ import { buildPlatformToolSpawnEnv, describePlatformToolSpawnEnv } from './apex-
 import {
   checkForRuntimeUpdate,
   desktopMeetsMinVersion,
-  engineMeetsMinVersion,
   overlayStampWithPin,
   resolveLatestRuntimePin
 } from './apex-runtime-latest'
@@ -251,7 +250,7 @@ import {
   isWslEnvironment,
   resolveLinuxPasswordStore
 } from './bootstrap-platform'
-import { commitKeysMatch, readSourceCommitStamp, runBootstrap } from './bootstrap-runner'
+import { readSourceCommitStamp, runBootstrap } from './bootstrap-runner'
 import {
   BROWSER_WINDOW_HEIGHT,
   BROWSER_WINDOW_MIN_HEIGHT,
@@ -558,6 +557,8 @@ import { missingRendererAssets } from './renderer-bundle'
 import { loadRendererLoadErrorPage } from './renderer-load-error-page'
 import { attachRendererConsoleCapture, formatRendererBoundaryReport } from './renderer-log'
 import { fetchRosterSourceData } from './roster-source-fetch'
+import { applyRuntimeUpdateToLatest } from './runtime-update-apply'
+import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
 import {
   classifyStoredSecret,
   readSecretStoragePolicy,
@@ -5562,6 +5563,18 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
     throw failure
   }
 })
+
+async function waitForRuntimePreparation() {
+  await waitForPendingRuntimePreparation({
+    isPackaged: IS_PACKAGED,
+    diagnostic: IS_DIAGNOSTIC_TRIAL,
+    explicitRoot: process.env.HERMES_DESKTOP_HERMES_ROOT,
+    remote: primaryBackendIsRemote(),
+    managedRestorePending: managedPrimaryRestoreOwners.size > 0,
+    waitForPendingStarts: localBackendLifecycle.waitForPendingStarts,
+    waitForPackagedEngine: ensurePackagedEngine.waitForPending
+  })
+}
 
 async function ensureRuntime(backend) {
   // This shared gate covers primary, background-profile, messaging and explicit local Agent children.
@@ -17916,7 +17929,8 @@ registerDesktopVersionIpc(ipcMain, {
   engineVersion: resolveHermesVersion,
   hermesRoot: resolveUpdateRoot,
   nodeVersion: process.versions.node,
-  platform: process.platform
+  platform: process.platform,
+  waitForRuntimePreparation
 })
 
 // The About page's "Restart Hermes" button (shown when bundleSwapPending):
@@ -22314,61 +22328,12 @@ async function reconcileMessagingGateway() {
 // bootstrap marker. No network, no state change — so the About panel can show
 // the current engine version on open without an opt-in update check. Mirrors
 // how checkForRuntimeUpdate derives `current` (commit||branch is the key).
-ipcMain.handle('hermes:runtime:version', async () => {
-  try {
-    const marker = readBootstrapMarker()
-    const commit = (marker && marker.pinnedCommit) || null
-    const branch = (marker && marker.pinnedBranch) || null
-    const version = (marker && marker.version) || null
-    // hc-532 (gate 1): compare the installed engine against the shell's declared
-    // minimum. engineMeetsMinVersion FAILS OPEN (unparseable/absent -> true), so
-    // meetsMinEngine is false ONLY when we can positively say the engine is
-    // behind. The renderer uses false to show an "engine needs update" prompt —
-    // it never blocks usage.
-    const minEngineVersion = readDeclaredMinEngineVersion()
-    const meetsMinEngine = engineMeetsMinVersion(version, minEngineVersion)
-    // hc-543: the marker attests what the LAST bootstrap TARGETED, not what is
-    // on disk. A botched .git-less COS update can leave the marker on vNext
-    // while the files are still vPrev (the "engine is latest" lie). Cross-check
-    // the marker's commit against the tree's own source-commit stamp so the
-    // renderer can warn instead of blindly trusting the version label.
-    //   treeMatchesMarker === true  -> stamp present and agrees with the marker
-    //   treeMatchesMarker === false -> stamp present but a DIFFERENT commit (lie)
-    //   treeMatchesMarker === null  -> no stamp (git / legacy tree): unknown, don't alarm
-    const treeCommit = readSourceCommitStamp(ACTIVE_HERMES_ROOT)
-    let treeMatchesMarker = null
-
-    if (treeCommit && commit) {
-      treeMatchesMarker = commitKeysMatch(treeCommit, commit)
-    }
-
-    return {
-      ok: true,
-      version,
-      commit,
-      branch,
-      key: commit || branch || null,
-      minEngineVersion,
-      meetsMinEngine,
-      treeCommit,
-      treeMatchesMarker
-    }
-  } catch (error: any) {
-    rememberLog(`[runtime-update] version read errored: ${error && error.message}`)
-
-    // Fail open on the gate too: an unexpected read error must not nag.
-    return {
-      ok: false,
-      version: null,
-      commit: null,
-      branch: null,
-      key: null,
-      minEngineVersion: null,
-      meetsMinEngine: true,
-      treeCommit: null,
-      treeMatchesMarker: null
-    }
-  }
+registerRuntimeVersionIpc(ipcMain, {
+  waitForRuntimePreparation,
+  readMarker: readBootstrapMarker,
+  readTreeCommit: () => readSourceCommitStamp(ACTIVE_HERMES_ROOT),
+  minEngineVersion: readDeclaredMinEngineVersion,
+  log: rememberLog
 })
 
 // check-update: compare the installed runtime (bootstrap marker) against the
@@ -22383,14 +22348,7 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
       readCurrentMarker: async () => {
-        if (
-          IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT &&
-          !readRuntimePinOverride() && !primaryBackendIsRemote() && managedPrimaryRestoreOwners.size === 0
-        ) {
-          await localBackendLifecycle.waitForPendingStarts()
-        }
-
-        await ensurePackagedEngine.waitForPending()
+        await waitForRuntimePreparation()
 
         return readBootstrapMarker()
       },
@@ -22415,29 +22373,21 @@ ipcMain.handle('hermes:runtime:check-update', async () => {
 // our own bootstrap against the new pin. A failed/cancelled re-bootstrap rolls
 // back to the snapshot (see rollbackRuntimePinOverride), so a working install is
 // never bricked. The renderer reloads to drive the boot flow.
-ipcMain.handle('hermes:runtime:apply-update', async () => {
-  if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
-    return { ok: false, error: 'diagnostic-trial-updates-disabled' }
-  }
-
-  // 1. Resolve the target pin. No managed latest / offline -> nothing to do.
-  let pin = null
-
-  try {
-    pin = await resolveLatestRuntimePin({
+ipcMain.handle('hermes:runtime:apply-update', async (_event, expectedTarget) =>
+  applyRuntimeUpdateToLatest(expectedTarget, {
+    updatesAllowed: () => updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY),
+    resolveLatest: () => resolveLatestRuntimePin({
       apiBase: apexApiBase(),
       fetchJson: fetchPublicJson,
       log: msg => rememberLog(msg)
-    })
-  } catch (error: any) {
-    return { ok: false, error: (error && error.message) || String(error) }
-  }
+    }),
+    applyResolved: applyResolvedRuntimeUpdate
+  })
+)
 
-  if (!pin) {
-    return { ok: false, error: 'no_admin_latest_available' }
-  }
-
+async function applyResolvedRuntimeUpdate(pin) {
   // 2. Skip if already on this pin (compare against the installed marker key).
+  await waitForRuntimePreparation()
   const marker = readBootstrapMarker()
   const installedKey = (marker && (marker.pinnedCommit || marker.pinnedBranch)) || null
 
@@ -22596,7 +22546,7 @@ ipcMain.handle('hermes:runtime:apply-update', async () => {
     reloadRequired: true,
     latest: { version: pin.version, key: pin.key, compatibilityNotes: pin.compatibilityNotes }
   }
-})
+}
 
 // ── ApexNodes managed-LLM IPC ───────────────────────────────────────────────
 // status: whether the managed default is enabled for this build and whether the

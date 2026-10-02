@@ -19,6 +19,7 @@ interface DesktopVersionDependencies {
   hermesRoot: () => string
   nodeVersion: string
   platform: NodeJS.Platform
+  waitForRuntimePreparation: () => Promise<void>
 }
 
 interface AboutPanelDependencies {
@@ -32,6 +33,7 @@ export function registerDesktopVersionIpc(
   dependencies: DesktopVersionDependencies
 ): void {
   ipcMain.handle('hermes:version', async () => {
+    await dependencies.waitForRuntimePreparation()
     const bundleStatus = await dependencies.bundleStatus?.()
 
     return {

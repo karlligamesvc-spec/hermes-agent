@@ -17,7 +17,12 @@
 
 import { atom } from 'nanostores'
 
-import type { DesktopRuntimeUpdateApply, DesktopRuntimeUpdateCheck, DesktopRuntimeVersion } from '@/global'
+import type {
+  DesktopRuntimeUpdateApply,
+  DesktopRuntimeUpdateCheck,
+  DesktopRuntimeUpdateExpectedTarget,
+  DesktopRuntimeVersion
+} from '@/global'
 
 export const $runtimeVersion = atom<DesktopRuntimeVersion | null>(null)
 export const $runtimeUpdateCheck = atom<DesktopRuntimeUpdateCheck | null>(null)
@@ -104,7 +109,9 @@ export async function checkRuntimeUpdate(): Promise<DesktopRuntimeUpdateCheck> {
  * re-run. Throws on a non-ok result so a confirm dialog surfaces the error
  * inline (and keeps itself open) rather than silently no-op'ing.
  */
-export async function applyRuntimeUpdate(): Promise<DesktopRuntimeUpdateApply> {
+export async function applyRuntimeUpdate(
+  expectedTarget?: DesktopRuntimeUpdateExpectedTarget
+): Promise<DesktopRuntimeUpdateApply> {
   const bridge = window.hermesDesktop?.runtime
 
   if (!bridge?.applyUpdate) {
@@ -114,7 +121,7 @@ export async function applyRuntimeUpdate(): Promise<DesktopRuntimeUpdateApply> {
   $runtimeUpdateApplying.set(true)
 
   try {
-    const result = await bridge.applyUpdate()
+    const result = await bridge.applyUpdate(expectedTarget)
 
     if (!result.ok) {
       throw new Error(result.message || result.error || 'apply_failed')

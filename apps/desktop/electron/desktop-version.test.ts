@@ -22,7 +22,8 @@ test('version IPC reports the Electron shell separately from the managed engine'
     engineVersion: () => '0.17.17',
     hermesRoot: () => '/tmp/hermes-agent',
     nodeVersion: '22.22.1',
-    platform: 'darwin'
+    platform: 'darwin',
+    waitForRuntimePreparation: async () => {}
   })
 
   assert.ok(handler)

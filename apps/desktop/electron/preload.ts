@@ -426,7 +426,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     // No network / no state change — the About panel calls this on open.
     getVersion: () => ipcRenderer.invoke('hermes:runtime:version'),
     checkUpdate: () => ipcRenderer.invoke('hermes:runtime:check-update'),
-    applyUpdate: () => ipcRenderer.invoke('hermes:runtime:apply-update'),
+    applyUpdate: expectedTarget => ipcRenderer.invoke('hermes:runtime:apply-update', expectedTarget),
     onUpdateProgress: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:runtime-update:progress', listener)

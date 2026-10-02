@@ -1,13 +1,14 @@
 import { atom } from 'nanostores'
 
-import type { DesktopRuntimeUpdateCheck, DesktopRuntimeUpdateProgress, DesktopShellUpdateState } from '@/global'
+import type {
+  DesktopRuntimeUpdateCheck,
+  DesktopRuntimeUpdateProgress,
+  DesktopRuntimeVersion,
+  DesktopShellUpdateState,
+  DesktopUpdatePlan
+} from '@/global'
 
-import {
-  $runtimeUpdateCheck,
-  applyRuntimeUpdate,
-  checkRuntimeUpdate,
-  loadRuntimeVersion
-} from './runtime-update'
+import { $runtimeUpdateCheck, applyRuntimeUpdate, checkRuntimeUpdate, loadRuntimeVersion } from './runtime-update'
 import { $shellUpdate, checkShellUpdate, initShellUpdateSubscription, installShellUpdate } from './shell-update'
 
 export type DesktopUpdateStage = 'check' | 'restart' | 'runtime' | 'shell'
@@ -91,6 +92,41 @@ function runtimeTargetKey(check: DesktopRuntimeUpdateCheck | null): string | nul
   return check?.latest?.key ?? null
 }
 
+function shellMeetsPlan(current: string | null | undefined, target: string | null): boolean {
+  if (!target) {
+    return true
+  }
+
+  const actual = comparableVersion(current)
+  const expected = comparableVersion(target)
+
+  if (actual === expected) {
+    return true
+  }
+
+  const actualParts = /^(\d+)\.(\d+)\.(\d+)$/.exec(actual)?.slice(1).map(Number)
+  const expectedParts = /^(\d+)\.(\d+)\.(\d+)$/.exec(expected)?.slice(1).map(Number)
+
+  if (!actualParts || !expectedParts) {
+    return false
+  }
+
+  const difference = actualParts.map((part, index) => part - expectedParts[index]).find(part => part !== 0)
+
+  return difference !== undefined && difference > 0
+}
+
+function runtimeMatchesPlan(runtime: DesktopRuntimeVersion, plan: DesktopUpdatePlan): boolean {
+  if (!runtime.ok || runtime.treeMatchesMarker === false) {
+    return false
+  }
+
+  const target = plan.targetRuntimeKey ?? plan.targetRuntimeVersion
+  const current = plan.targetRuntimeKey ? runtime.key : runtime.version
+
+  return Boolean(target) && comparableVersion(current) === comparableVersion(target)
+}
+
 async function transitionPlanSafely(payload: {
   phase: 'failed' | 'ready-to-restart' | 'resuming'
   lastError?: string | null
@@ -108,7 +144,13 @@ function shellReady(state: DesktopShellUpdateState | null): boolean {
   return state?.phase === 'downloaded'
 }
 
-function updateStages({ needsRuntime, needsShell }: { needsRuntime: boolean; needsShell: boolean }): DesktopUpdateStage[] {
+function updateStages({
+  needsRuntime,
+  needsShell
+}: {
+  needsRuntime: boolean
+  needsShell: boolean
+}): DesktopUpdateStage[] {
   return [
     'check',
     ...(needsShell ? (['shell'] as DesktopUpdateStage[]) : []),
@@ -182,15 +224,18 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
     }
 
     let runtimeReloadRequired = false
+    let appliedRuntimeTarget = runtime?.latest ?? null
 
     if (runtime?.updateAvailable) {
       const result = await applyRuntimeUpdate()
 
       runtimeReloadRequired = Boolean(result.reloadRequired)
+      appliedRuntimeTarget = result.latest ?? appliedRuntimeTarget
       setProgress({
         completedStages: [...completedStages, 'runtime'],
         currentStage: 'restart',
-        runtimeProgress: null
+        runtimeProgress: null,
+        targetVersion: appliedRuntimeTarget?.version ?? appliedRuntimeTarget?.key ?? null
       })
     }
 
@@ -198,8 +243,8 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       const result = await window.hermesDesktop?.updateCenter?.setShellOnly({
         currentRuntimeKey: runtimeCurrentKey(runtime),
         currentRuntimeVersion: runtimeCurrent(runtime),
-        targetRuntimeKey: runtime?.updateAvailable ? runtimeTargetKey(runtime) : runtimeCurrentKey(runtime),
-        targetRuntimeVersion: runtime?.updateAvailable ? runtimeTarget(runtime) : runtimeCurrent(runtime),
+        targetRuntimeKey: runtime?.updateAvailable ? appliedRuntimeTarget?.key : runtimeCurrentKey(runtime),
+        targetRuntimeVersion: runtime?.updateAvailable ? appliedRuntimeTarget?.version : runtimeCurrent(runtime),
         targetShellVersion: shell?.version ?? null
       })
 
@@ -265,21 +310,15 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
     try {
       const runningDesktop = await window.hermesDesktop?.getVersion?.()
 
-      if (
-        plan.targetShellVersion &&
-        runningDesktop?.appVersion &&
-        comparableVersion(runningDesktop.appVersion) !== comparableVersion(plan.targetShellVersion)
-      ) {
+      if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
         throw new Error('shell_target_not_running')
       }
 
       if (plan.kind === 'shell-only') {
         if (plan.targetRuntimeKey || plan.targetRuntimeVersion) {
           const runningRuntime = await loadRuntimeVersion()
-          const targetRuntime = plan.targetRuntimeKey ?? plan.targetRuntimeVersion
-          const runningRuntimeIdentity = plan.targetRuntimeKey ? runningRuntime.key : runningRuntime.version
 
-          if (comparableVersion(runningRuntimeIdentity) !== comparableVersion(targetRuntime)) {
+          if (!runtimeMatchesPlan(runningRuntime, plan)) {
             throw new Error('runtime_target_not_active')
           }
         }
@@ -296,6 +335,15 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
         return
       }
 
+      // A prior reload can already have activated the frozen target. Complete
+      // from local evidence even when the online default has since advanced.
+      if (runtimeMatchesPlan(await loadRuntimeVersion(), plan)) {
+        await bridge?.clearPlan()
+        setProgress({ active: false, completedStages: ['check', 'shell', 'runtime', 'restart'], currentStage: null })
+
+        return
+      }
+
       const runtime = await checkRuntimeUpdate()
 
       if (!runtime.ok) {
@@ -307,32 +355,41 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
       }
 
       if (
-        plan.targetRuntimeVersion &&
-        comparableVersion(runtimeTarget(runtime)) !== comparableVersion(plan.targetRuntimeVersion)
+        (plan.targetRuntimeKey &&
+          comparableVersion(runtimeTargetKey(runtime)) !== comparableVersion(plan.targetRuntimeKey)) ||
+        (plan.targetRuntimeVersion &&
+          comparableVersion(runtimeTarget(runtime)) !== comparableVersion(plan.targetRuntimeVersion))
       ) {
         throw new Error('runtime_target_changed')
       }
 
-      let reloadRequired = false
-
       if (runtime.updateAvailable) {
-        const result = await applyRuntimeUpdate()
+        const result = await applyRuntimeUpdate({
+          expectedKey: plan.targetRuntimeKey,
+          expectedVersion: plan.targetRuntimeVersion
+        })
 
-        reloadRequired = Boolean(result.reloadRequired)
+        if (result.reloadRequired) {
+          // Legacy bootstrap activates after reloading. Retain the durable
+          // plan until the next renderer verifies the actual installed tree.
+          setProgress({ currentStage: 'restart', runtimeProgress: null })
+          reload()
+
+          return
+        }
+      }
+
+      if (!runtimeMatchesPlan(await loadRuntimeVersion(), plan)) {
+        throw new Error('runtime_target_not_active')
       }
 
       await bridge?.clearPlan()
       setProgress({
-        completedStages: ['check', 'shell', 'runtime'],
-        currentStage: 'restart',
+        active: false,
+        completedStages: ['check', 'shell', 'runtime', 'restart'],
+        currentStage: null,
         runtimeProgress: null
       })
-
-      if (reloadRequired) {
-        reload()
-      } else {
-        setProgress({ active: false, completedStages: ['check', 'shell', 'runtime', 'restart'], currentStage: null })
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
 
@@ -363,10 +420,7 @@ export async function retryDesktopUpdate(options: { reload?: () => void } = {}):
     if (plan.kind === 'shell-only') {
       const runningDesktop = await window.hermesDesktop?.getVersion?.()
 
-      if (
-        plan.targetShellVersion &&
-        comparableVersion(runningDesktop?.appVersion) !== comparableVersion(plan.targetShellVersion)
-      ) {
+      if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
         await checkShellUpdate()
         const shell = $shellUpdate.get()
 
