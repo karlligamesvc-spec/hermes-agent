@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { managedModelConfigYaml, reconcileManagedRelayKey } from './apex-managed'
-import { ManagedCredentialLifetime, managedRecoveryCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
+import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
 
 const directories: string[] = []
 const baseUrl = 'https://example.invalid/relay/v1'
@@ -146,7 +146,7 @@ describe('provision receipt commits', () => {
       },
       commit: provisioned => lifetime.persist(() => {
         storedKey = provisioned.apiKey
-        storedToken = managedRecoveryCommitToken(requestToken, storedToken)
+        storedToken = managedProvisionCommitToken(requestToken, storedToken, 'recovery')
       }),
       unavailable: vi.fn()
     })
@@ -154,6 +154,14 @@ describe('provision receipt commits', () => {
     expect(result).toEqual({ ok: true, hasRelayKey: true, credentialGeneration: 1 })
     expect(storedKey).toBe('fixture-minted')
     expect(storedToken).toBe(renewedToken)
+  })
+
+  it('explicit same-account sign-in replaces the old JWT rather than treating it as a transport renewal', () => {
+    const expiredToken = token(ownerA, 1)
+    const freshToken = token(ownerA, 2)
+
+    expect(managedProvisionCommitToken(freshToken, expiredToken, 'sign-in')).toBe(freshToken)
+    expect(managedProvisionCommitToken(expiredToken, freshToken, 'recovery')).toBe(freshToken)
   })
 
   it.each(['login', 'logout'])('does not persist a late provision after a new %s', async action => {

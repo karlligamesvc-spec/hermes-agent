@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { getApiRequestConnection, getApiRequestProfile, setApiRequestConnection, setApiRequestProfile } from '@/api/client'
 import { I18nProvider } from '@/i18n/context'
-import { $authState, markSignedIn, signOutAccount } from '@/store/auth'
+import { $authState, markSignedIn, refreshChangedAccount, signOutAccount } from '@/store/auth'
 import { $desktopUpdateProgress } from '@/store/desktop-update'
 import { $desktopOnboarding, cancelOnboardingFlow, managedBrowserSignIn, managedDeepLinkSignIn, managedSignIn } from '@/store/onboarding'
 import { $runtimeUpdateCheck, $runtimeUpdateChecking, $runtimeVersion } from '@/store/runtime-update'
@@ -158,5 +158,48 @@ it.each(['email', 'browser', 'deep-link'] as const)('ignores the %s managed rece
   } finally {
     setApiRequestProfile(oldProfile)
     setApiRequestConnection(oldConnection)
+  }
+})
+
+it.each([
+  ['email', true], ['browser', true], ['deep-link', true],
+  ['email', false], ['browser', false], ['deep-link', false]
+] as const)('the %s flow restores account auth only after runtime readiness is %s', async (kind, ready) => {
+  $authState.set({ ...$authState.get(), enabled: true, status: 'expired', accountId: 'fixture-account',
+    account: { email: 'fixture@example.invalid', name: 'Fixture', plan: '' }, gateReason: 'unauthorized' })
+
+  const status = vi.fn(async () => ({ enabled: true, signedIn: true, accountId: 'fixture-account',
+    email: 'fixture@example.invalid', name: 'Fixture' }))
+
+  const native = vi.fn(async () => {
+    // The native credential replacement event closes the previous account.
+    // The initiating flow must finish its own runtime check before reopening it.
+    refreshChangedAccount(true)
+
+    return { ok: true, hasRelayKey: true, assignment: { scope: 'main', provider: 'custom', model: 'fixture-model',
+      base_url: 'http://fixture.invalid/v1', api_key: 'fixture-key' } }
+  })
+
+  Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: {
+    managed: { signIn: native, browserSignIn: native, deepLinkSignIn: native, status },
+    api: vi.fn(async () => ({ ok: true }))
+  } })
+  const requestGateway = vi.fn(async method => method === 'setup.status' ? { provider_configured: ready } : { ok: ready })
+  const onCompleted = vi.fn()
+  const context = { requestGateway: requestGateway as never, onCompleted }
+
+  if (kind === 'email') {await managedSignIn('fixture@example.invalid', 'fixture-password', context)}
+  else if (kind === 'browser') {await managedBrowserSignIn('apex', context)}
+  else {await managedDeepLinkSignIn('fixture-code', context)}
+
+  if (ready) {
+    await waitFor(() => expect($authState.get()).toMatchObject({ status: 'signed-in', accountId: 'fixture-account',
+      account: { email: 'fixture@example.invalid' }, gateReason: null }))
+    expect(onCompleted).toHaveBeenCalledOnce()
+  } else {
+    expect($authState.get().status).toBe('signed-out')
+    expect(status).not.toHaveBeenCalled()
+    expect(onCompleted).not.toHaveBeenCalled()
+    expect($desktopOnboarding.get().managedError).toBeTruthy()
   }
 })
