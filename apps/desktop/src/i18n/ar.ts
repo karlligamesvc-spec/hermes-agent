@@ -2,6 +2,10 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   auth: {
+    account: {
+      relogin: 'تسجيل الدخول مجددًا',
+      logoutFailed: 'لم يكتمل تسجيل الخروج. أعد المحاولة، أو سجّل الدخول مجددًا إذا انتهت صلاحية الجلسة.'
+    },
     login: {
       runtimeUpdateRequired: 'حدّث محرك الذكاء الاصطناعي على الاتصال الحالي ثم أعد محاولة تسجيل الدخول.',
       runtimeUnavailable: 'لم يكتمل إعداد النموذج. تحقق من اتصال بيئة التشغيل ثم أعد محاولة تسجيل الدخول.',

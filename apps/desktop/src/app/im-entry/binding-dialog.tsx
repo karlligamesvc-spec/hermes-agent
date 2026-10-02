@@ -9,6 +9,7 @@ import { useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from '@/lib/icons'
 import { imEntryChannel } from '@/lib/im-entry-catalog'
 import { notify } from '@/store/notifications'
+import { requestManagedReSignIn } from '@/store/onboarding'
 
 import { PlatformAvatar } from '../messaging/platform-icon'
 
@@ -410,6 +411,14 @@ function ErrorBody({
         <Button onClick={onClose} size="sm" type="button" variant="ghost">
           {copy.close}
         </Button>
+        {reason === 'sign_in' && (
+          <Button onClick={() => {
+            onClose()
+            requestManagedReSignIn(t.auth.login.sessionExpired)
+          }} size="sm" type="button">
+            {t.auth.account.relogin}
+          </Button>
+        )}
         {onRetry && (
           <Button onClick={onRetry} size="sm" type="button">
             {copy.retry}

@@ -4800,6 +4800,8 @@ export const zh = defineLocale({
       settings: '设置',
       usage: '剩余用量',
       logout: '退出登录',
+      relogin: '重新登录',
+      logoutFailed: '退出登录未完成。请重试；如果登录已过期，可重新登录。',
       sessionExpiredTitle: '登录已失效',
       sessionExpiredAction: '点击重新登录'
     }

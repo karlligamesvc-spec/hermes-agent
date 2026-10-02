@@ -4275,6 +4275,8 @@ export const ja = defineLocale({
       settings: '設定',
       usage: '使用量',
       logout: 'ログアウト',
+      relogin: '再ログイン',
+      logoutFailed: 'ログアウトが完了しませんでした。再試行するか、セッションの期限が切れた場合は再ログインしてください。',
       sessionExpiredTitle: 'ログインが無効です',
       sessionExpiredAction: 'クリックして再ログイン'
     }

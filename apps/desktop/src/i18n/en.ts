@@ -5377,6 +5377,8 @@ export const en: Translations = {
       settings: 'Settings',
       usage: 'Usage',
       logout: 'Sign out',
+      relogin: 'Sign in again',
+      logoutFailed: 'Sign-out did not complete. Please retry, or sign in again if your session expired.',
       sessionExpiredTitle: 'Session expired',
       sessionExpiredAction: 'Click to sign in again'
     }
