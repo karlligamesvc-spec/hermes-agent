@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DesktopOnboardingOverlay } from '@/components/onboarding'
 import { I18nProvider } from '@/i18n'
-import { $authState, canMountDesktopOnboarding } from '@/store/auth'
-import { $desktopOnboarding } from '@/store/onboarding'
+import { $authState, canMountDesktopOnboarding, markSignedIn } from '@/store/auth'
+import { $notifications, clearNotifications } from '@/store/notifications'
+import { $desktopOnboarding, cancelOnboardingFlow } from '@/store/onboarding'
 
 import { AccountPanel } from './account-panel'
 
@@ -172,5 +173,62 @@ describe('signed-in account navigation', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: label }))
 
     await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe(route))
+  })
+})
+
+
+describe('account sign-out failure recovery', () => {
+  beforeEach(() => {
+    signIn()
+    clearNotifications()
+    cancelOnboardingFlow()
+    $desktopOnboarding.set({ ...$desktopOnboarding.get(), configured: true, requested: false,
+      managedAvailable: false, managedError: null, firstRunSkipped: true })
+  })
+
+  afterEach(() => {
+    cleanup()
+    clearNotifications()
+    vi.restoreAllMocks()
+    // @ts-expect-error test bridge cleanup
+    delete window.hermesDesktop
+  })
+
+  it.each([
+    ['expired server token', () => Promise.resolve({ ok: false, message: '401: expired' })],
+    ['network failure', () => Promise.reject(new Error('offline'))]
+  ])('retains the account and opens real sign-in after %s prevents revocation', async (_label, signOut) => {
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { managed: { signOut } } })
+    render(<I18nProvider configClient={null} initialLocale="zh"><MemoryRouter><ExpiredAccountWindow /></MemoryRouter></I18nProvider>)
+    fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
+    await waitFor(() => expect($notifications.get()).toHaveLength(1))
+    expect($notifications.get()[0].message).toContain('退出登录未完成')
+    expect($authState.get().status).toBe('signed-in')
+    expect($authState.get().account.email).toBe('kael@apex-nodes.com')
+    await act(async () => { $notifications.get()[0].action?.onClick() })
+    await screen.findByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')
+  })
+
+  it('permits sign-in directly and ignores an old sign-out failure after an account replacement', async () => {
+    let rejectLogout!: (error: Error) => void
+    const signOut = vi.fn(() => new Promise((_resolve, reject) => { rejectLogout = reject }))
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { managed: { signOut,
+      status: async () => ({ enabled: true, signedIn: true, accountId: 'new-owner', email: 'new@example.invalid' }) } } })
+    render(<I18nProvider configClient={null} initialLocale="zh"><MemoryRouter><ExpiredAccountWindow /></MemoryRouter></I18nProvider>)
+    fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: '重新登录' }))
+    await screen.findByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。')
+    await act(async () => { cancelOnboardingFlow(); $desktopOnboarding.set({ ...$desktopOnboarding.get(), requested: false }) })
+    fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
+    await waitFor(() => expect(signOut).toHaveBeenCalledOnce())
+    expect(screen.getByRole('menuitem', { name: '退出登录' }).getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getByRole('menuitem', { name: '退出登录' }).querySelector('.animate-spin')).toBeTruthy()
+    await act(async () => { markSignedIn({ email: 'new@example.invalid' }) })
+    await act(async () => { rejectLogout(new Error('offline')) })
+    expect($notifications.get()).toHaveLength(0)
+    expect($authState.get().account.email).toBe('new@example.invalid')
+    expect($desktopOnboarding.get().requested).toBe(false)
   })
 })

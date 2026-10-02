@@ -4194,6 +4194,8 @@ export const zhHant = defineLocale({
       settings: '設定',
       usage: '剩餘用量',
       logout: '登出',
+      relogin: '重新登入',
+      logoutFailed: '登出尚未完成。請重試；如果登入已過期，可重新登入。',
       sessionExpiredTitle: '登入已失效',
       sessionExpiredAction: '點擊重新登入'
     }

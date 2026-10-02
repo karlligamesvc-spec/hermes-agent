@@ -13,8 +13,9 @@ import {
 import { useI18n } from '@/i18n'
 import { profileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
-import { $authState, type AuthAccount, signOutAccount } from '@/store/auth'
+import { $authState, type AuthAccount, captureManagedAuthRecoveryScope, signOutAccount } from '@/store/auth'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
+import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
 import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
@@ -54,6 +55,29 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: 
   const navigate = useNavigate()
   const { account, enabled, status } = useStore($authState)
   const [open, setOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+
+  async function signOut() {
+    if (signingOut) {return}
+
+    const isCurrent = captureManagedAuthRecoveryScope()
+    setSigningOut(true)
+
+    try {
+      if (!await signOutAccount() && isCurrent()) {
+        notify({
+          kind: 'error',
+          message: a.logoutFailed,
+          action: { label: a.relogin, onClick: () => {
+            if (isCurrent()) {requestManagedReSignIn('')}
+          } }
+        })
+      }
+    } finally {
+      setSigningOut(false)
+      if (isCurrent()) {setOpen(false)}
+    }
+  }
 
   // No account gate on this build (managed off) → nothing to show. The full
   // login gate covers 'signed-out' / 'disabled' / 'checking'. The panel renders
@@ -162,8 +186,15 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: 
         ) : null}
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void signOutAccount()} variant="destructive">
-          <Codicon name="sign-out" size="0.875rem" />
+        <DropdownMenuItem onSelect={() => requestManagedReSignIn('')}>
+          <Codicon name="sign-in" size="0.875rem" />
+          <span>{a.relogin}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={signingOut} onSelect={event => {
+          event.preventDefault()
+          void signOut()
+        }} variant="destructive">
+          <Codicon className={signingOut ? 'animate-spin' : undefined} name={signingOut ? 'loading' : 'sign-out'} size="0.875rem" />
           <span>{a.logout}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
