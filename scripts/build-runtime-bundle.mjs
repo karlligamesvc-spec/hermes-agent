@@ -49,7 +49,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { notarizeMacRuntimePayload, signMacRuntimePayload } from './mac-runtime-payload.mjs'
+import { notarizeMacRuntimePayload, signMacRuntimePayload, verifyNotarizedMacExecutable } from './mac-runtime-payload.mjs'
 import { probeBundledBackend, removeOwnedRuntimeTree, runtimeSmokeEnvironment } from './runtime-bundle-offline-smoke.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -899,6 +899,11 @@ async function cmdSmoke(args) {
   // touch $HOME/.hermes state — never let probes poke the build host's real
   // hermes home (CI determinism + local-seat safety).
   const proofs = []
+  const notarizationChecks = []
+  const recordNotarizationCheck = check => {
+    notarizationChecks.push(check)
+    fs.writeFileSync(`${archive}.notarization-checks.json`, JSON.stringify({ runtime_commit: manifest.runtime_commit, checks: notarizationChecks }, null, 2) + '\n')
+  }
   const runProbes = async (root, label) => {
     const probeEnv = runtimeSmokeEnvironment(root, path.join(work, `home-${path.basename(root)}`), manifest)
     log(`── probes @ ${label} (${root})`)
@@ -952,8 +957,11 @@ async function cmdSmoke(args) {
     if (manifest.os === 'mac' && manifest.mac_signing) {
       const executables = [py, bundledNode(root), path.join(root, '.runtime', 'bin', 'rg'), path.join(root, '.runtime', 'bin', 'uv')]
       for (const executable of executables) {
-        run('codesign', ['--verify', '--strict', executable], { env: probeEnv })
-        if (manifest.mac_notarization) run('/usr/bin/codesign', ['--verify', '--strict', '-R=notarized', '--check-notarization', executable], { env: probeEnv })
+        if (manifest.mac_notarization) {
+          await verifyNotarizedMacExecutable(executable, manifest.mac_notarization, { env: probeEnv, onDiagnostic: recordNotarizationCheck })
+        } else {
+          run('codesign', ['--verify', '--strict', executable], { env: probeEnv })
+        }
       }
       log('native-signatures-ok (Python, Node, rg, uv)')
     }
