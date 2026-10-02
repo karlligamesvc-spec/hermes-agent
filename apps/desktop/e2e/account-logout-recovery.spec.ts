@@ -89,6 +89,7 @@ test('expired platform JWT cannot trap the account behind a silent failed logout
     await page.getByRole('button', { name: '重新登录', exact: true }).click()
     await expect(page.getByText('登录 APEX 账号即可直接开始对话 —— 无需填写 API Key。', { exact: true })).toBeVisible()
     const errors = await collectErrorBanners(page)
+    expect(errors).toHaveLength(1)
     expect(errors.every(message => message.includes('退出登录未完成'))).toBe(true)
     await page.screenshot({ path: test.info().outputPath('logout-expired-sign-in.png') })
   } finally {

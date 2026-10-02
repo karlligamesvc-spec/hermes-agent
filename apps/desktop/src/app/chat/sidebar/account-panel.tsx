@@ -75,6 +75,7 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: 
       }
     } finally {
       setSigningOut(false)
+
       if (isCurrent()) {setOpen(false)}
     }
   }
