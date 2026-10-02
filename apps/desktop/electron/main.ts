@@ -153,7 +153,7 @@ import {
   seedWebGatewayBlockYaml,
   syncManagedRelayConfigYaml
 } from './apex-managed'
-import { ManagedCredentialLifetime, managedRecoveryCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
+import { ManagedCredentialLifetime, managedProvisionCommitToken, ManagedRelayRecoveryCoordinator, provisionManagedRelayForCurrentAccount } from './apex-managed-recovery'
 import { normalizeStoredPluginsState, syncPlatformPlugins } from './apex-platform-plugins'
 import {
   applyPlatformSkills,
@@ -21864,7 +21864,7 @@ async function reconcileCurrentManagedRelay(generation: number, scope: ModelMuta
         // relay key (server rotates), persists it (+ the — possibly unchanged —
         // JWT). A stored account keeps the account panel intact.
         const result = await provisionManagedFromAccessToken(managed.accessToken, managed.account || null, isCurrent,
-          scope, nextGeneration => {ownedGeneration = nextGeneration})
+          scope, nextGeneration => {ownedGeneration = nextGeneration}, 'recovery')
 
         if (result.ok && result.hasRelayKey) {
           // This attempt's synchronous credential write advances the lifetime.
@@ -21962,9 +21962,8 @@ async function finishManagedModelRuntime(target: ResolvedModelTarget, isCurrent:
   })
 }
 
-async function provisionManagedFromAccessToken(accessToken, account = null, recovery?: () => boolean,
-  capturedTarget?: ModelMutationScope, onCommitted?: (generation: number) => void) {
-  const isCurrent = recovery || managedAuthIntent.capture()
+async function provisionManagedFromAccessToken(accessToken, account = null, isCurrent = managedAuthIntent.capture(),
+  capturedTarget?: ModelMutationScope, onCommitted?: (generation: number) => void, purpose: 'sign-in' | 'recovery' = 'sign-in') {
   const token = String(accessToken || '').trim()
 
   if (!token) {
@@ -22022,10 +22021,10 @@ async function provisionManagedFromAccessToken(accessToken, account = null, reco
         plan: provisioned.plan || resolvedAccount.plan
       }
 
-      // A self-heal may have just slid this request's JWT in the transport. Keep
-      // that confirmed renewal rather than replacing it with the older bearer.
+      // Recovery can retain a confirmed transport renewal. Explicit sign-in
+      // must replace the old same-account JWT with the newly authenticated one.
       const currentToken = resolveManagedConfig().accessToken
-      const commitToken = recovery ? managedRecoveryCommitToken(token, currentToken) : token
+      const commitToken = managedProvisionCommitToken(token, currentToken, purpose)
 
       // Once minted, keep the new credential even if Runtime recovery needs a
       // retry. Keeping the already-revoked old key would strand this login.

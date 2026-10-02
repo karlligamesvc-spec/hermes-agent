@@ -14,7 +14,8 @@ test('expired platform JWT cannot trap the account behind a silent failed logout
   const mock = await startMockServer()
   let expired = false
   let rejectedRequests = 0
-  const fixtureToken = `local.${Buffer.from(JSON.stringify({ sub: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })).toString('base64url')}.fixture`
+  let loginCount = 0
+  let fixtureToken = `local.${Buffer.from(JSON.stringify({ sub: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })).toString('base64url')}.fixture`
 
   const server = http.createServer(async (request, response) => {
     const pathname = new URL(request.url || '/', 'http://localhost').pathname
@@ -25,8 +26,10 @@ test('expired platform JWT cannot trap the account behind a silent failed logout
     }
 
     if (pathname === '/api/v1/auth/login') {
+      loginCount += 1
+      fixtureToken = fixtureToken.replace(/\.fixture.*$/, `.fixture${loginCount}`)
       json(200, { access_token: fixtureToken, email: 'fixture@example.invalid', name: 'Logout fixture' })
-    } else if (expired && request.headers.authorization) {
+    } else if (expired && request.headers.authorization && !(loginCount >= 2 && request.headers.authorization === `Bearer ${fixtureToken}`)) {
       rejectedRequests += 1
       json(401, { detail: 'Token expired' })
     } else if (pathname === '/api/v1/desktop/provision-key/capabilities') {
@@ -92,6 +95,21 @@ test('expired platform JWT cannot trap the account behind a silent failed logout
     expect(errors).toHaveLength(1)
     expect(errors.every(message => message.includes('退出登录未完成'))).toBe(true)
     await page.screenshot({ path: test.info().outputPath('logout-expired-sign-in.png') })
+    await page.locator('input[type="email"]').fill('fixture@example.invalid')
+    await page.locator('input[type="password"]').fill('fixture-password')
+    await page.locator('input[type="password"]').press('Enter')
+    await expect(page.locator('input[type="password"]')).toBeHidden({timeout:45000})
+    await expect(page.getByRole('button', { name: '打开账户菜单: Logout fixture' })).toBeVisible()
+    const recovered = JSON.parse(fs.readFileSync(credentialPath, 'utf8'))
+    expect(loginCount).toBe(2)
+
+    const persistedToken = await app.evaluate(({ safeStorage }, secret) => secret.encoding === 'safeStorage'
+      ? safeStorage.decryptString(Buffer.from(secret.value, 'base64')) : secret.value, recovered.accessToken)
+
+    expect(persistedToken).toBe(fixtureToken)
+    expect(recovered.accessToken).not.toEqual(before.accessToken)
+    expect(recovered.relayKey).toBeTruthy()
+    await page.screenshot({ path: test.info().outputPath('logout-expired-relogin-complete.png') })
   } finally {
     await app?.close()
     await new Promise<void>(resolve => server.close(() => resolve()))

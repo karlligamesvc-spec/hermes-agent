@@ -62,6 +62,8 @@ export async function provisionManagedRelayForCurrentAccount<T>(args: {
   return { ok: true, hasRelayKey: true, credentialGeneration: args.commit(provisioned) }
 }
 
-export function managedRecoveryCommitToken(requestToken: string, currentToken: string): string {
+export function managedProvisionCommitToken(requestToken: string, currentToken: string, purpose: 'sign-in' | 'recovery'): string {
+  if (purpose === 'sign-in') {return requestToken}
+
   return canApplyManagedRenewal(requestToken, requestToken, currentToken) ? currentToken : requestToken
 }

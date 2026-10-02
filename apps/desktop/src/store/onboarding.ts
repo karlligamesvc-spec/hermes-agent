@@ -17,6 +17,7 @@ import { setModelAssignment } from "@/hermes"
 import { translateNow } from '@/i18n'
 import { isProviderSetupErrorMessage } from "@/lib/provider-setup-errors"
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+import { markSignedIn } from '@/store/auth'
 import { setMainModelAssignment } from '@/store/cron-model-impact'
 import { ackFreeTierNotice, freeTierReadyPending, refreshFreeTierStatus, setFreeTierRoute } from '@/store/free-tier'
 import { notify, notifyError } from '@/store/notifications'
@@ -914,6 +915,7 @@ async function applyManagedSignInResult(
   }
 
   patch({ managedSubmitting: false })
+  markSignedIn()
   notifyReady('APEX')
   completeDesktopOnboarding()
   ctx.onCompleted?.()

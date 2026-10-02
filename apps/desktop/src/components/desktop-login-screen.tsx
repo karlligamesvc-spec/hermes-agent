@@ -5,7 +5,7 @@ import { ManagedRuntimeRecovery } from '@/components/managed-runtime-recovery'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { Loader2 } from '@/lib/icons'
-import { markManagedUnavailable, markSignedIn } from '@/store/auth'
+import { markManagedUnavailable } from '@/store/auth'
 import {
   $desktopOnboarding,
   $pendingDesktopLoginCode,
@@ -41,8 +41,8 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
   const { managedError, managedSubmitting, managedRuntimeRecovery } = useStore($desktopOnboarding)
   const pendingLoginCode = useStore($pendingDesktopLoginCode)
 
-  // A ctx whose onCompleted flips the auth gate to signed-in (and re-reads the
-  // account for the panel), then notifies the parent. Stable across renders so
+  // The shared managed flow reconciles the auth gate and account before
+  // notifying this context. Stable across renders so
   // the in-flight managed flow keeps a consistent callback.
   const onSignedInRef = useRef(onSignedIn)
   onSignedInRef.current = onSignedIn
@@ -53,7 +53,6 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
     () => ({
       requestGateway: (...args) => requestGatewayRef.current(...args),
       onCompleted: () => {
-        markSignedIn()
         onSignedInRef.current?.()
       }
     }),
@@ -65,7 +64,7 @@ export function DesktopLoginScreen({ gateNotice, onSignedIn, requestGateway }: D
       return
     }
 
-    // Full success calls ctx.onCompleted (→ markSignedIn) and the gate closes.
+    // Full success reconciles auth, calls ctx.onCompleted, and the gate closes.
     // Every failure — bad account, or a valid account the platform couldn't mint
     // a relay key for — stays HERE with a retry line. Managed is the product's
     // default path, so nothing routes a signed-in user to a provider picker on
