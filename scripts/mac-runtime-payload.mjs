@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 const MACH_HEADERS = new Map([
   ['feedface', 'BE'], ['feedfacf', 'BE'], ['cefaedfe', 'LE'], ['cffaedfe', 'LE']
@@ -129,5 +130,86 @@ export function notarizeMacRuntimePayload(root, outDir) {
     return { status: submission.status, submission_id: submission.id, issues: log.issues || [] }
   } finally {
     fs.rmSync(zip, { force: true })
+  }
+}
+
+/** Reassess an Accepted payload without accepting a different file or signature. */
+export async function verifyNotarizedMacExecutable(executable, notarization, {
+  env = process.env,
+  execute = spawnSync,
+  wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+  onDiagnostic = () => {}
+} = {}) {
+  const timeout = 30000
+  const receipt = { executable, accepted_submission: notarization?.submission_id, timeout_ms: timeout,
+    verifier: '/usr/bin/codesign', requirement: ['--verify', '--strict', '-R=notarized', '--check-notarization'],
+    attempts: [], status: 'failed' }
+  const command = args => execute('/usr/bin/codesign', args, {
+    env, encoding: 'utf8', shell: false, timeout, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024
+  })
+  const bytes = () => {
+    const realpath = fs.realpathSync(executable)
+    if (!fs.statSync(realpath).isFile()) throw new Error('Mac notarization target is not a regular file')
+    return { realpath, sha256: createHash('sha256').update(fs.readFileSync(realpath)).digest('hex') }
+  }
+  const identity = () => {
+    const before = bytes()
+    receipt.observed_identity = before
+    const strict = command(['--verify', '--strict', executable])
+    if (strict.error || strict.status !== 0) {
+      receipt.signature_failure = { exit: strict.status, error_code: strict.error?.code || null, stderr: String(strict.stderr || '').slice(0, 8192) }
+      throw new Error(`Mac strict signature verification failed: ${strict.error?.code || strict.status}`)
+    }
+    const displayed = command(['--display', '--verbose=4', executable])
+    const cdHash = `${displayed.stdout || ''}\n${displayed.stderr || ''}`.match(/^CDHash=([a-f\d]{40,64})$/im)?.[1]?.toLowerCase()
+    if (displayed.error || displayed.status !== 0 || !cdHash) {
+      receipt.signature_failure = { exit: displayed.status, error_code: displayed.error?.code || null, stderr: String(displayed.stderr || '').slice(0, 8192) }
+      throw new Error('Mac signature CDHash could not be verified')
+    }
+    const after = bytes()
+    receipt.observed_identity = { ...after, cdHash }
+    if (before.realpath !== after.realpath || before.sha256 !== after.sha256) {
+      receipt.same_bytes = false
+      throw new Error('Mac notarization executable bytes changed during signature verification')
+    }
+    return { ...after, cdHash }
+  }
+  const sameIdentity = (expected, actual) => {
+    if (expected.realpath !== actual.realpath || expected.sha256 !== actual.sha256 || expected.cdHash !== actual.cdHash) {
+      receipt.same_bytes = false
+      receipt.observed_identity = actual
+      throw new Error('Mac notarization executable bytes or signature changed')
+    }
+  }
+  try {
+    if (notarization?.status !== 'Accepted' || !notarization.submission_id || !Array.isArray(notarization.issues) || notarization.issues.length) {
+      throw new Error('Mac executable assessment requires an Accepted submission with no issues')
+    }
+    const original = identity()
+    Object.assign(receipt, original, { same_bytes: true })
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (attempt > 1) await wait(attempt === 2 ? 5000 : 15000)
+      sameIdentity(original, identity())
+      const started = Date.now()
+      const result = command(['--verify', '--strict', '-R=notarized', '--check-notarization', executable])
+      receipt.attempts.push({ attempt, started_at: new Date(started).toISOString(), duration_ms: Date.now() - started,
+        exit: result.status, signal: result.signal || null,
+        error_code: result.error?.code || null, stderr: String(result.stderr || '').slice(0, 8192) })
+      if (result.error || !Number.isInteger(result.status)) throw new Error(`Mac notarization verifier did not complete: ${result.error?.code || result.signal || 'missing exit'}`)
+      sameIdentity(original, identity())
+      if (result.status === 0) {
+        receipt.status = 'verified'
+        return receipt
+      }
+      if (result.status !== 3 || !/code failed to satisfy specified code requirement/i.test(result.stderr || '')) {
+        throw new Error(`Mac notarization verifier failed without a retryable requirement result (exit ${result.status})`)
+      }
+    }
+    throw new Error(`Mac executable notarization failed after 3 assessments (exit ${receipt.attempts.at(-1).exit})`)
+  } catch (error) {
+    receipt.failure = error.message
+    throw error
+  } finally {
+    onDiagnostic(receipt)
   }
 }

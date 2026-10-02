@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 
 import { probeRuntimeImports } from '../../../scripts/build-runtime-bundle.mjs'
+import { verifyNotarizedMacExecutable } from '../../../scripts/mac-runtime-payload.mjs'
 import { runtimeSmokeEnvironment } from '../../../scripts/runtime-bundle-offline-smoke.mjs'
 
 test('bundle smoke rejects a real runtime missing PyYAML', { skip: process.platform === 'win32' }, () => {
@@ -35,14 +36,11 @@ test('bundle smoke rejects a real runtime missing PyYAML', { skip: process.platf
 
 test('Mac bundle rejects a signed but unnotarized executable with the sealed smoke PATH', {
   skip: process.platform !== 'darwin'
-}, () => {
+}, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-mac-gatekeeper-'))
   try {
     const env = runtimeSmokeEnvironment(root, path.join(root, 'home'), { os: 'mac' })
     assert.ok(!env.PATH.split(path.delimiter).includes('/usr/sbin'))
-    const source = fs.readFileSync(new URL('../../../scripts/build-runtime-bundle.mjs', import.meta.url), 'utf8')
-    const statements = source.split('\n').filter(line => /^\s*if \(manifest\.mac_notarization\) run\(/.test(line))
-    assert.equal(statements.length, 1, 'requires the actual unique producer Gatekeeper call')
     const executable = path.join(root, 'unnotarized-tool')
     fs.copyFileSync('/usr/bin/true', executable)
     const signed = spawnSync('/usr/bin/codesign', ['--force', '--sign', '-', executable], { env, encoding: 'utf8', shell: false })
@@ -51,19 +49,23 @@ test('Mac bundle rejects a signed but unnotarized executable with the sealed smo
     const signature = spawnSync('/usr/bin/codesign', ['--verify', '--strict', executable], { env, encoding: 'utf8', shell: false })
     assert.equal(signature.error, undefined)
     assert.equal(signature.status, 0, 'the control must have a valid signature before checking notarization')
-    const invoke = new Function('manifest', 'run', 'executable', 'probeEnv', statements[0])
-    let actual
-    // Execute the production statement and real system verifier. A valid
+    let receipt
+    // Execute the production helper and real system verifier. A valid
     // signature alone must not satisfy its notarization requirement; release
     // jobs separately require all four real payloads to pass at both locations.
-    invoke({ mac_notarization: { status: 'Accepted' } }, (command, args, options) => {
-      actual = spawnSync(command, args, { env: options.env, encoding: 'utf8', shell: false, timeout: 30000 })
-    }, executable, env)
-    assert.ok(actual, 'the notarized-payload guard must invoke the system verifier')
-    assert.equal(actual.error, undefined, 'the actual system notarization command must launch')
-    assert.ok(Number.isInteger(actual.status), 'the system verifier must complete with a real result')
-    assert.notEqual(actual.status, 0, 'a valid but unnotarized signature must be refused')
-    assert.match(actual.stderr, /code failed to satisfy specified code requirement/)
+    await assert.rejects(verifyNotarizedMacExecutable(executable, { status: 'Accepted', submission_id: 'owned-negative-control', issues: [] }, {
+      env, wait: async () => {}, onDiagnostic: value => { receipt = value }
+    }), /notarization failed after 3 assessments/)
+    assert.equal(receipt.status, 'failed')
+    assert.equal(receipt.verifier, '/usr/bin/codesign')
+    assert.deepEqual(receipt.requirement, ['--verify', '--strict', '-R=notarized', '--check-notarization'])
+    assert.equal(receipt.attempts.length, 3, 'the actual notarization command must complete at every bounded assessment')
+    for (const actual of receipt.attempts) {
+      assert.equal(actual.error_code, null, 'the actual system notarization command must launch')
+      assert.ok(Number.isInteger(actual.exit), 'the system verifier must complete with a real result')
+      assert.notEqual(actual.exit, 0, 'a valid but unnotarized signature must be refused')
+      assert.match(actual.stderr, /code failed to satisfy specified code requirement/)
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }

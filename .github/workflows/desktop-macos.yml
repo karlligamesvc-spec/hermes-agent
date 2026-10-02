@@ -190,6 +190,17 @@ jobs:
             ${{ runner.temp }}/bundled-engine/consumer-proof.json
             ${{ runner.temp }}/bundled-engine/component-download-proof.json
 
+      - name: Preserve failed native engine notarization diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundled-engine-failure-mac-${{ matrix.arch }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/bundled-engine/runtime-payload-notary.json
+            ${{ runner.temp }}/bundled-engine/*.notarization-checks.json
+
       # `npm run build` = assert-icon/root-install + write-build-stamp +
       # stage-install-script + stage-native-deps + tsc + vite build — the
       # renderer/dist, install-stamp.json and native-deps that electron-builder
