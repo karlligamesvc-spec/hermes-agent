@@ -114,6 +114,16 @@ renderer and Electron's first window paint.
 Never hardcode `border-gray-*`, `bg-white`, `text-black`, etc. The white tile in
 `BrandMark` is the one sanctioned literal (the mark needs a fixed backdrop).
 
+## Typography
+
+Use the shared `--dt-font-sans` native UI stack, with PingFang SC / Microsoft
+YaHei UI fallbacks for Chinese. Keep the boot CSS fallback and `SYSTEM_SANS`
+order aligned; theme font choices still take precedence. Monospace and keycap
+fonts retain their separate settings. Business hero headings use a restrained
+600 weight, near-natural `-.01em` tracking and at least 1.3 line height, rather
+than compressing Chinese glyphs. Supporting reading copy uses semantic secondary
+text; small source names use medium weight rather than heavy bold.
+
 ## Buttons — one component
 
 `src/components/ui/button.tsx` is the single source. Pick a `variant` + `size`;
@@ -124,6 +134,14 @@ the default non-primary look), `outline` (transparent + 1px inset ring, no
 fill/shadow), `ghost`, `link`, `text` (boxless quiet inline — "Cancel",
 "Clear"), `textStrong` (bold underlined inline affordance — "Change",
 "Open logs").
+
+Primary submit/import/save actions always use `Button` default with the
+contrast-derived `--dt-primary-solid` / `--dt-primary-solid-foreground` pair.
+Do not recreate primary actions with `bg-primary text-primary-foreground`: skin
+foregrounds may suit selection surfaces without suiting a solid CTA. Companion
+actions use `outline` or `ghost`, including conditionally revealed form controls.
+Completed project step markers also use the solid pair; tabs and progress use
+`--theme-primary`. Plain `--primary` / `--primary-foreground` are not theme tokens.
 
 **Sizes:** `default`, `xs`, `sm`, `lg`, `inline` (flush, zero box — for buttons
 that sit inside a heading/sentence; replaces `h-auto px-0 py-0`), `micro`
