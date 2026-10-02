@@ -1,0 +1,48 @@
+{
+  "package_source": "0c7c6642c705671c6ae46ebea29c686e1427242a",
+  "formal_release_run": 37066433226,
+  "version": "0.17.43",
+  "original_reader_sha256": "ea1e95698d1c0906805e016e315b7ebd3f7d77ae49bcaf89d774282f8544964d",
+  "architecture_checker_sha256": "341d1e58609e490ed5f9c0e6369d1fbe528fa811bfd086774275ce0f42714e86",
+  "packages": [
+    {
+      "platform": "mac-arm64",
+      "name": "APEX-0.17.43-mac-arm64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/APEX-0.17.43-mac-arm64.zip",
+      "size": 539861203,
+      "sha256": "a9d75c6d3e03ac86931d5c0ac083aa0c03e47e3ccf624dbe62a37ea2e82b2a66",
+      "sha512": "EuAtwJd2uGEm4lwZyJULawgexfNvy7Ve7xG1XKxFFuk0EJD92iTeCiB0A3bBVb0s1nbQrYVUrKCwQtKiIVdbfA=="
+    },
+    {
+      "platform": "mac-arm64",
+      "name": "APEX-0.17.43-mac-arm64.dmg",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-arm64/APEX-0.17.43-mac-arm64.dmg",
+      "size": 543153627,
+      "sha256": "20198f758ba04b0494c9aa9062b375ab2901333033091aa0f589e5bf9de6140c",
+      "sha512": "O2HC6UPfwucuWrJu9Ufy0ZZZKTJQmuHvH+jo99pFTKlNJG1zUcnFfLUdjeVJ7+hcPfRIm3jHsyr7heHxTKqH8g=="
+    },
+    {
+      "platform": "mac-x64",
+      "name": "APEX-0.17.43-mac-x64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-x64/APEX-0.17.43-mac-x64.zip",
+      "size": 537525671,
+      "sha256": "5d7aa6fc0990cab3b7280d55092293ad194345426cc145b3b8c4f8e0116b7df8",
+      "sha512": "logaU2qjO8C68hro1sdWA5IN4ldj5qwhOuV4Fd4npNBsnaE5AORugi1Id62w19cj+0qyU66oXwlQOw+zpxYt+g=="
+    },
+    {
+      "platform": "mac-x64",
+      "name": "APEX-0.17.43-mac-x64.dmg",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/mac-x64/APEX-0.17.43-mac-x64.dmg",
+      "size": 540700227,
+      "sha256": "39541a5bcb1a77d881aa7a8cd64f93fe4ef0f83eed5fb358856a707695f0baf1",
+      "sha512": "vrY3hOJ4vnTAdP1+eIBcEJNvatPVyuaBISEyxw9mfPN8INy7q8ujchOkGdIEkAKQYnmgCvOmnemZ1Pd5S4M5CA=="
+    }
+  ],
+  "root_mac_whole_body_proof_sha256": "29dee7e8843edc66c33996835a41f5a32d534e0640ef763970a57b89375f1609",
+  "local_stapler_failure": {
+    "exit": 68,
+    "scope": "Mac arm64 public ZIP App",
+    "error": "CloudKit TLS transport failure; signature and Gatekeeper passed",
+    "log_sha256": "6f156a2a79ff0a043af89ef5e4aa6a6e8b8f7b7c59282ff19c9dff95de521dc0"
+  }
+}
