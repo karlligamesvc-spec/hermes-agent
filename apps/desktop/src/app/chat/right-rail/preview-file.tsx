@@ -19,6 +19,7 @@ import { FileDiffPanel } from '@/components/chat/diff-lines'
 import { chunkTextLines, useFixedRowWindow } from '@/components/chat/fixed-row-window'
 import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlighter'
 import { PageLoader } from '@/components/page-loader'
+import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
 import {
@@ -500,23 +501,24 @@ function EditControls({
 
   return (
     <>
-      <button
-        className="flex items-center gap-1 rounded-md px-1.5 text-[0.625rem] font-bold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      <Button
         onClick={onCancel}
+        size="micro"
         type="button"
+        variant="ghost"
       >
-        <X className="size-3" />
+        <X />
         {t.common.cancel}
-      </button>
-      <button
-        className="flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 text-[0.625rem] font-bold text-primary-foreground shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+      </Button>
+      <Button
         disabled={!dirty || saving}
         onClick={onSave}
+        size="micro"
         type="button"
       >
-        <Check className="size-3" />
+        <Check />
         {saving ? t.common.saving : t.common.save}
-      </button>
+      </Button>
     </>
   )
 }

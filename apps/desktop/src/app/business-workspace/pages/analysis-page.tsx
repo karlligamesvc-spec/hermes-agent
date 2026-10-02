@@ -688,13 +688,13 @@ export function AnalysisView({ onDeepBreakdown }: {
         })
 
   const sourceControls = <>      <form className="flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); openSourceLink() }}>
-        <button className="rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50" disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={importDocument} type="button">{c.import}</button>
-        <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async isCurrent => {
+        <Button disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={importDocument} type="button">{c.import}</Button>
+        <Button disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async isCurrent => {
           setUploadingVideo(true)
 
           try {await acceptTimedTranscript(await bridge()?.uploadVideo(), isCurrent)}
           finally {if (isCurrent()) {setUploadingVideo(false)}}
-        })} type="button">{uploadingVideo ? c.videoUploading : c.videoUploadLocal}</button>
+        })} type="button" variant="outline">{uploadingVideo ? c.videoUploading : c.videoUploadLocal}</Button>
         <Input aria-describedby="analysis-source-link-hint" aria-label={c.link} className="min-w-52 flex-1" disabled={busy}
           onChange={event => { setLink(event.target.value); setVideoResolution(null) }}
           onCompositionEnd={() => { composingLink.current = false }} onCompositionStart={() => { composingLink.current = true }}
@@ -705,7 +705,7 @@ export function AnalysisView({ onDeepBreakdown }: {
             if (!event.nativeEvent.isComposing) {openSourceLink()}
           }} placeholder={sourceLinkCopy.placeholder} ref={linkInputRef} type="text" value={link} />
         <Button disabled={busy || !sourceLink.url} type="submit">{sourceLinkCopy.open}</Button>
-        {sourceLink.isFeishu && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !!authFlow} onClick={() => void perform(async isCurrent => {
+        {sourceLink.isFeishu && <Button disabled={busy || !!authFlow} onClick={() => void perform(async isCurrent => {
           const result = await bridge()?.authorizeFeishu()
 
           if (!isCurrent()) {return}
@@ -715,8 +715,8 @@ export function AnalysisView({ onDeepBreakdown }: {
  return }
 
           setAuthFlow({ id: result.flow_id, interval: result.interval ?? 5 }); setFeishuAuthorized(false)
-        })} type="button">{c.authorize}</button>}
-        {sourceLink.isFeishu && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy} onClick={() => void perform(async isCurrent => {
+        })} type="button" variant="outline">{c.authorize}</Button>}
+        {sourceLink.isFeishu && <Button disabled={busy} onClick={() => void perform(async isCurrent => {
           const result = await bridge()?.forgetFeishu()
 
           if (!isCurrent()) {return}
@@ -726,11 +726,11 @@ export function AnalysisView({ onDeepBreakdown }: {
  return }
 
           setAuthFlow(null); setFeishuAuthorized(false)
-        })} type="button">{c.forget}</button>}
-        {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async isCurrent => {
+        })} type="button" variant="outline">{c.forget}</Button>}
+        {videoResolution?.source_url && ['download_candidate', 'audio_candidate'].includes(videoResolution.capability ?? '') && <Button disabled={busy || !policy || (policy.mode === 'cloud' && !policy.cloud_storage_configured)} onClick={() => void perform(async isCurrent => {
           await transcribeResolvedVideo(videoResolution.source_url!, isCurrent)
-        })} type="button">{transcribingVideo ? c.videoAnalyzing : c.videoAnalyze}</button>}
-        {sourceLink.url && <button className="rounded-lg border px-3 py-2" onClick={() => void window.hermesDesktop.openExternal(videoResolution?.source_url ?? sourceLink.url!)} type="button">{c.openLink}</button>}
+        })} type="button" variant="outline">{transcribingVideo ? c.videoAnalyzing : c.videoAnalyze}</Button>}
+        {sourceLink.url && <Button onClick={() => void window.hermesDesktop.openExternal(videoResolution?.source_url ?? sourceLink.url!)} type="button" variant="outline">{c.openLink}</Button>}
       </form>
       <p className="text-xs text-(--ui-text-tertiary)">{c.videoUploadDisclosure}</p>
       <p className="text-sm text-(--ui-text-secondary)" id="analysis-source-link-hint">{sourceLink.error ? sourceLink.error === 'multiple_source_links' ? sourceLinkCopy.multiple : sourceLinkCopy.invalid : sourceLink.isFeishu ? authFlow ? c.authorizing : feishuAuthorized ? c.authorized : c.linkHint : videoResolution ? transcribingVideo ? c.videoAnalyzing : videoResolution.status === 'unreadable' ? c.videoUnreadable : (videoResolution.status === 'upload_required' ? c.videoUpload : c.videoCandidate).replace('{platform}', videoResolution.platform ?? '') : sourceLink.url ? sourceLinkCopy.ready : null}</p>
