@@ -460,7 +460,7 @@ declare global {
         // About-panel open without triggering an opt-in update check.
         getVersion: () => Promise<DesktopRuntimeVersion>
         checkUpdate: () => Promise<DesktopRuntimeUpdateCheck>
-        applyUpdate: () => Promise<DesktopRuntimeUpdateApply>
+        applyUpdate: (expectedTarget?: DesktopRuntimeUpdateExpectedTarget) => Promise<DesktopRuntimeUpdateApply>
         onUpdateProgress: (callback: (progress: DesktopRuntimeUpdateProgress) => void) => () => void
       }
       // 壳(Electron 应用本体)自更新 — electron-updater 通道,和 runtime(引擎)
@@ -2430,6 +2430,11 @@ export interface DesktopRuntimeUpdateCheck {
 // `applied:false` with `alreadyCurrent` means the installed engine already
 // matches admin-latest. On failure, `error` is a stable code such as
 // 'no_admin_latest_available' or 'update_artifact_unreachable'.
+export interface DesktopRuntimeUpdateExpectedTarget {
+  expectedKey?: string | null
+  expectedVersion?: string | null
+}
+
 export interface DesktopRuntimeUpdateApply {
   ok: boolean
   applied?: boolean

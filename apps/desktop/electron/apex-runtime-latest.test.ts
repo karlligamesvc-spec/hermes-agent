@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import type { IpcMain } from 'electron'
 import { test } from 'vitest'
 
 import {
@@ -18,6 +19,7 @@ import {
   resolveLatestRuntimePin
 } from './apex-runtime-latest'
 import { createPackagedRuntimeGate } from './packaged-runtime'
+import { registerRuntimeVersionIpc } from './runtime-version'
 
 const SHA = '87740e8021390455962caa3ad2c16d522c0d306a'
 const COS_BASE = 'https://bucket.cos.ap-guangzhou.myqcloud.com/runtime'
@@ -597,7 +599,7 @@ test('main.ts: R5 IPC channels + the runtime preload bridge are registered', () 
   assert.match(src, /ipcMain\.handle\('hermes:runtime:apply-update'/)
   const preload = fs.readFileSync(path.join(__dirname, 'preload.ts'), 'utf8')
   assert.match(preload, /checkUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:check-update'\)/)
-  assert.match(preload, /applyUpdate: \(\) => ipcRenderer\.invoke\('hermes:runtime:apply-update'\)/)
+  assert.match(preload, /applyUpdate: expectedTarget => ipcRenderer\.invoke\('hermes:runtime:apply-update', expectedTarget\)/)
 })
 
 // Assert that `key: app.getVersion()` appears within the argument object of a
@@ -626,16 +628,20 @@ test('main.ts (hc-532 gate 3): all three desktop_install_events entry points car
   assertCallPassesShellVersion(src, 'applyRuntimeBundleUpdate({', 'desktopVersion')
 })
 
-test('main.ts (hc-532 gate 1): runtime:version handler computes the engine floor gate', () => {
-  const src = mainSource()
-  // The shell's declared floor is read from package.json …
-  assert.match(src, /function readDeclaredMinEngineVersion\(\)/)
-  assert.match(src, /pkg\.apexnodes && pkg\.apexnodes\.minEngineVersion/)
-  // … and folded into the version IPC as meetsMinEngine via the shared gate.
-  const handlerIdx = src.indexOf("ipcMain.handle('hermes:runtime:version'")
-  assert.notEqual(handlerIdx, -1, 'runtime:version handler missing')
-  const handler = src.slice(handlerIdx, handlerIdx + 900)
-  assert.match(handler, /const meetsMinEngine = engineMeetsMinVersion\(version, minEngineVersion\)/)
-  assert.match(handler, /meetsMinEngine/)
-  assert.match(handler, /minEngineVersion/)
+test('runtime version IPC reports the declared engine floor and confirms the active source', async () => {
+  let handler: () => Promise<any>
+  const ipcMain = { handle: (_channel: string, listener: () => Promise<any>) => { handler = listener } } as unknown as Pick<IpcMain, 'handle'>
+
+  registerRuntimeVersionIpc(ipcMain, {
+    waitForRuntimePreparation: async () => {},
+    readMarker: () => ({ pinnedCommit: SHA, version: 'v2026.7.14-fork.87740e8' }),
+    readTreeCommit: () => 'different-source',
+    minEngineVersion: () => 'v2026.7.15-fork.b21a7e0d',
+    log: () => {}
+  })
+  const result = await handler!()
+
+  assert.equal(result.minEngineVersion, 'v2026.7.15-fork.b21a7e0d')
+  assert.equal(result.meetsMinEngine, false)
+  assert.equal(result.treeMatchesMarker, false)
 })
