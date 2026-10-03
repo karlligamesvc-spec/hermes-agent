@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import type { WorkflowDomainBridge } from '../src/app/business-workspace/api/types'
 
+import { openAccountDestination } from './business-navigation'
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
@@ -52,7 +53,7 @@ test('packaged Project UI preserves failed input and shares canonical lifecycle 
     }
 
     const projects = async () => {
-      await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+      await openAccountDestination(page, '项目')
       await expect(page.locator('[data-workflow-project-list]')).toBeVisible()
     }
 

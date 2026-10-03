@@ -1,0 +1,11 @@
+# hc-901 Desktop primary and account navigation
+
+In the default APEX business shell, the primary rail contains only Start and Immersive Analysis. Projects and Scheduled runs live in the bottom-left account menu, alongside the existing Profile, Settings, Connected assistant, History and Deliverables entries. Selecting them uses the existing `/projects` and `/cron` pages and closes the transient narrow sidebar; it does not change the docked-sidebar preference or create/delete any business data.
+
+The underlying route/action/shortcut catalog stays intact, including Projects-owned workflows, Cron shortcuts, direct routes and the legacy rollback rail. Legacy account chrome omits the newly moved business entries. The existing five-locale navigation labels are reused; Mac and Windows share the renderer. This source change does not publish an installer.
+
+Outlets checked: actual primary rail, account-menu mouse/keyboard actions, wide/narrow navigation, legacy rollback, direct routes/shortcuts, recent and pinned sessions, and 27 explicit plus one table-driven E2E navigation call sites. Other source, history, deliverable and workflow actions keep their existing destination.
+
+From `apps/desktop`, run `npx vitest run src/app/chat/sidebar/account-panel.test.tsx src/app/chat/sidebar/chat-sidebar.integration.test.tsx src/identity-layer.test.tsx src/store/layout-sidebar.test.ts`; `npm run check:lint`. After `CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack`, run `PHASE1_SCREENSHOT_DIR=<owned directory> npx playwright test e2e/business-workspace-packaged.spec.ts -g 'fresh packaged app exposes|primary navigation dismisses|hc-901 packaged video upload' --workers=1 --reporter=list`.
+
+The component tests exercise actual rendered primary rows and account-menu route selection; the packaged smoke exercises real Electron/renderer navigation and the mounted existing pages with isolated account/API/model fixtures. These checks do not prove real Cron execution, business data quality, production installers, Windows hardware or release completion. Reverse validation restores a moved row to the primary rail and must fail the rendered-rows assertion; account routes remain independently tested.

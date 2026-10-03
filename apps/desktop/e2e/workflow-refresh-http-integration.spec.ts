@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test'
 
 import type { WorkflowDomainBridge } from '../src/app/business-workspace/api/types'
 
+import { openAccountDestination } from './business-navigation'
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { pageErrorHistory } from './page-error-history'
 import { allowErrorBanners, expect, installErrorBannerGuard, test } from './test'
@@ -42,7 +43,7 @@ async function ready(fixture: PackagedMockBackendFixture) {
 }
 
 async function projects(page: Page) {
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
   await expect(page.locator('[data-workflow-project-list]')).toBeVisible()
 }
 

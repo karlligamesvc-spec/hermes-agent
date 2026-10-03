@@ -1,5 +1,6 @@
 import { startMockServer } from '../../../tests-js/scripts/mock-server'
 
+import { openAccountDestination } from './business-navigation'
 import {
   buildAppEnv,
   createSandbox,
@@ -43,7 +44,7 @@ test('Projects and sidebar reopen the same durable session', async () => {
 
     await expect(sessionRow).toBeVisible({ timeout: 30_000 })
 
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).click()
+    await openAccountDestination(page, '项目')
     await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
 
     await expect(sessionRow).toBeVisible()

@@ -15,10 +15,11 @@ import { profileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
 import { $authState, type AuthAccount, captureManagedAuthRecoveryScope, signOutAccount } from '@/store/auth'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
+import { dismissNarrowSidebarOverlay } from '@/store/layout'
 import { notify } from '@/store/notifications'
 import { requestManagedReSignIn } from '@/store/onboarding'
 
-import { ASSISTANT_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, SETTINGS_ROUTE } from '../../routes'
+import { ASSISTANT_ROUTE, CRON_ROUTE, DELIVERABLES_ROUTE, HISTORY_ROUTE, PROFILE_STATS_ROUTE, PROJECTS_ROUTE, SETTINGS_ROUTE } from '../../routes'
 
 // The signed-in display name: prefer an explicit name, else the email's local
 // part, else a generic fallback ("账户"). The avatar shows its first letter.
@@ -43,7 +44,7 @@ function initialOf(name: string): string {
 // Bottom-left account panel (Codex account row, high-fidelity). The row is
 // avatar (initial) + a two-line stack: display name over the signed-in email —
 // no plan badge or phone icon. The business rail adds a menu caret. Click →
-// a popover menu with 个人资料, 设置, 连接助手, 历史会话, 交付物, optional real usage,
+// a popover menu with 个人资料, 设置, 项目, 定时运行, 连接助手, 历史会话, 交付物, optional real usage,
 // and 退出登录. These destinations share one information-architecture group
 // instead of spending permanent sidebar height on additional rows. Rendered
 // only on managed builds when signed in (the auth gate handles the signed-out
@@ -166,6 +167,16 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: 
           <Codicon name="settings-gear" size="0.875rem" />
           <span>{a.settings}</span>
         </DropdownMenuItem>
+        {businessChrome && <>
+          <DropdownMenuItem onSelect={() => { dismissNarrowSidebarOverlay(); navigate(PROJECTS_ROUTE) }}>
+            <Codicon name="folder" size="0.875rem" />
+            <span>{nav.projects}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { dismissNarrowSidebarOverlay(); navigate(CRON_ROUTE) }}>
+            <Codicon name="calendar" size="0.875rem" />
+            <span>{nav['scheduled-runs']}</span>
+          </DropdownMenuItem>
+        </>}
         <DropdownMenuItem onSelect={() => navigate(ASSISTANT_ROUTE)}>
           <Codicon name="organization" size="0.875rem" />
           <span>{nav.assistant}</span>

@@ -154,7 +154,17 @@ describe('signed-in account navigation', () => {
     await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe('/settings'))
   })
 
+  it('leaves secondary business destinations out of the legacy account menu', async () => {
+    render(<I18nProvider configClient={null} initialLocale="zh"><MemoryRouter><AccountPanel businessChrome={false} /></MemoryRouter></I18nProvider>)
+    fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+    await screen.findByRole('menuitem', { name: '设置' })
+    expect(screen.queryByRole('menuitem', { name: '项目' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '定时运行' })).toBeNull()
+  })
+
   it.each([
+    ['项目', '/projects'],
+    ['定时运行', '/cron'],
     ['连接助手', '/assistant'],
     ['历史会话', '/history'],
     ['交付物', '/deliverables']

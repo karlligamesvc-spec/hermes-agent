@@ -15,6 +15,7 @@ import { verifyAccountIsolation, verifyPickerAccountIsolation } from './analysis
 import { verifyAnalysisChatLink } from './analysis-chat-link'
 import { verifySourceAnswer } from './analysis-source-answer'
 import { verifyWorkspaceReport } from './analysis-workspace-report'
+import { openAccountDestination } from './business-navigation'
 import { verifyCronExecutionHistory, verifyCronTimerExecution, verifyLateSessionRecovery } from './cron-execution-history'
 import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady, writeMockProviderConfig } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
@@ -23,7 +24,7 @@ import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 // Keep the renderer's unrelated ambient declarations out of this Node E2E project.
 type AnalysisReviewWindow = Window & { hermesDesktop?: { analysisDocuments?: AnalysisDocumentsBridge } }
 
-const BUSINESS_NAV_LABELS = ['开始', '项目', '沉浸式分析', '定时运行'] as const
+const BUSINESS_NAV_LABELS = ['开始', '沉浸式分析'] as const
 
 const PACKAGED_VERSION = JSON.parse(
   fs.readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf8')
@@ -66,7 +67,7 @@ const ANALYSIS_FORMAT_SAMPLES = [
 ] as const
 
 async function openWorkflowCatalog(page: Page) {
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
   await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
   await page.locator('[data-project-detail]').getByRole('button', { name: '增加工作流' }).click()
   await expect(page.getByRole('heading', { name: '工作流', level: 1 })).toBeVisible()
@@ -459,11 +460,13 @@ async function startPhase1ReviewApi() {
 
     if (request.method === 'GET' && url.pathname === '/api/v1/desktop/provision-key/capabilities') {
       json(200, { version: 1 })
+
       return
     }
 
     if (request.method === 'POST' && url.pathname === '/api/v1/desktop/provision-key/revoke') {
       const chunks: Buffer[] = []
+
       for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
       const input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       json(200, { revoked: true, provision_revision: input.provision_revision })
@@ -473,6 +476,7 @@ async function startPhase1ReviewApi() {
 
     if (request.method === 'POST' && url.pathname === '/api/v1/desktop/provision-key') {
       const chunks: Buffer[] = []
+
       for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
       const input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       json(200, {
@@ -1061,6 +1065,8 @@ test('fresh packaged app exposes the business workspace without implementation v
   await page.getByRole('button', { name: '打开账户菜单: 本地 UI 评审' }).click()
   await expect(page.getByRole('menuitem', { name: '个人资料' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '设置' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '项目', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '定时运行', exact: true })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '连接助手' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '历史会话' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '交付物' })).toBeVisible()
@@ -1080,6 +1086,13 @@ test('fresh packaged app exposes the business workspace without implementation v
   }
 
   await page.keyboard.press('Escape')
+
+  for (const [label, title] of [['项目', '项目'], ['定时运行', '定时任务']] as const) {
+    await openAccountDestination(page, label)
+    await expect(page.getByRole('heading', { name: title, exact: true, level: 1 })).toBeVisible()
+    await expect(page.getByRole('menu')).toHaveCount(0)
+    await expect(sidebarButtons).toHaveCount(2)
+  }
 })
 
 test('packaged sidebar uses the APEX app mark and keeps Chinese assistant creation reachable', async () => {
@@ -1153,7 +1166,7 @@ test('fresh default glass keeps every Phase 1 business route on one opaque APEX 
   await expect(page.getByRole('heading', { name: '今天想推进什么业务？', level: 1 })).toBeVisible()
   await expectApexShellPaint(page, 'business-canvas', 'start')
 
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
   await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
   await expectApexShellPaint(page, 'business-canvas', 'projects')
   await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
@@ -1183,7 +1196,7 @@ test('primary navigation dismisses only the narrow sidebar overlay, including ke
     await expect(overlay).toBeVisible()
     const navButton = overlay.getByRole('button', { name: new RegExp(`^${label}(?:\\s|⌘|$)`) })
 
-    if (index === 2) {
+    if (index === 1) {
       await navButton.focus()
       await page.keyboard.press('Enter')
     } else {
@@ -1193,10 +1206,18 @@ test('primary navigation dismisses only the narrow sidebar overlay, including ke
     await expect(overlay).toHaveCount(0)
   }
 
+  for (const label of ['项目', '定时运行'] as const) {
+    await page.getByRole('button', { name: /(?:显示|隐藏)侧边栏/ }).click()
+    await expect(page.locator('[data-narrow-overlay]')).toBeVisible()
+    await openAccountDestination(page, label)
+    await expect(page.locator('[data-narrow-overlay]')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: label === '项目' ? '项目' : '定时任务', exact: true, level: 1 })).toBeVisible()
+  }
+
   await winHandle.evaluate(win => win.setBounds({ height: 800, width: 1220, x: 0, y: 0 }, false))
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1220)
   await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
   await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(BUSINESS_NAV_LABELS.length)
   await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
 })
@@ -1527,6 +1548,8 @@ test('packaged Phase 1 pages keep local review data explicit across the approved
       await openWorkflowCatalog(page)
     } else if (phasePage.nav === '交付物') {
       await openDeliverables(page)
+    } else if (phasePage.nav === '项目' || phasePage.nav === '定时运行') {
+      await openAccountDestination(page, phasePage.nav)
     } else {
       await page
         .locator('[data-sidebar="menu-button"]')
@@ -1880,7 +1903,7 @@ for (const surfaceName of ['run-error', 'legacy-projects'] as const) {
         await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
         await page.locator('[data-project-detail]').getByRole('button', { name: '打开当前运行', exact: true }).and(page.locator('[data-variant="default"]')).click()
       } else {
-        await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+        await openAccountDestination(page, '项目')
       }
 
       const surface =
@@ -1960,7 +1983,7 @@ test('a legacy Project envelope opens an honest detail before its goal can conti
   const { app, page } = fixture!
 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setBounds({ height: 800, width: 1220 }))
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
   const row = page.getByRole('button', { name: /尚未启动的业务目标/ })
 
   await expect(row).toBeVisible()
@@ -2043,7 +2066,7 @@ test('workflow Run uses a roomy drawer on wide windows and a collision-free full
       await page.getByRole('button', { name: /(?:显示|隐藏)侧边栏/ }).click()
     }
 
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await page.getByRole('button', { name: /\[本地测试\] 美国宠物用品机会分析/ }).click()
     await page.locator('[data-project-detail]').getByRole('button', { name: '打开当前运行', exact: true }).and(page.locator('[data-variant="default"]')).click()
 
@@ -2243,6 +2266,7 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
 
   try {
     const tools = page.locator('details.analysis-conversation-advanced')
+
     if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
     const reports = page.getByRole('region', { name: '深度分析报告' })
     await reports.getByRole('button', { name: '保存报告文件' }).click()
@@ -2250,6 +2274,7 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+
     if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
     await reports.locator('summary').click()
     await expect(reports.locator('pre')).toHaveText(body)
@@ -2313,9 +2338,12 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
     const id = listed.items!.find(item => item.filename === 'local-review-video-transcript.srt')!.id
     const opened = await api.get(id)
     const source = opened.item!
+
     const summary = { schema: 1 as const, revision: source.analysis_revision!, locale: 'zh' as const,
       points: [{ text: '[本地测试] 视频包含开场与中段讲述。', anchor_ids: ['a1', 'a2'] }] }
+
     const saved = await api.saveOverview(id, source.analysis_scope!, summary)
+
     if (!saved.ok) {throw new Error(saved.code)}
     const rejected = await api.saveOverview(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', summary)
 
@@ -2368,6 +2396,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
 
   const pasteDirectory = path.join(await app.evaluate(({ app }) => app.getPath('userData')), 'composer-pastes')
   const previousPastes = new Set(fs.existsSync(pasteDirectory) ? fs.readdirSync(pasteDirectory) : [])
+
   if (await overview.getAttribute('open') === null) {await overview.locator(':scope > summary').click()}
   await expect(overview).toContainText('仅在你点击发送后交给助手')
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
@@ -2403,6 +2432,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(overview).toBeVisible()
   await expect(page.getByRole('log')).toContainText('[本地测试] 视频包含开场与中段讲述。')
+
   if (await overview.getAttribute('open') === null) {await overview.locator(':scope > summary').click()}
   expect(fixture!.mock.receivedPrompts.filter(text => text.includes('"transcript"') && text.includes('[本地测试] 中段原文'))).toHaveLength(0)
   await expect(page.getByRole('region', { name: '本次查看的画面截图' })).toHaveCount(0)
@@ -2481,7 +2511,7 @@ test('hc-901 packaged video upload opens a playable native lease and one continu
       await test.info().attach(`hc901-video-conversation-${width}`, { path: screenshot, contentType: 'image/png' })
     }
 
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     expect(await app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, mediaUrl)).toBe(404)
     expect(fs.existsSync(originalPath)).toBe(true)
   } finally {
@@ -2498,7 +2528,7 @@ test('hc-901 packaged native policy HTTP 503 recovers with explicit retry and pr
   const showSidebar = page.getByRole('button', { name: /^显示侧边栏/ })
 
   if (await showSidebar.isVisible()) {await showSidebar.click()}
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
     await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   reviewApi!.setAnalysisPolicy('local')
@@ -2522,7 +2552,7 @@ test('hc-901 packaged native policy HTTP 503 recovers with explicit retry and pr
     expect(reviewApi!.policyReadStatuses().at(-1)).toBe(200)
 
     reviewApi!.setAnalysisPolicy('cloud', false)
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
@@ -2533,7 +2563,7 @@ test('hc-901 packaged native policy HTTP 503 recovers with explicit retry and pr
   } finally {
     reviewApi!.setAnalysisPolicyUnavailable(false)
     reviewApi!.setAnalysisPolicy('local')
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   }
@@ -2548,7 +2578,7 @@ test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving
   const showSidebar = page.getByRole('button', { name: /^显示侧边栏/ })
 
   if (await showSidebar.isVisible()) {await showSidebar.click()}
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+  await openAccountDestination(page, '项目')
     await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   reviewApi!.setAnalysisPolicy('cloud')
@@ -2582,7 +2612,7 @@ test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving
   } finally {
     reviewApi!.setCloudSourceSnapshot(null)
     reviewApi!.setAnalysisPolicy('local')
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await expect(page.getByRole('heading', { name: '项目', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: '沉浸式分析', level: 1 })).toHaveCount(0)
   }
@@ -2637,7 +2667,7 @@ test('hc-878 packaged local document import persists cited answers and notes und
     await page.getByRole('button', { name: '保存笔记' }).click()
     await expect(page.getByText('Check the revenue source')).toBeVisible()
 
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /local-review-document.txt/ }).click()
     await page.getByRole('tab', { name: '研究笔记' }).click()
@@ -2677,7 +2707,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
   }, sourcePath)
 
   try {
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await expect(page.getByText('云端保存', { exact: true }).first()).toBeVisible()
     await page.getByRole('button', { name: '导入文档或字幕' }).click()
@@ -2701,7 +2731,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     await page.getByRole('button', { name: '保存笔记' }).click()
     await expect(page.getByText('Review cloud source')).toBeVisible()
 
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /cloud-review-document.txt/ }).click()
     await page.getByRole('tab', { name: '研究笔记' }).click()
@@ -2719,7 +2749,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     expect(afterDelete).toEqual({ ok: false, code: 'source_not_found' })
 
     reviewApi!.setAnalysisPolicy('cloud', false)
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await expect(page.getByRole('button', { name: '导入文档或字幕' })).toBeDisabled()
     const refused = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.importFile())
@@ -2744,7 +2774,7 @@ test('hc-880 packaged PDF Word and Excel imports keep real file bytes and cited 
   const { app, page } = fixture!
 
   try {
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    await openAccountDestination(page, '项目')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
 
     for (const sample of ANALYSIS_FORMAT_SAMPLES) {
@@ -2789,7 +2819,7 @@ test('hc-880 packaged PDF Word and Excel imports keep real file bytes and cited 
         await expect(page.getByTitle('PDF 原件')).toHaveAttribute('src', /#page=2$/)
       }
 
-      await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+      await openAccountDestination(page, '项目')
       await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
       await page.getByRole('button', { name: new RegExp(sample.filename.replaceAll('.', '\\.')) }).click()
       await expect(page.getByRole('button', { name: `查看出处 · ${sample.citation}` })).toBeVisible()
