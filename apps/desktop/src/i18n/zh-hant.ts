@@ -1900,7 +1900,10 @@ export const zhHant = defineLocale({
       'delivery-pending': '交付結果未核實',
       unknown: '執行結果未核實'
     },
+    defaultProfile: '預設',
+    botChatTarget: profile => `助理對話 (${profile})`,
     deliveryLabels: {
+      'bot-chat': '助理對話',
       local: '此桌面',
       telegram: 'Telegram',
       discord: 'Discord',
@@ -1980,7 +1983,7 @@ export const zhHant = defineLocale({
       running: '正在執行',
       completed: '已完成',
       failed: '執行失敗',
-      unknown: '結果未知',
+      unknown: '結果未知'
     },
     failedUpdate: '更新排程工作失敗',
     failedTrigger: '觸發排程工作失敗',
@@ -1996,6 +1999,7 @@ export const zhHant = defineLocale({
     promptPlaceholder: '代理每次執行時應做什麼？',
     frequencyLabel: '頻率',
     deliverLabel: '傳遞至',
+    deliverNeedsHomeChannel: '請先設定接收頻道',
     modelLabel: '模型',
     modelDefault: '預設（全域模型）',
     customScheduleLabel: '自訂排程',
@@ -2007,7 +2011,181 @@ export const zhHant = defineLocale({
     scheduleRequired: '排程為必填項目。',
     scriptOnlyEditHint: '僅腳本任務（無 AI 提示詞）。任務 ID：',
     saveChanges: '儲存變更',
-    createAction: '建立排程工作'
+    createAction: '建立排程工作',
+    tabs: { jobs: '任務', blueprints: '任務範本' },
+    blueprints: {
+      tab: '任務範本',
+      startFrom: '選擇範本',
+      custom: '自訂',
+      subtitle: '現成的自動化任務',
+      dialogDesc: '填寫詳細資訊，然後設定執行排程。',
+      scheduleIt: '建立定時任務',
+      scheduling: '正在建立…',
+      scheduled: '定時任務已建立',
+      loading: '正在載入任務範本…',
+      failedLoad: '載入任務範本失敗',
+      emptyTitle: '暫無任務範本',
+      emptyDesc: '目前執行引擎沒有可用的任務範本。',
+      catalog: {
+        'morning-brief': {
+          title: '晨間簡報',
+          description: '每天簡要彙整當天行程、天氣與待處理的緊急事項。'
+        },
+        'important-mail': {
+          title: '重要郵件監測',
+          description: '定期檢查收件匣，僅在郵件需要關注時通知你。',
+          defaults: {
+            criteria: '今天需要回覆、來自主管或家人，或提到截止日期'
+          }
+        },
+        'weekly-review': {
+          title: '每週回顧',
+          description: '回顧本週完成的事項、待辦任務與接下來的安排。'
+        },
+        'workday-start': {
+          title: '工作日開工提醒',
+          description: '在工作日提醒你當天的行程與優先事項。'
+        },
+        'custom-reminder': {
+          title: '自訂提醒',
+          description: '依你設定的內容與時間發送週期性提醒。',
+          defaults: {
+            what: '休息一下，做些伸展'
+          }
+        },
+        'evening-winddown': {
+          title: '晚間收尾',
+          description: '簡要查看明天的行程，並提醒今晚需要準備的事項。'
+        },
+        'news-digest': {
+          title: '主題新聞摘要',
+          description: '定期彙整你關注的主題，只發送尚未推送的新消息。',
+          defaults: {
+            topic: '人工智慧與科技'
+          }
+        },
+        'bill-renewal-watch': {
+          title: '帳單與續費提醒',
+          description: '在付款、訂閱續費或到期前提醒你，避免意外扣款。',
+          fieldLabels: {
+            what: '到期事項'
+          },
+          defaults: {
+            what: '串流媒體訂閱即將續費'
+          }
+        },
+        'price-watch': {
+          title: '價格與庫存監測',
+          description: '監測指定商品、航班、飯店或房源，在滿足價格或庫存條件時提醒你。',
+          defaults: {
+            item: '商品網址或準確的航班、飯店、房源描述',
+            condition: '含稅總價低於我的目標價格'
+          }
+        },
+        'competitor-watch': {
+          title: '競品動態監測',
+          description: '追蹤指定公司的產品發布、價格、融資與公告，產生附來源的摘要。',
+          defaults: {
+            companies: '兩到三家競品公司的正式名稱',
+            categories: '產品發布、價格變化、融資、合作、高層變動與事故'
+          }
+        },
+        'habit-checkin': {
+          title: '習慣打卡',
+          description: '定期提醒你保持習慣，並回顧是否完成。',
+          defaults: {
+            habit: '閱讀 20 分鐘'
+          }
+        },
+        'hydration-move': {
+          title: '喝水與活動提醒',
+          description: '白天定期提醒你喝水、起身與伸展。'
+        },
+        'meal-plan': {
+          title: '每週飲食計畫',
+          description: '根據飲食偏好與烹飪時間產生每週菜單與採購清單。'
+        },
+        'learn-daily': {
+          title: '每日學習',
+          description: '每天學習一小段內容，逐步深入你感興趣的主題。',
+          fieldLabels: {
+            topic: '學習主題'
+          },
+          defaults: {
+            topic: '西班牙語詞彙'
+          }
+        },
+        'gratitude-journal': {
+          title: '感恩與反思',
+          description: '在晚間溫和地提醒你回顧當天值得記錄的事情。'
+        },
+        'on-this-day': {
+          title: '歷史上的今天',
+          description: '每天探索一件歷史事件、一個知識點或一個新詞。'
+        }
+      },
+      fieldLabels: {
+        time: '執行時間',
+        deliver: '投遞至',
+        interval_min: '檢查頻率',
+        criteria: '僅在郵件符合以下條件時通知',
+        day: '星期幾',
+        what: '提醒內容',
+        recurrence: '重複日期',
+        topic: '關注主題',
+        count: '摘要項目數',
+        item: '監測對象',
+        condition: '提醒條件',
+        interval_h: '檢查頻率',
+        companies: '關注公司',
+        categories: '關注事件',
+        habit: '習慣',
+        interval_hours: '提醒頻率',
+        start_hour: '開始小時',
+        end_hour: '結束小時',
+        diet: '飲食偏好',
+        meals: '每日餐次',
+        effort: '烹飪投入',
+        flavor: '內容類型'
+      },
+      fieldHelp: {
+        time: '當地時間，24 小時制，例如 08:00',
+        deliver: '選擇接收結果的位置',
+        interval_min: '每次檢查的間隔，單位為分鐘',
+        topic: '主題、產品、人物或搜尋詞',
+        item: '網址或準確描述，例如型號、日期、商家',
+        condition: '目標價格（註明幣別）、庫存或條款變化',
+        interval_h: '每次檢查的間隔，單位為小時；請留意請求頻率限制',
+        companies: '公司正式名稱與網域；別名有助於去重',
+        interval_hours: '每次提醒的間隔，單位為小時',
+        start_hour: '當天開始提醒的小時，24 小時制',
+        end_hour: '當天結束提醒的小時，24 小時制'
+      },
+      optionLabels: {
+        sunday: '週日',
+        monday: '週一',
+        friday: '週五',
+        saturday: '週六',
+        everyday: '每天',
+        weekdays: '工作日',
+        weekends: '週末',
+        'no restrictions': '不限',
+        vegetarian: '蛋奶素',
+        vegan: '純素',
+        'high-protein': '高蛋白',
+        'low-carb': '低碳水',
+        'dinner only': '僅晚餐',
+        'lunch and dinner': '午餐與晚餐',
+        'all three': '三餐',
+        quick: '簡單快捷',
+        medium: '適中',
+        ambitious: '精心烹飪',
+        'on this day in history': '歷史上的今天',
+        'word of the day': '每日一詞',
+        'science fact': '科學知識',
+        'quote of the day': '每日名言'
+      }
+    }
   },
 
   artifacts: {

@@ -2301,6 +2301,8 @@ export interface Translations {
   }
 
   cron: {
+    defaultProfile: string
+    botChatTarget: (profile: string) => string
     close: string
     eyebrow: string
     description: string
@@ -2413,6 +2415,18 @@ export interface Translations {
       failedLoad: string
       emptyTitle: string
       emptyDesc: string
+      catalog: Record<
+        string,
+        {
+          title: string
+          description: string
+          fieldLabels?: Record<string, string>
+          defaults?: Record<string, string>
+        }
+      >
+      fieldLabels: Record<string, string>
+      fieldHelp: Record<string, string>
+      optionLabels: Record<string, string>
     }
   }
 

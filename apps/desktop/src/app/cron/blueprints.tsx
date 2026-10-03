@@ -2,6 +2,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { AutomationBlueprint, AutomationBlueprintField } from '@/hermes'
 
+import type { LocalizedBlueprintField } from './blueprint-i18n'
+
 // The blueprint catalog is shared with the dashboard, so its deliver slot
 // defaults to "origin" (the chat/home-channel a dashboard or gateway job was
 // created from). Desktop has no origin chat, so seed the deliver slot to the
@@ -53,7 +55,7 @@ export function BlueprintSlotControl({
   onChange,
   value
 }: {
-  field: AutomationBlueprintField
+  field: LocalizedBlueprintField
   id: string
   onChange: (next: string) => void
   value: string
@@ -67,7 +69,7 @@ export function BlueprintSlotControl({
         <SelectContent>
           {field.options.map(option => (
             <SelectItem key={option} value={option}>
-              {option}
+              {field.optionLabels?.[option] ?? option}
             </SelectItem>
           ))}
         </SelectContent>
