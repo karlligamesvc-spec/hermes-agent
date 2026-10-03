@@ -4,6 +4,8 @@ import { requestWithOauthFallback } from './oauth-rest-request'
 const STREAMABLE_MEDIA_EXTENSIONS = [
   '.avi',
   '.flac',
+  '.flv',
+  '.m4v',
   '.m4a',
   '.mkv',
   '.mov',
@@ -19,7 +21,7 @@ const FORWARDED_MEDIA_REQUEST_HEADERS = ['accept', 'if-modified-since', 'if-none
 
 export const MEDIA_PROTOCOL = 'hermes-media'
 
-type MediaProtocolMode = 'remote' | 'stream'
+type MediaProtocolMode = 'remote' | 'stream' | 'analysis'
 
 interface MediaProtocolTarget {
   connectionId?: string
@@ -44,6 +46,7 @@ export interface MediaRemoteConnection {
 type MediaRequestMethod = 'GET' | 'HEAD'
 
 export interface MediaProtocolDependencies {
+  fetchAnalysis?: (token: string, headers: Headers, method: MediaRequestMethod) => Promise<Response>
   ensureRemoteBearer: (baseUrl: string) => Promise<null | string>
   fetchLocal: (resolvedPath: string, headers: Headers, method: MediaRequestMethod) => Promise<Response>
   fetchRemote: (url: string, headers: Headers, method: MediaRequestMethod) => Promise<Response>
@@ -56,7 +59,7 @@ function parseMediaProtocolTarget(rawUrl: string): MediaProtocolTarget {
   const url = new URL(rawUrl)
   const mode = url.hostname as MediaProtocolMode
 
-  if (mode !== 'remote' && mode !== 'stream') {
+  if (mode !== 'remote' && mode !== 'stream' && mode !== 'analysis') {
     throw new Error('Unsupported media protocol target')
   }
 
@@ -132,6 +135,10 @@ export function createMediaProtocolHandler(dependencies: MediaProtocolDependenci
     }
 
     const headers = mediaRequestHeaders(request.headers)
+
+    if (target.mode === 'analysis') {
+      return dependencies.fetchAnalysis?.(target.filePath, headers, method) ?? new Response(null, { status: 404 })
+    }
 
     if (target.mode === 'stream') {
       try {

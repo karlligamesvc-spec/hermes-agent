@@ -12,19 +12,21 @@ import { analysisDocumentsBridge } from '../analysis-bridge'
 import { ANALYSIS_PAGE_COPY as COPY } from '../analysis-page-copy'
 import { parseAnalysisSourceLink } from '../analysis-source-link'
 import { ANALYSIS_SOURCE_LINK_COPY } from '../analysis-source-link-copy'
-import type { AnalysisDocument, AnalysisQuestion, AnalysisVideoResolution } from '../analysis-types'
+import type { AnalysisDocument, AnalysisQuestion, AnalysisVideoPlayback, AnalysisVideoResolution } from '../analysis-types'
 import { captureWorkflowMutationScope } from '../api/mutation-scope'
 import { $workflowDomainAccountScope, $workflowDomainRevision, workflowDomainUrgentRevision, workflowWindowIsViewed } from '../api/read-revision'
 import { AnalysisNotesPanel } from '../components/analysis-notes-panel'
 import { AnalysisSourceHub } from '../components/analysis-source-hub'
 import { ANALYSIS_HUB_COPY } from '../components/analysis-source-hub-copy'
 import { AnalysisSpreadsheet } from '../components/analysis-spreadsheet'
+import { AnalysisVideoPlayer } from '../components/analysis-video-player'
 import { AnalysisWorkspaceFrame } from '../components/analysis-workspace-frame'
 import { DeepAnalysisReports } from '../components/deep-analysis-reports'
 import { SOURCE_ANSWER_COPY, SourceQuestionAction } from '../components/source-question-answer'
-import { VideoAnalysisModes } from '../components/video-analysis-modes'
-import { VideoSemanticOverviewPanel } from '../components/video-semantic-overview'
+import { VIDEO_SOURCE_CHAT_COPY } from '../components/video-source-chat-copy'
+import { VideoSourceConversation } from '../components/video-source-conversation'
 import { WorkflowRefreshNotice } from '../components/workflow-refresh-notice'
+import { useAnalysisVideo } from '../use-analysis-video'
 import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 import { captureVideoFrame, sampleVideoFrames } from '../video-frame-evidence'
 import { videoQuickOverview } from '../video-quick-overview'
@@ -38,12 +40,6 @@ function timestamp(seconds: number): string {
   const rest = total % 60
 
   return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${minutes}:${String(rest).padStart(2, '0')}`
-}
-
-function frameTimestamp(seconds: number): string {
-  const tenths = Math.floor(seconds * 10 + 1e-6)
-
-  return `${timestamp(Math.floor(tenths / 10))}.${tenths % 10}`
 }
 
 function locationLabel(location: Record<string, number | string>, copy: { page: string; paragraph: string; sheet: string; timestamp: string }): string {
@@ -132,19 +128,16 @@ export function AnalysisView({ onDeepBreakdown }: {
   const [pdfPreview, setPdfPreview] = useState<{ id: string; url: string } | null>(null)
   const [pdfPage, setPdfPage] = useState(1)
   const [pdfError, setPdfError] = useState(false)
-  const [localVideo, setLocalVideo] = useState<{ documentId: string; name: string; url: string } | null>(null)
+  const playback = useAnalysisVideo(workspaceVisible ? selected : null, bridge())
+  const { video: activeVideo, error: videoError, setError: setVideoError, clear: clearVideo } = playback
+  const videoCopy = VIDEO_SOURCE_CHAT_COPY[locale]
   const [frames, setFrames] = useState<Array<{ id: number; videoUrl: string; seconds: number; dataUrl: string }>>([])
   const frameIdRef = useRef(0)
-  const [videoError, setVideoError] = useState('')
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const selectedId = selected?.id
   const selectedKind = selected?.kind
   const selectedStatus = selected?.status
-  const activeVideo = localVideo?.documentId === selectedId ? localVideo : null
   const quickOverview = videoQuickOverview(selected)
-  useEffect(() => () => {
-    if (localVideo) {URL.revokeObjectURL(localVideo.url)}
-  }, [localVideo])
 
   const refreshPolicy = useCallback(async (background = false) => {
     const request = ++policyRequestRef.current
@@ -222,7 +215,7 @@ export function AnalysisView({ onDeepBreakdown }: {
         openedDocumentIdRef.current = null
         setSelected(null)
         setOpeningId(id)
-        setLocalVideo(null)
+        clearVideo()
         setFrames([])
         setVideoError('')
         setQuestion('')
@@ -258,7 +251,7 @@ export function AnalysisView({ onDeepBreakdown }: {
       } else if (result?.code === 'source_not_found') {
         selectedDocumentIdRef.current = null
         openedDocumentIdRef.current = null
-        setSelected(null); setOpeningId(null); setLocalVideo(null); setFrames([])
+        setSelected(null); setOpeningId(null); clearVideo(); setFrames([])
         setItems(current => current.filter(item => item.id !== id))
         setDetailRefreshFailed(false)
       } else {
@@ -274,7 +267,7 @@ export function AnalysisView({ onDeepBreakdown }: {
 
       if (request === openRequestRef.current && selectedDocumentIdRef.current === id && owner === $workflowDomainAccountScope.get()) {setOpeningId(null)}
     }
-  }, [c.error])
+  }, [c.error, clearVideo, setVideoError])
 
   // eslint-disable-next-line no-restricted-syntax -- Request generation invalidates late reads when the account workspace unmounts.
   useEffect(() => {
@@ -284,7 +277,7 @@ export function AnalysisView({ onDeepBreakdown }: {
   }, [accountScope, refreshPolicy])
   // eslint-disable-next-line no-restricted-syntax -- Request and selected-object lifetime, without mirroring an atom.
   useEffect(() => {
-    setItems([]); setSelected(null); setOpeningId(null); setLocalVideo(null); setFrames([])
+    setItems([]); setSelected(null); setOpeningId(null); clearVideo(); setFrames([])
     setWorkspaceVisible(true); setHistoryVisible(false); setReadingPane('source')
     operationRef.current += 1; busyRef.current = false; setBusy(false); setTranscribingVideo(false); setUploadingVideo(false)
     setQuestion(''); setNote(''); setAnchorId(null); setLink(''); setVideoResolution(null); setError(''); setVideoError(''); setAuthFlow(null); setFeishuAuthorized(false)
@@ -293,7 +286,7 @@ export function AnalysisView({ onDeepBreakdown }: {
     void refreshList()
 
     return () => {listRequestRef.current += 1; openRequestRef.current += 1; operationRef.current += 1}
-  }, [accountScope, refreshList])
+  }, [accountScope, refreshList, clearVideo, setVideoError])
 
   const refreshSources = useCallback(() => {
     void refreshList(true)
@@ -392,8 +385,10 @@ export function AnalysisView({ onDeepBreakdown }: {
     finally {if (isCurrent()) {busyRef.current = false; setBusy(false)}}
   }
 
-  const acceptTimedTranscript = async (result: { ok: boolean; code?: string; item?: AnalysisDocument } | undefined, isCurrent: () => boolean) => {
-    if (!isCurrent()) {return}
+  const acceptTimedTranscript = async (result: { ok: boolean; code?: string; item?: AnalysisDocument; playback?: AnalysisVideoPlayback } | undefined, isCurrent: () => boolean) => {
+    if (!isCurrent()) {if (result?.playback) {void bridge()?.releaseVideo?.(result.playback.url)};
+
+ return}
 
     if (!result?.ok || !result.item) {
       if (result?.code !== 'cancelled') {setError(result?.code ?? c.error)}
@@ -407,7 +402,8 @@ export function AnalysisView({ onDeepBreakdown }: {
       && typeof anchor.location.end_seconds === 'number' && Number.isFinite(anchor.location.end_seconds)
       && anchor.location.end_seconds > anchor.location.start_seconds && !!anchor.text.trim())
 
-    if (!timedEvidence) {setError('timed_evidence_unavailable');
+    if (!timedEvidence) {if (result.playback) {void bridge()?.releaseVideo?.(result.playback.url)}
+      setError('timed_evidence_unavailable');
 
  return}
 
@@ -415,8 +411,16 @@ export function AnalysisView({ onDeepBreakdown }: {
     setVideoResolution(null)
     await refreshList()
 
-    if (!isCurrent()) {return}
+    if (!isCurrent()) {if (result.playback) {void bridge()?.releaseVideo?.(result.playback.url)};
+
+ return}
+
     await openDocument(result.item.id, true)
+
+    if (result.playback) {
+      if (isCurrent() && selectedDocumentIdRef.current === result.item.id) {playback.attach(result.item, result.playback)}
+      else {void bridge()?.releaseVideo?.(result.playback.url)}
+    }
   }
 
   const transcribeResolvedVideo = async (sourceUrl: string, isCurrent: () => boolean) => {
@@ -559,41 +563,10 @@ export function AnalysisView({ onDeepBreakdown }: {
               {pdfPreview?.id === selected.id && <iframe aria-label={c.pdfOriginal} className="h-96 w-full rounded-lg border bg-white" key={`${pdfPreview.url}-${pdfPage}`} src={`${pdfPreview.url}#page=${pdfPage}`} title={c.pdfOriginal} />}
               {pdfError && <p className="text-sm text-(--ui-text-secondary)">{c.pdfPreviewUnavailable}</p>}
             </section>}
-            {selected.kind === 'subtitle' && selected.status === 'ready' && <section className="space-y-3 rounded-xl border p-4">
-              <h3 className="font-medium">{c.videoPlayer}</h3>
-              <p className="text-xs text-(--ui-text-secondary)">{c.videoPairing}</p>
-              <label className="inline-block cursor-pointer rounded-lg border px-3 py-2 text-sm">
-                {c.attachVideo}
-                <input accept="video/*" aria-label={c.attachVideo} className="sr-only" onChange={event => {
-                  const file = event.target.files?.[0]
-                  event.target.value = ''
-
-                  if (!file) {return}
-
-                  if (!file.type.startsWith('video/') && !(!file.type && /\.(?:mp4|webm|mov|m4v|ogv)$/i.test(file.name))) {
-                    setVideoError(c.videoUnsupported)
-
-                    return
-                  }
-
-                  setLocalVideo({ documentId: selected.id, name: file.name, url: URL.createObjectURL(file) })
-                  setFrames([])
-                  setVideoError('')
-                }} type="file" />
-              </label>
-              {activeVideo && <video aria-label={`${c.videoPlayer}: ${activeVideo.name}`} className="w-full rounded-lg bg-black" controls onError={() => setVideoError(c.videoPlaybackFailed)} preload="metadata" ref={videoRef} src={activeVideo.url} />}
-              {activeVideo && <button className="rounded-lg border px-3 py-2 text-sm" onClick={captureCurrentFrame} type="button">{c.frameCapture}</button>}
-              {activeVideo && frames.some(frame => frame.videoUrl === activeVideo.url) && <div aria-label={c.frameEvidence} className="space-y-2" role="region">
-                <p className="text-xs text-(--ui-text-tertiary)">{c.frameBoundary}</p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {frames.filter(frame => frame.videoUrl === activeVideo.url).map(frame => <figure className="rounded-lg border p-2" key={frame.id}>
-                    <img alt={`${c.frameEvidence} · ${frameTimestamp(frame.seconds)}`} className="w-full rounded bg-black" src={frame.dataUrl} />
-                    <figcaption className="mt-1 text-xs text-(--ui-text-secondary)">{frameTimestamp(frame.seconds)}</figcaption>
-                  </figure>)}
-                </div>
-              </div>}
-              {videoError && <p className="text-sm text-destructive" role="alert">{videoError}</p>}
-            </section>}
+            {selected.kind === 'subtitle' && selected.status === 'ready' && <AnalysisVideoPlayer activeVideo={activeVideo}
+              frames={frames} linked={(selected.evidence_origin ?? selected.evidenceOrigin) === 'linked_video_audio'} loading={playback.loading}
+              locale={locale} onAttach={video => {playback.attach(selected, video); setFrames([])}} onCapture={captureCurrentFrame}
+              onRetry={playback.retry} setVideoError={setVideoError} videoError={videoError} videoRef={videoRef} />}
 {selected.status === 'ready' && <>              <section className="space-y-3"><h3 className="font-medium">{c.evidence}</h3>
                 {(selected.anchors ?? []).length === 0 && <p>{c.noSourceText}</p>}
                 {selected.kind === 'excel' ? <AnalysisSpreadsheet anchors={selected.anchors ?? []} label={location => locationLabel(location, c)}
@@ -605,19 +578,6 @@ export function AnalysisView({ onDeepBreakdown }: {
               setSelected(current => current?.id === selected.id && current.analysis_scope === selected.analysis_scope && current.analysis_revision === selected.analysis_revision
                 ? { ...current, deep_reports: reports } : current)
             }} source={selected} />} </>
-
-  const workspaceQuick = selected?.status === 'ready' && <> {quickOverview && <VideoSemanticOverviewPanel bridge={bridge()} jump={jump} key={`${selected.analysis_scope}:${selected.id}:${selected.analysis_revision}:${locale}`} label={location => locationLabel(location, c)} locale={locale} source={selected} />}
-              {quickOverview && <section aria-label={c.quickTitle} className="space-y-3 rounded-xl border p-4">
-                <h3 className="font-medium">{c.quickTitle}</h3>
-                <p className="text-sm text-(--ui-text-secondary)">{c.quickCoverage.replace('{count}', String(quickOverview.count)).replace('{start}', timestamp(quickOverview.firstSeconds)).replace('{end}', timestamp(quickOverview.lastSeconds))}</p>
-                <p className="text-xs text-(--ui-text-tertiary)">{c.quickBoundary}</p>
-                <div className="grid gap-2 md:grid-cols-3">
-                  {quickOverview.samples.map(anchor => <button className="min-w-0 rounded-lg border p-3 text-left text-sm hover:bg-(--ui-row-active-background)" key={anchor.id} onClick={() => jump(anchor.id)} type="button">
-                    <span className="block text-xs text-(--ui-text-secondary)">{c.quickJump} · {locationLabel(anchor.location, c)}</span>
-                    <span className="mt-1 block line-clamp-3 whitespace-pre-wrap">{anchor.text}</span>
-                  </button>)}
-                </div>
-              </section>} </>
 
   const workspaceDeep = selected?.status === 'ready' && <> {quickOverview && onDeepBreakdown && <div className="space-y-1">
                   <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" disabled={busy || connection?.mode === 'remote'} onClick={() => void perform(async isCurrent => {
@@ -646,29 +606,38 @@ export function AnalysisView({ onDeepBreakdown }: {
                   <p className="text-xs text-(--ui-text-tertiary)">{connection?.mode === 'remote' ? c.deepLocalOnly : activeVideo ? frames.some(frame => frame.videoUrl === activeVideo.url) ? c.deepFrameDisclosure : c.deepAutoFrameDisclosure : c.deepDisclosure}</p>
                 </div>}{workspaceReports} </>
 
+  const findSourceEvidence = () => {
+    if (!selected) {return}
+    const sourceId = selected.id
+    void perform(async isCurrent => {
+      const result = await bridge()?.ask(sourceId, question)
+      if (!isCurrent()) {return}
+      if (!result?.ok) {
+        if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
+        return
+      }
+      if (selectedDocumentIdRef.current === sourceId) {setQuestion(current => current === question ? '' : current)}
+      await openDocument(sourceId)
+    })
+  }
+
   const workspaceQuestions = selected?.status === 'ready' && <> <section className="space-y-3 rounded-xl border p-4">
                 <h3 className="font-medium">{c.question}</h3>
-                <div className="flex gap-2"><input aria-label={c.question} className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => setQuestion(event.target.value)} value={question} /><button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || question.trim().length < 2} onClick={() => void perform(async isCurrent => {
-                  const sourceId = selected.id
-                  const result = await bridge()?.ask(sourceId, question)
-
-          if (!isCurrent()) {return}
-
-                  if (!result?.ok) { if (selectedDocumentIdRef.current === sourceId) {setError(result?.code ?? c.error)}
-
- return }
-
-                  if (selectedDocumentIdRef.current === sourceId) {setQuestion('')}
-                  await openDocument(sourceId)
-                })} type="button">{c.ask}</button></div>
+                <div className="flex gap-2"><input aria-label={c.question} className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2" onChange={event => setQuestion(event.target.value)} value={question} /><button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={busy || question.trim().length < 2} onClick={findSourceEvidence} type="button">{c.ask}</button></div>
                 <SourceQuestionAction bridge={bridge()} locale={locale} onSaved={async id => {
                   if (selectedDocumentIdRef.current === id) {await openDocument(id)}
                 }} question={question} source={selected} />
                 {(selected.questions ?? []).map(answer)}
               </section> </>
 
-  const workspaceCompanion = selected?.kind === 'subtitle' ? <VideoAnalysisModes deep={workspaceDeep}
-    key={`${selected.analysis_scope}:${selected.id}`} locale={locale} questions={workspaceQuestions} quick={quickOverview ? workspaceQuick : null} /> : <>{workspaceReports}{workspaceQuestions}</>
+  const workspaceCompanion = selected?.kind === 'subtitle' && selected.status === 'ready' ? <VideoSourceConversation
+    advanced={<><Button disabled={busy || question.trim().length < 2} onClick={findSourceEvidence} size="sm" variant="outline">{c.ask}</Button>{workspaceDeep}</>} bridge={bridge()} jump={jump} key={`${selected.analysis_scope}:${selected.id}`}
+    label={location => locationLabel(location, c)} locale={locale} onSaved={async id => {
+      if (selectedDocumentIdRef.current === id) {
+        setQuestion(current => current === question ? '' : current)
+        await openDocument(id)
+      }
+    }} question={question} setQuestion={setQuestion} source={selected} /> : <>{workspaceReports}{workspaceQuestions}</>
 
   const importDocument = () => void perform(async isCurrent => {
           const result = await bridge()?.importFile()
@@ -764,7 +733,6 @@ export function AnalysisView({ onDeepBreakdown }: {
         stateLabel={item => `${item.storageMode === 'cloud' ? c.cloud : c.local} · ${item.status === 'ready' ? c.ready : item.status === 'processing' ? c.processing : c.failed}`}
         status={sourceStatus} title={c.title} /> : <>
         <header className="analysis-workspace-header"><Button onClick={() => { setWorkspaceVisible(false); setHistoryVisible(false) }} variant="text">{ANALYSIS_HUB_COPY[locale].back}</Button><h1>{c.title}</h1><Button onClick={() => { setWorkspaceVisible(false); setHistoryVisible(true) }} variant="text">{c.source}</Button></header>
-        {sourceControls}
       </>}
       {error && <p className="text-sm text-destructive" role="alert">{humanError(error, c)}</p>}
       <WorkflowRefreshNotice state={{ refreshFailed: listRefreshFailed || detailRefreshFailed, retry: refreshSources }} />
@@ -782,7 +750,7 @@ export function AnalysisView({ onDeepBreakdown }: {
         <main className="min-w-0 space-y-5">
           {selected && <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-              <div><h3 className="font-semibold">{selected.filename}</h3><p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{selected.evidence_origin || selected.evidenceOrigin ? c.videoTranscriptNotice : c.subtitleNotice}</p>}</div>
+              <div className="min-w-0 flex-1"><h3 className="font-semibold">{selected.filename}</h3>{(selected.source_url || selected.sourceUrl) && <p className="mt-1 break-all text-xs text-(--ui-text-secondary)"><span>{selected.kind === 'subtitle' ? videoCopy.originalLink : c.link} · </span><span>{selected.source_url || selected.sourceUrl}</span></p>}<p className="text-xs text-(--ui-text-secondary)">{selected.status === 'ready' ? c.ready : selected.status === 'processing' ? c.processing : humanError(selected.error_code ?? '', c)}</p>{selected.kind === 'subtitle' && <p className="mt-1 text-xs text-(--ui-text-secondary)">{selected.evidence_origin || selected.evidenceOrigin ? c.videoTranscriptNotice : c.subtitleNotice}</p>}</div>
               <div className="flex gap-2">
                 <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => void perform(async isCurrent => {
                   const sourceId = selected.id
@@ -820,7 +788,7 @@ export function AnalysisView({ onDeepBreakdown }: {
                     openRequestRef.current += 1
                     setSelected(null)
                     setOpeningId(null)
-                    setLocalVideo(null)
+                    clearVideo()
                     setFrames([])
                   }
 

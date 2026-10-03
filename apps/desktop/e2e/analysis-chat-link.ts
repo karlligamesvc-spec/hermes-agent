@@ -18,7 +18,8 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('textbox', { name: '粘贴资料链接' }).fill('https://www.iesdouyin.com/share/video/123456')
   await page.getByRole('button', { name: '打开链接' }).click()
-  const overview = page.getByRole('region', { name: '视频声音速览' })
+  const overview = page.locator('details.analysis-conversation-advanced')
+  await overview.locator(':scope > summary').click()
   await expect(overview).toBeVisible({ timeout: 15_000 })
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
   const goal = page.getByRole('textbox', { name: '业务目标' })
@@ -74,6 +75,9 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   expect(fs.existsSync(path.join(directory, 'ANALYSIS.md'))).toBe(false)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}
+  const tools = page.locator('details.analysis-conversation-advanced')
+  if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
   const reports = page.getByRole('region', { name: '深度分析报告' })
   await expect(reports).toContainText('不代表报告已完成或内容已核验')
   await expect.poll(async () => {
@@ -100,6 +104,7 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
   await expect(page.locator('[data-sidebar="menu-button"]')).toHaveCount(4)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}
   await expect(reports.getByRole('button', { name: '打开最近发送的拆解会话' })).toBeVisible()
   await expect(reports).toContainText(expected)
   expect((await read()).item).toMatchObject({ ...link, outcome: { status: outcome } })

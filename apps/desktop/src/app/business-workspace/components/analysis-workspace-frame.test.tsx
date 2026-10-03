@@ -38,13 +38,13 @@ describe('analysis workspace frame', () => {
       reader={<video aria-label="Paired local video" />} source={{ ...source, kind: 'subtitle' }} />)
     const media = screen.getByLabelText('Paired local video')
     expect(screen.queryByRole('region', { name: 'Source reader' })).toBeNull()
-    expect(within(screen.getByRole('region', { name: 'Viewing companion' })).getByRole('button', { name: 'Actual video question' })).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Video conversation' })).getByRole('button', { name: 'Actual video question' })).toBeTruthy()
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Research notes' }), { button: 0, ctrlKey: false })
     expect(media.isConnected).toBe(true)
     expect(screen.getByText('Actual video notes').closest('[role="tabpanel"]')?.hasAttribute('hidden')).toBe(false)
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Media and transcript' }), { button: 0, ctrlKey: false })
     expect(screen.getByLabelText('Paired local video')).toBe(media)
-    expect(screen.getByRole('link', { name: 'Go to companion' }).getAttribute('href')).toBe(`#${screen.getByRole('region', { name: 'Viewing companion' }).id}`)
+    expect(screen.getByRole('link', { name: 'Go to companion' }).getAttribute('href')).toBe(`#${screen.getByRole('region', { name: 'Video conversation' }).id}`)
   })
 
   it('lets the owner reveal the actual media after a notes citation without remounting either pane', () => {

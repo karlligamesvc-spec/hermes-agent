@@ -59,7 +59,9 @@ export interface AnalysisDocumentsBridge {
   importLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
   resolveVideoLink: (url: string) => Promise<{ ok: boolean; code?: string; resolution?: AnalysisVideoResolution }>
   transcribeVideoLink: (url: string) => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
-  uploadVideo: () => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument }>
+  uploadVideo: () => Promise<{ ok: boolean; code?: string; item?: AnalysisDocument; playback?: AnalysisVideoPlayback }>
+  previewVideo?: (id: string, scope: string, revision: string) => Promise<{ ok: boolean; code?: string; playback?: AnalysisVideoPlayback }>
+  releaseVideo?: (url: string) => Promise<void>
   authorizeFeishu: () => Promise<{ ok: boolean; code?: string; flow_id?: string; verification_url?: string; interval?: number }>
   pollFeishu: (flowId: string) => Promise<{ ok: boolean; code?: string; status?: 'pending' | 'authorized' | 'denied' | 'expired'; interval?: number }>
   forgetFeishu: () => Promise<{ ok: boolean; code?: string }>
@@ -84,4 +86,9 @@ export interface AnalysisDocumentsBridge {
   delete: (id: string) => Promise<{ ok: boolean; code?: string }>
   openSource: (id: string) => Promise<{ ok: boolean; code?: string }>
   previewPdf: (id: string) => Promise<{ ok: boolean; code?: string; data_url?: string }>
+}
+
+export interface AnalysisVideoPlayback {
+  url: string
+  name: string
 }

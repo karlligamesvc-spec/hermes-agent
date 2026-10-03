@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { $authState } from '@/store/auth'
 import { $activeConnectionId } from '@/store/connections'
@@ -19,9 +19,10 @@ export const SOURCE_ANSWER_COPY = {
   ar: { upgrade: 'حدّث خدمة مستندات APEX لاستخدام إجابات النموذج. لا يزال البحث في الأدلة الأصلية متاحًا.', ask: 'اسأل المساعد', pending: 'جارٍ الإجابة من المصدر…', disclosure: 'يرسل هذا نص المصدر الحالي والسؤال إلى النموذج المُعد للمساعد المحلي، وتُحتسب التكلفة عبر تلك القناة. تُحفظ الإجابات مع المصدر. تحقق من المراجع لأن النموذج قد يخطئ.', unavailable: 'اتصل بالمساعد المحلي لإنشاء إجابة.', failed: 'تعذر إنشاء الإجابة أو حفظها. حاول مجددًا؛ يبقى المصدر متاحًا.', large: 'المصدر يتجاوز حد طول الأسئلة. استورد قسمًا أقصر أو ابحث عن أدلة أصلية.', label: 'إجابة المساعد · تحقق من المصادر', noEvidence: 'لا يقدم المصدر أدلة كافية للإجابة عن هذا السؤال.', stale: 'تستند هذه الإجابة إلى إصدار أقدم من المصدر. روابط المراجع معطلة.' }
 }
 
-export function SourceQuestionAction({ source, question, locale, bridge, onSaved }: {
+export function SourceQuestionAction({ source, question, locale, bridge, onSaved, children }: {
   source: AnalysisDocument; question: string; locale: OverviewLocale; bridge: AnalysisDocumentsBridge | null
   onSaved: (id: string) => Promise<void>
+  children?: (state: { busy: boolean; available: boolean; submittedQuestion: string; submit: () => void }) => ReactNode
 }) {
   const gateway = useStore($gateway)
   const connection = useStore($connection)
@@ -32,6 +33,7 @@ export function SourceQuestionAction({ source, question, locale, bridge, onSaved
   const running = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [submittedQuestion, setSubmittedQuestion] = useState('')
   const c = SOURCE_ANSWER_COPY[locale]
   // Attempt lifetime/lock only; reactive values are read directly from stores below.
   // eslint-disable-next-line no-restricted-syntax
@@ -47,7 +49,7 @@ export function SourceQuestionAction({ source, question, locale, bridge, onSaved
   const available = !needsUpgrade && gateway && connection?.mode !== 'remote' && typeof bridge?.questionContext === 'function' && typeof bridge?.saveAnswer === 'function' && source.analysis_scope
 
   const ask = async () => {
-    if (!available || !gateway || !bridge || running.current) {return}
+    if (!available || !gateway || !bridge || running.current || question.trim().length < 2 || question.length > 1000) {return}
     const token = lifetime.current
 
     const current = () => token === lifetime.current && $gateway.get() === gateway && $connection.get() === connection &&
@@ -56,6 +58,7 @@ export function SourceQuestionAction({ source, question, locale, bridge, onSaved
 
     running.current = true
     setBusy(true)
+    setSubmittedQuestion(question)
     setError('')
 
     try {
@@ -70,8 +73,10 @@ export function SourceQuestionAction({ source, question, locale, bridge, onSaved
   }
 
   return <div className="space-y-2">
+    {children ? children({ busy, available: !!available, submittedQuestion, submit: () => void ask() }) : <>
     <p className="text-xs text-(--ui-text-tertiary)">{c.disclosure}</p>
     <button className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={!available || busy || question.trim().length < 2 || question.length > 1000} onClick={() => void ask()} type="button">{busy ? c.pending : c.ask}</button>
+    </>}
     {!available && <p className="text-sm">{needsUpgrade ? c.upgrade : c.unavailable}</p>}
     {error && <p className="text-sm" role="status">{error === 'answer_source_too_large' ? c.large : error === 'answer_backend_upgrade_required' ? c.upgrade : c.failed}</p>}
   </div>

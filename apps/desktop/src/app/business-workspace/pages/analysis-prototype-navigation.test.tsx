@@ -78,7 +78,7 @@ describe('prototype analysis navigation with actual sources', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: '研究笔记' }), { button: 0, ctrlKey: false })
     expect(screen.getByRole('textbox', { name: '记录你的发现' })).toBe(note)
     expect((note as HTMLTextAreaElement).value).toBe('Keep my unsaved note')
-    fireEvent.mouseDown(screen.getByRole('tab', { name: '深度拆解' }), { button: 0, ctrlKey: false })
+    fireEvent.click(screen.getByText('更多分析', { selector: 'summary' }))
     expect(screen.getByRole('button', { name: '准备深度拆解' })).toBeTruthy()
     expect(onDeepBreakdown).not.toHaveBeenCalled()
   })

@@ -30,9 +30,13 @@ export function analysisDocumentsBridge(): AnalysisDocumentsBridge | null {
     if (!method) {continue}
     Object.defineProperty(wrapped, name, { value: async (...args: unknown[]) => {
       const isCurrent = captureWorkflowMutationScope()
-      const result = await (method as (...values: unknown[]) => Promise<{ ok: boolean; status?: string; item?: AnalysisChatLink }>).apply(original, args)
+      const result = await (method as (...values: unknown[]) => Promise<{ ok: boolean; status?: string; item?: AnalysisChatLink; playback?: { url: string } }>).apply(original, args)
 
-      if (!isCurrent()) {return { ok: false, code: 'account_changed' }}
+      if (!isCurrent()) {
+        if (name === 'uploadVideo' && result.playback) {await original.releaseVideo?.(result.playback.url)}
+
+        return { ok: false, code: 'account_changed' }
+      }
 
       const changed = name === 'pollFeishu' ? result.status === 'authorized'
         : name === 'updateDeepChatOutcome' ? result.item?.outcome?.status !== (args[3] as AnalysisChatLink | undefined)?.outcome?.status

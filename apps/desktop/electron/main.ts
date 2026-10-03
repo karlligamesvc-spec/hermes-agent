@@ -64,8 +64,9 @@ import {
   retryLocalDocument,
   saveLocalVideoOverview
 } from './apex-analysis-local'
+import { createAnalysisPlaybackStore, downloadAnalysisPlayback } from './apex-analysis-playback'
 import { fullVideoTranscript } from './apex-analysis-transcript'
-import { uploadAnalysisVideo } from './apex-analysis-video-upload'
+import { MAX_ANALYSIS_VIDEO_BYTES, uploadAnalysisVideo } from './apex-analysis-video-upload'
 import { deleteAnalysisWorkspace } from './apex-analysis-workspace'
 import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse } from './apex-announcements'
 import * as bundleDiskspace from './apex-bundle-diskspace'
@@ -1720,13 +1721,25 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       standard: true,
       stream: true,
-      supportFetchAPI: true
+      supportFetchAPI: true,
+      corsEnabled: true
     }
   }
 ])
 
+const analysisPlayback = createAnalysisPlaybackStore(() => managedAccountId(resolveManagedConfig().accessToken))
+
+app.on('web-contents-created', (_event, contents) => {
+  const id = contents.id
+  contents.once('destroyed', () => { void analysisPlayback.releaseWindow(id) })
+})
+app.on('before-quit', () => {
+  for (const contents of electronWebContents.getAllWebContents()) {void analysisPlayback.releaseWindow(contents.id)}
+})
+
 function registerMediaProtocol() {
   const handler = createMediaProtocolHandler({
+    fetchAnalysis: (token, headers, method) => analysisPlayback.fetch(token, headers, method),
     ensureRemoteBearer: baseUrl => ensureNativeAccessToken(baseUrl).catch(() => null),
     fetchLocal: fetchLocalMedia,
     fetchRemote: (url, headers, method) =>
@@ -22858,6 +22871,7 @@ ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) 
 })
 
 ipcMain.handle('hermes:analysis:uploadVideo', async event => {
+  let playback: Awaited<ReturnType<typeof analysisPlayback.local>> | undefined
   try {
     const initial = await analysisIpcContext(true)
 
@@ -22894,14 +22908,21 @@ ipcMain.handle('hermes:analysis:uploadVideo', async event => {
       return { ok: false, code: 'analysis_policy_changed' }
     }
 
-    if (context.policy.mode === 'cloud') {
-      return response.body?.item ? { ok: true, item: { ...response.body.item, storageMode: 'cloud' } } : { ok: false, code: 'timed_evidence_invalid' }
-    }
+    const item = context.policy.mode === 'cloud'
+      ? response.body?.item && { ...response.body.item, storageMode: 'cloud' }
+      : localAnalysisForRenderer(createLocalUploadedVideoTranscript(context.root, context.policy.user_id, response.body?.parsed))
 
-    const item = createLocalUploadedVideoTranscript(context.root, context.policy.user_id, response.body?.parsed)
+    if (!item) {return { ok: false, code: 'timed_evidence_invalid' }}
+    playback = await analysisPlayback.local(context.policy.user_id, event.sender.id, chosen.filePaths[0])
+    context.assertCurrent()
+    if (event.sender.isDestroyed()) {throw new Error('analysis_context_changed')}
 
-    return { ok: true, item: localAnalysisForRenderer(item) }
-  } catch (error) { return { ok: false, code: analysisIpcError(error) } }
+    return { ok: true, item: { ...item, analysis_scope: context.policy.user_id,
+      analysis_revision: context.policy.mode === 'local' ? localOverviewRevision(item) : item.analysis_revision }, playback }
+  } catch (error) {
+    if (playback) {await analysisPlayback.release(playback.url, event.sender.id)}
+    return { ok: false, code: analysisIpcError(error) }
+  }
 })
 
 ipcMain.handle('hermes:analysis:get', async (_event, id) => {
@@ -22949,6 +22970,37 @@ async function analysisDerivedContext(id: string, scope: string, write = true) {
 
   return { context, item, local }
 }
+
+ipcMain.handle('hermes:analysis:previewVideo', async (event, id, scope, revision) => {
+  let playback
+  try {
+    const { context, item } = await analysisDerivedContext(id, scope, false)
+    if (item.kind !== 'subtitle' || item.status !== 'ready' || item.analysis_revision !== revision ||
+      (item.evidence_origin ?? item.evidenceOrigin) !== 'linked_video_audio') {throw new Error('video_playback_unavailable')}
+    const sourceUrl = item.source_url ?? item.sourceUrl
+    if (!sourceUrl) {throw new Error('video_playback_unavailable')}
+    const key = resolveManagedConfig().key
+    if (!key) {throw new Error('sign_in')}
+    playback = await analysisPlayback.linked(scope, event.sender.id, () => context.run(() => downloadAnalysisPlayback(
+      sourceUrl,
+      url => apexAuthPostJson(`${context.apiBase}/api/v1/media/social-download`, { body: { url }, bearer: key, timeoutMs: 180_000 }),
+      url => apexAuthGetBuffer(url, { maxBytes: MAX_ANALYSIS_VIDEO_BYTES, timeoutMs: 180_000 })
+    )))
+    const latest = await analysisDerivedContext(id, scope, false)
+    if (latest.item.analysis_revision !== revision) {
+      await analysisPlayback.release(playback.url, event.sender.id)
+      throw new Error('video_source_changed')
+    }
+
+    if (event.sender.isDestroyed()) {throw new Error('analysis_context_changed')}
+    return { ok: true, playback }
+  } catch (error) {
+    if (playback) {await analysisPlayback.release(playback.url, event.sender.id)}
+
+    return { ok: false, code: analysisIpcError(error) }
+  }
+})
+ipcMain.handle('hermes:analysis:releaseVideo', (event, url) => analysisPlayback.release(String(url), event.sender.id))
 
 ipcMain.handle('hermes:analysis:transcriptForDraft', async (_event, id, scope, revision) => {
   try {

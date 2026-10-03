@@ -115,3 +115,18 @@ it.each(['pdf', 'word', 'excel', 'text', 'feishu', 'subtitle'] as const)('accept
   const input = { schema: 1, revision: source.analysis_revision, locale: 'zh', question: '营收如何？', ...generated }
   expect(validateSourceAnswer(input, { ...source, kind }, source.analysis_revision!)).toEqual(input)
 })
+
+it('carries bounded same-source video turns for follow-ups, excluding stale and unsupported answers', async () => {
+  const { bridge, runtime } = fixture()
+  const prior: NonNullable<AnalysisDocument['questions']>[number] = { id: 'q1', question: 'Revenue?', answer: '20 percent', answer_type: 'semantic_answer', source_revision: source.analysis_revision, citations: [{ anchor_id: 'a1', location: { start_seconds: 1, end_seconds: 3 } }] }
+
+  const document: AnalysisDocument = { ...source, kind: 'subtitle', anchors: [{ id: 'a1', text: 'Revenue grew twenty percent.', location: { start_seconds: 1, end_seconds: 3 } }],
+    questions: [prior, { ...prior, id: 'old', source_revision: 'b'.repeat(64) }, { ...prior, id: 'unknown', citations: [{ anchor_id: 'missing', location: {} }] }] }
+
+  vi.mocked(bridge.questionContext).mockResolvedValue({ ok: true, item: { ...document, questions: [] } })
+  await answerSourceQuestion(document, 'Explain that growth.', 'en', bridge, runtime, () => true)
+  const params = runtime.request.mock.calls[0][1]
+  expect(JSON.parse(params.input)).toEqual({ kind: 'subtitle', question: 'Explain that growth.', evidence: document.anchors, conversation: [{ question: 'Revenue?', answer: '20 percent' }] })
+  expect(params.session_id).toBeUndefined()
+  expect(params.instructions).toMatch(/Prior conversation.*never evidence/)
+})

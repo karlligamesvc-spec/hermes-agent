@@ -6,10 +6,15 @@ import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/anal
 export async function verifySourceAnswer(page: Page, sourceId: string, expectedAnchorId: string) {
   const question = `HC886_SOURCE_QUESTION ${sourceId}`
   await page.getByRole('textbox', { name: '针对当前资料提问' }).fill(question)
-  await page.getByRole('button', { name: '让助手回答', exact: true }).click()
-  const answer = () => page.getByRole('article').filter({ has: page.getByRole('heading', { name: question, exact: true }) })
+  const conversation = await page.getByRole('log').count() > 0
+  await page.getByRole('button', { name: conversation ? '发送' : '让助手回答', exact: true }).click()
+
+  const answer = () => conversation ? page.locator('.analysis-conversation-turn').filter({ has: page.getByText(question, { exact: true }) })
+    : page.getByRole('article').filter({ has: page.getByRole('heading', { name: question, exact: true }) })
+
   await expect(answer()).toContainText('[本地测试] 当前资料的回答已附出处。', { timeout: 90_000 })
-  await expect(answer()).toContainText('助手回答 · 请核对出处')
+
+  if (!conversation) {await expect(answer()).toContainText('助手回答 · 请核对出处')}
 
   const source = await page.evaluate(async id => {
     const api = (window as Window & { hermesDesktop?: { analysisDocuments: AnalysisDocumentsBridge } }).hermesDesktop!.analysisDocuments
