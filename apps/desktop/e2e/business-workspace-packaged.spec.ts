@@ -1098,6 +1098,7 @@ test('hc-845 packaged video picker persists the real runtime preference and defa
   const { page } = fixture!
   const configPath = path.join(fixture!.sandbox.hermesHome, 'config.yaml')
   await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: doubao-seedance-2-0-mini-260615/)
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
   await page.getByRole('textbox', { name: '业务目标' }).fill('Local video model preference test')
   await page.getByRole('button', { name: '开始执行' }).click()
   const composer = page.locator('[data-slot="composer-root"]:visible').first()
@@ -2651,6 +2652,7 @@ test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving
   try {
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /Original cloud source.txt/ }).click()
+    await page.getByRole('tab', { name: '研究笔记' }).click()
     await expect(page.getByText('Original cloud source note from another device')).toBeVisible()
     await page.getByRole('textbox', { name: '针对当前资料提问' }).fill('Unsaved question')
     await page.getByRole('textbox', { name: '记录你的发现' }).fill('Unsaved note')
