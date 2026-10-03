@@ -17,7 +17,7 @@ import { verifySourceAnswer } from './analysis-source-answer'
 import { verifyWorkspaceReport } from './analysis-workspace-report'
 import { openAccountDestination } from './business-navigation'
 import { verifyCronExecutionHistory, verifyCronTimerExecution, verifyLateSessionRecovery } from './cron-execution-history'
-import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady, writeMockProviderConfig } from './fixtures'
+import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
 // Browser evaluation uses the same analysis contract as the production bridge.
@@ -996,22 +996,21 @@ test.beforeAll(
     fixture = await setupPackagedMockBackend({
       APEXNODES_API_BASE: reviewApi.url,
       APEXNODES_AUTH_BASE: reviewApi.url
-    })
-    writeMockProviderConfig(fixture.sandbox.hermesHome, fixture.mockUrl, undefined, `auxiliary:
+    }, { models: ['mock-model', 'mock-answer-model', 'deepseek-v4-pro', 'deepseek-v4-pro-APEX'], apiPrefixes: ['/v1', '/relay/v1'] }, mockUrl => `auxiliary:
   title_generation:
     enabled: false
   source_question:
     provider: custom
-    base_url: ${fixture.mockUrl}/v1
+    base_url: ${mockUrl}/v1
     model: mock-model
     api_key: e2e-mock-key
   video_overview:
     provider: custom
-    base_url: ${fixture.mockUrl}/v1
+    base_url: ${mockUrl}/v1
     model: mock-model
     api_key: e2e-mock-key
 `)
-    reviewApi.setRelayBaseUrl(fixture.mockUrl)
+    reviewApi.setRelayBaseUrl(`${fixture.mockUrl}/relay/v1`)
     await fixture.page.getByRole('button', { name: '使用自己的密钥' }).click()
     const chooseLater = fixture.page.getByRole('button', { name: '稍后再选择提供方' })
 
@@ -1093,6 +1092,31 @@ test('fresh packaged app exposes the business workspace without implementation v
     await expect(page.getByRole('menu')).toHaveCount(0)
     await expect(sidebarButtons).toHaveCount(2)
   }
+})
+
+test('hc-845 packaged video picker persists the real runtime preference and default', async () => {
+  const { page } = fixture!
+  const configPath = path.join(fixture!.sandbox.hermesHome, 'config.yaml')
+  await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: doubao-seedance-2-0-mini-260615/)
+  await page.getByRole('button', { name: '开始 ⌘ N' }).click()
+  await page.getByRole('textbox', { name: '业务目标' }).fill('Local video model preference test')
+  await page.getByRole('button', { name: '开始执行' }).click()
+  const composer = page.locator('[data-slot="composer-root"]:visible').first()
+  await expect(composer).toBeVisible({ timeout: 60_000 })
+  await expect(composer.getByRole('button', { name: 'Add context', exact: true })).toBeEnabled()
+  await composer.getByRole('button', { name: 'Add context', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^视频/ }).hover()
+  await page.getByRole('menuitemradio', { name: 'MiniMax H3', exact: true }).click()
+  await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: MiniMax-H3/)
+  await expect.poll(() => composer.getByRole('textbox').evaluate(element => element.textContent)).toContain('使用模型：MiniMax H3')
+  await page.reload()
+  await waitForAppReady(fixture!, 120_000)
+  const reopened = page.locator('[data-slot="composer-root"]:visible').first()
+  await reopened.getByRole('button', { name: 'Add context', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^视频/ }).hover()
+  await expect(page.getByRole('menuitemradio', { name: 'MiniMax H3', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('menuitemradio', { name: 'Seedance 2.0 Mini', exact: true }).click()
+  await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: doubao-seedance-2-0-mini-260615/)
 })
 
 test('packaged sidebar uses the APEX app mark and keeps Chinese assistant creation reachable', async () => {
@@ -2486,7 +2510,39 @@ test('hc-901 packaged video upload opens a playable native lease and one continu
     await expect(page.getByRole('tab', { name: '快速分析' })).toHaveCount(0)
     const items = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop!.analysisDocuments!.list())
     const sourceId = items.items!.find(item => item.filename === 'native-review-video.srt')!.id
+    const composer = page.locator('.analysis-conversation-composer')
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => {
+        const key = 'hermes-desktop-profile-modes-v1'
+        const profile = localStorage.getItem('hermes-desktop-active-profile-v1') ?? 'default'
+        localStorage.setItem(key, JSON.stringify({ [profile]: theme }))
+        window.dispatchEvent(new StorageEvent('storage', { key }))
+      }, theme)
+      await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(theme === 'dark')
+      const border = await composer.evaluate(element => {
+        const style = getComputedStyle(element)
+
+        return { width: style.borderTopWidth, style: style.borderTopStyle, color: style.borderTopColor,
+          token: style.getPropertyValue('--ui-stroke-secondary').trim() }
+      })
+      expect(border.width).toBe('1px')
+      expect(border.style).toBe('solid')
+      expect(border.token).not.toBe('')
+      expect(border.color).not.toBe('rgba(0, 0, 0, 0)')
+    }
+    await page.evaluate(() => {
+      const key = 'hermes-desktop-profile-modes-v1'
+      const profile = localStorage.getItem('hermes-desktop-active-profile-v1') ?? 'default'
+      localStorage.setItem(key, JSON.stringify({ [profile]: 'light' }))
+      window.dispatchEvent(new StorageEvent('storage', { key }))
+    })
+    const picker = page.getByRole('combobox', { name: '选择问答模型' })
+    await picker.click()
+    await page.getByRole('option', { name: 'Mock Answer Model', exact: true }).click()
+    await expect(picker).toContainText('Mock Answer Model')
     await verifySourceAnswer(page, sourceId, 'a2', false)
+    const completion = fixture!.mock.receivedCompletions.find(item => item.prompt.includes(`HC886_SOURCE_QUESTION ${sourceId}`))
+    expect(completion?.model).toBe('mock-answer-model')
     // Answering and citing preserve playback; closing the source releases the view lease.
     await expect(page.locator('video')).toHaveAttribute('src', mediaUrl)
     await page.getByRole('button', { name: '返回资料入口' }).click()
@@ -2494,9 +2550,12 @@ test('hc-901 packaged video upload opens a playable native lease and one continu
     await page.getByRole('button', { name: /native-review-video.srt/ }).click()
     await expect(page.locator('video')).toHaveCount(0)
     await page.getByLabel('选择本地视频播放').setInputFiles(originalPath)
+    await page.getByRole('combobox', { name: '选择问答模型' }).click()
+    await page.getByRole('option', { name: '默认（助手配置）', exact: true }).click()
     await page.getByRole('textbox', { name: '针对当前资料提问' }).fill(`HC886_SOURCE_QUESTION Follow up ${sourceId}`)
     await page.getByRole('button', { name: '发送', exact: true }).click()
     await expect(page.getByRole('log').getByText('[本地测试] 当前资料的回答已附出处。', { exact: true })).toHaveCount(2, { timeout: 90_000 })
+    expect(fixture!.mock.receivedCompletions.find(item => item.prompt.includes(`HC886_SOURCE_QUESTION Follow up ${sourceId}`))?.model).toBe('mock-model')
     await expect(page.getByRole('textbox')).toHaveValue('')
     await page.getByRole('log').getByRole('button', { name: '查看出处 · 0:02 起', exact: true }).last().click()
     await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime)).toBeCloseTo(2, 1)
@@ -2593,6 +2652,7 @@ test('hc-901 packaged Analysis rereads cloud evidence and notes while preserving
   try {
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /Original cloud source.txt/ }).click()
+    await page.getByRole('tab', { name: '研究笔记' }).click()
     await expect(page.getByText('Original cloud source note from another device')).toBeVisible()
     await page.getByRole('textbox', { name: '针对当前资料提问' }).fill('Unsaved question')
     await page.getByRole('textbox', { name: '记录你的发现' }).fill('Unsaved note')

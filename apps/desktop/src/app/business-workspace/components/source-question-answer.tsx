@@ -9,7 +9,7 @@ import { $connection } from '@/store/session'
 
 import type { OverviewLocale } from '../../../../shared/analysis-video-overview'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
-import { answerSourceQuestion } from '../source-question-answer'
+import { answerSourceQuestion, type SourceQuestionModel } from '../source-question-answer'
 
 export const SOURCE_ANSWER_COPY = {
   zh: { upgrade: '此功能需要更新 APEX 资料服务；仍可查找原文证据。', ask: '让助手回答', pending: '正在依据原文回答…', disclosure: '点击后，当前资料的原文和问题会交给本机助手配置的模型处理，并按该通道计费；回答随资料保存。模型可能出错，请核对出处。', unavailable: '连接本机助手后可生成回答。', failed: '回答生成或保存失败，请重试；原文仍可查看。', large: '资料超出问答长度上限，请导入较短的章节，或继续查找原文证据。', label: '助手回答 · 请核对出处', noEvidence: '资料未提供足够证据回答这个问题。', stale: '此回答基于旧版资料，引用已停用。' },
@@ -19,9 +19,10 @@ export const SOURCE_ANSWER_COPY = {
   ar: { upgrade: 'حدّث خدمة مستندات APEX لاستخدام إجابات النموذج. لا يزال البحث في الأدلة الأصلية متاحًا.', ask: 'اسأل المساعد', pending: 'جارٍ الإجابة من المصدر…', disclosure: 'يرسل هذا نص المصدر الحالي والسؤال إلى النموذج المُعد للمساعد المحلي، وتُحتسب التكلفة عبر تلك القناة. تُحفظ الإجابات مع المصدر. تحقق من المراجع لأن النموذج قد يخطئ.', unavailable: 'اتصل بالمساعد المحلي لإنشاء إجابة.', failed: 'تعذر إنشاء الإجابة أو حفظها. حاول مجددًا؛ يبقى المصدر متاحًا.', large: 'المصدر يتجاوز حد طول الأسئلة. استورد قسمًا أقصر أو ابحث عن أدلة أصلية.', label: 'إجابة المساعد · تحقق من المصادر', noEvidence: 'لا يقدم المصدر أدلة كافية للإجابة عن هذا السؤال.', stale: 'تستند هذه الإجابة إلى إصدار أقدم من المصدر. روابط المراجع معطلة.' }
 }
 
-export function SourceQuestionAction({ source, question, locale, bridge, onSaved, children }: {
+export function SourceQuestionAction({ source, question, locale, bridge, onSaved, children, model }: {
   source: AnalysisDocument; question: string; locale: OverviewLocale; bridge: AnalysisDocumentsBridge | null
   onSaved: (id: string) => Promise<void>
+  model?: SourceQuestionModel
   children?: (state: { busy: boolean; available: boolean; submittedQuestion: string; submit: () => void }) => ReactNode
 }) {
   const gateway = useStore($gateway)
@@ -62,7 +63,7 @@ export function SourceQuestionAction({ source, question, locale, bridge, onSaved
     setError('')
 
     try {
-      await answerSourceQuestion(source, question, locale, bridge, gateway, current)
+      await answerSourceQuestion(source, question, locale, bridge, gateway, current, { model, profile })
 
       if (current()) {await onSaved(source.id)}
     } catch (error) {

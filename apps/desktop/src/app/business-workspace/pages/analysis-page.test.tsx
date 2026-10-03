@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
 
+import { render } from '../test-render'
 import type * as VideoFrameEvidenceModule from '../video-frame-evidence'
 import { sampleVideoFrames } from '../video-frame-evidence'
 

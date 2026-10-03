@@ -44,9 +44,10 @@ import {
   generationModels,
   generationStarter,
   previouslySelectedImageModel,
+  previouslySelectedVideoModel,
   saveImageGenerationModel,
-  selectedGenerationModel,
-  selectGenerationModel
+  saveVideoGenerationModel,
+  selectedGenerationModel
 } from './generation-models'
 import { SkillBrowseDialog } from './skill-browse-dialog'
 import { type SkillScope, useSkillCatalog } from './skill-catalog'
@@ -84,11 +85,16 @@ export function ContextMenu({ state }: ContextMenuProps) {
   // Earlier releases only stored this choice in localStorage. Migrate that
   // visible selection into the runtime preference as soon as chat is ready.
   useEffect(() => {
-    const previous = previouslySelectedImageModel()
-    if (!state.tools.enabled || !previous) {
+    if (!state.tools.enabled) {
       return
     }
-    void saveImageGenerationModel(previous.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))
+
+    const image = previouslySelectedImageModel()
+    const video = previouslySelectedVideoModel()
+
+    if (image) {void saveImageGenerationModel(image.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
+
+    if (video) {void saveVideoGenerationModel(video.id).catch(error => notifyError(error, t.settings.config.autosaveFailed))}
   }, [state.tools.enabled, t.settings.config.autosaveFailed])
 
   // Seed the composer with a generation opener and focus it, then close the
@@ -101,18 +107,13 @@ export function ContextMenu({ state }: ContextMenuProps) {
   }
 
   const chooseGenerationModel = async (kind: GenerationKind, id: string) => {
-    if (kind === 'image') {
-      try {
-        const selected = await saveImageGenerationModel(id)
-        setImageModel(selected)
-        startGeneration(generationStarter(cap.generateImageStarter, selected))
-      } catch (error) {
-        notifyError(error, t.settings.config.autosaveFailed)
-      }
-    } else {
-      const selected = selectGenerationModel(kind, id)
-      setVideoModel(selected)
-      startGeneration(generationStarter(cap.generateVideoStarter, selected))
+    try {
+      const selected = await (kind === 'image' ? saveImageGenerationModel(id) : saveVideoGenerationModel(id))
+
+      if (kind === 'image') {setImageModel(selected)} else {setVideoModel(selected)}
+      startGeneration(generationStarter(kind === 'image' ? cap.generateImageStarter : cap.generateVideoStarter, selected))
+    } catch (error) {
+      notifyError(error, t.settings.config.autosaveFailed)
     }
   }
 

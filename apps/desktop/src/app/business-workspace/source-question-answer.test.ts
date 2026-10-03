@@ -35,6 +35,17 @@ it('sends only current evidence via stateless RPC and persists a cited answer', 
     revision: source.analysis_revision, locale: 'en', question: 'How did revenue change?' })
 })
 
+it('routes a question to the selected model in the active profile without a chat session', async () => {
+  const { bridge, runtime } = fixture()
+  await answerSourceQuestion(source, 'Revenue?', 'en', bridge, runtime, () => true, {
+    model: { provider: 'custom:apex-nodes.com', model: 'deepseek-v4-flash' }, profile: 'my-agent'
+  })
+  expect(runtime.request.mock.calls[0][1]).toMatchObject({
+    task: 'source_question', provider: 'custom:apex-nodes.com', model: 'deepseek-v4-flash', profile: 'my-agent'
+  })
+  expect(runtime.request.mock.calls[0][1]).not.toHaveProperty('session_id')
+})
+
 it.each(OVERVIEW_LOCALES)('keeps duration and gap uncertainty in trusted %s question instructions', async locale => {
   const { bridge, runtime } = fixture()
 

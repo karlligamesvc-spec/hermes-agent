@@ -88,12 +88,20 @@ def run_oneshot(
     temperature: Optional[float] = 0.3,
     timeout: float = 60.0,
     main_runtime: Optional[Dict[str, Any]] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Run a single stateless LLM request and return its text (fence-stripped).
 
     Raises RuntimeError when no provider is configured (from :func:`call_llm`),
     KeyError for an unknown template, ValueError when the prompt is empty.
+    An optional explicit provider/model pair overrides task defaults for this call only.
     """
+    selection = {}
+    if provider is not None or model is not None:
+        if not isinstance(provider, str) or not isinstance(model, str) or not provider.strip() or not model.strip():
+            raise ValueError("one-shot model selection requires both provider and model")
+        selection = {"provider": provider.strip(), "model": model.strip()}
     if template:
         instructions, user_input = render_template(template, variables)
     has_instructions = bool((instructions or "").strip())
@@ -108,6 +116,7 @@ def run_oneshot(
         temperature=temperature,
         timeout=timeout,
         main_runtime=main_runtime,
+        **selection,
     )
     return _strip_code_fence((extract_content_or_reasoning(response) or "").strip())
 

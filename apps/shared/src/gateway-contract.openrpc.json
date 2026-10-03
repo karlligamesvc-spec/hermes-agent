@@ -12912,7 +12912,7 @@
       },
       "LlmOneshotParams": {
         "additionalProperties": false,
-        "description": "Needs a ``template`` or ``instructions`` / ``input``; a live ``session_id`` lends its model.",
+        "description": "Needs a prompt; optional provider/model override the task/session for this call only.",
         "properties": {
           "profile": {
             "anyOf": [
@@ -13022,6 +13022,30 @@
             ],
             "default": null,
             "title": "Session Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
           }
         },
         "title": "LlmOneshotParams",

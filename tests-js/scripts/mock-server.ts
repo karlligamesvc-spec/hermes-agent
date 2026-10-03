@@ -31,6 +31,8 @@ import { pathToFileURL } from 'node:url'
 export const MOCK_REPLY = 'Hello from the mock inference server! The full boot chain is working.'
 
 export interface MockServerOptions {
+  models?: string[]
+  apiPrefixes?: string[]
   /** Pause the matching stream after its first token for session-switch E2E coverage. */
   holdFirstStreamForPrompt?: string
 /** Pause the first completion whose request JSON contains this text. */
@@ -51,6 +53,7 @@ export interface MockServer {
   port: number
   url: string
   receivedPrompts: string[]
+  receivedCompletions: Array<{ model: string; prompt: string }>
   waitForHeldStream: () => Promise<void>
   waitForHeldCompletion: () => Promise<void>
   releaseHeldStream: () => void
@@ -406,6 +409,7 @@ function includesBlockingClarifyTrigger(value: unknown): boolean {
 export function startMockServer(options: MockServerOptions = {}): Promise<MockServer> {
   return new Promise((resolve, reject) => {
     const receivedPrompts: string[] = []
+    const receivedCompletions: Array<{ model: string; prompt: string }> = []
     let resolveHeldStreamStarted: (() => void) | null = null
     let releaseHeldStream: (() => void) | null = null
     let heldCompletionCount = 0
@@ -433,19 +437,17 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
       }
 
       // GET /v1/models — return a single fake model.
-      if (req.method === 'GET' && req.url === '/v1/models') {
+      if (req.method === 'GET' && (options.apiPrefixes ?? ['/v1']).some(prefix => req.url === `${prefix}/models`)) {
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(
           JSON.stringify({
             object: 'list',
-            data: [
-              {
-                id: 'mock-model',
+            data: (options.models ?? ['mock-model']).map(id => ({
+                id,
                 object: 'model',
                 created: 0,
                 owned_by: 'mock',
-              },
-            ],
+              })),
           }),
         )
 
@@ -453,7 +455,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
       }
 
       // POST /v1/chat/completions — return a canned response.
-      if (req.method === 'POST' && req.url?.startsWith('/v1/chat/completions')) {
+      if (req.method === 'POST' && (options.apiPrefixes ?? ['/v1']).some(prefix => req.url?.startsWith(`${prefix}/chat/completions`))) {
         let body = ''
 
         req.on('data', (chunk: Buffer) => {
@@ -479,6 +481,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
 
           const stream = parsed.stream === true
           const model = parsed.model || 'mock-model'
+          receivedCompletions.push({ model, prompt: typeof lastUserMessage?.content === 'string' ? lastUserMessage.content : '' })
 
           const holdThisCompletion = Boolean(
             options.holdFirstCompletionContaining &&
@@ -736,6 +739,7 @@ export function startMockServer(options: MockServerOptions = {}): Promise<MockSe
         port,
         url,
         receivedPrompts,
+        receivedCompletions,
         waitForHeldStream: () => heldStreamStarted,
         waitForHeldCompletion: () => heldStreamStarted,
         releaseHeldStream: () => releaseHeldStream?.(),
