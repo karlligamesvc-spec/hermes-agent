@@ -628,6 +628,8 @@ export async function setupPackagedApp(): Promise<PackagedAppFixture> {
  */
 export async function setupPackagedMockBackend(
   extraEnv: Record<string, string> = {},
+  mockOptions: MockServerOptions = {},
+  extraConfig?: (mockUrl: string) => string,
 ): Promise<PackagedMockBackendFixture> {
   if (!packagedBinaryExists()) {
     throw new Error(`Built app binary not found: ${PACKAGED_BINARY_PATH}. Run 'npm run pack' first.`)
@@ -638,10 +640,10 @@ export async function setupPackagedMockBackend(
     repoRoot: REPO_ROOT,
   })
 
-  const mock = await startMockServer()
+  const mock = await startMockServer(mockOptions)
   const sandbox = createSandbox('packaged-mock')
 
-  writeMockProviderConfig(sandbox.hermesHome, mock.url)
+  writeMockProviderConfig(sandbox.hermesHome, mock.url, undefined, extraConfig?.(mock.url))
   writeEnvFile(sandbox.hermesHome)
 
   // buildAppEnv deliberately points the gateway at this checkout. The

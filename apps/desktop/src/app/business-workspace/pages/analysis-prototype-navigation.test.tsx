@@ -1,9 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
 
 import { workflowDomainChanged } from '../api/read-revision'
+import { render } from '../test-render'
 
 import { AnalysisView } from './analysis-page'
 

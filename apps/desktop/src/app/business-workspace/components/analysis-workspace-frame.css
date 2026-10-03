@@ -57,9 +57,11 @@
 .analysis-conversation-user { align-self: flex-end; max-width: 90%; padding: .75rem 1rem; border-radius: 1rem; background: var(--ui-row-active-background); white-space: pre-wrap; font-size: .875rem; }
 .analysis-conversation-assistant { width: 100%; min-width: 0; line-height: 1.7; }
 .analysis-conversation-citations { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
-.analysis-conversation-composer { display: flex; flex-direction: column; gap: .5rem; border: 1px solid var(--ui-border); border-radius: 1rem; padding: .75rem; }
+.analysis-conversation-composer { display: flex; flex-direction: column; gap: .5rem; border: 1px solid var(--ui-stroke-secondary); border-radius: 1rem; padding: .75rem; background: var(--ui-bg-elevated); }
+.analysis-conversation-composer:focus-within { border-color: var(--ui-accent); }
 .analysis-conversation-composer textarea { border: 0; box-shadow: none; min-height: 5rem; }
-.analysis-conversation-composer > button { align-self: flex-end; }
+.analysis-conversation-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-width: 0; }
+.analysis-conversation-composer-footer [data-slot="select-trigger"] { min-width: 0; max-width: calc(100% - 5rem); }
 .analysis-conversation-disclosure, .analysis-conversation-advanced { color: var(--ui-text-secondary); font-size: .75rem; }
 .analysis-conversation-disclosure summary, .analysis-conversation-advanced summary { cursor: pointer; }
 .analysis-conversation-disclosure p { margin-top: .5rem; }

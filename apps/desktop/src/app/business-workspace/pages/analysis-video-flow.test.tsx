@@ -1,7 +1,8 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import type { AnalysisDocument, AnalysisVideoPlayback } from '../analysis-types'
+import { render } from '../test-render'
 
 import { AnalysisView } from './analysis-page'
 

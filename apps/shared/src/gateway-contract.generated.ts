@@ -2895,7 +2895,7 @@ export interface SessionEventsStatsResult {
   max_bytes_per_session: number
   max_bytes_process: number
 }
-/** Needs a ``template`` or ``instructions`` / ``input``; a live ``session_id`` lends its model. */
+/** Needs a prompt; optional provider/model override the task/session for this call only. */
 export interface LlmOneshotParams {
   profile?: string | null
   template?: string | null
@@ -2906,6 +2906,8 @@ export interface LlmOneshotParams {
   temperature?: number | null
   max_tokens?: number | null
   session_id?: string | null
+  provider?: string | null
+  model?: string | null
 }
 export interface LlmOneshotResult {
   text: string

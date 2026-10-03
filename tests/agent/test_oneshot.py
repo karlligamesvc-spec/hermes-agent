@@ -58,6 +58,8 @@ class TestRunOneshot:
 
         assert out == "hello"
         messages = llm.call_args.kwargs["messages"]
+        assert "provider" not in llm.call_args.kwargs
+        assert "model" not in llm.call_args.kwargs
         assert messages[0]["content"] == "be brief"
         assert messages[1]["content"] == "say hi"
 
@@ -81,3 +83,30 @@ class TestHelpers:
 
     def test_strip_code_fence_without_fence_is_noop(self):
         assert _strip_code_fence("plain text") == "plain text"
+
+
+def test_oneshot_rpc_passes_selected_provider_model_to_real_call_boundary(monkeypatch):
+    from tui_gateway import server
+    calls = []
+    response = TestRunOneshot()._mock_response("selected model answer")
+    monkeypatch.setattr("agent.oneshot.call_llm", lambda **kwargs: (calls.append(kwargs), response)[1])
+    result = server._methods["llm.oneshot"](1, {
+        "task": "source_question", "instructions": "Use only evidence", "input": "Source question",
+        "provider": "custom:my-provider", "model": "my-answer-model", "max_tokens": 2400,
+    })
+    assert result["result"]["text"] == "selected model answer"
+    assert calls[0]["provider"] == "custom:my-provider"
+    assert calls[0]["model"] == "my-answer-model"
+    assert calls[0]["task"] == "source_question"
+    assert calls[0]["main_runtime"] is None
+
+
+@pytest.mark.parametrize("selection", [{"provider": "custom"}, {"model": "answer-model"},
+                                      {"provider": "", "model": "answer-model"}])
+def test_oneshot_rpc_rejects_partial_selection_before_model_call(monkeypatch, selection):
+    from tui_gateway import server
+    llm = MagicMock()
+    monkeypatch.setattr("agent.oneshot.call_llm", llm)
+    result = server._methods["llm.oneshot"](1, {"instructions": "Question", **selection})
+    assert result["error"]["code"] == 4032
+    llm.assert_not_called()

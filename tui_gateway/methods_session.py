@@ -1098,6 +1098,7 @@ def _(rid, params: dict) -> dict:
             instructions=instructions, user_input=user_input, template=template, variables=variables,
             task=(params.get("task") or "title_generation").strip() or "title_generation",
             max_tokens=_int_param(params, "max_tokens", 1024) or 1024, temperature=temperature,
+            provider=params.get("provider"), model=params.get("model"),
             main_runtime=_main_runtime_from_agent(session.get("agent")) if session else None)})
     except (KeyError, ValueError) as e:
         return _err(rid, 4031 if isinstance(e, KeyError) else 4032, str(e))

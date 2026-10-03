@@ -652,7 +652,7 @@ method("session.events.stats", params=SessionEventsStatsParams, result=SessionEv
 
 
 class LlmOneshotParams(ProfileParams):
-    """Needs a ``template`` or ``instructions`` / ``input``; a live ``session_id`` lends its model."""
+    """Needs a prompt; optional provider/model override the task/session for this call only."""
 
     template: str | None = None
     instructions: str | None = None
@@ -662,6 +662,8 @@ class LlmOneshotParams(ProfileParams):
     temperature: float | None = None
     max_tokens: int | None = None
     session_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
 
 
 class LlmOneshotResult(Result):

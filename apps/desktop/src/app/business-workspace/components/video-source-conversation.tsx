@@ -1,15 +1,21 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { useStore } from '@nanostores/react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { CompactMarkdown } from '@/components/chat/compact-markdown'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { $authState } from '@/store/auth'
+import { $activeConnectionId } from '@/store/connections'
+import { $activeGatewayProfile } from '@/store/profile'
 
 import { validateVideoOverview } from '../../../../shared/analysis-video-overview'
 import { ANALYSIS_PAGE_COPY } from '../analysis-page-copy'
 import type { AnalysisDocument, AnalysisDocumentsBridge } from '../analysis-types'
+import type { SourceQuestionModel } from '../source-question-answer'
 import type { VideoBreakdownLocale } from '../video-deep-breakdown-draft'
 
 import { SOURCE_ANSWER_COPY, SourceQuestionAction } from './source-question-answer'
+import { SourceQuestionModelPicker } from './source-question-model-picker'
 import { VIDEO_SOURCE_CHAT_COPY } from './video-source-chat-copy'
 
 function ConversationLog({ children, count, pending }: { children: ReactNode; count: number; pending: boolean }) {
@@ -27,17 +33,27 @@ function ConversationLog({ children, count, pending }: { children: ReactNode; co
   )
 }
 
-export function VideoSourceConversation({
-  source,
-  locale,
-  bridge,
-  question,
-  setQuestion,
-  onSaved,
-  jump,
-  label,
-  advanced
-}: {
+export function VideoSourceConversation(props: VideoSourceConversationProps) {
+  const auth = useStore($authState)
+  const connectionId = useStore($activeConnectionId)
+  const profile = useStore($activeGatewayProfile)
+
+  return (
+    <VideoSourceConversationBody
+      {...props}
+      key={JSON.stringify([
+        connectionId,
+        profile,
+        auth.status,
+        auth.accountId,
+        auth.account.email,
+        props.source.analysis_scope
+      ])}
+    />
+  )
+}
+
+interface VideoSourceConversationProps {
   source: AnalysisDocument
   locale: VideoBreakdownLocale
   bridge: AnalysisDocumentsBridge | null
@@ -47,7 +63,20 @@ export function VideoSourceConversation({
   jump: (id: string) => void
   label: (location: Record<string, string | number>) => string
   advanced: ReactNode
-}) {
+}
+
+function VideoSourceConversationBody({
+  source,
+  locale,
+  bridge,
+  question,
+  setQuestion,
+  onSaved,
+  jump,
+  label,
+  advanced
+}: VideoSourceConversationProps) {
+  const [model, setModel] = useState<SourceQuestionModel>()
   const copy = VIDEO_SOURCE_CHAT_COPY[locale]
   const answerCopy = SOURCE_ANSWER_COPY[locale]
   let summary: ReturnType<typeof validateVideoOverview> | undefined
@@ -76,7 +105,14 @@ export function VideoSourceConversation({
 
   return (
     <div className="analysis-source-conversation">
-      <SourceQuestionAction bridge={bridge} locale={locale} onSaved={onSaved} question={question} source={source}>
+      <SourceQuestionAction
+        bridge={bridge}
+        locale={locale}
+        model={model}
+        onSaved={onSaved}
+        question={question}
+        source={source}
+      >
         {({ busy, available, submittedQuestion, submit }) => (
           <>
             <ConversationLog count={source.questions?.length ?? 0} pending={busy}>
@@ -148,9 +184,17 @@ export function VideoSourceConversation({
                 rows={3}
                 value={question}
               />
-              <Button disabled={!available || busy || question.trim().length < 2} type="submit">
-                {copy.send}
-              </Button>
+              <div className="analysis-conversation-composer-footer">
+                <SourceQuestionModelPicker
+                  disabled={!available || busy}
+                  locale={locale}
+                  onChange={setModel}
+                  value={model}
+                />
+                <Button disabled={!available || busy || question.trim().length < 2} type="submit">
+                  {copy.send}
+                </Button>
+              </div>
             </form>
             <details className="analysis-conversation-disclosure">
               <summary>{copy.details}</summary>

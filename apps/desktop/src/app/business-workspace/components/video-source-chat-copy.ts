@@ -1,5 +1,8 @@
 export const VIDEO_SOURCE_CHAT_COPY = {
   zh: {
+    model: '选择问答模型',
+    defaultModel: '默认（助手配置）',
+    modelsUnavailable: '模型列表暂不可用，请重新打开重试',
     unavailable: '视频暂时无法加载，可重试或在原站打开。',
     originalLink: '原视频链接',
     preparing: '正在准备视频播放…',
@@ -13,6 +16,9 @@ export const VIDEO_SOURCE_CHAT_COPY = {
     disclosure: '依据当前资料回答，使用所选模型并按当前通道计费。回答随资料保存。'
   },
   'zh-hant': {
+    model: '選擇問答模型',
+    defaultModel: '預設（助手設定）',
+    modelsUnavailable: '模型清單暫時無法使用，請重新開啟重試',
     unavailable: '影片暫時無法載入，可重試或在原站開啟。',
     originalLink: '原影片連結',
     preparing: '正在準備影片播放…',
@@ -26,6 +32,9 @@ export const VIDEO_SOURCE_CHAT_COPY = {
     disclosure: '依據目前資料回答，使用所選模型並依目前通道計費。回答隨資料儲存。'
   },
   en: {
+    model: 'Choose answer model',
+    defaultModel: 'Default (Agent settings)',
+    modelsUnavailable: 'Models unavailable. Reopen to retry.',
     unavailable: 'Video could not be loaded. Retry or open the original site.',
     originalLink: 'Original video link',
     preparing: 'Preparing video playback…',
@@ -40,6 +49,9 @@ export const VIDEO_SOURCE_CHAT_COPY = {
       'Answers use this source and your selected model, billed through the current channel. Answers are saved with the source.'
   },
   ja: {
+    model: '回答モデルを選択',
+    defaultModel: '既定（助手の設定）',
+    modelsUnavailable: 'モデル一覧を取得できません。開き直して再試行してください。',
     unavailable: '動画を読み込めません。再試行するか元のサイトで開いてください。',
     originalLink: '元の動画リンク',
     preparing: '動画の再生を準備中…',
@@ -54,6 +66,9 @@ export const VIDEO_SOURCE_CHAT_COPY = {
       '現在の資料に基づき、選択したモデルで回答します。現在の接続経路で課金され、回答は資料とともに保存されます。'
   },
   ar: {
+    model: 'اختر نموذج الإجابة',
+    defaultModel: 'الافتراضي (إعدادات المساعد)',
+    modelsUnavailable: 'النماذج غير متاحة. أعد الفتح للمحاولة مجددًا.',
     unavailable: 'تعذر تحميل الفيديو. أعد المحاولة أو افتح الموقع الأصلي.',
     originalLink: 'رابط الفيديو الأصلي',
     preparing: 'جارٍ تجهيز تشغيل الفيديو…',
