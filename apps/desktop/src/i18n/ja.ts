@@ -1915,7 +1915,10 @@ export const ja = defineLocale({
       'delivery-pending': '配信結果は未確認',
       unknown: '実行結果は未確認'
     },
+    defaultProfile: 'デフォルト',
+    botChatTarget: profile => `アシスタントのチャット (${profile})`,
     deliveryLabels: {
+      'bot-chat': 'アシスタントのチャット',
       local: 'このデスクトップ',
       telegram: 'Telegram',
       discord: 'Discord',
@@ -1996,7 +1999,7 @@ export const ja = defineLocale({
       running: '実行中',
       completed: '完了',
       failed: '失敗',
-      unknown: '結果不明',
+      unknown: '結果不明'
     },
     failedUpdate: 'Cron ジョブの更新に失敗しました',
     failedTrigger: 'Cron ジョブのトリガーに失敗しました',
@@ -2013,6 +2016,7 @@ export const ja = defineLocale({
     promptPlaceholder: '実行ごとにエージェントが行う内容は？',
     frequencyLabel: '頻度',
     deliverLabel: '配信先',
+    deliverNeedsHomeChannel: '先に受信チャンネルを設定してください',
     modelLabel: 'モデル',
     modelDefault: 'デフォルト（グローバルモデル）',
     customScheduleLabel: 'カスタムスケジュール',
@@ -2024,7 +2028,181 @@ export const ja = defineLocale({
     scheduleRequired: 'スケジュールは必須です。',
     scriptOnlyEditHint: 'スクリプトのみのジョブ（AI プロンプトなし）。ジョブ ID:',
     saveChanges: '変更を保存',
-    createAction: 'Cron を作成'
+    createAction: 'Cron を作成',
+    tabs: { jobs: 'タスク', blueprints: 'テンプレート' },
+    blueprints: {
+      tab: 'タスクテンプレート',
+      startFrom: 'テンプレートを選択',
+      custom: 'カスタム',
+      subtitle: 'すぐ使える自動化',
+      dialogDesc: '詳細を入力して実行スケジュールを設定します。',
+      scheduleIt: '定期タスクを作成',
+      scheduling: '作成中…',
+      scheduled: '定期タスクを作成しました',
+      loading: 'テンプレートを読み込み中…',
+      failedLoad: 'テンプレートを読み込めませんでした',
+      emptyTitle: 'テンプレートはありません',
+      emptyDesc: 'この実行環境に利用可能なテンプレートはありません。',
+      catalog: {
+        'morning-brief': {
+          title: '朝のブリーフィング',
+          description: '今日の予定、天気、急ぎの事項を毎朝短くまとめます。'
+        },
+        'important-mail': {
+          title: '重要メールの監視',
+          description: '受信箱を定期的に確認し、対応が必要なメールだけ通知します。',
+          defaults: {
+            criteria: '今日中の返信が必要、上司や家族からのメール、または期限の記載がある'
+          }
+        },
+        'weekly-review': {
+          title: '週間レビュー',
+          description: '今週の成果、未完了のタスク、今後の予定を振り返ります。'
+        },
+        'workday-start': {
+          title: '仕事開始のリマインダー',
+          description: '平日の予定と優先事項をお知らせします。'
+        },
+        'custom-reminder': {
+          title: 'カスタムリマインダー',
+          description: '指定した内容とスケジュールで繰り返し通知します。',
+          defaults: {
+            what: '休憩してストレッチする'
+          }
+        },
+        'evening-winddown': {
+          title: '夜の振り返り',
+          description: '明日の予定と今夜の準備事項を短く確認します。'
+        },
+        'news-digest': {
+          title: 'トピック別ニュース要約',
+          description: '関心のあるテーマの新しい情報だけを定期的にまとめます。',
+          defaults: {
+            topic: 'AI とテクノロジー'
+          }
+        },
+        'bill-renewal-watch': {
+          title: '支払い・更新リマインダー',
+          description: '支払いや契約更新の前に通知し、予期しない請求を防ぎます。',
+          fieldLabels: {
+            what: '支払い・更新の内容'
+          },
+          defaults: {
+            what: '動画配信の契約がまもなく更新される'
+          }
+        },
+        'price-watch': {
+          title: '価格・在庫の監視',
+          description: '指定した商品、航空便、ホテル、物件が条件を満たしたら通知します。',
+          defaults: {
+            item: '商品 URL または正確な航空便・ホテル・物件の説明',
+            condition: '諸費用込みの価格が目標を下回る'
+          }
+        },
+        'competitor-watch': {
+          title: '競合ニュースの監視',
+          description: '競合企業の製品、価格、資金調達、発表を出典付きでまとめます。',
+          defaults: {
+            companies: '正式名で指定した競合企業 2～3 社',
+            categories: '製品発表、価格変更、資金調達、提携、経営陣の異動、事故'
+          }
+        },
+        'habit-checkin': {
+          title: '習慣チェック',
+          description: '習慣を続けるよう定期的に促し、実行できたか振り返ります。',
+          defaults: {
+            habit: '20 分間読書する'
+          }
+        },
+        'hydration-move': {
+          title: '水分補給・運動リマインダー',
+          description: '日中に水分補給、立ち上がり、ストレッチを促します。'
+        },
+        'meal-plan': {
+          title: '週間献立',
+          description: '食事の好みと調理時間に合わせた献立と買い物リストを作成します。'
+        },
+        'learn-daily': {
+          title: '毎日の学習',
+          description: '学びたいテーマを毎日少しずつ、段階的に学びます。',
+          fieldLabels: {
+            topic: '学習テーマ'
+          },
+          defaults: {
+            topic: 'スペイン語の単語'
+          }
+        },
+        'gratitude-journal': {
+          title: '感謝と振り返り',
+          description: '一日の良かったことを夜に穏やかに振り返ります。'
+        },
+        'on-this-day': {
+          title: '今日は何の日',
+          description: '歴史上の出来事、豆知識、新しい単語を毎日紹介します。'
+        }
+      },
+      fieldLabels: {
+        time: '実行時刻',
+        deliver: '送信先',
+        interval_min: '確認頻度',
+        criteria: '次の条件のメールだけ通知',
+        day: '曜日',
+        what: 'リマインダー内容',
+        recurrence: '繰り返す日',
+        topic: '関心のあるテーマ',
+        count: '要約の項目数',
+        item: '監視対象',
+        condition: '通知条件',
+        interval_h: '確認頻度',
+        companies: '対象企業',
+        categories: '対象の出来事',
+        habit: '習慣',
+        interval_hours: '通知頻度',
+        start_hour: '開始時',
+        end_hour: '終了時',
+        diet: '食事の好み',
+        meals: '一日の食事回数',
+        effort: '調理の手間',
+        flavor: '内容の種類'
+      },
+      fieldHelp: {
+        time: '現地時刻、24 時間形式（例：08:00）',
+        deliver: '結果の送信先を選択',
+        interval_min: '確認の間隔（分）',
+        topic: 'テーマ、製品、人物、検索語',
+        item: 'URL または正確な説明（型番、日付、販売者など）',
+        condition: '目標価格（通貨を明記）、在庫、条件の変更',
+        interval_h: '確認の間隔（時間）。アクセス頻度の制限に配慮してください',
+        companies: '企業の正式名とドメイン。別名は重複排除に役立ちます',
+        interval_hours: '通知の間隔（時間）',
+        start_hour: '通知を開始する時刻（24 時間形式）',
+        end_hour: '通知を終了する時刻（24 時間形式）'
+      },
+      optionLabels: {
+        sunday: '日曜日',
+        monday: '月曜日',
+        friday: '金曜日',
+        saturday: '土曜日',
+        everyday: '毎日',
+        weekdays: '平日',
+        weekends: '週末',
+        'no restrictions': '制限なし',
+        vegetarian: 'ベジタリアン',
+        vegan: 'ヴィーガン',
+        'high-protein': '高タンパク',
+        'low-carb': '低糖質',
+        'dinner only': '夕食のみ',
+        'lunch and dinner': '昼食と夕食',
+        'all three': '三食',
+        quick: '手軽',
+        medium: '普通',
+        ambitious: '手の込んだ料理',
+        'on this day in history': '歴史上の今日',
+        'word of the day': '今日の単語',
+        'science fact': '科学の豆知識',
+        'quote of the day': '今日の名言'
+      }
+    }
   },
 
   artifacts: {

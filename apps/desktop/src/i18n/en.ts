@@ -2664,7 +2664,10 @@ export const en: Translations = {
       'delivery-pending': 'Delivery completion unverified',
       unknown: 'Execution result unverified'
     },
+    defaultProfile: 'default',
+    botChatTarget: profile => `Bot Chat (${profile})`,
     deliveryLabels: {
+      'bot-chat': 'Bot Chat',
       local: 'This desktop',
       telegram: 'Telegram',
       discord: 'Discord',
@@ -2745,7 +2748,7 @@ export const en: Translations = {
       running: 'Running',
       completed: 'Completed',
       failed: 'Failed',
-      unknown: 'Outcome unknown',
+      unknown: 'Outcome unknown'
     },
     failedUpdate: 'Failed to update cron job',
     failedTrigger: 'Failed to trigger cron job',
@@ -2790,7 +2793,172 @@ export const en: Translations = {
       loading: 'Loading blueprints...',
       failedLoad: 'Failed to load blueprints',
       emptyTitle: 'No blueprints available',
-      emptyDesc: 'No automation blueprints are available on this backend.'
+      emptyDesc: 'No automation blueprints are available on this backend.',
+      catalog: {
+        'morning-brief': {
+          title: 'Morning briefing',
+          description: "A short daily briefing: today's calendar, weather, and anything urgent waiting on you."
+        },
+        'important-mail': {
+          title: 'Important-mail monitor',
+          description: 'Check your inbox periodically and ping you ONLY about mail that actually needs attention.',
+          defaults: {
+            criteria: 'needs a reply today, is from my manager or family, or mentions a deadline'
+          }
+        },
+        'weekly-review': {
+          title: 'Weekly review',
+          description: "A weekly recap: what got done, what's still open, and what's coming up."
+        },
+        'workday-start': {
+          title: 'Workday start reminder',
+          description: 'A weekday nudge with your agenda and top priorities.'
+        },
+        'custom-reminder': {
+          title: 'Custom reminder',
+          description: 'A recurring reminder in your own words, on your schedule.',
+          defaults: {
+            what: 'take a break and stretch'
+          }
+        },
+        'evening-winddown': {
+          title: 'Evening wind-down',
+          description: "An end-of-day check-in: tomorrow's calendar at a glance and anything you should prep tonight."
+        },
+        'news-digest': {
+          title: 'Topic news digest',
+          description:
+            'A recurring digest on a topic you care about — deduped against what was already sent, so only genuinely new items land.',
+          defaults: {
+            topic: 'AI and technology'
+          }
+        },
+        'bill-renewal-watch': {
+          title: 'Bills & renewals reminder',
+          description:
+            'A heads-up before a recurring payment, subscription renewal, or due date — so nothing auto-charges by surprise.',
+          fieldLabels: {
+            what: "What's due?"
+          },
+          defaults: {
+            what: 'my streaming subscription renews soon'
+          }
+        },
+        'price-watch': {
+          title: 'Price & availability watch',
+          description:
+            'Watch an exact product, flight, hotel, or listing and alert when your price or availability condition is met.',
+          defaults: {
+            item: 'a product URL or exact flight/hotel/listing description',
+            condition: 'the all-in price drops below my target'
+          }
+        },
+        'competitor-watch': {
+          title: 'Competitor news watch',
+          description:
+            'Track named companies for material news — launches, pricing, funding, filings — with a cited digest.',
+          defaults: {
+            companies: 'two or three competitors, by canonical name',
+            categories: 'product launches, pricing changes, funding, partnerships, executive moves, incidents'
+          }
+        },
+        'habit-checkin': {
+          title: 'Habit check-in',
+          description: 'A recurring nudge to keep a habit on track and reflect on whether you did it.',
+          defaults: {
+            habit: '20 minutes of reading'
+          }
+        },
+        'hydration-move': {
+          title: 'Hydration & movement nudge',
+          description: 'A periodic nudge during the day to drink water, stand up, and stretch.'
+        },
+        'meal-plan': {
+          title: 'Weekly meal plan',
+          description:
+            'A weekly meal plan plus a consolidated grocery list, tuned to your diet and how much time you have to cook.'
+        },
+        'learn-daily': {
+          title: 'Daily learning drip',
+          description: 'One bite-sized lesson a day on a topic you want to learn, building progressively over time.',
+          fieldLabels: {
+            topic: 'Learn about…'
+          },
+          defaults: {
+            topic: 'Spanish vocabulary'
+          }
+        },
+        'gratitude-journal': {
+          title: 'Gratitude & reflection prompt',
+          description: 'A gentle evening prompt to reflect on the day and note what went well.'
+        },
+        'on-this-day': {
+          title: 'On-this-day discovery',
+          description: 'A daily dose of curiosity: a notable historical event, fact, or word for the day.'
+        }
+      },
+      fieldLabels: {
+        time: 'What time?',
+        deliver: 'Where to deliver?',
+        interval_min: 'How often?',
+        criteria: 'Only notify me if the mail…',
+        day: 'Which day?',
+        what: 'Remind me to…',
+        recurrence: 'Repeat on',
+        topic: 'What topic?',
+        count: 'How many bullets?',
+        item: 'What exactly to watch?',
+        condition: 'Alert me when…',
+        interval_h: 'How often?',
+        companies: 'Which companies?',
+        categories: 'Which events matter?',
+        habit: 'Which habit?',
+        interval_hours: 'How often?',
+        start_hour: 'Start hour',
+        end_hour: 'End hour',
+        diet: 'Diet?',
+        meals: 'Meals per day?',
+        effort: 'Cooking effort?',
+        flavor: 'What kind?'
+      },
+      fieldHelp: {
+        time: '24h local time, e.g. 08:00',
+        deliver:
+          'origin = the chat you set this up from (or your configured home channel when created from the dashboard); local = save only, no message; or any connected platform name',
+        interval_min: 'minutes between checks',
+        topic: 'a subject, product, person, or search phrase',
+        item: 'URL or precise description — variant, dates, seller',
+        condition: 'threshold price (state the currency), availability, or terms change',
+        interval_h: 'hours between checks — be gentle with rate limits',
+        companies: 'canonical names and domains; aliases help dedup',
+        interval_hours: 'hours between nudges',
+        start_hour: 'first hour of the active window (24h)',
+        end_hour: 'last hour of the active window (24h)'
+      },
+      optionLabels: {
+        sunday: 'sunday',
+        monday: 'monday',
+        friday: 'friday',
+        saturday: 'saturday',
+        everyday: 'everyday',
+        weekdays: 'weekdays',
+        weekends: 'weekends',
+        'no restrictions': 'no restrictions',
+        vegetarian: 'vegetarian',
+        vegan: 'vegan',
+        'high-protein': 'high-protein',
+        'low-carb': 'low-carb',
+        'dinner only': 'dinner only',
+        'lunch and dinner': 'lunch and dinner',
+        'all three': 'all three',
+        quick: 'quick',
+        medium: 'medium',
+        ambitious: 'ambitious',
+        'on this day in history': 'on this day in history',
+        'word of the day': 'word of the day',
+        'science fact': 'science fact',
+        'quote of the day': 'quote of the day'
+      }
     }
   },
 

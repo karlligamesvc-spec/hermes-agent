@@ -43,7 +43,7 @@ import {
   resumeCronJob,
   updateCronJob
 } from '@/hermes'
-import { type Translations, useI18n } from '@/i18n'
+import { type Locale, type Translations, useI18n } from '@/i18n'
 import { AlertTriangle } from '@/lib/icons'
 import { requestModelOptions } from '@/lib/model-options'
 import { asText } from '@/lib/text'
@@ -71,6 +71,7 @@ import {
 } from '../overlays/panel'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
+import { localizeBlueprint } from './blueprint-i18n'
 import { BlueprintSlotControl, blueprintSlotHelp, cleanBlueprintFieldError, initialBlueprintValues } from './blueprints'
 import { mutateAndRefreshCronJobs, refreshCronJobs, triggerAndRefreshCronJobs } from './cron-actions'
 import {
@@ -157,7 +158,7 @@ function dayName(value: string, c: Translations['cron']): string {
   return c.days[value] ?? c.dayFallback(value)
 }
 
-function formatCronTime(minute: string, hour: string): string {
+function formatCronTime(minute: string, hour: string, locale: Locale): string {
   const numericHour = Number(hour)
   const numericMinute = Number(minute)
 
@@ -165,7 +166,7 @@ function formatCronTime(minute: string, hour: string): string {
     return `${hour}:${minute}`
   }
 
-  return new Date(2000, 0, 1, numericHour, numericMinute).toLocaleTimeString(undefined, {
+  return new Date(2000, 0, 1, numericHour, numericMinute).toLocaleTimeString(locale, {
     hour: 'numeric',
     minute: '2-digit'
   })
@@ -230,7 +231,7 @@ function scheduleOptionForExpr(expr: string): ScheduleOption {
   return SCHEDULE_OPTIONS[SCHEDULE_OPTIONS.length - 1]
 }
 
-function scheduleSummary(option: ScheduleOption, expr: string, c: Translations['cron']): string {
+function scheduleSummary(option: ScheduleOption, expr: string, c: Translations['cron'], locale: Locale): string {
   const parts = cronParts(expr)
 
   if (!parts) {
@@ -240,19 +241,19 @@ function scheduleSummary(option: ScheduleOption, expr: string, c: Translations['
   const [minute, hour, dayOfMonth, , dayOfWeek] = parts
 
   if (option.value === 'daily') {
-    return c.everyDayAt(formatCronTime(minute, hour))
+    return c.everyDayAt(formatCronTime(minute, hour, locale))
   }
 
   if (option.value === 'weekdays') {
-    return c.weekdaysAt(formatCronTime(minute, hour))
+    return c.weekdaysAt(formatCronTime(minute, hour, locale))
   }
 
   if (option.value === 'weekly') {
-    return c.everyDayOfWeekAt(dayName(dayOfWeek, c), formatCronTime(minute, hour))
+    return c.everyDayOfWeekAt(dayName(dayOfWeek, c), formatCronTime(minute, hour, locale))
   }
 
   if (option.value === 'monthly') {
-    return c.monthlyOnDayAt(dayOfMonth, formatCronTime(minute, hour))
+    return c.monthlyOnDayAt(dayOfMonth, formatCronTime(minute, hour, locale))
   }
 
   if (option.value === 'hourly') {
@@ -409,11 +410,11 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
   })
 
   const visibleBlueprints = useMemo(() => {
-    const list = blueprintsQuery.data ?? []
+    const list = (blueprintsQuery.data ?? []).map(item => localizeBlueprint(item, c.blueprints))
     const needle = query.trim().toLowerCase()
 
     return needle ? list.filter(item => `${item.title} ${item.description}`.toLowerCase().includes(needle)) : list
-  }, [blueprintsQuery.data, query])
+  }, [blueprintsQuery.data, c.blueprints, query])
 
   // Detail always reflects a concrete job: the explicitly selected one, else the
   // first visible row, so the right pane is never empty while jobs exist.
@@ -627,7 +628,11 @@ export function CronView({ onOpenSession, setStatusbarItemGroup: _setStatusbarIt
       notifyError(refreshError, c.failedLoad)
     }
 
-    notify({ kind: 'success', title: c.blueprints.scheduled, message: asText(job.schedule_display) || blueprint.title })
+    notify({
+      kind: 'success',
+      title: c.blueprints.scheduled,
+      message: asText(job.schedule_display) || localizeBlueprint(blueprint, c.blueprints).title
+    })
     setEditor({ mode: 'closed' })
   }
 
@@ -866,7 +871,10 @@ function CronJobDetail({
 // platforms → their delivery label, anything else → the backend name. Configured
 // platforms without a cron home channel get a "set a home channel first" hint.
 function deliverTargetLabel(target: CronDeliveryTarget, c: Translations['cron']): string {
-  const base = target.id === 'local' ? c.deliveryLabels.local : (c.deliveryLabels[target.id] ?? target.name)
+  const profile = target.id.startsWith('bot-chat:') ? target.id.slice('bot-chat:'.length) : null
+  const base = profile
+    ? c.botChatTarget(profile === 'default' ? c.defaultProfile : profile)
+    : (c.deliveryLabels[target.id] ?? target.name)
 
   return target.id !== 'local' && !target.home_target_set ? `${base} — ${c.deliverNeedsHomeChannel}` : base
 }
@@ -935,7 +943,7 @@ function CronEditorDialog({
   onClose: () => void
   onSave: (values: EditorValues) => Promise<void>
 }) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const c = t.cron
   const open = editor.mode !== 'closed'
   const isEdit = editor.mode === 'edit'
@@ -953,6 +961,7 @@ function CronEditorDialog({
   // Blueprint fills typed slots (time/enum/weekdays/text) instead of the raw
   // cron fields; the backend renders the prompt + schedule from them.
   const [slotValues, setSlotValues] = useState<Record<string, string>>({})
+  const seededBlueprint = useRef<{ source: AutomationBlueprint | null; editor: EditorState } | null>(null)
   // Create mode can start from a ready-made blueprint instead of a blank cron.
   // CUSTOM_TEMPLATE (default) = the manual editor; any other value is a
   // blueprint key that swaps the form for that blueprint's typed slots.
@@ -968,7 +977,15 @@ function CronEditorDialog({
     enabled: open && !isEdit
   })
 
-  const blueprintList = blueprintsQuery.data ?? []
+  const blueprintList = useMemo(
+    () => (blueprintsQuery.data ?? []).map(item => localizeBlueprint(item, c.blueprints)),
+    [blueprintsQuery.data, c.blueprints]
+  )
+
+  const sourceBlueprint =
+    templateChoice === CUSTOM_TEMPLATE
+      ? null
+      : (blueprintsQuery.data?.find(item => item.key === templateChoice) ?? null)
 
   const blueprint =
     templateChoice === CUSTOM_TEMPLATE ? null : (blueprintList.find(item => item.key === templateChoice) ?? null)
@@ -1012,10 +1029,16 @@ function CronEditorDialog({
 
   // Seed the typed slots with the blueprint's defaults whenever a blueprint is
   // picked from "Start from" (and reset them when switching back to Custom).
+  // eslint-disable-next-line no-restricted-syntax -- records draft initialization, not an atom mirror or callback read
   useEffect(() => {
+    if (seededBlueprint.current?.source === sourceBlueprint && seededBlueprint.current.editor === editor) {
+      return
+    }
+
+    seededBlueprint.current = { source: sourceBlueprint, editor }
     setSlotValues(blueprint ? initialBlueprintValues(blueprint) : {})
     setError(null)
-  }, [blueprint])
+  }, [blueprint, editor, sourceBlueprint])
 
   const selectedScheduleOption =
     SCHEDULE_OPTIONS.find(candidate => candidate.value === schedulePreset) ?? SCHEDULE_OPTIONS[0]
@@ -1033,7 +1056,7 @@ function CronEditorDialog({
     }
   }
 
-  const scheduleHint = scheduleSummary(selectedScheduleOption, schedule, c)
+  const scheduleHint = scheduleSummary(selectedScheduleOption, schedule, c, locale)
 
   // Configured providers with at least one available model — mirrors the chat
   // model picker's gate so only actually-selectable models are offered.

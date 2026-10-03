@@ -1826,7 +1826,10 @@ export const ar = defineLocale({
       'delivery-pending': 'نتيجة التسليم غير متحقق منها',
       unknown: 'نتيجة التنفيذ غير متحقق منها'
     },
+    defaultProfile: 'الافتراضي',
+    botChatTarget: profile => `محادثة المساعد (${profile})`,
     deliveryLabels: {
+      'bot-chat': 'محادثة المساعد',
       local: 'سطح المكتب هذا',
       telegram: 'Telegram',
       discord: 'Discord',
@@ -1907,7 +1910,7 @@ export const ar = defineLocale({
       running: 'قيد التشغيل',
       completed: 'اكتمل',
       failed: 'فشل',
-      unknown: 'النتيجة غير معروفة',
+      unknown: 'النتيجة غير معروفة'
     },
     failedUpdate: 'فشل التحديث',
     failedTrigger: 'فشل التشغيل',
@@ -1923,13 +1926,193 @@ export const ar = defineLocale({
     promptPlaceholder: 'ماذا تريد من Hermes أن يفعل؟',
     frequencyLabel: 'التكرار',
     deliverLabel: 'التسليم',
+    deliverNeedsHomeChannel: 'حدد قناة استقبال أولًا',
+    modelLabel: 'النموذج',
+    modelDefault: 'الافتراضي (النموذج العام)',
+    promptRequired: 'الرسالة مطلوبة.',
+    scheduleRequired: 'الجدول مطلوب.',
+    scriptOnlyEditHint: 'مهمة نصية فقط (بلا رسالة ذكاء اصطناعي). معرّف المهمة:',
     customScheduleLabel: 'جدول مخصص',
     customPlaceholder: 'تعبير cron',
     customHint: 'استخدم صيغة cron القياسية.',
     optional: 'اختياري',
     promptScheduleRequired: 'الرسالة والجدول مطلوبان',
     saveChanges: 'حفظ التغييرات',
-    createAction: 'إنشاء'
+    createAction: 'إنشاء',
+    tabs: { jobs: 'المهام', blueprints: 'القوالب' },
+    blueprints: {
+      tab: 'قوالب المهام',
+      startFrom: 'اختر قالبًا',
+      custom: 'مخصص',
+      subtitle: 'مهام آلية جاهزة',
+      dialogDesc: 'أدخل التفاصيل وحدد جدول التشغيل.',
+      scheduleIt: 'إنشاء مهمة مجدولة',
+      scheduling: 'جارٍ الإنشاء…',
+      scheduled: 'تم إنشاء المهمة المجدولة',
+      loading: 'جارٍ تحميل القوالب…',
+      failedLoad: 'تعذر تحميل القوالب',
+      emptyTitle: 'لا توجد قوالب',
+      emptyDesc: 'لا تتوفر قوالب مهام في بيئة التشغيل الحالية.',
+      catalog: {
+        'morning-brief': {
+          title: 'الموجز الصباحي',
+          description: 'ملخص يومي قصير لجدولك والطقس والأمور العاجلة.'
+        },
+        'important-mail': {
+          title: 'مراقبة البريد المهم',
+          description: 'فحص البريد دوريًا والتنبيه فقط إلى الرسائل التي تحتاج اهتمامًا.',
+          defaults: {
+            criteria: 'يتطلب ردًا اليوم أو يأتي من مديري أو عائلتي أو يذكر موعدًا نهائيًا'
+          }
+        },
+        'weekly-review': {
+          title: 'المراجعة الأسبوعية',
+          description: 'مراجعة ما أُنجز وما تبقى وما هو قادم.'
+        },
+        'workday-start': {
+          title: 'تذكير بدء العمل',
+          description: 'تذكير بجدولك وأولوياتك في أيام العمل.'
+        },
+        'custom-reminder': {
+          title: 'تذكير مخصص',
+          description: 'تذكير متكرر بمحتوى وجدول تختارهما.',
+          defaults: {
+            what: 'أخذ استراحة والتمدد'
+          }
+        },
+        'evening-winddown': {
+          title: 'مراجعة المساء',
+          description: 'نظرة سريعة إلى جدول الغد وما ينبغي تحضيره الليلة.'
+        },
+        'news-digest': {
+          title: 'ملخص أخبار الموضوع',
+          description: 'ملخص متكرر لموضوع يهمك، يقتصر على التطورات الجديدة.',
+          defaults: {
+            topic: 'الذكاء الاصطناعي والتكنولوجيا'
+          }
+        },
+        'bill-renewal-watch': {
+          title: 'تذكير الفواتير والتجديد',
+          description: 'تنبيه قبل الدفع أو تجديد الاشتراكات أو موعد الاستحقاق.',
+          fieldLabels: {
+            what: 'ما الذي يستحق الدفع'
+          },
+          defaults: {
+            what: 'اشتراكي في خدمة البث سيُجدد قريبًا'
+          }
+        },
+        'price-watch': {
+          title: 'مراقبة السعر والتوفر',
+          description: 'تنبيه عندما يطابق منتج أو رحلة أو فندق أو إعلان شروط السعر والتوفر.',
+          defaults: {
+            item: 'رابط منتج أو وصف دقيق لرحلة أو فندق أو إعلان',
+            condition: 'انخفاض السعر الإجمالي دون هدفي'
+          }
+        },
+        'competitor-watch': {
+          title: 'مراقبة أخبار المنافسين',
+          description: 'تتبع أخبار الشركات المحددة مع ملخص موثق بالمصادر.',
+          defaults: {
+            companies: 'الاسم الرسمي لشركتين أو ثلاث منافسة',
+            categories: 'إطلاق المنتجات وتغير الأسعار والتمويل والشراكات وتغير القيادات والحوادث'
+          }
+        },
+        'habit-checkin': {
+          title: 'متابعة العادات',
+          description: 'تذكير دوري بعادتك ومراجعة مدى الالتزام بها.',
+          defaults: {
+            habit: 'القراءة لمدة 20 دقيقة'
+          }
+        },
+        'hydration-move': {
+          title: 'تذكير الماء والحركة',
+          description: 'تذكير خلال اليوم بشرب الماء والوقوف والتمدد.'
+        },
+        'meal-plan': {
+          title: 'خطة الوجبات الأسبوعية',
+          description: 'خطة وجبات وقائمة مشتريات تناسب نظامك الغذائي ووقت الطهي.'
+        },
+        'learn-daily': {
+          title: 'التعلم اليومي',
+          description: 'درس قصير كل يوم في موضوع تختاره يتقدم تدريجيًا.',
+          fieldLabels: {
+            topic: 'موضوع التعلم'
+          },
+          defaults: {
+            topic: 'مفردات اللغة الإسبانية'
+          }
+        },
+        'gratitude-journal': {
+          title: 'الامتنان والتأمل',
+          description: 'دعوة مسائية هادئة للتأمل في اليوم وتدوين ما سار جيدًا.'
+        },
+        'on-this-day': {
+          title: 'في مثل هذا اليوم',
+          description: 'حدث تاريخي أو معلومة أو كلمة جديدة كل يوم.'
+        }
+      },
+      fieldLabels: {
+        time: 'وقت التشغيل',
+        deliver: 'إرسال إلى',
+        interval_min: 'معدل الفحص',
+        criteria: 'أبلغني فقط عن البريد الذي',
+        day: 'اليوم',
+        what: 'محتوى التذكير',
+        recurrence: 'أيام التكرار',
+        topic: 'الموضوع',
+        count: 'عدد النقاط',
+        item: 'ما الذي تراقبه',
+        condition: 'شرط التنبيه',
+        interval_h: 'معدل الفحص',
+        companies: 'الشركات',
+        categories: 'الأحداث المهمة',
+        habit: 'العادة',
+        interval_hours: 'معدل التذكير',
+        start_hour: 'ساعة البدء',
+        end_hour: 'ساعة الانتهاء',
+        diet: 'النظام الغذائي',
+        meals: 'الوجبات اليومية',
+        effort: 'جهد الطهي',
+        flavor: 'نوع المحتوى'
+      },
+      fieldHelp: {
+        time: 'التوقيت المحلي بنظام 24 ساعة، مثل 08:00',
+        deliver: 'اختر وجهة النتائج',
+        interval_min: 'الفاصل بين الفحوص بالدقائق',
+        topic: 'موضوع أو منتج أو شخص أو عبارة بحث',
+        item: 'رابط أو وصف دقيق يتضمن النوع والتواريخ والبائع',
+        condition: 'السعر المستهدف مع العملة أو التوفر أو تغير الشروط',
+        interval_h: 'الفاصل بين الفحوص بالساعات؛ راعِ حدود الطلبات',
+        companies: 'الأسماء الرسمية والنطاقات؛ تساعد الأسماء البديلة في إزالة التكرار',
+        interval_hours: 'الفاصل بين التذكيرات بالساعات',
+        start_hour: 'ساعة أول تذكير بنظام 24 ساعة',
+        end_hour: 'ساعة آخر تذكير بنظام 24 ساعة'
+      },
+      optionLabels: {
+        sunday: 'الأحد',
+        monday: 'الاثنين',
+        friday: 'الجمعة',
+        saturday: 'السبت',
+        everyday: 'كل يوم',
+        weekdays: 'أيام العمل',
+        weekends: 'عطلة نهاية الأسبوع',
+        'no restrictions': 'بلا قيود',
+        vegetarian: 'نباتي',
+        vegan: 'نباتي صرف',
+        'high-protein': 'عالي البروتين',
+        'low-carb': 'قليل الكربوهيدرات',
+        'dinner only': 'العشاء فقط',
+        'lunch and dinner': 'الغداء والعشاء',
+        'all three': 'الوجبات الثلاث',
+        quick: 'سريع',
+        medium: 'متوسط',
+        ambitious: 'متقن',
+        'on this day in history': 'في مثل هذا اليوم من التاريخ',
+        'word of the day': 'كلمة اليوم',
+        'science fact': 'معلومة علمية',
+        'quote of the day': 'اقتباس اليوم'
+      }
+    }
   },
   artifacts: {
     eyebrow: 'أصول النتائج',
