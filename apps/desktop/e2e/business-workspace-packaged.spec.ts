@@ -2486,8 +2486,8 @@ test('hc-901 packaged video upload opens a playable native lease and one continu
     await expect(page.getByRole('tab', { name: '快速分析' })).toHaveCount(0)
     const items = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop!.analysisDocuments!.list())
     const sourceId = items.items!.find(item => item.filename === 'native-review-video.srt')!.id
-    await verifySourceAnswer(page, sourceId, 'a2')
-    // Navigation preserves the mounted workspace. Explicitly closing it releases the view lease.
+    await verifySourceAnswer(page, sourceId, 'a2', false)
+    // Answering and citing preserve playback; closing the source releases the view lease.
     await expect(page.locator('video')).toHaveAttribute('src', mediaUrl)
     await page.getByRole('button', { name: '返回资料入口' }).click()
     expect(await app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, mediaUrl)).toBe(404)
@@ -2511,8 +2511,14 @@ test('hc-901 packaged video upload opens a playable native lease and one continu
       await test.info().attach(`hc901-video-conversation-${width}`, { path: screenshot, contentType: 'image/png' })
     }
 
+    const pairedUrl = (await page.locator('video').getAttribute('src'))!
     await openAccountDestination(page, '项目')
-    expect(await app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, mediaUrl)).toBe(404)
+    await expect(page.getByRole('heading', { name: '项目', exact: true, level: 1 })).toBeVisible()
+    expect(pairedUrl).toMatch(/^blob:/)
+    expect(await page.evaluate(url => fetch(url).then(() => false, () => true), pairedUrl)).toBe(true)
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    await page.getByRole('button', { name: /native-review-video.srt/ }).click()
+    await expect(page.getByRole('log').getByText('[本地测试] 当前资料的回答已附出处。', { exact: true })).toHaveCount(2)
     expect(fs.existsSync(originalPath)).toBe(true)
   } finally {
     await app.evaluate(() => { (globalThis as typeof globalThis & { restoreAnalysisDialog?: () => void }).restoreAnalysisDialog?.() })
