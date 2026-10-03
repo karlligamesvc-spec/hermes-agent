@@ -1597,7 +1597,10 @@ export function ChatSidebar({
               the signed-out case. Profile, Settings, connection management and
               session history live in one account menu. Passive channel rows do
               not consume conversation-list height. */}
-          <AccountPanel businessChrome={BUSINESS_WORKSPACE_ENABLED} />
+          <AccountPanel businessChrome={BUSINESS_WORKSPACE_ENABLED} onNavigateBusiness={id => {
+            const item = BUSINESS_SIDEBAR_NAV.find(candidate => candidate.id === id)
+            if (item) {onNavigate(item)}
+          }} />
         </div>
       </SidebarContent>
       <ProjectDialog />

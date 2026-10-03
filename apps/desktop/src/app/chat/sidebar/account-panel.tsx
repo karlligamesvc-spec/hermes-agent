@@ -49,7 +49,10 @@ function initialOf(name: string): string {
 // instead of spending permanent sidebar height on additional rows. Rendered
 // only on managed builds when signed in (the auth gate handles the signed-out
 // case); on a managed-disabled build the panel stays hidden.
-export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: { businessChrome?: boolean } = {}) {
+export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled(), onNavigateBusiness }: {
+  businessChrome?: boolean
+  onNavigateBusiness?: (id: 'projects' | 'scheduled-runs') => void
+} = {}) {
   const { t } = useI18n()
   const a = t.auth.account
   const nav = t.sidebar.nav
@@ -57,6 +60,15 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: 
   const { account, enabled, status } = useStore($authState)
   const [open, setOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+
+  function openBusinessDestination(id: 'projects' | 'scheduled-runs', route: string) {
+    if (onNavigateBusiness) {
+      onNavigateBusiness(id)
+    } else {
+      dismissNarrowSidebarOverlay()
+      navigate(route)
+    }
+  }
 
   async function signOut() {
     if (signingOut) {return}
@@ -168,11 +180,11 @@ export function AccountPanel({ businessChrome = isBusinessWorkspaceEnabled() }: 
           <span>{a.settings}</span>
         </DropdownMenuItem>
         {businessChrome && <>
-          <DropdownMenuItem onSelect={() => { dismissNarrowSidebarOverlay(); navigate(PROJECTS_ROUTE) }}>
+          <DropdownMenuItem onSelect={() => { openBusinessDestination('projects', PROJECTS_ROUTE) }}>
             <Codicon name="folder" size="0.875rem" />
             <span>{nav.projects}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => { dismissNarrowSidebarOverlay(); navigate(CRON_ROUTE) }}>
+          <DropdownMenuItem onSelect={() => { openBusinessDestination('scheduled-runs', CRON_ROUTE) }}>
             <Codicon name="calendar" size="0.875rem" />
             <span>{nav['scheduled-runs']}</span>
           </DropdownMenuItem>

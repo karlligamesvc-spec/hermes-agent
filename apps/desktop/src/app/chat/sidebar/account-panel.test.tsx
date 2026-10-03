@@ -154,6 +154,18 @@ describe('signed-in account navigation', () => {
     await waitFor(() => expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe('/settings'))
   })
 
+  it('uses the workspace navigation action when the shell supplies it', async () => {
+    const navigateBusiness = vi.fn()
+    render(<I18nProvider configClient={null} initialLocale="zh"><MemoryRouter initialEntries={['/analysis']}><AccountPanel onNavigateBusiness={navigateBusiness} /><CurrentPath /></MemoryRouter></I18nProvider>)
+
+    for (const [label, id] of [['项目', 'projects'], ['定时运行', 'scheduled-runs']] as const) {
+      fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })
+      fireEvent.click(await screen.findByRole('menuitem', { name: label }))
+      expect(navigateBusiness).toHaveBeenLastCalledWith(id)
+      expect(screen.getByRole('status', { name: 'current path' }).textContent).toBe('/analysis')
+    }
+  })
+
   it('leaves secondary business destinations out of the legacy account menu', async () => {
     render(<I18nProvider configClient={null} initialLocale="zh"><MemoryRouter><AccountPanel businessChrome={false} /></MemoryRouter></I18nProvider>)
     fireEvent.keyDown(screen.getByRole('button', { name: '打开账户菜单: Kael' }), { key: 'Enter' })

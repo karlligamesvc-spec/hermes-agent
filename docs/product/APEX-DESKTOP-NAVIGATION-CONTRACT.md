@@ -1,6 +1,6 @@
 # hc-901 Desktop primary and account navigation
 
-In the default APEX business shell, the primary rail contains only Start and Immersive Analysis. Projects and Scheduled runs live in the bottom-left account menu, alongside the existing Profile, Settings, Connected assistant, History and Deliverables entries. Selecting them uses the existing `/projects` and `/cron` pages and closes the transient narrow sidebar; it does not change the docked-sidebar preference or create/delete any business data.
+In the default APEX business shell, the primary rail contains only Start and Immersive Analysis. Projects and Scheduled runs live in the bottom-left account menu, alongside the existing Profile, Settings, Connected assistant, History and Deliverables entries. Selecting them reuses the shell navigation action for the existing `/projects` and `/cron` pages, preserving mounted workspaces and drafts, and closes the transient narrow sidebar; it does not change the docked-sidebar preference or create/delete any business data.
 
 The underlying route/action/shortcut catalog stays intact, including Projects-owned workflows, Cron shortcuts, direct routes and the legacy rollback rail. Legacy account chrome omits the newly moved business entries. The existing five-locale navigation labels are reused; Mac and Windows share the renderer. This source change does not publish an installer.
 
