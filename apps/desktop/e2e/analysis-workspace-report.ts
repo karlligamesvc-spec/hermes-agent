@@ -102,7 +102,7 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   await expect(reports.locator('pre').last()).toHaveText(secondBody)
   await expect(reports.locator('article').last()).toContainText('待你验收')
   // Preserve and assert the browser history before reload clears its observer.
-  expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
+  expect(await collectErrorBanners(page)).toEqual(['视频暂时无法加载，可重试或在原站打开。', '当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
   await page.reload()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}

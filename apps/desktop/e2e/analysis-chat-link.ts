@@ -16,6 +16,8 @@ export async function verifyAnalysisChatLink(fixture: PackagedMockBackendFixture
 
   if (outcome === 'error') {allowErrorBanners()}
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+  const back = page.getByRole('button', { name: '返回资料入口' })
+  if (await back.isVisible()) {await back.click()}
   await page.getByRole('textbox', { name: '粘贴资料链接' }).fill('https://www.iesdouyin.com/share/video/123456')
   await page.getByRole('button', { name: '打开链接' }).click()
   const overview = page.locator('details.analysis-conversation-advanced')

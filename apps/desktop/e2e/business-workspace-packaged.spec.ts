@@ -2476,7 +2476,9 @@ test('hc-901 packaged video upload opens a playable native lease and one continu
       await page.getByRole('textbox').scrollIntoViewIfNeeded()
       await expect(page.getByRole('textbox')).toBeInViewport()
       expect(await page.locator('.analysis-workspace-frame').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
-      await test.info().attach(`hc901-video-conversation-${width}`, { body: await page.screenshot(), contentType: 'image/png' })
+      const screenshot = test.info().outputPath(`hc901-video-conversation-${width}.png`)
+      await page.screenshot({ path: screenshot })
+      await test.info().attach(`hc901-video-conversation-${width}`, { path: screenshot, contentType: 'image/png' })
     }
 
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
@@ -2638,6 +2640,7 @@ test('hc-878 packaged local document import persists cited answers and notes und
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /local-review-document.txt/ }).click()
+    await page.getByRole('tab', { name: '研究笔记' }).click()
     await expect(page.getByText('Check the revenue source')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看出处 · 第 2 段' })).toBeVisible()
 
@@ -2701,6 +2704,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /cloud-review-document.txt/ }).click()
+    await page.getByRole('tab', { name: '研究笔记' }).click()
     await expect(page.getByText('Review cloud source')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看出处 · 第 1 段' })).toBeVisible()
     await page.getByRole('button', { name: '删除笔记' }).click()
