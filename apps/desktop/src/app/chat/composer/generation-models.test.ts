@@ -7,6 +7,7 @@ import {
   IMAGE_GENERATION_MODELS,
   previouslySelectedImageModel,
   saveImageGenerationModel,
+  saveVideoGenerationModel,
   selectedGenerationModel,
   selectGenerationModel,
   VIDEO_GENERATION_MODELS
@@ -89,5 +90,36 @@ describe('APEX generation model picker', () => {
     const prompt = generationStarter('我想生成一张图片,想法是:', IMAGE_GENERATION_MODELS[1])
     expect(prompt).toContain('使用模型：Gemini Image 2.5')
     expect(prompt).not.toContain('gemini-2.5-flash-image')
+  })
+})
+
+
+describe('video model runtime binding', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.clearAllMocks()
+  })
+
+  it.each(VIDEO_GENERATION_MODELS)('saves $label before accepting the selection', async model => {
+    let finish!: (result: { ok: boolean }) => void
+    vi.mocked(saveHermesConfig).mockReturnValueOnce(new Promise(resolve => {finish = resolve}))
+    const pending = saveVideoGenerationModel(model.id)
+    expect(saveHermesConfig).toHaveBeenCalledWith({ apex: { generation_video_model: model.id } })
+    expect(selectedGenerationModel('video').id).toBe('doubao-seedance-2-0-mini-260615')
+    finish({ ok: true })
+    expect((await pending).id).toBe(model.id)
+    expect(selectedGenerationModel('video').id).toBe(model.id)
+  })
+
+  it('retains the current video selection when saving fails', async () => {
+    selectGenerationModel('video', 'MiniMax-H3')
+    vi.mocked(saveHermesConfig).mockResolvedValueOnce({ ok: false })
+    await expect(saveVideoGenerationModel('doubao-seedance-2-0-260128')).rejects.toThrow()
+    expect(selectedGenerationModel('video').id).toBe('MiniMax-H3')
+  })
+
+  it('rejects unknown video models before writing configuration', async () => {
+    await expect(saveVideoGenerationModel('unknown')).rejects.toThrow()
+    expect(saveHermesConfig).not.toHaveBeenCalled()
   })
 })

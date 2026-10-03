@@ -73,22 +73,39 @@ export function selectGenerationModel(kind: GenerationKind, id: string): Generat
 
 export function previouslySelectedImageModel(): GenerationModel | null {
   const stored = storedString(MODEL_KEYS.image)
+
   return IMAGE_GENERATION_MODELS.find(model => model.id === stored) ?? null
 }
 
-export async function saveImageGenerationModel(id: string): Promise<GenerationModel> {
-  const selected = IMAGE_GENERATION_MODELS.find(model => model.id === id)
+export function previouslySelectedVideoModel(): GenerationModel | null {
+  const stored = storedString(MODEL_KEYS.video)
+
+  return VIDEO_GENERATION_MODELS.find(model => model.id === stored) ?? null
+}
+
+async function saveGenerationModel(kind: GenerationKind, id: string): Promise<GenerationModel> {
+  const selected = generationModels(kind).find(model => model.id === id)
+
   if (!selected) {
-    throw new Error(`Unknown image generation model: ${id}`)
+    throw new Error(`Unknown ${kind} generation model: ${id}`)
   }
 
-  // Persist at the gateway before changing the visible selection. The image
-  // tool reads this same value when the model omits its optional model arg.
-  const result = await saveHermesConfig({ apex: { generation_image_model: selected.id } })
+  // Both tools read the runtime preference even when the LLM omits model.
+  const result = await saveHermesConfig({ apex: { [`generation_${kind}_model`]: selected.id } })
+
   if (!result.ok) {
-    throw new Error('Could not save the image generation model')
+    throw new Error(`Could not save the ${kind} generation model`)
   }
-  return selectGenerationModel('image', selected.id)
+
+  return selectGenerationModel(kind, selected.id)
+}
+
+export function saveImageGenerationModel(id: string): Promise<GenerationModel> {
+  return saveGenerationModel('image', id)
+}
+
+export function saveVideoGenerationModel(id: string): Promise<GenerationModel> {
+  return saveGenerationModel('video', id)
 }
 
 export function generationStarter(starter: string, model: GenerationModel): string {

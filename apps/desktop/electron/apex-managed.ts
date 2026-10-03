@@ -207,6 +207,7 @@ const APEX_PRODUCT_DEFAULTS = {
   // config rather than renderer-only storage so a plain chat request uses the
   // model shown in the Desktop picker.
   'apex.generation_image_model': 'gpt-image-2.5-flare',
+  'apex.generation_video_model': 'doubao-seedance-2-0-mini-260615',
   'display.language': 'zh',
   'display.show_reasoning': true,
   'agent.image_input_mode': 'auto',

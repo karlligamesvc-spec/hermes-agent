@@ -18962,6 +18962,7 @@ const SEED_PRODUCT_DEFAULTS_BLOCK =
   '# APEX product defaults: image attachments auto-routed by model vision;\n' +
   'apex:\n' +
   '  generation_image_model: gpt-image-2.5-flare\n' +
+  '  generation_video_model: doubao-seedance-2-0-mini-260615\n' +
   '# Hermes-aligned deep-work budgets: main=500 / child=250; durable sessions;\n' +
   '# manual approvals; periodic memory/Skill nudges and iron-proxy off;\n' +
   '# full 2,000-line tool output; empty timezone =\n' +

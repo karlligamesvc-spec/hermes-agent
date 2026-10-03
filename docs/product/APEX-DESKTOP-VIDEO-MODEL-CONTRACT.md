@@ -1,0 +1,11 @@
+# hc-845 Video model selection
+
+The Desktop video picker defaults to Seedance 2.0 Mini, saves apex.generation_video_model through the active runtime config API before acknowledging a change, and migrates a previously saved renderer-only choice like the image picker. Fresh seeds and upgrade reconciliation supply the same missing default without overwriting explicit preferences. Image and video settings remain independent.
+
+The platform video plugin reads the preference on every call. Saved choices win over LLM arguments; absent Desktop preferences keep hosted legacy behavior. Invalid preferences fail before generation. The companion ApexNodes change also aligns the video catalog and unset paid-provider default to Mini; the existing paid-provider switch remains OFF until explicitly authorized. Public free Agnes endpoints keep their provider and pricing.
+
+Outlets: renderer picker/default/legacy local selection, config save failure, fresh seed, upgrade reconciliation, current profile tool execution, curated model catalog and hosted/public legacy compatibility. Mac and Windows share the code; this source PR does not publish an installer or enable a provider.
+
+Smoke from apps/desktop: npx vitest run src/app/chat/composer/generation-models.test.ts src/app/chat/composer/context-menu.test.tsx; npx vitest run --project electron electron/apex-managed.test.ts; npm run check:lint. After CSC_IDENTITY_AUTO_DISCOVERY=false npm run pack: npx playwright test e2e/business-workspace-packaged.spec.ts -g 'hc-845 packaged video picker' --workers=1 --reporter=list.
+
+Native smoke starts with a fresh isolated runtime, selects MiniMax H3 via the actual composer menu, independently reads config.yaml, reloads and verifies the retained selection, then selects Mini and checks the file again. Companion plugin tests use real YAML and a local HTTP server to check actual payloads and changes at call time. These smokes do not establish upstream render capacity, cost/visual quality, production plugin delivery, Windows hardware or an updater release. Reverse validation saving video under the image key must fail the video config payload assertions; removing plugin preference precedence must fail the HTTP payload assertion.

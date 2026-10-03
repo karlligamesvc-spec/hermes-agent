@@ -1095,6 +1095,30 @@ test('fresh packaged app exposes the business workspace without implementation v
   }
 })
 
+test('hc-845 packaged video picker persists the real runtime preference and default', async () => {
+  const { page } = fixture!
+  const configPath = path.join(fixture!.sandbox.hermesHome, 'config.yaml')
+  await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: doubao-seedance-2-0-mini-260615/)
+  await page.getByRole('textbox', { name: '业务目标' }).fill('Local video model preference test')
+  await page.getByRole('button', { name: '开始执行' }).click()
+  const composer = page.locator('[data-slot="composer-root"]:visible').first()
+  await expect(composer).toBeVisible({ timeout: 60_000 })
+  await expect(composer.getByRole('button', { name: 'Add context', exact: true })).toBeEnabled()
+  await composer.getByRole('button', { name: 'Add context', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^视频/ }).hover()
+  await page.getByRole('menuitemradio', { name: 'MiniMax H3', exact: true }).click()
+  await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: MiniMax-H3/)
+  await expect.poll(() => composer.getByRole('textbox').evaluate(element => element.textContent)).toContain('使用模型：MiniMax H3')
+  await page.reload()
+  await waitForAppReady(fixture!, 120_000)
+  const reopened = page.locator('[data-slot="composer-root"]:visible').first()
+  await reopened.getByRole('button', { name: 'Add context', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^视频/ }).hover()
+  await expect(page.getByRole('menuitemradio', { name: 'MiniMax H3', exact: true })).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('menuitemradio', { name: 'Seedance 2.0 Mini', exact: true }).click()
+  await expect.poll(() => fs.readFileSync(configPath, 'utf8')).toMatch(/generation_video_model: doubao-seedance-2-0-mini-260615/)
+})
+
 test('packaged sidebar uses the APEX app mark and keeps Chinese assistant creation reachable', async () => {
   const page = fixture!.page
 
