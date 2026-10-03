@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import type { Page } from '@playwright/test'
 
+import { openAccountDestination } from './business-navigation'
 import type { PackagedMockBackendFixture } from './fixtures'
 import { resolvePackagedE2ePython } from './python-prerequisite'
 import { expect, test } from './test'
@@ -57,10 +58,10 @@ export async function verifyLateSessionRecovery(fixture: PackagedMockBackendFixt
   }, missingId)
 
   try {
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    await openAccountDestination(page, '定时运行')
     await page.evaluate(id => { window.location.hash = `#/${id}` }, missingId)
     await expect.poll(() => app.evaluate(() => (globalThis as typeof globalThis & { recoveryProbe?: Probe }).recoveryProbe?.read().held), { timeout: 20_000 }).toBe(true)
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    await openAccountDestination(page, '定时运行')
     const target = await page.evaluate(() => window.location.hash)
 
     expect(target).toContain('/cron')
@@ -124,7 +125,7 @@ export async function verifyCronTimerExecution(fixture: PackagedMockBackendFixtu
       }
     }
 
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    await openAccountDestination(page, '定时运行')
     await page.getByRole('button', { name: /hc-889 scheduled/ }).first().click()
 
     // No trigger API, clock override or direct tick call: the app's ordinary
@@ -192,7 +193,7 @@ export async function verifyCronExecutionHistory(fixture: PackagedMockBackendFix
   const jobPath = `/api/cron/jobs/${encodeURIComponent(job.id)}`
 
   try {
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    await openAccountDestination(page, '定时运行')
     await page.getByRole('button', { name: /hc-889 脚本验收/ }).first().click()
     await page.getByRole('button', { name: '恢复', exact: true }).click()
     await expect.poll(async () => (await api<Job>(page, { path: jobPath })).enabled).toBe(true)
@@ -218,7 +219,7 @@ export async function verifyCronExecutionHistory(fixture: PackagedMockBackendFix
     await page.reload()
     // Reload can restore the business Start surface, which has no chat textarea.
     // Let the actual navigation action wait for boot overlays to release it.
-    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '定时运行' }).first().click()
+    await openAccountDestination(page, '定时运行')
     await page.getByRole('button', { name: /hc-889 脚本验收/ }).first().click()
     await expect(page.locator('[data-cron-execution-id]')).toHaveCount(2)
     await expect(page.locator('[data-cron-executions] button')).toHaveCount(0)

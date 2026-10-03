@@ -2,8 +2,10 @@ import { expect, type Page } from '@playwright/test'
 
 import type { AnalysisDocumentsBridge } from '../src/app/business-workspace/analysis-types'
 
+import { openAccountDestination } from './business-navigation'
+
 /** Real renderer -> runtime RPC -> HTTP model double -> native storage -> reopen. */
-export async function verifySourceAnswer(page: Page, sourceId: string, expectedAnchorId: string) {
+export async function verifySourceAnswer(page: Page, sourceId: string, expectedAnchorId: string, reopen = true) {
   const question = `HC886_SOURCE_QUESTION ${sourceId}`
   await page.getByRole('textbox', { name: '针对当前资料提问' }).fill(question)
   const conversation = await page.getByRole('log').count() > 0
@@ -30,7 +32,10 @@ export async function verifySourceAnswer(page: Page, sourceId: string, expectedA
     location: source.anchors!.find(anchor => anchor.id === expectedAnchorId)!.location }])
   await answer().getByRole('button', { name: /查看出处/ }).click()
   await expect(page.locator(`#analysis-anchor-${expectedAnchorId}`)).toBeInViewport()
-  await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+
+  if (!reopen) {return}
+  await openAccountDestination(page, '项目')
+  await expect(page.getByRole('heading', { name: '项目', exact: true, level: 1 })).toBeVisible()
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: new RegExp(source.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).click()
   await expect(answer()).toContainText('[本地测试] 当前资料的回答已附出处。')

@@ -192,7 +192,7 @@ const SIDEBAR_NAV = BUSINESS_WORKSPACE_ENABLED ? BUSINESS_SIDEBAR_NAV : LEGACY_S
 // These destinations remain part of APEX's navigation contract, but live in
 // the bottom account menu alongside Profile and Settings. Keeping them out of
 // the standing rail gives the conversation list the full remaining height.
-const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history', 'deliverables'])
+const ACCOUNT_MENU_NAV_IDS = new Set(['projects', 'scheduled-runs', 'assistant', 'history', 'deliverables'])
 
 // Two modes via the `compact` height variant (styles.css):
 //   tall    → each section is shrink-0, capped, its own scroller; Sessions is flex-1.
@@ -1597,7 +1597,10 @@ export function ChatSidebar({
               the signed-out case. Profile, Settings, connection management and
               session history live in one account menu. Passive channel rows do
               not consume conversation-list height. */}
-          <AccountPanel businessChrome={BUSINESS_WORKSPACE_ENABLED} />
+          <AccountPanel businessChrome={BUSINESS_WORKSPACE_ENABLED} onNavigateBusiness={id => {
+            const item = BUSINESS_SIDEBAR_NAV.find(candidate => candidate.id === id)
+            if (item) {onNavigate(item)}
+          }} />
         </div>
       </SidebarContent>
       <ProjectDialog />

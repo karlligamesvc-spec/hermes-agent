@@ -55,7 +55,8 @@ one-off at the call site.
   route on close. Model/session pickers and dialogs layer above the current
   surface; they are not navigation stacks.
 - **Scheduled jobs is a durable destination.** It renders in the main content
-  area beside New session and Search. Its create/edit/delete confirmations may
+  area, reached from the bottom-left account menu in the APEX business shell.
+  Its create/edit/delete confirmations may
   use dialogs, but the destination itself never uses an overlay or backdrop.
 - **Panes are working context.** Preview, files, review, and terminal remain
   attached to the current task. Their state survives temporary hiding and chat
@@ -63,7 +64,7 @@ one-off at the call site.
 - **One action, one home.** A command may have keyboard, palette, and visible
   affordances, but they invoke the same action and state. Do not fork behavior
   per entry point.
-- **Projects own workspace cwd.** Use Sidebar → Projects for local folders and
+- **Projects own workspace cwd.** Use Account menu → Projects in the APEX business shell for local folders and
   worktrees; do not reintroduce a per-session/right-sidebar folder-picker flow.
 
 Navigation must preserve context. A background session finishing, a tool result

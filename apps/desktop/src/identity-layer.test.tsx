@@ -690,7 +690,7 @@ describe('identity: the brand skin survives', () => {
     const accountPanel = readSource('src', 'app', 'chat', 'sidebar', 'account-panel.tsx')
     const zh = readSource('src', 'i18n', 'zh.ts')
 
-    expect(sidebar).toContain("const ACCOUNT_MENU_NAV_IDS = new Set(['assistant', 'history', 'deliverables'])")
+    expect(sidebar).toContain("const ACCOUNT_MENU_NAV_IDS = new Set(['projects', 'scheduled-runs', 'assistant', 'history', 'deliverables'])")
     expect(sidebar).not.toContain('utilitySidebarNavItems')
     expect(accountPanel).toContain('<span>{nav.assistant}</span>')
     expect(accountPanel).toContain('<span>{nav.history}</span>')
@@ -712,7 +712,7 @@ describe('identity: the brand skin survives', () => {
 })
 
 describe('identity: the APEX business shell stays user-facing', () => {
-  it('pins primary destinations in order with workflows owned by Projects', () => {
+  it('keeps stable route destinations with workflows owned by Projects', () => {
     expect(APEX_PRIMARY_NAVIGATION.map(item => item.id)).toEqual([
       'start',
       'projects',

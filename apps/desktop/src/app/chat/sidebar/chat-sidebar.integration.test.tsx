@@ -108,7 +108,8 @@ describe('ChatSidebar navigation activity', () => {
 
   it('keeps navigation and session activity coherent with the focused pane', () => {
     renderSidebar('/workflows', 'workflows')
-    expectOnlyCurrent('Projects')
+    expect([...document.querySelectorAll('[data-apex-business-nav]')].map(item => item.getAttribute('data-apex-business-nav'))).toEqual(['start', 'analysis'])
+    expectOnlyCurrent(null)
     expectOnlySelectedSession(null)
 
     focus('tile-one-group')
@@ -120,7 +121,7 @@ describe('ChatSidebar navigation activity', () => {
     expectOnlySelectedSession('Tile two')
 
     focus(null)
-    expectOnlyCurrent('Projects')
+    expectOnlyCurrent(null)
     expectOnlySelectedSession(null)
 
     focus('tile-two-group')
@@ -137,14 +138,15 @@ describe('ChatSidebar navigation activity', () => {
     })
 
     for (const [pathname, currentView, label] of [
-      ['/projects', 'projects', 'Projects'],
-      ['/cron', 'cron', 'Scheduled runs'],
+      ['/projects', 'projects', null],
+      ['/cron', 'cron', null],
       ['/deliverables', 'deliverables', null]
     ] as const) {
       cleanup()
       focus('workspace-group')
       renderSidebar(pathname, currentView)
       expectOnlyCurrent(label)
+
       if (currentView === 'deliverables') {expect(screen.queryByRole('button', { name: 'Deliverables' })).toBeNull()}
       expectOnlySelectedSession(null)
 
