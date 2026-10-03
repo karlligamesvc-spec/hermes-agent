@@ -24,7 +24,7 @@ describe('analysis source submission', () => {
 
     const item = {
       id: 'local-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', filename: 'shared-video.srt',
-      kind: 'subtitle', status: 'ready', storageMode: 'local', evidenceOrigin: 'video_audio',
+      kind: 'subtitle', status: 'ready', storageMode: 'local', sourceUrl: url, evidenceOrigin: 'video_audio',
       anchors: [{ id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '真实片段' }],
       notes: [], questions: []
     }
@@ -71,6 +71,9 @@ describe('analysis source submission', () => {
     expect(transcribeVideoLink).toHaveBeenCalledTimes(2)
     expect(transcribeVideoLink).toHaveBeenLastCalledWith(url)
     expect(get).toHaveBeenCalledWith(item.id)
+    expect(screen.getByText(url, { exact: true })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '粘贴资料链接' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '返回资料入口' }))
     expect((screen.getByRole('textbox', { name: '粘贴资料链接' }) as HTMLInputElement).value).toBe('')
   })
 

@@ -29,12 +29,17 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   fs.writeFileSync(path.join(directory, 'ANALYSIS.md'), body)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}
+  const tools = page.locator('details.analysis-conversation-advanced')
+  if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
   const reports = page.getByRole('region', { name: '深度分析报告' })
   await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
   await expect(reports.locator('summary')).toContainText('ANALYSIS.md')
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}
+  if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
   await reports.locator('summary').click()
   await expect(reports.locator('pre')).toHaveText(body)
   await expect(reports.locator('script')).toHaveCount(0)
@@ -65,7 +70,7 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
   await expect(reports.locator('summary')).toHaveCount(1)
   // Preparing alone leaves the accepted output selected. A second accepted draft must never consume it.
-  await page.getByRole('region', { name: '视频声音速览' }).getByRole('button', { name: '准备深度拆解' }).click()
+  await tools.getByRole('button', { name: '准备深度拆解' }).click()
   const secondDraft = await page.getByRole('textbox', { name: '业务目标' }).inputValue()
   const secondDirectory = JSON.parse(secondDraft.trim().split('\n').at(-1)!) as string
   const secondBinding = JSON.parse(fs.readFileSync(path.join(secondDirectory, 'apex-source.json'), 'utf8'))
@@ -85,6 +90,7 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   await expect.poll(async () => (await read()).item?.workspaceId, { timeout: 30_000 }).toBe(secondBinding.workspace_id)
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}
   await reports.getByRole('button', { name: '收取 ANALYSIS.md' }).click()
   await expect(reports.getByRole('alert')).toHaveText('指定报告尚未生成。请在助手完成后重试。')
   await expect(reports.locator('summary')).toHaveCount(1)
@@ -96,9 +102,10 @@ export async function verifyWorkspaceReport(app: ElectronApplication, page: Page
   await expect(reports.locator('pre').last()).toHaveText(secondBody)
   await expect(reports.locator('article').last()).toContainText('待你验收')
   // Preserve and assert the browser history before reload clears its observer.
-  expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
+  expect(await collectErrorBanners(page)).toEqual(['视频暂时无法加载，可重试或在原站打开。', '当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
   await page.reload()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+  if (await page.locator('details.analysis-conversation-advanced').getAttribute('open') === null) {await page.locator('details.analysis-conversation-advanced > summary').click()}
   await reports.locator('summary').first().click()
   await expect(reports.locator('article').first()).toContainText('你已标记可用')
   await expect(reports.locator('article').first().getByLabel('验收备注')).toHaveValue('[本地测试] 我已核对原文引用')

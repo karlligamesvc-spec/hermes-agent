@@ -16,7 +16,7 @@ import { verifyAnalysisChatLink } from './analysis-chat-link'
 import { verifySourceAnswer } from './analysis-source-answer'
 import { verifyWorkspaceReport } from './analysis-workspace-report'
 import { verifyCronExecutionHistory, verifyCronTimerExecution, verifyLateSessionRecovery } from './cron-execution-history'
-import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady } from './fixtures'
+import { type PackagedMockBackendFixture, setupPackagedMockBackend, waitForAppReady, writeMockProviderConfig } from './fixtures'
 import { allowErrorBanners, collectErrorBanners, expect, test } from './test'
 
 // Browser evaluation uses the same analysis contract as the production bridge.
@@ -457,14 +457,26 @@ async function startPhase1ReviewApi() {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/v1/desktop/provision-key/capabilities') {
+      json(200, { version: 1 })
+      return
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/v1/desktop/provision-key/revoke') {
-      json(200, { revoked: true })
+      const chunks: Buffer[] = []
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+      const input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      json(200, { revoked: true, provision_revision: input.provision_revision })
 
       return
     }
 
     if (request.method === 'POST' && url.pathname === '/api/v1/desktop/provision-key') {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+      const input = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       json(200, {
+        provision_revision: input.provision_revision,
         api_key: 'sk-apex-local-phase1-review',
         base_url: relayBaseUrl,
         email: 'phase1-review@local.test',
@@ -692,6 +704,27 @@ async function startPhase1ReviewApi() {
           { id: 'a2', location: { paragraph: 2, heading: 'Quarterly report' }, text: 'Revenue 423 units' }
         ]
       })
+
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/v1/account/analysis/video-links/upload-transcribe') {
+      const chunks: Buffer[] = []
+
+      for await (const chunk of request) {chunks.push(Buffer.from(chunk))}
+      const bytes = Buffer.concat(chunks)
+
+      if (request.headers.authorization !== `Bearer ${ANALYSIS_REVIEW_TOKEN}` ||
+        !bytes.includes(fs.readFileSync(path.resolve(import.meta.dirname, 'media/local-frame-evidence.webm')))) {
+        json(400, { detail: { code: 'invalid_video_review_upload' } })
+
+        return
+      }
+
+      json(200, { parsed: { filename: 'native-review-video.srt', evidence_origin: 'uploaded_video_audio',
+        srt: '1\n00:00:01,000 --> 00:00:02,000\n[本地测试] 开头原文\n\n2\n00:00:02,000 --> 00:00:03,000\n[本地测试] 中段原文\n',
+        anchors: [ { id: 'a1', location: { start_seconds: 1, end_seconds: 2 }, text: '[本地测试] 开头原文' },
+          { id: 'a2', location: { start_seconds: 2, end_seconds: 3 }, text: '[本地测试] 中段原文' } ] } })
 
       return
     }
@@ -960,6 +993,20 @@ test.beforeAll(
       APEXNODES_API_BASE: reviewApi.url,
       APEXNODES_AUTH_BASE: reviewApi.url
     })
+    writeMockProviderConfig(fixture.sandbox.hermesHome, fixture.mockUrl, undefined, `auxiliary:
+  title_generation:
+    enabled: false
+  source_question:
+    provider: custom
+    base_url: ${fixture.mockUrl}/v1
+    model: mock-model
+    api_key: e2e-mock-key
+  video_overview:
+    provider: custom
+    base_url: ${fixture.mockUrl}/v1
+    model: mock-model
+    api_key: e2e-mock-key
+`)
     reviewApi.setRelayBaseUrl(fixture.mockUrl)
     await fixture.page.getByRole('button', { name: '使用自己的密钥' }).click()
     const chooseLater = fixture.page.getByRole('button', { name: '稍后再选择提供方' })
@@ -981,7 +1028,7 @@ test.beforeAll(
       } } }).hermesDesktop?.managed?.signIn({ email: 'phase1-review@local.test', password: 'local-review-only' })
     )
 
-    expect(signIn?.ok).toBe(true)
+    expect(signIn?.ok, String((signIn as { message?: string } | undefined)?.message)).toBe(true)
     expect(signIn?.hasRelayKey).toBe(true)
     await fixture.page.reload()
     await waitForAppReady(fixture, 120_000)
@@ -2195,12 +2242,15 @@ async function verifySelectedDeepReport(app: ElectronApplication, page: Page) {
   }, file)
 
   try {
+    const tools = page.locator('details.analysis-conversation-advanced')
+    if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
     const reports = page.getByRole('region', { name: '深度分析报告' })
     await reports.getByRole('button', { name: '保存报告文件' }).click()
     await expect(reports.locator('summary')).toContainText('ANALYSIS.md')
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '开始' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
+    if (await tools.getAttribute('open') === null) {await tools.locator(':scope > summary').click()}
     await reports.locator('summary').click()
     await expect(reports.locator('pre')).toHaveText(body)
     await expect(reports.locator('script')).toHaveCount(0)
@@ -2243,17 +2293,12 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await page.getByRole('textbox', { name: '粘贴资料链接' }).fill(ANALYSIS_REVIEW_VIDEO_URL)
   await page.getByRole('button', { name: '打开链接' }).click()
 
-  const overview = page.getByRole('region', { name: '视频声音速览' })
-
-  await expect(overview).toBeVisible({ timeout: 15_000 })
-  await expect(overview).toContainText('已取得 2 条带时间码的语音片段，覆盖 0:01–0:43')
-  await expect(overview).toContainText('[本地测试] 中段原文')
-  await expect(page.getByText('不包含画面或镜头证据。')).toBeVisible()
-  const semantic = page.getByRole('region', { name: '语音内容摘要' })
-  await expect(semantic).toContainText('[本地测试] 视频包含开场与中段讲述。', { timeout: 90_000 })
-  await expect(semantic).toContainText('摘要已保存')
-  await semantic.getByRole('button', { name: '查看出处 · 0:40 起' }).click()
-  await expect(page.locator('#analysis-anchor-a2')).toBeInViewport()
+  const overview = page.locator('details.analysis-conversation-advanced')
+  await expect(page.getByRole('log')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(ANALYSIS_REVIEW_VIDEO_URL, { exact: true })).toBeVisible()
+  await expect(page.getByRole('textbox')).toHaveCount(1)
+  await expect(page.locator('#analysis-anchor-a2')).toContainText('[本地测试] 中段原文')
+  await expect(page.getByRole('region', { name: '语音内容摘要' })).toHaveCount(0)
 
   const localItems = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop?.analysisDocuments?.list())
 
@@ -2268,12 +2313,16 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
     const id = listed.items!.find(item => item.filename === 'local-review-video-transcript.srt')!.id
     const opened = await api.get(id)
     const source = opened.item!
-    const rejected = await api.saveOverview(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', source.video_overviews!.zh)
+    const summary = { schema: 1 as const, revision: source.analysis_revision!, locale: 'zh' as const,
+      points: [{ text: '[本地测试] 视频包含开场与中段讲述。', anchor_ids: ['a1', 'a2'] }] }
+    const saved = await api.saveOverview(id, source.analysis_scope!, summary)
+    if (!saved.ok) {throw new Error(saved.code)}
+    const rejected = await api.saveOverview(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', summary)
 
     const staleTranscript = await api.transcriptForDraft(id, source.analysis_scope!, 'stale')
     const wrongOwnerTranscript = await api.transcriptForDraft(id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', source.analysis_revision!)
 
-    return { summary: source.video_overviews!.zh, rejected, staleTranscript, wrongOwnerTranscript,
+    return { summary, rejected, staleTranscript, wrongOwnerTranscript,
       anchors: source.anchors!.map(anchor => ({ id: anchor.id, ...anchor.location, text: anchor.text })) }
   })
 
@@ -2319,6 +2368,7 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
 
   const pasteDirectory = path.join(await app.evaluate(({ app }) => app.getPath('userData')), 'composer-pastes')
   const previousPastes = new Set(fs.existsSync(pasteDirectory) ? fs.readdirSync(pasteDirectory) : [])
+  if (await overview.getAttribute('open') === null) {await overview.locator(':scope > summary').click()}
   await expect(overview).toContainText('仅在你点击发送后交给助手')
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
   const goalWithFrame = page.getByRole('textbox', { name: '业务目标' })
@@ -2352,8 +2402,9 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
   await page.getByRole('button', { name: /local-review-video-transcript.srt/ }).click()
   await expect(overview).toBeVisible()
-  await expect(semantic).toContainText('[本地测试] 视频包含开场与中段讲述。')
-  expect(fixture!.mock.receivedPrompts.filter(text => text.includes('"transcript"') && text.includes('[本地测试] 中段原文'))).toHaveLength(1)
+  await expect(page.getByRole('log')).toContainText('[本地测试] 视频包含开场与中段讲述。')
+  if (await overview.getAttribute('open') === null) {await overview.locator(':scope > summary').click()}
+  expect(fixture!.mock.receivedPrompts.filter(text => text.includes('"transcript"') && text.includes('[本地测试] 中段原文'))).toHaveLength(0)
   await expect(page.getByRole('region', { name: '本次查看的画面截图' })).toHaveCount(0)
   await overview.getByRole('button', { name: '准备深度拆解' }).click()
 
@@ -2373,7 +2424,69 @@ test('hc-872 packaged analysis stores timed speech locally and prepares a review
   await expect(page.getByRole('button', { name: '开始执行' })).toBeVisible()
   await expect(page.locator('[data-role="assistant"]')).toHaveCount(0)
   await verifyWorkspaceReport(app, page)
-  expect(await collectErrorBanners(page)).toEqual(['当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
+  expect(await collectErrorBanners(page)).toEqual(['视频暂时无法加载，可重试或在原站打开。', '当前画面无法截取，请先播放或跳到可播放的时间。', '指定报告尚未生成。请在助手完成后重试。'])
+})
+
+test('hc-901 packaged video upload opens a playable native lease and one continuous conversation', async () => {
+  const { app, page } = fixture!
+  const originalPath = path.resolve(import.meta.dirname, 'media/local-frame-evidence.webm')
+  await app.evaluate(({ dialog }, selectedPath) => {
+    const host = globalThis as typeof globalThis & { restoreAnalysisDialog?: () => void }
+    const original = dialog.showOpenDialog
+
+    host.restoreAnalysisDialog = () => {dialog.showOpenDialog = original}
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] })
+  }, originalPath)
+
+  try {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setBounds({ width: 1440, height: 900 }, false))
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
+    const back = page.getByRole('button', { name: '返回资料入口' })
+
+    if (await back.isVisible()) {await back.click()}
+    await page.getByRole('button', { name: '选择本地视频转写' }).click()
+    const player = page.getByLabel('本地视频: local-frame-evidence.webm')
+    await expect(player).toHaveAttribute('src', /^hermes-media:\/\/analysis\/[a-f0-9-]+\.webm$/)
+    const mediaUrl = (await player.getAttribute('src'))!
+    await expect.poll(() => player.evaluate(video => (video as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2)
+    await player.evaluate(video => (video as HTMLVideoElement).play())
+    await expect.poll(() => player.evaluate(video => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(0)
+    await player.evaluate(video => (video as HTMLVideoElement).pause())
+    await expect(page.getByRole('textbox')).toHaveCount(1)
+    await expect(page.getByRole('tab', { name: '快速分析' })).toHaveCount(0)
+    const items = await page.evaluate(() => (window as AnalysisReviewWindow).hermesDesktop!.analysisDocuments!.list())
+    const sourceId = items.items!.find(item => item.filename === 'native-review-video.srt')!.id
+    await verifySourceAnswer(page, sourceId, 'a2')
+    // Navigation preserves the mounted workspace. Explicitly closing it releases the view lease.
+    await expect(page.locator('video')).toHaveAttribute('src', mediaUrl)
+    await page.getByRole('button', { name: '返回资料入口' }).click()
+    expect(await app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, mediaUrl)).toBe(404)
+    await page.getByRole('button', { name: /native-review-video.srt/ }).click()
+    await expect(page.locator('video')).toHaveCount(0)
+    await page.getByLabel('选择本地视频播放').setInputFiles(originalPath)
+    await page.getByRole('textbox', { name: '针对当前资料提问' }).fill(`HC886_SOURCE_QUESTION Follow up ${sourceId}`)
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByRole('log').getByText('[本地测试] 当前资料的回答已附出处。', { exact: true })).toHaveCount(2, { timeout: 90_000 })
+    await expect(page.getByRole('textbox')).toHaveValue('')
+    await page.getByRole('log').getByRole('button', { name: '查看出处 · 0:02 起', exact: true }).last().click()
+    await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime)).toBeCloseTo(2, 1)
+
+    for (const width of [1440, 900]) {
+      await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]?.setBounds({ width, height: 900 }, false), width)
+      await page.getByRole('textbox').scrollIntoViewIfNeeded()
+      await expect(page.getByRole('textbox')).toBeInViewport()
+      expect(await page.locator('.analysis-workspace-frame').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      const screenshot = test.info().outputPath(`hc901-video-conversation-${width}.png`)
+      await page.screenshot({ path: screenshot })
+      await test.info().attach(`hc901-video-conversation-${width}`, { path: screenshot, contentType: 'image/png' })
+    }
+
+    await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
+    expect(await app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, mediaUrl)).toBe(404)
+    expect(fs.existsSync(originalPath)).toBe(true)
+  } finally {
+    await app.evaluate(() => { (globalThis as typeof globalThis & { restoreAnalysisDialog?: () => void }).restoreAnalysisDialog?.() })
+  }
 })
 
 test('hc-901 packaged native policy HTTP 503 recovers with explicit retry and preserves the cloud storage gate', async () => {
@@ -2527,6 +2640,7 @@ test('hc-878 packaged local document import persists cited answers and notes und
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /local-review-document.txt/ }).click()
+    await page.getByRole('tab', { name: '研究笔记' }).click()
     await expect(page.getByText('Check the revenue source')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看出处 · 第 2 段' })).toBeVisible()
 
@@ -2590,6 +2704,7 @@ test('hc-879 packaged cloud document import reopens server-owned evidence and fa
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '项目' }).first().click()
     await page.locator('[data-sidebar="menu-button"]').filter({ hasText: '沉浸式分析' }).first().click()
     await page.getByRole('button', { name: /cloud-review-document.txt/ }).click()
+    await page.getByRole('tab', { name: '研究笔记' }).click()
     await expect(page.getByText('Review cloud source')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看出处 · 第 1 段' })).toBeVisible()
     await page.getByRole('button', { name: '删除笔记' }).click()
