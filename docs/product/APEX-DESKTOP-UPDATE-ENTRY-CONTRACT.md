@@ -30,8 +30,10 @@ The hook regression executes the actual version item's callback in local and
 remote modes and verifies callback replacement after rerender. Replacing the
 unique client callback with `openUpdateOverlayFor('client')` makes both cases
 fail. The packaged smoke clicks the rendered version, then checks a local HTTP
-feed through real renderer IPC and the staged `electron-updater`; it does not
-mock the native updater or update the user's app/home.
+feed through real renderer IPC and the packaged `electron-updater`, redirecting
+only manifest requests at Electron's HTTP layer. It does not mock the updater's
+methods/events or update the user's app/home. Without a built package, this
+packaged-only spec skips; the smoke must report one pass to count as evidence.
 
 These smokes cover entry routing and feed checks, not the full download,
 signature validation, installation and restart transaction or Windows signing.

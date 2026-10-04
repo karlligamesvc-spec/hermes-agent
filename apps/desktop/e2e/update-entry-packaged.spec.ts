@@ -26,20 +26,22 @@ test('installed version entry reaches the native package feed instead of the Git
   try {
     fixture = await setupPackagedMockBackend({ APEXNODES_API_BASE: feedUrl, APEXNODES_AUTH_BASE: feedUrl })
     const { app, page } = fixture
-    version = await app.evaluate(async ({ app }) => {
+    version = await app.evaluate(({ app }) => {
       if (!app.isPackaged) {throw new Error('This regression must run in the packaged app')}
-      const { createRequire } = await import('node:module')
-      const resourcesPath = (process as NodeJS.Process & { resourcesPath: string }).resourcesPath
-      const require = createRequire(`${resourcesPath}/updater-deps/fixture.cjs`)
-      const { autoUpdater } = require('./vendor/node_modules/electron-updater')
-      autoUpdater.setFeedURL({ provider: 'generic', url: process.env.APEXNODES_API_BASE, useMultipleRangeRequest: false })
-
       return app.getVersion()
     })
     await page.getByRole('button', { name: '使用自己的密钥' }).click()
     const later = page.getByRole('button', { name: '稍后再选择提供方' })
     if (await later.waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false)) {await later.click()}
     await waitForAppReady(fixture)
+    await app.evaluate(({ session }) => {
+      session.fromPartition('electron-updater').webRequest.onBeforeRequest({
+        urls: ['https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop/*/latest*.yml*']
+      }, (details: { url: string }, callback: (response: { redirectURL: string }) => void) => {
+        const manifest = new URL(details.url).pathname.split('/').pop()
+        callback({ redirectURL: `${process.env.APEXNODES_API_BASE}/${manifest}` })
+      })
+    })
     await page.getByRole('contentinfo').getByRole('button', { name: `v${version}`, exact: true }).click()
     const check = page.getByRole('button', { name: '检查 APEX 更新', exact: true })
     await expect(check).toBeVisible()
