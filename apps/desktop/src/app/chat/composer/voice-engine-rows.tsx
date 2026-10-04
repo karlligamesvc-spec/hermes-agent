@@ -31,14 +31,14 @@ export function VoiceEngineRows({ disabled }: { disabled: boolean }) {
     return null
   }
 
-  const liveAvailable = status.available
+  const liveAvailable = status.gptAvailable ?? status.available
 
   return (
     <>
       <DropdownMenuLabel>{c.voiceEngine}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
         onValueChange={value => {
-          if (value !== 'chained' && value !== 'gpt-live') {
+          if (value !== 'chained' && value !== 'gpt-live' && value !== 'qwen-realtime') {
             return
           }
 
@@ -50,12 +50,28 @@ export function VoiceEngineRows({ disabled }: { disabled: boolean }) {
         <DropdownMenuRadioItem className={dropdownMenuRow} disabled={disabled} value="chained">
           {c.voiceEngineChained}
         </DropdownMenuRadioItem>
+        {status.qwenAvailable === undefined ? null : (
+        <DropdownMenuRadioItem
+          className={dropdownMenuRow}
+          disabled={disabled || !status.qwenAvailable}
+          value="qwen-realtime"
+        >
+          <span className="flex min-w-0 flex-col">
+            <span>{c.voiceEngineQwen}</span>
+            {status.qwenAvailable ? null : (
+              <span className="text-muted-foreground truncate text-xs">
+                {status.qwenReason ?? c.voiceEngineQwenNeedsLogin}
+              </span>
+            )}
+          </span>
+        </DropdownMenuRadioItem>
+        )}
         <DropdownMenuRadioItem className={dropdownMenuRow} disabled={disabled || !liveAvailable} value="gpt-live">
           <span className="flex min-w-0 flex-col">
             <span>{c.voiceEngineLive}</span>
             {liveAvailable ? null : (
               <span className="text-muted-foreground truncate text-xs">
-                {status.reason ?? c.voiceEngineLiveNeedsKey}
+                {status.mode === 'qwen-realtime' ? c.voiceEngineLiveNeedsKey : (status.reason ?? c.voiceEngineLiveNeedsKey)}
               </span>
             )}
           </span>
@@ -72,6 +88,10 @@ export function useVoiceEngineName(): null | string {
 
   if (status === null) {
     return null
+  }
+
+  if (selectedVoiceChatMode(status) === 'qwen-realtime') {
+    return t.composer.voiceEngineQwenShort
   }
 
   return selectedVoiceChatMode(status) === 'gpt-live'

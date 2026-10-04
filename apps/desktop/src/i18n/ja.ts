@@ -557,6 +557,7 @@ export const ja = defineLocale({
       }
     },
     fieldLabels: defineFieldCopy({
+      'voice.qwenRealtime.model': 'Qwen リアルタイム音声モデル',
       model: 'デフォルトモデル',
       modelContextLength: 'コンテキストウィンドウ',
       fallbackProviders: 'フォールバックモデル',
@@ -714,6 +715,7 @@ export const ja = defineLocale({
       }
     }),
     fieldDescriptions: defineFieldCopy({
+      'voice.qwenRealtime.model': '既定は Flash です。Plus は利用コストが高くなります。次の通話から適用されます。',
       model: 'コンポーザーで別のモデルを選ばない限り、新しいチャットで使用されます。',
       modelContextLength: '0 のままにすると、選択したモデルから検出されたコンテキストウィンドウを使用します。',
       fallbackProviders: 'デフォルトモデルが失敗したときに試す provider:model 形式のバックアップです。',
@@ -2442,6 +2444,10 @@ export const ja = defineLocale({
   },
 
   composer: {
+    voiceEngineQwen: 'Qwen リアルタイム音声',
+    voiceEngineQwenShort: 'Qwen 音声',
+    voiceEngineQwenNeedsLogin: 'APEX にログインしてください',
+
     message: 'メッセージ',
     wakingProfile: profile => `${profile} を起動中…`,
     placeholderStarting: 'APEX を起動中...',

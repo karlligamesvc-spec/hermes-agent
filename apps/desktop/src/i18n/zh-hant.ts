@@ -538,6 +538,7 @@ export const zhHant = defineLocale({
       }
     },
     fieldLabels: defineFieldCopy({
+      'voice.qwenRealtime.model': '千問即時語音模型',
       model: '預設模型',
       modelContextLength: '上下文視窗',
       fallbackProviders: '備用模型',
@@ -706,6 +707,7 @@ export const zhHant = defineLocale({
       }
     }),
     fieldDescriptions: defineFieldCopy({
+      'voice.qwenRealtime.model': '預設使用 Flash；Plus 的用量成本更高。修改後於下次通話生效。',
       model: '除非你在輸入框選擇其他模型，否則新聊天會使用此模型。',
       modelContextLength: '保留 0 會使用所選模型偵測到的上下文視窗。',
       fallbackProviders: '預設模型失敗時要嘗試的備用 provider:model 項目。',
@@ -758,7 +760,7 @@ export const zhHant = defineLocale({
       voice: {
         autoTts: '自動朗讀助手回覆。',
         voiceChatMode:
-          'chained：語音轉文字 → Hermes → 文字轉語音，使用下方的提供方。gpt-live：由全雙工 OpenAI 語音模型（gpt-live-1）負責聆聽與說話，並將每個實際請求交給 Hermes——由你選擇的任意模型使用完整工具集作答。需要 OpenAI API 金鑰；語音層每分鐘收費 $0.05。',
+          'qwen-realtime：使用 APEX 帳戶進行千問即時語音對話，實際任務由目前助手執行。chained：語音轉文字 → Hermes → 文字轉語音，使用下方的提供方。gpt-live：由全雙工 OpenAI 語音模型（gpt-live-1）負責聆聽與說話，並將每個實際請求交給 Hermes——由你選擇的任意模型使用完整工具集作答。需要 OpenAI API 金鑰；語音層每分鐘收費 $0.05。',
         gptLive: {
           voice: 'GPT-Live 模式使用的音色，可填入自訂音色 ID。',
           instructions: '附加至即時語音人設的句子（語氣、語速、語言）。Hermes 會保留自己的系統提示詞。'
@@ -2417,6 +2419,10 @@ export const zhHant = defineLocale({
   },
 
   composer: {
+    voiceEngineQwen: '千問即時語音',
+    voiceEngineQwenShort: '千問即時語音',
+    voiceEngineQwenNeedsLogin: '請先登入 APEX',
+
     message: '訊息',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 APEX...',

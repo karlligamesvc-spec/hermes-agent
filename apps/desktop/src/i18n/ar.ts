@@ -735,6 +735,7 @@ export const ar = defineLocale({
       }
     },
     fieldLabels: {
+      'voice.qwenRealtime.model': 'نموذج صوت Qwen الفوري',
       model: 'النموذج الافتراضي',
       modelContextLength: 'نافذة السياق',
       fallbackProviders: 'النماذج الاحتياطية',
@@ -823,6 +824,7 @@ export const ar = defineLocale({
       'updates.nonInteractiveLocalChanges': 'تغييرات التحديث داخل التطبيق'
     },
     fieldDescriptions: {
+      'voice.qwenRealtime.model': 'Flash هو الافتراضي؛ تكلفة Plus أعلى. يطبق التغيير على المكالمة التالية.',
       model: 'يستخدم في المحادثات الجديدة ما لم تختر نموذجاً مختلفاً من محرر الرسائل.',
       modelContextLength: 'اتركه 0 لاستخدام نافذة السياق المكتشفة للنموذج المحدد.',
       fallbackProviders: 'إدخالات احتياطية بصيغة provider:model لتجربتها إذا فشل النموذج الافتراضي.',
@@ -2338,6 +2340,10 @@ export const ar = defineLocale({
     }
   },
   composer: {
+    voiceEngineQwen: 'صوت Qwen الفوري',
+    voiceEngineQwenShort: 'صوت Qwen',
+    voiceEngineQwenNeedsLogin: 'سجّل الدخول إلى APEX أولاً',
+
     message: 'الرسالة',
     wakingProfile: profile => `جار إيقاظ ${profile}`,
     placeholderStarting: 'جار بدء Hermes...',

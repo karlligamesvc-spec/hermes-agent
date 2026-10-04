@@ -2719,6 +2719,9 @@ export interface Translations {
     stopDictation: string
     transcribingDictation: string
     voiceControls: string
+    voiceEngineQwen: string
+    voiceEngineQwenShort: string
+    voiceEngineQwenNeedsLogin: string
     voiceEngine: string
     voiceEngineChained: string
     voiceEngineLive: string

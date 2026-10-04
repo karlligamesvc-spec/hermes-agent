@@ -672,6 +672,7 @@ export const zh = defineLocale({
       }
     },
     fieldLabels: defineFieldCopy({
+      'voice.qwenRealtime.model': '千问实时语音模型',
       model: '默认模型',
       modelContextLength: '上下文窗口',
       fallbackProviders: '备用模型',
@@ -840,6 +841,7 @@ export const zh = defineLocale({
       }
     }),
     fieldDescriptions: defineFieldCopy({
+      'voice.qwenRealtime.model': '默认使用 Flash；Plus 的用量成本更高。修改后于下次通话生效。',
       model: '用于新对话，除非你在输入框中选择其他模型。',
       modelContextLength: '保持为 0 则使用所选模型检测到的上下文窗口。',
       fallbackProviders: '默认模型失败时尝试的备用 provider:model 条目。',
@@ -894,7 +896,7 @@ export const zh = defineLocale({
       voice: {
         autoTts: '自动朗读助手回复。',
         voiceChatMode:
-          'chained：语音转文字 → Hermes → 文字转语音，使用下方的提供商。gpt-live：一个全双工的 OpenAI 语音模型（gpt-live-1）负责听和说，并把每个实际请求交给 Hermes——由你选择的任意模型带着完整工具集作答。需要 OpenAI API 密钥；语音层按每分钟 $0.05 计费。',
+          'qwen-realtime：使用 APEX 账户进行千问实时语音对话，实际任务由当前助手执行。chained：语音转文字 → Hermes → 文字转语音，使用下方的提供商。gpt-live：一个全双工的 OpenAI 语音模型（gpt-live-1）负责听和说，并把每个实际请求交给 Hermes——由你选择的任意模型带着完整工具集作答。需要 OpenAI API 密钥；语音层按每分钟 $0.05 计费。',
         gptLive: {
           voice: 'GPT-Live 模式使用的音色，可填写自定义音色 ID。',
           instructions: '附加到实时语音人设的句子（语气、语速、语言）。Hermes 保留自己的系统提示词。'
@@ -2909,6 +2911,9 @@ export const zh = defineLocale({
     stopDictation: '停止听写',
     transcribingDictation: '正在转写听写',
     voiceControls: '语音',
+    voiceEngineQwen: '千问实时语音',
+    voiceEngineQwenShort: '千问实时语音',
+    voiceEngineQwenNeedsLogin: '请先登录 APEX',
     voiceEngine: '语音聊天引擎',
     voiceEngineChained: '语音转文字 + Hermes 语音',
     voiceEngineLive: 'GPT-Live（全双工，委托给 Hermes）',

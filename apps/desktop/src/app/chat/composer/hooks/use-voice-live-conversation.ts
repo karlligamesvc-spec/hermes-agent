@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '@/i18n'
+import { QwenRealtimeSession } from '@/lib/qwen-realtime'
 import { sanitizeTextForSpeech } from '@/lib/speech-text'
 import { type LiveHistoryMessage, type LiveTranscriptFragment, VoiceLiveSession } from '@/lib/voice-live'
 import { isVoiceStopCommand } from '@/lib/voice-stop-word'
 import { notify, notifyError } from '@/store/notifications'
+import { $voiceLiveStatus } from '@/store/voice-live'
 
 import type { ConversationStatus } from './use-voice-conversation'
 
@@ -44,15 +46,15 @@ interface VoiceLiveConversationOptions {
  *  last said (the persisted user row), `context` the recent spoken exchange
  *  that rides the model input only (see tools/voice_live.py). */
 export function delegationPrompt(context: LiveTranscriptFragment[]): { context: string; prompt: string } {
-  const turns: Array<{ speaker: 'assistant' | 'user'; text: string }> = []
+  const turns: Array<{ speaker: 'assistant' | 'user'; text: string; turnId?: string }> = []
 
   for (const fragment of context) {
     const last = turns.at(-1)
 
-    if (last && last.speaker === fragment.speaker) {
+    if (last && last.speaker === fragment.speaker && last.turnId === fragment.turnId) {
       last.text += fragment.text
     } else {
-      turns.push({ speaker: fragment.speaker, text: fragment.text })
+      turns.push({ speaker: fragment.speaker, text: fragment.text, turnId: fragment.turnId })
     }
   }
 
@@ -96,7 +98,14 @@ export function useVoiceLiveConversation({
   // Mirrors delegationRef for the reply-drive effect: a new delegation must
   // restart the feed loop, and a ref write alone does not re-render.
   const [activeDelegation, setActiveDelegation] = useState<null | string>(null)
-  const sessionRef = useRef<null | VoiceLiveSession>(null)
+
+  const sessionRef = useRef<
+    | null
+    | (Pick<VoiceLiveSession, 'start' | 'close' | 'think' | 'speak' | 'setMuted' | 'instruct'> & {
+        finishDelegation?: (id: string) => void
+      })
+  >(null)
+
   // Bumped by every start/end so an in-flight start() that lost the race
   // (StrictMode double-effect, quick toggle) closes its session instead of
   // leaving a second billed one running.
@@ -214,7 +223,9 @@ export function useVoiceLiveConversation({
       return
     }
 
-    const session = new VoiceLiveSession({
+    const Session = $voiceLiveStatus.get()?.mode === 'qwen-realtime' ? QwenRealtimeSession : VoiceLiveSession
+
+    const session = new Session({
       // The voice model answers a bare "stop" itself (it just goes quiet) and
       // never delegates it, so the spoken stop phrase is judged on the user
       // transcript once the utterance settles.
@@ -290,6 +301,7 @@ export function useVoiceLiveConversation({
         void Promise.resolve(latest.current.onSubmit(prompt, voiceContext)).catch(error => {
           notifyError(error, voiceCopy.liveDelegationFailed)
           session.speak(delegationId, 'Sorry, I could not reach Hermes for that request.')
+          session.finishDelegation?.(delegationId)
           setDelegation(null)
           refreshStatus()
         })
@@ -402,6 +414,7 @@ export function useVoiceLiveConversation({
           spokenLengthRef.current = spoken.length
         }
 
+        session.finishDelegation?.(delegationId)
         latest.current.consumePendingResponse()
         setDelegation(null)
         refreshStatus()
@@ -420,6 +433,7 @@ export function useVoiceLiveConversation({
           session.think(delegationId, 'Hermes finished that request without a spoken result.')
         }
 
+        session.finishDelegation?.(delegationId)
         setDelegation(null)
         refreshStatus()
       }

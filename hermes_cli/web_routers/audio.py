@@ -166,10 +166,9 @@ async def get_client_voice_config(profile: Optional[str] = None):
 
 @router.get("/api/audio/voice-live/status")
 async def get_voice_live_status(profile: Optional[str] = None):
-    """Which voice chat mode the profile selected (``chained`` | ``gpt-live``) and whether GPT-Live
-    can start. Non-secret: the desktop decides which conversation engine to mount from this."""
+    """Nonsecret selected transport and availability of the supported voice engines."""
     from tools.voice_live import resolve_gpt_live_status
-    with http_failure("GPT-Live status resolution failed", 500, "GPT-Live status failed"):
+    with http_failure("Voice status resolution failed", 500, "Voice status failed"):
         result = await _run_config_scoped(profile, resolve_gpt_live_status)
     return {"ok": True, **result}
 
@@ -515,4 +514,27 @@ async def speak_stream_ws(ws: "WebSocket") -> None:
         text_q.put(None)
         pump.cancel()
         with contextlib.suppress(Exception):
+            await ws.close()
+
+
+@router.websocket("/api/audio/qwen-realtime")
+async def qwen_realtime_ws(ws: WebSocket) -> None:
+    if not _ws_auth_ok(ws):
+        await ws.close(code=4401)
+        return
+    if not _ws_request_is_allowed(ws):
+        await ws.close(code=4403)
+        return
+    await ws.accept()
+    from apex_overlay.voice_realtime import resolve_connection, serve
+    try:
+        connection = await _run_config_scoped(ws.query_params.get("profile"), resolve_connection)
+        await serve(ws, connection)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        with contextlib.suppress(WebSocketDisconnect, RuntimeError):
+            await ws.send_json({"type": "error", "error": {"message": "千问实时语音连接失败，请重试。"}})
+    finally:
+        with contextlib.suppress(WebSocketDisconnect, RuntimeError):
             await ws.close()
