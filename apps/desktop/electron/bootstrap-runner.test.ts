@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { test } from 'vitest'
 
+import { bundlePaths, createActiveLink } from './apex-bundle-layout'
 import { normalizeDesktopPlatform } from './apexnodes-telemetry'
 import {
   buildPinArgs,
@@ -955,4 +956,42 @@ test('hc-642: forced states stay distinguishable from auto', () => {
 test('hc-642: cnMirrors:true forces on and renders as forced-on', () => {
   assert.equal(cnInstallEnv({ cnMirrors: true }).HERMES_CN_MIRRORS, '1')
   assert.equal(describeCnMirrorMode(cnInstallEnv({ cnMirrors: true }).HERMES_CN_MIRRORS), 'forced-on')
+})
+
+// Reproduce the user path: a source update launched through the active bundle link.
+test('source bootstrap refuses a committed bundle before resolving or spawning an installer', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-source-over-bundle-'))
+  const paths = bundlePaths(home)
+  const version = paths.versionDir('old-pin')
+  const events: any[] = []
+  let markers = 0
+
+  try {
+    fs.mkdirSync(version, { recursive: true })
+    fs.writeFileSync(path.join(version, '.hermes-bootstrap-complete'), 'original marker')
+    fs.writeFileSync(path.join(version, 'payload.txt'), 'original bundle')
+    createActiveLink(paths.activeLink, version)
+    fs.mkdirSync(path.join(home, 'resources'), { recursive: true })
+    const script = process.platform === 'win32' ? 'install.ps1' : 'install.sh'
+    // A local trap catches an actual installer invocation if the gate regresses.
+    fs.writeFileSync(path.join(home, 'resources', script), process.platform === 'win32'
+      ? 'throw "SOURCE_INSTALLER_WAS_REACHED"' : '#!/bin/bash\necho SOURCE_INSTALLER_WAS_REACHED >&2\nexit 99\n')
+
+    // A missing/corrupt manifest cannot make the versioned directory eligible either.
+    for (const manifest of [false, true]) {
+      if (manifest) {fs.writeFileSync(path.join(version, '.bundle-manifest.json'), '{}')}
+      const result = await runBootstrap({
+        activeRoot: paths.activeLink, hermesHome: home, sourceRepoRoot: null, resourcesPath: path.join(home, 'resources'),
+        installStamp: { commit: 'a'.repeat(40), branch: 'main' },
+        sendTelemetry: () => {}, onEvent: event => events.push(event), writeMarker: () => { markers++ }
+      })
+
+      assert.equal(result.ok, false)
+      assert.match(result.error, /独立版本目录/)
+      assert.equal(markers, 0)
+      assert.equal(events.some(event => event.type === 'stage' || event.type === 'manifest'), false)
+      assert.equal(fs.readFileSync(path.join(version, 'payload.txt'), 'utf8'), 'original bundle')
+      assert.equal(fs.readFileSync(path.join(version, '.hermes-bootstrap-complete'), 'utf8'), 'original marker')
+    }
+  } finally { fs.rmSync(home, { recursive: true, force: true }) }
 })

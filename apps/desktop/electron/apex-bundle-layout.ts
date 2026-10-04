@@ -76,6 +76,19 @@ function readJson(file) {
   }
 }
 
+/** Committed bundles must never enter the in-place source installer, including through a junction. */
+export function isVersionedRuntimeRoot(root: string, hermesHome: string): boolean {
+  if (fs.existsSync(path.join(root, '.bundle-manifest.json'))) {return true}
+
+  try {
+    const relative = path.relative(fs.realpathSync(bundlePaths(hermesHome).versionsDir), fs.realpathSync(root))
+
+    return Boolean(relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  } catch {
+    return false
+  }
+}
+
 /** Read the truth pointer. Returns null when absent / malformed / wrong schema. */
 function readPointer(hermesHome) {
   const { pointerPath } = bundlePaths(hermesHome)

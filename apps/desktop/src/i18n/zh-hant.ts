@@ -2860,8 +2860,8 @@ export const zhHant = defineLocale({
     // 秒內即可完成。
     activeDescUpdate: version =>
       version
-        ? `正在更新至 ${version}。未變化的相依套件會自動略過，通常幾秒到數十秒內即可完成。`
-        : '正在更新 APEX。未變化的相依套件會自動略過，通常幾秒到數十秒內即可完成。',
+        ? `正在更新至 ${version}。未變化的相依套件會自動略過；需要下載新套件時，可能耗時數分鐘。`
+        : '正在更新 APEX。未變化的相依套件會自動略過；需要下載新套件時，可能耗時數分鐘。',
     progress: (completed, total) => `${completed}/${total} 個步驟已完成`,
     currentStage: stage => ` -- 目前：${stage}`,
     fetchingManifest: '正在取得安裝程式 manifest...',
@@ -2891,7 +2891,7 @@ export const zhHant = defineLocale({
       venv: 'Python 環境',
       'python-deps': 'Python 相依套件',
       dependencies: 'Python 相依套件',
-      'node-deps': 'Node 相依套件',
+      'node-deps': '瀏覽器與工具相依套件',
       desktop: '桌面應用程式',
       path: '設定路徑',
       config: '寫入設定',
@@ -2920,7 +2920,7 @@ export const zhHant = defineLocale({
       venv: '約 3 秒',
       'python-deps': '約 5 秒',
       dependencies: '約 5 秒',
-      'node-deps': '約 45 秒',
+      'node-deps': '可能數分鐘',
       desktop: '約 2 分鐘',
       path: '約 1 秒',
       config: '約 1 秒',

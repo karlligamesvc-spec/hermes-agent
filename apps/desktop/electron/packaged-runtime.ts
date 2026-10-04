@@ -125,6 +125,28 @@ export function readPackagedRuntime(resourcesPath: string, platform: NodeJS.Plat
   return { release, manifest, archivePath: path.join(resources, archiveName) }
 }
 
+/** The opt-in update can reuse the offline payload only for the exact requested source pin. */
+export function packagedRuntimeMatchesPin(resourcesPath: string, commit: string | null | undefined): boolean {
+  if (!commit) {return false}
+
+  try { return readPackagedRuntime(resourcesPath).release.runtime_commit === commit } catch { return false }
+}
+
+/** Arm an offline update without deleting the old ordering/rollback marker. */
+export function armPackagedRuntimeUpdate(options: {
+  resourcesPath: string
+  commit: string | null
+  branch: string | null
+  version: string | null
+  previousMarker: unknown
+  persistOverride: (override: { commit: string; branch: string | null; version: string | null; previousMarker: unknown }) => void
+}): boolean {
+  if (!options.commit || !packagedRuntimeMatchesPin(options.resourcesPath, options.commit)) {return false}
+  options.persistOverride({ commit: options.commit, branch: options.branch, version: options.version, previousMarker: options.previousMarker })
+
+  return true
+}
+
 function actualCommit(root: string): string | null {
   try {
     const value = fs.readFileSync(path.join(root, SOURCE_STAMP), 'utf8').trim()
@@ -141,7 +163,13 @@ export function packagedRuntimeDecision(root: string, release: PackagedRuntimeRe
 
   if (!usable) {return 'install' as const}
 
-  if (commit === release.runtime_commit) {return 'current' as const}
+  if (commit === release.runtime_commit) {
+    // Older shells could overwrite an active bundle with source while leaving its old
+    // bundle metadata behind. Recover add-only into the requested bundle's own directory.
+    const embedded = readJson(path.join(root, '.bundle-manifest.json'))
+
+    return embedded && (embedded.runtime_commit !== commit || embedded.key !== commit.slice(0, 12)) ? 'install' as const : 'current' as const
+  }
   const marker = readJson(path.join(root, MARKER))
   const matches = commit && typeof marker?.pinnedCommit === 'string' && marker.pinnedCommit.length >= 7 && commit.startsWith(marker.pinnedCommit)
   const order = matches && /^v\d{4}\.\d{1,2}\.\d{1,2}-fork\.[a-f0-9]+$/.test(marker.version) ? compareSemver(marker.version, release.runtime_version) : null
@@ -316,9 +344,9 @@ function restoreActivation(hermesHome: string, before: ReturnType<typeof snapsho
   }
 }
 
-function reclaimOwnedPackagedStaging(hermesHome: string, manifest: ReturnType<typeof parseBundleManifest>) {
+function reclaimOwnedPackagedStaging(hermesHome: string, manifest: ReturnType<typeof parseBundleManifest>, directoryKey = manifest.key) {
   const paths = layout.bundlePaths(hermesHome)
-  const staging = paths.stagingDir(manifest.key)
+  const staging = paths.stagingDir(directoryKey)
 
   if (!fs.existsSync(staging)) {return}
   const status = fs.lstatSync(staging)
@@ -344,7 +372,12 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
   const log = (message: string) => { try { options.log?.(message) } catch { /* Logging cannot undo a committed engine. */ } }
   const { release, manifest, archivePath } = readPackagedRuntime(options.resourcesPath, options.platform, options.arch)
   const activeRoot = layout.bundlePaths(hermesHome).activeLink
-  const decision = packagedRuntimeDecision(activeRoot, release, existingUsable)
+  let decision = packagedRuntimeDecision(activeRoot, release, existingUsable)
+  const installed = readJson(path.join(activeRoot, '.bundle-manifest.json'))
+
+  if (decision === 'current' && installed && !isDeepStrictEqual(installed.files_index, manifest.files_index)) {
+    decision = 'install'
+  }
 
   if (decision === 'preserve') {
     log('[bundled-engine] preserving the installed engine: no proven older source/version.')
@@ -382,7 +415,11 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
   }
 
   fs.mkdirSync(hermesHome, { recursive: true })
-  reclaimOwnedPackagedStaging(hermesHome, manifest)
+  const base = layout.bundlePaths(hermesHome).versionDir(manifest.key)
+  const prior = readJson(path.join(base, '.bundle-manifest.json'))
+  const directoryKey = prior && !isDeepStrictEqual(prior.files_index, manifest.files_index)
+    ? `${manifest.key}-${manifest.files_index.sha256.slice(0, 12)}` : manifest.key
+  reclaimOwnedPackagedStaging(hermesHome, manifest, directoryKey)
   const extracted = manifest.files_index.total_size
 
   const minFreeBytes = Number.isSafeInteger(extracted) && extracted > 0
@@ -395,7 +432,7 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
   assertCurrent()
 
   const staged = await stageAndCommitBundle({
-    hermesHome, key: manifest.key, archivePath, manifest,
+    hermesHome, key: manifest.key, directoryKey, archivePath, manifest,
     extract: async (archive, destination) => {
       fs.writeFileSync(path.join(destination, STAGING_OWNER), JSON.stringify({ schemaVersion: 1, runtime_commit: manifest.runtime_commit, key: manifest.key, os: manifest.os, arch: manifest.arch }), { flag: 'wx', mode: 0o600 })
       await extract(archive, destination)
@@ -412,7 +449,7 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
   const before = snapshotActivation(hermesHome)
 
   try {
-    const switched = migrate.switchToVersionOrMigrate(hermesHome, manifest.key)
+    const switched = migrate.switchToVersionOrMigrate(hermesHome, directoryKey)
 
     if (!switched.ok || switched.linkPending || !layout.linkResolvesTo(activeRoot, staged.versionDir)) {
       throw new Error(`Bundled engine activation did not complete (${switched.reason || 'active-link-pending'}).`)

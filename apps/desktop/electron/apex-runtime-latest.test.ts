@@ -575,7 +575,7 @@ test('main.ts: failed AND cancelled bootstrap roll the opt-in update back', () =
   assert.match(src, /rollbackRuntimePinOverride\(bootstrapResult\.failedStage \|\| 'bootstrap failed'\)/)
 })
 
-test('main.ts: apply-update verifies artifact reachability BEFORE retargeting', () => {
+test('main.ts: legacy source apply verifies artifact reachability BEFORE retargeting', () => {
   const src = mainSource()
   // The HEAD pre-flight must appear, and the override must only be written after.
   const reachIdx = src.indexOf('isUpdateArtifactReachable(pin.cosTarballUrl)')

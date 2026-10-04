@@ -3794,8 +3794,8 @@ export const en: Translations = {
     // most updates finish in well under a minute.
     activeDescUpdate: version =>
       version
-        ? `Updating to ${version}. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.`
-        : 'Updating APEX. Unchanged dependencies are skipped automatically, so this usually takes seconds to under a minute.',
+        ? `Updating to ${version}. Unchanged dependencies are skipped automatically. Downloading new dependencies can take several minutes.`
+        : 'Updating APEX. Unchanged dependencies are skipped automatically. Downloading new dependencies can take several minutes.',
     progress: (completed, total) => `${completed} of ${total} steps complete`,
     currentStage: stage => ` -- now: ${stage}`,
     fetchingManifest: 'Fetching installer manifest...',
@@ -3829,7 +3829,7 @@ export const en: Translations = {
       venv: 'Virtual env',
       'python-deps': 'Python deps',
       dependencies: 'Python deps',
-      'node-deps': 'Node deps',
+      'node-deps': 'Browser and tool dependencies',
       desktop: 'Desktop app',
       // finalize / config
       path: 'Path',
@@ -3861,7 +3861,7 @@ export const en: Translations = {
       venv: '~3s',
       'python-deps': '~5s',
       dependencies: '~5s',
-      'node-deps': '~45s',
+      'node-deps': 'May take several minutes',
       desktop: '~2 min',
       path: '~1s',
       config: '~1s',

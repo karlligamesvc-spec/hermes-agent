@@ -2898,8 +2898,8 @@ export const ja = defineLocale({
     // 数十秒程度で完了する。
     activeDescUpdate: version =>
       version
-        ? `${version} に更新中です。変更のない依存関係は自動的にスキップされるため、通常は数秒から数十秒程度で完了します。`
-        : 'APEX を更新中です。変更のない依存関係は自動的にスキップされるため、通常は数秒から数十秒程度で完了します。',
+        ? `${version} に更新中です。変更のない依存関係は自動的にスキップされます。新しい依存関係のダウンロードには数分かかる場合があります。`
+        : 'APEX を更新中です。変更のない依存関係は自動的にスキップされます。新しい依存関係のダウンロードには数分かかる場合があります。',
     progress: (completed, total) => `${total} ステップ中 ${completed} 完了`,
     currentStage: stage => ` — 現在: ${stage}`,
     fetchingManifest: 'インストーラーマニフェストを取得中...',
@@ -2929,7 +2929,7 @@ export const ja = defineLocale({
       venv: 'Python 環境',
       'python-deps': 'Python 依存関係',
       dependencies: 'Python 依存関係',
-      'node-deps': 'Node 依存関係',
+      'node-deps': 'ブラウザーとツールの依存関係',
       desktop: 'デスクトップアプリ',
       path: 'パス設定',
       config: '設定の書き込み',
@@ -2959,7 +2959,7 @@ export const ja = defineLocale({
       venv: '約 3 秒',
       'python-deps': '約 5 秒',
       dependencies: '約 5 秒',
-      'node-deps': '約 45 秒',
+      'node-deps': '数分かかる場合があります',
       desktop: '約 2 分',
       path: '約 1 秒',
       config: '約 1 秒',

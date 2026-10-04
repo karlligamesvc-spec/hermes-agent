@@ -14,10 +14,12 @@ import { checkForRuntimeUpdate } from './apex-runtime-latest'
 import { buildDesktopBackendEnv, bundledRuntimePathEntries } from './backend-env'
 import { buildTerminalScript, terminalScriptEnv } from './external-terminal'
 import {
+  armPackagedRuntimeUpdate,
   assertPackagedRuntimeIdle,
   createPackagedRuntimeGate,
   installPackagedRuntime,
   packagedRuntimeDecision,
+  packagedRuntimeMatchesPin,
   type PackagedRuntimeOptions,
   type PackagedRuntimeRelease,
   readPackagedRuntime,
@@ -582,4 +584,42 @@ nativeTest('the real terminal launcher prepends bundled tools while preserving i
   const result = JSON.parse(output.stdout.trim())
   assert.equal(fs.realpathSync(result.executable), fs.realpathSync(path.join(root, nativeOS === 'win' ? '.runtime/node/node.exe' : '.runtime/node/bin/node')))
   assert.deepEqual(result.path.split(path.delimiter), [...prefix, userBin])
+})
+
+nativeTest.each(['mixed-source', 'rebuilt-artifact'])('%s recovers from the exact offline pin add-only', async scenario => {
+  await withHome(async (home, options) => {
+    assert.equal(packagedRuntimeMatchesPin(resources, commit), true)
+    assert.equal(packagedRuntimeMatchesPin(resources, 'e'.repeat(40)), false)
+    assert.equal(packagedRuntimeMatchesPin(resources, null), false)
+    const paths = layout.bundlePaths(home)
+    const oldKey = scenario === 'mixed-source' ? 'f'.repeat(12) : commit.slice(0, 12)
+    const old = paths.versionDir(oldKey)
+    fs.mkdirSync(old, { recursive: true })
+    // The old installer left contradictory metadata while changing the source stamp.
+    fs.writeFileSync(path.join(old, '.bundle-manifest.json'), JSON.stringify(scenario === 'mixed-source' ? { ...manifest, key: oldKey, runtime_commit: 'f'.repeat(40) } : { ...manifest, files_index: { ...manifest.files_index, sha256: 'a'.repeat(64) } }))
+    fs.writeFileSync(path.join(old, '.hermes-source-commit'), commit)
+    fs.writeFileSync(path.join(old, '.hermes-bootstrap-complete'), JSON.stringify({ pinnedCommit: commit, version: release.runtime_version }))
+    fs.writeFileSync(path.join(old, 'old-engine.txt'), 'still usable but mixed dependencies')
+    layout.writePointerAtomic(home, { key: oldKey, previous: 'legacy-inplace' })
+    layout.createActiveLink(paths.activeLink, old)
+    fs.writeFileSync(path.join(home, 'config.yaml'), 'private user configuration')
+    const marker = fs.readFileSync(path.join(old, '.hermes-bootstrap-complete'))
+    const override = path.join(home, '.apexnodes-runtime-override.json')
+    const arm = { resourcesPath: resources, commit, branch: null, version: release.runtime_version,
+      previousMarker: JSON.parse(marker.toString()), persistOverride: (value: { commit: string; previousMarker: unknown }) => fs.writeFileSync(override, JSON.stringify(value)) }
+
+    assert.equal(armPackagedRuntimeUpdate({ ...arm, commit: 'e'.repeat(40) }), false)
+    assert.equal(fs.existsSync(override), false)
+    assert.equal(armPackagedRuntimeUpdate(arm), true)
+    assert.deepEqual(fs.readFileSync(path.join(old, '.hermes-bootstrap-complete')), marker)
+    assert.equal(JSON.parse(fs.readFileSync(override, 'utf8')).commit, commit)
+
+
+    assert.equal((await installPackagedRuntime(options, true)).status, 'installed')
+    assert.equal(layout.readPointer(home).key, scenario === 'mixed-source' ? commit.slice(0, 12) : `${commit.slice(0, 12)}-${manifest.files_index.sha256.slice(0, 12)}`)
+    assert.equal(layout.readPointer(home).previous, oldKey)
+    assert.equal(fs.readFileSync(path.join(old, 'old-engine.txt'), 'utf8'), 'still usable but mixed dependencies')
+    assert.equal(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8'), 'private user configuration')
+    assert.equal((await installPackagedRuntime(options, true)).status, 'current')
+  })
 })
