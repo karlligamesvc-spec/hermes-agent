@@ -2699,6 +2699,9 @@ export interface Translations {
     placeholderFollowUp: string
     newSessionPlaceholders: readonly string[]
     followUpPlaceholders: readonly string[]
+    voiceSettings: string
+    voiceTranscript: string
+    voiceTranscriptEmpty: string
     startVoice: string
     openDirective: string
     queueMessage: string

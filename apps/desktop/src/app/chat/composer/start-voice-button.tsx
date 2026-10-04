@@ -1,24 +1,17 @@
 import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { AudioLines, ChevronDown, iconSize } from '@/lib/icons'
+import { ChevronDown, iconSize } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { GHOST_ICON_BTN, PRIMARY_ICON_BTN } from './control-classes'
 import { useVoiceEngineName, VoiceEngineRows } from './voice-engine-rows'
 
-/**
- * The primary "start voice conversation" button, with the engine picker one
- * click away when the layout shows the voice controls unfolded.
- *
- * In the folded layout the picker lives in the voice menu; unfolded there is
- * no menu, so without this the only way to swap engines was Settings → Voice,
- * which is not where you are when you want to talk. The chevron is a separate
- * button so the primary press stays a single unambiguous action; the tooltip
- * names the engine so the choice is visible before pressing.
- */
+/** Shared one-click microphone entry for Start and chat. The adjacent picker
+ * changes the next call's engine; the main press never opens a settings menu. */
 export function StartVoiceButton({
   disabled,
   label,
@@ -36,7 +29,7 @@ export function StartVoiceButton({
       <Tip label={engine ? `${label} — ${engine}` : label}>
         <Button
           aria-label={label}
-          className={cn(PRIMARY_ICON_BTN, engine && 'rounded-r-none')}
+          className={PRIMARY_ICON_BTN}
           disabled={disabled}
           onClick={() => {
             triggerHaptic('open')
@@ -45,7 +38,7 @@ export function StartVoiceButton({
           size="icon"
           type="button"
         >
-          <AudioLines className={iconSize.sm} />
+          <Codicon name="mic" size="1rem" />
         </Button>
       </Tip>
       {engine ? (

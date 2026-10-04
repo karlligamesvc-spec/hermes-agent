@@ -95,6 +95,7 @@ export function useVoiceLiveConversation({
   const [status, setStatus] = useState<ConversationStatus>('idle')
   const [muted, setMuted] = useState(false)
   const [level, setLevel] = useState(0)
+  const [transcript, setTranscript] = useState<LiveTranscriptFragment[]>([])
   // Mirrors delegationRef for the reply-drive effect: a new delegation must
   // restart the feed loop, and a ref write alone does not re-render.
   const [activeDelegation, setActiveDelegation] = useState<null | string>(null)
@@ -209,7 +210,9 @@ export function useVoiceLiveConversation({
     }
 
     startingRef.current = true
+    setTranscript([])
     const epoch = ++startEpochRef.current
+    const mode = $voiceLiveStatus.get()?.mode
 
     try {
       await latest.current.beforeMicOpen?.()
@@ -223,13 +226,16 @@ export function useVoiceLiveConversation({
       return
     }
 
-    const Session = $voiceLiveStatus.get()?.mode === 'qwen-realtime' ? QwenRealtimeSession : VoiceLiveSession
+    const Session = mode === 'qwen-realtime' ? QwenRealtimeSession : VoiceLiveSession
 
     const session = new Session({
       // The voice model answers a bare "stop" itself (it just goes quiet) and
       // never delegates it, so the spoken stop phrase is judged on the user
       // transcript once the utterance settles.
       onTranscript: fragment => {
+        if (startEpochRef.current !== epoch) {return}
+        setTranscript(current => [...current, fragment].slice(-200))
+
         if (fragment.speaker !== 'user') {
           return
         }
@@ -474,5 +480,5 @@ export function useVoiceLiveConversation({
 
   useEffect(() => () => void end(), [end])
 
-  return { end, level, muted, start, status, stopTurn, toggleMute }
+  return { end, level, muted, start, status, stopTurn, toggleMute, transcript }
 }

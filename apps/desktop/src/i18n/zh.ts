@@ -2892,6 +2892,9 @@ export const zh = defineLocale({
       '再深入一点',
       '调整或继续'
     ],
+    voiceSettings: '语音设置',
+    voiceTranscript: '实时字幕',
+    voiceTranscriptEmpty: '开始说话，文字会显示在这里。',
     startVoice: '开始语音对话',
     queueMessage: '排队消息',
     steer: '引导当前运行',

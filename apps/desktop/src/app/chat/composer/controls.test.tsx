@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatBarState } from '@/app/chat/composer/types'
@@ -18,7 +19,7 @@ const state: ChatBarState = {
 
 function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerControls>> = {}) {
   return render(
-    <I18nProvider configClient={null} initialLocale="en">
+    <MemoryRouter><I18nProvider configClient={null} initialLocale="en">
       <ComposerControls
         autoSpeak={false}
         busy={false}
@@ -41,7 +42,7 @@ function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerC
         voiceStatus="idle"
         {...overrides}
       />
-    </I18nProvider>
+    </I18nProvider></MemoryRouter>
   )
 }
 
@@ -194,7 +195,7 @@ describe('wake-word ear visibility', () => {
     expect(ear).toBeTruthy()
   })
 
-  it('shows a disabled paused ear inside the voice-conversation pill', () => {
+  it('keeps mute and end reachable in the floating call controls', () => {
     applyWakeStatus({ available: true, enabled: true, listening: true, phrase: 'hey hermes' })
     renderControls({
       conversation: {
@@ -209,11 +210,10 @@ describe('wake-word ear visibility', () => {
       }
     })
 
-    const ear = screen.getByLabelText('APEX voice activation — paused during voice chat')
+    const mute = screen.getByRole('button', { name: 'Mute microphone' })
     const endConversation = screen.getByRole('button', { name: 'End voice conversation' })
 
-    expect((ear as HTMLButtonElement).disabled).toBe(true)
-    expect(endConversation.className).toContain('bg-(--dt-primary-solid)')
-    expect(endConversation.className).toContain('text-(--dt-primary-solid-foreground)')
+    expect((mute as HTMLButtonElement).disabled).toBe(false)
+    expect((endConversation as HTMLButtonElement).disabled).toBe(false)
   })
 })

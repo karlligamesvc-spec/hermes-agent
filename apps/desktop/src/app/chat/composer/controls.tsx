@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { Ear, EarOff, iconSize, Loader2, Square, Volume2, VolumeX } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import type { LiveTranscriptFragment } from '@/lib/voice-live'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
 import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 
@@ -14,8 +15,10 @@ import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN } from './control-cla
 import type { ConversationStatus } from './hooks/use-voice-conversation'
 import { ModelPill } from './model-pill'
 import { ReasoningPill } from './reasoning-pill'
+import { useComposerScope } from './scope'
 import { StartVoiceButton } from './start-voice-button'
 import type { ChatBarState, VoiceStatus } from './types'
+import { VoiceConversationPanel } from './voice-conversation-panel'
 import { VoiceMenu } from './voice-menu'
 
 // Re-exported: `context-menu.tsx` and other row neighbours have always reached
@@ -24,6 +27,8 @@ export { ACTIVE_ICON_BTN, GHOST_ICON_BTN, ICON_BTN, PRIMARY_ICON_BTN } from './c
 
 interface ConversationProps {
   active: boolean
+  engineName?: string | null
+  transcript?: LiveTranscriptFragment[]
   level: number
   muted: boolean
   status: ConversationStatus
@@ -67,9 +72,12 @@ export function ComposerControls({
   const { t } = useI18n()
   const c = t.composer
   const hudMode = useStore($hudMode)
+  const scope = useComposerScope()
 
   if (conversation.active) {
-    return <ConversationPill {...conversation} disabled={disabled} />
+    return hudMode || scope.target !== 'main'
+      ? <ConversationPill {...conversation} disabled={disabled} />
+      : <VoiceConversationPanel {...conversation} />
   }
 
   const showVoicePrimary = !busy && !hasComposerPayload
@@ -115,6 +123,7 @@ export function ComposerControls({
           {voiceControls}
         </>
       )}
+      {!minimal && !showVoicePrimary && <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />}
       {showVoicePrimary ? (
         <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
       ) : (

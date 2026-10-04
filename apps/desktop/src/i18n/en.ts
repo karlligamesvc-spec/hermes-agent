@@ -3267,6 +3267,9 @@ export const en: Translations = {
       'Push it further',
       'Adjust or continue'
     ],
+    voiceSettings: 'Voice settings',
+    voiceTranscript: 'Live transcript',
+    voiceTranscriptEmpty: 'Your conversation will appear here.',
     startVoice: 'Start voice conversation',
     openDirective: 'Open',
     queueMessage: 'Queue message',

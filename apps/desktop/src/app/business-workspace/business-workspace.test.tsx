@@ -2391,7 +2391,7 @@ describe('hc-685 business workspace identity', () => {
       .filter(element => !element.hasAttribute('disabled') && element.tabIndex >= 0)
       .map(element => element.getAttribute('aria-label'))
 
-    expect(keyboardOrder).toEqual(['业务目标', '开始执行', '附加'])
+    expect(keyboardOrder).toEqual(['业务目标', '开始执行', '附加', '开始语音对话'])
   })
 
   it('keeps the compact Start composer editable with workflow selection in its footer', () => {

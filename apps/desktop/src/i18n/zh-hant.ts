@@ -2446,6 +2446,9 @@ export const zhHant = defineLocale({
       '再深入一點',
       '調整或繼續'
     ],
+    voiceSettings: '語音設定',
+    voiceTranscript: '即時字幕',
+    voiceTranscriptEmpty: '開始說話，文字會顯示在這裡。',
     startVoice: '開始語音對話',
     queueMessage: '排隊訊息',
     stop: '停止',

@@ -547,7 +547,7 @@ describe('identity: the home zero-state is ours', () => {
 
     expect(chat).toContain('const businessStartVisible = showIntro && isBusinessWorkspaceEnabled()')
     expect(chat).toContain('businessStartVisible,')
-    expect(chat).toContain('{showChatBar && (')
+    expect(chat).toContain('{(showChatBar || homeVoiceRequested) && (')
     expect(chat).toContain('attachments: introAttachments')
     expect(chat).toContain('onPickFiles')
     expect(chat).toContain('onRemoveAttachment')

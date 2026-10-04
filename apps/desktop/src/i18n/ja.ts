@@ -2471,6 +2471,9 @@ export const ja = defineLocale({
       'さらに進める',
       '調整または続行'
     ],
+    voiceSettings: '音声設定',
+    voiceTranscript: 'リアルタイム字幕',
+    voiceTranscriptEmpty: '話すと会話がここに表示されます。',
     startVoice: '音声会話を開始',
     queueMessage: 'メッセージをキューに入れる',
     stop: '停止',

@@ -1,0 +1,41 @@
+import { act, cleanup, renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { afterEach, expect, it, vi } from 'vitest'
+
+import { I18nProvider } from '@/i18n'
+import type { VoiceLiveStatus } from '@/lib/voice-live'
+import { $voiceConversationStartRequest, takeVoiceConversationStart } from '@/store/composer'
+
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), nativeEnabled: vi.fn(), end: vi.fn(), syncTtsLease: vi.fn(async () => undefined) }))
+vi.mock('@/store/voice-live', () => ({ refreshVoiceLiveStatus: mocks.refresh, selectedVoiceChatMode: (status: VoiceLiveStatus | null) => status?.mode ?? 'chained' }))
+vi.mock('@/lib/tts-lease', () => ({ CONVERSATION_LEASE: 'conversation', READ_ALOUD_LEASE: 'read', syncTtsLease: mocks.syncTtsLease }))
+vi.mock('@/store/wake-word', () => ({ resumeWakeAfterVoice: vi.fn() }))
+vi.mock('./use-auto-speak-replies', () => ({ useAutoSpeakReplies: () => undefined }))
+vi.mock('./use-voice-recorder', () => ({ useVoiceRecorder: () => ({ dictate: vi.fn(), voiceActivityState: 'idle', voiceStatus: 'idle' }) }))
+vi.mock('./use-voice-conversation', () => ({ useVoiceConversation: () => ({ end: mocks.end, status: 'idle', level: 0, muted: false }) }))
+vi.mock('./use-voice-live-conversation', () => ({ useVoiceLiveConversation: ({ enabled }: { enabled: boolean }) => {
+  mocks.nativeEnabled(enabled)
+
+  return { end: mocks.end, status: 'idle', level: 0, muted: false, transcript: [] }
+} }))
+const { useComposerVoice } = await import('./use-composer-voice')
+afterEach(() => { cleanup(); takeVoiceConversationStart($voiceConversationStartRequest.get()); vi.clearAllMocks() })
+
+it.each(['resolved', 'cancelled', 'scope-changed'] as const)('voice waits for the owning backend mode before opening a microphone: %s', async outcome => {
+  let resolve!: (status: VoiceLiveStatus | null) => void
+  const pending = new Promise<VoiceLiveStatus | null>(done => { resolve = done })
+  mocks.refresh.mockReturnValue(pending)
+  const wrapper = ({ children }: { children: ReactNode }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  const hook = renderHook(() => useComposerVoice({ busy: false, clearDraft: vi.fn(), disabled: false, focusInput: vi.fn(), insertText: vi.fn(), maxRecordingSeconds: 30, onSubmit: vi.fn(async () => true), onTranscribeAudio: undefined, sessionId: null, target: 'main' }), { wrapper })
+  act(() => hook.result.current.startConversation())
+  expect(hook.result.current.voiceConversationActive).toBe(true)
+  expect(mocks.nativeEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true)
+
+  if (outcome === 'cancelled') {act(() => hook.result.current.endConversation())}
+  await act(async () => {
+    resolve(outcome === 'scope-changed' ? null : { mode: 'qwen-realtime', available: true, model: 'Flash', voice: 'longanqian', reason: null })
+    await pending
+  })
+  expect(hook.result.current.voiceConversationActive).toBe(outcome === 'resolved')
+  expect(mocks.nativeEnabled.mock.calls.some(([enabled]) => enabled === true)).toBe(outcome === 'resolved')
+})

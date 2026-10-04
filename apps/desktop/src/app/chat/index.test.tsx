@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useState } from 'react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useEffect, useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { assistantTextPart, type ChatMessage } from '@/lib/chat-messages'
-import { mainComposerScope } from '@/store/composer'
+import { $voiceConversationStartRequest, mainComposerScope, requestVoiceConversationStart } from '@/store/composer'
 import {
   $activeSessionId,
   $awaitingResponse,
@@ -21,6 +21,7 @@ import {
   $sessions
 } from '@/store/session'
 
+const composerLifetime = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
 const threadRenderCount = vi.hoisted(() => ({ current: 0 }))
 const threadProps = vi.hoisted(() => ({ current: null as null | { intro?: Record<string, unknown> } }))
 
@@ -52,7 +53,20 @@ vi.mock('@/lib/model-options', () => ({
 }))
 vi.mock('./chat-drop-overlay', () => ({ ChatDropOverlay: () => null }))
 vi.mock('./chat-swap-overlay', () => ({ ChatSwapOverlay: () => null, ChatSyncBadge: () => null }))
-vi.mock('./composer', () => ({ ChatBar: () => null, ChatBarFallback: () => null }))
+vi.mock('./composer', () => ({
+  ChatBar: () => {
+    useEffect(() => {
+      composerLifetime.mounts++
+
+      return () => {
+        composerLifetime.unmounts++
+      }
+    }, [])
+
+    return <div data-testid="voice-owner" />
+  },
+  ChatBarFallback: () => null
+}))
 vi.mock('./hooks/use-file-drop-zone', () => ({
   useFileDropZone: () => ({ dragKind: null, dropHandlers: {} })
 }))
@@ -77,6 +91,9 @@ function assistantMessage(id: string, text: string): ChatMessage {
 
 describe('ChatView render isolation', () => {
   beforeEach(() => {
+    composerLifetime.mounts = 0
+    composerLifetime.unmounts = 0
+    $voiceConversationStartRequest.set(0)
     threadRenderCount.current = 0
     threadProps.current = null
     mainComposerScope.clear()
@@ -169,7 +186,7 @@ describe('ChatView render isolation', () => {
     expect(threadRenderCount.current).toBe(1)
   })
 
-  it('passes the main Composer attachment draft and real actions into the Start intro', () => {
+  it('Start keeps the real composer voice owner mounted when a delegated task creates chat history', () => {
     const attachment = { id: 'brief', kind: 'file' as const, label: 'brief.pdf' }
     const onPickFiles = vi.fn()
     const onPickFolders = vi.fn()
@@ -227,5 +244,17 @@ describe('ChatView render isolation', () => {
         onRemoveAttachment
       })
     )
+    expect(screen.queryByTestId('voice-owner')).toBeNull()
+    act(() => requestVoiceConversationStart())
+    expect(screen.getByTestId('voice-owner').closest('[hidden]')).toBeTruthy()
+    expect(composerLifetime.mounts).toBe(1)
+    act(() => {
+      $activeSessionId.set('delegated-runtime')
+      $selectedStoredSessionId.set('delegated-chat')
+      $messages.set([assistantMessage('delegated-answer', 'Task result')])
+    })
+    expect(screen.getByTestId('voice-owner').closest('[hidden]')).toBeNull()
+    expect(composerLifetime.mounts).toBe(1)
+    expect(composerLifetime.unmounts).toBe(0)
   })
 })
