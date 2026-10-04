@@ -3357,8 +3357,8 @@ export const zh = defineLocale({
     // judge) so most updates finish in well under a minute.
     activeDescUpdate: version =>
       version
-        ? `正在更新到 ${version}。未变化的依赖会自动跳过，通常几秒到几十秒内完成。`
-        : '正在更新 APEX。未变化的依赖会自动跳过，通常几秒到几十秒内完成。',
+        ? `正在更新到 ${version}。未变化的依赖会自动跳过；需要下载新依赖时，可能耗时数分钟。`
+        : '正在更新 APEX。未变化的依赖会自动跳过；需要下载新依赖时，可能耗时数分钟。',
     progress: (completed, total) => `${completed}/${total} 个步骤已完成`,
     currentStage: stage => ` -- 当前：${stage}`,
     fetchingManifest: '正在获取安装器 manifest...',
@@ -3388,7 +3388,7 @@ export const zh = defineLocale({
       venv: 'Python 环境',
       'python-deps': 'Python 依赖',
       dependencies: 'Python 依赖',
-      'node-deps': 'Node 依赖',
+      'node-deps': '浏览器与工具依赖',
       desktop: '桌面应用',
       path: '配置路径',
       config: '写入配置',
@@ -3421,7 +3421,7 @@ export const zh = defineLocale({
       venv: '约 3 秒',
       'python-deps': '约 5 秒',
       dependencies: '约 5 秒',
-      'node-deps': '约 45 秒',
+      'node-deps': '可能数分钟',
       desktop: '约 2 分钟',
       path: '约 1 秒',
       config: '约 1 秒',

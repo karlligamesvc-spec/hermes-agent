@@ -20,7 +20,7 @@ describe('stageLabel', () => {
     expect(stageLabel('repository', labels)).toBe('拉取程序')
     expect(stageLabel('venv', labels)).toBe('Python 环境')
     expect(stageLabel('python-deps', labels)).toBe('Python 依赖')
-    expect(stageLabel('node-deps', labels)).toBe('Node 依赖')
+    expect(stageLabel('node-deps', labels)).toBe('浏览器与工具依赖')
     expect(stageLabel('config', labels)).toBe('写入配置')
     expect(stageLabel('setup', labels)).toBe('初始化')
     expect(stageLabel('gateway', labels)).toBe('启动网关')

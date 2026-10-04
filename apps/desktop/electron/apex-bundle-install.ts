@@ -261,8 +261,16 @@ function writeCommitMarkerAtomic(commitMarker) {
 async function stageAndCommitBundle(o) {
   const { hermesHome, key, archivePath, manifest, extract, runTool, log = () => {} } = o
   const paths = layout.bundlePaths(hermesHome)
-  const finalDir = paths.versionDir(key)
-  const stagingDir = paths.stagingDir(key)
+  // A source pin can be rebuilt with a different verified file index. Retain
+  // both artifacts rather than replacing the active/rollback directory in place.
+  const directoryKey = o.directoryKey ?? key
+
+  if (directoryKey !== key && directoryKey !== `${key}-${manifest.files_index.sha256.slice(0, 12)}`) {
+    throw new BundleInstallError('invalid bundle artifact directory key', 'key_mismatch', 'stage')
+  }
+
+  const finalDir = paths.versionDir(directoryKey)
+  const stagingDir = paths.stagingDir(directoryKey)
   const commitMarker = path.join(finalDir, COMMIT_MARKER_BASENAME)
   let promotedByThisAttempt = false
 
@@ -271,7 +279,7 @@ async function stageAndCommitBundle(o) {
   // those trees in place once before reusing them.
   if (fs.existsSync(finalDir)) {
     if (!fs.existsSync(commitMarker)) {
-      log(`[bundle-install] versions/${key} predates final-path commit marker — repairing`)
+      log(`[bundle-install] versions/${directoryKey} predates final-path commit marker — repairing`)
       await runTool(bundledNodeExe(finalDir, manifest), fixupArgv(finalDir, manifest), 'fixup-final')
       await runTool(bundledNodeExe(finalDir, manifest), verifyArgv(finalDir, manifest), 'verify-final')
       writeCommitMarkerAtomic(commitMarker)
@@ -279,7 +287,7 @@ async function stageAndCommitBundle(o) {
       return { ok: true, versionDir: finalDir, reused: true, repaired: true }
     }
 
-    log(`[bundle-install] versions/${key} already present — reusing`)
+    log(`[bundle-install] versions/${directoryKey} already present — reusing`)
 
     return { ok: true, versionDir: finalDir, reused: true }
   }
@@ -319,7 +327,7 @@ async function stageAndCommitBundle(o) {
     log('[bundle-install] verify (final path)')
     await runTool(bundledNodeExe(finalDir, manifest), verifyArgv(finalDir, manifest), 'verify-final')
     writeCommitMarkerAtomic(commitMarker)
-    log(`[bundle-install] committed versions/${key}`)
+    log(`[bundle-install] committed versions/${directoryKey}`)
 
     return { ok: true, versionDir: finalDir }
   } catch (err: any) {

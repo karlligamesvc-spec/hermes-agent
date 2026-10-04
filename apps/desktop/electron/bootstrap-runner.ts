@@ -44,6 +44,7 @@ import fsp from 'node:fs/promises'
 import https from 'node:https'
 import path from 'node:path'
 
+import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import {
   buildErrorCode,
   fireTelemetry,
@@ -1232,6 +1233,10 @@ async function runBootstrap(opts) {
   })
 
   try {
+    if (isVersionedRuntimeRoot(activeRoot, hermesHome)) {
+      throw new Error('已安装引擎采用独立版本目录。请更新 APEX 安装包以更新引擎；原引擎和用户资料已保留。')
+    }
+
     const existingCheckout = hasExistingGitCheckout(activeRoot)
     const pinCommit = !existingCheckout
 

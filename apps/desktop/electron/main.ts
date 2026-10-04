@@ -72,6 +72,7 @@ import { announcementReadUrl, announcementsListUrl, parseAnnouncementsResponse }
 import * as bundleDiskspace from './apex-bundle-diskspace'
 import { downloadWithResume } from './apex-bundle-download'
 import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-install'
+import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import * as bundleMigrate from './apex-bundle-migrate'
 import {
   fetchClientConfig,
@@ -480,7 +481,7 @@ import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
-import { assertPackagedRuntimeIdle, createPackagedRuntimeGate, installPackagedRuntime, shouldInstallPackagedRuntime } from './packaged-runtime'
+import { armPackagedRuntimeUpdate, assertPackagedRuntimeIdle, createPackagedRuntimeGate, installPackagedRuntime, packagedRuntimeMatchesPin, shouldInstallPackagedRuntime } from './packaged-runtime'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { registerPetOverlayIpc } from './pet-overlay-ipc'
 import {
@@ -5590,6 +5591,9 @@ async function waitForRuntimePreparation() {
 }
 
 async function ensureRuntime(backend) {
+  const runtimeOverride = readRuntimePinOverride()
+  const offlineUpdate = runtimeOverride && packagedRuntimeMatchesPin(process.resourcesPath, runtimeOverride.commit)
+
   // This shared gate covers primary, background-profile, messaging and explicit local Agent children.
   // Remote routes return before ensureRuntime; developer/borrowed roots are untouched.
   if (shouldInstallPackagedRuntime({
@@ -5599,10 +5603,19 @@ async function ensureRuntime(backend) {
     backendRoot: backend.root,
     backendKind: backend.kind,
     hermesHome: HERMES_HOME,
-    updatePending: readRuntimePinOverride() !== null
+    updatePending: runtimeOverride !== null && !offlineUpdate
   })) {
     await advanceBootProgress('runtime.bundle', 'Preparing the APEX engine', 30)
-    await ensurePackagedEngine()
+    const prepared = await ensurePackagedEngine()
+
+    if (offlineUpdate) {
+      if (prepared.status === 'preserved' || prepared.runtimeCommit !== runtimeOverride.commit) {
+        rollbackRuntimePinOverride('offline bundled update failed')
+        throw new Error('安装包内的引擎更新失败，已保留原引擎。请重试。')
+      }
+
+      clearRuntimePinOverride()
+    }
     localBackendLifecycle.assertCanStart()
     const cliArgs = backend.kind === 'bootstrap-needed' ? backend.args : backend.args.slice(2)
     backend = createActiveBackend(cliArgs)
@@ -22437,6 +22450,23 @@ async function applyResolvedRuntimeUpdate(pin) {
     }
   }
 
+  // Retain the previous marker for version ordering; the override forces an
+  // offline preparation pass without invoking npm or the source installer.
+  if (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT) {
+    try {
+      if (armPackagedRuntimeUpdate({ resourcesPath: process.resourcesPath, commit: pin.commit, branch: pin.branch,
+        version: pin.version, previousMarker: marker || null, persistOverride: writeRuntimePinOverride })) {
+        ensurePackagedEngine.reset()
+        bootstrapFailure = null
+        resetHermesConnection()
+
+        return { ok: true, applied: true, via: 'packaged', reloadRequired: true, latest: { version: pin.version, key: pin.key } }
+      }
+    } catch (error: any) {
+      return { ok: false, error: error.message || String(error) }
+    }
+  }
+
   // 2b. hc-472 opt-in: when HERMES_BUNDLE_MODE is on, apply via the versioned
   //     bundle set (download → sha gate → never-in-place stage/verify → atomic
   //     pointer+link switch). Its own manifest fetch IS the reachability proof,
@@ -22503,6 +22533,10 @@ async function applyResolvedRuntimeUpdate(pin) {
 
     rememberLog(`[bundle] apply failed (${result.code}@${result.stage || '?'}); falling back to legacy install chain`)
     // fall through to the legacy steps 3-4 below
+  }
+
+  if (isVersionedRuntimeRoot(ACTIVE_HERMES_ROOT, HERMES_HOME)) {
+    return { ok: false, error: 'packaged_engine_required', message: '请先更新 APEX 安装包，再更新引擎。当前引擎和用户资料已保留。', latest: { version: pin.version, key: pin.key } }
   }
 
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists

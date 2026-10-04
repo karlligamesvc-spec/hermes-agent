@@ -243,7 +243,7 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
 
       // node-deps hasn't started (still 'pending') -- the hint fills the slot
       // that would otherwise be blank until the stage starts.
-      expect(await screen.findByText('~45s')).toBeTruthy()
+      expect(await screen.findByText('May take several minutes')).toBeTruthy()
     } finally {
       desktop.restore()
     }
