@@ -366,7 +366,7 @@ export function useStatusbarItems({
       // Update state is not a preference: hiding it is how a user misses that
       // their client is behind. Listed in the menu, but locked on.
       lockedVisible: true,
-      onSelect: () => openUpdateOverlayFor('client'),
+      onSelect: () => openCommandCenterSection('system'),
       title: status.tooltip,
       toggleLabel: copy.toggleVersion,
       variant: 'action'
@@ -375,6 +375,7 @@ export function useStatusbarItems({
     desktopVersion?.appVersion,
     connection?.mode,
     copy,
+    openCommandCenterSection,
     updateApply.applying,
     updateApply.message,
     updateApply.stage,
