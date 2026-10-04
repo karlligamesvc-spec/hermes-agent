@@ -105,9 +105,11 @@ def _live_section(voice: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
 
 def voice_chat_mode(voice: Optional[Dict[str, Any]] = None) -> str:
-    """``chained`` (default) or ``gpt-live``. Accepts the underscore spelling too."""
+    """Selected voice transport; unknown modes retain the chained default."""
     raw = (voice if voice is not None else _voice_section()).get("voice_chat_mode")
     mode = str(raw or CHAINED_MODE).strip().lower().replace("_", "-")
+    if mode == "qwen-realtime":
+        return mode
     return GPT_LIVE_MODE if mode in {GPT_LIVE_MODE, "gptlive", "live"} else CHAINED_MODE
 
 
@@ -133,9 +135,17 @@ def resolve_gpt_live_status() -> Dict[str, Any]:
     can start (a key resolves). Never returns the key."""
     voice = _voice_section()
     mode = voice_chat_mode(voice)
+    if mode == "qwen-realtime":
+        from apex_overlay.voice_realtime import status
+        result = status()
+        api_key, _base = _resolve_credentials(_live_section(voice))
+        return {**result, "qwen_available": result["available"], "qwen_reason": result["reason"], "gpt_available": bool(api_key)}
     live = _live_section(voice)
     api_key, _base = _resolve_credentials(live)
+    from apex_overlay.voice_realtime import status as qwen_status
+    qwen = qwen_status()
     return {
+        "qwen_available": qwen["available"], "qwen_reason": qwen["reason"], "gpt_available": bool(api_key),
         "mode": mode,
         "available": bool(api_key),
         "reason": None if api_key else "no OpenAI API key (set OPENAI_API_KEY or voice.gpt_live.api_key)",

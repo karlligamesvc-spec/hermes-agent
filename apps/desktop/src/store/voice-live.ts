@@ -1,6 +1,7 @@
 import { atom } from 'nanostores'
 
-import { fetchVoiceLiveStatus, type VoiceLiveStatus } from '@/lib/voice-live'
+import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
+import { fetchVoiceLiveStatus, type VoiceChatMode, type VoiceLiveStatus } from '@/lib/voice-live'
 import { activeGateway } from '@/store/gateway'
 
 /**
@@ -11,29 +12,44 @@ import { activeGateway } from '@/store/gateway'
  */
 export const $voiceLiveStatus = atom<null | VoiceLiveStatus>(null)
 
-let inflight: null | Promise<null | VoiceLiveStatus> = null
+const currentScope = () => JSON.stringify([getApiRequestConnection(), getApiRequestProfile()])
+let inflight: null | { scope: string; promise: Promise<null | VoiceLiveStatus> } = null
+let resolvedScope: null | string = null
 
-export async function refreshVoiceLiveStatus(): Promise<null | VoiceLiveStatus> {
-  if (inflight) {
-    return inflight
+export async function refreshVoiceLiveStatus(force = false): Promise<null | VoiceLiveStatus> {
+  const scope = currentScope()
+
+  if (!force && inflight?.scope === scope) {
+    return inflight.promise
   }
 
-  inflight = fetchVoiceLiveStatus()
-    .then(status => {
-      $voiceLiveStatus.set(status)
+  if (resolvedScope !== scope) {
+    $voiceLiveStatus.set(null)
+  }
 
-      return status
+  const request = { scope, promise: Promise.resolve<null | VoiceLiveStatus>(null) }
+  request.promise = fetchVoiceLiveStatus()
+    .then(status => {
+      if (inflight === request && currentScope() === scope) {
+        resolvedScope = scope
+        $voiceLiveStatus.set(status)
+      }
+
+      return currentScope() === scope ? status : null
     })
     .finally(() => {
-      inflight = null
+      if (inflight === request) {
+        inflight = null
+      }
     })
+  inflight = request
 
-  return inflight
+  return request.promise
 }
 
 /** Selected mode. `chained` until the backend answers, or when the backend predates the mode. */
-export function selectedVoiceChatMode(status: null | VoiceLiveStatus = $voiceLiveStatus.get()): 'chained' | 'gpt-live' {
-  return status?.mode === 'gpt-live' ? 'gpt-live' : 'chained'
+export function selectedVoiceChatMode(status: null | VoiceLiveStatus = $voiceLiveStatus.get()): VoiceChatMode {
+  return status?.mode ?? 'chained'
 }
 
 /**
@@ -42,7 +58,7 @@ export function selectedVoiceChatMode(status: null | VoiceLiveStatus = $voiceLiv
  * what the backend will actually mount next. Takes effect on the NEXT
  * conversation; an active one keeps its engine.
  */
-export async function setVoiceChatMode(mode: 'chained' | 'gpt-live'): Promise<null | VoiceLiveStatus> {
+export async function setVoiceChatMode(mode: VoiceChatMode): Promise<null | VoiceLiveStatus> {
   const gateway = activeGateway()
 
   if (!gateway) {
@@ -51,5 +67,5 @@ export async function setVoiceChatMode(mode: 'chained' | 'gpt-live'): Promise<nu
 
   await gateway.request('config.set', { key: 'voice.voice_chat_mode', value: mode })
 
-  return refreshVoiceLiveStatus()
+  return refreshVoiceLiveStatus(true)
 }

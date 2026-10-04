@@ -44,4 +44,14 @@ describe('GPT-Live delegation → Hermes turn', () => {
     expect(history[0]?.role).toBe('user')
     expect(history.find(m => m.role === 'assistant')?.content[0]?.type).toBe('output_text')
   })
+  it('native full ASR turns preserve the latest request when no assistant speech separates them', () => {
+    const result = delegationPrompt([
+      { speaker: 'user', turnId: 'older', text: '查北京天气', startMs: 0, endMs: 1 },
+      { speaker: 'user', turnId: 'latest', text: '改查上海天气', startMs: 2, endMs: 3 }
+    ])
+
+    expect(result.prompt).toBe('改查上海天气')
+    expect(result.context).toBe('User: 查北京天气\nUser: 改查上海天气')
+  })
+
 })

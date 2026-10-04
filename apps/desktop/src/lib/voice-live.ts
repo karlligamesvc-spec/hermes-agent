@@ -19,11 +19,14 @@ import { hermesApi } from '@/hermes'
  * https://developers.openai.com/api/docs/guides/live-delegation
  */
 
-export type VoiceChatMode = 'chained' | 'gpt-live'
+export type VoiceChatMode = 'chained' | 'gpt-live' | 'qwen-realtime'
 
 export interface VoiceLiveStatus {
   mode: VoiceChatMode
   available: boolean
+  qwenAvailable?: boolean
+  qwenReason?: string | null
+  gptAvailable?: boolean
   reason: null | string
   model: string
   voice: string
@@ -50,6 +53,8 @@ interface LiveServerEvent {
 }
 
 export interface LiveTranscriptFragment {
+  /** Full ASR turns remain separate; undefined keeps legacy transcript-delta joining. */
+  turnId?: string
   speaker: 'assistant' | 'user'
   text: string
   startMs: number
@@ -91,7 +96,10 @@ export async function fetchVoiceLiveStatus(): Promise<null | VoiceLiveStatus> {
 
     return {
       available: Boolean(response.available),
-      mode: response.mode === 'gpt-live' ? 'gpt-live' : 'chained',
+      mode: response.mode === 'qwen-realtime' ? 'qwen-realtime' : response.mode === 'gpt-live' ? 'gpt-live' : 'chained',
+      qwenAvailable: (response as VoiceLiveStatus & { qwen_available?: boolean }).qwen_available,
+      qwenReason: (response as VoiceLiveStatus & { qwen_reason?: string | null }).qwen_reason,
+      gptAvailable: (response as VoiceLiveStatus & { gpt_available?: boolean }).gpt_available,
       model: response.model,
       reason: response.reason ?? null,
       voice: response.voice
@@ -464,6 +472,10 @@ export class VoiceLiveSession {
         type: 'session.commentary.append'
       })
     }
+  }
+
+  finishDelegation(_delegationId: string): void {
+    /* GPT-Live consumes streaming commentary directly. */
   }
 
   /** Steer the live persona mid-conversation (session-wide). */

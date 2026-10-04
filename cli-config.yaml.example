@@ -2380,3 +2380,11 @@ updates:
 #   # This runs ONCE per process at startup, so it cannot replace a credential
 #   # that expires mid-session. For a single provider whose token needs
 #   # re-minting during a session, use `providers.<name>.key_cmd` instead.
+
+# APEX native realtime speech uses the active profile's APEX login, never a vendor key.
+# Choose qwen-realtime in Desktop's voice engine menu after the Relay channel is enabled.
+voice:
+  voice_chat_mode: chained
+  qwen_realtime:
+    model: qwen-audio-3.0-realtime-flash  # also supports qwen-audio-3.0-realtime-plus
+    voice: longanqian

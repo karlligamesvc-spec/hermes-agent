@@ -221,7 +221,7 @@ export function useComposerVoice({
     const status = $voiceLiveStatus.get()
     let live = false
 
-    if (selectedVoiceChatMode(status) === 'gpt-live') {
+    if (selectedVoiceChatMode(status) !== 'chained') {
       if (status?.available) {
         live = true
       } else {

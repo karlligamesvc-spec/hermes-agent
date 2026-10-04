@@ -23,9 +23,10 @@ def _set(value):
     return server._methods["config.set"](1, {"key": "voice.voice_chat_mode", "value": value})
 
 
-def test_engine_choice_reaches_the_config_file_and_round_trips(config_home):
-    assert _set("gpt-live")["result"] == {"key": "voice.voice_chat_mode", "value": "gpt-live"}
-    assert yaml.safe_load(config_home.read_text())["voice"]["voice_chat_mode"] == "gpt-live"
+@pytest.mark.parametrize("engine", ["gpt-live", "qwen-realtime"])
+def test_engine_choice_reaches_the_config_file_and_round_trips(config_home, engine):
+    assert _set(engine)["result"] == {"key": "voice.voice_chat_mode", "value": engine}
+    assert yaml.safe_load(config_home.read_text())["voice"]["voice_chat_mode"] == engine
 
     assert _set("Chained ")["result"]["value"] == "chained"
     assert yaml.safe_load(config_home.read_text())["voice"]["voice_chat_mode"] == "chained"

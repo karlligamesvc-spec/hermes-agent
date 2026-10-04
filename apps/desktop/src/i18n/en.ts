@@ -3240,6 +3240,10 @@ export const en: Translations = {
   },
 
   composer: {
+    voiceEngineQwen: 'Qwen realtime voice',
+    voiceEngineQwenShort: 'Qwen realtime',
+    voiceEngineQwenNeedsLogin: 'Sign in to APEX first',
+
     message: 'Message',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting APEX...',

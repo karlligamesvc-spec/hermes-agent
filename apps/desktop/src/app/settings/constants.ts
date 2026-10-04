@@ -294,7 +294,8 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   'stt.provider': ['local', 'groq', 'openai', 'mistral', 'xai', 'elevenlabs'],
   // How the desktop voice conversation is wired — tools/voice_live.py owns the
   // gpt-live branch (one full-duplex voice model delegating to Hermes).
-  'voice.voice_chat_mode': ['chained', 'gpt-live'],
+  'voice.voice_chat_mode': ['chained', 'gpt-live', 'qwen-realtime'],
+  'voice.qwen_realtime.model': ['qwen-audio-3.0-realtime-flash', 'qwen-audio-3.0-realtime-plus'],
   'voice.gpt_live.voice': [
     'marin',
     'cedar',
@@ -500,6 +501,7 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     maxRecordingSeconds: 'Max Recording Length',
     autoTts: 'Read Responses Aloud',
     voiceChatMode: 'Voice Chat Mode',
+    qwenRealtime: { model: 'Qwen Realtime Model' },
     gptLive: {
       voice: 'GPT-Live Voice',
       instructions: 'GPT-Live Persona'
@@ -665,8 +667,9 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   },
   voice: {
     autoTts: 'Automatically speak assistant responses.',
+    qwenRealtime: { model: 'Flash is the default; Plus has higher usage costs. Changes apply to the next call.' },
     voiceChatMode:
-      'chained: speech-to-text → Hermes → text-to-speech with the providers below. gpt-live: one full-duplex OpenAI voice model (gpt-live-1) listens and talks, and hands every real request to Hermes — any model you have selected answers with the full toolset. Needs an OpenAI API key; the voice layer bills $0.05 per minute.',
+      'qwen-realtime: native Qwen voice through your APEX account, with real requests delegated to the current assistant. chained: speech-to-text → Hermes → text-to-speech with the providers below. gpt-live: one full-duplex OpenAI voice model (gpt-live-1) listens and talks, and hands every real request to Hermes — any model you have selected answers with the full toolset. Needs an OpenAI API key; the voice layer bills $0.05 per minute.',
     gptLive: {
       voice: 'Voice for GPT-Live mode. Custom voice IDs are accepted.',
       instructions:
@@ -792,6 +795,7 @@ export const SECTIONS: DesktopConfigSection[] = [
     icon: Mic,
     keys: [
       'voice.voice_chat_mode',
+      'voice.qwen_realtime.model',
       'voice.gpt_live.voice',
       'voice.gpt_live.instructions',
       'tts.provider',
