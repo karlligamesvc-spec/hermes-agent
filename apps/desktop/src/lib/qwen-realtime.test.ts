@@ -184,6 +184,18 @@ describe('Qwen native realtime', () => {
     await starting
     expect(track.stop).toHaveBeenCalledOnce()
   })
+
+  it('ends an established call and releases capture when the service sends malformed data', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    Socket.latest.onmessage?.({ data: '{broken' })
+    expect(handlers.onError).toHaveBeenCalledWith('语音服务返回了无效数据。', true)
+    expect(handlers.onClosed).toHaveBeenCalledWith('invalid_response', null)
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(recorder.disconnect).toHaveBeenCalledOnce()
+    expect(closeContext).toHaveBeenCalledOnce()
+    expect(Socket.latest.close).toHaveBeenCalledOnce()
+  })
   it('ends before delegating when the active account or connection changes', async () => {
     const { session, handlers } = setup()
     await session.start()

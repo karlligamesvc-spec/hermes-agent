@@ -142,6 +142,8 @@ export class QwenRealtimeSession {
             this.receive(event)
           } catch {
             finish(new Error('语音服务返回了无效数据。'))
+            this.handlers.onError('语音服务返回了无效数据。', true)
+            this.close('invalid_response')
           }
         }
 
