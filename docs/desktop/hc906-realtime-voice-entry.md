@@ -122,3 +122,48 @@ Radix delayed focus cleanup completes before the test DOM is disposed.
 A real wide-screen drawer preview retained the exact viewport position and
 allowed hangup outside the drawer edge; the host had no retained transform.
 No microphone was opened by this simulated preview.
+
+## Interrupted utterance / response collision regression
+
+The user's trial returned the exact VAD message `Server VAD turn committed but no
+response was created because a manual response is already in progress.` followed
+by `voice_error`. The native client treated every error except an idle cancel as
+fatal, while tool completion sent `response.create` even during an existing
+response or before a previous create had been acknowledged.
+
+Tool output items still reach the same conversation immediately. Their response
+request is coalesced and sent only when no response is active/requested and the
+user is not speaking. A terminal receipt releases the slot, including cancelled
+receipts; duplicate terminal receipts cannot release a subsequent reservation.
+Speech-stop leaves automatic creation to VAD. Late output from interrupted
+responses remains discarded, and a response created during renewed speech is
+cancelled. The observed VAD notification and the protocol's active-response
+rejection retain capture and queue one follow-up after the active receipt.
+Only those two narrow conflicts are recoverable; Relay admission/quota errors,
+unknown errors, malformed events and transport failure still close the call.
+
+The runtime's actual session.update now sets server_vad silence_duration_ms to
+1500 (previously 700), allowing longer natural pauses at the cost of about 0.8s
+more end-of-utterance latency. Model, voice, threshold, permissions and billing
+are unchanged. Smart-turn support has not been proved on this provider route,
+so no different detection mode is selected.
+
+The actual transport tests drive tool/automatic/manual response ordering, the
+acknowledgement gap, renewed speech, cancellation, duplicate receipts and the
+exact trial notification, then verify resumed audio without closing capture.
+Fatal-error rows verify capture/socket release for unavailable, failed, invalid
+key and unknown errors. The Python transport test independently checks the
+actual outgoing VAD object rather than using the config builder as its oracle.
+Reverse injections remove response serialization, restore fatal VAD handling,
+or restore the 700ms pause: each uniquely anchored mutation fails its behavior
+regression and is restored. Physical speech quality is still user acceptance.
+
+Protocol reference: https://docs.qwencloud.com/api-reference/qwen-audio-realtime/websocket-api
+(automatic turns, function results and response.create state constraints).
+
+The r5 collision fix passed 9,014 UI tests across 944 files, 29 focused native/
+route/controller tests, all 19 Runtime voice smoke tests, typecheck and ruff.
+Lint has 0 errors and the same 303 existing warnings. All three collision/pause
+reverse injections failed their intended behavioral assertions; restoring the
+Runtime source passed its eight tests again. Local diagnostics use this checkout;
+the public runtime pin must include this VAD change before a paired release.

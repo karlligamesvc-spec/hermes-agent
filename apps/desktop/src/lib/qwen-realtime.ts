@@ -52,8 +52,12 @@ export class QwenRealtimeSession {
   private muted = false
   private closed = false
   private responding = false
+  private responseRequested = false
+  private responsePending = false
+  private userSpeaking = false
   private responseId: string | null = null
   private readonly cancelledResponses = new Set<string>()
+  private readonly completedResponses = new Set<string>()
   private readonly delegatedCalls = new Set<string>()
   private ready = false
   private reply = ''
@@ -200,20 +204,38 @@ export class QwenRealtimeSession {
         return
       }
 
+      // This VAD notification commits the user's words, but skips inference
+      // while a manual reply is active. Recover after its terminal receipt;
+      // authentication, quota and all other errors still end the call.
+      if (event.error?.message === 'Server VAD turn committed but no response was created because a manual response is already in progress.') {
+        this.responsePending = true
+
+        return
+      }
+
+      if (event.error?.code === 'conversation_already_has_active_response') {
+        this.responseRequested = false
+        this.responding = true
+        this.responsePending = true
+
+        return
+      }
+
       this.handlers.onError(event.error?.message ?? '千问实时语音暂不可用。', true)
       this.close('voice_error')
 
       return
     }
 
-    if (event.response_id && this.cancelledResponses.has(event.response_id)) {
+    if (event.type !== 'response.done' && event.response_id && this.cancelledResponses.has(event.response_id)) {
       return
     }
 
     if (event.type === 'input_audio_buffer.speech_started') {
+      this.userSpeaking = true
       this.stopAudio()
 
-      if (this.responding) {
+      if (this.responding || this.responseRequested) {
         if (this.responseId) {
           this.cancelledResponses.add(this.responseId)
         }
@@ -224,15 +246,42 @@ export class QwenRealtimeSession {
       return
     }
 
+    if (event.type === 'input_audio_buffer.speech_stopped') {
+      this.userSpeaking = false
+
+      // Server VAD owns the next response; do not race its automatic create.
+      return
+    }
+
     if (event.type === 'response.created' || event.type === 'response.done') {
-      if (event.type === 'response.done' && event.response?.id !== this.responseId) {
+      if (event.response?.id && this.completedResponses.has(event.response.id)) {
+        return
+      }
+
+      if (event.type === 'response.done' && this.responseId && event.response?.id !== this.responseId) {
         return
       }
 
       this.responding = event.type === 'response.created'
+      this.responseRequested = false
 
       if (this.responding) {
         this.responseId = event.response?.id ?? null
+
+        if (this.userSpeaking) {
+          if (this.responseId) {
+            this.cancelledResponses.add(this.responseId)
+          }
+
+          this.send({ type: 'response.cancel' })
+        }
+      } else {
+        if (event.response?.id) {
+          this.completedResponses.add(event.response.id)
+        }
+
+        this.responseId = null
+        this.flushPendingResponse()
       }
 
       return
@@ -380,11 +429,24 @@ export class QwenRealtimeSession {
     })
     this.callId = null
     this.reply = ''
+    this.responsePending = true
+    this.flushPendingResponse()
+  }
+
+  private flushPendingResponse(): void {
+    if (this.closed || !this.responsePending || this.responding || this.responseRequested || this.userSpeaking) {
+      return
+    }
+
+    // Reserve the slot before response.created arrives, so another completed
+    // tool cannot start a second response in the acknowledgement gap.
+    this.responsePending = false
+    this.responseRequested = true
     this.send({ type: 'response.create' })
   }
 
   instruct(_content: string): void {
-    // Server VAD commits and creates the reply after 700ms of silence.
+    // Runtime-owned server VAD commits and creates replies after a natural pause.
   }
 
   setMuted(muted: boolean): void {

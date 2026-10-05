@@ -78,7 +78,7 @@ def session_config(settings: dict) -> dict:
     return {'type': 'session.update', 'session': {
         'modalities': ['text', 'audio'], 'voice': settings['voice'], 'instructions': QWEN_PERSONA,
         'input_audio_format': 'pcm', 'output_audio_format': 'pcm',
-        'turn_detection': {'type': 'server_vad', 'threshold': 0.5, 'silence_duration_ms': 700},
+        'turn_detection': {'type': 'server_vad', 'threshold': 0.5, 'silence_duration_ms': 1500},
         'input_audio_transcription': {'model': 'qwen-audio-3.0-asr-flash'},
         'tools': [{'type': 'function', 'function': {
             'name': 'apex_assistant', 'description': '查询事实、推理或执行任何工作，返回 APEX 助手的真实结果。',
