@@ -100,6 +100,7 @@ def test_runtime_protocol_pins_vendor_config_and_passes_tool_results(monkeypatch
     def connect(url, **kwargs):
         assert url == 'wss://apex-nodes.com/relay/v1/audio/realtime?model=' + voice.DEFAULT_MODEL
         assert kwargs['additional_headers'] == {'Authorization': 'Bearer profile-key'}
+        assert kwargs['user_agent_header'] == 'APEX-Desktop/1'
         return vendor
     monkeypatch.setattr(voice, 'connect', connect)
     class Browser:
@@ -157,6 +158,9 @@ def test_status_passes_selected_model_and_only_apex_auth(monkeypatch):
     def urlopen(request, **kwargs):
         assert request.full_url.endswith('/audio/realtime/status?model=qwen-audio-3.0-realtime-plus')
         assert request.get_header('Authorization') == 'Bearer apex-identity'
+        # Reproduce the public edge's 403 for urllib's generic Python identity.
+        if request.get_header('User-agent') != 'APEX-Desktop/1':
+            raise voice.urllib.error.HTTPError(request.full_url, 403, 'Forbidden', {}, None)
         return io.BytesIO(b'{"available":true,"reason":null}')
     monkeypatch.setattr(voice.urllib.request, 'urlopen', urlopen)
     assert voice.status()['available'] is True

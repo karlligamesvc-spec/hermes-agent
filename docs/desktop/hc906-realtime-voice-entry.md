@@ -49,3 +49,21 @@ labelled simulated call, checking subtitle expansion, mute and hangup. It does
 not verify a physical microphone, audio quality or a live Hermes task. The public
 0.17.46 package does not contain this subsequent fix; delivery still requires the
 paired Mac/Windows release workflow and three public manifest readbacks.
+
+## Local packaged trial: public-edge client identity
+
+The Mac trial exposed a second blocker after the user signed in: Qwen was greyed
+out because its status request inherited urllib's generic Python User-Agent.
+The actual public Cloudflare edge returned a non-JSON HTTP 403; the same profile
+credential and model with an explicit APEX Desktop identity returned HTTP 200
+and `available: true`. No credential or quota was changed.
+
+Both Runtime exits now identify the first-party client as `APEX-Desktop/1`:
+the HTTP status request and the Relay WebSocket handshake. Auth remains the
+same profile-local Bearer credential. The HTTP regression reproduces rejection
+of the generic identity; the existing actual WebSocket transport test checks
+the handshake option alongside profile auth and real native tool-result flow.
+Run `scripts/run_tests.sh tests/hermes_cli/test_qwen_realtime.py` and the existing
+native-voice smoke above. Removing either client-identity option must make its
+corresponding regression fail. Public-edge readback proves admission only;
+physical microphone/audio and a live task still require user acceptance.

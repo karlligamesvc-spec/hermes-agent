@@ -16,6 +16,9 @@ DEFAULT_MODEL = 'qwen-audio-3.0-realtime-flash'
 DEFAULT_VOICE = 'longanqian'
 MODELS = frozenset({DEFAULT_MODEL, 'qwen-audio-3.0-realtime-plus'})
 RELAY_BASE = 'https://apex-nodes.com/relay/v1'
+# The public relay rejects generic Python clients at its edge. Identify both
+# the status probe and the WebSocket as the same first-party Desktop client.
+CLIENT_USER_AGENT = 'APEX-Desktop/1'
 QWEN_PERSONA = (
     '你是 APEX 语音助手。用自然简短的中文回答，也可以跟随用户语言。'
     '闲聊可以直接回答。用户要求查询事实、操作文件、运行命令、安排任务、修改已有任务或需要推理时，'
@@ -57,7 +60,9 @@ def status() -> dict:
     result = {'mode': 'qwen-realtime', 'available': False, 'reason': '请先登录 APEX。', **settings}
     if not key:
         return result
-    request = urllib.request.Request(base + '/audio/realtime/status?' + urllib.parse.urlencode({'model': settings['model']}), headers={'Authorization': 'Bearer ' + key})
+    request = urllib.request.Request(base + '/audio/realtime/status?' + urllib.parse.urlencode({'model': settings['model']}), headers={
+        'Authorization': 'Bearer ' + key, 'User-Agent': CLIENT_USER_AGENT,
+    })
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             upstream = json.load(response)
@@ -98,7 +103,7 @@ async def serve(ws: WebSocket, connection: tuple[str, str, dict]) -> None:
     tasks = []
     try:
         async with connect(url, additional_headers={'Authorization': 'Bearer ' + key},
-                           open_timeout=15, max_size=256 * 1024) as upstream:
+                           user_agent_header=CLIENT_USER_AGENT, open_timeout=15, max_size=256 * 1024) as upstream:
             first = json.loads(await asyncio.wait_for(upstream.recv(), 20))
             if first.get('type') == 'error':
                 await ws.send_json(first)
