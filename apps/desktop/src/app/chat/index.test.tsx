@@ -186,6 +186,30 @@ describe('ChatView render isolation', () => {
     expect(threadRenderCount.current).toBe(1)
   })
 
+  it('an ordinary-chat owner stays mounted when Start or an object drawer hides its chrome', () => {
+    const props = {
+      gateway: null, onAddContextRef: vi.fn(), onAddUrl: vi.fn(), onAttachDroppedItems: vi.fn(),
+      onAttachImageBlob: vi.fn(), onBranchInNewChat: vi.fn(), onCancel: vi.fn(), onDeleteSelectedSession: vi.fn(),
+      onEdit: vi.fn(), onPasteClipboardImage: vi.fn(), onPickFiles: vi.fn(), onPickFolders: vi.fn(), onPickImages: vi.fn(),
+      onReload: vi.fn(), onRemoveAttachment: vi.fn(), onRetryResume: vi.fn(), onSteer: vi.fn(),
+      onSubmit: vi.fn(), onThreadMessagesChange: vi.fn(), onToggleSelectedPin: vi.fn(), onTranscribeAudio: vi.fn()
+    }
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (objectRouteOpen: boolean) => <QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/']}><ChatView {...props} objectRouteOpen={objectRouteOpen} /></MemoryRouter></QueryClientProvider>
+    const rendered = render(tree(false))
+    expect(composerLifetime.mounts).toBe(1)
+    rendered.rerender(tree(true))
+    expect(screen.getByTestId('voice-owner')).toBeTruthy()
+    act(() => {
+      $activeSessionId.set(null); $messages.set([]); $selectedStoredSessionId.set(null); $freshDraftReady.set(true)
+    })
+    rendered.rerender(tree(false))
+    expect(screen.getByTestId('voice-owner').closest('[hidden]')).toBeTruthy()
+    expect(composerLifetime.mounts).toBe(1)
+    expect(composerLifetime.unmounts).toBe(0)
+  })
+
   it('Start keeps the real composer voice owner mounted when a delegated task creates chat history', () => {
     const attachment = { id: 'brief', kind: 'file' as const, label: 'brief.pdf' }
     const onPickFiles = vi.fn()

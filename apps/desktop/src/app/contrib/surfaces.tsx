@@ -28,6 +28,7 @@ import { RouteDrivenDrawer } from '../overlays/responsive-route-drawer'
 import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
 import {
   ANALYSIS_ROUTE,
+  appViewForPath,
   ASSISTANT_ROUTE,
   contributedRoutes,
   deliverableIdForPath,
@@ -347,9 +348,13 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
 
   return (
     <>
+      {/* Navigation changes visibility, never the main voice/controller lifetime. */}
+      <div className={appViewForPath(pageLocation.pathname) === 'chat' ? 'contents' : 'hidden'}>
+        {chatView}
+      </div>
       <Routes location={pageLocation}>
-        <Route element={chatView} index />
-        <Route element={chatView} path=":sessionId" />
+        <Route element={null} index />
+        <Route element={null} path=":sessionId" />
         <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
         <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
         <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />

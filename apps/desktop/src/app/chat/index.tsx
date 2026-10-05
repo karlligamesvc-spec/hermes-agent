@@ -604,6 +604,15 @@ const ChatViewContent = memo(function ChatViewContent({
     objectRouteOpen
   })
 
+  // A main composer may start voice from an ordinary chat, then navigate back
+  // to Start or into a drawer without a launcher request. Retain its owner once
+  // mounted; hidden chrome must not close the microphone or reset the panel.
+  const [mainComposerMounted, setMainComposerMounted] = useState(false)
+
+  if (isPrimary && !mainComposerMounted && (showChatBar || homeVoiceRequested)) {
+    setMainComposerMounted(true)
+  }
+
   const threadKey = selectedSessionId || activeSessionId || (isRoutedSessionView ? location.pathname : 'new')
 
   const modelOptionsQuery = useQuery<ModelOptionsResult>({
@@ -819,7 +828,7 @@ const ChatViewContent = memo(function ChatViewContent({
             anchors to the outer relative container instead: docked is absolute
             (identical placement), floating resolves against the viewport. Both
             states stay mounted here, so dock⇄float never remounts the editor. */}
-        {(showChatBar || homeVoiceRequested) && (
+        {(showChatBar || homeVoiceRequested || (isPrimary && mainComposerMounted)) && (
           <div hidden={!showChatBar}>
             <Suspense fallback={<ChatBarFallback />}>
               <ChatBar

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { atom } from 'nanostores'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,10 +12,26 @@ import { $gateway } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $selectedStoredSessionId } from '@/store/session'
 
+import { useVoiceLiveConversation } from '../chat/composer/hooks/use-voice-live-conversation'
+import { VoiceConversationPanel } from '../chat/composer/voice-conversation-panel'
+import { OverlayView } from '../overlays/overlay-view'
 import { routeDrawerNavigationState } from '../routes'
 
 import { ChatRoutesSurface } from './surfaces'
 import type { WiringActions } from './types'
+
+const nativeCall = vi.hoisted(() => ({
+  constructed: vi.fn(), start: vi.fn(async () => undefined), close: vi.fn(),
+  think: vi.fn(), speak: vi.fn(), setMuted: vi.fn(), instruct: vi.fn()
+}))
+
+vi.mock('@/lib/qwen-realtime', () => ({
+  QwenRealtimeSession: vi.fn(function () {
+    nativeCall.constructed()
+
+    return nativeCall
+  })
+}))
 
 const originalBridge = window.hermesDesktop
 
@@ -30,7 +46,20 @@ vi.mock('@/store/session', () => ({
   $selectedStoredSessionId: atom<string | null>(null)
 }))
 vi.mock('../chat', () => ({
-  ChatView: ({ gateway }: { gateway: { id?: string } | null }) => <div data-testid="gateway">{gateway?.id}</div>
+  ChatView: ({ gateway }: { gateway: { id?: string } | null }) => {
+    const [active, setActive] = useState(false)
+
+    const call = useVoiceLiveConversation({
+      enabled: active, busy: false, onSubmit: vi.fn(), pendingResponse: () => null,
+      consumePendingResponse: vi.fn(), seedHistory: () => []
+    })
+
+    return <>
+      <div data-testid="gateway">{gateway?.id}</div>
+      <button onClick={() => setActive(true)} type="button">Start fixture call</button>
+      {active && <VoiceConversationPanel {...call} onEnd={() => { call.end(); setActive(false) }} onToggleMute={call.toggleMute} />}
+    </>
+  }
 }))
 vi.mock('../chat/sidebar', () => ({ ChatSidebar: () => null }))
 vi.mock('../right-sidebar/terminal/chrome', () => ({ TerminalPaneChrome: () => null }))
@@ -87,11 +116,21 @@ function LocationProbe() {
         Forward
       </button>
       <button onClick={() => navigate('/analysis')} type="button">Analysis</button>
+      {['/', '/chat-1', '/analysis', '/projects', '/cron', '/workflows', '/history', '/deliverables', '/tasks', '/skills', '/messaging', '/artifacts', '/im-entry', '/assistant', '/search', '/settings', '/projects/project-1', '/workflow-runs/run-1', '/deliverables/item-1'].map(path => <button key={path} onClick={() => navigate(path)} type="button">Go {path}</button>)}
     </>
   )
 }
 
 const originalAuth = $authState.get()
+
+function SettingsRouteFixture() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return location.pathname === '/settings'
+    ? <OverlayView onClose={() => navigate('/chat-1')} title="Fixture settings"><p>Settings content</p></OverlayView>
+    : null
+}
 
 function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initialEntries'], suppliedActions?: Partial<WiringActions>) {
   $authState.set({ ...originalAuth, enabled: true, status: 'signed-in', accountId: 'owner', account: { email: 'route@fixture.test', name: 'Route fixture', plan: '' } })
@@ -102,13 +141,16 @@ function renderRoutes(initialEntries: ComponentProps<typeof MemoryRouter>['initi
       <I18nProvider configClient={null} initialLocale="en">
         <LocationProbe />
         <ChatRoutesSurface actions={actions} />
+        <SettingsRouteFixture />
       </I18nProvider>
     </MemoryRouter>
   )
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  // Radix restores focus in a zero-delay teardown task; finish it in this DOM realm.
+  await new Promise(resolve => setTimeout(resolve, 0))
   $authState.set(originalAuth)
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
   $gateway.set(null)
@@ -116,9 +158,43 @@ afterEach(() => {
   $composerAttachments.set([])
   $selectedStoredSessionId.set(null)
   clearSessionDraft(null)
+  vi.clearAllMocks()
 })
 
 describe('ChatRoutesSurface', () => {
+  it('menu navigation retains one native call and its moved panel, including interactive settings and drawers', async () => {
+    renderRoutes(['/chat-1'])
+    fireEvent.click(screen.getByRole('button', { name: 'Start fixture call' }))
+    await waitFor(() => expect(nativeCall.start).toHaveBeenCalledTimes(1))
+    fireEvent.keyDown(screen.getByRole('group', { name: 'Move voice window' }), { key: 'ArrowRight' })
+    const movedStyle = screen.getByRole('region', { name: 'Start voice conversation' }).getAttribute('style')
+    fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
+
+    for (const path of ['/analysis', '/projects', '/cron', '/workflows', '/history', '/deliverables', '/tasks', '/skills', '/messaging', '/artifacts', '/im-entry', '/assistant', '/search', '/projects/project-1', '/workflow-runs/run-1', '/deliverables/item-1', '/', '/chat-1']) {
+      // Drawers trap focus too; return via the router instead of an inaccessible background button.
+      if (screen.queryByRole('dialog')) {
+        fireEvent.click(screen.getByRole('button', { name: /Close/ }))
+      }
+
+      fireEvent.click(await screen.findByRole('button', { name: `Go ${path}` }))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'End voice conversation' })).toBeTruthy())
+      expect(screen.getByRole('region', { name: 'Start voice conversation' }).getAttribute('style')).toBe(movedStyle)
+      expect(screen.getByRole('button', { name: 'Live transcript' }).getAttribute('aria-expanded')).toBe('true')
+      expect(nativeCall.constructed).toHaveBeenCalledTimes(1)
+      expect(nativeCall.close).not.toHaveBeenCalled()
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go /settings' }))
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Fixture settings' }).contains(screen.getByRole('button', { name: 'Mute microphone' }))).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: 'Mute microphone' }))
+    expect(nativeCall.setMuted).toHaveBeenCalledWith(true)
+    fireEvent.click(screen.getByRole('button', { name: 'End voice conversation' }))
+    expect(nativeCall.close).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('region', { name: 'Start voice conversation' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('adds a captured frame to the local composer before opening the reviewable Agent draft', async () => {
     let sequence = 0
 
@@ -219,6 +295,7 @@ describe('ChatRoutesSurface', () => {
     render(
       <MemoryRouter>
         <ChatRoutesSurface actions={actions} />
+        <SettingsRouteFixture />
       </MemoryRouter>
     )
 

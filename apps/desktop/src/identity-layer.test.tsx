@@ -541,13 +541,12 @@ describe('identity: the home zero-state is ours', () => {
     }
   })
 
-  it('unmounts the global composer while the business Start input owns the empty state', () => {
+  it('keeps the business Start input responsible for empty-state attachments', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
     const visibility = readSource('src', 'app', 'chat', 'intro-visibility.ts')
 
     expect(chat).toContain('const businessStartVisible = showIntro && isBusinessWorkspaceEnabled()')
     expect(chat).toContain('businessStartVisible,')
-    expect(chat).toContain('{(showChatBar || homeVoiceRequested) && (')
     expect(chat).toContain('attachments: introAttachments')
     expect(chat).toContain('onPickFiles')
     expect(chat).toContain('onRemoveAttachment')

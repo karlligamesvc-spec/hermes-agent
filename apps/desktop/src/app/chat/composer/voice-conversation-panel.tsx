@@ -9,6 +9,7 @@ import { iconSize, MicOff } from '@/lib/icons'
 import type { LiveTranscriptFragment } from '@/lib/voice-live'
 
 import type { ConversationStatus } from './hooks/use-voice-conversation'
+import { useVoicePanelPortalHost } from './hooks/use-voice-panel-portal-host'
 
 interface VoiceConversationPanelProps {
   level: number
@@ -32,6 +33,7 @@ export function VoiceConversationPanel({
   const { t } = useI18n()
   const c = t.composer
   const navigate = useNavigate()
+  const portalHost = useVoicePanelPortalHost()
   const [expanded, setExpanded] = useState(false)
   const panelRef = useRef<HTMLElement>(null)
   const dragRef = useRef<null | { pointerId: number; offsetX: number; offsetY: number }>(null)
@@ -99,7 +101,7 @@ export function VoiceConversationPanel({
   return createPortal(
     <section
       aria-label={c.startVoice}
-      className={`fixed ${position ? '' : 'left-1/2 top-14 -translate-x-1/2'} z-40 w-[min(32rem,calc(100vw-2rem))] rounded-3xl border border-(--stroke-nous) bg-(--ui-bg-elevated) p-3 shadow-nous`}
+      className={`fixed ${position ? '' : 'left-1/2 top-14 -translate-x-1/2'} pointer-events-auto z-(--z-over-modal-content) w-[min(32rem,calc(100vw-2rem))] rounded-3xl border border-(--stroke-nous) bg-(--ui-bg-elevated) p-3 shadow-nous`}
       data-voice-conversation-panel=""
       ref={panelRef}
       style={position ? { left: position.x, top: position.y } : undefined}
@@ -261,6 +263,6 @@ export function VoiceConversationPanel({
         </div>
       )}
     </section>,
-    document.body
+    portalHost
   )
 }

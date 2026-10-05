@@ -85,3 +85,40 @@ Run `scripts/run_tests.sh tests/hermes_cli/test_qwen_realtime.py` and the existi
 native-voice smoke above. Removing either client-identity option must make its
 corresponding regression fail. Public-edge readback proves admission only;
 physical microphone/audio and a live task still require user acceptance.
+
+## Menu navigation regression
+
+The trial revealed that the route table still mounted ChatView only for chat
+routes. A portal escapes CSS clipping, but cannot survive its owner unmounting.
+The workspace now keeps one primary ChatView outside the route switch, hiding
+only its page chrome on full-page destinations. Once the main ChatBar has mounted,
+it stays mounted when Start hides the normal editor, even if voice originally
+started in an ordinary chat without a home-launcher request.
+
+The route registry remains the visibility authority, including contributed pages
+and Project/Run/Deliverable background locations. Route overlays trap focus and
+pointer input; a feature-local portal host follows the active route overlay so
+mute/hangup remain inside its interaction boundary. The panel retains its moved
+position, subtitles and state while its portal content moves; the Qwen owner
+and transport do not move or reconnect. It uses the shared over-modal layer.
+HUD/session tiles keep their existing compact controls. The retired unreferenced
+DesktopController route table is not the shipping renderer.
+
+The route regression uses the real route table, real Qwen hook and floating
+panel, with a controlled transport. It checks one constructor/start and no close
+across full-page menus, Start/chat, settings and all three route drawer kinds;
+settings mute/hangup still work and panel position/subtitle expansion survive.
+The ChatView regression separately checks the real main-composer mounting seam
+for ordinary chat → Start/drawer. Reverse mutations remove route retention,
+composer retention, or modal portal placement; each corresponding test must fail.
+The preview is explicitly simulated: physical microphone and paid/live audio are
+still user acceptance, not claimed by these lifecycle tests.
+
+The menu fix passed the complete UI suite: 9,008 tests in 944 files,
+plus 66 focused route/owner/identity tests, typecheck and lint (0 errors,
+303 existing warnings). The old literal unmount guard was removed; actual
+ChatView behavior still verifies the initial Start editor and retained call owner.
+Radix delayed focus cleanup completes before the test DOM is disposed.
+A real wide-screen drawer preview retained the exact viewport position and
+allowed hangup outside the drawer edge; the host had no retained transform.
+No microphone was opened by this simulated preview.
