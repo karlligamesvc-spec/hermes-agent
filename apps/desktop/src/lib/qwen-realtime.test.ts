@@ -185,7 +185,28 @@ describe('Qwen native realtime', () => {
     session.close()
   })
 
-  it.each(['apex_voice_unavailable', 'apex_voice_failed', 'invalid_api_key', 'unknown_error'])(
+  it.each([
+    { code: 'response_cancel_not_active', message: 'Response already ended' },
+    { code: 'invalid_value', message: 'Conversation has no active response.' }
+  ])('keeps capture and resumes after a late cancellation receipt: $code', async error => {
+    const { session, handlers } = setup()
+    await session.start()
+    session.receive({ type: 'response.created', response: { id: 'finished' } })
+    session.receive({ type: 'input_audio_buffer.speech_started' })
+    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
+    session.receive({ type: 'response.done', response: { id: 'finished' } })
+    session.receive({ type: 'error', error })
+    expect(handlers.onError).not.toHaveBeenCalled()
+    expect(handlers.onClosed).not.toHaveBeenCalled()
+    expect(track.stop).not.toHaveBeenCalled()
+    session.receive({ type: 'input_audio_buffer.speech_stopped' })
+    session.receive({ type: 'response.created', response: { id: 'next' } })
+    session.receive({ type: 'response.audio.delta', response_id: 'next', delta: 'AAA=' })
+    expect(source.start).toHaveBeenCalledOnce()
+    session.close()
+  })
+
+  it.each(['apex_voice_unavailable', 'apex_voice_failed', 'invalid_api_key', 'unknown_error', 'invalid_value'])(
     'still closes capture on %s rather than swallowing authoritative failures', async code => {
       const { session, handlers } = setup()
       await session.start()

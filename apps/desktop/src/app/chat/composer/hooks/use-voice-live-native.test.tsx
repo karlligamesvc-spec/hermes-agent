@@ -2,10 +2,13 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import type { VoiceLiveHandlers } from '@/lib/voice-live'
+import { $notifications, clearNotifications } from '@/store/notifications'
 import { $voiceLiveStatus } from '@/store/voice-live'
 
 const mocks = vi.hoisted(() => ({
   native: vi.fn(),
+  handlers: null as VoiceLiveHandlers | null,
   legacy: vi.fn(),
   start: vi.fn(async () => undefined),
   close: vi.fn(),
@@ -16,8 +19,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/qwen-realtime', () => ({
-  QwenRealtimeSession: vi.fn(function () {
+  QwenRealtimeSession: vi.fn(function (handlers: VoiceLiveHandlers) {
     mocks.native()
+    mocks.handlers = handlers
 
     return mocks
   })
@@ -35,7 +39,38 @@ const { useVoiceLiveConversation } = await import('./use-voice-live-conversation
 afterEach(() => {
   cleanup()
   $voiceLiveStatus.set(null)
+  clearNotifications()
   vi.clearAllMocks()
+})
+
+it.each([true, false])('retains one actionable error when a call fails; fatal=%s', async fatal => {
+  const onFatalError = vi.fn()
+
+  const hook = renderHook(({ enabled }) => useVoiceLiveConversation({
+    enabled,
+    busy: false,
+    onFatalError,
+    onSubmit: vi.fn(),
+    pendingResponse: () => null,
+    consumePendingResponse: vi.fn(),
+    seedHistory: () => []
+  }), {
+    initialProps: { enabled: false },
+    wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  })
+
+  act(() => hook.rerender({ enabled: true }))
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled())
+  act(() => {
+    if (fatal) {mocks.handlers?.onError('APEX quota exhausted. Please check your quota.', true)}
+    mocks.handlers?.onClosed(fatal ? 'voice_error' : 'connection_closed', null)
+  })
+  expect($notifications.get()).toHaveLength(1)
+  expect($notifications.get()[0].message).toBe(fatal ? 'APEX quota exhausted. Please check your quota.' : 'connection_closed')
+  expect(onFatalError).toHaveBeenCalledOnce()
+  expect(hook.result.current.status).toBe('idle')
+  act(() => mocks.handlers?.onError('Late callback from the ended call', true))
+  expect($notifications.get()).toHaveLength(1)
 })
 
 it('the actual Desktop call uses native Qwen with an existing GPT preference and releases it on unmount', async () => {

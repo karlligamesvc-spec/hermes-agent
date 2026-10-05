@@ -200,7 +200,11 @@ export class QwenRealtimeSession {
     }
 
     if (event.type === 'error') {
-      if (event.error?.code === 'response_cancel_not_active') {
+      // Qwen/ChinaAPI reports a late cancellation with invalid_value, unlike
+      // the dedicated code used by other realtime transports. Match the exact
+      // receipt: other invalid_value errors must still stop the call.
+      if (event.error?.code === 'response_cancel_not_active' ||
+          (event.error?.code === 'invalid_value' && event.error.message === 'Conversation has no active response.')) {
         return
       }
 

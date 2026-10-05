@@ -139,7 +139,7 @@ Speech-stop leaves automatic creation to VAD. Late output from interrupted
 responses remains discarded, and a response created during renewed speech is
 cancelled. The observed VAD notification and the protocol's active-response
 rejection retain capture and queue one follow-up after the active receipt.
-Only those two narrow conflicts are recoverable; Relay admission/quota errors,
+Only identified response-state conflicts are recoverable; Relay admission/quota errors,
 unknown errors, malformed events and transport failure still close the call.
 
 The runtime's actual session.update now sets server_vad silence_duration_ms to
@@ -196,3 +196,37 @@ warnings). The pre-existing literal focus-selector guard was updated to the
 shared surface owner; the new regressions exercise rendered controls and callbacks.
 The empty-Send reverse injection fails its intended behavior assertion and is
 restored before the full green run.
+
+## Late cancellation / separate dictation regression
+
+The 2026-10-05 public APEX-route probe reproduced Qwen's exact idle cancellation
+receipt: `invalid_value` / `Conversation has no active response.`. A cancellation
+can arrive after a completed response, including during barge-in. The Desktop
+previously recognized only `response_cancel_not_active`, then closed this call
+with `voice_error`. Both observed idle-cancel receipts now retain capture; every
+other `invalid_value` remains fatal. Transport regressions drive speech-start,
+cancel, terminal receipt, late rejection and renewed audio.
+
+The live hook retains the specific fatal error instead of adding a newer generic
+`voice_error` notification that collapses it. Ended-session callbacks cannot
+publish into a later call. Unexpected socket closure still notifies and ends
+the owning call. Starting realtime cancels dictation and awaits a pending
+microphone grant's release; dictation cannot start during realtime admission or
+an active call. A cancelled dictation's delayed STT result cannot insert a draft,
+steal focus or report no speech. The legacy no-speech warning originates from
+dictation, not the native Qwen ASR stream.
+
+Two synthetic-text canaries used the current trial identity through the actual
+public Relay, without microphone capture or Hermes tool execution. Connection
+readiness was 11.746s and 8.719s; plain spoken replies began in 1.333–2.276s.
+The second canary deliberately sent an idle cancellation after round three and
+completed round four with audio and a usage receipt. These are observed route
+timings, not physical speech or all-task latency guarantees. The existing 1.5s
+VAD silence wait and full Hermes task-result wait remain; no pricing, ledger,
+admission or production service change is included in this local trial.
+
+This follow-up passed 9,027 UI tests in 945 files, 26 focused transport/hook
+tests, typecheck, 19 Runtime smoke tests and 332 Cloud authority/ledger/routing
+tests. Three uniquely anchored reverse injections removed the exact idle-cancel
+recovery, concrete-error retention and obsolete-dictation guard; each failed its
+intended behavioral assertion, and every source file was restored afterward.

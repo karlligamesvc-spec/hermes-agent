@@ -81,7 +81,7 @@ export function useComposerVoice({
     previousSessionIdRef.current = sessionId
   }, [sessionId])
 
-  const { dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
+  const { cancel: cancelDictation, dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
     onTranscript: insertText,
@@ -195,12 +195,12 @@ export function useComposerVoice({
     pendingResponse: pendingTurnResponse,
     // Before the conversation opens the mic, wait for any in-flight wake.pause
     // to finish releasing the capture device (see wakePauseBarrierRef).
-    beforeMicOpen: () => wakePauseBarrierRef.current ?? undefined
+    beforeMicOpen: async () => { await cancelDictation(); await wakePauseBarrierRef.current }
   })
 
   const liveConversation = useVoiceLiveConversation({
     activeToolLabel,
-    beforeMicOpen: () => wakePauseBarrierRef.current ?? undefined,
+    beforeMicOpen: async () => { await cancelDictation(); await wakePauseBarrierRef.current },
     busy,
     consumePendingResponse,
     enabled: voiceConversationActive && liveEngineActive,
@@ -428,7 +428,9 @@ export function useComposerVoice({
 
   return {
     conversation,
-    dictate,
+    dictate: () => {
+      if (!voiceConversationActive && !voiceStarting) {dictate()}
+    },
     endConversation,
     handleToggleAutoSpeak,
     startConversation,

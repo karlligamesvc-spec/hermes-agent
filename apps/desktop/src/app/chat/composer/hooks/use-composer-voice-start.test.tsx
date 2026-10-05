@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   nativeEnabled: vi.fn(),
   chainedEnabled: vi.fn(),
   end: vi.fn(),
-  syncTtsLease: vi.fn(async () => undefined)
+  syncTtsLease: vi.fn(async () => undefined),
+  cancelDictation: vi.fn(async () => undefined),
+  dictate: vi.fn(),
+  beforeMicOpen: null as null | (() => Promise<void>)
 }))
 
 vi.mock('@/store/voice-live', () => ({
@@ -26,7 +29,7 @@ vi.mock('@/lib/tts-lease', () => ({
 vi.mock('@/store/wake-word', () => ({ resumeWakeAfterVoice: vi.fn() }))
 vi.mock('./use-auto-speak-replies', () => ({ useAutoSpeakReplies: () => undefined }))
 vi.mock('./use-voice-recorder', () => ({
-  useVoiceRecorder: () => ({ dictate: vi.fn(), voiceActivityState: 'idle', voiceStatus: 'idle' })
+  useVoiceRecorder: () => ({ cancel: mocks.cancelDictation, dictate: mocks.dictate, voiceActivityState: 'idle', voiceStatus: 'idle' })
 }))
 vi.mock('./use-voice-conversation', () => ({
   useVoiceConversation: ({ enabled }: { enabled: boolean }) => {
@@ -36,8 +39,9 @@ vi.mock('./use-voice-conversation', () => ({
   }
 }))
 vi.mock('./use-voice-live-conversation', () => ({
-  useVoiceLiveConversation: ({ enabled }: { enabled: boolean }) => {
+  useVoiceLiveConversation: ({ enabled, beforeMicOpen }: { enabled: boolean; beforeMicOpen: () => Promise<void> }) => {
     mocks.nativeEnabled(enabled)
+    mocks.beforeMicOpen = beforeMicOpen
 
     return { end: mocks.end, status: 'idle', level: 0, muted: false, transcript: [] }
   }
@@ -110,5 +114,12 @@ it.each(['resolved', 'cancelled', 'scope-changed', 'qwen-unavailable'] as const)
     expect(hook.result.current.voiceConversationActive).toBe(outcome === 'resolved')
     expect(mocks.nativeEnabled.mock.calls.some(([enabled]) => enabled === true)).toBe(outcome === 'resolved')
     expect(mocks.chainedEnabled.mock.calls.every(([enabled]) => enabled === false)).toBe(true)
+
+    if (outcome === 'resolved') {
+      await act(async () => {await mocks.beforeMicOpen?.()})
+      expect(mocks.cancelDictation).toHaveBeenCalledOnce()
+      act(() => hook.result.current.dictate())
+      expect(mocks.dictate).not.toHaveBeenCalled()
+    }
   }
 )

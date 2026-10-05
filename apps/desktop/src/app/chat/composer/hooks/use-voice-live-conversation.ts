@@ -224,6 +224,8 @@ export function useVoiceLiveConversation({
       return
     }
 
+    let fatalErrorReported = false
+
     const session = new QwenRealtimeSession({
       // The voice model answers a bare "stop" itself (it just goes quiet) and
       // never delegates it, so the spoken stop phrase is judged on the user
@@ -263,11 +265,14 @@ export function useVoiceLiveConversation({
         setStatus('idle')
 
         if (reason !== 'close_requested') {
-          notify({
-            kind: 'warning',
-            message: usageSeconds != null ? `${reason} (${Math.round(usageSeconds)}s)` : reason,
-            title: voiceCopy.liveEnded
-          })
+          if (!fatalErrorReported) {
+            notify({
+              kind: 'warning',
+              message: usageSeconds != null ? `${reason} (${Math.round(usageSeconds)}s)` : reason,
+              title: voiceCopy.liveEnded
+            })
+          }
+
           latest.current.onFatalError?.()
         }
       },
@@ -309,6 +314,8 @@ export function useVoiceLiveConversation({
         })
       },
       onError: (message, fatal) => {
+        if (sessionRef.current !== session) {return}
+        fatalErrorReported ||= fatal
         notify({ kind: fatal ? 'error' : 'warning', message, title: voiceCopy.liveError })
       },
       onSpeakingChange: speaking => {
@@ -344,7 +351,7 @@ export function useVoiceLiveConversation({
         return
       }
 
-      notifyError(error, voiceCopy.couldNotStartSession)
+      if (!fatalErrorReported) {notifyError(error, voiceCopy.couldNotStartSession)}
       setStatus('idle')
       latest.current.onFatalError?.()
     }
