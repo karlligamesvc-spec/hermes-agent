@@ -293,7 +293,7 @@ def _download_candidates(result: dict[str, Any], media_url: str) -> list[str]:
     return list(dict.fromkeys(item for item in raw if item))
 
 
-class _ResolvedMediaDownloadError(_gateway.GatewayError):
+class _ResolvedMediaDownloadError(_gateway.GatewayError if _gateway is not None else RuntimeError):
     """本地候选均失败；保留最新签名供既有网关自取 ASR 兜底。"""
 
     def __init__(self, result: dict[str, Any], media_url: str):

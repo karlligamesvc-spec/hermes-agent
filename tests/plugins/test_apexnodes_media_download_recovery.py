@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import builtins
 import json
 import socket
 import sys
@@ -401,3 +402,27 @@ def test_forbidden_download_is_not_reported_as_an_expired_share(media_server, tm
     assert "重发" not in str(caught.value)
     assert counts["/forbidden"] == 1
     assert not list(dest.iterdir())
+
+
+
+def test_missing_gateway_module_preserves_legacy_plugin_import(monkeypatch):
+    original_import = builtins.__import__
+
+    def without_gateway(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "plugins" and "apexnodes_gateway" in fromlist:
+            raise ImportError("gateway unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", without_gateway)
+    module = _load_douyin_plugin()
+    assert not module._use_gateway()
+    requests = []
+
+    def post(path, payload):
+        requests.append((path, payload))
+        return {"video_path": "/legacy/video.mp4"}
+
+    monkeypatch.setattr(module, "_post", post)
+    result = json.loads(module._handle_social_download({"url": "https://share.invalid/item"}))
+    assert result["video_path"] == "/legacy/video.mp4"
+    assert requests == [("/media/social-download", {"url": "https://share.invalid/item"})]
