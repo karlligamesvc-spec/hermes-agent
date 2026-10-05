@@ -736,7 +736,7 @@ def download_media(
 
                         # Range 被忽略(200)时必须覆盖，绝不能把完整响应追加到残件后面。
                         mode = "ab" if append else "wb"
-                        with open(partial, mode) as fh:
+                        with open(partial, mode) as fh:  # windows-footgun: ok — mode is always binary (ab/wb)
                             for chunk in response.iter_bytes():
                                 fh.write(chunk)
 
