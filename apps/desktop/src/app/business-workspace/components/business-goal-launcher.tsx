@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { type ComposerAttachment, requestVoiceConversationStart } from '@/store/composer'
 
 import { AttachmentList } from '../../chat/composer/attachments'
+import { SEND_ICON_BTN } from '../../chat/composer/control-classes'
 import { ModelPill } from '../../chat/composer/model-pill'
 import { StartVoiceButton } from '../../chat/composer/start-voice-button'
 import type { ChatBarState } from '../../chat/composer/types'
@@ -99,7 +100,7 @@ export function BusinessGoalLauncher({
 
   return (
     <form
-      className="apex-goal-launcher pointer-events-auto w-full rounded-2xl border border-transparent p-4 text-left transition-[border-color,box-shadow]"
+      className="apex-goal-launcher apex-composer-surface pointer-events-auto w-full rounded-2xl border border-transparent p-4 text-left transition-[border-color,box-shadow]"
       data-business-goal-launcher=""
       onSubmit={handleSubmit}
     >
@@ -139,7 +140,7 @@ export function BusinessGoalLauncher({
           aria-busy={submitting}
           aria-describedby={submitBlockedReason ? BUSINESS_GOAL_BLOCKED_REASON_ID : undefined}
           aria-label={copy.submit}
-          className="order-4 rounded-full"
+          className={`order-4 ${SEND_ICON_BTN}`}
           disabled={!canSubmit}
           size="icon"
           type="submit"

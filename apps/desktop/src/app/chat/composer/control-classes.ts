@@ -21,5 +21,8 @@ export const PRIMARY_ICON_BTN = cn(
   'disabled:bg-foreground/30 disabled:text-background disabled:opacity-100'
 )
 
+// Home and docked chat share the purple Send action beside the black mic.
+export const SEND_ICON_BTN = 'size-(--composer-control-primary-size) shrink-0 rounded-full p-0'
+
 /** A toggle that is currently ON — dictation, spoken replies, the wake word. */
 export const ACTIVE_ICON_BTN = 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary'

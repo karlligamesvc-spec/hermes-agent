@@ -22,6 +22,7 @@ import { ACTIVE_ICON_BTN, GHOST_ICON_BTN } from './control-classes'
 import type { ChatBarState, VoiceStatus } from './types'
 
 export interface VoiceMenuProps {
+  settingsTrigger?: boolean
   autoSpeak: boolean
   disabled: boolean
   state: ChatBarState
@@ -50,6 +51,7 @@ export function VoiceMenu({
   autoSpeak,
   disabled,
   state,
+  settingsTrigger = false,
   voiceStatus,
   onDictate,
   onStartConversation,
@@ -95,7 +97,7 @@ export function VoiceMenu({
             ) : wakeListening ? (
               <Ear className={iconSize.sm} />
             ) : (
-              <Codicon name="mic" size="0.875rem" />
+              <Codicon name={settingsTrigger ? 'settings-gear' : 'mic'} size="0.875rem" />
             )}
           </Button>
         </DropdownMenuTrigger>

@@ -167,3 +167,32 @@ Lint has 0 errors and the same 303 existing warnings. All three collision/pause
 reverse injections failed their intended behavioral assertions; restoring the
 Runtime source passed its eight tests again. Local diagnostics use this checkout;
 the public runtime pin must include this VAD change before a paired release.
+
+## Start / main-chat composer parity
+
+The ordinary chat editor uses Start's shared `.apex-composer-surface` treatment:
+15px radius, theme border and focus ring, 18px/10px padding, 48px minimum writing
+area and 14px/1.6 text. Start's page stylesheet owns only its page margin; input
+geometry and surface paint have one owner. The main chat keeps its rich editor,
+attachments/paste/drop, scene and approval controls rather than duplicating the
+Start textarea. Its empty draft now shows both the black microphone and disabled
+purple Send; a payload enables Send and a busy empty turn still exposes Stop.
+Dictation, read-aloud and wake-word toggles remain available through the existing
+voice menu, with a small settings glyph distinct from the realtime microphone.
+The loading fallback shares the surface; HUD, session tiles and popped-out chat
+retain their own compact controls and width ladder. Active native calls still use
+the existing floating panel, independent of either toolbar.
+
+Regression rows cover empty/draft/busy-empty/busy-draft, button order/type,
+disabled Send, the independent microphone callback and all folded toggle entries.
+Restoring the old empty-draft microphone replacement (one asserted executable
+anchor) makes the empty-Send behavior test fail, then restoring source passes.
+These tests do not prove native microphone quality or geometry in a real window;
+the local packaged app is inspected separately before trial delivery.
+
+The r6 parity change passes all 9,019 UI tests in 944 files, the 66 focused
+identity/entry/controls tests, typecheck and lint (0 errors / 303 existing
+warnings). The pre-existing literal focus-selector guard was updated to the
+shared surface owner; the new regressions exercise rendered controls and callbacks.
+The empty-Send reverse injection fails its intended behavior assertion and is
+restored before the full green run.

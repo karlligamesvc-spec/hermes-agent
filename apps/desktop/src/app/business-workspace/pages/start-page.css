@@ -34,14 +34,6 @@
 
 .apex-start-home .apex-goal-launcher {
   margin: 24px 0 25px;
-  padding: 12px 18px 10px;
-  border-radius: 15px;
-}
-
-.apex-start-home [data-slot="business-goal-input"] {
-  min-height: 48px;
-  font-size: 14px;
-  line-height: 1.6;
 }
 
 .apex-start-home [data-business-goal-footer] { flex-wrap: wrap; }

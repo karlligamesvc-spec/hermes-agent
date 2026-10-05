@@ -68,6 +68,7 @@ it.each(['home', 'chat'] as const)(
               conversation={{ ...conversation, onStart: start }}
               disabled={false}
               hasComposerPayload
+              homeStyle
               onDictate={vi.fn()}
               onToggleAutoSpeak={vi.fn()}
               state={state}

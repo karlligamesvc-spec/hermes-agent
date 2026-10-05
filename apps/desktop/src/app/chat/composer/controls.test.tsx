@@ -217,3 +217,45 @@ describe('wake-word ear visibility', () => {
     expect((endConversation as HTMLButtonElement).disabled).toBe(false)
   })
 })
+
+// Main chat follows Start's mic + Send hierarchy; compact HUD/tile controls
+// keep the existing width ladder above. Voice never submits the pending text.
+describe('Start-style main chat actions', () => {
+  it.each([
+    { busy: false, payload: false, action: 'Send', disabled: true },
+    { busy: false, payload: true, action: 'Send', disabled: false },
+    { busy: true, payload: false, action: 'Stop', disabled: false },
+    { busy: true, payload: true, action: 'Send', disabled: false }
+  ])('keeps mic before $action (busy=$busy, payload=$payload)', ({ busy, payload, action, disabled }) => {
+    const start = vi.fn()
+    renderControls({
+      homeStyle: true,
+      busy,
+      hasComposerPayload: payload,
+      canSubmit: busy || payload,
+      conversation: { active: false, level: 0, muted: false, status: 'idle', onEnd: vi.fn(), onStart: start, onStopTurn: vi.fn(), onToggleMute: vi.fn() }
+    })
+    const mic = screen.getByRole('button', { name: 'Start voice conversation' }) as HTMLButtonElement
+    const send = screen.getByRole('button', { name: action }) as HTMLButtonElement
+    expect(mic.type).toBe('button')
+    expect(send.type).toBe('submit')
+    expect(send.disabled).toBe(disabled)
+    expect(mic.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(mic)
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(screen.queryByLabelText('Voice dictation')).toBeNull()
+    expect(screen.queryByLabelText('Read replies aloud')).toBeNull()
+  })
+
+  it('retains dictation and reply reading behind the compact settings control', () => {
+    const dictate = vi.fn()
+    const speak = vi.fn()
+    renderControls({ homeStyle: true, state: { ...state, voice: { active: false, enabled: true } }, onDictate: dictate, onToggleAutoSpeak: speak })
+    fireEvent.pointerDown(screen.getByRole('button', { name: /^Voice$/ }), { button: 0, pointerId: 1 })
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Voice dictation' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Read replies aloud' }))
+    expect(dictate).toHaveBeenCalledTimes(1)
+    expect(speak).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('menuitemcheckbox', { name: /voice activation/i })).toBeTruthy()
+  })
+})

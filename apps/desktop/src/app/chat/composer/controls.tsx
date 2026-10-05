@@ -11,7 +11,7 @@ import type { LiveTranscriptFragment } from '@/lib/voice-live'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
 import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 
-import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN } from './control-classes'
+import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN, SEND_ICON_BTN } from './control-classes'
 import type { ConversationStatus } from './hooks/use-voice-conversation'
 import { ModelPill } from './model-pill'
 import { ReasoningPill } from './reasoning-pill'
@@ -47,6 +47,7 @@ export function ComposerControls({
   foldVoice = false,
   hasComposerPayload,
   hideModelPill = false,
+  homeStyle = false,
   minimal = false,
   state,
   voiceStatus,
@@ -62,6 +63,7 @@ export function ComposerControls({
   foldVoice?: boolean
   hasComposerPayload: boolean
   hideModelPill?: boolean
+  homeStyle?: boolean
   minimal?: boolean
   state: ChatBarState
   voiceStatus: VoiceStatus
@@ -81,7 +83,7 @@ export function ComposerControls({
     )
   }
 
-  const showVoicePrimary = !busy && !hasComposerPayload
+  const showVoicePrimary = !homeStyle && !busy && !hasComposerPayload
   // Steer is just send: a payload keeps the Send affordance mid-turn. Stop
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
@@ -91,7 +93,7 @@ export function ComposerControls({
   // same reason — same controls, same state, different budget. Below that
   // even the menu goes: at `minimal` the row is the send button and nothing
   // else, which is the one thing that must survive every width.
-  const foldedVoice = hudMode || foldVoice
+  const foldedVoice = homeStyle || hudMode || foldVoice
 
   const voiceControls = foldedVoice ? (
     <VoiceMenu
@@ -100,6 +102,7 @@ export function ComposerControls({
       onDictate={onDictate}
       onStartConversation={conversation.onStart}
       onToggleAutoSpeak={onToggleAutoSpeak}
+      settingsTrigger={homeStyle}
       state={state}
       voiceStatus={voiceStatus}
     />
@@ -141,14 +144,14 @@ export function ComposerControls({
         >
           <Button
             aria-label={showStop ? c.stop : c.send}
-            className={PRIMARY_ICON_BTN}
+            className={homeStyle && !showStop ? SEND_ICON_BTN : PRIMARY_ICON_BTN}
             disabled={disabled || !canSubmit}
             type="submit"
           >
             {showStop ? (
               <span className="block size-2.5 rounded-[0.1875rem] bg-current" />
             ) : (
-              <Codicon name="arrow-up" size="0.875rem" />
+              <Codicon name={homeStyle ? 'send' : 'arrow-up'} size="0.875rem" />
             )}
           </Button>
         </Tip>

@@ -638,7 +638,7 @@ describe('identity: the brand skin survives', () => {
 
     expect(styles).not.toContain('*:focus-visible {')
     expect(styles).toContain(':focus-visible:not([data-slot])')
-    expect(styles).toContain('.apex-goal-launcher:focus-within')
+    expect(styles).toContain('.apex-composer-surface:focus-within')
     expect(search).toContain("'h-7 min-w-0 flex-1 bg-transparent")
     expect(search).not.toContain('[field-sizing:content]')
     expect(search).toContain('data-slot="search-field-input"')

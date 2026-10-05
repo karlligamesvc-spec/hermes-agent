@@ -374,6 +374,7 @@ export function ChatBar({
   // The docked composer always reserves two writing lines above a dedicated
   // toolbar row. The floating composer keeps its compact adaptive layout — it
   // is deliberately a small scratch surface, not a second full-width dock.
+  const homeStyle = scope.target === 'main' && !poppedOut && !hudMode
   const threeRow = !poppedOut
 
   const stackToolbar = threeRow || stacked
@@ -1070,6 +1071,7 @@ export function ChatBar({
       foldVoice={foldVoice}
       hasComposerPayload={hasComposerPayload}
       hideModelPill={guidedChat}
+      homeStyle={homeStyle}
       minimal={minimal}
       onDictate={dictate}
       onToggleAutoSpeak={handleToggleAutoSpeak}
@@ -1089,6 +1091,7 @@ export function ChatBar({
           'min-h-[1.625rem] min-h-(--composer-input-min-height) max-h-(--composer-input-max-height) cursor-text overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] bg-transparent pb-1 pr-1 pt-1 leading-normal text-foreground outline-none disabled:cursor-not-allowed',
           '**:data-ref-text:cursor-default',
           threeRow && 'min-h-(--composer-input-roomy-min-height)',
+          homeStyle && 'apex-composer-input',
           stackToolbar && 'pl-3',
           stackToolbar ? 'w-full' : 'min-w-(--composer-input-inline-min-width) flex-1'
         )}
@@ -1352,6 +1355,7 @@ export function ChatBar({
                 className={cn(
                   'group/composer-surface relative z-4 isolate grid grid-rows-[auto_1fr] overflow-hidden rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]',
                   'shadow-(--shadow-composer) transition-[border-color,box-shadow] duration-200 ease-out focus-within:border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(45%*var(--composer-ring-strength)),transparent)]',
+                  homeStyle && 'apex-composer-surface',
                   COMPOSER_DROP_FADE_CLASS,
                   dragActive && COMPOSER_DROP_ACTIVE_CLASS
                 )}
@@ -1486,7 +1490,7 @@ export function ChatBarFallback() {
       )}
       data-slot="composer-root"
     >
-      <div className="composer-fallback-surface relative isolate h-(--composer-fallback-height) w-full rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]">
+      <div className="composer-fallback-surface apex-composer-surface relative isolate h-(--composer-fallback-height) w-full rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]">
         <div
           aria-hidden
           className={cn(
