@@ -2700,6 +2700,8 @@ export interface Translations {
     newSessionPlaceholders: readonly string[]
     followUpPlaceholders: readonly string[]
     voiceSettings: string
+    voiceUnavailable: string
+    moveVoicePanel: string
     voiceTranscript: string
     voiceTranscriptEmpty: string
     startVoice: string

@@ -2893,6 +2893,8 @@ export const zh = defineLocale({
       '调整或继续'
     ],
     voiceSettings: '语音设置',
+    voiceUnavailable: '实时语音暂不可用，请检查登录状态或稍后重试。',
+    moveVoicePanel: '拖动语音窗口',
     voiceTranscript: '实时字幕',
     voiceTranscriptEmpty: '开始说话，文字会显示在这里。',
     startVoice: '开始语音对话',

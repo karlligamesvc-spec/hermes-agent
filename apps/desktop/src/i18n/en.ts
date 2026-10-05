@@ -3268,6 +3268,8 @@ export const en: Translations = {
       'Adjust or continue'
     ],
     voiceSettings: 'Voice settings',
+    voiceUnavailable: 'Realtime voice is unavailable. Check your sign-in or try again later.',
+    moveVoicePanel: 'Move voice window',
     voiceTranscript: 'Live transcript',
     voiceTranscriptEmpty: 'Your conversation will appear here.',
     startVoice: 'Start voice conversation',

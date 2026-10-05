@@ -5,9 +5,11 @@ and omitted the ChatBar that owns the actual microphone/voice engine. The chat
 composer also replaced the voice primary with Send whenever a draft was present.
 
 Start and the ordinary chat composer now keep a dedicated circular microphone
-button and the shared adjacent engine picker. Choose 千问实时语音 there; Flash is
-the native Qwen model default and Plus is selectable in Voice settings. Existing
-saved voice-engine preferences and the text model remain authoritative.
+button with no engine dropdown or model/vendor label. Desktop selects native
+Qwen internally (Flash is the Runtime default), regardless of saved CLI
+chained/GPT preferences. Voice settings and the compact voice menu omit realtime
+engine/model fields. Dictation, read-aloud settings and text-model choice retain
+their separate behavior.
 
 Main calls use a compact floating panel above the conversation: voice settings,
 expandable native user/assistant transcript, mute and a red hangup button. Actual
@@ -15,37 +17,53 @@ transport callbacks feed the transcript; same-turn deltas join, distinct turns
 remain separate and the in-memory fragment tail is bounded. The panel is a portal,
 so hiding Start's controller chrome cannot hide the call controls. HUD windows and
 session tiles retain the original compact in-window controls instead of a panel
-that could land outside their viewport.
+that could land outside their viewport. Dragging the avatar/title handle moves
+this panel with pointer capture; the position is clamped inside the viewport,
+including after resize or subtitle expansion. Release/cancellation stops movement.
+Arrow keys provide an accessible move alternative. Settings, subtitles, mute and
+hangup are outside the drag handle.
 
 The existing one-shot voice request mounts the sole main composer behind Start.
 That component remains mounted when a delegated voice task creates chat history
 or opens settings/task pages. Starting does not submit the typed Start draft.
-Activation resolves the backend mode before enabling either audio engine; pending
+Activation awaits the owning profile’s Qwen admission before enabling native audio; pending
 starts expose a connecting panel and hangup/unmount invalidates their epoch. A
 scope-lost status returns null and cannot open audio on the replacement account.
-The live session captures the engine before its microphone wait; settings changes
-apply to the next call. No supplier, billing, permission or auth path is forked.
+The actual live hook constructs Qwen directly before opening a microphone; it
+does not consult an old engine preference. Unavailable admission leaves audio
+closed and shows a generic realtime-voice notice, without switching to chained or
+GPT. No supplier, billing, permission or auth path is forked.
 
 ## Verification
 
 From `apps/desktop`:
 
 ```sh
-npx vitest run --project ui src/app/chat/composer/voice-entry.test.tsx src/app/chat/composer/hooks/use-composer-voice-start.test.tsx src/app/chat/index.test.tsx src/app/chat/composer/controls.test.tsx
+npx vitest run --project ui src/app/chat/composer/voice-entry.test.tsx src/app/chat/composer/hooks/use-composer-voice-start.test.tsx src/app/chat/composer/hooks/use-voice-live-native.test.tsx src/app/settings/voice-field-visible.test.ts src/app/chat/index.test.tsx src/app/chat/composer/controls.test.tsx
 npm run test:ui
 npm run typecheck
 npm run lint
 npm run build
 ```
 
-The complete UI suite passed 9,002 tests in 943 files. Reverse checks assert a
+The full UI suite passed 9,006 tests across 944 files with four workers.
+Typecheck passed; lint reports 0 errors and 303 existing warnings. A subsequent
+muted-icon resource fix uses the real MicOff icon in both floating and compact
+controls; 39 focused tests, typecheck and lint passed again.
+
+The entry/UI regression uses real components and the actual native hook, with
+controlled transports and scope-aware admission. It also proves existing GPT
+preferences cannot select GPT, unavailable Qwen never opens chained audio, and
+legacy engine/model settings cannot mount in the curated Voice page. Reverse checks assert a
 unique executable anchor before each mutation: remove Start's microphone → the
 home click test fails; remove main-controller retention → the real ChatView
 handoff test fails; remove pending-start cancellation → the cancelled-start test
-fails. Each source file is restored in `finally`.
+fails. Additional reverse checks replace the native constructor with the legacy GPT
+transport → the actual-hook test fails, and remove the pointer-move handler →
+the drag/bounds test fails. Each source file is restored in `finally`.
 
 Browser visual inspection uses the actual launcher/panel with an explicitly
-labelled simulated call, checking subtitle expansion, mute and hangup. It does
+labelled simulated call, checking actual pointer dragging, subtitle expansion, mute and hangup. It does
 not verify a physical microphone, audio quality or a live Hermes task. The public
 0.17.46 package does not contain this subsequent fix; delivery still requires the
 paired Mac/Windows release workflow and three public manifest readbacks.

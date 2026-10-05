@@ -12,7 +12,7 @@ import { $voiceConversationStartRequest, requestVoiceConversationStart, takeVoic
 import { resetBrowseState } from '@/store/composer-input-history'
 import { $gateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
-import { refreshVoiceLiveStatus, selectedVoiceChatMode } from '@/store/voice-live'
+import { refreshVoiceLiveStatus } from '@/store/voice-live'
 import { $autoSpeakReplies, $voiceStopPhrase, setAutoSpeakReplies } from '@/store/voice-prefs'
 import { resumeWakeAfterVoice } from '@/store/wake-word'
 
@@ -69,10 +69,8 @@ export function useComposerVoice({
   const [voiceConversationActive, setVoiceConversationActive] = useState(false)
   const [voiceStarting, setVoiceStarting] = useState(false)
   const activationEpochRef = useRef(0)
-  // Engine selection is latched at conversation START (a Settings change
-  // applies to the next conversation, never mid-call).
+  // Native admission is resolved before either microphone hook can activate.
   const [liveEngineActive, setLiveEngineActive] = useState(false)
-  const [voiceEngineName, setVoiceEngineName] = useState<string | null>(null)
   const ownsWakeIndicatorRef = useRef(false)
   const previousSessionIdRef = useRef(sessionId)
   const voiceStartRequest = useStore($voiceConversationStartRequest)
@@ -216,10 +214,8 @@ export function useComposerVoice({
 
   const conversation = liveEngineActive ? liveConversation : chainedConversation
 
-  /** Turn the conversation on with the engine `voice.voice_chat_mode` selects,
-   *  decided in the same state batch so the other engine never sees a frame of
-   *  `enabled`. gpt-live selected but not startable (no OpenAI key on the
-   *  gateway) falls back to chained with a notice rather than a dead button. */
+  /** APEX uses native Qwen voice without exposing an engine choice. Admission
+   * is profile-scoped; an unavailable service never opens a different engine. */
   const activateConversation = useCallback(async () => {
     const epoch = ++activationEpochRef.current
     setVoiceStarting(true)
@@ -230,7 +226,7 @@ export function useComposerVoice({
     } catch (error) {
       if (activationEpochRef.current === epoch) {
         setVoiceStarting(false)
-        notifyError(error, t.composer.voiceEngineChangeFailed)
+        notifyError(error, t.composer.voiceUnavailable)
       }
 
       return
@@ -242,32 +238,25 @@ export function useComposerVoice({
     // A scope change makes the status request return null. Never start against
     // the profile/account that replaced the one clicked by the user.
     if (!status) {return}
-    let live = false
+    const available = status.qwenAvailable ?? (status.mode === 'qwen-realtime' && status.available)
 
-    if (selectedVoiceChatMode(status) !== 'chained') {
-      if (status?.available) {
-        live = true
-      } else {
-        notify({
-          id: 'voice-live-unavailable',
-          kind: 'warning',
-          message: t.notifications.voice.liveUnavailable(status?.reason ?? 'not configured')
-        })
-      }
+    if (!available) {
+      notify({
+        id: 'voice-live-unavailable',
+        kind: 'warning',
+        message: t.composer.voiceUnavailable
+      })
+
+      return
     }
 
-    setLiveEngineActive(live)
-    setVoiceEngineName({
-      chained: t.composer.voiceEngineChainedShort,
-      'gpt-live': t.composer.voiceEngineLiveShort,
-      'qwen-realtime': t.composer.voiceEngineQwenShort
-    }[live ? selectedVoiceChatMode(status) : 'chained'])
+    setLiveEngineActive(true)
     setVoiceConversationActive(true)
   }, [t])
 
   useEffect(() => {
     if (!voiceConversationActive) {
-      // Prefetch so the first press picks the right engine without a round trip.
+      // Prefetch admission; the explicit start still awaits scope-safe status.
       void refreshVoiceLiveStatus().catch(() => undefined)
     }
   }, [voiceConversationActive])
@@ -444,7 +433,6 @@ export function useComposerVoice({
     handleToggleAutoSpeak,
     startConversation,
     voiceActivityState,
-    voiceEngineName,
     voiceTranscript: liveEngineActive ? liveConversation.transcript : [],
     voiceConversationActive: voiceConversationActive || voiceStarting,
     voiceStatus

@@ -292,26 +292,6 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   // Speech-to-text backends — kept in sync with the stt block in
   // hermes_cli/config.py (local/groq/openai/mistral/elevenlabs).
   'stt.provider': ['local', 'groq', 'openai', 'mistral', 'xai', 'elevenlabs'],
-  // How the desktop voice conversation is wired — tools/voice_live.py owns the
-  // gpt-live branch (one full-duplex voice model delegating to Hermes).
-  'voice.voice_chat_mode': ['chained', 'gpt-live', 'qwen-realtime'],
-  'voice.qwen_realtime.model': ['qwen-audio-3.0-realtime-flash', 'qwen-audio-3.0-realtime-plus'],
-  'voice.gpt_live.voice': [
-    'marin',
-    'cedar',
-    'quartz',
-    'ripple',
-    'vesper',
-    'willow',
-    'stone',
-    'gleam',
-    'meridian',
-    'bossa',
-    'tempo',
-    'beacon',
-    'delta',
-    'cinder'
-  ],
   // OpenAI TTS voices — the union across models (per the OpenAI TTS API
   // docs). Model-specific narrowing happens in enumOptionsFor():
   // tts-1 / tts-1-hd support 9 voices; gpt-4o-mini-tts supports all 13.
@@ -416,7 +396,6 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
 // suggestions rather than a gate for these keys.
 export const FREE_INPUT_KEYS = new Set([
   'tts.edge.voice',
-  'voice.gpt_live.voice',
   'tts.openai.model',
   'tts.openai.voice',
   'tts.elevenlabs.voice_id',
@@ -794,10 +773,6 @@ export const SECTIONS: DesktopConfigSection[] = [
     label: 'Voice',
     icon: Mic,
     keys: [
-      'voice.voice_chat_mode',
-      'voice.qwen_realtime.model',
-      'voice.gpt_live.voice',
-      'voice.gpt_live.instructions',
       'tts.provider',
       'stt.enabled',
       'stt.echo_transcripts',

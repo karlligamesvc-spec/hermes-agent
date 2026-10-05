@@ -5,7 +5,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Ear, EarOff, iconSize, Loader2, Square, Volume2, VolumeX } from '@/lib/icons'
+import { Ear, EarOff, iconSize, Loader2, MicOff, Square, Volume2, VolumeX } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { LiveTranscriptFragment } from '@/lib/voice-live'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
@@ -27,7 +27,6 @@ export { ACTIVE_ICON_BTN, GHOST_ICON_BTN, ICON_BTN, PRIMARY_ICON_BTN } from './c
 
 interface ConversationProps {
   active: boolean
-  engineName?: string | null
   transcript?: LiveTranscriptFragment[]
   level: number
   muted: boolean
@@ -75,9 +74,11 @@ export function ComposerControls({
   const scope = useComposerScope()
 
   if (conversation.active) {
-    return hudMode || scope.target !== 'main'
-      ? <ConversationPill {...conversation} disabled={disabled} />
-      : <VoiceConversationPanel {...conversation} />
+    return hudMode || scope.target !== 'main' ? (
+      <ConversationPill {...conversation} disabled={disabled} />
+    ) : (
+      <VoiceConversationPanel {...conversation} />
+    )
   }
 
   const showVoicePrimary = !busy && !hasComposerPayload
@@ -123,7 +124,9 @@ export function ComposerControls({
           {voiceControls}
         </>
       )}
-      {!minimal && !showVoicePrimary && <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />}
+      {!minimal && !showVoicePrimary && (
+        <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
+      )}
       {showVoicePrimary ? (
         <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
       ) : (
@@ -239,7 +242,7 @@ function ConversationPill({
           type="button"
           variant="ghost"
         >
-          <Codicon name={muted ? 'mic-off' : 'mic'} size="1rem" />
+          {muted ? <MicOff className={iconSize.md} /> : <Codicon name="mic" size="1rem" />}
         </Button>
       </Tip>
       {listening && (

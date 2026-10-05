@@ -2447,6 +2447,8 @@ export const zhHant = defineLocale({
       '調整或繼續'
     ],
     voiceSettings: '語音設定',
+    voiceUnavailable: '即時語音暫不可用，請檢查登入狀態或稍後重試。',
+    moveVoicePanel: '拖動語音視窗',
     voiceTranscript: '即時字幕',
     voiceTranscriptEmpty: '開始說話，文字會顯示在這裡。',
     startVoice: '開始語音對話',

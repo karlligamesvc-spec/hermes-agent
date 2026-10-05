@@ -3,10 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '@/i18n'
 import { QwenRealtimeSession } from '@/lib/qwen-realtime'
 import { sanitizeTextForSpeech } from '@/lib/speech-text'
-import { type LiveHistoryMessage, type LiveTranscriptFragment, VoiceLiveSession } from '@/lib/voice-live'
+import { type LiveHistoryMessage, type LiveTranscriptFragment } from '@/lib/voice-live'
 import { isVoiceStopCommand } from '@/lib/voice-stop-word'
 import { notify, notifyError } from '@/store/notifications'
-import { $voiceLiveStatus } from '@/store/voice-live'
 
 import type { ConversationStatus } from './use-voice-conversation'
 
@@ -70,8 +69,8 @@ export function delegationPrompt(context: LiveTranscriptFragment[]): { context: 
 }
 
 /**
- * GPT-Live conversation engine — same public shape as `useVoiceConversation`
- * so the composer can mount either from `voice.voice_chat_mode`.
+ * APEX realtime conversation — Qwen is selected internally, independently of
+ * legacy CLI engine preferences. The public shape matches `useVoiceConversation`.
  *
  * Status mapping: `listening` = session up, voice idle; `speaking` = the
  * remote track is producing audio; `thinking` = a delegation is in flight in
@@ -102,7 +101,7 @@ export function useVoiceLiveConversation({
 
   const sessionRef = useRef<
     | null
-    | (Pick<VoiceLiveSession, 'start' | 'close' | 'think' | 'speak' | 'setMuted' | 'instruct'> & {
+    | (Pick<QwenRealtimeSession, 'start' | 'close' | 'think' | 'speak' | 'setMuted' | 'instruct'> & {
         finishDelegation?: (id: string) => void
       })
   >(null)
@@ -212,7 +211,6 @@ export function useVoiceLiveConversation({
     startingRef.current = true
     setTranscript([])
     const epoch = ++startEpochRef.current
-    const mode = $voiceLiveStatus.get()?.mode
 
     try {
       await latest.current.beforeMicOpen?.()
@@ -226,9 +224,7 @@ export function useVoiceLiveConversation({
       return
     }
 
-    const Session = mode === 'qwen-realtime' ? QwenRealtimeSession : VoiceLiveSession
-
-    const session = new Session({
+    const session = new QwenRealtimeSession({
       // The voice model answers a bare "stop" itself (it just goes quiet) and
       // never delegates it, so the spoken stop phrase is judged on the user
       // transcript once the utterance settles.

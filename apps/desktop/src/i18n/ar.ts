@@ -2352,6 +2352,8 @@ export const ar = defineLocale({
     newSessionPlaceholders: ['اسأل Hermes عن شيء...', 'اطلب من Hermes تنفيذ مهمة...', 'ابدأ محادثة جديدة...'],
     followUpPlaceholders: ['اكتب متابعة...', 'أضف توجيها...', 'اسأل سؤالا آخر...'],
     voiceSettings: 'إعدادات الصوت',
+    voiceUnavailable: 'الصوت الفوري غير متاح. تحقق من تسجيل الدخول أو حاول لاحقًا.',
+    moveVoicePanel: 'تحريك نافذة الصوت',
     voiceTranscript: 'النص المباشر',
     voiceTranscriptEmpty: 'ستظهر محادثتك هنا.',
     startVoice: 'بدء الصوت',

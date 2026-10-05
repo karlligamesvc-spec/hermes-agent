@@ -1018,7 +1018,6 @@ export function ChatBar({
     voiceActivityState,
     voiceConversationActive,
     voiceTranscript,
-    voiceEngineName,
     voiceStatus
   } = useComposerVoice({
     busy,
@@ -1058,7 +1057,6 @@ export function ChatBar({
       compactModelPill={poppedOut || compactPill}
       conversation={{
         active: voiceConversationActive,
-        engineName: voiceEngineName,
         transcript: voiceTranscript,
         level: conversation.level,
         muted: conversation.muted,
