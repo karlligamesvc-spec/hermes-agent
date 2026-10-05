@@ -44,6 +44,8 @@ The runtime must never loop on resolution or ask the user to repeat attempts ind
 
 ## User-facing failures
 
+- A CDN `403` does not prove that the original share URL has expired. The runtime immediately
+  advances to the next candidate rather than repeating the same rejected signature.
 - A `503` from `/social/{platform}/download` is a link-resolution/download outage, not an ASR outage.
 - A `503` from `/asr/*` is a transcription outage.
 - These messages do not expose provider names, raw server details, signed URLs, user identifiers, or
@@ -64,3 +66,19 @@ also verifies unrequested partial responses, partial-file cleanup, and route-spe
 wording. It does not contact a real social platform, exercise a production proxy/CDN, or validate
 the cloud ASR provider itself; those belong to post-deploy synthetic acceptance with non-user
 fixtures.
+
+
+## 2026-10-05 incident verification
+
+The reported share resolved successfully. A fresh response contained 57 distinct media candidates:
+the first five returned 403 from Douyin CDN hosts, while candidate index 5 returned valid MP4 bytes.
+A browser User-Agent on the primary URL did not remove the 403. The recovered file was 39,465,006
+bytes, 160.426984 seconds, H.264 video with AAC audio. Full ffmpeg decode completed with exit 0.
+The upstream rejection mechanism (signature policy, regional routing or CDN access restriction)
+was not established; it must not be described as a confirmed expired share.
+
+Runtime remediation integrates the previously unmerged hc-735 recovery into the current hc-906
+candidate and adds both-tool regression coverage for a 403 primary followed by a valid fallback.
+This receipt proves actual video recovery on the local Mac, not the remote customer's installed
+runtime, cloud ASR execution or a public Desktop release. No signed URLs, credentials or raw
+provider responses belong in the permanent evidence.

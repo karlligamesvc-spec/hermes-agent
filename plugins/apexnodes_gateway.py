@@ -701,7 +701,7 @@ def download_media(
                     with client.stream("GET", url, headers=attempt_headers) as response:
                         if response.status_code >= 400:
                             raise GatewayError(
-                                f"媒体直链下载失败(HTTP {response.status_code}),链接可能已过期。",
+                                f"媒体下载地址返回 HTTP {response.status_code},尚不能确定分享链接是否失效。",
                                 status=response.status_code,
                                 code="media_download_http_error",
                             )
@@ -724,7 +724,10 @@ def download_media(
                             append=append,
                         )
                         if response_expected is not None:
-                            if expected_total is not None and expected_total != response_expected:
+                            if (
+                                expected_total is not None
+                                and expected_total != response_expected
+                            ):
                                 raise GatewayError(
                                     "媒体直链在续传时长度发生变化,已停止使用残缺文件。",
                                     code="media_download_size_changed",
@@ -744,7 +747,19 @@ def download_media(
                             continue
                         partial.replace(dest)
                         return dest
-                except (httpx.HTTPError, GatewayError):
+                except GatewayError as exc:
+                    # 同一个已被拒绝的签名重复请求不会产生新地址。让调用方立即
+                    # 切备用线路；仅限流和服务端暂时故障在本 URL 上重试。
+                    if exc.code == "media_download_http_error" and exc.status not in (
+                        429,
+                        500,
+                        502,
+                        503,
+                        504,
+                    ):
+                        raise
+                    continue
+                except httpx.HTTPError:
                     # 保留 .part 供下一次严格 Range 恢复；最终失败统一在外层清理。
                     continue
     finally:
@@ -777,7 +792,9 @@ def _validate_download_response(
         raw_range = (response.headers.get("Content-Range") or "").strip()
         match = _CONTENT_RANGE_RE.fullmatch(raw_range)
         if match is None:
-            raise GatewayError("媒体续传响应缺少有效的 Content-Range。", code="invalid_content_range")
+            raise GatewayError(
+                "媒体续传响应缺少有效的 Content-Range。", code="invalid_content_range"
+            )
         start, end, total = (int(value) for value in match.groups())
         if start != requested_offset or end < start or end >= total:
             raise GatewayError("媒体续传响应范围不匹配。", code="invalid_content_range")

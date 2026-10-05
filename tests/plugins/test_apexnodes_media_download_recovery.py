@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import socket
 import sys
 import threading
@@ -31,7 +32,9 @@ class _MediaHandler(BaseHTTPRequestHandler):
         return
 
     def _count(self) -> int:
-        self.referers.setdefault(self.path, []).append(self.headers.get("Referer") or "")
+        self.referers.setdefault(self.path, []).append(
+            self.headers.get("Referer") or ""
+        )
         count = self.counts.get(self.path, 0) + 1
         self.counts[self.path] = count
         return count
@@ -54,7 +57,9 @@ class _MediaHandler(BaseHTTPRequestHandler):
         if content_type:
             self.send_header("Content-Type", content_type)
         if status == 206:
-            self.send_header("Content-Range", f"bytes {start}-{len(PAYLOAD) - 1}/{len(PAYLOAD)}")
+            self.send_header(
+                "Content-Range", f"bytes {start}-{len(PAYLOAD) - 1}/{len(PAYLOAD)}"
+            )
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -65,6 +70,12 @@ class _MediaHandler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
         count = self._count()
         range_header = self.headers.get("Range")
+        if self.path == "/forbidden":
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            self.close_connection = True
+            return
         if self.path in {"/primary", "/fallback-broken"}:
             self.send_response(503)
             self.send_header("Content-Length", "0")
@@ -148,7 +159,9 @@ def _load_douyin_plugin():
     namespace = types.ModuleType("hc735_plugins")
     namespace.__path__ = []  # type: ignore[attr-defined]
     sys.modules["hc735_plugins"] = namespace
-    plugin_dir = Path(__file__).resolve().parents[2] / "plugins" / "apexnodes-douyin-tools"
+    plugin_dir = (
+        Path(__file__).resolve().parents[2] / "plugins" / "apexnodes-douyin-tools"
+    )
     spec = importlib.util.spec_from_file_location(
         module_name,
         plugin_dir / "__init__.py",
@@ -196,7 +209,9 @@ def test_invalid_content_range_never_becomes_a_final_file(media_server, tmp_path
     assert caught.value.code == "media_download_incomplete"
 
 
-def test_unrequested_partial_response_never_becomes_a_final_file(media_server, tmp_path):
+def test_unrequested_partial_response_never_becomes_a_final_file(
+    media_server, tmp_path
+):
     base, counts, _referers = media_server
     with pytest.raises(gateway.GatewayError) as caught:
         gateway.download_media(f"{base}/unexpected-partial", dest_dir=tmp_path)
@@ -216,7 +231,10 @@ def test_main_then_fallback_then_one_refresh_uses_real_downloads(
 
     def refresh(source_url):
         refreshes.append(source_url)
-        return {"download_url": f"{base}/complete", "title": "fresh"}, f"{base}/complete"
+        return {
+            "download_url": f"{base}/complete",
+            "title": "fresh",
+        }, f"{base}/complete"
 
     monkeypatch.setattr(module, "_gateway_resolve_download", refresh)
     result, path = module._gateway_download_resolved_media(
@@ -238,7 +256,9 @@ def test_main_then_fallback_then_one_refresh_uses_real_downloads(
     assert set(referers["/fallback-broken"]) == {"https://referer.invalid/"}
 
 
-def test_all_candidates_fail_after_exactly_one_refresh(media_server, tmp_path, monkeypatch):
+def test_all_candidates_fail_after_exactly_one_refresh(
+    media_server, tmp_path, monkeypatch
+):
     base, _counts, _referers = media_server
     module = _load_douyin_plugin()
     monkeypatch.setattr(gateway, "media_cache_dir", lambda: tmp_path)
@@ -266,7 +286,10 @@ def test_both_social_tool_paths_use_the_recovery_orchestrator(monkeypatch):
     monkeypatch.setattr(
         module,
         "_gateway_resolve_download",
-        lambda _source: ({"download_url": "https://cdn.invalid/item"}, "https://cdn.invalid/item"),
+        lambda _source: (
+            {"download_url": "https://cdn.invalid/item"},
+            "https://cdn.invalid/item",
+        ),
     )
     calls = []
 
@@ -274,7 +297,9 @@ def test_both_social_tool_paths_use_the_recovery_orchestrator(monkeypatch):
         calls.append(source_url)
         raise gateway.GatewayError("recovery-orchestrator-marker")
 
-    monkeypatch.setattr(module, "_gateway_download_resolved_media", fail_from_orchestrator)
+    monkeypatch.setattr(
+        module, "_gateway_download_resolved_media", fail_from_orchestrator
+    )
     social = module._gateway_social_download(source)
     transcribe = module._gateway_media_transcribe(None, source)
     assert "recovery-orchestrator-marker" in social
@@ -308,9 +333,7 @@ def test_transcribe_remote_fetch_fallback_uses_only_refreshed_url(monkeypatch):
     monkeypatch.setattr(gateway, "request_json", request_json)
     result = module._gateway_media_transcribe(None, source)
     assert "fallback transcript" in result
-    assert requests == [
-        ("POST", "/tools/v1/asr/transcribe", {"media_url": refreshed})
-    ]
+    assert requests == [("POST", "/tools/v1/asr/transcribe", {"media_url": refreshed})]
 
 
 def test_503_copy_distinguishes_download_resolution_from_asr():
@@ -326,3 +349,55 @@ def test_503_copy_distinguishes_download_resolution_from_asr():
     assert "转写服务" in str(asr)
     assert "链接解析" not in str(asr)
     assert "temporary" not in str(asr)
+
+
+@pytest.mark.parametrize("entry", ["download", "transcribe"])
+def test_forbidden_primary_uses_fallback_in_both_tools(
+    media_server, tmp_path, monkeypatch, entry
+):
+    base, counts, _ = media_server
+    module = _load_douyin_plugin()
+    monkeypatch.setattr(gateway, "media_cache_dir", lambda: tmp_path)
+    resolutions = []
+
+    def resolve(source):
+        resolutions.append(source)
+        return {
+            "download_url": f"{base}/forbidden",
+            "fallback_urls": [f"{base}/forbidden", f"{base}/complete"],
+        }, f"{base}/forbidden"
+
+    monkeypatch.setattr(module, "_gateway_resolve_download", resolve)
+    uploads = []
+
+    def upload(path, **kwargs):
+        uploads.append(path.read_bytes())
+        return {"text": "实际转写", "segments": []}
+
+    monkeypatch.setattr(gateway, "extract_audio_for_asr", lambda path: None)
+    monkeypatch.setattr(gateway, "transcribe_upload", upload)
+    result = json.loads(
+        module._gateway_social_download("https://share.invalid/item")
+        if entry == "download"
+        else module._gateway_media_transcribe(None, "https://share.invalid/item")
+    )
+    assert not result.get("error")
+    assert Path(result["video_path"]).read_bytes() == PAYLOAD
+    assert counts["/forbidden"] == 1
+    assert counts["/complete"] == 1
+    assert resolutions == ["https://share.invalid/item"]
+    assert uploads == ([] if entry == "download" else [PAYLOAD])
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_forbidden_download_is_not_reported_as_an_expired_share(media_server, tmp_path):
+    base, counts, _ = media_server
+    dest = tmp_path / "downloads"
+    with pytest.raises(gateway.GatewayError) as caught:
+        gateway.download_media(f"{base}/forbidden", dest_dir=dest)
+    assert caught.value.status == 403
+    assert caught.value.code == "media_download_http_error"
+    assert "尚不能确定" in str(caught.value)
+    assert "重发" not in str(caught.value)
+    assert counts["/forbidden"] == 1
+    assert not list(dest.iterdir())
