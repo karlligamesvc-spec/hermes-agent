@@ -10,9 +10,6 @@ import { notify, notifyError } from '@/store/notifications'
 
 import type { ConversationStatus } from './use-voice-conversation'
 
-/** Quiet after the last user transcript fragment before the utterance is judged
- *  as a whole ("stop" ends the chat; "stop the container" is a request). */
-const UTTERANCE_SETTLE_MS = 1_500
 
 interface PendingVoiceResponse {
   id: string
@@ -116,8 +113,6 @@ export function useVoiceLiveConversation({
   const enabledRef = useRef(enabled)
   const busyRef = useRef(busy)
   const speakingRef = useRef(false)
-  const userUtteranceRef = useRef('')
-  const utteranceTimerRef = useRef<null | number>(null)
   const delegationRef = useRef<null | string>(null)
   const spokenLengthRef = useRef(0)
   const spokenResponseIdRef = useRef<null | string>(null)
@@ -183,12 +178,6 @@ export function useVoiceLiveConversation({
     startEpochRef.current += 1
     startingRef.current = false
 
-    if (utteranceTimerRef.current) {
-      window.clearTimeout(utteranceTimerRef.current)
-      utteranceTimerRef.current = null
-    }
-
-    userUtteranceRef.current = ''
     const session = sessionRef.current
     sessionRef.current = null
     setDelegation(null)
@@ -225,9 +214,9 @@ export function useVoiceLiveConversation({
     let fatalErrorReported = false
 
     const session = new QwenRealtimeSession({
-      // The voice model answers a bare "stop" itself (it just goes quiet) and
-      // never delegates it, so the spoken stop phrase is judged on the user
-      // transcript once the utterance settles.
+      // Qwen's user fragment is a completed ASR item, not a partial delta.
+      // Judge that entire turn immediately: the model may say goodbye without
+      // delegating, and joining adjacent ASR turns can swallow the stop request.
       onTranscript: fragment => {
         if (startEpochRef.current !== epoch) {return}
         setTranscript(current => appendVoiceTranscript(current, fragment, 200))
@@ -236,22 +225,10 @@ export function useVoiceLiveConversation({
           return
         }
 
-        userUtteranceRef.current += fragment.text
-
-        if (utteranceTimerRef.current) {
-          window.clearTimeout(utteranceTimerRef.current)
+        if (sessionRef.current === session && isVoiceStopCommand(fragment.text)) {
+          void end()
+          latest.current.onStopWord?.()
         }
-
-        utteranceTimerRef.current = window.setTimeout(() => {
-          utteranceTimerRef.current = null
-          const utterance = userUtteranceRef.current
-          userUtteranceRef.current = ''
-
-          if (sessionRef.current === session && isVoiceStopCommand(utterance)) {
-            void end()
-            latest.current.onStopWord?.()
-          }
-        }, UTTERANCE_SETTLE_MS)
       },
       onClosed: (reason, usageSeconds) => {
         if (sessionRef.current !== session) {

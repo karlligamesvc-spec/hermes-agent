@@ -376,3 +376,36 @@ premature assistant playback/captions, stale submit failure, discarded submit
 acceptance, older-turn selection or a pending-tool response retry. Each must
 fail its corresponding behavior assertion, then restore source. This change
 also requires a newly pinned embedded engine for the updated server persona.
+
+## Chinese spoken close without a delegated task
+
+0.17.48 acceptance also showed “OK，你关闭吧。” answered with goodbye while
+the panel stayed listening. The shared whole-utterance matcher recognized only
+English phrases and ASCII punctuation. It now accepts explicit Simplified and
+Traditional Chinese voice-end phrases and APEX/acknowledgement prefixes with
+Chinese punctuation. Whole-utterance matching remains mandatory: “关闭浏览器”,
+“停止下载”, “取消订单” and negated/question forms are real tasks. Typed commands
+still pass through when voice is inactive or attachments accompany the text.
+
+All five entry paths were inspected: native completed ASR, native delegation,
+chained initial transcription, chained barge transcription and typed composer
+interception. They share the same matcher. Native Qwen emits one complete user
+ASR item; that item is judged immediately. It is not concatenated with another
+user turn during a 1.5-second window. The stop callback closes the native session
+and disables its owner, rather than treating the model's goodbye as a receipt.
+Late ASR/delegation callbacks after closing cannot submit another chat turn.
+Chained initial/barge tests exercise the existing teardown with the Chinese
+request, alongside the native close/duplicate callback regression.
+
+Smoke from `apps/desktop`:
+
+```sh
+npx vitest run --project ui src/lib/voice-stop-word.test.ts src/app/chat/composer/hooks/use-voice-live-native.test.tsx src/app/chat/composer/hooks/use-voice-conversation.test.tsx src/app/chat/composer/hooks/use-voice-conversation-rearm.test.tsx src/lib/qwen-realtime.test.ts src/app/chat/composer/voice-entry.test.tsx
+```
+
+Four reverse faults remove Chinese punctuation handling, remove the actual
+native close, concatenate two distinct ASR turns or replace whole-utterance
+matching with substring matching. Each uniquely landed fault must fail a
+behavior assertion before restoring source. No server protocol/persona change
+is needed here: the 0.17.50 embedded engine remains 40d4bee9. This does not claim
+physical microphone or every possible ASR spelling acceptance.

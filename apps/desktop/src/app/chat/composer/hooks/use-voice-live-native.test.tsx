@@ -37,6 +37,41 @@ vi.mock('@/lib/voice-live', async importOriginal => ({
 }))
 const { useVoiceLiveConversation } = await import('./use-voice-live-conversation')
 
+it.each(['asr', 'delegation'] as const)('closes a Chinese voice-end command once through %s without submitting a chat turn', async entry => {
+  const onSubmit = vi.fn()
+  const onStopWord = vi.fn()
+
+  const hook = renderHook(({ enabled }) => useVoiceLiveConversation({
+    enabled, busy: false, onSubmit, onStopWord, pendingResponse: () => null,
+    consumePendingResponse: vi.fn(), seedHistory: () => []
+  }), {
+    initialProps: { enabled: false },
+    wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  })
+
+  act(() => hook.rerender({ enabled: true }))
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce())
+  const stop = { speaker: 'user' as const, text: 'OK，你关闭吧。', turnId: 'stop-turn', startMs: 2, endMs: 2 }
+  act(() => {
+    // A late completed query ASR must not concatenate with a separate stop turn.
+    mocks.handlers?.onTranscript?.({ speaker: 'user', text: '查询抖音热榜', turnId: 'query', startMs: 1, endMs: 1 })
+
+    if (entry === 'asr') {mocks.handlers?.onTranscript?.(stop)}
+    else {mocks.handlers?.onDelegation('close-request', [stop])}
+  })
+  expect(mocks.close).toHaveBeenCalledOnce()
+  expect(onStopWord).toHaveBeenCalledOnce()
+  expect(onSubmit).not.toHaveBeenCalled()
+  expect(hook.result.current.status).toBe('idle')
+  act(() => {
+    mocks.handlers?.onTranscript?.(stop)
+    mocks.handlers?.onDelegation('late-close', [stop])
+  })
+  expect(mocks.close).toHaveBeenCalledOnce()
+  expect(onStopWord).toHaveBeenCalledOnce()
+  expect(onSubmit).not.toHaveBeenCalled()
+})
+
 it('inserts late user ASR before its reply without splitting assistant deltas or reopening a call', async () => {
   const hook = renderHook(({ enabled }) => useVoiceLiveConversation({
     enabled, busy: false, onFatalError: vi.fn(), onSubmit: vi.fn(),

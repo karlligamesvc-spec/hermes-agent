@@ -30,12 +30,43 @@ const STOP_PHRASES: readonly string[] = [
   'goodbye',
   'good bye',
   'bye',
-  'cancel'
+  'cancel',
+  '停止',
+  '暂停',
+  '取消',
+  '再见',
+  '拜拜',
+  '关闭吧',
+  '你关闭吧',
+  '关闭语音',
+  '关闭语音吧',
+  '停止语音',
+  '暂停语音',
+  '结束语音',
+  '结束通话',
+  '挂断通话',
+  '结束对话',
+  '停止聆听',
+  '别听了',
+  '關閉吧',
+  '你關閉吧',
+  '關閉語音',
+  '關閉語音吧',
+  '停止語音',
+  '暫停語音',
+  '結束語音',
+  '結束通話',
+  '掛斷通話',
+  '結束對話',
+  '停止聆聽',
+  '別聽了',
+  '暫停',
+  '再見'
 ]
 
 // Optional address prefixes so "hermes stop" / "ok stop" / "hey hermes, stop"
 // still count. Stripped before matching the core phrase.
-const ADDRESS_PREFIXES: readonly string[] = ['hey hermes', 'hey hermes,', 'hermes', 'hermes,', 'ok', 'okay', 'hey']
+const ADDRESS_PREFIXES: readonly string[] = ['hey hermes', 'hey apex', 'hermes', 'apex', 'okay', 'ok', 'hey', '好的', '好', '嗯', '请', '請']
 
 // Normalise: lowercase, strip surrounding punctuation/whitespace, collapse
 // internal runs of spaces. Trailing punctuation (".", "!", "…") is common in
@@ -43,24 +74,23 @@ const ADDRESS_PREFIXES: readonly string[] = ['hey hermes', 'hey hermes,', 'herme
 function normalize(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[.,!?;:…]+/g, ' ')
+    .replace(/[.,!?;:…，。！？；：、．]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
 function stripAddress(text: string): string {
-  for (const prefix of ADDRESS_PREFIXES) {
-    if (text === prefix) {
-      // Bare address ("hermes") is not a stop command on its own.
-      continue
-    }
+  let remaining = text
 
-    if (text.startsWith(`${prefix} `)) {
-      return text.slice(prefix.length + 1).trim()
-    }
+  while (remaining) {
+    const prefix = ADDRESS_PREFIXES.find(address => remaining.startsWith(address) &&
+      (remaining[address.length] === ' ' || /[\u3400-\u9fff]/u.test(remaining[address.length] ?? '')))
+
+    if (!prefix) {break}
+    remaining = remaining.slice(prefix.length).trim()
   }
 
-  return text
+  return remaining
 }
 
 /**
