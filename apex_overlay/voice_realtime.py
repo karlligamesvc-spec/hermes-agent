@@ -95,7 +95,8 @@ async def serve(ws: WebSocket, connection: tuple[str, str, dict]) -> None:
     if start.get('type') != 'apex.start':
         raise ValueError('无效语音会话。')
     history = start.get('history') or []
-    if (not isinstance(history, list) or len(history) > 24 or len(json.dumps(history)) > 30000
+    if (not isinstance(history, list) or len(history) > 24
+            or len(json.dumps(history, ensure_ascii=False).encode('utf-8')) > 30000
             or any(not isinstance(item, dict) or not isinstance(item.get('content', []), list) for item in history)):
         raise ValueError('语音历史过长。')
     url = base.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1)

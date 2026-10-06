@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
+const os = require('node:os')
 const test = require('node:test')
 
 const workflowPath = path.resolve(__dirname, '../../../.github/workflows/desktop-macos.yml')
@@ -39,7 +40,41 @@ test('manual macOS builds are artifact-only and paired calls own production publ
 
   assert.doesNotMatch(dispatchBlock, /inputs:/)
   assert.match(publishStep, /if: \$\{\{ inputs\.publish \}\}/)
-  assert.match(publishStep, /coscmd upload/)
+  assert.match(publishStep, /upload-desktop-cos\.py/)
+})
+
+test('actual Mac publish shell uploads assets before feed and stops when the shared uploader rejects an asset', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-cos-order-'))
+  const release = path.join(root, 'apps/desktop/release')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(release, { recursive: true })
+  fs.mkdirSync(bin)
+  for (const name of ['APEX-0.17.50-mac-arm64.dmg', 'APEX-0.17.50-mac-arm64.zip', 'APEX-0.17.50-mac-arm64.zip.blockmap', 'latest-mac.yml']) {
+    fs.writeFileSync(path.join(release, name), 'fixture')
+  }
+  const log = path.join(root, 'calls')
+  fs.writeFileSync(path.join(bin, 'pip3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+  fs.writeFileSync(path.join(bin, 'python3'), `#!/bin/sh
+printf '%s\\n' "$5" >> "$CALLS"
+case "$5" in *dmg) [ "$FAIL_ASSET" = 1 ] && exit 1 ;; esac
+exit 0
+`, { mode: 0o755 })
+  const script = bashRunBody(namedStep(workflowSource(), 'Publish installer + updater feed to COS (skipped when secrets absent)'))
+    .replaceAll('${{ matrix.arch }}', 'arm64')
+  try {
+    for (const fails of [false, true]) {
+      fs.rmSync(log, { force: true })
+      const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], {
+        cwd: root,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CALLS: log, FAIL_ASSET: fails ? '1' : '0', COS_SECRET_ID: 'fixture-id', COS_SECRET_KEY: 'fixture-secret' },
+        encoding: 'utf8'
+      })
+      const calls = fs.readFileSync(log, 'utf8').trim().split('\n')
+      assert.equal(result.status, fails ? 1 : 0, result.stderr)
+      assert.equal(calls.at(-1), fails ? 'desktop/mac-arm64/APEX-0.17.50-mac-arm64.dmg' : 'desktop/mac-arm64/latest-mac.yml')
+      assert.equal(calls.length, fails ? 1 : 4)
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
 })
 
 test('Gatekeeper rejection fails the signed macOS build', () => {

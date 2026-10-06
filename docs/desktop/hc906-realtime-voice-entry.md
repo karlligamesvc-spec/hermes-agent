@@ -284,3 +284,46 @@ This follow-up passes all 9,031 UI tests across 945 files, eight Runtime voice
 tests, typecheck and build. Changed TypeScript files and the Python seam pass
 lint/ruff; the full ESLint run retains the pre-existing warnings. The four
 reverse injections fail their intended behavior assertions and restore source.
+
+## Chinese history budget and publication follow-up
+
+Before 0.17.49 finished publishing, a second historical-chat failure was
+reproduced: the frontend permits 6,000 text characters, but Runtime counted
+ASCII-escaped JSON characters. Five 1,200-character Chinese turns occupy 18,442
+UTF-8 bytes and were incorrectly rejected as too long. The byte gate now measures
+actual UTF-8 JSON. The 30,000-byte and 24-message limits remain enforced before
+any upstream connection. A real transport regression replays all five full
+turns; oversized bytes and excess messages still reject without contacting the
+vendor. Restoring the escaped-character measurement makes the CJK smoke fail.
+
+All three public feeds still read 0.17.48 when release run37464095256 was
+cancelled; no default Runtime pointer had been advanced. Its signed 0.17.49
+artifacts and native consumer proofs remain evidence, not a completed release.
+The complete follow-up ships as 0.17.50 with a corrected embedded engine.
+
+Both native publication exits use cos-python-sdk-v5 1.9.44 (MIT), the same
+installed SDK that successfully published and independently verified the source
+mirror on the server. The shared uploader uses 16 workers with 8 MiB parts,
+bounded request timeout, MD5 transfer checks and independent public exact-size
+HEAD verification. Credentials stay in environment variables and signed SDK
+exception details are not emitted. Mac's actual workflow shell preserves
+assets-before-feed and stops on a rejected asset; Windows retains its bounded
+process/retry/remote-size/feed-reference coordinator. Paired source/version/
+runtime/three-feed parity remains mandatory; manual single-platform dispatches
+still cannot publish. No speed guarantee is claimed until the native run proves
+this actual network path.
+
+Additional smoke:
+
+```sh
+scripts/run_tests.sh tests/hermes_cli/test_qwen_realtime.py tests/test_desktop_cos_uploader.py
+cd apps/desktop
+node --test scripts/desktop-macos-workflow.test.cjs
+npm run test:release-gates
+```
+
+Reverse injections restore escaped history measurement, remove served-size
+verification or publish the Mac feed first. Each uniquely landed mutation makes
+its behavior regression fail, then source is restored. SDK fixtures cover
+truncation, foreign/mismatched object keys and credential-bearing exceptions;
+the native production workflow, not these fixtures, proves real COS delivery.
