@@ -13,6 +13,7 @@ import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
 import { waitForDashboardPortAnnouncement } from '../electron/backend-ready.ts'
 import { ModelMutationMetadataStore } from '../electron/desktop-model-mutations.ts'
+import { readPreparedDesktopUpdatePlan, writeDesktopUpdatePlan } from '../electron/desktop-update-plan.ts'
 import {
   assertPackagedRuntimeIdle,
   installPackagedRuntime,
@@ -313,6 +314,13 @@ try {
 
   const returning = path.join(workspace, 'legacy-home')
   const before = await seedOld(returning, active)
+  const planPath = path.join(returning, '.apexnodes-desktop-update-plan.json')
+  writeDesktopUpdatePlan(planPath, {
+    kind: 'shell-only', currentShellVersion: '0.17.31', targetShellVersion: desktopVersion,
+    currentRuntimeKey: F8, targetRuntimeKey: F8,
+    currentRuntimeVersion: F8_VERSION, targetRuntimeVersion: F8_VERSION
+  })
+  const originalPlanBytes = fs.readFileSync(planPath, 'utf8')
   const userFiles = ['config.yaml', 'sessions/fixture.json', 'profiles/oracle/config.yaml', 'profiles/oracle/sessions/fixture.json']
 
   for (const file of userFiles) {
@@ -343,8 +351,25 @@ try {
   assert.equal(fs.readFileSync(path.join(before.root, '.hermes-source-commit'), 'utf8').trim(), F8)
   assert.equal(sha(fs.readFileSync(path.join(returning, 'state.db'))), sqliteBefore)
   await probePackagedRuntime(before.root, { ...release, runtime_commit: F8, runtime_version: F8_VERSION }, false)
+  const planDependencies = {
+    waitForRuntimePreparation: async () => {}, desktopVersion: () => desktopVersion,
+    readMarker: () => JSON.parse(fs.readFileSync(path.join(returning, 'hermes-agent', '.hermes-bootstrap-complete'), 'utf8')),
+    readTreeCommit: () => fs.readFileSync(path.join(returning, 'hermes-agent', '.hermes-source-commit'), 'utf8').trim()
+  }
+  const failedPlan = await readPreparedDesktopUpdatePlan(planPath, {
+    ...planDependencies, preparedRuntime: async () => ({ status: 'preserved', reason: 'upgrade-failed', runtimeCommit: F8 })
+  })
+  assert.equal(failedPlan?.targetRuntimeKey, F8)
+  assert.equal(fs.readFileSync(planPath, 'utf8'), originalPlanBytes, 'failed bundle activation must leave the frozen plan intact')
   const upgrade = await installPackagedRuntime(consumer(returning), true)
   assert.equal(upgrade.status, 'installed')
+  const reconciledPlan = await readPreparedDesktopUpdatePlan(planPath, {
+    ...planDependencies, preparedRuntime: async () => upgrade
+  })
+  assert.equal(reconciledPlan?.targetRuntimeKey, release.runtime_commit, 'real bundled activation must reconcile the shell-only plan')
+  assert.equal(reconciledPlan?.targetRuntimeVersion, release.runtime_version)
+  assert.equal(reconciledPlan?.currentRuntimeKey, F8)
+  proof.shellOnlyPlanRecovery = { failedInstallKeptFrozenPlanBytes: true, targetRuntimeKey: reconciledPlan!.targetRuntimeKey, targetRuntimeVersion: reconciledPlan!.targetRuntimeVersion, originalRuntimeKey: F8 }
 
   for (const file of userFiles) {assert.equal(sha(fs.readFileSync(path.join(returning, file))), fileHashes[file], `user state changed: ${file}`)}
   assert.equal(sha(fs.readFileSync(path.join(returning, 'state.db'))), sqliteBefore, 'SQLite bytes during installation')

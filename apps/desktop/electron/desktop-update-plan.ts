@@ -2,6 +2,9 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { compareSemver } from './apex-runtime-latest'
+import type { PackagedRuntimeResult } from './packaged-runtime'
+
 export const DESKTOP_UPDATE_PLAN_SCHEMA_VERSION = 1
 
 export type DesktopUpdatePlanKind = 'runtime-after-shell' | 'shell-only'
@@ -203,6 +206,58 @@ export function writeDesktopUpdatePlan(filePath: string, input: DesktopUpdatePla
   writePlanAtomically(filePath, plan)
 
   return plan
+}
+
+/** A shell-only handoff can activate the new shell's verified bundled engine. */
+export async function readPreparedDesktopUpdatePlan(
+  filePath: string,
+  dependencies: {
+    waitForRuntimePreparation: () => Promise<void>
+    preparedRuntime: () => Promise<PackagedRuntimeResult | null>
+    desktopVersion: () => string
+    readMarker: () => { pinnedCommit?: string | null; version?: string | null } | null
+    readTreeCommit: () => string | null
+  },
+  options: DesktopUpdatePlanReadOptions = {}
+): Promise<DesktopUpdatePlan | null> {
+  await dependencies.waitForRuntimePreparation()
+  const plan = readDesktopUpdatePlan(filePath, options)
+
+  // A runtime chosen explicitly before the shell restart remains frozen. Only
+  // the shell-only "keep current engine" target follows its bundled activation.
+  if (!plan || plan.kind !== 'shell-only' || !plan.targetShellVersion ||
+      plan.targetRuntimeKey !== plan.currentRuntimeKey ||
+      plan.targetRuntimeVersion !== plan.currentRuntimeVersion) {
+    return plan
+  }
+
+  const shellComparison = compareSemver(dependencies.desktopVersion(), plan.targetShellVersion)
+
+  if (shellComparison === null || shellComparison < 0) {return plan}
+  const prepared = await dependencies.preparedRuntime()
+
+  if (!prepared || prepared.status === 'preserved') {return plan}
+  const marker = dependencies.readMarker()
+  const commit = prepared.runtimeCommit
+
+  // The installer already verified/probed these bytes. A marker alone, an
+  // online default, a failed install or a preserved engine cannot retarget.
+  if (!commit || !/^[a-f0-9]{40}$/.test(commit) || !marker?.version ||
+      marker.pinnedCommit !== commit || dependencies.readTreeCommit() !== commit ||
+      (plan.targetRuntimeKey === commit && plan.targetRuntimeVersion === marker.version)) {
+    return plan
+  }
+
+  const next: DesktopUpdatePlan = {
+    ...plan,
+    targetRuntimeKey: commit,
+    targetRuntimeVersion: marker.version,
+    updatedAt: new Date().toISOString()
+  }
+
+  writePlanAtomically(filePath, next)
+
+  return next
 }
 
 export function transitionDesktopUpdatePlan(

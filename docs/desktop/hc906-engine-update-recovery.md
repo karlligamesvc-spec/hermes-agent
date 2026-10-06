@@ -1,5 +1,20 @@
 # hc-906 引擎更新的安装路径与恢复
 
+## 2026-10-06：安装成功后的 shell-only 计划误报
+
+用户从0.17.46更新到0.17.47后，日志确认 r8 的 ba8e344e 引擎已验证并激活、网关就绪；但旧窗口保存的 shell-only 计划仍将当前4e8299引擎作为目标，renderer因此报 `runtime_target_not_active`。这不是引擎安装失败或进程占用。该用户本机在核对0.17.47 App、marker、源码stamp和bundle manifest一致后，将过期计划移动到受控backup并关闭误报；引擎与用户数据未修改。
+
+0.17.48修复由Electron读取收尾计划时等待正在进行的runtime准备；仅当成功的packaged installer结果为installed/current、运行shell已达到计划版本、marker与源码都匹配其verified commit，才将“保持当前引擎”的shell-only目标改为实际内嵌引擎。原current/source历史、planId与requestedAt保留。runtime-after-shell或已经明确更换引擎的计划保持冻结；preserved/安装失败/marker或源码不符/旧shell均不写计划。在线默认版本不参与这次收尾判断。
+
+回归命令（在apps/desktop）：
+
+```sh
+npx vitest run electron/desktop-update-plan.test.ts electron/runtime-version.test.ts src/store/desktop-update.test.ts
+npm run typecheck
+```
+
+renderer测试通过真实计划文件、runtime准备闸和version IPC重现重启后引擎前进的路径。将计划读取恢复为原始目标后，断言收到 `runtime_target_not_active` 而变红；注入锚点确认只命中一次并还原源文件。正式发布native consumer另在三个原生runner的真实F8安装故障/回滚/重试后，证明失败时计划字节不变、成功激活后收尾目标为实际包内commit。完整consumer需使用构建出的bundled-runtime资源，unit smoke不证明真人麦克风、实际Squirrel/NSIS应用替换或物理Windows体验。公开安装包状态以成对发布与独立回读证据为准，未通过之前不得声称0.17.48已经上线。
+
 ## 2026-10-04 用户验收发现
 
 0.17.45 的独立引擎更新将源码安装器指向已提交的 `HERMES_HOME/hermes-agent` 链接。该链接实际指向 `versions/1da9e36b7000`，源码更新覆盖了该版本树，但保留旧 bundle manifest 和 pointer。Node 阶段重新执行 npm/TUI/浏览器工具安装；`npx playwright install chromium` 因本地没有该包而访问镜像，发生 ECONNRESET，整个阶段耗时 232,778 ms。安装器完成后仍存在混合依赖，0.17.46 启动时报告 bundle key 校验不一致并保留可启动的旧目录。
