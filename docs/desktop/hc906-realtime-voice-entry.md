@@ -230,3 +230,57 @@ tests, typecheck, 19 Runtime smoke tests and 332 Cloud authority/ledger/routing
 tests. Three uniquely anchored reverse injections removed the exact idle-cancel
 recovery, concrete-error retention and obsolete-dictation guard; each failed its
 intended behavioral assertion, and every source file was restored afterward.
+
+## Historical chats / caption chronology / initial disclosure
+
+The 0.17.48 user trial rejected assistant startup history with
+`assistant role only supports content type 'output_text', got 'text'.`
+The Runtime now emits `input_text` for historical users and `output_text` for
+historical assistants. Only user/assistant text is replayed; previous developer
+instructions and tool messages do not replace the live persona or create fake
+tool receipts. The outgoing transport regression independently verifies a mixed
+history, multiple assistant parts and the subsequent real function output.
+
+The Qwen client reserves a bounded turn sequence on speech-start (or audio commit)
+and response creation, keyed by the native item/response ID. Delayed ASR uses the
+reserved user turn rather than its completion time. The shared append operation
+keeps equal-turn assistant deltas stable in both the displayed captions and the
+context passed to Hermes; repeated user completion does not duplicate captions.
+Legacy timestamped fragments retain their chronology. Cancelled response output,
+response-slot serialization and call/profile isolation keep their existing gates.
+
+The shared main-call panel opens captions on every new mount, including during
+connection with no text yet. The subtitle button still collapses/reopens them;
+status changes, new text and menu/settings navigation retain the user's choice.
+HUD/session tiles keep their compact in-window controls.
+
+Smoke from `apps/desktop`:
+
+```sh
+npx vitest run --project ui src/lib/qwen-realtime.test.ts src/app/chat/composer/hooks/use-voice-live-native.test.tsx src/app/chat/composer/voice-entry.test.tsx src/app/contrib/surfaces.test.tsx src/app/overlays/overlay-view.test.tsx
+npm run test:ui -- --maxWorkers=4
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Runtime smoke: `scripts/run_tests.sh tests/hermes_cli/test_qwen_realtime.py`.
+Four uniquely anchored and landed reverse mutations restore the invalid history
+type, remove speech reservation, remove late-ASR insertion, or restore collapsed
+captions. Each corresponding behavior test fails; all files are restored.
+
+The source Runtime's actual `serve` path accepted synthetic user/assistant
+history through the public APEX Relay on Flash and Plus, retained the historical
+test phrase and returned completed audio. A repeated connection was refused by
+the existing single-call gate; no gate was bypassed. This does not verify a
+physical microphone or guarantee service availability. Full UI assertions also
+exposed an existing overlay-test teardown race: pending route/Radix focus restore
+tasks outlived their jsdom realm. That fixture now drains its zero-delay cleanup
+before disposal. The synchronized release must pin the corrected engine as well
+as packaging the corrected renderer; a renderer-only update leaves the history
+error intact.
+
+This follow-up passes all 9,031 UI tests across 945 files, eight Runtime voice
+tests, typecheck and build. Changed TypeScript files and the Python seam pass
+lint/ruff; the full ESLint run retains the pre-existing warnings. The four
+reverse injections fail their intended behavior assertions and restore source.

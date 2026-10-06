@@ -1,6 +1,7 @@
 import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
 import type { LiveHistoryMessage, LiveTranscriptFragment, VoiceLiveHandlers } from '@/lib/voice-live'
 import { resolveSpeakStreamUrl } from '@/lib/voice-playback'
+import { appendVoiceTranscript } from '@/lib/voice-transcript'
 
 /** Float microphone frames → 16 kHz mono PCM16. Carries phase across chunks. */
 export class Pcm16Encoder {
@@ -64,8 +65,25 @@ export class QwenRealtimeSession {
   private callId: string | null = null
   private transcript: LiveTranscriptFragment[] = []
   private nextTurn = 0
+  private readonly turns = new Map<string, { order: number; completed: boolean }>()
+  private inputTurn: string | null = null
 
   constructor(private readonly handlers: VoiceLiveHandlers) {}
+
+  private reserveTurn(id: string): { order: number; completed: boolean } {
+    const existing = this.turns.get(id)
+
+    if (existing) {return existing}
+
+    const turn = { order: ++this.nextTurn, completed: false }
+    this.turns.set(id, turn)
+
+    if (this.turns.size > 200) {
+      this.turns.delete(this.turns.keys().next().value!)
+    }
+
+    return turn
+  }
 
   private scopeMatches(): boolean {
     return this.scope === JSON.stringify([getApiRequestConnection(), getApiRequestProfile()])
@@ -236,6 +254,8 @@ export class QwenRealtimeSession {
     }
 
     if (event.type === 'input_audio_buffer.speech_started') {
+      this.inputTurn = event.item_id ?? `user-${this.nextTurn + 1}`
+      this.reserveTurn(`user:${this.inputTurn}`)
       this.userSpeaking = true
       this.stopAudio()
 
@@ -246,6 +266,12 @@ export class QwenRealtimeSession {
 
         this.send({ type: 'response.cancel' })
       }
+
+      return
+    }
+
+    if (event.type === 'input_audio_buffer.committed' && event.item_id) {
+      this.reserveTurn(`user:${event.item_id}`)
 
       return
     }
@@ -271,6 +297,7 @@ export class QwenRealtimeSession {
 
       if (this.responding) {
         this.responseId = event.response?.id ?? null
+        this.reserveTurn(`assistant:${this.responseId ?? 'assistant'}`)
 
         if (this.userSpeaking) {
           if (this.responseId) {
@@ -308,11 +335,20 @@ export class QwenRealtimeSession {
       const text = role === 'user' ? event.transcript : event.delta
 
       if (text) {
-        const fragment: LiveTranscriptFragment = { speaker: role, text, startMs: Date.now(), endMs: Date.now(),
-          turnId: role === 'user' ? (event.item_id ?? `user-${++this.nextTurn}`) : (this.responseId ?? 'assistant') }
+        const turnId = role === 'user'
+          ? (event.item_id ?? this.inputTurn ?? `user-${this.nextTurn + 1}`)
+          : (event.response_id ?? this.responseId ?? 'assistant')
 
-        this.transcript.push(fragment)
-        this.transcript = this.transcript.slice(-80)
+        const turn = this.reserveTurn(`${role}:${turnId}`)
+
+        if (role === 'user' && turn.completed) {return}
+
+        if (role === 'user') {turn.completed = true}
+
+        const fragment: LiveTranscriptFragment = { speaker: role, text, startMs: Date.now(), endMs: Date.now(),
+          turnId, turnOrder: turn.order }
+
+        this.transcript = appendVoiceTranscript(this.transcript, fragment, 80)
         this.handlers.onTranscript?.(fragment)
       }
 

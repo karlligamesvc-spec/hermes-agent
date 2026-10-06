@@ -14,8 +14,11 @@ beforeAll(stubMenuDomApis)
 
 const stylesSource = readFileSync('src/styles.css', 'utf8')
 
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  // Both the route overlay and Radix restore focus on a zero-delay task.
+  // Drain those tasks before Vitest disposes this file's DOM realm.
+  await new Promise(resolve => setTimeout(resolve, 0))
   globalThis.document.body.style.overflow = ''
 })
 

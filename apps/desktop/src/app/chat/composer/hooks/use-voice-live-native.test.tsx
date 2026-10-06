@@ -36,6 +36,27 @@ vi.mock('@/lib/voice-live', async importOriginal => ({
 }))
 const { useVoiceLiveConversation } = await import('./use-voice-live-conversation')
 
+it('inserts late user ASR before its reply without splitting assistant deltas or reopening a call', async () => {
+  const hook = renderHook(({ enabled }) => useVoiceLiveConversation({
+    enabled, busy: false, onFatalError: vi.fn(), onSubmit: vi.fn(),
+    pendingResponse: () => null, consumePendingResponse: vi.fn(), seedHistory: () => []
+  }), {
+    initialProps: { enabled: false },
+    wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  })
+
+  act(() => hook.rerender({ enabled: true }))
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce())
+  act(() => {
+    mocks.handlers?.onTranscript?.({ speaker: 'assistant', text: '你好', turnId: 'r1', turnOrder: 2, startMs: 10, endMs: 10 })
+    mocks.handlers?.onTranscript?.({ speaker: 'user', text: 'Hello，Max。', turnId: 'u1', turnOrder: 1, startMs: 11, endMs: 11 })
+    mocks.handlers?.onTranscript?.({ speaker: 'assistant', text: '呀！', turnId: 'r1', turnOrder: 2, startMs: 12, endMs: 12 })
+  })
+  expect(hook.result.current.transcript.map(fragment => fragment.text)).toEqual(['Hello，Max。', '你好', '呀！'])
+  expect(mocks.native).toHaveBeenCalledOnce()
+  expect(mocks.close).not.toHaveBeenCalled()
+})
+
 afterEach(() => {
   cleanup()
   $voiceLiveStatus.set(null)

@@ -168,7 +168,7 @@ describe('ChatRoutesSurface', () => {
     await waitFor(() => expect(nativeCall.start).toHaveBeenCalledTimes(1))
     fireEvent.keyDown(screen.getByRole('group', { name: 'Move voice window' }), { key: 'ArrowRight' })
     const movedStyle = screen.getByRole('region', { name: 'Start voice conversation' }).getAttribute('style')
-    fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
+    expect(screen.getByRole('button', { name: 'Live transcript' }).getAttribute('aria-expanded')).toBe('true')
 
     for (const path of ['/analysis', '/projects', '/cron', '/workflows', '/history', '/deliverables', '/tasks', '/skills', '/messaging', '/artifacts', '/im-entry', '/assistant', '/search', '/projects/project-1', '/workflow-runs/run-1', '/deliverables/item-1', '/', '/chat-1']) {
       // Drawers trap focus too; return via the router instead of an inaccessible background button.

@@ -105,7 +105,12 @@ def test_runtime_protocol_pins_vendor_config_and_passes_tool_results(monkeypatch
     monkeypatch.setattr(voice, 'connect', connect)
     class Browser:
         async def receive_json(self): return {'type': 'apex.start', 'history': [
-            {'role': 'user', 'content': [{'text': '刚才的任务'}]}]}
+            {'role': 'user', 'content': [{'type': 'input_text', 'text': '刚才的任务'}]},
+            {'role': 'assistant', 'content': [{'type': 'output_text', 'text': '第一段'},
+                                             {'type': 'output_text', 'text': '第二段'}]},
+            {'role': 'developer', 'content': [{'text': '旧指令不覆盖实时会话权限'}]},
+            {'role': 'tool', 'content': [{'text': '旧工具结果不伪造语音工具回执'}]},
+            {'role': 'user', 'content': [{'text': '继续'}]}]}
         async def send_json(self, event): assert event['type'] == 'session.created'
         async def send_text(self, text): pass
         async def receive_text(self):
@@ -122,7 +127,13 @@ def test_runtime_protocol_pins_vendor_config_and_passes_tool_results(monkeypatch
         'type': 'server_vad', 'threshold': 0.5, 'silence_duration_ms': 1500,
     }
     assert captured[1]['item']['content'] == [{'type': 'input_text', 'text': '刚才的任务'}]
-    assert captured[2]['item']['output'] == '真实结果'
+    assert captured[2]['item'] == {
+        'type': 'message', 'role': 'assistant',
+        'content': [{'type': 'output_text', 'text': '第一段\n第二段'}],
+    }
+    assert captured[3]['item']['content'] == [{'type': 'input_text', 'text': '继续'}]
+    assert captured[4]['item']['output'] == '真实结果'
+    assert len(captured) == 5
     assert 'profile-key' not in json.dumps(captured)
 
 

@@ -2,7 +2,7 @@
   "name": "hermes",
   "productName": "APEX",
   "private": true,
-  "version": "0.17.48",
+  "version": "0.17.49",
   "description": "Native desktop shell for Hermes Agent.",
   "author": "ApexNodes",
   "repository": {
@@ -12,7 +12,7 @@
   "type": "module",
   "main": "dist/electron-main.mjs",
   "apexnodes": {
-    "minEngineVersion": "v2026.10.6-fork.ba8e344e"
+    "minEngineVersion": "v2026.10.6-fork.cc17f53b"
   },
   "engines": {
     "node": "^22.22.0 || ^24.11.0 || >=26.0.0"

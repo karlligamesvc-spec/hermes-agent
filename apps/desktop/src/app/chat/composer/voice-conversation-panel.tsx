@@ -34,7 +34,7 @@ export function VoiceConversationPanel({
   const c = t.composer
   const navigate = useNavigate()
   const portalHost = useVoicePanelPortalHost()
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const panelRef = useRef<HTMLElement>(null)
   const dragRef = useRef<null | { pointerId: number; offsetX: number; offsetY: number }>(null)
   const [position, setPosition] = useState<null | { x: number; y: number }>(null)
