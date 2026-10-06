@@ -122,6 +122,10 @@ export function useComposerVoice({
     return collectUnspokenTurnSpeech(messages, resolveSpokenReply(sessionId, messages)?.id ?? null)
   }
 
+  // A live tool result belongs to the newly accepted user turn. An interrupted
+  // earlier turn may append another assistant row after our spoken cursor.
+  const pendingLiveTurnResponse = () => collectUnspokenTurnSpeech($messages.get(), null)
+
   const consumePendingResponse = () => {
     const messages = $messages.get()
     const last = messages.findLast(m => m.role === 'assistant' && !m.hidden)
@@ -148,7 +152,8 @@ export function useComposerVoice({
     triggerHaptic('submit')
     resetBrowseState(sessionId)
     clearDraft()
-    await onSubmit(text, { surface: 'voice-live', voiceContext })
+
+    return await onSubmit(text, { surface: 'voice-live', voiceContext })
   }
 
   /** Recent text turns of this chat, as GPT-Live startup history. */
@@ -208,7 +213,7 @@ export function useComposerVoice({
     onInterrupt,
     onStopWord: () => setVoiceConversationActive(false),
     onSubmit: submitLiveDelegation,
-    pendingResponse: pendingTurnResponse,
+    pendingResponse: pendingLiveTurnResponse,
     seedHistory: seedLiveHistory
   })
 

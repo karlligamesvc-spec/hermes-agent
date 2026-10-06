@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
   think: vi.fn(),
   speak: vi.fn(),
+  finishDelegation: vi.fn(),
   setMuted: vi.fn(),
   instruct: vi.fn()
 }))
@@ -59,9 +60,93 @@ it('inserts late user ASR before its reply without splitting assistant deltas or
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   $voiceLiveStatus.set(null)
   clearNotifications()
   vi.clearAllMocks()
+})
+
+it('keeps a slow new-chat delegation pending through idle gaps and returns the actual hot-list result once', async () => {
+  let accept: ((accepted: boolean) => void) | undefined
+  let response: { id: string; pending: boolean; text: string } | null = null
+  const onSubmit = vi.fn(() => new Promise<boolean>(resolve => { accept = resolve }))
+  const consume = vi.fn()
+
+  const hook = renderHook(({ enabled, busy }) => useVoiceLiveConversation({
+    enabled, busy, onSubmit, pendingResponse: () => response,
+    consumePendingResponse: consume, seedHistory: () => []
+  }), {
+    initialProps: { enabled: false, busy: false },
+    wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  })
+
+  act(() => hook.rerender({ enabled: true, busy: false }))
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce())
+  vi.useFakeTimers()
+  await act(async () => {
+    mocks.handlers?.onDelegation('douyin', [{ speaker: 'user', text: '查询抖音热榜', startMs: 0, endMs: 0 }])
+  })
+  expect(onSubmit).toHaveBeenCalledWith('查询抖音热榜', 'User: 查询抖音热榜')
+  act(() => vi.advanceTimersByTime(20_000))
+  expect(mocks.finishDelegation).not.toHaveBeenCalled()
+  await act(async () => { accept?.(true) })
+  act(() => hook.rerender({ enabled: true, busy: true }))
+  act(() => vi.advanceTimersByTime(200))
+  act(() => hook.rerender({ enabled: true, busy: false }))
+  act(() => vi.advanceTimersByTime(20_000))
+  expect(mocks.finishDelegation).not.toHaveBeenCalled()
+  expect(hook.result.current.status).toBe('thinking')
+  act(() => {
+    response = { id: 'answer', pending: false, text: '抖音当前热榜拿到19条，这是本次返回的样本。' }
+    vi.advanceTimersByTime(200)
+  })
+  expect(mocks.speak).toHaveBeenCalledExactlyOnceWith('douyin', '抖音当前热榜拿到19条，这是本次返回的样本。')
+  expect(mocks.finishDelegation).toHaveBeenCalledExactlyOnceWith('douyin')
+  expect(consume).toHaveBeenCalledTimes(2)
+  act(() => vi.advanceTimersByTime(20_000))
+  expect(mocks.finishDelegation).toHaveBeenCalledOnce()
+})
+
+it('does not let a superseded submit failure finish the newer voice task', async () => {
+  let rejectOld: ((error: Error) => void) | undefined
+
+  const onSubmit = vi.fn().mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject }))
+    .mockResolvedValue(true)
+
+  const hook = renderHook(({ enabled }) => useVoiceLiveConversation({
+    enabled, busy: false, onSubmit, pendingResponse: () => null,
+    consumePendingResponse: vi.fn(), seedHistory: () => []
+  }), {
+    initialProps: { enabled: false },
+    wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  })
+
+  act(() => hook.rerender({ enabled: true }))
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce())
+  await act(async () => { mocks.handlers?.onDelegation('old', [{ speaker: 'user', text: '旧请求', startMs: 0, endMs: 0 }]) })
+  await act(async () => { mocks.handlers?.onDelegation('new', [{ speaker: 'user', text: '新请求', startMs: 1, endMs: 1 }]) })
+  await act(async () => { rejectOld?.(new Error('Late failure')) })
+  expect(mocks.speak).not.toHaveBeenCalled()
+  expect(mocks.finishDelegation).not.toHaveBeenCalled()
+  expect($notifications.get()).toHaveLength(0)
+  expect(hook.result.current.status).toBe('thinking')
+})
+
+it('finishes an explicitly rejected submit with an honest error instead of waiting for a nonexistent answer', async () => {
+  const hook = renderHook(({ enabled }) => useVoiceLiveConversation({
+    enabled, busy: false, onSubmit: async () => false, pendingResponse: () => null,
+    consumePendingResponse: vi.fn(), seedHistory: () => []
+  }), {
+    initialProps: { enabled: false },
+    wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider>
+  })
+
+  act(() => hook.rerender({ enabled: true }))
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledOnce())
+  await act(async () => { mocks.handlers?.onDelegation('rejected', [{ speaker: 'user', text: '查询', startMs: 0, endMs: 0 }]) })
+  expect(mocks.speak).toHaveBeenCalledExactlyOnceWith('rejected', 'Sorry, I could not reach Hermes for that request.')
+  expect(mocks.finishDelegation).toHaveBeenCalledExactlyOnceWith('rejected')
+  expect(hook.result.current.status).toBe('listening')
 })
 
 it.each([true, false])('retains one actionable error when a call fails; fatal=%s', async fatal => {

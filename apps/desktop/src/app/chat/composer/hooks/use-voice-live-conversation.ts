@@ -10,8 +10,6 @@ import { notify, notifyError } from '@/store/notifications'
 
 import type { ConversationStatus } from './use-voice-conversation'
 
-/** How long an accepted delegation may sit before the gateway shows the turn running. */
-const SUBMIT_SETTLE_GRACE_MS = 15_000
 /** Quiet after the last user transcript fragment before the utterance is judged
  *  as a whole ("stop" ends the chat; "stop the container" is a request). */
 const UTTERANCE_SETTLE_MS = 1_500
@@ -32,7 +30,7 @@ interface VoiceLiveConversationOptions {
   onStopWord?: () => void
   /** Submit a Hermes turn: `text` is the user's last words (the bubble and the
    *  persisted row), `voiceContext` the recent spoken exchange for the model. */
-  onSubmit: (text: string, voiceContext: string) => Promise<void> | void
+  onSubmit: (text: string, voiceContext: string) => Promise<boolean | void> | boolean | void
   pendingResponse: () => PendingVoiceResponse | null
   consumePendingResponse: () => void
   /** Text turns to seed the live model with when the session opens. */
@@ -112,10 +110,9 @@ export function useVoiceLiveConversation({
   // leaving a second billed one running.
   const startEpochRef = useRef(0)
   const startingRef = useRef(false)
-  // Set at delegation submit; a turn is only "settled" once it has been seen
-  // running (busy) or produced a reply — the gateway ack lags the submit.
-  const turnObservedRef = useRef(false)
-  const submittedAtRef = useRef(0)
+  // Session creation/resume and prompt.submit can outlive a transient idle
+  // view. Only the accepted submission's actual answer completes delegation.
+  const submissionPendingRef = useRef(false)
   const enabledRef = useRef(enabled)
   const busyRef = useRef(busy)
   const speakingRef = useRef(false)
@@ -294,19 +291,28 @@ export function useVoiceLiveConversation({
 
         // A newer request supersedes an in-flight turn: stop it so the answer
         // the voice speaks is for what the user asked last.
-        if (busyRef.current) {
-          void latest.current.onInterrupt?.()
-        }
+        const interrupt = busyRef.current ? latest.current.onInterrupt : undefined
 
         setDelegation(delegationId)
         spokenResponseIdRef.current = null
         spokenLengthRef.current = 0
         lastToolLabelRef.current = null
-        turnObservedRef.current = false
-        submittedAtRef.current = Date.now()
+        submissionPendingRef.current = true
         latest.current.consumePendingResponse()
         refreshStatus()
-        void Promise.resolve(latest.current.onSubmit(prompt, voiceContext)).catch(error => {
+        void (async () => {
+          await interrupt?.()
+
+          if (sessionRef.current !== session || delegationRef.current !== delegationId) {return}
+          const accepted = await latest.current.onSubmit(prompt, voiceContext)
+
+          if (accepted === false) {throw new Error('APEX did not accept the voice request.')}
+
+          if (sessionRef.current === session && delegationRef.current === delegationId) {
+            submissionPendingRef.current = false
+          }
+        })().catch(error => {
+          if (sessionRef.current !== session || delegationRef.current !== delegationId) {return}
           notifyError(error, voiceCopy.liveDelegationFailed)
           session.speak(delegationId, 'Sorry, I could not reach Hermes for that request.')
           session.finishDelegation?.(delegationId)
@@ -383,9 +389,7 @@ export function useVoiceLiveConversation({
         return
       }
 
-      if (busyRef.current) {
-        turnObservedRef.current = true
-      }
+      if (submissionPendingRef.current) {return}
 
       const tool = latest.current.activeToolLabel?.() ?? null
 
@@ -397,8 +401,6 @@ export function useVoiceLiveConversation({
       const response = latest.current.pendingResponse()
 
       if (response) {
-        turnObservedRef.current = true
-
         if (spokenResponseIdRef.current !== response.id) {
           spokenResponseIdRef.current = response.id
           spokenLengthRef.current = 0
@@ -432,21 +434,10 @@ export function useVoiceLiveConversation({
         return
       }
 
-      // The submit ack lags: give the turn time to be seen running before
-      // reading "idle and no reply" as a finished turn.
-      if (
-        !busyRef.current &&
-        (turnObservedRef.current || Date.now() - submittedAtRef.current > SUBMIT_SETTLE_GRACE_MS)
-      ) {
-        // Turn settled without a speakable reply (tool-only, error, interrupted).
-        if (spokenLengthRef.current === 0) {
-          session.think(delegationId, 'Hermes finished that request without a spoken result.')
-        }
-
-        session.finishDelegation?.(delegationId)
-        setDelegation(null)
-        refreshStatus()
-      }
+      // No reply is not a completion receipt. In particular, re-homing a
+      // new chat can briefly expose idle/empty state while its tool runs.
+      // Keep the call pending until its answer, explicit submit failure, a
+      // newer request, or the user ending this voice session.
     }
 
     const timer = window.setInterval(tick, 200)

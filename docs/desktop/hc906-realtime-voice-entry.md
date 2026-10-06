@@ -327,3 +327,52 @@ verification or publish the Mac feed first. Each uniquely landed mutation makes
 its behavior regression fail, then source is restored. SDK fixtures cover
 truncation, foreign/mismatched object keys and credential-bearing exceptions;
 the native production workflow, not these fixtures, proves real COS delivery.
+
+## Delegated query result and voice contradiction
+
+User acceptance on 0.17.48 showed a successful main-chat Douyin query while
+the voice said it could not query. The matching persisted turn records
+`social_trending` returning at 12.18 seconds and the final 19-item answer at
+18.83 seconds. Those records prove the Hermes query succeeded; they do not
+record the original realtime wire events. Source regression reproduces a
+separate premature-completion path: idle/empty state after 15 seconds, or
+after any observed busy interval, closed the voice tool without an answer.
+
+Native delegation now waits for prompt acceptance and the actual reply. An
+idle/empty cache is never a completion receipt. Submit rejection returns an
+honest failure; a superseded submission cannot clear or speak into a newer
+call. Interrupt settles before submitting the next request. The live selector
+collects only the latest user turn rather than an older spoken cursor, so an
+interrupted earlier reply cannot be mistaken for this tool's answer. Legacy
+chained and automatic read-aloud selectors keep their existing cursor behavior.
+If an accepted request never produces any text, voice remains pending until a
+new request, explicit failure, user close or service close; no timeout invents
+a result or a capability refusal.
+
+Qwen playback and captions suppress assistant media while a tool is pending,
+including late media from its original response after the result arrives.
+VAD recovery cannot request another model response while Hermes is working.
+The server persona tells the voice to use APEX's actual abilities and read the
+returned prose with its sample/verification limits. A normal greeting and the
+new response generated after the tool receipt still play. User ASR and newer
+tool calls remain available during the wait.
+
+Both Flash and Plus were tested through the actual modified Runtime `serve`
+path and public APEX Relay: text input requested the hot list, the tool fixture
+waited 19 seconds, and the completed audio/transcript reported 19 entries and
+the fixture's sample limitation without denying query capability. This is a
+synthetic fixture, not fresh market data or a physical microphone acceptance.
+The repeated immediate Plus connection hit the existing single-call gate;
+after that connection released, Plus passed without bypassing admission.
+
+Additional smoke from `apps/desktop`:
+
+```sh
+npx vitest run --project ui src/lib/qwen-realtime.test.ts src/app/chat/composer/hooks/use-voice-live-native.test.tsx src/app/chat/composer/hooks/use-composer-voice-start.test.tsx src/app/chat/index.test.tsx
+```
+
+Six uniquely anchored reverse mutations restore empty-result completion,
+premature assistant playback/captions, stale submit failure, discarded submit
+acceptance, older-turn selection or a pending-tool response retry. Each must
+fail its corresponding behavior assertion, then restore source. This change
+also requires a newly pinned embedded engine for the updated server persona.

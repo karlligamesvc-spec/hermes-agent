@@ -80,6 +80,40 @@ function setup() {
 }
 
 describe('Qwen native realtime', () => {
+  it('does not play or caption a premature refusal while Hermes queries, including late deltas from the tool response', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    session.receive({ type: 'response.created', response: { id: 'query-turn' } })
+    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'hot-list',
+      response_id: 'query-turn', arguments: '{"request":"查询抖音热榜"}' })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'query-turn', delta: '目前无法获取抖音热榜。' })
+    session.receive({ type: 'response.audio.delta', response_id: 'query-turn', delta: 'AAA=' })
+    session.receive({ type: 'error', error: {
+      message: 'Server VAD turn committed but no response was created because a manual response is already in progress.'
+    } })
+    session.receive({ type: 'response.done', response: { id: 'query-turn' } })
+    expect(Socket.latest.sent.filter(event => event.type === 'response.create')).toHaveLength(0)
+    expect(handlers.onTranscript).not.toHaveBeenCalled()
+    expect(source.start).not.toHaveBeenCalled()
+    const result = '抖音当前热榜我拿到19条，这是本次返回的样本。'
+    session.speak('hot-list', result)
+    session.finishDelegation('hot-list')
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'query-turn', delta: '请自行打开抖音。' })
+    expect(handlers.onTranscript).not.toHaveBeenCalled()
+    session.receive({ type: 'response.done', response: { id: 'query-turn' } })
+    const output = Socket.latest.sent.find(event => event.type === 'conversation.item.create')
+    expect(output).toEqual({ type: 'conversation.item.create', item: {
+      type: 'function_call_output', call_id: 'hot-list', output: result
+    } })
+    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.create' })
+    session.receive({ type: 'response.created', response: { id: 'result-turn' } })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'result-turn', delta: result })
+    session.receive({ type: 'response.audio.delta', response_id: 'result-turn', delta: 'AAA=' })
+    expect(handlers.onTranscript).toHaveBeenCalledOnce()
+    expect(handlers.onTranscript.mock.calls[0][0].text).toBe(result)
+    expect(source.start).toHaveBeenCalledOnce()
+    session.close()
+  })
   it('reserves speech chronology before delayed ASR, preserves reply deltas and ignores duplicate user completion', async () => {
     const { session, handlers } = setup()
     await session.start()
