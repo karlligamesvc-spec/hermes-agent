@@ -33,6 +33,8 @@ const resourcesPath = path.resolve(option('--resources'))
 const proofPath = path.resolve(option('--proof'))
 const legacySource = args.includes('--legacy-source') ? path.resolve(option('--legacy-source')) : null
 const { release, manifest } = readPackagedRuntime(resourcesPath)
+const desktopVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+assert.equal(typeof desktopVersion, 'string', 'the smoke must use the shipping desktop package version')
 const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-consumer-'))
 const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot!, 'System32', 'tar.exe') : '/usr/bin/tar'
 const cleanEnv: NodeJS.ProcessEnv = {}
@@ -58,12 +60,12 @@ function environment(root: string, home: string) {
 
 const python = (root: string) => path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
-const proof: Record<string, unknown> = { schemaVersion: 1, platform: process.platform, arch: process.arch, release, fresh: null, legacy: null, success: false }
+const proof: Record<string, unknown> = { schemaVersion: 1, platform: process.platform, arch: process.arch, desktopVersion, release, fresh: null, legacy: null, success: false }
 let cleanupFailure: unknown
 
 function consumer(home: string): PackagedRuntimeOptions {
   return {
-    resourcesPath, hermesHome: home, desktopVersion: '0.17.37',
+    resourcesPath, hermesHome: home, desktopVersion,
     extract: async (archive, destination) => { await exec(tar, ['-xzf', archive, '-C', destination], { timeout: 180_000 }) },
     runTool: async (executable, argv) => {
       const root = argv[argv.indexOf('--root') + 1]
@@ -74,7 +76,7 @@ function consumer(home: string): PackagedRuntimeOptions {
     writeMarker: descriptor => {
       const marker = path.join(home, 'hermes-agent', '.hermes-bootstrap-complete')
       const temporary = `${marker}.tmp`
-      fs.writeFileSync(temporary, JSON.stringify({ schemaVersion: 1, pinnedCommit: descriptor.runtime_commit, pinnedBranch: null, version: descriptor.runtime_version, desktopVersion: '0.17.37' }))
+      fs.writeFileSync(temporary, JSON.stringify({ schemaVersion: 1, pinnedCommit: descriptor.runtime_commit, pinnedBranch: null, version: descriptor.runtime_version, desktopVersion }))
       fs.renameSync(temporary, marker)
     }
   }
