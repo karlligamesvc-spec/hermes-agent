@@ -154,6 +154,53 @@ def test_renderer_cannot_replace_session_authority(monkeypatch):
         asyncio.run(voice.serve(Browser(), ('key', voice.RELAY_BASE, {'model': voice.DEFAULT_MODEL, 'voice': voice.DEFAULT_VOICE})))
 
 
+def test_frontend_six_thousand_chinese_characters_use_utf8_budget(monkeypatch):
+    history = [{'type': 'message', 'role': 'user' if i % 2 == 0 else 'assistant',
+                'content': [{'type': 'input_text' if i % 2 == 0 else 'output_text', 'text': '中' * 1200}]}
+               for i in range(5)]
+    assert sum(len(item['content'][0]['text']) for item in history) == 6000
+    assert len(json.dumps(history, ensure_ascii=False).encode('utf-8')) < 30000
+    assert len(json.dumps(history)) > 30000  # the old escaped-character check rejected this
+    captured = []
+
+    class Vendor:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def recv(self): return '{"type":"session.created"}'
+        async def send(self, text): captured.append(json.loads(text))
+        def __aiter__(self): return self
+        async def __anext__(self): await asyncio.Future()
+
+    monkeypatch.setattr(voice, 'connect', lambda *a, **k: Vendor())
+
+    class Browser:
+        async def receive_json(self): return {'type': 'apex.start', 'history': history}
+        async def send_json(self, event): pass
+        async def receive_text(self): raise WebSocketDisconnect()
+
+    asyncio.run(voice.serve(Browser(), ('key', voice.RELAY_BASE, {'model': voice.DEFAULT_MODEL, 'voice': voice.DEFAULT_VOICE})))
+    assert len(captured) == 6
+    assert [item['item']['content'][0]['text'] for item in captured[1:]] == ['中' * 1200] * 5
+    assert [item['item']['content'][0]['type'] for item in captured[1:]] == [
+        'input_text', 'output_text', 'input_text', 'output_text', 'input_text',
+    ]
+
+
+@pytest.mark.parametrize('history', [
+    [{'role': 'user', 'content': [{'text': 'a' * 31000}]}],
+    [{'role': 'user', 'content': [{'text': 'a'}]}] * 25,
+])
+def test_oversized_history_still_rejected_before_vendor_connection(history, monkeypatch):
+    def connect(*args, **kwargs): raise AssertionError('invalid history reached vendor')
+    monkeypatch.setattr(voice, 'connect', connect)
+
+    class Browser:
+        async def receive_json(self): return {'type': 'apex.start', 'history': history}
+
+    with pytest.raises(ValueError, match='语音历史过长'):
+        asyncio.run(voice.serve(Browser(), ('key', voice.RELAY_BASE, {'model': voice.DEFAULT_MODEL, 'voice': voice.DEFAULT_VOICE})))
+
+
 def test_voice_settings_model_change_reaches_actual_profile_config(client, homes):
     from hermes_cli.web_server import _SESSION_HEADER_NAME, _SESSION_TOKEN
     client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN

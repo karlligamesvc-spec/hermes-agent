@@ -220,8 +220,8 @@ describe('useVoiceConversation full-duplex barge-in', () => {
     expect(stopVoicePlayback).toHaveBeenCalled()
   })
 
-  it('a spoken stop command in the barge capture ends the conversation instead of submitting', async () => {
-    const { hook, onStopWord, onSubmit } = renderConversation({ transcript: 'stop' })
+  it.each(['stop', 'OK，你关闭吧。', '結束通話！'])('a spoken stop command in the barge capture ends the conversation instead of submitting: %s', async transcript => {
+    const { hook, onStopWord, onSubmit } = renderConversation({ transcript })
 
     await act(async () => {
       await hook.result.current.start()
@@ -243,7 +243,27 @@ describe('useVoiceConversation full-duplex barge-in', () => {
     await waitFor(() => expect(onStopWord).toHaveBeenCalledTimes(1))
     // Only the kickoff turn was submitted — the "stop" capture never was.
     expect(onSubmit).toHaveBeenCalledTimes(1)
-    expect(onSubmit).not.toHaveBeenCalledWith('stop')
+    expect(onSubmit).not.toHaveBeenCalledWith(transcript)
+  })
+
+  it('a Chinese stop command in the initial chained recording releases voice without submitting', async () => {
+    const onSubmit = vi.fn()
+    const onStopWord = vi.fn(() => hook.rerender({ enabled: false }))
+
+    const hook = renderHook(({ enabled }) => useVoiceConversation({
+      enabled, busy: false, onStopWord, onSubmit, consumePendingResponse: vi.fn(),
+      onTranscribeAudio: async () => 'OK，你关闭吧。', pendingResponse: () => null
+    }), { initialProps: { enabled: true } })
+
+    await act(async () => { await hook.result.current.start() })
+    micHandle.stop.mockResolvedValueOnce({
+      audio: new Blob(['s'], { type: 'audio/webm' }), heardSpeech: true, durationMs: 1000
+    })
+    await act(async () => { hook.result.current.stopTurn() })
+    await waitFor(() => expect(onStopWord).toHaveBeenCalledOnce())
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(hook.result.current.status).toBe('idle')
+    expect(micHandle.cancel).toHaveBeenCalled()
   })
 
   it('re-arms a single monitor per turn (idempotent ensure)', async () => {

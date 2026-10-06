@@ -60,6 +60,7 @@ export class QwenRealtimeSession {
   private readonly cancelledResponses = new Set<string>()
   private readonly completedResponses = new Set<string>()
   private readonly delegatedCalls = new Set<string>()
+  private readonly toolResponses = new Set<string>()
   private ready = false
   private reply = ''
   private callId: string | null = null
@@ -319,6 +320,7 @@ export class QwenRealtimeSession {
     }
 
     if (event.type === 'response.audio.delta' && event.delta) {
+      if (this.callId || this.toolResponses.has(event.response_id ?? this.responseId ?? '')) {return}
       this.play(event.delta)
 
       return
@@ -332,6 +334,9 @@ export class QwenRealtimeSession {
           : null
 
     if (role) {
+      if (role === 'assistant' &&
+          (this.callId || this.toolResponses.has(event.response_id ?? this.responseId ?? ''))) {return}
+
       const text = role === 'user' ? event.transcript : event.delta
 
       if (text) {
@@ -381,6 +386,10 @@ export class QwenRealtimeSession {
         }
 
         this.callId = event.call_id
+        const toolResponseId = event.response_id ?? this.responseId
+
+        if (toolResponseId) {this.toolResponses.add(toolResponseId)}
+        this.stopAudio()
         this.reply = ''
         const context = [...this.transcript]
 
@@ -474,7 +483,7 @@ export class QwenRealtimeSession {
   }
 
   private flushPendingResponse(): void {
-    if (this.closed || !this.responsePending || this.responding || this.responseRequested || this.userSpeaking) {
+    if (this.closed || this.callId || !this.responsePending || this.responding || this.responseRequested || this.userSpeaking) {
       return
     }
 

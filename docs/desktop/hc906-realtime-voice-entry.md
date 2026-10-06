@@ -284,3 +284,128 @@ This follow-up passes all 9,031 UI tests across 945 files, eight Runtime voice
 tests, typecheck and build. Changed TypeScript files and the Python seam pass
 lint/ruff; the full ESLint run retains the pre-existing warnings. The four
 reverse injections fail their intended behavior assertions and restore source.
+
+## Chinese history budget and publication follow-up
+
+Before 0.17.49 finished publishing, a second historical-chat failure was
+reproduced: the frontend permits 6,000 text characters, but Runtime counted
+ASCII-escaped JSON characters. Five 1,200-character Chinese turns occupy 18,442
+UTF-8 bytes and were incorrectly rejected as too long. The byte gate now measures
+actual UTF-8 JSON. The 30,000-byte and 24-message limits remain enforced before
+any upstream connection. A real transport regression replays all five full
+turns; oversized bytes and excess messages still reject without contacting the
+vendor. Restoring the escaped-character measurement makes the CJK smoke fail.
+
+All three public feeds still read 0.17.48 when release run37464095256 was
+cancelled; no default Runtime pointer had been advanced. Its signed 0.17.49
+artifacts and native consumer proofs remain evidence, not a completed release.
+The complete follow-up ships as 0.17.50 with a corrected embedded engine.
+
+Both native publication exits use cos-python-sdk-v5 1.9.44 (MIT), the same
+installed SDK that successfully published and independently verified the source
+mirror on the server. The shared uploader uses 16 workers with 8 MiB parts,
+bounded request timeout, MD5 transfer checks and independent public exact-size
+HEAD verification. Credentials stay in environment variables and signed SDK
+exception details are not emitted. Mac's actual workflow shell preserves
+assets-before-feed and stops on a rejected asset; Windows retains its bounded
+process/retry/remote-size/feed-reference coordinator. Paired source/version/
+runtime/three-feed parity remains mandatory; manual single-platform dispatches
+still cannot publish. No speed guarantee is claimed until the native run proves
+this actual network path.
+
+Additional smoke:
+
+```sh
+scripts/run_tests.sh tests/hermes_cli/test_qwen_realtime.py tests/test_desktop_cos_uploader.py
+cd apps/desktop
+node --test scripts/desktop-macos-workflow.test.cjs
+npm run test:release-gates
+```
+
+Reverse injections restore escaped history measurement, remove served-size
+verification or publish the Mac feed first. Each uniquely landed mutation makes
+its behavior regression fail, then source is restored. SDK fixtures cover
+truncation, foreign/mismatched object keys and credential-bearing exceptions;
+the native production workflow, not these fixtures, proves real COS delivery.
+
+## Delegated query result and voice contradiction
+
+User acceptance on 0.17.48 showed a successful main-chat Douyin query while
+the voice said it could not query. The matching persisted turn records
+`social_trending` returning at 12.18 seconds and the final 19-item answer at
+18.83 seconds. Those records prove the Hermes query succeeded; they do not
+record the original realtime wire events. Source regression reproduces a
+separate premature-completion path: idle/empty state after 15 seconds, or
+after any observed busy interval, closed the voice tool without an answer.
+
+Native delegation now waits for prompt acceptance and the actual reply. An
+idle/empty cache is never a completion receipt. Submit rejection returns an
+honest failure; a superseded submission cannot clear or speak into a newer
+call. Interrupt settles before submitting the next request. The live selector
+collects only the latest user turn rather than an older spoken cursor, so an
+interrupted earlier reply cannot be mistaken for this tool's answer. Legacy
+chained and automatic read-aloud selectors keep their existing cursor behavior.
+If an accepted request never produces any text, voice remains pending until a
+new request, explicit failure, user close or service close; no timeout invents
+a result or a capability refusal.
+
+Qwen playback and captions suppress assistant media while a tool is pending,
+including late media from its original response after the result arrives.
+VAD recovery cannot request another model response while Hermes is working.
+The server persona tells the voice to use APEX's actual abilities and read the
+returned prose with its sample/verification limits. A normal greeting and the
+new response generated after the tool receipt still play. User ASR and newer
+tool calls remain available during the wait.
+
+Both Flash and Plus were tested through the actual modified Runtime `serve`
+path and public APEX Relay: text input requested the hot list, the tool fixture
+waited 19 seconds, and the completed audio/transcript reported 19 entries and
+the fixture's sample limitation without denying query capability. This is a
+synthetic fixture, not fresh market data or a physical microphone acceptance.
+The repeated immediate Plus connection hit the existing single-call gate;
+after that connection released, Plus passed without bypassing admission.
+
+Additional smoke from `apps/desktop`:
+
+```sh
+npx vitest run --project ui src/lib/qwen-realtime.test.ts src/app/chat/composer/hooks/use-voice-live-native.test.tsx src/app/chat/composer/hooks/use-composer-voice-start.test.tsx src/app/chat/index.test.tsx
+```
+
+Six uniquely anchored reverse mutations restore empty-result completion,
+premature assistant playback/captions, stale submit failure, discarded submit
+acceptance, older-turn selection or a pending-tool response retry. Each must
+fail its corresponding behavior assertion, then restore source. This change
+also requires a newly pinned embedded engine for the updated server persona.
+
+## Chinese spoken close without a delegated task
+
+0.17.48 acceptance also showed “OK，你关闭吧。” answered with goodbye while
+the panel stayed listening. The shared whole-utterance matcher recognized only
+English phrases and ASCII punctuation. It now accepts explicit Simplified and
+Traditional Chinese voice-end phrases and APEX/acknowledgement prefixes with
+Chinese punctuation. Whole-utterance matching remains mandatory: “关闭浏览器”,
+“停止下载”, “取消订单” and negated/question forms are real tasks. Typed commands
+still pass through when voice is inactive or attachments accompany the text.
+
+All five entry paths were inspected: native completed ASR, native delegation,
+chained initial transcription, chained barge transcription and typed composer
+interception. They share the same matcher. Native Qwen emits one complete user
+ASR item; that item is judged immediately. It is not concatenated with another
+user turn during a 1.5-second window. The stop callback closes the native session
+and disables its owner, rather than treating the model's goodbye as a receipt.
+Late ASR/delegation callbacks after closing cannot submit another chat turn.
+Chained initial/barge tests exercise the existing teardown with the Chinese
+request, alongside the native close/duplicate callback regression.
+
+Smoke from `apps/desktop`:
+
+```sh
+npx vitest run --project ui src/lib/voice-stop-word.test.ts src/app/chat/composer/hooks/use-voice-live-native.test.tsx src/app/chat/composer/hooks/use-voice-conversation.test.tsx src/app/chat/composer/hooks/use-voice-conversation-rearm.test.tsx src/lib/qwen-realtime.test.ts src/app/chat/composer/voice-entry.test.tsx
+```
+
+Four reverse faults remove Chinese punctuation handling, remove the actual
+native close, concatenate two distinct ASR turns or replace whole-utterance
+matching with substring matching. Each uniquely landed fault must fail a
+behavior assertion before restoring source. No server protocol/persona change
+is needed here: the 0.17.50 embedded engine remains 40d4bee9. This does not claim
+physical microphone or every possible ASR spelling acceptance.

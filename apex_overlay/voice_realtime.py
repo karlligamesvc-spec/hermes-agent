@@ -23,6 +23,10 @@ QWEN_PERSONA = (
     '你是 APEX 语音助手。用自然简短的中文回答，也可以跟随用户语言。'
     '闲聊可以直接回答。用户要求查询事实、操作文件、运行命令、安排任务、修改已有任务或需要推理时，'
     '必须先调用 apex_assistant，把用户最新完整要求传给它；只有拿到结果后才能报告事实或完成情况。'
+    '你通过 apex_assistant 使用 APEX 的查询和操作能力，不能因为自己没有直接联网能力就拒绝查询。'
+    '工具返回前不要猜测成功、失败或无法查询。工具返回后，以它的真实结果为准进行简短播报，'
+    '本次回复只负责朗读返回的可播报正文，不改写结论，不省略样本范围、未验证等限制，'
+    '不添加能力免责声明或再次声称无法查询。'
     '不要编造操作结果。等待工具时可以简短说明正在处理。被打断立即停止说话。'
     '用户只说停止、暂停语音或结束通话时，不调用工具。'
 )
@@ -95,7 +99,8 @@ async def serve(ws: WebSocket, connection: tuple[str, str, dict]) -> None:
     if start.get('type') != 'apex.start':
         raise ValueError('无效语音会话。')
     history = start.get('history') or []
-    if (not isinstance(history, list) or len(history) > 24 or len(json.dumps(history)) > 30000
+    if (not isinstance(history, list) or len(history) > 24
+            or len(json.dumps(history, ensure_ascii=False).encode('utf-8')) > 30000
             or any(not isinstance(item, dict) or not isinstance(item.get('content', []), list) for item in history)):
         raise ValueError('语音历史过长。')
     url = base.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1)
