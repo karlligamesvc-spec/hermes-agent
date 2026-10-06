@@ -115,7 +115,7 @@ async def serve(ws: WebSocket, connection: tuple[str, str, dict]) -> None:
                 content = item.get('content') or []
                 text = '\n'.join(str(part.get('text') or '') for part in content if isinstance(part, dict))[:1200]
                 await upstream.send(json.dumps({'type': 'conversation.item.create', 'item': {
-                    'type': 'message', 'role': item['role'], 'content': [{'type': 'input_text' if item['role'] == 'user' else 'text', 'text': text}],
+                    'type': 'message', 'role': item['role'], 'content': [{'type': 'input_text' if item['role'] == 'user' else 'output_text', 'text': text}],
                 }}, ensure_ascii=False))
             await ws.send_json(first)
 

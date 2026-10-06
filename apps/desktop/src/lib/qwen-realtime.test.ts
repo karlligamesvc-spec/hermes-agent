@@ -80,6 +80,34 @@ function setup() {
 }
 
 describe('Qwen native realtime', () => {
+  it('reserves speech chronology before delayed ASR, preserves reply deltas and ignores duplicate user completion', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    session.receive({ type: 'input_audio_buffer.speech_started', item_id: 'u1' })
+    session.receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'u1' })
+    session.receive({ type: 'response.created', response: { id: 'r1' } })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'r1', delta: '你好' })
+    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'u1', transcript: 'Hello，Max。' })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'r1', delta: '呀！' })
+    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'u1', transcript: 'Hello，Max。' })
+    session.receive({ type: 'response.done', response: { id: 'r1' } })
+    session.receive({ type: 'input_audio_buffer.speech_started', item_id: 'u2' })
+    session.receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'u2' })
+    session.receive({ type: 'response.created', response: { id: 'r2' } })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'r2', delta: '第二次回复' })
+    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'u2', transcript: '第二次提问' })
+
+    const fragments = handlers.onTranscript.mock.calls.map(([fragment]) => fragment)
+    expect(fragments.map(f => [f.text, f.turnOrder])).toEqual([
+      ['你好', 2], ['Hello，Max。', 1], ['呀！', 2], ['第二次回复', 4], ['第二次提问', 3]
+    ])
+    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'work', arguments: '{"request":"执行后续任务"}' })
+    expect(handlers.onDelegation.mock.calls[0][1].map((f: { text: string }) => f.text)).toEqual([
+      'Hello，Max。', '你好', '呀！', '第二次提问', '第二次回复', '执行后续任务'
+    ])
+    session.close()
+  })
+
   it('uses 16 kHz PCM16 clipping and retains sampling phase between microphone frames', () => {
     const encoder = new Pcm16Encoder(48_000)
     const encoded = encoder.encode(new Float32Array([-2, 0, 0, 2, 0, 0]))

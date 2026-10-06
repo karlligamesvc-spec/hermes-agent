@@ -53,6 +53,8 @@ interface LiveServerEvent {
 }
 
 export interface LiveTranscriptFragment {
+  /** Native speech/response start order; ASR completion can arrive after a reply. */
+  turnOrder?: number
   /** Full ASR turns remain separate; undefined keeps legacy transcript-delta joining. */
   turnId?: string
   speaker: 'assistant' | 'user'

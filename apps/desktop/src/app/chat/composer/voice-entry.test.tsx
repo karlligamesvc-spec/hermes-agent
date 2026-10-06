@@ -97,6 +97,27 @@ function Location() {
   return <output>{useLocation().search}</output>
 }
 
+it('each new call opens captions while status and transcript updates preserve an explicit collapse', () => {
+  const props = { level: 0, muted: false, onEnd: vi.fn(), onToggleMute: vi.fn(), status: 'listening' as const }
+
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <MemoryRouter><I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider></MemoryRouter>
+  )
+
+  const call = render(<VoiceConversationPanel {...props} />, { wrapper })
+
+  expect(screen.getByRole('log')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
+  call.rerender(<VoiceConversationPanel {...props} status="speaking" transcript={[
+    { speaker: 'assistant', text: 'Updated reply', startMs: 1, endMs: 2 }
+  ]} />)
+
+  expect(screen.queryByRole('log')).toBeNull()
+  call.unmount()
+  render(<VoiceConversationPanel {...props} />, { wrapper })
+  expect(screen.getByRole('log')).toBeTruthy()
+})
+
 it('dragging the call header moves and bounds the panel, stops on release, and preserves control clicks', () => {
   const end = vi.fn()
   const mute = vi.fn()
@@ -180,10 +201,14 @@ it('the floating call expands real transcript turns and exposes mute, settings a
       </I18nProvider>
     </MemoryRouter>
   )
-  expect(screen.queryByRole('log')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
+  expect(screen.getByRole('log')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Live transcript' }).getAttribute('aria-expanded')).toBe('true')
   expect(screen.getByText('First answer')).toBeTruthy()
   expect(screen.getByText('Second answer')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
+  expect(screen.queryByRole('log')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
+  expect(screen.getByText('First question')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Mute microphone' }))
   expect(mute).toHaveBeenCalledTimes(1)
   fireEvent.click(screen.getByRole('button', { name: 'Voice settings' }))

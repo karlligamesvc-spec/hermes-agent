@@ -5,6 +5,7 @@ import { QwenRealtimeSession } from '@/lib/qwen-realtime'
 import { sanitizeTextForSpeech } from '@/lib/speech-text'
 import { type LiveHistoryMessage, type LiveTranscriptFragment } from '@/lib/voice-live'
 import { isVoiceStopCommand } from '@/lib/voice-stop-word'
+import { appendVoiceTranscript } from '@/lib/voice-transcript'
 import { notify, notifyError } from '@/store/notifications'
 
 import type { ConversationStatus } from './use-voice-conversation'
@@ -232,7 +233,7 @@ export function useVoiceLiveConversation({
       // transcript once the utterance settles.
       onTranscript: fragment => {
         if (startEpochRef.current !== epoch) {return}
-        setTranscript(current => [...current, fragment].slice(-200))
+        setTranscript(current => appendVoiceTranscript(current, fragment, 200))
 
         if (fragment.speaker !== 'user') {
           return
