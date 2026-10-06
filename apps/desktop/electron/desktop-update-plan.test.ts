@@ -9,6 +9,7 @@ import {
   clearDesktopUpdatePlan,
   normalizeDesktopUpdatePlan,
   readDesktopUpdatePlan,
+  readPreparedDesktopUpdatePlan,
   transitionDesktopUpdatePlan,
   writeDesktopUpdatePlan
 } from './desktop-update-plan'
@@ -135,4 +136,56 @@ test('desktop update plan persists resume attempts and a bounded failure', () =>
   assert.equal(failed?.phase, 'failed')
   assert.equal(failed?.lastError?.length, 512)
   assert.deepEqual(readDesktopUpdatePlan(filePath), failed)
+})
+
+test.each([
+  { outcome: 'installed', accept: true },
+  { outcome: 'current', accept: true },
+  { outcome: 'preserved', accept: false },
+  { outcome: 'no-install', accept: false },
+  { outcome: 'marker-mismatch', accept: false },
+  { outcome: 'tree-mismatch', accept: false },
+  { outcome: 'older-shell', accept: false },
+  { outcome: 'unknown-shell', accept: false },
+  { outcome: 'explicit-engine', accept: false },
+  { outcome: 'runtime-after-shell', accept: false }
+] as const)('bundled shell handoff reconciles only verified activation: $outcome', async ({ outcome, accept }) => {
+  const filePath = planPath()
+  const oldCommit = 'a'.repeat(40)
+  const newCommit = 'b'.repeat(40)
+
+  const original = writeDesktopUpdatePlan(filePath, {
+    kind: outcome === 'runtime-after-shell' ? 'runtime-after-shell' : 'shell-only',
+    currentShellVersion: '0.17.46',
+    targetShellVersion: '0.17.47',
+    currentRuntimeKey: oldCommit,
+    currentRuntimeVersion: 'old engine',
+    targetRuntimeKey: outcome === 'explicit-engine' ? 'c'.repeat(40) : oldCommit,
+    targetRuntimeVersion: 'old engine'
+  })
+
+  const originalBytes = fs.readFileSync(filePath, 'utf8')
+
+  const next = await readPreparedDesktopUpdatePlan(filePath, {
+    waitForRuntimePreparation: async () => {},
+    preparedRuntime: async () => outcome === 'no-install' ? null : {
+      status: outcome === 'preserved' ? 'preserved' : outcome === 'current' ? 'current' : 'installed',
+      runtimeCommit: newCommit
+    },
+    desktopVersion: () => outcome === 'older-shell' ? '0.17.46' : outcome === 'unknown-shell' ? 'unknown' : '0.17.48',
+    readMarker: () => ({ pinnedCommit: outcome === 'marker-mismatch' ? oldCommit : newCommit, version: 'bundled engine' }),
+    readTreeCommit: () => outcome === 'tree-mismatch' ? oldCommit : newCommit
+  })
+
+  if (accept) {
+    assert.equal(next?.targetRuntimeKey, newCommit)
+    assert.equal(next?.targetRuntimeVersion, 'bundled engine')
+    assert.equal(next?.planId, original.planId)
+    assert.equal(next?.currentRuntimeKey, oldCommit)
+    assert.equal(next?.requestedAt, original.requestedAt)
+    assert.deepEqual(readDesktopUpdatePlan(filePath), next)
+  } else {
+    assert.deepEqual(next, original)
+    assert.equal(fs.readFileSync(filePath, 'utf8'), originalBytes)
+  }
 })

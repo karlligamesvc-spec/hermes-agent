@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
 
+import { clearDesktopUpdatePlan, readDesktopUpdatePlan, readPreparedDesktopUpdatePlan, writeDesktopUpdatePlan } from '../../electron/desktop-update-plan'
 import { createLocalBackendLifecycle } from '../../electron/local-backend-lifecycle'
 import { createPackagedRuntimeGate } from '../../electron/packaged-runtime'
 import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from '../../electron/runtime-version'
@@ -71,6 +72,78 @@ afterEach(() => {
 })
 
 describe('desktop update orchestration', () => {
+  it('finishes the persisted shell-only handoff after the bundled engine activates at restart', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-shell-bundle-resume-'))
+    const planPath = path.join(home, 'update-plan.json')
+    const markerPath = path.join(home, '.hermes-bootstrap-complete')
+    const sourcePath = path.join(home, '.hermes-source-commit')
+    const oldCommit = 'a'.repeat(40)
+    const newCommit = 'b'.repeat(40)
+    let activate!: () => void
+    const preparing = new Promise<void>(resolve => { activate = resolve })
+    writeDesktopUpdatePlan(planPath, {
+      kind: 'shell-only', currentShellVersion: '0.17.46', targetShellVersion: '0.17.47',
+      currentRuntimeKey: oldCommit, targetRuntimeKey: oldCommit,
+      currentRuntimeVersion: 'old engine', targetRuntimeVersion: 'old engine'
+    })
+    fs.writeFileSync(markerPath, JSON.stringify({ pinnedCommit: oldCommit, version: 'old engine' }))
+    fs.writeFileSync(sourcePath, oldCommit)
+    const readMarker = () => JSON.parse(fs.readFileSync(markerPath, 'utf8'))
+    const readTreeCommit = () => fs.readFileSync(sourcePath, 'utf8')
+
+    const gate = createPackagedRuntimeGate(async () => {
+      await preparing
+      fs.writeFileSync(markerPath, JSON.stringify({ pinnedCommit: newCommit, version: 'bundled engine' }))
+      fs.writeFileSync(sourcePath, newCommit)
+
+      return { status: 'installed', runtimeCommit: newCommit }
+    })
+
+    const installation = gate()
+
+    const waitForRuntimePreparation = async () => { await gate.waitForPending() }
+    const handlers = new Map<string, () => Promise<any>>()
+    registerRuntimeVersionIpc({ handle: (channel: string, handler: () => Promise<any>) => handlers.set(channel, handler) } as unknown as Pick<IpcMain, 'handle'>, {
+      waitForRuntimePreparation, readMarker, readTreeCommit, minEngineVersion: () => null, log: () => {}
+    })
+
+    const clearPlan = vi.fn(async () => { clearDesktopUpdatePlan(planPath);
+
+ return { ok: true } })
+
+    window.hermesDesktop = {
+      getVersion: vi.fn(async () => ({ appVersion: '0.17.47' })),
+      runtime: { getVersion: () => handlers.get('hermes:runtime:version')!(), applyUpdate: vi.fn(), checkUpdate: vi.fn() },
+      updateCenter: {
+        getPlan: () => readPreparedDesktopUpdatePlan(planPath, {
+          waitForRuntimePreparation, preparedRuntime: () => gate.waitForPending(), desktopVersion: () => '0.17.47', readMarker, readTreeCommit
+        }),
+        clearPlan, transitionPlan: vi.fn(async () => ({ ok: true }))
+      }
+    } as unknown as typeof window.hermesDesktop
+    const resuming = resumeDesktopUpdatePlan({ reload: vi.fn() })
+
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(clearPlan).not.toHaveBeenCalled()
+      expect(readDesktopUpdatePlan(planPath)?.targetRuntimeKey).toBe(oldCommit)
+      activate()
+      await installation
+      await resuming
+      expect($desktopUpdateProgress.get().error).toBeNull()
+      expect(clearPlan).toHaveBeenCalledOnce()
+      expect(fs.existsSync(planPath)).toBe(false)
+      expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: null, completedStages: ['check', 'shell', 'restart'] })
+      expect(window.hermesDesktop.runtime.applyUpdate).not.toHaveBeenCalled()
+      expect(window.hermesDesktop.runtime.checkUpdate).not.toHaveBeenCalled()
+    } finally {
+      activate()
+      await installation
+      await resuming
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
   it('applies a ready runtime before the ready shell and uses the shell restart once', async () => {
     const order: string[] = []
     const reload = vi.fn()

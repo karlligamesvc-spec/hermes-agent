@@ -372,7 +372,7 @@ import {
 } from './desktop-uninstall'
 import {
   clearDesktopUpdatePlan,
-  readDesktopUpdatePlan,
+  readPreparedDesktopUpdatePlan,
   transitionDesktopUpdatePlan,
   writeDesktopUpdatePlan
 } from './desktop-update-plan'
@@ -18474,15 +18474,21 @@ function initShellUpdater() {
 const RUNTIME_PIN_OVERRIDE_PATH = path.join(HERMES_HOME, '.apexnodes-runtime-override.json')
 const DESKTOP_UPDATE_PLAN_PATH = path.join(HERMES_HOME, '.apexnodes-desktop-update-plan.json')
 
-function readDurableDesktopUpdatePlan() {
-  return readDesktopUpdatePlan(DESKTOP_UPDATE_PLAN_PATH, {
+ipcMain.handle('hermes:update-center:plan:get', async () => readPreparedDesktopUpdatePlan(
+  DESKTOP_UPDATE_PLAN_PATH,
+  {
+    waitForRuntimePreparation,
+    preparedRuntime: () => ensurePackagedEngine.waitForPending(),
+    desktopVersion: () => app.getVersion(),
+    readMarker: readBootstrapMarker,
+    readTreeCommit: () => readSourceCommitStamp(ACTIVE_HERMES_ROOT)
+  },
+  {
     quarantineInvalid: true,
     onQuarantine: (quarantinePath, reason) =>
       rememberLog(`[update-center] quarantined invalid plan (${reason}): ${quarantinePath}`)
-  })
-}
-
-ipcMain.handle('hermes:update-center:plan:get', async () => readDurableDesktopUpdatePlan())
+  }
+))
 ipcMain.handle('hermes:update-center:plan:set-runtime-after-shell', async (_event, payload = {}) => {
   if (!updatesAllowedByPolicy(DESKTOP_LAUNCH_POLICY)) {
     return { ok: false, error: 'diagnostic-trial-updates-disabled' }
