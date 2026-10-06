@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { HermesConfigRecord } from '@/types/hermes'
 
-import { voiceFieldVisible } from './helpers'
+import { sectionFieldEntries, voiceFieldVisible } from './helpers'
 
 const cfg = (over: Record<string, unknown> = {}): HermesConfigRecord =>
   ({
@@ -12,6 +12,24 @@ const cfg = (over: Record<string, unknown> = {}): HermesConfigRecord =>
   }) as unknown as HermesConfigRecord
 
 describe('voiceFieldVisible', () => {
+  it('does not expose realtime engine or model fields even when legacy config contains them', () => {
+    const fields = sectionFieldEntries(
+      {},
+      cfg({
+        voice: {
+          voice_chat_mode: 'gpt-live',
+          qwen_realtime: { model: 'qwen-audio-3.0-realtime-plus' },
+          gpt_live: { voice: 'marin', instructions: 'test' },
+          auto_tts: false
+        }
+      })
+    ).get('voice')!
+
+    expect(fields.map(([key]) => key)).not.toContain('voice.voice_chat_mode')
+    expect(fields.map(([key]) => key)).not.toContain('voice.qwen_realtime.model')
+    expect(fields.map(([key]) => key).some(key => key.startsWith('voice.gpt_live.'))).toBe(false)
+    expect(fields.map(([key]) => key)).toContain('voice.auto_tts')
+  })
   it('always shows top-level + non-provider keys', () => {
     const config = cfg()
 

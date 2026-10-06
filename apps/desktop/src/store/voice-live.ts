@@ -4,12 +4,8 @@ import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
 import { fetchVoiceLiveStatus, type VoiceChatMode, type VoiceLiveStatus } from '@/lib/voice-live'
 import { activeGateway } from '@/store/gateway'
 
-/**
- * `voice.voice_chat_mode` as the backend resolves it, plus whether GPT-Live can
- * actually start (an OpenAI key resolves on the gateway host). The composer
- * mounts the chained or the live conversation engine from this; refreshed with
- * the config snapshot so a Settings change applies to the next conversation.
- */
+/** Profile-scoped Runtime voice admission. Desktop uses qwenAvailable for its
+ * fixed native Qwen call; legacy mode fields remain part of Runtime compatibility. */
 export const $voiceLiveStatus = atom<null | VoiceLiveStatus>(null)
 
 const currentScope = () => JSON.stringify([getApiRequestConnection(), getApiRequestProfile()])

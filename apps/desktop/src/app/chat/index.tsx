@@ -32,7 +32,7 @@ import { currentModelCapabilities, modelOptionsQueryKey, requestModelOptions } f
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { isBusinessWorkspaceEnabled } from '@/store/business-workspace'
-import { migrateSessionDraft } from '@/store/composer'
+import { $voiceConversationStartRequest, migrateSessionDraft } from '@/store/composer'
 import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
 import { $introSplash } from '@/store/intro-splash'
 import { $pinnedSessionIds } from '@/store/layout'
@@ -560,6 +560,10 @@ const ChatViewContent = memo(function ChatViewContent({
   })
 
   const businessStartVisible = showIntro && isBusinessWorkspaceEnabled()
+  const voiceStartRequest = useStore($voiceConversationStartRequest)
+  // The Start page owns a compact launcher; retain the real composer engine
+  // behind it so voice delegation can adopt a newly created chat without remounting.
+  const homeVoiceRequested = isPrimary && voiceStartRequest > 0
 
   // Session is still loading if the route references a session we haven't
   // resumed yet. Brand-new routed drafts are empty on purpose once a runtime
@@ -599,6 +603,15 @@ const ChatViewContent = memo(function ChatViewContent({
     businessStartVisible,
     objectRouteOpen
   })
+
+  // A main composer may start voice from an ordinary chat, then navigate back
+  // to Start or into a drawer without a launcher request. Retain its owner once
+  // mounted; hidden chrome must not close the microphone or reset the panel.
+  const [mainComposerMounted, setMainComposerMounted] = useState(false)
+
+  if (isPrimary && !mainComposerMounted && (showChatBar || homeVoiceRequested)) {
+    setMainComposerMounted(true)
+  }
 
   const threadKey = selectedSessionId || activeSessionId || (isRoutedSessionView ? location.pathname : 'new')
 
@@ -815,38 +828,40 @@ const ChatViewContent = memo(function ChatViewContent({
             anchors to the outer relative container instead: docked is absolute
             (identical placement), floating resolves against the viewport. Both
             states stay mounted here, so dock⇄float never remounts the editor. */}
-        {showChatBar && (
-          <Suspense fallback={<ChatBarFallback />}>
-            <ChatBar
-              busy={busy}
-              cwd={currentCwd}
-              disabled={!gatewayOpen}
-              focusKey={activeSessionId}
-              gateway={gateway}
-              maxRecordingSeconds={maxVoiceRecordingSeconds}
-              onAddContextRef={onAddContextRef}
-              onAddUrl={onAddUrl}
-              onAttachDroppedItems={onAttachDroppedItems}
-              onAttachImageBlob={onAttachImageBlob}
-              onAttachPastedText={onAttachPastedText}
-              onAttachPrCommentUrl={onAttachPrCommentUrl}
-              onCancel={onCancel}
-              onChangeCwd={changeSessionCwd}
-              onPasteClipboardImage={onPasteClipboardImage}
-              onPickFiles={onPickFiles}
-              onPickFolders={onPickFolders}
-              onPickImages={onPickImages}
-              onRemoveAttachment={onRemoveAttachment}
-              onSteer={onSteer}
-              onSteerHidden={onSteerHidden}
-              onSubmit={onSubmit}
-              onTranscribeAudio={onTranscribeAudio}
-              queueSessionKey={queueSessionKey}
-              sessionId={activeSessionId}
-              state={chatBarState}
-              turnLive={turnLive}
-            />
-          </Suspense>
+        {(showChatBar || homeVoiceRequested || (isPrimary && mainComposerMounted)) && (
+          <div hidden={!showChatBar}>
+            <Suspense fallback={<ChatBarFallback />}>
+              <ChatBar
+                busy={busy}
+                cwd={currentCwd}
+                disabled={!gatewayOpen}
+                focusKey={activeSessionId}
+                gateway={gateway}
+                maxRecordingSeconds={maxVoiceRecordingSeconds}
+                onAddContextRef={onAddContextRef}
+                onAddUrl={onAddUrl}
+                onAttachDroppedItems={onAttachDroppedItems}
+                onAttachImageBlob={onAttachImageBlob}
+                onAttachPastedText={onAttachPastedText}
+                onAttachPrCommentUrl={onAttachPrCommentUrl}
+                onCancel={onCancel}
+                onChangeCwd={changeSessionCwd}
+                onPasteClipboardImage={onPasteClipboardImage}
+                onPickFiles={onPickFiles}
+                onPickFolders={onPickFolders}
+                onPickImages={onPickImages}
+                onRemoveAttachment={onRemoveAttachment}
+                onSteer={onSteer}
+                onSteerHidden={onSteerHidden}
+                onSubmit={onSubmit}
+                onTranscribeAudio={onTranscribeAudio}
+                queueSessionKey={queueSessionKey}
+                sessionId={activeSessionId}
+                state={chatBarState}
+                turnLive={turnLive}
+              />
+            </Suspense>
+          </div>
         )}
       </ChatRuntimeBoundary>
     </div>

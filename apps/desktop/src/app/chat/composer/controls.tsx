@@ -5,17 +5,20 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Ear, EarOff, iconSize, Loader2, Square, Volume2, VolumeX } from '@/lib/icons'
+import { Ear, EarOff, iconSize, Loader2, MicOff, Square, Volume2, VolumeX } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import type { LiveTranscriptFragment } from '@/lib/voice-live'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
 import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 
-import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN } from './control-classes'
+import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN, SEND_ICON_BTN } from './control-classes'
 import type { ConversationStatus } from './hooks/use-voice-conversation'
 import { ModelPill } from './model-pill'
 import { ReasoningPill } from './reasoning-pill'
+import { useComposerScope } from './scope'
 import { StartVoiceButton } from './start-voice-button'
 import type { ChatBarState, VoiceStatus } from './types'
+import { VoiceConversationPanel } from './voice-conversation-panel'
 import { VoiceMenu } from './voice-menu'
 
 // Re-exported: `context-menu.tsx` and other row neighbours have always reached
@@ -24,6 +27,7 @@ export { ACTIVE_ICON_BTN, GHOST_ICON_BTN, ICON_BTN, PRIMARY_ICON_BTN } from './c
 
 interface ConversationProps {
   active: boolean
+  transcript?: LiveTranscriptFragment[]
   level: number
   muted: boolean
   status: ConversationStatus
@@ -43,6 +47,7 @@ export function ComposerControls({
   foldVoice = false,
   hasComposerPayload,
   hideModelPill = false,
+  homeStyle = false,
   minimal = false,
   state,
   voiceStatus,
@@ -58,6 +63,7 @@ export function ComposerControls({
   foldVoice?: boolean
   hasComposerPayload: boolean
   hideModelPill?: boolean
+  homeStyle?: boolean
   minimal?: boolean
   state: ChatBarState
   voiceStatus: VoiceStatus
@@ -67,12 +73,17 @@ export function ComposerControls({
   const { t } = useI18n()
   const c = t.composer
   const hudMode = useStore($hudMode)
+  const scope = useComposerScope()
 
   if (conversation.active) {
-    return <ConversationPill {...conversation} disabled={disabled} />
+    return hudMode || scope.target !== 'main' ? (
+      <ConversationPill {...conversation} disabled={disabled} />
+    ) : (
+      <VoiceConversationPanel {...conversation} />
+    )
   }
 
-  const showVoicePrimary = !busy && !hasComposerPayload
+  const showVoicePrimary = !homeStyle && !busy && !hasComposerPayload
   // Steer is just send: a payload keeps the Send affordance mid-turn. Stop
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
@@ -82,7 +93,7 @@ export function ComposerControls({
   // same reason — same controls, same state, different budget. Below that
   // even the menu goes: at `minimal` the row is the send button and nothing
   // else, which is the one thing that must survive every width.
-  const foldedVoice = hudMode || foldVoice
+  const foldedVoice = homeStyle || hudMode || foldVoice
 
   const voiceControls = foldedVoice ? (
     <VoiceMenu
@@ -91,6 +102,7 @@ export function ComposerControls({
       onDictate={onDictate}
       onStartConversation={conversation.onStart}
       onToggleAutoSpeak={onToggleAutoSpeak}
+      settingsTrigger={homeStyle}
       state={state}
       voiceStatus={voiceStatus}
     />
@@ -115,6 +127,9 @@ export function ComposerControls({
           {voiceControls}
         </>
       )}
+      {!minimal && !showVoicePrimary && (
+        <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
+      )}
       {showVoicePrimary ? (
         <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
       ) : (
@@ -129,14 +144,14 @@ export function ComposerControls({
         >
           <Button
             aria-label={showStop ? c.stop : c.send}
-            className={PRIMARY_ICON_BTN}
+            className={homeStyle && !showStop ? SEND_ICON_BTN : PRIMARY_ICON_BTN}
             disabled={disabled || !canSubmit}
             type="submit"
           >
             {showStop ? (
               <span className="block size-2.5 rounded-[0.1875rem] bg-current" />
             ) : (
-              <Codicon name="arrow-up" size="0.875rem" />
+              <Codicon name={homeStyle ? 'send' : 'arrow-up'} size="0.875rem" />
             )}
           </Button>
         </Tip>
@@ -230,7 +245,7 @@ function ConversationPill({
           type="button"
           variant="ghost"
         >
-          <Codicon name={muted ? 'mic-off' : 'mic'} size="1rem" />
+          {muted ? <MicOff className={iconSize.md} /> : <Codicon name="mic" size="1rem" />}
         </Button>
       </Tip>
       {listening && (

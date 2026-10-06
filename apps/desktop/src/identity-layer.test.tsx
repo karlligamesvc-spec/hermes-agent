@@ -541,13 +541,12 @@ describe('identity: the home zero-state is ours', () => {
     }
   })
 
-  it('unmounts the global composer while the business Start input owns the empty state', () => {
+  it('keeps the business Start input responsible for empty-state attachments', () => {
     const chat = readSource('src', 'app', 'chat', 'index.tsx')
     const visibility = readSource('src', 'app', 'chat', 'intro-visibility.ts')
 
     expect(chat).toContain('const businessStartVisible = showIntro && isBusinessWorkspaceEnabled()')
     expect(chat).toContain('businessStartVisible,')
-    expect(chat).toContain('{showChatBar && (')
     expect(chat).toContain('attachments: introAttachments')
     expect(chat).toContain('onPickFiles')
     expect(chat).toContain('onRemoveAttachment')
@@ -639,7 +638,7 @@ describe('identity: the brand skin survives', () => {
 
     expect(styles).not.toContain('*:focus-visible {')
     expect(styles).toContain(':focus-visible:not([data-slot])')
-    expect(styles).toContain('.apex-goal-launcher:focus-within')
+    expect(styles).toContain('.apex-composer-surface:focus-within')
     expect(search).toContain("'h-7 min-w-0 flex-1 bg-transparent")
     expect(search).not.toContain('[field-sizing:content]')
     expect(search).toContain('data-slot="search-field-input"')

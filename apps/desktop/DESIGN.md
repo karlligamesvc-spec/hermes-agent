@@ -282,6 +282,13 @@ so glass and message-bubble transparency do not reveal scrolling text.
   existing components under `src/components/assistant-ui` and
   `src/app/chat/composer`; do not fork a second markdown, message, tool-call, or
   approval renderer for one feature.
+- **APEX writing surface** — Start and the docked main-chat composer share
+  `.apex-composer-surface` in `src/styles.css`: the theme border/focus ring,
+  15px radius, 18px horizontal / 10px vertical padding, 48px writing minimum,
+  and 14px/1.6 input type. Both keep the black `StartVoiceButton` beside the
+  purple `SEND_ICON_BTN` action; an empty draft disables Send. Chat retains its
+  rich editor, scene/approval controls and busy Stop behavior. Rare voice toggles
+  fold into `VoiceMenu`; HUD, tiles and popped-out chat keep their compact ladder.
 - **Inline widgets** — a tool result that renders as a panel the user reads or
   acts on (clarify, artifact card) wears `WIDGET_SHELL_CLASS`
   (`src/components/chat/widget-shell.ts`): shared radius, the

@@ -8,11 +8,11 @@ import { adoptSpokenReplySession, markAssistantIdSpoken, resolveSpokenReply } fr
 import { CONVERSATION_LEASE, READ_ALOUD_LEASE, syncTtsLease } from '@/lib/tts-lease'
 import { toLiveHistory } from '@/lib/voice-live'
 import { clearWakeIndicator, syncWakeIndicatorWithVoice } from '@/lib/wake-indicator'
-import { $voiceConversationStartRequest, takeVoiceConversationStart } from '@/store/composer'
+import { $voiceConversationStartRequest, requestVoiceConversationStart, takeVoiceConversationStart } from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 import { $gateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
-import { $voiceLiveStatus, refreshVoiceLiveStatus, selectedVoiceChatMode } from '@/store/voice-live'
+import { refreshVoiceLiveStatus } from '@/store/voice-live'
 import { $autoSpeakReplies, $voiceStopPhrase, setAutoSpeakReplies } from '@/store/voice-prefs'
 import { resumeWakeAfterVoice } from '@/store/wake-word'
 
@@ -67,8 +67,9 @@ export function useComposerVoice({
   // A tile's composer speaks ITS transcript, not the primary chat's.
   const { $messages } = useComposerScope()
   const [voiceConversationActive, setVoiceConversationActive] = useState(false)
-  // Engine selection is latched at conversation START (a Settings change
-  // applies to the next conversation, never mid-call).
+  const [voiceStarting, setVoiceStarting] = useState(false)
+  const activationEpochRef = useRef(0)
+  // Native admission is resolved before either microphone hook can activate.
   const [liveEngineActive, setLiveEngineActive] = useState(false)
   const ownsWakeIndicatorRef = useRef(false)
   const previousSessionIdRef = useRef(sessionId)
@@ -80,7 +81,7 @@ export function useComposerVoice({
     previousSessionIdRef.current = sessionId
   }, [sessionId])
 
-  const { dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
+  const { cancel: cancelDictation, dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
     onTranscript: insertText,
@@ -194,12 +195,12 @@ export function useComposerVoice({
     pendingResponse: pendingTurnResponse,
     // Before the conversation opens the mic, wait for any in-flight wake.pause
     // to finish releasing the capture device (see wakePauseBarrierRef).
-    beforeMicOpen: () => wakePauseBarrierRef.current ?? undefined
+    beforeMicOpen: async () => { await cancelDictation(); await wakePauseBarrierRef.current }
   })
 
   const liveConversation = useVoiceLiveConversation({
     activeToolLabel,
-    beforeMicOpen: () => wakePauseBarrierRef.current ?? undefined,
+    beforeMicOpen: async () => { await cancelDictation(); await wakePauseBarrierRef.current },
     busy,
     consumePendingResponse,
     enabled: voiceConversationActive && liveEngineActive,
@@ -213,33 +214,49 @@ export function useComposerVoice({
 
   const conversation = liveEngineActive ? liveConversation : chainedConversation
 
-  /** Turn the conversation on with the engine `voice.voice_chat_mode` selects,
-   *  decided in the same state batch so the other engine never sees a frame of
-   *  `enabled`. gpt-live selected but not startable (no OpenAI key on the
-   *  gateway) falls back to chained with a notice rather than a dead button. */
-  const activateConversation = useCallback(() => {
-    const status = $voiceLiveStatus.get()
-    let live = false
+  /** APEX uses native Qwen voice without exposing an engine choice. Admission
+   * is profile-scoped; an unavailable service never opens a different engine. */
+  const activateConversation = useCallback(async () => {
+    const epoch = ++activationEpochRef.current
+    setVoiceStarting(true)
+    let status
 
-    if (selectedVoiceChatMode(status) !== 'chained') {
-      if (status?.available) {
-        live = true
-      } else {
-        notify({
-          id: 'voice-live-unavailable',
-          kind: 'warning',
-          message: t.notifications.voice.liveUnavailable(status?.reason ?? 'not configured')
-        })
+    try {
+      status = await refreshVoiceLiveStatus()
+    } catch (error) {
+      if (activationEpochRef.current === epoch) {
+        setVoiceStarting(false)
+        notifyError(error, t.composer.voiceUnavailable)
       }
+
+      return
     }
 
-    setLiveEngineActive(live)
+    if (activationEpochRef.current !== epoch) {return}
+    setVoiceStarting(false)
+
+    // A scope change makes the status request return null. Never start against
+    // the profile/account that replaced the one clicked by the user.
+    if (!status) {return}
+    const available = status.qwenAvailable ?? (status.mode === 'qwen-realtime' && status.available)
+
+    if (!available) {
+      notify({
+        id: 'voice-live-unavailable',
+        kind: 'warning',
+        message: t.composer.voiceUnavailable
+      })
+
+      return
+    }
+
+    setLiveEngineActive(true)
     setVoiceConversationActive(true)
   }, [t])
 
   useEffect(() => {
     if (!voiceConversationActive) {
-      // Prefetch so the first press picks the right engine without a round trip.
+      // Prefetch admission; the explicit start still awaits scope-safe status.
       void refreshVoiceLiveStatus().catch(() => undefined)
     }
   }, [voiceConversationActive])
@@ -272,13 +289,15 @@ export function useComposerVoice({
       return
     }
 
-    if (voiceConversationActive) {
+    if (voiceConversationActive || voiceStarting) {
+      activationEpochRef.current++
+      setVoiceStarting(false)
       setVoiceConversationActive(false)
       void conversation.end()
     } else {
-      activateConversation()
+      void activateConversation()
     }
-  }, [activateConversation, conversation, disabled, voiceConversationActive])
+  }, [activateConversation, conversation, disabled, voiceConversationActive, voiceStarting])
 
   useEffect(
     () => onComposerVoiceToggleRequest(toggled => toggled === target && toggleVoiceConversation()),
@@ -286,10 +305,10 @@ export function useComposerVoice({
   )
 
   useEffect(() => {
-    if (target === 'main' && !disabled && takeVoiceConversationStart(voiceStartRequest) && !voiceConversationActive) {
-      activateConversation()
+    if (target === 'main' && !disabled && takeVoiceConversationStart(voiceStartRequest) && !voiceConversationActive && !voiceStarting) {
+      void activateConversation()
     }
-  }, [activateConversation, disabled, target, voiceConversationActive, voiceStartRequest])
+  }, [activateConversation, disabled, target, voiceConversationActive, voiceStartRequest, voiceStarting])
 
   const resumeWakeIfPaused = useCallback(() => {
     if (!wakePausedRef.current) {
@@ -350,7 +369,10 @@ export function useComposerVoice({
     }
   }, [t, voiceConversationActive])
 
-  useEffect(() => resumeWakeIfPaused, [resumeWakeIfPaused])
+  useEffect(() => () => {
+    activationEpochRef.current++
+    resumeWakeIfPaused()
+  }, [resumeWakeIfPaused])
 
   // Speech-output toggles are TTS warm-up / release signals. Entering a voice
   // conversation acquires this window's lease (pre-loads the engine so the
@@ -374,9 +396,18 @@ export function useComposerVoice({
 
   // Explicit start/end for the on-screen conversation controls (the hotkey uses
   // the gated toggle above).
-  const startConversation = activateConversation
+  const startConversation = useCallback(() => {
+    // Keep the controller mounted behind task/settings pages during the call.
+    if (target === 'main') {
+      requestVoiceConversationStart()
+    }
+
+    void activateConversation()
+  }, [activateConversation, target])
 
   const endConversation = useCallback(() => {
+    activationEpochRef.current++
+    setVoiceStarting(false)
     setVoiceConversationActive(false)
     void conversation.end()
   }, [conversation])
@@ -397,12 +428,15 @@ export function useComposerVoice({
 
   return {
     conversation,
-    dictate,
+    dictate: () => {
+      if (!voiceConversationActive && !voiceStarting) {dictate()}
+    },
     endConversation,
     handleToggleAutoSpeak,
     startConversation,
     voiceActivityState,
-    voiceConversationActive,
+    voiceTranscript: liveEngineActive ? liveConversation.transcript : [],
+    voiceConversationActive: voiceConversationActive || voiceStarting,
     voiceStatus
   }
 }

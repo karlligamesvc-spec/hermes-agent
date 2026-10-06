@@ -1185,7 +1185,15 @@
   --ui-row-active-background: color-mix(in srgb, var(--ui-bg-elevated) 98%, var(--ui-blue) 2%);
 }
 
-.apex-goal-launcher {
+/* Shared Start / main-chat writing surface. Tile and HUD density stays local. */
+.apex-composer-surface {
+  --composer-surface-pad-x: 18px;
+  --composer-surface-pad-y: 10px;
+  --composer-input-roomy-min-height: 48px;
+  --composer-row-gap: 4px;
+  --composer-control-gap: 12px;
+  --composer-fallback-height: calc(48px + var(--composer-control-primary-size) + 24px + 2px);
+  border-radius: 15px;
   border-color: color-mix(in srgb, var(--theme-primary) 26%, var(--ui-stroke-secondary));
   background:
     linear-gradient(var(--ui-bg-elevated), var(--ui-bg-elevated)) padding-box,
@@ -1193,9 +1201,24 @@
   box-shadow: 0 1rem 2.5rem color-mix(in srgb, var(--theme-primary) 9%, transparent), var(--shadow-sm);
 }
 
-.apex-goal-launcher:focus-within {
+.apex-composer-surface:focus-within {
   border-color: transparent;
   box-shadow: 0 0 0 0.1875rem color-mix(in srgb, var(--theme-primary) 16%, transparent), 0 1rem 2.5rem color-mix(in srgb, var(--theme-primary) 11%, transparent);
+}
+
+.apex-goal-launcher.apex-composer-surface {
+  padding: var(--composer-surface-pad-y) var(--composer-surface-pad-x);
+}
+
+.apex-composer-surface :is([data-slot="business-goal-input"], .apex-composer-input) {
+  min-height: var(--composer-input-roomy-min-height);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.apex-composer-surface [data-slot="composer-rich-input"] {
+  padding-left: 0;
 }
 
 /* The 900px native tier reveals the 190px sidebar, so viewport media queries

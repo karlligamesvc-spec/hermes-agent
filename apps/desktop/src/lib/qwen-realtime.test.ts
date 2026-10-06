@@ -140,9 +140,102 @@ describe('Qwen native realtime', () => {
     expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
     session.receive({ type: 'response.audio.delta', response_id: 'r-old', delta: 'AAA=' })
     expect(source.start).toHaveBeenCalledOnce()
+    session.receive({ type: 'response.done', response: { id: 'r-old' } })
+    session.receive({ type: 'input_audio_buffer.speech_stopped' })
     session.receive({ type: 'response.created', response: { id: 'r-new' } })
     session.receive({ type: 'response.audio.delta', response_id: 'r-new', delta: 'AAA=' })
     expect(source.start).toHaveBeenCalledTimes(2)
+    session.close()
+  })
+
+  it('serializes tool replies and recovers the committed VAD turn without closing capture', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+
+    const finishTool = (id: string) => {
+      session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: id, arguments: '{"request":"查文件"}' })
+      session.speak(id, '文件查询结果。')
+      session.finishDelegation(id)
+    }
+
+    const creates = () => Socket.latest.sent.filter(event => event.type === 'response.create')
+    session.receive({ type: 'response.created', response: { id: 'tool-turn' } })
+    finishTool('call-a')
+    expect(creates()).toHaveLength(0)
+    session.receive({ type: 'response.done', response: { id: 'tool-turn' } })
+    expect(creates()).toHaveLength(1)
+    // Another tool settles before the first manual response is acknowledged.
+    finishTool('call-b')
+    session.receive({ type: 'response.done', response: { id: 'tool-turn' } })
+    expect(creates()).toHaveLength(1)
+    session.receive({ type: 'response.created', response: { id: 'manual' } })
+    session.receive({ type: 'input_audio_buffer.speech_started' })
+    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
+    session.receive({ type: 'input_audio_buffer.speech_stopped' })
+    session.receive({ type: 'error', error: { message: 'Server VAD turn committed but no response was created because a manual response is already in progress.' } })
+    expect(handlers.onClosed).not.toHaveBeenCalled()
+    expect(handlers.onError).not.toHaveBeenCalled()
+    expect(track.stop).not.toHaveBeenCalled()
+    // Cancellation receipts must still release the response slot.
+    session.receive({ type: 'response.done', response_id: 'manual', response: { id: 'manual' } })
+    expect(creates()).toHaveLength(2)
+    session.receive({ type: 'response.created', response: { id: 'resumed' } })
+    session.receive({ type: 'response.audio.delta', response_id: 'resumed', delta: 'AAA=' })
+    expect(source.start).toHaveBeenCalledOnce()
+    session.close()
+  })
+
+  it.each([
+    { code: 'response_cancel_not_active', message: 'Response already ended' },
+    { code: 'invalid_value', message: 'Conversation has no active response.' }
+  ])('keeps capture and resumes after a late cancellation receipt: $code', async error => {
+    const { session, handlers } = setup()
+    await session.start()
+    session.receive({ type: 'response.created', response: { id: 'finished' } })
+    session.receive({ type: 'input_audio_buffer.speech_started' })
+    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
+    session.receive({ type: 'response.done', response: { id: 'finished' } })
+    session.receive({ type: 'error', error })
+    expect(handlers.onError).not.toHaveBeenCalled()
+    expect(handlers.onClosed).not.toHaveBeenCalled()
+    expect(track.stop).not.toHaveBeenCalled()
+    session.receive({ type: 'input_audio_buffer.speech_stopped' })
+    session.receive({ type: 'response.created', response: { id: 'next' } })
+    session.receive({ type: 'response.audio.delta', response_id: 'next', delta: 'AAA=' })
+    expect(source.start).toHaveBeenCalledOnce()
+    session.close()
+  })
+
+  it.each(['apex_voice_unavailable', 'apex_voice_failed', 'invalid_api_key', 'unknown_error', 'invalid_value'])(
+    'still closes capture on %s rather than swallowing authoritative failures', async code => {
+      const { session, handlers } = setup()
+      await session.start()
+      session.receive({ type: 'error', error: { code, message: 'Access or service unavailable' } })
+      expect(handlers.onError).toHaveBeenCalledWith('Access or service unavailable', true)
+      expect(handlers.onClosed).toHaveBeenCalledWith('voice_error', null)
+      expect(track.stop).toHaveBeenCalledOnce()
+      expect(Socket.latest.close).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('waits for speech and an active-response rejection to settle before retrying one reply', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    session.receive({ type: 'input_audio_buffer.speech_started' })
+    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'call-a', arguments: '{"request":"查文件"}' })
+    session.finishDelegation('call-a')
+    const creates = () => Socket.latest.sent.filter(event => event.type === 'response.create')
+    expect(creates()).toHaveLength(0)
+    session.receive({ type: 'input_audio_buffer.speech_stopped' })
+    expect(creates()).toHaveLength(0)
+    session.receive({ type: 'response.created', response: { id: 'auto' } })
+    session.receive({ type: 'response.done', response: { id: 'auto' } })
+    expect(creates()).toHaveLength(1)
+    // An upstream automatic response may win before the manual create is acked.
+    session.receive({ type: 'error', error: { code: 'conversation_already_has_active_response' } })
+    expect(handlers.onClosed).not.toHaveBeenCalled()
+    session.receive({ type: 'response.done', response: { id: 'upstream-winner' } })
+    expect(creates()).toHaveLength(2)
     session.close()
   })
 

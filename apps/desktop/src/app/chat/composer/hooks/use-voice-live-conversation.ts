@@ -3,10 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '@/i18n'
 import { QwenRealtimeSession } from '@/lib/qwen-realtime'
 import { sanitizeTextForSpeech } from '@/lib/speech-text'
-import { type LiveHistoryMessage, type LiveTranscriptFragment, VoiceLiveSession } from '@/lib/voice-live'
+import { type LiveHistoryMessage, type LiveTranscriptFragment } from '@/lib/voice-live'
 import { isVoiceStopCommand } from '@/lib/voice-stop-word'
 import { notify, notifyError } from '@/store/notifications'
-import { $voiceLiveStatus } from '@/store/voice-live'
 
 import type { ConversationStatus } from './use-voice-conversation'
 
@@ -70,8 +69,8 @@ export function delegationPrompt(context: LiveTranscriptFragment[]): { context: 
 }
 
 /**
- * GPT-Live conversation engine — same public shape as `useVoiceConversation`
- * so the composer can mount either from `voice.voice_chat_mode`.
+ * APEX realtime conversation — Qwen is selected internally, independently of
+ * legacy CLI engine preferences. The public shape matches `useVoiceConversation`.
  *
  * Status mapping: `listening` = session up, voice idle; `speaking` = the
  * remote track is producing audio; `thinking` = a delegation is in flight in
@@ -95,13 +94,14 @@ export function useVoiceLiveConversation({
   const [status, setStatus] = useState<ConversationStatus>('idle')
   const [muted, setMuted] = useState(false)
   const [level, setLevel] = useState(0)
+  const [transcript, setTranscript] = useState<LiveTranscriptFragment[]>([])
   // Mirrors delegationRef for the reply-drive effect: a new delegation must
   // restart the feed loop, and a ref write alone does not re-render.
   const [activeDelegation, setActiveDelegation] = useState<null | string>(null)
 
   const sessionRef = useRef<
     | null
-    | (Pick<VoiceLiveSession, 'start' | 'close' | 'think' | 'speak' | 'setMuted' | 'instruct'> & {
+    | (Pick<QwenRealtimeSession, 'start' | 'close' | 'think' | 'speak' | 'setMuted' | 'instruct'> & {
         finishDelegation?: (id: string) => void
       })
   >(null)
@@ -209,6 +209,7 @@ export function useVoiceLiveConversation({
     }
 
     startingRef.current = true
+    setTranscript([])
     const epoch = ++startEpochRef.current
 
     try {
@@ -223,13 +224,16 @@ export function useVoiceLiveConversation({
       return
     }
 
-    const Session = $voiceLiveStatus.get()?.mode === 'qwen-realtime' ? QwenRealtimeSession : VoiceLiveSession
+    let fatalErrorReported = false
 
-    const session = new Session({
+    const session = new QwenRealtimeSession({
       // The voice model answers a bare "stop" itself (it just goes quiet) and
       // never delegates it, so the spoken stop phrase is judged on the user
       // transcript once the utterance settles.
       onTranscript: fragment => {
+        if (startEpochRef.current !== epoch) {return}
+        setTranscript(current => [...current, fragment].slice(-200))
+
         if (fragment.speaker !== 'user') {
           return
         }
@@ -261,11 +265,14 @@ export function useVoiceLiveConversation({
         setStatus('idle')
 
         if (reason !== 'close_requested') {
-          notify({
-            kind: 'warning',
-            message: usageSeconds != null ? `${reason} (${Math.round(usageSeconds)}s)` : reason,
-            title: voiceCopy.liveEnded
-          })
+          if (!fatalErrorReported) {
+            notify({
+              kind: 'warning',
+              message: usageSeconds != null ? `${reason} (${Math.round(usageSeconds)}s)` : reason,
+              title: voiceCopy.liveEnded
+            })
+          }
+
           latest.current.onFatalError?.()
         }
       },
@@ -307,6 +314,8 @@ export function useVoiceLiveConversation({
         })
       },
       onError: (message, fatal) => {
+        if (sessionRef.current !== session) {return}
+        fatalErrorReported ||= fatal
         notify({ kind: fatal ? 'error' : 'warning', message, title: voiceCopy.liveError })
       },
       onSpeakingChange: speaking => {
@@ -342,7 +351,7 @@ export function useVoiceLiveConversation({
         return
       }
 
-      notifyError(error, voiceCopy.couldNotStartSession)
+      if (!fatalErrorReported) {notifyError(error, voiceCopy.couldNotStartSession)}
       setStatus('idle')
       latest.current.onFatalError?.()
     }
@@ -474,5 +483,5 @@ export function useVoiceLiveConversation({
 
   useEffect(() => () => void end(), [end])
 
-  return { end, level, muted, start, status, stopTurn, toggleMute }
+  return { end, level, muted, start, status, stopTurn, toggleMute, transcript }
 }
