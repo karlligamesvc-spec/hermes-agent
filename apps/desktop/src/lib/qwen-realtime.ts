@@ -34,6 +34,7 @@ export interface QwenEvent {
   response_id?: string
   response?: { id?: string }
   session?: { turn_detection?: unknown }
+  apex_voice_owner?: string
   delta?: string
   transcript?: string
   name?: string
@@ -56,10 +57,11 @@ export class QwenRealtimeSession {
   private closed = false
   private responding = false
   private responseRequested = false
+  private suppressRequestedResponse = false
   private responsePending = false
   private userSpeaking = false
   private responseId: string | null = null
-  private readonly cancelledResponses = new Set<string>()
+  private readonly suppressedResponses = new Set<string>()
   private readonly completedResponses = new Set<string>()
   private readbackResponseId: string | null = null
   private capture: VoicePcmTurn | null = null
@@ -159,8 +161,13 @@ export class QwenRealtimeSession {
             const event = JSON.parse(String(message.data)) as QwenEvent
 
             if (event.type === 'session.updated') {
-              if (event.session?.turn_detection !== null) {
-                throw new Error('请更新 APEX AI 引擎后再使用统一主助手语音。')
+              if (event.apex_voice_owner !== 'primary') {
+                const error = new Error('请更新 APEX AI 引擎后再使用统一主助手语音。')
+                finish(error)
+                this.handlers.onError(error.message, true)
+                this.close('voice_protocol_outdated')
+
+                return
               }
               this.ready = true
               finish()
@@ -211,8 +218,10 @@ export class QwenRealtimeSession {
           this.send({ type: 'input_audio_buffer.clear' })
 
           if (this.responding || this.responseRequested) {
-            if (this.responseId) {this.cancelledResponses.add(this.responseId)}
-            this.send({ type: 'response.cancel' })
+            if (this.responseId) {this.suppressedResponses.add(this.responseId)}
+            this.suppressRequestedResponse = true
+            // Stop playback immediately, but drain inference to its real usage
+            // receipt. This vendor returns usage=null if response.cancel is sent.
           }
         },
         append: samples => this.send({ type: 'input_audio_buffer.append', audio: encoder.encode(samples) }),
@@ -295,11 +304,10 @@ export class QwenRealtimeSession {
       this.responseRequested = false
       this.responding = true
       this.responseId = id ?? null
-      this.readbackResponseId = requested ? this.responseId : null
+      this.readbackResponseId = requested && !this.suppressRequestedResponse ? this.responseId : null
       this.reserveTurn(`assistant:${id ?? 'assistant'}`)
-      if (!requested || this.userSpeaking) {
-        if (id) {this.cancelledResponses.add(id)}
-        this.send({ type: 'response.cancel' })
+      if (!requested || this.suppressRequestedResponse || this.userSpeaking) {
+        if (id) {this.suppressedResponses.add(id)}
       }
 
       return
@@ -318,7 +326,7 @@ export class QwenRealtimeSession {
     }
 
     const id = event.response_id ?? this.responseId
-    if (!id || id !== this.readbackResponseId || this.cancelledResponses.has(id)) {return}
+    if (!id || id !== this.readbackResponseId || this.suppressedResponses.has(id)) {return}
     if (event.type === 'response.audio.delta' && event.delta) {
       this.play(event.delta)
     } else if (event.type === 'response.audio_transcript.delta' && event.delta) {
@@ -414,6 +422,7 @@ export class QwenRealtimeSession {
     // tool cannot start a second response in the acknowledgement gap.
     this.responsePending = false
     this.responseRequested = true
+    this.suppressRequestedResponse = false
     this.send({ type: 'response.create' })
   }
 

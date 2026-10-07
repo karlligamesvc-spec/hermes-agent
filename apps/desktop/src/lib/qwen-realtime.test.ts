@@ -28,7 +28,7 @@ class Socket {
     this.sent.push(event)
 
     if (event.type === 'apex.start') {
-      this.onmessage?.({ data: JSON.stringify({ type: 'session.updated', session: { turn_detection: Socket.manualMode ? null : { type: 'server_vad' } } }) })
+      this.onmessage?.({ data: JSON.stringify({ type: 'session.updated', apex_voice_owner: Socket.manualMode ? 'primary' : undefined, session: { id: 'provider-omits-null-fields' } }) })
     }
   }
 }
@@ -100,7 +100,7 @@ describe('Qwen primary-assistant realtime transport', () => {
   it('rejects an old automatic-response engine before starting PCM capture', async () => {
     Socket.manualMode = false
     const { session, handlers } = setup()
-    await expect(session.start()).rejects.toThrow()
+    await expect(session.start()).rejects.toThrow('请更新 APEX AI 引擎')
     expect(events('input_audio_buffer.append')).toHaveLength(0)
     expect(handlers.onClosed).toHaveBeenCalledOnce()
     expect(track.stop).toHaveBeenCalledOnce()
@@ -164,7 +164,7 @@ describe('Qwen primary-assistant realtime transport', () => {
     await session.start()
     asr(session, 'question', '查询腾讯云资源')
     session.receive({ type: 'response.created', response: { id: 'unsolicited' } })
-    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
+    expect(events('response.cancel')).toHaveLength(0)
     session.receive({ type: 'response.audio_transcript.delta', response_id: 'unsolicited', delta: '无法查询。' })
     session.receive({ type: 'response.audio.delta', response_id: 'unsolicited', delta: 'AAA=' })
     expect(handlers.onTranscript).toHaveBeenCalledOnce()
@@ -227,7 +227,7 @@ describe('Qwen primary-assistant realtime transport', () => {
     session.receive({ type: 'response.audio.delta', response_id: 'r-old', delta: 'AAA=' })
     capture(0.1, 2)
     expect(source.stop).toHaveBeenCalledOnce()
-    expect(events('response.cancel')).toHaveLength(1)
+    expect(events('response.cancel')).toHaveLength(0)
     session.receive({ type: 'response.audio.delta', response_id: 'r-old', delta: 'AAA=' })
     expect(source.start).toHaveBeenCalledOnce()
     capture(0, 15)
@@ -247,6 +247,27 @@ describe('Qwen primary-assistant realtime transport', () => {
     asr(session, 'end', 'OK，你关闭吧。')
     expect(handlers.onDelegation).not.toHaveBeenCalled()
     expect(track.stop).toHaveBeenCalledOnce()
+  })
+  it('suppresses a barge-in before the response acknowledgement without cancelling inference or playing late old speech', async () => {
+    const { session } = setup()
+    await session.start()
+    asr(session, 'old', '查询热榜')
+    readback(session, 'old', '旧回复')
+    capture(0.1, 2)
+    capture(0, 15)
+    asr(session, 'next', '刚才那个继续查')
+    readback(session, 'next', '新回复')
+    session.receive({ type: 'response.created', response: { id: 'late-old' } })
+    session.receive({ type: 'response.audio.delta', response_id: 'late-old', delta: 'AAA=' })
+    expect(source.start).not.toHaveBeenCalled()
+    expect(events('response.cancel')).toHaveLength(0)
+    expect(events('response.create')).toHaveLength(1)
+    session.receive({ type: 'response.done', response: { id: 'late-old' } })
+    expect(events('response.create')).toHaveLength(2)
+    session.receive({ type: 'response.created', response: { id: 'next-reply' } })
+    session.receive({ type: 'response.audio.delta', response_id: 'next-reply', delta: 'AAA=' })
+    expect(source.start).toHaveBeenCalledOnce()
+    session.close()
   })
   it('keeps 330-second tool waits alive without user turns or inference, and tears down its timer', async () => {
     vi.useFakeTimers()

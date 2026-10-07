@@ -486,7 +486,7 @@ the old tree remained available and the physical App restored gateway Ready plus
 its existing conversations. This is one Mac arm64 recovery, not physical Windows
 acceptance. A paired0.17.52 production replacement carries the installer fix;
 publication and all three public/native readbacks are required before declaring it
-published. Cancelled-usage billing policy remains unchanged and separately pending a user decision.
+published. Supplier cancelled-usage billing policy remains unchanged; native barge-in now avoids sending a cancellation.
 
 
 ## Unified primary voice ownership — 0.17.52 candidate
@@ -506,9 +506,14 @@ boundaries retain 500ms onset audio, require 200ms sustained input, commit after
 1500ms silence and cap one input at45s. These controls only decide an audio
 boundary, never task intent. Commit performs ASR without requesting inference.
 Only the accepted primary result adds readback text and explicitly requests audio.
-Unsolicited/cancelled response media are suppressed. A late older ASR item updates
+Unsolicited/interrupted response media are suppressed. Barge-in immediately stops
+local playback but lets supplier inference finish to its actual usage receipt; it
+does not send response.cancel. The acknowledgement-gap flag also suppresses an
+old response that is created only after the new speech has already ended. A late older ASR item updates
 chronological captions without superseding or re-submitting newer intent. The
-client refuses an old automatic-response engine before starting PCM capture.
+client requires a primary-owner readiness marker supplied by the pinned native
+server, so a provider ack that omits null fields remains compatible; an old
+automatic-response engine is refused before starting PCM capture.
 
 Mid-task speech uses the existing primary redirect seam, which retains completed
 work and reaches a running tool at its safe boundary. It does not press Stop.
@@ -525,15 +530,22 @@ exact supplied result “目前拿到部分样本，完整榜单尚未核对。�
 usage. This is a controlled protocol canary, not physical microphone acceptance
 or a real cloud-account/tool permission check. Deterministic transport/hook tests
 cover the same original-text dispatch, returned result, 330s pending work, replay,
-barge-in, stale ASR, scope change, close, malformed input and cleanup. Five uniquely
+barge-in, stale ASR, scope change, close, malformed input and cleanup. Six uniquely
 landed routing faults and three installer faults fail their behavioral regressions
 before restoration. The earlier hash-order mutation correctly stayed green: the
 old comparator already ignores suffixes; that redundant ordering change was removed.
 
-Runtime source: de0c14e7761aa3afb28b084d527a5a4ae1b1365c. Minimum shell:0.17.52.
+The production Relay canary validates candidate native serve, ASR during readback,
+normal completed usage and subsequent result speech on the isolated internal
+probe Agent. A refused immediate second call was not bypassed: the canary waits
+for the normal bounded hangup drain before opening the next model.
+
+Runtime source: d4a31394f437a669ba0ff9ef6902ef22cecacbeb. Minimum shell:0.17.52.
 The immutable source archive and synchronized three-platform build/publish proofs
-are required before marking the candidate published. Supplier cancellation can
-still omit usage; existing fail-closed credit policy remains in force pending the
-separate estimate-versus-platform-cost decision. No pricing, quota, Relay or
+are required before marking the candidate published. Both real Flash/Plus canaries committed a synthetic interjection while readback
+was active, obtained the new ASR and a completed old response with full usage,
+without sending cancellation. No estimated usage or user-credit waiver is needed
+for this continuation fix. Explicit supplier cancellation/disconnection can still
+omit usage; existing fail-closed credit policy remains in force. No pricing, quota, Relay or
 Scheduler policy is silently changed by this Desktop release. Physical ASR in
 noise, echo suppression, soft speech and real-task voice acceptance remain manual.
