@@ -17,6 +17,7 @@ import urllib.request
 BUCKET = 'apexnodes-runtime-202606250443-1300912302'
 REGION = 'ap-guangzhou'
 BASE = f'https://{BUCKET}.cos.{REGION}.myqcloud.com'
+BACKUP_DOMAIN = f'{BUCKET}.cos.{REGION}.tencentcos.cn'
 
 
 def upload_and_verify(local: Path, key: str, client) -> dict:
@@ -34,7 +35,7 @@ def upload_and_verify(local: Path, key: str, client) -> dict:
     sha256 = digest.hexdigest()
     client.upload_file(
         Bucket=BUCKET, Key=key, LocalFilePath=str(local),
-        PartSize=8, MAXThread=16, EnableMD5=True,
+        PartSize=8, MAXThread=4, EnableMD5=True,
         Metadata={'sha256': sha256},
     )
     with urllib.request.urlopen(urllib.request.Request(BASE + '/' + key, method='HEAD'), timeout=60) as response:
@@ -53,11 +54,29 @@ def main() -> int:
     if not identity or not secret:
         raise ValueError('COS workflow credentials are missing')
     from qcloud_cos import CosConfig, CosS3Client
+    from qcloud_cos.cos_exception import CosClientError
 
-    logging.getLogger('qcloud_cos').setLevel(logging.WARNING)
-    client = CosS3Client(CosConfig(Region=REGION, SecretId=identity, SecretKey=secret, Scheme='https', Timeout=60))
-    print(upload_and_verify(args.file, args.key, client), flush=True)
-    return 0
+    # SDK exception logging may include signed headers. Keep diagnostics below
+    # limited to classes and the owned object key.
+    logging.getLogger('qcloud_cos').setLevel(logging.CRITICAL)
+    for attempt, domain in enumerate((None, BACKUP_DOMAIN), start=1):
+        client = CosS3Client(CosConfig(
+            Region=REGION, SecretId=identity, SecretKey=secret,
+            Scheme='https', Timeout=120, Domain=domain,
+            AutoSwitchDomainOnRetry=True,
+        ))
+        try:
+            result = upload_and_verify(args.file, args.key, client)
+        except CosClientError:
+            if attempt == 2:
+                raise
+            # The SDK verifies matching local part hashes before resuming an
+            # incomplete multipart upload. Service/auth errors do not retry.
+            print(f'Desktop COS transport failed; resuming via official backup domain: {args.key}', flush=True)
+            continue
+        print(result, flush=True)
+        return 0
+    return 1
 
 
 if __name__ == '__main__':
