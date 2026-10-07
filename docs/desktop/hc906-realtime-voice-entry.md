@@ -489,7 +489,7 @@ publication and all three public/native readbacks are required before declaring 
 published. Supplier cancelled-usage billing policy remains unchanged; native barge-in now avoids sending a cancellation.
 
 
-## Unified primary voice ownership — 0.17.52 candidate
+## Unified primary voice ownership — 0.17.52
 
 Every completed native ASR utterance now submits its original text to the current
 APEX primary conversation. Greetings, unclear fragments, follow-ups and executable
@@ -590,3 +590,30 @@ requires a separate explicit human CI-review label. Production validation stays
 inside the existing synchronized release workflow. No review label is bypassed or
 self-assigned. The bounded uploader and SDK network/resume proofs remain; actual
 three-platform public release readback is still required.
+
+### Published with an explicitly authorized transfer exception
+
+On2026-10-07 the user explicitly approved the production-server upload of the
+first paired run's immutable artifacts after four incomplete runner transfers.
+This is a one-release exception to AGENTS#15's workflow-only publication rule,
+not a permanent alternate publishing path. Mac arm64/x64 and Windows x64 all
+use producer66f6f7ee5fa9873a93ea14fc73d62e1ffc03d3b6 from paired run37568050308,
+Desktop0.17.52 and engine d4a31394/minimum52. That run passed all three actual
+native consumers and both Mac payload/App notarization and Gatekeeper gates.
+Later attempts' artifacts were not mixed into this release, and their failed
+gates were not waived.
+
+The original three archives were independently matched to GitHub artifact
+SHA256 digests. All five installers, five blockmaps and three manifests were
+verified locally before upload; binaries/maps preceded manifests. Anonymous
+full-body SHA256 and exact size reads matched all13 fixed outputs. A separate
+local read verified the three public feeds, five installer sizes and ZIP/DMG/EXE
+format signatures. Standard Runtime registration promoted d4a31394/minimum52
+while preserving all four container identity fields and the previous default.
+Both public latest aliases and all six zh/en download links converged.
+
+Publication is complete; physical microphone, soft/noisy speech, echo and actual
+user-task acceptance remain manual. Windows remains unsigned. This release
+does not alter Relay billing or rewrite the41 original SKILL entries. Complete
+provenance and verification limits are recorded in the cloud repository's
+[0.17.52 publication receipt](https://github.com/karlligamesvc-spec/apex-nodes/blob/main/docs/work-notes/HC906-PRIMARY-VOICE-0.17.52.md).
