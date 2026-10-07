@@ -76,7 +76,7 @@ class CosS3Client:
     assert 'credential-redline-test-value' not in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize('failed_route,served_size', [('backup', 3), ('backup', 2), ('service', 3), ('classic', 3)])
+@pytest.mark.parametrize('failed_route,served_size', [('network', 3), ('network', 2), ('service', 3)])
 def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, monkeypatch, capsys,
                                                                  failed_route, served_size):
     local = tmp_path / 'APEX-0.17.52-win-x64.exe'
@@ -96,10 +96,10 @@ def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, mo
             self.config = config
         def upload_file(self, **kwargs):
             uploads.append(kwargs)
-            route = 'classic' if self.config['Domain'] is None else 'backup'
-            if failed_route == 'service' or route == failed_route:
+            if failed_route == 'service' or len(uploads) == 1 or not self.config['AutoSwitchDomainOnRetry']:
                 error = PermissionError if failed_route == 'service' else CosClientError
                 raise error('credential-redline-test-value')
+            kwargs['progress_callback'](3, 3)
     sdk.CosS3Client = Client
     monkeypatch.setitem(sys.modules, 'qcloud_cos', sdk)
     monkeypatch.setitem(sys.modules, 'qcloud_cos.cos_exception', errors)
@@ -115,10 +115,27 @@ def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, mo
         assert len(uploads) == 2
     else:
         assert publisher.main() == 0
-        assert len(uploads) == (1 if failed_route == 'classic' else 2)
-        assert all(upload == uploads[0] for upload in uploads)
-        assert uploads[0]['EnableMD5'] and uploads[0]['MAXThread'] <= 4
-        assert configurations[0]['Domain'] == publisher.BACKUP_DOMAIN
-        if len(configurations) == 2: assert configurations[1]['Domain'] is None
+        assert len(uploads) == 2
+        stable = [{k:v for k,v in upload.items() if k != 'progress_callback'} for upload in uploads]
+        assert stable[0] == stable[1] and uploads[0]['EnableMD5']
+        assert all(c.get('Domain') is None for c in configurations)
         assert all(c['Scheme'] == 'https' and c['AutoSwitchDomainOnRetry'] for c in configurations)
     assert 'credential-redline-test-value' not in ''.join(capsys.readouterr())
+
+
+@pytest.mark.parametrize('outcomes,expected,calls', [
+    (['timeout', 75, 0], 0, 3), ([75, 75, 75], 75, 3), ([1], 1, 1),
+])
+def test_stalled_owned_worker_is_bounded_and_only_transient_exits_resume(monkeypatch, outcomes, expected, calls):
+    seen = []
+    def run(args, **kwargs):
+        seen.append((args, kwargs))
+        outcome = outcomes[len(seen)-1]
+        if outcome == 'timeout': raise subprocess.TimeoutExpired(args, kwargs['timeout'])
+        return subprocess.CompletedProcess(args, outcome)
+    monkeypatch.setattr(publisher.subprocess, 'run', run)
+    args = ['--file', '/owned/release.exe', '--key', 'desktop/win-x64/release.exe']
+    assert publisher.run_bounded_upload(args) == expected
+    assert len(seen) == calls
+    assert all(command[-4:] == args and '--transfer-worker' in command and options['timeout'] == 180
+               for command, options in seen)

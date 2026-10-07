@@ -553,21 +553,34 @@ noise, echo suppression, soft speech and real-task voice acceptance remain manua
 ### Publication transport follow-up
 
 Paired runs37568050308 and37572064546 passed all three native consumers and
-both Mac payload/App notarization and Gatekeeper checks, but Mac installer COS
-uploads failed with CosClientError. Both runs were cancelled; all five52 installer
-objects still returned404 and all three public feeds remained51 after cancellation.
-The shared Mac/Windows uploader now limits multipart concurrency to four, enables
-the SDK's official-domain retry, prefers the verified Tencent tencentcos.cn route
-and performs one bounded transport-only resume through the classic domain.
-HTTPS, MD5, original public HEAD size and
-binary-before-feed gates remain required. Service/auth errors and wrong public
-sizes still fail; signed SDK error details are suppressed.
+both Mac payload/App notarization and Gatekeeper, but COS installer uploads
+failed. PR375's forced backup-domain strategy passed real HK-host SDK/CLI and
+multipart canaries, then run37577407869 completed zero arm64 installer parts at
+06:13 and06:16 UTC after starting at06:07. This disproved using the HK canary as
+proof of GitHub-runner large-file throughput. The stalled paired run was
+cancelled; all five52 installer objects still returned404 and all three feeds51.
+The first classic-route attempt had uploaded64/65 parts; its proof was incomplete,
+not a published installer.
 
-Twelve uploader tests pass. Removing either the backup route or transport resume
-produces uniquely landed failing regressions before restoration. A real1.9.44 SDK
-canary injected a primary-domain connection failure, uploaded a50-byte owned
-synthetic object through the official backup domain, verified its anonymous full
-body hash and deleted it. This proves domain failover, not large multipart
-throughput from GitHub runners. A new synchronized production run and all public
-readbacks are still required before marking52 published. Runtime source/minimum
-shell and the application version remain unchanged because52 had no public files.
+The shared Mac/Windows uploader now uses1MiB parts and eight workers on the
+classic endpoint, with the SDK's official-domain network retry. It resumes
+hash-verified multipart state after a transient failure. Each owned transfer child
+is bounded to180s, with at most three children per invocation; a timeout kills and
+waits for that child before retry. Completed remote parts survive and are verified
+against the same local file before reuse. Progress logs contain only the owned
+object key and byte counts. Direct service/file errors stop the bounded parent;
+SDK error details remain suppressed. HTTPS, MD5, canonical anonymous HEAD exact
+size and binary-before-feed gates remain required. The existing outer Windows
+publisher budget is retained; no successful build or partial upload counts as
+publication.
+
+Fourteen uploader tests pass. Removing SDK domain failover, multipart resume or
+the child deadline produces uniquely landed failing regressions; restoring source
+and clearing compiled bytecode restores green. Real SDK1.9.44 canaries validate
+injected primary-route failure and the actual bounded CLI. A16777261-byte synthetic
+multipart file with injected part2 failure resumes verified parts1/3-17 and only
+uploads the missing part, then its anonymous full-body hash matches. All owned
+probe objects are deleted. These prove HK-host protocol and lifecycle correctness,
+not GitHub-runner throughput. A new synchronized run and public readbacks remain
+required. Engine source/minimum shell and Desktop0.17.52 remain unchanged because
+no52 public installer exists.
