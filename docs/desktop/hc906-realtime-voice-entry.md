@@ -409,3 +409,43 @@ matching with substring matching. Each uniquely landed fault must fail a
 behavior assertion before restoring source. No server protocol/persona change
 is needed here: the 0.17.50 embedded engine remains 40d4bee9. This does not claim
 physical microphone or every possible ASR spelling acceptance.
+
+## Single App notarization and 0.17.51 recovery
+
+The paired 0.17.50 run37541633454 completed Windows publication and all three
+native engine consumer proofs. Its first Mac attempt hit an Apple 30-minute
+processing timeout (arm64) and CFNetwork -1001 (x64). The same-SHA retry accepted
+both runtime payloads and passed fresh/F8/RPC/reopen/rollback/data checks. The
+arm64 outer-App log then reported electron-builder's `notarization successful`
+at 2026-10-07 00:02 UTC, followed by a second submission from the configured
+`afterSign` hook. That duplicate failed with CFNetwork -1009 / no network route.
+This is not a successful paired Desktop release: Windows feed advanced to
+0.17.50, both Mac feeds remained 0.17.48 and Runtime default remained ba8e344e.
+The incomplete run is cancelled before starting its replacement.
+
+Production now explicitly enables electron-builder's built-in Mac notarization
+and registers no second `afterSign` submitter. Native runtime-payload notarization
+is a distinct required gate; the signed/notarized App and distribution DMG
+checks remain required by the unchanged paired workflow. Standalone old CJS/MJS
+helpers are not registered in production. Windows had no effective Mac hook and
+keeps its existing native/PE/unsigned-installer checks.
+
+The installed app-builder-lib helper and hook resolver/emitter are exercised
+with a controlled Apple client: exactly one App request is made, no afterSign
+handler is registered, and client rejection propagates. Restoring the old
+structured afterSign field or disabling Mac notarization must make this guard
+fail, with each mutation independently asserted before testing. This fixture
+does not prove actual Apple service availability; the replacement native
+release must still pass signed/notarized package and public-feed checks.
+
+The complete replacement version is 0.17.51, so an already public Windows
+0.17.50 installer is not silently replaced by different source under the same
+filename/version. All platforms retain voice engine 40d4bee9 and pin minimum
+Desktop 0.17.51; source tarball bytes are unchanged.
+
+Smoke from `apps/desktop`:
+
+```sh
+node --test scripts/desktop-macos-workflow.test.cjs
+npm run test:release-gates
+```
