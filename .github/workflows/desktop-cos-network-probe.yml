@@ -1,0 +1,41 @@
+name: Desktop COS transport diagnostic
+
+# Manual data-only diagnostic. All objects are generated nonces and removed;
+# it cannot advance an installer, updater feed or runtime default.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  network-probe:
+    name: COS generated fixture (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac-arm64
+            runner: macos-14
+          - platform: mac-x64
+            runner: macos-15-intel
+          - platform: win-x64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+      COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+    steps:
+      - name: Checkout exact diagnostic producer
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.11'
+      - name: Install pinned COS SDK
+        shell: bash
+        run: python -m pip install --quiet cos-python-sdk-v5==1.9.44
+      - name: Verify actual bounded uploader and remove owned generated objects
+        shell: bash
+        run: python scripts/release/desktop-cos-network-probe.py --platform '${{ matrix.platform }}' --run-id '${{ github.run_id }}'

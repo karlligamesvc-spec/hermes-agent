@@ -584,3 +584,10 @@ probe objects are deleted. These prove HK-host protocol and lifecycle correctnes
 not GitHub-runner throughput. A new synchronized run and public readbacks remain
 required. Engine source/minimum shell and Desktop0.17.52 remain unchanged because
 no52 public installer exists.
+
+The manual Desktop COS transport diagnostic runs the same bounded uploader on
+macos-14 arm64, macos-15-intel and windows-latest with a generated16MiB nonce. It
+verifies anonymous full-body SHA256 and removes only that exact generated key and
+its incomplete uploads. It never writes installer names, updater feeds, runtime
+defaults or customer data. Run this diagnostic after CI before the next complete
+paired build; its GitHub-host results are the missing network evidence.
