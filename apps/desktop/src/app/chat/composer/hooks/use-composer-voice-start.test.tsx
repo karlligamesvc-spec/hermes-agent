@@ -98,6 +98,37 @@ it('forwards the real prompt.submit rejection to the live delegation owner', asy
   })
 })
 
+it.each(['你查到哪一步了？', '你好呀', '继续查刚才那个', '请停止当前任务'])(
+  'delivers a mid-task utterance to the same primary turn without pressing Stop: %s', async text => {
+    mocks.refresh.mockResolvedValue(null)
+    const onSubmit = vi.fn(async () => true)
+    const onSteer = vi.fn(async () => true)
+    const onInterrupt = vi.fn()
+    renderHook(() => useComposerVoice({
+      busy: true, clearDraft: vi.fn(), disabled: false, focusInput: vi.fn(), insertText: vi.fn(),
+      maxRecordingSeconds: 30, onSubmit, onSteer, onInterrupt, onTranscribeAudio: undefined,
+      sessionId: 'existing-primary-task', target: 'main'
+    }), { wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider> })
+    await expect(mocks.submitDelegation?.(text, `User: ${text}`)).resolves.toBe(true)
+    expect(onSteer).toHaveBeenCalledExactlyOnceWith(text)
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onInterrupt).not.toHaveBeenCalled()
+  }
+)
+
+it('submits normally when the primary turn finishes before the interjection reaches it', async () => {
+  mocks.refresh.mockResolvedValue(null)
+  const onSubmit = vi.fn(async () => true)
+  const onSteer = vi.fn(async () => false)
+  renderHook(() => useComposerVoice({
+    busy: true, clearDraft: vi.fn(), disabled: false, focusInput: vi.fn(), insertText: vi.fn(),
+    maxRecordingSeconds: 30, onSubmit, onSteer, onTranscribeAudio: undefined,
+    sessionId: 'primary-settle-race', target: 'main'
+  }), { wrapper: ({ children }) => <I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider> })
+  await expect(mocks.submitDelegation?.('那结果呢？', 'User: 那结果呢？')).resolves.toBe(true)
+  expect(onSubmit).toHaveBeenCalledExactlyOnceWith('那结果呢？', { surface: 'voice-live', voiceContext: 'User: 那结果呢？' })
+})
+
 it.each(['resolved', 'cancelled', 'scope-changed', 'qwen-unavailable'] as const)(
   'voice waits for native admission before opening a microphone: %s',
   async outcome => {

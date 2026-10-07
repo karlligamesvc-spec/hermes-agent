@@ -36,6 +36,7 @@ const EMPTY_PROGRESS: DesktopUpdateProgress = {
 export const $desktopUpdateProgress = atom<DesktopUpdateProgress>(EMPTY_PROGRESS)
 
 let resumePromise: Promise<void> | null = null
+let attemptedAutomaticPlan: string | null = null
 let runtimeProgressSubscribed = false
 let shellProgressSubscribed = false
 
@@ -280,7 +281,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
   }
 }
 
-export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): Promise<void> {
+export function resumeDesktopUpdatePlan(options: { reload?: () => void; automatic?: boolean } = {}): Promise<void> {
   if (resumePromise) {
     return resumePromise
   }
@@ -293,6 +294,13 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void } = {}): 
 
     if (!plan) {
       return
+    }
+
+    if (options.automatic) {
+      const identity = JSON.stringify([plan.planId || 'legacy', plan.targetShellVersion, plan.targetRuntimeKey, plan.targetRuntimeVersion])
+
+      if (attemptedAutomaticPlan === identity) {return}
+      attemptedAutomaticPlan = identity
     }
 
     await transitionPlanSafely({ incrementAttempt: true, phase: 'resuming' })

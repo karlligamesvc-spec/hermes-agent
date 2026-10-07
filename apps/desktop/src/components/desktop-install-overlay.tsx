@@ -480,7 +480,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
 
   useEffect(() => {
     if (enabled) {
-      void resumeDesktopUpdatePlan()
+      void resumeDesktopUpdatePlan({ automatic: true })
     }
   }, [enabled])
 

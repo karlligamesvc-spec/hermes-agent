@@ -1,5 +1,5 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopBootstrapEvent, DesktopBootstrapStageDescriptor, DesktopBootstrapState } from '@/global'
 import { $desktopUpdateProgress } from '@/store/desktop-update'
@@ -77,6 +77,40 @@ afterEach(() => {
 })
 
 describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restoration)', () => {
+  it('keeps a failed automatic continuation stopped across enable and mount changes until Retry', async () => {
+    const desktop = stubDesktop()
+    const applyUpdate = vi.fn(async () => ({ ok: false, error: 'owned overlay failure' }))
+    Object.assign(window.hermesDesktop!, {
+      getVersion: async () => ({ appVersion: '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: 'old', version: 'old', treeMatchesMarker: true }),
+        checkUpdate: async () => ({ ok: true, updateAvailable: true, current: { key: 'old' }, latest: { key: 'new', version: 'new engine' } }),
+        applyUpdate
+      },
+      updateCenter: {
+        getPlan: async () => ({ planId: 'overlay-failure-one-attempt', kind: 'runtime-after-shell', targetShellVersion: '0.18.0', targetRuntimeKey: 'new', targetRuntimeVersion: 'new engine' }),
+        transitionPlan: async () => ({ ok: true })
+      }
+    })
+    try {
+      const view = render(<DesktopInstallOverlay />)
+      await screen.findAllByText('owned overlay failure')
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      view.rerender(<DesktopInstallOverlay enabled={false} />)
+      view.rerender(<DesktopInstallOverlay enabled />)
+      await act(async () => {})
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      view.unmount()
+      render(<DesktopInstallOverlay />)
+      await act(async () => {})
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }))
+      await waitFor(() => expect(applyUpdate).toHaveBeenCalledTimes(2))
+    } finally {
+      desktop.restore()
+    }
+  })
+
   it('shows the update copy -- not the first-install copy -- when the manifest carries updateInfo', async () => {
     const desktop = stubDesktop()
 

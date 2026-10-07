@@ -73,7 +73,11 @@ LIVE_PERSONA = (
 VOICE_LIVE_TURN_NOTE = (
     "[Note: this message is a delegation from a live spoken conversation. The text is a voice "
     "transcript (it may contain mis-hearings, hesitations and later corrections; use the latest "
-    "intent). Your reply will be spoken aloud by a voice model that paraphrases it: answer in plain "
+    "intent). You are the same primary assistant responsible for the text conversation. Decide "
+    "from this conversation's context whether to answer socially, ask for clarification, or execute "
+    "a real request with your tools. Do not launch work for greetings or unclear fragments. A new "
+    "utterance does not cancel existing work unless the user asks to stop or replace it. "
+    "Your reply will be read aloud by the voice layer: answer in plain "
     "conversational sentences, keep it short (a few sentences unless the user asked for detail), no "
     "markdown, no lists, no code blocks, no URLs read out character by character. Do the work with "
     "your tools as usual; only the final facts need to be spoken. Do not claim an action succeeded "

@@ -36,6 +36,8 @@ export interface PackagedRuntimeOptions {
   resourcesPath: string
   hermesHome: string
   desktopVersion: string
+  /** Exact source accepted by the user in the existing update transaction. */
+  confirmedRuntimeCommit?: string | null
   platform?: NodeJS.Platform
   arch?: string
   extract: (archive: string, destination: string) => Promise<void>
@@ -158,7 +160,7 @@ function actualCommit(root: string): string | null {
 }
 
 /** A marker may provide ordering only when the actual installed source agrees. */
-export function packagedRuntimeDecision(root: string, release: PackagedRuntimeRelease, usable: boolean) {
+export function packagedRuntimeDecision(root: string, release: PackagedRuntimeRelease, usable: boolean, confirmedRuntimeCommit?: string | null) {
   const commit = actualCommit(root)
 
   if (!usable) {return 'install' as const}
@@ -170,6 +172,8 @@ export function packagedRuntimeDecision(root: string, release: PackagedRuntimeRe
 
     return embedded && (embedded.runtime_commit !== commit || embedded.key !== commit.slice(0, 12)) ? 'install' as const : 'current' as const
   }
+  // Same-day release labels cannot establish chronological source ordering.
+  if (confirmedRuntimeCommit === release.runtime_commit) {return 'install' as const}
   const marker = readJson(path.join(root, MARKER))
   const matches = commit && typeof marker?.pinnedCommit === 'string' && marker.pinnedCommit.length >= 7 && commit.startsWith(marker.pinnedCommit)
   const order = matches && /^v\d{4}\.\d{1,2}\.\d{1,2}-fork\.[a-f0-9]+$/.test(marker.version) ? compareSemver(marker.version, release.runtime_version) : null
@@ -372,7 +376,7 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
   const log = (message: string) => { try { options.log?.(message) } catch { /* Logging cannot undo a committed engine. */ } }
   const { release, manifest, archivePath } = readPackagedRuntime(options.resourcesPath, options.platform, options.arch)
   const activeRoot = layout.bundlePaths(hermesHome).activeLink
-  let decision = packagedRuntimeDecision(activeRoot, release, existingUsable)
+  let decision = packagedRuntimeDecision(activeRoot, release, existingUsable, options.confirmedRuntimeCommit)
   const installed = readJson(path.join(activeRoot, '.bundle-manifest.json'))
 
   if (decision === 'current' && installed && !isDeepStrictEqual(installed.files_index, manifest.files_index)) {

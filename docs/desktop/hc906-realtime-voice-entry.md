@@ -449,3 +449,103 @@ Smoke from `apps/desktop`:
 node --test scripts/desktop-macos-workflow.test.cjs
 npm run test:release-gates
 ```
+
+
+## Same-day confirmed engine update and bounded continuation
+
+The physical macOS update from0.17.48 to0.17.51 installed the new shell but retained
+engineba8e344e. Both engine labels were from2026.10.6; the existing calendar-version comparator correctly treats them
+as equal, but the package consumer did not honor the exact user-confirmed source. Offline
+preparation repeatedly returned preserved, while the renderer retried the frozen
+plan415 times before a lookup timed out with no_admin_latest_available. The
+primary error was failure to apply the confirmed source, not proof that the public latest API was absent.
+
+Automatic source ordering retains the existing calendar-version comparator.
+A usable same-day or unknown engine remains intact by default. The existing
+user-confirmed update override can authorize exactly the source present in the
+verified package; an absent or mismatched confirmation does not override that
+preservation. Archive, index, relocation, native architecture/import, idle-owner,
+minimum-shell and post-switch rollback checks still run. The Electron boot owner
+passes that confirmed source into its existing shared installation gate.
+
+Automatic frozen-plan continuation runs at most once for that plan in a renderer
+lifetime, including overlay remounts. A deliberate Retry may attempt again. This
+prevents boot failures from turning into an unbounded request/install loop.
+
+Behavior tests cover hash suffixes on both sides of the target, default/wrong-pin
+preservation, confirmed activation, old-tree/user-state retention and bounded
+automatic versus explicit retry. Both regressions were red on the old behavior.
+The full native consumer additionally uses genuine F8 source with a synthetic
+same-day ordering marker, then verifies preservation, explicit upgrade and real
+injected rollback; this does not relabel F8's actual historical release date.
+
+The local recovery used the notarized0.17.51 package's exact engine40d4bee9 through
+the corrected transactional consumer. Its per-file verification, native import
+probe and idle-owner check passed; config/credential/database hashes were unchanged,
+the old tree remained available and the physical App restored gateway Ready plus
+its existing conversations. This is one Mac arm64 recovery, not physical Windows
+acceptance. A paired0.17.52 production replacement carries the installer fix;
+publication and all three public/native readbacks are required before declaring it
+published. Supplier cancelled-usage billing policy remains unchanged; native barge-in now avoids sending a cancellation.
+
+
+## Unified primary voice ownership — 0.17.52 candidate
+
+Every completed native ASR utterance now submits its original text to the current
+APEX primary conversation. Greetings, unclear fragments, follow-ups and executable
+requests use the same model, history, tools and approval flow. The primary's turn
+note asks it to answer dialogue, clarify ambiguity and execute clear requests,
+while preserving existing work unless the user asks to stop or replace it. This
+is contextual model judgment, not a keyword classifier or a claim of perfect
+intent recognition.
+
+Qwen's current Flash and Plus servers ignore an attempted server_vad
+create_response=false option and still infer automatically. The shipping protocol
+instead sets turn_detection=null and tools=[] on the native server. Local PCM
+boundaries retain 500ms onset audio, require 200ms sustained input, commit after
+1500ms silence and cap one input at45s. These controls only decide an audio
+boundary, never task intent. Commit performs ASR without requesting inference.
+Only the accepted primary result adds readback text and explicitly requests audio.
+Unsolicited/interrupted response media are suppressed. Barge-in immediately stops
+local playback but lets supplier inference finish to its actual usage receipt; it
+does not send response.cancel. The acknowledgement-gap flag also suppresses an
+old response that is created only after the new speech has already ended. A late older ASR item updates
+chronological captions without superseding or re-submitting newer intent. The
+client requires a primary-owner readiness marker supplied by the pinned native
+server, so a provider ack that omits null fields remains compatible; an old
+automatic-response engine is refused before starting PCM capture.
+
+Mid-task speech uses the existing primary redirect seam, which retains completed
+work and reaches a running tool at its safe boundary. It does not press Stop.
+A finish race falls back to ordinary submit; a real rejection remains a failure.
+Explicit whole-utterance voice close still tears down the call before submission.
+Uncommitted 100ms silence every30s keeps the provider audio channel alive during
+long primary work; it never becomes a user message, completion or model request.
+Captions retain the existing default-expanded main panel on Home and historical
+chats, and retain deliberate collapse until a new call.
+
+Both actual vendor models accepted the candidate's imported server configuration:
+synthetic PCM committed to ASR without any automatic response, then both read the
+exact supplied result “目前拿到部分样本，完整榜单尚未核对。” with completed audio and
+usage. This is a controlled protocol canary, not physical microphone acceptance
+or a real cloud-account/tool permission check. Deterministic transport/hook tests
+cover the same original-text dispatch, returned result, 330s pending work, replay,
+barge-in, stale ASR, scope change, close, malformed input and cleanup. Six uniquely
+landed routing faults and three installer faults fail their behavioral regressions
+before restoration. The earlier hash-order mutation correctly stayed green: the
+old comparator already ignores suffixes; that redundant ordering change was removed.
+
+The production Relay canary validates candidate native serve, ASR during readback,
+normal completed usage and subsequent result speech on the isolated internal
+probe Agent. A refused immediate second call was not bypassed: the canary waits
+for the normal bounded hangup drain before opening the next model.
+
+Runtime source: d4a31394f437a669ba0ff9ef6902ef22cecacbeb. Minimum shell:0.17.52.
+The immutable source archive and synchronized three-platform build/publish proofs
+are required before marking the candidate published. Both real Flash/Plus canaries committed a synthetic interjection while readback
+was active, obtained the new ASR and a completed old response with full usage,
+without sending cancellation. No estimated usage or user-credit waiver is needed
+for this continuation fix. Explicit supplier cancellation/disconnection can still
+omit usage; existing fail-closed credit policy remains in force. No pricing, quota, Relay or
+Scheduler policy is silently changed by this Desktop release. Physical ASR in
+noise, echo suppression, soft speech and real-task voice acceptance remain manual.

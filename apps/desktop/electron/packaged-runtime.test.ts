@@ -326,6 +326,23 @@ nativeTest('newer or unknown healthy engine is preserved, including a lying vers
   })
 })
 
+nativeTest('an explicitly confirmed source can replace a same-day engine without ordering commit hashes', async () => {
+  for (const previous of ['1'.repeat(40), 'f'.repeat(40)]) {
+    await withHome(async (home, options) => {
+      const root = legacy(home, previous, `v2026.10.1-fork.${previous.slice(0, 8)}`)
+      fs.writeFileSync(path.join(home, 'state.db'), 'existing user database')
+      assert.equal((await installPackagedRuntime(options, true)).status, 'preserved')
+      assert.equal((await installPackagedRuntime({ ...options, confirmedRuntimeCommit: 'e'.repeat(40) }, true)).status, 'preserved')
+      assert.equal(fs.readFileSync(path.join(root, '.hermes-source-commit'), 'utf8'), previous)
+      const result = await installPackagedRuntime({ ...options, confirmedRuntimeCommit: commit }, true)
+      assert.equal(result.status, 'installed')
+      assert.equal(result.runtimeCommit, commit)
+      assert.equal(fs.readFileSync(path.join(home, 'state.db'), 'utf8'), 'existing user database')
+      assert.equal(fs.readFileSync(path.join(home, 'hermes-agent.legacy', '.hermes-source-commit'), 'utf8'), previous)
+    })
+  }
+})
+
 nativeTest('same source-only legacy install probes its actual venv before reporting current', async () => {
   await withHome(async (home, options) => {
     const old = legacy(home, commit, release.runtime_version)

@@ -5535,6 +5535,7 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
       resourcesPath: process.resourcesPath,
       hermesHome: HERMES_HOME,
       desktopVersion: app.getVersion(),
+      confirmedRuntimeCommit: readRuntimePinOverride()?.commit,
       extract: extractBundleArchive,
       runTool: runBundledTool,
       assertCurrent: () => localBackendLifecycle.assertCanStart(),
