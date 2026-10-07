@@ -88,12 +88,17 @@ def test_runtime_ws_captures_profile_connection_before_awaiting(client, homes, m
 
 def test_runtime_protocol_pins_vendor_config_and_passes_tool_results(monkeypatch):
     captured = []
+    ready = asyncio.Event()
     class Vendor:
         def __init__(self): self.queue = asyncio.Queue()
         async def __aenter__(self): return self
         async def __aexit__(self, *args): return False
         async def recv(self): return json.dumps({'type': 'session.created'})
-        async def send(self, text): captured.append(json.loads(text))
+        async def send(self, text):
+            event = json.loads(text)
+            captured.append(event)
+            if event.get('type') == 'session.update':
+                await self.queue.put(json.dumps({'type': 'session.updated', 'session': {'id': 'provider-omits-null-fields'}}))
         def __aiter__(self): return self
         async def __anext__(self): return await self.queue.get()
     vendor = Vendor()
@@ -111,13 +116,20 @@ def test_runtime_protocol_pins_vendor_config_and_passes_tool_results(monkeypatch
             {'role': 'developer', 'content': [{'text': '旧指令不覆盖实时会话权限'}]},
             {'role': 'tool', 'content': [{'text': '旧工具结果不伪造语音工具回执'}]},
             {'role': 'user', 'content': [{'text': '继续'}]}]}
-        async def send_json(self, event): assert event['type'] == 'session.created'
+        async def send_json(self, event):
+            if event['type'] == 'session.updated':
+                assert event['session'] == {'id': 'provider-omits-null-fields'}
+                assert event['apex_voice_owner'] == 'primary'
+                ready.set()
+            else:
+                assert event['type'] == 'session.created'
         async def send_text(self, text): pass
         async def receive_text(self):
             if not getattr(self, 'sent', False):
                 self.sent = True
                 return json.dumps({'type': 'conversation.item.create', 'item': {
                     'type': 'function_call_output', 'call_id': 'call-a', 'output': '真实结果'}})
+            await asyncio.wait_for(ready.wait(), 1)
             raise WebSocketDisconnect()
     asyncio.run(voice.serve(Browser(), ('profile-key', voice.RELAY_BASE, {'model': voice.DEFAULT_MODEL, 'voice': voice.DEFAULT_VOICE})))
     assert captured[0] == voice.session_config({'voice': voice.DEFAULT_VOICE})

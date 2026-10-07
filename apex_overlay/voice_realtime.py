@@ -133,7 +133,15 @@ async def serve(ws: WebSocket, connection: tuple[str, str, dict]) -> None:
 
             async def relay_to_client():
                 async for text in upstream:
-                    await ws.send_text(text)
+                    event = json.loads(text)
+                    if event.get('type') == 'session.updated':
+                        # Providers can omit null config fields in their ack.
+                        # Protocol ownership comes from this pinned native server,
+                        # not from an optional vendor echo of turn_detection.
+                        event['apex_voice_owner'] = 'primary'
+                        await ws.send_json(event)
+                    else:
+                        await ws.send_text(text)
 
             tasks = [asyncio.create_task(client_to_relay()), asyncio.create_task(relay_to_client())]
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
