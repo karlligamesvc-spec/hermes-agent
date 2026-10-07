@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import re
 import sys
+import subprocess
+import urllib.error
 import urllib.request
 
 BUCKET = 'apexnodes-runtime-202606250443-1300912302'
@@ -33,10 +35,17 @@ def upload_and_verify(local: Path, key: str, client) -> dict:
         for chunk in iter(lambda: stream.read(1024 * 1024), b''):
             digest.update(chunk)
     sha256 = digest.hexdigest()
+    reported = 0
+    def report_progress(finished, total):
+        nonlocal reported
+        if finished == total or finished - reported >= 64 * 1024 * 1024:
+            reported = finished
+            print(f'Desktop COS progress: {key} {finished}/{total} bytes', flush=True)
     client.upload_file(
         Bucket=BUCKET, Key=key, LocalFilePath=str(local),
-        PartSize=8, MAXThread=4, EnableMD5=True,
+        PartSize=1, MAXThread=8, EnableMD5=True,
         Metadata={'sha256': sha256},
+        progress_callback=report_progress,
     )
     with urllib.request.urlopen(urllib.request.Request(BASE + '/' + key, method='HEAD'), timeout=60) as response:
         if response.status != 200 or int(response.headers.get('Content-Length', '-1')) != size:
@@ -59,12 +68,13 @@ def main() -> int:
     # SDK exception logging may include signed headers. Keep diagnostics below
     # limited to classes and the owned object key.
     logging.getLogger('qcloud_cos').setLevel(logging.CRITICAL)
-    # Prefer the official route that passed the live failover canary; retrying
-    # every part on the repeatedly failing classic route exhausts CI's budget.
-    for attempt, domain in enumerate((BACKUP_DOMAIN, None), start=1):
+    # The classic route previously uploaded 64/65 large-file parts from CI.
+    # The forced backup route passed HK canaries but completed zero CI parts.
+    # Let the SDK switch official domains only when a request actually fails.
+    for attempt in range(1, 3):
         client = CosS3Client(CosConfig(
             Region=REGION, SecretId=identity, SecretKey=secret,
-            Scheme='https', Timeout=120, Domain=domain,
+            Scheme='https', Timeout=60,
             AutoSwitchDomainOnRetry=True,
         ))
         try:
@@ -74,18 +84,45 @@ def main() -> int:
                 raise
             # The SDK verifies matching local part hashes before resuming an
             # incomplete multipart upload. Service/auth errors do not retry.
-            print(f'Desktop COS transport failed; resuming via the other official domain: {args.key}', flush=True)
+            print(f'Desktop COS transport failed; resuming verified multipart state: {args.key}', flush=True)
             continue
         print(result, flush=True)
         return 0
     return 1
 
 
+def run_bounded_upload(argv: list[str]) -> int:
+    # A dead multipart batch otherwise processes every queued part before the
+    # SDK returns. Kill only this owned child; completed server parts survive
+    # and the next worker verifies their hashes before resuming the same file.
+    for attempt in range(1, 4):
+        try:
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()), '--transfer-worker', *argv],
+                timeout=180, check=False,
+            )
+        except subprocess.TimeoutExpired:
+            print(f'Desktop COS worker timed out; preserving resumable parts ({attempt}/3)', flush=True)
+            continue
+        if result.returncode != 75:
+            return result.returncode
+    return 75
+
+
 if __name__ == '__main__':
+    if '--transfer-worker' not in sys.argv:
+        sys.exit(run_bounded_upload(sys.argv[1:]))
+    sys.argv.remove('--transfer-worker')
     try:
         sys.exit(main())
     except Exception as exc:
         # SDK exception details can contain signed request headers. CI needs
         # the failure class, never credential-bearing diagnostic data.
         print(f'Desktop COS publish failed: {type(exc).__name__}', file=sys.stderr)
-        sys.exit(1)
+        try:
+            from qcloud_cos.cos_exception import CosClientError
+            transient = isinstance(exc, CosClientError)
+        except ImportError:
+            transient = False
+        transient |= isinstance(exc, urllib.error.URLError) and not isinstance(exc, urllib.error.HTTPError)
+        sys.exit(75 if transient else 1)
