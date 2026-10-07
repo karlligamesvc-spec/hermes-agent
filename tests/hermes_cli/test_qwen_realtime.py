@@ -121,11 +121,9 @@ def test_runtime_protocol_pins_vendor_config_and_passes_tool_results(monkeypatch
             raise WebSocketDisconnect()
     asyncio.run(voice.serve(Browser(), ('profile-key', voice.RELAY_BASE, {'model': voice.DEFAULT_MODEL, 'voice': voice.DEFAULT_VOICE})))
     assert captured[0] == voice.session_config({'voice': voice.DEFAULT_VOICE})
-    assert captured[0]['session']['tools'][0]['function']['name'] == 'apex_assistant'
+    assert captured[0]['session']['tools'] == []
     # Inspect the actual wire config independently of the production builder.
-    assert captured[0]['session']['turn_detection'] == {
-        'type': 'server_vad', 'threshold': 0.5, 'silence_duration_ms': 1500,
-    }
+    assert captured[0]['session']['turn_detection'] is None
     assert captured[1]['item']['content'] == [{'type': 'input_text', 'text': '刚才的任务'}]
     assert captured[2]['item'] == {
         'type': 'message', 'role': 'assistant',
