@@ -59,7 +59,9 @@ def main() -> int:
     # SDK exception logging may include signed headers. Keep diagnostics below
     # limited to classes and the owned object key.
     logging.getLogger('qcloud_cos').setLevel(logging.CRITICAL)
-    for attempt, domain in enumerate((None, BACKUP_DOMAIN), start=1):
+    # Prefer the official route that passed the live failover canary; retrying
+    # every part on the repeatedly failing classic route exhausts CI's budget.
+    for attempt, domain in enumerate((BACKUP_DOMAIN, None), start=1):
         client = CosS3Client(CosConfig(
             Region=REGION, SecretId=identity, SecretKey=secret,
             Scheme='https', Timeout=120, Domain=domain,
@@ -72,7 +74,7 @@ def main() -> int:
                 raise
             # The SDK verifies matching local part hashes before resuming an
             # incomplete multipart upload. Service/auth errors do not retry.
-            print(f'Desktop COS transport failed; resuming via official backup domain: {args.key}', flush=True)
+            print(f'Desktop COS transport failed; resuming via the other official domain: {args.key}', flush=True)
             continue
         print(result, flush=True)
         return 0

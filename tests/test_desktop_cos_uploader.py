@@ -76,9 +76,9 @@ class CosS3Client:
     assert 'credential-redline-test-value' not in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize('transport_failure,served_size', [(True, 3), (True, 2), (False, 3)])
+@pytest.mark.parametrize('failed_route,served_size', [('backup', 3), ('backup', 2), ('service', 3), ('classic', 3)])
 def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, monkeypatch, capsys,
-                                                                 transport_failure, served_size):
+                                                                 failed_route, served_size):
     local = tmp_path / 'APEX-0.17.52-win-x64.exe'
     local.write_bytes(b'MZx')
     monkeypatch.setattr(sys, 'argv', [str(SCRIPT), '--file', str(local), '--key',
@@ -96,8 +96,9 @@ def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, mo
             self.config = config
         def upload_file(self, **kwargs):
             uploads.append(kwargs)
-            if self.config['Domain'] != publisher.BACKUP_DOMAIN:
-                error = CosClientError if transport_failure else PermissionError
+            route = 'classic' if self.config['Domain'] is None else 'backup'
+            if failed_route == 'service' or route == failed_route:
+                error = PermissionError if failed_route == 'service' else CosClientError
                 raise error('credential-redline-test-value')
     sdk.CosS3Client = Client
     monkeypatch.setitem(sys.modules, 'qcloud_cos', sdk)
@@ -106,7 +107,7 @@ def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, mo
         status = 200
         headers = {'Content-Length': str(served_size)}
     monkeypatch.setattr(publisher.urllib.request, 'urlopen', lambda *a, **k: Response())
-    if not transport_failure:
+    if failed_route == 'service':
         with pytest.raises(PermissionError): publisher.main()
         assert len(uploads) == 1
     elif served_size != 3:
@@ -114,9 +115,10 @@ def test_cli_transport_failover_keeps_service_and_public_size_gates(tmp_path, mo
         assert len(uploads) == 2
     else:
         assert publisher.main() == 0
-        assert len(uploads) == 2 and uploads[0] == uploads[1]
+        assert len(uploads) == (1 if failed_route == 'classic' else 2)
+        assert all(upload == uploads[0] for upload in uploads)
         assert uploads[0]['EnableMD5'] and uploads[0]['MAXThread'] <= 4
-        assert configurations[0]['Domain'] is None
-        assert configurations[1]['Domain'] == publisher.BACKUP_DOMAIN
+        assert configurations[0]['Domain'] == publisher.BACKUP_DOMAIN
+        if len(configurations) == 2: assert configurations[1]['Domain'] is None
         assert all(c['Scheme'] == 'https' and c['AutoSwitchDomainOnRetry'] for c in configurations)
     assert 'credential-redline-test-value' not in ''.join(capsys.readouterr())

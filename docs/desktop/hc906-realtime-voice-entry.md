@@ -557,12 +557,13 @@ both Mac payload/App notarization and Gatekeeper checks, but Mac installer COS
 uploads failed with CosClientError. Both runs were cancelled; all five52 installer
 objects still returned404 and all three public feeds remained51 after cancellation.
 The shared Mac/Windows uploader now limits multipart concurrency to four, enables
-the SDK's official-domain retry and performs one bounded transport-only resume
-through Tencent's tencentcos.cn domain. HTTPS, MD5, original public HEAD size and
+the SDK's official-domain retry, prefers the verified Tencent tencentcos.cn route
+and performs one bounded transport-only resume through the classic domain.
+HTTPS, MD5, original public HEAD size and
 binary-before-feed gates remain required. Service/auth errors and wrong public
 sizes still fail; signed SDK error details are suppressed.
 
-Eleven uploader tests pass. Removing either the backup route or transport resume
+Twelve uploader tests pass. Removing either the backup route or transport resume
 produces uniquely landed failing regressions before restoration. A real1.9.44 SDK
 canary injected a primary-domain connection failure, uploaded a50-byte owned
 synthetic object through the official backup domain, verified its anonymous full
