@@ -11,6 +11,7 @@ vi.mock('@/lib/voice-playback', () => ({
 class Socket {
   static OPEN = 1
   static latest: Socket
+  static manualMode = true
   readyState = 1
   sent: Record<string, unknown>[] = []
   onopen: (() => void) | null = null
@@ -27,13 +28,13 @@ class Socket {
     this.sent.push(event)
 
     if (event.type === 'apex.start') {
-      this.onmessage?.({ data: '{"type":"session.updated"}' })
+      this.onmessage?.({ data: JSON.stringify({ type: 'session.updated', session: { turn_detection: Socket.manualMode ? null : { type: 'server_vad' } } }) })
     }
   }
 }
 
 const track = { stop: vi.fn(), enabled: true }
-const recorder = { onaudioprocess: null, connect: vi.fn(), disconnect: vi.fn() }
+const recorder = { onaudioprocess: null as null | ((event: { inputBuffer: { getChannelData: () => Float32Array } }) => void), connect: vi.fn(), disconnect: vi.fn() }
 const source = { onended: null, buffer: null, connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() }
 const closeContext = vi.fn(async () => undefined)
 
@@ -54,6 +55,7 @@ class Context {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  Socket.manualMode = true
   vi.stubGlobal('WebSocket', Socket)
   vi.stubGlobal('AudioContext', Context)
   vi.stubGlobal('navigator', {
@@ -79,287 +81,242 @@ function setup() {
   return { session: new QwenRealtimeSession(handlers), handlers }
 }
 
-describe('Qwen native realtime', () => {
-  it('does not play or caption a premature refusal while Hermes queries, including late deltas from the tool response', async () => {
+function capture(level: number, frames = 1) {
+  for (let i = 0; i < frames; i++) {
+    recorder.onaudioprocess?.({ inputBuffer: { getChannelData: () => new Float32Array(4800).fill(level) } })
+  }
+}
+function asr(session: QwenRealtimeSession, id: string, text: string) {
+  session.receive({ type: 'input_audio_buffer.committed', item_id: id })
+  session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: id, transcript: text })
+}
+function readback(session: QwenRealtimeSession, id: string, text: string) {
+  session.speak(id, text)
+  session.finishDelegation(id)
+}
+const events = (type: string) => Socket.latest.sent.filter(event => event.type === type)
+
+describe('Qwen primary-assistant realtime transport', () => {
+  it('rejects an old automatic-response engine before starting PCM capture', async () => {
+    Socket.manualMode = false
+    const { session, handlers } = setup()
+    await expect(session.start()).rejects.toThrow()
+    expect(events('input_audio_buffer.append')).toHaveLength(0)
+    expect(handlers.onClosed).toHaveBeenCalledOnce()
+    expect(track.stop).toHaveBeenCalledOnce()
+  })
+  it('releases the microphone, graph, playback, socket and callback once on close, ignoring late malformed events', async () => {
     const { session, handlers } = setup()
     await session.start()
-    session.receive({ type: 'response.created', response: { id: 'query-turn' } })
-    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'hot-list',
-      response_id: 'query-turn', arguments: '{"request":"查询抖音热榜"}' })
-    session.receive({ type: 'response.audio_transcript.delta', response_id: 'query-turn', delta: '目前无法获取抖音热榜。' })
-    session.receive({ type: 'response.audio.delta', response_id: 'query-turn', delta: 'AAA=' })
-    session.receive({ type: 'error', error: {
-      message: 'Server VAD turn committed but no response was created because a manual response is already in progress.'
-    } })
-    session.receive({ type: 'response.done', response: { id: 'query-turn' } })
-    expect(Socket.latest.sent.filter(event => event.type === 'response.create')).toHaveLength(0)
-    expect(handlers.onTranscript).not.toHaveBeenCalled()
-    expect(source.start).not.toHaveBeenCalled()
-    const result = '抖音当前热榜我拿到19条，这是本次返回的样本。'
-    session.speak('hot-list', result)
-    session.finishDelegation('hot-list')
-    session.receive({ type: 'response.audio_transcript.delta', response_id: 'query-turn', delta: '请自行打开抖音。' })
-    expect(handlers.onTranscript).not.toHaveBeenCalled()
-    session.receive({ type: 'response.done', response: { id: 'query-turn' } })
-    const output = Socket.latest.sent.find(event => event.type === 'conversation.item.create')
-    expect(output).toEqual({ type: 'conversation.item.create', item: {
-      type: 'function_call_output', call_id: 'hot-list', output: result
-    } })
-    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.create' })
-    session.receive({ type: 'response.created', response: { id: 'result-turn' } })
-    session.receive({ type: 'response.audio_transcript.delta', response_id: 'result-turn', delta: result })
-    session.receive({ type: 'response.audio.delta', response_id: 'result-turn', delta: 'AAA=' })
+    Socket.latest.onmessage?.({ data: 'not valid json' })
+    session.close()
+    expect(handlers.onError).toHaveBeenCalledExactlyOnceWith('语音服务返回了无效数据。', true)
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(recorder.disconnect).toHaveBeenCalledOnce()
+    expect(recorder.onaudioprocess).toBeNull()
+    expect(Socket.latest.close).toHaveBeenCalledOnce()
+    expect(closeContext).toHaveBeenCalledOnce()
+    asr(session, 'late', '已结束的输入')
+    expect(handlers.onDelegation).not.toHaveBeenCalled()
+  })
+  it.each(['你好呀', '空包啊', '你能不能查一下抖音的热榜', '帮我查询腾讯云资源到期情况', '那刚才那个呢？'])(
+    'submits every utterance verbatim once without voice-model classification: %s', async text => {
+      const { session, handlers } = setup()
+      await session.start()
+      expect(String(Socket.latest.url)).toBe('wss://gateway.example/api/audio/qwen-realtime?ticket=fresh&profile=worker')
+      asr(session, 'actual-user', text)
+      asr(session, 'actual-user', text)
+      session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'rewrite', arguments: '{"request":"自行改写的任务"}' })
+      expect(handlers.onDelegation).toHaveBeenCalledExactlyOnceWith('actual-user', [expect.objectContaining({ speaker: 'user', text })])
+      expect(handlers.onTranscript).toHaveBeenCalledOnce()
+      expect(events('response.create')).toHaveLength(0)
+      expect(source.start).not.toHaveBeenCalled()
+      session.close()
+    }
+  )
+  it('commits PCM for ASR without creating a reply, then reads the actual primary result in speech order', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    capture(0, 20)
+    expect(events('input_audio_buffer.append')).toHaveLength(0)
+    capture(0.1, 2)
+    capture(0, 15)
+    expect(events('input_audio_buffer.commit')).toHaveLength(1)
+    expect(events('response.create')).toHaveLength(0)
+    asr(session, 'hot-list', '查询抖音热榜')
+    const result = '抖音当前热榜拿到19条，这是本次返回的样本。'
+    readback(session, 'hot-list', result)
+    expect(events('conversation.item.create')).toEqual([{ type: 'conversation.item.create', item: {
+      type: 'message', role: 'user', content: [{ type: 'input_text', text: `APEX 主助手已返回以下待朗读正文：\n${result}` }]
+    } }])
+    expect(events('response.create')).toHaveLength(1)
+    session.receive({ type: 'response.created', response: { id: 'result' } })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'result', delta: result })
+    session.receive({ type: 'response.audio.delta', response_id: 'result', delta: 'AAA=' })
+    expect(source.start).toHaveBeenCalledOnce()
+    expect(handlers.onTranscript.mock.calls.map(([f]) => [f.speaker, f.text, f.turnOrder])).toEqual([
+      ['user', '查询抖音热榜', 1], ['assistant', result, 2]
+    ])
+    session.close()
+  })
+  it('never plays or captions unsolicited inability claims or stale deltas', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    asr(session, 'question', '查询腾讯云资源')
+    session.receive({ type: 'response.created', response: { id: 'unsolicited' } })
+    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
+    session.receive({ type: 'response.audio_transcript.delta', response_id: 'unsolicited', delta: '无法查询。' })
+    session.receive({ type: 'response.audio.delta', response_id: 'unsolicited', delta: 'AAA=' })
     expect(handlers.onTranscript).toHaveBeenCalledOnce()
-    expect(handlers.onTranscript.mock.calls[0][0].text).toBe(result)
+    expect(source.start).not.toHaveBeenCalled()
+    readback(session, 'question', '账户尚未授权，请先完成授权。')
+    expect(events('response.create')).toHaveLength(0)
+    session.receive({ type: 'response.done', response: { id: 'unsolicited' } })
+    expect(events('response.create')).toHaveLength(1)
+    session.receive({ type: 'response.created', response: { id: 'actual-result' } })
+    session.receive({ type: 'response.audio.delta', response_id: 'unsolicited', delta: 'AAA=' })
+    session.receive({ type: 'response.audio.delta', response_id: 'actual-result', delta: 'AAA=' })
     expect(source.start).toHaveBeenCalledOnce()
     session.close()
   })
-  it('reserves speech chronology before delayed ASR, preserves reply deltas and ignores duplicate user completion', async () => {
-    const { session, handlers } = setup()
-    await session.start()
-    session.receive({ type: 'input_audio_buffer.speech_started', item_id: 'u1' })
-    session.receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'u1' })
-    session.receive({ type: 'response.created', response: { id: 'r1' } })
-    session.receive({ type: 'response.audio_transcript.delta', response_id: 'r1', delta: '你好' })
-    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'u1', transcript: 'Hello，Max。' })
-    session.receive({ type: 'response.audio_transcript.delta', response_id: 'r1', delta: '呀！' })
-    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'u1', transcript: 'Hello，Max。' })
-    session.receive({ type: 'response.done', response: { id: 'r1' } })
-    session.receive({ type: 'input_audio_buffer.speech_started', item_id: 'u2' })
-    session.receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'u2' })
-    session.receive({ type: 'response.created', response: { id: 'r2' } })
-    session.receive({ type: 'response.audio_transcript.delta', response_id: 'r2', delta: '第二次回复' })
-    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'u2', transcript: '第二次提问' })
-
-    const fragments = handlers.onTranscript.mock.calls.map(([fragment]) => fragment)
-    expect(fragments.map(f => [f.text, f.turnOrder])).toEqual([
-      ['你好', 2], ['Hello，Max。', 1], ['呀！', 2], ['第二次回复', 4], ['第二次提问', 3]
-    ])
-    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'work', arguments: '{"request":"执行后续任务"}' })
-    expect(handlers.onDelegation.mock.calls[0][1].map((f: { text: string }) => f.text)).toEqual([
-      'Hello，Max。', '你好', '呀！', '第二次提问', '第二次回复', '执行后续任务'
-    ])
-    session.close()
-  })
-
-  it('uses 16 kHz PCM16 clipping and retains sampling phase between microphone frames', () => {
-    const encoder = new Pcm16Encoder(48_000)
-    const encoded = encoder.encode(new Float32Array([-2, 0, 0, 2, 0, 0]))
-    const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0))
-    const pcm = new DataView(bytes.buffer)
-    expect(pcm.getInt16(0, true)).toBe(-32768)
-    expect(pcm.getInt16(2, true)).toBe(32767)
-    const oddRate = new Pcm16Encoder(44_100)
-    const lengths = Array.from({ length: 10 }, () => atob(oddRate.encode(new Float32Array(441))).length)
-    expect(lengths.reduce((a, b) => a + b, 0)).toBe(3200)
-  })
-
-  it('preserves fresh WS credentials/profile and returns one complete tool result through the current chat', async () => {
-    const { session, handlers } = setup()
-    await session.start()
-    expect(String(Socket.latest.url)).toBe('wss://gateway.example/api/audio/qwen-realtime?ticket=fresh&profile=worker')
-    session.receive({ type: 'conversation.item.input_audio_transcription.completed', transcript: '查天气' })
-
-    const event = {
-      type: 'response.function_call_arguments.done',
-      name: 'apex_assistant',
-      call_id: 'call-a',
-      arguments: '{"request":"查询北京天气"}'
-    }
-
-    session.receive(event)
-    session.receive(event)
-    expect(handlers.onDelegation).toHaveBeenCalledTimes(1)
-    const fragments = handlers.onDelegation.mock.calls[0][1]
-    expect(fragments).toHaveLength(1)
-    expect(fragments[0].text).toBe('查询北京天气')
-    session.speak('call-a', '天气')
-    session.speak('call-a', '服务不可用。')
-    expect(Socket.latest.sent).toHaveLength(1)
-    session.finishDelegation('call-a')
-    expect(Socket.latest.sent[1]).toEqual({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: 'call-a',
-        output: '天气服务不可用。'
-      }
-    })
-    expect(Socket.latest.sent[2]).toEqual({ type: 'response.create' })
-    session.finishDelegation('call-a')
-    expect(Socket.latest.sent).toHaveLength(3)
-    session.close()
-  })
-
-  it('barge-in stops queued audio and ignores late output from the cancelled response', async () => {
+  it('ignores obsolete results and serializes speech until the exact terminal receipt', async () => {
     const { session } = setup()
     await session.start()
+    asr(session, 'old', '之前的问题')
+    asr(session, 'new', '继续刚才的问题')
+    readback(session, 'old', '过时结果')
+    expect(events('response.create')).toHaveLength(0)
+    readback(session, 'new', '真实结果')
+    session.finishDelegation('new')
+    expect(events('response.create')).toHaveLength(1)
+    session.receive({ type: 'response.created', response: { id: 'reading' } })
+    asr(session, 'next', '下一句')
+    readback(session, 'next', '下一句结果')
+    expect(events('response.create')).toHaveLength(1)
+    session.receive({ type: 'response.done', response: { id: 'stale-receipt' } })
+    expect(events('response.create')).toHaveLength(1)
+    session.receive({ type: 'response.done', response: { id: 'reading' } })
+    session.receive({ type: 'response.done', response: { id: 'reading' } })
+    expect(events('response.create')).toHaveLength(2)
+    session.close()
+  })
+  it('inserts delayed older ASR in chronological captions without re-submitting or superseding the newer request', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    capture(0.1, 2)
+    capture(0, 15)
+    session.receive({ type: 'input_audio_buffer.committed', item_id: 'older' })
+    capture(0.1, 2)
+    capture(0, 15)
+    session.receive({ type: 'input_audio_buffer.committed', item_id: 'newer' })
+    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'newer', transcript: '新的要求' })
+    session.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'older', transcript: '旧要求' })
+    expect(handlers.onDelegation).toHaveBeenCalledTimes(1)
+    expect(handlers.onDelegation.mock.calls[0][0]).toBe('newer')
+    expect(handlers.onTranscript.mock.calls.map(([f]) => [f.text, f.turnOrder])).toEqual([['新的要求', 2], ['旧要求', 1]])
+    readback(session, 'newer', '新要求的结果')
+    expect(events('response.create')).toHaveLength(1)
+    session.close()
+  })
+  it('barge-in stops playback, filters cancelled media and captures the complete interjection', async () => {
+    const { session, handlers } = setup()
+    await session.start()
+    asr(session, 'first', '你好')
+    readback(session, 'first', '你好呀')
     session.receive({ type: 'response.created', response: { id: 'r-old' } })
     session.receive({ type: 'response.audio.delta', response_id: 'r-old', delta: 'AAA=' })
-    expect(source.start).toHaveBeenCalledOnce()
-    session.receive({ type: 'input_audio_buffer.speech_started' })
+    capture(0.1, 2)
     expect(source.stop).toHaveBeenCalledOnce()
-    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
+    expect(events('response.cancel')).toHaveLength(1)
     session.receive({ type: 'response.audio.delta', response_id: 'r-old', delta: 'AAA=' })
     expect(source.start).toHaveBeenCalledOnce()
+    capture(0, 15)
+    asr(session, 'followup', '你查到哪一步了？')
+    expect(handlers.onDelegation.mock.calls.at(-1)?.[1].at(-1)?.text).toBe('你查到哪一步了？')
     session.receive({ type: 'response.done', response: { id: 'r-old' } })
-    session.receive({ type: 'input_audio_buffer.speech_stopped' })
+    readback(session, 'followup', '还在查询中。')
     session.receive({ type: 'response.created', response: { id: 'r-new' } })
     session.receive({ type: 'response.audio.delta', response_id: 'r-new', delta: 'AAA=' })
     expect(source.start).toHaveBeenCalledTimes(2)
     session.close()
   })
-
-  it('serializes tool replies and recovers the committed VAD turn without closing capture', async () => {
+  it('does not submit a completed ASR end command after its handler closes the call', async () => {
     const { session, handlers } = setup()
     await session.start()
-
-    const finishTool = (id: string) => {
-      session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: id, arguments: '{"request":"查文件"}' })
-      session.speak(id, '文件查询结果。')
-      session.finishDelegation(id)
-    }
-
-    const creates = () => Socket.latest.sent.filter(event => event.type === 'response.create')
-    session.receive({ type: 'response.created', response: { id: 'tool-turn' } })
-    finishTool('call-a')
-    expect(creates()).toHaveLength(0)
-    session.receive({ type: 'response.done', response: { id: 'tool-turn' } })
-    expect(creates()).toHaveLength(1)
-    // Another tool settles before the first manual response is acknowledged.
-    finishTool('call-b')
-    session.receive({ type: 'response.done', response: { id: 'tool-turn' } })
-    expect(creates()).toHaveLength(1)
-    session.receive({ type: 'response.created', response: { id: 'manual' } })
-    session.receive({ type: 'input_audio_buffer.speech_started' })
-    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
-    session.receive({ type: 'input_audio_buffer.speech_stopped' })
-    session.receive({ type: 'error', error: { message: 'Server VAD turn committed but no response was created because a manual response is already in progress.' } })
-    expect(handlers.onClosed).not.toHaveBeenCalled()
-    expect(handlers.onError).not.toHaveBeenCalled()
-    expect(track.stop).not.toHaveBeenCalled()
-    // Cancellation receipts must still release the response slot.
-    session.receive({ type: 'response.done', response_id: 'manual', response: { id: 'manual' } })
-    expect(creates()).toHaveLength(2)
-    session.receive({ type: 'response.created', response: { id: 'resumed' } })
-    session.receive({ type: 'response.audio.delta', response_id: 'resumed', delta: 'AAA=' })
-    expect(source.start).toHaveBeenCalledOnce()
+    handlers.onTranscript.mockImplementation(() => session.close())
+    asr(session, 'end', 'OK，你关闭吧。')
+    expect(handlers.onDelegation).not.toHaveBeenCalled()
+    expect(track.stop).toHaveBeenCalledOnce()
+  })
+  it('keeps 330-second tool waits alive without user turns or inference, and tears down its timer', async () => {
+    vi.useFakeTimers()
+    try {
+      const { session } = setup()
+      await session.start()
+      asr(session, 'long-tool', '查询账户资源')
+      await vi.advanceTimersByTimeAsync(330_000)
+      expect(events('input_audio_buffer.append')).toHaveLength(11)
+      expect(events('input_audio_buffer.commit')).toHaveLength(0)
+      expect(events('response.create')).toHaveLength(0)
+      readback(session, 'long-tool', '这是实际查询结果。')
+      expect(events('response.create')).toHaveLength(1)
+      session.close()
+      const count = Socket.latest.sent.length
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(Socket.latest.sent).toHaveLength(count)
+      expect(track.stop).toHaveBeenCalledOnce()
+    } finally {vi.useRealTimers()}
+  })
+  it('mute discards partial capture without committing it or opening another microphone', async () => {
+    const { session } = setup()
+    await session.start()
+    capture(0.1, 2)
+    session.setMuted(true)
+    capture(0.1, 20)
+    session.instruct('finish')
+    expect(events('input_audio_buffer.commit')).toHaveLength(0)
+    expect(track.enabled).toBe(false)
+    session.setMuted(false)
+    capture(0.1, 2)
+    session.instruct('finish')
+    expect(events('input_audio_buffer.commit')).toHaveLength(1)
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledOnce()
     session.close()
   })
-
   it.each([
     { code: 'response_cancel_not_active', message: 'Response already ended' },
     { code: 'invalid_value', message: 'Conversation has no active response.' }
-  ])('keeps capture and resumes after a late cancellation receipt: $code', async error => {
+  ])('ignores the exact late cancellation receipt: $code', async error => {
     const { session, handlers } = setup()
     await session.start()
-    session.receive({ type: 'response.created', response: { id: 'finished' } })
-    session.receive({ type: 'input_audio_buffer.speech_started' })
-    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'response.cancel' })
-    session.receive({ type: 'response.done', response: { id: 'finished' } })
     session.receive({ type: 'error', error })
     expect(handlers.onError).not.toHaveBeenCalled()
-    expect(handlers.onClosed).not.toHaveBeenCalled()
     expect(track.stop).not.toHaveBeenCalled()
-    session.receive({ type: 'input_audio_buffer.speech_stopped' })
-    session.receive({ type: 'response.created', response: { id: 'next' } })
-    session.receive({ type: 'response.audio.delta', response_id: 'next', delta: 'AAA=' })
-    expect(source.start).toHaveBeenCalledOnce()
     session.close()
   })
-
-  it.each(['apex_voice_unavailable', 'apex_voice_failed', 'invalid_api_key', 'unknown_error', 'invalid_value'])(
-    'still closes capture on %s rather than swallowing authoritative failures', async code => {
-      const { session, handlers } = setup()
-      await session.start()
-      session.receive({ type: 'error', error: { code, message: 'Access or service unavailable' } })
-      expect(handlers.onError).toHaveBeenCalledWith('Access or service unavailable', true)
-      expect(handlers.onClosed).toHaveBeenCalledWith('voice_error', null)
-      expect(track.stop).toHaveBeenCalledOnce()
-      expect(Socket.latest.close).toHaveBeenCalledOnce()
-    }
-  )
-
-  it('waits for speech and an active-response rejection to settle before retrying one reply', async () => {
+  it('fails closed for malformed/billing errors with the original error instead of an inability answer', async () => {
     const { session, handlers } = setup()
     await session.start()
-    session.receive({ type: 'input_audio_buffer.speech_started' })
-    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'call-a', arguments: '{"request":"查文件"}' })
-    session.finishDelegation('call-a')
-    const creates = () => Socket.latest.sent.filter(event => event.type === 'response.create')
-    expect(creates()).toHaveLength(0)
-    session.receive({ type: 'input_audio_buffer.speech_stopped' })
-    expect(creates()).toHaveLength(0)
-    session.receive({ type: 'response.created', response: { id: 'auto' } })
-    session.receive({ type: 'response.done', response: { id: 'auto' } })
-    expect(creates()).toHaveLength(1)
-    // An upstream automatic response may win before the manual create is acked.
-    session.receive({ type: 'error', error: { code: 'conversation_already_has_active_response' } })
-    expect(handlers.onClosed).not.toHaveBeenCalled()
-    session.receive({ type: 'response.done', response: { id: 'upstream-winner' } })
-    expect(creates()).toHaveLength(2)
-    session.close()
+    session.receive({ type: 'error', error: { code: 'usage_missing', message: '实时语音用量未返回' } })
+    expect(handlers.onError).toHaveBeenCalledExactlyOnceWith('实时语音用量未返回', true)
+    expect(handlers.onClosed).toHaveBeenCalledExactlyOnceWith('voice_error', null)
+    expect(track.stop).toHaveBeenCalledOnce()
   })
-
-  it('releases microphone, capture graph, playback and socket once; ignores late callbacks', async () => {
+  it('stops before sending audio after an account/profile switch', async () => {
     const { session, handlers } = setup()
     await session.start()
-    session.setMuted(true)
-    expect(track.enabled).toBe(false)
-    session.setMuted(false)
-    expect(track.enabled).toBe(true)
-    session.close()
-    session.close()
-    session.receive({
-      type: 'response.function_call_arguments.done',
-      name: 'apex_assistant',
-      call_id: 'late',
-      arguments: '{"request":"late"}'
-    })
-    expect(track.stop).toHaveBeenCalledOnce()
-    expect(closeContext).toHaveBeenCalledOnce()
-    expect(recorder.disconnect).toHaveBeenCalledOnce()
-    expect(Socket.latest.close).toHaveBeenCalledOnce()
-    expect(handlers.onClosed).toHaveBeenCalledWith('close_requested', null)
-    expect(handlers.onDelegation).not.toHaveBeenCalled()
-  })
-
-  it('cleans up microphone permission granted after the user already ended the call', async () => {
-    let grant: ((value: unknown) => void) | undefined
-    vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementation(
-      () =>
-        new Promise(resolve => {
-          grant = resolve as typeof grant
-        })
-    )
-    const { session } = setup()
-    const starting = session.start()
-    session.close()
-    grant?.({ getTracks: () => [track] })
-    await starting
+    setApiRequestProfile('different-user')
+    capture(0.1, 2)
+    expect(events('input_audio_buffer.append')).toHaveLength(0)
+    expect(handlers.onClosed).toHaveBeenCalledExactlyOnceWith('account_changed', null)
     expect(track.stop).toHaveBeenCalledOnce()
   })
-
-  it('ends an established call and releases capture when the service sends malformed data', async () => {
-    const { session, handlers } = setup()
-    await session.start()
-    Socket.latest.onmessage?.({ data: '{broken' })
-    expect(handlers.onError).toHaveBeenCalledWith('语音服务返回了无效数据。', true)
-    expect(handlers.onClosed).toHaveBeenCalledWith('invalid_response', null)
-    expect(track.stop).toHaveBeenCalledOnce()
-    expect(recorder.disconnect).toHaveBeenCalledOnce()
-    expect(closeContext).toHaveBeenCalledOnce()
-    expect(Socket.latest.close).toHaveBeenCalledOnce()
+  it('encodes clipped 16 kHz PCM16 while retaining sampling phase between frames', () => {
+    const encoder = new Pcm16Encoder(48_000)
+    const bytes = Uint8Array.from(atob(encoder.encode(new Float32Array([-2, 0, 0, 2, 0, 0]))), c => c.charCodeAt(0))
+    expect(new DataView(bytes.buffer).getInt16(0, true)).toBe(-32768)
+    expect(new DataView(bytes.buffer).getInt16(2, true)).toBe(32767)
+    const oddRate = new Pcm16Encoder(44_100)
+    expect(Array.from({ length: 10 }, () => atob(oddRate.encode(new Float32Array(441))).length).reduce((a, b) => a + b, 0)).toBe(3200)
   })
-  it('ends before delegating when the active account or connection changes', async () => {
-    const { session, handlers } = setup()
-    await session.start()
-    setApiRequestConnection('another-computer')
-    setApiRequestProfile('another-user')
-    session.receive({ type: 'response.function_call_arguments.done', name: 'apex_assistant', call_id: 'old-scope', arguments: '{"request":"查文件"}' })
-    expect(handlers.onDelegation).not.toHaveBeenCalled()
-    expect(handlers.onClosed).toHaveBeenCalledWith('account_changed', null)
-    expect(track.stop).toHaveBeenCalledOnce()
-  })
-
 })

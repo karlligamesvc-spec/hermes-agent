@@ -21,9 +21,6 @@ interface VoiceLiveConversationOptions {
   busy: boolean
   enabled: boolean
   onFatalError?: () => void
-  /** Interrupt the in-flight Hermes turn (Stop-button seam). Fired when a new
-   *  delegation supersedes one still running. */
-  onInterrupt?: () => Promise<void> | void
   onStopWord?: () => void
   /** Submit a Hermes turn: `text` is the user's last words (the bubble and the
    *  persisted row), `voiceContext` the recent spoken exchange for the model. */
@@ -76,7 +73,6 @@ export function useVoiceLiveConversation({
   busy,
   enabled,
   onFatalError,
-  onInterrupt,
   onStopWord,
   onSubmit,
   pendingResponse,
@@ -123,7 +119,6 @@ export function useVoiceLiveConversation({
     activeToolLabel,
     beforeMicOpen,
     onFatalError,
-    onInterrupt,
     onStopWord,
     onSubmit,
     pendingResponse,
@@ -135,7 +130,6 @@ export function useVoiceLiveConversation({
     activeToolLabel,
     beforeMicOpen,
     onFatalError,
-    onInterrupt,
     onStopWord,
     onSubmit,
     pendingResponse,
@@ -266,10 +260,6 @@ export function useVoiceLiveConversation({
           return
         }
 
-        // A newer request supersedes an in-flight turn: stop it so the answer
-        // the voice speaks is for what the user asked last.
-        const interrupt = busyRef.current ? latest.current.onInterrupt : undefined
-
         setDelegation(delegationId)
         spokenResponseIdRef.current = null
         spokenLengthRef.current = 0
@@ -278,8 +268,6 @@ export function useVoiceLiveConversation({
         latest.current.consumePendingResponse()
         refreshStatus()
         void (async () => {
-          await interrupt?.()
-
           if (sessionRef.current !== session || delegationRef.current !== delegationId) {return}
           const accepted = await latest.current.onSubmit(prompt, voiceContext)
 

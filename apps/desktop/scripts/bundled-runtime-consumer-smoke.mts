@@ -338,7 +338,14 @@ try {
   const fileHashes = Object.fromEntries(userFiles.map(file => [file, sha(fs.readFileSync(path.join(returning, file)))]))
   const sqliteBefore = sha(fs.readFileSync(path.join(returning, 'state.db')))
   const rows = await stateRows(before.root, returning)
-  const failing = consumer(returning)
+  // A release label's hash cannot order two builds from the same date.
+  // Preserve the genuine F8 source/venv, but model that same-day marker case.
+  const sameDayMarker = path.join(before.root, '.hermes-bootstrap-complete')
+  const sameDayVersion = release.runtime_version.replace(/fork\.[a-f0-9]+$/, `fork.${F8.slice(0, 8)}`)
+  fs.writeFileSync(sameDayMarker, JSON.stringify({ schemaVersion: 1, pinnedCommit: F8, version: sameDayVersion }))
+  assert.equal((await installPackagedRuntime(consumer(returning), true)).status, 'preserved')
+  const confirmed = { ...consumer(returning), confirmedRuntimeCommit: release.runtime_commit }
+  const failing = { ...confirmed }
 
   failing.probe = async (root, descriptor) => {
     await probePackagedRuntime(root, descriptor)
@@ -361,8 +368,9 @@ try {
   })
   assert.equal(failedPlan?.targetRuntimeKey, F8)
   assert.equal(fs.readFileSync(planPath, 'utf8'), originalPlanBytes, 'failed bundle activation must leave the frozen plan intact')
-  const upgrade = await installPackagedRuntime(consumer(returning), true)
+  const upgrade = await installPackagedRuntime(confirmed, true)
   assert.equal(upgrade.status, 'installed')
+  proof.sameDayConfirmedUpdate = { previousSource: F8, previousMarkerVersion: sameDayVersion, targetSource: release.runtime_commit, defaultPreserved: true, confirmedActivated: true }
   const reconciledPlan = await readPreparedDesktopUpdatePlan(planPath, {
     ...planDependencies, preparedRuntime: async () => upgrade
   })

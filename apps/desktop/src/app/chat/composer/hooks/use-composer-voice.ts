@@ -37,6 +37,7 @@ interface UseComposerVoiceArgs {
    *  user speaks over the model while it is still generating. */
   onInterrupt?: () => Promise<void> | void
   onSubmit: ChatBarProps['onSubmit']
+  onSteer?: ChatBarProps['onSteer']
   onTranscribeAudio: ChatBarProps['onTranscribeAudio']
   sessionId: string | null | undefined
   /** This composer's focus-bus key — voice toggles targeting another
@@ -59,6 +60,7 @@ export function useComposerVoice({
   maxRecordingSeconds,
   onInterrupt,
   onSubmit,
+  onSteer,
   onTranscribeAudio,
   sessionId,
   target
@@ -153,6 +155,11 @@ export function useComposerVoice({
     resetBrowseState(sessionId)
     clearDraft()
 
+    // Deliver an interjection to the same primary turn at a safe boundary.
+    // The primary decides whether it changes the task; hearing speech alone
+    // must not press Stop or discard completed work.
+    if (busy && await onSteer?.(text)) {return true}
+
     return await onSubmit(text, { surface: 'voice-live', voiceContext })
   }
 
@@ -210,7 +217,6 @@ export function useComposerVoice({
     consumePendingResponse,
     enabled: voiceConversationActive && liveEngineActive,
     onFatalError: () => setVoiceConversationActive(false),
-    onInterrupt,
     onStopWord: () => setVoiceConversationActive(false),
     onSubmit: submitLiveDelegation,
     pendingResponse: pendingLiveTurnResponse,

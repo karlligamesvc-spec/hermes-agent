@@ -1,5 +1,6 @@
 import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
 import type { LiveHistoryMessage, LiveTranscriptFragment, VoiceLiveHandlers } from '@/lib/voice-live'
+import { VoicePcmTurn } from '@/lib/voice-pcm-turn'
 import { resolveSpeakStreamUrl } from '@/lib/voice-playback'
 import { appendVoiceTranscript } from '@/lib/voice-transcript'
 
@@ -32,6 +33,7 @@ export interface QwenEvent {
   item_id?: string
   response_id?: string
   response?: { id?: string }
+  session?: { turn_detection?: unknown }
   delta?: string
   transcript?: string
   name?: string
@@ -40,7 +42,7 @@ export interface QwenEvent {
   error?: { message?: string; code?: string }
 }
 
-/** Function calling uses the current chat's existing Hermes turn/approval loop. */
+/** ASR submits every utterance to the primary assistant; Qwen only reads its result. */
 export class QwenRealtimeSession {
   private readonly scope = JSON.stringify([getApiRequestConnection(), getApiRequestProfile()])
   private socket: WebSocket | null = null
@@ -59,8 +61,9 @@ export class QwenRealtimeSession {
   private responseId: string | null = null
   private readonly cancelledResponses = new Set<string>()
   private readonly completedResponses = new Set<string>()
-  private readonly delegatedCalls = new Set<string>()
-  private readonly toolResponses = new Set<string>()
+  private readbackResponseId: string | null = null
+  private capture: VoicePcmTurn | null = null
+  private keepalive: number | null = null
   private ready = false
   private reply = ''
   private callId: string | null = null
@@ -68,6 +71,8 @@ export class QwenRealtimeSession {
   private nextTurn = 0
   private readonly turns = new Map<string, { order: number; completed: boolean }>()
   private inputTurn: string | null = null
+  private readonly pendingInputTurns: string[] = []
+  private delegatedTurnOrder = 0
 
   constructor(private readonly handlers: VoiceLiveHandlers) {}
 
@@ -154,6 +159,9 @@ export class QwenRealtimeSession {
             const event = JSON.parse(String(message.data)) as QwenEvent
 
             if (event.type === 'session.updated') {
+              if (event.session?.turn_detection !== null) {
+                throw new Error('请更新 APEX AI 引擎后再使用统一主助手语音。')
+              }
               this.ready = true
               finish()
             }
@@ -193,11 +201,38 @@ export class QwenRealtimeSession {
       this.input = this.context.createMediaStreamSource(stream)
       this.recorder = this.context.createScriptProcessor(2048, 1, 1)
 
-      this.recorder.onaudioprocess = event => {
-        if (!this.muted) {
-          this.send({ type: 'input_audio_buffer.append', audio: encoder.encode(event.inputBuffer.getChannelData(0)) })
+      this.capture = new VoicePcmTurn(this.context.sampleRate, {
+        start: () => {
+          this.inputTurn = `user-${this.nextTurn + 1}`
+          this.reserveTurn(`user:${this.inputTurn}`)
+          this.userSpeaking = true
+          this.responsePending = false
+          this.stopAudio()
+          this.send({ type: 'input_audio_buffer.clear' })
+
+          if (this.responding || this.responseRequested) {
+            if (this.responseId) {this.cancelledResponses.add(this.responseId)}
+            this.send({ type: 'response.cancel' })
+          }
+        },
+        append: samples => this.send({ type: 'input_audio_buffer.append', audio: encoder.encode(samples) }),
+        commit: () => {
+          this.userSpeaking = false
+          if (this.inputTurn) {this.pendingInputTurns.push(this.inputTurn)}
+          this.send({ type: 'input_audio_buffer.commit' })
         }
+      })
+      this.recorder.onaudioprocess = event => {
+        if (!this.muted) {this.capture?.feed(event.inputBuffer.getChannelData(0))}
       }
+      // Keep the provider's audio channel alive during long primary tool runs.
+      // This uncommitted silence never becomes a user turn or model request.
+      this.keepalive = window.setInterval(() => {
+        if (!this.userSpeaking) {
+          this.send({ type: 'input_audio_buffer.clear' })
+          this.send({ type: 'input_audio_buffer.append', audio: btoa('\0'.repeat(3200)) })
+        }
+      }, 30_000)
 
       this.input.connect(this.recorder)
       this.recorder.connect(this.context.destination)
@@ -208,10 +243,7 @@ export class QwenRealtimeSession {
   }
 
   receive(event: QwenEvent): void {
-    if (this.closed) {
-      return
-    }
-
+    if (this.closed) {return}
     if (!this.scopeMatches()) {
       this.close('account_changed')
 
@@ -219,191 +251,82 @@ export class QwenRealtimeSession {
     }
 
     if (event.type === 'error') {
-      // Qwen/ChinaAPI reports a late cancellation with invalid_value, unlike
-      // the dedicated code used by other realtime transports. Match the exact
-      // receipt: other invalid_value errors must still stop the call.
       if (event.error?.code === 'response_cancel_not_active' ||
-          (event.error?.code === 'invalid_value' && event.error.message === 'Conversation has no active response.')) {
-        return
-      }
-
-      // This VAD notification commits the user's words, but skips inference
-      // while a manual reply is active. Recover after its terminal receipt;
-      // authentication, quota and all other errors still end the call.
-      if (event.error?.message === 'Server VAD turn committed but no response was created because a manual response is already in progress.') {
-        this.responsePending = true
-
-        return
-      }
-
-      if (event.error?.code === 'conversation_already_has_active_response') {
-        this.responseRequested = false
-        this.responding = true
-        this.responsePending = true
-
-        return
-      }
-
+          (event.error?.code === 'invalid_value' && event.error.message === 'Conversation has no active response.')) {return}
       this.handlers.onError(event.error?.message ?? '千问实时语音暂不可用。', true)
       this.close('voice_error')
 
       return
     }
 
-    if (event.type !== 'response.done' && event.response_id && this.cancelledResponses.has(event.response_id)) {
+    if (event.type === 'input_audio_buffer.committed' && event.item_id) {
+      // Bind delayed ASR to the order reserved when capture began.
+      const committed = this.pendingInputTurns.shift()
+      const reserved = committed && this.turns.get(`user:${committed}`)
+      if (reserved) {this.turns.set(`user:${event.item_id}`, reserved)}
+
       return
     }
 
-    if (event.type === 'input_audio_buffer.speech_started') {
-      this.inputTurn = event.item_id ?? `user-${this.nextTurn + 1}`
-      this.reserveTurn(`user:${this.inputTurn}`)
-      this.userSpeaking = true
-      this.stopAudio()
+    if (event.type === 'conversation.item.input_audio_transcription.completed' && event.transcript?.trim()) {
+      const turnId = event.item_id ?? this.inputTurn ?? `user-${this.nextTurn + 1}`
+      const turn = this.reserveTurn(`user:${turnId}`)
+      if (turn.completed) {return}
+      turn.completed = true
+      const fragment: LiveTranscriptFragment = { speaker: 'user', text: event.transcript, startMs: Date.now(), endMs: Date.now(),
+        turnId, turnOrder: turn.order }
+      this.transcript = appendVoiceTranscript(this.transcript, fragment, 80)
+      this.handlers.onTranscript?.(fragment)
+      // Closing a call from its completed ASR must not also submit a chat turn.
+      if (this.closed) {return}
+      if (turn.order < this.delegatedTurnOrder) {return}
+      this.delegatedTurnOrder = turn.order
+      this.callId = turnId
+      this.reply = ''
+      this.handlers.onDelegation(turnId, [...this.transcript])
 
-      if (this.responding || this.responseRequested) {
-        if (this.responseId) {
-          this.cancelledResponses.add(this.responseId)
-        }
+      return
+    }
 
+    if (event.type === 'response.created') {
+      const id = event.response?.id
+      if (id && this.completedResponses.has(id)) {return}
+      const requested = this.responseRequested
+      this.responseRequested = false
+      this.responding = true
+      this.responseId = id ?? null
+      this.readbackResponseId = requested ? this.responseId : null
+      this.reserveTurn(`assistant:${id ?? 'assistant'}`)
+      if (!requested || this.userSpeaking) {
+        if (id) {this.cancelledResponses.add(id)}
         this.send({ type: 'response.cancel' })
       }
 
       return
     }
 
-    if (event.type === 'input_audio_buffer.committed' && event.item_id) {
-      this.reserveTurn(`user:${event.item_id}`)
-
-      return
-    }
-
-    if (event.type === 'input_audio_buffer.speech_stopped') {
-      this.userSpeaking = false
-
-      // Server VAD owns the next response; do not race its automatic create.
-      return
-    }
-
-    if (event.type === 'response.created' || event.type === 'response.done') {
-      if (event.response?.id && this.completedResponses.has(event.response.id)) {
-        return
-      }
-
-      if (event.type === 'response.done' && this.responseId && event.response?.id !== this.responseId) {
-        return
-      }
-
-      this.responding = event.type === 'response.created'
+    if (event.type === 'response.done') {
+      const id = event.response?.id
+      if (!id || this.completedResponses.has(id) || id !== this.responseId) {return}
+      this.completedResponses.add(id)
+      this.responding = false
       this.responseRequested = false
-
-      if (this.responding) {
-        this.responseId = event.response?.id ?? null
-        this.reserveTurn(`assistant:${this.responseId ?? 'assistant'}`)
-
-        if (this.userSpeaking) {
-          if (this.responseId) {
-            this.cancelledResponses.add(this.responseId)
-          }
-
-          this.send({ type: 'response.cancel' })
-        }
-      } else {
-        if (event.response?.id) {
-          this.completedResponses.add(event.response.id)
-        }
-
-        this.responseId = null
-        this.flushPendingResponse()
-      }
+      this.responseId = this.readbackResponseId = null
+      this.flushPendingResponse()
 
       return
     }
 
+    const id = event.response_id ?? this.responseId
+    if (!id || id !== this.readbackResponseId || this.cancelledResponses.has(id)) {return}
     if (event.type === 'response.audio.delta' && event.delta) {
-      if (this.callId || this.toolResponses.has(event.response_id ?? this.responseId ?? '')) {return}
       this.play(event.delta)
-
-      return
-    }
-
-    const role =
-      event.type === 'conversation.item.input_audio_transcription.completed'
-        ? 'user'
-        : event.type === 'response.audio_transcript.delta'
-          ? 'assistant'
-          : null
-
-    if (role) {
-      if (role === 'assistant' &&
-          (this.callId || this.toolResponses.has(event.response_id ?? this.responseId ?? ''))) {return}
-
-      const text = role === 'user' ? event.transcript : event.delta
-
-      if (text) {
-        const turnId = role === 'user'
-          ? (event.item_id ?? this.inputTurn ?? `user-${this.nextTurn + 1}`)
-          : (event.response_id ?? this.responseId ?? 'assistant')
-
-        const turn = this.reserveTurn(`${role}:${turnId}`)
-
-        if (role === 'user' && turn.completed) {return}
-
-        if (role === 'user') {turn.completed = true}
-
-        const fragment: LiveTranscriptFragment = { speaker: role, text, startMs: Date.now(), endMs: Date.now(),
-          turnId, turnOrder: turn.order }
-
-        this.transcript = appendVoiceTranscript(this.transcript, fragment, 80)
-        this.handlers.onTranscript?.(fragment)
-      }
-
-      return
-    }
-
-    if (event.type === 'response.function_call_arguments.done' && event.name === 'apex_assistant' && event.call_id) {
-      if (this.delegatedCalls.has(event.call_id)) {
-        return
-      }
-
-      this.delegatedCalls.add(event.call_id)
-
-      try {
-        const args = JSON.parse(event.arguments ?? '{}') as { request?: unknown }
-
-        if (typeof args.request !== 'string' || !args.request.trim()) {
-          throw new Error('Invalid assistant request')
-        }
-
-        if (this.callId) {
-          this.send({
-            type: 'conversation.item.create',
-            item: {
-              type: 'function_call_output',
-              call_id: this.callId,
-              output: '用户已提出新的请求，上一个请求已中止；未确认完成。'
-            }
-          })
-        }
-
-        this.callId = event.call_id
-        const toolResponseId = event.response_id ?? this.responseId
-
-        if (toolResponseId) {this.toolResponses.add(toolResponseId)}
-        this.stopAudio()
-        this.reply = ''
-        const context = [...this.transcript]
-
-        // Tool arguments are the complete latest intent even when ASR events lag.
-        if (context.at(-1)?.speaker === 'user') {
-          context.pop()
-        }
-
-        context.push({ speaker: 'user', text: args.request, startMs: Date.now(), endMs: Date.now(), turnId: event.call_id })
-        this.handlers.onDelegation(event.call_id, context)
-      } catch {
-        this.handlers.onError('语音助手请求无法读取，请重试。', true)
-        this.close()
-      }
+    } else if (event.type === 'response.audio_transcript.delta' && event.delta) {
+      const turn = this.reserveTurn(`assistant:${id}`)
+      const fragment: LiveTranscriptFragment = { speaker: 'assistant', text: event.delta, startMs: Date.now(), endMs: Date.now(),
+        turnId: id, turnOrder: turn.order }
+      this.transcript = appendVoiceTranscript(this.transcript, fragment, 80)
+      this.handlers.onTranscript?.(fragment)
     }
   }
 
@@ -471,9 +394,9 @@ export class QwenRealtimeSession {
     this.send({
       type: 'conversation.item.create',
       item: {
-        type: 'function_call_output',
-        call_id: delegationId,
-        output: this.reply || '本次请求未返回可播报结果，请查看 APEX 对话中的状态。'
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: `APEX 主助手已返回以下待朗读正文：\n${this.reply || '本次请求未返回可播报结果，请查看 APEX 对话中的状态。'}` }]
       }
     })
     this.callId = null
@@ -495,11 +418,16 @@ export class QwenRealtimeSession {
   }
 
   instruct(_content: string): void {
-    // Runtime-owned server VAD commits and creates replies after a natural pause.
+    this.capture?.finish()
   }
 
   setMuted(muted: boolean): void {
     this.muted = muted
+    if (muted) {
+      this.capture?.reset()
+      this.userSpeaking = false
+      this.send({ type: 'input_audio_buffer.clear' })
+    }
     this.microphone?.getAudioTracks().forEach(track => {
       track.enabled = !muted
     })
@@ -511,6 +439,9 @@ export class QwenRealtimeSession {
     }
 
     this.closed = true
+    if (this.keepalive !== null) {window.clearInterval(this.keepalive)}
+    this.keepalive = null
+    this.capture?.reset()
     this.stopAudio()
     this.microphone?.getTracks().forEach(track => track.stop())
 

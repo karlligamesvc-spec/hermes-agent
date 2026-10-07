@@ -1029,6 +1029,7 @@ export function ChatBar({
     maxRecordingSeconds,
     // Voice barge-in mid-generation halts the run like the Stop button.
     onInterrupt: haltRun,
+    onSteer,
     onSubmit,
     onTranscribeAudio,
     sessionId,

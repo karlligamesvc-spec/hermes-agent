@@ -72,6 +72,28 @@ afterEach(() => {
 })
 
 describe('desktop update orchestration', () => {
+  it('attempts automatic continuation once per frozen plan while permitting a deliberate retry', async () => {
+    const plan = updatePlan({ planId: 'bounded-automatic-plan' })
+    const applyUpdate = vi.fn(async () => ({ ok: false, error: 'owned install failure' }))
+    window.hermesDesktop = {
+      getVersion: vi.fn(async () => ({ appVersion: '0.18.0' })),
+      runtime: {
+        getVersion: vi.fn(async () => ({ ok: true, key: 'old', version: 'v2026.7.1', treeMatchesMarker: true })),
+        checkUpdate: vi.fn(async () => RUNTIME_UPDATE),
+        applyUpdate
+      },
+      updateCenter: { getPlan: vi.fn(async () => plan), transitionPlan: vi.fn(async () => ({ ok: true })) }
+    } as unknown as typeof window.hermesDesktop
+    const reload = vi.fn()
+    await resumeDesktopUpdatePlan({ reload, automatic: true })
+    await resumeDesktopUpdatePlan({ reload, automatic: true })
+    expect(applyUpdate).toHaveBeenCalledTimes(1)
+    expect($desktopUpdateProgress.get().error).toBe('owned install failure')
+    await retryDesktopUpdate({ reload })
+    expect(applyUpdate).toHaveBeenCalledTimes(2)
+    expect(reload).not.toHaveBeenCalled()
+  })
+
   it('finishes the persisted shell-only handoff after the bundled engine activates at restart', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-shell-bundle-resume-'))
     const planPath = path.join(home, 'update-plan.json')
