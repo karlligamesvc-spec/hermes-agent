@@ -2,7 +2,7 @@
   "name": "hermes",
   "productName": "APEX",
   "private": true,
-  "version": "0.17.50",
+  "version": "0.17.51",
   "description": "Native desktop shell for Hermes Agent.",
   "author": "ApexNodes",
   "repository": {
@@ -265,7 +265,6 @@
       }
     ],
     "asar": true,
-    "afterSign": "scripts/notarize.mjs",
     "asarUnpack": [
       "**/*.node",
       "**/prebuilds/**",
@@ -295,7 +294,8 @@
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "notarize": true
     },
     "dmg": {
       "title": "Install APEX",

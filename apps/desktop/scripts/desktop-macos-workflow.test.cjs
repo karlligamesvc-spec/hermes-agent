@@ -4,10 +4,57 @@ const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
 const test = require('node:test')
+const { MacTargetHelper } = require('app-builder-lib/out/mac/MacTargetHelper')
+const dynamicImport = require('app-builder-lib/out/util/dynamicImport')
+const { resolveFunction } = require('app-builder-lib/out/util/resolve')
+const { AsyncEventEmitter } = require('app-builder-lib/out/util/asyncEventEmitter')
 
 const workflowPath = path.resolve(__dirname, '../../../.github/workflows/desktop-macos.yml')
 const windowsWorkflowPath = path.resolve(__dirname, '../../../.github/workflows/desktop-windows.yml')
 const synchronizedWorkflowPath = path.resolve(__dirname, '../../../.github/workflows/desktop-release.yml')
+
+test('actual electron-builder uses one App notarization and propagates rejection without a second afterSign submission', async t => {
+  const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')).build
+  assert.equal(config.mac.notarize, true)
+  assert.equal(config.mac.hardenedRuntime, true)
+  const hook = await resolveFunction('module', config.afterSign, 'afterSign', path.resolve(__dirname, '..'))
+  assert.equal(hook, undefined, 'App already notarized by electron-builder must not be submitted again')
+  const emitter = new AsyncEventEmitter()
+  emitter.on('afterSign', hook, 'user')
+
+  const keys = ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID', 'APPLE_API_KEY', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER', 'APPLE_KEYCHAIN', 'APPLE_KEYCHAIN_PROFILE']
+  const before = Object.fromEntries(keys.map(key => [key, process.env[key]]))
+  const importBefore = dynamicImport.dynamicImport
+  t.after(() => {
+    dynamicImport.dynamicImport = importBefore
+    for (const key of keys) {
+      if (before[key] === undefined) delete process.env[key]
+      else process.env[key] = before[key]
+    }
+  })
+  for (const key of keys) delete process.env[key]
+  process.env.APPLE_API_KEY = '/owned-fixture/notary.p8'
+  process.env.APPLE_API_KEY_ID = 'owned-fixture-key-id'
+  process.env.APPLE_API_ISSUER = 'owned-fixture-issuer'
+  const calls = []
+  let rejected = false
+  dynamicImport.dynamicImport = async name => {
+    assert.equal(name, '@electron/notarize')
+    return { notarize: async options => {
+      calls.push(options)
+      if (rejected) throw new Error('owned fixture notarization rejected')
+    } }
+  }
+  const helper = new MacTargetHelper({ platformSpecificBuildOptions: config.mac })
+  await helper.notarizeIfProvided('/owned-fixture/APEX.app')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].appPath, '/owned-fixture/APEX.app')
+  assert.equal(calls[0].appleApiKey, '/owned-fixture/notary.p8')
+  assert.deepEqual(await emitter.emit('afterSign', {}), { emittedSystem: false, emittedUser: false })
+  assert.equal(calls.length, 1)
+  rejected = true
+  await assert.rejects(helper.notarizeIfProvided('/owned-fixture/APEX.app'), /notarization rejected/)
+})
 
 function workflowSource() {
   return fs.readFileSync(workflowPath, 'utf8')
