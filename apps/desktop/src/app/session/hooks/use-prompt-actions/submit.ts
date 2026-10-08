@@ -320,7 +320,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       // the created chat after createBackendSessionForSend. submitTargetStoredId
       // is the stored session this submit targets, so a move ONTO it (the
       // pipeline's own re-home) is never counted as drift.
-      const sessionDriftReason = (): string | null =>
+      const foregroundDriftReason = (): string | null =>
         targetStartedInCurrentView
           ? sessionContextDrift({
               startRouteToken: startingRouteToken,
@@ -339,7 +339,13 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
             })
           : null
 
-      const targetIsCurrentView = (): boolean => targetStartedInCurrentView && !sessionDriftReason()
+      // An established voice call retains its explicit owner across navigation.
+      // Still measure foreground drift for UI writes; continuing the call must
+      // not publish its busy state or messages into the page opened meanwhile.
+      const sessionDriftReason = (): string | null =>
+        options?.surface === 'voice-live' && options.storedSessionId ? null : foregroundDriftReason()
+
+      const targetIsCurrentView = (): boolean => targetStartedInCurrentView && !foregroundDriftReason()
 
       // One submit in flight per session — drop any concurrent re-fire so a
       // stalled turn can't stack the same prompt into multiple real turns. The
@@ -799,7 +805,11 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
             recoverStoredSessionId,
             liveId =>
               withSessionBusyRetry(() =>
-                requestGateway<{ status?: string; turn_id?: string }>('prompt.submit', submitParams(liveId), PROMPT_SUBMIT_REQUEST_TIMEOUT_MS)
+                requestGateway<{ status?: string; turn_id?: string }>(
+                  'prompt.submit',
+                  submitParams(liveId),
+                  PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
+                )
               ),
             {
               requestGateway,
@@ -851,10 +861,16 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         }
 
         if (submitResult?.result?.status === 'streaming' && targetStoredSessionId && options?.onAccepted) {
-          try {await options.onAccepted({ storedSessionId: targetStoredSessionId,
-            ...(typeof submitResult.result.turn_id === 'string' && submitResult.result.turn_id ? {
-              turn: { id: submitResult.result.turn_id, runtimeSessionId: submitResult.sessionId }
-            } : {}) })} catch (error) {
+          try {
+            await options.onAccepted({
+              storedSessionId: targetStoredSessionId,
+              ...(typeof submitResult.result.turn_id === 'string' && submitResult.result.turn_id
+                ? {
+                    turn: { id: submitResult.result.turn_id, runtimeSessionId: submitResult.sessionId }
+                  }
+                : {})
+            })
+          } catch (error) {
             console.warn('[submit-receipt-observer]', error)
           }
         }

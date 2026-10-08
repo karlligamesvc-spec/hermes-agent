@@ -1,3 +1,4 @@
+import { type GatewayEvent, LOCAL_CONNECTION_ID, registryBackendScopeKey } from '@hermes/shared'
 /**
  * MULTI-SESSION VIEW STATE — the reactive face of the per-runtime session
  * cache (`sessionStateByRuntimeIdRef` in use-session-state-cache).
@@ -15,8 +16,6 @@
  * owns resume/submit (it has the gateway + cache internals) and registers
  * itself here as the delegate so tile UI stays dependency-light.
  */
-
-import { type GatewayEvent, LOCAL_CONNECTION_ID, registryBackendScopeKey } from '@hermes/shared'
 import { atom, computed } from 'nanostores'
 
 import type { ClientSessionState } from '@/app/types'
@@ -33,6 +32,7 @@ import { resolveRememberedActivePane, workspaceScopeKey } from '@/components/pan
 import type { WorkspaceMode } from '@/contrib/types'
 import { stableArray } from '@/lib/stable-array'
 import { readJson, writeJson } from '@/lib/storage'
+import { $voiceSessionOwners, hasVoiceSessionOwner } from '@/store/voice-session-owner'
 import type { SessionInfo } from '@/types/hermes'
 
 import { $activeGatewayProfile, normalizeProfileKey } from './profile'
@@ -269,6 +269,14 @@ export function foregroundSessionScopes(): Set<string> {
 
   addRuntimeScope($activeSessionId.get() ?? undefined)
 
+  for (const owner of $voiceSessionOwners.get().values()) {
+    addRuntimeScope(owner.sessionId)
+
+    for (const [runtimeId, state] of Object.entries($sessionStates.get())) {
+      if (state.storedSessionId === owner.storedSessionId) {addRuntimeScope(runtimeId)}
+    }
+  }
+
   for (const tile of $sessionTiles.get()) {
     addRuntimeScope(tile.runtimeId)
     addRouteScope(tile.ownerRoute)
@@ -463,7 +471,7 @@ function handleTransition(previous: ClientSessionState | null, next: ClientSessi
  *  or an open tile? (A tile mid-resume references by stored id only; its
  *  runtime binding is patched in after `resumeTile` returns.) */
 function runtimeReferenced(runtimeId: string, storedSessionId: null | string): boolean {
-  if (runtimeId === $activeSessionId.get()) {
+  if (runtimeId === $activeSessionId.get() || hasVoiceSessionOwner(runtimeId, storedSessionId)) {
     return true
   }
 
@@ -531,6 +539,8 @@ export function releaseSessionTranscript(runtimeId: string, state?: ClientSessio
   }
 
   const retained = state ?? current[runtimeId]
+
+  if (hasVoiceSessionOwner(runtimeId, retained?.storedSessionId)) {return}
 
   // Older persisted snapshots can contain an undefined state or omit the
   // messages field. Treat either shape as already cold instead of throwing

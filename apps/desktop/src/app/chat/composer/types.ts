@@ -67,7 +67,7 @@ export interface ChatBarProps {
   onPickFolders?: () => void
   onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
-  onSteer?: (text: string) => Promise<boolean> | boolean
+  onSteer?: (text: string, target?: { sessionId: string; storedSessionId: string }) => Promise<boolean> | boolean
   /** Delivers a hidden note to the model mid-turn with no user turn (gateway session.steer). */
   onSteerHidden?: (text: string) => Promise<boolean> | boolean
   onSubmit: (value: string, options?: SubmitTextOptions) => Promise<boolean> | boolean
