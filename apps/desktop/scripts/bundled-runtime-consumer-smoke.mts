@@ -311,7 +311,16 @@ async function verifyGatewayRetirement(root: string) {
   const script = path.join(workspace, 'gateway-fixture', 'gateway', 'run.py')
   fs.mkdirSync(home, { recursive: true })
   fs.mkdirSync(path.dirname(script), { recursive: true })
-  fs.writeFileSync(script, "import signal,time\nfrom gateway.status import acquire_gateway_runtime_lock,write_pid_file\nassert acquire_gateway_runtime_lock()\nwrite_pid_file()\nsignal.signal(signal.SIGTERM,signal.SIG_IGN)\nprint('ready',flush=True)\nwhile True: time.sleep(1)\n")
+  const descendantCode = "import json,os,pathlib,psutil,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').write_text(json.dumps(dict(pid=os.getpid(),created=psutil.Process().create_time()))); time.sleep(120)"
+  fs.writeFileSync(script, [
+    'import os,pathlib,signal,subprocess,sys,time',
+    'from gateway.status import acquire_gateway_runtime_lock,write_pid_file',
+    'assert acquire_gateway_runtime_lock()', 'write_pid_file()',
+    `subprocess.Popen([sys.executable,'-c',${JSON.stringify(descendantCode)}])`,
+    "while not pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').exists(): time.sleep(.01)",
+    'signal.signal(signal.SIGTERM,signal.SIG_IGN)', "print('ready',flush=True)",
+    'while True: time.sleep(1)'
+  ].join('\n'))
   const child = spawn(python(root), [script], { cwd: root, env: environment(root, home), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
   let output = ''
@@ -328,10 +337,17 @@ async function verifyGatewayRetirement(root: string) {
     assert.deepEqual(retired, [pid], 'the actual packaged Python must retire the verified wedged gateway')
     await closed
     assert.deepEqual(await retirePackagedGateways(root, root, home), [])
+    const descendant = JSON.parse(fs.readFileSync(path.join(home, 'descendant.pid'), 'utf8')).pid
+    await exec(python(root), ['-c', 'import psutil,sys; p=int(sys.argv[1]); assert not psutil.pid_exists(p) or psutil.Process(p).status()==psutil.STATUS_ZOMBIE', String(descendant)], { env: environment(root, home), cwd: workspace, timeout: 5000 })
 
-    return { pid, retired, actualBundledPython: python(root), forcedExit: true, repeatedRetirement: 'empty' }
+    return { pid, retired, descendant, actualBundledPython: python(root), forcedExit: true, descendantExited: true, repeatedRetirement: 'empty' }
   } finally {
     await terminateOwnedSmokeProcess(child, closed)
+    const descendantFile = path.join(home, 'descendant.pid')
+    if (fs.existsSync(descendantFile)) {
+      const record = JSON.parse(fs.readFileSync(descendantFile, 'utf8'))
+      await exec(python(root), ['-c', 'import psutil,sys; p=int(sys.argv[1]); c=float(sys.argv[2]); (psutil.Process(p).kill() if psutil.pid_exists(p) and psutil.Process(p).create_time()==c else None)', String(record.pid), String(record.created)], { env: environment(root, home), cwd: workspace, timeout: 5000 }).catch(() => {})
+    }
   }
 }
 

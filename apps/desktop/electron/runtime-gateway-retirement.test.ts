@@ -23,7 +23,18 @@ nativeTest.each([false, true])('real gateway shutdown preserves foreign identiti
   const env = { ...process.env, HERMES_HOME: home, PYTHONPATH: source, PYTHONDONTWRITEBYTECODE: '1' }
   fs.mkdirSync(path.join(root, 'gateway'), { recursive: true })
   const script = path.join(root, 'gateway', 'run.py')
-  fs.writeFileSync(script, `import signal,time\nfrom gateway.status import acquire_gateway_runtime_lock,write_pid_file\nassert acquire_gateway_runtime_lock()\nwrite_pid_file()\n${wedged ? 'signal.signal(signal.SIGTERM,signal.SIG_IGN)\n' : ''}print('ready',flush=True)\nwhile True: time.sleep(1)\n`)
+  const descendantCode = "import json,os,pathlib,psutil,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').write_text(json.dumps(dict(pid=os.getpid(),created=psutil.Process().create_time()))); time.sleep(120)"
+  fs.writeFileSync(script, [
+    'import os,pathlib,signal,subprocess,sys,time',
+    'from gateway.status import acquire_gateway_runtime_lock,write_pid_file',
+    'assert acquire_gateway_runtime_lock()',
+    'write_pid_file()',
+    `subprocess.Popen([sys.executable,'-c',${JSON.stringify(descendantCode)}])`,
+    "while not pathlib.Path(os.environ['HERMES_HOME'],'descendant.pid').exists(): time.sleep(.01)",
+    ...(wedged ? ['signal.signal(signal.SIGTERM,signal.SIG_IGN)'] : []),
+    "print('ready',flush=True)",
+    'while True: time.sleep(1)'
+  ].join('\n'))
   const child = spawn(python, [script], { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const closed = once(child, 'close')
   let stderr = ''
@@ -58,10 +69,19 @@ nativeTest.each([false, true])('real gateway shutdown preserves foreign identiti
     assert.deepEqual(await retire(process.pid), [child.pid])
     await closed
     assert.ok(child.exitCode !== null || child.signalCode !== null)
+    const descendant = JSON.parse(fs.readFileSync(path.join(home, 'descendant.pid'), 'utf8')).pid
+    await exec(python, ['-c', 'import psutil,sys; p=int(sys.argv[1]); assert not psutil.pid_exists(p) or psutil.Process(p).status()==psutil.STATUS_ZOMBIE', String(descendant)], { env, cwd: home, timeout: 5000 })
     assert.deepEqual(await retire(process.pid), [], 'a second update is idempotent')
   } finally {
     if (child.exitCode === null && child.signalCode === null) {child.kill('SIGKILL')}
     await closed
+    const descendantFile = path.join(home, 'descendant.pid')
+
+    if (fs.existsSync(descendantFile)) {
+      const record = JSON.parse(fs.readFileSync(descendantFile, 'utf8'))
+      await exec(python, ['-c', 'import psutil,sys; p=int(sys.argv[1]); c=float(sys.argv[2]); (psutil.Process(p).kill() if psutil.pid_exists(p) and psutil.Process(p).create_time()==c else None)', String(record.pid), String(record.created)], { env, cwd: home }).catch(() => {})
+    }
+
     fs.rmSync(home, { recursive: true, force: true })
   }
 }, 35_000)

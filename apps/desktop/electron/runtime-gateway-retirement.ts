@@ -56,9 +56,20 @@ for target in homes:
             continue
         # Revalidates PID, creation time, canonical command and home record at
         # every signal; marks intentional shutdown and also reaps owned children.
+        descendants = process.children(recursive=True) if os.name == 'nt' else []
         stopped = take_over_scoped_lock_holder(record, graceful_attempts=10, force_attempts=4)
         if stopped is None:
             raise RuntimeError('Gateway identity could not be retired: PID ' + str(pid))
+        # SIGTERM is TerminateProcess on Windows: the root may disappear before
+        # taskkill /T can discover descendants. Retain psutil creation identities.
+        for child in descendants:
+            try:
+                if child.is_running():
+                    child.kill()
+            except psutil.NoSuchProcess:
+                pass
+        if descendants and psutil.wait_procs(descendants, timeout=5)[1]:
+            raise RuntimeError('Gateway descendants did not exit: PID ' + str(pid))
         retired.append(stopped)
     except (psutil.NoSuchProcess, FileNotFoundError):
         continue

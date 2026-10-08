@@ -5532,8 +5532,9 @@ async function prepareRuntimeSwitch(verifiedRoot: string) {
   const fence = localBackendLifecycle.fenceForUpdate()
 
   try {
-    await Promise.all([fence.drain(), stopMessagingGateway()])
+    await fence.drain()
     const retired = await retirePackagedGateways(ACTIVE_HERMES_ROOT, verifiedRoot, HERMES_HOME)
+    await stopMessagingGateway()
 
     if (retired.length) {rememberLog(`[bundled-engine] retired owned messaging gateways: ${retired.join(', ')}`)}
     // The ownership reaper already validates both parent and child identity.
@@ -22244,7 +22245,7 @@ async function stopMessagingGateway() {
   }
 
   try {
-    child.kill('SIGTERM')
+    stopBackendChild(child)
   } catch {
     // Already gone.
   }

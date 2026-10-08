@@ -692,3 +692,13 @@ spawn fence, spaced path parsing and stream-source retention each make their
 behavior test fail; all were restored. A further online pre-switch refusal test
 checks that activation never occurs while retirement is refused. Final 0.17.53
 three-platform artifacts and public readbacks remain required before release.
+
+
+Windows retirement additionally snapshots descendant process creation identities
+before normal termination. Windows SIGTERM can remove the parent before a later
+taskkill tree walk, so surviving snapshotted descendants are identity-checked and
+terminated, then awaited. The managed messaging handle uses the existing owned
+backend tree stop as its fallback. Real gateway tests now spawn a stubborn child
+as well as a graceful/stubborn parent; the bundled native consumer also verifies
+the descendant exits. This closes the parent-exited-but-child-still-holds-engine
+case without signalling processes discovered only by name.
