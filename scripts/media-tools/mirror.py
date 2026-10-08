@@ -20,7 +20,8 @@ def sha256(path: Path) -> str:
 
 def sources(work: Path) -> None:
     lock = json.loads(Path(__file__).with_name("source-lock.json").read_text())
-    for name, record in (("ffmpeg", lock["ffmpeg"]), ("x264", lock["x264"])):
+    for name in ("ffmpeg", "x264", "zlib"):
+        record = lock[name]
         suffix = ".xz" if name == "ffmpeg" else ".gz"
         archive = work / (name + ".source.tar" + suffix)
         with urllib.request.urlopen(record["url"], timeout=120) as response:

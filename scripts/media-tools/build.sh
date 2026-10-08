@@ -16,15 +16,24 @@ mkdir "$work/prefix" "$work/ffmpeg-build" "$work/x264-build" "$work/package"
 prefix="$work/prefix"
 export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig"
 export PKG_CONFIG_PATH=""
-common=(--disable-autodetect --disable-doc --disable-debug --disable-ffplay --enable-static --disable-shared --enable-gpl --enable-libx264 --pkg-config-flags=--static)
+common=(--disable-autodetect --disable-doc --disable-debug --disable-ffplay --enable-static --disable-shared --enable-gpl --enable-libx264 --enable-zlib --extra-cflags="-I$prefix/include" --pkg-config=pkg-config --pkg-config-flags=--static)
 if [[ "$target" = win-x64 ]]; then
   export CC=x86_64-w64-mingw32-gcc
   x264_flags=(--host=x86_64-w64-mingw32 --cross-prefix=x86_64-w64-mingw32-)
-  ffmpeg_flags=(--target-os=mingw32 --arch=x86_64 --cross-prefix=x86_64-w64-mingw32- --enable-cross-compile --extra-ldflags=-static --enable-schannel)
+  ffmpeg_flags=(--target-os=mingw32 --arch=x86_64 --cross-prefix=x86_64-w64-mingw32- --enable-cross-compile --extra-ldflags="-L$prefix/lib -static" --enable-schannel)
+  cd "$work/zlib"
+  make -f win32/Makefile.gcc PREFIX=x86_64-w64-mingw32- -j4 libz.a > "$work/zlib-build.log" 2>&1
+  mkdir -p "$prefix/lib" "$prefix/include"
+  cp libz.a "$prefix/lib/"
+  cp zlib.h zconf.h "$prefix/include/"
 else
   export MACOSX_DEPLOYMENT_TARGET=12.0
-  x264_flags=()
-  ffmpeg_flags=(--enable-videotoolbox --enable-audiotoolbox --enable-securetransport --enable-zlib)
+  x264_flags=(--host="$(uname -m)-apple-darwin")
+  ffmpeg_flags=(--enable-videotoolbox --enable-audiotoolbox --enable-securetransport --extra-ldflags="-L$prefix/lib")
+  cd "$work/zlib"
+  ./configure --static --prefix="$prefix" > "$work/zlib-configure.log" 2>&1
+  make -j4 > "$work/zlib-build.log" 2>&1
+  make install >> "$work/zlib-build.log" 2>&1
   # Hosted Intel machines have no guaranteed NASM; portable C code is correct.
   if [[ "$target" = mac-x64 ]]; then
     x264_flags+=(--disable-asm)
@@ -43,10 +52,11 @@ suffix=""
 cp "ffmpeg$suffix" "ffprobe$suffix" "$work/package/"
 cp "$work/ffmpeg/COPYING.GPLv2" "$work/package/LICENSE-FFmpeg.txt"
 cp "$work/x264/COPYING" "$work/package/LICENSE-x264.txt"
+cp "$work/zlib/zlib.h" "$work/package/LICENSE-zlib.txt"
 cp "$work/ffmpeg-build/config.h" "$work/package/ffmpeg-config.h"
 cp "$work/ffmpeg-configure.log" "$work/package/"
 cp "$script_dir/source-lock.json" "$script_dir/build.sh" "$script_dir/mirror.py" "$work/package/"
-cp "$work/ffmpeg.source.tar.xz" "$work/x264.source.tar.gz" "$work/package/"
+cp "$work/ffmpeg.source.tar.xz" "$work/x264.source.tar.gz" "$work/zlib.source.tar.gz" "$work/package/"
 printf '%s\n' "$target" > "$work/package/TARGET"
 printf '%s\n' "${GITHUB_SHA:-$(git -C "$script_dir" rev-parse HEAD)}" > "$work/package/BUILD_COMMIT"
 echo "Built $target: $work/package"

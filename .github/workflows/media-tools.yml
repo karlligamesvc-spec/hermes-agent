@@ -11,6 +11,35 @@ permissions:
   contents: read
 
 jobs:
+  hypit:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-14
+          - target: mac-x64
+            runner: macos-15-intel
+          - target: win-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify Hypit package and native installation
+        run: python scripts/media-tools/hypit.py hypit-package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hypit-${{ matrix.target }}-verified
+          path: hypit-package/
+          if-no-files-found: error
+
   build:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
