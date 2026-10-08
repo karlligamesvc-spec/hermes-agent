@@ -617,3 +617,38 @@ user-task acceptance remain manual. Windows remains unsigned. This release
 does not alter Relay billing or rewrite the41 original SKILL entries. Complete
 provenance and verification limits are recorded in the cloud repository's
 [0.17.52 publication receipt](https://github.com/karlligamesvc-spec/apex-nodes/blob/main/docs/work-notes/HC906-PRIMARY-VOICE-0.17.52.md).
+
+
+## Update reload recovery (candidate, not published)
+
+The 0.17.52 continuation latch lived only in renderer memory. With a durable
+runtime-after-shell plan, failed engine activation can preserve the old engine;
+a new renderer then reapplied the same target and reloaded again. A disk-backed
+plan test reproduces the second apply on the released code by discarding the
+module cache between launches. This establishes a code defect; it does not yet
+identify the reported customer's CONNECTING screen without their desktop log.
+
+The candidate bounds automatic continuation across reloads using the persisted
+attempt count and failed phase. Actual target activation still completes and
+clears the plan first. An unsuccessful previous attempt surfaces recovery with
+explicit Retry; dismissing it retains the usable old engine. Applying another
+update requires a successful durable attempt receipt, so failed/missing IPC or
+disk persistence cannot bypass the reload bound. No installer/version/default
+is changed by this source patch.
+
+Checked exits: initial automatic resume, fresh-renderer resume, successful local
+activation without online lookup, failed activation with update still available,
+explicit Retry, missing/rejected/throwing transition receipt, shell-only handoff,
+and shared macOS/Windows renderer. Bootstrap archive/probe/ownership/rollback
+checks remain in the native installer.
+
+Smoke from apps/desktop:
+
+```sh
+npx vitest run src/store/desktop-update.test.ts src/components/desktop-install-overlay.test.tsx electron/desktop-update-plan.test.ts electron/packaged-runtime.test.ts electron/runtime-update-apply.test.ts
+npm run typecheck
+```
+
+These tests use a real on-disk plan and fresh module instances with controlled
+native apply results. They do not establish why a customer's native activation
+failed, or replace a three-platform packaged release and physical acceptance.
