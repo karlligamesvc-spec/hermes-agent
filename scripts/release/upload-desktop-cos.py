@@ -95,11 +95,14 @@ def run_bounded_upload(argv: list[str]) -> int:
     # A dead multipart batch otherwise processes every queued part before the
     # SDK returns. Kill only this owned child; completed server parts survive
     # and the next worker verifies their hashes before resuming the same file.
+    # A real 543 MB installer made steady progress but reached only 402 MB in
+    # the old 3 x 180s budget. Keep three bounded workers, allowing up to 30
+    # minutes per file; public size verification still gates feed publication.
     for attempt in range(1, 4):
         try:
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), '--transfer-worker', *argv],
-                timeout=180, check=False,
+                timeout=600, check=False,
             )
         except subprocess.TimeoutExpired:
             print(f'Desktop COS worker timed out; preserving resumable parts ({attempt}/3)', flush=True)

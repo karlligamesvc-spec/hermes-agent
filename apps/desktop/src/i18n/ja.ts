@@ -3280,6 +3280,8 @@ export const ja = defineLocale({
     diff: '差分',
     unknownSize: 'サイズ不明',
     binaryTitle: 'これはバイナリファイルのようです',
+    wordBodyEmpty: 'プレビューできる本文がありません。画像などは元のファイルで確認してください。',
+    wordBodyPreview: 'Word 本文プレビュー。レイアウトと画像は元のファイルをダウンロードして確認してください。',
     binaryBody: label => `${label} をプレビューすると読み取り不能なテキストが表示される場合があります。`,
     largeTitle: 'このファイルは大きいです',
     largeBody: (label, size) => `${label} は ${size} です。APEX は最初の 512 KB のみを表示します。`,

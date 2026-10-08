@@ -702,3 +702,42 @@ backend tree stop as its fallback. Real gateway tests now spawn a stubborn child
 as well as a graceful/stubborn parent; the bundled native consumer also verifies
 the descendant exits. This closes the parent-exited-but-child-still-holds-engine
 case without signalling processes discovered only by name.
+
+### Word body preview and publish budget — 0.17.54 candidate
+
+The follow-up recording shows Desktop `File not found` and a blank Weixin phone
+preview. PR #378 fixes the desktop spaced-path loss; the phone failure still needs
+the original received DOCX. Account-scoped tool usage identifies the ASR caller as
+the local desktop anchor; no matching file is indexed in platform storage.
+
+DOCX now uses the shared file-preview entry and existing local/remote byte bridge
+to display body paragraphs, including table-cell text. Original downloads remain
+unchanged. This is body-text preview, not Word pagination, images, editing or full
+layout fidelity; the UI states that boundary in all four locales. Other formats
+retain their existing previews. XML entities, relationships, fields and scripts
+are not executed; archive/body limits bound extraction. Invalid or empty bodies
+show an explicit error instead of a blank pane.
+
+Validation: focused preview/path suites, typecheck/lint, and production
+`render_verbatim_transcript_docx` output inspected through the actual component in
+an isolated localhost harness. Removing the unique DOCX route turns the preview
+integration test red; source was restored. This fixture is not the customer's file
+and does not prove Weixin rendering.
+
+Paired run 37720693318 (0.17.53, source
+1395c4b0b3eba674af31392bbb71986046a36500) passed native consumer receipts on all
+three targets: forced gateway/descendant retirement, fresh install, legacy upgrade,
+reopen, rollback and database preservation. The arm64 installer passed signing,
+notarization and Gatekeeper, but upload reached only 402 MiB of its 543,576,147-byte
+DMG before exhausting three 180-second workers. The incomplete run was stopped;
+all three public feeds still read 0.17.52. Version 0.17.54 allows three bounded
+600-second workers (30 minutes per file maximum), retaining part-hash validation,
+permanent-error refusal and exact public-size verification before publishing feeds.
+No server-upload exception is used. Windows remains unsigned; native consumer
+checks do not claim physical customer-device acceptance.
+
+Smoke from `apps/desktop`:
+`npx vitest run src/app/chat/right-rail/preview-docx.test.tsx src/app/chat/right-rail/preview-file.test.tsx src/lib/local-preview.test.ts src/lib/chat-messages.test.ts`
+
+Uploader smoke from repository root:
+`scripts/run_tests.sh tests/test_desktop_cos_uploader.py`

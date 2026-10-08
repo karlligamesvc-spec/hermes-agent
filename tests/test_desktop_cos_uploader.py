@@ -137,5 +137,5 @@ def test_stalled_owned_worker_is_bounded_and_only_transient_exits_resume(monkeyp
     args = ['--file', '/owned/release.exe', '--key', 'desktop/win-x64/release.exe']
     assert publisher.run_bounded_upload(args) == expected
     assert len(seen) == calls
-    assert all(command[-4:] == args and '--transfer-worker' in command and options['timeout'] == 180
+    assert all(command[-4:] == args and '--transfer-worker' in command and options['timeout'] == 600
                for command, options in seen)

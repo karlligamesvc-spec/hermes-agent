@@ -4265,6 +4265,8 @@ export const en: Translations = {
     diff: 'DIFF',
     unknownSize: 'unknown size',
     binaryTitle: 'This looks like a binary file',
+    wordBodyEmpty: 'This document has no body text to preview. Download the original to check images or other content.',
+    wordBodyPreview: 'Word body preview. Download the original file for its full layout and images.',
     binaryBody: label => `Previewing ${label} may show unreadable text.`,
     largeTitle: 'This file is large',
     largeBody: (label, size) => `${label} is ${size}. APEX will only show the first 512 KB.`,
