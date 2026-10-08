@@ -462,6 +462,24 @@ describe('toChatMessages', () => {
 })
 
 describe('renderMediaTags', () => {
+  it.each([
+    '/Users/me/.apexnodes/cache/documents/高三必看逆袭方法 高三考生_逐字稿_600fb131.docx',
+    'C:\\Users\\Test User\\APEX Documents\\季度报告.pptx',
+    '/tmp/财务 报表.xlsx',
+    '/tmp/调研 报告.pdf'
+  ])('keeps a complete generated file path in history and every streamed split: %s', path => {
+    const source = `已生成：\nMEDIA:${path}\n正文。`
+    const expectedHref = `#media:${encodeURIComponent(path)}`
+    expect(renderMediaTags(source)).toContain(`](${expectedHref})\n正文。`)
+    // Reproduce a token boundary inside the title, before its extension exists.
+    const split = source.indexOf(' ') + 1
+    const parts = appendAssistantTextPart(appendAssistantTextPart([], source.slice(0, split)), source.slice(split))
+    expect(parts[0]).toMatchObject({ type: 'text', text: renderMediaTags(source) })
+    expect(renderMediaTags(`MEDIA:"${path}"\nMEDIA:${path}`)).toBe(
+      `${renderMediaTags(`MEDIA:${path}`)}\n${renderMediaTags(`MEDIA:${path}`)}`
+    )
+  })
+
   it('renders standalone and inline MEDIA tags as links', () => {
     expect(renderMediaTags('here\nMEDIA:/tmp/voice.mp3\nthere')).toBe(
       'here\n[Audio: voice.mp3](#media:%2Ftmp%2Fvoice.mp3)\nthere'
@@ -470,6 +488,9 @@ describe('renderMediaTags', () => {
       'audio: [Audio: voice.mp3](#media:%2Ftmp%2Fvoice.mp3) done'
     )
     expect(renderMediaTags('MEDIA:/tmp/demo.mp4')).toBe('[Video: demo.mp4](#media:%2Ftmp%2Fdemo.mp4)')
+    expect(renderMediaTags('MEDIA:/tmp/a.pdf MEDIA:/tmp/b.pdf')).toBe(
+      '[File: a.pdf](#media:%2Ftmp%2Fa.pdf) [File: b.pdf](#media:%2Ftmp%2Fb.pdf)'
+    )
   })
 
   it('renders streamed assistant media once the tag is complete', () => {

@@ -559,6 +559,7 @@ import { missingRendererAssets } from './renderer-bundle'
 import { loadRendererLoadErrorPage } from './renderer-load-error-page'
 import { attachRendererConsoleCapture, formatRendererBoundaryReport } from './renderer-log'
 import { fetchRosterSourceData } from './roster-source-fetch'
+import { retirePackagedGateways } from './runtime-gateway-retirement'
 import { applyRuntimeUpdateToLatest } from './runtime-update-apply'
 import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
 import {
@@ -5527,9 +5528,42 @@ function resolveHermesBackend(backendArgs) {
   }
 }
 
+async function prepareRuntimeSwitch(verifiedRoot: string) {
+  const fence = localBackendLifecycle.fenceForUpdate()
+
+  try {
+    await fence.drain()
+    const retired = await retirePackagedGateways(ACTIVE_HERMES_ROOT, verifiedRoot, HERMES_HOME)
+    await stopMessagingGateway()
+
+    if (retired.length) {rememberLog(`[bundled-engine] retired owned messaging gateways: ${retired.join(', ')}`)}
+    // The ownership reaper already validates both parent and child identity.
+    // A remaining live/unknown record may belong to another Desktop; never kill it.
+    await reapOrphanedBackendsOnce()
+    const ownership = parseBackendOwnershipDetailed(fileExists(DESKTOP_BACKEND_OWNERSHIP_PATH) ? fs.readFileSync(DESKTOP_BACKEND_OWNERSHIP_PATH, 'utf8') : null)
+
+    if (ownership.corrupt) {throw new Error('Could not verify previous Desktop engine ownership. Retry after closing its local workers.')}
+
+    for (const entry of ownership.entries) {
+      if (await backendIdentityMatches(entry) !== false) {
+        throw new Error('A previous Desktop engine worker is still live or unverified. Close it and retry.')
+      }
+    }
+
+    await assertPackagedRuntimeIdle(ACTIVE_HERMES_ROOT, verifiedRoot)
+
+    return fence
+  } catch (error) {
+    fence.release()
+    throw error
+  }
+}
+
 let packagedRuntimeBootError: string | null = null
 
 const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
+  let updateFence: ReturnType<typeof localBackendLifecycle.fenceForUpdate> | undefined
+
   try {
     const result = await installPackagedRuntime({
       resourcesPath: process.resourcesPath,
@@ -5540,20 +5574,7 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
       runTool: runBundledTool,
       assertCurrent: () => localBackendLifecycle.assertCanStart(),
       beforeSwitch: async verifiedRoot => {
-        // The ownership reaper already validates both parent and child identity.
-        // A remaining live/unknown record may belong to another Desktop; never kill it.
-        await reapOrphanedBackendsOnce()
-        const ownership = parseBackendOwnershipDetailed(fileExists(DESKTOP_BACKEND_OWNERSHIP_PATH) ? fs.readFileSync(DESKTOP_BACKEND_OWNERSHIP_PATH, 'utf8') : null)
-
-        if (ownership.corrupt) {throw new Error('Could not verify previous Desktop engine ownership. Retry after closing its local workers.')}
-
-        for (const entry of ownership.entries) {
-          if (await backendIdentityMatches(entry) !== false) {
-            throw new Error('A previous Desktop engine worker is still live or unverified. Close it and retry.')
-          }
-        }
-
-        await assertPackagedRuntimeIdle(ACTIVE_HERMES_ROOT, verifiedRoot)
+        updateFence = await prepareRuntimeSwitch(verifiedRoot)
       },
       writeMarker: release => writeBootstrapMarker({ pinnedCommit: release.runtime_commit, pinnedBranch: null, version: release.runtime_version }),
       log: rememberLog
@@ -5576,6 +5597,8 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
     failure.isBootstrapFailure = true
     bootstrapFailure = failure
     throw failure
+  } finally {
+    updateFence?.release()
   }
 })
 
@@ -18929,20 +18952,27 @@ async function applyRuntimeBundleUpdateFlow(pin): Promise<any> {
     return { ok: false, code: 'no_pin_key' }
   }
 
-  return applyRuntimeBundleUpdate({
-    hermesHome: HERMES_HOME,
-    os: target.os,
-    arch: target.arch,
-    key: String(pin.key),
-    desktopVersion: app.getVersion(),
-    cosBase: process.env.HERMES_RUNTIME_COS_BASE || '',
-    fetchManifest: url => fetchPublicJson(url, { timeoutMs: 20000 }),
-    download: bundleRuntimeDownload,
-    extract: extractBundleArchive,
-    runTool: runBundledTool,
-    onProgress: broadcastRuntimeUpdateProgress,
-    log: msg => rememberLog(msg)
-  })
+  let updateFence: ReturnType<typeof localBackendLifecycle.fenceForUpdate> | undefined
+
+  try {
+    return await applyRuntimeBundleUpdate({
+      hermesHome: HERMES_HOME,
+      os: target.os,
+      arch: target.arch,
+      key: String(pin.key),
+      desktopVersion: app.getVersion(),
+      cosBase: process.env.HERMES_RUNTIME_COS_BASE || '',
+      fetchManifest: url => fetchPublicJson(url, { timeoutMs: 20000 }),
+      download: bundleRuntimeDownload,
+      extract: extractBundleArchive,
+      runTool: runBundledTool,
+      beforeSwitch: async verifiedRoot => { updateFence = await prepareRuntimeSwitch(verifiedRoot) },
+      onProgress: broadcastRuntimeUpdateProgress,
+      log: msg => rememberLog(msg)
+    })
+  } finally {
+    updateFence?.release()
+  }
 }
 
 // Shell UI locale block, appended to every seed. The runtime writes
@@ -22215,7 +22245,7 @@ async function stopMessagingGateway() {
   }
 
   try {
-    child.kill('SIGTERM')
+    stopBackendChild(child)
   } catch {
     // Already gone.
   }
@@ -22239,6 +22269,8 @@ async function startMessagingGateway(profile) {
     const backend = await ensureRuntime(resolveHermesBackend(buildGatewayRunArgs(profile)))
     const hermesCwd = resolveHermesCwd()
     rememberLog(`Starting Hermes messaging gateway${profile ? ` for profile "${profile}"` : ''} via ${backend.label}`)
+
+    localBackendLifecycle.assertCanSpawn()
 
     const child = spawn(
       backend.command,

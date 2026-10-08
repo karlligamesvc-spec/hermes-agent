@@ -20,6 +20,30 @@ function deferred() {
   return { promise, resolve }
 }
 
+test('update fences late starts, drains all owned children and permits restart after rollback', async () => {
+  const exit = deferred()
+  const stopChild = vi.fn()
+  const lifecycle = createLocalBackendLifecycle({ stopChild, waitForExit: () => exit.promise, cancelSetup: () => {} })
+  lifecycle.spawn(() => ({ kind: 'backend' }))
+  lifecycle.spawn(() => ({ kind: 'messaging' }))
+  const fence = lifecycle.fenceForUpdate()
+  const create = vi.fn(() => ({ kind: 'late' }))
+  assert.throws(() => lifecycle.spawn(create), /being updated/)
+  assert.equal(create.mock.calls.length, 0)
+  let drained = false
+  const drain = fence.drain().then(() => { drained = true })
+  await Promise.resolve()
+  assert.equal(drained, false)
+  assert.equal(stopChild.mock.calls.length, 2)
+  exit.resolve()
+  await drain
+  fence.release()
+  fence.release()
+  assert.doesNotThrow(() => lifecycle.spawn(create))
+  await lifecycle.shutdown()
+  assert.throws(() => lifecycle.spawn(create), /quitting/)
+})
+
 test.each([false, true])('an already-tracked start is joined before its bundle gate exists (failed=%s)', async fails => {
   const prepare = deferred()
   const entered = deferred()

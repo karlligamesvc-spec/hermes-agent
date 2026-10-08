@@ -10,7 +10,8 @@ export function reasoningPart(text: string, timestamp?: number): ChatMessagePart
   return { type: 'reasoning', text, ...(timestamp !== undefined ? { timestamp } : {}) }
 }
 
-const MEDIA_LINE_RE = /(^|\n)[\t ]*[`"']?MEDIA:\s*(?<line>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?[\t ]*(\n|$)/g
+// A standalone tag owns the whole line: generated document titles contain spaces.
+const MEDIA_LINE_RE = /(^|\n)[\t ]*[`"']?MEDIA:[\t ]*(?<line>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:(?!MEDIA:)[^\n])+?)[`"']?[\t ]*(?=\n|$)/g
 
 const MEDIA_TAG_RE = /[`"']?MEDIA:\s*(?<inline>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?/g
 
@@ -31,7 +32,7 @@ export function renderMediaTags(text: string): string {
   return text
     .replace(
       MEDIA_LINE_RE,
-      (_match, lead: string, value: string, trailer: string) => `${lead}${mediaLink(value)}${trailer}`
+      (_match, lead: string, value: string) => `${lead}${mediaLink(value)}`
     )
     .replace(MEDIA_TAG_RE, (_match, value: string) => mediaLink(value))
 }
@@ -250,7 +251,7 @@ function appendStreamPart(
   const tail = next[tailIndex]
 
   if (tail?.type === type && tail.completedAt === undefined) {
-    next[tailIndex] = { ...tail, text: `${tail.text}${delta}` } as ChatMessagePart
+    next[tailIndex] = { ...tail, text: `${tail.mediaSourceText ?? tail.text}${delta}` } as ChatMessagePart
 
     return { index: tailIndex, parts: next }
   }
@@ -296,7 +297,7 @@ export function appendAssistantTextPart(
     const rendered = renderMediaTags(part.text)
 
     if (rendered !== part.text) {
-      next[index] = { ...part, text: rendered }
+      next[index] = { ...part, mediaSourceText: part.text, text: rendered }
     }
   }
 

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopRuntimeUpdateCheck, DesktopShellUpdateState, DesktopUpdatePlan } from '@/global'
 
-import { clearDesktopUpdatePlan, readDesktopUpdatePlan, readPreparedDesktopUpdatePlan, writeDesktopUpdatePlan } from '../../electron/desktop-update-plan'
+import { clearDesktopUpdatePlan, readDesktopUpdatePlan, readPreparedDesktopUpdatePlan, transitionDesktopUpdatePlan, writeDesktopUpdatePlan } from '../../electron/desktop-update-plan'
 import { createLocalBackendLifecycle } from '../../electron/local-backend-lifecycle'
 import { createPackagedRuntimeGate } from '../../electron/packaged-runtime'
 import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from '../../electron/runtime-version'
@@ -72,6 +72,84 @@ afterEach(() => {
 })
 
 describe('desktop update orchestration', () => {
+  it.each([false, true])('bounds failed activation across a fresh renderer (activated=%s)', async activated => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-reload-loop-'))
+    const file = path.join(home, 'plan.json')
+    writeDesktopUpdatePlan(file, updatePlan())
+    let activeKey = 'old'
+    const applyUpdate = vi.fn(async () => ({ ok: true, applied: true, reloadRequired: true }))
+    const reload = vi.fn()
+    window.hermesDesktop = {
+      getVersion: async () => ({ appVersion: '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: activeKey, version: 'v2026.8.8', treeMatchesMarker: true }),
+        checkUpdate: async () => RUNTIME_UPDATE,
+        applyUpdate
+      },
+      updateCenter: {
+        getPlan: async () => readDesktopUpdatePlan(file),
+        transitionPlan: async (payload: Parameters<typeof transitionDesktopUpdatePlan>[1]) => ({ ok: true, plan: transitionDesktopUpdatePlan(file, payload) }),
+        clearPlan: async () => { clearDesktopUpdatePlan(file);
+
+ return { ok: true } }
+      }
+    } as unknown as typeof window.hermesDesktop
+
+    try {
+      vi.resetModules()
+      const first = await import('./desktop-update')
+      await first.resumeDesktopUpdatePlan({ automatic: true, reload })
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      expect(reload).toHaveBeenCalledTimes(1)
+      expect(readDesktopUpdatePlan(file)?.attempts).toBe(1)
+      activeKey = activated ? 'new' : 'old'
+      // A real reload destroys every module-local latch; the disk plan survives.
+      vi.resetModules()
+      const next = await import('./desktop-update')
+      await next.resumeDesktopUpdatePlan({ automatic: true, reload })
+      expect(applyUpdate).toHaveBeenCalledTimes(1)
+      expect(reload).toHaveBeenCalledTimes(1)
+
+      if (activated) {
+        expect(readDesktopUpdatePlan(file)).toBeNull()
+        expect(next.$desktopUpdateProgress.get().error).toBeNull()
+      } else {
+        expect(readDesktopUpdatePlan(file)?.phase).toBe('failed')
+        expect(next.$desktopUpdateProgress.get().error).toBe('runtime_target_not_active')
+        await next.retryDesktopUpdate({ reload })
+        expect(applyUpdate).toHaveBeenCalledTimes(2)
+        expect(reload).toHaveBeenCalledTimes(2)
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it.each(['reject', 'throw', 'missing'] as const)('does not reload without a durable attempt receipt (%s)', async failure => {
+    const applyUpdate = vi.fn(async () => ({ ok: true, applied: true, reloadRequired: true }))
+    window.hermesDesktop = {
+      getVersion: async () => ({ appVersion: '0.18.0' }),
+      runtime: {
+        getVersion: async () => ({ ok: true, key: 'old', version: 'v2026.7.1', treeMatchesMarker: true }),
+        checkUpdate: async () => RUNTIME_UPDATE,
+        applyUpdate
+      },
+      updateCenter: {
+        getPlan: async () => updatePlan({ planId: `write-failure-${failure}` }),
+        transitionPlan: failure === 'missing' ? undefined : async () => {
+          if (failure === 'throw') { throw new Error('disk write failed') }
+
+          return { ok: false, error: 'disk write failed' }
+        }
+      }
+    } as unknown as typeof window.hermesDesktop
+    const reload = vi.fn()
+    await resumeDesktopUpdatePlan({ automatic: true, reload })
+    expect(applyUpdate).not.toHaveBeenCalled()
+    expect(reload).not.toHaveBeenCalled()
+    expect($desktopUpdateProgress.get()).toMatchObject({ active: false, error: 'update_plan_transition_failed' })
+  })
+
   it('attempts automatic continuation once per frozen plan while permitting a deliberate retry', async () => {
     const plan = updatePlan({ planId: 'bounded-automatic-plan' })
     const applyUpdate = vi.fn(async () => ({ ok: false, error: 'owned install failure' }))

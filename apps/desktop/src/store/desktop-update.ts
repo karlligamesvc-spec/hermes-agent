@@ -303,7 +303,17 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       attemptedAutomaticPlan = identity
     }
 
-    await transitionPlanSafely({ incrementAttempt: true, phase: 'resuming' })
+    // This receipt survives the reload that activates the engine. An in-memory
+    // latch alone re-arms a failed update on every fresh renderer.
+    let attemptRecorded = false
+
+    try {
+      const receipt = await bridge?.transitionPlan?.({ incrementAttempt: true, phase: 'resuming' })
+      attemptRecorded = receipt?.ok === true
+    } catch {
+      // Readback may still prove an already-finished update; only a new apply
+      // requires a durable attempt record.
+    }
 
     setProgress({
       active: true,
@@ -352,6 +362,10 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
         return
       }
 
+      if (options.automatic && (plan.attempts > 0 || plan.phase === 'failed')) {
+        throw new Error(plan.lastError || 'runtime_target_not_active')
+      }
+
       const runtime = await checkRuntimeUpdate()
 
       if (!runtime.ok) {
@@ -372,6 +386,10 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       }
 
       if (runtime.updateAvailable) {
+        if (!attemptRecorded) {
+          throw new Error('update_plan_transition_failed')
+        }
+
         const result = await applyRuntimeUpdate({
           expectedKey: plan.targetRuntimeKey,
           expectedVersion: plan.targetRuntimeVersion

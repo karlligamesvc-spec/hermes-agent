@@ -617,3 +617,88 @@ user-task acceptance remain manual. Windows remains unsigned. This release
 does not alter Relay billing or rewrite the41 original SKILL entries. Complete
 provenance and verification limits are recorded in the cloud repository's
 [0.17.52 publication receipt](https://github.com/karlligamesvc-spec/apex-nodes/blob/main/docs/work-notes/HC906-PRIMARY-VOICE-0.17.52.md).
+
+
+## Update reload recovery (candidate, not published)
+
+The 0.17.52 continuation latch lived only in renderer memory. With a durable
+runtime-after-shell plan, failed engine activation can preserve the old engine;
+a new renderer then reapplied the same target and reloaded again. A disk-backed
+plan test reproduces the second apply on the released code by discarding the
+module cache between launches. The supplied customer log confirms this chain: the d4a31394 bundle passes
+extraction and verification, activation is refused because an old-engine holder
+is present, then automatic continuation repeatedly reloads. Across the log, the
+same holder refusal occurs 133 times. The log lacks blocker identities, so it
+does not establish which process owns the old engine. The native guard now
+includes blocker PIDs in its existing error; it still refuses the switch and
+never kills borrowed workers.
+
+The candidate bounds automatic continuation across reloads using the persisted
+attempt count and failed phase. Actual target activation still completes and
+clears the plan first. An unsuccessful previous attempt surfaces recovery with
+explicit Retry; dismissing it retains the usable old engine. Applying another
+update requires a successful durable attempt receipt, so failed/missing IPC or
+disk persistence cannot bypass the reload bound. Desktop 0.17.53 is the release candidate; the embedded D4 engine pin is unchanged.
+No public feed or engine default has changed yet.
+
+Checked exits: initial automatic resume, fresh-renderer resume, successful local
+activation without online lookup, failed activation with update still available,
+explicit Retry, missing/rejected/throwing transition receipt, shell-only handoff,
+and shared macOS/Windows renderer. Bootstrap archive/probe/ownership/rollback
+checks remain in the native installer.
+
+Smoke from apps/desktop:
+
+```sh
+npx vitest run src/store/desktop-update.test.ts src/components/desktop-install-overlay.test.tsx electron/desktop-update-plan.test.ts electron/packaged-runtime.test.ts electron/runtime-update-apply.test.ts
+npm run typecheck
+```
+
+These tests use a real on-disk plan and fresh module instances with controlled
+native apply results. The native holder test runs real processes and verifies
+the blocker PID is reported without killing it. Customer process identification,
+a three-platform packaged release and physical recovery remain outstanding.
+
+
+### Owned worker retirement and spaced artifact links (0.17.53 candidate)
+
+Before offline or online verified bundle activation, the native lifecycle fences
+new local child spawns and drains all tracked backend children plus the managed
+messaging child. It preserves normal messaging-gateway survival on ordinary app
+quit. Old messaging gateways are retired only after canonical PID/start-time,
+home/profile, old engine path and parent identity checks; another live app/CLI
+owner and unknown workers remain blockers. Windows venv redirectors are checked
+as part of the gateway ancestry. The existing canonical gateway implementation
+marks takeover, sends normal termination, rechecks identity before forced
+termination and reaps its snapshotted children. Activation still requires the
+independent full idle scan. Failure releases the spawn fence and retains the old
+engine. Legacy in-place Windows installer/uninstaller paths retain their existing
+lock-release handling; developer/borrowed engines are outside the packaged gate.
+
+The screenshot's Word card loses its extension and spills the rest of its title
+into prose. Reproduction shows standalone MEDIA lines were truncated at the first
+space. The shared renderer now preserves the entire standalone path and original
+stream source across token boundaries. This covers Word, Excel, PPT, PDF and
+other spaced artifact filenames, both stored messages and streaming replies;
+the producer plugins already specify standalone MEDIA lines. No user file is
+renamed. This does not establish a fix for the separate Douyin CDN 403; the exact
+share URL and originating account are still requested for that investigation.
+
+Validation: 174 tests across six relevant suites; typecheck; ESLint with no
+errors (existing main-file warnings remain). Actual installed D4 arm64 bundle
+consumer passed fresh boot, historical migration/rollback, RPC and owned wedged
+gateway retirement using bundled Python. Separate reverse faults in retirement,
+spawn fence, spaced path parsing and stream-source retention each make their
+behavior test fail; all were restored. A further online pre-switch refusal test
+checks that activation never occurs while retirement is refused. Final 0.17.53
+three-platform artifacts and public readbacks remain required before release.
+
+
+Windows retirement additionally snapshots descendant process creation identities
+before normal termination. Windows SIGTERM can remove the parent before a later
+taskkill tree walk, so surviving snapshotted descendants are identity-checked and
+terminated, then awaited. The managed messaging handle uses the existing owned
+backend tree stop as its fallback. Real gateway tests now spawn a stubborn child
+as well as a graceful/stubborn parent; the bundled native consumer also verifies
+the descendant exits. This closes the parent-exited-but-child-still-holds-engine
+case without signalling processes discovered only by name.
