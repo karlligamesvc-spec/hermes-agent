@@ -21,6 +21,7 @@ import {
   setYoloActive
 } from '@/store/session'
 import { $sessionStates, $sessionTiles, publishSessionState, releaseSessionTranscript } from '@/store/session-states'
+import { $voiceSessionOwners, hasVoiceSessionOwner } from '@/store/voice-session-owner'
 
 import type { ClientSessionState } from '../../types'
 import { SessionStateCache } from '../session-state-cache'
@@ -60,6 +61,7 @@ export function useSessionStateCache({
 }: SessionStateCacheOptions) {
   const busy = useStore(PRIMARY_SESSION_VIEW.$busy)
   const sessionTiles = useStore($sessionTiles)
+  const voiceOwners = useStore($voiceSessionOwners)
   const activeSessionIdRef = useRef<string | null>(activeSessionId)
   const selectedStoredSessionIdRef = useRef<string | null>(selectedStoredSessionId)
 
@@ -93,6 +95,7 @@ export function useSessionStateCache({
   if (sessionStateByRuntimeIdRef.current === null) {
     sessionStateByRuntimeIdRef.current = new SessionStateCache({
       isReferenced: (runtimeId, state) =>
+        hasVoiceSessionOwner(runtimeId, state.storedSessionId) ||
         runtimeId === activeSessionIdRef.current ||
         state.storedSessionId === selectedStoredSessionIdRef.current ||
         $sessionTiles
@@ -379,7 +382,7 @@ export function useSessionStateCache({
 
   useEffect(() => {
     sessionStateCache.prune()
-  }, [activeSessionId, selectedStoredSessionId, sessionStateCache, sessionTiles])
+  }, [activeSessionId, selectedStoredSessionId, sessionStateCache, sessionTiles, voiceOwners])
 
   const getRuntimeIdForStoredSession = useCallback(
     (storedSessionId: string): string | null => {

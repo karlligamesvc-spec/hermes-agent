@@ -741,3 +741,51 @@ Smoke from `apps/desktop`:
 
 Uploader smoke from repository root:
 `scripts/run_tests.sh tests/test_desktop_cos_uploader.py`
+
+## Floating call continuity after 0.17.54
+
+The main composer returned only the floating voice portal while a call was
+active, hiding its model/reasoning/send controls. Keep the normal main controls
+mounted alongside that portal; HUD/tile calls retain their compact pill.
+
+A call captures the conversation at admission, or the first accepted primary
+submit receipt when started on Home. Navigation does not change that owner.
+Later voice submits and busy-turn redirects carry its runtime/stored pair;
+reply collection, history and tool progress read that owner's state. Background
+speech does not consume another editor's draft or attachments. A submit already
+pinned to a voice owner can finish recovery across navigation, while foreground
+state writes still honor route drift. Text/queue/tile drift guards retain their
+existing behavior.
+
+A floating call is an explicit consumer of its session: retain the transcript
+through background settlement/cache pruning and retain the owning gateway while
+idle. Token-scoped cleanup on close/unmount releases that ownership; late submit
+receipts from an ended call cannot bind a later call. This keeps returned text
+available for actual readback after leaving the chat.
+
+The unified-primary policy is unchanged. The selected primary model's reasoning
+setting still applies to greetings and tasks; this change does not add a second
+intent classifier or hide Thought to imply faster inference. It does not change
+the platform-adapted skills or install the separate 41-skill original archive.
+
+Smoke (apps/desktop):
+
+```sh
+npx vitest run --project ui src/app/chat/composer/hooks/use-composer-voice-start.test.tsx src/app/chat/composer/voice-entry.test.tsx src/app/session/hooks/use-prompt-actions/index.test.tsx src/app/session/hooks/use-session-state-cache.test.tsx src/store/session-states.test.ts src/store/session-states-foreground-scopes.test.ts
+npm run test:ui -- --maxWorkers=4
+npm run typecheck
+npm run build
+```
+
+The deterministic fixtures exercise Home/history admission, multiple turns,
+Home/another-chat navigation, correct background busy routing/reply selection,
+real submit/recovery/redirect hooks and real cache/store settlement. They do not
+prove physical microphone quality, supplier latency, natural-language task
+judgment, a signed installer or production deployment. Release status must be
+reported separately from local verification.
+
+Local verification: all 9,119 UI tests across 947 files and Desktop typecheck/
+build passed. Four uniquely asserted reverse faults (hide normal controls,
+discard the pinned target, restore voice drift-abort, disable transcript
+retention) each failed the corresponding behavior assertion before source was
+restored. These results do not change the public0.17.54 feed.

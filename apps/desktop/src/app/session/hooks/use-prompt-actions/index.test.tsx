@@ -101,7 +101,7 @@ interface HarnessHandle {
   editMessage: (edited: Parameters<ReturnType<typeof usePromptActions>['editMessage']>[0]) => Promise<void>
   reloadFromMessage: (parentId: null | string) => Promise<void>
   restoreToMessage: (messageId: string, target?: { text?: string; userOrdinal?: number | null }) => Promise<void>
-  redirectPrompt: (text: string) => Promise<boolean>
+  redirectPrompt: ReturnType<typeof usePromptActions>['redirectPrompt']
   /** @deprecated Use `redirectPrompt`. */
   steerPrompt: (text: string) => Promise<boolean>
   submitTextRaw: (text: string, options?: SubmitTextOptions) => Promise<boolean>
@@ -2011,11 +2011,7 @@ describe('usePromptActions submit / queue drain semantics', () => {
     let handle: HarnessHandle | null = null
 
     await actRender(
-      <Harness
-        onReady={h => (handle = h)}
-        refreshSessions={async () => undefined}
-        requestGateway={requestGateway}
-      />
+      <Harness onReady={h => (handle = h)} refreshSessions={async () => undefined} requestGateway={requestGateway} />
     )
 
     expect(await handle!.submitText('start a simple edit')).toBe(true)
@@ -2143,6 +2139,58 @@ describe('usePromptActions submit / queue drain semantics', () => {
       1_800_000
     )
   })
+
+  it.each(['home', 'another-chat'])(
+    'submits a pinned voice turn while viewing %s without creating a session',
+    async page => {
+      $busy.set(false)
+      const requestGateway = vi.fn(async () => ({ status: 'streaming', turn_id: 'voice-turn' }) as never)
+      const createSession = vi.fn(async () => 'wrong-new-session')
+      const foregroundId = page === 'home' ? null : RUNTIME_SESSION_ID
+      const accepted = vi.fn()
+      let handle: HarnessHandle | null = null
+      await actRender(
+        <Harness
+          activeSessionId={foregroundId}
+          busyRef={{ current: true }}
+          createBackendSessionForSend={createSession}
+          onReady={h => (handle = h)}
+          refreshSessions={async () => undefined}
+          requestGateway={requestGateway}
+          storedSessionId={foregroundId}
+        />
+      )
+      expect(
+        await handle!.submitText('same conversation', {
+          surface: 'voice-live',
+          voiceContext: 'earlier spoken turns',
+          sessionId: 'voice-runtime',
+          storedSessionId: 'voice-stored',
+          attachments: [],
+          onAccepted: accepted
+        })
+      ).toBe(true)
+      expect(requestGateway).toHaveBeenCalledWith(
+        'prompt.submit',
+        expect.objectContaining({
+          session_id: 'voice-runtime',
+          text: 'same conversation',
+          surface: 'voice-live'
+        }),
+        1_800_000
+      )
+      expect(createSession).not.toHaveBeenCalled()
+      expect(accepted).toHaveBeenCalledWith({
+        storedSessionId: 'voice-stored',
+        turn: {
+          id: 'voice-turn',
+          runtimeSessionId: 'voice-runtime'
+        }
+      })
+      expect(handle!.activeSessionIdRef.current).toBe(foregroundId)
+      expect($busy.get()).toBe(false)
+    }
+  )
 
   it('a fromQueue drain sends to its queued session even after the active session changes', async () => {
     $busy.set(false)
@@ -2520,6 +2568,33 @@ describe('usePromptActions redirectPrompt', () => {
       role: 'user',
       parts: [{ type: 'text', text: 'nudge the run' }]
     })
+  })
+
+  it('redirects an offscreen voice owner without changing the foreground session', async () => {
+    const requestGateway = vi.fn(async () => ({ status: 'redirected' }) as never)
+    const updates: string[] = []
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        onReady={h => (handle = h)}
+        onUpdateState={id => updates.push(id)}
+        refreshSessions={async () => undefined}
+        requestGateway={requestGateway}
+      />
+    )
+    expect(
+      await handle!.redirectPrompt('continue this call', {
+        sessionId: 'voice-runtime',
+        storedSessionId: 'voice-stored'
+      })
+    ).toBe(true)
+    expect(requestGateway).toHaveBeenCalledWith('session.redirect', {
+      session_id: 'voice-runtime',
+      text: 'continue this call'
+    })
+    expect(updates).toContain('voice-runtime')
+    expect(updates).not.toContain(RUNTIME_SESSION_ID)
+    expect(handle!.activeSessionIdRef.current).toBe(RUNTIME_SESSION_ID)
   })
 
   it('reports rejection so the caller queues when the turn already ended', async () => {
@@ -3707,6 +3782,57 @@ describe('usePromptActions sleep/wake session recovery', () => {
 
     vi.mocked(getSession).mockReset()
     setSessions(() => [])
+  })
+
+  it('recovers the pinned voice owner when navigation happens during resume', async () => {
+    const active = { current: RUNTIME_SESSION_ID as string | null }
+    const selected = { current: STORED_SESSION_ID as string | null }
+    let route = `/${STORED_SESSION_ID}::`
+    const accepted = vi.fn()
+
+    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'prompt.submit' && params?.session_id === RUNTIME_SESSION_ID) {
+        throw new Error('session not found')
+      }
+
+      if (method === 'session.resume') {
+        // Actual route/ref movement while an existing call's submit is pending.
+        active.current = 'other-runtime'
+        selected.current = 'other-stored'
+        route = '/other-stored::'
+        $busy.set(false)
+
+        return { session_id: RECOVERED_SESSION_ID } as never
+      }
+
+      return { status: 'streaming', turn_id: 'recovered-turn' } as never
+    })
+
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        activeSessionIdRef={active}
+        getRouteToken={() => route}
+        onReady={h => (handle = h)}
+        refreshSessions={async () => undefined}
+        requestGateway={requestGateway}
+        selectedStoredSessionIdRef={selected}
+        storedSessionId={STORED_SESSION_ID}
+      />
+    )
+    expect(await handle!.submitText('continue after navigation', {
+      surface: 'voice-live', sessionId: RUNTIME_SESSION_ID,
+      storedSessionId: STORED_SESSION_ID, onAccepted: accepted
+    })).toBe(true)
+    expect(requestGateway).toHaveBeenLastCalledWith('prompt.submit', expect.objectContaining({
+      session_id: RECOVERED_SESSION_ID, text: 'continue after navigation'
+    }), 1_800_000)
+    expect(accepted).toHaveBeenCalledWith({ storedSessionId: STORED_SESSION_ID, turn: {
+      id: 'recovered-turn', runtimeSessionId: RECOVERED_SESSION_ID
+    } })
+    expect(active.current).toBe('other-runtime')
+    expect(selected.current).toBe('other-stored')
+    expect($busy.get()).toBe(false)
   })
 
   it('background queue resume uses the queued stored id and leaves foreground runtime selected', async () => {
@@ -5915,19 +6041,40 @@ describe('usePromptActions live-owner refusal (#106217)', () => {
 })
 
 // hc-890: observers receive the actual accepted durable target, never current selection or a failed send.
-it.each(['accepted', 'refused', 'not_streaming', 'empty_ack', 'with_turn', 'selection_changed', 'observer_failed'] as const)('reports submit acceptance without changing send semantics: %s', async mode => {
+it.each([
+  'accepted',
+  'refused',
+  'not_streaming',
+  'empty_ack',
+  'with_turn',
+  'selection_changed',
+  'observer_failed'
+] as const)('reports submit acceptance without changing send semantics: %s', async mode => {
   const selected = { current: 'stored-target' as string | null }
-  const onAccepted = vi.fn(async () => {if (mode === 'observer_failed') {throw new Error('receipt disk failed')}})
+
+  const onAccepted = vi.fn(async () => {
+    if (mode === 'observer_failed') {
+      throw new Error('receipt disk failed')
+    }
+  })
 
   const requestGateway = vi.fn(async (method: string) => {
     if (method === 'prompt.submit') {
-      if (mode === 'refused') {throw new Error('submit refused')}
+      if (mode === 'refused') {
+        throw new Error('submit refused')
+      }
 
-      if (mode === 'empty_ack') {return undefined}
+      if (mode === 'empty_ack') {
+        return undefined
+      }
 
-      if (mode === 'with_turn') {return { status: 'streaming', turn_id: 'accepted-turn' }}
+      if (mode === 'with_turn') {
+        return { status: 'streaming', turn_id: 'accepted-turn' }
+      }
 
-      if (mode === 'selection_changed') {selected.current = 'another-chat'}
+      if (mode === 'selection_changed') {
+        selected.current = 'another-chat'
+      }
 
       return mode === 'not_streaming' ? { voice_stopped: true } : { status: 'streaming' }
     }
@@ -5936,13 +6083,31 @@ it.each(['accepted', 'refused', 'not_streaming', 'empty_ack', 'with_turn', 'sele
   }) as never
 
   let handle: HarnessHandle | null = null
-  await actRender(<Harness onReady={h => { handle = h }} refreshSessions={vi.fn(async () => {})}
-    requestGateway={requestGateway} selectedStoredSessionIdRef={selected} storedSessionId="stored-target" />)
+  await actRender(
+    <Harness
+      onReady={h => {
+        handle = h
+      }}
+      refreshSessions={vi.fn(async () => {})}
+      requestGateway={requestGateway}
+      selectedStoredSessionIdRef={selected}
+      storedSessionId="stored-target"
+    />
+  )
   let sent: boolean | undefined
-  await act(async () => {sent = await handle!.submitTextRaw('A reviewed request', { onAccepted })})
+  await act(async () => {
+    sent = await handle!.submitTextRaw('A reviewed request', { onAccepted })
+  })
   expect(sent).toBe(mode !== 'refused')
 
-  if (mode === 'refused' || mode === 'not_streaming' || mode === 'empty_ack') {expect(onAccepted).not.toHaveBeenCalled()}
-  else if (mode === 'with_turn') {expect(onAccepted).toHaveBeenCalledExactlyOnceWith({ storedSessionId: 'stored-target', turn: { id: 'accepted-turn', runtimeSessionId: RUNTIME_SESSION_ID } })}
-  else {expect(onAccepted).toHaveBeenCalledExactlyOnceWith({ storedSessionId: 'stored-target' })}
+  if (mode === 'refused' || mode === 'not_streaming' || mode === 'empty_ack') {
+    expect(onAccepted).not.toHaveBeenCalled()
+  } else if (mode === 'with_turn') {
+    expect(onAccepted).toHaveBeenCalledExactlyOnceWith({
+      storedSessionId: 'stored-target',
+      turn: { id: 'accepted-turn', runtimeSessionId: RUNTIME_SESSION_ID }
+    })
+  } else {
+    expect(onAccepted).toHaveBeenCalledExactlyOnceWith({ storedSessionId: 'stored-target' })
+  }
 })

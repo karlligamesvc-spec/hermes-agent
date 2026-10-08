@@ -13,7 +13,7 @@ import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { triggerHaptic } from '@/lib/haptics'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { normalize } from '@/lib/text'
-import { transcribeAudioClientDirect } from "@/lib/voice-client-direct"
+import { transcribeAudioClientDirect } from '@/lib/voice-client-direct'
 import { clearActiveOperation } from '@/store/active-operation'
 import { clearClarifyRequest } from '@/store/clarify'
 import {
@@ -82,7 +82,6 @@ import {
   type SubmitTextOptions,
   withSessionNotFoundResume
 } from './utils'
-
 
 interface HandoffResult {
   ok: boolean
@@ -738,12 +737,12 @@ export function usePromptActions({
   // completed work intact. During a tool it waits for the safe result boundary.
   // Returns false when the turn raced to completion so the composer can queue.
   const redirectPrompt = useCallback(
-    async (rawText: string): Promise<boolean> => {
+    async (rawText: string, target?: { sessionId: string; storedSessionId: string }): Promise<boolean> => {
       const text = sanitizeComposerInput(rawText).trim()
       // Ref, not the closure-captured prop — see cancelRun above. A redirect
       // reaches the live model mid-turn, so a stale target delivers the user's
       // correction into a conversation they are no longer looking at.
-      const sessionId = activeSessionIdRef.current
+      const sessionId = target?.sessionId ?? activeSessionIdRef.current
 
       if (!text || !sessionId) {
         return false
@@ -808,13 +807,24 @@ export function usePromptActions({
         // A stale runtime id after reconnect 404s ("session not found"): the
         // shared resolver resumes the stored session and retries once, so a
         // correction right after a reconnect isn't lost to the race.
-        const { result } = await withSessionNotFoundResume(sessionId, selectedStoredSessionIdRef.current, send, {
-          requestGateway,
-          onRecovered: recoveredId => {
-            activeSessionIdRef.current = recoveredId
-            setActiveSessionId(recoveredId)
+        const { result } = await withSessionNotFoundResume(
+          sessionId,
+          target?.storedSessionId ?? selectedStoredSessionIdRef.current,
+          send,
+          {
+            requestGateway,
+            onRecovered: recoveredId => {
+              if (target?.storedSessionId) {
+                updateSessionState(recoveredId, state => state, target.storedSessionId)
+              }
+
+              if (!target || activeSessionIdRef.current === sessionId) {
+                activeSessionIdRef.current = recoveredId
+                setActiveSessionId(recoveredId)
+              }
+            }
           }
-        })
+        )
 
         return result
       } catch {

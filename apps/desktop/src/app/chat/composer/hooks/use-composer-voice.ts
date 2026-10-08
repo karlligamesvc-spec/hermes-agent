@@ -6,14 +6,21 @@ import { chatMessageText, collectUnspokenTurnSpeech } from '@/lib/chat-messages'
 import { triggerHaptic } from '@/lib/haptics'
 import { adoptSpokenReplySession, markAssistantIdSpoken, resolveSpokenReply } from '@/lib/spoken-reply'
 import { CONVERSATION_LEASE, READ_ALOUD_LEASE, syncTtsLease } from '@/lib/tts-lease'
+import { useStoreSelector } from '@/lib/use-session-slice'
 import { toLiveHistory } from '@/lib/voice-live'
 import { clearWakeIndicator, syncWakeIndicatorWithVoice } from '@/lib/wake-indicator'
-import { $voiceConversationStartRequest, requestVoiceConversationStart, takeVoiceConversationStart } from '@/store/composer'
+import {
+  $voiceConversationStartRequest,
+  requestVoiceConversationStart,
+  takeVoiceConversationStart
+} from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 import { $gateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
+import { $sessionStates, storedSessionIdForRuntimeId } from '@/store/session-states'
 import { refreshVoiceLiveStatus } from '@/store/voice-live'
 import { $autoSpeakReplies, $voiceStopPhrase, setAutoSpeakReplies } from '@/store/voice-prefs'
+import { setVoiceSessionOwner, type VoiceSessionOwner } from '@/store/voice-session-owner'
 import { resumeWakeAfterVoice } from '@/store/wake-word'
 
 import type { ComposerTarget } from '../focus'
@@ -71,6 +78,62 @@ export function useComposerVoice({
   const [voiceConversationActive, setVoiceConversationActive] = useState(false)
   const [voiceStarting, setVoiceStarting] = useState(false)
   const activationEpochRef = useRef(0)
+  // A call owns its conversation, independently of the foreground page. Only
+  // start and accepted submit receipts may bind it; navigation never does.
+  const voiceTargetRef = useRef<VoiceSessionOwner | null>(null)
+  const voiceOwnerToken = useRef(Symbol('voice-session'))
+
+  const bindVoiceTarget = useCallback((owner: VoiceSessionOwner | null) => {
+    voiceTargetRef.current = owner
+    setVoiceSessionOwner(voiceOwnerToken.current, owner)
+  }, [])
+
+  // eslint-disable-next-line no-restricted-syntax -- invalidate async call receipts on unmount, not mirrored reactive state
+  useEffect(() => {
+    const token = voiceOwnerToken.current
+
+    return () => {
+      activationEpochRef.current += 1
+      setVoiceSessionOwner(token, null)
+    }
+  }, [])
+
+  const readVoiceTarget = () => {
+    const target = voiceTargetRef.current
+
+    if (!target) {
+      return null
+    }
+
+    const states = $sessionStates.get()
+
+    if (states[target.sessionId]?.storedSessionId === target.storedSessionId) {
+      return target
+    }
+
+    const bound = Object.entries(states).find(([, state]) => state.storedSessionId === target.storedSessionId)
+
+    return bound ? { ...target, sessionId: bound[0] } : target
+  }
+
+  const readVoiceState = () => {
+    const target = readVoiceTarget()
+
+    return target ? $sessionStates.get()[target.sessionId] : undefined
+  }
+
+  const readVoiceMessages = () => {
+    const target = readVoiceTarget()
+
+    return readVoiceState()?.messages ?? (!target || target.sessionId === sessionId ? $messages.get() : [])
+  }
+
+  const liveBusy = useStoreSelector($sessionStates, () => {
+    const target = readVoiceTarget()
+
+    return readVoiceState()?.busy ?? (!target || target.sessionId === sessionId ? busy : false)
+  })
+
   // Native admission is resolved before either microphone hook can activate.
   const [liveEngineActive, setLiveEngineActive] = useState(false)
   const ownsWakeIndicatorRef = useRef(false)
@@ -83,7 +146,12 @@ export function useComposerVoice({
     previousSessionIdRef.current = sessionId
   }, [sessionId])
 
-  const { cancel: cancelDictation, dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
+  const {
+    cancel: cancelDictation,
+    dictate,
+    voiceActivityState,
+    voiceStatus
+  } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
     onTranscript: insertText,
@@ -126,7 +194,7 @@ export function useComposerVoice({
 
   // A live tool result belongs to the newly accepted user turn. An interrupted
   // earlier turn may append another assistant row after our spoken cursor.
-  const pendingLiveTurnResponse = () => collectUnspokenTurnSpeech($messages.get(), null)
+  const pendingLiveTurnResponse = () => collectUnspokenTurnSpeech(readVoiceMessages(), null)
 
   const consumePendingResponse = () => {
     const messages = $messages.get()
@@ -152,29 +220,56 @@ export function useComposerVoice({
    *  what the user said; the transcript window rides the model input only. */
   const submitLiveDelegation = async (text: string, voiceContext: string) => {
     triggerHaptic('submit')
-    resetBrowseState(sessionId)
-    clearDraft()
+    const target = readVoiceTarget()
+    const epoch = activationEpochRef.current
+    const foreground = !target || target.sessionId === sessionId
 
-    // Deliver an interjection to the same primary turn at a safe boundary.
-    // The primary decides whether it changes the task; hearing speech alone
-    // must not press Stop or discard completed work.
-    if (busy && await onSteer?.(text)) {return true}
+    if (foreground) {
+      resetBrowseState(sessionId)
+      clearDraft()
+    }
 
-    return await onSubmit(text, { surface: 'voice-live', voiceContext })
+    // Read the call's busy state, not the page the user has navigated to.
+    const targetBusy = readVoiceState()?.busy ?? (foreground && busy)
+
+    if (targetBusy && (await onSteer?.(text, target ?? undefined))) {
+      return true
+    }
+
+    return await onSubmit(text, {
+      surface: 'voice-live',
+      voiceContext,
+      ...(target ?? {}),
+      ...(!foreground && { attachments: [] }),
+      onAccepted: receipt => {
+        if (activationEpochRef.current !== epoch) {
+          return
+        }
+
+        const runtimeId =
+          receipt.turn?.runtimeSessionId ??
+          Object.entries($sessionStates.get()).find(
+            ([, state]) => state.storedSessionId === receipt.storedSessionId
+          )?.[0]
+
+        if (runtimeId) {
+          bindVoiceTarget({ sessionId: runtimeId, storedSessionId: receipt.storedSessionId })
+        }
+      }
+    })
   }
 
   /** Recent text turns of this chat, as GPT-Live startup history. */
   const seedLiveHistory = () =>
     toLiveHistory(
-      $messages
-        .get()
+      readVoiceMessages()
         .filter(m => !m.hidden && (m.role === 'user' || m.role === 'assistant'))
         .map(m => ({ role: m.role as 'assistant' | 'user', text: chatMessageText(m) }))
     )
 
   /** The tool Hermes is running right now, for quiet progress in the voice. */
   const activeToolLabel = () => {
-    const last = $messages.get().findLast(m => m.role === 'assistant' && !m.hidden)
+    const last = readVoiceMessages().findLast(m => m.role === 'assistant' && !m.hidden)
     const running = last?.parts.findLast(part => part.type === 'tool-call' && part.result === undefined)
 
     return running && running.type === 'tool-call' ? running.toolName : null
@@ -207,14 +302,27 @@ export function useComposerVoice({
     pendingResponse: pendingTurnResponse,
     // Before the conversation opens the mic, wait for any in-flight wake.pause
     // to finish releasing the capture device (see wakePauseBarrierRef).
-    beforeMicOpen: async () => { await cancelDictation(); await wakePauseBarrierRef.current }
+    beforeMicOpen: async () => {
+      await cancelDictation()
+      await wakePauseBarrierRef.current
+    }
   })
 
   const liveConversation = useVoiceLiveConversation({
     activeToolLabel,
-    beforeMicOpen: async () => { await cancelDictation(); await wakePauseBarrierRef.current },
-    busy,
-    consumePendingResponse,
+    beforeMicOpen: async () => {
+      await cancelDictation()
+      await wakePauseBarrierRef.current
+    },
+    busy: liveBusy,
+    consumePendingResponse: () => {
+      const messages = readVoiceMessages()
+      const last = messages.findLast(m => m.role === 'assistant' && !m.hidden)
+
+      if (last) {
+        markAssistantIdSpoken(readVoiceTarget()?.sessionId ?? sessionId, messages, last.id)
+      }
+    },
     enabled: voiceConversationActive && liveEngineActive,
     onFatalError: () => setVoiceConversationActive(false),
     onStopWord: () => setVoiceConversationActive(false),
@@ -229,6 +337,11 @@ export function useComposerVoice({
    * is profile-scoped; an unavailable service never opens a different engine. */
   const activateConversation = useCallback(async () => {
     const epoch = ++activationEpochRef.current
+
+    const initialOwner = sessionId
+      ? { sessionId, storedSessionId: storedSessionIdForRuntimeId(sessionId) ?? sessionId }
+      : null
+
     setVoiceStarting(true)
     let status
 
@@ -243,12 +356,18 @@ export function useComposerVoice({
       return
     }
 
-    if (activationEpochRef.current !== epoch) {return}
+    if (activationEpochRef.current !== epoch) {
+      return
+    }
+
     setVoiceStarting(false)
 
     // A scope change makes the status request return null. Never start against
     // the profile/account that replaced the one clicked by the user.
-    if (!status) {return}
+    if (!status) {
+      return
+    }
+
     const available = status.qwenAvailable ?? (status.mode === 'qwen-realtime' && status.available)
 
     if (!available) {
@@ -261,16 +380,20 @@ export function useComposerVoice({
       return
     }
 
+    bindVoiceTarget(initialOwner)
     setLiveEngineActive(true)
     setVoiceConversationActive(true)
-  }, [t])
+  }, [bindVoiceTarget, sessionId, t])
 
+  // eslint-disable-next-line no-restricted-syntax -- invalidate receipts after fatal/remote close; no reactive value is mirrored
   useEffect(() => {
     if (!voiceConversationActive) {
+      activationEpochRef.current += 1
+      bindVoiceTarget(null)
       // Prefetch admission; the explicit start still awaits scope-safe status.
       void refreshVoiceLiveStatus().catch(() => undefined)
     }
-  }, [voiceConversationActive])
+  }, [bindVoiceTarget, voiceConversationActive])
 
   // eslint-disable-next-line no-restricted-syntax -- ownership token used only by unmount cleanup
   useEffect(() => {
@@ -316,7 +439,13 @@ export function useComposerVoice({
   )
 
   useEffect(() => {
-    if (target === 'main' && !disabled && takeVoiceConversationStart(voiceStartRequest) && !voiceConversationActive && !voiceStarting) {
+    if (
+      target === 'main' &&
+      !disabled &&
+      takeVoiceConversationStart(voiceStartRequest) &&
+      !voiceConversationActive &&
+      !voiceStarting
+    ) {
       void activateConversation()
     }
   }, [activateConversation, disabled, target, voiceConversationActive, voiceStartRequest, voiceStarting])
@@ -380,10 +509,13 @@ export function useComposerVoice({
     }
   }, [t, voiceConversationActive])
 
-  useEffect(() => () => {
-    activationEpochRef.current++
-    resumeWakeIfPaused()
-  }, [resumeWakeIfPaused])
+  useEffect(
+    () => () => {
+      activationEpochRef.current++
+      resumeWakeIfPaused()
+    },
+    [resumeWakeIfPaused]
+  )
 
   // Speech-output toggles are TTS warm-up / release signals. Entering a voice
   // conversation acquires this window's lease (pre-loads the engine so the
@@ -440,7 +572,9 @@ export function useComposerVoice({
   return {
     conversation,
     dictate: () => {
-      if (!voiceConversationActive && !voiceStarting) {dictate()}
+      if (!voiceConversationActive && !voiceStarting) {
+        dictate()
+      }
     },
     endConversation,
     handleToggleAutoSpeak,

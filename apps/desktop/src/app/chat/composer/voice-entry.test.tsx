@@ -13,7 +13,7 @@ import { ComposerScopeProvider, MAIN_COMPOSER_SCOPE } from './scope'
 import type { ChatBarState } from './types'
 import { VoiceConversationPanel } from './voice-conversation-panel'
 
-vi.mock('./model-pill', () => ({ ModelPill: () => null }))
+vi.mock('./model-pill', () => ({ ModelPill: () => <button>Selected model</button> }))
 
 const state: ChatBarState = {
   model: { canSwitch: false, model: '', provider: '' },
@@ -101,16 +101,24 @@ it('each new call opens captions while status and transcript updates preserve an
   const props = { level: 0, muted: false, onEnd: vi.fn(), onToggleMute: vi.fn(), status: 'listening' as const }
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <MemoryRouter><I18nProvider configClient={null} initialLocale="en">{children}</I18nProvider></MemoryRouter>
+    <MemoryRouter>
+      <I18nProvider configClient={null} initialLocale="en">
+        {children}
+      </I18nProvider>
+    </MemoryRouter>
   )
 
   const call = render(<VoiceConversationPanel {...props} />, { wrapper })
 
   expect(screen.getByRole('log')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Live transcript' }))
-  call.rerender(<VoiceConversationPanel {...props} status="speaking" transcript={[
-    { speaker: 'assistant', text: 'Updated reply', startMs: 1, endMs: 2 }
-  ]} />)
+  call.rerender(
+    <VoiceConversationPanel
+      {...props}
+      status="speaking"
+      transcript={[{ speaker: 'assistant', text: 'Updated reply', startMs: 1, endMs: 2 }]}
+    />
+  )
 
   expect(screen.queryByRole('log')).toBeNull()
   call.unmount()
@@ -252,3 +260,35 @@ it.each(['hud', 'tile'] as const)(
     expect(end).toHaveBeenCalledTimes(1)
   }
 )
+
+it('keeps model and text-send controls beside an active floating call', () => {
+  const end = vi.fn()
+  const submit = vi.fn(event => event.preventDefault())
+  render(
+    <MemoryRouter>
+      <I18nProvider configClient={null} initialLocale="en">
+        <form onSubmit={submit}>
+          <ComposerControls
+            autoSpeak={false}
+            busy={false}
+            canSubmit
+            conversation={{ ...conversation, active: true, onEnd: end }}
+            disabled={false}
+            hasComposerPayload
+            homeStyle
+            onDictate={vi.fn()}
+            onToggleAutoSpeak={vi.fn()}
+            state={state}
+            voiceStatus="idle"
+          />
+        </form>
+      </I18nProvider>
+    </MemoryRouter>
+  )
+  expect(screen.getByRole('button', { name: 'Selected model' })).toBeTruthy()
+  expect(screen.getByRole('log')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  expect(submit).toHaveBeenCalledOnce()
+  expect(end).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: 'Start voice conversation' })).toBeNull()
+})

@@ -75,15 +75,13 @@ export function ComposerControls({
   const hudMode = useStore($hudMode)
   const scope = useComposerScope()
 
-  if (conversation.active) {
-    return hudMode || scope.target !== 'main' ? (
-      <ConversationPill {...conversation} disabled={disabled} />
-    ) : (
-      <VoiceConversationPanel {...conversation} />
-    )
+  const floatingConversation = conversation.active && !hudMode && scope.target === 'main'
+
+  if (conversation.active && !floatingConversation) {
+    return <ConversationPill {...conversation} disabled={disabled} />
   }
 
-  const showVoicePrimary = !homeStyle && !busy && !hasComposerPayload
+  const showVoicePrimary = !conversation.active && !homeStyle && !busy && !hasComposerPayload
   // Steer is just send: a payload keeps the Send affordance mid-turn. Stop
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
@@ -116,6 +114,7 @@ export function ComposerControls({
 
   return (
     <div className="ml-auto flex min-w-0 shrink items-center gap-(--composer-control-gap)">
+      {floatingConversation && <VoiceConversationPanel {...conversation} />}
       {minimal ? null : (
         <>
           {hideModelPill ? null : (
@@ -124,10 +123,10 @@ export function ComposerControls({
               {compactModelPill ? null : <ReasoningPill disabled={disabled} model={state.model} />}
             </>
           )}
-          {voiceControls}
+          {conversation.active ? null : voiceControls}
         </>
       )}
-      {!minimal && !showVoicePrimary && (
+      {!conversation.active && !minimal && !showVoicePrimary && (
         <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
       )}
       {showVoicePrimary ? (

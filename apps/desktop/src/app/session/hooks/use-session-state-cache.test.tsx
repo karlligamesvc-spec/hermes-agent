@@ -24,10 +24,14 @@ import {
 import {
   $sessionStates,
   clearAllSessionStates,
+  foregroundSessionScopes,
   reconcileBusyStatesOnReconnect,
+  recordSessionEventScope,
+  releaseSessionTranscript,
   type SessionTileDelegate,
   setSessionTileDelegate
 } from '@/store/session-states'
+import { $voiceSessionOwners, setVoiceSessionOwner } from '@/store/voice-session-owner'
 
 import { useSessionStateCache } from './use-session-state-cache'
 
@@ -688,5 +692,38 @@ describe('useSessionStateCache — reconnect busy reconcile (#93059)', () => {
     expect(cache.sessionStateByRuntimeIdRef.current.get('runtime-1')?.busy).toBe(false)
     expect(cache.sessionStateByRuntimeIdRef.current.get('runtime-1')?.awaitingResponse).toBe(false)
     expect($sessionStates.get()['runtime-1']?.busy).toBe(false)
+  })
+})
+
+
+describe('floating voice session retention', () => {
+  afterEach(() => {
+    cleanup()
+    $voiceSessionOwners.set(new Map())
+    clearAllSessionStates()
+    setActiveSessionId(null)
+  })
+
+  it('retains the background answer and gateway through settlement, then releases after close', () => {
+    const token = Symbol('call')
+    const reply: ChatMessage = { id: 'answer', role: 'assistant', parts: [{ type: 'text', text: '真实查询结果' }] }
+    recordSessionEventScope({ connectionId: 'voice-cloud', profile: 'default', session_id: 'voice-runtime' })
+    setVoiceSessionOwner(token, { sessionId: 'voice-runtime', storedSessionId: 'voice-stored' })
+    setActiveSessionId('other-runtime')
+    let cache!: Cache
+    render(<Harness activeSessionId="other-runtime" onReady={value => {cache = value}} selectedStoredSessionId="other-stored" />)
+    act(() => {
+      cache.updateSessionState('voice-runtime', state => ({ ...state, busy: true }), 'voice-stored')
+      cache.updateSessionState('voice-runtime', state => ({ ...state, busy: false, messages: [reply] }), 'voice-stored')
+      releaseSessionTranscript('voice-runtime')
+    })
+    expect($sessionStates.get()['voice-runtime'].messages).toEqual([reply])
+    expect(foregroundSessionScopes()).toContain('conn:voice-cloud::default')
+    act(() => {
+      setVoiceSessionOwner(token, null)
+      releaseSessionTranscript('voice-runtime')
+    })
+    expect($sessionStates.get()['voice-runtime'].messages).toEqual([])
+    expect(foregroundSessionScopes()).not.toContain('conn:voice-cloud::default')
   })
 })

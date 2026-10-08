@@ -97,6 +97,7 @@ import {
   recordSessionEventScope,
   resetTileRuntimeBindings
 } from '@/store/session-states'
+import { $voiceSessionOwners } from '@/store/voice-session-owner'
 import { windowProfileOverride } from '@/store/windows'
 
 import { stashGatewaySurvivor, survivorIsStale, takeGatewaySurvivor } from './gateway-hmr-survivor'
@@ -1171,6 +1172,7 @@ export function useGatewayBoot({
     const offTiles = $sessionTiles.subscribe(() => recomputeKeptGateways())
     const offSelectedSession = $selectedStoredSessionId.subscribe(() => recomputeKeptGateways())
     const offSessionOwnerHolds = $sessionOwnerHoldRevision.subscribe(() => recomputeKeptGateways())
+    const offVoiceOwners = $voiceSessionOwners.subscribe(() => recomputeKeptGateways())
 
     const offWindowState = desktop.onWindowStateChanged?.(payload => {
       const current = $connection.get()
@@ -1431,6 +1433,7 @@ export function useGatewayBoot({
       offTiles()
       offSelectedSession()
       offSessionOwnerHolds()
+      offVoiceOwners()
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onFocus)
