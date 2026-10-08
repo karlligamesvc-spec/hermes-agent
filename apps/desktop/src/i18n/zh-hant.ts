@@ -3245,6 +3245,8 @@ export const zhHant = defineLocale({
     diff: '差異',
     unknownSize: '大小未知',
     binaryTitle: '這看起來像二進位檔案',
+    wordBodyEmpty: '這份文件沒有可預覽的正文，請下載原檔案檢查圖片等內容。',
+    wordBodyPreview: 'Word 正文預覽；完整排版和圖片請下載原檔案查看。',
     binaryBody: label => `預覽 ${label} 可能會顯示無法讀取的文字。`,
     largeTitle: '此檔案較大',
     largeBody: (label, size) => `${label} 大小為 ${size}。APEX 只會顯示前 512 KB。`,

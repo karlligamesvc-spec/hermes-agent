@@ -3580,6 +3580,8 @@ export interface Translations {
     diff: string
     unknownSize: string
     binaryTitle: string
+    wordBodyEmpty: string
+    wordBodyPreview: string
     binaryBody: (label: string) => string
     largeTitle: string
     largeBody: (label: string, size: string) => string

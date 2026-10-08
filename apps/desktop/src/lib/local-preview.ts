@@ -3,6 +3,8 @@ import DOMPurify from 'dompurify'
 import { isDesktopFsRemoteMode, readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
 import type { PreviewTarget } from '@/store/preview'
 
+import { isDocxPath } from './docx-preview'
+
 const HTML_EXTENSIONS = new Set(['.htm', '.html'])
 const IMAGE_EXTENSIONS = new Set(['.bmp', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'])
 const PDF_EXTENSIONS = new Set(['.pdf'])
@@ -226,7 +228,8 @@ async function enrichPreviewTarget(target: PreviewTarget | null): Promise<Previe
     !target ||
     target.kind !== 'file' ||
     target.previewKind === 'image' ||
-    target.previewKind === 'pdf'
+    target.previewKind === 'pdf' ||
+    isDocxPath(target.path || target.source)
   ) {
     return target
   }
