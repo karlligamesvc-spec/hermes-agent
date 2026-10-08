@@ -46,9 +46,9 @@ make -j4 > "$work/x264-build.log" 2>&1
 make install >> "$work/x264-build.log" 2>&1
 cd "$work/ffmpeg-build"
 ../ffmpeg/configure --prefix="$prefix" "${common[@]}" "${ffmpeg_flags[@]}" > "$work/ffmpeg-configure.log" 2>&1
-make -j4 ffmpeg ffprobe > "$work/ffmpeg-build.log" 2>&1
 suffix=""
 [[ "$target" != win-x64 ]] || suffix=.exe
+make -j4 "ffmpeg$suffix" "ffprobe$suffix" > "$work/ffmpeg-build.log" 2>&1
 cp "ffmpeg$suffix" "ffprobe$suffix" "$work/package/"
 cp "$work/ffmpeg/COPYING.GPLv2" "$work/package/LICENSE-FFmpeg.txt"
 cp "$work/x264/COPYING" "$work/package/LICENSE-x264.txt"
