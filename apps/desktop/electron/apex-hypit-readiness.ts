@@ -30,7 +30,9 @@ export function probeLocalVideoTool(tool: LocalVideoTool, executablePath = proce
 
     // npm is a .cmd launcher on Windows; these command names and arguments
     // are fixed by us, not user input. All other probes avoid a shell.
-    const child = spawn(tool, ['--version'], {
+    const versionFlag = tool === 'ffmpeg' || tool === 'ffprobe' ? '-version' : '--version'
+
+    const child = spawn(tool, [versionFlag], {
       env: { ...process.env, PATH: executablePath },
       shell: process.platform === 'win32' && tool === 'npm',
       stdio: 'ignore',

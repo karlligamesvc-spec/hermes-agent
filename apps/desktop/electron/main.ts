@@ -231,7 +231,7 @@ import {
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { BackendDialClaims } from './backend-dial-claim'
-import { buildDesktopBackendEnv, bundledRuntimePathEntries, hermesManagedNodePathEntries, normalizeHermesHomeRoot } from './backend-env'
+import { buildDesktopBackendEnv, buildDesktopBackendPath, bundledRuntimePathEntries, hermesManagedNodePathEntries, normalizeHermesHomeRoot } from './backend-env'
 import { isReauthRequiredError, waitForHermesReady } from './backend-health'
 import { backendCommandMatches, createBackendOwnership, createBackendShutdownCoordinator, parseBackendOwnershipDetailed } from './backend-ownership'
 import { canImportHermesCli, probeHermesRuntimeIntegrity, verifyHermesCli } from './backend-probes'
@@ -23327,7 +23327,12 @@ ipcMain.handle('hermes:workflowDomain:localVideoReadiness', async () => {
   try {
     return {
       ok: true,
-      ...(await checkLocalVideoReadiness(tool => probeLocalVideoTool(tool, pathWithHermesManagedNode())))
+      ...(await checkLocalVideoReadiness(tool => probeLocalVideoTool(tool, buildDesktopBackendPath({
+        hermesHome: HERMES_HOME,
+        runtimeRoot: ACTIVE_HERMES_ROOT,
+        venvRoot: VENV_ROOT,
+        currentPath: pathWithHermesManagedNode()
+      }))))
     }
   } catch {
     return { ok: false, basicToolsReady: false, missing: [], renderVerified: false }

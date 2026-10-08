@@ -113,9 +113,10 @@ function buildDesktopBackendPath({
   const delimiter = delimiterForPlatform(platform)
   const hermesNodeDirs = hermesManagedNodePathEntries(hermesHome, { platform, pathModule })
   const venvBin = venvRoot ? pathModule.join(venvRoot, platform === 'win32' ? 'Scripts' : 'bin') : null
+  const toolsDir = hermesHome ? pathModule.join(hermesHome, 'tools') : null
   const saneEntries = platform === 'win32' ? [] : POSIX_SANE_PATH_ENTRIES
 
-  return appendUniquePathEntries([bundledRuntimePathEntries(runtimeRoot, { platform, pathModule }), hermesNodeDirs, venvBin, currentPath, saneEntries], { delimiter })
+  return appendUniquePathEntries([bundledRuntimePathEntries(runtimeRoot, { platform, pathModule }), hermesNodeDirs, venvBin, toolsDir, currentPath, saneEntries], { delimiter })
 }
 
 function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
