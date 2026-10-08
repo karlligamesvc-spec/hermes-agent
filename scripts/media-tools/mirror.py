@@ -19,7 +19,7 @@ def sha256(path: Path) -> str:
 
 
 def sources(work: Path) -> None:
-    lock = json.loads(Path(__file__).with_name("source-lock.json").read_text())
+    lock = json.loads(Path(__file__).with_name("source-lock.json").read_text(encoding="utf-8"))
     for name in ("ffmpeg", "x264", "zlib"):
         record = lock[name]
         suffix = ".xz" if name == "ffmpeg" else ".gz"
@@ -43,19 +43,19 @@ def sources(work: Path) -> None:
 
 
 def run(argv: list[str]) -> str:
-    result = subprocess.run(argv, capture_output=True, text=True, timeout=90, check=True)
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=90, check=True, encoding="utf-8", errors="replace")
     return result.stdout
 
 
 def smoke(package: Path) -> dict:
-    target = (package / "TARGET").read_text().strip()
+    target = (package / "TARGET").read_text(encoding="utf-8").strip()
     expected = {"mac-arm64": ("Darwin", "arm64"), "mac-x64": ("Darwin", "x86_64"),
                 "win-x64": ("Windows", "AMD64")}
     if (platform.system(), platform.machine()) != expected[target]:
         raise ValueError("Smoke must execute on the package's native host")
     suffix = ".exe" if target == "win-x64" else ""
     ffmpeg, ffprobe = [str(package / (name + suffix)) for name in ("ffmpeg", "ffprobe")]
-    lock = json.loads((package / "source-lock.json").read_text())
+    lock = json.loads((package / "source-lock.json").read_text(encoding="utf-8"))
     version = lock["ffmpeg"]["version"]
     for binary in (ffmpeg, ffprobe):
         output = run([binary, "-version"])
@@ -83,7 +83,7 @@ def smoke(package: Path) -> dict:
              "host": {"system": platform.system(), "machine": platform.machine()},
              "checks": ["h264-aac-encode", "ffprobe-streams-duration", "png-frame"],
              "files": {Path(binary).name: sha256(Path(binary)) for binary in (ffmpeg, ffprobe)}}
-    (package / "native-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
+    (package / "native-proof.json").write_text(json.dumps(proof, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(proof))
     return proof
 

@@ -29,7 +29,7 @@ def verify_archive(archive: Path, record: dict) -> None:
 
 def prepare(destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    record = json.loads(Path(__file__).with_name("source-lock.json").read_text())["hypit"]
+    record = json.loads(Path(__file__).with_name("source-lock.json").read_text(encoding="utf-8"))["hypit"]
     archive = destination / f"hypit-{record['version']}.tgz"
     with urllib.request.urlopen(record["url"], timeout=120) as response:
         with archive.open("wb") as output:
@@ -37,7 +37,7 @@ def prepare(destination: Path) -> None:
     verify_archive(archive, record)
     with tempfile.TemporaryDirectory() as temporary:
         project = Path(temporary)
-        (project / "package.json").write_text('{"private":true}')
+        (project / "package.json").write_text('{"private":true}', encoding="utf-8")
         npm = shutil.which("npm")
         node = shutil.which("node")
         if not npm or not node:
@@ -52,7 +52,7 @@ def prepare(destination: Path) -> None:
                        cwd=project, timeout=600, check=True)
         result = subprocess.run([node, str(project / "node_modules/@hypit/hypit/bin/hypit.mjs"),
                                  "version"], cwd=project, capture_output=True, text=True,
-                                timeout=90, check=True)
+                                timeout=90, check=True, encoding="utf-8", errors="replace")
         if record["version"] not in result.stdout:
             raise ValueError("Hypit CLI did not report expected version")
     proof = {"schema": 1, "version": record["version"], "integrity": record["integrity"],
@@ -60,7 +60,7 @@ def prepare(destination: Path) -> None:
              "system": platform.system(), "machine": platform.machine(),
              "checks": ["npm-integrity", "license-preserved", "npm-install", "cli-version"],
              "renderVerified": False, "dependenciesMirrored": False}
-    (destination / "hypit-proof.json").write_text(json.dumps(proof, indent=2) + "\n")
+    (destination / "hypit-proof.json").write_text(json.dumps(proof, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(proof))
 
 

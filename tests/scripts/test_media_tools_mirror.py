@@ -66,25 +66,25 @@ def artifacts(tmp_path):
         for name in binary_names:
             (directory / name).write_bytes(name.encode())
         for name in ("LICENSE-FFmpeg.txt", "LICENSE-x264.txt", "LICENSE-zlib.txt", "ffmpeg-configure.log", "build.sh", "mirror.py"):
-            (directory / name).write_text("fixture")
-        (directory / "ffmpeg-config.h").write_text("#define CONFIG_NONFREE 0\n")
-        (directory / "source-lock.json").write_text(json.dumps(lock))
+            (directory / name).write_text("fixture", encoding="utf-8")
+        (directory / "ffmpeg-config.h").write_text("#define CONFIG_NONFREE 0\n", encoding="utf-8")
+        (directory / "source-lock.json").write_text(json.dumps(lock), encoding="utf-8")
         (directory / "ffmpeg.source.tar.xz").write_bytes(source)
         (directory / "x264.source.tar.gz").write_bytes(source)
         (directory / "zlib.source.tar.gz").write_bytes(source)
-        (directory / "TARGET").write_text(target)
-        (directory / "BUILD_COMMIT").write_text("a" * 40)
+        (directory / "TARGET").write_text(target, encoding="utf-8")
+        (directory / "BUILD_COMMIT").write_text("a" * 40, encoding="utf-8")
         (directory / "native-proof.json").write_text(json.dumps({
             "target": target, "version": "9.0.2", "native": True, "checks": publisher.CHECKS,
             "host": {"system": host[0], "machine": host[1]},
-            "files": {name: publisher.digest(directory / name) for name in binary_names}}))
+            "files": {name: publisher.digest(directory / name) for name in binary_names}}), encoding="utf-8")
         directory = tmp_path / f"hypit-{target}-verified"
         directory.mkdir()
         (directory / "hypit-0.2.17.tgz").write_bytes(hypit)
         (directory / "hypit-proof.json").write_text(json.dumps({
             "system": host[0], "machine": host[1], "version": "0.2.17",
             "sha256": hashlib.sha256(hypit).hexdigest(),
-            "checks": ["npm-integrity", "license-preserved", "npm-install", "cli-version"]}))
+            "checks": ["npm-integrity", "license-preserved", "npm-install", "cli-version"]}), encoding="utf-8")
     return tmp_path
 
 

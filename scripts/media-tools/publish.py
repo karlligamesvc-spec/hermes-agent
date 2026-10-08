@@ -31,9 +31,9 @@ def digest(path: Path) -> str:
 
 
 def prepare_ffmpeg(directory: Path, target: str, destination: Path) -> dict:
-    proof = json.loads((directory / "native-proof.json").read_text())
-    lock = json.loads((directory / "source-lock.json").read_text())
-    commit = (directory / "BUILD_COMMIT").read_text().strip()
+    proof = json.loads((directory / "native-proof.json").read_text(encoding="utf-8"))
+    lock = json.loads((directory / "source-lock.json").read_text(encoding="utf-8"))
+    commit = (directory / "BUILD_COMMIT").read_text(encoding="utf-8").strip()
     version = lock["ffmpeg"]["version"]
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or not re.fullmatch(r"[a-f0-9]{40}", commit):
         raise ValueError("Invalid version/build identity")
@@ -56,7 +56,7 @@ def prepare_ffmpeg(directory: Path, target: str, destination: Path) -> dict:
     for name, suffix in (("ffmpeg", "xz"), ("x264", "gz"), ("zlib", "gz")):
         if digest(directory / f"{name}.source.tar.{suffix}") != lock[name]["sha256"]:
             raise ValueError("Corresponding source changed")
-    config = (directory / "ffmpeg-config.h").read_text()
+    config = (directory / "ffmpeg-config.h").read_text(encoding="utf-8")
     if not re.search(r"^#define CONFIG_NONFREE 0$", config, re.MULTILINE):
         raise ValueError("Build must explicitly disable nonfree")
     destination.mkdir(parents=True, exist_ok=True)
@@ -84,7 +84,7 @@ def prepare_hypit(root: Path, lock: dict) -> dict:
         directory = root / f"hypit-{target}-verified"
         path = directory / f"hypit-{lock['version']}.tgz"
         module.verify_archive(path, lock)
-        proof = json.loads((directory / "hypit-proof.json").read_text())
+        proof = json.loads((directory / "hypit-proof.json").read_text(encoding="utf-8"))
         if ((proof["system"], proof["machine"]) != host or proof["version"] != lock["version"]
                 or proof["sha256"] != digest(path)
                 or proof["checks"] != ["npm-integrity", "license-preserved", "npm-install", "cli-version"]):
@@ -114,7 +114,7 @@ def publish(root: Path, client, readback=read_public) -> dict:
     media = [prepare_ffmpeg(root / f"media-{target}-verified", target, output) for target in TARGETS]
     if len({(m["buildCommit"], m["version"]) for m in media}) != 1:
         raise ValueError("Media packages must come from one build commit and version")
-    lock = json.loads((root / "media-mac-arm64-verified/source-lock.json").read_text())
+    lock = json.loads((root / "media-mac-arm64-verified/source-lock.json").read_text(encoding="utf-8"))
     hypit = prepare_hypit(root, lock["hypit"])
     for package in [*media, hypit]:
         kind = "ffmpeg" if "target" in package else "hypit"
