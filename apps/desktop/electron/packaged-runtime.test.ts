@@ -172,6 +172,7 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
     assert.ok(Number.isInteger(ready.pid) && ready.pid > 0)
     await assert.rejects(assertPackagedRuntimeIdle(active, root), (error: Error & { idleProof?: typeof idle }) => {
       assert.match(error.message, /previous engine is still running/)
+      assert.ok(error.message.includes(String(ready.pid)), 'recovery must identify the actual blocking process')
       assert.ok(error.idleProof?.holderPids.includes(ready.pid), 'the actual borrowed PID must remain a blocker')
 
       return true

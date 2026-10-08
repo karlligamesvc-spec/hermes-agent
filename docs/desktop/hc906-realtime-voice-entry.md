@@ -625,8 +625,13 @@ The 0.17.52 continuation latch lived only in renderer memory. With a durable
 runtime-after-shell plan, failed engine activation can preserve the old engine;
 a new renderer then reapplied the same target and reloaded again. A disk-backed
 plan test reproduces the second apply on the released code by discarding the
-module cache between launches. This establishes a code defect; it does not yet
-identify the reported customer's CONNECTING screen without their desktop log.
+module cache between launches. The supplied customer log confirms this chain: the d4a31394 bundle passes
+extraction and verification, activation is refused because an old-engine holder
+is present, then automatic continuation repeatedly reloads. Across the log, the
+same holder refusal occurs 133 times. The log lacks blocker identities, so it
+does not establish which process owns the old engine. The native guard now
+includes blocker PIDs in its existing error; it still refuses the switch and
+never kills borrowed workers.
 
 The candidate bounds automatic continuation across reloads using the persisted
 attempt count and failed phase. Actual target activation still completes and
@@ -650,5 +655,6 @@ npm run typecheck
 ```
 
 These tests use a real on-disk plan and fresh module instances with controlled
-native apply results. They do not establish why a customer's native activation
-failed, or replace a three-platform packaged release and physical acceptance.
+native apply results. The native holder test runs real processes and verifies
+the blocker PID is reported without killing it. Customer process identification,
+a three-platform packaged release and physical recovery remain outstanding.

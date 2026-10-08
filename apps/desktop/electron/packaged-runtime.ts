@@ -305,7 +305,7 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[] }
 
     if (holderPids.length) {
-      throw Object.assign(new Error('The previous engine is still running. Close its local workers and retry; no engine files were switched.'), { idleProof })
+      throw Object.assign(new Error(`The previous engine is still running (PIDs: ${holderPids.join(', ')}). Close its local workers and retry; no engine files were switched.`), { idleProof })
     }
 
     return idleProof
