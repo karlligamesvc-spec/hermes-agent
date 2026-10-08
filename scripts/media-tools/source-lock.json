@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "ffmpeg": {
+    "version": "9.0.2",
+    "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+    "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+  },
+  "zlib": {
+    "version": "1.3.2",
+    "url": "https://zlib.net/fossils/zlib-1.3.2.tar.gz",
+    "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+  },
+  "hypit": {
+    "version": "0.2.17",
+    "url": "https://registry.npmjs.org/@hypit/hypit/-/hypit-0.2.17.tgz",
+    "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw=="
+  },
+  "x264": {
+    "version": "c24e06c2e184345ceb33eb20a15d1024d9fd3497",
+    "url": "https://codeload.github.com/mirror/x264/tar.gz/c24e06c2e184345ceb33eb20a15d1024d9fd3497",
+    "sha256": "090d730e867fc63631782a1287974635d1237d0fa7c6fd1d09fd543620a56689"
+  }
+}

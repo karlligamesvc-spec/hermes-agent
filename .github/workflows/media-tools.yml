@@ -1,0 +1,110 @@
+name: Media tools verified builds
+
+# Tools only. No Desktop installers, updater feeds, credentials or engine pins.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/hc-906-bundled-media-tools]
+    paths: ['scripts/media-tools/**', '.github/workflows/media-tools.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  hypit:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-14
+          - target: mac-x64
+            runner: macos-15-intel
+          - target: win-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify Hypit package and native installation
+        run: python scripts/media-tools/hypit.py hypit-package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hypit-${{ matrix.target }}-verified
+          path: hypit-package/
+          if-no-files-found: error
+
+  build:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-14
+          - target: mac-x64
+            runner: macos-15-intel
+          - target: win-x64
+            runner: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        shell: bash
+        run: |
+          if [[ '${{ matrix.target }}' = win-x64 ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y gcc-mingw-w64-x86-64-posix make pkg-config nasm
+          else
+            command -v pkg-config || brew install pkgconf
+          fi
+      - name: Build locked source
+        shell: bash
+        run: bash scripts/media-tools/build.sh '${{ matrix.target }}' "$RUNNER_TEMP/media-build"
+      - name: Native Mac encode, probe, extract
+        if: matrix.target != 'win-x64'
+        run: python scripts/media-tools/mirror.py smoke "$RUNNER_TEMP/media-build/package"
+      - name: Upload package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: media-${{ matrix.target }}-${{ matrix.target == 'win-x64' && 'candidate' || 'verified' }}
+          path: ${{ runner.temp }}/media-build/package/
+          if-no-files-found: error
+      - name: Build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: diagnostics-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/media-build/*.log
+            ${{ runner.temp }}/media-build/ffmpeg-build/ffbuild/config.log
+
+  windows-native:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: media-win-x64-candidate
+          path: media-package
+      - name: Native Windows encode, probe, extract
+        run: python scripts/media-tools/mirror.py smoke media-package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: media-win-x64-verified
+          path: media-package/
+          if-no-files-found: error
