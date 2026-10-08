@@ -789,3 +789,8 @@ build passed. Four uniquely asserted reverse faults (hide normal controls,
 discard the pinned target, restore voice drift-abort, disable transcript
 retention) each failed the corresponding behavior assertion before source was
 restored. These results do not change the public0.17.54 feed.
+
+Release candidate0.17.55 includes this continuity fix on the shared Mac/Windows
+renderer. It retains packaged engine d4a31394 and minimum Desktop0.17.52.
+Publication must use desktop-release.yml and verify all three public feeds;
+previous server-transfer exceptions do not authorize this release.
