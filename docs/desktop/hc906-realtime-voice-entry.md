@@ -638,8 +638,8 @@ attempt count and failed phase. Actual target activation still completes and
 clears the plan first. An unsuccessful previous attempt surfaces recovery with
 explicit Retry; dismissing it retains the usable old engine. Applying another
 update requires a successful durable attempt receipt, so failed/missing IPC or
-disk persistence cannot bypass the reload bound. No installer/version/default
-is changed by this source patch.
+disk persistence cannot bypass the reload bound. Desktop 0.17.53 is the release candidate; the embedded D4 engine pin is unchanged.
+No public feed or engine default has changed yet.
 
 Checked exits: initial automatic resume, fresh-renderer resume, successful local
 activation without online lookup, failed activation with update still available,
@@ -658,3 +658,37 @@ These tests use a real on-disk plan and fresh module instances with controlled
 native apply results. The native holder test runs real processes and verifies
 the blocker PID is reported without killing it. Customer process identification,
 a three-platform packaged release and physical recovery remain outstanding.
+
+
+### Owned worker retirement and spaced artifact links (0.17.53 candidate)
+
+Before offline or online verified bundle activation, the native lifecycle fences
+new local child spawns and drains all tracked backend children plus the managed
+messaging child. It preserves normal messaging-gateway survival on ordinary app
+quit. Old messaging gateways are retired only after canonical PID/start-time,
+home/profile, old engine path and parent identity checks; another live app/CLI
+owner and unknown workers remain blockers. Windows venv redirectors are checked
+as part of the gateway ancestry. The existing canonical gateway implementation
+marks takeover, sends normal termination, rechecks identity before forced
+termination and reaps its snapshotted children. Activation still requires the
+independent full idle scan. Failure releases the spawn fence and retains the old
+engine. Legacy in-place Windows installer/uninstaller paths retain their existing
+lock-release handling; developer/borrowed engines are outside the packaged gate.
+
+The screenshot's Word card loses its extension and spills the rest of its title
+into prose. Reproduction shows standalone MEDIA lines were truncated at the first
+space. The shared renderer now preserves the entire standalone path and original
+stream source across token boundaries. This covers Word, Excel, PPT, PDF and
+other spaced artifact filenames, both stored messages and streaming replies;
+the producer plugins already specify standalone MEDIA lines. No user file is
+renamed. This does not establish a fix for the separate Douyin CDN 403; the exact
+share URL and originating account are still requested for that investigation.
+
+Validation: 174 tests across six relevant suites; typecheck; ESLint with no
+errors (existing main-file warnings remain). Actual installed D4 arm64 bundle
+consumer passed fresh boot, historical migration/rollback, RPC and owned wedged
+gateway retirement using bundled Python. Separate reverse faults in retirement,
+spawn fence, spaced path parsing and stream-source retention each make their
+behavior test fail; all were restored. A further online pre-switch refusal test
+checks that activation never occurs while retirement is refused. Final 0.17.53
+three-platform artifacts and public readbacks remain required before release.

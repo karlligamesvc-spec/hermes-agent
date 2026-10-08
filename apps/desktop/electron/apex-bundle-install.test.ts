@@ -368,6 +368,30 @@ function baseDeps(home, key = REAL_KEY, manifest = winManifest()): any {
   }
 }
 
+test('online bundle activation waits for worker retirement and preserves the pointer on refusal', { skip: process.platform === 'win32' }, async () => {
+  const home = mkHome()
+
+  try {
+    const deps = baseDeps(home)
+    let checked = false
+    deps.beforeSwitch = async verifiedRoot => {
+      assert.equal(fs.readFileSync(path.join(verifiedRoot, 'payload.txt'), 'utf8'), `runtime ${REAL_KEY}`)
+      assert.equal(layout.readPointer(home), null, 'workers must exit before the pointer changes')
+      checked = true
+      throw new Error('controlled live worker')
+    }
+    const refused = await install.applyBundleUpdate(deps)
+    assert.equal(checked, true)
+    assert.equal(refused.ok, false)
+    assert.equal(layout.readPointer(home), null)
+    deps.beforeSwitch = async () => {}
+    assert.equal((await install.applyBundleUpdate(deps)).ok, true)
+    assert.equal(layout.readPointer(home).key, REAL_KEY)
+  } finally {
+    rm(home)
+  }
+})
+
 test('applyBundleUpdate: full success downloads, commits, switches, GCs', { skip: process.platform === 'win32' }, async () => {
   const home = mkHome()
 

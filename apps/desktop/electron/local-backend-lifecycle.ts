@@ -34,6 +34,7 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
   const starts = new Set<Promise<unknown>>()
   const children = new Set<Child>()
   const stops = new Map<Child, Promise<void>>()
+  let updateFences = 0
 
   function stop(child: Child | null | undefined): Promise<void> {
     if (child == null) {
@@ -60,6 +61,12 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
     return stopping
   }
 
+  function assertCanSpawn() {
+    controller.signal.throwIfAborted()
+
+    if (updateFences > 0) {throw new Error('The engine is being updated. Retry after the update completes.')}
+  }
+
   const shutdown = createBackendShutdownCoordinator(() => {
     controller.abort(new Error('Hermes Desktop is quitting.'))
     deps.cancelSetup()
@@ -69,6 +76,7 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
 
   return {
     signal: controller.signal,
+    assertCanSpawn,
     assertCanStart: () => controller.signal.throwIfAborted(),
     hasPending: () => starts.size > 0 || children.size > 0 || stops.size > 0 || shutdown.isPending(),
     // A version read joins already-started preparation, never a live child or a new start.
@@ -96,13 +104,26 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
       return promise
     },
     spawn(create: () => Child): Child {
-      controller.signal.throwIfAborted()
+      assertCanSpawn()
       const child = create()
       children.add(child)
 
       return child
     },
     release: (child: Child) => children.delete(child),
+    // Do not join pending starts here: the installer itself belongs to a start.
+    // Keep the fence through activation/rollback, then allow the new engine.
+    fenceForUpdate: () => {
+      updateFences += 1
+      let released = false
+
+      return {
+        drain: () => Promise.all([...children].map(stop)),
+        release: () => {
+          if (!released) {released = true; updateFences -= 1}
+        }
+      }
+    },
     stop,
     shutdown: shutdown.run
   }

@@ -539,6 +539,8 @@ async function applyBundleUpdate(o) {
     //    migrate-or-switch composite is telemetered as the one `switch` stage —
     //    a D1 migration failure surfaces via this beacon's error_code (its
     //    sw.reason, e.g. `switch:user-data-in-runtime-dir`).
+    await o.beforeSwitch?.(staged.versionDir)
+
     reportProgress({ phase: 'activating' })
     fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'switch', status: STATUS_START })
     const sw = migrate.switchToVersionOrMigrate(hermesHome, key, { platform, markers: migrateMarkers, log })

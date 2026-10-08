@@ -13,6 +13,7 @@ import { checkForRuntimeUpdate } from '../electron/apex-runtime-latest.ts'
 import { buildDesktopBackendEnv } from '../electron/backend-env.ts'
 import { waitForDashboardPortAnnouncement } from '../electron/backend-ready.ts'
 import { ModelMutationMetadataStore } from '../electron/desktop-model-mutations.ts'
+import { retirePackagedGateways } from '../electron/runtime-gateway-retirement.ts'
 import { readPreparedDesktopUpdatePlan, writeDesktopUpdatePlan } from '../electron/desktop-update-plan.ts'
 import {
   assertPackagedRuntimeIdle,
@@ -73,7 +74,10 @@ function consumer(home: string): PackagedRuntimeOptions {
       assert.ok(argv.includes('--root') && path.isAbsolute(root), 'bundle tool must declare its actual root')
       await exec(executable, argv, { cwd: workspace, env: environment(root, workspace), timeout: 180_000, maxBuffer: 1024 * 1024 })
     },
-    beforeSwitch: async verifiedRoot => { await assertPackagedRuntimeIdle(path.join(home, 'hermes-agent'), verifiedRoot) },
+    beforeSwitch: async verifiedRoot => {
+      await retirePackagedGateways(path.join(home, 'hermes-agent'), verifiedRoot, home)
+      await assertPackagedRuntimeIdle(path.join(home, 'hermes-agent'), verifiedRoot)
+    },
     writeMarker: descriptor => {
       const marker = path.join(home, 'hermes-agent', '.hermes-bootstrap-complete')
       const temporary = `${marker}.tmp`
@@ -302,6 +306,35 @@ catch(error) { console.log(JSON.stringify({name:error.name,code:error.code,idleP
   return { noWorker, borrowedWorker: { pid: fixturePid, stillAliveAfterRefusal: true, blocked }, afterRetirement, privateWindowsReversal: reversal }
 }
 
+async function verifyGatewayRetirement(root: string) {
+  const home = path.join(workspace, 'gateway-retirement-home')
+  const script = path.join(workspace, 'gateway-fixture', 'gateway', 'run.py')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(path.dirname(script), { recursive: true })
+  fs.writeFileSync(script, "import signal,time\nfrom gateway.status import acquire_gateway_runtime_lock,write_pid_file\nassert acquire_gateway_runtime_lock()\nwrite_pid_file()\nsignal.signal(signal.SIGTERM,signal.SIG_IGN)\nprint('ready',flush=True)\nwhile True: time.sleep(1)\n")
+  const child = spawn(python(root), [script], { cwd: root, env: environment(root, home), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
+  let output = ''
+  child.stderr!.on('data', bytes => { output = (output + bytes).slice(-2048) })
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Gateway fixture did not start: ${output}`)), 20_000)
+      child.once('exit', () => { clearTimeout(timer); reject(new Error(`Gateway fixture exited: ${output}`)) })
+      child.stdout!.once('data', () => { clearTimeout(timer); resolve() })
+    })
+    const pid = JSON.parse(fs.readFileSync(path.join(home, 'gateway.pid'), 'utf8')).pid
+    const retired = await retirePackagedGateways(root, root, home)
+    assert.deepEqual(retired, [pid], 'the actual packaged Python must retire the verified wedged gateway')
+    await closed
+    assert.deepEqual(await retirePackagedGateways(root, root, home), [])
+
+    return { pid, retired, actualBundledPython: python(root), forcedExit: true, repeatedRetirement: 'empty' }
+  } finally {
+    await terminateOwnedSmokeProcess(child, closed)
+  }
+}
+
 try {
   const fresh = path.join(workspace, 'fresh-home')
   const first = await installPackagedRuntime(consumer(fresh), false)
@@ -311,6 +344,7 @@ try {
   assert.equal((await installPackagedRuntime(consumer(fresh), true)).status, 'current')
   proof.fresh = { ...first, actualRpc, reopen: 'current', updateCheck: await assertNoUpdate(fresh) }
   proof.runtimeIdleGate = await verifyRuntimeIdleGate(active)
+  proof.gatewayRetirement = await verifyGatewayRetirement(active)
 
   const returning = path.join(workspace, 'legacy-home')
   const before = await seedOld(returning, active)
