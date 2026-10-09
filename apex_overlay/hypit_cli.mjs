@@ -4,17 +4,14 @@ import path from 'node:path'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { managedCaptureArgs } from './hypit_capture.mjs'
+import { hypitEnvironment } from './hypit_environment.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'scripts/media-tools/desktop-lock.json'), 'utf8'))
-const env = { ...process.env, npm_config_registry: lock.npm.registry,
-  npm_config_audit: 'false', npm_config_fund: 'false', npm_config_update_notifier: 'false',
-  PUPPETEER_SKIP_DOWNLOAD: 'true' }
+const env = hypitEnvironment(process.env, root, process.execPath, lock.npm.registry)
 let args = process.argv.slice(2)
 const python = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 const upstream = path.join(root, '.runtime/hypit/node_modules/@hypit/hypit/bin/hypit.mjs')
-env.PYTHONPATH = [root, env.PYTHONPATH].filter(Boolean).join(path.delimiter)
-env.PATH = [path.join(root, '.runtime/bin'), path.dirname(process.execPath), env.PATH].filter(Boolean).join(path.delimiter)
 try {
   const capture = await managedCaptureArgs(args, async () => {
     const { stdout } = await promisify(execFile)(python, ['-m', 'apex_overlay.media_tools', 'browser'],
