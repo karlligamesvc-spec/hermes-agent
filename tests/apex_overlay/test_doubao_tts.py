@@ -115,3 +115,18 @@ server.shutdown()
     result = subprocess.run([sys.executable, '-c', script], env=env,
                             cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=35)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_registration_failure_still_blocks_edge_fallback(monkeypatch):
+    from tools import tts_tool, tts_tool_delivery
+    monkeypatch.setattr(tts_tool, '_load_tts_config', tts_tool._load_tts_config)
+    monkeypatch.setattr(tts_tool, 'DEFAULT_PROVIDER', 'edge')
+    monkeypatch.setattr(tts_tool, '_dispatch_to_plugin_provider', lambda *args: None)
+    monkeypatch.setattr(tts_tool_delivery, 'PROVIDER_MAX_TEXT_LENGTH', dict(tts_tool_delivery.PROVIDER_MAX_TEXT_LENGTH))
+    def reject(provider):
+        raise RuntimeError('registry unavailable')
+    with pytest.raises(RuntimeError, match='registry unavailable'):
+        adapter.apply(SimpleNamespace(register_tts_provider=reject))
+    assert tts_tool._get_provider({}) == 'doubao'
+    with pytest.raises(ValueError, match='未切换其他声音'):
+        tts_tool._dispatch_to_plugin_provider('你好', 'out.mp3', 'doubao', {})
