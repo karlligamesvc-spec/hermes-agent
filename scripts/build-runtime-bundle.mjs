@@ -457,6 +457,17 @@ async function cmdBuild(args) {
   //       (byte-for-byte the installers' invocation, prefix = bundled node). ──
   npm(['install', '-g', '--prefix', nodeStage, '--ignore-scripts', ...AGENT_BROWSER_SPECS])
 
+  // Hypit is already available on PATH at first boot. Its complete dependency
+  // closure is served by our immutable COS registry; no customer npm install.
+  const mediaLock = JSON.parse(fs.readFileSync(path.join(stage, 'scripts/media-tools/desktop-lock.json'), 'utf8'))
+  npm(['install', '--prefix', path.join(stage, '.runtime/hypit'), '--ignore-scripts',
+    '--registry', mediaLock.npm.registry, `@hypit/hypit@${mediaLock.hypit.version}`])
+  const hypitBin = target.os === 'win' ? nodeStage : path.join(nodeStage, 'bin')
+  const hypitEntry = target.os === 'win' ? '../../apex_overlay/hypit_cli.mjs' : '../../../apex_overlay/hypit_cli.mjs'
+  fs.writeFileSync(path.join(hypitBin, 'hypit'), `#!/usr/bin/env node\nimport '${hypitEntry}'\n`, { mode: 0o755 })
+  if (target.os === 'win') fs.writeFileSync(path.join(hypitBin, 'hypit.cmd'),
+    '@echo off\r\n"%~dp0node.exe" "%~dp0..\\..\\apex_overlay\\hypit_cli.mjs" %*\r\n')
+
   // ── 8. repo npm trees. Deliberate A2 curation (NOT today's accidental
   //       full-workspace install): root deps (browser tool resolution) +
   //       ui-tui workspace (hermes --tui; tui_dist is NOT committed). Both
@@ -500,6 +511,12 @@ async function cmdBuild(args) {
   fs.copyFileSync(rgBin, path.join(binDir, `rg${target.exe}`))
   fs.chmodSync(path.join(binDir, `rg${target.exe}`), 0o755)
 
+  const { stageCosFfmpeg } = await import('./media-tools/bundle.mjs')
+  const ffmpegComponent = await stageCosFfmpeg({
+    stage, tools, target, download,
+    extract: (archive, destination) => run(tarBin(), ['-xf', archive, '-C', destination]),
+  })
+
   // ── 11. prune build detritus + neutralize location-bound links ────────────
   prunePycache(stage)
   normalizeStageLinks(stage)
@@ -540,6 +557,7 @@ async function cmdBuild(args) {
       ...(gitComponent ? { git: gitComponent } : {}),
       uv: { path: `.runtime/bin/uv${target.exe}`, version: uvVersion },
       ripgrep: { path: `.runtime/bin/rg${target.exe}`, version: RIPGREP_VERSION },
+      ffmpeg: ffmpegComponent,
     },
     chromium: {
       included: false,

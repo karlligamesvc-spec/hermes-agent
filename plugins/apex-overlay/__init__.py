@@ -49,6 +49,12 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
 
     try:
+        from apex_overlay import media_tools
+        media_tools.apply()
+    except Exception:
+        logger.exception("APEX COS browser installer seam failed")
+
+    try:
         from apex_overlay import managed_model_catalog
 
         if not managed_model_catalog.apply():

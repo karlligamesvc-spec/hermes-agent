@@ -90,7 +90,7 @@ const DEFAULT_RELAY_BASE_URL = 'https://apex-nodes.com/relay/v1'
 
 // Default for new APEX installations. Existing selections are preserved by the
 // model mutation/preferences path; changing this seed does not migrate them.
-const DEFAULT_MANAGED_MODEL = 'deepseek-v4-flash'
+const DEFAULT_MANAGED_MODEL = 'deepseek-flash'
 
 // A branded id keeps startup discovery from selecting the built-in DeepSeek
 // provider (which would require a separate user API key). The relay resolves

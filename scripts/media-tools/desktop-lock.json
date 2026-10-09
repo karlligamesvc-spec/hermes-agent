@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "ffmpeg": {
+    "mac-arm64": {
+      "target": "mac-arm64",
+      "version": "9.0.2",
+      "buildCommit": "cc084514c65629ad0e6489a46e2e97417d8f9c66",
+      "sha256": "96b4edd81a78404f54eefea049ce832d3739c8e5f2074b5ae2a5e51c0abbc0f0",
+      "bytes": 36530448,
+      "license": "GPL-2.0-or-later",
+      "correspondingSourceIncluded": true,
+      "nativeChecks": [
+        "h264-aac-encode",
+        "ffprobe-streams-duration",
+        "png-frame"
+      ],
+      "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/96b4edd81a78404f54eefea049ce832d3739c8e5f2074b5ae2a5e51c0abbc0f0/ffmpeg-9.0.2-mac-arm64.zip"
+    },
+    "mac-x64": {
+      "target": "mac-x64",
+      "version": "9.0.2",
+      "buildCommit": "cc084514c65629ad0e6489a46e2e97417d8f9c66",
+      "sha256": "1430a550f4344e5ad2ef81eb0753e90a42de112e3c2fe06598e3175595d2683c",
+      "bytes": 37710843,
+      "license": "GPL-2.0-or-later",
+      "correspondingSourceIncluded": true,
+      "nativeChecks": [
+        "h264-aac-encode",
+        "ffprobe-streams-duration",
+        "png-frame"
+      ],
+      "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/1430a550f4344e5ad2ef81eb0753e90a42de112e3c2fe06598e3175595d2683c/ffmpeg-9.0.2-mac-x64.zip"
+    },
+    "win-x64": {
+      "target": "win-x64",
+      "version": "9.0.2",
+      "buildCommit": "cc084514c65629ad0e6489a46e2e97417d8f9c66",
+      "sha256": "2f2176a752afc17cd898132bd61d950b08e3200625cb2c31e90e8c547dd51beb",
+      "bytes": 41942130,
+      "license": "GPL-2.0-or-later",
+      "correspondingSourceIncluded": true,
+      "nativeChecks": [
+        "h264-aac-encode",
+        "ffprobe-streams-duration",
+        "png-frame"
+      ],
+      "profile": "FFmpeg core + libx264; no external libass/libx265/libvpx",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/ffmpeg/9.0.2/2f2176a752afc17cd898132bd61d950b08e3200625cb2c31e90e8c547dd51beb/ffmpeg-9.0.2-win-x64.zip"
+    }
+  },
+  "hypit": {
+    "version": "0.2.17",
+    "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+    "bytes": 2756886,
+    "npmIntegrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
+    "license": "Hypit modified Apache-2.0; written commercial grant confirmed by owner",
+    "node": ">=22.15.0",
+    "nativeChecks": {
+      "mac-arm64": {
+        "schema": 1,
+        "version": "0.2.17",
+        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
+        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "system": "Darwin",
+        "machine": "arm64",
+        "checks": [
+          "npm-integrity",
+          "license-preserved",
+          "npm-install",
+          "cli-version"
+        ],
+        "renderVerified": false,
+        "dependenciesMirrored": false
+      },
+      "mac-x64": {
+        "schema": 1,
+        "version": "0.2.17",
+        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
+        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "system": "Darwin",
+        "machine": "x86_64",
+        "checks": [
+          "npm-integrity",
+          "license-preserved",
+          "npm-install",
+          "cli-version"
+        ],
+        "renderVerified": false,
+        "dependenciesMirrored": false
+      },
+      "win-x64": {
+        "schema": 1,
+        "version": "0.2.17",
+        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
+        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "system": "Windows",
+        "machine": "AMD64",
+        "checks": [
+          "npm-integrity",
+          "license-preserved",
+          "npm-install",
+          "cli-version"
+        ],
+        "renderVerified": false,
+        "dependenciesMirrored": false
+      }
+    },
+    "dependenciesMirrored": false,
+    "renderVerified": false,
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/hypit/0.2.17/6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77/hypit-0.2.17.tgz"
+  },
+  "npm": {
+    "prefix": "media-tools/npm/25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
+    "registry": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
+    "lockSha256": "25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
+    "versions": 269,
+    "packages": 202
+  },
+  "browser": {
+    "mac-arm64": {
+      "version": "153.0.8010.12",
+      "sha256": "930e2a2c15addbaca1fe9b07bfa520667bced556d7988707186819cb4279ef3b",
+      "bytes": 190970181,
+      "executable": "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+      "upstream": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.12/mac-arm64/chrome-mac-arm64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/chrome/153.0.8010.12/930e2a2c15addbaca1fe9b07bfa520667bced556d7988707186819cb4279ef3b/chrome-mac-arm64.zip"
+    },
+    "mac-x64": {
+      "version": "153.0.8010.12",
+      "sha256": "4e12e2b8a297a2eb79c16258e46961c73f8aa2fa6be6b1d3cdbb553fb5d4ef1c",
+      "bytes": 201663099,
+      "executable": "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+      "upstream": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.12/mac-x64/chrome-mac-x64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/chrome/153.0.8010.12/4e12e2b8a297a2eb79c16258e46961c73f8aa2fa6be6b1d3cdbb553fb5d4ef1c/chrome-mac-x64.zip"
+    },
+    "win-x64": {
+      "version": "153.0.8010.12",
+      "sha256": "415968b02065d4a9e2c10b85f0ae9f489b8fba500e94d9d0a7b7c4852a7234c1",
+      "bytes": 205123748,
+      "executable": "chrome-win64/chrome.exe",
+      "upstream": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.12/win64/chrome-win64.zip",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/chrome/153.0.8010.12/415968b02065d4a9e2c10b85f0ae9f489b8fba500e94d9d0a7b7c4852a7234c1/chrome-win64.zip"
+    }
+  }
+}

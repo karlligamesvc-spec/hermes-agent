@@ -1,0 +1,10 @@
+{
+  "name": "apex-hypit-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@hypit/hypit": "0.2.17",
+    "@hyperframes/engine": "0.7.101",
+    "@hyperframes/producer": "0.7.101"
+  }
+}
