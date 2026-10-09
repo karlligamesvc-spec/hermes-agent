@@ -1,6 +1,7 @@
 // Keep the upstream CLI intact; only its dependency source and APEX setup live here.
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { managedCaptureArgs } from './hypit_capture.mjs'
@@ -26,7 +27,11 @@ try {
 }
 const preparing = args[0] === 'apex-prepare'
 const command = preparing ? python : process.execPath
-const parameters = preparing ? ['-m', 'apex_overlay.media_tools', 'prepare-hypit', ...args.slice(1)] : [upstream, ...args]
+// Load Koffi before Hypit's TS/package-resolution hooks. Loading the native
+// addon through that hook chain crashes its first flock call on macOS x64.
+// --import keeps the addon in the same child that runs the unchanged CLI.
+const nativeModule = pathToFileURL(path.join(root, '.runtime/hypit/node_modules/koffi/index.js')).href
+const parameters = preparing ? ['-m', 'apex_overlay.media_tools', 'prepare-hypit', ...args.slice(1)] : ['--import', nativeModule, upstream, ...args]
 const child = spawn(command, parameters, { env, stdio: 'inherit', windowsHide: true })
 child.on('error', error => { console.error(`Hypit could not start: ${error.message}`); process.exitCode = 1 })
 child.on('exit', (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0) })

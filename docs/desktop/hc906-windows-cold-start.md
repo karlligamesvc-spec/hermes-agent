@@ -75,6 +75,29 @@ builds. Mac arm64/x64 still require the same source and version, Developer ID
 signing/notarization and package/feed readback; this exception does not waive those
 gates. The local candidate is 0.17.56, not yet published.
 
+### Native media lifecycle gate
+
+The first complete macOS x64 Hypit lifecycle test exposed a native Koffi
+`flock` crash after the upstream TypeScript/package-resolution hooks loaded it.
+The managed wrapper now preloads the same unchanged Koffi module in the child
+process before those hooks. A file URL is required for Windows drive paths.
+No upstream Hypit files or original Workbuddy skill bodies are rewritten.
+
+`node scripts/media-tools/hypit-lifecycle-smoke.mjs RUNTIME_ROOT NEW_WORKSPACE`
+prepares the managed runtime, starts both providers, renders the upstream media
+fixture, exports the video, independently checks H.264/AAC, 720×1280, 150 frames
+and exactly five seconds with ffprobe, then stops its own runtime/programs.
+Native Windows and Mac arm64 passed; Mac x64 passed under Rosetta on both local
+Macs (not physical Intel hardware). Removing only the child `--import` argument
+with a unique-anchor assertion makes the same x64 lifecycle gate fail; restoring
+it passes. CLI version and browser screenshots alone cannot catch this fault.
+
+The earlier full 0.17.56 candidate reached first-login readiness from an empty
+home in 29.9 seconds on Mac Studio and 433.8 seconds on 4060 Ti. These are packaged
+app launches, not rebooted cold-cache measurements. Windows first verification
+remains the dominant cost; the 193-second diagnostic consumer measurement above
+must not be presented as this final packaged application's measured startup.
+
 On Mac Studio, a newly extracted public engine exercised the real packaged
 consumer with candidate verification: extraction 4.628s, fixup 3.889s, first verify
 1.323s, final verify 1.303s and isolated backend readiness 2.963s, total 19.102s.
