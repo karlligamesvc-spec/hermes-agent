@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import struct
 import subprocess
 import tempfile
 import urllib.request
@@ -56,7 +57,20 @@ def ensure_browser() -> Path:
             candidate = unpacked / spec['executable']
             if not candidate.is_file():
                 raise ValueError('COS browser archive has no native executable')
-            subprocess.run([str(candidate), '--version'], check=True, capture_output=True, timeout=30)
+            if os.name == 'nt':
+                # Windows Chrome ignores --version and opens a persistent GUI.
+                # The trusted archive hash plus native PE header validates this
+                # install without launching it; capture tests exercise startup.
+                with candidate.open('rb') as binary:
+                    if binary.read(2) != b'MZ':
+                        raise ValueError('Browser is not a Windows executable')
+                    binary.seek(0x3c)
+                    offset = struct.unpack('<I', binary.read(4))[0]
+                    binary.seek(offset)
+                    if binary.read(6) != b'PE\0\0\x64\x86':
+                        raise ValueError('Browser is not a native Windows x64 executable')
+            else:
+                subprocess.run([str(candidate), '--version'], check=True, capture_output=True, timeout=30)
             # A previous interrupted installation cannot leave a half-valid tree.
             if destination.exists():
                 shutil.rmtree(destination)
