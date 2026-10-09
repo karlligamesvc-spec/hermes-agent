@@ -37,10 +37,26 @@ permission to change the license or as evidence about unrelated products.
 
 Hypit 0.2.17 requires Node >=22.15.0. Its official npm SHA-512 integrity, package
 identity, preserved license, installation and `hypit version` are checked on all
-three native targets. The mirror includes the **Hypit npm package**, not a complete
-offline npm registry. Transitive npm dependencies still require network access.
-Browser installation, project initialization, provider authorization and actual
-video rendering are not established by a successful CLI version check.
+three native targets. The original stable manifest describes only the main npm
+archive. The Desktop candidate additionally pins `desktop-lock.json`: an immutable
+COS registry slice with 269 npm package versions (202 names), including the exact
+HyperFrames engine/producer versions, and three Chrome for Testing 153.0.8010.12
+archives. All 472 registry objects and three browser archives were fully read back
+and hashed after upload. This remains a network-dependent COS mirror, not a promise
+of arbitrary offline npm installation.
+
+The candidate bundles FFmpeg, ffprobe and Hypit's installed CLI. Browser downloads
+remain lazy and hash verified. Browser automation, Hypit capture and the generated
+project runtime profile use the same managed Chrome cache. Explicit user profiles
+and browser choices are retained. `hypit apex-prepare --workspace <project>` creates
+the profile; select it with the original `hypit runtime use` command. Provider npm
+installs inherit the immutable registry. Cloud/Linux retain their current setup.
+
+On Mac Studio, the candidate downloaded FFmpeg from COS, encoded/probed a one-second
+H.264/AAC clip, installed Hypit from COS, captured a local page at 1280x720, initialized
+both local providers and completed the upstream media-track fixture (150 frames,
+five seconds). This is native tool acceptance, not notarized installer acceptance.
+Provider credentials for external AI services are a separate requirement.
 
 ## Publishing and recovery
 
@@ -65,6 +81,12 @@ not a production systemd daemon. It checks current stable upstream versions,
 reviews license changes, rebuilds and tests changed inputs, and publishes only
 verified packages. A new upstream release does not mean it is immediately safe
 to promote. Leave the last verified mirror available when a platform fails.
+
+Dependency updates must refresh the npm lock and immutable registry closure along
+with the browser lock, exercise native capture/rendering, and update the Desktop
+lock through a reviewed release. Publishing only the Hypit main tarball does not
+update packaged clients or prove the dependency closure. Never replace immutable
+objects or silently upgrade customers' project selections.
 
 Behavioral publisher regression tests:
 

@@ -66,3 +66,24 @@ replace digest comparison with success -> corruption test fails; restore the
 unconditional third scan -> fresh-scan/reuse regression fails. Faults restored.
 Evidence is retained under the private `hc906-win-first-install/perf` diagnostic
 artifact directory. No public feed or runtime default changed.
+
+## LAN release candidate and Mac evidence
+
+GitHub rejected workflow dispatch with `Actions has been disabled for this
+repository`. The owner explicitly authorized replacing Actions with LAN RTX 4060 Ti
+builds. Mac arm64/x64 still require the same source and version, Developer ID
+signing/notarization and package/feed readback; this exception does not waive those
+gates. The local candidate is 0.17.56, not yet published.
+
+On Mac Studio, a newly extracted public engine exercised the real packaged
+consumer with candidate verification: extraction 4.628s, fixup 3.889s, first verify
+1.323s, final verify 1.303s and isolated backend readiness 2.963s, total 19.102s.
+This fresh-directory diagnostic preserves the existing app and is not a rebooted
+cold-cache or final installer measurement.
+
+The corrected native Windows live model probe returned the full entitled catalog
+in 0.7s with a 15s budget. The public Relay model ID for the requested default is
+`deepseek-flash`; direct BYOK uses the provider's separate model identifier.
+Fresh managed provisioning selects Flash. Existing explicit Pro/other choices
+are preserved. Cloud provisioning/config regressions passed 41 tests on the
+WSL PostgreSQL test host; no local missing-PostgreSQL result was called a pass.
