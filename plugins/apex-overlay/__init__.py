@@ -34,6 +34,10 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
     into a hard CI failure) but never raises, so a single broken overlay can't
     take down plugin discovery or the host.
     """
+    from apex_overlay import doubao_tts
+
+    doubao_tts.apply(ctx)
+
     try:
         from apex_overlay import provider_filter
 
