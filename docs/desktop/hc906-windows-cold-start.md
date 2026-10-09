@@ -23,7 +23,7 @@ An authenticated cold picker probe on Windows reproduced the separate catalog pr
 - Entire platform overlay suite: 396 passed; focused model catalog suites: 116 passed.
 - Desktop TypeScript check, renderer Vite production build and Electron main/preload bundle passed. Changed-file ESLint has no errors (existing style warnings remain).
 - Reverse checks use unique-anchor assertions: remove the manifest emission -> gate ownership regression fails; revert the platform minimum to 1.5 seconds -> cold catalog behavior test fails. Both faults were restored.
-- Native device acceptance uses the public Windows executable and unchanged public bundled engine payload, with candidate Electron JS installed only on the authorized test machine. This is a diagnostic build, not a published release. A final engine containing the overlay seam must be bundled for customer delivery.
+- Native device acceptance uses the public Windows executable and unchanged public bundled engine payload, with candidate Electron JS installed only on the authorized test machine. The complete clean-device run reached backend readiness at 04:28:16 UTC after starting at 04:12:59 UTC, then automatically showed the account sign-in screen without a retry. Progress at 50 seconds and 600 seconds stayed active. A live native Windows picker probe with the candidate seam took 9.38 seconds and returned all nine Relay models with a 15-second request budget. This is a diagnostic build, not a published release. A final engine containing the overlay seam must be bundled for customer delivery.
 
 ## Boundaries
 
