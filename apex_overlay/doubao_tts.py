@@ -96,10 +96,10 @@ class DoubaoTTS(TTSProvider):
 def apply(ctx) -> None:
     from tools import tts_tool, tts_tool_delivery
 
-    ctx.register_tts_provider(DoubaoTTS())
     tts_tool.DEFAULT_PROVIDER = 'doubao'
     tts_tool_delivery.PROVIDER_MAX_TEXT_LENGTH['doubao'] = 2000
     if getattr(tts_tool._dispatch_to_plugin_provider, '_apex_doubao_guard', False):
+        ctx.register_tts_provider(DoubaoTTS())
         return
     original_config = tts_tool._load_tts_config
 
@@ -124,3 +124,7 @@ def apply(ctx) -> None:
 
     dispatch._apex_doubao_guard = True
     tts_tool._dispatch_to_plugin_provider = dispatch
+
+    # Install fail-closed routing before registration, so a discovery failure
+    # cannot silently select Edge while unrelated overlay seams still boot.
+    ctx.register_tts_provider(DoubaoTTS())
