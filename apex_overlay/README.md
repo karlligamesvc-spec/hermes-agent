@@ -113,3 +113,23 @@ Seam-test: `tests/apex_overlay/test_provider_filter_seam.py`.
 - [ ] Restore the upstream file to byte-for-byte upstream.
 - [ ] Write a seam-test pinning every patched symbol's existence + signature.
 - [ ] Verify with the CI runner (`scripts/run_tests_parallel.py`), not single pytest — per-file interpreter isolation is the real contract.
+
+## Default narration (hc-906)
+
+`doubao_tts` registers the `doubao` TTS provider and makes it the APEX default
+when the active profile has not explicitly selected another provider. It also
+handles configs cached with upstream's Edge default before plugin discovery.
+The profile's own platform key authenticates to Scheduler
+`/api/v1/tools/v1/tts/synthesize`; vendor speech credentials stay server-side.
+Foreign profiles never borrow the process profile's key or private endpoint.
+
+The service returns a complete MP3 which is atomically saved before delivery.
+Long-form text uses the runtime's ordered 2,000-character chunking. Missing
+plugins, network errors and invalid audio fail without silently switching to
+Edge or OS speech. An explicitly configured provider remains respected.
+The APEX real-time Qwen voice transport is a separate feature.
+
+Requires the companion Scheduler route before rollout. This change alone does
+not publish a Desktop installer or change the production runtime pin.
+
+Validation: `scripts/run_tests.sh tests/apex_overlay/test_doubao_tts.py tests/tools/test_tts_plugin_dispatch.py tests/tools/test_tts_long_form_chunking.py -q`.
