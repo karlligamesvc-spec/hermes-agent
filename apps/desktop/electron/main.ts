@@ -131,6 +131,7 @@ import {
   applyClientConfigYamlRespectingPreferences,
   buildManagedModelConfig,
   defaultModelPath,
+  DEFAULT_MANAGED_MODEL,
   ensurePluginsEnabledYaml,
   ensureProductDefaultsYaml,
   ensureSkillsDisabledYaml,
@@ -19161,7 +19162,7 @@ function seedDefaultModelConfig() {
         '# DeepSeek is the default provider. Add your key in Settings › Providers\n' +
         '# (the DeepSeek card), which writes DEEPSEEK_API_KEY.\n' +
         'model:\n' +
-        '  default: deepseek-v4-pro\n' +
+        `  default: ${DEFAULT_MANAGED_MODEL}\n` +
         '  provider: deepseek\n' +
         modelDisabledProvidersYaml() +
         SEED_DISPLAY_BLOCK +
