@@ -254,6 +254,24 @@ nativeTest('same bundled source repeats actual verification; a committed marker 
   })
 })
 
+nativeTest('fresh installation verifies staging and final path once each, while committed reuse revalidates', async () => {
+  await withHome(async (home, options) => {
+    const labels: string[] = []
+    const run = options.runTool!
+    options.runTool = async (executable, args, label) => {
+      if (args[1] === 'verify') {labels.push(label)}
+      await run(executable, args, label)
+    }
+    await installPackagedRuntime(options, false)
+    assert.deepEqual(labels, ['verify', 'verify-final'])
+    labels.length = 0
+    layout.removeLinkOnly(path.join(home, 'hermes-agent'))
+    fs.rmSync(path.join(home, '.apexnodes-runtime-current.json'))
+    await installPackagedRuntime(options, false)
+    assert.deepEqual(labels, ['verify-final-boot'])
+  })
+})
+
 nativeTest('unreferenced committed final directory is verified before it can become active', async () => {
   await withHome(async (home, options) => {
     await installPackagedRuntime(options, false)
@@ -640,4 +658,32 @@ nativeTest.each(['mixed-source', 'rebuilt-artifact'])('%s recovers from the exac
     assert.equal(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8'), 'private user configuration')
     assert.equal((await installPackagedRuntime(options, true)).status, 'current')
   })
+})
+
+
+test('bundled engine owns setup from cold verification through completion and failure/retry', async () => {
+  const events: Array<{ type: string; state?: string; error?: string }> = []
+  let resolve!: (result: { status: 'installed'; runtimeCommit: string }) => void
+  const gate = createPackagedRuntimeGate(() => new Promise(done => { resolve = done }), event => events.push(event))
+  const pending = gate()
+  assert.deepEqual(events.map(event => event.type), ['manifest', 'stage'])
+  assert.equal(events[1].state, 'running')
+  assert.equal(gate(), pending)
+  assert.equal(events.length, 2, 'joining the install cannot reset its progress')
+  resolve({ status: 'installed', runtimeCommit: commit })
+  await pending
+  assert.deepEqual(events.slice(2).map(event => [event.type, event.state]), [['stage', 'succeeded'], ['complete', undefined]])
+
+  events.length = 0
+  let attempts = 0
+  const retry = createPackagedRuntimeGate(async () => {
+    if (++attempts === 1) {throw new Error('checksum mismatch')}
+    return { status: 'current', runtimeCommit: commit }
+  }, event => events.push(event))
+  await assert.rejects(retry(), /checksum mismatch/)
+  assert.equal(events.at(-1)?.type, 'failed')
+  assert.equal(events.at(-1)?.error, 'checksum mismatch')
+  assert.equal(events.some(event => event.type === 'complete'), false)
+  await retry()
+  assert.deepEqual(events.slice(-4).map(event => event.type), ['manifest', 'stage', 'stage', 'complete'])
 })

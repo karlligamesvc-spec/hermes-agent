@@ -248,11 +248,12 @@ test('isLoginStateTruthEnabled is ON by default and disables on the same falsy s
 
 test('buildManagedModelConfig writes the collision-free DISPLAY model id + registers the relay as a named custom provider', () => {
   const block = buildManagedModelConfig('sk-relaykey123', {})
+  assert.equal(block.default, 'deepseek-flash-APEX', 'new installations start with catalog Flash')
   assert.deepEqual(block, {
     // The WRITTEN model id is the display name, NOT the raw routed id — the raw
     // `deepseek-v4-pro` collides with the built-in DeepSeek catalog and gets
     // agent init mis-routed to the keyless built-in `deepseek` provider.
-    default: 'deepseek-v4-pro-APEX',
+    default: MANAGED_MODEL_DISPLAY,
     provider: 'custom',
     base_url: 'https://apex-nodes.com/relay/v1',
     api_key: 'sk-relaykey123',
@@ -263,7 +264,7 @@ test('buildManagedModelConfig writes the collision-free DISPLAY model id + regis
         name: MANAGED_PROVIDER_NAME,
         base_url: 'https://apex-nodes.com/relay/v1',
         api_key: 'sk-relaykey123',
-        model: 'deepseek-v4-pro-APEX'
+        model: MANAGED_MODEL_DISPLAY
       }
     ]
   })
@@ -292,7 +293,7 @@ test('buildManagedModelConfig custom_providers entry mirrors model.default/base_
       name: MANAGED_PROVIDER_NAME,
       base_url: 'https://relay.example.com/v1',
       api_key: 'sk-x',
-      model: 'deepseek-v4-pro-APEX'
+      model: MANAGED_MODEL_DISPLAY
     }
   ])
   assert.equal(block.base_url, block.custom_providers[0].base_url)
@@ -304,8 +305,8 @@ test('buildManagedModelConfig honors a provision-key model only when it is alrea
   // A raw routed id from the server (e.g. deepseek-v4-pro) must NOT be written
   // verbatim — it would re-seed the collision — so we fall back to the display id.
   const raw = buildManagedModelConfig('sk-x', {}, { model: 'deepseek-v4-pro' })
-  assert.equal(raw.default, 'deepseek-v4-pro-APEX')
-  assert.equal(raw.custom_providers[0].model, 'deepseek-v4-pro-APEX')
+  assert.equal(raw.default, MANAGED_MODEL_DISPLAY)
+  assert.equal(raw.custom_providers[0].model, MANAGED_MODEL_DISPLAY)
   // An already-branded display id from the server is honored as-is.
   const branded = buildManagedModelConfig('sk-x', {}, { model: 'deepseek-v4-flash-APEX' })
   assert.equal(branded.default, 'deepseek-v4-flash-APEX')
@@ -396,7 +397,7 @@ test('managedModelConfigYaml emits a valid, quoted model block + custom_provider
   const yaml = managedModelConfigYaml(buildManagedModelConfig('sk-relaykey123', {}))
   assert.match(yaml, /^model:\n/)
   // The collision-free display id is what lands in config.
-  assert.match(yaml, /\n {2}default: deepseek-v4-pro-APEX\n/)
+  assert.match(yaml, /\n {2}default: deepseek-flash-APEX\n/)
   assert.match(yaml, /\n {2}provider: custom\n/)
   // base_url + api_key are double-quoted scalars.
   assert.match(yaml, /\n {2}base_url: "https:\/\/apex-nodes\.com\/relay\/v1"\n/)
@@ -407,7 +408,7 @@ test('managedModelConfigYaml emits a valid, quoted model block + custom_provider
   assert.match(yaml, /\n {2}- name: "Apex-nodes\.com"\n/)
   assert.match(yaml, /\n {4}base_url: "https:\/\/apex-nodes\.com\/relay\/v1"\n/)
   assert.match(yaml, /\n {4}api_key: "sk-relaykey123"\n/)
-  assert.match(yaml, /\n {4}model: deepseek-v4-pro-APEX\n/)
+  assert.match(yaml, /\n {4}model: deepseek-flash-APEX\n/)
   // Critically, the catalog-colliding raw id must NOT appear as a written model.
   assert.doesNotMatch(yaml, /\n {2}default: deepseek-v4-pro\n/)
 })

@@ -2459,15 +2459,18 @@ function broadcastBootstrapEvent(ev) {
     bootstrapState.manifest = ev
     bootstrapState.active = true
     bootstrapState.setupChoice = null
-    bootstrapState.startedAt = bootstrapState.startedAt || Date.now()
+    bootstrapState.startedAt = Date.now()
+    bootstrapState.completedAt = null
+    bootstrapState.error = null
     bootstrapState.stages = {}
 
     for (const stage of ev.stages || []) {
-      bootstrapState.stages[stage.name] = { state: 'pending', json: null, durationMs: null, error: null }
+      bootstrapState.stages[stage.name] = { state: 'pending', json: null, durationMs: null, startedAt: null, error: null }
     }
   } else if (ev.type === 'stage') {
     bootstrapState.stages[ev.name] = {
       state: ev.state,
+      startedAt: ev.state === 'running' ? (bootstrapState.stages[ev.name]?.startedAt ?? Date.now()) : (bootstrapState.stages[ev.name]?.startedAt ?? null),
       durationMs: ev.durationMs ?? null,
       json: ev.json ?? null,
       error: ev.error ?? null
@@ -5571,7 +5574,9 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
       desktopVersion: app.getVersion(),
       confirmedRuntimeCommit: readRuntimePinOverride()?.commit,
       extract: extractBundleArchive,
-      runTool: runBundledTool,
+      runTool: (exe, argv, label) => runBundledTool(exe, argv, label, line => {
+        broadcastBootstrapEvent({ type: 'log', stage: 'bundled-engine', line })
+      }),
       assertCurrent: () => localBackendLifecycle.assertCanStart(),
       beforeSwitch: async verifiedRoot => {
         updateFence = await prepareRuntimeSwitch(verifiedRoot)
@@ -5600,7 +5605,7 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
   } finally {
     updateFence?.release()
   }
-})
+}, broadcastBootstrapEvent)
 
 async function waitForRuntimePreparation() {
   await waitForPendingRuntimePreparation({
@@ -18863,13 +18868,14 @@ function extractBundleArchive(archivePath, destDir) {
 // Run the BUNDLED node against the BUNDLED tool copy (fixup / verify). The
 // bundle ships scripts/build-runtime-bundle.mjs + its own node, so there is no
 // external fixup binary to keep in lockstep (manifest.fixup drives the argv).
-function runBundledTool(exe, argv, label) {
+function runBundledTool(exe, argv, label, onOutput?: (line: string) => void) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(exe, argv, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
     let tail = ''
 
     const cap = d => {
       tail = (tail + String(d)).slice(-2000)
+      onOutput?.(String(d))
     }
 
     child.stdout.on('data', cap)
@@ -19155,7 +19161,7 @@ function seedDefaultModelConfig() {
         '# DeepSeek is the default provider. Add your key in Settings › Providers\n' +
         '# (the DeepSeek card), which writes DEEPSEEK_API_KEY.\n' +
         'model:\n' +
-        '  default: deepseek-v4-pro\n' +
+        '  default: deepseek-v4-flash\n' +
         '  provider: deepseek\n' +
         modelDisabledProvidersYaml() +
         SEED_DISPLAY_BLOCK +

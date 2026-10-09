@@ -3353,6 +3353,7 @@ export const zh = defineLocale({
     finishingTitle: '正在收尾',
     failedDesc:
       '某个安装步骤失败。请先关闭其他正在运行的 APEX CLI 或桌面实例，再重试。你也可以查看下面的详情或 desktop 日志中的完整记录。',
+    bundledDesc: '正在解压并校验安装包内的 AI 引擎。首次启动可能需要数分钟，完成后会自动继续。',
     activeDesc: '这是一次性设置。APEX 安装器正在下载依赖并配置你的机器。之后启动会跳过此步骤。',
     // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
     // repeat "一次性"/"之后启动会跳过此步骤" -- those phrases are what
@@ -3379,6 +3380,7 @@ export const zh = defineLocale({
     copyOutput: '复制输出',
     reloadRetry: '重新加载并重试',
     stageLabels: {
+      'bundled-engine': '准备 AI 引擎',
       desktop_update_check: '检查更新',
       shell_download: '应用安装包',
       runtime_update: 'AI 引擎',

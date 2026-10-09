@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "runtime_commit": "d4a31394f437a669ba0ff9ef6902ef22cecacbeb",
-  "runtime_version": "v2026.10.6-fork.d4a31394",
-  "min_desktop_version": "0.17.52",
+  "runtime_commit": "123f411d9dec389db44e297e62438dea525c28af",
+  "runtime_version": "v2026.10.9-fork.123f411d",
+  "min_desktop_version": "0.17.56",
   "uv_version": "0.11.28"
 }

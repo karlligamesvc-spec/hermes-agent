@@ -3167,6 +3167,7 @@ export interface Translations {
     settingUpTitleUpdate: (version: string | null) => string
     finishingTitle: string
     failedDesc: string
+    bundledDesc: string
     activeDesc: string
     /** hc-452: update-flow counterpart to activeDesc -- must NOT claim this is
      *  a one-time thing or that future launches skip this step (both false

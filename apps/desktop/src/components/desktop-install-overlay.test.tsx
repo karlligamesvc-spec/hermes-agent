@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DesktopBootstrapEvent, DesktopBootstrapStageDescriptor, DesktopBootstrapState } from '@/global'
 import { $desktopUpdateProgress } from '@/store/desktop-update'
 
+import { createPackagedRuntimeGate } from '../../electron/packaged-runtime'
+
 import { DesktopInstallOverlay } from './desktop-install-overlay'
 
 // Regression coverage for the three pieces of install-overlay copy that the
@@ -282,4 +284,27 @@ describe('DesktopInstallOverlay update-vs-install copy (hc-452 / hc-569 restorat
       desktop.restore()
     }
   })
+})
+
+
+it('renders the real bundled preparation events and clears failure on a retry', async () => {
+  const desktop = stubDesktop()
+  try {
+    render(<DesktopInstallOverlay />)
+    await act(async () => {})
+    let reject!: (error: Error) => void
+    const gate = createPackagedRuntimeGate(() => new Promise((_resolve, fail) => { reject = fail }), desktop.emit)
+    const pending = gate()
+    const rejected = expect(pending).rejects.toThrow('checksum mismatch')
+    expect(screen.getByText('Prepare AI engine')).toBeTruthy()
+    expect(screen.getByText(/engine included with APEX/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Cancel install' })).toBeNull()
+    await act(async () => { reject(new Error('checksum mismatch')); await rejected })
+    expect(screen.getByText('Installation failed')).toBeTruthy()
+    const retry = createPackagedRuntimeGate(async () => ({ status: 'current', runtimeCommit: 'verified' }), desktop.emit)
+    await act(async () => { await retry() })
+    expect(screen.queryByText('Installation failed')).toBeNull()
+  } finally {
+    desktop.restore()
+  }
 })

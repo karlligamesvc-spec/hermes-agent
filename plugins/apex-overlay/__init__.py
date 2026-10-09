@@ -26,7 +26,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
+def register(ctx) -> None:
     """Apply all apex_overlay seams. Called once during plugin discovery.
 
     Each ``apply()`` is idempotent and fail-safe: a seam that can't bind to its
@@ -34,6 +34,13 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
     into a hard CI failure) but never raises, so a single broken overlay can't
     take down plugin discovery or the host.
     """
+    try:
+        from apex_overlay import doubao_tts
+
+        doubao_tts.apply(ctx)
+    except Exception:
+        logger.warning("apex-overlay: doubao_tts seam failed to load", exc_info=True)
+
     try:
         from apex_overlay import provider_filter
 
@@ -47,6 +54,20 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
             )
     except Exception:
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
+
+    try:
+        from apex_overlay import media_tools
+        media_tools.apply()
+    except Exception:
+        logger.exception("APEX COS browser installer seam failed")
+
+    try:
+        from apex_overlay import managed_model_catalog
+
+        if not managed_model_catalog.apply():
+            logger.warning("apex-overlay: managed model catalog budget seam did not apply")
+    except Exception:
+        logger.warning("apex-overlay: managed model catalog seam failed to load", exc_info=True)
 
     try:
         from apex_overlay import model_catalog_dedupe

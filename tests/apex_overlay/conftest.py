@@ -15,9 +15,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 _SEAM_MODULES = (
+    "doubao_tts",
     "provider_filter",
     # hc-512 picker sentinel⇄real id dedupe.
     "model_catalog_dedupe",
+    "managed_model_catalog",
     # hc-592 model-picker collapse: a main provider that names no saved custom
     # endpoint keeps the platform catalog probe-eligible (read side)…
     "picker_probe_widening",
@@ -64,7 +66,7 @@ def run_plugin_register_with_stubbed_seams(module_alias: str) -> set[str]:
         patches.append(
             patch.object(
                 seam_mod, "apply",
-                (lambda n: (lambda: called.add(n) or True))(name),
+                (lambda n: (lambda *args, **kwargs: called.add(n) or True))(name),
             )
         )
     try:

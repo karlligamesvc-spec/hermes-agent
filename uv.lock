@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-09-06T21:05:28.816179Z"
+exclude-newer = "2026-09-25T06:05:22.089245Z"
 exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
@@ -1859,6 +1859,7 @@ dependencies = [
     { name = "croniter" },
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "filelock" },
     { name = "fire" },
     { name = "firecrawl-anydoc" },
     { name = "httpx", extra = ["socks"] },
@@ -2152,6 +2153,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.104.0,<1" },
     { name = "fastapi", marker = "extra == 'web'", specifier = "==0.133.1" },
     { name = "faster-whisper", marker = "extra == 'voice'", specifier = "==1.2.1" },
+    { name = "filelock", specifier = ">=3.24.3,<4" },
     { name = "fire", specifier = "==0.7.1" },
     { name = "firecrawl-anydoc", specifier = "==0.2.4" },
     { name = "firecrawl-py", marker = "extra == 'firecrawl'", specifier = "==4.17.0" },

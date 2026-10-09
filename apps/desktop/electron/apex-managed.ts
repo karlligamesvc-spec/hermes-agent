@@ -88,42 +88,14 @@ const DEFAULT_API_BASE = 'https://api.apex-nodes.com'
 // The runtime appends `/chat/completions`, hence the base ends at `/relay/v1`.
 const DEFAULT_RELAY_BASE_URL = 'https://apex-nodes.com/relay/v1'
 
-// Real model the relay routes to (our master key). hc-184 decouples the routed
-// model from the `model` field the runtime sends — the relay routes by DB truth
-// (verified: the relay ignores the request's `model` entirely and returns
-// `deepseek-v4-pro` for ANY value, including unknown ids), so the model id we
-// write to config is cosmetic to the relay.
-const DEFAULT_MANAGED_MODEL = 'deepseek-v4-pro'
+// Default for new APEX installations. Existing selections are preserved by the
+// model mutation/preferences path; changing this seed does not migrate them.
+const DEFAULT_MANAGED_MODEL = 'deepseek-flash'
 
-// The model id we actually WRITE to config.yaml (`model.default` + the
-// custom_providers entry's `model`) and show in the UI.
-//
-// ⚠️ This must be a name that is NOT an exact id in any built-in provider's
-// static model catalog (`hermes_cli/models.py` `_PROVIDER_MODELS`). The bare
-// routed id `deepseek-v4-pro` IS in the built-in DeepSeek catalog, and that is
-// exactly what broke managed chat:
-//
-//   The desktop runs `hermes dashboard`; its embedded chat builds the agent via
-//   `tui_gateway/server.py::_make_agent`. At boot (no per-session override) that
-//   path resolves the model through `_resolve_startup_runtime`, which — when an
-//   inference-model env hint is present (`HERMES_MODEL`/`HERMES_INFERENCE_MODEL`,
-//   set by the runtime's own launcher and inheritable into the backend) — runs
-//   `detect_static_provider_for_model(<model id>, …)`. That does an EXACT match
-//   against the built-in catalogs (`models.py:1885`), so `deepseek-v4-pro`
-//   resolves to provider `deepseek` (and `kimi-k2.6`→`kimi-coding`,
-//   `glm-5.2`→`zai`), OVERRIDING the configured `provider: custom`. The built-in
-//   provider has no key → `agent/agent_init.py` raises "Provider 'deepseek' is
-//   set in config.yaml but no API key was found." The gateway caches that failed
-//   build (`agent_build_started`), so switching models in the picker can't
-//   recover the session — every selection shows the same sticky boot error. The
-//   ONLY fix is a boot config whose model id does not collide.
-//
-// `deepseek-v4-pro-APEX` (the ApexNodes display name) is collision-free
-// (`detect_static_provider_for_model` returns None — verified) AND relay-valid
-// (HTTP 200, routed to deepseek-v4-pro — verified). Using it as the config model
-// id makes the startup path resolve to the relay in every case (with or without
-// the env hint), proven against the runtime venv.
-const MANAGED_MODEL_DISPLAY = 'deepseek-v4-pro-APEX'
+// A branded id keeps startup discovery from selecting the built-in DeepSeek
+// provider (which would require a separate user API key). The relay resolves
+// the APEX alias to the platform model and enforces entitlement server-side.
+const MANAGED_MODEL_DISPLAY = `${DEFAULT_MANAGED_MODEL}-APEX`
 
 // The runtime treats the relay as a generic OpenAI-compatible endpoint, so the
 // provider slug is the same `custom` the local/custom BYOK flow uses. Reusing
@@ -1319,8 +1291,7 @@ function buildManagedModelConfig(relayKey, env: any = {}, overrides: any = {}) {
 
   const endpoints = resolveApexEndpoints(env)
   // The model id WRITTEN to config must be collision-free with the built-in
-  // catalogs (see MANAGED_MODEL_DISPLAY). The relay ignores the model id (routes
-  // by DB truth), so a provision-key `overrides.model` is only honored when it is
+  // catalogs (see MANAGED_MODEL_DISPLAY). A provision-key `overrides.model` is only honored when it is
   // ALREADY a non-colliding ApexNodes display id (ends with the `-APEX` brand
   // suffix); otherwise we use the display name so a raw routed id like
   // `deepseek-v4-pro` can never re-seed the collision the next time config is

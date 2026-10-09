@@ -3789,6 +3789,7 @@ export const en: Translations = {
     finishingTitle: 'Finishing up',
     failedDesc:
       'One of the install steps failed. Close any other running APEX CLI or desktop instances, then retry. Check the details below or the desktop log for the full transcript.',
+    bundledDesc: 'Preparing and verifying the AI engine included with APEX. First launch may take several minutes and will continue automatically.',
     activeDesc:
       'This is a one-time setup. The APEX installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
     // hc-452: update-flow counterpart to activeDesc. Deliberately does NOT
@@ -3818,6 +3819,7 @@ export const en: Translations = {
     // Keyed by the raw bootstrap stage id (covers both the install.ps1 and
     // install.sh naming schemes). Unknown ids fall back to formatStageName.
     stageLabels: {
+      'bundled-engine': 'Prepare AI engine',
       desktop_update_check: 'Check updates',
       shell_download: 'App package',
       runtime_update: 'AI engine',
