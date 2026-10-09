@@ -24,10 +24,11 @@ def native_target() -> str:
     return f'{system}-{arch}'
 
 
-def ensure_browser() -> Path:
+def ensure_browser(*, render=False) -> Path:
     from filelock import FileLock
     from hermes_constants import get_hermes_home
-    spec = json.loads(LOCK.read_text())['browser'][native_target()]
+    target = native_target()
+    spec = json.loads(LOCK.read_text())['browser'][f'render-{target}' if render and os.name == 'nt' else target]
     from urllib.parse import urlsplit
     url = urlsplit(spec['url'])
     if url.scheme != 'https' or url.hostname != COS_HOST:
@@ -79,7 +80,7 @@ def ensure_browser() -> Path:
 
 
 def prepare_hypit(workspace: Path) -> Path:
-    browser = ensure_browser()
+    browser = ensure_browser(render=True)
     profile = workspace.resolve() / '.hypit' / 'apex-runtime.json'
     if profile.exists():
         return profile  # Never overwrite a project's explicit configuration.

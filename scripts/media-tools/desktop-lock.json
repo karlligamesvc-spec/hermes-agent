@@ -142,6 +142,13 @@
       "executable": "chrome-win64/chrome.exe",
       "upstream": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.12/win64/chrome-win64.zip",
       "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/chrome/153.0.8010.12/415968b02065d4a9e2c10b85f0ae9f489b8fba500e94d9d0a7b7c4852a7234c1/chrome-win64.zip"
+    },
+    "render-win-x64": {
+      "version": "152.0.7928.2",
+      "bytes": 120932410,
+      "sha256": "ec7d7cfbc9d97093c9269d6a26de78a3244a49f3112ff9616e2ccb5ac3afeb24",
+      "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/chrome/152.0.7928.2/ec7d7cfbc9d97093c9269d6a26de78a3244a49f3112ff9616e2ccb5ac3afeb24/chrome-headless-shell-win64.zip",
+      "executable": "chrome-headless-shell-win64/chrome-headless-shell.exe"
     }
   }
 }
