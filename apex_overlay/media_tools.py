@@ -102,6 +102,8 @@ def apply() -> bool:
             return Path(os.environ['AGENT_BROWSER_EXECUTABLE_PATH']).is_file()
         try:
             os.environ['AGENT_BROWSER_EXECUTABLE_PATH'] = str(ensure_browser())
+            from tools.browser_tool_origin import origin_module
+            origin_module()._cached_chromium_installed = None
             return True
         except Exception:
             import logging

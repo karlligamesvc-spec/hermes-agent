@@ -1,20 +1,35 @@
 // Keep the upstream CLI intact; only its dependency source and APEX setup live here.
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { managedCaptureArgs } from './hypit_capture.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'scripts/media-tools/desktop-lock.json'), 'utf8'))
 const env = { ...process.env, npm_config_registry: lock.npm.registry,
   npm_config_audit: 'false', npm_config_fund: 'false', npm_config_update_notifier: 'false',
   PUPPETEER_SKIP_DOWNLOAD: 'true' }
-const args = process.argv.slice(2)
+let args = process.argv.slice(2)
 const python = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 const upstream = path.join(root, '.runtime/hypit/node_modules/@hypit/hypit/bin/hypit.mjs')
+env.PYTHONPATH = [root, env.PYTHONPATH].filter(Boolean).join(path.delimiter)
+env.PATH = [path.join(root, '.runtime/bin'), path.dirname(process.execPath), env.PATH].filter(Boolean).join(path.delimiter)
+try {
+  const capture = await managedCaptureArgs(args, async () => {
+    const { stdout } = await promisify(execFile)(python, ['-m', 'apex_overlay.media_tools', 'browser'],
+      { env, windowsHide: true, timeout: 1800000 })
+    return stdout.trim()
+  })
+  if (capture.installed) { console.log(capture.installed); process.exit(0) }
+  args = capture.args
+} catch (error) {
+  console.error(`APEX browser preparation failed: ${error.message}`)
+  process.exit(1)
+}
 const preparing = args[0] === 'apex-prepare'
 const command = preparing ? python : process.execPath
 const parameters = preparing ? ['-m', 'apex_overlay.media_tools', 'prepare-hypit', ...args.slice(1)] : [upstream, ...args]
-const child = spawn(command, parameters, { env: { ...env,
-  PYTHONPATH: [root, env.PYTHONPATH].filter(Boolean).join(path.delimiter) }, stdio: 'inherit', windowsHide: true })
+const child = spawn(command, parameters, { env, stdio: 'inherit', windowsHide: true })
 child.on('error', error => { console.error(`Hypit could not start: ${error.message}`); process.exitCode = 1 })
 child.on('exit', (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0) })
