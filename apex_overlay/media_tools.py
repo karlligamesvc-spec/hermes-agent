@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import shutil
 import struct
+import sysconfig
 import subprocess
 import tempfile
 import urllib.request
@@ -19,6 +20,12 @@ COS_HOST = 'apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.
 
 
 def native_target() -> str:
+    if os.name == 'nt':
+        # Python 3.11's platform.machine() depends on inherited PROCESSOR_*
+        # variables; isolated Desktop/test environments intentionally omit them.
+        if sysconfig.get_platform() != 'win-amd64' or struct.calcsize('P') != 8:
+            raise ValueError('APEX browser requires a native Windows x64 interpreter')
+        return 'win-x64'
     system = {'Darwin': 'mac', 'Windows': 'win'}[platform.system()]
     arch = {'arm64': 'arm64', 'aarch64': 'arm64', 'x86_64': 'x64', 'AMD64': 'x64'}[platform.machine()]
     return f'{system}-{arch}'
