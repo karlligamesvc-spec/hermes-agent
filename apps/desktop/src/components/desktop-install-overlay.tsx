@@ -209,7 +209,8 @@ function applyEvent(state: DesktopBootstrapState, ev: DesktopBootstrapEvent): De
       },
       stages,
       error: null,
-      startedAt: state.startedAt || Date.now()
+      startedAt: Date.now(),
+      completedAt: null
     }
   }
 
@@ -630,11 +631,13 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
         : copy.settingUpTitle
       : copy.finishingTitle
 
+  const bundledPreparation = state.manifest?.stages.some(stage => stage.name === 'bundled-engine') ?? false
+
   const headerDesc = failed
     ? copy.failedDesc
     : updateInfo.isUpdate
       ? copy.activeDescUpdate(toVersionDisplay)
-      : copy.activeDesc
+      : bundledPreparation ? copy.bundledDesc : copy.activeDesc
 
   return (
     <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-background/90 backdrop-blur-md p-4">
@@ -734,8 +737,8 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
           </div>
         </div>
 
-        {/* Active footer: let the user actually cancel a running install. */}
-        {state.active && !failed && (
+        {/* Only the legacy source installer supports cancellation; bundled verification must finish or fail atomically. */}
+        {state.active && !failed && !bundledPreparation && (
           <div className="flex-shrink-0 bg-card p-4">
             <div className="flex items-center justify-end">
               <Button

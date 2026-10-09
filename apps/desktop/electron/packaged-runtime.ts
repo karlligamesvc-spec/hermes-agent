@@ -18,6 +18,7 @@ import * as layout from './apex-bundle-layout'
 import * as migrate from './apex-bundle-migrate'
 import { compareSemver } from './apex-runtime-latest'
 import { buildDesktopBackendEnv } from './backend-env'
+import type { DesktopBootstrapEvent } from './bootstrap-types'
 
 const exec = promisify(execFile)
 const SOURCE_STAMP = '.hermes-source-commit'
@@ -474,15 +475,30 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
 }
 
 /** All local spawn callers await the same installation; a failed attempt is retryable. */
-export function createPackagedRuntimeGate(run: () => Promise<PackagedRuntimeResult>) {
+export function createPackagedRuntimeGate(
+  run: () => Promise<PackagedRuntimeResult>,
+  emit?: (event: DesktopBootstrapEvent) => void
+) {
   let pending: Promise<PackagedRuntimeResult> | null = null
   let running = false
 
   const ensure = () => {
     if (!pending) {
       running = true
-      pending = run().catch(error => {
+      emit?.({ type: 'manifest', protocolVersion: 1, stages: [
+        { name: 'bundled-engine', title: '准备 AI 引擎', category: 'runtime', needs_user_input: false }
+      ] })
+      emit?.({ type: 'stage', name: 'bundled-engine', state: 'running' })
+      pending = run().then(result => {
+        emit?.({ type: 'stage', name: 'bundled-engine', state: 'succeeded' })
+        emit?.({ type: 'complete', marker: { runtimeCommit: result.runtimeCommit } })
+
+        return result
+      }).catch(error => {
         pending = null
+        const message = error instanceof Error ? error.message : String(error)
+        emit?.({ type: 'stage', name: 'bundled-engine', state: 'failed', error: message })
+        emit?.({ type: 'failed', stage: 'bundled-engine', error: message })
         throw error
       }).finally(() => { running = false })
     }

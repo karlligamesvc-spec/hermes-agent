@@ -641,3 +641,31 @@ nativeTest.each(['mixed-source', 'rebuilt-artifact'])('%s recovers from the exac
     assert.equal((await installPackagedRuntime(options, true)).status, 'current')
   })
 })
+
+
+test('bundled engine owns setup from cold verification through completion and failure/retry', async () => {
+  const events: Array<{ type: string; state?: string; error?: string }> = []
+  let resolve!: (result: { status: 'installed'; runtimeCommit: string }) => void
+  const gate = createPackagedRuntimeGate(() => new Promise(done => { resolve = done }), event => events.push(event))
+  const pending = gate()
+  assert.deepEqual(events.map(event => event.type), ['manifest', 'stage'])
+  assert.equal(events[1].state, 'running')
+  assert.equal(gate(), pending)
+  assert.equal(events.length, 2, 'joining the install cannot reset its progress')
+  resolve({ status: 'installed', runtimeCommit: commit })
+  await pending
+  assert.deepEqual(events.slice(2).map(event => [event.type, event.state]), [['stage', 'succeeded'], ['complete', undefined]])
+
+  events.length = 0
+  let attempts = 0
+  const retry = createPackagedRuntimeGate(async () => {
+    if (++attempts === 1) {throw new Error('checksum mismatch')}
+    return { status: 'current', runtimeCommit: commit }
+  }, event => events.push(event))
+  await assert.rejects(retry(), /checksum mismatch/)
+  assert.equal(events.at(-1)?.type, 'failed')
+  assert.equal(events.at(-1)?.error, 'checksum mismatch')
+  assert.equal(events.some(event => event.type === 'complete'), false)
+  await retry()
+  assert.deepEqual(events.slice(-4).map(event => event.type), ['manifest', 'stage', 'stage', 'complete'])
+})

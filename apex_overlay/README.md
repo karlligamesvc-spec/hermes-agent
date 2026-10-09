@@ -67,6 +67,7 @@ disarm into a **loud CI failure**, the prerequisite for trusting monkey-patch.
 | Seam | Contract |
 |---|---|
 | `provider_filter` | Do not probe or show disabled providers (hc-392/hc-621). |
+| `managed_model_catalog` | Allow a 15-second cold-cache relay catalog probe; retain upstream credential-scoped caching. |
 | `model_catalog_dedupe` | Collapse managed-sentinel and live bare model IDs into one picker row (hc-512). |
 | `picker_probe_widening` | Preserve the full platform catalog for virtual/custom main providers. |
 | `custom_base_url_guard` | Preserve the managed relay address while switching custom-provider models. |

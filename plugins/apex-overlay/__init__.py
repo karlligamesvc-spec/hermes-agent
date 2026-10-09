@@ -49,6 +49,14 @@ def register(ctx) -> None:  # noqa: ARG001 — ctx unused; this is a boot hook
         logger.warning("apex-overlay: provider_filter seam failed to load", exc_info=True)
 
     try:
+        from apex_overlay import managed_model_catalog
+
+        if not managed_model_catalog.apply():
+            logger.warning("apex-overlay: managed model catalog budget seam did not apply")
+    except Exception:
+        logger.warning("apex-overlay: managed model catalog seam failed to load", exc_info=True)
+
+    try:
         from apex_overlay import model_catalog_dedupe
 
         if not model_catalog_dedupe.apply():

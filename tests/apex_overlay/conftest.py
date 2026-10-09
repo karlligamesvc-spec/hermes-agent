@@ -18,6 +18,7 @@ _SEAM_MODULES = (
     "provider_filter",
     # hc-512 picker sentinel⇄real id dedupe.
     "model_catalog_dedupe",
+    "managed_model_catalog",
     # hc-592 model-picker collapse: a main provider that names no saved custom
     # endpoint keeps the platform catalog probe-eligible (read side)…
     "picker_probe_widening",

@@ -44,6 +44,8 @@ import {
 } from '@/store/session'
 import { $sessionTiles, $workingSessionIds, clearAllSessionStates, publishSessionState } from '@/store/session-states'
 
+import { createPackagedRuntimeGate } from '../../../../electron/packaged-runtime'
+
 import { deferred } from '../../../test/deferred'
 
 import { takeGatewaySurvivor } from './gateway-hmr-survivor'
@@ -625,10 +627,16 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
   })
 
   it('keeps the initial connection attached while a real first-run bootstrap outlives the normal boot budget', async () => {
-    const connection = deferred<typeof primaryConn>()
+    const prepared = deferred<{ status: 'installed'; runtimeCommit: string }>()
+    let active = false
     const desktop = fakeDesktop()
-    desktop.getConnection = vi.fn(() => connection.promise)
-    desktop.getBootstrapState = vi.fn(async () => ({ active: true }))
+    const gate = createPackagedRuntimeGate(() => prepared.promise, event => {
+      if (event.type === 'manifest') {active = true}
+      if (event.type === 'complete' || event.type === 'failed') {active = false}
+      desktop.emitBootstrapEvent(event)
+    })
+    desktop.getConnection = vi.fn(async () => { await gate(); return primaryConn })
+    desktop.getBootstrapState = vi.fn(async () => ({ active }))
     ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
 
     render(<Harness />)
@@ -642,7 +650,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect(desktop.getConnection).toHaveBeenCalledOnce()
     expect($desktopBoot.get().error).toBeNull()
 
-    connection.resolve(primaryConn)
+    prepared.resolve({ status: 'installed', runtimeCommit: 'verified' })
     await flushAsync()
 
     expect($gatewayState.get()).toBe('open')
