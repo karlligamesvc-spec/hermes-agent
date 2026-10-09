@@ -254,6 +254,24 @@ nativeTest('same bundled source repeats actual verification; a committed marker 
   })
 })
 
+nativeTest('fresh installation verifies staging and final path once each, while committed reuse revalidates', async () => {
+  await withHome(async (home, options) => {
+    const labels: string[] = []
+    const run = options.runTool!
+    options.runTool = async (executable, args, label) => {
+      if (args[1] === 'verify') {labels.push(label)}
+      await run(executable, args, label)
+    }
+    await installPackagedRuntime(options, false)
+    assert.deepEqual(labels, ['verify', 'verify-final'])
+    labels.length = 0
+    layout.removeLinkOnly(path.join(home, 'hermes-agent'))
+    fs.rmSync(path.join(home, '.apexnodes-runtime-current.json'))
+    await installPackagedRuntime(options, false)
+    assert.deepEqual(labels, ['verify-final-boot'])
+  })
+})
+
 nativeTest('unreferenced committed final directory is verified before it can become active', async () => {
   await withHome(async (home, options) => {
     await installPackagedRuntime(options, false)

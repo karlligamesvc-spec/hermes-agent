@@ -828,39 +828,56 @@ function cmdFixup(args) {
 // verify — re-hash against files.tsv (skips fixup-mutated files).
 // ---------------------------------------------------------------------------
 
-function cmdVerify(args) {
-  const root = path.resolve(args.root || '.')
+export async function verifyBundle(root, onProgress = () => {}) {
   const manifest = loadManifest(root)
   const skip = new Set([...manifest.fixup.mutates, FILES_INDEX_REL, MANIFEST_NAME])
-  const tsvPath = path.join(root, FILES_INDEX_REL)
-  const text = fs.readFileSync(tsvPath, 'utf8')
-  if (sha256Text(text) !== manifest.files_index.sha256) die('files.tsv does not match the sha recorded in the manifest')
+  const text = fs.readFileSync(path.join(root, FILES_INDEX_REL), 'utf8')
+  if (sha256Text(text) !== manifest.files_index.sha256) throw new Error('files.tsv does not match the sha recorded in the manifest')
+  const entries = text.split('\n').filter(Boolean).map(line => line.split('\t')).filter(([rel]) => !skip.has(rel))
+  let cursor = 0
   let checked = 0
   const bad = []
-  for (const line of text.split('\n')) {
-    if (!line) continue
-    const [rel, type, sizeStr, digest] = line.split('\t')
-    if (skip.has(rel)) continue
-    const p = path.join(root, ...rel.split('/'))
-    if (type === 'link') {
+  // Bound memory and open files. Reusing buffers avoids allocating/zeroing 4 MiB
+  // for each of ~60,000 entries; overlapping reads avoids serial Windows I/O.
+  const worker = async () => {
+    const buffer = Buffer.allocUnsafe(256 * 1024)
+    while (cursor < entries.length) {
+      const [rel, type, sizeStr, digest] = entries[cursor++]
+      const p = path.join(root, ...rel.split('/'))
       let ok = false
-      try { ok = fs.readlinkSync(p) === digest } catch { ok = false }
-      // fixup may legitimately re-point venv python symlinks; treat venv/bin
-      // python links as mutable.
-      if (!ok && !/^venv\/bin\/python/.test(rel)) bad.push(`${rel} (symlink target changed)`)
-    } else {
-      let ok = false
-      try { ok = fs.statSync(p).size === Number(sizeStr) && sha256File(p) === digest } catch { ok = false }
+      try {
+        if (type === 'link') {
+          ok = await fs.promises.readlink(p) === digest || /^venv\/bin\/python/.test(rel)
+        } else {
+          const file = await fs.promises.open(p, 'r')
+          try {
+            if ((await file.stat()).size === Number(sizeStr)) {
+              const hash = createHash('sha256')
+              let bytesRead
+              do {
+                ({ bytesRead } = await file.read(buffer, 0, buffer.length, null))
+                if (bytesRead) hash.update(buffer.subarray(0, bytesRead))
+              } while (bytesRead)
+              ok = hash.digest('hex') === digest
+            }
+          } finally { await file.close() }
+        }
+      } catch { ok = false }
       if (!ok) bad.push(rel)
+      checked++
+      if (checked % 5000 === 0) onProgress(checked, entries.length)
     }
-    checked++
-    if (checked % 20000 === 0) log(`verified ${checked} entries...`)
   }
-  if (bad.length) {
-    for (const b of bad.slice(0, 40)) warn(`MISMATCH: ${b}`)
-    die(`verify FAILED: ${bad.length} of ${checked} entries mismatched`)
-  }
-  log(`verify OK: ${checked} entries match (skipped ${skip.size} fixup-mutable files)`)
+  await Promise.all(Array.from({ length: Math.min(8, entries.length) }, worker))
+  if (bad.length) throw new Error(`verify FAILED: ${bad.length} of ${checked} entries mismatched: ${bad.sort().slice(0, 40).join(', ')}`)
+  return { checked, skipped: skip.size }
+}
+
+async function cmdVerify(args) {
+  const started = Date.now()
+  const { checked, skipped } = await verifyBundle(path.resolve(args.root || '.'),
+    (done, total) => log(`verified ${done}/${total} entries...`))
+  log(`verify OK: ${checked} entries match (skipped ${skipped} fixup-mutable files; ${((Date.now() - started) / 1000).toFixed(1)}s)`)
 }
 
 // ---------------------------------------------------------------------------
@@ -995,7 +1012,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   switch (sub) {
     case 'build': await cmdBuild(args); break
     case 'fixup': cmdFixup(args); break
-    case 'verify': cmdVerify(args); break
+    case 'verify': await cmdVerify(args); break
     case 'smoke': await cmdSmoke(args); break
     default:
       die('usage: build-runtime-bundle.mjs <build|fixup|verify|smoke> [--out DIR] [--ref REF] [--root DIR] [--archive FILE] [--workdir DIR] [--min-desktop-version X] [--uv-version X] [--keep-stage] [--keep]')

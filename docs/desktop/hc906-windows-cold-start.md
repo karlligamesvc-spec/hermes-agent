@@ -14,7 +14,7 @@ An authenticated cold picker probe on Windows reproduced the separate catalog pr
 - Renderer: retain its existing bounded installer wait rather than the ordinary 45-second timeout; show bundled engine copy and a stage timer. Do not offer the legacy source installer's unsupported cancellation action for atomic bundle preparation. Failed attempts remain retryable.
 - Platform overlay: raise only the known HTTPS Relay model-probe budget to at least 15 seconds. All CLI/REST/Desktop callers use this same probe. Keep live results, account-scoped cache, unauthorized behavior, entitlement filtering and unrelated endpoint budgets unchanged.
 - Remote/custom runtime exclusions, package integrity, activation fence, rollback and source installer behavior remain covered by the existing tests.
-- Bootstrap IPC types now live in an Electron-safe module and are re-exported from the renderer's existing public type module. Runtime payloads are unchanged.
+- Bootstrap IPC types now live in an Electron-safe module and are re-exported from the renderer's existing public type module. The setup/model changes above did not change payload bytes; the performance follow-up below requires a newly built engine.
 
 ## Verification
 
@@ -27,4 +27,42 @@ An authenticated cold picker probe on Windows reproduced the separate catalog pr
 
 ## Boundaries
 
-No public update feed, runtime default, account entitlement or production service is changed by this fix. Mac arm64, Mac x64 and Windows x64 must ship together from the synchronized release workflow. Unit tests do not certify physical antivirus performance, current provider availability or a final signed installer. The observed long per-file verification remains a performance limitation; integrity gates are not skipped.
+No public update feed, runtime default, account entitlement or production service is changed by this fix. Mac arm64, Mac x64 and Windows x64 must ship together from the synchronized release workflow. Unit tests do not certify physical antivirus performance, current provider availability or a final signed installer. The optimized verifier must ship inside a newly built engine; changing only Electron leaves the old bundled verifier in use. Integrity gates are not skipped.
+
+
+## Verification performance follow-up (2026-10-08 Pacific)
+
+The earlier device log breaks down as follows: extraction 21.1s; staged verification
+729.2s; final-location verification 61.8s; activation/probes including a redundant
+third scan about 81.6s. App launch to backend readiness was 917s. The verifier
+processed 59,731 immutable entries (59,735 index rows including mutable entries),
+serially allocating and zeroing a new 4 MiB read buffer for every file.
+
+The verifier now reuses eight 256 KiB buffers with bounded concurrent reads. It
+continues checking the authenticated index, sizes, SHA-256 content and links,
+including complete tails and empty files. Staging and final relocation each retain
+one full verification. Fresh/just-repaired installs no longer perform a redundant
+third scan; existing committed trees still revalidate before activation. The shared
+bundle script covers native build smoke, CLI/COS consumers and packaged Desktop;
+the duplicate-scan change applies only to the packaged consumer. No antivirus
+configuration, archive identity, source pin or user data policy changes.
+
+On the same RTX 4060 Ti, the unchanged public archive was freshly extracted to two
+separate private directories; the candidate verifier ran externally against its
+original index so no installed verified bundle was modified. Standalone first
+verification: 140.08s. Full real packaged-consumer diagnostic: extraction 32.07s,
+staged verification 141.96s, final verification 3.17s, and actual isolated HTTP
+backend readiness 3.97s; total including hashing, fixup, probes and activation
+193.11s. The backend returned healthy and its owned process was closed afterward.
+The normal logged-in client and user data remained untouched. These are fresh-path
+measurements on a running Windows host, not rebooted cache-cold measurements or a
+newly signed production installer/GUI acceptance.
+
+Validation: 61 focused native/installer/verifier tests passed; TypeScript and
+Electron main/preload build passed; changed-file lint has zero errors. Native
+Windows CLI accepted valid bytes and rejected same-size tampering and a forged
+index with nonzero exits. Unique-anchor reverse injections also fail as expected:
+replace digest comparison with success -> corruption test fails; restore the
+unconditional third scan -> fresh-scan/reuse regression fails. Faults restored.
+Evidence is retained under the private `hc906-win-first-install/perf` diagnostic
+artifact directory. No public feed or runtime default changed.

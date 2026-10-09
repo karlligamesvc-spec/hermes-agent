@@ -445,9 +445,12 @@ export async function installPackagedRuntime(options: PackagedRuntimeOptions, ex
     runTool: checkedTool, log
   })
 
-  // stageAndCommitBundle skips its verifier for committed trees: repeat actual verification on every reuse.
+  // Fresh/repair staging already verified the final path. Only committed reuse
+  // skips that gate and needs a full verification here before activation.
   await verifyToolIdentity(staged.versionDir, manifest)
-  await checkedTool(bundledNodeExe(staged.versionDir, manifest), verifyArgv(staged.versionDir, manifest), 'verify-final-boot')
+  if (staged.reused && !staged.repaired) {
+    await checkedTool(bundledNodeExe(staged.versionDir, manifest), verifyArgv(staged.versionDir, manifest), 'verify-final-boot')
+  }
   await probe(staged.versionDir, release)
   await options.beforeSwitch?.(staged.versionDir)
   assertCurrent()
