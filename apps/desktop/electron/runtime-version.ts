@@ -37,6 +37,7 @@ interface RuntimeVersionDependencies {
   readMarker: () => { pinnedCommit?: string | null; pinnedBranch?: string | null; version?: string | null } | null
   readTreeCommit: () => string | null
   minEngineVersion: () => string | null
+  updateDeferred?: () => boolean
   log: (message: string) => void
 }
 
@@ -65,6 +66,7 @@ export function registerRuntimeVersionIpc(
         minEngineVersion,
         meetsMinEngine: engineMeetsMinVersion(version, minEngineVersion),
         treeCommit,
+        updateDeferred: dependencies.updateDeferred?.() ?? false,
         // A marker records the last target; the source stamp confirms its activation.
         treeMatchesMarker: treeCommit && commit ? commitKeysMatch(treeCommit, commit) : null
       }

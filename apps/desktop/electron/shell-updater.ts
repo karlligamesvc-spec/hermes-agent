@@ -2,8 +2,8 @@
 // 和引擎(runtime)的 opt-in 更新(apex-runtime-latest.cjs)是两条互不相扰的
 // 通道。策略:全程静默 —— 启动 60s 后首查、之后每 6h 重查;发现新版自动下载
 // (autoDownload),下载完成只把状态推给 renderer(侧栏胶囊出「重启以更新」),
-// 绝不弹窗;用户点击才 quitAndInstall,不点则退出时自动装(autoInstallOnAppQuit)。
-// 检查/下载失败一律记日志吞掉,离线用户零打扰。
+// 用户点击后先检查引擎任务与占用，满足切换条件才 quitAndInstall；忙碌时后台自动重试。
+// 检查/下载失败一律记日志吞掉,离线用户零打扰；普通退出不能绕过安装前检查。
 //
 // 更新源(generic provider)按 平台-架构 分目录:
 //   <COS>/desktop/mac-arm64/  <COS>/desktop/mac-x64/  <COS>/desktop/win-x64/
@@ -36,6 +36,7 @@ import {
   STATUS_START,
   STATUS_SUCCESS
 } from './apexnodes-telemetry'
+import { isRuntimeUpdateBusy } from './runtime-update-busy'
 
 const SHELL_UPDATE_EVENT_CHANNEL = 'hermes:shell-update:event'
 const SHELL_UPDATE_FEED_BASE = 'https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/desktop'
@@ -132,7 +133,9 @@ function createShellUpdater(options) {
     initialDelayMs = SHELL_UPDATE_INITIAL_DELAY_MS,
     recheckIntervalMs = SHELL_UPDATE_RECHECK_INTERVAL_MS,
     sendTelemetry = sendDesktopTelemetry,
-    appVersion = null
+    appVersion = null,
+    beforeInstall = async () => {},
+    installRetryMs = 15_000
   } = options
 
   const disabled = !isPackaged || !autoUpdater
@@ -163,37 +166,67 @@ function createShellUpdater(options) {
 
     return { ...checked, state: { ...state } }
   })
-  ipcMain.handle('hermes:shell-update:install', async () => {
-    if (disabled || state.phase !== 'downloaded') {
-      return { ok: false, error: disabled ? 'disabled' : 'not_downloaded' }
-    }
+  let installPending: Promise<any> | null = null
+  let retryInstall: ReturnType<typeof setTimeout> | undefined
+  let requestedVersion: string | null = null
+  let disposed = false
+  let handoffScheduled = false
+  let prepared: { release: () => void } | undefined
 
-    log(`[shell-update] quitAndInstall requested (version=${state.version || '?'})`)
-    // hc-473: 'start' only, by design — a successful quitAndInstall quits
-    // this very process to relaunch the updated one, so there is no code
-    // path left here to ever observe/report a 'success'. The process exiting
-    // cleanly is itself the (unobservable-from-here) success signal.
-    fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'shell_update_apply', status: STATUS_START })
-    // setImmediate:先让 IPC 应答回到 renderer 再拆窗口,避免 renderer 在
-    // await 上挂到进程退出。win 上 (true, true) = 静默装 + 装完拉起;mac 的
-    // Squirrel.Mac 忽略参数,quit 后换包自动重启。
-    setImmediate(() => {
-      try {
-        autoUpdater.quitAndInstall(true, true)
-      } catch (error: any) {
-        log(`[shell-update] quitAndInstall failed: ${error && error.message}`)
-        setState({ phase: 'error', error: (error && error.message) || String(error) })
-        fireTelemetry(sendTelemetry, {
-          ...telemetryBase,
-          stage: 'shell_update_apply',
-          status: STATUS_FAILURE,
-          error_code: `shell_update_apply:${classifyErrorCategory(error)}`
-        })
+  function installWhenIdle() {
+    if (installPending) {return installPending}
+    if (handoffScheduled) {return Promise.resolve({ ok: true })}
+    installPending = (async () => {
+      if (disposed || disabled || state.phase !== 'downloaded') {
+        return { ok: false, error: disabled ? 'disabled' : 'not_downloaded' }
       }
-    })
-
-    return { ok: true }
-  })
+      requestedVersion ??= state.version
+      if (requestedVersion !== state.version) {return { ok: false, error: 'shell_target_changed' }}
+      try {
+        prepared = await beforeInstall()
+      } catch (error: any) {
+        if (!isRuntimeUpdateBusy(error)) {
+          requestedVersion = null
+          return { ok: false, error: error?.message || String(error) }
+        }
+        setState({ deferred: true })
+        clearTimeout(retryInstall)
+        retryInstall = setTimeout(() => {
+          void installWhenIdle().then(result => {
+            if (!result.ok && !disposed) {setState({ phase: 'error', error: result.error })}
+          })
+        }, installRetryMs)
+        retryInstall.unref?.()
+        return { ok: true, deferred: true }
+      }
+      if (disposed) {prepared?.release(); prepared = undefined; return { ok: false, error: 'disposed' }}
+      clearTimeout(retryInstall)
+      handoffScheduled = true
+      setState({ deferred: false })
+      log(`[shell-update] verified idle; quitAndInstall requested (version=${state.version || '?'})`)
+      fireTelemetry(sendTelemetry, { ...telemetryBase, stage: 'shell_update_apply', status: STATUS_START })
+      setImmediate(() => {
+        if (disposed || !handoffScheduled) {return}
+        try {
+          autoUpdater.quitAndInstall(true, true)
+        } catch (error: any) {
+          prepared?.release()
+          prepared = undefined
+          handoffScheduled = false
+          requestedVersion = null
+          log(`[shell-update] quitAndInstall failed: ${error && error.message}`)
+          setState({ phase: 'error', error: (error && error.message) || String(error) })
+          fireTelemetry(sendTelemetry, {
+            ...telemetryBase, stage: 'shell_update_apply', status: STATUS_FAILURE,
+            error_code: `shell_update_apply:${classifyErrorCategory(error)}`
+          })
+        }
+      })
+      return { ok: true }
+    })().finally(() => { installPending = null })
+    return installPending
+  }
+  ipcMain.handle('hermes:shell-update:install', installWhenIdle)
 
   if (disabled) {
     log('[shell-update] disabled (dev / unpackaged build)')
@@ -216,7 +249,9 @@ function createShellUpdater(options) {
   }
 
   autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  // An implicit quit must never bypass the asynchronous engine-ownership gate.
+  // Download remains automatic; a requested install retries itself when idle.
+  autoUpdater.autoInstallOnAppQuit = !options.beforeInstall
   autoUpdater.allowDowngrade = false
   // electron-updater 内部日志也进 desktop log,出问题时有迹可循;debug 太吵,丢弃。
   autoUpdater.logger = {
@@ -293,6 +328,11 @@ function createShellUpdater(options) {
       'error',
       error => {
         // 静默失败:记日志 + 状态,绝不弹 UI。下一轮周期检查会自动重试。
+        prepared?.release()
+        prepared = undefined
+        handoffScheduled = false
+        requestedVersion = null
+        clearTimeout(retryInstall)
         const message = (error && error.message) || String(error)
         setState({ phase: 'error', error: message })
         log(`[shell-update] error (silent): ${message}`)
@@ -315,6 +355,7 @@ function createShellUpdater(options) {
   }
 
   async function checkNow() {
+    if (requestedVersion) {return { ok: true }}
     try {
       await autoUpdater.checkForUpdates()
 
@@ -344,6 +385,10 @@ function createShellUpdater(options) {
   if (typeof recheckTimer.unref === 'function') {recheckTimer.unref()}
 
   function dispose() {
+    disposed = true
+    prepared?.release()
+    prepared = undefined
+    clearTimeout(retryInstall)
     clearTimeout(initialTimer)
     clearInterval(recheckTimer)
 

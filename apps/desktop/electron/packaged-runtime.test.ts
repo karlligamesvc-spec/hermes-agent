@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,6 +13,7 @@ import { afterAll, beforeAll, test } from 'vitest'
 import * as layout from './apex-bundle-layout'
 import { checkForRuntimeUpdate } from './apex-runtime-latest'
 import { buildDesktopBackendEnv, bundledRuntimePathEntries } from './backend-env'
+import { createDeferredRuntimeUpdate } from './deferred-runtime-update'
 import { buildTerminalScript, terminalScriptEnv } from './external-terminal'
 import {
   armPackagedRuntimeUpdate,
@@ -171,7 +173,7 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
     assert.equal(ready.pid, child.pid)
     assert.ok(Number.isInteger(ready.pid) && ready.pid > 0)
     await assert.rejects(assertPackagedRuntimeIdle(active, root), (error: Error & { idleProof?: typeof idle }) => {
-      assert.match(error.message, /previous engine is still running/)
+      assert.equal((error as Error & { code: string }).code, 'runtime_update_busy')
       assert.ok(error.message.includes(String(ready.pid)), 'recovery must identify the actual blocking process')
       assert.ok(error.idleProof?.holderPids.includes(ready.pid), 'the actual borrowed PID must remain a blocker')
 
@@ -179,6 +181,8 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
     })
     assert.equal(child.exitCode, null)
     assert.doesNotThrow(() => process.kill(ready.pid, 0), 'the idle scan must never kill the borrowed worker')
+    assert.deepEqual((await assertPackagedRuntimeIdle(active, root, { ownedBackendPids: [ready.pid] }))?.holderPids, [], 'preflight exempts the exact owned backend that will be drained')
+    await assert.rejects(assertPackagedRuntimeIdle(active, root, { ownedBackendPids: [process.pid] }), { code: 'runtime_update_busy' }, 'an arbitrary current-app child is not automatically an owned engine')
     child.kill('SIGTERM')
     let timer: NodeJS.Timeout | undefined
 
@@ -224,6 +228,57 @@ nativeTest('offline fresh boot installs, relocates and probes the active engine 
     assert.equal(layout.readPointer(home).key, commit.slice(0, 12))
   })
 })
+
+nativeTest('a live engine holder defers a real native bundle transaction; release activates it without user retry', async () => {
+  await withHome(async (home, options) => {
+    const active = legacy(home)
+    const oldMarker = fs.readFileSync(path.join(active, '.hermes-bootstrap-complete'))
+    const scanRoot = path.join(home, 'scanner')
+    fs.mkdirSync(scanRoot)
+    const commonGit = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim()
+    const python = process.env.HERMES_PYTHON || path.join(path.dirname(commonGit), '.venv', nativeOS === 'win' ? 'Scripts/python.exe' : 'bin/python')
+    fs.symlinkSync(path.dirname(path.dirname(python)), path.join(scanRoot, 'venv'), process.platform === 'win32' ? 'junction' : 'dir')
+    const child = spawn(process.execPath, ['-e', 'console.log("ready"); setInterval(()=>{},1000)'], { cwd: active, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const closed = once(child, 'close')
+    let reportBusy!: () => void
+    const blocked = new Promise<void>(resolve => { reportBusy = resolve })
+    let reportInstalled!: () => void
+    let reportFailure!: (error: Error) => void
+    const completed = new Promise<void>((resolve, reject) => { reportInstalled = resolve; reportFailure = reject })
+    const check = async () => {
+      try { await assertPackagedRuntimeIdle(active, scanRoot) }
+      catch (error) { reportBusy(); throw error }
+    }
+    options.beforeSwitch = check
+    const retry = createDeferredRuntimeUpdate({
+      preflight: check,
+      install: async () => (await installPackagedRuntime(options, true)).status === 'installed',
+      activated: reportInstalled,
+      log: message => reportFailure(new Error(message)),
+      retryMs: 25
+    })
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await once(child.stdout!, 'data')
+      retry.schedule()
+      await blocked
+      assert.deepEqual(fs.readFileSync(path.join(active, '.hermes-bootstrap-complete')), oldMarker)
+      assert.equal(fs.readFileSync(path.join(active, 'old-engine.txt'), 'utf8'), 'old runtime is usable')
+      assert.equal(child.exitCode, null)
+      child.kill()
+      await closed
+      await Promise.race([completed, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('deferred native activation timed out')), 20_000) })])
+      assert.equal(layout.readPointer(home).key, commit.slice(0, 12))
+      assert.equal(fs.readFileSync(path.join(active, '.hermes-source-commit'), 'utf8').trim(), commit)
+      assert.equal(fs.readFileSync(path.join(home, 'hermes-agent.legacy', 'old-engine.txt'), 'utf8'), 'old runtime is usable')
+    } finally {
+      clearTimeout(timeout)
+      retry.dispose()
+      if (child.exitCode === null && child.signalCode === null) {child.kill('SIGKILL')}
+      await closed
+    }
+  })
+}, 30_000)
 
 nativeTest('old f8 upgrades automatically while user chat/config/profile files and rollback tree remain exact', async () => {
   await withHome(async (home, options) => {

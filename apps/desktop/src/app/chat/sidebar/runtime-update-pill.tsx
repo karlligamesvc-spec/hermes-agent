@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '@/i18n'
 import { formatEngineDisplayVersion } from '@/lib/engine-display'
 import { AlertTriangle, ChevronRight, Loader2, Sparkles } from '@/lib/icons'
+import { queueDeferredRuntimeUpdate } from '@/store/desktop-update'
 import {
   $runtimeUpdateApplying,
   $runtimeUpdateCheck,
@@ -115,6 +116,10 @@ export function RuntimeUpdatePill() {
 
     try {
       const result = await applyRuntimeUpdate()
+      if (result.deferred) {
+        await queueDeferredRuntimeUpdate(check)
+        return
+      }
 
       // On success the pin is re-armed; reload to drive the bootstrap re-run.
       if (result.reloadRequired) {

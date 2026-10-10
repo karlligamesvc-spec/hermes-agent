@@ -3,6 +3,8 @@ import { EventEmitter } from 'node:events'
 
 import { test } from 'vitest'
 
+import { RuntimeUpdateBusy } from './runtime-update-busy'
+
 // hc-473: keep this suite hermetic regardless of how it's invoked (npm run
 // test:desktop:platforms already sets this too, but this file must not rely
 // on that -- a bare `npx vitest run electron/shell-updater.test.ts` must never
@@ -86,6 +88,66 @@ function harness({ isPackaged = true, autoUpdater = fakeAutoUpdater(), ...rest }
 }
 
 const flushImmediate = () => new Promise(resolve => setImmediate(resolve))
+
+test('requested shell install waits for busy engine owners and automatically installs after release', async () => {
+  let busy = true
+  let preflights = 0
+  const h = harness({ beforeInstall: async () => {
+    preflights += 1
+    if (busy) {throw new RuntimeUpdateBusy()}
+  }, installRetryMs: 10 })
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.57' })
+    const results = await Promise.all([h.ipcMain.invoke('hermes:shell-update:install'), h.ipcMain.invoke('hermes:shell-update:install')])
+    assert.deepEqual(results, [{ ok: true, deferred: true }, { ok: true, deferred: true }])
+    assert.equal(h.autoUpdater.autoInstallOnAppQuit, false, 'normal quit cannot bypass process preflight')
+    assert.equal(preflights, 1)
+    assert.deepEqual(h.autoUpdater.installCalls, [])
+    assert.equal(h.updater.getState().phase, 'downloaded')
+    assert.equal(h.updater.getState().error, null)
+    await h.updater.checkNow()
+    assert.equal(h.autoUpdater.checkCalls, 0, 'preserve the already requested version')
+    busy = false
+    await waitUntil(() => h.autoUpdater.installCalls.length === 1)
+    assert.deepEqual(h.autoUpdater.installCalls, [[true, true]])
+  } finally { h.updater.dispose() }
+})
+
+test.each(['throw', 'event', 'dispose'])('shell handoff holds its fence, coalesces clicks, and releases on %s', async mode => {
+  let releases = 0
+  let preparations = 0
+  const h = harness({ beforeInstall: async () => {
+    preparations += 1
+    return { release: () => { releases += 1 } }
+  } })
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.57' })
+    if (mode === 'throw') {h.autoUpdater.quitAndInstall = () => {throw new Error('install failed')}}
+    await h.ipcMain.invoke('hermes:shell-update:install')
+    await h.ipcMain.invoke('hermes:shell-update:install')
+    assert.equal(preparations, 1)
+    assert.equal(releases, 0)
+    await flushImmediate()
+    if (mode === 'event') {h.autoUpdater.emit('error', new Error('installer failed'))}
+    if (mode === 'dispose') {h.updater.dispose()}
+    assert.equal(releases, 1)
+    if (mode !== 'dispose') {
+      await h.updater.checkNow()
+      assert.equal(h.autoUpdater.checkCalls, 1, 'failed handoff can check again')
+    }
+  } finally {h.updater.dispose()}
+  assert.equal(releases, 1)
+})
+
+test('unverified ownership does not install or masquerade as a temporary conflict', async () => {
+  const h = harness({ beforeInstall: async () => {throw new Error('identity probe failed')} })
+  try {
+    h.autoUpdater.emit('update-downloaded', { version: '0.17.57' })
+    assert.deepEqual(await h.ipcMain.invoke('hermes:shell-update:install'), { ok: false, error: 'identity probe failed' })
+    await flushImmediate()
+    assert.deepEqual(h.autoUpdater.installCalls, [])
+  } finally { h.updater.dispose() }
+})
 
 async function waitUntil(predicate, timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs
