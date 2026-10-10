@@ -45,7 +45,6 @@ import {
 import { $sessionTiles, $workingSessionIds, clearAllSessionStates, publishSessionState } from '@/store/session-states'
 
 import { createPackagedRuntimeGate } from '../../../../electron/packaged-runtime'
-
 import { deferred } from '../../../test/deferred'
 
 import { takeGatewaySurvivor } from './gateway-hmr-survivor'

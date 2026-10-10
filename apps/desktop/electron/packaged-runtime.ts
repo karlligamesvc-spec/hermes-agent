@@ -19,6 +19,7 @@ import * as migrate from './apex-bundle-migrate'
 import { compareSemver } from './apex-runtime-latest'
 import { buildDesktopBackendEnv } from './backend-env'
 import type { DesktopBootstrapEvent } from './bootstrap-types'
+import { RuntimeUpdateBusy } from './runtime-update-busy'
 
 const exec = promisify(execFile)
 const SOURCE_STAMP = '.hermes-source-commit'
@@ -54,7 +55,7 @@ export interface PackagedRuntimeOptions {
 
 export interface PackagedRuntimeResult {
   status: 'installed' | 'current' | 'preserved'
-  reason?: 'newer-or-unknown' | 'upgrade-failed'
+  reason?: 'newer-or-unknown' | 'upgrade-failed' | 'busy'
   runtimeCommit: string | null
 }
 
@@ -267,7 +268,7 @@ export async function probePackagedRuntime(root: string, release: PackagedRuntim
 }
 
 /** Shared runtime workers must leave before the canonical path can change. Never kills borrowed workers. */
-export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string) {
+export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot: string, options: { ownedBackendPids?: number[]; retiringGatewayPids?: number[] } = {}) {
   if (!fs.existsSync(activeRoot)) {return null}
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-holder-'))
   const python = path.join(verifiedRoot, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
@@ -280,9 +281,14 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
     ' candidate=os.path.normcase(os.path.abspath(value))',
     ' return any(candidate == root or candidate.startswith(root+os.sep) for root in roots)',
     'holders=[]',
+    'desktop=int(sys.argv[2])',
+    'owned=set(json.loads(sys.argv[3]))',
+    'owned.discard(desktop)',
     'for p in psutil.process_iter():',
     ' if p.pid == os.getpid(): continue',
     ' try:',
+    '  parents={parent.pid for parent in p.parents()} if owned else set()',
+    '  if desktop in parents and (p.pid in owned or parents.intersection(owned)): continue',
     '  if under(p.exe()) or under(p.cwd()) or any(under(arg) for arg in p.cmdline()): holders.append(p.pid)',
     ' except psutil.NoSuchProcess: continue',
     ' except psutil.AccessDenied: continue',
@@ -290,7 +296,7 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
   ].join('\n')
 
   try {
-    const pending = exec(python, ['-c', code, activeRoot], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
+    const pending = exec(python, ['-c', code, activeRoot, String(process.pid), JSON.stringify(options.ownedBackendPids ?? [])], { cwd: home, env: probeEnv(verifiedRoot, home), windowsHide: true, timeout: 20_000, maxBuffer: 32 * 1024 })
     const ownedProbePid = pending.child.pid
     const { stdout } = await pending
     const result = JSON.parse(stdout)
@@ -302,11 +308,11 @@ export async function assertPackagedRuntimeIdle(activeRoot: string, verifiedRoot
 
     // Windows venv Python has a live redirector parent carrying our activeRoot argument.
     // Exclude only the exact process Node launched for this scan, never other ancestors/workers.
-    const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid)
+    const holderPids = result.holders.filter((pid: number) => pid !== ownedProbePid && !options.retiringGatewayPids?.includes(pid))
     const idleProof = { ownedProbePid, workerPid: result.workerPid as number, rawHolderPids: result.holders as number[], holderPids: holderPids as number[] }
 
     if (holderPids.length) {
-      throw Object.assign(new Error(`The previous engine is still running (PIDs: ${holderPids.join(', ')}). Close its local workers and retry; no engine files were switched.`), { idleProof })
+      throw Object.assign(new RuntimeUpdateBusy(`Waiting for engine workers: ${holderPids.join(', ')}`), { idleProof })
     }
 
     return idleProof

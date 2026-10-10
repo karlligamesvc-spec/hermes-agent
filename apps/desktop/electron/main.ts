@@ -329,6 +329,7 @@ import type { RosterProfileMetadata } from './connection-registry'
 import { contextMenuPointFor, installContextMenuBridge } from './context-menu-bridge'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken } from './dashboard-token'
+import { createDeferredRuntimeUpdate } from './deferred-runtime-update'
 import {
   createDesktopDeepLinkRouter,
   type DesktopDeepLinkSource,
@@ -561,6 +562,7 @@ import { attachRendererConsoleCapture, formatRendererBoundaryReport } from './re
 import { fetchRosterSourceData } from './roster-source-fetch'
 import { retirePackagedGateways } from './runtime-gateway-retirement'
 import { applyRuntimeUpdateToLatest } from './runtime-update-apply'
+import { isRuntimeUpdateBusy, RuntimeUpdateBusy } from './runtime-update-busy'
 import { registerRuntimeVersionIpc, waitForPendingRuntimePreparation } from './runtime-version'
 import {
   classifyStoredSecret,
@@ -5531,7 +5533,22 @@ function resolveHermesBackend(backendArgs) {
   }
 }
 
+async function preflightRuntimeSwitch(verifiedRoot = ACTIVE_HERMES_ROOT) {
+  if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {throw new RuntimeUpdateBusy()}
+  const ownedBackendPids = localBackendLifecycle.ownedChildren()
+    .filter(child => child.exitCode === null && child.signalCode === null && child.pid)
+    .map(child => child.pid!)
+  if (ownedBackendPids.length && activeWorkByWebContents.size === 0) {throw new RuntimeUpdateBusy('Waiting for Desktop activity state.')}
+  await reapOrphanedBackendsOnce()
+  const retiringGatewayPids = await retirePackagedGateways(ACTIVE_HERMES_ROOT, verifiedRoot, HERMES_HOME, true)
+  await assertPackagedRuntimeIdle(ACTIVE_HERMES_ROOT, verifiedRoot, { ownedBackendPids, retiringGatewayPids })
+}
+
 async function prepareRuntimeSwitch(verifiedRoot: string) {
+  // Preserve the usable backend until external holders and active work are clear.
+  // A second, strict scan under the spawn fence still gates the actual switch.
+  await preflightRuntimeSwitch(verifiedRoot)
+  if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {throw new RuntimeUpdateBusy()}
   const fence = localBackendLifecycle.fenceForUpdate()
 
   try {
@@ -5549,7 +5566,7 @@ async function prepareRuntimeSwitch(verifiedRoot: string) {
 
     for (const entry of ownership.entries) {
       if (await backendIdentityMatches(entry) !== false) {
-        throw new Error('A previous Desktop engine worker is still live or unverified. Close it and retry.')
+        throw new RuntimeUpdateBusy('Waiting for a previous Desktop engine worker.')
       }
     }
 
@@ -5563,6 +5580,27 @@ async function prepareRuntimeSwitch(verifiedRoot: string) {
 }
 
 let packagedRuntimeBootError: string | null = null
+let packagedRuntimeDeferred = false
+const deferredPackagedUpdate = createDeferredRuntimeUpdate({
+  preflight: () => preflightRuntimeSwitch(),
+  install: async () => {
+    ensurePackagedEngine.reset()
+    const result = await ensurePackagedEngine()
+    if (result.reason === 'busy') {return false}
+    if (result.status === 'preserved') {throw new Error('Bundled upgrade was not activated')}
+    clearRuntimePinOverride()
+    return true
+  },
+  activated: () => {
+    bootstrapFailure = null
+    resetHermesConnection()
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {win.webContents.reload()}
+    }
+  },
+  log: rememberLog
+})
+app.once('will-quit', () => deferredPackagedUpdate.dispose())
 
 const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
   let updateFence: ReturnType<typeof localBackendLifecycle.fenceForUpdate> | undefined
@@ -5586,9 +5624,18 @@ const ensurePackagedEngine = createPackagedRuntimeGate(async () => {
     }, isActiveRuntimeUsable())
 
     packagedRuntimeBootError = null
+    packagedRuntimeDeferred = false
 
     return result
   } catch (error: any) {
+    if (isRuntimeUpdateBusy(error) && isActiveRuntimeUsable()) {
+      packagedRuntimeDeferred = true
+      packagedRuntimeBootError = null
+      rememberLog('[bundled-engine] deferred while existing work finishes; keeping the current engine usable')
+      deferredPackagedUpdate.schedule()
+      return { status: 'preserved' as const, reason: 'busy' as const, runtimeCommit: readSourceCommitStamp(ACTIVE_HERMES_ROOT) }
+    }
+    packagedRuntimeDeferred = false
     packagedRuntimeBootError = error?.message || String(error)
     rememberLog(`[bundled-engine] automatic install failed: ${packagedRuntimeBootError}`)
 
@@ -5638,12 +5685,14 @@ async function ensureRuntime(backend) {
     const prepared = await ensurePackagedEngine()
 
     if (offlineUpdate) {
-      if (prepared.status === 'preserved' || prepared.runtimeCommit !== runtimeOverride.commit) {
+      if (prepared.reason === 'busy') {
+        // Keep the frozen target; boot the old engine while waiting for idle.
+      } else if (prepared.status === 'preserved' || prepared.runtimeCommit !== runtimeOverride.commit) {
         rollbackRuntimePinOverride('offline bundled update failed')
         throw new Error('安装包内的引擎更新失败，已保留原引擎。请重试。')
+      } else {
+        clearRuntimePinOverride()
       }
-
-      clearRuntimePinOverride()
     }
     localBackendLifecycle.assertCanStart()
     const cliArgs = backend.kind === 'bootstrap-needed' ? backend.args : backend.args.slice(2)
@@ -18454,6 +18503,7 @@ function initShellUpdater() {
     ipcMain,
     isPackaged: app.isPackaged && updatesAllowed,
     log: rememberLog,
+    beforeInstall: () => prepareRuntimeSwitch(ACTIVE_HERMES_ROOT),
     // hc-532 (gate 3): thread the shell version so the shell-update beacons
     // carry app_version (createShellUpdater defaults it to null when omitted).
     appVersion: app.getVersion(),
@@ -22404,6 +22454,7 @@ registerRuntimeVersionIpc(ipcMain, {
   readMarker: readBootstrapMarker,
   readTreeCommit: () => readSourceCommitStamp(ACTIVE_HERMES_ROOT),
   minEngineVersion: readDeclaredMinEngineVersion,
+  updateDeferred: () => packagedRuntimeDeferred,
   log: rememberLog
 })
 
@@ -22499,6 +22550,9 @@ async function applyResolvedRuntimeUpdate(pin) {
   // offline preparation pass without invoking npm or the source installer.
   if (IS_PACKAGED && !IS_DIAGNOSTIC_TRIAL && !process.env.HERMES_DESKTOP_HERMES_ROOT) {
     try {
+      if (pin.commit && packagedRuntimeMatchesPin(process.resourcesPath, pin.commit)) {
+        await preflightRuntimeSwitch()
+      }
       if (armPackagedRuntimeUpdate({ resourcesPath: process.resourcesPath, commit: pin.commit, branch: pin.branch,
         version: pin.version, previousMarker: marker || null, persistOverride: writeRuntimePinOverride })) {
         ensurePackagedEngine.reset()
@@ -22508,6 +22562,9 @@ async function applyResolvedRuntimeUpdate(pin) {
         return { ok: true, applied: true, via: 'packaged', reloadRequired: true, latest: { version: pin.version, key: pin.key } }
       }
     } catch (error: any) {
+      if (isRuntimeUpdateBusy(error)) {
+        return { ok: true, applied: false, deferred: true, latest: { version: pin.version, key: pin.key } }
+      }
       return { ok: false, error: error.message || String(error) }
     }
   }
@@ -22548,6 +22605,10 @@ async function applyResolvedRuntimeUpdate(pin) {
       }
     }
 
+    if (result.code === 'runtime_update_busy') {
+      return { ok: true, applied: false, deferred: true, latest: { version: pin.version, key: pin.key } }
+    }
+
     if (result.code === 'min_desktop_version') {
       rememberLog(`[bundle] refusing update: ${result.error}`)
 
@@ -22586,6 +22647,14 @@ async function applyResolvedRuntimeUpdate(pin) {
 
   // 3. Don't-brick pre-flight: confirm the new source tarball actually exists
   //    before we retarget. (No URL -> non-CN git path, which verifies itself.)
+  try {
+    await preflightRuntimeSwitch()
+  } catch (error) {
+    if (isRuntimeUpdateBusy(error)) {
+      return { ok: true, applied: false, deferred: true, latest: { version: pin.version, key: pin.key } }
+    }
+    throw error
+  }
   const reachable = await isUpdateArtifactReachable(pin.cosTarballUrl)
 
   if (!reachable) {

@@ -79,6 +79,7 @@ export function createLocalBackendLifecycle<Child>(deps: LocalBackendLifecycleDe
     assertCanSpawn,
     assertCanStart: () => controller.signal.throwIfAborted(),
     hasPending: () => starts.size > 0 || children.size > 0 || stops.size > 0 || shutdown.isPending(),
+    ownedChildren: () => [...children],
     // A version read joins already-started preparation, never a live child or a new start.
     waitForPendingStarts: async () => {
       await Promise.allSettled([...starts])
