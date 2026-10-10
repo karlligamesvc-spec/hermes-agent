@@ -67,9 +67,6 @@ vi.mock('./composer', () => ({
   },
   ChatBarFallback: () => null
 }))
-vi.mock('./hooks/use-file-drop-zone', () => ({
-  useFileDropZone: () => ({ dragKind: null, dropHandlers: {} })
-}))
 vi.mock('./sidebar/session-actions-menu', async () => {
   const React = await import('react')
 
@@ -127,6 +124,47 @@ describe('ChatView render isolation', () => {
     $selectedStoredSessionId.set(null)
     $sessions.set([])
     mainComposerScope.clear()
+  })
+
+  it.each(['ready', 'busy', 'disconnected'])('home drop routes a folder and video to the visible attachment draft (%s)', state => {
+    $activeSessionId.set(null)
+    $selectedStoredSessionId.set(null)
+    $messages.set([])
+    $freshDraftReady.set(true)
+    $gatewayState.set(state === 'disconnected' ? 'closed' : 'open')
+    $busy.set(state === 'busy')
+    const folder = new File([], '客户 素材')
+    const video = new File(['video'], '片段.mp4', {type: 'video/mp4'})
+    const paths = new Map([[folder, '/work/客户 素材'], [video, '/work/片段.mp4']])
+    const previous = window.hermesDesktop
+    Object.defineProperty(window, 'hermesDesktop', {configurable: true, value: {
+      getPathForFile: (file: File) => paths.get(file)
+    }})
+    const onAttachDroppedItems = vi.fn(() => true)
+    const props = {
+      gateway: null, onAddContextRef: vi.fn(), onAddUrl: vi.fn(), onAttachDroppedItems,
+      onAttachImageBlob: vi.fn(), onBranchInNewChat: vi.fn(), onCancel: vi.fn(), onDeleteSelectedSession: vi.fn(),
+      onEdit: vi.fn(), onPasteClipboardImage: vi.fn(), onPickFiles: vi.fn(), onPickFolders: vi.fn(), onPickImages: vi.fn(),
+      onReload: vi.fn(), onRemoveAttachment: vi.fn(), onRetryResume: vi.fn(), onSteer: vi.fn(),
+      onSubmit: vi.fn(), onThreadMessagesChange: vi.fn(), onToggleSelectedPin: vi.fn(), onTranscribeAudio: vi.fn()
+    }
+    try {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={['/']}><ChatView {...props} /></MemoryRouter></QueryClientProvider>)
+      const files = [folder, video]
+      fireEvent.drop(screen.getByTestId('thread'), {dataTransfer: {
+        types: ['Files'], getData: () => '',
+        files: {length: files.length, item: (i: number) => files[i]},
+        items: files.map(file => ({kind: 'file', getAsFile: () => file, webkitGetAsEntry: () => ({isDirectory: file === folder})}))
+      }})
+      if (state === 'ready') {
+        expect(onAttachDroppedItems).toHaveBeenCalledExactlyOnceWith([
+          {isDirectory: true, path: '/work/客户 素材'}, {file: video, path: '/work/片段.mp4'}
+        ])
+      } else {
+        expect(onAttachDroppedItems).not.toHaveBeenCalled()
+      }
+    } finally {Object.defineProperty(window, 'hermesDesktop', {configurable: true, value: previous})}
   })
 
   it('does not re-render chat history when an unrelated parent idle tick updates', () => {
