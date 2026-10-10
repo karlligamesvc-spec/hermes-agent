@@ -680,6 +680,13 @@ const ChatViewContent = memo(function ChatViewContent({
   // pipeline — otherwise the local path leaks into the prompt verbatim.
   const onDropFiles = useCallback(
     (candidates: DroppedFile[]) => {
+      // The business home owns a separate textarea; the rich composer remains
+      // hidden. Route every home drop to the visible attachment draft instead
+      // of inserting folder refs into that hidden editor.
+      if (businessStartVisible) {
+        void onAttachDroppedItems(candidates)
+        return
+      }
       const { inAppRefs, osDrops } = partitionDroppedFiles(candidates)
       const refs = droppedFileInlineRefs(inAppRefs, currentCwd)
 
@@ -691,14 +698,14 @@ const ChatViewContent = memo(function ChatViewContent({
         void onAttachDroppedItems(osDrops)
       }
     },
-    [composerScope.target, currentCwd, onAttachDroppedItems]
+    [businessStartVisible, composerScope.target, currentCwd, onAttachDroppedItems]
   )
 
   // Session drags are POINTER drags (session-drag.ts) — never native DnD.
   // The drop zone below only handles files; session drops commit through the
   // drag session itself, which routes a center/link drop to this surface's
   // composer via `data-composer-target`.
-  const { dragKind, dropHandlers } = useFileDropZone({ enabled: showChatBar, onDropFiles })
+  const { dragKind, dropHandlers } = useFileDropZone({ enabled: showChatBar || (businessStartVisible && gatewayOpen && !busy), onDropFiles })
 
   // While a session drag targets one of this surface's EDGES or a tab strip,
   // the zone overlay/caret owns the visual — the link overlay stands down.
