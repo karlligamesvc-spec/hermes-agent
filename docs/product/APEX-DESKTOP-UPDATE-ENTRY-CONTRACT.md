@@ -1,6 +1,6 @@
 # APEX Desktop update entry contract
 
-Ticket: hc-901
+Ticket: hc-901 / hc-906
 
 ## Behavior and exits
 
@@ -37,3 +37,26 @@ packaged-only spec skips; the smoke must report one pass to count as evidence.
 
 These smokes cover entry routing and feed checks, not the full download,
 signature validation, installation and restart transaction or Windows signing.
+
+## Occupancy and automatic continuation (hc-906)
+
+A requested install waits while the engine has active work or foreign owners.
+The existing engine remains available, the exact requested target stays frozen,
+and occupancy is not reported as `runtime_target_not_active`. The native shell
+install checks again every 15 seconds; packaged-engine boot recovery also retries
+natively. Runtime-only renderer plans persist across reload and recheck every
+30 seconds. Successful activation still requires actual source/marker proof.
+
+Tracked Desktop workers can be stopped only after preflight; messaging gateways
+must acknowledge drain with no active agents. Another live Desktop/CLI owner is
+preserved until it exits. The final idle scan has no PID exemptions. Ordinary
+app quit cannot install implicitly around the gate. Duplicate install requests
+coalesce; failed native handoff releases its process-start fence.
+
+Additional smoke: `electron/deferred-runtime-update.test.ts`,
+`electron/runtime-gateway-retirement.test.ts`, `electron/packaged-runtime.test.ts`,
+`electron/shell-updater.test.ts` and `src/store/desktop-update.test.ts`.
+Real temporary workers and fixture archives exercise ownership and switching on
+Mac and Windows. This does not replace signed installer/update end-to-end release
+acceptance. Detailed exit inventory and negative tests are recorded in
+`docs/desktop/hc906-engine-update-recovery.md`.

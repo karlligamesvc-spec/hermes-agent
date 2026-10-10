@@ -39,6 +39,40 @@ let resumePromise: Promise<void> | null = null
 let attemptedAutomaticPlan: string | null = null
 let runtimeProgressSubscribed = false
 let shellProgressSubscribed = false
+let deferredRetry: ReturnType<typeof setTimeout> | undefined
+
+async function deferRuntimeUpdate(reload: () => void): Promise<void> {
+  // Preserve the exact target and show the working chat while the native gate
+  // waits. No completed receipt, failed modal, or reload loop for busy engines.
+  await transitionPlanSafely({ phase: 'resuming', lastError: 'runtime_update_busy' })
+  setProgress({ active: false, currentStage: null, error: null })
+  clearTimeout(deferredRetry)
+  deferredRetry = setTimeout(() => {
+    attemptedAutomaticPlan = null
+    void resumeDesktopUpdatePlan({ automatic: true, reload }).catch(error => {
+      console.error('[desktop-update] deferred plan could not be resumed', error)
+    })
+  }, 30_000)
+}
+
+async function installShellWhenIdle(): Promise<void> {
+  const result = await installShellUpdate()
+  if (result.deferred) {setProgress({ active: false, currentStage: null, error: null })}
+}
+
+export async function queueDeferredRuntimeUpdate(runtime: DesktopRuntimeUpdateCheck | null, options: {
+  reload?: () => void
+  targetShellVersion?: string | null
+} = {}): Promise<void> {
+  const saved = await window.hermesDesktop?.updateCenter?.setRuntimeAfterShell({
+    currentRuntimeKey: runtimeCurrentKey(runtime), currentRuntimeVersion: runtimeCurrent(runtime),
+    targetRuntimeKey: runtimeTargetKey(runtime), targetRuntimeVersion: runtimeTarget(runtime),
+    targetShellVersion: options.targetShellVersion ?? null
+  })
+  if (!saved?.ok) {throw new Error(saved?.error || 'failed_to_persist_update_plan')}
+  await deferRuntimeUpdate(options.reload ?? (() => window.location.reload()))
+}
+
 
 function setProgress(patch: Partial<DesktopUpdateProgress>): void {
   $desktopUpdateProgress.set({ ...$desktopUpdateProgress.get(), ...patch })
@@ -219,7 +253,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
       }
 
       setProgress({ currentStage: 'restart' })
-      await installShellUpdate()
+      await installShellWhenIdle()
 
       return
     }
@@ -229,6 +263,10 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
 
     if (runtime?.updateAvailable) {
       const result = await applyRuntimeUpdate()
+      if (result.deferred) {
+        await queueDeferredRuntimeUpdate(runtime, { reload, targetShellVersion: needsShell ? shell?.version : null })
+        return
+      }
 
       runtimeReloadRequired = Boolean(result.reloadRequired)
       appliedRuntimeTarget = result.latest ?? appliedRuntimeTarget
@@ -253,7 +291,7 @@ export async function applyDesktopUpdates(options: { reload?: () => void } = {})
         throw new Error(result?.error || 'failed_to_persist_update_plan')
       }
 
-      await installShellUpdate()
+      await installShellWhenIdle()
 
       return
     }
@@ -329,7 +367,18 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
       const runningDesktop = await window.hermesDesktop?.getVersion?.()
 
       if (!shellMeetsPlan(runningDesktop?.appVersion, plan.targetShellVersion)) {
+        const shell = $shellUpdate.get()
+        if (shellReady(shell) && comparableVersion(shell?.version) === comparableVersion(plan.targetShellVersion)) {
+          await installShellWhenIdle()
+          return
+        }
         throw new Error('shell_target_not_running')
+      }
+
+      const runningRuntime = await loadRuntimeVersion()
+      if (runningRuntime.updateDeferred) {
+        await deferRuntimeUpdate(reload)
+        return
       }
 
       if (plan.kind === 'shell-only') {
@@ -362,7 +411,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
         return
       }
 
-      if (options.automatic && (plan.attempts > 0 || plan.phase === 'failed')) {
+      if (options.automatic && plan.lastError !== 'runtime_update_busy' && (plan.attempts > 0 || plan.phase === 'failed')) {
         throw new Error(plan.lastError || 'runtime_target_not_active')
       }
 
@@ -395,6 +444,10 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
           expectedVersion: plan.targetRuntimeVersion
         })
 
+        if (result.deferred) {
+          await deferRuntimeUpdate(reload)
+          return
+        }
         if (result.reloadRequired) {
           // Legacy bootstrap activates after reloading. Retain the durable
           // plan until the next renderer verifies the actual installed tree.
@@ -434,6 +487,7 @@ export function resumeDesktopUpdatePlan(options: { reload?: () => void; automati
 }
 
 export function dismissDesktopUpdateError(): void {
+  clearTimeout(deferredRetry)
   $desktopUpdateProgress.set(EMPTY_PROGRESS)
 }
 
@@ -466,7 +520,7 @@ export async function retryDesktopUpdate(options: { reload?: () => void } = {}):
           stages: ['check', 'shell', 'restart'],
           targetVersion: plan.targetShellVersion
         })
-        await installShellUpdate()
+        await installShellWhenIdle()
 
         return
       }
