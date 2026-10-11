@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import { classifyErrorCategory } from './apexnodes-telemetry'
+
 export type Fact = {
   operation:
     'startup' | 'update' | 'renderer' | 'process' | 'preview' | 'download' | 'diagnostics' | 'model_catalog' | 'voice'
@@ -20,6 +22,7 @@ export type Fact = {
     | 'crash'
     | 'unknown'
   duration_ms?: number
+  item_count?: number
 }
 type Event = Fact & {
   event_id: string
@@ -30,6 +33,8 @@ type Event = Fact & {
   app_version: string
   platform: string
   arch: string
+  queue_depth?: number
+  dropped_count?: number
 }
 type Row = { owner: string; event: Event }
 const ENDPOINT = 'https://api.apex-nodes.com/api/v1/runtime/diagnostics/events'
@@ -135,12 +140,12 @@ export class ApexDiagnostics {
       return []
     }
   }
-  record(fact: Fact): Promise<string | undefined> {
+  record(fact: Fact, expectedKey: string | null = this.key() || null): Promise<string | undefined> {
     return this.transact(async () => {
       if (!(await this.enabled())) {return}
       const key = this.key()
 
-      if (!key || !OPERATIONS.has(fact.operation) || !STATUSES.has(fact.status)) {return}
+      if (!key || key !== expectedKey || !OPERATIONS.has(fact.operation) || !STATUSES.has(fact.status)) {return}
       const owner = createHash('sha256').update(key).digest('hex')
       const identityPath = path.join(this.directory, 'desktop-instance.json')
       let device: string
@@ -175,13 +180,27 @@ export class ApexDiagnostics {
       if (Number.isSafeInteger(fact.duration_ms) && fact.duration_ms! >= 0 && fact.duration_ms! <= 1e12)
         {event.duration_ms = fact.duration_ms}
 
+      if (Number.isSafeInteger(fact.item_count) && fact.item_count! >= 0 && fact.item_count! <= 1e12)
+        {event.item_count = fact.item_count}
+
       const rows = await this.read()
+      let dropped = 0
+      const healthFile = path.join(this.directory, 'desktop-health.json')
+      let health: Record<string, number> = {}
+
+      try {health = JSON.parse(await fs.readFile(healthFile, 'utf8'))} catch { /* first launch */ }
+      dropped = Number.isSafeInteger(health[owner]) ? health[owner] : 0
+      event.queue_depth = rows.filter(row => row.owner === owner).length
       rows.push({ owner, event })
 
       while (rows.length > MAX_ROWS) {
         const index = rows.findIndex(row => row.event.status === 'start')
-        rows.splice(index < 0 ? 0 : index, 1)
+        const [removed] = rows.splice(index < 0 ? 0 : index, 1)
+        health[removed.owner] = (health[removed.owner] || 0) + 1
       }
+
+      event.dropped_count = health[owner] || dropped
+      await this.write(healthFile, health)
 
       await this.write(path.join(this.directory, 'desktop.json'), rows)
 
@@ -234,6 +253,7 @@ export class ApexDiagnostics {
   }
   async measure<T>(operation: Fact['operation'], name: string, run: () => Promise<T>): Promise<T> {
     const started = performance.now()
+    const ownerKey = this.key() || null
 
     try {
       const result = await run()
@@ -250,17 +270,18 @@ export class ApexDiagnostics {
             ? 'failure'
             : 'success'
 
-      void this.record({ operation, name, status, duration_ms: Math.round(performance.now() - started) })
+      void this.record({ operation, name, status, duration_ms: Math.round(performance.now() - started) }, ownerKey)
 
       return result
     } catch (error) {
+      const category = classifyErrorCategory(error)
       void this.record({
         operation,
         name,
         status: 'failure',
-        error_code: 'unknown',
+        error_code: ERRORS.has(category) ? category as Fact['error_code'] : 'unknown',
         duration_ms: Math.round(performance.now() - started)
-      })
+      }, ownerKey)
       throw error
     }
   }

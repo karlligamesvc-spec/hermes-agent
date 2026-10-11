@@ -99,6 +99,7 @@ import {
   sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
 import { ensureApexDesktopSoul } from './apex-default-soul'
+import { rendererDiagnosticFact } from './apex-diagnostic-facts'
 import { ApexDiagnostics } from './apex-diagnostics'
 import {
   buildFeishuBackendEnv,
@@ -17864,6 +17865,11 @@ ipcMain.handle('hermes:logs:reveal', async () => {
   }
 })
 
+ipcMain.on('apex:diagnostics:fact', (_event, code, duration) => {
+  const fact = rendererDiagnosticFact(code, duration)
+
+  if (fact) {void apexDiagnostics.record(fact)}
+})
 ipcMain.handle('apex:diagnostics:get', async () => ({ enabled: await apexDiagnostics.enabled() }))
 ipcMain.handle('apex:diagnostics:set', async (_event, enabled) => {
   if (typeof enabled !== 'boolean') {throw new Error('Invalid diagnostics setting')}
@@ -21778,6 +21784,8 @@ function apexAuthGetBuffer(url, { bearer, timeoutMs = 30_000, maxBytes = 32 * 10
 // base_url already ends at the relay `/v1` segment (see DEFAULT_RELAY_BASE_URL),
 // so the listing path is `${base_url}/models`.
 function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Promise<any> {
+  const probeStarted = performance.now()
+
   return new Promise(resolve => {
     const base = String(baseUrl || '')
       .trim()
@@ -21817,6 +21825,11 @@ function apexRelayGetModels(baseUrl, key, { timeoutMs = 10_000 }: any = {}): Pro
 
       settled = true
       clearTimeout(timer)
+      void apexDiagnostics.record({ operation: 'model_catalog', name: 'relay_probe',
+        status: result.ok ? 'success' : 'failure',
+        error_code: result.ok ? undefined : result.statusCode === 401 || result.statusCode === 403 ? 'authentication' : 'network',
+        duration_ms: Math.round(performance.now() - probeStarted)
+      }, relayKey)
       resolve(result)
     }
 

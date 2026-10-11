@@ -546,6 +546,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   revealLogs: () => ipcRenderer.invoke('hermes:logs:reveal'),
   diagnostics: {
+    fact: (code: string, duration?: number) => ipcRenderer.send('apex:diagnostics:fact', code, duration),
     get: () => ipcRenderer.invoke('apex:diagnostics:get'),
     set: (enabled: boolean) => ipcRenderer.invoke('apex:diagnostics:set', enabled),
     send: () => ipcRenderer.invoke('apex:diagnostics:send')

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { strToU8, zipSync } from 'fflate'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,7 +7,8 @@ import { localPreviewTarget } from '@/lib/local-preview'
 
 import { LocalFilePreview } from './preview-file'
 
-const { readData, readText } = vi.hoisted(() => ({ readData: vi.fn(), readText: vi.fn() }))
+const { readData, readText, diagnosticFact } = vi.hoisted(() => ({ readData: vi.fn(), readText: vi.fn(), diagnosticFact: vi.fn() }))
+vi.mock('@/lib/diagnostic-fact', () => ({ diagnosticFact }))
 
 vi.mock('@/lib/desktop-fs', () => ({
   desktopFsCacheKey: () => 'local:test',
@@ -36,6 +37,14 @@ describe('Word body preview', () => {
     expect(screen.queryByText('已删除')).toBeNull()
     expect(readData).toHaveBeenCalledWith(path)
     expect(readText).not.toHaveBeenCalled()
+    expect(diagnosticFact).toHaveBeenCalledWith('preview.docx_ready')
+  })
+
+  it('reports a readable but empty Word body as invalid output, not a successful preview', async () => {
+    readData.mockResolvedValue(archive('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>'))
+    render(<LocalFilePreview reloadKey={0} target={localPreviewTarget('/tmp/empty.docx')!} />)
+    await waitFor(() => expect(diagnosticFact).toHaveBeenCalledWith('preview.docx_empty'))
+    expect(diagnosticFact).not.toHaveBeenCalledWith('preview.docx_ready')
   })
 
   it.each([

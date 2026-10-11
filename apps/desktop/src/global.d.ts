@@ -650,6 +650,7 @@ declare global {
       }
       revealLogs: () => Promise<{ ok: boolean; path: string; error?: string }>
       diagnostics?: {
+        fact?: (code: string, duration?: number) => void
         get: () => Promise<{ enabled: boolean }>
         set: (enabled: boolean) => Promise<{ enabled: boolean }>
         send: () => Promise<{ ok: boolean; uploadId?: string; error?: string }>

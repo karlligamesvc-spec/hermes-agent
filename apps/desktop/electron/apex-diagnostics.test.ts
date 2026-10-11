@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { rendererDiagnosticFact } from './apex-diagnostic-facts'
 import { ApexDiagnostics, type Fact } from './apex-diagnostics'
 const homes: string[] = []
 afterEach(async () => {
@@ -18,6 +19,27 @@ async function home() {
 }
 
 describe('durable APEX diagnostics', () => {
+  it('drops a late result after the owning account changes', async () => {
+    const dir = await home()
+    let key = 'A'
+    const client = new ApexDiagnostics(dir, () => key, '0.17.56')
+    await client.initialize()
+    let finish!: () => void
+    const operation = client.measure('download', 'file', () => new Promise<void>(resolve => {finish = resolve}))
+    key = 'B'
+    finish()
+    await operation
+    await client.record({ operation: 'startup', status: 'success' })
+    const rows = JSON.parse(await fs.readFile(path.join(dir, 'diagnostics/desktop.json'), 'utf8'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].event.operation).toBe('startup')
+  })
+  it('restricts renderer facts to fixed product codes and bounded durations', () => {
+    expect(rendererDiagnosticFact('/Users/customer/SECRET', 10)).toBeNull()
+    expect(rendererDiagnosticFact('__proto__', 10)).toBeNull()
+    expect(rendererDiagnosticFact('voice.first_audio', Infinity)).toEqual({ operation: 'voice', name: 'first_audio', status: 'success' })
+    expect(rendererDiagnosticFact('voice.connect_failed', 123)).toEqual({ operation: 'voice', name: 'connect', status: 'failure', error_code: 'unknown', duration_ms: 123 })
+  })
   it('retains offline records over restart, isolates accounts and removes only acknowledged events', async () => {
     const dir = await home()
     let key = 'A'
