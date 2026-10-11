@@ -223,6 +223,7 @@ const LEGACY_APEX_BUDGET_DEFAULTS = Object.freeze({
 // (the pure-CLI path; the three apexnodes-* tool entries land there with
 // feat/plugins-gateway-p1).
 const MANAGED_PLUGIN_NAMES = [
+  'apexnodes-diagnostics',
   // ApexNodes cloud overlay boot hook — applies the apex_overlay seams onto
   // upstream Hermes at load time (monkey-patch, zero in-place edits).
   'apex-overlay',

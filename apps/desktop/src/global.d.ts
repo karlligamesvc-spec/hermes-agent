@@ -649,6 +649,11 @@ declare global {
         onChanged: (callback: (payload: { level: number; percent: number }) => void) => () => void
       }
       revealLogs: () => Promise<{ ok: boolean; path: string; error?: string }>
+      diagnostics?: {
+        get: () => Promise<{ enabled: boolean }>
+        set: (enabled: boolean) => Promise<{ enabled: boolean }>
+        send: () => Promise<{ ok: boolean; uploadId?: string; error?: string }>
+      }
       getRecentLogs: () => Promise<{ path: string; lines: string[] }>
       /** Persist a renderer error-boundary catch to desktop.log (fire-and-forget). */
       reportRendererError?: (report: {

@@ -350,6 +350,7 @@ export interface Translations {
     dismiss: string
   }
 
+  apexDiagnostics: { title: string; description: string; error: string }
   sendDiagnostics: {
     title: string
     privacyNotice: string

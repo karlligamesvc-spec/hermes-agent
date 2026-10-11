@@ -99,6 +99,7 @@ import {
   sanitizeDeviceName as sanitizeDaemonDeviceName
 } from './apex-daemon'
 import { ensureApexDesktopSoul } from './apex-default-soul'
+import { ApexDiagnostics } from './apex-diagnostics'
 import {
   buildFeishuBackendEnv,
   feishuCredentialsUrl,
@@ -203,6 +204,7 @@ import {
   startWorkflowDomainGoal,
   updateWorkflowDomainProject
 } from './apex-workflow-domain'
+import { setDiagnosticSink } from './apexnodes-telemetry'
 import {
   destroyKeepaliveAgents,
   downloadAgentFor,
@@ -1164,6 +1166,8 @@ function resolveHermesHome() {
 }
 
 const HERMES_HOME = resolveHermesHome()
+const apexDiagnostics = new ApexDiagnostics(HERMES_HOME, () => resolveManagedRelayCredential(), app.getVersion())
+
 // Force the resolved root into the environment so every child process — the
 // first-launch install, the dashboard backend, the messaging gateway, the
 // daemon's agent runner — inherits the SAME independent home instead of
@@ -1171,6 +1175,8 @@ const HERMES_HOME = resolveHermesHome()
 // an explicit override; on a default install it pins clone/config/data under
 // ~/.apexnodes.
 process.env.HERMES_HOME = HERMES_HOME
+process.env.APEX_DIAGNOSTICS_HOME = HERMES_HOME
+process.env.APEX_DESKTOP_VERSION = app.getVersion()
 
 // hc-632: third-party CLIs we install from our COS mirror (ripgrep, ffmpeg +
 // ffprobe) land here. install.ps1 also persists this on the User PATH, but that
@@ -2615,6 +2621,9 @@ function updateBootProgress(update, options: { allowDecrease?: boolean } = {}) {
   if (shouldHoldBootProgressForReauth(remoteReauthFailure ? remoteReauthFailure.message : null, update)) {
     return
   }
+
+  if (update.error) {void apexDiagnostics.record({ operation: 'startup', name: update.phase, status: 'failure', error_code: 'unknown' })}
+  else if (update.phase === 'backend.ready') {void apexDiagnostics.record({ operation: 'startup', status: 'success' })}
 
   const nextProgressRaw =
     typeof update.progress === 'number' ? clampBootProgress(update.progress) : bootProgressState.progress
@@ -5645,6 +5654,7 @@ async function ensureRuntime(backend) {
 
       clearRuntimePinOverride()
     }
+
     localBackendLifecycle.assertCanStart()
     const cliArgs = backend.kind === 'bootstrap-needed' ? backend.args : backend.args.slice(2)
     backend = createActiveBackend(cliArgs)
@@ -17236,13 +17246,13 @@ ipcMain.handle('hermes:data-url-read-max:set', (_event, maxMb) => {
   }
 })
 
-ipcMain.handle('hermes:readFileDataUrl', async (_event, filePath) => {
+ipcMain.handle('hermes:readFileDataUrl', async (_event, filePath) => apexDiagnostics.measure('preview', 'readFileDataUrl', async () => {
   return readFileDataUrlForIpc(filePath, {
     maxBytes: dataUrlReadMaxBytesFromMb(dataUrlReadMaxMb),
     mimeType: mimeTypeForPath(resolveRequestedPathForIpc(filePath, { purpose: 'File preview' })),
     purpose: 'File preview'
   })
-})
+}))
 
 ipcMain.handle('hermes:readFileDataUrlForAttach', async (_event, filePath) => {
   return readFileDataUrlForIpc(filePath, {
@@ -17252,7 +17262,7 @@ ipcMain.handle('hermes:readFileDataUrlForAttach', async (_event, filePath) => {
   })
 })
 
-ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
+ipcMain.handle('hermes:readFileText', async (_event, filePath) => apexDiagnostics.measure('preview', 'readFileText', async () => {
   const { resolvedPath, stat } = await resolveReadableFileForIpc(filePath, {
     maxBytes: TEXT_PREVIEW_SOURCE_MAX_BYTES,
     purpose: 'Text preview'
@@ -17278,7 +17288,7 @@ ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
   } finally {
     await handle.close()
   }
-})
+}))
 
 // Runtime desktop plugins load their FULL source through this door.
 // `hermes:readFileText` is the *preview* read and silently truncates at
@@ -17366,9 +17376,9 @@ ipcMain.handle('hermes:selectSavePath', async (_event, options: any = {}) => {
 // canvas. The main process has no such gate.
 ipcMain.handle('hermes:readClipboard', () => clipboard.readText())
 
-ipcMain.handle('hermes:saveGatewayFile', (_event, payload) => saveGatewayFile(payload))
+ipcMain.handle('hermes:saveGatewayFile', (_event, payload) => apexDiagnostics.measure('download', 'gateway_file', () => saveGatewayFile(payload)))
 
-ipcMain.handle('hermes:saveImageFromUrl', (_event, url) => saveImageFromUrl(String(url || '')))
+ipcMain.handle('hermes:saveImageFromUrl', (_event, url) => apexDiagnostics.measure('download', 'image', () => saveImageFromUrl(String(url || ''))))
 
 // The custom context menu's edit verbs. They act on the SENDER's focused
 // element, so the renderer restores focus to the editable before invoking.
@@ -17854,6 +17864,19 @@ ipcMain.handle('hermes:logs:reveal', async () => {
   }
 })
 
+ipcMain.handle('apex:diagnostics:get', async () => ({ enabled: await apexDiagnostics.enabled() }))
+ipcMain.handle('apex:diagnostics:set', async (_event, enabled) => {
+  if (typeof enabled !== 'boolean') {throw new Error('Invalid diagnostics setting')}
+
+  return apexDiagnostics.setEnabled(enabled)
+})
+ipcMain.handle('apex:diagnostics:send', async () => {
+  const id = await apexDiagnostics.record({ operation: 'diagnostics', name: 'manual', status: 'success' })
+  const sent = id ? await apexDiagnostics.flush(id) : false
+
+  return { ok: sent, uploadId: id, error: sent ? undefined : 'Diagnostics are disabled, offline or awaiting upload.' }
+})
+
 ipcMain.handle('hermes:logs:recent', async () => ({ path: DESKTOP_LOG_PATH, lines: hermesLog.slice(-200) }))
 
 // Renderer error-boundary catches (#79428 defect B): the component stack only
@@ -17862,6 +17885,7 @@ ipcMain.handle('hermes:logs:recent', async () => ({ path: DESKTOP_LOG_PATH, line
 // crash and must not await. Flush immediately: a crashing window can be gone
 // before the debounced flush timer fires.
 ipcMain.on('hermes:logs:renderer-error', (_event, report) => {
+  void apexDiagnostics.record({ operation: 'renderer', status: 'failure', error_code: 'unknown' })
   const { label, boundary, message, componentStack } = report && typeof report === 'object' ? report : {}
   rememberLog(formatRendererBoundaryReport(label, boundary, message, componentStack))
   flushDesktopLogBufferSync()
@@ -19790,6 +19814,8 @@ function writeManagedConfig(provisioned, renewal = false) {
   const generation = managedCredentialLifetime.persist(() => {
     writeFileAtomic(DESKTOP_MANAGED_CONFIG_PATH, JSON.stringify(next, null, 2))
   }, renewal)
+
+  if (key) {void apexDiagnostics.initialize().catch(() => {})}
 
   if (!renewal) {lastRelayCatalogState = { status: 'unknown', checkedAt: 0 }}
 
@@ -22952,6 +22978,7 @@ ipcMain.handle('hermes:analysis:transcribeVideoLink', async (_event, sourceUrl) 
 
 ipcMain.handle('hermes:analysis:uploadVideo', async event => {
   let playback: Awaited<ReturnType<typeof analysisPlayback.local>> | undefined
+
   try {
     const initial = await analysisIpcContext(true)
 
@@ -22995,12 +23022,14 @@ ipcMain.handle('hermes:analysis:uploadVideo', async event => {
     if (!item) {return { ok: false, code: 'timed_evidence_invalid' }}
     playback = await analysisPlayback.local(context.policy.user_id, event.sender.id, chosen.filePaths[0])
     context.assertCurrent()
+
     if (event.sender.isDestroyed()) {throw new Error('analysis_context_changed')}
 
     return { ok: true, item: { ...item, analysis_scope: context.policy.user_id,
       analysis_revision: context.policy.mode === 'local' ? localOverviewRevision(item) : item.analysis_revision }, playback }
   } catch (error) {
     if (playback) {await analysisPlayback.release(playback.url, event.sender.id)}
+
     return { ok: false, code: analysisIpcError(error) }
   }
 })
@@ -23053,13 +23082,18 @@ async function analysisDerivedContext(id: string, scope: string, write = true) {
 
 ipcMain.handle('hermes:analysis:previewVideo', async (event, id, scope, revision) => {
   let playback
+
   try {
     const { context, item } = await analysisDerivedContext(id, scope, false)
+
     if (item.kind !== 'subtitle' || item.status !== 'ready' || item.analysis_revision !== revision ||
       (item.evidence_origin ?? item.evidenceOrigin) !== 'linked_video_audio') {throw new Error('video_playback_unavailable')}
+
     const sourceUrl = item.source_url ?? item.sourceUrl
+
     if (!sourceUrl) {throw new Error('video_playback_unavailable')}
     const key = resolveManagedConfig().key
+
     if (!key) {throw new Error('sign_in')}
     playback = await analysisPlayback.linked(scope, event.sender.id, () => context.run(() => downloadAnalysisPlayback(
       sourceUrl,
@@ -23067,12 +23101,14 @@ ipcMain.handle('hermes:analysis:previewVideo', async (event, id, scope, revision
       url => apexAuthGetBuffer(url, { maxBytes: MAX_ANALYSIS_VIDEO_BYTES, timeoutMs: 180_000 })
     )))
     const latest = await analysisDerivedContext(id, scope, false)
+
     if (latest.item.analysis_revision !== revision) {
       await analysisPlayback.release(playback.url, event.sender.id)
       throw new Error('video_source_changed')
     }
 
     if (event.sender.isDestroyed()) {throw new Error('analysis_context_changed')}
+
     return { ok: true, playback }
   } catch (error) {
     if (playback) {await analysisPlayback.release(playback.url, event.sender.id)}
@@ -24962,6 +24998,22 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  void apexDiagnostics.initialize().then(() => apexDiagnostics.record({ operation: 'startup', status: 'start' })).catch(() => {})
+  const diagnosticTimer = setInterval(() => void apexDiagnostics.flush(), 15000)
+  diagnosticTimer.unref()
+  app.on('will-quit', () => clearInterval(diagnosticTimer))
+  app.on('render-process-gone', () => void apexDiagnostics.record({ operation: 'renderer', status: 'failure', error_code: 'crash' }))
+  app.on('child-process-gone', (_event, details) => {
+    if (details.reason !== 'clean-exit') {void apexDiagnostics.record({ operation: 'process', status: 'failure', error_code: 'crash' })}
+  })
+  setDiagnosticSink(event => {
+    void apexDiagnostics.record({ operation: 'update', name: event.stage, status: event.status,
+      error_code: event.status === 'failure' ? 'unknown' : undefined })
+  }, () => {
+    try { return JSON.parse(fs.readFileSync(path.join(HERMES_HOME, '.apex-diagnostics.json'), 'utf8')).enabled !== false }
+    catch { return true }
+  })
+
   try {
     const soulSeed = ensureApexDesktopSoul(HERMES_HOME)
     rememberLog(`[soul] APEX default ${soulSeed}`)

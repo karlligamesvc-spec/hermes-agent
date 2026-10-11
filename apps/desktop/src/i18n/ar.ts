@@ -46,6 +46,7 @@ export const ar = defineLocale({
     continue: 'المتابعة في Hermes',
     importError: 'تعذر استيراد هذه المحادثة.'
   },
+  apexDiagnostics: { title: 'Automatic diagnostics and usage records', description: 'Send versions, task steps, timings and error categories to APEX; retained for 30 days. No conversations, reasoning, file contents or raw logs. Turning this off stops collection and clears pending records.', error: 'Could not save the setting. Please retry.' },
   sendDiagnostics: {
     title: 'إرسال التشخيصات إلى Nous',
     privacyNotice:

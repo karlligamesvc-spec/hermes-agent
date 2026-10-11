@@ -303,8 +303,17 @@ function postJson(url, payload, { timeoutMs = DEFAULT_TIMEOUT_MS }: any = {}) {
  *   ever touching the real network.
  * @returns {Promise<{ok:boolean, skipped?:string, status?:number, error?:string}>}
  */
+let diagnosticSink: ((event: any) => void) | undefined
+
+let diagnosticPermission: (() => boolean) | undefined
+
+export function setDiagnosticSink(sink: (event: any) => void, allowed?: () => boolean) { diagnosticSink = sink; diagnosticPermission = allowed }
+
 function sendDesktopTelemetry(event, opts: any = {}) {
+  try { diagnosticSink?.(event) } catch { /* diagnostics cannot affect installation */ }
   const env = opts.env || process.env
+
+  try { if (diagnosticPermission && !diagnosticPermission()) {return Promise.resolve({ ok: false, skipped: 'disabled' })} } catch { return Promise.resolve({ ok: false, skipped: 'disabled' }) }
 
   if (isTelemetryDisabled(env)) {return Promise.resolve({ ok: false, skipped: 'disabled' })}
 
