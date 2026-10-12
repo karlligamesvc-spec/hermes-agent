@@ -1,0 +1,22 @@
+<?svml using="@hypit/markup@1"?>
+<svml>
+  <import as="audio" from="@hypit/audio-track@1"/>
+  <import as="visual" from="@hypit/visual-track@1"/>
+  <import as="mediaop" from="@hypit/media-operations@1"/>
+  <import as="media" from="@hypit/media@1"/>
+  <import as="time" from="@hypit/timeline-author@1"/>
+  <import as="space" from="@hypit/spatial@1"/>
+  <import as="film" from="@hypit/film@1"/>
+  <import as="html" from="@hypit/html-video@1"/>
+  <import as="look" source="./look.svs"/>
+  <space:Canvas id="canvas" width="720" height="1280"/>
+  <time:Clock id="clock" frame-rate="30"/>
+  <space:Frame id="full" within={canvas.bounds} left="0%" top="0%" right="100%" bottom="100%"/>
+  <media:Video id="source" src="./input.mp4"/>
+  <mediaop:Normalize id="clip" source={source} clock={clock} video="primary-moving" audio="default" span-authority="video"/>
+  <time:Timeline id="story" clock={clock} end="5s"><time:Window id="whole" from="start" for="5s"/></time:Timeline>
+  <visual:Track id="picture" timeline={story.timeline}><visual:Clip id="shot" media={clip.media} during={story.whole} frame={full} z="10" fit="cover"/></visual:Track>
+  <audio:Track id="sound" timeline={story.timeline}><audio:Clip id="tone" source={clip.media} during={story.whole}/></audio:Track>
+  <film:Film id="main" canvas={canvas.canvas} timeline={story.timeline} appearance={look.film.main}><film:Track source={picture.visual}/><film:Track source={sound.audio}/></film:Film>
+  <html:Video id="final" composition={main.composition} timeline={story.timeline}/>
+</svml>

@@ -6,13 +6,17 @@ import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { managedCaptureArgs } from './hypit_capture.mjs'
 import { hypitEnvironment } from './hypit_environment.mjs'
+import { selectHypit } from './hypit_project.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'scripts/media-tools/desktop-lock.json'), 'utf8'))
 const env = hypitEnvironment(process.env, root, process.execPath, lock.npm.registry)
-let args = process.argv.slice(2)
+let selected
+try { selected = selectHypit({ root, cwd: process.cwd(), args: process.argv.slice(2) }) }
+catch (error) { console.error(`APEX Hypit: ${error.message}`); process.exit(1) }
+let args = selected.args
 const python = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
-const upstream = path.join(root, '.runtime/hypit/node_modules/@hypit/hypit/bin/hypit.mjs')
+const upstream = selected.upstream
 try {
   const capture = await managedCaptureArgs(args, async () => {
     const { stdout } = await promisify(execFile)(python, ['-m', 'apex_overlay.media_tools', 'browser'],
@@ -30,8 +34,8 @@ const command = preparing ? python : process.execPath
 // Load Koffi before Hypit's TS/package-resolution hooks. Loading the native
 // addon through that hook chain crashes its first flock call on macOS x64.
 // --import keeps the addon in the same child that runs the unchanged CLI.
-const nativeModule = pathToFileURL(path.join(root, '.runtime/hypit/node_modules/koffi/index.js')).href
-const parameters = preparing ? ['-m', 'apex_overlay.media_tools', 'prepare-hypit', ...args.slice(1)] : ['--import', nativeModule, upstream, ...args]
-const child = spawn(command, parameters, { env, stdio: 'inherit', windowsHide: true })
+const nativeModule = pathToFileURL(selected.nativeModule).href
+const parameters = preparing ? ['-m', 'apex_overlay.media_tools', 'prepare-hypit', '--workspace', selected.project, '--hypit-version', selected.version] : ['--import', nativeModule, upstream, ...args]
+const child = spawn(command, parameters, { env, cwd: selected.cwd, stdio: 'inherit', windowsHide: true })
 child.on('error', error => { console.error(`Hypit could not start: ${error.message}`); process.exitCode = 1 })
 child.on('exit', (code, signal) => { process.exitCode = code ?? (signal ? 1 : 0) })

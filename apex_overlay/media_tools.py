@@ -86,25 +86,12 @@ def ensure_browser(*, render=False) -> Path:
     return executable
 
 
-def prepare_hypit(workspace: Path) -> Path:
-    browser = ensure_browser(render=True)
-    profile = workspace.resolve() / '.hypit' / 'apex-runtime.json'
-    if profile.exists():
-        return profile  # Never overwrite a project's explicit configuration.
-    suffix = '.exe' if os.name == 'nt' else ''
-    binary = ROOT / '.runtime/bin'
-    for name in ('ffmpeg', 'ffprobe'):
-        if not (binary / (name + suffix)).is_file():
-            raise FileNotFoundError(f'Bundled {name} missing; repair APEX installation')
-    tools = {'ffmpegPath': str(binary / ('ffmpeg' + suffix)), 'ffprobePath': str(binary / ('ffprobe' + suffix))}
-    profile.parent.mkdir(parents=True, exist_ok=True)
-    body = {'format': 'hypit.runtime-local@1', 'dataRoot': 'apex-runtime-data', 'endpoints': {
-        'media.local': {'use': '@hypit/provider-media-local', 'config': tools},
-        'hyperframes.local': {'use': '@hypit/provider-hyperframes-local', 'config': {**tools, 'chromePath': str(browser)}},
-    }}
-    with profile.open('x', encoding='utf-8') as output:
-        json.dump(body, output, ensure_ascii=False, indent=2)
-    return profile
+def prepare_hypit(workspace: Path, version: str | None = None) -> Path:
+    from apex_overlay.hypit_profile import prepare_profile
+    if version is None:
+        package = ROOT / '.runtime/hypit/node_modules/@hypit/hypit/package.json'
+        version = json.loads(package.read_text(encoding='utf-8'))['version']
+    return prepare_profile(workspace, ROOT, version, ensure_browser)
 
 
 def apply() -> bool:
@@ -139,6 +126,7 @@ def apply() -> bool:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['browser', 'prepare-hypit'])
-    parser.add_argument('--workspace', type=Path, default=Path.cwd())
+    parser.add_argument('--workspace', '--project', type=Path, default=Path.cwd())
+    parser.add_argument('--hypit-version')
     args = parser.parse_args()
-    print(ensure_browser() if args.command == 'browser' else prepare_hypit(args.workspace))
+    print(ensure_browser() if args.command == 'browser' else prepare_hypit(args.workspace, args.hypit_version))
