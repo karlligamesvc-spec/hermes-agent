@@ -40,8 +40,18 @@ node scripts/media-tools/hypit-lifecycle-smoke.mjs RUNTIME_ROOT NEW_WORKSPACE
 
 The lifecycle command writes `proof.json`, `smoke.log`, rendered MP4 and screenshots to a new workspace. It deliberately refuses to overwrite an existing workspace. Local proof roots were `hypit031-apex-compat-mac-arm64-r6` and `hypit031-legacy-acceptance-r4` under the task artifact directory.
 
+## Release preparation follow-up (2026-10-12 Pacific)
+
+- Companion cloud PR1000 now has successful backend and web CI (run38208344840, retried cancelled web job).
+- The immutable npm candidate was prepared: 231 unique versions, 203 package names, 237 original lock entries independently rechecked against npm SRI. Lock SHA256: `3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd`. Preparation is local; COS publication/readback has not run.
+- Mac x64 0.3.1 installed from the verified cache with `npm ci --offline`, then passed the full APEX lifecycle using x64 Node, Python, FFmpeg and managed COS Chrome. Execution was under Rosetta on Apple hardware, not physical Intel acceptance.
+- x64 output: 5s, 720×1280, 150 frames, H.264/AAC, audio RMS 2043.816. Video SHA256: `f4c842e3f53deddd202863e16a9b278903c6ce321b02ce9950784b6f8743b557`.
+- The user explicitly approved production publication and MacBook/RTX4060Ti acceptance. Both canonical devices were resolved. Windows responds via the registered read-only preflight, but the returned candidate metadata belongs to another commit and is not acceptance of this branch.
+- Fork synchronized release dispatch still returns HTTP422 `Actions has been disabled for this repository`, although workflow/repository switches read enabled. Home Fleet still exposes only two fixed APEX preflight suites and explicitly refuses installer execution. No arbitrary remote shell was used to bypass that restriction.
+- User approval is recorded; further approval is not needed. A registered build/install acceptance workflow or restored fork Actions is required to complete the paired release. Local status/proofs reside in the task's `hypit031-release` artifacts.
+
 ## Limits and release gate
 
-This change adapts APEX's managed entry points, not every optional upstream command, SDK or third-party provider. Existing TypeScript components need the official SDK migration if the customer explicitly upgrades them. Studio UI, Windows native and Mac x64 lifecycle are not certified by this run. Do not advertise CLI checks as complete provider/render acceptance.
+This change adapts APEX's managed entry points, not every optional upstream command, SDK or third-party provider. Existing TypeScript components need the official SDK migration if the customer explicitly upgrades them. Studio UI, Windows native, physical Intel hardware and installed-client acceptance are not certified by these runs. Do not advertise CLI checks as complete provider/render acceptance.
 
 Before default activation: mirror/read back the new transitive dependency slice, retain license/source/provenance, run the lifecycle natively on all three targets, and update the desktop lock only against that evidence. No updater feed, default engine, production COS manifest or customer project pin is changed here.
