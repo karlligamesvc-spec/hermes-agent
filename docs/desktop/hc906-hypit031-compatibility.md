@@ -50,6 +50,38 @@ The lifecycle command writes `proof.json`, `smoke.log`, rendered MP4 and screens
 - Fork synchronized release dispatch still returns HTTP422 `Actions has been disabled for this repository`, although workflow/repository switches read enabled. Home Fleet still exposes only two fixed APEX preflight suites and explicitly refuses installer execution. No arbitrary remote shell was used to bypass that restriction.
 - User approval is recorded; further approval is not needed. A registered build/install acceptance workflow or restored fork Actions is required to complete the paired release. Local status/proofs reside in the task's `hypit031-release` artifacts.
 
+## Empty-cache registry consumption (2026-10-12 Pacific)
+
+`scripts/media-tools/registry-install-smoke.mjs` exercises the runtime builder's
+actual `npm install --ignore-scripts --registry … @hypit/hypit@0.3.1` path, using
+a new HOME, empty npm cache and no inherited npm configuration. A loopback-only
+registry serves the prepared mirror's independently SHA256/SRI-checked bytes;
+the temporary response origin is rewritten without modifying mirror files.
+Caller input cannot add commands or serve files outside that inventory.
+
+- Native Mac arm64 and Rosetta x64 both installed successfully and ran the CLI.
+  There were 339 and 338 registry requests respectively. Thirteen missing
+  metadata probes are explicitly declared optional peers (Puppeteer's proxy/zip
+  adapters, optional Vite plugins and optional WebSocket native addons), not
+  missing locked tarballs. Unknown or required-package misses fail the check.
+- Both freshly installed dependency trees then passed the complete APEX wrapper
+  lifecycle, including audio/video rendering, decoding, screenshot, browser
+  interaction and shutdown. Their rendered hashes match the previous arm64/x64
+  outputs recorded above, with non-silent audio.
+- Five registry regression tests plus two project-routing tests passed. Removing
+  independent npm SRI validation or required-dependency precedence each makes
+  exactly one regression fail; both fault injections assert unique anchors and
+  landed bytes before execution.
+- These checks verify prepared-registry consumption, not public COS upload,
+  Windows native execution, physical Intel hardware or installed-app acceptance.
+  The Home Fleet APEX registration remains preflight-only; no configuration,
+  registered guard or service was altered to execute an unregistered build.
+
+```sh
+node --test scripts/media-tools/registry-install-smoke.test.mjs scripts/media-tools/hypit-project.test.mjs
+node scripts/media-tools/registry-install-smoke.mjs PREPARED_MIRROR NEW_WORKSPACE
+```
+
 ## Limits and release gate
 
 This change adapts APEX's managed entry points, not every optional upstream command, SDK or third-party provider. Existing TypeScript components need the official SDK migration if the customer explicitly upgrades them. Studio UI, Windows native, physical Intel hardware and installed-client acceptance are not certified by these runs. Do not advertise CLI checks as complete provider/render acceptance.
