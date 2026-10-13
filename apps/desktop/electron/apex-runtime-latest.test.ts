@@ -389,6 +389,23 @@ test('checkForRuntimeUpdate: authoritative marker read errors cannot claim curre
   assert.equal(requests, 1)
 })
 
+test.each([
+  ['v2026.10.13-fork.aaaaaaaa', 'v2026.10.9-fork.87740e80', false],
+  ['v2026.10.9-fork.aaaaaaaa', 'v2026.10.13-fork.87740e80', true],
+  ['v2026.10.13-fork.aaaaaaaa', 'v2026.10.13-fork.87740e80', true],
+  ['branch-dev', 'v2026.10.13-fork.87740e80', true]
+])('runtime discovery never advertises an older engine while preserving same-day and unknown-version updates: %s -> %s', async (installed, latest, expected) => {
+  const result = await checkForRuntimeUpdate({
+    apiBase: 'https://fixture.invalid',
+    marker: { pinnedCommit: 'a'.repeat(40), version: installed },
+    fetchJson: async () => publishedBody(SHA, latest)
+  })
+
+  assert.equal(result.updateAvailable, expected)
+  assert.equal(result.current.version, installed)
+  assert.equal(result.latest.version, latest)
+})
+
 // ---------------------------------------------------------------------------
 // hc-475 (F4): min_desktop_version shell↔runtime compatibility gate
 // ---------------------------------------------------------------------------

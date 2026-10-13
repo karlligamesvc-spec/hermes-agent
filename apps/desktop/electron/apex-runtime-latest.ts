@@ -340,7 +340,8 @@ async function resolveLatestRuntimePin({
  *
  * "Installed key" is derived the same way install.sh keyed the source: the
  * marker's pinnedCommit when present, else pinnedBranch. A difference in key (or
- * version, when both are known) means an update is offered.
+ * version, when both are known) means an update is offered unless the default
+ * engine has an older release date than the installed runtime.
  *
  * @param {object} opts
  * @param {string} opts.apiBase
@@ -407,6 +408,14 @@ async function checkForRuntimeUpdate({
   // No installed key recorded (older marker) -> we can't compare reliably; do
   // not claim an update (avoid nagging) but expose latest for the UI.
   if (!installedKey) {
+    return { updateAvailable: false, current, latest }
+  }
+
+  // Bundled candidates and pinned installs can be ahead of the public default.
+  // A stale default must not be offered as an upgrade that replaces that runtime.
+  // Equal release dates still compare full source keys below; unknown versions
+  // retain the existing discovery behavior.
+  if (compareSemver(pin.version, installedVersion) === -1) {
     return { updateAvailable: false, current, latest }
   }
 
