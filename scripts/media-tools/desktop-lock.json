@@ -51,72 +51,77 @@
     }
   },
   "hypit": {
-    "version": "0.2.17",
-    "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
-    "bytes": 2756886,
-    "npmIntegrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
+    "version": "0.3.1",
+    "sha256": "5a8297ac6eb22bc2af756820fe2df2f95de4100a240fd23c87b53d0ef9554454",
+    "bytes": 349090,
+    "npmIntegrity": "sha512-FI54GPQRB9uXSTRmCt8fngzWH/YEEasOIuYhwsEh9G2v92L50N/TdcMiLgDT1KfRjt+C1/HXcG28Bai6HMEDQQ==",
     "license": "Hypit modified Apache-2.0; written commercial grant confirmed by owner",
     "node": ">=22.15.0",
     "nativeChecks": {
       "mac-arm64": {
-        "schema": 1,
-        "version": "0.2.17",
-        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
-        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "version": "0.3.1",
         "system": "Darwin",
         "machine": "arm64",
         "checks": [
           "npm-integrity",
           "license-preserved",
-          "npm-install",
-          "cli-version"
+          "public-cos-empty-cache-install",
+          "cli-version",
+          "apex-prepare",
+          "runtime-start",
+          "check-plan-build-get",
+          "full-video-decode",
+          "audio-non-silent",
+          "frame-screenshot-browser-interaction",
+          "runtime-shutdown"
         ],
-        "renderVerified": false,
-        "dependenciesMirrored": false
+        "renderVerified": true,
+        "dependenciesMirrored": true,
+        "execution": "Apple silicon native",
+        "evidence": "docs/desktop/hypit031-cos-acceptance.json"
       },
       "mac-x64": {
-        "schema": 1,
-        "version": "0.2.17",
-        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
-        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "version": "0.3.1",
         "system": "Darwin",
-        "machine": "x86_64",
+        "machine": "x64",
         "checks": [
           "npm-integrity",
           "license-preserved",
-          "npm-install",
-          "cli-version"
+          "public-cos-empty-cache-install",
+          "cli-version",
+          "apex-prepare",
+          "runtime-start",
+          "check-plan-build-get",
+          "full-video-decode",
+          "audio-non-silent",
+          "frame-screenshot-browser-interaction",
+          "runtime-shutdown"
         ],
-        "renderVerified": false,
-        "dependenciesMirrored": false
+        "renderVerified": true,
+        "dependenciesMirrored": true,
+        "execution": "Rosetta on Apple silicon",
+        "evidence": "docs/desktop/hypit031-cos-acceptance.json"
       },
       "win-x64": {
-        "schema": 1,
-        "version": "0.2.17",
-        "integrity": "sha512-iKeYJOJ2EV7cFRXh5jjBW7OTYrfH0IXGLaqd+Jz3EaVM/ytptqPLE5/E3K4leTN/Y3Z5ptP9w4Dit5K0zO/rNw==",
-        "sha256": "6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77",
+        "version": "0.3.1",
         "system": "Windows",
         "machine": "AMD64",
-        "checks": [
-          "npm-integrity",
-          "license-preserved",
-          "npm-install",
-          "cli-version"
-        ],
+        "checks": [],
+        "status": "pending-native-acceptance",
         "renderVerified": false,
-        "dependenciesMirrored": false
+        "dependenciesMirrored": true
       }
     },
-    "dependenciesMirrored": false,
+    "dependenciesMirrored": true,
     "renderVerified": false,
-    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/hypit/0.2.17/6f89a9a8441e5c520041be80bd3573209dc6aba915ea07f7c4622134fd1b2c77/hypit-0.2.17.tgz"
+    "url": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd/tarballs/5a8297ac6eb22bc2af756820fe2df2f95de4100a240fd23c87b53d0ef9554454.tgz"
   },
   "npm": {
-    "prefix": "media-tools/npm/25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
-    "registry": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
-    "lockSha256": "25c7f0ed9376ed382f12629e5a6a6b167cc87f14f0aae7468012d166485ddf31",
-    "versions": 269,
-    "packages": 202
+    "prefix": "media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "registry": "https://apexnodes-runtime-202606250443-1300912302.cos.ap-guangzhou.myqcloud.com/media-tools/npm/3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "lockSha256": "3e2755518ddb4448e9303383fb0d969d52a20e9694e5f102e4343f291dd90bdd",
+    "versions": 231,
+    "packages": 203
   },
   "browser": {
     "mac-arm64": {
