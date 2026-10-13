@@ -98,6 +98,8 @@ The runtime pin is unchanged by this Electron-only correction. Desktop App/DMG/Z
 
 Smoke boundary: `npx vitest run --project electron electron/apex-runtime-latest.test.ts electron/runtime-update-apply.test.ts electron/runtime-version.test.ts electron/packaged-runtime.test.ts` protects older-default discovery, same-day updates, authoritative marker rereads and apply/compatibility behavior. It does not certify Windows installation, Apple signing/notarization, customer-account login or native rendering; those require actual produced artifacts.
 
+Final package architecture inspection also found host arm64 node-pty files under the x64 App's extraResources fallback, even though the dist fallback was correctly staged as x64. The target staging owner now replaces both exits from the same validated package. A fixture switches arm64 to x64 and asserts both copied bytes and removal of the old architecture. Removing only the resource mirror in an isolated source copy (unique anchor and landed-byte assertions) leaves dist correct but makes the resource assertion fail. Native staging/before/after-pack tests pass 46 checks, and release gates pass. Both App packages must be rebuilt after this packaging correction; earlier x64 artifacts are not release-ready despite Apple acceptance.
+
 ## Actual COS publication and consumption (2026-10-13 Pacific)
 
 The dependency candidate is now published to the immutable registry recorded in
