@@ -15,7 +15,7 @@ The APEX 0.2 wrapper sent `--workspace` and generated legacy local provider name
 | Existing profiles | Preserve explicit `.hypit/runtime` selection and existing APEX profile. Old endpoints cannot silently use a new bundled runtime. |
 | npm project pin | Reject installed-vs-lock mismatch or missing locked environment; do not install or alter locks. Yarn/pnpm locks are not parsed; installed project-local executable is honored, no lock is rewritten. |
 | Candidate dependency source | 0.3.1 exact npm source/SRI and transitive package lock; no direct HyperFrames dependency is needed by the new HTML renderer. |
-| Desktop release consumer | **Unchanged** verified `desktop-lock.json` 0.2.17/COS slice. Candidate lock is not a production activation. |
+| Desktop release consumer | Candidate `desktop-lock.json` consumes the verified 0.3.1 COS slice, with Windows native acceptance explicitly pending and overall renderVerified=false. Production activation is separate. |
 | Skills (companion cloud PR) | One version dispatcher; full original old and 0.3.1 guides/references remain available with pinned provenance and licenses. |
 
 ## Validation
@@ -86,7 +86,17 @@ node scripts/media-tools/registry-install-smoke.mjs PREPARED_MIRROR NEW_WORKSPAC
 
 This change adapts APEX's managed entry points, not every optional upstream command, SDK or third-party provider. Existing TypeScript components need the official SDK migration if the customer explicitly upgrades them. Studio UI, Windows native, physical Intel hardware and installed-client acceptance are not certified by these runs. Do not advertise CLI checks as complete provider/render acceptance.
 
-Before default activation: retain license/source/provenance, finish Windows native lifecycle and paired installer/installed-client validation, and update the desktop lock only against that evidence. No updater feed, default engine, production default media manifest or customer project pin is changed here.
+Before default activation: retain license/source/provenance, finish Windows native lifecycle and paired installer/installed-client validation, and promote the candidate lock only against that evidence. No updater feed, default engine, production default media manifest or customer project pin is changed here.
+
+## Local Desktop 0.17.57 build candidate
+
+Owner authorized local MacBook builds as an alternative to waiting for the Mac Studio build environment. Both signed native runtime archives at `f043a490e0f8895425a20a69063cf56b2d7247d2` passed Apple notarization with zero issues, architecture/signature checks, offline backend boot, relocation, fresh/legacy install, data-preserving reopen and injected rollback. Both actual archived runtimes produced the same verified five-second H.264/AAC clip and browser interaction output as the earlier COS proofs. x64 runs under Rosetta, not physical Intel hardware.
+
+Actual packaged App startup exposed a separate updater regression: a bundled `v2026.10.13` runtime offered the older public default `v2026.10.9` because discovery treated any changed source/version as an upgrade. The central discovery consumer now rejects a numerically older engine before compatibility prompts, while retaining same-day source updates and unknown-version behavior. Its new behavior test fails on the unfixed code; 94 relevant discovery/apply/runtime tests pass after the fix. Initial App builds from the earlier producer are superseded and cannot be released.
+
+The runtime pin is unchanged by this Electron-only correction. Desktop App/DMG/ZIP must be rebuilt from the corrected producer and pass final App notarization, signature, packaged GUI startup/reopen and artifact readback gates. Windows native and server skill deployment remain required before paired public publication.
+
+Smoke boundary: `npx vitest run --project electron electron/apex-runtime-latest.test.ts electron/runtime-update-apply.test.ts electron/runtime-version.test.ts electron/packaged-runtime.test.ts` protects older-default discovery, same-day updates, authoritative marker rereads and apply/compatibility behavior. It does not certify Windows installation, Apple signing/notarization, customer-account login or native rendering; those require actual produced artifacts.
 
 ## Actual COS publication and consumption (2026-10-13 Pacific)
 
