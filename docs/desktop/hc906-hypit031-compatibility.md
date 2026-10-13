@@ -86,4 +86,35 @@ node scripts/media-tools/registry-install-smoke.mjs PREPARED_MIRROR NEW_WORKSPAC
 
 This change adapts APEX's managed entry points, not every optional upstream command, SDK or third-party provider. Existing TypeScript components need the official SDK migration if the customer explicitly upgrades them. Studio UI, Windows native, physical Intel hardware and installed-client acceptance are not certified by these runs. Do not advertise CLI checks as complete provider/render acceptance.
 
-Before default activation: mirror/read back the new transitive dependency slice, retain license/source/provenance, run the lifecycle natively on all three targets, and update the desktop lock only against that evidence. No updater feed, default engine, production COS manifest or customer project pin is changed here.
+Before default activation: retain license/source/provenance, finish Windows native lifecycle and paired installer/installed-client validation, and update the desktop lock only against that evidence. No updater feed, default engine, production default media manifest or customer project pin is changed here.
+
+## Actual COS publication and consumption (2026-10-13 Pacific)
+
+The dependency candidate is now published to the immutable registry recorded in
+`hypit031-cos-acceptance.json`: 231 package versions across 203 names, 435 objects.
+Every object was anonymously read back in full and SHA256-checked after upload.
+The publisher is the unchanged reviewed script, SHA256
+`28dddcac27f14f76b4f4721aee38c9e6b3d718e6e442bb26aa2821d7e6e70b75`.
+The existing default `media-tools/stable.json` remained byte-identical.
+
+Mac arm64 and Rosetta x64 then installed 0.3.1 using that real public COS registry,
+new HOME and empty npm caches. All 205 generated lock entries per target match
+the fixed source version/SRI and resolve exclusively to the immutable COS slice.
+Both COS-installed trees passed the complete wrapper lifecycle, including
+non-silent audio/video rendering, full decode, frame extraction, screenshot,
+browser interaction and shutdown. Their hashes match the prior outputs above.
+This extends the earlier loopback-only proof; it does not convert it into a
+Windows, physical Intel or installed-client claim.
+
+Companion cloud PR1000 is merged as
+`7dc1284c9a4d1ed19e32b27bbf2a9dee7598ade9`. The merged skill/contract/test files
+match the validated source branch. Production deployment/resync has not run.
+Fork PR389 remains a candidate. Current source still has Desktop0.17.56 and the
+previous runtime pin, so it cannot be published as a new installer unchanged.
+
+The full remaining sequence and structured receipts are retained under the
+task artifact root in `RELEASE-TRACKING.md` and `release-status.json`. User release
+authorization remains valid. Home Fleet exposes no registration/deployment
+operation for APEX native build/install; enablement requires the control-plane
+owner, and cannot be replaced by arbitrary SSH, repurposed tests or a new generic
+remote executor.
