@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
+import hermes_yaml as yaml
 
 from tests.tools.conftest import register_all_web_providers
 
@@ -261,7 +261,7 @@ class TestWebToolPolicy:
             pytest.fail(f"unexpected URL checked: {url}")
 
         class FakeFirecrawlClient:
-            def scrape(self, url, formats):
+            def scrape(self, url, formats, **_kwargs):
                 return {
                     "markdown": "secret content",
                     "metadata": {
@@ -273,7 +273,7 @@ class TestWebToolPolicy:
         # After the web-provider migration, the per-URL gate + firecrawl client
         # live in the plugin. Patch both at the plugin location.
         monkeypatch.setattr(firecrawl_provider, "check_website_access", fake_check)
-        monkeypatch.setattr(firecrawl_provider, "_get_firecrawl_client", lambda: FakeFirecrawlClient())
+        monkeypatch.setattr(firecrawl_provider, "_get_firecrawl_client", lambda *_a, **_k: FakeFirecrawlClient())
         monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
 
@@ -486,14 +486,14 @@ class TestWebExtractCentralPolicyGate:
         scraped = []
 
         class FakeFirecrawlClient:
-            def scrape(self, url, formats):
+            def scrape(self, url, formats, **_kwargs):
                 scraped.append(url)
                 return {
                     "markdown": "allowed content",
                     "metadata": {"title": "Allowed", "sourceURL": url},
                 }
 
-        monkeypatch.setattr(firecrawl_provider, "_get_firecrawl_client", lambda: FakeFirecrawlClient())
+        monkeypatch.setattr(firecrawl_provider, "_get_firecrawl_client", lambda *_a, **_k: FakeFirecrawlClient())
         monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False)
         monkeypatch.setenv("FIRECRAWL_API_KEY", "fake-key")
 

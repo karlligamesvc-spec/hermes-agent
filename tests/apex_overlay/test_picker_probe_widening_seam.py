@@ -271,7 +271,7 @@ def test_wrapper_never_raises_into_the_host_path():
 
 
 def test_wrapper_is_marked_for_idempotence():
-    wrapped = picker_probe_widening._wrap_list_authenticated_providers(lambda: [])
+    wrapped = picker_probe_widening._wrap_list_authenticated_providers(list)
     assert getattr(wrapped, picker_probe_widening._MARK) is True
 
 

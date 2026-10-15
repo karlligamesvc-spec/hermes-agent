@@ -48,7 +48,7 @@ _RESPONSE_LANGUAGE_ALIASES = {
 }
 
 #: Built-in personalities, available on every surface without any config.
-BUILTIN_PERSONALITIES: Dict[str, str] = {
+BUILTIN_PERSONALITIES: dict[str, str] = {
     "helpful": "You are a helpful, friendly AI assistant.",
     "concise": "You are a concise assistant. Keep responses brief and to the point.",
     "technical": "You are a technical expert. Provide detailed, accurate technical information.",
@@ -66,7 +66,7 @@ BUILTIN_PERSONALITIES: Dict[str, str] = {
 }
 
 
-def _get(cfg: Optional[Dict[str, Any]], *keys: str, default: Any = None) -> Any:
+def _get(cfg: Optional[dict[str, Any]], *keys: str, default: Any = None) -> Any:
     """Nested dict lookup tolerant of None/non-dict intermediate nodes."""
     node: Any = cfg
     for key in keys:
@@ -115,10 +115,10 @@ def normalize_personality_name(value: Any) -> str:
     return "" if name in NEUTRAL_PERSONALITY_NAMES else name
 
 
-def available_personalities(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def available_personalities(cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Built-ins overlaid by the user's personalities: root ``personalities`` then
     ``agent.personalities`` (later wins). Root entries were silently ignored (#9636)."""
-    merged: Dict[str, Any] = dict(BUILTIN_PERSONALITIES)
+    merged: dict[str, Any] = dict(BUILTIN_PERSONALITIES)
     for user in (_get(cfg, "personalities", default={}), _get(cfg, "agent", "personalities", default={})):
         if not isinstance(user, dict):
             continue
@@ -129,7 +129,7 @@ def available_personalities(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, A
     return merged
 
 
-def resolve_personality(value: Any, cfg: Optional[Dict[str, Any]] = None) -> Tuple[str, str]:
+def resolve_personality(value: Any, cfg: Optional[dict[str, Any]] = None) -> tuple[str, str]:
     """Resolve a requested personality to ``(canonical_name, prompt_text)``."""
     name = normalize_personality_name(value)
     if not name:
@@ -141,13 +141,13 @@ def resolve_personality(value: Any, cfg: Optional[Dict[str, Any]] = None) -> Tup
     return name, render_personality_prompt(personalities[name])
 
 
-def active_personality_name(cfg: Optional[Dict[str, Any]]) -> str:
+def active_personality_name(cfg: Optional[dict[str, Any]]) -> str:
     """The currently selected personality name ('' when none is active)."""
     name = normalize_personality_name(_get(cfg, "display", "personality", default=""))
     return name if name and name in available_personalities(cfg) else ""
 
 
-def _resolve_response_language_prompt(cfg: Optional[Dict[str, Any]]) -> str:
+def _resolve_response_language_prompt(cfg: Optional[dict[str, Any]]) -> str:
     """Return the bounded language contract for model-authored UI text."""
     configured = str(_get(cfg, "agent", "response_language", default="auto") or "auto").strip().lower()
     if configured in {"", "auto", "user", "match-user", "match_user"}:
@@ -172,13 +172,9 @@ def _resolve_response_language_prompt(cfg: Optional[Dict[str, Any]]) -> str:
     )
 
 
-def resolve_ephemeral_system_prompt(cfg: Optional[Dict[str, Any]]) -> str:
-    """Resolve the personality/manual overlay plus the response-language contract.
-
-    ``display.personality`` wins over the user-owned ``agent.system_prompt``.
-    ``agent.response_language`` is independent and may follow the display
-    language. Callers still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT``.
-    """
+def resolve_ephemeral_system_prompt(cfg: Optional[dict[str, Any]]) -> str:
+    """Session overlay: ``display.personality`` when it names a known personality, else the
+    user-owned ``agent.system_prompt``. Callers still prefer ``HERMES_EPHEMERAL_SYSTEM_PROMPT``."""
     name = active_personality_name(cfg)
     personality_prompt = (
         render_personality_prompt(available_personalities(cfg)[name])
@@ -200,7 +196,8 @@ def persist_personality(value: Any) -> bool:
         from utils import atomic_roundtrip_yaml_update
 
         config_path = get_hermes_home() / "config.yaml"
-        config_path.parent.mkdir(parents=True, exist_ok=True)
+        from hermes_constants import mkdir_under_hermes_home
+        mkdir_under_hermes_home(config_path.parent)
         atomic_roundtrip_yaml_update(config_path, "display.personality", name)
         try:
             os.chmod(config_path, 0o600)

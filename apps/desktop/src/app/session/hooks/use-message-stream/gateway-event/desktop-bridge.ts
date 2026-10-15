@@ -1,6 +1,6 @@
 import { writeAgentTerminalChunk } from '@/app/right-sidebar/terminal/agent-terminal-stream'
 import { closeAgentTerminalByProc } from '@/app/right-sidebar/terminal/terminals'
-import { applyDesktopLayoutPreset, revealDesktopPane } from '@/store/pane-focus'
+import { revealDesktopPane } from '@/store/pane-focus'
 import { recordAgentReaction } from '@/store/reactions-local'
 import { setMessages } from '@/store/session'
 import { $tipsEnabled, type ActiveTip, showTip } from '@/store/tips'
@@ -61,18 +61,6 @@ export function handleDesktopBridgeEvent(ctx: GatewayEventContext): boolean {
     // offer, don't hijack).
     if (isActiveEvent) {
       revealDesktopPane(payload?.pane ?? '')
-    }
-
-    return true
-  }
-
-  if (event.type === 'layout.apply') {
-    // Agent applied a layout preset via the desktop-gated apply_layout
-    // tool. Same contract as pane.reveal: active session only, and the
-    // preset resolves against the SAME layouts registry the picker reads,
-    // so core, plugin, and user presets are all addressable.
-    if (isActiveEvent) {
-      applyDesktopLayoutPreset(typeof payload?.preset === 'string' ? payload.preset : '')
     }
 
     return true

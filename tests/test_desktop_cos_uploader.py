@@ -70,7 +70,7 @@ class CosS3Client:
     env = {**os.environ, 'PYTHONPATH': str(tmp_path),
            'COS_SECRET_ID': 'fixture-identity', 'COS_SECRET_KEY': 'credential-redline-test-value'}
     result = subprocess.run([sys.executable, str(SCRIPT), '--file', str(local), '--key',
-                             'desktop/win-x64/' + local.name], env=env, capture_output=True, text=True)
+                             'desktop/win-x64/' + local.name], env=env, capture_output=True, text=True, check=False)
     assert result.returncode == 1
     assert 'RuntimeError' in result.stderr
     assert 'credential-redline-test-value' not in result.stdout + result.stderr

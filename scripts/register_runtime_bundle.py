@@ -80,7 +80,7 @@ def _http_post_json(url, body, token, timeout=30):
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
-    except Exception as e:  # noqa: BLE001 — surface as a non-2xx for the caller
+    except Exception as e:
         return 0, str(e)
 
 

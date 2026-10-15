@@ -291,7 +291,7 @@ const DESKTOP_COMMAND_SPECS: readonly DesktopCommandSpec[] = [
  * the JSON drifts from either side, so the Python registry stays the single
  * place a command's desktop disposition is authored.
  */
-const REGISTRY_DESKTOP_SURFACE: Readonly<Record<string, string>> = desktopSlashRegistry
+const REGISTRY_DESKTOP_SURFACE: Readonly<Record<string, null | string>> = desktopSlashRegistry
 
 /**
  * Commands the Python registry has never heard of, so they cannot ride the
@@ -314,9 +314,18 @@ const LOCAL_SPEC_NAMES = new Set(DESKTOP_COMMAND_SPECS.flatMap(spec => [spec.nam
 /** Registry rows with a real unavailability reason. `hidden` (e.g. `/model`) is
  *  a popover flag on an executable command and is read from the live catalog
  *  by `specFromCatalog`; a local spec always wins over the dump. */
+/**
+ * ApexNodes hc-911: v0.22 offers `/skills` and `/reasoning` through its own Desktop UI, which
+ * the APEX Desktop does not carry yet; keep pointing them at the sidebar / advanced settings.
+ */
+const APEX_REGISTRY_SURFACE_OVERRIDES: Readonly<Record<string, DesktopUnavailableReason>> = {
+  '/reasoning': 'advanced',
+  '/skills': 'settings'
+}
+
 function registryUnavailableSpecs(): DesktopCommandSpec[] {
   return Object.entries(REGISTRY_DESKTOP_SURFACE).flatMap(([name, value]) => {
-    const reason = asUnavailableReason(value)
+    const reason = APEX_REGISTRY_SURFACE_OVERRIDES[name] ?? asUnavailableReason(value)
 
     return reason && !LOCAL_SPEC_NAMES.has(name) ? [{ name, surface: unavailable(reason) }] : []
   })

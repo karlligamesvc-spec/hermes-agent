@@ -68,7 +68,7 @@ class _MediaHandler(BaseHTTPRequestHandler):
             pass  # protocol-validation tests may reject headers before reading the body
         self.close_connection = True
 
-    def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_GET(self):
         count = self._count()
         range_header = self.headers.get("Range")
         if self.path == "/forbidden":

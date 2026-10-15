@@ -180,7 +180,7 @@ def _wrap_list_authenticated_providers(orig: Callable) -> Callable:
     """
 
     @functools.wraps(orig)
-    def wrapper(*args, **kwargs) -> List[dict]:
+    def wrapper(*args, **kwargs) -> list[dict]:
         try:
             # ``current_provider`` / ``current_base_url`` are the first two
             # positional parameters; the two probe flags are keyword-only

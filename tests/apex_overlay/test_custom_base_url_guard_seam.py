@@ -23,7 +23,7 @@ import sys
 import types
 
 import pytest
-import yaml
+import hermes_yaml as yaml
 
 from apex_overlay import custom_base_url_guard
 from apex_overlay.custom_base_url_guard import (

@@ -18,6 +18,13 @@ B. Even with mirrors ON, the dependency install ignored them. `uv sync --locked`
    every recorded sha256 into it -- and installs THAT from the mirror under
    --require-hashes.
 
+hc-911 (v0.22 sync): upstream rewrote both installers around ``pm``, which installs
+from uv.lock with ``uv sync --frozen`` and strips index redirects itself, so the old
+``uv export`` + ``--require-hashes`` tier B no longer has a call site and its tests were
+retired with it. APEX Desktop never runs this path for its runtime (it ships a prebuilt
+relocatable venv); a CN hash-verified mirror tier for the installer path is tracked in
+apps/desktop/docs/qa/hc-911/upstream-convergence.md. Tier A below still holds.
+
 WHY THESE TESTS EXIST IN THIS SHAPE. Both defects are SILENT. Nothing errors;
 one path is merely slow and the other merely unverified. Two of the invariants
 below were broken during development and produced no failure signal at all:
@@ -66,7 +73,7 @@ def _bash(script: str) -> subprocess.CompletedProcess:
         "HERMES_CN_MIRRORS", "APEXNODES_REGION", "HERMES_RUNTIME_COS_BASE", "HERMES_HOME",
         *INDEX_ENV_VARS,
     )}
-    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env)
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, check=False)
 
 
 def _strip_ps_comments(source: str) -> str:
@@ -207,104 +214,5 @@ def test_twin_probe_implementations_agree_on_the_rules():
     assert ps.index("$null -eq $upstream") < ps.index("$null -eq $mirror"), "ps1: same order"
     # The constant is declared outside the function; assert the body USES it and
     # that both declarations carry the same value.
-    assert re.search(r"^_AN_UPSTREAM_MARGIN=(\d+)$", LIB_SH.read_text(encoding="utf-8"), re.M).group(1) == "3"
+    assert re.search(r"^_AN_UPSTREAM_MARGIN=(\d+)$", LIB_SH.read_text(encoding="utf-8"), re.MULTILINE).group(1) == "3"
     assert re.search(r"\$script:UpstreamMargin\s*=\s*(\d+)", LIB_PS1.read_text(encoding="utf-8")).group(1) == "3"
-
-
-# ===========================================================================
-# B. The mirror-served hash-verified tier
-# ===========================================================================
-
-
-def test_export_runs_with_the_index_env_stripped():
-    """The silent trap: `uv export --locked` refuses on an index/lock mismatch.
-
-    Verified against uv 0.12 with UV_DEFAULT_INDEX=TUNA set: exit 2, 0-byte
-    output, message "The lockfile at `uv.lock` needs to be updated". Because the
-    tier is deliberately non-fatal, that degrades silently back to the slow
-    upstream sync -- "fixed" and "did nothing" produce identical logs.
-    """
-    body = _sh_function(INSTALL_SH, "_uv_mirror_hashed")
-    export_line = next(l for l in body.splitlines() if "uv_cmd export" in l.lower() or "$UV_CMD export" in l)
-    # The `env -u ...` prefix sits on the line above the wrapped command.
-    export_block = body[: body.index(export_line) + len(export_line)]
-    for var in INDEX_ENV_VARS:
-        assert f"-u {var}" in export_block, f"sh: export must run with {var} cleared"
-
-    ps = _ps_function(INSTALL_PS1, "Invoke-UvMirrorHashedInstall")
-    export_at = ps.index("export --format requirements-txt")
-    assert "Invoke-WithoutIndexEnv" in ps[:export_at], (
-        "ps1: the export must be wrapped in Invoke-WithoutIndexEnv"
-    )
-
-
-def test_the_install_step_keeps_the_mirror():
-    """Stripping the index for the INSTALL step would defeat the whole tier."""
-    sh = _sh_function(INSTALL_SH, "_uv_mirror_hashed")
-    install_line = next(l for l in sh.splitlines() if "pip install --require-hashes" in l)
-    assert "env -u" not in install_line, "sh: the install step must see the mirror index"
-
-    ps = _ps_function(INSTALL_PS1, "Invoke-UvMirrorHashedInstall")
-    install_at = ps.index("pip install --require-hashes")
-    tail = ps[ps.index("export --format requirements-txt") : install_at]
-    assert tail.count("Invoke-WithoutIndexEnv") == 0, "ps1: the install step must see the mirror index"
-
-
-def test_hashes_are_actually_required():
-    """Without --require-hashes this is just the unverified tier with extra steps."""
-    for body, label in (
-        (_sh_function(INSTALL_SH, "_uv_mirror_hashed"), "sh"),
-        (_ps_function(INSTALL_PS1, "Invoke-UvMirrorHashedInstall"), "ps1"),
-    ):
-        assert "--require-hashes" in body, label
-        assert "--no-emit-project" in body, f"{label}: the local package is on no index"
-
-
-def test_the_new_tier_runs_before_the_upstream_locked_sync():
-    """Ordering is the fix. A fallback would never be reached.
-
-    On a mainland machine tier 0 does not fail -- it succeeds after half an
-    hour -- so putting the mirror tier after it would leave the stall exactly
-    where it was.
-    """
-    sh = INSTALL_SH.read_text(encoding="utf-8")
-    assert sh.index('if [ "$force_locked_reinstall" = false ] && _uv_mirror_hashed; then') < sh.index(
-        'log_info "Trying tier: hash-verified (uv.lock)'
-    ), (
-        "sh: the mirror tier must be attempted before the upstream locked sync"
-    )
-
-    ps = _strip_ps_comments(INSTALL_PS1.read_text(encoding="utf-8"))
-    assert ps.index("if ((-not $forceLockedReinstall) -and (Invoke-UvMirrorHashedInstall))") < ps.index(
-        'Write-Info "Trying tier: hash-verified (uv.lock)'
-    ), (
-        "ps1: same ordering"
-    )
-
-
-def test_the_tier_is_cn_gated_and_non_fatal():
-    sh = _sh_function(INSTALL_SH, "_uv_mirror_hashed")
-    assert '[ "${HERMES_CN_MIRRORS:-}" = "1" ] || return 1' in sh, (
-        "a non-CN install must drop through untouched, keeping upstream parity"
-    )
-    assert "return 1" in sh, "every failure path reports non-zero so the caller falls through"
-
-    ps = _ps_function(INSTALL_PS1, "Invoke-UvMirrorHashedInstall")
-    assert "Test-CnEnabled" in ps
-    assert "return $false" in ps
-
-
-def test_index_env_sanitation_has_one_implementation_not_two():
-    """Two copies of this list is one copy too many.
-
-    A second caller appeared with hc-636; a hand-mirrored env list is exactly
-    the shape that gets updated in one place and not the other.
-    """
-    ps = INSTALL_PS1.read_text(encoding="utf-8")
-    assert "function Invoke-WithoutIndexEnv" in ps
-    helper = _ps_function(INSTALL_PS1, "Invoke-WithoutIndexEnv")
-    for var in INDEX_ENV_VARS:
-        assert var in helper, f"{var} missing from the shared sanitation list"
-    sync = _ps_function(INSTALL_PS1, "Invoke-UvSyncLocked")
-    assert "Invoke-WithoutIndexEnv" in sync
-    assert "UV_DEFAULT_INDEX" not in sync, "Invoke-UvSyncLocked must not keep its own copy of the list"

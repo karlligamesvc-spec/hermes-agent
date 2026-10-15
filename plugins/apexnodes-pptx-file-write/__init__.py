@@ -53,7 +53,7 @@ def _document_cache_dir() -> Path:
         from hermes_constants import get_hermes_home
 
         home = str(get_hermes_home())
-    except Exception:  # noqa: BLE001
+    except Exception:
         home = os.getenv("HERMES_HOME") or str(Path.home() / ".hermes")
     cache_dir = Path(home) / "cache" / "documents"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -185,7 +185,7 @@ def _handle_pptx_file_write(args: dict, **_kwargs) -> str:
         render_slides_to_pptx(slides, title, dest)
     except ImportError:
         return tool_error("python-pptx is not installed in this runtime image")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return tool_error(f"Failed to render the PowerPoint file: {exc}")
 
     path = str(dest)

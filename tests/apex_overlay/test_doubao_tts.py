@@ -65,7 +65,7 @@ def test_foreign_profile_never_borrows_default_key(monkeypatch, tmp_path):
     monkeypatch.setattr(hermes_constants, 'get_hermes_home', lambda: current)
     monkeypatch.setattr(hermes_constants, 'get_process_hermes_home', lambda: tmp_path / 'default')
     monkeypatch.setattr(env_loader, 'hydrate_profile_secret_sources', lambda home: {})
-    monkeypatch.setattr(config, 'load_config', lambda: {})
+    monkeypatch.setattr(config, 'load_config', dict)
     monkeypatch.setenv('TOOLS_GATEWAY_KEY', 'default-owner-key')
     monkeypatch.setenv('HERMES_PLATFORM_API_BASE', 'http://private-host')
     assert adapter.connection() == ('', adapter.PUBLIC_BASE)
@@ -113,7 +113,7 @@ server.shutdown()
 '''
     env = {**os.environ, 'HERMES_HOME': str(tmp_path / 'profile'), 'TOOLS_GATEWAY_KEY': 'only-this-profile'}
     result = subprocess.run([sys.executable, '-c', script], env=env,
-                            cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=35)
+                            cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=35, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
 
 

@@ -45,14 +45,14 @@ monkey-patch + seam-test).
 from __future__ import annotations
 
 __all__ = [
-    "provider_filter",
-    "model_catalog_dedupe",
-    "picker_probe_widening",
     "custom_base_url_guard",
     "custom_row_dedupe",
-    "models_dev_fast",
-    "region",
-    "gateway_bootstrap",
     "feishu_supervisor",
+    "gateway_bootstrap",
     "im_passthrough",
+    "model_catalog_dedupe",
+    "models_dev_fast",
+    "picker_probe_widening",
+    "provider_filter",
+    "region",
 ]

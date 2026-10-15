@@ -31,7 +31,7 @@ from apex_overlay import web_tools_extract
 # ---------------------------------------------------------------------------
 
 def test_seam_targets_exist_in_web_tools():
-    import tools.web_tools as web_tools
+    from tools import web_tools
 
     get_backend = getattr(web_tools, web_tools_extract._TARGET_EXTRACT_BACKEND_FN, None)
     assert get_backend is not None, (
@@ -58,7 +58,7 @@ def test_seam_target_web_extract_registered():
     from tools.registry import registry
 
     # web_tools import registers the tool; force it.
-    import tools.web_tools  # noqa: F401
+    import tools.web_tools
 
     entry = registry._tools.get(web_tools_extract._TOOL_NAME)
     assert entry is not None, (
@@ -90,7 +90,7 @@ def test_apply_swaps_check_fn_and_is_idempotent():
 
 def test_gate_false_for_search_only_backend(monkeypatch):
     """ddgs (search-only) → gate returns False, so web_extract is hidden."""
-    import tools.web_tools as web_tools
+    from tools import web_tools
 
     monkeypatch.setattr(web_tools, "_get_extract_backend", lambda: "ddgs")
     # even if ddgs is 'available', it's not extract-capable → False
@@ -100,7 +100,7 @@ def test_gate_false_for_search_only_backend(monkeypatch):
 
 def test_gate_true_for_extract_capable_available_backend(monkeypatch):
     """exa (extract-capable) + available → gate returns True."""
-    import tools.web_tools as web_tools
+    from tools import web_tools
 
     monkeypatch.setattr(web_tools, "_get_extract_backend", lambda: "exa")
     monkeypatch.setattr(web_tools, "_is_backend_available", lambda b: b == "exa")
@@ -109,7 +109,7 @@ def test_gate_true_for_extract_capable_available_backend(monkeypatch):
 
 def test_gate_false_for_extract_capable_but_unavailable_backend(monkeypatch):
     """firecrawl configured but unavailable → False (don't advertise a dead tool)."""
-    import tools.web_tools as web_tools
+    from tools import web_tools
 
     monkeypatch.setattr(web_tools, "_get_extract_backend", lambda: "firecrawl")
     monkeypatch.setattr(web_tools, "_is_backend_available", lambda b: False)
@@ -118,7 +118,7 @@ def test_gate_false_for_extract_capable_but_unavailable_backend(monkeypatch):
 
 def test_gate_fails_closed_on_error(monkeypatch):
     """Any probe error resolves to False (hide the tool) rather than raising."""
-    import tools.web_tools as web_tools
+    from tools import web_tools
 
     def _boom():
         raise RuntimeError("config blew up")
@@ -130,7 +130,7 @@ def test_gate_fails_closed_on_error(monkeypatch):
 def test_web_search_check_fn_untouched():
     """web_search must keep its own (broad) check_fn — only web_extract is gated."""
     from tools.registry import registry
-    import tools.web_tools as web_tools
+    from tools import web_tools
 
     web_tools_extract._APPLIED = False
     web_tools_extract.apply()

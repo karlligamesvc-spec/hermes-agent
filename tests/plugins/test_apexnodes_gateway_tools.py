@@ -210,7 +210,7 @@ def _parse(result: str) -> dict:
 
 class TestDesktopSmokeRegistration:
     def _write_enabled_config(self, hermes_home: Path):
-        import yaml
+        import hermes_yaml as yaml
 
         (hermes_home / "config.yaml").write_text(
             yaml.safe_dump({"plugins": {"enabled": list(PLUGIN_NAMES)}}),
@@ -1081,7 +1081,7 @@ class TestGatewayDisabledFallback:
 
 class TestDesktopManagedKeyResolution:
     def test_key_and_base_resolve_from_managed_custom_provider(self, _hermes_home):
-        import yaml
+        import hermes_yaml as yaml
 
         (Path(_hermes_home) / "config.yaml").write_text(
             yaml.safe_dump(

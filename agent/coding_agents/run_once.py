@@ -111,9 +111,7 @@ def reduce_events(events: Iterable[Any], *, family: str) -> dict[str, Any]:
 
     output = "\n".join(part for part in output_parts if part)
 
-    if permission_required:
-        status = "failed"
-    elif error_text and not output:
+    if permission_required or error_text and not output:
         status = "failed"
     else:
         status = "done"

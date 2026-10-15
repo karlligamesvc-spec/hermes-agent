@@ -50,7 +50,7 @@ class TestSecureDirMode:
         d = tmp_path / "home"
         d.mkdir()
         d.chmod(0o755)  # start loose to prove _secure_dir tightens it
-        with patch.object(cfg, "is_managed", return_value=False):
+        with patch("hermes_constants.get_managed_system", return_value=None):
             cfg._secure_dir(d)
         assert _mode(d) == 0o700
 
@@ -60,7 +60,7 @@ class TestSecureDirMode:
 
         d = tmp_path / "home"
         d.mkdir()
-        with patch.object(cfg, "is_managed", return_value=False):
+        with patch("hermes_constants.get_managed_system", return_value=None):
             cfg._secure_dir(d)
         assert _mode(d) == 0o770
 
@@ -70,7 +70,7 @@ class TestSecureDirMode:
 
         d = tmp_path / "home"
         d.mkdir()
-        with patch.object(cfg, "is_managed", return_value=False):
+        with patch("hermes_constants.get_managed_system", return_value=None):
             cfg._secure_dir(d)
         assert _mode(d) == 0o701
 
@@ -81,7 +81,7 @@ class TestSecureDirMode:
 
         d = tmp_path / "home"
         d.mkdir()
-        with patch.object(cfg, "is_managed", return_value=False):
+        with patch("hermes_constants.get_managed_system", return_value=None):
             cfg._secure_dir(d)
         assert _mode(d) == 0o770
 
@@ -92,7 +92,7 @@ class TestSecureDirMode:
         d = tmp_path / "home"
         d.mkdir()
         d.chmod(0o755)
-        with patch.object(cfg, "is_managed", return_value=False):
+        with patch("hermes_constants.get_managed_system", return_value=None):
             cfg._secure_dir(d)
         assert _mode(d) == 0o700
 
@@ -105,7 +105,10 @@ class TestSecureDirMode:
         d = tmp_path / "home"
         d.mkdir()
         d.chmod(0o750)
-        with patch.object(cfg, "is_managed", return_value=True):
+        # hc-911: v0.22 reads managed mode through hermes_constants.get_managed_system.
+        import hermes_constants
+
+        with patch.object(hermes_constants, "get_managed_system", return_value="nixos"):
             cfg._secure_dir(d)
         assert _mode(d) == 0o750  # untouched
 
@@ -122,7 +125,7 @@ class TestEnsureHermesHomeMode:
 
         # Isolate from host managed-mode detection (~/.hermes/.managed or a
         # HERMES_MANAGED shell export) so the mode contract is deterministic.
-        with patch.object(cfg, "is_managed", return_value=False):
+        with patch("hermes_constants.get_managed_system", return_value=None):
             cfg.ensure_hermes_home()
 
     def test_knob_opens_group_access_on_home_memories_skills(self, tmp_path, monkeypatch):

@@ -234,6 +234,23 @@ function Set-ApexCnMirrorEnv {
     if (-not $env:PLAYWRIGHT_DOWNLOAD_HOST) { $env:PLAYWRIGHT_DOWNLOAD_HOST = "https://cdn.npmmirror.com/binaries/playwright" }
 }
 
+# hc-911: v0.22 pins every bootstrap binary (uv, PortableGit) by sha256 from
+# pm/lock.json. In CN mode with an HTTPS COS base, try our COS copy of the SAME
+# content-addressed object (<COS_BASE>/upstream/sha256/<sha>) first and the
+# original URL second. The digest never changes, so Invoke-VerifiedDownload
+# still rejects wrong bytes from any host. Otherwise the pin is returned as-is.
+# Twin of pm/artifact_mirror.apexnodes_cn_mirror_url and install.sh ensure_uv.
+function Get-ApexPinnedSource {
+    param([Parameter(Mandatory = $true)][hashtable]$Pin)
+    $base = "$env:HERMES_RUNTIME_COS_BASE".Trim().TrimEnd('/')
+    if (-not (Test-CnEnabled) -or -not $base.StartsWith("https://", [System.StringComparison]::Ordinal)) { return $Pin }
+    return @{
+        Url       = "$base/upstream/sha256/$($Pin.Sha256)"
+        MirrorUrl = $Pin.Url
+        Sha256    = $Pin.Sha256
+    }
+}
+
 # ===========================================================================
 # COS-first download helpers (hc-474: every region, foreign fallback)
 # ===========================================================================

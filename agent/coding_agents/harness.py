@@ -146,7 +146,7 @@ class AgentHarness(abc.ABC):
         for key in list(self._proc_keys):
             self._ledger.reap(key)
 
-    def __enter__(self) -> "AgentHarness":
+    def __enter__(self) -> AgentHarness:
         self.open()
         return self
 
@@ -385,8 +385,7 @@ class AcpHarness(AgentHarness):
 
             # Server-initiated request (has id AND method).
             if mid is not None and method is not None:
-                for event in self._answer_server_request(msg):
-                    yield event
+                yield from self._answer_server_request(msg)
                 continue
 
             # Notification (method, no id).
@@ -496,7 +495,7 @@ class AcpHarness(AgentHarness):
 class _Reply:
     """Internal sentinel: a JSON-RPC reply surfaced through the drain loop."""
 
-    __slots__ = ("result", "error")
+    __slots__ = ("error", "result")
 
     def __init__(self, result: dict | None, error: dict | None) -> None:
         self.result = result

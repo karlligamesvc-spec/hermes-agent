@@ -150,7 +150,7 @@ def test_wrapper_never_raises_into_the_host_path():
 
 
 def test_wrapper_is_marked_for_idempotence():
-    wrapped = model_catalog_dedupe._wrap_list_authenticated_providers(lambda: [])
+    wrapped = model_catalog_dedupe._wrap_list_authenticated_providers(list)
     assert getattr(wrapped, model_catalog_dedupe._MARK) is True
 
 

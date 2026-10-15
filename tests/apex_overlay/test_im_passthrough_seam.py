@@ -341,10 +341,10 @@ def test_full_lifecycle_enter_forward_cancel_stop(monkeypatch):
         assert h2 and r2 == "echo:do the thing"
         assert harness.prompts == ["do the thing"]
         # /cancel → interrupt
-        h3, r3 = await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/cancel", src))
+        h3, _r3 = await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/cancel", src))
         assert h3 and harness.cancelled == 1
         # /stop → exit, session gone, harness closed
-        h4, r4 = await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/stop", src))
+        h4, _r4 = await im_passthrough.maybe_handle_passthrough(runner, _FakeEvent("/stop", src))
         assert h4 and harness.closed is True
         # after stop, plain text is no longer intercepted
         h5, r5 = await im_passthrough.maybe_handle_passthrough(

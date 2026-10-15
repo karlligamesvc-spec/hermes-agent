@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-import yaml
+import hermes_yaml as yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTHORITY = "90300000-0000-4000-8000-000000000015"
@@ -33,7 +33,6 @@ def _fixture_services():
     from hermes_cli import mcp_catalog, mcp_config, plugins_cmd
     from hermes_cli.web_routers import dashboard_ui, memory_providers, messaging, ops
     from plugins.memory.config_schema import ProviderConfigSchema, ProviderField
-    from plugins.memory.openviking import OpenVikingMemoryProvider
 
     for module in (dashboard_ui, memory_providers, ops):
         module._require_memory_provider_ready = lambda *_: None
@@ -43,8 +42,8 @@ def _fixture_services():
         {"key": "endpoint", "kind": "text", "default": "", "label": "Endpoint"}]
     memory_providers._read_memory_provider_existing_values = lambda *_: {}
     memory_providers._install_memory_provider_setup = lambda *_: {"fixture_install": "not-run"}
-    memory_providers._load_memory_provider = lambda name: (
-        OpenVikingMemoryProvider() if name == "openviking" else None)
+    # hc-911: v0.22 moved OpenViking to the plugin catalog; no bundled provider stands in.
+    memory_providers._load_memory_provider = lambda name: None
     # None exercises the production fallback rather than a plugin override.
     original_load = memory_providers._load_memory_provider
     from agent.memory_provider import MemoryProvider
@@ -107,7 +106,7 @@ def _serve():
     socket.socket.connect = owned_only
     socket.socket.connect_ex = lambda sock, address: owned_only(sock, address) or 0
     import uvicorn
-    from hermes_cli import config, mcp_catalog, mcp_config, plugins_cmd, web_server
+    from hermes_cli import config, mcp_catalog, mcp_config, plugins_cmd, plugins_cmd_capabilities, web_server
     from hermes_cli.web_routers import dashboard_ui, memory_providers, ops
     _fixture_services()
     entered, release = threading.Event(), threading.Event()
@@ -133,7 +132,6 @@ def _serve():
     original_load = config.load_config
     owned_files = {Path(module.__file__).resolve() for module in
                    (mcp_config, mcp_catalog, plugins_cmd, dashboard_ui, memory_providers, ops)}
-    owned_files.add(ROOT / "plugins/memory/openviking/__init__.py")
 
     def load(*args, **kwargs):
         result = original_load(*args, **kwargs)
@@ -183,7 +181,7 @@ def _serve():
             elif operation == "plugin-field":
                 plugins_cmd._write_config_value("context", "engine", "fixture-plugin")
             elif operation == "plugin-flag":
-                plugins_cmd._set_plugin_entry_flag("fixture-owned", "allow_tool_override", True)
+                plugins_cmd_capabilities._set_plugin_entry_flag("fixture-owned", "allow_tool_override", True)
             elif operation in {"plugin-toolset", "plugin-toolset-noop"}:
                 plugins_cmd._toggle_plugin_toolset("fixture-owned", enable=operation.endswith("noop"))
             return True
@@ -320,8 +318,10 @@ CASES = [
     ("font", "PUT", "/api/dashboard/font", {"font": "system-serif"}),
     ("visibility", "POST", "/api/dashboard/plugins/fixture/visibility", {"hidden": True}),
     ("plugin-providers", "PUT", "/api/dashboard/plugin-providers", {"context_engine": "fixture"}),
-    ("plugin-enable", "POST", "/api/dashboard/agent-plugins/fixture-new/enable", None),
-    ("plugin-disable", "POST", "/api/dashboard/agent-plugins/fixture-owned/disable", None),
+    # hc-911: dashboard plugin enable/disable no longer writes config.yaml in this process: PM
+    # publishes the selection with a whole-file digest check and refuses a stale one (upstream
+    # coverage: tests/hermes_cli/test_plugin_worker_lifecycle.py). The plugin-field / -flag /
+    # -toolset writers below still go through mutate_config.
     ("memory-select", "PUT", "/api/memory/provider", {"provider": "built-in"}),
     ("hook-add", "POST", "/api/ops/hooks", {"event": "pre_tool_call", "command": "echo fixture-new", "approve": False}),
     ("hook-delete", "DELETE", "/api/ops/hooks", {"event": "pre_tool_call", "command": "echo fixture-old"}),
@@ -335,9 +335,7 @@ CASES = [
     *[(f"cli-{op}", "POST", f"/__fixture/cli/{op}", None) for op in ("plugin-field", "plugin-flag", "plugin-toolset")],
     ("memory-declared", "PUT", "/api/memory/providers/fixture/config?surface=declared", {"values": {"endpoint": "https://fixture.invalid"}}),
     ("memory-native", "PUT", "/api/memory/providers/fixture/config", {"values": {"endpoint": "https://fixture.invalid"}}),
-    ("memory-openviking", "PUT", "/api/memory/providers/openviking/config", {"values": {"endpoint": "https://fixture.invalid"}}),
     ("memory-setup", "POST", "/api/memory/providers/fixture/setup", {"values": {"endpoint": "https://fixture.invalid"}}),
-    ("openviking-setup", "POST", "/api/memory/providers/openviking/setup", {"values": {"endpoint": "https://fixture.invalid"}}),
     ("whatsapp", "POST", "/api/messaging/whatsapp/onboarding/fixture/apply", {}),
     ("telegram", "POST", "/api/messaging/telegram/onboarding/fixture/apply", {"allowed_user_ids": ["123456"]}),
     ("messaging-update", "PUT", "/api/messaging/platforms/telegram", {"enabled": True}),
@@ -378,13 +376,6 @@ def test_prepared_side_write_preserves_later_model_and_key(runtime, case, method
         assert saved["dashboard"]["hidden_plugins"] == ["fixture"]
     elif case == "plugin-providers":
         assert saved["context"]["engine"] == "fixture"
-    elif case == "plugin-enable":
-        assert "fixture-new" in saved["plugins"]["enabled"]
-        assert "fixture-new" not in saved["plugins"].get("disabled", [])
-    elif case == "plugin-disable":
-        assert "fixture-owned" not in saved["plugins"].get("enabled", [])
-        assert "fixture-owned" in saved["plugins"]["disabled"]
-        assert saved["platform_toolsets"]["cli"] == ["fixture_unrelated"]
     elif case == "cli-plugin-field":
         assert saved["context"]["engine"] == "fixture-plugin"
     elif case == "cli-plugin-flag":
@@ -418,8 +409,6 @@ def test_prepared_side_write_preserves_later_model_and_key(runtime, case, method
         assert json.loads((runtime.home / "fixture/config.json").read_text()) == {"endpoint": "https://fixture.invalid"}
     elif case in {"memory-native", "memory-setup"}:
         assert saved["memory"]["fixture"] == {"keep": "owner-b-independent-field", "endpoint": "https://fixture.invalid"}
-    elif case in {"memory-openviking", "openviking-setup"}:
-        assert saved["memory"]["openviking"] == {"keep": "owner-b-independent-field", "endpoint": "https://fixture.invalid"}
     elif case in {"cli-configure", "cli-filter"}:
         assert saved["mcp_servers"]["existing"]["tools"]["include"] == ["keep"]
         assert saved["mcp_servers"]["existing"]["fixture_b"] == "owner-b-independent-field"

@@ -19,7 +19,7 @@ import uuid
 
 import httpx
 import pytest
-import yaml
+import hermes_yaml as yaml
 
 AUTHORITY = "90300000-0000-4000-8000-000000000001"
 JOURNAL = ".desktop-model-mutations.sqlite3"
@@ -608,6 +608,9 @@ def test_real_write_failure_has_no_success_receipt_and_new_revision_can_retry(ru
     payload = assignment("fault", confirm_expensive_model=True)
     if mode == "registration":
         payload.pop("api_key")  # exercises the existing secondary-registration exit
+        # hc-911: upstream (#76324) registers a named row only for a GENUINELY new endpoint;
+        # the fixture's inline model.base_url would otherwise skip the secondary write.
+        payload["base_url"] = "http://127.0.0.1:65502/v1"
     failed = runtime.client.post("/api/model/set", json=payload, headers=runtime.headers(1, target))
     assert failed.status_code == 500
     assert failed.json() == {"detail": "Failed to save model assignment"}
@@ -620,7 +623,12 @@ def test_real_write_failure_has_no_success_receipt_and_new_revision_can_retry(ru
     assert retry.status_code == 200, retry.text
     assert retry.json()["model_mutation"] == {"target_id": target, "revision": 2}
     assert disk(home)["model"]["default"] == "fault"
-    assert disk(home)["custom_providers"][0]["model"] == "fault"
+    if mode == "registration":
+        # The failed attempt already persisted the endpoint inline (model.base_url), so upstream's
+        # #76324 rule treats it as known and the retry needs no named custom_providers row.
+        assert disk(home)["model"]["base_url"] == payload["base_url"]
+    else:
+        assert disk(home)["custom_providers"][0]["model"] == "fault"
 
 
 @pytest.mark.parametrize("preferred,lower", [("api", "url"), ("api", "base_url"), ("url", "base_url")])

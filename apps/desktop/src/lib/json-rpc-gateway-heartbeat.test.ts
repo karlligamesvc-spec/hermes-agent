@@ -126,6 +126,10 @@ describe('JsonRpcGatewayClient heartbeat recovery', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(client.connectionState).toBe('open')
     expect(socket.readyState).toBe(FakeSocket.OPEN)
-    expect(socket.sent).toEqual([])
+    // hc-911: the one frame on the wire is the client.capabilities advertisement every
+    // gateway.ready triggers (v0.22 fails server->client requests fast without it).
+    const methods = socket.sent.map(text => (JSON.parse(text) as { method: string }).method)
+
+    expect(methods).toEqual(['client.capabilities'])
   })
 })

@@ -26,7 +26,7 @@ def _probe_version(argv: list[str]) -> str | None:
             capture_output=True,
             text=True,
             timeout=10,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, check=False,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
@@ -358,7 +358,7 @@ class CodexDirectHarness(AgentHarness):
                 yield AgentEvent.turn_completed(status)
                 return
             elif method == "thread/tokenUsage/updated":
-                yield AgentEvent.usage((msg.get("params") or {}))
+                yield AgentEvent.usage(msg.get("params") or {})
             elif method == "item/completed":
                 yield from self._normalize_item((msg.get("params") or {}).get("item") or {})
         raise TimeoutError("codex turn timed out")

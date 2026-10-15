@@ -190,8 +190,11 @@ describe('identity: brand assets and chrome', () => {
     // handoff no longer searches a staged .app here; if that lookup returns in
     // a future refactor, it must not regress to the upstream artifact name.
     expect(main).not.toContain("'Hermes.app'")
-    expect(installSh).toContain('/mac-arm64/APEX.app')
-    expect(installPs1).toContain('\\release\\win-unpacked\\APEX.exe')
+    // hc-911: v0.22's install.sh only checks that a release dir exists (desktop_product_present);
+    // launching by name moved to hermes_cli/main_desktop.py, pinned below. Any name it ever
+    // looks up again must not be the upstream artifact.
+    expect(installSh).not.toMatch(/Hermes\.app/)
+    expect(installPs1).toContain('"release\\win-unpacked\\APEX.exe"')
     expect(desktopCli).toContain('mac*/APEX.app/Contents/MacOS/APEX')
     expect(desktopCli).toContain('"APEX.exe"')
   })

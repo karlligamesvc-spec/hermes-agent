@@ -165,7 +165,10 @@ def main():
 
         web_server_config._validated_main_model_selection = selection
         web_server_config._apply_nous_gateway_defaults = gateway_defaults
-    original_write = config.atomic_yaml_write
+    # hc-911: v0.22 funnels every config.yaml write through _write_config_state ->
+    # utils.atomic_roundtrip_yaml_save (resolved at call time), inside the hc-903 fence.
+    import utils
+    original_write = utils.atomic_roundtrip_yaml_save
     failures = []
 
     def write(path, data, **kwargs):
@@ -185,7 +188,7 @@ def main():
             if write_entered.is_set():
                 worker_finished.set()
 
-    config.atomic_yaml_write = write
+    utils.atomic_roundtrip_yaml_save = write
     original_admit = web_model_mutations._admit
 
     def admit(receipt):

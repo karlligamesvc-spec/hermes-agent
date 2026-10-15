@@ -261,10 +261,10 @@ def test_list_codex_sessions_scrubs_control_chars(tmp_path, monkeypatch):
     root = str(tmp_path)
     monkeypatch.setenv("CODEX_HOME", root)
     _write_rollout(root, ("2026", "07", "17"), "2026-07-17T06-56-33", "ctrl-0001",
-                   cwd="/p", first_msg="a\x00b\x1b[31mc​d", mtime=1000)
+                   cwd="/p", first_msg="a\x00b\x1b[31mc\u200bd", mtime=1000)
     sessions = list_codex_sessions(10)
     s = sessions[0].summary
-    assert "\x00" not in s and "\x1b" not in s and "​" not in s
+    assert "\x00" not in s and "\x1b" not in s and "\u200b" not in s
     for ch in "abcd":
         assert ch in s
 

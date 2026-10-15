@@ -161,7 +161,7 @@ def _wrap_fetch_models_dev(orig: Callable) -> Callable:
     """Cache-first, non-blocking wrapper around ``fetch_models_dev``."""
 
     @functools.wraps(orig)
-    def wrapper(force_refresh: bool = False, *args, **kwargs) -> Dict[str, Any]:
+    def wrapper(force_refresh: bool = False, *args, **kwargs) -> dict[str, Any]:
         # Explicit refresh: the user asked for fresh data and will wait.
         # Delegate untouched (also preserves upstream force-refresh tests).
         # Any unexpected extra args/kwargs also go straight through so the

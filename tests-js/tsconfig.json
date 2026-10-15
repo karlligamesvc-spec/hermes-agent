@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -10,5 +11,8 @@
     "types": ["node"]
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules"]
+  // ApexNodes hc-911: apps/desktop stays on the APEX baseline, which does not carry the
+  // upstream Desktop modules (electron/backend-discovery.ts, data-paths.mjs) that the
+  // packaged-Desktop smoke harness drives.
+  "exclude": ["node_modules", "scripts/desktop-smoke-process.ts", "scripts/desktop-smoke.test.ts"]
 }

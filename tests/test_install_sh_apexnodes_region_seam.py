@@ -37,17 +37,17 @@ SH_PUBLIC_FUNCS = (
     "apexnodes_apply_cn_mirror_env",
     "apexnodes_cn_enabled",
     "apexnodes_cos_configured",
-    "apexnodes_install_uv_from_cos",
     "apexnodes_download_runtime_tarball",
+    "apexnodes_installed_source_commit",
 )
 PS1_PUBLIC_FUNCS = (
     "Resolve-ApexRegion",
     "Set-ApexCnMirrorEnv",
     "Test-CnEnabled",
     "Test-CosConfigured",
-    "Install-UvFromCos",
     "Install-RuntimeFromCos",
-    "Install-GitFromCos",
+    "Ensure-CosRuntimeSourceCurrent",
+    "Get-ApexPinnedSource",
 )
 
 
@@ -79,24 +79,27 @@ def test_install_sh_sources_region_lib() -> None:
     # Self-locating source: derive the script dir, then source lib/<file> from it.
     assert "lib/apexnodes-region-detect.sh" in text, "install.sh must reference the seam lib path"
     assert 'BASH_SOURCE[0]' in text or "$0" in text, "install.sh must self-locate to find the lib"
-    assert ". \"$_APEX_REGION_LIB\"" in text, "install.sh must source the seam lib"
+    assert '. "$_apex_lib"' in text, "install.sh must source the seam lib"
     # Present-guard so a lib-absent context (curl|bash from upstream) is a no-op,
     # not a hard error.
-    assert 'if [ -f "$_APEX_REGION_LIB" ]' in text, "install.sh must guard the source on file presence"
+    assert 'if [ -f "$_apex_lib" ]; then' in text, "install.sh must guard the source on file presence"
 
 
 def test_install_sh_calls_lib_functions_with_guard() -> None:
     text = INSTALL_SH.read_text()
-    # Each call site must be guarded by `command -v <fn>` so the upstream
-    # (lib-absent) path stays a clean no-op.
-    for fn in (
-        "apexnodes_resolve_region",
-        "apexnodes_install_uv_from_cos",
-        "apexnodes_cos_configured",
-        "apexnodes_download_runtime_tarball",
-    ):
-        assert fn in text, f"install.sh must call {fn}"
-        assert f"command -v {fn}" in text, f"install.sh must guard the {fn} call site with command -v"
+    # The region probe runs only inside the file-presence guard above; every later
+    # call site (inside upstream functions) is guarded by `command -v <fn>` so the
+    # upstream (lib-absent) path stays a clean no-op. hc-911: the pinned uv comes
+    # from the COS content-addressed copy (ensure_uv), not apexnodes_install_uv_from_cos.
+    lib_block = text[text.index('if [ -f "$_apex_lib" ]; then') :]
+    lib_block = lib_block[: lib_block.index("\n    fi\n")]
+    for fn in ("apexnodes_resolve_region", "apexnodes_apply_cn_mirror_env"):
+        assert fn in lib_block, f"install.sh must call {fn} inside the lib guard"
+    for fn in ("apexnodes_cn_enabled", "apexnodes_cos_configured"):
+        assert f"command -v {fn} >/dev/null 2>&1 && {fn}" in text, (
+            f"install.sh must guard the {fn} call site with command -v"
+        )
+    assert "apexnodes_download_runtime_tarball" in text, "install.sh must call the COS source download"
 
 
 def test_install_ps1_dot_sources_region_lib() -> None:
@@ -109,14 +112,15 @@ def test_install_ps1_dot_sources_region_lib() -> None:
 
 def test_install_ps1_calls_lib_functions_with_guard() -> None:
     text = INSTALL_PS1.read_text()
-    for fn in (
-        "Resolve-ApexRegion",
-        "Install-UvFromCos",
-        "Test-CosConfigured",
-        "Install-RuntimeFromCos",
-    ):
+    # hc-911: the pinned uv / PortableGit come from the COS content-addressed copy
+    # (Get-ApexPinnedSource), not Install-UvFromCos / Install-GitFromCos.
+    for fn in ("Resolve-ApexRegion", "Test-CosConfigured", "Get-ApexPinnedSource"):
+        assert f"Get-Command {fn} -ErrorAction SilentlyContinue" in text, (
+            f"install.ps1 must guard the {fn} call site with Get-Command"
+        )
+    assert text.count("{ $pin = Get-ApexPinnedSource $pin }") == 2, "both Get-Uv and Get-PinnedGit must use the seam"
+    for fn in ("Set-ApexCnMirrorEnv", "Install-RuntimeFromCos", "Ensure-CosRuntimeSourceCurrent"):
         assert fn in text, f"install.ps1 must call {fn}"
-        assert f"Get-Command {fn}" in text, f"install.ps1 must guard the {fn} call site with Get-Command"
 
 
 # --------------------------------------------------------------------------

@@ -46,11 +46,11 @@ def _browser_cache_round_trip(tmp_path, monkeypatch):
     assert media_tools.ensure_browser() == executable
 
 
-@pytest.mark.macos_only
+@pytest.mark.platforms("macos")
 def test_mac_browser_cache(tmp_path, monkeypatch):
     _browser_cache_round_trip(tmp_path, monkeypatch)
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 def test_windows_browser_cache(tmp_path, monkeypatch):
     _browser_cache_round_trip(tmp_path, monkeypatch)
