@@ -137,7 +137,10 @@ function run(cmd, argv, opts = {}) {
 
 export function probeRuntimeImports(python, { env = process.env, cwd = os.tmpdir(), root = null } = {}) {
   const code = [
-    'import yaml, dotenv, hermes_cli.config, run_agent, toolsets',
+    // hc-911: v0.22 runtimes carry hermes_yaml (ruamel), earlier ones PyYAML; same expression as
+    // RUNTIME_YAML_IMPORT in apps/desktop/electron/bootstrap-platform.ts.
+    'import importlib.util; __import__("hermes_yaml" if importlib.util.find_spec("hermes_yaml") else "yaml")',
+    'import dotenv, hermes_cli.config, run_agent, toolsets',
     ...(root ? [
       'import importlib, pathlib, socket',
       'assert getattr(socket, "_hermes_offline_guard", False), "offline guard missing"',

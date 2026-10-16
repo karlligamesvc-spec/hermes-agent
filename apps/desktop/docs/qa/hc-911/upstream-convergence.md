@@ -184,6 +184,7 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 7. `plugins/apexnodes_gateway.py` 与 `apex_overlay/media_tools.py` 的 ffmpeg/tar 子进程未关 stdin。
 8. 三个 APEX 测试与一处发版脚本仍 `import yaml`（v0.22 去掉了 PyYAML，统一 ruamel）。
 9. `apex_overlay/media_tools.py` 依赖已删除的 `tools.lazy_deps` → 改用 `pm.lazy_installs_allowed`；picker 预热改为先等插件发现（apex-overlay 拒绝名单生效后再列 provider）。
+11. （Mac 打包产物真机测试时发现）三处运行时探测沿用 v0.21 的假设：`backend-probes.ts` 和 `packaged-runtime.ts` 里写死了 `import yaml`，`packaged-runtime.ts` 还写死了 `sys.version_info[:2] == (3,11)`；运行时包构建器的冒烟探测也是 `import yaml`。v0.22 的运行时是 CPython 3.14，并且用 `hermes_yaml`（ruamel）取代了 PyYAML，所以 Desktop 会把每一个 v0.22 包内运行时都判成损坏，用户无法启动。改为：YAML 层有 `hermes_yaml` 就导入它，否则导入 `yaml`（`RUNTIME_YAML_IMPORT`，两代运行时都能过）；引擎 Python 版本从包内 `.bundle-manifest.json` 读取，没有 manifest 的旧式运行时仍按 3.11。v0.22.0 那轮只放宽了测试里的版本断言，探测本身没改。开发模式测不到这个问题，因为它用的是 fork 的 `.venv`，里面还留着 PyYAML。守卫：`backend-probes.test.ts`（v0.22 形态的运行时可导入）、`packaged-runtime-python-series.test.ts`，两条都做过反向验证。
 10. （v0.22.2 增量时发现）锁文件把 `minimatch@^3` 解析成 10.2.6，掩盖了根目录 eslint 共享配置里那个让 Desktop lint 崩溃的花括号 glob。锁文件与 glob 都已修正，详见"增量合并 v0.22.2"。
 
 ## 需要 Kael 决策的上游行为变化
@@ -209,6 +210,16 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 - ~~fork 的 `ci.yaml` 中，`e2e-desktop-core`、`e2e-desktop-update` 指向 APEX 没有的上游 Desktop e2e 套件。~~ hc-913 已按第一种处理（`if: false` + 延期）。把 APEX 自己的 Desktop e2e 接到这两个入口仍是可选的后续工作。
 
 ## 验证
+
+**Mac Studio 真机测试（打包产物，2026-10-16）**：
+- 用本次合并结果（`72f75d09ca`）构建了 Mac arm64 运行时包 `runtime-bundle-72f75d09cac5-mac-arm64.tar.gz`（464 MiB，CPython 3.14.7，uv 0.12.3）。重定位冒烟在两个位置都通过：解释器、核心与原生扩展导入、`hermes --version`、Node、rg、uv、agent-browser、离线后端健康检查。
+- 打出 ad-hoc 签名的 `APEX.app`（794 MB，包内为 v0.22.2 运行时）。打包时临时放开了“Mac 包内运行时必须已签名并公证”这一项检查，测完已还原，没有提交。签名和公证要走正式的成对发布流程，这次没有覆盖。
+- 用全新的 `HERMES_HOME` 和用户数据目录启动打包产物：
+  - 包内运行时解压约 20 秒，经 fixup、逐文件 sha 校验、移到最终路径并再次校验后提交为 `versions/72f75d09cac5`，引擎探测通过并激活。
+  - 后端约 3.6 秒就绪，进程是包内 venv 的 `hermes_cli.main serve`。
+  - 首屏为 APEX 中文登录；点“使用自己的密钥”后进入 APEX 首页；向本地模拟服务发消息，流式回复正常。
+  - `errors.log` 只有 1 条预期警告，数据全部在隔离目录里。
+
 
 本机 macOS（Mac Studio），v0.22.2 合并结果：
 

@@ -36,7 +36,7 @@
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
-import { bundledRuntimeImportCheck } from './bootstrap-platform'
+import { bundledRuntimeImportCheck, RUNTIME_YAML_IMPORT } from './bootstrap-platform'
 
 /** Default probe budget. 5s false-negativeed healthy Windows cold starts (#61764). */
 const DEFAULT_PROBE_TIMEOUT_MS = 15_000
@@ -123,7 +123,7 @@ function execProbeSync(
  * @returns {string}
  */
 function hermesRuntimeImportProbe(platform: NodeJS.Platform = process.platform) {
-  return `import yaml; import dotenv; import hermes_cli.config; ${bundledRuntimeImportCheck(platform)}`
+  return `${RUNTIME_YAML_IMPORT}; import dotenv; import hermes_cli.config; ${bundledRuntimeImportCheck(platform)}`
 }
 
 /**

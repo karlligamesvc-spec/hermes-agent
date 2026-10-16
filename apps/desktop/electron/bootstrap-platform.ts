@@ -44,6 +44,14 @@ function bundledRuntimeImportCheck(platform = process.platform) {
   return platform === 'win32' ? 'import fastapi, uvicorn, winpty' : 'import fastapi, uvicorn, ptyprocess'
 }
 
+/**
+ * hc-911: the runtime's YAML layer. v0.22 runtimes dropped PyYAML for ruamel behind
+ * `hermes_yaml`; earlier runtimes (still the pinned bundle) have only PyYAML. Probe whichever
+ * the runtime carries, so neither generation reads as broken.
+ */
+const RUNTIME_YAML_IMPORT =
+  'import importlib.util; __import__("hermes_yaml" if importlib.util.find_spec("hermes_yaml") else "yaml")'
+
 const GPU_OVERRIDE_ON = new Set(['1', 'true', 'yes', 'on'])
 const GPU_OVERRIDE_OFF = new Set(['0', 'false', 'no', 'off'])
 
@@ -146,5 +154,6 @@ export {
   detectRemoteDisplay,
   isWindowsBinaryPathInWsl,
   isWslEnvironment,
-  resolveLinuxPasswordStore
+  resolveLinuxPasswordStore,
+  RUNTIME_YAML_IMPORT
 }
