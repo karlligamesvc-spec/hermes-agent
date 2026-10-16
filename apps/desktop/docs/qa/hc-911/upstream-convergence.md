@@ -206,6 +206,12 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 
 - hc-903 围栏与 `_CONFIG_MUTATION_LOCK` 的获取顺序在 fork 里本来就有两种（`config_env` 的 PUT /api/config 是"围栏→锁"，自定义端点激活等是"锁→围栏"）。围栏底层是带忙等超时的 sqlite 锁，不会永久死锁，最坏是超时报错。需要单独复查。
 
+## 合并后的收尾（#390 合并之后）
+
+- **上游偶发测试 `test_room_log_pages_are_bounded_by_serialized_event_bytes`**：第三轮 CI 时让分片 4/8 失败了一次，重跑后通过。原因是事件里的 `created_at` 取墙钟时间，序列化成 JSON 后宽度在 13–18 个字符之间浮动；测试把预算设为第一个事件的大小 +1，只要后面某个事件宽出 2 个字符就会超出。按 `time.time()` 实测的宽度分布估算，失败概率约 2–3%。修法是给 4 次 append 传同一个固定的 `now=`。同文件另外两个按字节预算断言的测试余量足够（1,000 字节、+64 字节），不受影响。反向验证：注入“第一个事件窄、后面宽”的时钟，旧测试报出与 CI 相同的 `HostedRoomError`；新测试通过，而且不调用墙钟。这条修复也适合回贡上游。
+- **Desktop 自动下载失败时的 unhandled rejection**（Windows 真机日志）：检查更新成功、自动下载失败时，electron-updater 先派发 `error` 事件（我们的监听器已经记录并上报），再在 `result.downloadPromise` 里抛出同一个错误；`checkNow()` 没有接住它。`--dir` 产物缺少 `app-update.yml` 只是触发方式之一，正式安装包里断网、签名校验失败、磁盘满时也一样。调用 `checkForUpdates()` 的只有 `checkNow()` 这一处，在它里面接住即可。守卫 `a failed auto-download handed back by the check is not an unhandled rejection` 在修复前是红的。
+- **git-trampoline 的 2 条 Windows live 测试**：根因已经查清，是上游 `hermes_cli/update_cmd_git.py` 的 bug，fork 的 runner 没有问题。`_locate_real_git()` 只找 `<arch>\libexec\git-core\git.exe`，而当前的 Git for Windows 不再提供这个文件：runner 上是 2.56.0；局域网 Windows 机器上的 MinGit 2.54 里，真正的 4.4 MB 二进制在 `mingw64\bin\git.exe`，用真实的 `_probe_fork_bomb` 探测返回 False。结果是在新版 Git for Windows 上，这条自愈路径永远找不到真正的 git；托管 PortableGit 的候选路径也是同样的写法。APEX 的 Windows 安装不会走这条路径，所以按硬规则 #10，修复交给上游，fork 保留这两条跳过，原因已更新。给上游的修复草稿：在每个 `libexec\git-core\git.exe` 候选之后，加上同一 `<arch>` 下的 `bin\git.exe`（PortableGit 候选同理）。注意，顶层的 `Git\bin\git.exe` 和 `Git\cmd\git.exe` 是 46 KB 的 shim，不能加进去。
+
 ## 后续（不在本票）
 
 - COS 按 sha256 镜像 pm 产物（`<COS>/upstream/sha256/<sha>`）的发布脚本与 `verify-environment.py` 闸门；在此之前 CN 模式取 COS 会 404 后回落原始 URL。
