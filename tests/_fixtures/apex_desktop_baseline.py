@@ -13,6 +13,7 @@ upstream test files and conftest stay byte-identical.
 
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,10 @@ _E2E_HARNESS = (
     "apps/desktop/e2e/update",
 )
 _E2E_UPDATE = ("apps/desktop/e2e/update",)
+# hc-913: the suites ci.yaml's e2e-desktop-core / e2e-desktop-update jobs run. While one is absent its job is
+# `if: false` and deferred in scripts/ci/required_results.py (tests/apex_overlay/test_desktop_e2e_lanes.py).
+_E2E_CORE_SUITE = ("apps/desktop/e2e/core/playwright.config.ts",)
+_E2E_UPDATE_SUITE = ("apps/desktop/e2e/update/playwright.config.ts",)
 _MARKER_CORPUS_READERS = (
     "apps/desktop/electron/update-marker-corpus.test.ts",
     "apps/desktop/electron/remote-update-marker-programs.test.ts",
@@ -43,10 +48,6 @@ SKIPS: dict[str, tuple[str, ...]] = {
     # The e2e_desktop_update lane replays upstream's playwright suite (e2e/update/*.spec.ts),
     # and the update-marker corpus is read by upstream Desktop vitest files; APEX carries neither.
     **{f"tests/ci/test_update_ci_routing.py::{test}": _E2E_UPDATE for test in (
-        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[desktop_updater-e2e_desktop_update]",
-        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[e2e_desktop_update]",
-        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[python-desktop_updater-e2e_desktop_update]",
-        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[python-e2e_desktop_update]",
         "test_update_path_change_reaches_the_suites_that_consume_it[hermes_cli/web_routers/status.py-lanes0]",
         "test_update_path_change_selects_every_suite_that_exercises_it[apps/desktop/electron/update-marker-gate.ts-lanes0]",
     )},
@@ -56,6 +57,38 @@ SKIPS: dict[str, tuple[str, ...]] = {
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/updater/checkout.ts]": ("apps/desktop/electron/updater/checkout.ts",),
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/backend-discovery.ts]": ("apps/desktop/electron/backend-discovery.ts",),
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/host-backend-attach.ts]": ("apps/desktop/electron/host-backend-attach.ts",),
+    # hc-913: these expect the e2e-desktop-core / e2e-desktop-update jobs to run, gate the merge, or be
+    # required consumers. Each one's APEX counterpart (the job deferred while its suite is absent, every other
+    # lane still routed) is in tests/apex_overlay/test_desktop_e2e_lanes.py.
+    "tests/ci/test_required_results.py::test_release_exclusion_policy": _E2E_CORE_SUITE + _E2E_UPDATE_SUITE,
+    "tests/ci/test_update_ci_routing.py::test_every_detect_output_a_lane_sets_is_consumed_by_some_job": _E2E_CORE_SUITE + _E2E_UPDATE_SUITE,
+    **{f"tests/ci/test_required_results.py::test_selected_update_consumers_must_succeed[{result}-e2e_desktop_update-jobs4]": _E2E_UPDATE_SUITE
+       for result in ("skipped", "absent")},
+    "tests/ci/test_classify_changes.py::test_real_update_suites_gate_the_merge_when_their_lane_fires[ci.yaml-e2e-desktop-update-e2e-desktop-update.yml-e2e_desktop_update]": _E2E_UPDATE_SUITE,
+    # Every combo of the replayed lanes with e2e_desktop_update set (upstream's id: the set lanes, "-"-joined).
+    **{"tests/ci/test_update_ci_routing.py::test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say["
+       + "-".join((*(lane for lane, on in zip(("python", "desktop_updater", "e2e", "e2e_upgrade"), combo) if on),
+                   "e2e_desktop_update")) + "]": _E2E_UPDATE_SUITE
+       for combo in itertools.product((False, True), repeat=4)},
+    **{f"tests/ci/test_update_ci_routing.py::test_update_owner_change_dispatches_its_suites_end_to_end[{case}]": _E2E_UPDATE_SUITE for case in (
+        "scripts/build/desktop.mjs-lanes0",
+        "scripts/build/web.mjs-lanes1",
+        "hermes_cli/_subprocess_compat.py-lanes2",
+        "hermes_cli/desktop_build_lock.py-lanes3",
+        "hermes_cli/memory_provider_migration.py-lanes4",
+        "hermes_cli/source_build.py-lanes5",
+        "hermes_cli/source_completion.py-lanes6",
+        "apps/desktop/electron/update-marker.ts-lanes7",
+        "apps/desktop/electron/handoff-result.ts-lanes8",
+    )},
+    "tests/ci/test_update_ci_routing.py::test_update_path_change_selects_every_suite_that_exercises_it[hermes_cli/_launchers.py-lanes3]": _E2E_UPDATE_SUITE,
+    **{f"tests/ci/test_update_transitive_routing.py::test_second_hop_update_change_dispatches_real_update_consumers[{path}]": _E2E_UPDATE_SUITE
+       for path in ("hermes_cli/local_runtime/processes.py", "hermes_cli/local_runtime/__init__.py", "agent/deadline.py",
+                    "agent/memory_provider.py", "pm/plugins_state.py", "pm/install.py", "hermes_cli/backup.py")},
+    # The replay's sensitivity to a broken update step: there is no update step to break while the suite is absent.
+    **{"tests/ci/test_update_ci_routing.py::test_replay_rejects_ineffective_required_step["
+       f"{mutation}-e2e_desktop_update-.github/workflows/e2e-desktop-update.yml-update-Run the update suite under xvfb]": _E2E_UPDATE_SUITE
+       for mutation in ("disabled", "advisory", "no-command", "empty-selection")},
 }
 # Whole modules that cannot even be collected without the upstream Desktop files.
 IGNORED_MODULES: dict[str, tuple[str, ...]] = {

@@ -253,7 +253,14 @@ jobs:
     needs: detect
     # The deterministic core suite (apps/desktop/e2e/core): transcript
     # integrity, boot/respawn/orphans, clarify+approval. Required; retries 0.
-    if: needs.detect.outputs.e2e_desktop_core == 'true'
+    #
+    # ApexNodes hc-913: apps/desktop stays on the APEX baseline, which carries no
+    # e2e/core suite, so a release run would fail here. Off (and deferred in
+    # scripts/ci/required_results.py) while e2e/core/playwright.config.ts is
+    # absent; tests/apex_overlay/test_desktop_e2e_lanes.py pins both. Keep the
+    # bare `if: false` (see e2e-desktop above). Once the suite is ported, restore:
+    #   if: needs.detect.outputs.e2e_desktop_core == 'true'
+    if: false
     uses: ./.github/workflows/e2e-desktop-core.yml
     with:
       commit: ${{ inputs.commit }}
@@ -268,7 +275,13 @@ jobs:
     # the Linux e2e-upgrade shards and the Windows install + update journey
     # (tests / tests-os, gated on e2e_upgrade), it is skipped — and the skip
     # counts as success — when the PR does not touch that path.
-    if: needs.detect.outputs.e2e_desktop_update == 'true'
+    #
+    # ApexNodes hc-913: off while the APEX baseline carries no e2e/update suite
+    # (e2e/update/playwright.config.ts), like e2e-desktop-core above; it is
+    # deferred, not a required update consumer, in scripts/ci/required_results.py
+    # until then. Once the suite is ported, restore:
+    #   if: needs.detect.outputs.e2e_desktop_update == 'true'
+    if: false
     uses: ./.github/workflows/e2e-desktop-update.yml
     with:
       commit: ${{ inputs.commit }}
@@ -398,7 +411,9 @@ jobs:
   #   Release (inputs.release): strict — every required job must be
   #   `success`. A skipped required lane fails the gate; only the PR-only
   #   jobs (history-check, lockfile-diff, prompt-surface-diff, supply-chain) and
-  #   the deferred Desktop E2E (e2e-desktop) may skip. The OSV scan's
+  #   the deferred Desktop E2E (e2e-desktop, plus e2e-desktop-core and
+  #   e2e-desktop-update while the APEX baseline lacks their suites, hc-913)
+  #   may skip. The OSV scan's
   #   findings are advisory, but its execution is required.
   #
   # Branch protection should require ONLY this check.

@@ -50,6 +50,8 @@
 
 **已知缺口（不在本 PR 改）**：`ci.yaml` 的 `e2e-desktop-core` 与 `e2e-desktop-update` 两条 lane 是 v0.22.0 带进来的，它们跑的 `apps/desktop/e2e/core`、`apps/desktop/e2e/update` 套件不在 APEX 基线里。PR 和 push 时 `gate-lanes` 会把 E2E lane 强制关掉，所以日常 CI 不受影响。只有以 release 模式手动 dispatch `ci.yaml`（或上游的 `stable-release.yml`）时，这两条会红。要关掉它们，需要同时改 `required_results.py` 的必需 lane 表，见"后续"。
 
+**hc-913 已补上**：两条 lane 在套件缺失期间是裸 `if: false`，`required_results.py` 把它们列为延期作业，`e2e-desktop-update` 不再是必需的更新消费方。守卫 `tests/apex_overlay/test_desktop_e2e_lanes.py` 按两个 `playwright.config.ts` 是否存在钉住这两处，套件一移植进来就会变红，直到恢复为止。另外，上面那 8 条跳过并不完整：同类的 33 条测试（期望更新套件被派发）在本机被 bash 3.2 缺 `mapfile` 和 `platforms(linux, windows)` 平台门挡住了，在 Linux 上 hc-911 头本身就是红的。hc-913 把它们按同一套件路径跳过，并在守卫里重新断言其余 lane 的路由契约。
+
 ## #390 首轮 CI 的修复（fork 首次跑 v0.22 的 CI）
 
 fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的第一轮 CI 是在维护者重新启用之后才跑起来的。结果是 31 项通过、14 项失败。对照前两次同步 PR（#254、#283，当时全绿），这次的失败来自 v0.22 新增的检查和 fork 自身的差异。另有一组失败被前一步挡住，第一轮根本没执行到（硬规则 #12 的“一个 bug 挡住另一个 bug”）：同一 job 里 footgun 一失败，后面的 shebang、临时目录字面量、OS 伪装、AGENTS.md 体量检查都没跑。
@@ -142,7 +144,7 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 | ESLint 花括号 glob | `**/*.{ts,tsx}` 拆成两个模式 | 根 overrides 把 `brace-expansion` 统一到 5.0.9，我方 ESLint 9 依赖的 `minimatch@3` 遇花括号崩溃；不改锁文件结构，与上游一致 |
 | `tests-js` 中上游打包版 Desktop 冒烟链路 | `tests-js` 的 tsconfig/vitest 排除 `desktop-smoke*`；我方 e2e tsconfig 只纳入 `mock-server.ts` / `mock-provider-config.ts` | 依赖上游 Desktop 的 `backend-discovery.ts`、`data-paths.mjs` |
 | 上游依赖上游 Desktop 文件的 Python/CI 测试 | `tests/_fixtures/apex_desktop_baseline.py` 按精确测试 ID 跳过，仅在所引路径确实缺失时生效；`tests/apex_overlay/test_desktop_baseline_skips.py` 守卫不过期、不扩大 | 上游测试文件保持逐字节一致 |
-| 上游 e2e 通道 `e2e_desktop_core` / `e2e_desktop_update` | 原样保留 | 只在 release/dispatch 触发；APEX Desktop 发布只走 `desktop-release.yml`（硬规则 #15） |
+| 上游 e2e 通道 `e2e_desktop_core` / `e2e_desktop_update` | 分类器路由原样保留；hc-913 起作业在套件缺失期间为 `if: false`，并在门禁里延期 | 套件不在 APEX 基线；APEX Desktop 发布只走 `desktop-release.yml`（硬规则 #15） |
 
 ## 安装器与国内链路
 
@@ -190,7 +192,7 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 - 发版时用新构建脚本为合并提交出 Mac arm64/x64 + Windows x64 运行时包并更新 `bundled-runtime.json`。
 - `main.ts` 非打包路径的系统 Python 白名单（3.11–3.13）与 v0.22 锁文件（仅 3.14）不再匹配，只影响开发/源码模式。
 - 本机运行测试会在 `~/.hermes/tools` 建立 pm 工具库（约 2.1 GB，上游默认位置）。
-- fork 的 `ci.yaml` 中，`e2e-desktop-core`、`e2e-desktop-update` 指向 APEX 没有的上游 Desktop e2e 套件。两种处理：改成 `if: false`，并把它们从 `required_results.py` 的必需消费方移到延期列表；或者把 APEX 自己的 Desktop e2e 接到这两个入口。
+- ~~fork 的 `ci.yaml` 中，`e2e-desktop-core`、`e2e-desktop-update` 指向 APEX 没有的上游 Desktop e2e 套件。~~ hc-913 已按第一种处理（`if: false` + 延期）。把 APEX 自己的 Desktop e2e 接到这两个入口仍是可选的后续工作。
 
 ## 验证
 
