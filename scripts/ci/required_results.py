@@ -24,7 +24,11 @@ from typing import Any
 # Jobs that can never run on a release (push/tag) event, plus the deferred
 # Desktop E2E. These are the only skips a strict run tolerates.
 PR_ONLY_JOBS = ("history-check", "lockfile-diff", "prompt-surface-diff", "supply-chain")
-DEFERRED_JOBS = ("e2e-desktop",)
+# ApexNodes hc-913: the two Desktop suites the APEX baseline does not carry
+# (apps/desktop/e2e/core, apps/desktop/e2e/update) are `if: false` in ci.yaml, so
+# a release run skips them. tests/apex_overlay/test_desktop_e2e_lanes.py ties
+# both entries to the suites being absent.
+DEFERRED_JOBS = ("e2e-desktop", "e2e-desktop-core", "e2e-desktop-update")
 EXCLUDED_JOBS = frozenset((*PR_ONLY_JOBS, *DEFERRED_JOBS))
 
 NEEDS_JSON_OUTPUT = "needs-json"
@@ -36,7 +40,8 @@ NEEDS_JSON_OUTPUT = "needs-json"
 _UPDATE_CONSUMER_LANES = {
     "tests": ("python", "e2e", "e2e_upgrade"),
     "tests-os": ("python", "desktop_updater", "e2e", "e2e_upgrade"),
-    "e2e-desktop-update": ("e2e_desktop_update",),
+    # ApexNodes hc-913: "e2e-desktop-update": ("e2e_desktop_update",) is deferred
+    # (see DEFERRED_JOBS); restore it here when apps/desktop/e2e/update is ported.
     "remote-backends": ("remote_backends",),
 }
 
