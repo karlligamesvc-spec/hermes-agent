@@ -146,9 +146,9 @@ _CHUNK_LIMIT = 3500
 # cleanly (the controller returns "not engaged" and normal handling proceeds).
 # Module-level so tests can monkeypatch ``im_passthrough.harness_for``.
 try:  # pragma: no cover - exercised indirectly
-    from agent.coding_agents import harness_for as harness_for
-    from agent.coding_agents.harness import default_deny_permission as default_deny_permission
-    from agent.coding_agents.run_once import reduce_events as reduce_events
+    from agent.coding_agents import harness_for
+    from agent.coding_agents.harness import default_deny_permission
+    from agent.coding_agents.run_once import reduce_events
 except Exception:  # pragma: no cover - defensive
     harness_for = None  # type: ignore[assignment]
     default_deny_permission = None  # type: ignore[assignment]
@@ -839,7 +839,7 @@ def _t_entered(family: str, cwd: str) -> str:
     )
 
 
-def _t_resumed(family: str, info: "SessionInfo") -> str:
+def _t_resumed(family: str, info: SessionInfo) -> str:
     project = os.path.basename(info.cwd.rstrip("/")) or info.cwd
     return (
         f"已挂接到 {_family_name(family)} 会话(目录 {project})。\n"
@@ -1021,7 +1021,7 @@ async def _build_and_open(
     cwd: str,
     *,
     resume_session_id: Optional[str] = None,
-) -> tuple[Optional["_PassthroughSession"], Optional[str]]:
+) -> tuple[Optional[_PassthroughSession], Optional[str]]:
     """Build a harness for ``family`` at ``cwd``, probe, and open it.
 
     Returns ``(session, None)`` on success or ``(None, error_text)`` otherwise.
@@ -1089,7 +1089,7 @@ async def _enter_resumed(
     session_key: str,
     sessions: dict,
     family: str,
-    info: "SessionInfo",
+    info: SessionInfo,
 ) -> str:
     """Attach ``session_key`` to an existing Claude Code session (``info``)."""
     old = sessions.pop(session_key, None)

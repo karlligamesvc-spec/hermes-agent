@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ============================================================================
 # publish-runtime-tarball.sh — ApexNodes China install mirror publisher
 # ============================================================================

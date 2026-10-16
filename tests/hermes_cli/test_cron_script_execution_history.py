@@ -37,11 +37,15 @@ def test_script_execution_history_survives_failure_recovery_and_profile_switch(t
         assert success.status_code == 200, success.text
         assert marker.read_text() == "executed"
         history = client.get(f"{url}/runs?profile=worker").json()
-        assert history["runs"] == []  # no Agent was instantiated
+        # No Agent was instantiated: no SessionDB run rows. hc-911: v0.22 lists script-only
+        # fires as ``cron_output`` rows built from their output docs, never as sessions.
+        assert all(row["source"] == "cron_output" for row in history["runs"]), history["runs"]
         assert history["executions"][0]["status"] == "completed"
         assert history["executions"][0]["finished_at"]
         first_id = history["executions"][0]["id"]
-        assert client.get(f"{url}/runs?profile=default").json()["executions"] == []
+        # hc-911: upstream (#115345) treats ?profile= as a hint, not ownership: a job held by
+        # another profile resolves to its owner, and the execution ledger follows the same owner.
+        assert client.get(f"{url}/runs?profile=default").json()["executions"] == history["executions"]
 
         script.write_text("raise SystemExit('intentional local failure')\n")
         failed = client.post(f"{url}/trigger?profile=worker")
@@ -49,9 +53,11 @@ def test_script_execution_history_survives_failure_recovery_and_profile_switch(t
         history = client.get(f"{url}/runs?profile=worker").json()
         assert [row["status"] for row in history["executions"]] == ["failed", "completed"]
         assert history["executions"][1]["id"] == first_id
-        assert history["runs"] == []
+        assert all(row["source"] == "cron_output" for row in history["runs"]), history["runs"]
         assert set(history["executions"][0]) == {"id", "status", "claimed_at", "started_at", "finished_at"}
-        assert "intentional local failure" not in json.dumps(history)
+        # The execution projection never carries failure text. (hc-911: v0.22's cron_output
+        # run rows deliberately preview the script's own output, stderr included.)
+        assert "intentional local failure" not in json.dumps(history["executions"])
 
         assert client.post(f"{url}/pause?profile=worker").json()["enabled"] is False
         assert client.post(f"{url}/resume?profile=worker").json()["enabled"] is True

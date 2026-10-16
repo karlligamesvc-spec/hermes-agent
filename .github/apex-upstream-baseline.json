@@ -1,0 +1,20 @@
+{
+  "_comment": "ApexNodes hc-911: the NousResearch/hermes-agent release this fork last merged. An upstream-sync PR updates tag and commit; diff-based CI gates (code health, supply-chain scan, catalog admission) then also compare against this release, so only what is new against BOTH the fork base and upstream is judged (scripts/ci/upstream_sync_baseline.py). health_allow lists the reviewed union-growth exceptions of THIS sync (upstream growth plus the fork's existing patch in one unit); they apply only while a PR changes this record, so the next sync starts with an empty list.",
+  "tag": "v0.22.2",
+  "commit": "d923a5eb487a17c0a68801bba9ef0f56c81040a8",
+  "health_allow": [
+    {"path": "agent/credential_pool.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +380 lines; the fork's +94 patch unchanged"},
+    {"path": "gateway/platforms/base.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +535 lines; the fork's +7 patch unchanged"},
+    {"path": "gateway/status.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +452 lines; the fork's patch shrank 72 -> 63"},
+    {"path": "hermes_cli/config.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +357 lines; fork patch 39 -> 50 (hc-903 fence seams ported onto v0.22)"},
+    {"path": "hermes_cli/config_defaults.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +295 lines; the fork's +10 patch unchanged"},
+    {"path": "hermes_cli/profiles.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +721 lines; fork patch 16 -> 18 (hc-903 journal kept out of export/clone)"},
+    {"path": "hermes_cli/web_routers/config_env.py", "rule": "CC", "scope": "_write_custom_endpoint", "why": "upstream's v0.22 rewrite plus the hc-903 commit fence, the same seam as on main"},
+    {"path": "tests-js/scripts/mock-server.ts", "rule": "CC", "scope": "startMockServer.<anon>.server.<anon>#4", "why": "request router merged from both sides: upstream's v0.22 routes plus the fork's Desktop mock routes"},
+    {"path": "tests-js/scripts/mock-server.ts", "rule": "FUNC_LINES", "scope": "startMockServer.<anon>.server.<anon>#4", "why": "request router merged from both sides: upstream's v0.22 routes plus the fork's Desktop mock routes"},
+    {"path": "tests/agent/test_model_metadata.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +60 lines; fork keeps its DeepSeek V4 / MiMo 2.6 context tests upstream dropped"},
+    {"path": "tests/gateway/test_status.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +346 lines; the fork's +152 patch unchanged"},
+    {"path": "tests/tui_gateway/test_tui_gateway_server.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +662 lines; the fork's patch shrank 9 -> 7"},
+    {"path": "tui_gateway/methods_session.py", "rule": "FILE_LINES", "scope": "<module>", "why": "upstream +144 lines; the fork's +1 patch unchanged"}
+  ]
+}

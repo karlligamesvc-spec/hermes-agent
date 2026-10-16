@@ -134,7 +134,7 @@ def apply() -> bool:
             return False
         if not getattr(entry.check_fn, _MARK, False):
             entry.check_fn = check_web_extract_available
-    except Exception as exc:  # noqa: BLE001 — never break plugin discovery
+    except Exception as exc:
         logger.error(
             "apex_overlay: failed to install web_extract capability gate (%s)", exc,
         )

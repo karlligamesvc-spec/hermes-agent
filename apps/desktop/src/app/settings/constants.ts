@@ -288,7 +288,7 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
   // modal/daytona/ssh). Remote backends need extra env (image, tokens, host).
   'terminal.backend': ['local', 'docker', 'singularity', 'modal', 'daytona', 'ssh'],
   'stt.elevenlabs.model_id': ['scribe_v2', 'scribe_v1'],
-  'stt.local.model': ['tiny', 'base', 'small', 'medium', 'large-v3'],
+  'stt.local.model': ['tiny', 'base', 'small', 'medium', 'large-v3', 'turbo'],
   // Speech-to-text backends — kept in sync with the stt block in
   // hermes_cli/config.py (local/groq/openai/mistral/elevenlabs).
   'stt.provider': ['local', 'groq', 'openai', 'mistral', 'xai', 'elevenlabs'],
@@ -381,7 +381,9 @@ export const ENUM_OPTIONS: Record<string, string[]> = {
     'piper'
   ],
   'stt.openai.model': ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe', 'gpt-transcribe'],
+  'stt.groq.model': ['whisper-large-v3-turbo', 'whisper-large-v3'],
   'stt.mistral.model': ['voxtral-mini-latest', 'voxtral-mini-2602'],
+  'stt.xai.model': ['grok-voice-transcribe-2.0', 'grok-voice-transcribe-1.0'],
   'tts.openai.model': ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'],
   'tts.elevenlabs.model_id': ['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5'],
   // NeuTTS local inference device.

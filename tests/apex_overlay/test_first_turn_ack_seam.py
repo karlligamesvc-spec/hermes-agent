@@ -147,7 +147,7 @@ def test_wrapped_resolve_delegates_other_settings():
     first_turn_ack.apply()
 
     wrapped = display_config.resolve_display_setting
-    real = getattr(wrapped, "__wrapped__")
+    real = wrapped.__wrapped__
     # first_turn_ack: wrapper supplies the default
     assert wrapped({}, "dingtalk", "first_turn_ack", False) is True
     # other setting: wrapper == upstream
@@ -203,7 +203,7 @@ def test_send_ack_fires_for_cn_platform(monkeypatch):
     src = type("S", (), {"platform": plat, "chat_id": "c1"})()
 
     # config load returns {} → tier default applies (dingtalk ON)
-    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {})
+    monkeypatch.setattr("gateway.run._load_gateway_config", dict)
 
     async def _go():
         await first_turn_ack._send_first_turn_ack(Runner, src, "sesskey-1")
@@ -224,7 +224,7 @@ def test_send_ack_skipped_for_feishu(monkeypatch):
         adapters = {plat: adapter}
 
     src = type("S", (), {"platform": plat, "chat_id": "c1"})()
-    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {})
+    monkeypatch.setattr("gateway.run._load_gateway_config", dict)
 
     async def _go():
         await first_turn_ack._send_first_turn_ack(Runner, src, "sesskey-2")
@@ -242,7 +242,7 @@ def test_send_ack_debounced_within_cooldown(monkeypatch):
         adapters = {plat: adapter}
 
     src = type("S", (), {"platform": plat, "chat_id": "c1"})()
-    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {})
+    monkeypatch.setattr("gateway.run._load_gateway_config", dict)
 
     async def _go():
         await first_turn_ack._send_first_turn_ack(Runner, src, "same-key")
@@ -262,7 +262,7 @@ def test_send_ack_respects_env_kill_switch(monkeypatch):
         adapters = {plat: adapter}
 
     src = type("S", (), {"platform": plat, "chat_id": "c1"})()
-    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {})
+    monkeypatch.setattr("gateway.run._load_gateway_config", dict)
     monkeypatch.setenv("HERMES_GATEWAY_FIRST_TURN_ACK_ENABLED", "false")
 
     async def _go():

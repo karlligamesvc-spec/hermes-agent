@@ -120,7 +120,7 @@ def test_end_to_end_installed_on_module(monkeypatch):
     monkeypatch.setenv("HERMES_MANAGED_RUNTIME", "1")
     # Managed → False. We assert it does not import/attempt lazy_deps by patching
     # ensure to blow up if reached.
-    import tools.lazy_deps as lazy_deps
+    from tools import lazy_deps
 
     def _boom(*a, **k):
         raise AssertionError("lazy_deps.ensure must not be called on managed runtime")

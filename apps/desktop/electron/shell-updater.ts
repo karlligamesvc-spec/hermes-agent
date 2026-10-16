@@ -316,7 +316,13 @@ function createShellUpdater(options) {
 
   async function checkNow() {
     try {
-      await autoUpdater.checkForUpdates()
+      const result = await autoUpdater.checkForUpdates()
+
+      // autoDownload: electron-updater returns the download as result.downloadPromise and rethrows
+      // its failure there after emitting 'error' (already logged + state above). Left unawaited,
+      // every failed download (network, signature, disk; no app-update.yml in a --dir build)
+      // surfaced as an unhandled rejection in main (hc-911, Windows real-machine run).
+      void result?.downloadPromise?.catch(() => {})
 
       return { ok: true }
     } catch (error: any) {

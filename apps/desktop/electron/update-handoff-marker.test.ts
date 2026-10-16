@@ -26,6 +26,9 @@ function markerStartedAt(home: string): number {
 
 function runPosix(installRoot: string, startedAt?: string) {
   const env = { ...process.env }
+  // The scripts prefer an inherited HERMES_HOME (CI's setup-pm exports one) over the install
+  // root's parent, which is the home these sandboxes check.
+  delete env.HERMES_HOME
 
   if (startedAt === undefined) {
     delete env.HERMES_UPDATE_STARTED_AT
@@ -41,6 +44,9 @@ function runPosix(installRoot: string, startedAt?: string) {
 
 function runWindows(installRoot: string, startedAt?: string) {
   const env = { ...process.env }
+  // The scripts prefer an inherited HERMES_HOME (CI's setup-pm exports one) over the install
+  // root's parent, which is the home these sandboxes check.
+  delete env.HERMES_HOME
 
   if (startedAt === undefined) {
     delete env.HERMES_UPDATE_STARTED_AT

@@ -85,11 +85,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DESKTOP_SPAWN_ENV_CONTRACT",
+    "GATEWAY_PUBLIC_BASE",
     "SOCIAL_PLATFORMS",
     "SOURCE_CONFIG",
     "SOURCE_ENV",
     "SOURCE_NONE",
-    "GATEWAY_PUBLIC_BASE",
     "GatewayError",
     "agent_api_key",
     "asr_direct_upload_threshold_bytes",
@@ -224,7 +224,7 @@ def _managed_provider_entry() -> dict[str, Any] | None:
         from hermes_cli.config import load_config
 
         config = load_config() or {}
-    except Exception:  # noqa: BLE001 — config 不可用等同"未登录"
+    except Exception:
         return None
     providers = config.get("custom_providers")
     if not isinstance(providers, list):
@@ -354,7 +354,7 @@ def capability_version() -> str:
             from importlib.metadata import version as _dist_version
 
             version = _dist_version("hermes-agent")
-        except Exception:  # noqa: BLE001 — 未以发行包形态安装(裸源码跑)
+        except Exception:
             version = (os.getenv("HERMES_RUNTIME_VERSION") or "").strip()
         _capability_version_cache = version or "unknown"
     return _capability_version_cache
@@ -379,7 +379,7 @@ def _server_detail(response: httpx.Response) -> str:
     """尽力从响应体里挖 FastAPI 风格的 detail.message / detail.code。"""
     try:
         body = response.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return (response.text or "").strip()[:300]
     detail = body.get("detail", body) if isinstance(body, dict) else body
     if isinstance(detail, dict):
@@ -493,7 +493,7 @@ def request_json(
             raise _error_from_response(response, source, path=path)
         try:
             body = response.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise GatewayError("平台工具网关返回了无法解析的响应,请稍后重试。") from exc
         if not isinstance(body, dict):
             raise GatewayError("平台工具网关返回了意外的响应格式,请稍后重试。")
@@ -645,7 +645,7 @@ def media_cache_dir() -> Path:
         from hermes_constants import get_hermes_home
 
         home = str(get_hermes_home())
-    except Exception:  # noqa: BLE001
+    except Exception:
         home = os.getenv("HERMES_HOME") or str(Path.home() / ".hermes")
     cache = Path(home) / "cache" / "media"
     cache.mkdir(parents=True, exist_ok=True)
@@ -737,8 +737,7 @@ def download_media(
                         # Range 被忽略(200)时必须覆盖，绝不能把完整响应追加到残件后面。
                         mode = "ab" if append else "wb"
                         with open(partial, mode) as fh:  # windows-footgun: ok — mode is always binary (ab/wb)
-                            for chunk in response.iter_bytes():
-                                fh.write(chunk)
+                            fh.writelines(response.iter_bytes())
 
                         actual = partial.stat().st_size
                         if expected_total is not None and actual != expected_total:
@@ -830,11 +829,12 @@ def _run_audio_extraction(command: list[str], output: Path, *, timeout: int, too
     try:
         completed = subprocess.run(
             command,
+            stdin=subprocess.DEVNULL,  # ffmpeg reads stdin for interactive keys
             capture_output=True,
             timeout=timeout,
             check=False,
         )
-    except Exception:  # noqa: BLE001 — 抽取失败回退原文件,不是致命错误
+    except Exception:
         logger.warning("%s audio extraction crashed; uploading original media", tool, exc_info=True)
         output.unlink(missing_ok=True)
         return None

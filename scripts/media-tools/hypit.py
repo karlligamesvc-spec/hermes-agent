@@ -29,7 +29,7 @@ def verify_archive(archive: Path, record: dict) -> None:
 
 def prepare(destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
-    record = json.loads(Path(__file__).with_name("source-lock.json").read_text(encoding="utf-8"))["hypit"]
+    record = json.loads(Path(__file__).with_name("source-lock.json").read_text(encoding="utf-8-sig"))["hypit"]
     archive = destination / f"hypit-{record['version']}.tgz"
     with urllib.request.urlopen(record["url"], timeout=120) as response:
         with archive.open("wb") as output:

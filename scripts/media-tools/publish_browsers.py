@@ -12,7 +12,7 @@ BUCKET = 'apexnodes-runtime-202606250443-1300912302'
 
 
 def publish(root, client):
-    packages = json.loads((root / 'desktop-lock.json').read_text())['browser']
+    packages = json.loads((root / 'desktop-lock.json').read_text(encoding='utf-8-sig'))['browser']
     for target, item in packages.items():
         archive = root / item['url'].rsplit('/', 1)[-1]
         with archive.open('rb') as stream:

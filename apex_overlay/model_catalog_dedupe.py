@@ -68,7 +68,7 @@ _MARK = "_apex_overlay_model_catalog_dedupe"
 _SENTINEL_SUFFIX = "-apex"
 
 
-def dedupe_sentinel_pairs(models: List[str]) -> List[str]:
+def dedupe_sentinel_pairs(models: list[str]) -> list[str]:
     """Collapse ``X`` + ``X-APEX`` pairs in one model list to the sentinel.
 
     - Only ids whose counterpart is ALSO present are touched; a lone bare id
@@ -89,7 +89,7 @@ def dedupe_sentinel_pairs(models: List[str]) -> List[str]:
         sentinel = lower_present.get(low + _SENTINEL_SUFFIX)
         return sentinel if sentinel is not None else model
 
-    out: List[str] = []
+    out: list[str] = []
     emitted: set = set()
     for model in models:
         if not isinstance(model, str):
@@ -132,7 +132,7 @@ def _wrap_list_authenticated_providers(orig: Callable) -> Callable:
     """
 
     @functools.wraps(orig)
-    def wrapper(*args, **kwargs) -> List[dict]:
+    def wrapper(*args, **kwargs) -> list[dict]:
         rows = orig(*args, **kwargs)
         try:
             for row in rows or []:

@@ -7,13 +7,13 @@ import test from 'node:test'
 
 import { assertBundledRuntimePackage, readBundledRuntimePin, sha256File, stageBundledRuntime } from './bundled-runtime-package.mjs'
 
-function fixture(root, { platform = 'darwin', arch = 'arm64', omit = '', embeddedCommit, mutate = () => {} } = {}) {
+function fixture(root, { platform = 'darwin', arch = 'arm64', omit = '', embeddedCommit, mutate = () => {}, pythonVersion = '3.11.15' } = {}) {
   const pin = readBundledRuntimePin()
   const osName = platform === 'win32' ? 'win' : 'mac'
   const key = pin.runtime_commit.slice(0, 12)
   const out = path.join(root, 'out')
   const source = path.join(root, 'source')
-  const python = `.runtime/py/cpython-3.11.15-${osName}-${arch}`
+  const python = `.runtime/py/cpython-${pythonVersion}-${osName}-${arch}`
   const manifest = {
     schema: 1, kind: 'apexnodes-runtime-bundle', framework: 'hermes-agent', key,
     runtime_commit: pin.runtime_commit, min_desktop_version: pin.min_desktop_version, os: osName, arch,
@@ -32,7 +32,7 @@ function fixture(root, { platform = 'darwin', arch = 'arm64', omit = '', embedde
     '.bundle-manifest.json', '.hermes-source-commit', '.runtime/files.tsv', 'scripts/build-runtime-bundle.mjs', 'pyproject.toml', 'uv.lock',
     osName === 'win' ? 'venv/Scripts/python.exe' : 'venv/bin/python',
     osName === 'win' ? '.runtime/node/node.exe' : '.runtime/node/bin/node',
-    osName === 'win' ? `${python}/python.exe` : `${python}/bin/python3.11`, manifest.components.uv.path, manifest.components.ripgrep.path,
+    osName === 'win' ? `${python}/python.exe` : `${python}/bin/python${pythonVersion.split('.').slice(0, 2).join('.')}`, manifest.components.uv.path, manifest.components.ripgrep.path,
     ...(osName === 'win' ? ['.runtime/git/bin/bash.exe', '.runtime/git/cmd/git.exe'] : [])
   ]
   fs.mkdirSync(out, { recursive: true })
@@ -69,6 +69,22 @@ test('staging ships the matching native archive and refuses actual copied-byte c
       fs.writeFileSync(copied, bytes)
       assert.throws(() => assertBundledRuntimePackage(f.resources, platform, arch, f.options.pin), /size or SHA256 mismatch/)
     } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  }
+})
+
+test('hc-911: the bundled interpreter path follows the bundle python version', () => {
+  for (const pythonVersion of ['3.11.15', '3.14.7']) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-package-'))
+    try {
+      const f = fixture(root, { pythonVersion })
+      assert.equal(stageBundledRuntime(f.out, f.resources, f.options).runtimeCommit, f.options.pin.runtime_commit)
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+    const missing = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-runtime-package-'))
+    try {
+      const series = pythonVersion.split('.').slice(0, 2).join('.')
+      const f = fixture(missing, { pythonVersion, omit: `.runtime/py/cpython-${pythonVersion}-mac-arm64/bin/python${series}` })
+      assert.throws(() => stageBundledRuntime(f.out, f.resources, f.options), new RegExp(`missing .*python${series.replace('.', '\\.')}`))
+    } finally { fs.rmSync(missing, { recursive: true, force: true }) }
   }
 })
 

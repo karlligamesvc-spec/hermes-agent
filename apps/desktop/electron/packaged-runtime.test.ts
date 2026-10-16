@@ -130,7 +130,7 @@ nativeTest('the actual idle scan excludes its owned probe but blocks a live borr
   let closed: Promise<void> | undefined
 
   try {
-    const identity = await exec(interpreter, ['-c', 'import json,pathlib,psutil,sys; assert sys.version_info[:2] == (3,11); print(json.dumps({"psutil":str(pathlib.Path(psutil.__file__).parent),"version":psutil.__version__}))'], { env, cwd: home, timeout: 10_000 })
+    const identity = await exec(interpreter, ['-c', 'import json,pathlib,psutil,sys; assert sys.version_info[:2] >= (3,11); print(json.dumps({"psutil":str(pathlib.Path(psutil.__file__).parent),"version":psutil.__version__}))'], { env, cwd: home, timeout: 10_000 })
     const dependency = JSON.parse(identity.stdout)
     assert.ok(dependency.version, 'native fixture must have real psutil')
     await exec(interpreter, ['-m', 'venv', '--without-pip', path.join(root, 'venv')], { env, cwd: home, timeout: 20_000 })

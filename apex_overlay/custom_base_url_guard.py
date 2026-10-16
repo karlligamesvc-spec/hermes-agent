@@ -117,7 +117,7 @@ def in_custom_family(provider: str) -> bool:
     return normalized == BARE_CUSTOM_PROVIDER or normalized.startswith(NAMED_CUSTOM_PREFIX)
 
 
-def routed_endpoint_url(provider: str, config: Optional[Dict[str, Any]] = None) -> str:
+def routed_endpoint_url(provider: str, config: Optional[dict[str, Any]] = None) -> str:
     """The base URL upstream's own resolver routes ``provider`` to, or ``""``.
 
     Delegates to ``hermes_cli.providers.resolve_custom_provider`` over the same
@@ -144,7 +144,7 @@ def routed_endpoint_url(provider: str, config: Optional[Dict[str, Any]] = None) 
     return str(getattr(resolved, "base_url", "") or "").strip() if resolved else ""
 
 
-def blank_custom_base_url_repair(config: Dict[str, Any]) -> str:
+def blank_custom_base_url_repair(config: dict[str, Any]) -> str:
     """The URL a stranded config needs written into ``model.base_url``.
 
     Returns ``""`` — meaning "leave this config alone" — unless all three of
@@ -285,7 +285,7 @@ class _PatchOnImport:
             self.unhook()
             _patch_web_server(module)
 
-        setattr(loader, "exec_module", exec_module)
+        loader.exec_module = exec_module
         return spec
 
     def unhook(self) -> None:

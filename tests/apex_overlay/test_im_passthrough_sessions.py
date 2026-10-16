@@ -99,10 +99,10 @@ def test_sanitize_summary_collapses_whitespace_and_newlines():
 
 def test_sanitize_summary_strips_control_and_format_chars():
     # NUL, ANSI ESC sequence, zero-width space, and a bidi override must go.
-    raw = "a\x00b\x1b[31mc​d‮e"
+    raw = "a\x00b\x1b[31mc\u200bd‮e"
     out = sanitize_summary(raw)
     assert "\x00" not in out and "\x1b" not in out
-    assert "​" not in out and "‮" not in out
+    assert "\u200b" not in out and "‮" not in out
     # printable content survives (ESC's payload letters remain, as text).
     for ch in "abcde":
         assert ch in out

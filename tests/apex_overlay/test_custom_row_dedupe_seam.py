@@ -309,7 +309,8 @@ def test_regression_fixture_unpatched_payload_lists_the_endpoint_twice(monkeypat
     ]
 
     assert [row["slug"] for row in custom_rows] == [MANAGED_SLUG, "custom"]
-    assert custom_rows[1]["name"] == "Custom endpoint"
+    # hc-911: v0.22 labels the bare row by its slug (was "Custom endpoint").
+    assert custom_rows[1]["name"] == "custom"
     # …and it lies about the endpoint the row above proves is authenticated.
     assert custom_rows[1]["authenticated"] is False
 

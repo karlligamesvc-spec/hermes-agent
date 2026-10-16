@@ -4,7 +4,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-import yaml
+import hermes_yaml as yaml
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -28,7 +28,7 @@ def homes(monkeypatch, tmp_path, _isolate_hermes_home):
 
 def test_foreign_profile_never_borrows_process_key(homes):
     from hermes_cli.web_server_profiles import _config_profile_scope
-    root, worker = homes
+    _root, worker = homes
     (worker / '.env').write_text('TOOLS_GATEWAY_KEY=worker-key\n')
     with _config_profile_scope('worker'):
         key, base, settings = voice.resolve_connection()
@@ -43,7 +43,7 @@ def test_foreign_profile_never_borrows_process_key(homes):
 
 def test_actual_provider_configuration_and_model_are_profile_local(homes):
     from hermes_cli.web_server_profiles import _config_profile_scope
-    root, worker = homes
+    _root, worker = homes
     (worker / 'config.yaml').write_text(yaml.safe_dump({'custom_providers': [
         {'name': 'apex-nodes.com', 'api_key': 'configured-worker-key', 'base_url': 'https://apex-nodes.com/relay/v1/'}],
         'voice': {'voice_chat_mode': 'qwen-realtime', 'qwen_realtime': {'model': 'qwen-audio-3.0-realtime-plus'}}}))

@@ -174,7 +174,6 @@ def test_localize_no_op_on_real_answer_even_on_cn_platform():
     This is the safety property that makes wrapping _send_with_retry (which
     carries ALL content) acceptable.
     """
-    answer = "这是一个正常的回答，包含 running: 关键字之外无控制片段。The weather is nice."
     # note: deliberately avoid any exact control fragment
     plain = "Here is your analysis of Q4 revenue. Everything looks good."
     assert cn_im_messages._hc228_localize("dingtalk", plain) == plain

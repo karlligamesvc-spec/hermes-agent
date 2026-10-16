@@ -111,6 +111,15 @@ function renderPane() {
   )
 }
 
+// A job already in the app-level store is one the backend reports: the pane's
+// mount kicks the job watcher, whose first poll replaces the store with the
+// backend's list. Seeding only the store let that poll wipe the job, and these
+// tests passed only behind an earlier test's still-running watcher (hc-911).
+function seedBackendJobs(jobs: LocalRuntimeJob[]) {
+  mocked.getLocalModelsJobs.mockResolvedValue({ jobs })
+  $localRuntimeJobs.set(jobs)
+}
+
 // The fresh-machine states these tests exercise now lead with the
 // quickstart card; the full pane (runtime rows, model list, browser)
 // is one 'Let me choose' click away. Render and click through.
@@ -298,7 +307,7 @@ describe('LocalModelsSettings', () => {
     })
     // A running job already in the app-level store — as after closing and
     // reopening the pane mid-download.
-    $localRuntimeJobs.set([
+    seedBackendJobs([
       {
         job_id: 'j9',
         kind: 'model-download',
@@ -331,7 +340,7 @@ describe('LocalModelsSettings', () => {
       runtime_installed: true,
       runtime_backend: 'cuda'
     })
-    $localRuntimeJobs.set([
+    seedBackendJobs([
       {
         job_id: 'j2',
         kind: 'model-download',
@@ -377,7 +386,7 @@ describe('quickstart', () => {
   })
 
   it('pins the quickstart progress view while the job runs', async () => {
-    $localRuntimeJobs.set([
+    seedBackendJobs([
       {
         job_id: 'q1',
         kind: 'quickstart',

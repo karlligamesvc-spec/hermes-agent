@@ -32,7 +32,7 @@ class TestNoOverlayFlag:
             assert cua_backend._cua_no_overlay() is True
 
 
-    @pytest.mark.macos_only
+    @pytest.mark.platforms("macos")
     def test_config_load_failure_falls_through_to_auto_detect_macos(self):
         """Unreadable config => auto-detect (macOS defaults to overlay off).
 
@@ -43,7 +43,7 @@ class TestNoOverlayFlag:
                    side_effect=RuntimeError("boom")):
             assert cua_backend._cua_no_overlay() is True
 
-    @pytest.mark.linux_only
+    @pytest.mark.platforms("linux")
     def test_config_load_failure_falls_through_to_auto_detect_linux(self, monkeypatch):
         """Unreadable config must not raise; headless Linux auto-detects off.
 
@@ -55,7 +55,7 @@ class TestNoOverlayFlag:
                    side_effect=RuntimeError("boom")):
             assert cua_backend._cua_no_overlay() is True
 
-    @pytest.mark.linux_only
+    @pytest.mark.platforms("linux")
     def test_linux_x11_auto_detects_off(self, monkeypatch):
         """X11 desktop (DISPLAY set, no Wayland) defaults the overlay off.
 
@@ -70,7 +70,7 @@ class TestNoOverlayFlag:
         with patch("hermes_cli.config.load_config", return_value={}):
             assert cua_backend._cua_no_overlay() is True
 
-    @pytest.mark.linux_only
+    @pytest.mark.platforms("linux")
     def test_linux_x11_explicit_session_type_also_off(self, monkeypatch):
         """XDG_SESSION_TYPE=x11 without Wayland env is still X11."""
         monkeypatch.setenv("DISPLAY", ":0")
@@ -79,7 +79,7 @@ class TestNoOverlayFlag:
         with patch("hermes_cli.config.load_config", return_value={}):
             assert cua_backend._cua_no_overlay() is True
 
-    @pytest.mark.linux_only
+    @pytest.mark.platforms("linux")
     def test_linux_wayland_keeps_overlay(self, monkeypatch):
         """Wayland desktop keeps the overlay: the compositor owns the
         overlay surface lifecycle, so it cannot get stuck above every
@@ -90,7 +90,7 @@ class TestNoOverlayFlag:
         with patch("hermes_cli.config.load_config", return_value={}):
             assert cua_backend._cua_no_overlay() is False
 
-    @pytest.mark.linux_only
+    @pytest.mark.platforms("linux")
     def test_linux_x11_explicit_false_overrides_auto_detect(self, monkeypatch):
         """An explicit ``no_overlay: false`` must restore the cursor even on
         X11 — auto-detection is the default, never a hard lock."""
@@ -175,7 +175,7 @@ class TestMcpInvocationUsesResolvedCommand:
                  return_value=True,
              ) as mock_probe:
             cua_backend_driver._cua_driver_supports_no_overlay.cache_clear()
-            cmd, args = _resolve_mcp_invocation("/usr/bin/cua-driver")
+            cmd, _args = _resolve_mcp_invocation("/usr/bin/cua-driver")
         assert cmd == "/opt/relocated/cua-driver"
         # The support probe must be called with the manifest-resolved
         # command, not the input driver_cmd argument.
@@ -228,8 +228,9 @@ class TestMcpArgsOverlayFlag:
 
 
 class TestEmbeddedDaemonOverlayFlag:
+    @pytest.mark.platforms("not macos")
     def test_serve_process_disables_overlay_when_policy_requires_it(self):
-        daemon = cua_backend._EmbeddedCuaDaemon("/usr/bin/cua-driver", "unrestricted")
+        daemon =cua_backend._EmbeddedCuaDaemon("/usr/bin/cua-driver", "unrestricted")
         process = MagicMock()
         process.poll.return_value = None
         status = MagicMock(returncode=0)
@@ -250,7 +251,7 @@ class TestEmbeddedDaemonOverlayFlag:
             cua_backend.subprocess, "Popen", return_value=process,
         ) as popen, patch.object(
             cua_backend.subprocess, "run", return_value=status,
-        ), patch.object(cua_backend.threading, "Thread"):
+        ), patch.object(cua_backend_daemon.threading, "Thread"):
             daemon.start()
 
         command = popen.call_args.args[0]

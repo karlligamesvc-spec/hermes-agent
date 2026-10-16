@@ -40,6 +40,14 @@ _SEAM_MODULES = (
 )
 
 
+def _recording_apply(called: set, name: str):
+    """A stand-in ``apply`` that records which seam the plugin called."""
+    def apply(*_args, **_kwargs):
+        called.add(name)
+        return True
+    return apply
+
+
 def run_plugin_register_with_stubbed_seams(module_alias: str) -> set[str]:
     """Execute the apex-overlay plugin's register() with every seam stubbed.
 
@@ -66,7 +74,7 @@ def run_plugin_register_with_stubbed_seams(module_alias: str) -> set[str]:
         patches.append(
             patch.object(
                 seam_mod, "apply",
-                (lambda n: (lambda *args, **kwargs: called.add(n) or True))(name),
+                _recording_apply(called, name),
             )
         )
     try:

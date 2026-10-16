@@ -65,7 +65,7 @@ def prepare(output: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         # Top-level consumers always install exact locked versions. No misleading
         # latest tag: this is a closed dependency slice, not the public registry.
-        target.write_text(json.dumps({'name': name, 'versions': versions}) + '\n')
+        target.write_text(json.dumps({'name': name, 'versions': versions}) + '\n', encoding='utf-8')
     (output / 'mirror.json').write_text(json.dumps({
         'prefix': prefix, 'registry': f'{COS}/{prefix}',
         'lockSha256': hashlib.sha256(lock_bytes).hexdigest(),

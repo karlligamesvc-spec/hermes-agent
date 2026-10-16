@@ -39,7 +39,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any
 
 from tools.registry import tool_error, tool_result
@@ -331,7 +331,7 @@ def _to_epoch_ms(value: Any) -> int | None:
         try:
             parsed = parser(normalized)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.replace(tzinfo=UTC)
             return int(parsed.timestamp() * 1000)
         except ValueError:
             continue
@@ -467,7 +467,7 @@ def _handle_feishu_bitable_write(args: dict, **_kwargs) -> str:
         client = _build_client(app_id, app_secret)
     except ImportError:
         return tool_error("lark_oapi is not installed in this runtime image")
-    except Exception as exc:  # noqa: BLE001 — surface SDK init failure honestly
+    except Exception as exc:
         return tool_error(f"Failed to initialize Feishu SDK client: {exc}")
 
     try:
@@ -500,7 +500,7 @@ def _handle_feishu_bitable_write(args: dict, **_kwargs) -> str:
         )
     except RuntimeError as exc:
         return tool_error(str(exc))
-    except Exception as exc:  # noqa: BLE001 — never leak a raw traceback to the model
+    except Exception as exc:
         return tool_error(f"写入多维表格失败: {exc}")
 
 

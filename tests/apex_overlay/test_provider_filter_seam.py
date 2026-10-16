@@ -324,14 +324,14 @@ def _storm_fixture(monkeypatch):
     for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
         monkeypatch.delenv(var, raising=False)
 
-    import hermes_cli.copilot_auth as copilot_auth
+    from hermes_cli import copilot_auth
 
     spy = MagicMock(
         return_value=MagicMock(returncode=0, stdout="ghp_classicpat0123456789\n")
     )
     monkeypatch.setattr(copilot_auth.subprocess, "run", spy)
     # Deterministic `gh` discovery — the real CI box may not have gh.
-    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd: "/fake/bin/gh")
+    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd, **_kw: "/fake/bin/gh")
     return spy
 
 
@@ -453,7 +453,7 @@ def test_undenied_copilot_probe_resumes_via_gh(_denylist, monkeypatch):
     for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
         monkeypatch.delenv(var, raising=False)
 
-    import hermes_cli.copilot_auth as copilot_auth
+    from hermes_cli import copilot_auth
 
     # v0.21 caches both successful and failed gh probes. Keep this test on the
     # uncached boundary so earlier deny-path tests cannot seed its result.
@@ -462,7 +462,7 @@ def test_undenied_copilot_probe_resumes_via_gh(_denylist, monkeypatch):
         return_value=MagicMock(returncode=0, stdout="gho_valid0123456789\n")
     )
     monkeypatch.setattr(copilot_auth.subprocess, "run", spy)
-    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd: "/fake/bin/gh")
+    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd, **_kw: "/fake/bin/gh")
 
     _denylist("nous")  # non-empty list WITHOUT copilot
     _apply_fresh()
@@ -487,7 +487,7 @@ def test_undenied_provider_status_delegates_to_upstream(_denylist, monkeypatch):
     for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
         monkeypatch.delenv(var, raising=False)
 
-    import hermes_cli.copilot_auth as copilot_auth
+    from hermes_cli import copilot_auth
     from hermes_cli import auth
 
     monkeypatch.setattr(copilot_auth, "_gh_cli_token_cache", None)
@@ -495,7 +495,7 @@ def test_undenied_provider_status_delegates_to_upstream(_denylist, monkeypatch):
         return_value=MagicMock(returncode=0, stdout="gho_valid0123456789\n")
     )
     monkeypatch.setattr(copilot_auth.subprocess, "run", spy)
-    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd: "/fake/bin/gh")
+    monkeypatch.setattr(copilot_auth.shutil, "which", lambda _cmd, **_kw: "/fake/bin/gh")
     # Keep the copilot token exchange local — get_copilot_api_token falls
     # back to the raw token when the exchange raises.
     monkeypatch.setattr(
@@ -555,28 +555,40 @@ def test_plugin_register_applies_seam():
     )
 
 
-def test_apex_overlay_enabled_in_config_and_discovered_before_prewarm():
+def test_apex_overlay_enabled_in_config_and_discovered_before_prewarm(monkeypatch):
     """Belt-and-suspenders on the load contract:
 
     1. cli-config.yaml.example enables the apex-overlay plugin (config tier).
-    2. In cli.py, plugin discovery is ordered before the picker prewarm call,
-       so the seam is installed before any background catalog fetch.
+    2. The picker prewarm worker finishes plugin discovery before it lists providers,
+       so the seam is installed before any background catalog fetch. (hc-911: v0.22
+       moved the prewarm into the TUI mixin and discovers plugins on a background
+       thread, so source order in cli.py no longer says anything.)
     """
     from pathlib import Path
 
-    repo = Path(__file__).resolve().parents[2]
+    from hermes_cli import inventory, model_switch, model_switch_providers, plugins
 
+    repo = Path(__file__).resolve().parents[2]
     cfg = (repo / "cli-config.yaml.example").read_text(encoding="utf-8")
     assert "apex-overlay" in cfg, (
         "cli-config.yaml.example must list apex-overlay under plugins.enabled "
         "or the seam never loads in production."
     )
 
-    cli_src = (repo / "cli.py").read_text(encoding="utf-8")
-    discover_idx = cli_src.find("discover_plugins()")
-    prewarm_idx = cli_src.find("prewarm_picker_cache_async()")
-    assert discover_idx != -1 and prewarm_idx != -1
-    assert discover_idx < prewarm_idx, (
-        "plugin discovery must run before the picker cache prewarm so the "
+    order = []
+    monkeypatch.setattr(plugins, "discover_plugins", lambda *a, **k: order.append("discover"))
+    monkeypatch.setattr(inventory, "load_picker_context", lambda: order.append("context") or _PickerContext())
+    monkeypatch.setattr(model_switch, "list_authenticated_providers", lambda **k: order.append("list"))
+    monkeypatch.setattr(model_switch_providers, "_picker_prewarm_done", __import__("threading").Event())
+    thread = model_switch_providers.prewarm_picker_cache_async()
+    assert thread is not None
+    thread.join(10)
+    assert order == ["discover", "context", "list"], (
+        "plugin discovery must finish before the picker prewarm lists providers so the "
         "apex_overlay denylist suppresses the copilot fetch in time."
     )
+
+
+class _PickerContext:
+    current_provider = current_base_url = current_model = ""
+    user_providers = custom_providers = excluded_providers = None

@@ -7,7 +7,7 @@
   - `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-21a7d5c8-85c6-4a2c-b823-51ddc2205d29.png`
   - `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-e03d4607-d117-4399-871c-38241cea90c7.png`
   - `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-51e8632d-6f7c-46fb-abcc-f76b1831907b.png`
-- Implementation screenshot: `/tmp/apex-hc848-settings-gateway.png`
+- Implementation screenshot: `/tmp/apex-hc848-settings-gateway.png` <!-- no-tmp: ok — historical QA screenshot path -->
 - Build inspected: isolated local `release/mac-arm64/APEX.app` from `codex/hc-848-desktop-settings`
 - Viewport: 1220 × 800
 - State: Settings → Gateway, Simplified Chinese, fresh isolated app data

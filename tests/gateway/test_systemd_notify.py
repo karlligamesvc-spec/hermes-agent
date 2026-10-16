@@ -8,11 +8,10 @@ import sys
 
 import pytest
 
+pytestmark = pytest.mark.platforms("linux")
 
-@pytest.mark.skipif(
-    sys.platform != "linux" or not hasattr(socket, "AF_UNIX"),
-    reason="Linux abstract Unix datagram sockets are unavailable",
-)
+
+# abstract (NUL-prefixed) AF_UNIX names are a Linux kernel feature
 def test_notify_supports_systemd_abstract_socket(monkeypatch):
     name = "\0hermes-test-notify"
     receiver = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)

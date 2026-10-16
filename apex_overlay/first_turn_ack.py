@@ -221,11 +221,11 @@ async def _send_first_turn_ack(runner, source, session_key) -> None:
         async def _send() -> None:
             try:
                 await adapter.send(chat_id, text)
-            except Exception as _se:  # noqa: BLE001
+            except Exception as _se:
                 logger.debug("apex_overlay: first_turn_ack send failed: %s", _se)
 
         asyncio.create_task(_send())
-    except Exception as _e:  # noqa: BLE001
+    except Exception as _e:
         logger.debug("apex_overlay: first_turn_ack skipped: %s", _e)
 
 

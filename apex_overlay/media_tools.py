@@ -61,7 +61,7 @@ def ensure_browser(*, render=False) -> Path:
             unpacked = temporary / 'unpacked'
             unpacked.mkdir()
             tar = str(Path(os.environ.get('SystemRoot', 'C:/Windows')) / 'System32/tar.exe') if os.name == 'nt' else '/usr/bin/tar'
-            subprocess.run([tar, '-xf', str(archive), '-C', str(unpacked)], check=True, timeout=180)
+            subprocess.run([tar, '-xf', str(archive), '-C', str(unpacked)], stdin=subprocess.DEVNULL, check=True, timeout=180)
             candidate = unpacked / spec['executable']
             if not candidate.is_file():
                 raise ValueError('COS browser archive has no native executable')
@@ -78,7 +78,7 @@ def ensure_browser(*, render=False) -> Path:
                     if binary.read(6) != b'PE\0\0\x64\x86':
                         raise ValueError('Browser is not a native Windows x64 executable')
             else:
-                subprocess.run([str(candidate), '--version'], check=True, capture_output=True, timeout=30)
+                subprocess.run([str(candidate), '--version'], stdin=subprocess.DEVNULL, check=True, capture_output=True, timeout=30)
             # A previous interrupted installation cannot leave a half-valid tree.
             if destination.exists():
                 shutil.rmtree(destination)
@@ -104,15 +104,16 @@ def apply() -> bool:
         return True
 
     def install():
-        from tools.lazy_deps import _allow_lazy_installs
-        if not _allow_lazy_installs():
+        # hc-911: v0.22 retired tools.lazy_deps; pm owns the same lazy-install policy
+        # (security.allow_lazy_installs / HERMES_DISABLE_LAZY_INSTALLS).
+        from pm import lazy_installs_allowed
+        if not lazy_installs_allowed():
             return False
         if os.environ.get('AGENT_BROWSER_EXECUTABLE_PATH'):
             return Path(os.environ['AGENT_BROWSER_EXECUTABLE_PATH']).is_file()
         try:
+            # hermes_cli.browser_runtime.chromium_executable() reads this override first.
             os.environ['AGENT_BROWSER_EXECUTABLE_PATH'] = str(ensure_browser())
-            from tools.browser_tool_origin import origin_module
-            origin_module()._cached_chromium_installed = None
             return True
         except Exception:
             import logging

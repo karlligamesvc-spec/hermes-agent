@@ -8,7 +8,7 @@ import json
 import httpx
 import pytest
 
-from tests.hermes_cli.test_web_model_mutations import (  # noqa: F401
+from tests.hermes_cli.test_web_model_mutations import (
     JOURNAL, assignment, credential_anchors, credential_fixture, disk, runtimes,
 )
 

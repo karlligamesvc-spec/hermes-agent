@@ -60,7 +60,10 @@ const MANIFEST_NAME = '.bundle-manifest.json'
 const FILES_INDEX_REL = '.runtime/files.tsv'
 const FIXUP_STATE_REL = '.runtime/fixup-state.json'
 const FRAMEWORK = 'hermes-agent'
-const PYTHON_SERIES = '3.11' // lockstep: scripts/install.ps1 $PythonVersion / install.sh PYTHON_VERSION
+// hc-911: from v0.22 the runtime's uv.lock resolves only for the interpreter pm pins
+// (pm/lock.json), so a bundle is built on exactly that CPython and uv. Older runtime refs
+// carry no pm/lock.json and were locked for 3.11 (the pre-v0.22 installers' PYTHON_VERSION).
+const LEGACY_PYTHON_VERSION = '3.11'
 const NODE_SERIES = 'v22.'   // lockstep: scripts/install.ps1 $NodeVersion = "22"
 const MINGIT_VERSION = '2.54.0' // lockstep: install.ps1 $gitVer + publish-runtime-tarball.sh GIT_VERSION
 const RIPGREP_VERSION = '14.1.1'
@@ -71,6 +74,28 @@ const AGENT_BROWSER_SPECS = ['agent-browser@^0.26.0', '@askjo/camofox-browser@^1
 // ---------------------------------------------------------------------------
 // small utils
 // ---------------------------------------------------------------------------
+
+// The CPython and uv versions a runtime source tree pins in pm/lock.json, or nulls.
+function pmLockPins(sourceRoot) {
+  let lock
+  try {
+    lock = JSON.parse(fs.readFileSync(path.join(sourceRoot, 'pm', 'lock.json'), 'utf8'))
+  } catch {
+    return { python: null, uv: null }
+  }
+  const packages = lock.packages || {}
+  return {
+    python: String(packages.python?.version || '').split('+')[0] || null,
+    uv: String(packages.uv?.version || '') || null,
+  }
+}
+
+// "3.14" from a bundled interpreter dir name such as "cpython-3.14.7-macos-aarch64-none".
+function pythonSeriesOf(pyDirName) {
+  const m = /^cpython-(\d+)\.(\d+)\./.exec(pyDirName)
+  if (!m) die(`cannot read the python version from ${pyDirName}`)
+  return `${m[1]}.${m[2]}`
+}
 
 function log(msg) { process.stdout.write(`→ ${msg}\n`) }
 function warn(msg) { process.stdout.write(`⚠ ${msg}\n`) }
@@ -112,7 +137,10 @@ function run(cmd, argv, opts = {}) {
 
 export function probeRuntimeImports(python, { env = process.env, cwd = os.tmpdir(), root = null } = {}) {
   const code = [
-    'import yaml, dotenv, hermes_cli.config, run_agent, toolsets',
+    // hc-911: v0.22 runtimes carry hermes_yaml (ruamel), earlier ones PyYAML; same expression as
+    // RUNTIME_YAML_IMPORT in apps/desktop/electron/bootstrap-platform.ts.
+    'import importlib.util; __import__("hermes_yaml" if importlib.util.find_spec("hermes_yaml") else "yaml")',
+    'import dotenv, hermes_cli.config, run_agent, toolsets',
     ...(root ? [
       'import importlib, pathlib, socket',
       'assert getattr(socket, "_hermes_offline_guard", False), "offline guard missing"',
@@ -323,8 +351,12 @@ async function cmdBuild(args) {
   // older ref that still carries it in its tree (history wasn't rewritten).
   rmrf(path.join(stage, 'dist', 'cos-runtime'))
 
+  const pins = pmLockPins(stage)
+  if (pins.python) log(`runtime pins (pm/lock.json): python ${pins.python}, uv ${pins.uv}`)
+
   // ── 2. uv (host tool + bundled binary; native build ⇒ same triple) ────────
-  let uvVersion = args['uv-version'] || ''
+  let uvVersion = args['uv-version'] || pins.uv || ''
+  if (pins.uv && uvVersion !== pins.uv) die(`--uv-version ${uvVersion} differs from the runtime's pinned uv ${pins.uv}`)
   if (!uvVersion) {
     const rel = await fetchJson('https://api.github.com/repos/astral-sh/uv/releases/latest', { headers: githubHeaders() })
     uvVersion = rel.tag_name
@@ -352,7 +384,7 @@ async function cmdBuild(args) {
   // ── 3. CPython (python-build-standalone via uv, into the bundle) ──────────
   const pyRoot = path.join(stage, '.runtime', 'py')
   fs.mkdirSync(pyRoot, { recursive: true })
-  run(uvHost, ['python', 'install', PYTHON_SERIES], {
+  run(uvHost, ['python', 'install', pins.python || LEGACY_PYTHON_VERSION], {
     env: { ...process.env, UV_PYTHON_INSTALL_DIR: pyRoot },
   })
   // Canonicalize the managed-python dir. uv leaves (a) an ABSOLUTE-symlink
@@ -373,10 +405,11 @@ async function cmdBuild(args) {
     }
   }
   if (!pyName) die(`no cpython-* dir under ${pyRoot} after uv python install`)
+  if (pins.python && !pyName.startsWith(`cpython-${pins.python}-`)) die(`uv installed ${pyName}, not the pinned python ${pins.python}`)
   const pyDirRel = `.runtime/py/${pyName}`
   const pythonExe = target.os === 'win'
     ? path.join(pyRoot, pyName, 'python.exe')
-    : path.join(pyRoot, pyName, 'bin', `python${PYTHON_SERIES}`)
+    : path.join(pyRoot, pyName, 'bin', `python${pythonSeriesOf(pyName)}`)
   if (!fs.existsSync(pythonExe)) die(`bundled python not found at ${pythonExe}`)
   const pyVersion = run(pythonExe, ['-c', 'import platform;print(platform.python_version())'], { capture: true }).stdout.trim()
 
@@ -620,7 +653,7 @@ async function cmdBuild(args) {
 
 function relinkMacPython(root, pyDirRel) {
   const bin = path.join(root, 'venv', 'bin')
-  const relTarget = path.join('..', '..', ...pyDirRel.split('/'), 'bin', `python${PYTHON_SERIES}`)
+  const relTarget = path.join('..', '..', ...pyDirRel.split('/'), 'bin', `python${pythonSeriesOf(path.basename(pyDirRel))}`)
   for (const name of fs.readdirSync(bin)) {
     if (!/^python(\d(\.\d+)?)?$/.test(name)) continue
     const p = path.join(bin, name)
@@ -831,7 +864,7 @@ function cmdFixup(args) {
     let st = null
     try { st = fs.lstatSync(p) } catch { st = null }
     if (st && st.isSymbolicLink() && path.isAbsolute(fs.readlinkSync(p))) {
-      const relTarget = path.join('..', '..', ...pyRel.split('/'), 'bin', `python${PYTHON_SERIES}`)
+      const relTarget = path.join('..', '..', ...pyRel.split('/'), 'bin', `python${pythonSeriesOf(path.basename(pyRel))}`)
       fs.rmSync(p)
       fs.symlinkSync(relTarget, p)
       log(`re-linked venv/bin/python -> ${relTarget}`)
@@ -952,7 +985,7 @@ async function cmdSmoke(args) {
     // interpreter identity + venv/base wiring
     const idn = run(py, ['-c', [
       'import sys',
-      `assert sys.version_info[:2] == (${PYTHON_SERIES.split('.').join(',')}), sys.version`,
+      `assert sys.version_info[:2] == (${pythonSeriesOf(path.basename(manifest.components.python.path)).split('.').join(',')}), sys.version`,
       'assert sys.prefix != sys.base_prefix, "not a venv"',
       'assert ".runtime" in sys.base_prefix, sys.base_prefix',
       'print("python-ok", sys.version.split()[0], sys.base_prefix)',
