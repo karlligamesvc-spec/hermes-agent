@@ -36,7 +36,14 @@ def _nix_skips() -> list[str]:
 def _nix_checks() -> dict[str, str]:
     """Top-level check name -> its body, from the `checks = builtins.removeAttrs { ... }` set."""
     text = CHECKS_NIX.read_text(encoding="utf-8")
-    assert "checks = builtins.removeAttrs {" in text and "} apexDesktopBaselineSkips;" in text
+    # Application binds tighter than `//`: the parentheses must hold the WHOLE merged set, or
+    # removeAttrs takes only its first half and the Linux half gets applied to the list (#390's
+    # second CI round: "attempt to call something which is not a function but a set").
+    opening, closing = "checks = builtins.removeAttrs ({\n", "}) apexDesktopBaselineSkips;\n"
+    assert text.count(opening) == 1 and text.count(closing) == 1, "removeAttrs must wrap the checks set in ( )"
+    body = text[text.index(opening): text.index(closing)]
+    joins = re.findall(r"(?m)^ {6}\} // ", text)
+    assert joins and len(re.findall(r"(?m)^ {6}\} // ", body)) == len(joins), "a `} //` join sits outside removeAttrs"
     starts = list(re.finditer(r"(?m)^ {8}([a-z][a-z0-9-]*) =", text))
     return {m[1]: text[m.end(): nxt.start() if nxt else len(text)]
             for m, nxt in zip(starts, [*starts[1:], None])}

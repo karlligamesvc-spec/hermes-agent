@@ -141,7 +141,7 @@ json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
     in {
       packages.configKeys = configKeys;
 
-      checks = builtins.removeAttrs {
+      checks = builtins.removeAttrs ({
         # Cross-platform evaluation — catches "not supported for interpreter"
         # errors (e.g. sphinx dropping python311) without needing a darwin builder.
         # Evaluation is pure and instant; it doesn't build anything.
@@ -1616,6 +1616,6 @@ json.dump(load_config(), sys.stdout, default=str)
           mkdir -p $out
           echo "ok" > $out/result
         '';
-      } apexDesktopBaselineSkips;
+      }) apexDesktopBaselineSkips;
     };
 }
