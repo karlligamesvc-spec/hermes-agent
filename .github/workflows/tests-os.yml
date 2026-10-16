@@ -99,6 +99,9 @@ jobs:
             # upstream's named 32-core (x64 / arm64) runners are not registered here.
             runner: windows-latest
             marker: windows
+            # hc-911: two workers on the 4-vCPU runner (upstream's 16 is half of 32 cores),
+            # so the run takes longer than the default 30 minutes.
+            timeout: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
@@ -193,7 +196,9 @@ jobs:
         env:
           # These files spawn nested PowerShell trees. CPU-count parallelism
           # starves cold child startup before the fixture's idle deadline.
-          HERMES_TEST_WORKERS: ${{ matrix.marker == 'windows' && (runner.arch == 'ARM64' && '16' || '16') || '' }}
+          # ApexNodes hc-911: upstream runs 16 workers on 32-core runners; the fork's standard
+          # 4-vCPU pool failed or never started 15 of these files at 16, so it gets the same half-the-cores ratio.
+          HERMES_TEST_WORKERS: ${{ matrix.marker == 'windows' && '2' || '' }}
           HERMES_TEST_SLICE: ${{ matrix.slice || '' }}
           # Belt-and-suspenders with tests/conftest.py's env blanking: no
           # test may reach a real provider API.

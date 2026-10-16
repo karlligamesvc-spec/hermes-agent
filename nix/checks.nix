@@ -128,10 +128,20 @@ def leaf_paths(d, prefix=""):
 json.dump(sorted(leaf_paths(DEFAULT_CONFIG)), sys.stdout, indent=2)
 ' > $out
       '';
+
+      # ApexNodes hc-911: apps/desktop stays on the APEX baseline, built by its own npm pipeline for
+      # the paired Mac/Windows releases and never by this Nix renderer derivation (its native-deps
+      # staging has no Nix path). The checks that BUILD the Desktop package are dropped until
+      # upstream's Desktop (product-identity.cjs) lands; the Home Manager desktop checks only
+      # evaluate it and keep running, and web's favicon stays covered by the icon freshness lane.
+      apexDesktopBaselineSkips = lib.optionals (!builtins.pathExists ../apps/desktop/product-identity.cjs) [
+        "frontend-icons"
+        "desktop-backend"
+      ];
     in {
       packages.configKeys = configKeys;
 
-      checks = {
+      checks = builtins.removeAttrs {
         # Cross-platform evaluation — catches "not supported for interpreter"
         # errors (e.g. sphinx dropping python311) without needing a darwin builder.
         # Evaluation is pure and instant; it doesn't build anything.
@@ -1606,6 +1616,6 @@ json.dump(load_config(), sys.stdout, default=str)
           mkdir -p $out
           echo "ok" > $out/result
         '';
-      };
+      } apexDesktopBaselineSkips;
     };
 }

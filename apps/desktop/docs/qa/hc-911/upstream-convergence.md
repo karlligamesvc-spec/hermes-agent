@@ -73,6 +73,18 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 - **供应链扫描**：同步 PR 只看相对 fork base 和相对上游 release 都是新增的那些行（995,675 行新增中，APEX 自己的有 4,617 行），5 处上游命中被排除。PR 在自己文件里写出与上游完全相同的一行，照样会报。
 - **pinned-source-validate**：同步 PR 只校验与上游 release 不同的条目（本 PR 没有），并跳过“只能改数据”规则。检测脚本优先取 base 分支上的版本，避免 PR 改写自己的判定。
 
+**第二轮 CI（Python 分片第一次真正运行）**：
+
+前一轮修好分片之后，测试第一次真正跑起来，又暴露出 7 项失败，都按 APEX Desktop 基线或 fork 的 runner 条件处理：
+
+- 分片 6/7 的 33 条路由测试：合入 #391（hc-913）。它把上游 Desktop E2E 两条 lane 在套件缺失期间关掉，并把相应用例按路径加入基线跳过清单。
+- nix flake check：npm 依赖这一层已经过了，接着去构建 `hermes-desktop-renderer`，而 APEX 的 native-deps 暂存没有 Nix 路径。`nix/checks.nix` 在上游的 `product-identity.cjs` 移植进来之前，跳过会**构建** Desktop 包的 `frontend-icons` 和 `desktop-backend`。只做求值的 Home Manager Desktop 检查照常运行；web 的 favicon 仍由图标新鲜度检查覆盖。
+- Cold Windows SDK：检出后先探测 `apps/desktop/scripts/windows-bundle-tools.mjs`。APEX 基线没有这套 MSIX 签名工具，后面的步骤全部跳过。
+- JS & TS checks：APEX 的 `update-handoff-marker.test.ts` 原样继承了 CI 里 `setup-pm` 导出的 `HERMES_HOME`，脚本因此把 marker 写到了别处。改为调用前清掉这个变量。按同类排查，又在 CI 那组环境变量下跑了一遍 electron 全套，没有其他用例受影响。
+- Windows-only 测试：上游在 32 核 runner 上开 16 个 worker，fork 的普通 4 vCPU runner 照搬后，有 15 个文件超时或没跑起来。改为 2 个 worker、超时 60 分钟。在 runner 上找不到 git-core `git.exe` 的那两条 live 测试，本机无法复现，留待下一轮 CI 确认。
+- 守卫：`tests/apex_overlay/test_desktop_baseline_ci_gates.py`。会构建 Desktop 的 nix 检查必须与跳过清单完全一致；Windows SDK 探测之后的步骤都必须受它控制；Windows-only 线的 worker 数被钉住。三项都做过反向验证。
+- 偶发：`tests/hermes_cli/test_gitlock.py` 在 Linux 上偶发失败一次、重试通过（`copytree` 复制 `.git` 时与 git 进程竞争）。这是上游测试，不是 fork 引入的。
+
 **下次同步时**：更新记录里的 tag 和 commit，清空 `health_allow`，再按 code health 的结果逐条补上。
 
 ## 结构性冲突（UD / DU / AA）
