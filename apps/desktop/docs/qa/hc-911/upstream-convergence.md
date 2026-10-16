@@ -52,12 +52,12 @@
 
 ## #390 首轮 CI 的修复（fork 首次跑 v0.22 的 CI）
 
-fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的第一轮 CI 是在维护者重新启用之后才跑起来的。结果是 31 项通过、14 项失败。对照前两次同步 PR（#254、#283，当时全绿），这次的失败来自 v0.22 新增的检查和 fork 自身的差异。另有一组失败被前一步挡住，第一轮根本没执行到（硬规则 #12 的“一个 bug 挡住另一个 bug”）：同一 job 里 footgun 一失败，后面的 shebang、`/tmp`、OS 伪装、AGENTS.md 体量检查都没跑。
+fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的第一轮 CI 是在维护者重新启用之后才跑起来的。结果是 31 项通过、14 项失败。对照前两次同步 PR（#254、#283，当时全绿），这次的失败来自 v0.22 新增的检查和 fork 自身的差异。另有一组失败被前一步挡住，第一轮根本没执行到（硬规则 #12 的“一个 bug 挡住另一个 bug”）：同一 job 里 footgun 一失败，后面的 shebang、临时目录字面量、OS 伪装、AGENTS.md 体量检查都没跑。
 
 | 失败 | 原因 | 处理 |
 |---|---|---|
 | 8 个 Python 测试分片 | fork 自有的 `tests.yml` 分片步骤仍 `source .venv/bin/activate`，v0.22 的 setup-pm 不再生成 `.venv`，一条测试都没跑 | 删掉这一行；新增守卫 `test_ci_workflow_venv_activation.py`：每次激活 `.venv` 都必须有同 job 内的创建步骤 |
-| Windows footguns 等 lint 守卫 | v0.22 规则更严：APEX 脚本里 19 处 BOM/编码，另有 6 处 `#!/bin/bash`、32 处 `/tmp` 字面量、3 处未标记的 OS 伪装，以及 Desktop AGENTS.md 链路超出 30,000 字符 | 读文件改用 `utf-8-sig`，补 `encoding=`；shebang 改为 `#!/usr/bin/env bash`（卸载脚本由 `/bin/bash <script>` 执行，shebang 不影响运行）；有意的 `/tmp` 和 OS 伪装逐行加带原因的 `no-tmp: ok` / `os-marker: ok`；Desktop AGENTS.md 的三节长篇原样移到 `apps/desktop/ENGINEERING.md`，原处换成上游 v0.22.2 的精简版并指向那里 |
+| Windows footguns 等 lint 守卫 | v0.22 规则更严：APEX 脚本里 19 处 BOM/编码，另有 6 处写死路径的 bash shebang、32 处临时目录字面量、3 处未标记的 OS 伪装，以及 Desktop AGENTS.md 链路超出 30,000 字符 | 读文件改用 `utf-8-sig`，补 `encoding=`；shebang 改为 `#!/usr/bin/env bash`（卸载脚本由 `/bin/bash <script>` 执行，shebang 不影响运行）；有意的 `/tmp` 和 OS 伪装逐行加带原因的 `no-tmp: ok` / `os-marker: ok`；Desktop AGENTS.md 的三节长篇原样移到 `apps/desktop/ENGINEERING.md`，原处换成上游 v0.22.2 的精简版并指向那里 |
 | nix flake check | `apps/desktop` 精确固定 `js-yaml: 4.3.1`，上游 override 已升到 4.3.2；nix 的 `importNpmLock` 去掉 override 后离线安装，于是要找锁文件里不存在的 4.3.1 | 改成 4.3.2；新增 tests-js 守卫 `override-pins.test.mjs`。离线复现：去掉 override 后跑 `npm ci --offline`，4.3.1 报 `Missing: js-yaml@4.3.1`，4.3.2 安装成功 |
 | 图标新鲜度 | 生成器用上游 Nous 图标重写 `apps/desktop/assets/*`，再拿去和提交里的 APEX 图标比对。照提示处理会把身份层换成上游的（硬规则 #11） | 生成和结构检查照常做；比对前还原 `apps/desktop`。该豁免在上游的 `product-identity.cjs` 移植进来之后自动失效。其余目标（web、website、bootstrap）照常比对，CI 上与提交一致 |
 | Prebuilt TUI checks（tests-js） | 7 个文件依赖 APEX 基线里没有的上游 Desktop 模块，或在测上游 `notarize.mjs` 的重试语义 | `tests-js/vitest.config.ts` 按路径排除这 7 个文件，被引用的路径一旦移植进来，排除自动失效；守卫 `apex-desktop-baseline.test.mjs` |
