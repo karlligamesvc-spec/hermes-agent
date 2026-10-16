@@ -61,6 +61,9 @@ jobs:
 
       - name: Find changed catalog entries
         id: changed
+        env:
+          # Read-only GitHub API call to verify an upstream-sync record; this step runs no pinned code.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # HEAD is the PR merge commit: diffing it against its first parent is
@@ -79,7 +82,23 @@ jobs:
           # failure still fails the step instead of looking like "no changes".
           CHANGED=$(printf '%s' "$CHANGED" | grep -v '/removed\.yaml$' || true)
 
-          if [ -n "$CHANGED" ]; then
+          # ApexNodes hc-911: an upstream-sync PR lands the merged release's catalog as published
+          # (admitted upstream) and necessarily touches tooling too. Only entries that differ from
+          # the release are this PR's own, and the data-only rule cannot apply to it. The detector
+          # runs from the base branch when the base has it, so a PR cannot rewrite its own verdict.
+          DETECTOR=$(mktemp)
+          UPSTREAM=""
+          if git show 'HEAD^1:scripts/ci/upstream_sync_baseline.py' > "$DETECTOR" 2>/dev/null \
+              || cp scripts/ci/upstream_sync_baseline.py "$DETECTOR" 2>/dev/null; then
+            UPSTREAM=$(python3 "$DETECTOR" --base 'HEAD^1' --head HEAD --fetch | sed -n 's/^commit=//p')
+          fi
+          if [ -n "$UPSTREAM" ]; then
+            OWN=$(git diff --name-only --diff-filter=AMRT "$UPSTREAM" HEAD -- 'plugin-catalog/*.yaml' 'plugin-catalog/*.yml')
+            CHANGED=$(comm -12 <(printf '%s\n' "$CHANGED" | sort) <(printf '%s\n' "$OWN" | sort) | grep -v '^$' || true)
+            echo "upstream sync PR: validating only the entries that differ from $UPSTREAM"
+          fi
+
+          if [ -n "$CHANGED" ] && [ -z "$UPSTREAM" ]; then
             # Admission PRs must be data-only: the gate's own enforcement code
             # (this workflow, the validator, the composite actions, the built
             # hermes) resolves from the PR checkout, so an entry PR that also

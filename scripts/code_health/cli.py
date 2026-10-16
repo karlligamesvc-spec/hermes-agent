@@ -67,6 +67,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--head", help="head commit or tree (default: the working tree, untracked included)")
     p.add_argument("--report", action="store_true", help="burn-down summary of the whole head tree")
     p.add_argument("--json", action="store_true", help="machine-readable findings")
+    p.add_argument("--upstream-base", help="ApexNodes hc-911: the upstream release an upstream-sync PR "
+                   "merges; a finding blocks only if it also blocks against it (needs --base)")
     p.add_argument("--print-pins", action="store_true",
                    help="print the pinned ruff requirement (CI installs exactly this)")
     return p
@@ -86,22 +88,13 @@ def _skipped(why: str, as_json: bool) -> None:
     print(why, file=sys.stderr if as_json else sys.stdout)
 
 
-def run(repo: Path, base: str, head: str | None, as_json: bool = False,
-        switch_rev: str | None = None) -> int:
-    """Judge ``head`` against ``base``; the ENFORCEMENT switch is read from ``switch_rev``
-    (default: the base), never from the head under test."""
-    started = time.monotonic()
-    switch_rev = switch_rev or base
-    mode = enforcement(repo, switch_rev)
-    if mode == "off":
-        _skipped(f"code health: off (ENFORCEMENT in {_SWITCH_FILE} on {switch_rev[:12]})", as_json)
-        return 0
+def _judge(repo: Path, base: str, head: str | None) -> tuple[list[str], list]:
+    """The measured head paths that changed against ``base``, and their findings."""
     changes = gitio.changed_files(repo, base, head)
     head_paths = sorted({c.new for c in changes if c.new and in_scope(c.new)})
     base_paths = sorted({c.old for c in changes if c.old and in_scope(c.old)})
     if not head_paths:
-        _skipped("code health: no measured files changed", as_json)
-        return 0
+        return head_paths, []
     # Base files are measured too: a deleted .py still needs ruff on the base side.
     needs_ruff = any(p.endswith(".py") for p in (*head_paths, *base_paths))
     ruff = resolve_ruff(repo) if needs_ruff else []
@@ -110,6 +103,58 @@ def run(repo: Path, base: str, head: str | None, as_json: bool = False,
     head_m = measurer.measure(head, head_paths)
     findings = compare(base_m, head_m, changes)
     apply_allows(findings, head_m)
+    return head_paths, findings
+
+
+_SYNC_RECORD = ".github/apex-upstream-baseline.json"
+
+
+def sync_allowances(repo: Path, head: str | None) -> dict[tuple[str, str, str], str]:
+    """ApexNodes hc-911: the sync record's reviewed ``health_allow`` entries, (path, rule, scope)
+    -> why. They cover union growth (upstream's growth plus the fork's existing patch in one unit),
+    which blocks against each base alone; they apply only to the sync that records them."""
+    text = gitio.read_file(repo, head, _SYNC_RECORD)
+    entries = json.loads(text).get("health_allow", []) if text else []
+    return {(e["path"], e["rule"], e["scope"]): e["why"] for e in entries if e.get("why")}
+
+
+def excuse_upstream(findings: list, upstream_findings: list, upstream_base: str,
+                    allowances: dict[tuple[str, str, str], str] | None = None) -> None:
+    """ApexNodes hc-911: on an upstream-sync PR a finding blocks only when it also blocks against
+    the merged upstream release (scripts/ci/upstream_sync_baseline.py). One that does not is code
+    the release brought in as is, which the fork's own base never held, so it is upstream's
+    existing code: allowed, and still listed. One that blocks against both is allowed only by a
+    reviewed entry of the sync record."""
+    def key(f):
+        return f.path, f.rule, f.scope, f.line
+
+    still = {key(f) for f in upstream_findings if f.blocking and f.allowed_reason is None}
+    for f in findings:
+        if not f.blocking or f.allowed_reason is not None:
+            continue
+        if key(f) not in still:
+            f.allowed_reason = f"as on upstream {upstream_base[:12]} (sync baseline)"
+        elif (why := (allowances or {}).get((f.path, f.rule, f.scope))):
+            f.allowed_reason = f"sync union: {why}"
+
+
+def run(repo: Path, base: str, head: str | None, as_json: bool = False,
+        switch_rev: str | None = None, upstream_base: str | None = None) -> int:
+    """Judge ``head`` against ``base``; the ENFORCEMENT switch is read from ``switch_rev``
+    (default: the base), never from the head under test."""
+    started = time.monotonic()
+    switch_rev = switch_rev or base
+    mode = enforcement(repo, switch_rev)
+    if mode == "off":
+        _skipped(f"code health: off (ENFORCEMENT in {_SWITCH_FILE} on {switch_rev[:12]})", as_json)
+        return 0
+    head_paths, findings = _judge(repo, base, head)
+    if not head_paths:
+        _skipped("code health: no measured files changed", as_json)
+        return 0
+    if upstream_base:
+        excuse_upstream(findings, _judge(repo, upstream_base, head)[1], upstream_base,
+                        sync_allowances(repo, head))
     blocking, advisory = verdict(findings)
     failed = bool(blocking) and mode == "blocking"
     if as_json:
@@ -139,7 +184,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.report:
             return _report(repo, head)
         if args.base:  # CI: the base is the target branch tip, which also holds the switch
-            return run(repo, gitio.resolve_rev(repo, args.base), head, as_json=args.json)
+            upstream = gitio.resolve_rev(repo, args.upstream_base) if args.upstream_base else None
+            return run(repo, gitio.resolve_rev(repo, args.base), head, as_json=args.json,
+                       upstream_base=upstream)
+        if args.upstream_base:
+            raise RuntimeError("--upstream-base needs an explicit --base")
         # Locally the base is the merge-base, which lags main; the switch comes from the main tip
         # so a flip on main reaches a branch without a rebase. The head never supplies it.
         tip = gitio.commit_or_none(repo, args.head) if args.head else None

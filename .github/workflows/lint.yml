@@ -185,7 +185,8 @@ jobs:
     name: code health ratchet (blocking)
     if: inputs.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # ApexNodes hc-911: an upstream-sync PR is judged twice (fork base, then the merged release).
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
@@ -203,8 +204,25 @@ jobs:
         with:
           command: python -m scripts.ci.python_packages "$(python -m scripts.code_health --print-pins)"
 
+      - name: Find the upstream release a sync PR merges
+        # ApexNodes hc-911: empty on an ordinary PR; on an upstream-sync PR the verified release
+        # recorded in .github/apex-upstream-baseline.json (scripts/ci/upstream_sync_baseline.py).
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/upstream_sync_baseline.py --base HEAD^1 --head HEAD --fetch >> "$GITHUB_OUTPUT"
+
       - name: Ratchet the PR against the base branch tip
-        run: python scripts/check --only health --base HEAD^1
+        env:
+          UPSTREAM: ${{ steps.upstream.outputs.commit }}
+        run: |
+          if [ -n "$UPSTREAM" ]; then
+            # A finding blocks only if it also blocks against the merged release, or the sync
+            # record's reviewed health_allow names it.
+            python -m scripts.code_health --base HEAD^1 --upstream-base "$UPSTREAM"
+          else
+            python scripts/check --only health --base HEAD^1
+          fi
 
       - name: Check the checkout is clean
         # Last step of every job (tests/ci/test_clean_worktree_check.py): a test or CI step that

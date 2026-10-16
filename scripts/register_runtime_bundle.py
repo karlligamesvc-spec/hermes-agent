@@ -136,7 +136,7 @@ def load_payloads_from_dir(directory):
     paths = sorted(Path(directory).glob("*.register-payload.json"))
     if not paths:
         raise FileNotFoundError(f"no *.register-payload.json under {directory}")
-    return [json.loads(p.read_text(encoding="utf-8")) for p in paths]
+    return [json.loads(p.read_text(encoding="utf-8-sig")) for p in paths]
 
 
 def post_registration(api_base, token, payload, *, http_post=_http_post_json):

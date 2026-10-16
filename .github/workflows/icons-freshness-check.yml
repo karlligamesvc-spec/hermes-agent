@@ -48,6 +48,13 @@ jobs:
         run: |
           node scripts/generate-icons.mjs
           node scripts/generate-icons.mjs --check
+          # ApexNodes hc-911: apps/desktop ships APEX's own icons (identity layer, AGENTS.md #11), so
+          # the Nous-mark desktop outputs are generated and structure-checked but never compared.
+          # The exemption lapses with the APEX Desktop baseline (upstream's product-identity.cjs).
+          if [ ! -e apps/desktop/product-identity.cjs ]; then
+            git checkout -- apps/desktop
+            git clean -fdq -- apps/desktop
+          fi
           if ! git diff --exit-code --stat || [ -n "$(git status --porcelain --untracked-files=all)" ]; then
             git status --porcelain --untracked-files=all
             echo "::error::Committed icons are stale. Run 'node scripts/generate-icons.mjs' and commit the result."

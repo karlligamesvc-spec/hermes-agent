@@ -309,7 +309,7 @@ apexnodes_install_uv_from_cos() {
 
     local url="${HERMES_RUNTIME_COS_BASE%/}/uv-${triple}.tar.gz"
     local tmp
-    tmp="$(mktemp -d 2>/dev/null || echo "/tmp/hermes-uv.$$")"
+    tmp="$(mktemp -d 2>/dev/null || echo "/tmp/hermes-uv.$$")"  # no-tmp: ok — last-resort fallback when mktemp is unavailable
     mkdir -p "$tmp" "$HERMES_HOME/bin"
 
     log_info "Fetching uv from COS mirror: $url"
@@ -367,7 +367,7 @@ apexnodes_download_runtime_tarball() {
 
     local url="${HERMES_RUNTIME_COS_BASE%/}/hermes-agent-${key}.tar.gz"
     local tmp
-    tmp="$(mktemp -d 2>/dev/null || echo "/tmp/hermes-src.$$")"
+    tmp="$(mktemp -d 2>/dev/null || echo "/tmp/hermes-src.$$")"  # no-tmp: ok — last-resort fallback when mktemp is unavailable
     mkdir -p "$tmp"
 
     log_info "Downloading runtime source from COS mirror: $url"

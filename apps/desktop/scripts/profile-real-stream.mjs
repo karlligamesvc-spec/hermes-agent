@@ -9,7 +9,7 @@ import { writeFileSync } from 'node:fs'
 
 const CDP_HTTP = 'http://127.0.0.1:9222'
 const PROMPT = process.env.PROMPT || 'Give me a numbered list of 8 useful bash one-liners. For each: a brief description, then the command in a code block. No preamble.'
-const OUT = process.env.OUT || `/tmp/real-stream-${Date.now()}.cpuprofile`
+const OUT = process.env.OUT || `/tmp/real-stream-${Date.now()}.cpuprofile` // no-tmp: ok — developer profiling output on the dev machine
 const START_TIMEOUT = Number(process.env.START_TIMEOUT || 45000)
 const STREAM_TIMEOUT = Number(process.env.STREAM_TIMEOUT || 60000)
 

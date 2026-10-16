@@ -46,7 +46,7 @@ const openMs = await cdp.eval(OPEN)
 const { profile } = await cdp.send('Profiler.stop')
 
 console.log('openMs:', Math.round(openMs))
-const out = `/tmp/model-picker-open.cpuprofile`
+const out = `/tmp/model-picker-open.cpuprofile` // no-tmp: ok — developer profiling output on the dev machine
 writeFileSync(out, JSON.stringify(profile))
 console.log('wrote', out)
 console.log('top self-time (ms):')

@@ -16,7 +16,7 @@ BASE = f'https://{BUCKET}.cos.ap-guangzhou.myqcloud.com'
 
 
 def publish(root, client):
-    manifest = json.loads((root / 'mirror.json').read_text())
+    manifest = json.loads((root / 'mirror.json').read_text(encoding='utf-8-sig'))
     prefix = manifest['prefix']
     if not prefix.startswith('media-tools/npm/') or len(prefix.rsplit('/', 1)[-1]) != 64:
         raise ValueError('Invalid immutable registry prefix')

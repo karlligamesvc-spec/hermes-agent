@@ -82,6 +82,15 @@ jobs:
           # that landed on main after the PR branched off.
           DIFF=$(git diff "$BASE"..."$HEAD" -- . ':!uv.lock' ':!*.lock' ':!package-lock.json' ':!yarn.lock' || true)
 
+          # ApexNodes hc-911: on an upstream-sync PR only the added lines that are new against BOTH
+          # the fork base and the merged upstream release are this PR's own; the rest is the
+          # release as published (scripts/ci/upstream_sync_baseline.py). Empty on ordinary PRs.
+          UPSTREAM=$(python3 scripts/ci/upstream_sync_baseline.py --base "$BASE" --head "$HEAD" | sed -n 's/^commit=//p')
+          if [ -n "$UPSTREAM" ]; then
+            FROM_UPSTREAM=$(git diff "$UPSTREAM" "$HEAD" -- . ':!uv.lock' ':!*.lock' ':!package-lock.json' ':!yarn.lock' | grep '^+' | sort -u || true)
+            DIFF=$(printf '%s\n' "$DIFF" | grep '^+' | sort -u | comm -12 - <(printf '%s\n' "$FROM_UPSTREAM") || true)
+          fi
+
           FINDINGS=""
 
           # --- base64 decode + exec/eval on the same line (the litellm attack pattern) ---

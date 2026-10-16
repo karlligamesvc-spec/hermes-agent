@@ -63,7 +63,7 @@ function writeFakeInstallSh(
   fs.writeFileSync(
     scriptPath,
     [
-      '#!/bin/bash',
+      '#!/usr/bin/env bash',
       'set -e',
       'if [ "$1" = "--manifest" ]; then',
       '  echo \'{"protocol_version":1,"stages":[{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}\'',
@@ -975,7 +975,7 @@ test('source bootstrap refuses a committed bundle before resolving or spawning a
     const script = process.platform === 'win32' ? 'install.ps1' : 'install.sh'
     // A local trap catches an actual installer invocation if the gate regresses.
     fs.writeFileSync(path.join(home, 'resources', script), process.platform === 'win32'
-      ? 'throw "SOURCE_INSTALLER_WAS_REACHED"' : '#!/bin/bash\necho SOURCE_INSTALLER_WAS_REACHED >&2\nexit 99\n')
+      ? 'throw "SOURCE_INSTALLER_WAS_REACHED"' : '#!/usr/bin/env bash\necho SOURCE_INSTALLER_WAS_REACHED >&2\nexit 99\n')
 
     // A missing/corrupt manifest cannot make the versioned directory eligible either.
     for (const manifest of [false, true]) {
