@@ -431,7 +431,7 @@ def _write_transcript_file(transcript: str, title: str) -> str | None:
         dest = _document_cache_dir() / f"{_safe_filename(title or '视频转写')}_转写_{uuid.uuid4().hex[:8]}.txt"
         dest.write_text(transcript, encoding="utf-8")
         return str(dest)
-    except Exception:  # noqa: BLE001 — 落盘失败不应吞掉转写本身
+    except Exception:
         return None
 
 
@@ -516,7 +516,7 @@ def _document_cache_dir() -> Path:
         from hermes_constants import get_hermes_home
 
         home = str(get_hermes_home())
-    except Exception:  # noqa: BLE001
+    except Exception:
         home = os.getenv("HERMES_HOME") or str(Path.home() / ".hermes")
     cache_dir = Path(home) / "cache" / "documents"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -539,7 +539,7 @@ def _set_cjk_font(doc, font_name: str = "Microsoft YaHei") -> None:
         rpr = style.element.get_or_add_rPr()
         rfonts = rpr.get_or_add_rFonts()
         rfonts.set(qn("w:eastAsia"), font_name)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -588,7 +588,7 @@ def render_verbatim_transcript_docx(transcript: str, title: str) -> str | None:
         dest = _document_cache_dir() / f"{_safe_filename(heading)}_逐字稿_{uuid.uuid4().hex[:8]}.docx"
         doc.save(str(dest))
         return str(dest)
-    except Exception:  # noqa: BLE001 — a render failure must never fail the transcribe tool
+    except Exception:
         return None
 
 

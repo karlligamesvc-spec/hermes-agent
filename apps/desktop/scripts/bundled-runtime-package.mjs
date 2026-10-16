@@ -79,6 +79,16 @@ function tarBinary() {
   return process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
 }
 
+// hc-911: the interpreter's minor version is the bundle's, not a constant: v0.22 runtimes
+// ship CPython 3.14 while the currently pinned pre-v0.22 runtime ships 3.11.
+function bundledPythonExecutable(manifest) {
+  const pythonPath = manifest.components.python.path
+  if (manifest.os === 'win') return `${pythonPath}/python.exe`
+  const series = /\/cpython-(\d+\.\d+)\.\d+/.exec(pythonPath)?.[1]
+  if (!series) throw new Error('Bundled runtime python path carries no CPython version')
+  return `${pythonPath}/bin/python${series}`
+}
+
 export function assertBundledRuntimePackage(resources, platform, arch, pin = readBundledRuntimePin()) {
   const root = path.join(resources, 'bundled-runtime')
   const release = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8'))
@@ -96,7 +106,7 @@ export function assertBundledRuntimePackage(resources, platform, arch, pin = rea
     '.bundle-manifest.json', '.hermes-source-commit', '.runtime/files.tsv', 'scripts/build-runtime-bundle.mjs', 'pyproject.toml', 'uv.lock',
     manifest.os === 'win' ? 'venv/Scripts/python.exe' : 'venv/bin/python',
     manifest.os === 'win' ? '.runtime/node/node.exe' : '.runtime/node/bin/node',
-    manifest.os === 'win' ? `${manifest.components.python.path}/python.exe` : `${manifest.components.python.path}/bin/python3.11`,
+    bundledPythonExecutable(manifest),
     manifest.components.uv.path, manifest.components.ripgrep.path,
     ...(manifest.os === 'win' ? ['.runtime/git/bin/bash.exe', '.runtime/git/cmd/git.exe'] : [])
   ]

@@ -104,7 +104,7 @@ def _norm_url(url: Any) -> str:
     return str(url or "").strip().rstrip("/").lower()
 
 
-def _listed_custom_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _listed_custom_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """Custom-family rows already in the payload, excluding the bare slug.
 
     The bare ``custom`` slug is the anonymous alias; only rows that carry an
@@ -118,7 +118,7 @@ def _listed_custom_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return listed
 
 
-def _routed_row_slug(custom_providers: Optional[List[Dict[str, Any]]]) -> str:
+def _routed_row_slug(custom_providers: Optional[list[dict[str, Any]]]) -> str:
     """The picker slug of the entry upstream routes bare ``custom`` to, or ``""``.
 
     Delegates to upstream's own ``resolve_custom_provider`` (its documented
@@ -138,10 +138,10 @@ def _routed_row_slug(custom_providers: Optional[List[Dict[str, Any]]]) -> str:
 
 
 def bare_custom_row_is_alias(
-    rows: Sequence[Dict[str, Any]],
+    rows: Sequence[dict[str, Any]],
     *,
     current_base_url: str = "",
-    custom_providers: Optional[List[Dict[str, Any]]] = None,
+    custom_providers: Optional[list[dict[str, Any]]] = None,
 ) -> bool:
     """Is a synthesized bare-``custom`` row a second face of a row in ``rows``?
 
@@ -164,17 +164,17 @@ def bare_custom_row_is_alias(
 
 
 def drop_aliased_bare_custom(
-    extras: List[Dict[str, Any]],
-    rows: Sequence[Dict[str, Any]],
+    extras: list[dict[str, Any]],
+    rows: Sequence[dict[str, Any]],
     ctx: Any,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Filter upstream's synthesized rows down to the ones still worth showing.
 
     Only ever removes the bare-``custom`` ``configured-current`` row, and only
     when ``bare_custom_row_is_alias`` says the endpoint is already on screen.
     Every other synthesized row passes through untouched.
     """
-    keep: List[Dict[str, Any]] = []
+    keep: list[dict[str, Any]] = []
     for extra in extras:
         slug = str(extra.get("slug") or "").strip().lower()
         source = str(extra.get("source") or "").strip().lower()
@@ -199,7 +199,7 @@ def _wrap_append_unconfigured_rows(orig: Callable) -> Callable:
     """Post-filter upstream's synthesized rows; inputs pass through untouched."""
 
     @functools.wraps(orig)
-    def wrapper(rows, ctx, **kwargs) -> List[Dict[str, Any]]:
+    def wrapper(rows, ctx, **kwargs) -> list[dict[str, Any]]:
         extras = orig(rows, ctx, **kwargs)
         try:
             if isinstance(extras, list):

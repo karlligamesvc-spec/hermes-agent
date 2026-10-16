@@ -7,7 +7,7 @@ export default [
     // Desktop is an Electron renderer — it legitimately uses browser globals
     // (window, document, etc). Re-add them here; the shared config omits
     // globals.browser so terminal-only workspaces (ui-tui) don't get them.
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -19,7 +19,7 @@ export default [
     // THE PLUGIN FENCE: plugins speak @hermes/plugin-sdk (+ react), never `@/…`
     // internals — the same isolation a runtime-fetched published plugin gets,
     // enforced on bundled ones so the SDK surface stays honest and sufficient.
-    files: ['src/plugins/**/*.{ts,tsx}'],
+    files: ['src/plugins/**/*.ts', 'src/plugins/**/*.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -50,7 +50,7 @@ export default [
     // mirroring effect at lint time so the pattern can't reappear. Legitimate
     // non-atom ref writes inside useEffect (DOM instance refs, mount flags, request
     // tokens, prop mirrors) get an eslint-disable-next-line with a comment.
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
     rules: {
       'no-restricted-syntax': [
         'error',

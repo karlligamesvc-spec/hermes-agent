@@ -38,7 +38,7 @@ def _bash(script: str, **extra_env) -> subprocess.CompletedProcess:
         "HERMES_CN_MIRRORS", "APEXNODES_REGION", "HERMES_RUNTIME_COS_BASE", "HERMES_HOME",
     )}
     env.update({k: str(v) for k, v in extra_env.items()})
-    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env)
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, check=False)
 
 
 # ---------------------------------------------------------------------------

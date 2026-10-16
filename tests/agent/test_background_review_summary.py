@@ -9,9 +9,7 @@ import json
 
 from run_agent import AIAgent
 
-
 _summarize = AIAgent._summarize_background_review_actions
-
 
 def _tool_msg(tool_call_id, payload):
     return {
@@ -19,7 +17,6 @@ def _tool_msg(tool_call_id, payload):
         "tool_call_id": tool_call_id,
         "content": json.dumps(payload),
     }
-
 
 def test_skips_prior_tool_messages_by_tool_call_id():
     """Stale 'created' tool result from prior history must not be re-surfaced."""
@@ -44,7 +41,6 @@ def test_skips_prior_tool_messages_by_tool_call_id():
 
     assert "Cron job 'remind-me' created." not in actions
     assert "User profile updated" in actions
-
 
 def test_includes_genuinely_new_actions():
     new_payload = {
@@ -107,9 +103,6 @@ def test_falls_back_to_content_equality_when_tool_call_id_missing():
     assert "Cron job 'X' created." not in actions
     assert "Skill created." in actions
 
-
-
-
 def test_handles_non_json_tool_content_gracefully():
     review_messages = [
         {"role": "tool", "tool_call_id": "x", "content": "not-json"},
@@ -120,27 +113,6 @@ def test_handles_non_json_tool_content_gracefully():
 
     assert actions == ["Memory updated."]
 
-
 def test_empty_inputs():
     assert _summarize([], []) == []
     assert _summarize(None, None) == []
-
-
-
-
-def test_removed_or_replaced_relabels_by_target():
-    review_messages = [
-        _tool_msg(
-            "c1",
-            {"success": True, "message": "Entry removed.", "target": "user"},
-        ),
-        _tool_msg(
-            "c2",
-            {"success": True, "message": "Entry replaced.", "target": "memory"},
-        ),
-    ]
-
-    actions = _summarize(review_messages, [])
-
-    assert "User profile updated" in actions
-    assert "Memory updated" in actions

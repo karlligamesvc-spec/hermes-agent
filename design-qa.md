@@ -4,9 +4,9 @@
 
 - Source screenshot: `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-21b88b44-1fcb-486c-93a9-c2c94ec9f358.png`
 - Icon style reference: `/var/folders/z0/_ltgtgv11p715mn0kd8_1zqc0000gn/T/codex-clipboard-e1f9b66e-fcb1-4195-a390-8ae5b9fa6686.png`
-- Rendered implementation: `/tmp/hc840-generated-line-icons/start-video-tasks-1220x800.png`
-- Full-view comparison: `/tmp/hc840-design-qa/source-vs-implementation.png`
-- Focused comparison: `/tmp/hc840-design-qa/cards-focus-before-after.png`
+- Rendered implementation: `/tmp/hc840-generated-line-icons/start-video-tasks-1220x800.png` <!-- no-tmp: ok — historical QA screenshot path -->
+- Full-view comparison: `/tmp/hc840-design-qa/source-vs-implementation.png` <!-- no-tmp: ok — historical QA screenshot path -->
+- Focused comparison: `/tmp/hc840-design-qa/cards-focus-before-after.png` <!-- no-tmp: ok — historical QA screenshot path -->
 - Reference dimensions: 2230 × 1614 px
 - Implementation dimensions: 2440 × 1600 px (1220 × 800 Electron window at 2× density)
 - State: zh-CN, signed-in isolated local-review fixture, Start page, light theme, local test project data

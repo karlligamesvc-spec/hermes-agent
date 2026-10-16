@@ -80,7 +80,7 @@ def _http_post_json(url, body, token, timeout=30):
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
-    except Exception as e:  # noqa: BLE001 — surface as a non-2xx for the caller
+    except Exception as e:
         return 0, str(e)
 
 
@@ -136,7 +136,7 @@ def load_payloads_from_dir(directory):
     paths = sorted(Path(directory).glob("*.register-payload.json"))
     if not paths:
         raise FileNotFoundError(f"no *.register-payload.json under {directory}")
-    return [json.loads(p.read_text(encoding="utf-8")) for p in paths]
+    return [json.loads(p.read_text(encoding="utf-8-sig")) for p in paths]
 
 
 def post_registration(api_base, token, payload, *, http_post=_http_post_json):

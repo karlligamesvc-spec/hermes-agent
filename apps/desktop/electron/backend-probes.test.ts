@@ -22,6 +22,7 @@ import {
   shouldTrustHermesOverride,
   verifyHermesCli
 } from './backend-probes'
+import { RUNTIME_YAML_IMPORT } from './bootstrap-platform'
 
 // Resolve the host's own Node binary -- guaranteed to be on disk and
 // runnable. We use it as both a stand-in for "a python that doesn't
@@ -52,7 +53,10 @@ test('canImportHermesCli returns false when binary does not exist', () => {
 
 test('hermes runtime import probe checks the full Desktop launch boundary', () => {
   const probe = hermesRuntimeImportProbe('win32')
-  assert.match(probe, /\bimport yaml\b/)
+  // hc-911: v0.22 runtimes import YAML through hermes_yaml (ruamel); earlier ones through PyYAML.
+  assert.ok(probe.startsWith(RUNTIME_YAML_IMPORT), probe)
+  assert.match(RUNTIME_YAML_IMPORT, /find_spec\("hermes_yaml"\)/)
+  assert.doesNotMatch(probe, /(^|;\s*)import yaml\b/)
   // dotenv is the first third-party import on the CLI boot path
   // (hermes_cli/env_loader.py); a mid-update venv missing python-dotenv
   // passed the old probe and produced an unrecoverable boot loop.
@@ -115,6 +119,42 @@ test(
       })
 
       assert.deepEqual(complete, { sourcePresent: true, runtimeImportable: true })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  'runtime integrity probe accepts a v0.22 runtime that carries hermes_yaml and no PyYAML',
+  { skip: process.platform === 'win32' },
+  () => {
+    // hc-911: v0.22 dropped PyYAML for ruamel behind hermes_yaml. A probe that still demanded
+    // `import yaml` read every v0.22 runtime as broken (found by the packaged Mac smoke).
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-runtime-v022-'))
+    const packageDir = path.join(root, 'hermes_cli')
+    const wrapper = path.join(root, 'python-no-site')
+
+    fs.mkdirSync(packageDir)
+    fs.writeFileSync(path.join(packageDir, '__init__.py'), '')
+    fs.writeFileSync(path.join(packageDir, 'config.py'), 'import hermes_yaml\n')
+    for (const name of ['dotenv', 'fastapi', 'uvicorn', 'ptyprocess']) {
+      fs.writeFileSync(path.join(root, `${name}.py`), '')
+    }
+    fs.writeFileSync(wrapper, '#!/bin/sh\nexec /usr/bin/python3 -S "$@"\n')
+    fs.chmodSync(wrapper, 0o755)
+    const probe = () => probeHermesRuntimeIntegrity({
+      root,
+      pythonPath: wrapper,
+      sourcePresent: true,
+      pythonPresent: true,
+      inheritedPythonPath: ''
+    })
+
+    try {
+      assert.deepEqual(probe(), { sourcePresent: true, runtimeImportable: false }, 'neither YAML layer: broken')
+      fs.writeFileSync(path.join(root, 'hermes_yaml.py'), '')
+      assert.deepEqual(probe(), { sourcePresent: true, runtimeImportable: true }, 'hermes_yaml alone is a whole runtime')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

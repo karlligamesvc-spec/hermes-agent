@@ -18,6 +18,7 @@ import * as layout from './apex-bundle-layout'
 import * as migrate from './apex-bundle-migrate'
 import { compareSemver } from './apex-runtime-latest'
 import { buildDesktopBackendEnv } from './backend-env'
+import { RUNTIME_YAML_IMPORT } from './bootstrap-platform'
 import type { DesktopBootstrapEvent } from './bootstrap-types'
 
 const exec = promisify(execFile)
@@ -243,17 +244,28 @@ export const NATIVE_PYTHON_ARCHITECTURE_PROBE = [
   ' assert platform.machine().lower() in ({"arm64","aarch64"} if sys.argv[3] == "arm64" else {"amd64","x86_64"}), "engine architecture mismatch"'
 ].join('\n')
 
+// hc-911: the engine's venv must run on the interpreter its bundle names (components.python in
+// .bundle-manifest.json: `version`, else the cpython-X.Y.Z dir). A bundle is built on exactly the
+// CPython its runtime pins (v0.22: 3.14, earlier: 3.11); a legacy tree with no manifest was 3.11.
+export const PACKAGED_ENGINE_PYTHON_SERIES_PROBE = [
+  'manifest=root / ".bundle-manifest.json"',
+  'python=json.loads(manifest.read_text(encoding="utf-8")).get("components",{}).get("python",{}) if manifest.is_file() else {}',
+  'series=re.match(r"(?:cpython-)?([0-9]+)[.]([0-9]+)", python.get("version") or pathlib.PurePosixPath(python.get("path") or "").name or "3.11")',
+  'assert series and sys.version_info[:2] == (int(series[1]), int(series[2])), "engine Python version mismatch"'
+]
+
 export async function probePackagedRuntime(root: string, release: PackagedRuntimeRelease, bundled = true): Promise<void> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-engine-probe-'))
   const python = path.join(root, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 
   const code = [
-    'import pathlib,sys',
+    'import json,pathlib,re,sys',
     'root=pathlib.Path(sys.argv[1]).resolve()',
-    'assert sys.version_info[:2] == (3,11), "engine Python version mismatch"',
+    ...PACKAGED_ENGINE_PYTHON_SERIES_PROBE,
     'assert pathlib.Path(sys.prefix).resolve() == root / "venv", "engine venv mismatch"',
     'if sys.argv[4] == "bundled": assert pathlib.Path(sys.base_prefix).resolve().is_relative_to(root / ".runtime" / "py"), "engine Python is not bundled"',
-    'import yaml,dotenv,hermes_cli.config,hermes_cli.main,run_agent,toolsets',
+    RUNTIME_YAML_IMPORT,
+    'import dotenv,hermes_cli.config,hermes_cli.main,run_agent,toolsets',
     'assert pathlib.Path(hermes_cli.config.__file__).resolve().is_relative_to(root), "engine imported foreign source"',
     'assert (root / ".hermes-source-commit").read_text().strip() == sys.argv[2], "engine source mismatch"',
     NATIVE_PYTHON_ARCHITECTURE_PROBE

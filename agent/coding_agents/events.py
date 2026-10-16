@@ -64,19 +64,19 @@ class AgentEvent:
     # --- constructors (readability at call sites in the drivers) ---
 
     @classmethod
-    def session_started(cls, session_id: str) -> "AgentEvent":
+    def session_started(cls, session_id: str) -> AgentEvent:
         return cls(EventKind.SESSION_STARTED, session_id=session_id, data={"session_id": session_id})
 
     @classmethod
-    def message(cls, text: str) -> "AgentEvent":
+    def message(cls, text: str) -> AgentEvent:
         return cls(EventKind.AGENT_MESSAGE, text=text)
 
     @classmethod
-    def thought(cls, text: str) -> "AgentEvent":
+    def thought(cls, text: str) -> AgentEvent:
         return cls(EventKind.AGENT_THOUGHT, text=text)
 
     @classmethod
-    def tool_call(cls, *, tool_call_id: str, tool_name: str, input: Any = None, kind: str | None = None) -> "AgentEvent":
+    def tool_call(cls, *, tool_call_id: str, tool_name: str, input: Any = None, kind: str | None = None) -> AgentEvent:
         return cls(
             EventKind.TOOL_CALL,
             tool_name=tool_name,
@@ -85,7 +85,7 @@ class AgentEvent:
         )
 
     @classmethod
-    def tool_result(cls, *, tool_call_id: str, status: str, output: Any = None) -> "AgentEvent":
+    def tool_result(cls, *, tool_call_id: str, status: str, output: Any = None) -> AgentEvent:
         return cls(
             EventKind.TOOL_RESULT,
             tool_call_id=tool_call_id,
@@ -93,27 +93,27 @@ class AgentEvent:
         )
 
     @classmethod
-    def file_change(cls, *, path: str, kind: str, diff: str | None = None) -> "AgentEvent":
+    def file_change(cls, *, path: str, kind: str, diff: str | None = None) -> AgentEvent:
         return cls(EventKind.FILE_CHANGE, data={"path": path, "kind": kind, "diff": diff})
 
     @classmethod
-    def plan(cls, entries: list[dict[str, Any]]) -> "AgentEvent":
+    def plan(cls, entries: list[dict[str, Any]]) -> AgentEvent:
         return cls(EventKind.PLAN, data={"entries": entries})
 
     @classmethod
-    def permission_request(cls, request: dict[str, Any]) -> "AgentEvent":
+    def permission_request(cls, request: dict[str, Any]) -> AgentEvent:
         return cls(EventKind.PERMISSION_REQUEST, data={"request": request})
 
     @classmethod
-    def usage(cls, usage: dict[str, Any]) -> "AgentEvent":
+    def usage(cls, usage: dict[str, Any]) -> AgentEvent:
         return cls(EventKind.USAGE, data={"usage": usage})
 
     @classmethod
-    def turn_completed(cls, stop_reason: str | None = None) -> "AgentEvent":
+    def turn_completed(cls, stop_reason: str | None = None) -> AgentEvent:
         return cls(EventKind.TURN_COMPLETED, data={"stop_reason": stop_reason})
 
     @classmethod
-    def error(cls, message: str) -> "AgentEvent":
+    def error(cls, message: str) -> AgentEvent:
         return cls(EventKind.ERROR, text=message)
 
 

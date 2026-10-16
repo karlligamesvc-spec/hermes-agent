@@ -89,15 +89,16 @@ def test_values_in_step_with_install_time_source_of_truth():
         assert value in ps1, f"{value} missing from apexnodes-region-detect.ps1"
 
 
-def test_node_bootstrap_bash_belt_present():
-    """node-bootstrap.sh must self-derive the mirror env when it is absent.
+def test_install_sh_bash_belt_present():
+    """install.sh must self-derive the mirror env when the region lib sits beside it.
 
-    _ensure_tui_node / heal_hermes_managed_node spawn bash from processes that
-    do not load plugins, so the bash side needs its own wiring — sourcing the
-    sibling region lib. Losing that line silently regresses CN runtime Node
-    reinstalls to nodejs.org.
+    v0.22 removed scripts/lib/node-bootstrap.sh: Node, Python and uv are pinned pm
+    artifacts now, mirrored for CN by pm/artifact_mirror.apexnodes_cn_mirror_url
+    (tests/apex_overlay/test_cn_artifact_mirror_seam.py). The bash installer still
+    has to source the sibling region lib and apply the CN env, or every package
+    index / npm / Electron / Playwright download on the Desktop bootstrap goes abroad.
     """
-    nb = (_REPO / "scripts" / "lib" / "node-bootstrap.sh").read_text(encoding="utf-8")
-    assert "apexnodes-region-detect.sh" in nb
-    assert "apexnodes_apply_cn_mirror_env" in nb
-    assert "HERMES_NODE_DIST_BASE" in nb
+    sh = (_REPO / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "apexnodes-region-detect.sh" in sh
+    assert "apexnodes_resolve_region" in sh
+    assert "apexnodes_apply_cn_mirror_env" in sh

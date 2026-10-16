@@ -250,14 +250,10 @@ def apply() -> bool:
         _APPLIED = True
         return True
 
-    setattr(runner_cls, "_apex_prepare_background_adapter", _prepare_background_adapter)
-    setattr(runner_cls, "_apex_register_background_adapter", _register_background_adapter)
-    setattr(runner_cls, "_apex_queue_platform_retry", _queue_platform_retry)
-    setattr(
-        runner_cls,
-        "_apex_create_and_connect_adapter_in_background",
-        _create_and_connect_adapter_in_background,
-    )
+    runner_cls._apex_prepare_background_adapter = _prepare_background_adapter
+    runner_cls._apex_register_background_adapter = _register_background_adapter
+    runner_cls._apex_queue_platform_retry = _queue_platform_retry
+    runner_cls._apex_create_and_connect_adapter_in_background = _create_and_connect_adapter_in_background
     setattr(runner_cls, _TARGET_CREATE_METHOD, _wrap_create_adapter(orig))
     _APPLIED = True
     logger.debug("apex_overlay: v0.20 Feishu background-startup seam applied")

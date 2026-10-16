@@ -588,7 +588,7 @@ test.skipIf(process.platform === 'win32')(
     await mkdir(venvBin, { recursive: true })
     await symlink(python, pythonLink)
     await writeFile(entrypoint, 'import json, os, sys, time\nprint(json.dumps({"pid": os.getpid(), "entrypoint": __file__, "argv": sys.argv[1:]}), flush=True)\ntime.sleep(30)\n', 'utf8')
-    await writeFile(launcher, `#!/bin/bash\nexec "${pythonLink}" "${entrypoint}" "$@"\n`, 'utf8')
+    await writeFile(launcher, `#!/usr/bin/env bash\nexec "${pythonLink}" "${entrypoint}" "$@"\n`, 'utf8')
     await chmod(launcher, 0o755)
 
     const backendFlags = [

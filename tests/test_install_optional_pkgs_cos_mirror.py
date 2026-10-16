@@ -7,6 +7,14 @@ CPython/Node/npm/Electron/Playwright from npmmirror) and finished in ~17s total.
 The stall was `winget install --source winget` fetching ripgrep and ffmpeg: the
 only downloads left in the whole install with no China mirror.
 
+hc-911 (v0.22): upstream's installers no longer have a system-packages stage; ripgrep
+and ffmpeg are pinned pm artifacts (pm/lock.json) fetched through
+pm/artifact_mirror.pinned_source, whose ApexNodes seam tries the CN COS copy of the
+same sha256 first (tests/apex_overlay/test_cn_artifact_mirror_seam.py). The
+install.ps1-ordering tests that lived in section 1 were retired with that stage; the
+helper and publisher below stay until the COS publisher moves to content-addressed
+pm artifacts (apps/desktop/docs/qa/hc-911/upstream-convergence.md).
+
 WHAT THESE TESTS PIN. The fix is that those two artifacts are mirrored onto our
 COS and installed from there, ahead of any package manager. Three ways to
 silently lose that, each of which restores the 18-minute stall:
@@ -43,7 +51,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB_PS1 = REPO_ROOT / "scripts" / "lib" / "apexnodes-region-detect.ps1"
-INSTALL_PS1 = REPO_ROOT / "scripts" / "install.ps1"
 PUBLISHER = REPO_ROOT / "scripts" / "mirror-optional-packages.py"
 
 
@@ -66,60 +73,6 @@ def _strip_ps_comments(source: str) -> str:
     them so reported offsets still map onto the real file.
     """
     return "\n".join("" if line.lstrip().startswith("#") else line for line in source.splitlines())
-
-
-def _install_system_packages_body(*, keep_comments: bool = False) -> str:
-    """The source of Install-SystemPackages, up to the next top-level function."""
-    text = INSTALL_PS1.read_text(encoding="utf-8")
-    start = text.index("function Install-SystemPackages")
-    rest = text[start + 1 :]
-    end = rest.index("\nfunction ")
-    body = rest[:end]
-    return body if keep_comments else _strip_ps_comments(body)
-
-
-# --------------------------------------------------------------------------
-# 1. COS is attempted, and attempted FIRST
-# --------------------------------------------------------------------------
-
-
-def test_cos_install_is_attempted_before_any_package_manager():
-    body = _install_system_packages_body()
-    cos_at = body.index("Install-OptionalPkgFromCos")
-    for manager in ("winget", "choco", "scoop"):
-        # First mention of the manager anywhere in the function, including the
-        # `Get-Command winget` capability probe -- keeping the COS attempt ahead
-        # of even that keeps the ordering unambiguous for a future reader.
-        assert cos_at < body.index(manager), (
-            f"{manager} is reached before the COS mirror attempt; a CN install "
-            "would stall on the unmirrored source again (hc-632)"
-        )
-
-
-def test_cn_region_installs_rather_than_skips():
-    """The CN path must end with the tools installed, not politely skipped.
-
-    An earlier revision of this fix short-circuited on HERMES_CN_MIRRORS and
-    printed a manual command instead. That traded an 18-minute stall for a
-    permanently degraded install, which is not the same as fixing it.
-    """
-    body = _install_system_packages_body(keep_comments=True)
-    assert "HERMES_CN_MIRRORS" not in body, (
-        "Install-SystemPackages must not branch on region: the COS mirror serves "
-        "every region, and a CN-only skip means CN users never get these tools"
-    )
-
-
-def test_success_is_confirmed_through_path_not_return_value():
-    body = _install_system_packages_body()
-    cos_at = body.index("Install-OptionalPkgFromCos")
-    tail = body[cos_at:]
-    assert "Register-ApexToolsPath" in tail, "installed binaries must be put on PATH"
-    for probe in ("Get-Command rg", "Get-Command ffmpeg"):
-        assert probe in tail, (
-            f"after the COS install, {probe!r} must confirm the runtime can "
-            "actually resolve it -- shutil.which() is the run-time authority"
-        )
 
 
 # --------------------------------------------------------------------------
@@ -276,7 +229,7 @@ def test_prepare_refuses_to_publish_a_repack_that_lost_a_binary():
     module = _load_publisher()
     art = next(a for a in module.ARTIFACTS if a.repack)
     fat = _sample_archive("b/ffmpeg.exe", "b/ffprobe.exe", "b/ffplay.exe")
-    quiet = lambda *_a, **_k: None  # noqa: E731 -- keep the test output clean
+    quiet = lambda *_a, **_k: None
 
     # Baseline: with repack intact, prepare returns a trimmed, complete archive.
     ok = module.prepare(fat, art, log=quiet)

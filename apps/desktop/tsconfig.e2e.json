@@ -2,8 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node", "@playwright/test"],
-    "composite": true
+    "composite": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["e2e", "playwright.config.ts", "../../tests-js/scripts", "src/app/business-workspace/analysis-types.ts", "src/app/business-workspace/api/types.ts", "shared/analysis-answer.ts", "shared/analysis-video-overview.ts", "shared/analysis-deep-report.ts", "shared/analysis-chat-link.ts"],
+  "include": ["e2e", "playwright.config.ts", "../../tests-js/scripts/mock-server.ts", "../../tests-js/scripts/mock-provider-config.ts", "src/app/business-workspace/analysis-types.ts", "src/app/business-workspace/api/types.ts", "shared/analysis-answer.ts", "shared/analysis-video-overview.ts", "shared/analysis-deep-report.ts", "shared/analysis-chat-link.ts"],
   "exclude": ["electron"]
 }

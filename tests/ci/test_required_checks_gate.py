@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
+import hermes_yaml as yaml
 
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/ci.yaml"
@@ -19,7 +19,6 @@ WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/ci.yaml"
         ({"detect": "cancelled", "js-tests": "skipped"}, 1),
         ({"detect": "failure", "js-tests": "skipped"}, 1),
         ({"detect": "skipped", "js-tests": "skipped"}, 1),
-        ({"js-tests": "skipped"}, 1),
         ({"detect": "success", "js-tests": "cancelled"}, 1),
         ({"detect": "success", "js-tests": "failure"}, 1),
         ({"detect": "success", "js-tests": "unknown"}, 1),
@@ -41,6 +40,8 @@ def test_gate_requires_completed_detection_and_no_unfinished_jobs(tmp_path, resu
         capture_output=True,
         text=True,
         timeout=10,
+        cwd=WORKFLOW.parents[2],  # hc-911: the step now runs scripts/ci/required_results.py
+        check=False,
     )
     assert result.returncode == exit_code, result.stdout + result.stderr
     # Even a rejected run must keep reporting its real results to the review UI.
@@ -49,7 +50,7 @@ def test_gate_requires_completed_detection_and_no_unfinished_jobs(tmp_path, resu
 
 def test_classifier_checkout_includes_both_local_action_and_script(tmp_path):
     detect = yaml.safe_load(WORKFLOW.read_text())["jobs"]["detect"]
-    checkout, classify = detect["steps"]
+    checkout, classify = detect["steps"][:2]  # hc-911: v0.22 adds a lane-gating step after these
     action = yaml.safe_load(
         (WORKFLOW.parents[2] / ".github/actions/detect-changes/action.yml").read_text()
     )

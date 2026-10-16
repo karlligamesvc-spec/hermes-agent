@@ -198,7 +198,7 @@ def prepare(blob: bytes, art: Artifact, *, log=print) -> bytes:
 
 
 def publish() -> int:
-    from qcloud_cos import CosConfig, CosS3Client  # noqa: PLC0415 -- check mode needs no SDK
+    from qcloud_cos import CosConfig, CosS3Client
 
     secret_id = os.getenv("COS_SECRET_ID") or os.getenv("TENCENTCLOUD_SECRET_ID")
     secret_key = os.getenv("COS_SECRET_KEY") or os.getenv("TENCENTCLOUD_SECRET_KEY")

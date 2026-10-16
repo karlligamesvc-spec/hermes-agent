@@ -20,11 +20,16 @@ import globals from 'globals'
 
 export default [
   {
-    ignores: ['**/node_modules/**', '**/dist/**', 'src/**/*.js', '**/package-lock.json']
+    // *.generated.ts is written by scripts/gen_gateway_contracts.py; the on-merge `npm run fix` bot
+    // must not rewrite it (it stripped the file's own eslint-disable header and left the tree stale).
+    ignores: ['**/node_modules/**', '**/dist/**', 'src/**/*.js', '**/package-lock.json', '**/*.generated.ts']
   },
   js.configs.recommended,
   {
-    files: ['**/*.{ts,tsx}'],
+    // ApexNodes hc-911: no brace sets in globs. apps/desktop lints with its own eslint 9,
+    // whose minimatch@3 calls brace-expansion as a function; the root brace-expansion
+    // override (5.x) exports `expand` instead, so a `{ts,tsx}` glob crashes that lint.
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       globals: {
         ...globals.node

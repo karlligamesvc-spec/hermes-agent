@@ -133,7 +133,7 @@ def test_manual_bundle_dispatch_rejects_unknown_platform(bundle_wf_text, tmp_pat
         ["bash", "-euo", "pipefail", "-c", _matrix_plan_script(bundle_wf_text)],
         env=env,
         text=True,
-        capture_output=True,
+        capture_output=True, check=False,
     )
     assert result.returncode != 0
     assert "unsupported platform: mac-ppc" in result.stderr

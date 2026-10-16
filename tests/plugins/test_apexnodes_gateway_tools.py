@@ -210,7 +210,7 @@ def _parse(result: str) -> dict:
 
 class TestDesktopSmokeRegistration:
     def _write_enabled_config(self, hermes_home: Path):
-        import yaml
+        import hermes_yaml as yaml
 
         (hermes_home / "config.yaml").write_text(
             yaml.safe_dump({"plugins": {"enabled": list(PLUGIN_NAMES)}}),
@@ -825,7 +825,7 @@ class TestAudioCompressionFallbackChain:
     def test_no_ffmpeg_on_macos_falls_back_to_afconvert(self, monkeypatch, source_clip):
         gateway_module = _gateway_module()
         calls = []
-        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")
+        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")  # os-marker: ok — which/run are stubbed: this pins the afconvert dispatch, not the host
         monkeypatch.setattr(
             gateway_module.shutil,
             "which",
@@ -865,7 +865,7 @@ class TestAudioCompressionFallbackChain:
             partial.append(Path(command[-1]))
             return types.SimpleNamespace(returncode=1)
 
-        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")
+        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")  # os-marker: ok — which/run are stubbed: this pins the afconvert dispatch, not the host
         monkeypatch.setattr(
             gateway_module.shutil,
             "which",
@@ -881,7 +881,7 @@ class TestAudioCompressionFallbackChain:
         """链条语义:ffmpeg 存在但失败 → 直接回退原文件(不换 afconvert 重试)。"""
         gateway_module = _gateway_module()
         probed = []
-        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")
+        monkeypatch.setattr(gateway_module.sys, "platform", "darwin")  # os-marker: ok — which/run are stubbed: this pins the afconvert dispatch, not the host
         monkeypatch.setattr(
             gateway_module.shutil,
             "which",
@@ -1081,7 +1081,7 @@ class TestGatewayDisabledFallback:
 
 class TestDesktopManagedKeyResolution:
     def test_key_and_base_resolve_from_managed_custom_provider(self, _hermes_home):
-        import yaml
+        import hermes_yaml as yaml
 
         (Path(_hermes_home) / "config.yaml").write_text(
             yaml.safe_dump(

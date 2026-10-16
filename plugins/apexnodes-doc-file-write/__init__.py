@@ -101,7 +101,7 @@ def _document_cache_dir() -> Path:
         from hermes_constants import get_hermes_home
 
         home = str(get_hermes_home())
-    except Exception:  # noqa: BLE001
+    except Exception:
         home = os.getenv("HERMES_HOME") or str(Path.home() / ".hermes")
     cache_dir = Path(home) / "cache" / "documents"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -138,7 +138,7 @@ def _set_cjk_font(doc, font_name: str = "Microsoft YaHei") -> None:
         rpr = style.element.get_or_add_rPr()
         rfonts = rpr.get_or_add_rFonts()
         rfonts.set(qn("w:eastAsia"), font_name)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -208,7 +208,7 @@ def render_markdown_to_docx(content: str, title: str, dest: Path) -> Path:
             table = doc.add_table(rows=len(rows), cols=columns)
             try:
                 table.style = "Table Grid"
-            except Exception:  # noqa: BLE001 — style availability varies by template
+            except Exception:
                 pass
             for r, row in enumerate(rows):
                 cells = row + [""] * (columns - len(row))
@@ -271,7 +271,7 @@ def _handle_doc_file_write(args: dict, **_kwargs) -> str:
         render_markdown_to_docx(str(content), title, dest)
     except ImportError:
         return tool_error("python-docx is not installed in this runtime image")
-    except Exception as exc:  # noqa: BLE001 — surface so the agent falls back to chat full-text
+    except Exception as exc:
         return tool_error(f"Failed to render the document file: {exc}")
 
     path = str(dest)

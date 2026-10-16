@@ -479,7 +479,9 @@ describe('registry-derived block-list (contract with hermes_cli/commands.py)', (
 
   it('marks every registry row with a reason unavailable offline, without a hand-typed copy', () => {
     for (const [name, reason] of Object.entries(desktopSlashRegistry)) {
-      if (reason === 'hidden') {
+      // hc-911: v0.22's dump also lists offered built-ins as null so the offline fallback knows
+      // their names; only rows with a reason are blocked.
+      if (reason === 'hidden' || reason === null) {
         continue
       }
 

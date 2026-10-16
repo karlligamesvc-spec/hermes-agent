@@ -15,11 +15,11 @@ apps/desktop/electron/bootstrap-runner.test.cjs):
 
 1. The COS extract writes a ``.hermes-source-commit`` provenance stamp (the only
    on-disk signal tying a .git-less tree to a commit).
-2. ``clone_repo()`` reuses an existing COS tree ONLY when its stamp already
+2. ``stage_repository()`` reuses an existing COS tree ONLY when its stamp already
    matches the target commit; on a mismatch (or an absent/legacy stamp) it
    re-extracts the target tarball instead of silently reusing the stale tree.
 
-The bash is exercised for real: the overlay lib / clone_repo function are
+The bash is exercised for real: the overlay lib / stage_repository function are
 sourced in a throwaway bash process with curl or the COS downloader stubbed.
 """
 
@@ -53,7 +53,7 @@ def _bash(script: str, **env) -> subprocess.CompletedProcess:
         not in ("HERMES_CN_MIRRORS", "APEXNODES_REGION", "HERMES_RUNTIME_COS_BASE", "HERMES_HOME")
     }
     clean.update({k: str(v) for k, v in env.items()})
-    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=clean)
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=clean, check=False)
 
 
 def _make_tarball(tmp_path: Path, marker_text: str) -> Path:
@@ -112,30 +112,30 @@ echo "RC=$rc OUT=[$out]"
 
 
 # ---------------------------------------------------------------------------
-# 2. clone_repo() reuse guard: reuse iff stamp==target, else re-extract.
+# 2. stage_repository() reuse guard: reuse iff stamp==target, else re-extract.
 # ---------------------------------------------------------------------------
 
-def _extract_clone_repo() -> str:
+def _extract_stage_repository() -> str:
     text = INSTALL_SH.read_text()
-    m = re.search(r"^clone_repo\(\) \{\n.*?^\}$", text, re.DOTALL | re.MULTILINE)
-    assert m is not None, "clone_repo() not found in install.sh"
+    m = re.search(r"^stage_repository\(\) \{\n.*?^\}$", text, re.DOTALL | re.MULTILINE)
+    assert m is not None, "stage_repository() not found in install.sh"
     return m.group(0)
 
 
-def _run_clone_repo(install_dir: Path, install_commit: str, downloader_stub: str) -> subprocess.CompletedProcess:
-    """Drive the real clone_repo() against an existing .git-less tree, with the
-    overlay COS helpers replaced by a recording stub so no network is touched.
+def _run_stage_repository(install_dir: Path, install_commit: str, downloader_stub: str) -> subprocess.CompletedProcess:
+    """Drive the real stage_repository() against a .git-less (or absent) tree, with
+    the overlay COS helpers replaced by a recording stub so no network is touched.
 
     downloader_stub defines apexnodes_download_runtime_tarball; it must return 0
     on a simulated successful re-extract and record the call into $CALLED_FILE.
 
     The harness is written to a temp .sh and run as ``bash <file>`` (not
-    ``bash -c <src>``) so the extracted clone_repo source — which mentions
+    ``bash -c <src>``) so the extracted stage_repository source — which mentions
     "hermes update" in its git-branch comments — never lands in argv and trips
-    tests/conftest.py's live-system guard. clone_repo never enters that git
-    branch here (the seeded tree has no .git), so nothing real is fetched.
+    tests/conftest.py's live-system guard. ``git`` is stubbed to record and fail:
+    a COS tree has no .git, so any git call on this path is the hc-633 bug.
     """
-    body = _extract_clone_repo()
+    body = _extract_stage_repository()
     called = install_dir.parent / "download_called"
     script = f"""
 set -u
@@ -143,6 +143,9 @@ log_info() {{ echo "INFO: $*"; }}
 log_warn() {{ echo "WARN: $*"; }}
 log_error() {{ echo "ERROR: $*" >&2; }}
 log_success() {{ echo "OK: $*"; }}
+log() {{ echo "LOG: $*"; }}
+fail() {{ echo "FAIL: $1" >&2; exit 1; }}
+git() {{ echo "GIT_CALLED: $*" >&2; return 99; }}
 apexnodes_cos_configured() {{ return 0; }}
 apexnodes_installed_source_commit() {{
     local d="${{1:-$INSTALL_DIR}}"
@@ -155,16 +158,16 @@ INSTALL_DIR="{install_dir}"
 INSTALL_COMMIT="{install_commit}"
 BRANCH="main"
 {body}
-clone_repo
+stage_repository
 echo "DOWNLOAD_CALLED=$([ -f "$CALLED_FILE" ] && echo yes || echo no)"
 """
-    harness = install_dir.parent / "clone_repo_harness.sh"
+    harness = install_dir.parent / "stage_repository_harness.sh"
     harness.write_text(script)
     return subprocess.run(
         ["bash", str(harness)],
         capture_output=True,
         text=True,
-        env={"HERMES_RUNTIME_COS_BASE": "https://cos.example/runtime", "PATH": _minimal_path()},
+        env={"HERMES_RUNTIME_COS_BASE": "https://cos.example/runtime", "PATH": _minimal_path()}, check=False,
     )
 
 
@@ -202,7 +205,7 @@ def _seed_cos_tree(install_dir: Path, stamp: str | None) -> None:
 def test_reuse_when_stamp_matches_target(tmp_path: Path) -> None:
     install_dir = tmp_path / "hermes-agent"
     _seed_cos_tree(install_dir, stamp="feedface0001")
-    r = _run_clone_repo(install_dir, "feedface0001", _STUB_SUCCESS)
+    r = _run_stage_repository(install_dir, "feedface0001", _STUB_SUCCESS)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "DOWNLOAD_CALLED=no" in r.stdout, r.stdout
     assert "reusing" in r.stdout.lower(), r.stdout
@@ -214,7 +217,7 @@ def test_reextract_when_stamp_is_a_different_commit(tmp_path: Path) -> None:
     """The hc-543 bug scenario: stale tree, update to a new commit."""
     install_dir = tmp_path / "hermes-agent"
     _seed_cos_tree(install_dir, stamp="0000oldcommit0000")
-    r = _run_clone_repo(install_dir, "1111newcommit1111", _STUB_SUCCESS)
+    r = _run_stage_repository(install_dir, "1111newcommit1111", _STUB_SUCCESS)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "DOWNLOAD_CALLED=yes" in r.stdout, "must re-extract the target tarball, not reuse the stale tree\n" + r.stdout
     # The re-extract landed the target commit's tree + stamp.
@@ -226,20 +229,37 @@ def test_reextract_when_no_stamp_legacy_tree(tmp_path: Path) -> None:
     on the next update rather than reusing an unverifiable tree."""
     install_dir = tmp_path / "hermes-agent"
     _seed_cos_tree(install_dir, stamp=None)
-    r = _run_clone_repo(install_dir, "1111newcommit1111", _STUB_SUCCESS)
+    r = _run_stage_repository(install_dir, "1111newcommit1111", _STUB_SUCCESS)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "DOWNLOAD_CALLED=yes" in r.stdout, r.stdout
 
 
 def test_stale_tree_with_failed_redownload_errors_out(tmp_path: Path) -> None:
-    """When the tree is stale AND the re-download fails, clone_repo must FAIL
+    """When the tree is stale AND the re-download fails, stage_repository must FAIL
     (non-zero) rather than fall through to reusing the stale tree — the whole
     point is to never stamp a marker over files that didn't update."""
     install_dir = tmp_path / "hermes-agent"
     _seed_cos_tree(install_dir, stamp="0000oldcommit0000")
-    r = _run_clone_repo(install_dir, "1111newcommit1111", _STUB_FAIL)
+    r = _run_stage_repository(install_dir, "1111newcommit1111", _STUB_FAIL)
     assert r.returncode != 0, "stale tree + failed re-download must not silently succeed\n" + r.stdout + r.stderr
     # `exit 1` terminates the harness before the DOWNLOAD_CALLED echo, so assert
     # on the recorder file directly: the re-download WAS attempted (not reused).
     assert (install_dir.parent / "download_called").exists(), "re-download must be attempted before erroring out"
     assert "is stale" in r.stderr, r.stderr
+
+
+def test_fresh_install_takes_cos_without_any_git_call(tmp_path: Path) -> None:
+    """hc-633 twin: a fresh COS install must never run git (the tree has no .git)."""
+    install_dir = tmp_path / "hermes-agent"
+    r = _run_stage_repository(install_dir, "1111newcommit1111", _STUB_SUCCESS)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DOWNLOAD_CALLED=yes" in r.stdout, r.stdout
+    assert "GIT_CALLED" not in r.stderr, r.stderr
+
+
+def test_reused_cos_tree_runs_no_git(tmp_path: Path) -> None:
+    install_dir = tmp_path / "hermes-agent"
+    _seed_cos_tree(install_dir, stamp="feedface0001")
+    r = _run_stage_repository(install_dir, "feedface0001", _STUB_SUCCESS)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "GIT_CALLED" not in r.stderr, r.stderr

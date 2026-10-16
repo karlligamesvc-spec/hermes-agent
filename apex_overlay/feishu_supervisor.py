@@ -242,7 +242,7 @@ def _disable_sdk_auto_reconnect(adapter: Any) -> None:
     if client is None:
         return
     try:
-        setattr(client, "_auto_reconnect", False)
+        client._auto_reconnect = False
     except Exception:
         logger.debug("[Feishu] apex-overlay: could not disable SDK auto-reconnect", exc_info=True)
 
@@ -351,7 +351,7 @@ async def _teardown_ws_thread(self) -> None:
     client = getattr(self, "_ws_client", None)
     if client is not None:
         try:
-            setattr(client, "_auto_reconnect", False)
+            client._auto_reconnect = False
         except Exception:
             pass
     self._ws_client = None
@@ -379,7 +379,7 @@ async def _teardown_ws_thread(self) -> None:
             logger.debug("[Feishu] Waiting for websocket thread to exit (timeout=10s)")
             await asyncio.wait_for(asyncio.shield(ws_future), timeout=10.0)
             logger.debug("[Feishu] Websocket thread exited cleanly")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[Feishu] Websocket thread did not exit within 10s - may be stuck")
         except asyncio.CancelledError:
             logger.debug("[Feishu] Websocket thread cancelled during teardown")
@@ -527,14 +527,14 @@ def _maybe_start_heartbeat(self, event) -> None:
 def _stop_heartbeat(self, message_id: Optional[str]) -> None:
     if not message_id:
         return
-    tasks: Dict[str, asyncio.Task] = getattr(self, "_heartbeat_tasks", None) or {}
+    tasks: dict[str, asyncio.Task] = getattr(self, "_heartbeat_tasks", None) or {}
     task = tasks.get(message_id)
     if task is not None and not task.done() and task is not asyncio.current_task():
         task.cancel()
 
 
 async def _cancel_all_heartbeats(self) -> None:
-    tasks: Dict[str, asyncio.Task] = getattr(self, "_heartbeat_tasks", None) or {}
+    tasks: dict[str, asyncio.Task] = getattr(self, "_heartbeat_tasks", None) or {}
     current = asyncio.current_task()
     pending = [t for t in tasks.values() if t and not t.done() and t is not current]
     for task in pending:

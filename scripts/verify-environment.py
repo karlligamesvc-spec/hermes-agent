@@ -53,15 +53,20 @@ def bundle_host(m):
     """Bundle objects live under the COS host ROOT (bundle/ is a sibling of the
     runtime/ prefix), so strip the cos_base's trailing /runtime — same derivation
     as apex-bundle-install.cjs::deriveCosHost."""
-    return re.sub(r"/runtime$", "", m["cos_base"].rstrip("/"), flags=re.I)
+    return re.sub(r"/runtime$", "", m["cos_base"].rstrip("/"), flags=re.IGNORECASE)
 
 
 def load_manifest(path):
     try:
         import yaml
     except ImportError:
-        sys.exit("verify-environment: 需要 PyYAML (pip install pyyaml)")
-    with open(path, encoding="utf-8") as f:
+        # hc-911: v0.22 dropped PyYAML from the runtime; the checkout's own reader works too.
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        try:
+            import hermes_yaml as yaml
+        except ImportError:
+            sys.exit("verify-environment: 需要 PyYAML 或 ruamel.yaml (pip install pyyaml)")
+    with open(path, encoding="utf-8-sig") as f:
         return yaml.safe_load(f)
 
 
@@ -78,69 +83,41 @@ def static_source_checks(manifest_path):
     repo_root = os.path.dirname(os.path.abspath(manifest_path))
     checks = []
 
-    node_bootstrap = os.path.join(repo_root, "scripts", "lib", "node-bootstrap.sh")
+    # hc-911: v0.22 removed node-bootstrap.sh; pinned Node/Python/uv downloads go through
+    # pm/artifact_mirror.pinned_source, whose ApexNodes seam serves the CN COS copy first.
+    artifact_mirror = os.path.join(repo_root, "pm", "artifact_mirror.py")
     try:
-        src = open(node_bootstrap, encoding="utf-8").read()
-        ok = "HERMES_NODE_DIST_BASE" in src
+        src = open(artifact_mirror, encoding="utf-8-sig").read()
+        ok = "apexnodes_cn_mirror_url" in src and "HERMES_RUNTIME_COS_BASE" in src
     except OSError as e:
         ok = False
-        node_bootstrap = f"{node_bootstrap} ({e})"
-    checks.append(("node-bootstrap.sh honors HERMES_NODE_DIST_BASE", ok, node_bootstrap))
+        artifact_mirror = f"{artifact_mirror} ({e})"
+    checks.append(("pm artifact mirror honors the CN COS copy", ok, artifact_mirror))
 
     # hc-472 followup: uv.lock records the ACTUAL registry each package was
     # resolved against, so the CN mirror default index (UV_DEFAULT_INDEX etc,
-    # apexnodes_apply_cn_mirror_env / Set-ApexCnMirrorEnv) is a DIFFERENT
-    # identity than the lock expects — `uv sync --extra all --locked` then
-    # refuses outright ("lockfile needs to be updated") and every CN-mirror
-    # install silently fell through past hash verification into the
-    # unverified `uv pip install` fallback tiers, every time. install.sh /
-    # install.ps1 must sanitize that index env for the --locked calls
-    # specifically (see _uv_sync_locked / Invoke-UvSyncLocked) — this guards
-    # the fix from silently regressing back to the raw, unsanitized call.
-    install_sh = os.path.join(repo_root, "scripts", "install.sh")
+    # apexnodes_apply_cn_mirror_env / Set-ApexCnMirrorEnv) must never reach the
+    # locked runtime install, or uv re-resolves against the mirror and refuses.
+    # hc-911: v0.22's installers hand the whole install to pm, which syncs the
+    # runtime with --frozen and, in its isolated runtime builder, drops every
+    # index-redirect setting (pm.index_config.is_index_redirect). Guard that the
+    # strip is still wired so the CN env cannot silently reach the lock again.
+    runtime_stage = os.path.join(repo_root, "pm", "runtime_stage.py")
+    environment = os.path.join(repo_root, "pm", "environment.py")
     try:
-        src = open(install_sh, encoding="utf-8").read()
+        stage_src = open(runtime_stage, encoding="utf-8-sig").read()
+        env_src = open(environment, encoding="utf-8-sig").read()
+        strip_block = env_src.split("if self.no_config:", 1)[1].split("env.update(", 1)[0]
         ok = (
-            "_uv_sync_locked" in src
-            and "-u UV_DEFAULT_INDEX" in src
-            and "_uv_sync_locked --check" in src
-            and "if _uv_sync_locked; then" in src
-        )
-    except OSError as e:
-        ok = False
-        install_sh = f"{install_sh} ({e})"
-    checks.append(("install.sh sanitizes mirror index env for uv sync --locked", ok, install_sh))
-
-    install_ps1 = os.path.join(repo_root, "scripts", "install.ps1")
-    try:
-        src = open(install_ps1, encoding="utf-8").read()
-        # hc-636 extracted save/clear/restore into a shared helper because
-        # both `uv sync --locked` and `uv export --locked` need it. Inspect the
-        # executable function bodies instead of looking for the superseded
-        # one-off `$env:UV_DEFAULT_INDEX = $null` spelling. That literal-only
-        # guard falsely blocked the hc-684 release even though the current
-        # implementation clears a strictly larger, tested set via .NET.
-        helper_body = src.split("function Invoke-WithoutIndexEnv {", 1)[1].split(
-            "function Invoke-UvSyncLocked {", 1
-        )[0]
-        sync_body = src.split("function Invoke-UvSyncLocked {", 1)[1].split(
-            "function Invoke-UvMirrorHashedInstall {", 1
-        )[0]
-        helper_code = "\n".join(line.split("#", 1)[0] for line in helper_body.splitlines())
-        sync_code = "\n".join(line.split("#", 1)[0] for line in sync_body.splitlines())
-        ok = (
-            all(f"'{name}'" in helper_code for name in LOCKED_PROJECT_ENV_VARS)
-            and "SetEnvironmentVariable($n, $null)" in helper_code
-            and "finally" in helper_code
-            and "SetEnvironmentVariable($n, $saved[$n])" in helper_code
-            and "Invoke-WithoutIndexEnv {" in sync_code
-            and "sync --extra all --locked" in sync_code
-            and "Invoke-UvSyncLocked -Check" in src
+            "no_config=True" in stage_src
+            and "is_index_redirect(key)" in strip_block
+            and all(name in open(os.path.join(repo_root, "pm", "index_config.py"), encoding="utf-8-sig").read()
+                    for name in LOCKED_PROJECT_ENV_VARS if name.startswith("UV_") and name != "UV_NO_CONFIG")
         )
     except (OSError, IndexError) as e:
         ok = False
-        install_ps1 = f"{install_ps1} ({e})"
-    checks.append(("install.ps1 sanitizes mirror index env for uv sync --locked", ok, install_ps1))
+        runtime_stage = f"{runtime_stage} ({e})"
+    checks.append(("pm runtime builder strips mirror index env from the locked sync", ok, runtime_stage))
 
     return checks
 
