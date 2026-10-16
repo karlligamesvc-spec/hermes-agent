@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   clampPoolLimits,
+  mergePoolLimitsPatch,
   parsePoolLimits,
   POOL_LIMITS_BOUNDS,
   POOL_LIMITS_DEFAULTS,
@@ -49,5 +50,25 @@ describe('clampPoolLimits', () => {
 
   it('floors fractional values', () => {
     expect(clampPoolLimits({ maxBackends: 2.9 }).maxBackends).toBe(2)
+  })
+})
+
+describe('mergePoolLimitsPatch', () => {
+  const current = { maxBackends: 7, idleMs: 3_600_000 }
+
+  // Settings saves one knob per commit; the other must survive (hc-914).
+  it.each([
+    ['maxBackends only keeps idleMs', { maxBackends: 5 }, { maxBackends: 5, idleMs: 3_600_000 }],
+    ['idleMs only keeps maxBackends', { idleMs: 120_000 }, { maxBackends: 7, idleMs: 120_000 }],
+    ['both fields', { maxBackends: 2, idleMs: 90_000 }, { maxBackends: 2, idleMs: 90_000 }],
+    ['empty patch', {}, current],
+    ['null patch', null, current],
+    ['non-object patch', 'lots', current],
+    ['string number is ignored', { maxBackends: '5' }, current],
+    ['NaN is ignored', { maxBackends: Number.NaN }, current],
+    ['below floor clamps', { maxBackends: 0, idleMs: 1 }, POOL_LIMITS_MIN],
+    ['above ceiling clamps', { maxBackends: 10_000 }, { maxBackends: POOL_LIMITS_BOUNDS.maxBackendsMax, idleMs: 3_600_000 }]
+  ])('%s', (_label, patch, expected) => {
+    expect(mergePoolLimitsPatch(current, patch)).toEqual(expected)
   })
 })

@@ -495,7 +495,7 @@ import {
   undialedSshRouteSeeds
 } from './plugin-profile-routes'
 import { evictPoolEntries } from './pool-eviction'
-import { clampPoolLimits, parsePoolLimits, POOL_LIMITS_DEFAULTS } from './pool-limits'
+import { clampPoolLimits, mergePoolLimitsPatch, parsePoolLimits, POOL_LIMITS_DEFAULTS } from './pool-limits'
 import {
   isBackgroundSlotWaitTimeout,
   LocalBackendSpawnCoordinator,
@@ -1877,8 +1877,12 @@ function persistPoolLimits(limits) {
     const tmpPath = `${POOL_LIMITS_PATH}.tmp`
     fs.writeFileSync(tmpPath, JSON.stringify(limits, null, 2), 'utf8')
     fs.renameSync(tmpPath, POOL_LIMITS_PATH)
+
+    return true
   } catch (error) {
     rememberLog(`[pool-limits] write failed: ${error.message}`)
+
+    return false
   }
 }
 
@@ -1988,17 +1992,25 @@ function poolIdleMs() {
  * Apply new limits live: persist, then converge the running pool — evict
  * LRU backends down to the new max, and let the (already running) idle
  * reaper handle a shortened idle window on its next tick. Returns the
- * limits actually in force (post-clamp).
+ * limits actually in force (post-clamp); ok is false when only the live pool
+ * took them and the userData write failed (they are lost on restart).
  */
 function setPoolLimits(raw) {
   poolLimits = clampPoolLimits(raw)
-  persistPoolLimits(poolLimits)
+  const persisted = persistPoolLimits(poolLimits)
   localBackendSpawnCoordinator.setLimit(poolLimits.maxBackends)
   void evictLruPoolBackends(poolMaxBackends())
   startPoolIdleReaper()
 
-  return { ...poolLimits }
+  return { ok: persisted, limits: { ...poolLimits } }
 }
+
+// hc-914: preload has always exposed getPoolLimits/setPoolLimits, but these
+// two handlers were never registered, so every Settings → Advanced pool row
+// read/save rejected with "No handler registered". Guarded by
+// ipc-channel-parity.test.ts.
+ipcMain.handle('hermes:pool-limits:get', () => ({ ...poolLimits }))
+ipcMain.handle('hermes:pool-limits:set', (_event, patch) => setPoolLimits(mergePoolLimitsPatch(poolLimits, patch)))
 
 // A backend touched within this window has a live renderer socket (the keepalive
 // pings every 60s for every open profile). LRU eviction must spare these — a
