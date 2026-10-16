@@ -700,6 +700,12 @@ export function sendToGroupChat(
   const wasRunning = ($groupChats.get()[group] || {}).running === true
   updateGroupChat(group, (room: GroupChatRoom) => {
     room.epoch = (room.epoch || 0) + 1
+    // The drive below runs every member of `target` again with its full
+    // delta: the #93127 commit gate drops a superseded turn only then.
+    room.threadDrives = {
+      ...(room.threadDrives || {}),
+      [target]: room.epoch
+    }
     room.running = true
     // #93129: user text is the ONLY input that changes member holds. An
     // explicit "stop @member" sets a sticky hold; "@member resume" (or

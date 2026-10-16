@@ -1379,11 +1379,13 @@ export interface GroupHoldStamp extends GroupHold {
 }
 
 /** The room record as the coordination engine handles it: `GroupChat` plus
- *  `turn`, the runtime-only descriptor of the member currently mid-turn. Like
- *  `running`/`epoch` it never persists, so it has no place in the durable
- *  shape. Holds carry the fuller live stamp. */
+ *  `turn`, the runtime-only descriptor of the member currently mid-turn, and
+ *  `threadDrives`, the epoch at which this Desktop last started a drive of
+ *  each thread (sendToGroupChat). Like `running`/`epoch` neither persists, so
+ *  they have no place in the durable shape. Holds carry the fuller live stamp. */
 export interface GroupChatRoom extends GroupChat {
   holds?: Record<string, GroupHoldStamp>
+  threadDrives?: Record<string, number>
   turn?: GroupMember | null
 }
 
@@ -1506,15 +1508,24 @@ export function uniqueGroupChatName(base: string, taken: Set<string>): string {
  *
  *  The re-drive premise is only true for a send in the SAME thread (delta
  *  filters are thread-scoped): a cross-thread epoch bump must NOT discard
- *  finished work no fresh loop will regenerate. Callers pass whether a newer
- *  USER entry landed in this thread since dispatch; the default (true)
- *  preserves the conservative drop when the caller can't tell. */
-export function shouldCommitMemberTurn(epochAtDispatch: number, currentEpoch: number, newerUserEntryInThread = true) {
+ *  finished work no fresh loop will regenerate. Callers pass whether this
+ *  Desktop started a newer drive of this thread since dispatch
+ *  (groupThreadRedrivenSince). A newer user ENTRY in the thread is not that:
+ *  a mobile/second-Desktop post (gateway projection merge) and an answered
+ *  member question (the card's echo) land without a drive. The default
+ *  (true) preserves the conservative drop when the caller can't tell. */
+export function shouldCommitMemberTurn(epochAtDispatch: number, currentEpoch: number, redrivenInThread = true) {
   if (epochAtDispatch === currentEpoch) {
     return true
   }
 
-  return !newerUserEntryInThread
+  return !redrivenInThread
+}
+
+/** Whether a local send into `thread` started a newer drive of it after
+ *  `epoch` — the only event that runs the thread's members again. */
+export function groupThreadRedrivenSince(room: GroupChatRoom | undefined, thread: string, epoch: number) {
+  return (room?.threadDrives?.[thread] ?? -1) > epoch
 }
 
 /** #93127 insurance: byte-identical member echo detection. TRUE only when

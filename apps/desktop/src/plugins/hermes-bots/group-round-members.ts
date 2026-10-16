@@ -7,6 +7,7 @@ import {
   GROUP_CHAT_MAX_CONTINUATIONS,
   GROUP_CHAT_MAX_MESSAGES,
   groupThreadOf,
+  groupThreadRedrivenSince,
   shouldCommitMemberTurn,
   updateGroupChat
 } from './group-chat'
@@ -105,6 +106,36 @@ function prepareGroupRoundMember(context: GroupRoundMemberContext, member: Group
   return { room, memberKey, markKey, prompt, deltaImages }
 }
 
+/** #93127: the turn may have finished AFTER a newer user send bumped the room
+ *  epoch. When that send was into THIS thread, its loop re-drives this member
+ *  with the full delta, so committing this stale result (watermark advance +
+ *  append) would double-deliver the same reply: drop it, BEFORE the watermark
+ *  advance and BEFORE the append. Anything else that moved the epoch (a send
+ *  into another thread, a stop, a gateway switch) or put a user entry in this
+ *  thread (a remote post, an answered question's echo) starts no drive here,
+ *  so the finished reply is the only copy and commits. Round and continuation
+ *  turns share this decision. */
+function memberTurnSuperseded(context: GroupRoundMemberContext, member: GroupMember) {
+  const roomNow: GroupChatRoom = $groupChats.get()[context.group] || {
+    log: [],
+    watermarks: {}
+  }
+
+  const redriven = groupThreadRedrivenSince(roomNow, context.thread, context.startEpoch)
+
+  if (shouldCommitMemberTurn(context.startEpoch, roomNow.epoch || 0, redriven)) {
+    return false
+  }
+
+  recordGroupActivity(context.group, {
+    kind: 'cancelled',
+    member: member.name,
+    thread: context.thread
+  })
+
+  return true
+}
+
 /** Each invocation owns its descriptor, so an old completion cannot clear a newer turn. */
 async function runVisibleMemberTurn(
   context: GroupRoundMemberContext,
@@ -128,14 +159,14 @@ export async function runGroupRoundMember(
   context: GroupRoundMemberContext,
   member: GroupMember
 ): Promise<boolean | null> {
-  const { thread, startEpoch, binding } = context
+  const { thread, binding } = context
   const prepared = prepareGroupRoundMember(context, member)
 
   if (!prepared) {
     return false
   }
 
-  const { room, markKey, prompt, deltaImages } = prepared
+  const { markKey, prompt, deltaImages } = prepared
   let reply: null | string = null
 
   try {
@@ -168,43 +199,7 @@ export async function runGroupRoundMember(
     reply = null // a failed turn is a pass, never a room error
   }
 
-  // #93127: the turn may have finished AFTER a newer user send bumped
-  // the room epoch. That newer send's loop re-drives this member with
-  // the full delta, so committing this stale result (watermark advance
-  // + append) would double-deliver the same reply. Drop it here —
-  // BEFORE the watermark advance and BEFORE the append. Only a newer
-  // USER entry in THIS thread makes the re-drive premise true: a
-  // cross-thread send bumps the epoch too, but its loop filters this
-  // thread out and would never regenerate the finished reply. The
-  // during-turn tail is anchored by entry id, not index — the history
-  // trim drops entries from the FRONT, so an index slice could
-  // overshoot after a mid-turn trim and silently commit a stale turn.
-  if (!binding.isLive()) {
-    return null
-  }
-
-  const roomNow = $groupChats.get()[context.group] || {
-    log: []
-  }
-
-  const epochNow = roomNow.epoch || 0
-  const anchorId = room.log.length ? room.log[room.log.length - 1].id : null
-  const anchorIdx = anchorId === null ? -1 : roomNow.log.findIndex((e: GroupMessage) => e.id === anchorId)
-  // Anchor trimmed away ⇒ every pre-turn entry was dropped, so every
-  // surviving entry is newer — scanning the whole log stays exact.
-  const turnTail = anchorIdx >= 0 ? roomNow.log.slice(anchorIdx + 1) : roomNow.log
-
-  const newerUserEntryInThread = turnTail.some(
-    (e: GroupMessage) => e.from?.kind === 'user' && groupThreadOf(e) === thread
-  )
-
-  if (!shouldCommitMemberTurn(startEpoch, epochNow, newerUserEntryInThread)) {
-    recordGroupActivity(context.group, {
-      kind: 'cancelled',
-      member: member.name,
-      thread
-    })
-
+  if (!binding.isLive() || memberTurnSuperseded(context, member)) {
     return null
   }
 
@@ -247,7 +242,7 @@ async function runGroupContinuationMember(
   context: GroupRoundMemberContext,
   member: GroupMember
 ): Promise<boolean | null> {
-  const { members, thread, binding, isCurrent } = context
+  const { members, thread, binding } = context
 
   const room = $groupChats.get()[context.group] || {
     log: [],
@@ -304,7 +299,7 @@ async function runGroupContinuationMember(
     continuationReply = null
   }
 
-  if (!isCurrent()) {
+  if (!binding.isLive() || memberTurnSuperseded(context, member)) {
     return null
   }
 
