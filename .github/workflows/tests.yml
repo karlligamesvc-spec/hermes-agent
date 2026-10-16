@@ -9,6 +9,10 @@ on:
         description: Number of parallel test slices
         type: number
         default: 8
+      commit:
+        description: Commit to test and build. Empty keeps the triggering commit.
+        type: string
+        default: ''
       # The E2E jobs below are slow lanes (scripts/ci/classify_changes.py).
       # ci.yaml passes the classifier's answer; a caller that passes nothing
       # gets every job.
@@ -34,8 +38,8 @@ permissions:
 
 # Cancel in-progress runs for the same ref
 concurrency:
-  group: tests-${{ github.ref_type == 'tag' && github.run_id || github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  group: tests-${{ (github.ref_type == 'tag' || inputs.commit != '') && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && inputs.commit == '' }}
 
 jobs:
   generate:
@@ -47,6 +51,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The slices are cut from the tree under test, not the controller's.
+          ref: ${{ inputs.commit }}
 
       - name: Restore duration cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -80,6 +87,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
 
       - name: Install ripgrep (prebuilt binary)
         run: |
@@ -168,7 +177,8 @@ jobs:
   # (including PRs) get balanced slicing.
   save-durations:
     needs: test
-    if: needs.test.result == 'success' && github.ref == 'refs/heads/main'
+    # Push to main only: a dispatched stable run tests another commit and must not write the cache.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -207,6 +217,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
 
       - name: Set up locked Python, Node and test dependencies
         # toolchain: all puts PM's locked Node in the runner's PM store, not
@@ -305,6 +317,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
         with:
+          ref: ${{ inputs.commit }}
           # The clean-worktree step below loads its action from the checkout.
           sparse-checkout: |
             tests/e2e/core/upgrade
@@ -350,6 +363,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
         with:
+          ref: ${{ inputs.commit }}
           # N-1 = `git describe --tags --abbrev=0 HEAD~1`.
           fetch-depth: 0
           fetch-tags: true

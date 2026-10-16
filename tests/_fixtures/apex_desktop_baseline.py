@@ -25,6 +25,12 @@ _E2E_HARNESS = (
     "apps/desktop/e2e/core/harness",
     "apps/desktop/e2e/update",
 )
+_E2E_UPDATE = ("apps/desktop/e2e/update",)
+_MARKER_CORPUS_READERS = (
+    "apps/desktop/electron/update-marker-corpus.test.ts",
+    "apps/desktop/electron/remote-update-marker-programs.test.ts",
+    "apps/desktop/electron/remote-lifecycle-v2-marker.test.ts",
+)
 
 # test id or module path -> upstream Desktop paths it needs
 SKIPS: dict[str, tuple[str, ...]] = {
@@ -34,6 +40,18 @@ SKIPS: dict[str, tuple[str, ...]] = {
     # Upstream's Desktop build runs scripts/build/desktop.mjs from its electron-builder config;
     # APEX's build is apps/desktop's own package.json pipeline.
     "tests/ci/test_update_ci_routing.py::test_desktop_build_scripts_start_the_desktop_update_suite": ("apps/desktop/electron-builder.config.cjs",),
+    # The e2e_desktop_update lane replays upstream's playwright suite (e2e/update/*.spec.ts),
+    # and the update-marker corpus is read by upstream Desktop vitest files; APEX carries neither.
+    **{f"tests/ci/test_update_ci_routing.py::{test}": _E2E_UPDATE for test in (
+        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[desktop_updater-e2e_desktop_update]",
+        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[e2e_desktop_update]",
+        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[python-desktop_updater-e2e_desktop_update]",
+        "test_every_set_lane_reaches_its_consumer_whatever_the_other_lanes_say[python-e2e_desktop_update]",
+        "test_update_path_change_reaches_the_suites_that_consume_it[hermes_cli/web_routers/status.py-lanes0]",
+        "test_update_path_change_selects_every_suite_that_exercises_it[apps/desktop/electron/update-marker-gate.ts-lanes0]",
+    )},
+    "tests/ci/test_update_ci_routing.py::test_every_test_that_reads_a_shared_fixture_is_routed_by_it": _MARKER_CORPUS_READERS,
+    "tests/ci/test_update_ci_routing.py::test_marker_corpus_change_runs_every_language_that_reads_it": _MARKER_CORPUS_READERS,
     "tests/ci/test_classify_changes.py::test_every_slow_lane_path_matches_a_tracked_file": _E2E_HARNESS,
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/updater/checkout.ts]": ("apps/desktop/electron/updater/checkout.ts",),
     "tests/ci/test_classify_changes.py::test_every_desktop_update_path_file_starts_the_desktop_update_suite[apps/desktop/electron/backend-discovery.ts]": ("apps/desktop/electron/backend-discovery.ts",),

@@ -26,7 +26,10 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['**/*.{ts,tsx}'],
+    // ApexNodes hc-911: no brace sets in globs. apps/desktop lints with its own eslint 9,
+    // whose minimatch@3 calls brace-expansion as a function; the root brace-expansion
+    // override (5.x) exports `expand` instead, so a `{ts,tsx}` glob crashes that lint.
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       globals: {
         ...globals.node

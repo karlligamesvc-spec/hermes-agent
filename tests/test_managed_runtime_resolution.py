@@ -98,6 +98,10 @@ _ALLOWED: dict[tuple[str, str], str] = {
         "Plugin workspace installs resolve npm inside the PM runner env that "
         "pm.ensure('npm') just composed."
     ),
+    ("tools/mcp_tool_config.py", "node"): (
+        "Looks up node only inside the sealed payload's own node dirs (an explicit "
+        "`path=`, never the ambient PATH), to run a package bin on the packaged node."
+    ),
     # ApexNodes hc-911: the upstream Desktop source-backend fixture's ``uv`` row is gone with
     # the upstream Desktop tree (apps/desktop stays on the APEX baseline).
 }

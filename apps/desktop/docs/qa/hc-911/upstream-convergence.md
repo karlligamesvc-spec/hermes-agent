@@ -1,4 +1,4 @@
-# hc-911 — Hermes v0.22.0 全量同步与补丁对账
+# hc-911 — Hermes v0.22.0 / v0.22.2 全量同步与补丁对账
 
 ## 结论
 
@@ -8,7 +8,47 @@
 - **Desktop 以 APEX 现行版本为基线**（Kael 2026-10-15：保留成对发布链路 Mac arm64/x64 + Windows x64 NSIS + COS feed，只吸收上游 Desktop 的运行时与稳定性改进）。`apps/desktop` 与合并前的 fork main 逐文件一致，上游新增的 1,551 个 Desktop 文件不进；为跑在 v0.22 运行时上做的兼容修改见下文“Desktop”。
 - Python 运行时、pm、安装器、网关与后端路由取上游 v0.22，APEX 接缝按原语义移植；合并中被测试抓到的 9 处真实缺陷已修（见“合并缺陷”）。
 - 本票不是发版票：不推进 Desktop 版本号、updater feed、COS 安装包、云镜像或生产部署。`apps/desktop/bundled-runtime.json` 仍固定已发布的 v0.21 运行时包，换成 v0.22 运行时属于发版步骤（构建脚本已就绪，见“运行时包”）。
-- 已知上游后续：v0.22.2 修复了"受监管环境（systemd/launchd/**Docker**）重启后 gateway 因 PID 复用拒绝启动"。云端每个 Agent 都跑在 Docker 里，**任何云镜像上线前应先增量升到 v0.22.2**。
+- 随后在同一 PR 内增量合并上游 `v0.22.2`（`d923a5eb48`，2026-10-15），见"增量合并 v0.22.2"。其中包含"受监管环境（systemd/launchd/**Docker**）重启后 gateway 因 PID 复用拒绝启动"的修复，云端每个 Agent 都跑在 Docker 里，这一条直接相关。
+
+## 增量合并 v0.22.2
+
+上游 `v0.22.2` 是从 `release/0.22.1` 切出、以已发布的 v0.22.1 为父的补丁版。与 v0.22.0 相比改了 256 个文件，其中 Desktop 26 个。这次合并有 29 个冲突文件。
+
+| 冲突 | 处理 |
+|---|---|
+| `apps/desktop` 下 23 个 | 全部保留我方：`apps/desktop` 与 v0.22.0 合并提交逐文件一致。上游新增的 `electron/keep-awake-controller(.test).ts` 和 10 个 i18n 文件（`*_notices.ts`、`ar_boot.ts`、`zh-hant_boot.ts` 等）不进 |
+| `ci.yaml`、`lockfile-diff.yml`、`tests.yml` | 上游给可复用 workflow 加了 `commit` 输入（稳定发布按提交串起测试）。与我方的 hc-885 detect 稀疏检出、`fetch-depth: 1` 加比较 refs 拉取、`slice_count` 输入并存 |
+| `tests.yml`（新守卫） | 上游新增的 `tests/ci/test_stable_release_commit_threading.py` 要求每次检出都跟随 `commit` 输入，并禁止用触发方的 ref 判断被测提交。我方 fork 自有的两个 job 不满足：`generate`（按 `slice_count` 切片）的检出补上 `ref: ${{ inputs.commit }}`；`save-durations` 改为只在 push 到 main 时写耗时缓存，稳定发布的 dispatch 不写。修复前两条守卫都是红的 |
+| `Dockerfile` | 两段注释并存：上游的 uv 缓存种子路径，以及我方的 extras 说明。`RUN` 行已同时带 `--cache` 和我方 extras |
+| `tests/test_managed_runtime_resolution.py` | 采用上游新增的 `tools/mcp_tool_config.py` 行；上游 Desktop 的 source-backend 行仍不加回 |
+| `package-lock.json` | 以我方为准执行 `npm install`，再对 `undici`、`source-map-js`、`minimatch` 执行 `npm update`，让上游的 overrides 真正生效 |
+
+**顺带修好的 v0.22.0 锁文件缺陷**：v0.22.0 合并提交的锁文件里，依赖 `minimatch@^3` 的包（eslint、eslint-plugin-react、@eslint/config-array、@eslint/eslintrc、glob、dir-compare、@electron/asar）被解析成了 10.2.6。原因是当时试过嵌套 override，回退后 npm 没有重新解析。现在已恢复 3.1.5 的嵌套条目，与上游锁文件一致。锁文件修好后暴露了被它掩盖的第二个问题：Desktop 自带的 eslint 9 走 `minimatch@3`，`minimatch@3` 把 `brace-expansion` 当函数调用，而根目录的 override 把它换成了只导出 `expand` 的 5.x。于是带花括号的 glob 会让 `npm run lint` 直接崩溃（`expand is not a function`）。v0.22.0 那轮只把 Desktop 自己配置里的花括号 glob 改掉了，漏了它引入的根目录 `eslint.config.shared.mjs`（`**/*.{ts,tsx}`）。这次一并改成两个等价 glob，并做了追踪确认：Desktop lint 过程中再没有花括号模式经过 `minimatch@3`，lint 覆盖的文件集合不变。其余 `minimatch@3` 使用方都不会触发这个问题：app-builder-lib 自己用 minimatch 10；asar、universal、winstaller 不传花括号 glob，后两者 APEX 也不用。`npm ls --all` 只剩上游同样存在的两处可选平台依赖告警（lightningcss、wasm32 绑定）。
+
+**吸收的上游改进**：
+
+- 安全依赖：httpx2 / httpcore2 2.12.0，以及 brace-expansion 5.0.12、undici 6.29.0 / 7.30.0、js-yaml 4.3.2、source-map-js 1.2.2、vitest 4.1.11。
+- gateway 主机会合（host rendezvous）：识别回收的 PID，按开机时间判定遗留记录。修的是受监管环境重启后拒绝启动的问题。
+- 新建 profile 继承模型：一并带上自定义端点，`${VAR}` 保持引用，不读取凭据。
+- 本地模型：长回合在笔记本睡眠后的保活，以及 llama.cpp 的 prompt 进度。
+- pm：字节码编译失败时重试、uv 缓存种子重新合并、PATH 上的 npm 使用固定版本。
+- 终端 PATH 改为用户自己的工具排在 Hermes 之前，与我方 hc-544 的用户 bin 追加互不冲突。
+- 本地文件搜索使用固定版本的 ripgrep；Mistral 工具 id 配对修复。
+
+不影响 APEX 的部分：Windows MSIX、Microsoft Store 打包线和稳定发布 lanes。APEX 走 NSIS 和 `desktop-release.yml`。
+
+**接缝复查**：
+
+- APEX overlay 和插件直接引用的上游模块，与 v0.22.2 改动的 119 个 Python 模块没有交集。
+- 双方都改过的源文件有 4 个：`agent/chat_completion_stream_monitor.py`、`agent/model_metadata.py`、`hermes_cli/profiles.py`、`tools/environments/local.py`。逐个比对后没有语义冲突。四个文件里我方补丁依次是：末尾空行、本地探测 `trust_env=False`、hc-903 模型写入日志不随 profile 克隆/导出、hc-544 用户 bin 追加。
+- hc-903 相关路由（`web_server_config`、`web_routers/models`、`web_routers/config_env`）上游未改。
+- 生成物重跑后与合并结果逐字一致，Desktop slash 注册表的 APEX 覆盖仍然生效。生成物包括网关契约（openrpc 与 generated.ts）、Desktop slash 注册表、文档漂移基线、技能文档与侧栏。
+- 所有可复用 workflow 调用方传的 `with` 键，都已与被调方的 `workflow_call.inputs` 逐个核对。
+- 无新增需要 Kael 决策的产品行为。
+
+**Desktop 基线跳过清单补 8 条**：`tests/ci/test_update_ci_routing.py` 中有 8 条测试校验上游的 CI 路由能到达上游 Desktop 的测试套件，涉及 `e2e/update/*.spec.ts` 的 playwright 套件，以及读取 `update_marker_corpus.json` 的 3 个 Desktop vitest 文件。APEX 基线没有这些文件。按测试 ID 比对时，它们是唯一的 fork 独有失败；v0.22.0 那轮按文件比对，被同文件里本机 bash 3.2 导致的失败掩盖了，这次补上。跳过条件按路径设定：被引用的文件一旦移植进来，跳过自动失效。
+
+**已知缺口（不在本 PR 改）**：`ci.yaml` 的 `e2e-desktop-core` 与 `e2e-desktop-update` 两条 lane 是 v0.22.0 带进来的，它们跑的 `apps/desktop/e2e/core`、`apps/desktop/e2e/update` 套件不在 APEX 基线里。PR 和 push 时 `gate-lanes` 会把 E2E lane 强制关掉，所以日常 CI 不受影响。只有以 release 模式手动 dispatch `ci.yaml`（或上游的 `stable-release.yml`）时，这两条会红。要关掉它们，需要同时改 `required_results.py` 的必需 lane 表，见"后续"。
 
 ## 结构性冲突（UD / DU / AA）
 
@@ -105,6 +145,7 @@
 7. `plugins/apexnodes_gateway.py` 与 `apex_overlay/media_tools.py` 的 ffmpeg/tar 子进程未关 stdin。
 8. 三个 APEX 测试与一处发版脚本仍 `import yaml`（v0.22 去掉了 PyYAML，统一 ruamel）。
 9. `apex_overlay/media_tools.py` 依赖已删除的 `tools.lazy_deps` → 改用 `pm.lazy_installs_allowed`；picker 预热改为先等插件发现（apex-overlay 拒绝名单生效后再列 provider）。
+10. （v0.22.2 增量时发现）锁文件把 `minimatch@^3` 解析成 10.2.6，掩盖了根目录 eslint 共享配置里那个让 Desktop lint 崩溃的花括号 glob。锁文件与 glob 都已修正，详见"增量合并 v0.22.2"。
 
 ## 需要 Kael 决策的上游行为变化
 
@@ -123,10 +164,24 @@
 - COS 按 sha256 镜像 pm 产物（`<COS>/upstream/sha256/<sha>`）的发布脚本与 `verify-environment.py` 闸门；在此之前 CN 模式取 COS 会 404 后回落原始 URL。
 - 安装器路径的国内哈希镜像 Python 依赖档（APEX Desktop 运行时包不受影响）。
 - 发版时用新构建脚本为合并提交出 Mac arm64/x64 + Windows x64 运行时包并更新 `bundled-runtime.json`。
-- 云镜像上线前增量升到 v0.22.2。
 - `main.ts` 非打包路径的系统 Python 白名单（3.11–3.13）与 v0.22 锁文件（仅 3.14）不再匹配，只影响开发/源码模式。
 - 本机运行测试会在 `~/.hermes/tools` 建立 pm 工具库（约 2.1 GB，上游默认位置）。
+- fork 的 `ci.yaml` 中，`e2e-desktop-core`、`e2e-desktop-update` 指向 APEX 没有的上游 Desktop e2e 套件。两种处理：改成 `if: false`，并把它们从 `required_results.py` 的必需消费方移到延期列表；或者把 APEX 自己的 Desktop e2e 接到这两个入口。
 
 ## 验证
 
-（见 PR 描述）
+本机 macOS（Mac Studio），v0.22.2 合并结果：
+
+- `ruff check .`：0 条。
+- Python 全量（`scripts/run_tests.sh -j 12`）：60,889 通过 / 223 失败 / 1,485 跳过。
+  - 失败的 61 个文件放到干净上游 v0.22.2 上重跑，得到 214 条失败。逐条按测试 ID 比对：fork 独有的是上面 8 条路由测试（已加入跳过清单，重跑为 0）、`test_stable_release_commit_threading` 的 2 条（已修），以及 1 条高负载下偶发的 `test_local_interrupt_cleanup`（单跑通过）。
+  - 其余失败上游同样存在，原因是 macOS 自带 bash 3.2 没有 `mapfile`、本机有真实的 `~/.hermes`、网络。
+- tests/apex_overlay：412 通过（1 条仅 Windows 跳过）。
+- Desktop：
+  - typecheck（renderer + electron + e2e）通过。
+  - lint 0 错误（349 条告警，与 v0.22.0 同一批文件）。
+  - vitest UI 9,120、electron 3,221 全过。
+  - release-gates：node 100 条、vitest 15 条全过。
+  - `npm run build` 通过。
+- 开发模式 Desktop 跑在 v0.22.2 运行时上，使用全新 HOME 与用户数据目录：后端就绪、网关就绪；首屏为 APEX 中文登录；“使用自己的密钥”后进入 APEX 首页；向本地 OpenAI 兼容模拟服务发消息，流式回复正常；errors.log 只有 2 条预期警告。
+- 未验证：用 v0.22.2 运行时包打出的 APEX.app / APEX.exe（发版步骤）；Windows 真机；国内网络。
