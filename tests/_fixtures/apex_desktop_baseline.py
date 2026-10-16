@@ -105,8 +105,9 @@ IGNORED_MODULES: dict[str, tuple[str, ...]] = {
 # lapses it, so every entry names its follow-up and goes once that is resolved.
 FORK_CI_SIGNAL = ("GITHUB_ACTIONS", "true")
 _GIT_CORE_ON_RUNNER = (
-    "hc-911 follow-up: on the fork's windows-latest pool (windows-2025-vs2026) _locate_real_git() finds no "
-    "git-core git.exe; APEX's Windows installs (COS archive, no .git) never take this git self-heal path")
+    "hc-911 follow-up (upstream fix): _locate_real_git() probes only <arch>\\libexec\\git-core\\git.exe, which "
+    "current Git for Windows no longer ships (the fork's windows-2025-vs2026 runner has 2.56.0; MinGit 2.54 keeps "
+    "the real binary at mingw64\\bin\\git.exe); APEX's Windows installs (COS archive, no .git) never take this path")
 FORK_RUNNER_SKIPS: dict[str, str] = {
     "tests/hermes_cli/test_git_trampoline_windows_live.py::TestGitTrampolineLive::test_locate_real_git_finds_runner_git_core": _GIT_CORE_ON_RUNNER,
     "tests/hermes_cli/test_git_trampoline_windows_live.py::TestGitTrampolineLive::test_ensure_non_trampoline_git_swaps_live": _GIT_CORE_ON_RUNNER,

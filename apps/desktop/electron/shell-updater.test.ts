@@ -414,6 +414,37 @@ test('a rejecting checkForUpdates is swallowed and logged (no unhandled rejectio
   assert.equal(updater.getState().phase, 'error')
 })
 
+test('a failed auto-download handed back by the check is not an unhandled rejection', async () => {
+  const { updater, logs, autoUpdater } = harness()
+  const unhandled = []
+  const onUnhandled = reason => unhandled.push(reason)
+
+  // electron-updater's shape: the check succeeds, the download it started fails, 'error' fires,
+  // and the same failure is rethrown in result.downloadPromise.
+  autoUpdater.checkForUpdates = async () => {
+    const downloadPromise = (async () => {
+      autoUpdater.emit('error', new Error('ENOENT: app-update.yml'))
+      throw new Error('ENOENT: app-update.yml')
+    })()
+
+    return { updateInfo: { version: '0.17.57' }, downloadPromise }
+  }
+
+  process.on('unhandledRejection', onUnhandled)
+
+  try {
+    assert.deepEqual(await updater.checkNow(), { ok: true })
+    await flushImmediate()
+    await flushImmediate()
+  } finally {
+    process.off('unhandledRejection', onUnhandled)
+  }
+
+  assert.deepEqual(unhandled, [])
+  assert.ok(logs.some(line => line.includes('[shell-update] error (silent): ENOENT: app-update.yml')))
+  assert.equal(updater.getState().phase, 'error')
+})
+
 test('manual check IPC reports a rejected feed instead of claiming the app is current', async () => {
   const { ipcMain, autoUpdater } = harness()
 
