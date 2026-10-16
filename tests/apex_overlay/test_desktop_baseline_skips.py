@@ -39,6 +39,36 @@ def test_every_cited_upstream_desktop_path_is_still_absent():
         assert not present, f"{nodeid}: {present} now exist, so the upstream test runs again; drop the entry"
 
 
+def test_fork_runner_skips_name_real_tests_and_their_follow_up():
+    for nodeid, reason in baseline.FORK_RUNNER_SKIPS.items():
+        module, _, test = nodeid.partition("::")
+        name = test.rsplit("::", 1)[-1]
+        assert re.search(rf"^\s*def {re.escape(name)}\(", (REPO / module).read_text(encoding="utf-8"), re.MULTILINE), nodeid
+        assert "follow-up" in reason, f"{nodeid}: a fork-runner skip must name the follow-up that removes it"
+
+
+def test_fork_runner_skips_apply_only_in_the_fork_s_github_actions(monkeypatch):
+    class Item:
+        def __init__(self, nodeid):
+            self.nodeid, self.markers = nodeid, []
+
+        def add_marker(self, marker):
+            self.markers.append(marker)
+
+    def skipped(repository):
+        if repository is None:
+            monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+        else:
+            monkeypatch.setenv("GITHUB_REPOSITORY", repository)
+        items = [Item(nodeid) for nodeid in baseline.FORK_RUNNER_SKIPS]
+        baseline.pytest_collection_modifyitems(None, items)
+        return [bool(item.markers) for item in items]
+
+    assert skipped(baseline.FORK_CI_REPOSITORY) == [True] * len(baseline.FORK_RUNNER_SKIPS)
+    assert not any(skipped(None)), "a developer's own run must exercise them"
+    assert not any(skipped("NousResearch/hermes-agent")), "upstream's CI must exercise them"
+
+
 def test_plugin_is_registered_for_every_pytest_run():
     addopts = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"]["ini_options"]["addopts"]
     assert "-p tests._fixtures.apex_desktop_baseline" in addopts

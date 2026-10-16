@@ -83,6 +83,8 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 - JS & TS checks：APEX 的 `update-handoff-marker.test.ts` 原样继承了 CI 里 `setup-pm` 导出的 `HERMES_HOME`，脚本因此把 marker 写到了别处。改为调用前清掉这个变量。按同类排查，又在 CI 那组环境变量下跑了一遍 electron 全套，没有其他用例受影响。
 - Windows-only 测试：上游在 32 核 runner 上开 16 个 worker，fork 的普通 4 vCPU runner 照搬后，有 15 个文件超时或没跑起来。改为 2 个 worker、超时 60 分钟。在 runner 上找不到 git-core `git.exe` 的那两条 live 测试，本机无法复现，留待下一轮 CI 确认。
 - 守卫：`tests/apex_overlay/test_desktop_baseline_ci_gates.py`。会构建 Desktop 的 nix 检查必须与跳过清单完全一致；Windows SDK 探测之后的步骤都必须受它控制；Windows-only 线的 worker 数被钉住。三项都做过反向验证。
+- 第二轮的后续：Windows-only 线降到 2 个 worker 之后，失败从 8 条加 10 个未启动文件降到 2 条加 3 个文件。那 3 个文件逐条都在通过，只是超过了 300 秒的单文件上限被终止，现改为 900 秒（同一 workflow 的 Windows E2E job 也是这个值）。其余各线保留数值 300，因为 `run_tests_parallel.py` 用 `float()` 解析，空字符串会崩。nix 的 `removeAttrs` 起初只包住了 `//` 左半边（函数调用比 `//` 结合更紧），已改成用括号包住整个合并后的集合，守卫要求每个 checks 层级的 `} //` 拼接都在括号内。
+- 上游 live 测试 `test_git_trampoline_windows_live.py` 有 2 条在 fork 的 `windows-latest` 池上失败：`_locate_real_git()` 找不到 git-core 的 `git.exe`，本机无法复现。经 Kael 同意，在 `tests/_fixtures/apex_desktop_baseline.py` 的 `FORK_RUNNER_SKIPS` 里按精确 ID 跳过，只在 fork 自己的 GitHub Actions 里生效（按 `GITHUB_REPOSITORY` 判断），开发者自己的机器上照常运行。后续：在 Windows 机器上查清原因后删掉这两条。APEX 的 Windows 安装（COS 归档、没有 `.git`）不会走这条 git 自愈路径。
 - 偶发：`tests/hermes_cli/test_gitlock.py` 在 Linux 上偶发失败一次、重试通过（`copytree` 复制 `.git` 时与 git 进程竞争）。这是上游测试，不是 fork 引入的。
 
 **下次同步时**：更新记录里的 tag 和 commit，清空 `health_allow`，再按 code health 的结果逐条补上。
