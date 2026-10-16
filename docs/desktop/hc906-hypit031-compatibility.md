@@ -130,3 +130,33 @@ authorization remains valid. Home Fleet exposes no registration/deployment
 operation for APEX native build/install; enablement requires the control-plane
 owner, and cannot be replaced by arbitrary SSH, repurposed tests or a new generic
 remote executor.
+
+## Synced onto the Hermes v0.22.2 base (2026-10-16)
+
+`origin/main` at `e9f2351168` (hc-911: upstream v0.22.2 plus its follow-ups) was merged into this
+branch as `a34113d12e`. There were no textual conflicts. Files changed on both sides were checked by hand:
+`apex_overlay/media_tools.py` (v0.22's `pm.lazy_installs_allowed` and `stdin=DEVNULL` vs this
+branch's `prepare_hypit`, in disjoint functions), `apps/desktop/package.json` (js-yaml 4.3.2 from
+main, version 0.17.57 from here), `use-gateway-boot.test.tsx` and `package-lock.json`.
+
+Validation on the merged tree (Mac arm64):
+
+- A runtime bundle built from `a34113d12e` (`runtime-bundle-a34113d12ed3-mac-arm64.tar.gz`, 463.5
+  MiB, CPython 3.14.7, Hypit 0.3.1 from the COS npm mirror) passed the relocation smoke at both
+  locations, including an offline backend boot.
+- The full `hypit-lifecycle-smoke.mjs` passed on that runtime. It covered APEX prepare, runtime
+  use/up, check, plan, build, get, decode, frame, screenshot and browser interaction. The output was
+  5 s, 720×1280, 150 frames, H.264/AAC, with audio RMS 2041.159 (the same as the earlier
+  0.3.1 run on the old base). The video SHA256 `3b77dc8c…` differs, as earlier re-encoded runs also did.
+- 7 Node Hypit tests passed. Python: `tests/apex_overlay/`, `tests/scripts/test_media_tools_mirror.py`
+  and `tests/ci/` gave 1036 passed and 1 failed. The failure, `test_prompt_surface`, needs a
+  Linux sysconfig module; it fails the same way on fork main on macOS and passes in Linux CI.
+- Desktop: typecheck passed; lint had 0 errors; vitest electron 3231 and UI 9120 passed;
+  release gates gave 100 passed and 1 skipped; build passed. All 11 lint-lane guards passed, and code health had 0 blocking.
+
+Still open before a release from this base:
+
+- `bundled-runtime.json` still names the v0.21-era `f043a490` runtime. A signed and notarized
+  v0.22.2 runtime must be published for Mac arm64, Mac x64 and Windows x64, and the pin updated.
+- 0.17.57 is already public, so the next release must be 0.17.58 or later.
+- Windows native acceptance and the paired release through `desktop-release.yml` remain pending.
