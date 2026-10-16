@@ -84,8 +84,14 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
 - Windows-only 测试：上游在 32 核 runner 上开 16 个 worker，fork 的普通 4 vCPU runner 照搬后，有 15 个文件超时或没跑起来。改为 2 个 worker、超时 60 分钟。在 runner 上找不到 git-core `git.exe` 的那两条 live 测试，本机无法复现，留待下一轮 CI 确认。
 - 守卫：`tests/apex_overlay/test_desktop_baseline_ci_gates.py`。会构建 Desktop 的 nix 检查必须与跳过清单完全一致；Windows SDK 探测之后的步骤都必须受它控制；Windows-only 线的 worker 数被钉住。三项都做过反向验证。
 - 第二轮的后续：Windows-only 线降到 2 个 worker 之后，失败从 8 条加 10 个未启动文件降到 2 条加 3 个文件。那 3 个文件逐条都在通过，只是超过了 300 秒的单文件上限被终止，现改为 900 秒（同一 workflow 的 Windows E2E job 也是这个值）。其余各线保留数值 300，因为 `run_tests_parallel.py` 用 `float()` 解析，空字符串会崩。nix 的 `removeAttrs` 起初只包住了 `//` 左半边（函数调用比 `//` 结合更紧），已改成用括号包住整个合并后的集合，守卫要求每个 checks 层级的 `} //` 拼接都在括号内。
-- 上游 live 测试 `test_git_trampoline_windows_live.py` 有 2 条在 fork 的 `windows-latest` 池上失败：`_locate_real_git()` 找不到 git-core 的 `git.exe`，本机无法复现。经 Kael 同意，在 `tests/_fixtures/apex_desktop_baseline.py` 的 `FORK_RUNNER_SKIPS` 里按精确 ID 跳过，只在 fork 自己的 GitHub Actions 里生效（按 `GITHUB_REPOSITORY` 判断），开发者自己的机器上照常运行。后续：在 Windows 机器上查清原因后删掉这两条。APEX 的 Windows 安装（COS 归档、没有 `.git`）不会走这条 git 自愈路径。
+- 上游 live 测试 `test_git_trampoline_windows_live.py` 有 2 条在 fork 的 `windows-latest` 池上失败：`_locate_real_git()` 找不到 git-core 的 `git.exe`，本机无法复现。经 Kael 同意，在 `tests/_fixtures/apex_desktop_baseline.py` 的 `FORK_RUNNER_SKIPS` 里按精确 ID 跳过，只在 GitHub Actions 里生效，开发者自己的机器上照常运行。后续：在 Windows 机器上查清原因后删掉这两条。APEX 的 Windows 安装（COS 归档、没有 `.git`）不会走这条 git 自愈路径。
 - 偶发：`tests/hermes_cli/test_gitlock.py` 在 Linux 上偶发失败一次、重试通过（`copytree` 复制 `.git` 时与 git 进程竞争）。这是上游测试，不是 fork 引入的。
+
+**第三轮 CI**（`874c43b1af`）：nix 通过，剩 3 项失败，原因各不相同：
+
+- Windows-only 测试：上面那 2 条跳过没有生效。第一版按 `GITHUB_REPOSITORY` 判断，但 `scripts/run_tests.sh` 用 `env -i` 启动 pytest，只放行一份清单，这个变量根本到不了 pytest。当时的守卫在进程内自己设置变量，绕过了这一层，所以一直是绿的（硬规则 #14：验证器碰不到故障路径）。改为按 `GITHUB_ACTIONS` 判断：清单里有它，而且这个插件只存在于 fork，所以 GitHub Actions 里运行它的只会是 fork 的 CI。新守卫 `test_fork_ci_signal_reaches_pytest_through_the_hermetic_runner` 直接解析 `run_tests.sh` 的放行清单。反向验证：注入旧信号后守卫变红；另外临时加一条跳过，经由真实的 `run_tests.sh` 跑一遍：新信号下被跳过，不设信号时照常运行，旧信号加上 CI 导出的 `GITHUB_REPOSITORY` 仍然运行，与 CI 上的现象一致。
+- JS & TS（tests-js）：`update-ui.test.mjs` 里的 staged-main 探测用例要冷启动 Python 和 Git，三轮都超过 vitest 默认的 5 秒（CI 实测 6.4 秒，本机 1.9 秒）。用例没有卡住，只是 fork 用的是普通托管 runner，不是上游的 32 核。`tests-js/vitest.config.ts` 把上限调到 20 秒。
+- JS & TS（Desktop UI）：`local-models-settings.test.tsx` 有三条用例只往 store 里放了任务，没让模拟后端也返回它。面板挂载时会启动任务轮询，第一次轮询就用后端返回的空列表覆盖了 store。三条单独跑都稳定失败，在整个文件里能过，是因为前面用例留下的轮询还在跑，跳过了这次覆盖。改为由 `seedBackendJobs` 同时设置两边。修复后单独跑、整文件跑、5 种随机顺序都通过。另一处同样手动设置 store 的“完成后跳转”用例不依赖被覆盖的任务，不受影响。
 
 **下次同步时**：更新记录里的 tag 和 commit，清空 `health_allow`，再按 code health 的结果逐条补上。
 
@@ -220,6 +226,18 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
   - 首屏为 APEX 中文登录；点“使用自己的密钥”后进入 APEX 首页；向本地模拟服务发消息，流式回复正常。
   - `errors.log` 只有 1 条预期警告，数据全部在隔离目录里。
 
+**Windows 真机测试（局域网 `win-5090`，Windows 11 23H2，打包产物，2026-10-16）**：
+- 在这台机器上从 `874c43b1af` 全新 clone（MinGit 2.54，`core.autocrlf=false`），执行 `npm ci`，构建 Windows x64 运行时包 `runtime-bundle-874c43b1affa-win-x64.tar.gz`（583 MiB，CPython 3.14.7）。重定位冒烟通过，exit 0，校验了 67,086 个文件。
+- `--dir --win --x64` 打出未签名的 `win-unpacked\APEX.exe`（APEX 身份 0.17.56.0），包内为这个运行时包。`bundled-runtime.json` 只在这台机器的测试 clone 里临时改过，没有提交。
+- 在用户的控制台会话里启动（全新 `HERMES_HOME` 和用户数据目录，本地模拟服务）：
+  - 首屏是 APEX 中文的“正在设置 APEX / 正在解压并校验安装包内的 AI 引擎”。引擎准备一共约 3 分 15 秒：解压 25 秒；第一次逐文件 sha 校验约 2.5 分钟，因为刚解压的文件第一次被读取时 Defender 要逐个扫描；同一批文件在最终路径上再校验只用 3 秒。之后提交为 `versions/874c43b1affa`，引擎激活，包内解释器是 `cpython-3.14.7-windows-x86_64`。
+  - 后端在激活后 5.4 秒就绪。首屏是 APEX 中文登录；点“使用自己的密钥”后进入 APEX 首页，模型为 Mock Model；发送中文消息后收到流式回复，`agent.log` 里的中文消息按 UTF-8 正确记录。
+  - `errors.log` 只有 1 条预期警告（模拟模型没有 context length）。
+  - 另有两条日志与本次合并无关：
+    - `[shell-update] ENOENT app-update.yml`：`--dir` 产物没有 NSIS 生成的这个文件，正式安装包会有。
+    - 渲染进程调用 `hermes:pool-limits:get` 时报“没有注册 handler”：fork `main` 上就有，Mac 打包产物也一样。
+- 没有覆盖：NSIS 安装器与卸载、自动更新、代码签名。
+
 
 本机 macOS（Mac Studio），v0.22.2 合并结果：
 
@@ -235,4 +253,4 @@ fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的�
   - release-gates：node 100 条、vitest 15 条全过。
   - `npm run build` 通过。
 - 开发模式 Desktop 跑在 v0.22.2 运行时上，使用全新 HOME 与用户数据目录：后端就绪、网关就绪；首屏为 APEX 中文登录；“使用自己的密钥”后进入 APEX 首页；向本地 OpenAI 兼容模拟服务发消息，流式回复正常；errors.log 只有 2 条预期警告。
-- 未验证：用 v0.22.2 运行时包打出的 APEX.app / APEX.exe（发版步骤）；Windows 真机；国内网络。
+- 未验证：正式发版流程（Mac 签名公证、Windows NSIS 安装包、updater feed）；国内网络。打包产物已在 Mac 和 Windows 真机上验证，见上。

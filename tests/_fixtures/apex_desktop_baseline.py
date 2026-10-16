@@ -98,10 +98,12 @@ IGNORED_MODULES: dict[str, tuple[str, ...]] = {
 }
 
 # Upstream live tests that assume upstream's CI runner, not this fork's standard GitHub-hosted pool.
-# Skipped ONLY in this fork's GitHub Actions (GITHUB_REPOSITORY); on any developer machine they run,
-# which is where each open entry gets investigated. Not a Desktop-baseline skip: no path lapses it,
-# so every entry names its follow-up and goes once that is resolved.
-FORK_CI_REPOSITORY = "karlligamesvc-spec/hermes-agent"
+# Skipped ONLY in GitHub Actions; on any developer machine they run, which is where each open entry
+# gets investigated. The signal is GITHUB_ACTIONS because scripts/run_tests.sh starts pytest under
+# `env -i` and forwards only an allowlist (GITHUB_REPOSITORY never arrives); this plugin exists only
+# in the fork, so a GitHub Actions run of it is the fork's CI. Not a Desktop-baseline skip: no path
+# lapses it, so every entry names its follow-up and goes once that is resolved.
+FORK_CI_SIGNAL = ("GITHUB_ACTIONS", "true")
 _GIT_CORE_ON_RUNNER = (
     "hc-911 follow-up: on the fork's windows-latest pool (windows-2025-vs2026) _locate_real_git() finds no "
     "git-core git.exe; APEX's Windows installs (COS archive, no .git) never take this git self-heal path")
@@ -147,7 +149,7 @@ def pytest_pycollect_makemodule(module_path, parent):
 
 
 def pytest_collection_modifyitems(config, items):
-    on_fork_ci = os.environ.get("GITHUB_REPOSITORY") == FORK_CI_REPOSITORY
+    on_fork_ci = os.environ.get(FORK_CI_SIGNAL[0]) == FORK_CI_SIGNAL[1]
     for item in items:
         paths = SKIPS.get(item.nodeid)
         if paths and _absent(paths):

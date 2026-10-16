@@ -55,18 +55,33 @@ def test_fork_runner_skips_apply_only_in_the_fork_s_github_actions(monkeypatch):
         def add_marker(self, marker):
             self.markers.append(marker)
 
-    def skipped(repository):
-        if repository is None:
-            monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    name, value = baseline.FORK_CI_SIGNAL
+
+    def skipped(signal):
+        if signal is None:
+            monkeypatch.delenv(name, raising=False)
         else:
-            monkeypatch.setenv("GITHUB_REPOSITORY", repository)
+            monkeypatch.setenv(name, signal)
         items = [Item(nodeid) for nodeid in baseline.FORK_RUNNER_SKIPS]
         baseline.pytest_collection_modifyitems(None, items)
         return [bool(item.markers) for item in items]
 
-    assert skipped(baseline.FORK_CI_REPOSITORY) == [True] * len(baseline.FORK_RUNNER_SKIPS)
+    assert skipped(value) == [True] * len(baseline.FORK_RUNNER_SKIPS)
     assert not any(skipped(None)), "a developer's own run must exercise them"
-    assert not any(skipped("NousResearch/hermes-agent")), "upstream's CI must exercise them"
+    assert not any(skipped("false")), "only GitHub Actions' own value counts"
+
+
+def test_fork_ci_signal_reaches_pytest_through_the_hermetic_runner():
+    """scripts/run_tests.sh runs pytest under `env -i`: a signal it does not forward never arrives.
+
+    The first version read GITHUB_REPOSITORY, which the runner drops, so the skips never fired in CI
+    while the in-process check above (which sets the variable itself) stayed green.
+    """
+    text = (REPO / "scripts/run_tests.sh").read_text(encoding="utf-8-sig")
+    allow = re.search(r"for _test_var in (.*?); do", text, re.DOTALL)
+    assert allow, "run_tests.sh no longer forwards test variables through one allowlist loop"
+    forwarded = allow.group(1).split()
+    assert baseline.FORK_CI_SIGNAL[0] in forwarded, f"{baseline.FORK_CI_SIGNAL[0]} is not forwarded: {forwarded}"
 
 
 def test_plugin_is_registered_for_every_pytest_run():

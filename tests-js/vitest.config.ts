@@ -29,6 +29,10 @@ const baselineExcludes = Object.entries(APEX_DESKTOP_BASELINE)
 export default defineConfig({
   test: {
     environment: 'node',
+    // ApexNodes hc-911: the fork runs JS & TS on standard GitHub-hosted runners, not upstream's 32-core
+    // pool. Tests that spawn a cold Python and Git (update-ui.test.mjs's staged-main probe: 1.9s on a dev
+    // Mac, 6.4s on the fork's runner) overran vitest's 5s default there. A ceiling, not a slower test.
+    testTimeout: 20_000,
     include: ['**/*.test.ts', '**/*.test.mjs'],
     exclude: ['**/node_modules/**', ...baselineExcludes],
   },
