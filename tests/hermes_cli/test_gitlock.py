@@ -41,10 +41,13 @@ def repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
     (root / "a.txt").write_text("one\n", encoding="utf-8")
     subprocess.run(["git", "add", "a.txt"], cwd=root, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "first"], cwd=root, check=True)
+    # No detached `maintenance run --auto` / `gc --auto` (git >= 2.55 spawns several per commit): one
+    # still working in the checkout is a live git to the lock reclaim and races copytree. Flag, not config.
+    quiet = ["git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "commit", "-q", "-m"]
+    subprocess.run([*quiet, "first"], cwd=root, check=True)
     (root / "b.txt").write_text("two\n", encoding="utf-8")
     subprocess.run(["git", "add", "b.txt"], cwd=root, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "second"], cwd=root, check=True)
+    subprocess.run([*quiet, "second"], cwd=root, check=True)
     return root
 
 
