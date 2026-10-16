@@ -153,7 +153,7 @@ def main() -> int:
         ),
         (
             "image.detach",
-            lambda sid: {"session_id": sid, "path": "/tmp/nothing.png"},
+            lambda sid: {"session_id": sid, "path": "/tmp/nothing.png"},  # no-tmp: ok — fake attachment path in a benchmark payload, never opened
         ),
         (
             "prompt.submit",

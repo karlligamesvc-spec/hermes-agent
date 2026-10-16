@@ -147,7 +147,8 @@ test('buildPosixCleanupScript waits for the PID, runs the uninstall module, remo
     hermesHome: '/home/x/.hermes'
   })
 
-  assert.match(script, /^#!\/bin\/bash/)
+  // PATH-resolved bash (scripts/check_bash_shebangs.py); main.ts still runs it as `/bin/bash <script>`.
+  assert.match(script, /^#!\/usr\/bin\/env bash\n/)
   assert.match(script, /pid=4321/)
   assert.match(script, /kill -0 "\$pid"/)
   // bounded wait (~30s), not unbounded

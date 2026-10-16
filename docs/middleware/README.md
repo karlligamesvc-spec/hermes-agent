@@ -122,7 +122,7 @@ For isolated local testing, use one `HERMES_HOME` for plugin enablement and the
 agent run:
 
 ```bash
-export HERMES_HOME=/tmp/hermes-middleware-test
+export HERMES_HOME=/tmp/hermes-middleware-test  # no-tmp: ok — throwaway home in a shell example
 mkdir -p "$HERMES_HOME"
 hermes plugins enable <plugin-name>
 hermes chat --query 'Reply exactly ok'
@@ -179,7 +179,7 @@ def normalize_terminal_workdir(**kwargs):
     if kwargs.get("tool_name") != "terminal":
         return None
     args = dict(kwargs["args"])
-    args.setdefault("workdir", "/tmp/hermes-middleware-demo")
+    args.setdefault("workdir", "/tmp/hermes-middleware-demo")  # no-tmp: ok — example workdir in a code sample
     return {
         "args": args,
         "source": "middleware-demo",

@@ -19,7 +19,7 @@ def sha256(path: Path) -> str:
 
 
 def sources(work: Path) -> None:
-    lock = json.loads(Path(__file__).with_name("source-lock.json").read_text(encoding="utf-8"))
+    lock = json.loads(Path(__file__).with_name("source-lock.json").read_text(encoding="utf-8-sig"))
     for name in ("ffmpeg", "x264", "zlib"):
         record = lock[name]
         suffix = ".xz" if name == "ffmpeg" else ".gz"
@@ -48,14 +48,14 @@ def run(argv: list[str]) -> str:
 
 
 def smoke(package: Path) -> dict:
-    target = (package / "TARGET").read_text(encoding="utf-8").strip()
+    target = (package / "TARGET").read_text(encoding="utf-8-sig").strip()
     expected = {"mac-arm64": ("Darwin", "arm64"), "mac-x64": ("Darwin", "x86_64"),
                 "win-x64": ("Windows", "AMD64")}
     if (platform.system(), platform.machine()) != expected[target]:
         raise ValueError("Smoke must execute on the package's native host")
     suffix = ".exe" if target == "win-x64" else ""
     ffmpeg, ffprobe = [str(package / (name + suffix)) for name in ("ffmpeg", "ffprobe")]
-    lock = json.loads((package / "source-lock.json").read_text(encoding="utf-8"))
+    lock = json.loads((package / "source-lock.json").read_text(encoding="utf-8-sig"))
     version = lock["ffmpeg"]["version"]
     for binary in (ffmpeg, ffprobe):
         output = run([binary, "-version"])

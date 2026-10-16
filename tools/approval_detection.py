@@ -1522,7 +1522,7 @@ def _is_verification_artifact_cleanup(command: str) -> bool:
     # macOS exposes /tmp as the system alias of /private/tmp. Accept that one
     # canonical alias because Hermes itself emits /tmp paths, but do not widen
     # this exemption to arbitrary symlinked temp roots.
-    accepted_dir = raw_temp_dir if raw_temp_dir == "/tmp" and temp_dir == "/private/tmp" else temp_dir
+    accepted_dir = raw_temp_dir if raw_temp_dir == "/tmp" and temp_dir == "/private/tmp" else temp_dir  # no-tmp: ok — compares against macOS's /tmp alias, never writes there
     return (
         operand == os.path.join(accepted_dir, basename)
         and os.path.dirname(os.path.realpath(operand)) == temp_dir

@@ -52,6 +52,29 @@
 
 **hc-913 已补上**：两条 lane 在套件缺失期间是裸 `if: false`，`required_results.py` 把它们列为延期作业，`e2e-desktop-update` 不再是必需的更新消费方。守卫 `tests/apex_overlay/test_desktop_e2e_lanes.py` 按两个 `playwright.config.ts` 是否存在钉住这两处，套件一移植进来就会变红，直到恢复为止。另外，上面那 8 条跳过并不完整：同类的 33 条测试（期望更新套件被派发）在本机被 bash 3.2 缺 `mapfile` 和 `platforms(linux, windows)` 平台门挡住了，在 Linux 上 hc-911 头本身就是红的。hc-913 把它们按同一套件路径跳过，并在守卫里重新断言其余 lane 的路由契约。
 
+## #390 首轮 CI 的修复（fork 首次跑 v0.22 的 CI）
+
+fork 的 Actions 自 10-08 起被 GitHub 以“用量过大”停用，#390 的第一轮 CI 是在维护者重新启用之后才跑起来的。结果是 31 项通过、14 项失败。对照前两次同步 PR（#254、#283，当时全绿），这次的失败来自 v0.22 新增的检查和 fork 自身的差异。另有一组失败被前一步挡住，第一轮根本没执行到（硬规则 #12 的“一个 bug 挡住另一个 bug”）：同一 job 里 footgun 一失败，后面的 shebang、临时目录字面量、OS 伪装、AGENTS.md 体量检查都没跑。
+
+| 失败 | 原因 | 处理 |
+|---|---|---|
+| 8 个 Python 测试分片 | fork 自有的 `tests.yml` 分片步骤仍 `source .venv/bin/activate`，v0.22 的 setup-pm 不再生成 `.venv`，一条测试都没跑 | 删掉这一行；新增守卫 `test_ci_workflow_venv_activation.py`：每次激活 `.venv` 都必须有同 job 内的创建步骤 |
+| Windows footguns 等 lint 守卫 | v0.22 规则更严：APEX 脚本里 19 处 BOM/编码，另有 6 处写死路径的 bash shebang、32 处临时目录字面量、3 处未标记的 OS 伪装，以及 Desktop AGENTS.md 链路超出 30,000 字符 | 读文件改用 `utf-8-sig`，补 `encoding=`；shebang 改为 `#!/usr/bin/env bash`（卸载脚本由 `/bin/bash <script>` 执行，shebang 不影响运行）；有意的 `/tmp` 和 OS 伪装逐行加带原因的 `no-tmp: ok` / `os-marker: ok`；Desktop AGENTS.md 的三节长篇原样移到 `apps/desktop/ENGINEERING.md`，原处换成上游 v0.22.2 的精简版并指向那里 |
+| nix flake check | `apps/desktop` 精确固定 `js-yaml: 4.3.1`，上游 override 已升到 4.3.2；nix 的 `importNpmLock` 去掉 override 后离线安装，于是要找锁文件里不存在的 4.3.1 | 改成 4.3.2；新增 tests-js 守卫 `override-pins.test.mjs`。离线复现：去掉 override 后跑 `npm ci --offline`，4.3.1 报 `Missing: js-yaml@4.3.1`，4.3.2 安装成功 |
+| 图标新鲜度 | 生成器用上游 Nous 图标重写 `apps/desktop/assets/*`，再拿去和提交里的 APEX 图标比对。照提示处理会把身份层换成上游的（硬规则 #11） | 生成和结构检查照常做；比对前还原 `apps/desktop`。该豁免在上游的 `product-identity.cjs` 移植进来之后自动失效。其余目标（web、website、bootstrap）照常比对，CI 上与提交一致 |
+| Prebuilt TUI checks（tests-js） | 7 个文件依赖 APEX 基线里没有的上游 Desktop 模块，或在测上游 `notarize.mjs` 的重试语义 | `tests-js/vitest.config.ts` 按路径排除这 7 个文件，被引用的路径一旦移植进来，排除自动失效；守卫 `apex-desktop-baseline.test.mjs` |
+| code health ratchet | 以 fork main 为基准，v0.22 的上游代码全被算成新代码，共 1,757 条阻断 | 见下“同步 PR 的上游基准” |
+| 供应链风险扫描 | 命中 5 行，都是上游 Windows 启动器里的 base64，与 v0.22.2 一字不差 | 同上 |
+| pinned-source-validate | “改 catalog 的 PR 只能改数据”的规则，同步 PR 必然违反（不在必需检查里） | 同上 |
+
+**同步 PR 的上游基准**：`.github/apex-upstream-baseline.json` 记录本次合入的上游 release（`v0.22.2` / `d923a5eb48`）。`scripts/ci/upstream_sync_baseline.py` 只在三个条件同时满足时才认它：记录相对 base 有变化；GitHub API 确认 `NousResearch/hermes-agent` 的该 tag 指向这个 commit；在有完整历史的 checkout 里，该 commit 已合入 head。
+
+- **code health**：再以上游 release 为基准判定一遍。一条发现只有在两边都阻断时才算阻断，1,757 条降到 15 条。15 条里有 2 条是真问题，已修：合并留下的重复导入（F811）、新脚本 subprocess 没设 timeout。另外 13 条是“上游增长 + fork 原有补丁”叠加在同一个单元里。逐条核对过 fork 补丁量的变化，都写进记录的 `health_allow` 并注明原因。这份清单只对改动了记录的那个 PR 生效，合并后 main 上的值就成为新的上限。
+- **供应链扫描**：同步 PR 只看相对 fork base 和相对上游 release 都是新增的那些行（995,675 行新增中，APEX 自己的有 4,617 行），5 处上游命中被排除。PR 在自己文件里写出与上游完全相同的一行，照样会报。
+- **pinned-source-validate**：同步 PR 只校验与上游 release 不同的条目（本 PR 没有），并跳过“只能改数据”规则。检测脚本优先取 base 分支上的版本，避免 PR 改写自己的判定。
+
+**下次同步时**：更新记录里的 tag 和 commit，清空 `health_allow`，再按 code health 的结果逐条补上。
+
 ## 结构性冲突（UD / DU / AA）
 
 | 文件 | 处理 | 依据 |
@@ -156,6 +179,7 @@
 3. 首启引导使用 Nous 免费试用模型 `nous/welcome`、Connectors 首次使用创建 Nous 身份（我方 Desktop 显式传 `HERMES_GUEST_ONBOARDING=0`，默认关闭）。
 4. 上游 Desktop 新能力是否逐项移植（均未进本票）：`set_theme` 主题/布局卡片、`/skills` 与 `/reasoning` 原生界面、deepinfra STT、HUD 修饰键、命令截图、云端发现/挑战窗口、MSIX/AppInstaller 更新、上游 e2e 框架。
 5. 插件启停改由 PM 以整文件摘要比对发布（冲突即拒绝重试），hc-903 不再在应用进程内为它加锁；比对与写入之间有窄窗口（上游残余风险）。
+6. macOS 公证：上游的 `apps/desktop/scripts/notarize.mjs` 增加了 notarytool 超时后续等同一提交、已受理时只重试票据传播（不重新提交、不重建）的逻辑；APEX 的版本没有这些。这属于 Desktop 发版稳定性改进，是否移植待定（tests-js 里对应的上游测试已按基线排除）。
 
 ## 合并中发现的风险（存量，非本次引入）
 

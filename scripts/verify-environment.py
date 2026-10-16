@@ -66,7 +66,7 @@ def load_manifest(path):
             import hermes_yaml as yaml
         except ImportError:
             sys.exit("verify-environment: 需要 PyYAML 或 ruamel.yaml (pip install pyyaml)")
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         return yaml.safe_load(f)
 
 
@@ -87,7 +87,7 @@ def static_source_checks(manifest_path):
     # pm/artifact_mirror.pinned_source, whose ApexNodes seam serves the CN COS copy first.
     artifact_mirror = os.path.join(repo_root, "pm", "artifact_mirror.py")
     try:
-        src = open(artifact_mirror, encoding="utf-8").read()
+        src = open(artifact_mirror, encoding="utf-8-sig").read()
         ok = "apexnodes_cn_mirror_url" in src and "HERMES_RUNTIME_COS_BASE" in src
     except OSError as e:
         ok = False
@@ -105,13 +105,13 @@ def static_source_checks(manifest_path):
     runtime_stage = os.path.join(repo_root, "pm", "runtime_stage.py")
     environment = os.path.join(repo_root, "pm", "environment.py")
     try:
-        stage_src = open(runtime_stage, encoding="utf-8").read()
-        env_src = open(environment, encoding="utf-8").read()
+        stage_src = open(runtime_stage, encoding="utf-8-sig").read()
+        env_src = open(environment, encoding="utf-8-sig").read()
         strip_block = env_src.split("if self.no_config:", 1)[1].split("env.update(", 1)[0]
         ok = (
             "no_config=True" in stage_src
             and "is_index_redirect(key)" in strip_block
-            and all(name in open(os.path.join(repo_root, "pm", "index_config.py"), encoding="utf-8").read()
+            and all(name in open(os.path.join(repo_root, "pm", "index_config.py"), encoding="utf-8-sig").read()
                     for name in LOCKED_PROJECT_ENV_VARS if name.startswith("UV_") and name != "UV_NO_CONFIG")
         )
     except (OSError, IndexError) as e:

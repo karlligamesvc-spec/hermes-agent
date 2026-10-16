@@ -29,7 +29,7 @@ const args = Object.fromEntries(
 )
 
 const PORT = Number(args.port ?? 9222)
-const OUT = String(args.out ?? `/tmp/hermes-typing-${Date.now()}`)
+const OUT = String(args.out ?? `/tmp/hermes-typing-${Date.now()}`) // no-tmp: ok — developer profiling output on the dev machine
 const CHARS = Number(args.chars ?? 400)
 const CPS = Number(args.cps ?? 30)
 const HEAP = args['no-heap'] ? false : true
