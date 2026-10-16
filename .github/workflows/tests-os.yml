@@ -199,6 +199,10 @@ jobs:
           # ApexNodes hc-911: upstream runs 16 workers on 32-core runners; the fork's standard
           # 4-vCPU pool failed or never started 15 of these files at 16, so it gets the same half-the-cores ratio.
           HERMES_TEST_WORKERS: ${{ matrix.marker == 'windows' && '2' || '' }}
+          # The slowest desktop_update PowerShell files run past the 300 s default here (they pass
+          # test by test, then get killed); the Windows E2E job below already allows 900 s.
+          # Numeric on every lane: the runner parses it with float(), so an empty value would crash.
+          HERMES_TEST_FILE_TIMEOUT: ${{ matrix.marker == 'windows' && '900' || '300' }}
           HERMES_TEST_SLICE: ${{ matrix.slice || '' }}
           # Belt-and-suspenders with tests/conftest.py's env blanking: no
           # test may reach a real provider API.

@@ -78,3 +78,8 @@ def test_windows_only_python_lane_fits_the_standard_runner():
     workers = next(s["env"]["HERMES_TEST_WORKERS"] for s in job["steps"] if "HERMES_TEST_WORKERS" in (s.get("env") or {}))
     pinned = re.search(r"marker == 'windows' && '([0-9]+)'", workers)
     assert pinned and pinned[1] == "2", workers
+    env = next(s["env"] for s in job["steps"] if "HERMES_TEST_FILE_TIMEOUT" in (s.get("env") or {}))
+    # scripts/run_tests_parallel.py float()s it: both branches must be numbers, never ''.
+    timeouts = re.fullmatch(r"\$\{\{ matrix\.marker == 'windows' && '([0-9]+)' \|\| '([0-9]+)' \}\}",
+                            env["HERMES_TEST_FILE_TIMEOUT"])
+    assert timeouts and timeouts[1] == "900", env["HERMES_TEST_FILE_TIMEOUT"]
