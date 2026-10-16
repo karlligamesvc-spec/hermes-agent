@@ -11,8 +11,10 @@
  *   ipcRenderer.send(ch) / sendSync(ch) → ipcMain.on(ch) / once(ch)
  *
  * "Live" means the registration actually runs: a top-level statement of
- * main.ts, a main.ts function that main.ts calls, or an exported registrar in
- * another electron/ module that main.ts imports AND calls.
+ * main.ts, or a function (in main.ts, or an exported registrar main.ts
+ * imports) that is reachable by direct calls starting from main.ts's
+ * module-level code. A registrar called only from a dead main.ts function is
+ * NOT live.
  *
  * It walks the TypeScript AST, so a channel that only appears in a comment or
  * a string elsewhere cannot satisfy it.
@@ -22,6 +24,9 @@
  * throw; main→renderer channels (webContents.send → ipcRenderer.on); a single
  * call made through an alias or element access (`ipcRenderer['invoke']`) —
  * the landing counts only notice when the parser goes blind wholesale.
+ * Reachability is approximate: code inside a module-level statement (callbacks,
+ * class bodies) is assumed to run, and a function only passed by reference is
+ * not followed (it would show up here as a false orphan, never a false pass).
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -100,12 +105,16 @@ function collectIpcCalls(source: ts.SourceFile, receiver: string, methods: reado
   return calls
 }
 
-function calledFunctionNames(source: ts.SourceFile): Set<string> {
-  const names = new Set<string>()
+/** Functions reachable by direct calls from module-level code (owner null). */
+function reachableFunctionNames(source: ts.SourceFile): Set<string> {
+  const callsByOwner = new Map<null | string, Set<string>>()
 
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      names.add(node.expression.text)
+      const owner = topLevelOwner(node)
+      const calls = callsByOwner.get(owner) ?? new Set<string>()
+      calls.add(node.expression.text)
+      callsByOwner.set(owner, calls)
     }
 
     ts.forEachChild(node, visit)
@@ -113,7 +122,19 @@ function calledFunctionNames(source: ts.SourceFile): Set<string> {
 
   visit(source)
 
-  return names
+  const reachable = new Set<string>()
+  const pending = [...(callsByOwner.get(null) ?? [])]
+
+  while (pending.length > 0) {
+    const name = pending.pop() as string
+
+    if (!reachable.has(name)) {
+      reachable.add(name)
+      pending.push(...(callsByOwner.get(name) ?? []))
+    }
+  }
+
+  return reachable
 }
 
 /** module specifier ('./fs-ipc') → names main imports from it. */
@@ -145,7 +166,7 @@ const MAIN_METHODS = ['handle', 'handleOnce', 'on', 'once'] as const
 const RENDERER_METHODS = ['invoke', 'send', 'sendSync'] as const
 
 const mainSource = parseSource('main.ts')
-const mainCalls = calledFunctionNames(mainSource)
+const mainReachable = reachableFunctionNames(mainSource)
 const mainImports = namedImports(mainSource)
 
 const electronModules = fs
@@ -159,7 +180,7 @@ const registrations = electronModules.flatMap(name =>
 
 function isLive(call: IpcCall): boolean {
   if (call.file === 'main.ts') {
-    return call.owner === null || mainCalls.has(call.owner)
+    return call.owner === null || mainReachable.has(call.owner)
   }
 
   if (call.owner === null) {
@@ -169,7 +190,7 @@ function isLive(call: IpcCall): boolean {
 
   const imported = mainImports.get(`./${call.file.replace(/\.ts$/, '')}`)
 
-  return Boolean(imported?.has(call.owner)) && mainCalls.has(call.owner)
+  return Boolean(imported?.has(call.owner)) && mainReachable.has(call.owner)
 }
 
 const liveRegistrations = registrations.filter(isLive)
