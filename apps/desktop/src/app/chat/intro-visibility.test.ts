@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shouldShowChatComposer, shouldShowIntro } from './intro-visibility'
+import { shouldAcceptFileDrops, shouldShowChatComposer, shouldShowIntro } from './intro-visibility'
 
 const showing = {
   activeSessionId: null,
@@ -67,5 +67,18 @@ describe('shouldShowChatComposer', () => {
     expect(
       shouldShowChatComposer({ available: false, businessStartVisible: false, objectRouteOpen: true })
     ).toBe(false)
+  })
+})
+
+describe('shouldAcceptFileDrops', () => {
+  it.each([
+    // The chat bar's zone is unchanged by the gateway or a running turn.
+    { chatBarVisible: true, businessStartVisible: false, gatewayOpen: false, busy: true, accepts: true },
+    { chatBarVisible: false, businessStartVisible: true, gatewayOpen: true, busy: false, accepts: true },
+    { chatBarVisible: false, businessStartVisible: true, gatewayOpen: true, busy: true, accepts: false },
+    { chatBarVisible: false, businessStartVisible: true, gatewayOpen: false, busy: false, accepts: false },
+    { chatBarVisible: false, businessStartVisible: false, gatewayOpen: true, busy: false, accepts: false }
+  ])('%o', ({ accepts, ...input }) => {
+    expect(shouldAcceptFileDrops(input)).toBe(accepts)
   })
 })
