@@ -160,3 +160,33 @@ Still open before a release from this base:
   v0.22.2 runtime must be published for Mac arm64, Mac x64 and Windows x64, and the pin updated.
 - 0.17.57 is already public, so the next release must be 0.17.58 or later.
 - Windows native acceptance and the paired release through `desktop-release.yml` remain pending.
+
+## Desktop 0.17.58 candidate and Windows native acceptance (2026-10-17)
+
+- Merged `origin/main` at `324a5a3caa` (#393 pool-limits IPC, #394–#396 group chat) as `145bc76984`, with no
+  conflicts, and pinned the runtime to that commit in `eb28eb528f`: version 0.17.58 (0.17.57 is already
+  public), `runtime_version v2026.10.17-fork.145bc769`, `uv_version 0.12.3` (pm/lock.json),
+  `min_desktop_version 0.17.58`. Release gates: 100 passed, 1 skipped.
+- **Windows x64 native (win-5090, Windows 11 23H2)**, from a fresh checkout of `eb28eb528f`:
+  - The runtime bundle `runtime-bundle-145bc76984eb-win-x64.tar.gz` was built natively from the pin.
+    The relocation smoke passed.
+  - Extract, fixup and verify passed.
+  - The full `hypit-lifecycle-smoke.mjs` passed on the installed runtime: win32 x64, Hypit 0.3.1,
+    CPython 3.14.7. The output was 5 s, 720×1280, 150 frames, H.264/AAC, with audio RMS 2041.245.
+    Capture and browser interaction also passed.
+  - The unpacked `APEX.exe` (identity 0.17.58.0, clean tree) was launched in the console session with a
+    fresh home and a mock LLM:
+    - First-run engine setup took about 3m45s, almost all of it the cold Defender scan during the first verify.
+    - It committed `versions/145bc76984eb` and activated `v2026.10.17-fork.145bc769`. The older public
+      `f043a490` default did not replace it.
+    - The backend was ready 5.7 s after activation.
+    - The APEX sign-in screen, the own-key flow and a Chinese chat to the mock all worked. The status bar showed `v0.17.58`.
+    - `errors.log` had one expected warning.
+    - `[pool-limits] … using defaults` was logged with 0 "No handler registered" errors (#393 confirmed on a real machine).
+- **nix flake check**: the earlier failure was a single bad download of the fixed-output
+  `node-gyp-11.4.0-npm-deps`, whose hash came back as `ZLXOnh…`. The next run rebuilt the same derivation from
+  scratch and matched the pinned upstream hash `P25m02…`, and nix passed. The pin is correct and unchanged.
+  Rewriting it to the bad value would have broken nix.
+- Still open for the release: Mac signing and notarization and the paired publish through `desktop-release.yml`
+  (currently disabled), the Windows NSIS installer/uninstall (only `--dir` was exercised), an upgrade from 0.17.57 with
+  existing data, and real-account/real-model runs.
