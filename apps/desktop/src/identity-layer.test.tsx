@@ -218,6 +218,15 @@ describe('identity: brand assets and chrome', () => {
 
     expect((main.match(/title: APP_NAME/g) || []).length).toBeGreaterThanOrEqual(3)
     expect(main).not.toMatch(/title: (?:payload\?\.title \|\| )?['"]Hermes['"]/)
+    // The default notification title moved into notification-ipc.ts in the
+    // hc-844 merge and came back as 'Hermes' while this guard still read only
+    // main.ts (hc-919). Pin both ends of the seam.
+    // Comments stripped: only executable code may carry the product name.
+    const notifications = readSource('electron', 'notification-ipc.ts').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
+
+    expect(notifications).toContain('title: payload?.title || appName')
+    expect(notifications).not.toMatch(/['"]Hermes['"]/)
+    expect(main).toContain('registerNativeNotifications({ appName: APP_NAME,')
     expect(main).toContain("title: silent ? 'Connecting to APEX Cloud agent…' : 'Sign in to APEX'")
     expect(main).toContain("title: 'Sign in to APEX Cloud'")
     expect(bootE2e).toContain("expect(title).toContain('APEX')")

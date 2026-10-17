@@ -468,16 +468,11 @@ import { createMediaProtocolHandler, MEDIA_PROTOCOL } from './media-protocol'
 import { fetchLocalMedia } from './media-range'
 import { createNativeAccessTokenCoordinator, NativeAuthChangedError } from './native-access-token'
 import { oauthSessionIsLive, resolveJsonBody, resolveReadinessProbeAuth } from './native-auth-decisions'
-import {
-  nativeRefreshUrl,
-  type NativeTokenSet,
-  parseTokenResponse,
-  resolveLoginStrategy,
-  tokenNeedsRefresh
-} from './native-oauth'
+import { nativeRefreshUrl, type NativeTokenSet, parseTokenResponse, tokenNeedsRefresh } from './native-oauth'
 import { runNativeLogin } from './native-oauth-login'
 import { loadNativeTokenSet, type NativeTokenStoreIo, persistNativeTokenSet } from './native-token-store'
 import { registerNativeNotifications } from './notification-ipc'
+import { runOauthLoginFlow } from './oauth-login-flow'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { LEGACY_OAUTH_PARTITION, resolveOauthPartition } from './oauth-partition'
 import { mintGatewayWsTicket as mintOauthGatewayWsTicket, requestWithOauthFallback } from './oauth-rest-request'
@@ -1745,7 +1740,7 @@ app.on('before-quit', () => {
 function registerMediaProtocol() {
   const handler = createMediaProtocolHandler({
     fetchAnalysis: (token, headers, method) => analysisPlayback.fetch(token, headers, method),
-    ensureRemoteBearer: baseUrl => ensureNativeAccessToken(baseUrl).catch(() => null),
+    ensureRemoteBearer: baseUrl => ensureNativeAccessToken(baseUrl),
     fetchLocal: fetchLocalMedia,
     fetchRemote: (url, headers, method) =>
       electronNet.fetch(url, {
@@ -5582,7 +5577,14 @@ async function waitForRuntimePreparation() {
   })
 }
 
-async function ensureRuntime(backend) {
+// Quit fence (upstream 7b9808e43b): every runtime resolution is a tracked
+// start, so quit waits for (and refuses to begin) an engine install for the
+// messaging gateway and local Agent jobs too, not only the primary and pool.
+function ensureRuntime(backend) {
+  return localBackendLifecycle.start(() => runEnsureRuntime(backend))
+}
+
+async function runEnsureRuntime(backend) {
   const runtimeOverride = readRuntimePinOverride()
   const offlineUpdate = runtimeOverride && packagedRuntimeMatchesPin(process.resourcesPath, runtimeOverride.commit)
 
@@ -5829,7 +5831,7 @@ async function ensureRuntime(backend) {
           )
 
           // Re-resolve; step 3.5 now adopts the on-disk runtime and wires venv.
-          return ensureRuntime(resolveHermesBackend(backend.args))
+          return runEnsureRuntime(resolveHermesBackend(backend.args))
         }
       }
 
@@ -5865,7 +5867,7 @@ async function ensureRuntime(backend) {
 
     // Re-resolve now that the install exists. The new resolution lands in
     // step 3 (bootstrap-complete marker) and we recurse to wire venvPython.
-    return ensureRuntime(resolveHermesBackend(backend.args))
+    return runEnsureRuntime(resolveHermesBackend(backend.args))
   }
 
   // bootstrap=true with a real backend (createActiveBackend path) means we
@@ -11688,6 +11690,12 @@ function stopBackendChild(child) {
 // switch / crash recovery), which still resets boot progress + reloads.
 function resetHermesConnection({ soft = false } = {}) {
   backendStartFailure = null
+  // Every deliberate re-home (reload/retry, repair, apply-config, profile
+  // switch) lands here: release the reauth latch BEFORE boot progress is
+  // re-emitted, or the hold freezes boot on the stale error (#95701).
+  remoteReauthFailure = null
+  // The next startHermes() re-reads active-profile.json for its launch profile.
+  primaryProfilePin.clear()
   const hermesProcess = backendConnectionState.invalidate()
   stopBackendChild(hermesProcess)
 
@@ -13303,6 +13311,13 @@ async function runHermesStart() {
 
   if (backendStartFailure) {
     throw backendStartFailure
+  }
+
+  // A confirmed remote reauth rejection is terminal until the user signs in.
+  // Short-circuiting here keeps the boot-failure overlay latched and its
+  // "Sign in" button clickable, instead of re-dialling the dead remote.
+  if (remoteReauthFailure) {
+    throw remoteReauthFailure
   }
 
   const existingConnectionPromise = backendConnectionState.getPromise()
@@ -15104,6 +15119,8 @@ function createWindow() {
   // the closed wrapper remains truthy, so clear only the window this callback owns.
   mainWindow.on('closed', () => {
     closePetOverlay()
+    wakeIndicatorController.close()
+    introRevealController.destroy()
 
     if (mainWindow === createdMainWindow) {
       mainWindow = null
@@ -16382,70 +16399,25 @@ async function fetchJsonForBackend(
 }
 
 ipcMain.handle('hermes:connection-config:probe', async (_event, rawUrl) => probeRemoteAuthMode(rawUrl))
-ipcMain.handle('hermes:connection-config:oauth-login', async (_event, rawUrl) => {
-  // Capability-gated login (RFC 8252). Probe the gateway's public /api/status
-  // for supported auth_flows and /api/auth/providers for provider capabilities:
-  //   - all providers support password → always use the embedded login window
-  //     (password providers require the dashboard login form; native PKCE
-  //     can never complete for that provider shape)
-  //   - advertises "native_pkce" AND at least one non-password provider →
-  //     run the system-browser + loopback + PKCE flow
-  //   - older gateway with no provider metadata → fall back to the auth_flows
-  //     check (existing compatibility)
-  //   - a failed native login reports the error rather than auto-falling back
-  //     to the embedded flow — one sign-in action opens at most one window.
-  const baseUrl = normalizeRemoteBaseUrl(rawUrl)
-  // Order login attempts without interrupting rotation of the existing session.
-  const authIsCurrent = nativeAccessTokenCoordinator.beginLogin(baseUrl)
-
-  let statusBody: any = null
-
-  try {
-    statusBody = await fetchPublicJson(`${baseUrl}/api/status`, { timeoutMs: 8_000 })
-  } catch {
-    // Can't read status — fall through to the embedded flow, which has its
-    // own error handling and works against any gated gateway.
-  }
-
-  const authRequired = statusBody && authModeFromStatus(statusBody) === 'oauth'
-  const providers = authRequired ? await gatewayAuthProviders(baseUrl) : []
-
-  const strategy = resolveLoginStrategy(statusBody, { providers })
-
-  if (!authIsCurrent()) {
-    throw new NativeAuthChangedError()
-  }
-
-  if (strategy === 'native') {
-    try {
-      const tokens = await runNativeLogin(baseUrl, {
+ipcMain.handle('hermes:connection-config:oauth-login', async (_event, rawUrl) =>
+  runOauthLoginFlow(rawUrl, {
+    coordinator: nativeAccessTokenCoordinator,
+    fetchStatus: baseUrl => fetchPublicJson(`${baseUrl}/api/status`, { timeoutMs: 8_000 }),
+    gatewayAuthProviders: baseUrl => gatewayAuthProviders(baseUrl),
+    hasSessionCookie: hasOauthSessionCookie,
+    log: rememberLog,
+    openLoginWindow: baseUrl => openOauthLoginWindow(baseUrl),
+    releaseReauthLatch: () => {
+      remoteReauthFailure = null
+    },
+    runNativeLogin: baseUrl =>
+      runNativeLogin(baseUrl, {
         openExternal: url => shell.openExternal(url),
         postJson: (url, body, opts) => postJsonNoAuth(url, body, opts),
         rememberLog
       })
-
-      if (!authIsCurrent()) {
-        throw new NativeAuthChangedError()
-      }
-
-      nativeAccessTokenCoordinator.storeTokens(baseUrl, tokens)
-      // Confirmed sign-in — release the reauth latch so the next
-      // startHermes() re-dials instead of replaying the stale rejection.
-      remoteReauthFailure = null
-
-      return { ok: true, baseUrl, connected: true }
-    } catch (error) {
-      rememberLog(`[native-oauth] native login failed (${error instanceof Error ? error.message : String(error)})`)
-
-      return { ok: false, error: error instanceof Error ? error.message : String(error), connected: false }
-    }
-  }
-
-  // Legacy embedded-webview cookie flow.
-  await openOauthLoginWindow(baseUrl)
-
-  return { ok: true, baseUrl, connected: await hasOauthSessionCookie(baseUrl) }
-})
+  })
+)
 ipcMain.handle('hermes:connection-config:oauth-logout', async (_event, rawUrl) => {
   const baseUrl = normalizeRemoteBaseUrl(rawUrl)
 
@@ -17155,7 +17127,7 @@ ipcMain.handle('hermes:api', async (_event, request) => {
 const ownsAmbientCue = createAmbientClaimArbiter()
 ipcMain.handle('hermes:ambient:claim', (_event, key) => ownsAmbientCue(String(key ?? '')))
 
-registerNativeNotifications({ getMainWindow: () => mainWindow, focusWindow })
+registerNativeNotifications({ appName: APP_NAME, getMainWindow: () => mainWindow, focusWindow })
 
 const DATA_URL_READ_MAX_CONFIG_PATH = path.join(app.getPath('userData'), 'data-url-read-max.json')
 

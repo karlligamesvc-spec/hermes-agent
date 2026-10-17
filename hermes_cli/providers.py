@@ -69,6 +69,10 @@ HERMES_OVERLAYS: dict[str, HermesOverlay] = {
                                        base_url_override="https://api.lkeap.cloud.tencent.com/plan/anthropic",
                                        base_url_env_var="TOKENPLAN_BASE_URL"),
     "arcee": HermesOverlay(base_url_override="https://api.arcee.ai/api/v1", base_url_env_var="ARCEE_BASE_URL"),
+    # models.dev lists CommandCode under CMD_API_KEY; the plugin profile and docs use COMMANDCODE_API_KEY.
+    "commandcode": HermesOverlay(extra_env_vars=("COMMANDCODE_API_KEY",),
+                                 base_url_override="https://api.commandcode.ai/provider/v1",
+                                 base_url_env_var="COMMANDCODE_BASE_URL"),
     "gmi": HermesOverlay(extra_env_vars=("GMI_API_KEY",), base_url_override="https://api.gmi-serving.com/v1",
                          base_url_env_var="GMI_BASE_URL"),
     "fireworks": HermesOverlay(extra_env_vars=("FIREWORKS_API_KEY",),
@@ -148,6 +152,8 @@ _LABEL_OVERRIDES: dict[str, str] = {
     "nebius-token-factory": "Nebius Token Factory", "tencent-tokenplan": "Tencent TokenPlan", "lmstudio": "LM Studio",
     "custom": "Custom endpoint", "bedrock": "AWS Bedrock", "vertex": "Google Vertex AI", "ollama-cloud": "Ollama Cloud",
     "xai-oauth": "xAI Grok OAuth (SuperGrok / Premium+)",
+    # The commandcode overlay owns the ProviderDef even when models.dev omits it (offline, older cache).
+    "commandcode": "CommandCode",
 }
 
 
