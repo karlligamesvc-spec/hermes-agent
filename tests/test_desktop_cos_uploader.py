@@ -139,3 +139,40 @@ def test_stalled_owned_worker_is_bounded_and_only_transient_exits_resume(monkeyp
     assert len(seen) == calls
     assert all(command[-4:] == args and '--transfer-worker' in command and options['timeout'] == 600
                for command, options in seen)
+
+
+def _sized(tmp_path, size):
+    local = tmp_path / f'APEX-0.17.58-mac-arm64-{size}.dmg'
+    with local.open('wb') as stream:
+        stream.truncate(size)  # sparse: the budget reads only the size
+    return local
+
+
+@pytest.mark.parametrize('size,workers', [
+    (1, 3),                # blockmap / feed: never fewer than the default three
+    (200_000_000, 4),      # 1526 s at the 128 KiB/s floor + 600 s overhead
+    (630_165_015, 9),      # the 0.17.58 arm64 DMG that outgrew 3 x 600 s on 2026-10-17
+    (5_000_000_000, 9),    # capped at 90 minutes so a DMG + zip fit the 240-minute job
+])
+def test_size_budget_scales_workers_with_the_file(tmp_path, size, workers):
+    assert publisher.size_budget_workers(_sized(tmp_path, size)) == workers
+
+
+def test_size_budget_leaves_a_missing_file_to_the_worker(tmp_path):
+    assert publisher.size_budget_workers(tmp_path / 'absent.dmg') == publisher.DEFAULT_WORKERS
+
+
+@pytest.mark.parametrize('budget_from_size,calls', [(True, 9), (False, 3)])
+def test_budget_flag_keeps_resuming_a_large_file_and_never_reaches_the_worker(
+        tmp_path, monkeypatch, budget_from_size, calls):
+    seen = []
+    def run(args, **kwargs):
+        seen.append((args, kwargs))
+        raise subprocess.TimeoutExpired(args, kwargs['timeout'])
+    monkeypatch.setattr(publisher.subprocess, 'run', run)
+    local = _sized(tmp_path, 630_165_015)
+    args = ['--file', str(local), '--key', 'desktop/mac-arm64/' + local.name]
+    assert publisher.run_bounded_upload(args + ([publisher.BUDGET_FROM_SIZE] if budget_from_size else [])) == 75
+    assert len(seen) == calls
+    assert all(command[-4:] == args and publisher.BUDGET_FROM_SIZE not in command and options['timeout'] == 600
+               for command, options in seen)

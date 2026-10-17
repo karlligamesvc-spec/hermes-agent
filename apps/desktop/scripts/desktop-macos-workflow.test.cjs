@@ -103,6 +103,7 @@ test('actual Mac publish shell uploads assets before feed and stops when the sha
   fs.writeFileSync(path.join(bin, 'pip3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
   fs.writeFileSync(path.join(bin, 'python3'), `#!/bin/sh
 printf '%s\\n' "$5" >> "$CALLS"
+printf '%s\\n' "$6" >> "$CALLS.flags"
 case "$5" in *dmg) [ "$FAIL_ASSET" = 1 ] && exit 1 ;; esac
 exit 0
 `, { mode: 0o755 })
@@ -111,6 +112,7 @@ exit 0
   try {
     for (const fails of [false, true]) {
       fs.rmSync(log, { force: true })
+      fs.rmSync(`${log}.flags`, { force: true })
       const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], {
         cwd: root,
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, CALLS: log, FAIL_ASSET: fails ? '1' : '0', COS_SECRET_ID: 'fixture-id', COS_SECRET_KEY: 'fixture-secret' },
@@ -120,8 +122,20 @@ exit 0
       assert.equal(result.status, fails ? 1 : 0, result.stderr)
       assert.equal(calls.at(-1), fails ? 'desktop/mac-arm64/APEX-0.17.50-mac-arm64.dmg' : 'desktop/mac-arm64/latest-mac.yml')
       assert.equal(calls.length, fails ? 1 : 4)
+      // The hosted US runner has no outer bound: every upload must size its own budget.
+      const flags = fs.readFileSync(`${log}.flags`, 'utf8').trim().split('\n')
+      assert.deepEqual(flags, calls.map(() => '--budget-from-size'))
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }) }
+})
+
+test('Windows keeps the default uploader budget under its own outer bound', () => {
+  // Its Stop-Process ends only the uploader parent; a longer inner budget there would
+  // leave a transfer worker running behind the next outer attempt.
+  const publishStep = namedStep(fs.readFileSync(windowsWorkflowPath, 'utf8'), 'Publish installer + updater feed to Tencent COS')
+  assert.match(publishStep, /Invoke-BoundedProcess -FilePath \$python -TimeoutSeconds \$budget/)
+  assert.match(publishStep, /"scripts\/release\/upload-desktop-cos\.py", "--file", \$LocalPath, "--key", \$Key\)/)
+  assert.doesNotMatch(publishStep, /--budget-from-size/)
 })
 
 test('Gatekeeper rejection fails the signed macOS build', () => {
