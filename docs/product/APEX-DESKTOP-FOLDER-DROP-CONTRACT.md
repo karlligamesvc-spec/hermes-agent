@@ -18,6 +18,7 @@ Disconnected or busy home surfaces do not accept drops.
 | Entry | Disposition |
 | --- | --- |
 | Business home, parent chat drop region | Fixed: enabled when connected and idle; stages visible attachments |
+| Workflow Run / Project drawer over the business home (chat composer visible) | Existing inline-reference / attachment routing preserved |
 | Normal chat, parent region | Existing inline-reference / attachment routing preserved |
 | Rich composer input and form | Existing drop handling preserved |
 | Message edit composer | Existing drop handling preserved |
@@ -49,6 +50,20 @@ card. Two independent negative checks also make the ready-home regression fail:
 restore `enabled: showChatBar`, or remove the home-specific attachment dispatch.
 Each mutation asserts a unique source anchor and verifies that it was applied;
 the source is restored after each check.
+
+### 2026-10-17: after rebasing onto Hermes v0.22.2 + Desktop 0.17.58
+
+The routing lives in `src/app/chat/hooks/use-chat-file-drops.ts` and the enable
+rule is `shouldAcceptFileDrops` in `src/app/chat/intro-visibility.ts`. They moved
+out of `ChatViewContent` to stay within the code-health ratchet. The home branch
+applies only while the rich composer is hidden, so a drawer over the home keeps
+the normal routing. Add these to the unit run above:
+`src/app/chat/intro-visibility.test.ts src/app/chat/hooks/use-chat-file-drops.test.tsx`.
+The E2E needs `HERMES_DESKTOP_PYTHON` set to a Python that can import the v0.22
+backend: the macOS system Python 3.9 cannot. Negative checks now also cover the
+idle and connected gates, the hook ignoring the rule, the component not passing
+the home state, and the drawer taking the home branch. Each check turns its case
+red.
 
 ## Failure states and limits
 
