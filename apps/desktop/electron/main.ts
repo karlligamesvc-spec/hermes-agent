@@ -74,6 +74,7 @@ import { downloadWithResume } from './apex-bundle-download'
 import { applyBundleUpdate as applyRuntimeBundleUpdate } from './apex-bundle-install'
 import { isVersionedRuntimeRoot } from './apex-bundle-layout'
 import * as bundleMigrate from './apex-bundle-migrate'
+import { runBundledTool } from './apex-bundle-tool'
 import {
   fetchClientConfig,
   normalizeStoredClientConfig,
@@ -18795,28 +18796,6 @@ function extractBundleArchive(archivePath, destDir) {
     })
     child.on('error', reject)
     child.on('close', code => (code === 0 ? resolve() : reject(new Error(`tar exited ${code}: ${stderr.slice(-400)}`))))
-  })
-}
-
-// Run the BUNDLED node against the BUNDLED tool copy (fixup / verify). The
-// bundle ships scripts/build-runtime-bundle.mjs + its own node, so there is no
-// external fixup binary to keep in lockstep (manifest.fixup drives the argv).
-function runBundledTool(exe, argv, label, onOutput?: (line: string) => void) {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(exe, argv, hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
-    let tail = ''
-
-    const cap = d => {
-      tail = (tail + String(d)).slice(-2000)
-      onOutput?.(String(d))
-    }
-
-    child.stdout.on('data', cap)
-    child.stderr.on('data', cap)
-    child.on('error', reject)
-    child.on('close', code =>
-      code === 0 ? resolve() : reject(new Error(`bundle ${label} exited ${code}: ${tail.slice(-400)}`))
-    )
   })
 }
 

@@ -879,6 +879,15 @@ function cmdFixup(args) {
 // verify — re-hash against files.tsv (skips fixup-mutated files).
 // ---------------------------------------------------------------------------
 
+// Reads kept in flight. fs.promises work runs on libuv's threadpool, which is
+// sized from UV_THREADPOOL_SIZE once at process start (default 4; setting it
+// from this script is too late), so only min(this, pool) reads overlap. On
+// Windows the first open of each freshly extracted file waits on the antivirus
+// scan, so that overlap sets the first-boot verify time: hc-923 measured 67,596
+// files on win-5090 at 87 s with 4 in flight and 26 s with 16. Callers spawn
+// this tool with UV_THREADPOOL_SIZE set to this value.
+export const VERIFY_READS_IN_FLIGHT = 16
+
 export async function verifyBundle(root, onProgress = () => {}) {
   const manifest = loadManifest(root)
   const skip = new Set([...manifest.fixup.mutates, FILES_INDEX_REL, MANIFEST_NAME])
@@ -919,7 +928,7 @@ export async function verifyBundle(root, onProgress = () => {}) {
       if (checked % 5000 === 0) onProgress(checked, entries.length)
     }
   }
-  await Promise.all(Array.from({ length: Math.min(8, entries.length) }, worker))
+  await Promise.all(Array.from({ length: Math.min(VERIFY_READS_IN_FLIGHT, entries.length) }, worker))
   if (bad.length) throw new Error(`verify FAILED: ${bad.length} of ${checked} entries mismatched: ${bad.sort().slice(0, 40).join(', ')}`)
   return { checked, skipped: skip.size }
 }
@@ -977,7 +986,7 @@ async function cmdSmoke(args) {
     log(`── probes @ ${label} (${root})`)
     // fixup + verify with the BUNDLED node running the BUNDLED tool copy.
     run(bundledNode(root), [bundledTool(root), 'fixup', '--root', root], { env: probeEnv })
-    run(bundledNode(root), [bundledTool(root), 'verify', '--root', root], { env: probeEnv })
+    run(bundledNode(root), [bundledTool(root), 'verify', '--root', root], { env: { ...probeEnv, UV_THREADPOOL_SIZE: String(VERIFY_READS_IN_FLIGHT) } })
 
     const venvBin = manifest.os === 'win' ? path.join(root, 'venv', 'Scripts') : path.join(root, 'venv', 'bin')
     const py = path.join(venvBin, manifest.os === 'win' ? 'python.exe' : 'python')
