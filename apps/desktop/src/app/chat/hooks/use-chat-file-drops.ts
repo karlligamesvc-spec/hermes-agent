@@ -29,14 +29,15 @@ export function useChatFileDrops(input: {
   gatewayOpen: boolean
   onAttachDroppedItems: (candidates: DroppedFile[]) => Promise<boolean | void> | boolean | void
 }) {
-  const { businessStartVisible, composerTarget, currentCwd, onAttachDroppedItems } = input
+  const { businessStartVisible, chatBarVisible, composerTarget, currentCwd, onAttachDroppedItems } = input
 
   const onDropFiles = useCallback(
     (candidates: DroppedFile[]) => {
       // The business home owns a separate textarea; the rich composer remains
       // hidden. Route every home drop to the visible attachment draft instead
-      // of inserting folder refs into that hidden editor.
-      if (businessStartVisible) {
+      // of inserting folder refs into that hidden editor. A drawer over Start
+      // brings the composer back, and with it the routing below.
+      if (businessStartVisible && !chatBarVisible) {
         void onAttachDroppedItems(candidates)
 
         return
@@ -53,7 +54,7 @@ export function useChatFileDrops(input: {
         void onAttachDroppedItems(osDrops)
       }
     },
-    [businessStartVisible, composerTarget, currentCwd, onAttachDroppedItems]
+    [businessStartVisible, chatBarVisible, composerTarget, currentCwd, onAttachDroppedItems]
   )
 
   return useFileDropZone({ enabled: shouldAcceptFileDrops(input), onDropFiles })
