@@ -117,6 +117,11 @@ export const PLATFORM_TOOL_PLUGINS: readonly PlatformToolPlugin[] = Object.freez
     tools: Object.freeze(['generate_video'])
   }),
   Object.freeze({
+    id: 'apexnodes-live-tools',
+    capability: '直播录制',
+    tools: Object.freeze(['live_record_start', 'live_record_status', 'live_record_stop'])
+  }),
+  Object.freeze({
     id: 'apexnodes-douyin-tools',
     capability: '媒体下载 / 转写 / 图片 OCR',
     tools: Object.freeze([
