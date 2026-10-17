@@ -546,7 +546,14 @@ function groupChatSyncEnvelope(
 /** Merge the gateway's bounded display projection into Desktop's richer room
  *  state without discarding local session/watermark/runtime fields. Missing
  *  remote rooms/messages are not deletions; only explicit tombstones remove a
- *  room, and a genuinely newer local message wins over a stale tombstone. */
+ *  room, and a genuinely newer local message wins over a stale tombstone.
+ *
+ *  Entries this Desktop does not hold yet are APPENDED after the local log,
+ *  never sorted in among it. Member watermarks are log indices, so an older
+ *  remote entry (another device's clock, or a post that reached this Desktop
+ *  only on a later pull) sorted in front of entries a member already saw would
+ *  shift every watermark behind it: the member would be shown an entry it
+ *  already saw and never be shown the remote one. */
 export function mergeRemoteGroupChatSnapshotIntoRooms(
   remote: GroupChatSyncSnapshot | null | undefined,
   current: Record<string, GroupChat> = $groupChats.get(),
@@ -609,9 +616,9 @@ export function mergeRemoteGroupChatSnapshotIntoRooms(
     const remoteRevision = Math.max(0, Number(projected.revision || 0))
     const localRevision = Math.max(0, Number(existing.syncRevision || 0))
 
-    const entries = new Map<string, GroupMessage>(
-      (Array.isArray(existing.log) ? existing.log : []).map(entry => [groupChatSyncEntryKey(entry), entry])
-    )
+    const localLog = Array.isArray(existing.log) ? existing.log : []
+    const known = new Set(localLog.map(groupChatSyncEntryKey))
+    const arrived: GroupMessage[] = []
 
     const members = new Map<string, GroupMember>(
       (Array.isArray(existing.members) ? existing.members : []).map(member => [groupChatSyncMemberKey(member), member])
@@ -624,8 +631,9 @@ export function mergeRemoteGroupChatSnapshotIntoRooms(
       // entry exists locally, the local rich copy is authoritative — merging
       // the compact twin over it would strip attachments and retrigger
       // watermark deltas for members that already saw it (phantom rounds).
-      if (!entries.has(entryKey)) {
-        entries.set(entryKey, entry)
+      if (!known.has(entryKey)) {
+        known.add(entryKey)
+        arrived.push(entry)
       }
     }
 
@@ -644,13 +652,16 @@ export function mergeRemoteGroupChatSnapshotIntoRooms(
       }
     }
 
-    const log = assignLegacyThreads(
-      [...entries.values()].sort((left, right) => {
+    // The local log keeps its order and every entry in place; only what
+    // arrived is ordered, among itself, by time.
+    const log = assignLegacyThreads([
+      ...localLog,
+      ...arrived.sort((left, right) => {
         const byTime = Number(left?.at || 0) - Number(right?.at || 0)
 
         return byTime || groupChatSyncEntryKey(left).localeCompare(groupChatSyncEntryKey(right))
       })
-    )
+    ])
 
     const bounded = trimGroupChatLog(log, existing.watermarks || {})
 
@@ -1283,6 +1294,43 @@ export function trimGroupChatLog(
   }
 }
 
+/** Where `entry` sits in `log` now. Entries carry a durable id; a legacy entry
+ *  without one is found by identity (merges and trims keep local entries as
+ *  the same objects). */
+export function groupChatEntryIndex(log: GroupMessage[], entry: GroupMessage | null | undefined) {
+  if (!entry) {
+    return -1
+  }
+
+  return entry.id ? log.findIndex(candidate => candidate?.id === entry.id) : log.indexOf(entry)
+}
+
+/** A member's watermark once its turn is over: just past `lastShown`, the
+ *  newest entry of the log its prompt was built from, wherever that entry sits
+ *  now. Whatever landed after it while the turn ran (a remote entry a sync
+ *  pull brought in, a stranded reply another drive harvested) stays in the
+ *  member's next delta, where `log.length` would mark it seen. A `lastShown`
+ *  trimmed away means every surviving entry is newer than the turn. */
+export function groupWatermarkPastShown(log: GroupMessage[], lastShown: GroupMessage | undefined, seen: number) {
+  return Math.max(seen, groupChatEntryIndex(log, lastShown) + 1)
+}
+
+/** A member's watermark once its own entry has landed: past that entry only
+ *  when nothing in its thread sits between the watermark and the entry, so
+ *  nothing it has not been shown. Otherwise the watermark stays put and the
+ *  member's next delta carries the unseen entry, then its own. */
+export function groupWatermarkPastOwnEntry(log: GroupMessage[], own: GroupMessage, thread: string, seen: number) {
+  const index = groupChatEntryIndex(log, own)
+
+  if (index < seen) {
+    return seen
+  }
+
+  const unseen = log.slice(seen, index).some(entry => groupThreadOf(entry) === thread)
+
+  return unseen ? seen : index + 1
+}
+
 interface UpdateGroupChatOptions {
   sync?: boolean
 }
@@ -1422,6 +1470,18 @@ function normalizeGroupChatText(text: string): string {
   return trimmed === GROUP_EMPTY_SENTINEL ? GROUP_EMPTY_FRIENDLY : trimmed
 }
 
+/** The room's own clock: a new entry is stamped strictly after every entry
+ *  already in the room. Both sync merges re-sort the log by `at` and break
+ *  ties on the entry key (a random UUID), so two entries from one millisecond,
+ *  or one stamped after the system clock stepped back, would come out of the
+ *  next merge in random order: the room reorders under the user and the
+ *  index-based member watermarks point at the wrong entries. */
+function nextGroupChatEntryAt(log: GroupMessage[]): number {
+  const latest = log.reduce((max, entry) => Math.max(max, Number(entry?.at || 0)), 0)
+
+  return Math.max(Date.now(), latest + 1)
+}
+
 export function appendGroupChatEntry(
   group: string,
   from: GroupMessageAuthor,
@@ -1429,9 +1489,11 @@ export function appendGroupChatEntry(
   thread?: null | string,
   images?: Attachment[]
 ): GroupMessage {
+  const priorLog = ($groupChats.get()[group] || {}).log || []
+
   const entry: GroupMessage = {
     id: groupChatEntryId(),
-    at: Date.now(),
+    at: nextGroupChatEntryAt(priorLog),
     from,
     text: normalizeGroupChatText(text),
     thread: thread || 'legacy'
@@ -1447,7 +1509,6 @@ export function appendGroupChatEntry(
   // loop both committing the same member reply) lands back-to-back and
   // byte-identical. Drop the echo instead of flooding the room. User
   // entries and non-adjacent repeats are never touched.
-  const priorLog = ($groupChats.get()[group] || {}).log || []
   const lastEntry = priorLog[priorLog.length - 1]
 
   if (isDuplicateGroupAppend(lastEntry, from, entry.text, entry.thread)) {

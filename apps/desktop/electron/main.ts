@@ -495,7 +495,8 @@ import {
   undialedSshRouteSeeds
 } from './plugin-profile-routes'
 import { evictPoolEntries } from './pool-eviction'
-import { clampPoolLimits, parsePoolLimits, POOL_LIMITS_DEFAULTS } from './pool-limits'
+import { clampPoolLimits } from './pool-limits'
+import { persistPoolLimits, readPersistedPoolLimits, registerPoolLimitsIpc } from './pool-limits-store'
 import {
   isBackgroundSlotWaitTimeout,
   LocalBackendSpawnCoordinator,
@@ -1839,49 +1840,6 @@ const profileDeletionGate = new ProfileDeletionGate()
 // for scripted/headless setups; after launch the stored preference wins.
 const POOL_LIMITS_PATH = path.join(app.getPath('userData'), 'pool-limits.json')
 
-function readPersistedPoolLimits() {
-  try {
-    const limits = parsePoolLimits(fs.readFileSync(POOL_LIMITS_PATH, 'utf8'))
-    rememberLog(
-      `[pool-limits] loaded from ${POOL_LIMITS_PATH}: maxBackends=${limits.maxBackends}, idleMs=${limits.idleMs}`
-    )
-
-    return limits
-  } catch {
-    // No persisted file yet — fall back to the legacy env vars so scripted
-    // setups keep working. Log which source won: a silently-ignored env var
-    // here costs a scripted-setup user a debugging session.
-    const fromEnv = clampPoolLimits({
-      maxBackends: Number(process.env.HERMES_DESKTOP_POOL_MAX) || undefined,
-      idleMs: Number(process.env.HERMES_DESKTOP_POOL_IDLE_MS) || undefined
-    })
-
-    if (fromEnv.maxBackends !== POOL_LIMITS_DEFAULTS.maxBackends || fromEnv.idleMs !== POOL_LIMITS_DEFAULTS.idleMs) {
-      rememberLog(
-        `[pool-limits] no saved file; using env-var overrides: maxBackends=${fromEnv.maxBackends}, idleMs=${fromEnv.idleMs}`
-      )
-    } else {
-      rememberLog('[pool-limits] no saved file and no env overrides; using defaults')
-    }
-
-    return fromEnv
-  }
-}
-
-function persistPoolLimits(limits) {
-  try {
-    fs.mkdirSync(path.dirname(POOL_LIMITS_PATH), { recursive: true })
-    // Atomic write: write to a temp file in the same directory, then rename.
-    // A crash mid-write would otherwise leave truncated JSON and silently
-    // lose the user's saved sizing.
-    const tmpPath = `${POOL_LIMITS_PATH}.tmp`
-    fs.writeFileSync(tmpPath, JSON.stringify(limits, null, 2), 'utf8')
-    fs.renameSync(tmpPath, POOL_LIMITS_PATH)
-  } catch (error) {
-    rememberLog(`[pool-limits] write failed: ${error.message}`)
-  }
-}
-
 // rememberLog() state. Declared here, before the top-level
 // readPersistedPoolLimits() call below, because that call logs during module
 // evaluation; declaring these later crashed launch with `undefined.push` in
@@ -1891,7 +1849,7 @@ let desktopLogBuffer = ''
 let desktopLogFlushTimer = null
 let desktopLogFlushPromise = Promise.resolve()
 
-let poolLimits = readPersistedPoolLimits()
+let poolLimits = readPersistedPoolLimits(POOL_LIMITS_PATH, process.env, rememberLog)
 // Hard cap on local backends that are starting OR running (the LRU eviction
 // above is soft — it spares keepalive-fresh entries). Follows the live
 // preference: setPoolLimits() pushes a new max into the coordinator.
@@ -1988,17 +1946,20 @@ function poolIdleMs() {
  * Apply new limits live: persist, then converge the running pool — evict
  * LRU backends down to the new max, and let the (already running) idle
  * reaper handle a shortened idle window on its next tick. Returns the
- * limits actually in force (post-clamp).
+ * limits actually in force (post-clamp); ok is false when only the live pool
+ * took them and the userData write failed (they are lost on restart).
  */
 function setPoolLimits(raw) {
   poolLimits = clampPoolLimits(raw)
-  persistPoolLimits(poolLimits)
+  const persisted = persistPoolLimits(POOL_LIMITS_PATH, poolLimits, rememberLog)
   localBackendSpawnCoordinator.setLimit(poolLimits.maxBackends)
   void evictLruPoolBackends(poolMaxBackends())
   startPoolIdleReaper()
 
-  return { ...poolLimits }
+  return { ok: persisted, limits: { ...poolLimits } }
 }
+
+registerPoolLimitsIpc(ipcMain, { current: () => poolLimits, apply: setPoolLimits })
 
 // A backend touched within this window has a live renderer socket (the keepalive
 // pings every 60s for every open profile). LRU eviction must spare these — a

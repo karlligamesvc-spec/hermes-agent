@@ -274,6 +274,41 @@ describe('duplicate append guard (#93127)', () => {
   })
 })
 
+describe('entry clock', () => {
+  // Both sync merges order a room by `at`, falling back to the entry key on a
+  // tie. The tail's id sorts after every UUID, so a tie or an inversion puts
+  // the new entry on top; only a strictly later `at` keeps it last.
+  it.each([
+    ['in the same millisecond as the room tail', 1_000, 1_000, 1_001],
+    ['after the system clock stepped back', 1_000, 400, 1_001],
+    ['on a wall clock ahead of the room', 1_000, 5_000, 5_000]
+  ])('stamps an entry %s so both merges keep it last', async (_case, tailAt, clock, expectedAt) => {
+    const { chat } = await loadRoom()
+
+    chat.$groupChats.set({
+      Room: {
+        log: [{ at: tailAt, from: { kind: 'user', name: 'You' }, id: 'zzzz-tail', text: 'earlier', thread: 't1' }],
+        watermarks: {}
+      }
+    })
+
+    const now = vi.spyOn(Date, 'now').mockReturnValue(clock)
+
+    try {
+      const entry = chat.appendGroupChatEntry('Room', { kind: 'member', name: 'research' }, 'later', 't1')
+      const projection = chat.groupChatSyncSnapshot(chat.$groupChats.get())
+      const gateway = chat.mergeGroupChatSyncSnapshots(projection, projection)
+      const rooms = chat.mergeRemoteGroupChatSnapshotIntoRooms(gateway, chat.$groupChats.get())
+
+      expect(entry.at).toBe(expectedAt)
+      expect(gateway.rooms['name:Room'].log.map(item => item.text)).toEqual(['earlier', 'later'])
+      expect(rooms.Room.log.map(item => item.text)).toEqual(['earlier', 'later'])
+    } finally {
+      now.mockRestore()
+    }
+  })
+})
+
 describe('threads', () => {
   it('hydration assigns legacy thread ids — a lull splits, follow-ups stay together', async () => {
     const { chat } = await loadRoom()

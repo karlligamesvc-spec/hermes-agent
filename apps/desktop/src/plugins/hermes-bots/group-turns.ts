@@ -9,7 +9,13 @@
 import { host } from '@hermes/plugin-sdk'
 
 import { recordGroupActivity } from './group-activity'
-import { $groupChats, $groupClarify, appendGroupChatEntry, updateGroupChat } from './group-chat'
+import {
+  $groupChats,
+  $groupClarify,
+  appendGroupChatEntry,
+  groupWatermarkPastOwnEntry,
+  updateGroupChat
+} from './group-chat'
 import type { GroupChatRoom } from './group-chat'
 import { followGroupChat, groupMemberKey, groupSessionOwner } from './group-membership'
 import { botConnectionRoute, requestForBot } from './routing'
@@ -1054,7 +1060,8 @@ export async function harvestStrandedGroupReply(group: string, member: GroupMemb
         member: member.name,
         thread: strandedThread
       })
-      appendGroupChatEntry(
+
+      const own = appendGroupChatEntry(
         group,
         {
           kind: 'member',
@@ -1068,8 +1075,13 @@ export async function harvestStrandedGroupReply(group: string, member: GroupMemb
         reply,
         strandedThread
       )
+
+      // The late reply counts as seen, but what landed in the thread while
+      // the member was stranded does not: it was never in this member's
+      // prompt and stays in its next delta.
       updateGroupChat(group, (r: GroupChatRoom) => {
-        r.watermarks[`${strandedThread}::${memberKey}`] = r.log.length
+        const markKey = `${strandedThread}::${memberKey}`
+        r.watermarks[markKey] = groupWatermarkPastOwnEntry(r.log, own, strandedThread, r.watermarks[markKey] || 0)
 
         return r
       })
