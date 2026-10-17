@@ -136,6 +136,17 @@ export function packagedRuntimeMatchesPin(resourcesPath: string, commit: string 
   try { return readPackagedRuntime(resourcesPath).release.runtime_commit === commit } catch { return false }
 }
 
+/** Whether the package carries a valid engine for this machine; resolveHermesBackend then adopts no foreign runtime. */
+export function packagedRuntimeShipped(resourcesPath: string, platform: NodeJS.Platform = process.platform, arch: string = process.arch): boolean {
+  try {
+    readPackagedRuntime(resourcesPath, platform, arch)
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Arm an offline update without deleting the old ordering/rollback marker. */
 export function armPackagedRuntimeUpdate(options: {
   resourcesPath: string

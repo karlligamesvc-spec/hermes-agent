@@ -5,6 +5,7 @@ import { test } from 'vitest'
 import {
   canUseOnDiskRuntime,
   resolveBootstrapFailureFallback,
+  resolveExternalRuntimeRungs,
   resolvePreBootstrapDecision
 } from './apex-runtime-select'
 
@@ -110,4 +111,34 @@ test('failureFallback: opt-in update pending -> fatal (caller rolls the override
 test('failureFallback: bad input is safe (fatal, never a spurious fallback)', () => {
   assert.equal(resolveBootstrapFailureFallback(), 'fatal')
   assert.equal(resolveBootstrapFailureFallback({}), 'fatal')
+})
+
+// ---------------------------------------------------------------------------
+// resolveExternalRuntimeRungs — a packaged build keeps to its own engine
+// ---------------------------------------------------------------------------
+
+const NONE = { explicitCli: false, pathCli: false, systemPython: false }
+const OLD_LADDER = { explicitCli: false, pathCli: true, systemPython: true }
+const PACKAGED = { isPackaged: true, bundledEngine: true, explicitCli: false, ignoreExisting: false, updatePending: false }
+const DEV = { ...PACKAGED, isPackaged: false, bundledEngine: false }
+
+test.each([
+  ['packaged with its engine: no PATH CLI, no system Python', PACKAGED, NONE],
+  ['packaged with its engine + HERMES_DESKTOP_HERMES: only that command', { ...PACKAGED, explicitCli: true }, { ...NONE, explicitCli: true }],
+  ['packaged with its engine + IGNORE_EXISTING: still nothing', { ...PACKAGED, ignoreExisting: true }, NONE],
+  ['packaged without an engine (no bundle for this OS): the old ladder', { ...PACKAGED, bundledEngine: false }, OLD_LADDER],
+  ['dev build: the old ladder', DEV, OLD_LADDER],
+  ['dev build that happens to see a bundle: still the old ladder', { ...DEV, bundledEngine: true }, OLD_LADDER],
+  ['dev build + HERMES_DESKTOP_HERMES: the command replaces the PATH lookup', { ...DEV, explicitCli: true }, { explicitCli: true, pathCli: false, systemPython: true }],
+  ['dev build + IGNORE_EXISTING: step 4 off, step 5 as before', { ...DEV, ignoreExisting: true }, { ...OLD_LADDER, pathCli: false }],
+  ['dev build + IGNORE_EXISTING + HERMES_DESKTOP_HERMES: step 4 off', { ...DEV, ignoreExisting: true, explicitCli: true }, { ...OLD_LADDER, pathCli: false }],
+  ['update pending in a dev build: nothing (R5 re-bootstrap)', { ...DEV, explicitCli: true, updatePending: true }, NONE],
+  ['update pending in a packaged build: nothing', { ...PACKAGED, explicitCli: true, updatePending: true }, NONE]
+] as const)('externalRungs: %s', (_label, input, expected) => {
+  assert.deepEqual(resolveExternalRuntimeRungs(input), expected)
+})
+
+test('externalRungs: missing flags read as a dev build without overrides (the old ladder)', () => {
+  assert.deepEqual(resolveExternalRuntimeRungs(), OLD_LADDER)
+  assert.deepEqual(resolveExternalRuntimeRungs({}), OLD_LADDER)
 })
