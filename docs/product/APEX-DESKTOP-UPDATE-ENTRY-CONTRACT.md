@@ -55,7 +55,12 @@ preserved until it exits. The final idle scan has no PID exemptions. Ordinary
 app quit cannot install implicitly around the gate. Duplicate install requests
 coalesce; failed native handoff releases its process-start fence.
 
-Additional smoke: `electron/deferred-runtime-update.test.ts`,
+The switch gate lives in `electron/runtime-switch-gate.ts`. The boot deferral
+and its retry live in `electron/deferred-runtime-update.ts`, and the deferred
+apply answers in `electron/runtime-update-busy.ts`. main.ts only wires them.
+
+Additional smoke: `electron/runtime-switch-gate.test.ts`,
+`electron/deferred-runtime-update.test.ts`, `electron/runtime-update-busy.test.ts`,
 `electron/runtime-gateway-retirement.test.ts`,
 `electron/runtime-gateway-retirement-receipt.test.ts`,
 `electron/packaged-runtime.test.ts`, `electron/shell-updater.test.ts`,

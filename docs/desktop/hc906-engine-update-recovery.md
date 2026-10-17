@@ -6,6 +6,13 @@
 - main.ts 的接线（壳安装门禁、切换前预检、首启 busy 延后、离线 pin 保留、三条 apply 路径的 deferred、版本 IPC 标记、退出时注销重试、C3）由 `electron/main-update-deferral.test.ts` 按 AST 钉住；此前撤掉其中任何一处，全部测试仍是绿的。
 - 反向验证扩为全量出口表：变基后逐处注入，原有 13 处撤销后仍全绿的出口都已补测试；完整表格记录在 fork PR #386 描述中。
 - 检查过、无需改动：旧侧栏 `ShellUpdatePill` 在 main 上没有挂载（只剩它自己的测试），其“退出后才会安装”文案在 `autoInstallOnAppQuit` 关闭后不再成立，重新启用前必须改文案；壳状态里的 `deferred` 字段已发布但 renderer 不读取（renderer 用 IPC 返回值），撤销它不可观测。
+- 为通过 v0.22 起阻断的代码健康棘轮做了结构调整，行为不变：
+  - 切换门禁（预检与 fence 内准备）移到 `electron/runtime-switch-gate.ts`。
+  - 首启延后与后台重试移到 `electron/deferred-runtime-update.ts` 的 `createPackagedEngineDeferral`。
+  - busy 对应的 deferred 应答在 `electron/runtime-update-busy.ts`。
+  - “已在该 pin 上”的判断移到 `runtime-version.ts` 的 `markerMatchesPin`，离线安装结果移到 `packaged-runtime.ts` 的 `offlineBundledOutcome`。
+  - 与本功能同在 legacy apply 路径的 `isUpdateArtifactReachable` 原样移到 `runtime-update-apply.ts`。
+  - main.ts 只保留接线，各模块有自己的行为测试。
 
 ## 2026-10-10：占用时保留可用引擎，空闲后自动继续
 
