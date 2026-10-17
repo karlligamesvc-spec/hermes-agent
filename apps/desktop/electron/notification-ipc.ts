@@ -6,11 +6,13 @@ import { createNotificationRegistry } from './notification-registry'
 import type { HermesNotification } from './notification-types'
 
 interface NotificationHost {
+  /** Product name for an untitled notification (the APEX identity layer, AGENTS.md rule #11). */
+  appName: string
   getMainWindow: () => BrowserWindow | null
   focusWindow: (window: BrowserWindow) => void
 }
 
-export function registerNativeNotifications({ getMainWindow, focusWindow }: NotificationHost): void {
+export function registerNativeNotifications({ appName, getMainWindow, focusWindow }: NotificationHost): void {
   const isDuplicateNotification = createEventDeduper()
   const notifications = createNotificationRegistry()
 
@@ -32,7 +34,7 @@ export function registerNativeNotifications({ getMainWindow, focusWindow }: Noti
     const icon = typeof payload?.icon === 'string' && payload.icon.trim() ? payload.icon.trim() : undefined
 
     const notification = new Notification({
-      title: payload?.title || 'Hermes',
+      title: payload?.title || appName,
       body: payload?.body || '',
       silent: Boolean(payload?.silent),
       ...(icon ? { icon } : {}),
