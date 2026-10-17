@@ -87,6 +87,12 @@ vi.mock('@/store/runtime-update', () => ({
   applyRuntimeUpdate: (...args: unknown[]) => applyRuntimeUpdateSpy(...args)
 }))
 
+const queueDeferredRuntimeUpdateSpy = vi.fn()
+
+vi.mock('@/store/desktop-update', () => ({
+  queueDeferredRuntimeUpdate: (...args: unknown[]) => queueDeferredRuntimeUpdateSpy(...args)
+}))
+
 const {
   maybeNotifyUpdateAvailable,
   checkBackendUpdates,
@@ -250,6 +256,24 @@ describe('reportBackendContract', () => {
     reportBackendContract(REQUIRED_BACKEND_CONTRACT) // backend updated → satisfied, snooze cleared
     reportBackendContract(5) // a later regression must warn immediately
     expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands a busy engine to the durable deferred plan instead of reloading', async () => {
+    const check = {
+      ok: true,
+      updateAvailable: true,
+      current: { version: 'old', key: 'old' },
+      latest: { version: 'new', key: 'new' }
+    }
+
+    checkRuntimeUpdateSpy.mockResolvedValue(check)
+    applyRuntimeUpdateSpy.mockResolvedValue({ ok: true, applied: false, deferred: true })
+    queueDeferredRuntimeUpdateSpy.mockClear()
+
+    await alignBackendContract()
+
+    expect(queueDeferredRuntimeUpdateSpy).toHaveBeenCalledExactlyOnceWith(check)
+    expect(updateHermesSpy).not.toHaveBeenCalled()
   })
 
   it('routes a local contract repair through the managed Runtime updater', async () => {

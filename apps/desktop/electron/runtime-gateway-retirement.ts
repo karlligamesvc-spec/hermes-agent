@@ -5,17 +5,20 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 
 import { buildDesktopBackendEnv } from './backend-env'
+import { RuntimeUpdateBusy } from './runtime-update-busy'
 
 const exec = promisify(execFile)
 
 // Use the verified replacement's identity-aware gateway shutdown implementation.
 // An arbitrary process holding the engine directory is never a shutdown target.
 export const RETIRE_GATEWAYS = String.raw`
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time, uuid
 import psutil
+from gateway.drain_control import write_drain_request, clear_drain_request, read_drain_request
 from gateway.status import get_running_pid, take_over_scoped_lock_holder, _validated_scoped_lock_gateway_owner, looks_like_gateway_runtime_command_line
 
 active, home, desktop_pid = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]).resolve(), int(sys.argv[3])
+inspect_only = len(sys.argv) > 4 and sys.argv[4] == 'inspect'
 roots = {os.path.abspath(active), os.path.realpath(active)}
 def under_root(value):
     if not value or not os.path.isabs(value):
@@ -54,12 +57,45 @@ for target in homes:
             continue
         if not any(under_root(p) for p in [process.exe(), process.cwd(), *process.cmdline()]):
             continue
+        # Absence of activity evidence must not be interpreted as an idle IM turn.
+        try:
+            state = json.loads((target / 'gateway_state.json').read_text())
+        except (OSError, ValueError):
+            state = {}
+        if (state.get('pid') != pid or state.get('start_time') != record.get('start_time')
+                or state.get('active_agents') != 0 or state.get('gateway_state') != 'running'):
+            raise RuntimeError('APEX_RUNTIME_UPDATE_BUSY')
+        if inspect_only:
+            retired.extend([pid, *[child.pid for child in process.children(recursive=True)]])
+            continue
         # Revalidates PID, creation time, canonical command and home record at
         # every signal; marks intentional shutdown and also reaps owned children.
         descendants = process.children(recursive=True) if os.name == 'nt' else []
-        stopped = take_over_scoped_lock_holder(record, graceful_attempts=10, force_attempts=4)
-        if stopped is None:
-            raise RuntimeError('Gateway identity could not be retired: PID ' + str(pid))
+        # Ask the live gateway to fence new turns before the final idle proof.
+        # Never overwrite another controller's drain request.
+        if read_drain_request(home=target) is not None:
+            raise RuntimeError('APEX_RUNTIME_UPDATE_BUSY')
+        principal = 'desktop-update-' + str(uuid.uuid4())
+        write_drain_request(principal=principal, suppress_notification=True, home=target)
+        try:
+            for attempt in range(30):
+                try:
+                    state = json.loads((target / 'gateway_state.json').read_text())
+                except (OSError, ValueError):
+                    state = {}
+                if (state.get('pid') == pid and state.get('start_time') == record.get('start_time')
+                        and state.get('gateway_state') == 'draining' and state.get('active_agents') == 0):
+                    break
+                time.sleep(.1)
+            else:
+                raise RuntimeError('APEX_RUNTIME_UPDATE_BUSY')
+            stopped = take_over_scoped_lock_holder(record, graceful_attempts=10, force_attempts=4)
+            if stopped is None:
+                raise RuntimeError('Gateway identity could not be retired: PID ' + str(pid))
+        finally:
+            current_request = read_drain_request(home=target)
+            if current_request and current_request.get('principal') == principal:
+                clear_drain_request(home=target)
         # SIGTERM is TerminateProcess on Windows: the root may disappear before
         # taskkill /T can discover descendants. Retain psutil creation identities.
         for child in descendants:
@@ -76,7 +112,7 @@ for target in homes:
 print(json.dumps(retired))
 `
 
-export async function retirePackagedGateways(activeRoot: string, verifiedRoot: string, hermesHome: string): Promise<number[]> {
+export async function retirePackagedGateways(activeRoot: string, verifiedRoot: string, hermesHome: string, inspectOnly = false): Promise<number[]> {
   if (!fs.existsSync(activeRoot)) {return []}
   const python = path.join(verifiedRoot, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
   const inherited: NodeJS.ProcessEnv = {}
@@ -85,9 +121,12 @@ export async function retirePackagedGateways(activeRoot: string, verifiedRoot: s
     if (process.env[key]) {inherited[key] = process.env[key]}
   }
 
-  const { stdout } = await exec(python, ['-c', RETIRE_GATEWAYS, activeRoot, hermesHome, String(process.pid)], {
+  const { stdout } = await exec(python, ['-c', RETIRE_GATEWAYS, activeRoot, hermesHome, String(process.pid), inspectOnly ? 'inspect' : 'retire'], {
     cwd: os.tmpdir(), windowsHide: true, timeout: 45_000, maxBuffer: 64 * 1024,
     env: { ...inherited, ...buildDesktopBackendEnv({ runtimeRoot: verifiedRoot, hermesHome, venvRoot: path.join(verifiedRoot, 'venv'), pythonPathEntries: [verifiedRoot], currentEnv: inherited }), PYTHONDONTWRITEBYTECODE: '1', HERMES_DISABLE_LAZY_INSTALLS: '1' }
+  }).catch(error => {
+    if (String(error.stderr).includes('APEX_RUNTIME_UPDATE_BUSY')) {throw new RuntimeUpdateBusy()}
+    throw error
   })
 
   const pids: unknown = JSON.parse(stdout.trim())

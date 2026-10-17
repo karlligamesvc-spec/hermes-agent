@@ -483,7 +483,7 @@ declare global {
       shellUpdate?: {
         getState: () => Promise<DesktopShellUpdateState>
         check: () => Promise<{ ok: boolean; error?: string; state: DesktopShellUpdateState }>
-        install: () => Promise<{ ok: boolean; error?: string }>
+        install: () => Promise<{ ok: boolean; error?: string; deferred?: boolean }>
         onEvent: (callback: (state: DesktopShellUpdateState) => void) => () => void
       }
       updateCenter?: {
@@ -2311,6 +2311,7 @@ export interface DesktopRuntimeVersionRef {
 // version read locally from the bootstrap marker. `ok:false` only on an
 // unexpected read error (all fields null). No network is involved.
 export interface DesktopRuntimeVersion {
+  updateDeferred?: boolean
   ok: boolean
   version: string | null
   commit: string | null
@@ -2359,6 +2360,7 @@ export interface DesktopRuntimeUpdateExpectedTarget {
 }
 
 export interface DesktopRuntimeUpdateApply {
+  deferred?: boolean
   ok: boolean
   applied?: boolean
   alreadyCurrent?: boolean
@@ -2390,6 +2392,7 @@ export type DesktopShellUpdatePhase =
   'available' | 'checking' | 'disabled' | 'downloaded' | 'downloading' | 'error' | 'idle'
 
 export interface DesktopShellUpdateState {
+  deferred?: boolean
   phase: DesktopShellUpdatePhase
   // electron-updater 的裸 semver(如 0.16.1);idle/checking 阶段为 null。
   version: string | null
