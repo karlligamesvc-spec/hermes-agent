@@ -376,6 +376,39 @@ describe('threads', () => {
     expect(log(room, 'Rooms')[1].thread).toBe(second)
   })
 
+  it('keeps two sends from the same millisecond in send order through the gateway sync', async () => {
+    const room = await loadRoom()
+    const member: GroupMember[] = [{ name: 'research', title: '' }]
+    let minted = 0
+
+    // Both sends share one millisecond, and each new entry id sorts BEFORE
+    // the ones minted earlier. If the sync merge has to fall back to the id
+    // tie-break, the second send comes out on top.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_760_000_000_000)
+
+    const uuid = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockImplementation(
+        () => `${String(99_999_999 - minted++)}-0000-4000-8000-000000000000` as ReturnType<Crypto['randomUUID']>
+      )
+
+    try {
+      const first = room.rounds.sendToGroupChat('Rooms', member, 'first topic')
+      await settle(room, 'Rooms')
+      const second = room.rounds.sendToGroupChat('Rooms', member, 'second topic')
+      await settle(room, 'Rooms')
+
+      // The round trip ran: the merge saw both entries, not just the atom.
+      expect(room.gateway.rpcFor('profiles.configure').length).toBeGreaterThan(0)
+      expect(minted).toBe(2)
+      expect(log(room, 'Rooms').map(entry => entry.text)).toEqual(['first topic', 'second topic'])
+      expect(log(room, 'Rooms').map(entry => entry.thread)).toEqual([first, second])
+    } finally {
+      now.mockRestore()
+      uuid.mockRestore()
+    }
+  })
+
   it('continues an explicit thread and scopes the member delta to it', async () => {
     const room = await loadRoom({
       turn: ({ prompt }) => (prompt.includes('billing') ? 'On the billing fix.' : '(pass)')

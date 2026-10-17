@@ -1420,6 +1420,18 @@ function normalizeGroupChatText(text: string): string {
   return trimmed === GROUP_EMPTY_SENTINEL ? GROUP_EMPTY_FRIENDLY : trimmed
 }
 
+/** The room's own clock: a new entry is stamped strictly after every entry
+ *  already in the room. Both sync merges re-sort the log by `at` and break
+ *  ties on the entry key (a random UUID), so two entries from one millisecond,
+ *  or one stamped after the system clock stepped back, would come out of the
+ *  next merge in random order: the room reorders under the user and the
+ *  index-based member watermarks point at the wrong entries. */
+function nextGroupChatEntryAt(log: GroupMessage[]): number {
+  const latest = log.reduce((max, entry) => Math.max(max, Number(entry?.at || 0)), 0)
+
+  return Math.max(Date.now(), latest + 1)
+}
+
 export function appendGroupChatEntry(
   group: string,
   from: GroupMessageAuthor,
@@ -1427,9 +1439,11 @@ export function appendGroupChatEntry(
   thread?: null | string,
   images?: Attachment[]
 ): GroupMessage {
+  const priorLog = ($groupChats.get()[group] || {}).log || []
+
   const entry: GroupMessage = {
     id: groupChatEntryId(),
-    at: Date.now(),
+    at: nextGroupChatEntryAt(priorLog),
     from,
     text: normalizeGroupChatText(text),
     thread: thread || 'legacy'
@@ -1445,7 +1459,6 @@ export function appendGroupChatEntry(
   // loop both committing the same member reply) lands back-to-back and
   // byte-identical. Drop the echo instead of flooding the room. User
   // entries and non-adjacent repeats are never touched.
-  const priorLog = ($groupChats.get()[group] || {}).log || []
   const lastEntry = priorLog[priorLog.length - 1]
 
   if (isDuplicateGroupAppend(lastEntry, from, entry.text, entry.thread)) {
