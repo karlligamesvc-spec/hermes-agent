@@ -190,3 +190,37 @@ Still open before a release from this base:
 - Still open for the release: Mac signing and notarization and the paired publish through `desktop-release.yml`
   (currently disabled), the Windows NSIS installer/uninstall (only `--dir` was exercised), an upgrade from 0.17.57 with
   existing data, and real-account/real-model runs.
+
+## Release gate: legacy-upgrade proof on a genuine F8 runtime (2026-10-17)
+
+The first paired `publish=false` build of 0.17.58 (run 39012714346) failed on both Mac arches at
+"Prove fresh offline install, real legacy upgrade, reopen and rollback" with `engine Python version
+mismatch`. Both Mac runtimes had already been built, signed and notarized, and had passed relocation.
+Windows never reached that step; it failed earlier on a transient npm `ECONNRESET` to COS.
+
+- **Cause**: the consumer smoke faked the F8 (Desktop 0.17.31-era) legacy install from F8's source plus
+  the *new* bundle's dependencies. That worked while both were CPython 3.11. v0.22's dependencies are
+  CPython 3.14 without PyYAML, and F8 declares `requires-python <3.14` and pins `pyyaml`, so the fake
+  tree could not run its own code. Real F8 users run F8's own 3.11 runtime, so the product probe is
+  right; the fixture was not.
+- **Fix**: `apps/desktop/scripts/legacy-runtime-fixture.mjs` builds F8's own runtime, using F8's own
+  builder in an F8 worktree, with uv pinned to 0.11.28 because F8's builder would otherwise fetch the
+  latest. It then installs the result the way a user machine has it:
+  - fixed up for its path;
+  - no bundle manifest;
+  - a `.hermes-source-commit` marker;
+  - checked to run Python 3.11 with PyYAML.
+
+  Both `desktop-macos.yml` (arm64, x64) and `desktop-windows.yml` (x64) build it before the smoke,
+  cache the archive by its immutable inputs, and pass the tree via the smoke's existing `--legacy-source`.
+  The probe is unchanged.
+- **Guard**: `desktop-macos-workflow.test.cjs` checks that both workflows build F8 before the smoke,
+  fetch F8, and pass `--legacy-source`. It also checks that the fixture and the smoke name the same F8
+  and that uv is pinned. All four reverse checks (no `--legacy-source`, no fixture build, a different
+  F8, uv left to latest) turn it red.
+- **Local proof, Mac arm64**:
+  - The F8 fixture built with uv 0.11.28 and runs Python 3.11.15 with PyYAML 6.0.3.
+  - The full consumer smoke passed against the `d3353487` runtime with `--legacy-source`.
+  - Legacy section: before = genuine F8 `v2026.9.22-fork.f8d9cbeb` with actual imports; after =
+    `installed`; reopen = `current`; 7 user files and the SQLite bytes unchanged; the old rollback
+    tree preserved; an injected post-switch failure restored a usable F8.

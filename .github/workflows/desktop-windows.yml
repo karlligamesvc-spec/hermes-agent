@@ -110,13 +110,32 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/bundled-runtime-package.mjs build "$env:RUNNER_TEMP/bundled-engine"
 
+      # hc-906: the legacy-upgrade proof needs a genuine F8 (Desktop 0.17.31-era) install. v0.22's
+      # dependencies (CPython 3.14, no PyYAML) cannot run F8's code, so F8's own builder builds F8's own
+      # runtime here (cached by its immutable inputs) and the smoke receives it via --legacy-source.
+      - name: Cache the genuine F8 legacy runtime
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/legacy-f8/out
+          key: apex-legacy-f8-${{ runner.os }}-x64-f8d9cbebee9b-uv0.11.28-v1
+
+      - name: Build the genuine F8 runtime for the legacy-upgrade proof
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth 1 origin f8d9cbebee9baa018cf8a8866ecb896e9f70fa5a
+          node scripts/legacy-runtime-fixture.mjs --work "$RUNNER_TEMP/legacy-f8"
+
       - name: Prove fresh offline install, real legacy upgrade, reopen and rollback
         working-directory: apps/desktop
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags --depth 1 origin f8d9cbebee9baa018cf8a8866ecb896e9f70fa5a
-          node --import tsx scripts/bundled-runtime-consumer-smoke.mts --resources build --proof "$RUNNER_TEMP/bundled-engine/consumer-proof.json"
+          node --import tsx scripts/bundled-runtime-consumer-smoke.mts --resources build --legacy-source "$RUNNER_TEMP/legacy-f8/tree" --proof "$RUNNER_TEMP/bundled-engine/consumer-proof.json"
 
       - name: Upload native engine verification receipts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

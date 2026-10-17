@@ -206,3 +206,27 @@ test('the production coordinator release identity check is valid Bash', () => {
   assert.match(script, /PACKAGE_VERSION=/)
   assert.doesNotMatch(script, /node -p \\"/)
 })
+
+test('both platform workflows prove the legacy upgrade on a genuine F8 runtime built by F8 itself', () => {
+  // hc-906: v0.22's dependencies (CPython 3.14, no PyYAML) cannot run F8's source, so a legacy tree faked
+  // from F8 source plus the current bundle's dependencies fails the engine probe. Each workflow must build
+  // F8's own runtime first and hand that tree to the smoke.
+  const fixture = fs.readFileSync(path.resolve(__dirname, 'legacy-runtime-fixture.mjs'), 'utf8')
+  const smoke = fs.readFileSync(path.resolve(__dirname, 'bundled-runtime-consumer-smoke.mts'), 'utf8')
+  const f8 = fixture.match(/^export const F8 = '([0-9a-f]{40})'$/m)?.[1]
+  assert.ok(f8, 'the fixture names its F8 commit')
+  assert.equal(smoke.match(/^const F8 = '([0-9a-f]{40})'$/m)?.[1], f8, 'the fixture and the smoke must name the same F8')
+  assert.match(fixture, /^export const F8_UV_VERSION = '\d+\.\d+\.\d+'$/m, "F8's builder must not fetch the latest uv")
+
+  for (const file of [workflowPath, windowsWorkflowPath]) {
+    const source = fs.readFileSync(file, 'utf8')
+    const name = path.basename(file)
+    const build = source.indexOf('node scripts/legacy-runtime-fixture.mjs --work "$RUNNER_TEMP/legacy-f8"')
+    const smokeAt = source.indexOf('node --import tsx scripts/bundled-runtime-consumer-smoke.mts')
+    assert.ok(build > 0, `${name} must build the F8 legacy runtime`)
+    assert.ok(smokeAt > build, `${name} must build the F8 legacy runtime before the consumer smoke`)
+    assert.ok(source.lastIndexOf(`git fetch --no-tags --depth 1 origin ${f8}`, build) > 0, `${name} must fetch F8 before building it`)
+    assert.match(source.slice(smokeAt, source.indexOf('\n', smokeAt)), / --legacy-source "\$RUNNER_TEMP\/legacy-f8\/tree" /,
+      `${name} must hand the genuine F8 tree to the smoke`)
+  }
+})
