@@ -134,6 +134,67 @@ function normalizeHermesHomeRoot(hermesHome, { pathModule = pathModuleForPlatfor
   return resolved
 }
 
+/** hc-926: every directory uv writes, inside the Hermes root. Left at uv's defaults
+ * (~/.cache/uv, ~/.local/share/uv, ~/.local/bin), an agent command fails on a machine
+ * where they are not writable: on the 2026-10-17 Mac Studio vlog test a root-owned
+ * ~/.local/share made `uv venv` die with EACCES, and the Agent fell back to the system
+ * Python 3.9 and PyPI. Shared by all profiles (content-addressed cache). */
+function agentUvDirs(hermesHome, { pathModule = pathModuleForPlatform(process.platform) }: any = {}) {
+  const root = normalizeHermesHomeRoot(hermesHome, { pathModule })
+
+  if (!root) {
+    return {}
+  }
+
+  const uvRoot = pathModule.join(root, 'uv')
+
+  return {
+    UV_CACHE_DIR: pathModule.join(root, 'cache', 'uv'),
+    UV_PYTHON_INSTALL_DIR: pathModule.join(uvRoot, 'python'),
+    UV_PYTHON_BIN_DIR: pathModule.join(uvRoot, 'bin'),
+    UV_TOOL_DIR: pathModule.join(uvRoot, 'tools'),
+    UV_TOOL_BIN_DIR: pathModule.join(uvRoot, 'bin')
+  }
+}
+
+/** hc-926: the runtime's own interpreter, which ships Pillow. macOS login shells run
+ * path_helper, which moves the bundled venv behind /usr/bin, so `python3` in an agent
+ * command is the system one (or, without Command Line Tools, a GUI install prompt).
+ * A fixed variable survives that reordering. */
+function bundledPythonPath(venvRoot, { platform = process.platform, pathModule = pathModuleForPlatform(platform) }: any = {}) {
+  if (!venvRoot) {
+    return null
+  }
+
+  const python = platform === 'win32'
+    ? pathModule.join(venvRoot, 'Scripts', 'python.exe')
+    : pathModule.join(venvRoot, 'bin', 'python')
+
+  return fs.existsSync(python) ? python : null
+}
+
+/** hc-926: uv dirs + APEX_PYTHON for agent commands; add-only, like HF_ENDPOINT. A value
+ * the parent env already carries (a developer's own uv layout or interpreter) wins; a blank
+ * one does not count. */
+function agentToolEnv({ hermesHome, venvRoot, currentEnv, platform, pathModule }: any) {
+  const defaults: Record<string, string | null> = {
+    ...agentUvDirs(hermesHome, { pathModule }),
+    APEX_PYTHON: bundledPythonPath(venvRoot, { platform, pathModule })
+  }
+
+  const env: Record<string, string> = {}
+
+  for (const [name, value] of Object.entries(defaults)) {
+    const chosen = String(currentEnv?.[name] || '').trim() || value
+
+    if (chosen) {
+      env[name] = chosen
+    }
+  }
+
+  return env
+}
+
 function buildDesktopBackendEnv({
   hermesHome,
   runtimeRoot,
@@ -210,14 +271,16 @@ function buildDesktopBackendEnv({
     env.SEARXNG_API_KEY = managedSearchKey
   }
 
-  return env
+  return Object.assign(env, agentToolEnv({ hermesHome, venvRoot, currentEnv, platform, pathModule }))
 }
 
 export {
+  agentUvDirs,
   APEX_SEARXNG_GATEWAY_URL,
   appendUniquePathEntries,
   buildDesktopBackendEnv,
   buildDesktopBackendPath,
+  bundledPythonPath,
   bundledRuntimePathEntries,
   delimiterForPlatform,
   hermesManagedNodePathEntries,

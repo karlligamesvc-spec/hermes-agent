@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import { test } from 'vitest'
@@ -197,4 +199,80 @@ test('an explicit self-hosted SearXNG URL remains keyless and is never overwritt
 
   assert.equal(env.SEARXNG_URL, 'http://localhost:8080')
   assert.equal(env.SEARXNG_API_KEY, undefined)
+})
+
+// --- hc-926: agent commands get uv dirs inside the Hermes root and the bundled Python ---
+// 2026-10-17 vlog test: a root-owned ~/.local/share made `uv venv` fail (EACCES), and
+// `python3` resolved to the system 3.9 because login shells reorder PATH, so the Agent
+// pip-installed Pillow from PyPI although the runtime already ships it.
+
+test('uv writes only inside the Hermes root, shared by every profile', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes/profiles/oracle',
+    currentEnv: { PATH: '/usr/bin:/bin' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.deepEqual(
+    {
+      UV_CACHE_DIR: env.UV_CACHE_DIR,
+      UV_PYTHON_INSTALL_DIR: env.UV_PYTHON_INSTALL_DIR,
+      UV_PYTHON_BIN_DIR: env.UV_PYTHON_BIN_DIR,
+      UV_TOOL_DIR: env.UV_TOOL_DIR,
+      UV_TOOL_BIN_DIR: env.UV_TOOL_BIN_DIR
+    },
+    {
+      UV_CACHE_DIR: '/Users/test/.apexnodes/cache/uv',
+      UV_PYTHON_INSTALL_DIR: '/Users/test/.apexnodes/uv/python',
+      UV_PYTHON_BIN_DIR: '/Users/test/.apexnodes/uv/bin',
+      UV_TOOL_DIR: '/Users/test/.apexnodes/uv/tools',
+      UV_TOOL_BIN_DIR: '/Users/test/.apexnodes/uv/bin'
+    }
+  )
+})
+
+test('uv dirs follow the Windows Hermes root', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: 'C:\\Users\\test\\AppData\\Local\\hermes',
+    currentEnv: { Path: 'C:\\Windows' },
+    platform: 'win32',
+    pathModule: path.win32
+  })
+
+  assert.equal(env.UV_CACHE_DIR, 'C:\\Users\\test\\AppData\\Local\\hermes\\cache\\uv')
+  assert.equal(env.UV_PYTHON_INSTALL_DIR, 'C:\\Users\\test\\AppData\\Local\\hermes\\uv\\python')
+  assert.equal(env.UV_TOOL_BIN_DIR, 'C:\\Users\\test\\AppData\\Local\\hermes\\uv\\bin')
+})
+
+test('a uv layout the parent env already set is kept; a blank one is not', () => {
+  const env = buildDesktopBackendEnv({
+    hermesHome: '/Users/test/.apexnodes',
+    currentEnv: { PATH: '/usr/bin:/bin', UV_CACHE_DIR: '/Volumes/fast/uv-cache', UV_TOOL_DIR: '  ' },
+    platform: 'darwin',
+    pathModule: path.posix
+  })
+
+  assert.equal(env.UV_CACHE_DIR, '/Volumes/fast/uv-cache')
+  assert.equal(env.UV_TOOL_DIR, '/Users/test/.apexnodes/uv/tools')
+})
+
+test('APEX_PYTHON names the runtime venv interpreter only when it exists', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-python-'))
+
+  try {
+    const venvRoot = path.join(root, 'venv')
+    const base = { hermesHome: root, currentEnv: { PATH: '/usr/bin:/bin' }, platform: 'darwin', pathModule: path.posix }
+
+    assert.equal(buildDesktopBackendEnv({ ...base, venvRoot }).APEX_PYTHON, undefined)
+
+    fs.mkdirSync(path.join(venvRoot, 'bin'), { recursive: true })
+    fs.writeFileSync(path.join(venvRoot, 'bin', 'python'), '')
+    assert.equal(buildDesktopBackendEnv({ ...base, venvRoot }).APEX_PYTHON, path.join(venvRoot, 'bin', 'python'))
+
+    const pinned = buildDesktopBackendEnv({ ...base, venvRoot, currentEnv: { PATH: '/usr/bin', APEX_PYTHON: '/opt/dev/python' } })
+    assert.equal(pinned.APEX_PYTHON, '/opt/dev/python')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
 })
